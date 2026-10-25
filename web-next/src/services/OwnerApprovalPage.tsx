@@ -30,6 +30,13 @@ export function OwnerApprovalReview({display, requested, approved = false, busy 
   const previous = display.previousOwnerRole === 'admin' ? 'services.claim.previousAdmin'
     : display.previousOwnerRole === 'member' ? 'services.claim.previousMember'
       : display.previousOwnerRole === 'remove' ? 'services.claim.previousRemoved' : undefined;
+  // Frame 24i: one notice carries "becomes the owner" and that reason's own
+  // consequence. A switch keeps the other people's sign-ins; Start over removes
+  // them, so it never borrows the switch sentence; Change owner leaves everyone
+  // else alone and names what the previous owner becomes.
+  const consequence = display.reason === 'change-owner' ? (previous ? t(previous) : undefined)
+    : display.otherPeopleCount === undefined ? undefined
+      : t(display.reason === 'start-over' ? 'services.claim.otherPeopleRemoved' : 'services.claim.otherPeople', {count: display.otherPeopleCount});
   return <ServicesAuthStage variant="ownerReview">
     <ServicesHeading>{t(copy.title, {server: display.name})}</ServicesHeading>
     <ServicesLead>{t(copy.lead, {server: display.name, account: display.accountName})}</ServicesLead>
@@ -39,10 +46,9 @@ export function OwnerApprovalReview({display, requested, approved = false, busy 
       {id: 'account', label: t('web.claim.account'), value: display.accountName},
       {id: 'requested', label: t('web.claim.requested'), value: requested},
     ]} />
-    {previous ? <ServicesNotice tone="info">{t(previous)}</ServicesNotice> : null}
-    {display.otherPeopleCount === undefined ? null : <ServicesNotice tone="info">
-      <b>{t('services.claim.becomesOwner', {account: display.accountName})}</b>{' '}{t('services.claim.otherPeople', {count: display.otherPeopleCount})}
-    </ServicesNotice>}
+    {consequence ? <ServicesNotice tone="info">
+      <b>{t('services.claim.becomesOwner', {account: display.accountName})}</b>{' '}{consequence}
+    </ServicesNotice> : null}
     {notice}
     <ServicesActions>{approved
       ? <Button variant="primary" autoFocus loading={busy} disabled={busy} onClick={onReturn}>{t('web.claim.returnTo', {server: display.name})}</Button>
