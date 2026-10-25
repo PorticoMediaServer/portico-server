@@ -537,9 +537,9 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 	if err != nil {
 		return Options{}, err
 	}
-	var catalog subtitles.Catalog
+	var subtitleCatalog subtitles.Catalog
 	if s.Subtitles != nil && len(assets) > 0 {
-		if catalog, err = s.Subtitles.ListTx(ctx, tx, p, item, ""); err != nil {
+		if subtitleCatalog, err = s.Subtitles.ListTx(ctx, tx, p, item, ""); err != nil {
 			return Options{}, err
 		}
 	}
@@ -568,7 +568,7 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		if err = s.streams(ctx, tx, first.id, &v); err != nil {
 			return Options{}, err
 		}
-		for _, r := range catalog.Resources {
+		for _, r := range subtitleCatalog.Resources {
 			renderers[r.ID], formats[r.ID] = r.Renderer, r.Format
 			if r.SourceID == first.id && r.Enabled {
 				lower := strings.ToLower(r.Title)
