@@ -53,16 +53,16 @@ const (
 	// wanted audio track is not the first, because no other route existed.
 	NoteFirstAudioTrackPlayed = "wanted_audio_track_unreachable_first_track_played"
 	// Notes about the engine and the viewer's overrides behind a plan.
-	NoteEngineAutomatic                 = "engine_chosen_automatically"
-	NoteEngineFallback                  = "engine_setting_unavailable_other_engine_used"
-	NoteDeviceToneMaps                  = "device_tone_maps_hdr"
-	NoteAudioPassthrough                = "audio_passed_through_to_receiver"
+	NoteEngineAutomatic  = "engine_chosen_automatically"
+	NoteEngineFallback   = "engine_setting_unavailable_other_engine_used"
+	NoteDeviceToneMaps   = "device_tone_maps_hdr"
+	NoteAudioPassthrough = "audio_passed_through_to_receiver"
 	// NoteObjectAudioDecoded marks a copied object-audio track that the engine
 	// decodes without its objects: the channel bed plays, the objects do not.
 	NoteObjectAudioDecoded = "object_audio_decoded_without_objects"
 	// NoteHDR10PlusLost marks a copied HDR10+ picture whose dynamic metadata
 	// the device does not declare: it plays as the HDR10 base picture.
-	NoteHDR10PlusLost                    = "hdr10plus_dynamic_metadata_lost"
+	NoteHDR10PlusLost                   = "hdr10plus_dynamic_metadata_lost"
 	NoteOverrideStereo                  = "viewer_override_force_stereo"
 	NoteOverrideNoPassthrough           = "viewer_override_disable_passthrough"
 	NoteOverrideNoHDR                   = "viewer_override_disable_hdr"
@@ -116,6 +116,7 @@ type TraceVideo struct {
 }
 
 type TraceAudio struct {
+	Lossless    *bool  `json:"lossless,omitempty"`
 	StreamIndex int    `json:"streamIndex"`
 	Codec       string `json:"codec"`
 	Channels    int    `json:"channels,omitempty"`

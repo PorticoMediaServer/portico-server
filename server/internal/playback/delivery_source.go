@@ -17,6 +17,7 @@ type SourceVideo struct {
 }
 
 type SourceAudio struct {
+	Lossless         *bool  `json:"lossless,omitempty"`
 	AudioDescription bool   `json:"audioDescription,omitempty"`
 	NativeCodec      string `json:"-"`
 	Title            string `json:"title,omitempty"`
@@ -99,8 +100,14 @@ func loadDeliverySource(ctx context.Context, q sourceQuery, asset string) (Deliv
 	var video, audio string
 	var size int64
 	var width, height, version int
+	var streamsCurrent bool
+	var wavpackLossless sql.NullBool
 	s.ID = asset
-	err := q.QueryRowContext(ctx, `SELECT a.container,a.video_codec,a.audio_codec,a.duration,a.size,COALESCE(a.width,0),COALESCE(a.height,0),COALESCE((SELECT f.detail_version FROM asset_stream_facts f WHERE f.asset_id=a.token AND f.size=a.size AND f.modified_ns=a.modified_ns),0) FROM catalog_assets a WHERE a.token=?`, asset).Scan(&s.Container, &video, &audio, &s.Duration, &size, &width, &height, &version)
+	err := q.QueryRowContext(ctx, `SELECT a.container,a.video_codec,a.audio_codec,a.duration,a.size,COALESCE(a.width,0),COALESCE(a.height,0),COALESCE((SELECT f.detail_version FROM asset_stream_facts f WHERE f.asset_id=a.token AND f.size=a.size AND f.modified_ns=a.modified_ns),0),
+ EXISTS(SELECT 1 FROM asset_stream_facts f WHERE f.asset_id=a.token AND f.size=a.size AND f.modified_ns=a.modified_ns),
+ (SELECT m.lossless FROM music_technical_facts m WHERE m.asset_id=a.token AND m.size=a.size AND m.modified_ns=a.modified_ns AND m.codec='wavpack'
+ AND (SELECT COUNT(*) FROM asset_streams st WHERE st.asset_id=a.token AND st.type='audio')=1)
+ FROM catalog_assets a WHERE a.token=?`, asset).Scan(&s.Container, &video, &audio, &s.Duration, &size, &width, &height, &version, &streamsCurrent, &wavpackLossless)
 	if err != nil {
 		return s, err
 	}
@@ -146,7 +153,16 @@ func loadDeliverySource(ctx context.Context, q sourceQuery, asset string) (Deliv
 			}
 			s.Video = v
 		case "audio":
-			s.Audio = append(s.Audio, SourceAudio{Index: st.Index, Ordinal: len(s.Audio), Codec: audioFamily(st.Codec), NativeCodec: st.Codec, Channels: st.Channels, Layout: st.ChannelLayout, Language: st.Language, Title: publicAudioText(st.Title, 96), Default: st.Default, Commentary: st.Commentary, AudioDescription: st.Detail.AudioDescription, StreamDetail: st.Detail})
+			var lossless *bool
+			if streamsCurrent {
+				lossless = knownAudioEncodingLossless(st.Codec, st.Detail.Profile, st.Detail.AudioVariant)
+				// The catalogue fact belongs to its first audio stream. Without a
+				// stored stream index, only a single-track asset proves this binding.
+				if st.Codec == "wavpack" && wavpackLossless.Valid {
+					lossless = copiedBool(&wavpackLossless.Bool)
+				}
+			}
+			s.Audio = append(s.Audio, SourceAudio{Lossless: lossless, Index: st.Index, Ordinal: len(s.Audio), Codec: audioFamily(st.Codec), NativeCodec: st.Codec, Channels: st.Channels, Layout: st.ChannelLayout, Language: st.Language, Title: publicAudioText(st.Title, 96), Default: st.Default, Commentary: st.Commentary, AudioDescription: st.Detail.AudioDescription, StreamDetail: st.Detail})
 		}
 	}
 	if err = rows.Err(); err != nil {

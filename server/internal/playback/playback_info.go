@@ -49,6 +49,9 @@ type PlaybackSoundFacts struct {
 	Layout      string `json:"layout,omitempty"`
 	SampleRate  int    `json:"sampleRate,omitempty"`
 	BitDepth    int    `json:"bitDepth,omitempty"`
+	// Lossless describes this track's coding. Nil is unknown, including an
+	// unmeasured WavPack mode. It is not a renderer or conversion-fidelity fact.
+	Lossless *bool `json:"lossless,omitempty"`
 	// Delivery is how the sink receives the delivered track: handed over
 	// undecoded ("passthrough") or decoded to PCM ("decoded"). It is never
 	// stated for the source, which is a file, not an output.
@@ -243,11 +246,15 @@ func PlaybackInfoForPlan(p DeliveryPlan, subtitle *PlaybackSubtitleFacts) *Playb
 		}
 	}
 	if a := p.Trace.Audio; a != nil {
-		src := PlaybackSoundFacts{Codec: a.Codec, Profile: a.Profile, Variant: a.Variant, ObjectAudio: a.ObjectAudio, Channels: a.Channels, Layout: a.Layout, SampleRate: a.SampleRate, BitDepth: a.BitDepth}
+		src := PlaybackSoundFacts{Codec: a.Codec, Profile: a.Profile, Variant: a.Variant, ObjectAudio: a.ObjectAudio, Channels: a.Channels, Layout: a.Layout, SampleRate: a.SampleRate, BitDepth: a.BitDepth, Lossless: copiedBool(a.Lossless)}
 		out.Source.Audio = &src
 		dst := src
+		dst.Lossless = copiedBool(src.Lossless)
 		if p.OutputAudioCodec != "" {
 			dst.Codec = p.OutputAudioCodec
+			if audioFamily(dst.Codec) != audioFamily(src.Codec) {
+				dst.Lossless = nil
+			}
 		}
 		out.Routes.Sound = playbackRoute(p.AudioAction, repackaged)
 		dst.Delivery = "decoded"
@@ -255,6 +262,10 @@ func PlaybackInfoForPlan(p DeliveryPlan, subtitle *PlaybackSubtitleFacts) *Playb
 			dst.Delivery = "passthrough"
 		}
 		if p.AudioAction == "convert" {
+			dst.Lossless = nil
+			if p.OutputAudioCodec != "" {
+				dst.Lossless = knownAudioEncodingLossless(p.OutputAudioCodec, "", "")
+			}
 			dst.Profile, dst.Variant, dst.ObjectAudio = "", "", ""
 			dst.Channels, dst.SampleRate, dst.BitDepth, dst.Layout = p.AudioChannels, p.AudioSampleRate, 0, ""
 			if target := p.ConversionTarget; target != nil {

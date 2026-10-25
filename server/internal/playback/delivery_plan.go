@@ -898,7 +898,7 @@ func traceAudioSource(audio *SourceAudio, chosenBy string, tracks int) *TraceAud
 	if audio == nil {
 		return nil
 	}
-	return &TraceAudio{StreamIndex: audio.Index, Codec: audio.Codec, Channels: audio.Channels, Language: audio.Language, ObjectAudio: audio.ObjectAudio, Profile: audio.Profile, Variant: audio.AudioVariant, Layout: audio.Layout, SampleRate: audio.SampleRate, BitDepth: audio.BitsPerSample, ChosenBy: chosenBy, Tracks: tracks}
+	return &TraceAudio{Lossless: copiedBool(audio.Lossless), StreamIndex: audio.Index, Codec: audio.Codec, Channels: audio.Channels, Language: audio.Language, ObjectAudio: audio.ObjectAudio, Profile: audio.Profile, Variant: audio.AudioVariant, Layout: audio.Layout, SampleRate: audio.SampleRate, BitDepth: audio.BitsPerSample, ChosenBy: chosenBy, Tracks: tracks}
 }
 
 // sourceAudioAt is the source track with the given absolute stream index.
