@@ -29,6 +29,8 @@ export const remoteSourcesMessages = {
   'next.remoteSources.configAmbiguous': 'This remote’s section is ambiguous, so Portico will not guess at it.',
   'next.remoteSources.configUnknownKind': 'unknown kind',
   'next.remoteSources.configRemoteLabel': '{name} · {kind}',
+  'next.remoteSources.configFolder': 'Start in a folder',
+  'next.remoteSources.configFolderHelp': 'Optional. A folder inside the remote. Leave it empty to start at the top.',
   'next.remoteSources.configChecksOnSave': 'Portico tests the remote when you save. Nothing has to be installed.',
   'next.remoteSources.connectS3': 'S3 storage',
   'next.remoteSources.connectS3Hint': 'Amazon S3 and compatible storage',

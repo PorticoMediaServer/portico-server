@@ -201,6 +201,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   const [configView, setConfigView] = useState<RcloneConfigView>();
   const [configRemote, setConfigRemote] = useState('');
   const [configName, setConfigName] = useState('');
+  const [configFolder, setConfigFolder] = useState('');
   const [s3, setS3] = useState<S3SourceFields>(emptyS3);
   const [s3Name, setS3Name] = useState('');
   const [drive, setDrive] = useState<DriveKeyFields>(emptyDrive);
@@ -258,7 +259,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   /** A refused owner retires this form before Settings hears about it. */
   const refuse = (error: unknown) => {active.current=false;pending.current=false;lifetime.current++;reportError(error);};
   const reset = () => {
-    setStep('connection'); setSourceKind('webdav'); setDraft(emptyDraft); setRclone(emptyRclone); setProgram(undefined); setProviders([]); setConfigView(undefined); setConfigRemote(''); setConfigName(''); setS3(emptyS3); setDrive(emptyDrive); setS3Name(''); setDriveName(''); setS3Tested(undefined); setDriveTested(undefined); setCloud(emptyCloud); setCloudName(''); setCloudTested(undefined); invalidateS3(); invalidateDrive(); invalidateCloud();
+    setStep('connection'); setSourceKind('webdav'); setDraft(emptyDraft); setRclone(emptyRclone); setProgram(undefined); setProviders([]); setConfigView(undefined); setConfigRemote(''); setConfigName(''); setConfigFolder(''); setS3(emptyS3); setDrive(emptyDrive); setS3Name(''); setDriveName(''); setS3Tested(undefined); setDriveTested(undefined); setCloud(emptyCloud); setCloudName(''); setCloudTested(undefined); invalidateS3(); invalidateDrive(); invalidateCloud();
     setResult(undefined); setRcloneResult(undefined); setError(''); setCreated(undefined);
     setProfile(undefined); setValues(sourceReadPreset('once')); setBusy(false); setLoadingProfile(false);
     setChosen([]); setPicking(false); setAttachMode('new'); setLibraryName(''); setKind('movie'); setExistingId('');
@@ -529,7 +530,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     if (!chosen) {setError(t('next.remoteSources.configUnsupportedKind'));return;}
     pending.current = true;setError('');setBusy(true);
     try {
-      const receipt = await service.configureRcloneFromConfig({name: configName.trim() || chosen.name, remote: chosen.name}, guard);
+      const receipt = await service.configureRcloneFromConfig({name: configName.trim() || chosen.name, remote: chosen.name, folder: configFolder}, guard);
       if (!guard()) return;
       const state = service.getSnapshot();
       if (!receipt) {
@@ -756,6 +757,8 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
                 onValueChange={value => {setConfigRemote(value);setConfigName(current => current || value);}}/>
               <TextField label={t('next.remoteSources.name')} value={configName} maxLength={200} disabled={busy}
                 placeholder={configRemote} onChange={event => setConfigName(event.target.value)}/>
+              <TextField label={t('next.remoteSources.configFolder')} description={t('next.remoteSources.configFolderHelp')} value={configFolder} maxLength={1024} disabled={busy}
+                autoCapitalize="off" spellCheck={false} className={styles.monoInput} onChange={event => setConfigFolder(event.target.value)}/>
               {configView.truncated && <p className={styles.note} role="status">{t('next.remoteSources.configTruncated')}</p>}
               <p className={styles.note}>{t('next.remoteSources.configChecksOnSave')}</p>
             </>}

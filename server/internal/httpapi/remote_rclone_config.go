@@ -30,6 +30,7 @@ type RcloneConfigSourceInput struct {
 	OperationID string `json:"operationId"`
 	Name        string `json:"name"`
 	Remote      string `json:"remote"`
+	Folder      string `json:"folder,omitempty"`
 }
 
 func registerRcloneConfigSource(registry *apikit.Registry, d Dependencies) {
@@ -72,7 +73,7 @@ func registerRcloneConfigSource(registry *apikit.Registry, d Dependencies) {
 			return RcloneSourceResponse{}, &apierror.Error{Code: "invalid_request"}
 		}
 		actor, _ := json.Marshal([]string{p.Authority, p.AccountID, p.ProfileID})
-		receipt, err := d.Mounts.SaveRcloneConfigSource(ctx, string(actor), mounts.RcloneConfigSourceInput{OperationID: in.OperationID, Name: name, Remote: in.Remote}, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
+		receipt, err := d.Mounts.SaveRcloneConfigSource(ctx, string(actor), mounts.RcloneConfigSourceInput{OperationID: in.OperationID, Name: name, Remote: in.Remote, Folder: in.Folder}, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
 		if err != nil {
 			return RcloneSourceResponse{}, rcloneSourceFailure(err)
 		}

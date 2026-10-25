@@ -530,11 +530,15 @@ test('the account configuration is listed by name and kind, and saved by remote 
  assert.equal(view.path,'/home/portico/.config/rclone/rclone.conf');
  assert.equal(view.truncated,false);
  assert.deepEqual(view.remotes,remotes);
- const receipt=await service.configureRcloneFromConfig({name:'Archive',remote:'archive'});
+ const receipt=await service.configureRcloneFromConfig({name:'Archive',remote:'archive',folder:'/Media/TV/'});
  assert.equal(receipt?.sourceId,'rclone');
  const post=calls.find(call=>call.method==='POST');
  assert.equal(post?.path,'/v1/storage/sources/rclone/config');
- assert.deepEqual(post?.body,{name:'Archive',remote:'archive',operationId:op});
+ assert.deepEqual(post?.body,{name:'Archive',remote:'archive',folder:'Media/TV',operationId:op});
+ const plain=await service.configureRcloneFromConfig({name:'Archive',remote:'archive'});
+ assert(plain);
+ const plainPost=calls.filter(call=>call.method==='POST').at(-1);
+ assert.deepEqual(plainPost?.body,{name:'Archive',remote:'archive',operationId:op});
  assert(!JSON.stringify(post?.body).includes('secret'));
  service.dispose();
 });

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"strings"
+	"unicode"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
@@ -99,6 +100,26 @@ type RcloneConfigSourceInput struct {
 	OperationID string
 	Name        string
 	Remote      string
+	Folder      string
+}
+
+// accountConfigRemote is the remote a config-import request saves: the named
+// section, followed by an optional start folder. A folder must be a plain
+// relative path so it cannot escape the remote.
+func accountConfigRemote(remote, folder string) (string, error) {
+	trimmed := strings.Trim(strings.TrimSpace(folder), "/")
+	if trimmed == "" {
+		return remote + ":", nil
+	}
+	if len(trimmed) > 1024 {
+		return "", ErrConfigInvalid
+	}
+	for _, part := range strings.Split(trimmed, "/") {
+		if part == "" || part == "." || part == ".." || len(part) > 255 || strings.IndexFunc(part, unicode.IsControl) >= 0 || strings.ContainsAny(part, "\\") {
+			return "", ErrConfigInvalid
+		}
+	}
+	return remote + ":" + trimmed, nil
 }
 
 // accountConfigReceiptKey marks a receipt whose identity is the posted remote
@@ -116,7 +137,11 @@ func (s *Service) rcloneConfigSourceReceipt(actor string, input RcloneConfigSour
 	if input.OperationID == "" || strings.TrimSpace(input.Name) == "" || !configSectionName(input.Remote) {
 		return RcloneSourceReceipt{}, false, ErrConfigInvalid
 	}
-	identityCommand := Command{OperationID: input.OperationID, Action: "create", Name: input.Name, Executable: program.Path, Remote: input.Remote + ":", receiptKey: accountConfigReceiptKey}
+	remote, err := accountConfigRemote(input.Remote, input.Folder)
+	if err != nil {
+		return RcloneSourceReceipt{}, false, err
+	}
+	identityCommand := Command{OperationID: input.OperationID, Action: "create", Name: input.Name, Executable: program.Path, Remote: remote, receiptKey: accountConfigReceiptKey}
 	hash := s.fingerprint(actor, "", identityCommand)
 	s.commands.Lock()
 	existing, err := s.receipt(s.db, actor, input.OperationID, hash)
@@ -153,15 +178,19 @@ func (s *Service) SaveRcloneConfigSource(ctx context.Context, actor string, inpu
 	if receipt, found, err := s.rcloneConfigSourceReceipt(actor, input, program); err != nil || found {
 		return receipt, err
 	}
+	remote, err := accountConfigRemote(input.Remote, input.Folder)
+	if err != nil {
+		return RcloneSourceReceipt{}, err
+	}
 	section, err := ReadAccountRcloneSection(input.Remote)
 	if err != nil {
 		return RcloneSourceReceipt{}, err
 	}
-	if err = validateConfig(section, input.Remote+":"); err != nil {
+	if err = validateConfig(section, remote); err != nil {
 		return RcloneSourceReceipt{}, ErrConfigInvalid
 	}
 	receipt, err := s.Command(ctx, actor, "", Command{OperationID: input.OperationID, Action: "create", Name: input.Name, Executable: program.Path,
-		Remote: input.Remote + ":", Config: section, receiptKey: accountConfigReceiptKey}, authorize)
+		Remote: remote, Config: section, receiptKey: accountConfigReceiptKey}, authorize)
 	if err != nil {
 		return RcloneSourceReceipt{}, err
 	}
