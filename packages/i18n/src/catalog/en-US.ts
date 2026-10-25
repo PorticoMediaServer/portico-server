@@ -637,6 +637,7 @@ export const enUS = {
   'player.signal.line.convertedBitrate': 'Converted to {kbps} kbps',
   'player.signal.line.convertedCd': 'Converted to CD quality',
   'player.signal.line.dsdToPcm': '{source} converted to PCM {rate}',
+  'player.signal.line.dsdToPcmTrim': '{source} converted to PCM {rate} at {gain} dB',
   'player.signal.line.atmosLost': 'Converted to {layout}, Atmos lost',
   'player.signal.line.eqOn': 'EQ on, not bit-perfect',
   'player.signal.line.eqUnavailable': 'EQ not available for this song',

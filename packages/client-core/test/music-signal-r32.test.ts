@@ -42,6 +42,11 @@ test('812: DSD conversion is folded once and notable badges are bounded',()=>{
  const model=musicSignal({...base,source:{codec:'dsd',dsdMultiple:64},server:{route:'converted',dsdConverted:true,delivered:{codec:'flac',sampleRate:176400}}});
  assert.equal(model.foldSourceIntoState,true);assert.equal(model.source,undefined);
  assert.equal(musicSignalAccessibleName(model,defaultI18n.t),'Signal path: DSD64 converted to PCM 176.4 kHz');
+ // The plan's own conversion trim is shown only when the server actually published one.
+ const trim=musicSignal({...base,source:{codec:'dsd',dsdMultiple:64},server:{route:'converted',dsdConverted:true,conversionGainDb:-6,delivered:{codec:'flac',sampleRate:88200}}});
+ assert.equal(key(trim),'player.signal.line.dsdToPcmTrim');
+ assert.equal(musicSignalAccessibleName(trim,defaultI18n.t),'Signal path: DSD64 converted to PCM 88.2 kHz at −6.0 dB');
+ for(const conversionGainDb of [0,1e6,-1e6,Number.NaN])assert.equal(key(musicSignal({...base,source:{codec:'dsd',dsdMultiple:64},server:{route:'converted',dsdConverted:true,conversionGainDb,delivered:{codec:'flac',sampleRate:88200}}})),'player.signal.line.dsdToPcm');
  assert.deepEqual(musicFormatBadges({...base.source,bitDepth:16,sampleRate:44100}),[]);
  assert.deepEqual(musicFormatBadges({codec:'aac',lossless:false,bitrateBps:256000}),[]);
  assert.equal(musicFormatBadges({...base.source,atmos:true,channels:8,layout:'7.1'}).length,2);

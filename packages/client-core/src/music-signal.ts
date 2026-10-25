@@ -17,6 +17,8 @@ export type MusicFormatFacts=Readonly<{
 export type MusicServerSignal=Readonly<{
  route:'original'|'repackaged'|'converted';delivered?:MusicFormatFacts;
  quality?:'original'|'cd-quality'|'320'|'96';dsdConverted?:boolean;atmosLost?:boolean;
+ /** The plan's own conversion trim, excluding any baked loudness gain (DSD gain). */
+ conversionGainDb?:number;
  /** Baked gain is an actual server application fact; the renderer must not apply it again. */
  loudnessAppliedDb?:number;
  reason?:Readonly<{kind:'codec';codec:string;deviceName?:string}>|Readonly<{kind:'atmos'}>;
@@ -118,7 +120,10 @@ export function musicSignal(input:MusicSignalInput):MusicSignalModel{
  if(converted){
   rule=1;
   if(server.dsdConverted&&positive(source.dsdMultiple)&&positive(delivered?.sampleRate)){
-   state=text('player.signal.line.dsdToPcm',{source:text('player.signal.source.dsd',{multiple:source.dsdMultiple}),rate:rate(delivered.sampleRate)});foldSourceIntoState=true;
+   const from=text('player.signal.source.dsd',{multiple:source.dsdMultiple}),to=rate(delivered.sampleRate),trim=server.conversionGainDb;
+   // The plan publishes its own conversion trim; a measured non-zero value is shown
+   // as applied, and an absent or zero trim keeps the plain conversion line.
+   state=gainKnown(trim)&&trim!==0?text('player.signal.line.dsdToPcmTrim',{source:from,rate:to,gain:signalGain(trim)}):text('player.signal.line.dsdToPcm',{source:from,rate:to});foldSourceIntoState=true;
   }else if(server.atmosLost&&layout(delivered??{}))state=text('player.signal.line.atmosLost',{layout:layout(delivered??{})!});
   else if(server.quality==='cd-quality')state=text('player.signal.line.convertedCd');
   else if((server.quality==='320'||server.quality==='96')&&positive(delivered?.bitrateBps))state=text('player.signal.line.convertedBitrate',{kbps:Math.round(delivered.bitrateBps/1000)});
