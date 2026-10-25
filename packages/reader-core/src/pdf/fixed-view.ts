@@ -117,7 +117,7 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
     // PDF text selection must retain browser handles and native selection semantics.
     if(event.pointerType!=='touch'&&(event.target as Element)?.closest?.('[data-reader-text] span'))return;
     pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});try{host.setPointerCapture?.(event.pointerId);}catch{/* synthetic pointers */}
-    if(pointers.size===1){const hit=(event.target as Element|null)?.closest?.('[data-reader-page]');const pane=hit instanceof HTMLElement&&foldPanes?.get(Number(hit.dataset.readerPage))?.clip===hit?hit:undefined;dragPane=pane;gesturePage=pane?Number(pane.dataset.readerPage):undefined;const at=pane?{left:pane.scrollLeft,top:pane.scrollTop}:scrollState();drag={x:event.clientX,y:event.clientY,left:at.left,top:at.top};}else{pinch=distance();drag=undefined;dragPane=undefined;}
+    if(pointers.size===1){const hit=(event.target as Element|null)?.closest?.('[data-reader-page]');const clip=hit instanceof HTMLElement?foldPanes?.get(Number(hit.dataset.readerPage))?.clip:undefined;const pane=clip&&clip===hit?clip:undefined;dragPane=pane;gesturePage=pane?Number(pane.dataset.readerPage):undefined;const at=pane?{left:pane.scrollLeft,top:pane.scrollTop}:scrollState();drag={x:event.clientX,y:event.clientY,left:at.left,top:at.top};}else{pinch=distance();drag=undefined;dragPane=undefined;}
   };
   const onMove=(event:PointerEvent)=>{
     if(!pointers.has(event.pointerId))return;
