@@ -15,10 +15,10 @@ async function capture(id){
  fs.writeFileSync(path.join(out,'flow-'+id+'.log'),await page.evaluate(privacy,{kind:'dom',privateValues}));
 }
 async function flow(id,run){
- if(disabled.has(id)){flows.push({surface:input.surface,id,status:'dropped',manual:'Justin hands-on; flaky twice'});return;}
+ if(disabled.has(input.surface+':'+id)){flows.push({surface:input.surface,id,status:'dropped',manual:'Justin hands-on; flaky twice'});return;}
  phase=id;const start=Date.now();let record;
  try{const facts=await run();record={surface:input.surface,id,status:'pass',facts:facts??{}};}
- catch(error){record={surface:input.surface,id,status:'fail',class:['TimeoutError','Error','TypeError','ReferenceError','SyntaxError'].includes(error.name)?error.name:'Other',flaky:error.name==='TimeoutError'};}
+ catch(error){record={surface:input.surface,id,status:'fail',class:['TimeoutError','Error','TypeError','ReferenceError','SyntaxError'].includes(error.name)?error.name:'Other',timeout:error.name==='TimeoutError'};}
  record.durationMs=Date.now()-start;flows.push(record);try{await capture(id);}catch{record.screenshotUnavailable=true;}
 }
 async function home(){await page.goto(input.origin+'/',{waitUntil:'domcontentloaded'});await page.locator('[data-home-document]').waitFor();}
@@ -68,9 +68,9 @@ try{
   await flow('devices-view',async()=>{await page.getByText('Devices',{exact:true}).first().click();await page.getByRole('heading').first().waitFor();});
   await flow('hosted-sign-out',async()=>{await page.getByRole('button',{name:/^Sign out/}).first().click();await page.locator('input[name="password"]').waitFor();});
  }
-}catch(error){flows.push({surface:input.surface,id:phase,status:'fail',class:error.name,flaky:error.name==='TimeoutError'});}
+}catch(error){flows.push({surface:input.surface,id:phase,status:'fail',class:error.name,timeout:error.name==='TimeoutError'});}
 finally{
  if(page){try{await page.locator('input').evaluateAll(nodes=>nodes.forEach(n=>{n.value='';n.removeAttribute('value');}));}catch{}}
- await browser?.close();fs.writeFileSync(path.join(out,'browser-results.log'),JSON.stringify({flows},null,2)+'\n');console.log(JSON.stringify({surface:input.surface,flows:flows.map(({id,status,flaky})=>({id,status,...(flaky?{flaky}: {})}))}));
+ await browser?.close();fs.writeFileSync(path.join(out,'browser-results.log'),JSON.stringify({flows},null,2)+'\n');console.log(JSON.stringify({surface:input.surface,flows:flows.map(({id,status,timeout})=>({id,status,...(timeout?{timeout}: {})}))}));
 }
 process.exitCode=flows.some(x=>x.status==='fail')?1:0;

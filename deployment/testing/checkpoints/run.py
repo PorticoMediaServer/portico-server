@@ -80,8 +80,13 @@ def main():
                 except Exception as error:result={'flows':[{'surface':'checkpoint','id':'coordinator','status':'fail','class':type(error).__name__,'kind':'infrastructure'}]}
                 results.append(result)
                 for flow in result['flows']:
-                    if flow.get('flaky'):
-                        key=flow['id'];state['flaky'][key]=state['flaky'].get(key,0)+1
-                        if state['flaky'][key]>=2 and key not in state['dropped']:state['dropped'].append(key)
+                    key=flow['surface']+':'+flow['id'];history=state.setdefault('flowHistory',{}).setdefault(key,{'passed':False,'timeouts':0})
+                    if flow['status']=='pass':history['passed']=True
+                    if flow.get('timeout'):history['timeouts']+=1
+                    # Repeated deterministic failures remain fix items. A passing result
+                    # plus timeouts establishes intermittency; two retire the script.
+                    if history['passed'] and history['timeouts']>=2:
+                        state['flaky'][key]=history['timeouts']
+                        if key not in state['dropped']:state['dropped'].append(key)
         state_path.write_text(json.dumps(state,indent=2)+'\n');inbox=Path(config['evidence'])/(stamp+'-inbox.json');inbox.write_text(json.dumps({'serverMain':server,'privateMain':private,'results':results,'dropped':state['dropped']},indent=2)+'\n');print(json.dumps({'runs':len(results),'failedFlows':sum(f['status']=='fail' for r in results for f in r['flows']),'dropped':state['dropped'],'inbox':str(inbox)}));return 0
 if __name__=='__main__':raise SystemExit(main())
