@@ -21,7 +21,7 @@
     if (ui.dataset.state !== value) { clearTimeout(overlayTimer); ui.dataset.overlay = 'hidden'; }
     ui.dataset.state = value;
   }
-  function isAudio(meta) { return !!meta && ['song', 'album', 'audiobook'].indexOf(meta.kind) !== -1; }
+  function isAudio(meta) { return !!meta && ['song', 'track', 'album', 'audiobook', 'audiobook_file', 'chapter'].indexOf(meta.kind) !== -1; }
   function identity(meta) {
     meta = meta || {};
     return JSON.stringify([meta.title, meta.subtitle, meta.seriesTitle, meta.season, meta.episode, meta.artist, meta.albumTitle, meta.kind]);

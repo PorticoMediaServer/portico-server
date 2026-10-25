@@ -470,14 +470,30 @@
       return await new Promise(function (resolve) { var reader = new FileReader(); reader.onload = function () { resolve(String(reader.result || '')); }; reader.onerror = function () { resolve(''); }; reader.readAsDataURL(blob); });
     } catch (e) { return ''; } finally { clearTimeout(timer); }
   }
+  /** Kinds the drawing gives the square cover and the "Now playing" screen (design frames 4 and 9). */
+  var AUDIO_KINDS = {song:1, track:1, album:1, audiobook:1, audiobook_file:1, chapter:1};
+  function audioKind(kind) { return AUDIO_KINDS[kind] === 1; }
   function castMetadata(m, image) {
     if (!m) return undefined;
     var images = image ? [{url: image}] : [];
     if (m.kind === 'episode') return {metadataType: 2, title: m.title, seriesTitle: m.seriesTitle || m.subtitle, season: m.season, episode: m.episode, images: images};
     if (m.kind === 'movie') return {metadataType: 1, title: m.title, subtitle: m.subtitle, images: images};
     // Structured catalogue fields are facts; the old joined subtitle is not an artist.
-    if (m.kind === 'song' || m.kind === 'album') return Object.assign({metadataType: 3, title: m.title, images: images},m.artist?{artist:m.artist}:{},m.albumTitle?{albumName:m.albumTitle}:{});
+    if (audioKind(m.kind)) return Object.assign({metadataType: 3, title: m.title, images: images},m.artist?{artist:m.artist}:{},m.albumTitle?{albumName:m.albumTitle}:{});
     return {metadataType: 0, title: m.title, subtitle: m.subtitle, images: images};
+  }
+  /** A same-origin path the catalogue itself gave us; never a sender-supplied address. */
+  function cataloguePath(value) { return typeof value === 'string' && /^\/(?!\/)[^\s\\]{1,500}$/.test(value) ? value : ''; }
+  /** A song's own record has no cover, and neither has an audiobook chapter: the album's or the
+   * book's square cover is the drawn artwork (frames 4 and 9). The related id comes from the
+   * current item's own projection, read with this TV's credential, and only its own kind counts. */
+  async function relatedCover(id, kind) {
+    if (typeof id !== 'string' || !id || id.length > 128 || !kind) return '';
+    var related;
+    try { related = (await api('/v1/items/' + encodeURIComponent(id), {method: 'GET'})).body; }
+    catch (e) { return ''; }
+    if (!related || related.id !== id || related.missing || related.kind !== kind) return '';
+    return cataloguePath(related.posterUrl);
   }
 
   // GET /v1/items/{id} is the existing ScopeRead catalogue projection. Display
@@ -492,7 +508,7 @@
         viewLoading=true;viewCall('loading',[Object.assign({},meta)]);
         // A catalogue enrichment is still this occurrence: loading clears the
         // view, so restore its genuine current cover even if no new URL arrived.
-        if(currentArtwork)showArtwork(currentArtwork,meta.kind==='song'||meta.kind==='album');
+        if(currentArtwork)showArtwork(currentArtwork,audioKind(meta.kind));
       }
       try {
         var media=typeof manager.getMediaInformation==='function'?manager.getMediaInformation():null;
@@ -514,9 +530,23 @@
         if(Number.isSafeInteger(item.episode.seasonNumber))identity.season=item.episode.seasonNumber;
         if(Number.isSafeInteger(item.episode.number))identity.episode=item.episode.number;
       }
+      // An audiobook's screen shows the chapter, then the book, then the author (frame 9).
+      if(item.bookFile&&typeof item.bookFile==='object'){
+        var author=cleanText(item.author),book=cleanText(item.bookFile.bookTitle);
+        if(author)identity.artist=author;if(book)identity.albumTitle=book;
+      }
       meta=identity;publish();
-      if(identity.artworkPath){
-        var image=await artworkUrl(identity.artworkPath);
+      var coverPath=identity.artworkPath;
+      if(!coverPath&&audioKind(item.kind)){
+        var coverId='',coverKind='';
+        if(item.song&&typeof item.song==='object'){coverId=item.song.albumId;coverKind='album';}
+        else if(item.bookFile&&typeof item.bookFile==='object'){coverId=item.bookFile.bookId;coverKind='book';}
+        coverPath=await relatedCover(coverId,coverKind);
+        if(!current())return;
+        if(coverPath){identity.artworkPath=coverPath;meta=identity;publish();}
+      }
+      if(coverPath){
+        var image=await artworkUrl(coverPath);
         if(current()&&image){
           currentArtwork=image;
           // loading(meta) resets the view's art. Publish that identity before
@@ -596,7 +626,7 @@
     meta = identity || null;
     showLoading(meta);
     var viewLoad = viewGeneration;
-    var art = meta && meta.artworkPath ? artworkUrl(meta.artworkPath).then(function (url) { if (url && viewLoad === viewGeneration) showArtwork(url, meta && (meta.kind === 'song' || meta.kind === 'album')); return url; }) : Promise.resolve('');
+    var art = meta && meta.artworkPath ? artworkUrl(meta.artworkPath).then(function (url) { if (url && viewLoad === viewGeneration) showArtwork(url, meta && audioKind(meta.kind)); return url; }) : Promise.resolve('');
     await prepareProfile();
     var body = {itemId: itemId, state: 'playing'};
     if (Number.isFinite(startSeconds)) body.startPositionMs = Math.round(Math.max(0, startSeconds) * 1000); else body.startFrom = 'resume';

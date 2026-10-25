@@ -351,6 +351,33 @@ test('catalogue identity without a new poster restores the current occurrence co
  assert.equal(h.metadataUpdates.at(-1).media.metadata.artist,'Read artist');
 });
 
+test('a song without its own cover draws the album cover, and an audiobook draws the book cover with its author',async()=>{
+ const h=await harness({direct:true,audioOnly:true,container:'mp3',artwork:true,catalog:{
+  song:{id:'song',title:'DNA.',kind:'song',song:{artist:'Kendrick Lamar',albumTitle:'DAMN.',albumId:'album-1'}},
+  'album-1':{id:'album-1',title:'DAMN.',kind:'album',posterUrl:'/v1/artwork/fixture'},
+  chapter:{id:'chapter',title:'Chapter 15',kind:'chapter',author:'  Andy Weir  ',bookFile:{bookId:'book-1',bookTitle:'Project Hail Mary'}},
+  'book-1':{id:'book-1',title:'Project Hail Mary',kind:'book',posterUrl:'/v1/artwork/fixture'},
+  other:{id:'other',title:'A song, not an album',kind:'song',posterUrl:'/v1/artwork/fixture'}
+ }});
+ await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song',0,{title:'DNA.',kind:'song'});await settle();
+ assert(h.calls.some(c=>c.url==='/v1/items/album-1'&&c.method==='GET'&&c.headers.Authorization==='Bearer bearer-ABCD'),'the album is read with this TV’s own credential');
+ const song=h.metadataUpdates.at(-1).media.metadata;
+ assert.equal(song.artist,'Kendrick Lamar');assert.equal(song.albumName,'DAMN.');assert.match(song.images[0].url,/^data:image\/svg\+xml;base64,/,'the album cover becomes the square artwork');
+ await h.receiver.startPlayback('chapter',0,{title:'Chapter 15',kind:'chapter'});await settle();
+ const book=h.metadataUpdates.at(-1).media.metadata;
+ assert.equal(book.metadataType,3,'an audiobook is drawn as audio, not as a film');assert.equal(book.artist,'Andy Weir');assert.equal(book.albumName,'Project Hail Mary');
+ assert(h.calls.some(c=>c.url==='/v1/items/book-1'&&c.headers.Authorization==='Bearer bearer-ABCD'));
+ assert.match(book.images[0].url,/^data:image\/svg\+xml;base64,/,'the book cover becomes the square artwork');
+});
+test('a related record of the wrong kind never supplies a cover',async()=>{
+ const h=await harness({direct:true,audioOnly:true,container:'mp3',artwork:true,catalog:{
+  song:{id:'song',title:'DNA.',kind:'song',song:{artist:'Kendrick Lamar',albumTitle:'DAMN.',albumId:'other'}},
+  other:{id:'other',title:'A song, not an album',kind:'song',posterUrl:'/v1/artwork/fixture'}
+ }});
+ await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song',0,{title:'DNA.',kind:'song'});await settle();
+ assert.equal(h.metadataUpdates.at(-1).media.metadata.images.length,0,'a song is not an album cover');
+ assert(!h.calls.some(c=>c.url==='/v1/artwork/fixture'));
+});
 test('catalogue film year uses only its genuine bounded numeric year and omits invalid facts',async()=>{
  for(const year of [2002,undefined,0,-1,10000,2002.5,'2002',null]){
   const views=[],h=await harness({direct:true,container:'mp4',catalog:{movie:{id:'movie',title:'Film',kind:'movie',...(year===undefined?{}:{year})}},view:{playing:s=>views.push(s)}});
