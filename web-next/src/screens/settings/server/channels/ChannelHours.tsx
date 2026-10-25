@@ -45,9 +45,10 @@ export function ChannelHours({config, locked, openPresets, presets, isCurrent, o
     const copiedRule = result?.rules.find(rule => !config.rules.some(existing => existing.id === rule.id));
     if (!copiedRule) {setError(true);return;}
     const from = captured.from || (record.body.startMinute >= 0 ? minuteText(record.body.startMinute) : '');
-    const to = captured.to || (record.body.startMinute >= 0 ? minuteText((record.body.startMinute + record.body.durationMinutes) % 1440) : '');
+    const start = minuteValue(from);
+    const to = captured.to || (start !== undefined ? minuteText((start + record.body.durationMinutes) % 1440) : '');
     const days = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
-    const weekdays = captured.block.weekdays.length ? captured.block.weekdays : record.body.days.map(day => days.indexOf(day));
+    const weekdays = captured.block.weekdays.length ? captured.block.weekdays : record.body.days.length ? record.body.days.map(day => days.indexOf(day)) : [0,1,2,3,4,5,6];
     const next = {...captured,copiedRule,from,to,block:{...captured.block,ruleId:copiedRule.id,weekdays}};attempt.draft=next;setDraft(next);
   };
   const ruleLabel = (id: string) => id === config.defaultRuleId ? t('builder.block.default') : (draft?.copiedRule?.id === id ? draft.copiedRule.name : config.rules.find(rule => rule.id === id)?.name) || t('error.unavailable');
