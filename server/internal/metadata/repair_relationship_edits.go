@@ -195,7 +195,7 @@ func applyRelationshipSet(ctx context.Context, tx *sql.Tx, t RepairTarget, class
 func providerCreditsUnchanged(current, values []RepairRelationship) bool {
 	type credit struct {
 		provider, record, targetKind, target, label, role, department string
-		ordinal                                                    int
+		ordinal                                                       int
 	}
 	collect := func(rows []RepairRelationship) []credit {
 		out := []credit{}
