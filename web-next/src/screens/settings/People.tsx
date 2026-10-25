@@ -44,6 +44,10 @@ export type PeopleBindings = Readonly<{
   /** The owner's default role for a new invitation, in the dialog's own words
    * (member or admin), read when a form opens and kept for that invitation. */
   inviteRole?: () => 'member' | 'admin' | undefined;
+  /** The owner device producer, filtered to one person by this row. */
+  devicesApi?: Readonly<{request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>}>;
+  /** Sign one device out through the existing per-device revocation route. */
+  signOutDevice?: (account: string, deviceId: string) => Promise<void>;
   streamLimits?: PeopleStreamLimits; invitations?: SettingsInvitations; invite?: (opener: HTMLElement) => void; signIn?: 'local' | 'portico'; openHome: () => void; reportError: (error: unknown) => void;
 }>;
 
@@ -217,6 +221,8 @@ function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
   const filtered = !!query.search.trim() || Object.values(query.filters).some(value => value !== 'all');
   const special = (row: SettingsRow) => {
     if (!person) return null;
+    if (row.id === 'people.devices' && bindings.devicesApi && personId) return <PersonDevices account={personId} api={bindings.devicesApi}
+      isCurrent={bindings.authority.isCurrent} onSignOut={bindings.signOutDevice ? device => bindings.signOutDevice!(personId, device.id) : undefined} />;
     if (row.id === 'people.libraryList') return <SettingsSelectionList label={label(row.id)} minimum={1} items={bindings.libraries.map(library => ({id: library.id, label: library.name}))} selected={person.allowedLibraries} disabled={!canEdit || saving} onChange={ids => {void run(() => libraryAccess(ids));}} />;
     if (row.id === 'people.hoursList') return <SettingsHours windows={person.limits.schedule.windows} disabled={!canEdit || saving} onChange={hours} />;
     if (row.id === 'people.hiddenLabels') return <SettingsStringList label={label(row.id)} values={person.limits.tagPolicy.deniedLabels} addLabel={t(row.control.addLabel!)} disabled={!canEdit || saving} onChange={deniedLabels => {

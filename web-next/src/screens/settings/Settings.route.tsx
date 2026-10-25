@@ -190,6 +190,12 @@ export function SettingsEntry() {
         client: new SettingsPeopleClient(context.api, current), serverName: context.facts.serverName, libraries: identity.libraries,
         actor: {accountId: viewer.accountId, role}, streamLimits: peopleStreamLimits,
         invitations: new SettingsInvitations(context.api, current, context.api.baseUrl, viewer.serverId), signIn: identity.signIn, openHome, reportError,
+        devicesApi: context.api,
+        signOutDevice: async (account, deviceId) => {
+          // The existing per-device revocation path owns what signing out means;
+          // this only names the device and waits for its answer.
+          await context.api.request(encodedRoutePath('post_direct_member_device_sign_out', {id: encodeURIComponent(account), deviceId: encodeURIComponent(deviceId)}), 'POST', {}, undefined);
+        },
         // The owner's invite expiry, in whole days on the server and hours in the
         // dialog, read live so a save is used by the next invitation only.
         inviteRole: () => {
