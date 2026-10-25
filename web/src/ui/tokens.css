@@ -5,6 +5,9 @@
   --color-shadow: #000000;
   --color-collection: #0a2233;
   --color-generated-green: #1e5b52;
+  --color-library-kind-anime: #4b4f8f;
+  --color-library-kind-music: #6a3f73;
+  --color-library-kind-audiobook: #8c4a32;
   --color-dim: #03080c;
   --color-raised: #10212d;
   --color-raised-high: #162c3a;
@@ -326,6 +329,10 @@
   --type-live-mini-title-line: normal;
   --type-live-mini-title-weight: 700;
   --type-live-mini-title-tracking: 0em;
+  --type-library-kind-title-size: 1.25rem;
+  --type-library-kind-title-line: normal;
+  --type-library-kind-title-weight: 800;
+  --type-library-kind-title-tracking: -0.02em;
   --type-live-monogram-size: 0.8125rem;
   --type-live-monogram-line: normal;
   --type-live-monogram-weight: 800;
