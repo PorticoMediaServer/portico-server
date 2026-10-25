@@ -653,31 +653,53 @@ func TestReadPathGoldenEquivalence(t *testing.T) {
 // preview before the changed field. This does not change the exact comparison.
 func goldenChangedPaths(actual, expected string) string {
 	var a, b any
-	if json.Unmarshal([]byte(actual), &a)!=nil || json.Unmarshal([]byte(expected), &b)!=nil { return "invalid JSON" }
+	if json.Unmarshal([]byte(actual), &a) != nil || json.Unmarshal([]byte(expected), &b) != nil {
+		return "invalid JSON"
+	}
 	var changes []string
-	var walk func(any,any,string)
-	walk=func(a,b any,path string) {
-		if len(changes)>=24 || reflect.DeepEqual(a,b) { return }
-		if am,ok:=a.(map[string]any);ok {
-			if bm,ok:=b.(map[string]any);ok {
-				keys:=map[string]bool{};for k:=range am {keys[k]=true};for k:=range bm {keys[k]=true}
-				order:=[]string{};for k:=range keys {order=append(order,k)};sort.Strings(order)
-				for _,k:=range order {
-					av,aok:=am[k];bv,bok:=bm[k]
-					if !aok || !bok {changes=append(changes,path+"."+k+" presence changed")} else {walk(av,bv,path+"."+k)}
+	var walk func(any, any, string)
+	walk = func(a, b any, path string) {
+		if len(changes) >= 24 || reflect.DeepEqual(a, b) {
+			return
+		}
+		if am, ok := a.(map[string]any); ok {
+			if bm, ok := b.(map[string]any); ok {
+				keys := map[string]bool{}
+				for k := range am {
+					keys[k] = true
+				}
+				for k := range bm {
+					keys[k] = true
+				}
+				order := []string{}
+				for k := range keys {
+					order = append(order, k)
+				}
+				sort.Strings(order)
+				for _, k := range order {
+					av, aok := am[k]
+					bv, bok := bm[k]
+					if !aok || !bok {
+						changes = append(changes, path+"."+k+" presence changed")
+					} else {
+						walk(av, bv, path+"."+k)
+					}
 				}
 				return
 			}
 		}
-		if aa,ok:=a.([]any);ok {
-			if ba,ok:=b.([]any);ok && len(aa)==len(ba) {
-				for i:=range aa {walk(aa[i],ba[i],fmt.Sprintf("%s[%d]",path,i))};return
+		if aa, ok := a.([]any); ok {
+			if ba, ok := b.([]any); ok && len(aa) == len(ba) {
+				for i := range aa {
+					walk(aa[i], ba[i], fmt.Sprintf("%s[%d]", path, i))
+				}
+				return
 			}
 		}
-		changes=append(changes,fmt.Sprintf("%s now=%v golden=%v",path,a,b))
+		changes = append(changes, fmt.Sprintf("%s now=%v golden=%v", path, a, b))
 	}
-	walk(a,b,"$")
-	return strings.Join(changes,"; ")
+	walk(a, b, "$")
+	return strings.Join(changes, "; ")
 }
 
 func truncate(text string) string {
