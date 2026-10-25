@@ -42,6 +42,7 @@ type SourceScanState struct {
 	FinishedAt        string `json:"finishedAt,omitempty"`
 }
 
+var sourceHealths = map[string]bool{"ready": true, "inventory_running": true, "cancelled": true, "offline": true, "root_changed": true, "removing": true}
 var scanStates = map[string]bool{"queued": true, "running": true, "paused": true}
 var scanModes = map[string]bool{"first-import": true, "incremental": true, "integrity": true, "full": true}
 var scanPhases = map[string]bool{"inventory": true, "basic_pending": true, "basic_running": true, "analysis_enqueue": true, "reconciling": true, "verifying": true, "extras": true}
@@ -70,6 +71,12 @@ type SourceStatus struct {
 	CacheUsedBytes  int64  `json:"cacheUsedBytes"`
 	Remote          string `json:"remote,omitempty"`
 	BackgroundSpeed string `json:"backgroundSpeed,omitempty"`
+	// Health is the folder health when every enabled folder of this source
+	// agrees on it; a mixed source is omitted rather than summed or guessed.
+	Health string `json:"health,omitempty"`
+	// LastCompleteAt is the completed-scan time only when every enabled folder
+	// agrees on one stored value; a mixed source is omitted.
+	LastCompleteAt string `json:"lastCompleteAt,omitempty"`
 	// Scan is a real active scan when this server can prove one: the active row
 	// still matches its folder's current generation/incarnation/identity, its
 	// library and run. Absence can mean unsupported, invalid or unobserved, so it
@@ -158,6 +165,17 @@ func (s *Service) ReadSourceStatus(ctx context.Context, identities *identity.Ser
 	}
 	if err = snapshot.Tx().QueryRowContext(ctx, `SELECT COALESCE(MIN(NULLIF(interval_seconds,0)),0) FROM library_sources WHERE remote_source_id=?`, row.ID).Scan(&out.ScanIntervalSecs); err != nil {
 		return SourceStatus{}, err
+	}
+	var healthCount int
+	var minHealth, maxHealth, minComplete, maxComplete string
+	if err = snapshot.Tx().QueryRowContext(ctx, `SELECT COUNT(*),COALESCE(MIN(health),''),COALESCE(MAX(health),''),COALESCE(MIN(last_complete_at),''),COALESCE(MAX(last_complete_at),'') FROM library_sources WHERE remote_source_id=? AND enabled=1`, row.ID).Scan(&healthCount, &minHealth, &maxHealth, &minComplete, &maxComplete); err != nil {
+		return SourceStatus{}, err
+	}
+	if healthCount > 0 && minHealth == maxHealth && sourceHealths[minHealth] {
+		out.Health = minHealth
+	}
+	if healthCount > 0 && minComplete != "" && minComplete == maxComplete {
+		out.LastCompleteAt = scanTime(minComplete)
 	}
 	var scanState, scanMode, scanPhase, scanStarted, scanCompleted, scanFinished string
 	var scanGeneration, scanPolicy, scanProcessed, scanDiscovered, scanAnalyzed, scanWarnings int64
