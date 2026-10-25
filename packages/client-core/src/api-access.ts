@@ -131,7 +131,9 @@ export const revokeAccessToken=async(t:ApiAccessTransport,tokenId:string,signal?
 export const webhookEvents=['title.added','title.updated','title.removed','scan.started','scan.finished','playback.started','playback.paused','playback.resumed','playback.stopped',
  'recording.finished','recording.failed','member.signed_in','backup.succeeded','backup.failed','storage.low','update.available','server.started'] as const;
 export type WebhookEvent=typeof webhookEvents[number];
-export type Webhook=Readonly<{id:string;name:string;url:string;events:readonly string[];enabled:boolean;secretHint:string;createdAt:string;updatedAt:string;waiting:number;failing:number;dropped:number;revision:number}>;
+export type Webhook=Readonly<{id:string;name:string;url:string;events:readonly string[];enabled:boolean;secretHint:string;createdAt:string;updatedAt:string;waiting:number;failing:number;dropped:number;revision:number;
+ /** Authoritative transfer-retirement status for display only, never permission to enable. Absence makes no assertion. */
+ requiresOwnerReview?:boolean}>;
 /** The answer to adding a webhook or rotating its secret: the one time the secret is shown. */
 export type IssuedWebhook=Readonly<{webhook:Webhook;secret?:string}>;
 export type WebhookList=Readonly<{items:readonly Webhook[];events:readonly string[];maximum:number}>;
@@ -146,7 +148,7 @@ export function parseWebhook(raw:unknown):Webhook{
  if('secret' in raw)invalid('webhook carries a secret');
  // Event names are kept as text: a newer server may send one this build does not list.
  return Object.freeze({id:filled(raw.id,128,'webhook id'),name:filled(raw.name,160,'webhook name'),url:filled(raw.url,2048,'webhook url'),events:list(raw.events,64,v=>filled(v,64,'webhook event'),'webhook events'),
-  enabled:flag(raw.enabled,'webhook enabled'),secretHint:text(raw.secretHint,16,'webhook secret hint'),createdAt:instant(raw.createdAt,'webhook createdAt'),updatedAt:instant(raw.updatedAt,'webhook updatedAt'),
+  enabled:flag(raw.enabled,'webhook enabled'),...(raw.requiresOwnerReview===undefined?{}:{requiresOwnerReview:flag(raw.requiresOwnerReview,'webhook owner review')}),secretHint:text(raw.secretHint,16,'webhook secret hint'),createdAt:instant(raw.createdAt,'webhook createdAt'),updatedAt:instant(raw.updatedAt,'webhook updatedAt'),
   waiting:whole(raw.waiting,'webhook waiting'),failing:whole(raw.failing,'webhook failing'),dropped:whole(raw.dropped,'webhook dropped'),revision:whole(raw.revision,'webhook revision')});
 }
 export function parseIssuedWebhook(raw:unknown):IssuedWebhook{
