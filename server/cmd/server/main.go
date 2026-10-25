@@ -77,6 +77,14 @@ import (
 	"time"
 )
 
+// newDriveOAuth keeps every OAuth listener and sweep inside the server's
+// supervised lifetime; Store.Close waits for the sweep's done signal.
+func newDriveOAuth() *driveoauth.Store {
+	store := driveoauth.New(8)
+	store.SetSpawn(func(work func()) { supervise.Go("driveoauth.session", work) })
+	return store
+}
+
 func main() {
 	// The media process shim (mediaexec) replaces itself with the sandboxed
 	// tool; it must not start anything else first.
@@ -1203,7 +1211,7 @@ func run() (runErr error) {
 		manager.SetAccessURLs(accessURLsProvider(console, manager))
 	}
 	var transport *cappedListener
-	apiDependencies := httpapi.Dependencies{TelemetryContext: ctx, RcloneProgram: &rcloneStatus, DriveOAuth: driveoauth.New(8), CacheDirectory: cache, StorageLayout: &layout, LocalArtworkUsage: localMeta.ArtworkUsage, ConnectionUsage: func() httpapi.ConnectionUsage {
+	apiDependencies := httpapi.Dependencies{TelemetryContext: ctx, RcloneProgram: &rcloneStatus, DriveOAuth: newDriveOAuth(), CacheDirectory: cache, StorageLayout: &layout, LocalArtworkUsage: localMeta.ArtworkUsage, ConnectionUsage: func() httpapi.ConnectionUsage {
 		held, _ := transport.Held()
 		return httpapi.ConnectionUsage{Ordinary: len(transport.ordinary), Total: held, OrdinaryLimit: cap(transport.ordinary), ConsoleReserve: consoleConnectionReserve}
 	}, Restart: requestRestart, ListeningPort: listener.Addr().(*net.TCPAddr).Port, LocalHTTPURL: networking.LoopbackHTTPURL(listener.Addr()), Events: events, Administration: adminOperations, Backups: backupService, Access: administration, Webhooks: outboundWebhooks, SettingsApplied: func(ctx context.Context) {

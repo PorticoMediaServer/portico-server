@@ -98,16 +98,32 @@ type Store struct {
 	done      chan struct{}
 	closeOnce sync.Once
 	closed    bool
+	// spawn starts one owned goroutine through the caller's containment. A bare
+	// `go` here would escape the server's supervised lifetime.
+	spawn func(func())
 }
 
-// New starts the bounded expiry sweep. Close ends it.
+// New builds the store. Call SetSpawn before Start: the expiry sweep and each
+// session listener run inside the server's supervision, and Close waits for the
+// sweep's own done signal.
 func New(limit int) *Store {
 	if limit < 1 {
 		limit = 1
 	}
 	store := &Store{sessions: map[string]*session{}, limit: limit, exchange: googleExchange, stop: make(chan struct{}), done: make(chan struct{})}
-	go store.sweep()
 	return store
+}
+
+// SetSpawn attaches the server's goroutine containment. Without it, no sign-in
+// can start, because a listener must never outlive the server unsupervised.
+func (s *Store) SetSpawn(spawn func(func())) {
+	if s == nil {
+		return
+	}
+	s.spawn = spawn
+	if spawn != nil {
+		spawn(s.sweep)
+	}
 }
 
 func (s *Store) sweep() {
@@ -210,7 +226,14 @@ func (s *Store) Start(actor, clientID, clientSecret string, authorizationDeadlin
 	s.sessions[state] = current
 	s.order = append(s.order, state)
 	s.mu.Unlock()
-	go s.serve(current)
+	if s.spawn == nil {
+		_ = listener.Close()
+		s.mu.Lock()
+		s.dropLocked(state)
+		s.mu.Unlock()
+		return "", "", ErrInvalid
+	}
+	s.spawn(func() { s.serve(current) })
 	challenge := base64.RawURLEncoding.EncodeToString(digest(verifier))
 	query := url.Values{
 		"client_id":             {clientID},
