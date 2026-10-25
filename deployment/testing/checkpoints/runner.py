@@ -59,7 +59,7 @@ class Job:
             if r.status not in expected or len(raw)>8*1024*1024:raise StepFailure('api-'+method.lower()+'-'+str(r.status))
             return json.loads(raw) if raw else None
     def generation(self):
-        roots=[(self.source,['packages/contracts/src','server/api/portico.openapi.json','server/internal/httpapi/route_lanes.go','server/internal/persistence/known_columns.go','server/internal/persistence/known_schema.go'])] if self.args.surface=='web-server' else [(self.tools,['hosted-services/hosted/api/hosted.openapi.json','hosted-services/hosted/contracts/src/hosted'])]
+        roots=[(self.source,['packages/contracts/src','server/api/portico.openapi.json','server/internal/httpapi/route_lanes.go','server/internal/persistence/known_columns.go','server/internal/persistence/known_schema.go','server/internal/persistence/schema_test.go'])] if self.args.surface=='web-server' else [(self.tools,['hosted-services/hosted/api/hosted.openapi.json','hosted-services/hosted/contracts/src/hosted'])]
         before={}
         for root,names in roots:
             for name in names:

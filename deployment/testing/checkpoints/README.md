@@ -21,3 +21,5 @@ APK/Reader packaging and private native metadata checks. Apple runs only after t
 scratch started by a run are retired in `finally` paths.
 
 The loopback Hosted fixture uses the application’s existing isolated development-origin profile with a fresh certified signing root, fresh password-protected PostgreSQL and a verified-TLS private mail gateway. It makes no production-origin/TLS/device-proof acceptance claim. Every message recipient is under `m0.getportico.invalid`; no real user is mailed. Official generators run against each captured tree before compilation; any derived changes are returned as a patch receipt for Release adoption, never silently credited as merged main.
+
+The ledger and owner work lists refresh from all three published-main histories every six hours. The generator preserves Owner notes. A separate hourly machine audit writes CI failures to the Release inbox; app owners receive concrete findings without holding their merges.
