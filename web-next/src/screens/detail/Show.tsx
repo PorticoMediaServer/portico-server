@@ -1,3 +1,4 @@
+import {CatalogueSelectionEntry, useCatalogueSelectionActive, type CatalogueDocumentSelection} from '../browse/document-selection';
 import {t, locale, environment as env} from './text';
 import {Fragment, useEffect, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {preferenceValue} from '@core/preferences.ts';
@@ -32,11 +33,11 @@ import {GenreNames} from './GenreNames';
 import type {ContainerState} from '@core/container-state.ts';
 import {SeasonMenu} from './SeasonMenu';
 
-export type ShowScreenProps = {binding: ShowBindings; target: ShowWorkspaceRoute};
-export function ShowScreen({binding, target}: ShowScreenProps) {
+export type ShowScreenProps = {binding: ShowBindings; selection?: CatalogueDocumentSelection; target: ShowWorkspaceRoute};
+export function ShowScreen({binding, target, selection}: ShowScreenProps) {
   const key = JSON.stringify(target);
   useEffect(() => { const route: ShowWorkspaceRoute = JSON.parse(key), request = new AbortController(); void binding.select(route, request.signal).catch(error => { if (!request.signal.aborted) binding.context.effects.reportError(error); }); return () => { request.abort(); binding.cancel(); }; }, [binding, key]);
-  return <ShowBody binding={binding} />;
+  return <ShowBody binding={binding} selection={selection} />;
 }
 
 /** Root §14: complete-season actions; the display editor remains show-scoped. */
@@ -73,7 +74,8 @@ export function seasonMenuDescription(season: WorkspaceSeason): string | undefin
 }
 
 /** One body below Watch's video as well as on the title route. No independent video host. */
-export function ShowBody({binding, compact = false}: {binding: ShowBindings; compact?: boolean}) {
+export function ShowBody({binding, compact = false, selection}: {binding: ShowBindings; compact?: boolean; selection?: CatalogueDocumentSelection}) {
+  const selecting = useCatalogueSelectionActive(selection);
   const snapshot = useSyncExternalStore(binding.service.subscribe, binding.service.getSnapshot, binding.service.getSnapshot);
   useFreshDocument(() => [dependsOn.libraries, ...titlesWithPersonalState(binding.service.getSnapshot().route?.libraryId), dependsOn.event('stream.resync')], refresh => binding.revalidate(refresh), () => binding.service.getSnapshot().phase === 'ready');
   const preferences = useSyncExternalStore(binding.context.preferences.subscribe, binding.context.preferences.getSnapshot, binding.context.preferences.getSnapshot);
@@ -129,7 +131,8 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
     <TitleTabs title={show.title} compact={compact} onBack={binding.context.effects.back ? () => runScreenCommand(binding.context, () => { binding.current(data); binding.context.effects.back?.(); }) : undefined} actions={!compact ? <div className={`${detail.actions} ${styles.pinActions}`}>{pin}{personal && <Button size="small" disabled={busy} icon={personal.watchlisted ? 'i-check' : 'i-plus'} iconOnly aria-label={t('next.controls.myList')} title={t('next.controls.myList')} aria-pressed={personal.watchlisted} onClick={() => { void binding.setMyList(data, !personal.watchlisted).catch(binding.context.effects.reportError); }} />}</div> : undefined}><Tabs value={tab} onValueChange={value => runScreenCommand(binding.context, () => { binding.current(data); if (value === 'episodes' || value === 'related' || value === 'details') binding.view.tab(value); })} items={[{value: 'episodes', label: t('next.controls.episodes')}, {value: 'related', label: t('next.controls.moreLikeThis')}, {value: 'details', label: t('next.controls.details')}]} /></TitleTabs>
     <div key={tab} className={detail.tabPanel}>
     {tab === 'episodes' && <section className={styles.episodes}>
-      <div className={styles.toolbar}>
+      {selection?.toolbar}
+      {!selecting && <div className={styles.toolbar}>
         {data.groups.length === 0 ? <SeasonMenu open={seasonMenu} onOpenChange={setSeasonMenu} label={seasonLabel} seasons={data.seasons} selectedId={data.selected.seasonId ?? undefined}
           totalCount={data.seasonTotalCount} hasPrevious={snapshot.seasonPagination.canPrevious} hasNext={!!snapshot.seasonPagination.nextCursor}
           onSelect={selectSeason} onPrevious={() => pageSeasons(false)} onNext={() => pageSeasons(true)} onJump={jumpSeason} />
@@ -160,7 +163,7 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
         </span>
         {data.selected.seasonId && <SeasonOptions binding={binding} data={data} label={seasonLabel} />}
         </div>
-      </div>
+      </div>}
       {snapshot.phase === 'error' || snapshot.phase === 'refresh-required' ? <ScreenFailure retry={() => { void binding.service.retry(); }} /> : null}
       {!episodes.length && snapshot.phase === 'ready' && <StateView title={t('title.noEpisodes')} body={t('title.noEpisodesBody')} />}
       <div className={styles.tiles} data-layout={episodeLayout} style={{'--episode-columns': columns} as React.CSSProperties}>
@@ -171,9 +174,9 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
           const date = subject.episode?.mode !== 'date' && subject.episode?.mode !== 'special' ? episodeLabel({mode: 'date', day: episode.airDate}, 'in-show', env) : undefined;
           const continuing = !episode.watched && (episode.progressSeconds ?? 0) > 0;
           const status: FactPart[] = continuing ? [{id: 'continue', text: t('title.continueEpisode'), role: 'status'}, ...cardText(subject, 'continuation', env).detail] : next ? [{id: 'up-next', text: t('title.nextUp'), role: 'status'}] : [];
-          return <Fragment key={episode.id}><EpisodeTile className={styles.episodeRow} model={{...model, caption: [...model.caption, ...status]}} length={model.detail.find(part => part.id === 'duration')?.text} airDate={!continuing && date ? {...date, id: 'air-date'} : undefined} context="detail" artworkKind={episode.stillUrl ? 'still' : 'backdrop'} artwork={art.foreground(episode.stillUrl ?? episode.backdropUrl ?? show.backdropUrl, 632, 16 / 9)} watched={episode.watched} expanded={expanded} next={next} description={episode.overview}
+          return <Fragment key={episode.id}><CatalogueSelectionEntry selection={selection} entry={episode} position={index}>{picked => <EpisodeTile selection={picked} className={styles.episodeRow} model={{...model, caption: [...model.caption, ...status]}} length={model.detail.find(part => part.id === 'duration')?.text} airDate={!continuing && date ? {...date, id: 'air-date'} : undefined} context="detail" artworkKind={episode.stillUrl ? 'still' : 'backdrop'} artwork={art.foreground(episode.stillUrl ?? episode.backdropUrl ?? show.backdropUrl, 632, 16 / 9)} watched={episode.watched} expanded={expanded} next={next} description={episode.overview}
             onPlay={episode.available === true && episode.playback?.itemId === episode.id ? () => runScreenCommand(binding.context, () => binding.playEpisode(data, episode)) : undefined}
-            onNavigate={() => { void binding.expand(data, episode).catch(binding.context.effects.reportError); }} />
+            onNavigate={() => { void binding.expand(data, episode).catch(binding.context.effects.reportError); }} />}</CatalogueSelectionEntry>
             {rowEnd === index && opened && <div className={styles.expanded}><EpisodeBody binding={binding} data={data} /></div>}
           </Fragment>;
         })}
