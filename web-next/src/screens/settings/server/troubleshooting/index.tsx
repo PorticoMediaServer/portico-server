@@ -28,7 +28,7 @@ export type TroubleshootingSurfacesOptions = Readonly<{
 
 export type TroubleshootingSurfaces = Readonly<{
   /** The drawn Troubleshooting page for the selected server, or nothing when this scope ended. */
-  render: () => ReactNode;
+  render: (options?: ReactNode) => ReactNode;
   dispose: () => void;
 }>;
 
@@ -46,15 +46,16 @@ export type TroubleshootingPageProps = Readonly<{
   subscribe: (listener: () => void) => () => void; isCurrent: () => boolean; downloadBase: string; reportError: (error: unknown) => void;
   /** Which built screen opens first; the drawn page opens on Messages. */
   initialView?: View;
+  options?: ReactNode;
 }>;
 
 /** The drawn tab strip, offering only the screens this pass actually draws. */
-export function TroubleshootingPage({messages, reports, feedback, support, subscribe, isCurrent, downloadBase, reportError, initialView = 'messages'}: TroubleshootingPageProps) {
+export function TroubleshootingPage({messages, reports, feedback, support, subscribe, isCurrent, downloadBase, reportError, options, initialView = 'messages'}: TroubleshootingPageProps) {
   const [view, setView] = useState<View>(initialView);
   return <div className={styles.page} data-view={view}>
     <div className={styles.tabs} role="tablist">{TABS.map(tab => <button key={tab.id} type="button" role="tab" aria-selected={tab.id === view}
       className={styles.tab} onClick={() => setView(tab.id)}>{t(tab.label)}</button>)}</div>
-    {view === 'messages' ? <MessagesPanel source={messages} reportError={reportError} />
+    {view === 'messages' ? <MessagesPanel source={messages} options={options} reportError={reportError} />
       : view === 'feedback' ? <FeedbackPanel source={feedback} subscribe={subscribe} reportError={reportError} />
       : view === 'reports' ? <ReportsPanel source={reports} subscribe={subscribe} isCurrent={isCurrent} downloadBase={downloadBase} reportError={reportError} />
         : <SupportPanel source={support} subscribe={subscribe} reportError={reportError} />}
@@ -71,8 +72,8 @@ export function createTroubleshootingSurfaces(options: TroubleshootingSurfacesOp
     return () => {for (const off of offs) off();};
   };
   return {
-    render: () => options.isCurrent() ? <TroubleshootingPage messages={messages} reports={reports} feedback={feedback} support={support} subscribe={subscribe} isCurrent={options.isCurrent}
-      downloadBase={options.downloadBase} reportError={options.reportError} /> : undefined,
+    render: messageOptions => options.isCurrent() ? <TroubleshootingPage messages={messages} reports={reports} feedback={feedback} support={support} subscribe={subscribe} isCurrent={options.isCurrent}
+      downloadBase={options.downloadBase} reportError={options.reportError} options={messageOptions} /> : undefined,
     dispose: () => {messages.dispose();reports.dispose();feedback.dispose();support.dispose();},
   };
 }
