@@ -1,6 +1,8 @@
 import {useEffect, useState, useSyncExternalStore} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
 import type {Library} from '@core/index.ts';
+import type {ChannelApi} from '@core/channel-guide.ts';
+import {ChannelPins} from './ChannelPins';
 import {librarySampleLabel, type LibraryChannelConfig, type LibraryChannelRule} from '@core/library-channels.ts';
 import {Button, RichSelect, Switch, TextField} from '../../../../kit/controls';
 import {Dialog} from '../../../../kit/overlays';
@@ -15,7 +17,7 @@ const orders = ['title', 'recent', 'oldest', 'year', 'episode', 'release', 'rati
 const episodes = ['none', 'in-order', 'marathon', 'randomized', 'rotate'] as const;
 const episodeWords: readonly MessageId[] = ['builder.episodes.none', 'builder.episodes.inOrder', 'builder.episodes.marathon', 'builder.episodes.randomized', 'builder.episodes.rotate'];
 
-export function ChannelEditor({source, libraries, isCurrent, close}: Readonly<{source: SettingsChannelEditorSource; libraries: readonly Library[]; isCurrent: () => boolean; close: () => void}>) {
+export function ChannelEditor({source, api, reportError, libraries, isCurrent, close}: Readonly<{source: SettingsChannelEditorSource; api: ChannelApi; reportError: (error: unknown) => void; libraries: readonly Library[]; isCurrent: () => boolean; close: () => void}>) {
   const state = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
   const [advanced, setAdvanced] = useState(false), [tried, setTried] = useState(false);
   const config = state.config, rule = config?.rules.find(row => row.id === config.defaultRuleId);
@@ -53,6 +55,8 @@ export function ChannelEditor({source, libraries, isCurrent, close}: Readonly<{s
           {rule.query.filter || rule.query.genres?.length || rule.query.yearFrom || rule.query.yearThrough ? <p className={styles.help}>{t('builder.opaqueConditions')}</p> : <p className={styles.help}>{t('builder.noConditions')}</p>}
           <TextField label={t('builder.mentions')} value={rule.query.text ?? ''} maxLength={200} disabled={locked} onChange={event => query({text: event.target.value})}/><p className={styles.help}>{t('builder.mentionsHint')}</p>
         </section>
+        <ChannelPins api={api} libraries={libraries} libraryIds={rule.query.libraryIds} ids={rule.query.includeItemIds ?? []} locked={locked} isCurrent={isCurrent} reportError={reportError} onChange={includeItemIds => query({includeItemIds})}/>
+        <ChannelPins api={api} libraries={libraries} libraryIds={rule.query.libraryIds} ids={rule.query.excludeItemIds ?? []} excluded locked={locked} isCurrent={isCurrent} reportError={reportError} onChange={excludeItemIds => query({excludeItemIds})}/>
         <label className={styles.control}><span>{t('builder.order')}</span><RichSelect aria-label={t('builder.order')} value={rule.mode} disabled={locked} options={modes.map((mode, index) => ({value: mode, label: t(modeWords[index]!)}))} onValueChange={value => changeRule({mode: value as LibraryChannelRule['mode']})}/></label>
         <label className={styles.control}><span>{t('builder.sortBy')}</span><RichSelect aria-label={t('builder.sortBy')} value={rule.query.order} disabled={locked} options={orders.map(order => ({value: order, label: t(`builder.sort.${order}` as MessageId)}))} onValueChange={value => query({order: value as LibraryChannelRule['query']['order']})}/></label>
         <label className={styles.control}><span>{t('builder.episodes')}</span><RichSelect aria-label={t('builder.episodes')} value={rule.episodeMode} disabled={locked} options={episodes.map((mode, index) => ({value: mode, label: t(episodeWords[index]!)}))} onValueChange={value => changeRule({episodeMode: value as LibraryChannelRule['episodeMode']})}/></label>
