@@ -161,6 +161,7 @@ export const webMessages = {
   'web.hostedAccount.serverOwner': 'Owner',
   'web.hostedAccount.serverOnline': 'Online',
   'web.hostedAccount.serverLastSeen': 'Last seen {when}',
+  'web.hostedAccount.recheckingIn': 'Checking again in {time} seconds.',
   'web.hostedAccount.noServers': 'No servers yet',
   'web.hostedAccount.noServersBody': 'When a server is shared with your Portico Account, it appears here.',
   'web.hostedAccount.serversThing': 'servers',
