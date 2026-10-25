@@ -13,6 +13,7 @@ import {router} from '../../router';
 import {StateView} from '../../kit/states';
 import {useShellWidth} from '../../shell/viewport';
 import {ShowScreen} from '../detail/Show';
+import {AudiobookEntry} from '../detail/audiobooks/Entry';
 import {createShowBindings} from '../detail/show-bindings';
 import type {ScreenContext} from '../detail/context';
 import {screenLifetime} from '../detail/context';
@@ -152,6 +153,8 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
     if (entry.kind === 'show' || entry.itemKind === 'episode') navigate({view: 'show', entityId: entry.kind === 'show' ? entry.entityId : entry.parentId});
     else if (entry.entityId) navigate({view: 'browse', entityId: entry.entityId});
   };
+  if (library.kind === 'audiobook' && width < 1024 && (view === 'book' || view === 'author' || view === 'book_series') && search.entityId)
+    return <AudiobookEntry context={context} target={{libraryId: library.id, view, entityId: search.entityId}}/>;
   return <>{unmatched ? <NeedsAttention libraryId={library.id} api={resources.life.api} onOpen={openAttention}/>
     : view === 'show' || view === 'season' ? <LibraryShow context={context} libraryId={library.id} search={search}/>
     : browse ? <LibraryScreen {...bindings}/> : <LibraryDiscoveryScreen service={resources.service} route={contentRoute} musicMixes={musicMixes} header={<LibraryIdentity {...header}/>} empty={empty}
