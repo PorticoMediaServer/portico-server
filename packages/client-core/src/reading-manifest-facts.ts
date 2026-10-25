@@ -1,3 +1,4 @@
+import {isComicReadingFormat} from './reading-format.ts';
 /** Optional descriptive facts. None of these fields confers a read or navigation grant. */
 export type ReadingManifestSeries = Readonly<{id: string; name: string; libraryId: string; source: 'owner' | 'folder' | 'file-name' | 'file-metadata'; number?: number}>;
 export type ReadingManifestFacts = Readonly<{wordCount?: number; estimatedSeconds?: number; pageCount?: number; openingLines?: string; series?: ReadingManifestSeries}>;
@@ -19,7 +20,7 @@ export function withReadingManifestFacts<T extends {metadata: object; format: st
   if (supplied) {
     if (base.format === 'epub' && integer(supplied.wordCount, 0, 67108864)) facts.wordCount = supplied.wordCount;
     if (facts.wordCount !== undefined && integer(supplied.estimatedSeconds, 0, 16106128) && supplied.estimatedSeconds === Math.ceil(facts.wordCount * 60 / 250)) facts.estimatedSeconds = supplied.estimatedSeconds;
-    if (base.format === 'cbz' && integer(supplied.pageCount, 1, 4096) && base.pageNames?.length === supplied.pageCount) facts.pageCount = supplied.pageCount;
+    if (isComicReadingFormat(base.format) && integer(supplied.pageCount, 1, 4096) && base.pageNames?.length === supplied.pageCount) facts.pageCount = supplied.pageCount;
     if (base.format === 'epub' && text(supplied.openingLines, 4096) && supplied.openingLines.trim()) facts.openingLines = supplied.openingLines;
     const series = supplied.series;
     if (record(series) && typeof series.id === 'string' && /^[A-Za-z0-9_-]{43}$/.test(series.id) && text(series.name, 4096) && text(series.libraryId, 256)

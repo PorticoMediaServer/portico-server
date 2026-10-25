@@ -1,3 +1,4 @@
+import type {ComicReadingFormat} from '../../client-core/src/reading-format.ts';
 /** Binary access is supplied by the selected server/viewer scope, or a lawful
  * local/offline file. Engines receive no URL, cookie, token or HTTP client. */
 export type ReaderRange = Readonly<{start: number; endExclusive: number}>;
@@ -18,7 +19,7 @@ export interface ReaderResources {
   readonly entries: readonly ReaderResource[];
   read(path: string, signal: AbortSignal): Promise<Uint8Array>;
 }
-export type ReaderFormat = 'epub' | 'pdf' | 'cbz';
+export type ReaderFormat = 'epub' | 'pdf' | ComicReadingFormat;
 export type ReaderCrease = Readonly<{left: number; right: number}>;
 /** Window-local vertical hinge band reported by the platform, when there is one. */
 export type ReaderViewport = Readonly<{width: number; height: number; crease?: ReaderCrease}>;
@@ -32,7 +33,7 @@ type ObservedLocation = Readonly<{
 }>;
 export type ReaderLocation = ObservedLocation & (
   | Readonly<{format: 'epub'; cfi: string; section?: string}>
-  | Readonly<{format: 'pdf' | 'cbz'; page: number}>
+  | Readonly<{format: 'pdf' | ComicReadingFormat; page: number}>
 );
 export type ReaderTocItem = Readonly<{
   id: string; label: string; location: ReaderLocation; children?: readonly ReaderTocItem[];

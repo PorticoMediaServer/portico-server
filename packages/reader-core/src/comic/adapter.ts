@@ -1,3 +1,4 @@
+import {isComicReadingFormat, type ComicReadingFormat} from '../../../client-core/src/reading-format.ts';
 import type {ReaderAdapter,ReaderDocument} from '../ports.ts';
 import {mountFixed,type FixedPreferences} from '../pdf/fixed-view.ts';
 import {openComicArchive,type ComicPageProvider,type ComicPage} from './archive.ts';
@@ -8,6 +9,7 @@ import {comicPreview} from './preview.ts';
 
 type Source=Parameters<ReaderAdapter<object>['open']>[0]['source'];
 export type ComicAdapterOptions=Readonly<{
+  format?:ComicReadingFormat;
   pages?:(source:Source,signal:AbortSignal)=>Promise<ComicPageProvider>;
   /** Explicitly opt in for local/offline files; never a remote-browser fallback. */
   localArchive?:boolean;
@@ -24,7 +26,9 @@ async function bitmapFor(page:ComicPage,signal:AbortSignal):Promise<ImageBitmap>
   if(bitmap.width!==page.image.width||bitmap.height!==page.image.height){bitmap.close();throw new ComicInputError('image_invalid');}return bitmap;
 }
 export function createComicAdapter<P extends FixedPreferences>(options:ComicAdapterOptions={}):ReaderAdapter<P>{
-  return {format:'cbz',async open({source,signal}):Promise<ReaderDocument<P>>{
+  const format=options.format??'cbz';
+  if(!isComicReadingFormat(format)||format==='image-folder'&&!options.pages)throw new Error('comic_provider_required');
+  return {format,async open({source,signal}):Promise<ReaderDocument<P>>{
     checkAbort(signal);
     if(!options.pages&&!options.localArchive)throw new Error('comic_provider_required');
     const id=source.id,revision=source.revision,size=source.size;
@@ -33,11 +37,11 @@ export function createComicAdapter<P extends FixedPreferences>(options:ComicAdap
     if(provider.id!==id||provider.revision!==revision||!Number.isSafeInteger(provider.pageCount)||provider.pageCount<1||provider.pageCount>10000){await provider.dispose();throw new ComicInputError('archive_limit');}
     const life=new AbortController(),views=new Set<Awaited<ReturnType<ReaderDocument<P>['mount']>>>();let closed=false;
     const active=(taskSignal:AbortSignal)=>{if(closed)throw new ComicInputError('closed');if(source.id!==id||source.revision!==revision||source.size!==size||provider.id!==id||provider.revision!==revision)throw new ComicInputError('archive_invalid');checkAbort(life.signal);checkAbort(taskSignal);};
-    const document:ReaderDocument<P>={id,revision,format:'cbz',metadata:{...provider.metadata,pageCount:provider.pageCount},toc:[],
+    const document:ReaderDocument<P>={id,revision,format,metadata:{...provider.metadata,pageCount:provider.pageCount},toc:[],
       async mount(mountOptions){
         active(mountOptions.signal);const scope=abortScope([life.signal,mountOptions.signal]);
         try {
-        const fixed=await mountFixed('cbz',provider.pageCount,provider.metadata.direction??'ltr',async(index,{signal:taskSignal})=>{
+        const fixed=await mountFixed(format,provider.pageCount,provider.metadata.direction??'ltr',async(index,{signal:taskSignal})=>{
           // Retain only the current spread at the bounded source resolution.
           // A phone-size thumbnail must not become the cached zoom/resize image.
           active(taskSignal);const task=abortScope([life.signal,taskSignal]),combined=task.signal;
