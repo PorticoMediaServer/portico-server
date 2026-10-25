@@ -658,6 +658,7 @@ func (s *Store) ApplyLogSettingsInput(ctx context.Context, p identity.Principal,
 	return s.applySettings(ctx, p, auth, c, append(json.RawMessage(nil), input...))
 }
 func (s *Store) applySettings(ctx context.Context, p identity.Principal, auth Authorize, c SettingsChange, input json.RawMessage) (out SettingsDocument, e error) {
+	omittedPeopleInvitationDays := c.Values.PeopleInvitationDays == 0
 	omittedLogDetailMinutes := c.Values.LogDetailMinutes == 0
 	omittedSegmentShortestEpisode := c.Values.SegmentShortestEpisode == 0
 	omittedSegmentShortestFilm := c.Values.SegmentShortestFilm == 0
@@ -705,6 +706,9 @@ func (s *Store) applySettings(ctx context.Context, p identity.Principal, auth Au
 			return &ConflictError{current.Revision}
 		}
 		values := normalized
+		if omittedPeopleInvitationDays {
+			values.PeopleInvitationDays = current.Requested.PeopleInvitationDays
+		}
 		if omittedLogDetailMinutes {
 			values.LogDetailMinutes = current.Requested.LogDetailMinutes
 		}

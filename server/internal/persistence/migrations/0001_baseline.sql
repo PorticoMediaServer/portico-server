@@ -8344,6 +8344,7 @@ CREATE TABLE server_settings(singleton INTEGER PRIMARY KEY CHECK(singleton=1), u
  "customCertificateDomain" TEXT,
  "logLevel" TEXT,
  "logDetailMinutes" INTEGER CHECK("logDetailMinutes" IN(15,30,60,120,240)),
+ "people.invitation_days" INTEGER CHECK("people.invitation_days" IN(1,3,7,30)),
  "conversionMode" TEXT CHECK("conversionMode" IN('all','sound','never')),
  "outputFormat" TEXT CHECK("outputFormat" IN('auto','h264')),
  "downloadMaxQuality" TEXT,
