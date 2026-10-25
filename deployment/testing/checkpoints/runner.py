@@ -104,7 +104,7 @@ class Job:
         for directory in ['packages/reader-core','web-next/reader-native','web-next/src/screens/read/native']:
             for file in sorted((self.source/directory).rglob('*')):
                 if file.is_file() and 'node_modules' not in file.parts:source[str(file.relative_to(self.source))]=hashlib.sha256(file.read_bytes()).hexdigest()
-        receipt={'serverMain':self.args.server,'files':files,'sourceFiles':source,'treeSHA256':hashlib.sha256(json.dumps(files,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'containsRequiredReaderSource':self.args.reader_source_verified}
+        receipt={'serverMain':self.args.server,'files':files,'sourceFiles':source,'treeSHA256':hashlib.sha256(''.join(f'{value}  ./{name}\n' for name,value in sorted(files.items())).encode()).hexdigest(),'containsRequiredReaderSource':self.args.reader_source_verified}
         (self.out/'reader-guest-receipt.log').write_text(json.dumps(receipt,indent=2)+'\n')
         with tarfile.open(self.out/'reader-guest.tar','w') as archive:
             for name in files:archive.add(guest/name,arcname=name,recursive=False)
