@@ -27,18 +27,18 @@ import (
 // watched state and resume point that go with it) stops while they have paused
 // it.
 func (s *Service) AcceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool) error {
-	return acceptPlaybackProgress(tx, v, playbackID, item, sequence, position, duration, state, canonical, 0, false, time.Now().UTC())
+	return acceptPlaybackProgress(tx, v, playbackID, item, sequence, position, duration, state, canonical, 0, nil, time.Now().UTC())
 }
 
 // AcceptPlaybackProgressEvidence is AcceptPlaybackProgress with the player's
 // own reported rate and whether this report follows a seek. Both are needed to
 // prove a played interval; callers that cannot report them keep the plain form
 // and record no chapter mark.
-func (s *Service) AcceptPlaybackProgressEvidence(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool, rate float64, seeked bool) error {
+func (s *Service) AcceptPlaybackProgressEvidence(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool, rate float64, seeked *bool) error {
 	return acceptPlaybackProgress(tx, v, playbackID, item, sequence, position, duration, state, canonical, rate, seeked, time.Now().UTC())
 }
 
-func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool, rate float64, seeked bool, clock time.Time) error {
+func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool, rate float64, seeked *bool, clock time.Time) error {
 	// Match the timeline's millisecond bound even when no runtime is known.
 	const maximumSeconds = float64(int64(1)<<40) / 1000
 	if math.IsNaN(position) || math.IsInf(position, 0) || position < 0 || position > maximumSeconds || math.IsNaN(duration) || math.IsInf(duration, 0) || duration < 0 || duration > maximumSeconds || sequence < 0 || sequence > 9007199254740991 || (state != "playing" && state != "paused" && state != "ended") {
@@ -178,14 +178,24 @@ func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item stri
 	// under the same source, chapter definition and privacy generation. The
 	// owner's recordPlay history is never consulted.
 	if kind == int64(compactcatalog.Part) {
-		if blocked != 0 {
+		switch {
+		case blocked != 0:
 			// A manual or historical fence ends the run: the next accepted
 			// report starts a fresh interval instead of bridging the fence.
 			if _, e = tx.Exec(`DELETE FROM personal_playback_runs WHERE profile_id=? AND playback_id=?`, profile, playbackID); e != nil {
 				return e
 			}
-		} else if canonical || completed {
-			currentRun := chapterRunEvidence{sequence: sequence, position: positionMs, state: state, rateMilli: rateMilli(rate), seeked: seeked, preferenceRevision: preferenceRevision, assetRevision: source.assetRevision, assetID: source.assetID, assetSize: source.assetSize, assetModified: source.assetModified, item: entityID, at: clock, valid: true}
+		case canonical || completed:
+			if seeked == nil {
+				// This client cannot say whether the report follows a jump, so
+				// no played interval may be counted from it. Withhold and make
+				// the next report start from scratch.
+				if _, e = tx.Exec(`DELETE FROM personal_playback_runs WHERE profile_id=? AND playback_id=?`, profile, playbackID); e != nil {
+					return e
+				}
+				break
+			}
+			currentRun := chapterRunEvidence{sequence: sequence, position: positionMs, state: state, rateMilli: rateMilli(rate), seeked: *seeked, preferenceRevision: preferenceRevision, assetRevision: source.assetRevision, assetID: source.assetID, assetSize: source.assetSize, assetModified: source.assetModified, item: entityID, at: clock, valid: true}
 			if source.assetID != 0 && source.assetRevision != 0 {
 				if e = recordChapterCompletions(tx, profile, entityID, previousRun, currentRun, clock); e != nil {
 					return e

@@ -27,9 +27,11 @@ export type TimelineReport = Readonly<{
   positionMs: number;
   partIndex?: number;
   rate: number;
-  /** This report's position follows a seek or other jump since the previous
-   * report, so no played interval may be counted across it. */
-  seeked?: true;
+  /** Always sent: false when this report continues from the previous one and
+   * true when its position follows a seek or other jump, so a reader can tell a
+   * played interval from a jump. An older client omits it, and then no interval
+   * counts. */
+  seeked: boolean;
   bufferedMs?: number;
   bandwidthKbps?: number;
   droppedFrames?: number;
@@ -217,7 +219,7 @@ export class TimelineReporter {
       ...(o.muted !== undefined ? {muted: o.muted} : {}),
       ...(o.audioTrackId !== undefined ? {audioTrackId: o.audioTrackId} : {}),
       ...(o.subtitleTrackId !== undefined ? {subtitleTrackId: o.subtitleTrackId} : {}),
-      ...(this.pendingSeek ? {seeked: true as const} : {}),
+      seeked: this.pendingSeek,
       ...(this.pendingSkip ? {skipped: this.pendingSkip} : {}),
       ...(this.pendingError ? {error: this.pendingError} : {}),
     });

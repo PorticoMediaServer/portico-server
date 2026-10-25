@@ -61,7 +61,7 @@ func (d Dependencies) configurePlaybackEvidence() {
 		return mediaanalysis.ViewerMarkersTx(ctx, tx, d.markerAccess(p, scope.LibraryID, scope.ItemID, scope.ViewerFence), source)
 	}
 	if d.Catalog != nil {
-		d.Playback.PersonalProgress = func(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool, rate float64, seeked bool) error {
+		d.Playback.PersonalProgress = func(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool, rate float64, seeked *bool) error {
 			return d.Catalog.AcceptPlaybackProgressEvidence(tx, v, playbackID, item, sequence, position, duration, state, canonical, rate, seeked)
 		}
 	}
