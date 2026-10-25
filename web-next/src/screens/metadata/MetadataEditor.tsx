@@ -195,24 +195,30 @@ function Artwork({data, busy, onUse, onLock, onFindMore, onRefetch}: {
   data: RepairData; busy: boolean; onUse: (role: string, candidateId: string) => void;
   onLock: (role: string, subject: string, locked: boolean) => void; onFindMore: (role: string) => void; onRefetch: (role: string) => void;
 }) {
-  return <div className={styles.artwork}>{data.artworkRoles.map(role => {
-    const candidates = data.artwork.candidates.filter(candidate => candidate.role === role);
-    const chosen = data.snapshot.artwork.find(choice => choice.role === role);
-    return <section key={role} className={styles.role}>
-      <header><b>{t('web.metadata.artRole', {role})}</b>
+  const [selected, setSelected] = useState('');
+  const role = data.artworkRoles.includes(selected) ? selected : data.artworkRoles[0];
+  const candidates = data.artwork.candidates.filter(candidate => candidate.role === role);
+  const chosen = data.snapshot.artwork.find(choice => choice.role === role);
+  return <div className={styles.artwork}>
+    <div className={styles.artRoles} role="tablist" aria-label={t('web.metadata.tabArtwork')}>{data.artworkRoles.map(value =>
+      <button key={value} type="button" role="tab" aria-selected={role === value} onClick={() => setSelected(value)}>{t('web.metadata.artRole', {role: value})}</button>)}</div>
+    {role ? <section className={styles.role}>
+      <header><b>{t('web.metadata.candidateCount', {count: candidates.length})}</b>
         {chosen ? <Button size="small" disabled={busy} aria-pressed={chosen.locked} onClick={() => onLock(role, chosen.subject, !chosen.locked)}>{t(chosen.locked ? 'web.metadata.unlock' : 'web.metadata.lock')}</Button> : null}
         <Button size="small" onClick={() => onFindMore(role)} disabled={busy}>{t('web.metadata.findMore')}</Button>
-        <Button size="small" onClick={() => onRefetch(role)} disabled={busy}>{t('web.metadata.refetchChosen')}</Button>
+        <Button size="small" onClick={() => onRefetch(role)} disabled={busy || !chosen}>{t('web.metadata.refetchChosen')}</Button>
       </header>
       {candidates.length ? <div className={styles.choices}>{candidates.map(candidate => <figure key={candidate.id} data-current={candidate.current || undefined}>
-        {candidate.previewUrl ? <img src={candidate.previewUrl} alt="" loading="lazy" /> : <div className={styles.placeholder} />}
+        {candidate.previewUrl ? <img src={candidate.previewUrl} alt={t('web.metadata.artAlt', {role: t('web.metadata.artRole', {role}), provider: providerName(candidate.provider)})} loading="lazy" /> : <div className={styles.placeholder} />}
         <figcaption><small>{providerName(candidate.provider)}{candidate.locale ? ` · ${candidate.locale}` : ''}{candidate.votes != null ? ` · ${t('web.metadata.votes', {count: candidate.votes})}` : ''}</small></figcaption>
         {candidate.current ? <span className={styles.badge}>{t('web.metadata.inUse')}</span>
           : <Button size="small" disabled={busy} onClick={() => onUse(role, candidate.id)}>{t('web.liveSource.useThis')}</Button>}
       </figure>)}</div> : <p className={styles.working}>{t('web.metadata.noCandidates')}</p>}
-    </section>;
-  })}</div>;
+      {data.artwork.jobs.filter(job => job.role === role).map(job => <p key={job.id} role="status">{t('web.metadata.artJob', {role: t('web.metadata.artRole', {role}), state: job.status})}</p>)}
+    </section> : null}
+  </div>;
 }
+
 
 function History({data, busy, onUndo, onAll}: {data: RepairData; busy: boolean; onUndo: (historyId: number) => void; onAll: (locked: boolean) => void}) {
   return <div className={styles.fields}>

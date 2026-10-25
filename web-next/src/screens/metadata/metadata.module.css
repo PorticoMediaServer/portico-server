@@ -142,3 +142,7 @@
 .tagChip { display: inline-flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 8px; background: rgba(237,245,250,.07); font-size: 14px; }
 .tagChip button { border: 0; background: transparent; color: var(--color-text-tertiary); padding: 0; cursor: pointer; }
 .tagChips input { min-width: 180px; flex: 1; border: 1px dashed var(--color-line-strong); border-radius: 8px; background: transparent; color: var(--color-text); font: inherit; font-size: 14px; padding: 7px 10px; }
+
+.artRoles { display: flex; flex-wrap: wrap; gap: 8px; }
+.artRoles button { border: 1px solid var(--color-line); border-radius: 10px; padding: 9px 14px; background: transparent; color: var(--color-text-secondary); font: inherit; font-size: 14px; cursor: pointer; }
+.artRoles button[aria-selected='true'] { background: var(--color-raised-high); color: var(--color-text); border-color: var(--color-line-strong); }
