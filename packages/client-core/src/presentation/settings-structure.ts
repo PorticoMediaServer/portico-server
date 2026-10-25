@@ -342,9 +342,10 @@ const accountPages: readonly AuthoredPage[] = [
       // What this profile is playing on its other devices, to pause, resume or stop from here.
       {id: 'remote', rows: [custom('remoteControls', 'remote.title')]},
       {id: 'servers', title: 'settings.section.servers', rows: [custom('servers', 'settings.section.servers')]},
+      // account-device.json: About Portico is the last group of This device, not a page of its own.
+      {id: 'about', title: 'settings.about', rows: [custom('about', 'settings.about')]},
     ],
   },
-  {id: 'about', title: 'settings.about', icon: 'info', sections: [{id: 'about', rows: [custom('about', 'settings.about')]}]},
 ];
 
 // ── Server (owners) ─────────────────────────────────────────────────────────
@@ -653,8 +654,13 @@ export function settingsPageId(heading: SettingsHeadingId, pageId: string): stri
   return heading === 'server' ? `server-${pageId}` : pageId;
 }
 
+/** Pages that moved keep their old account address resolving to the page that now holds them.
+ * Only this explicit map - never a bare section-id lookup, which could collide with a server page. */
+const movedAccountPages: Readonly<Record<string, string>> = {about: 'device'};
+
 export function findSettingsPage(structure: SettingsStructure, address: string | undefined): Readonly<{heading: SettingsHeading; page: SettingsPage}> | undefined {
-  for (const heading of structure.headings) for (const p of heading.pages) if (settingsPageId(heading.id, p.id) === address) return {heading, page: p};
+  const wanted = address === undefined ? undefined : movedAccountPages[address] ?? address;
+  for (const heading of structure.headings) for (const p of heading.pages) if (settingsPageId(heading.id, p.id) === wanted) return {heading, page: p};
   const heading = structure.headings[0];
   return heading?.pages[0] ? {heading, page: heading.pages[0]} : undefined;
 }
