@@ -214,7 +214,7 @@ type Settings struct {
 	// PeopleInvitationDays is how long a new invitation stays usable, in days.
 	// A document saved before the field existed reads as 0, which the accessor
 	// resolves to the shipped default of 7 days.
-	PeopleInvitationDays int    `json:"people.invitation_days"`
+	PeopleInvitationDays PeopleInvitationDays `json:"people.invitation_days,omitempty"`
 	MissingTitles     string `json:"library.missingTitles"`
 	MissingTitlesDays int    `json:"library.missingTitlesDays"`
 	// SegmentDetection is the server's intro and credits detection mode
@@ -276,6 +276,43 @@ func DefaultSettings() Settings {
 	chapterNames := true
 	return Settings{AnalysisStorageGiB: 32, AnalysisStageStorageMiB: 256, SubtitleTrackLimit: medialimits.DefaultSubtitleTracks, SubtitleFileLimitMiB: medialimits.DefaultSubtitleFileMiB, Name: "Portico", TranscodingEnabled: true, ConversionMode: "all", OutputFormat: "auto", DownloadMaxQuality: "original", MusicAwayQuality: "original", HDRToneMapping: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferMs: 60000, PlayedRetentionMs: 180000, SessionStorageMiB: 4096, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, MissingTitles: "after_days", MissingTitlesDays: 30, PeopleInvitationDays: 7, SegmentDetection: "standard", SegmentUseChapterNames: &chapterNames, SegmentShortestEpisode: 2, SegmentShortestFilm: 10, SegmentIntroWindow: "usual", SegmentCreditsWindow: "usual", SegmentFilmCreditsWindow: "usual", SegmentTVMode: "server", SegmentAnimeMode: "server", SegmentMovieMode: "server", SegmentViewerConfidencePercent: 50, SegmentAutomaticConfidencePercent: 85,
 		RemoteSignInPolicy: "allow", LANNetworks: networkpolicy.DefaultHomeNetworks(), AccessURLs: []string{}, LANDiscoveryEnabled: true, TrustedProxies: []string{}, LogLevel: "info", LogDetailMinutes: 30, LogRetention: []LogRetention{}}
+}
+
+// PeopleInvitationDays is the saved default expiry for a new invitation, in
+// whole days. Its zero value represents an omitted field in an older request
+// only; the registry, the column default and the accessor all agree on 7.
+type PeopleInvitationDays int
+
+// InvitationExpiryDays is the one ladder the owner is offered, in days.
+var InvitationExpiryDays = []PeopleInvitationDays{1, 3, 7, 30}
+
+func (PeopleInvitationDays) JSONSchema() map[string]any {
+	offered := make([]int, 0, len(InvitationExpiryDays))
+	for _, days := range InvitationExpiryDays {
+		offered = append(offered, int(days))
+	}
+	return map[string]any{"type": "integer", "minimum": 1, "maximum": 30, "enum": offered}
+}
+
+func (m *PeopleInvitationDays) UnmarshalJSON(raw []byte) error {
+	var value int
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return err
+	}
+	if !validPeopleInvitationDays(PeopleInvitationDays(value)) {
+		return errors.New("invalid people.invitation_days")
+	}
+	*m = PeopleInvitationDays(value)
+	return nil
+}
+
+func validPeopleInvitationDays(value PeopleInvitationDays) bool {
+	for _, offered := range InvitationExpiryDays {
+		if value == offered {
+			return true
+		}
+	}
+	return false
 }
 
 // LogDetailMinutes is a saved default, distinct from an active debug window.
