@@ -17,7 +17,7 @@ test('late pages cannot replace the latest cursor read', async () => {
 test('uncertain key creation freezes the original intent and never stores a returned secret', async () => {
   const writes: Record<string, unknown>[] = [];let failed = false;
   const source = new SettingsApiKeysSource({request: async <T>(path: string, method?: string, body?: unknown) => {
-    if (method === 'POST') {writes.push(body as Record<string, unknown>);if (!failed) {failed = true;throw new Error('Response lost');}return {credential: key} as T;}
+    if (method === 'POST') {writes.push(body as Record<string, unknown>);if (!failed) {failed = true;throw new Error('Response lost');}return {credential: {...key, name: (body as {name: string}).name, scopes: (body as {scopes: string[]}).scopes, expiresAt: (body as {expiresAt?: string}).expiresAt}} as T;}
     return read(path) as T;
   }}, () => true, () => {});
   await source.load();const scopes: ('read'|'admin')[] = ['read'];
@@ -50,4 +50,41 @@ test('synchronous retirement during busy publication cannot dispatch a credentia
   const source = new SettingsApiKeysSource({request: async <T>(path: string, method?: string) => {if (method === 'POST' || method === 'DELETE') writes++;return read(path) as T;}}, () => true, () => {});
   await source.load();source.subscribe(() => {if (source.getSnapshot().busy) source.dispose();});
   await source.create({name: 'Automation', scopes: ['read']});assert.equal(writes, 0);
+});
+
+
+test('a synchronous retry subscriber cannot overlap the claimed creation attempt', async () => {
+  let posts = 0, reentered = false;
+  const source = new SettingsApiKeysSource({request: async <T>(path: string, method?: string, body?: unknown) => {
+    if (method === 'POST') {posts++;return {credential: {...key, name: (body as {name: string}).name}, secret: 'pk.once'} as T;}
+    return read(path) as T;
+  }}, () => true, () => {});
+  await source.load();source.subscribe(() => {if (source.getSnapshot().pendingCreate && !reentered) {reentered = true;void source.retryCreate();}});
+  assert.equal((await source.create({name: 'Automation', scopes: ['read']}))?.secret, 'pk.once');assert.equal(posts, 1);source.dispose();
+});
+
+test('recoverable create and revoke errors remain local and retain uncertain intent', async () => {
+  const reported: unknown[] = [];
+  const source = new SettingsApiKeysSource({request: async <T>(path: string, method?: string) => {
+    if (method === 'POST' || method === 'DELETE') throw new Error('Response lost');
+    return read(path) as T;
+  }}, () => true, error => reported.push(error));
+  await source.load();await source.create({name: 'Automation', scopes: ['read']});assert.equal(source.getSnapshot().pendingCreate, true);assert.equal(source.getSnapshot().error, 'create');assert.equal(reported.length, 0);
+  await source.load();await source.revoke(source.getSnapshot().page!.items[0]);assert.equal(source.getSnapshot().error, 'revoke');assert.equal(source.getSnapshot().pendingCreate, true);assert.equal(reported.length, 0);source.dispose();
+});
+
+test('a mismatched create receipt never returns its secret or consumes the frozen intent', async () => {
+  for (const change of [{kind: 'token'}, {name: 'Another'}, {scopes: ['admin']}, {expiresAt: '2026-12-22T19:00:00Z'}]) {
+    const source = new SettingsApiKeysSource({request: async <T>(path: string, method?: string) => {
+      if (method === 'POST') return {credential: {...key, expiresAt: '2026-11-22T19:00:00Z', ...change}, secret: change.kind === 'token' ? 'pat.foreign' : 'pk.foreign'} as T;
+      return read(path) as T;
+    }}, () => true, () => {});
+    await source.load();assert.equal(await source.create({name: 'Automation', scopes: ['read'], expiresAt: '2026-11-22T19:00:00Z'}), undefined);assert.equal(source.getSnapshot().pendingCreate, true);assert.equal(source.getSnapshot().error, 'create');source.dispose();
+  }
+});
+
+test('a revoke receipt for another key stays a local failure after readback', async () => {
+  const reported: unknown[] = [];
+  const source = new SettingsApiKeysSource({request: async <T>(path: string, method?: string) => (method === 'DELETE' ? {...key, id: 'foreign', state: 'revoked'} : read(path)) as T}, () => true, error => reported.push(error));
+  await source.load();await source.revoke(source.getSnapshot().page!.items[0]);assert.equal(source.getSnapshot().error, 'revoke');assert.equal(reported.length, 0);source.dispose();
 });
