@@ -26,7 +26,7 @@ let server, browser;
 try {
  await writeFile(entry, source);
  server = await createServer({server: {port: 0, strictPort: false}});
- server.middlewares.use('/__invite_test', (_req, res) => {res.setHeader('Content-Type', 'text/html');res.end('<html><body><div id="root"></div><script type="module" src="/'+entry+'"></script></body></html>');});
+ server.middlewares.use('/__invite_test', async (_req, res) => {res.setHeader('Content-Type', 'text/html');res.end(await server.transformIndexHtml('/__invite_test', '<html><body><div id="root"></div><script type="module" src="/'+entry+'"></script></body></html>'));});
  await server.listen();
  browser = await chromium.launch({headless: true, executablePath: process.env.CHROMIUM_PATH || '/snap/bin/chromium', args: ['--no-sandbox']});
  const page = await browser.newPage({viewport: {width: 1440, height: 900}});
