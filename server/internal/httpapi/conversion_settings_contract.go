@@ -63,6 +63,18 @@ func (c *ConsoleSettingsChange) UnmarshalJSON(raw []byte) error {
 		}
 		known[name] = true
 		value, ok := values[name]
+		if !ok && (name == "segments.useChapterNames" || name == "segments.viewerConfidencePercent" || name == "segments.automaticConfidencePercent") {
+			continue
+		}
+		if name == "segments.useChapterNames" && bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return operations.ErrInvalid
+		}
+		if name == "segments.viewerConfidencePercent" || name == "segments.automaticConfidencePercent" {
+			var percent int
+			if json.Unmarshal(value, &percent) != nil || name == "segments.viewerConfidencePercent" && percent != 30 && percent != 50 && percent != 70 || name == "segments.automaticConfidencePercent" && percent != 70 && percent != 85 && percent != 95 {
+				return operations.ErrInvalid
+			}
+		}
 		if !ok || field.Type.Kind() != reflect.Pointer && bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
 			return operations.ErrInvalid
 		}

@@ -118,6 +118,9 @@ func Registry() []Field {
 		field("library.missingTitles", "library", "enumeration", "after_days", nil, nil, MissingTitleRules, "hot", "catalog missing titles", "When a title whose files are no longer on disk is removed from the library: immediately, after a number of days, or never. Until then it stays, marked missing, and a file that comes back restores it. Each profile's watch state is kept either way."),
 		field("library.missingTitlesDays", "library", "integer", 30, bounded(1), bounded(3650), nil, "hot", "catalog missing titles", "How many days a missing title is kept when the rule is after a number of days."),
 		field("library.segmentDetection", "library", "enumeration", "standard", nil, nil, SegmentDetectionModes, "hot", "mediaanalysis segment detection", "Finds intros and end credits so viewers can skip them. Standard compares the sound of a show's episodes and costs a few seconds of processing per episode. Thorough also reads the picture near the end of every episode and film to find credits and post-credits scenes; it decodes video and takes minutes per file. Each library can follow this or choose its own."),
+		field("segments.useChapterNames", "segments", "boolean", true, nil, nil, nil, "hot", "segmentmarkers viewer projection", "Use embedded chapter labels for unapproved viewer skip suggestions. Owner decisions are retained."),
+		field("segments.viewerConfidencePercent", "segments", "integer", 50, bounded(30), bounded(70), []string{"30", "50", "70"}, "hot", "segmentmarkers viewer projection", "Confidence floor for unapproved viewer skip buttons. Approval and ambiguity rules remain independent."),
+		field("segments.automaticConfidencePercent", "segments", "integer", 85, bounded(70), bounded(95), []string{"70", "85", "95"}, "hot", "segmentmarkers measured automatic projection", "Confidence floor for automatic skips from cross-episode measurements. Single-file guesses never become automatic."),
 		field("remoteSignInPolicy", "connectivity", "enumeration", "allow", nil, nil, RemoteSignInPolicies, "next-operation", "sign-in admission", "Who may sign in from outside this network. Owner-only still allows existing remote sessions to finish."),
 		field("remoteBitrateLimitKbps", "connectivity", "integer", 0, bounded(0), bounded(200000), nil, "next-operation", "playback delivery planning", "Server-wide ceiling on video bitrate for remote playback, in kbps. 0 means no ceiling."),
 		field("lanNetworks", "connectivity", "string-list", networkpolicy.DefaultHomeNetworks(), nil, nil, nil, "hot", "connectivity status and remote classification", "Home networks. Only these addresses count as local. An empty list makes every connection remote."),
@@ -204,7 +207,10 @@ type Settings struct {
 	// SegmentDetection is the server's intro and credits detection mode
 	// (SegmentDetectionModes). A document saved before the field existed
 	// reads as empty, which is the default, standard.
-	SegmentDetection string `json:"library.segmentDetection"`
+	SegmentDetection                  string `json:"library.segmentDetection"`
+	SegmentUseChapterNames            *bool  `json:"segments.useChapterNames,omitempty"`
+	SegmentViewerConfidencePercent    int    `json:"segments.viewerConfidencePercent,omitempty"`
+	SegmentAutomaticConfidencePercent int    `json:"segments.automaticConfidencePercent,omitempty"`
 	// Connectivity, access and diagnostics policy (workstream G). The console
 	// document is their single authority; the typed /v1/admin/connectivity and
 	// /v1/admin/logs endpoints project these same fields.
@@ -245,7 +251,8 @@ type LogRetention struct {
 // DefaultSettings is the registry's own answer before any owner write, so a
 // fresh database and a document saved before these fields existed agree.
 func DefaultSettings() Settings {
-	return Settings{AnalysisStorageGiB: 32, AnalysisStageStorageMiB: 256, SubtitleTrackLimit: medialimits.DefaultSubtitleTracks, SubtitleFileLimitMiB: medialimits.DefaultSubtitleFileMiB, Name: "Portico", TranscodingEnabled: true, ConversionMode: "all", OutputFormat: "auto", DownloadMaxQuality: "original", MusicAwayQuality: "original", HDRToneMapping: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferMs: 60000, PlayedRetentionMs: 180000, SessionStorageMiB: 4096, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, MissingTitles: "after_days", MissingTitlesDays: 30, SegmentDetection: "standard",
+	chapterNames := true
+	return Settings{AnalysisStorageGiB: 32, AnalysisStageStorageMiB: 256, SubtitleTrackLimit: medialimits.DefaultSubtitleTracks, SubtitleFileLimitMiB: medialimits.DefaultSubtitleFileMiB, Name: "Portico", TranscodingEnabled: true, ConversionMode: "all", OutputFormat: "auto", DownloadMaxQuality: "original", MusicAwayQuality: "original", HDRToneMapping: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferMs: 60000, PlayedRetentionMs: 180000, SessionStorageMiB: 4096, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, MissingTitles: "after_days", MissingTitlesDays: 30, SegmentDetection: "standard", SegmentUseChapterNames: &chapterNames, SegmentViewerConfidencePercent: 50, SegmentAutomaticConfidencePercent: 85,
 		RemoteSignInPolicy: "allow", LANNetworks: networkpolicy.DefaultHomeNetworks(), AccessURLs: []string{}, LANDiscoveryEnabled: true, TrustedProxies: []string{}, LogLevel: "info", LogRetention: []LogRetention{}}
 }
 
@@ -476,6 +483,22 @@ func validateSettings(v *Settings) error {
 	if v.MissingTitlesDays < 1 || v.MissingTitlesDays > 3650 {
 		fields = append(fields, "values.library.missingTitlesDays")
 	}
+	if v.SegmentUseChapterNames == nil {
+		chapterNames := true
+		v.SegmentUseChapterNames = &chapterNames
+	}
+	if v.SegmentViewerConfidencePercent == 0 {
+		v.SegmentViewerConfidencePercent = 50
+	}
+	if v.SegmentAutomaticConfidencePercent == 0 {
+		v.SegmentAutomaticConfidencePercent = 85
+	}
+	if v.SegmentViewerConfidencePercent != 30 && v.SegmentViewerConfidencePercent != 50 && v.SegmentViewerConfidencePercent != 70 {
+		fields = append(fields, "values.segments.viewerConfidencePercent")
+	}
+	if v.SegmentAutomaticConfidencePercent != 70 && v.SegmentAutomaticConfidencePercent != 85 && v.SegmentAutomaticConfidencePercent != 95 {
+		fields = append(fields, "values.segments.automaticConfidencePercent")
+	}
 	if v.SegmentDetection == "" {
 		v.SegmentDetection = "standard"
 	}
@@ -495,7 +518,11 @@ func validateSettings(v *Settings) error {
 	return nil
 }
 func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Authorize, c SettingsChange) (out SettingsDocument, e error) {
-	if e = validateSettings(&c.Values); e != nil {
+	omittedChapters := c.Values.SegmentUseChapterNames == nil
+	omittedViewer := c.Values.SegmentViewerConfidencePercent == 0
+	omittedAutomatic := c.Values.SegmentAutomaticConfidencePercent == 0
+	normalized := c.Values
+	if e = validateSettings(&normalized); e != nil {
 		return out, e
 	}
 	e = s.transaction(ctx, auth, "", func(tx *sql.Tx) error {
@@ -514,14 +541,24 @@ func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Au
 		if current.Revision != c.ExpectedRevision {
 			return &ConflictError{current.Revision}
 		}
+		values := normalized
+		if omittedChapters {
+			values.SegmentUseChapterNames = current.Requested.SegmentUseChapterNames
+		}
+		if omittedViewer {
+			values.SegmentViewerConfidencePercent = current.Requested.SegmentViewerConfidencePercent
+		}
+		if omittedAutomatic {
+			values.SegmentAutomaticConfidencePercent = current.Requested.SegmentAutomaticConfidencePercent
+		}
 		revision := current.Revision + 1
-		if err = writeStoredSettings(tx, c.Values, s.now()); err != nil {
+		if err = writeStoredSettings(tx, values, s.now()); err != nil {
 			return err
 		}
-		if _, err = tx.Exec(`INSERT INTO configuration VALUES('name',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, c.Values.Name); err != nil {
+		if _, err = tx.Exec(`INSERT INTO configuration VALUES('name',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, values.Name); err != nil {
 			return err
 		}
-		if _, err = tx.Exec(`UPDATE playback_owner_policy SET revision=revision+1,transcoding_enabled=?,per_account_cap=?,server_cap=? WHERE singleton=1`, c.Values.TranscodingEnabled, c.Values.PerAccountCap, c.Values.ServerCap); err != nil {
+		if _, err = tx.Exec(`UPDATE playback_owner_policy SET revision=revision+1,transcoding_enabled=?,per_account_cap=?,server_cap=? WHERE singleton=1`, values.TranscodingEnabled, values.PerAccountCap, values.ServerCap); err != nil {
 			return err
 		}
 		// Domain triggers fence legacy writes. This entire authorized transaction is
@@ -533,7 +570,7 @@ func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Au
 			return err
 		}
 		beforeValues := SettingsValues(current.Requested)
-		for key, value := range SettingsValues(c.Values) {
+		for key, value := range SettingsValues(values) {
 			if reflect.DeepEqual(value, beforeValues[key]) {
 				continue
 			}

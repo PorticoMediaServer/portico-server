@@ -9491,6 +9491,29 @@ export const schemas = {
           "remoteSignInPolicy": {
             "type": "string"
           },
+          "segments.automaticConfidencePercent": {
+            "enum": [
+              70,
+              85,
+              95
+            ],
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "segments.useChapterNames": {
+            "type": "boolean"
+          },
+          "segments.viewerConfidencePercent": {
+            "enum": [
+              30,
+              50,
+              70
+            ],
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "serverCap": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -9815,6 +9838,29 @@ export const schemas = {
               },
               "remoteSignInPolicy": {
                 "type": "string"
+              },
+              "segments.automaticConfidencePercent": {
+                "enum": [
+                  70,
+                  85,
+                  95
+                ],
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "segments.useChapterNames": {
+                "type": "boolean"
+              },
+              "segments.viewerConfidencePercent": {
+                "enum": [
+                  30,
+                  50,
+                  70
+                ],
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
               "serverCap": {
                 "maximum": 9007199254740991,
@@ -10156,6 +10202,29 @@ export const schemas = {
               },
               "remoteSignInPolicy": {
                 "type": "string"
+              },
+              "segments.automaticConfidencePercent": {
+                "enum": [
+                  70,
+                  85,
+                  95
+                ],
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "segments.useChapterNames": {
+                "type": "boolean"
+              },
+              "segments.viewerConfidencePercent": {
+                "enum": [
+                  30,
+                  50,
+                  70
+                ],
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
               "serverCap": {
                 "maximum": 9007199254740991,
@@ -36967,6 +37036,29 @@ export const schemas = {
               "remoteSignInPolicy": {
                 "type": "string"
               },
+              "segments.automaticConfidencePercent": {
+                "enum": [
+                  70,
+                  85,
+                  95
+                ],
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "segments.useChapterNames": {
+                "type": "boolean"
+              },
+              "segments.viewerConfidencePercent": {
+                "enum": [
+                  30,
+                  50,
+                  70
+                ],
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "serverCap": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -37307,6 +37399,29 @@ export const schemas = {
               },
               "remoteSignInPolicy": {
                 "type": "string"
+              },
+              "segments.automaticConfidencePercent": {
+                "enum": [
+                  70,
+                  85,
+                  95
+                ],
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "segments.useChapterNames": {
+                "type": "boolean"
+              },
+              "segments.viewerConfidencePercent": {
+                "enum": [
+                  30,
+                  50,
+                  70
+                ],
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
               "serverCap": {
                 "maximum": 9007199254740991,

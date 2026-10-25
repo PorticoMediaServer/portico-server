@@ -334,6 +334,10 @@ func readChapters(ctx context.Context, tx *sql.Tx, entity int64, asset, kind str
 // carries only markers an owner made or approved.
 func readMarkers(ctx context.Context, tx *sql.Tx, asset string) ([]BundleMarker, error) {
 	out := []BundleMarker{}
+	policy, e := segmentmarkers.ReadConfidencePolicy(ctx, tx)
+	if e != nil {
+		return out, e
+	}
 	rows, e := tx.QueryContext(ctx, `SELECT m.id,m.kind,m.start_us,m.end_us,m.approved,m.confidence,m.provenance,src.library_id FROM inventory_objects o JOIN library_sources src ON src.id=o.source_id JOIN analysis_markers m ON m.object_id=o.id AND m.source_revision=o.revision
  WHERE o.asset_id=? AND o.retired=0 AND o.state='available' AND m.deleted=0 ORDER BY m.start_us,m.id LIMIT 256`, asset)
 	if e != nil {
@@ -353,12 +357,12 @@ func readMarkers(ctx context.Context, tx *sql.Tx, asset string) ([]BundleMarker,
 			rows.Close()
 			return out, e
 		}
-		if !segmentmarkers.ViewerKind(m.Kind) || end <= start || start < 0 || !segmentmarkers.ViewerVisible(m.Approved, m.Confidence, provenance) {
+		if !segmentmarkers.ViewerKind(m.Kind) || end <= start || start < 0 || !policy.ViewerVisible(m.Approved, m.Confidence, provenance) {
 			continue
 		}
 		m.detected = !m.Approved && !strings.HasPrefix(provenance, "owner:")
 		m.StartSeconds, m.EndSeconds = float64(start)/1e6, float64(end)/1e6
-		m.AutomaticSafe = segmentmarkers.AutomaticSafe(m.Approved, m.Confidence, provenance)
+		m.AutomaticSafe = policy.AutomaticSafe(m.Approved, m.Confidence, provenance)
 		found = append(found, m)
 	}
 	rows.Close()

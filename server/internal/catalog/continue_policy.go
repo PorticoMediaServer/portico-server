@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"time"
@@ -81,15 +82,19 @@ func continueWatchingSettingsTx(tx *sql.Tx, item string) (ContinueWatchingSettin
 // multi-episode file's source timeline to the selected episode's own position.
 func firstApprovedCreditsTx(tx *sql.Tx, item string) (sql.NullFloat64, error) {
 	var start sql.NullFloat64
-	err := tx.QueryRow(`SELECT min((m.start_us/1000000.0)-ia.start_seconds)
+	policy, err := segmentmarkers.ReadConfidencePolicy(context.Background(), tx)
+	if err != nil {
+		return start, err
+	}
+	err = tx.QueryRow(`SELECT min((m.start_us/1000000.0)-ia.start_seconds)
  FROM catalog_entities i JOIN catalog_libraries l ON l.id=i.library_id
  JOIN catalog_asset_links ia ON ia.entity_id=i.id JOIN catalog_assets a ON a.id=ia.asset_id
  JOIN inventory_objects o ON o.asset_id=a.token AND o.retired=0 AND o.state='available'
  JOIN analysis_markers m ON m.object_id=o.id AND m.source_revision=o.revision
  WHERE i.public_id=pid_blob(?) AND m.kind='credits' AND m.deleted=0
- AND (m.approved=1 OR m.provenance LIKE ? AND m.confidence>=? AND COALESCE(NULLIF((SELECT json_extract(d.body,'$.segmentDetection') FROM admin_documents d WHERE d.scope='library:'||l.library_id),'server'),(SELECT settings."library.segmentDetection" FROM server_settings AS settings WHERE settings.singleton=1),'standard')<>'off')
+ AND (m.approved=1 OR substr(m.provenance,1,?)=? AND m.provenance NOT LIKE '%semantic_ambiguous%' AND m.confidence>=? AND COALESCE(NULLIF((SELECT json_extract(d.body,'$.segmentDetection') FROM admin_documents d WHERE d.scope='library:'||l.library_id),'server'),(SELECT settings."library.segmentDetection" FROM server_settings AS settings WHERE settings.singleton=1),'standard')<>'off')
  AND m.start_us>=ia.start_seconds*1000000.0
- AND m.start_us<COALESCE(ia.end_seconds,a.duration)*1000000.0`, item, segmentmarkers.MeasuredFamily+":%", segmentmarkers.AutomaticConfidence).Scan(&start)
+ AND m.start_us<COALESCE(ia.end_seconds,a.duration)*1000000.0`, item, len(segmentmarkers.MeasuredFamily+":"), segmentmarkers.MeasuredFamily+":", float64(policy.AutomaticPercent)/100).Scan(&start)
 	return start, err
 }
 

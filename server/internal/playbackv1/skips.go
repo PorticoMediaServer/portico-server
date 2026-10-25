@@ -17,7 +17,7 @@ var markerIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 // one diagnostics entry. An automatic skip of a marker the server never
 // authorized for unattended skipping is not recorded: diagnostics must not
 // report a policy the server did not make. A manual skip is recorded for any
-// viewer marker of the session's item. Failures are dropped: evidence never
+// currently visible viewer marker of the session's item. Failures are dropped: evidence never
 // fails the report that carried it.
 func (s *Service) recordSkip(ctx context.Context, r row, k SkipReport) {
 	var kind string
@@ -40,7 +40,11 @@ func (s *Service) recordSkip(ctx context.Context, r row, k SkipReport) {
 		if err != nil {
 			return err
 		}
-		if !segmentmarkers.ViewerKind(kind) || k.Mode == "automatic" && !segmentmarkers.AutomaticSafe(approved, confidence, provenance) {
+		policy, err := segmentmarkers.ReadConfidencePolicy(ctx, tx)
+		if err != nil {
+			return err
+		}
+		if !segmentmarkers.ViewerKind(kind) || !policy.ViewerVisible(approved, confidence, provenance) || k.Mode == "automatic" && !policy.AutomaticSafe(approved, confidence, provenance) {
 			return nil
 		}
 		if _, err = tx.ExecContext(ctx, `INSERT INTO playback_marker_skips(playback_id,marker_id,mode,position_us,generation,created_ms) VALUES(?,?,?,?,?,?)`, r.id, k.MarkerID, k.Mode, k.PositionMs*1000, max(r.generation, 1), s.now().UnixMilli()); err != nil {

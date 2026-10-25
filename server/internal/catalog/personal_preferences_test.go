@@ -109,6 +109,7 @@ func TestLibraryVideoCompletionUsesTrustedCreditsOrThreshold(t *testing.T) {
 		{"credits mode falls back without a marker", "credits", 95, 90, false, 0, true, "", ""},
 		{"unapproved guess cannot finish", "earliest", 85, 90, true, 0, false, "", ""},
 		{"credits confirmed by other episodes finish early", "earliest", 85, 90, true, 0, true, "season_audio_match:credits:v1", ""},
+		{"spoofed measured family cannot finish", "earliest", 85, 90, true, 0, false, "seasonXaudioXmatch:credits:v1", ""},
 		{"confirmed credits do not count once detection is off", "earliest", 85, 90, true, 0, false, "season_audio_match:credits:v1", "off"},
 		{"approved credits count with detection off", "earliest", 85, 90, true, 1, true, "", "off"},
 		{"a picture guess cannot finish", "earliest", 85, 90, true, 0, false, "visual_credits:v1", ""},

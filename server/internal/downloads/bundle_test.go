@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"portico.local/server/internal/dbwork"
 	"strings"
 	"testing"
 )
@@ -134,5 +135,31 @@ func TestArtworkWidth(t *testing.T) {
 		if got := ArtworkWidth(role); got != want {
 			t.Fatalf("ArtworkWidth(%q) = %d, want %d", role, got, want)
 		}
+	}
+}
+
+func TestChapterPolicyFiltersOfflineSuggestionsButRetainsOwnerChoice(t *testing.T) {
+	h := newHarness(t)
+	for _, statement := range []string{
+		`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns) SELECT 'chapter-object',src.id,?,src.incarnation,'Film.mp4','revision','{}',1,1 FROM library_sources src WHERE src.library_id='lib' LIMIT 1`,
+	} {
+		if _, err := h.db.Exec(statement, h.asset); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := h.db.Exec(`INSERT INTO analysis_markers(id,object_id,source_revision,source_binding,kind,start_us,end_us,confidence,provenance,result_id,approved,edited) VALUES('suggestion','chapter-object','revision','binding','intro',0,1000000,.85,'embedded_chapter_label:v1','',0,0),('owner-edit','chapter-object','revision','binding','credits',50000000,55000000,.85,'embedded_chapter_label:v1','',1,1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.db.Exec(`INSERT INTO server_settings(singleton,"segments.useChapterNames") VALUES(1,0) ON CONFLICT(singleton) DO UPDATE SET "segments.useChapterNames"=0`); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := dbwork.BeginSnapshot(context.Background(), h.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	markers, err := readMarkers(context.Background(), snapshot.Tx(), h.asset)
+	snapshot.Rollback()
+	if err != nil || len(markers) != 1 || markers[0].Kind != "credits" || !markers[0].Automatic {
+		t.Fatal(markers, err)
 	}
 }

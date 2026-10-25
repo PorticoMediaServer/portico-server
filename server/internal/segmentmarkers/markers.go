@@ -70,7 +70,7 @@ func AutomaticSafe(approved bool, confidence float64, provenance string) bool {
 	if approved {
 		return true
 	}
-	return confidence >= AutomaticConfidence && MeasuredProvenance(provenance)
+	return DefaultConfidencePolicy().AutomaticSafe(false, confidence, provenance)
 }
 
 // ViewerVisible reports whether a viewer is offered a marker at all: approved,
@@ -78,7 +78,7 @@ func AutomaticSafe(approved bool, confidence float64, provenance string) bool {
 // semantic ambiguity (a stretch between black frames may be an advert or a
 // scene). The download bundle and every viewer projection apply this one rule.
 func ViewerVisible(approved bool, confidence float64, provenance string) bool {
-	return approved || confidence >= ViewerConfidence && !strings.Contains(provenance, "semantic_ambiguous")
+	return DefaultConfidencePolicy().ViewerVisible(approved, confidence, provenance)
 }
 
 // Candidate is a stored marker with the facts the projection ranks by.
