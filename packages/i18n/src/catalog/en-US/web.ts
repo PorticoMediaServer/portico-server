@@ -2319,6 +2319,8 @@ export const webMessages = {
   'api.webhooks.error.address_not_valid': 'The address is not valid.',
   'api.webhooks.error.payload_too_large': 'The message was too large to send.',
   'api.webhooks.error.webhook_turned_off': 'The webhook was turned off before this was sent.',
+  'api.webhooks.error.owner_changed': 'Stopped because the server’s owner changed.',
+  'api.webhooks.error.configuration_changed': 'Stopped because this webhook’s configuration changed.',
   'api.webhooks.error.request_failed': 'The message could not be sent.',
   'api.webhooks.error.status': 'The other service answered with an error ({status}).',
   'api.webhooks.event.title.added': 'A title is added',
