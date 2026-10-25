@@ -25,6 +25,8 @@ export type ReadingPeriodicalGroupsPage = GetReadingPeriodicalGroupsResponse;
 export type ReadingPeriodicalIssuesPage = GetReadingPeriodicalIssuesResponse;
 export type ReadingPeriodicalType = (typeof schemas)['GetReadingPeriodicalGroupsResponse']['properties']['publicationType']['enum'][number];
 export type ReadingPeriodicalGroup = ReadingPeriodicalGroupsPage['groups'][number];
+/** Checked presenter choices projected from server year buckets, not a wire mirror. */
+export type ReadingYearChoice = Readonly<{value: string; count: ReadingPeriodicalGroup['issueCount']}>;
 export type ReadingPeriodicalIssue = ReadingPeriodicalIssuesPage['items'][number];
 export type ReadingAuthor = NonNullable<ReadingItem['author']>;
 export type ReadingSeries = NonNullable<ReadingItem['series']>;
@@ -367,19 +369,28 @@ export class ReadingClient {
     }
     return out;
   }
-  async periodicalIssues(libraryId: string, seriesId: string, publicationType: ReadingPeriodicalType, options: Readonly<{cursor?: string; limit?: number; issueDate?: string}> = {}, signal?: AbortSignal): Promise<ReadingPeriodicalIssuesPage> {
+  async periodicalIssues(libraryId: string, seriesId: string, publicationType: ReadingPeriodicalType, options: Readonly<{cursor?: string; limit?: number; issueDate?: string; year?: string}> = {}, signal?: AbortSignal): Promise<ReadingPeriodicalIssuesPage & {yearChoices: readonly ReadingYearChoice[]}> {
     const limit = options.limit ?? 50;
-    if (options.issueDate !== undefined && !issueDate(options.issueDate, publicationType) || !id(libraryId) || !seriesID(seriesId) || !periodicalType(publicationType) || !integer(limit, 1, 100) || options.cursor !== undefined && !seriesCursor(options.cursor)) fail('invalid_request');
+    if (options.year !== undefined && (!/^[0-9]{4}$/.test(options.year) || !issueDate(options.year + '-01', 'magazine') || options.issueDate !== undefined && !options.issueDate.startsWith(options.year + '-')) || options.issueDate !== undefined && !issueDate(options.issueDate, publicationType) || !id(libraryId) || !seriesID(seriesId) || !periodicalType(publicationType) || !integer(limit, 1, 100) || options.cursor !== undefined && !seriesCursor(options.cursor)) fail('invalid_request');
     const out = await this.json(query(routePath('get_reading_periodical_issues', {libraryId, seriesId}), {...options, publicationType}), 'GET', undefined, signal, decodeGetReadingPeriodicalIssuesResponse, 2 << 20);
     if ((options.issueDate === undefined ? 'issueDate' in out : !('issueDate' in out) || out.issueDate !== options.issueDate) || out.libraryId !== libraryId || out.seriesId !== seriesId || out.publicationType !== publicationType || out.items.length > limit || out.nextCursor !== undefined && (!seriesCursor(out.nextCursor) || out.items.length !== limit)) fail('invalid_document');
+    if (options.year === undefined ? 'year' in out : !('year' in out) || out.year !== options.year) fail('invalid_document');
+    const yearChoices: ReadingYearChoice[] = [];
+    const buckets = 'years' in out ? out.years : [];
+    if (!Array.isArray(buckets) || buckets.length > 9999) fail('invalid_document');
+    for (const bucket of buckets) {
+      if (typeof bucket !== 'object' || bucket === null || typeof bucket.year !== 'string' || !/^[0-9]{4}$/.test(bucket.year) || !issueDate(bucket.year + '-01', 'magazine') || !integer(bucket.issueCount, 1, Number.MAX_SAFE_INTEGER) || yearChoices.length && yearChoices[yearChoices.length - 1].value <= bucket.year) fail('invalid_document');
+      yearChoices.push({value: bucket.year, count: bucket.issueCount});
+    }
     const seen = new Set<string>(); let previous: string | undefined;
     for (const entry of out.items) {
       validateIssue(entry, libraryId, publicationType, seriesId);
+      if (options.year !== undefined && !entry.issueDate.startsWith(options.year + '-')) fail('invalid_document');
       if (options.issueDate !== undefined && entry.issueDate !== options.issueDate) fail('invalid_document');
       if (seen.has(entry.item.id) || previous !== undefined && previous < entry.issueDate) fail('invalid_document');
       seen.add(entry.item.id); previous = entry.issueDate;
     }
-    return out;
+    return {...out, yearChoices};
   }
   async series(libraryId: string, seriesId: string, options: Readonly<{cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<ReadingSeriesPage> {
     const cursor = options.cursor;
