@@ -258,7 +258,7 @@ function Artwork({data, busy, onUse, onLock, onFindMore, onRefetch, onUpload, on
         <Button size="small" onClick={() => onFindMore(role)} disabled={busy}>{t('web.metadata.findMore')}</Button>
         <Button size="small" onClick={() => onRefetch(role)} disabled={busy || !chosen}>{t('web.metadata.refetchChosen')}</Button>
       </header>
-      {candidates.length ? <div className={styles.choices}>{candidates.map(candidate => <figure key={candidate.id} data-current={candidate.current || undefined}>
+      {candidates.length ? <div className={styles.choices} data-shape={role === 'cover' || role === 'square' ? 'square' : role === 'backdrop' || role === 'still' || role === 'thumbnail' || role === 'logo' ? 'landscape' : role === 'banner' ? 'banner' : 'poster'}>{candidates.map(candidate => <figure key={candidate.id} data-current={candidate.current || undefined}>
         {candidate.previewUrl ? <img src={candidate.previewUrl} alt={t('web.metadata.artAlt', {role: t('web.metadata.artRole', {role}), provider: providerName(candidate.provider)})} loading="lazy" /> : <div className={styles.placeholder} />}
         <figcaption><small>{providerName(candidate.provider)}{candidate.locale ? ` · ${candidate.locale}` : ''}{candidate.votes != null ? ` · ${t('web.metadata.votes', {count: candidate.votes})}` : ''}</small></figcaption>
         {candidate.current ? <span className={styles.badge}>{t('web.metadata.inUse')}</span>
