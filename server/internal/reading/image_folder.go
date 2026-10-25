@@ -20,17 +20,9 @@ import (
 // imageFolderEligibleSQL never promotes a partial/stale directory into a book.
 // Every captured direct member must still name the same accepted source object.
 const imageFolderEligibleSQL = `(p.format<>'image-folder' OR EXISTS(
- SELECT 1 FROM reading_image_folders folder WHERE folder.asset_id=p.asset_id
- AND s.kind='local' AND folder.source_id=s.id AND folder.root_incarnation=s.incarnation
- AND folder.root_identity=s.root_identity AND folder.member_revision<>''
- AND folder.member_count BETWEEN 1 AND 4097
- AND folder.total_size=(SELECT sum(size) FROM reading_image_members members WHERE members.folder_asset_id=folder.asset_id)
- AND (SELECT count(*) FROM reading_image_members members WHERE members.folder_asset_id=folder.asset_id)=folder.member_count
- AND NOT EXISTS(SELECT 1 FROM reading_image_members member LEFT JOIN inventory_objects actual ON actual.id=member.inventory_object_id
- WHERE member.folder_asset_id=folder.asset_id AND (actual.id IS NULL OR actual.source_id<>s.id OR actual.root_incarnation<>s.incarnation
- OR actual.retired<>0 OR actual.state<>'available' OR actual.unsupported_reason<>'' OR actual.seen_job<>folder.job_id
- OR actual.relative_path<>member.relative_path OR actual.object_identity<>member.object_identity OR actual.revision<>member.revision
- OR actual.evidence_json<>member.evidence_json OR actual.size<>member.size OR actual.modified_ns<>member.modified_ns))))`
+ SELECT 1 FROM reading_image_folders folder JOIN reading_image_folder_availability ready ON ready.asset_id=folder.asset_id
+ WHERE folder.asset_id=p.asset_id AND ready.available=1 AND folder.source_id=s.id
+ AND folder.root_incarnation=s.incarnation AND folder.root_identity=s.root_identity))`
 
 func (f *Source) checkImageDirectory(ctx context.Context) error {
 	if f.Format != "image-folder" {

@@ -128,13 +128,9 @@ func (v Selection) ByteSize() int64 {
 }
 
 func (v Selection) fence() string {
-	evidence := v.evidence
-	if v.Format == "image-folder" {
-		b, _ := json.Marshal([]string{evidence, v.folderRevision})
-		evidence = string(b)
-	}
-	return readingidentity.Revision(v.Entity, v.Asset, v.Format, v.token, v.Size, v.ModifiedNS, v.rootID, v.generation, v.incarnation, v.rootIdentity, v.relative, v.object, v.inventory, evidence)
+	return readingidentity.PublicationRevision(v.folderRevision, v.Entity, v.Asset, v.Format, v.token, v.Size, v.ModifiedNS, v.rootID, v.generation, v.incarnation, v.rootIdentity, v.relative, v.object, v.inventory, v.evidence)
 }
+
 func (s *Service) Resolve(ctx context.Context, p identity.Principal, item, sourceID string) (Selection, error) {
 	if s == nil || s.DB == nil || s.Storage == nil {
 		return Selection{}, ErrUnavailable
