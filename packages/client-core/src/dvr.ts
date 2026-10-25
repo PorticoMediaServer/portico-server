@@ -148,6 +148,12 @@ export function seriesRuleConfig(d:RecordingDraft,ui:SeriesRuleUi):{config:RuleC
 export function bytesLabel(bytes:number):string{if(!Number.isFinite(bytes)||bytes<0)return 'Unknown';const units=['B','KiB','MiB','GiB','TiB'];let n=0;while(bytes>=1024&&n<4){bytes/=1024;n++}return `${bytes.toLocaleString(undefined,{maximumFractionDigits:n?1:0})} ${units[n]}`;}
 export function recordingTime(value:string):string{return value?new Date(value).toLocaleString(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',timeZoneName:'short'}):serviceText('dvr.notCaptured');}
 
+/** Optional original caller scope; omitted callers keep the viewer client's existing lifetime. */
+export type DVRCommandLifetime = Readonly<{signal: AbortSignal; isCurrent: () => boolean}>;
+const captureDVRCommand = (value: DVRCommandLifetime | undefined): DVRCommandLifetime | undefined => value
+ ? Object.freeze({signal: value.signal, isCurrent: value.isCurrent}) : undefined;
+const retiredDVRCommand = () => Object.assign(new Error('Recording operation retired.'), {name: 'AbortError'});
+
 export class DVRClient {
  private disposed=false;private accessEpoch=0;private accessChanged:(()=>void)|undefined;private requests=new Set<AbortController>();private receipts=new Map<string,Promise<string>>();
  private api:ChannelApi;private serverId:string;private newRequestId:()=>Promise<string>;private timeoutMs:number;
@@ -156,26 +162,52 @@ export class DVRClient {
  activate(){this.dispose();this.disposed=false;this.accessEpoch++;}
  onAccessChanged(listener:()=>void){this.accessChanged=listener;}
  dispose(){this.accessChanged=undefined;this.disposed=true;for(const request of this.requests)request.abort();this.requests.clear();this.receipts.clear();}
- private async read<T>(path:string,method='GET',body?:unknown):Promise<T>{
-  if(this.disposed)throw new Error('Recording scope closed.');const epoch=this.accessEpoch;const abort=new AbortController();this.requests.add(abort);let timer:ReturnType<typeof setTimeout>|undefined;
-  try {const raw=await Promise.race([this.api.request<unknown>(path,method,body,abort.signal),new Promise<never>((_,reject)=>{timer=setTimeout(()=>{abort.abort();reject(new Error('Recording request timed out.'));},this.timeoutMs)})]);if(this.disposed||abort.signal.aborted||epoch!==this.accessEpoch)throw new Error('Recording scope closed.');if(!object(raw)||raw.protocolVersion!=='1.0'||raw.serverId!==this.serverId||!('result' in raw))invalid();return raw.result as T;}
-  catch(error){if(!this.disposed&&epoch===this.accessEpoch&&isAccessError(error)){this.accessEpoch++;for(const request of this.requests)request.abort();this.accessChanged?.();}throw error;}
-  finally{clearTimeout(timer);this.requests.delete(abort);}
+ private requireCommand(lifetime?:DVRCommandLifetime){
+  if(lifetime&&(this.disposed||lifetime.signal.aborted||!lifetime.isCurrent()))throw retiredDVRCommand();
  }
- private async mutate<T>(path:string,method:string,body:Record<string,unknown>):Promise<T>{
+ private async read<T>(path:string,method='GET',body?:unknown,lifetime?:DVRCommandLifetime):Promise<T>{
+  this.requireCommand(lifetime);
+  if(this.disposed)throw new Error('Recording scope closed.');const epoch=this.accessEpoch;const abort=new AbortController();this.requests.add(abort);let timer:ReturnType<typeof setTimeout>|undefined;
+  const stop=()=>abort.abort();lifetime?.signal.addEventListener('abort',stop,{once:true});if(lifetime?.signal.aborted)stop();
+  try {
+   this.requireCommand(lifetime);
+   const raw=await Promise.race([this.api.request<unknown>(path,method,body,abort.signal),new Promise<never>((_,reject)=>{timer=setTimeout(()=>{abort.abort();reject(new Error('Recording request timed out.'));},this.timeoutMs)})]);
+   this.requireCommand(lifetime);
+   if(this.disposed||abort.signal.aborted||epoch!==this.accessEpoch)throw new Error('Recording scope closed.');
+   if(!object(raw)||raw.protocolVersion!=='1.0'||raw.serverId!==this.serverId||!('result' in raw))invalid();
+   return raw.result as T;
+  } catch(error){
+   // A late refusal from a cancelled caller cannot retire the shared viewer client.
+   this.requireCommand(lifetime);
+   if(!this.disposed&&epoch===this.accessEpoch&&isAccessError(error)){this.accessEpoch++;for(const request of this.requests)request.abort();this.accessChanged?.();}throw error;
+  } finally{lifetime?.signal.removeEventListener('abort',stop);clearTimeout(timer);this.requests.delete(abort);}
+ }
+ private async mutate<T>(path:string,method:string,body:Record<string,unknown>,lifetime?:DVRCommandLifetime):Promise<T>{
+  this.requireCommand(lifetime);
   const epoch=this.accessEpoch,key=JSON.stringify([path,method,body]);let request=this.receipts.get(key);
   if(!request){request=this.newRequestId().then(value=>{if(!id(value,48))invalid();return value});this.receipts.set(key,request);request.catch(()=>{if(this.receipts.get(key)===request)this.receipts.delete(key)});}
   // Keep unknown-outcome receipts for this viewer lifetime. Never auto-rebase a
   // stale revision or replace a request id after a timeout.
-  const requestId=await request;
+  let requestId:string;
+  try{requestId=await request;}catch(error){this.requireCommand(lifetime);throw error;}
+  this.requireCommand(lifetime);
   if(epoch!==this.accessEpoch)throw new Error('Recording scope closed.');
-  return this.read<T>(path,method,{...body,requestId});
+  try{const result=await this.read<T>(path,method,{...body,requestId},lifetime);this.requireCommand(lifetime);return result;}
+  catch(error){this.requireCommand(lifetime);throw error;}
  }
  async list(view:Exclude<DVRView,'storage'>,cursor='',sort:'recent'|'title'|'oldest'='recent',group=''){return parseDVRPage(await this.read(routePath("get_dvr") + "?" + (new URLSearchParams({state:view,limit:'50',sort,...(group?{group}:{}),...(cursor?{cursor}:{})}))));}
  async summary():Promise<DVRSummary>{return parseDVRSummary(await this.read(routePath("get_dvr_summary")));}
  async groups(sort:'recent'|'title'|'oldest'='recent',cursor=''):Promise<RecordingGroups>{return parseRecordingGroups(await this.read(routePath("get_dvr_groups")+'?'+new URLSearchParams({sort,limit:'30',...(cursor?{cursor}:{})})));}
  async detail(recordingId:string,after=''):Promise<RecordingDetail>{if(!id(recordingId)||after&&!id(after))invalid();const v=await this.read<RecordingDetail>(encodedRoutePath("get_dvr_recordings_id", {"id": recordingId})+(after?'?after='+after:''));if(!object(v)||!validCapacity(v.capacity)||!Array.isArray(v.overlaps)||v.overlaps.length>20||!text(v.nextOverlap,64)||v.nextOverlap&&!id(v.nextOverlap))invalid();const r=parseRecording(v.recording);if(r.id!==recordingId)invalid();for(const o of v.overlaps)if(!object(o)||!id(o.id)||!text(o.title,512)||!instant(o.start)||!instant(o.end)||Date.parse(o.start)>=Date.parse(o.end)||!number(o.priority,-1000,1000)||!states.includes(o.state))invalid();if(new Set(v.overlaps.map(o=>o.id)).size!==v.overlaps.length)invalid();return {recording:r,capacity:capacity(v.capacity),overlaps:parseOverlaps(v.overlaps),nextOverlap:v.nextOverlap};}
- async schedule(d:RecordingDraft,options:RecordingOptions){if(!validRecordingOptions(options))invalid();return parseRecording(await this.mutate(routePath("post_dvr_recordings"),'POST',{occurrence:occurrence(d),options:durationIntent(options,PADDING)}));}
+ async schedule(d:RecordingDraft,options:RecordingOptions,lifetime?:DVRCommandLifetime){
+  const original=captureDVRCommand(lifetime);this.requireCommand(original);
+  if(!validRecordingOptions(options))invalid();
+  try{
+   const raw=await this.mutate(routePath("post_dvr_recordings"),'POST',{occurrence:occurrence(d),options:durationIntent(options,PADDING)},original);
+   this.requireCommand(original);const result=parseRecording(raw);
+   this.requireCommand(original);return result;
+  }catch(error){this.requireCommand(original);throw error;}
+ }
  async update(r:Recording,options:RecordingOptions){if(!validRecordingOptions(options))invalid();return parseRecording(await this.mutate(encodedRoutePath("patch_dvr_recordings_id", {"id": r.id}),'PATCH',{expectedRevision:r.revision,options:durationIntent(options,PADDING)}));}
  async cancel(r:Recording){return parseRecording(await this.mutate(encodedRoutePath("post_dvr_recordings_id_cancel", {"id": r.id}),'POST',{expectedRevision:r.revision}));}
  async keep(r:Recording){return parseRecording(await this.mutate(encodedRoutePath("put_dvr_recordings_id_keep", {"id": r.id}),'PUT',{expectedRevision:r.revision,keep:!r.keep}));}
