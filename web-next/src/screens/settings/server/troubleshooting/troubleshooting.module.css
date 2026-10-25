@@ -95,6 +95,12 @@ li:first-child > .feedbackRow { border-top: 0; }
 .support .check input:checked::after { content: '✓'; display: block; text-align: center; color: var(--color-ink); font-size: var(--type-body-size); line-height: var(--type-troubleshooting-check-line); }
 .support .check input:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 2px; }
 @media (max-width: 600px) { .permissions { display: flex; flex-direction: column; gap: 10px; } }
+/* The four tabs stay on one row that scrolls sideways at phone width (owner-server.html#33a). */
+@media (max-width: 600px) {
+  .tabs { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { flex: none; white-space: nowrap; }
+}
 
 .messagePanels { display: flex; flex-direction: column; }
 .detailWindow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 28px; padding: 18px 22px; border-radius: 14px; background: var(--color-raised); }
