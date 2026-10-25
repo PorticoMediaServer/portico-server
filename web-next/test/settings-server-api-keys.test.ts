@@ -1,14 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {routePath} from '../../packages/contracts/src/routes.ts';
 import {SettingsApiKeysSource} from '../src/screens/settings/server/integrations/api-keys-source.ts';
 const key = {id: 'key-1', kind: 'key', name: 'Automation', scopes: ['read'], hint: '1234', createdAt: '2026-10-22T19:00:00Z', state: 'active', member: {accountId: 'owner', username: 'Owner', profileId: 'profile', profile: 'Owner'}};
 const page = {items: [key], limit: 100};
 const options = {scopes: [{id: 'read'}, {id: 'admin'}], maximumKeys: 20, maximumTokens: 20, tokensAllowed: true, requestsPerMinute: 600, queryParameter: 'api_key'};
-const read = (path: string) => path.includes('/options') ? options : page;
+const read = (path: string) => path === routePath('get_api_access_options') ? options : page;
 
 test('late pages cannot replace the latest cursor read', async () => {
   const releases: ((value: unknown) => void)[] = [];
-  const source = new SettingsApiKeysSource({request: async <T>(path: string) => path.includes('/options') ? options as T : new Promise<T>(resolve => releases.push(value => resolve(value as T)))}, () => true, () => {});
+  const source = new SettingsApiKeysSource({request: async <T>(path: string) => path === routePath('get_api_access_options') ? options as T : new Promise<T>(resolve => releases.push(value => resolve(value as T)))}, () => true, () => {});
   const old = source.load(), latest = source.load('next');releases[1]({...page, items: [{...key, id: 'key-2'}]});await latest;releases[0](page);await old;
   assert.equal(source.getSnapshot().page?.items[0].id, 'key-2');source.dispose();
 });
@@ -39,6 +40,6 @@ test('a retired authority drops a late issued secret and makes no later request'
 
 test('a token in the owner key list is refused whole and cannot be revoked here', async () => {
   let deletes = 0;const errors: unknown[] = [];
-  const source = new SettingsApiKeysSource({request: async <T>(path: string, method?: string) => {if (method === 'DELETE') deletes++;return (path.includes('/options') ? options : {...page, items: [{...key, kind: 'token'}]}) as T;}}, () => true, error => errors.push(error));
+  const source = new SettingsApiKeysSource({request: async <T>(path: string, method?: string) => {if (method === 'DELETE') deletes++;return (path === routePath('get_api_access_options') ? options : {...page, items: [{...key, kind: 'token'}]}) as T;}}, () => true, error => errors.push(error));
   await source.load();assert.equal(source.getSnapshot().page, undefined);assert.equal(errors.length, 1);await source.revoke(key as never);assert.equal(deletes, 0);source.dispose();
 });
