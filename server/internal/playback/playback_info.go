@@ -226,6 +226,12 @@ func PlaybackInfoForPlan(p DeliveryPlan, subtitle *PlaybackSubtitleFacts) *Playb
 		if dst.DynamicRange == assets.RangeSDR {
 			dst.MasterDisplay, dst.MaxCLL = "", ""
 		}
+		// The base picture survives where the dynamic metadata does not, so
+		// say which one the device actually shows (VIDEO.md VS-2b).
+		if containsString(p.Trace.Notes, NoteHDR10PlusLost) && dst.HDR10Plus != nil {
+			dst.HDR10Plus = nil
+			out.Losses = append(out.Losses, PlaybackLoss{Feature: "hdr10plus", Replacement: PlaybackReplacement{DynamicRange: dst.DynamicRange}})
+		}
 		if src.DynamicRange == assets.RangeDolbyVision && dst.DynamicRange != "" && dst.DynamicRange != assets.RangeDolbyVision {
 			out.Losses = append(out.Losses, PlaybackLoss{Feature: "dolbyVision", Replacement: PlaybackReplacement{DynamicRange: dst.DynamicRange}})
 		}

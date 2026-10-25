@@ -434,10 +434,16 @@ func TestHDR10PlusDeclarationCoversTheHDR10Base(t *testing.T) {
 	if p := decide(t, source, client, nil); p.Strategy != DeliveryOriginal {
 		t.Fatalf("an HDR10+ declaration did not cover the HDR10 base: %+v", p)
 	}
-	// Without the dynamic metadata the same declaration is not HDR10.
+	// Without the dynamic metadata the same declaration is not HDR10: the
+	// picture is not delivered as HDR, and converting on the server is the
+	// only route left.
 	plain := videoSource("mp4", "hevc", hdr10Detail, SourceAudio{Index: 1, Codec: "eac3", Channels: 6})
 	in := DeliveryInput{Source: plain, Client: client, Policy: openPolicy(), Target: autoTarget(openPolicy(), plain.Video.Height), Config: DefaultDeliveryConfiguration(), TranscodingEnabled: true}
-	if _, err := planDelivery(in); err == nil {
-		t.Fatal("a plain HDR10 picture played on an HDR10+ only declaration")
+	p, err := planDelivery(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Strategy == DeliveryOriginal || p.OutputRange == assets.RangeHDR10 || p.OutputRange == "hdr10plus" {
+		t.Fatalf("a plain HDR10 picture was delivered as HDR on an HDR10+ only declaration: %+v", p)
 	}
 }

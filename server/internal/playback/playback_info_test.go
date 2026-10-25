@@ -185,3 +185,44 @@ func TestCopiedObjectsAreLostOnlyWhereTheEngineCannotRenderThem(t *testing.T) {
 		t.Fatalf("an Atmos renderer lost its objects: %+v", info)
 	}
 }
+
+// A device that shows HDR10 but not HDR10+ plays the HDR10 base picture. The
+// panel keeps the base picture and reports the dynamic metadata as lost
+// (VIDEO.md VS-2b), while a device that declares HDR10+ keeps it.
+func TestHDR10PlusMetadataLossIsReportedOnlyWhereItIsLost(t *testing.T) {
+	device := func(ranges string) ClientProfile {
+		t.Helper()
+		doc, err := ParseCapabilityDocument([]byte(`{"version":2,"client":{"family":"androidtv"},"display":{"dynamicRanges":` + ranges + `},"engines":{"native":{"name":"exoplayer","evidence":"declared","video":[{"codec":"hevc","bitDepths":[8,10],"maxWidth":1920,"maxHeight":1080,"dynamicRanges":` + ranges + `}],"audio":[{"codec":"eac3","maxChannels":6}],"transports":[{"transport":"direct","containers":["mkv"],"video":["hevc"],"audio":["eac3"]}]}}}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return doc.Profile(EngineNative)
+	}
+	plus := hdr10Detail
+	plus.HDR10Plus, plus.Width, plus.Height = true, 1920, 1080
+	source := videoSource("mkv", "hevc", plus, SourceAudio{Index: 1, Codec: "eac3", Channels: 6})
+
+	plan := decide(t, source, device(`["sdr","hdr10"]`), nil)
+	if plan.VideoAction == "convert" || !containsString(plan.Trace.Notes, NoteHDR10PlusLost) {
+		t.Fatalf("an HDR10-only device was not told the metadata was lost: %+v", plan.Trace.Notes)
+	}
+	info := PlaybackInfoForPlan(plan, nil)
+	if info == nil || info.Delivered.Video == nil || info.Delivered.Video.HDR10Plus != nil || info.Delivered.Video.DynamicRange != assets.RangeHDR10 {
+		t.Fatalf("the delivered picture still claimed HDR10+: %+v", info)
+	}
+	var lost bool
+	for _, loss := range info.Losses {
+		lost = lost || loss.Feature == "hdr10plus" && loss.Replacement.DynamicRange == assets.RangeHDR10
+	}
+	if !lost {
+		t.Fatalf("the HDR10+ loss was not reported: %+v", info.Losses)
+	}
+
+	kept := decide(t, source, device(`["sdr","hdr10","hdr10plus"]`), nil)
+	if containsString(kept.Trace.Notes, NoteHDR10PlusLost) {
+		t.Fatalf("an HDR10+ device was told it lost the metadata: %+v", kept.Trace.Notes)
+	}
+	if info := PlaybackInfoForPlan(kept, nil); info == nil || info.Delivered.Video.HDR10Plus == nil || !*info.Delivered.Video.HDR10Plus {
+		t.Fatalf("an HDR10+ device lost its metadata: %+v", info)
+	}
+}

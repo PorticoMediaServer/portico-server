@@ -357,6 +357,12 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 					p.Trace.Notes = append(p.Trace.Notes, NoteDeviceToneMaps)
 				}
 			}
+			// A copied HDR10+ picture keeps its dynamic metadata only on a
+			// device that declares HDR10+; everywhere else it is the HDR10
+			// base picture and the panel says so (VIDEO.md VS-2b).
+			if v := videoOf(source); v != nil && v.DynamicRange == assets.RangeHDR10 && v.HDR10Plus && p.VideoAction != "convert" && !declaresHDR10Plus(client, p.OutputVideoCodec) {
+				p.Trace.Notes = append(p.Trace.Notes, NoteHDR10PlusLost)
+			}
 			// A track that reaches the device as it is in the file, and that
 			// the device hands on to a receiver rather than decoding.
 			if selected := sourceAudioAt(source.Audio, p.AudioStream); selected != nil && p.AudioAction != "convert" && client.audioCodec(selected.Codec) == nil && audioPassedThrough(selected, client) {

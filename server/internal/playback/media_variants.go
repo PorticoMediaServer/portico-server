@@ -97,3 +97,16 @@ func audioDisplayName(variant, codec, objects string) string {
 	}
 	return codec
 }
+
+// declaresHDR10Plus reports whether the engine and the display it is shown on
+// both state HDR10+ for the delivered codec. A list that states nothing is not
+// a denial; a list that names another range is.
+func declaresHDR10Plus(client ClientProfile, codec string) bool {
+	if c := client.videoCodec(codec); c != nil && len(c.DynamicRanges) > 0 && !containsString(c.DynamicRanges, "hdr10plus") {
+		return false
+	}
+	if ranges := client.Display.DynamicRanges; len(ranges) > 0 && !containsString(ranges, "hdr10plus") {
+		return false
+	}
+	return true
+}

@@ -59,7 +59,10 @@ const (
 	NoteAudioPassthrough                = "audio_passed_through_to_receiver"
 	// NoteObjectAudioDecoded marks a copied object-audio track that the engine
 	// decodes without its objects: the channel bed plays, the objects do not.
-	NoteObjectAudioDecoded               = "object_audio_decoded_without_objects"
+	NoteObjectAudioDecoded = "object_audio_decoded_without_objects"
+	// NoteHDR10PlusLost marks a copied HDR10+ picture whose dynamic metadata
+	// the device does not declare: it plays as the HDR10 base picture.
+	NoteHDR10PlusLost                    = "hdr10plus_dynamic_metadata_lost"
 	NoteOverrideStereo                  = "viewer_override_force_stereo"
 	NoteOverrideNoPassthrough           = "viewer_override_disable_passthrough"
 	NoteOverrideNoHDR                   = "viewer_override_disable_hdr"
@@ -248,16 +251,21 @@ func videoRejections(v *SourceVideo, client ClientProfile, t ClientTransport, al
 	if v.DynamicRange != "" && v.DynamicRange != assets.RangeSDR {
 		native := nativeDolbyVision(v, c, client)
 		shown := effectiveRange(v, c, client)
+		// An HDR10+ picture is a plain HDR10 picture with dynamic metadata on
+		// top, so a decoder or display that declares HDR10+ covers the base
+		// picture (VIDEO.md VS-2a). The reverse is not true: a plain HDR10
+		// picture needs HDR10, not only an HDR10+ claim.
+		plus := shown == assets.RangeHDR10 && v.HDR10Plus
+		decoded := containsString(c.DynamicRanges, shown) || plus && containsString(c.DynamicRanges, "hdr10plus")
+		presented := client.presents(shown) || plus && client.presents("hdr10plus")
 		switch {
 		case !allowHDR && shown != assets.RangeSDR:
 			out = append(out, RouteRejection{ReasonHDRNotAllowed, v.DynamicRange})
 		case shown == "":
 			out = append(out, RouteRejection{RejectDolbyVision, fmt.Sprintf("profile %d", v.DolbyVisionProfile)})
-		case shown != assets.RangeSDR && !containsString(c.DynamicRanges, shown) && !(shown == assets.RangeHDR10 && containsString(c.DynamicRanges, "hdr10plus")):
-			// A decoder that declares HDR10+ decodes the HDR10 base picture
-			// and applies the dynamic metadata (VIDEO §3 VS-2a).
+		case shown != assets.RangeSDR && !decoded:
 			out = append(out, RouteRejection{RejectDynamicRange, shown})
-		case shown != assets.RangeSDR && !client.presents(shown):
+		case shown != assets.RangeSDR && !presented:
 			// The engine decodes the range, but neither the display nor the
 			// engine's own tone mapping can show it.
 			out = append(out, RouteRejection{RejectDisplayRange, shown})
