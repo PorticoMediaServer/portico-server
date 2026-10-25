@@ -139,10 +139,20 @@ export function createSearchBindings(context: ScreenContext) {
       for (const result of state.groups) for (const entry of result.items) visible.add(entry);
     } finally { syncLive(); }
   });
+  let selectionAttempt = 0, readingOffered = false;
   const select = async (q: string, options: Omit<SearchQuery, 'q'> = {}) => {
-    life.assert(); text = q; group = options.group;
+    life.assert(); const attempt = ++selectionAttempt; text = q; group = options.group;
     if (q.trim()) { genres.cancel(); onNow.cancel(); }
-    await service.select(q, options.group || options.groups ? options : {...options, groups: SEARCH_CHIPS.flatMap(chip => chip.id === 'all' ? [] : [chip.id])});
+    const defaults = !options.group && !options.groups, includedReading = readingOffered;
+    const groups = SEARCH_CHIPS.flatMap(chip => chip.id === 'all' || chip.id === 'reading' && !readingOffered ? [] : [chip.id]);
+    const work = service.select(q, defaults ? {...options, groups} : options), generation = service.getSnapshot().generation;
+    await work;
+    const state = service.getSnapshot();
+    if (!life.current() || attempt !== selectionAttempt || state.generation !== generation || state.phase !== 'ready' || state.data?.query.q !== q.trim()) return;
+    readingOffered = state.data.capabilities.groups.some(value => value.id === 'reading' && value.available);
+    // Older servers never receive an unknown default group. Once actually offered,
+    // add Reading by a read-only repeat; an explicit history gesture is recorded once.
+    if (defaults && readingOffered && !includedReading) await service.select(q, {...options, groups: SEARCH_CHIPS.flatMap(chip => chip.id === 'all' ? [] : [chip.id]), record: false});
   };
   const live = {
     getSnapshot: () => cards,
