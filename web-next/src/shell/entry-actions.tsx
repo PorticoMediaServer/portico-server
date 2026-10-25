@@ -19,6 +19,10 @@ function errorText(code: string | undefined): string | undefined {
 function EntryPickerSurface({destination, target, ports, anchor, canCreate, onClose}: {
   destination: EntryDestination; target: EntryActionTarget; ports: EntryActionPorts; anchor: HTMLElement | null; canCreate: boolean; onClose: () => void;
 }) {
+  const lifetime = useMemo(() => new AbortController(), [ports, target, destination]);
+  const flight = useRef(false);
+  const current = () => !lifetime.signal.aborted && ports.isCurrent();
+  const close = () => {lifetime.abort(); onClose();};
   const [mode, setMode] = useState<'choose' | 'new'>('choose'), [name, setName] = useState(''), [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState<string | undefined>(undefined), [result, setResult] = useState<PickerResult | undefined>(undefined);
   const service = useMemo(() => new SavedService({api: ports.api, scope: {serverId: ports.serverId, viewerId: ports.viewerId}, requestId: ports.requestId}), [ports]);
@@ -26,8 +30,8 @@ function EntryPickerSurface({destination, target, ports, anchor, canCreate, onCl
   const anchorRef = useRef<HTMLElement | null>(anchor);
   useEffect(() => {
     void service.select({view: destination === 'playlist' ? 'playlists' : 'collections'}).catch(() => setError(t('next.selection.pickerFailed')));
-    return () => service.dispose();
-  }, [service, destination]);
+    return () => {lifetime.abort(); service.dispose();};
+  }, [service, destination, lifetime]);
   const entries = useMemo<readonly PickerEntry[]>(() => {
     const rows = snapshot.projection?.sections.flatMap(section => section.entries) ?? [];
     const wanted = rows.flatMap(entry => destination === 'playlist'
@@ -38,38 +42,43 @@ function EntryPickerSurface({destination, target, ports, anchor, canCreate, onCl
   }, [snapshot.projection, destination, query]);
   const finish = (id: string, label: string) => setResult({destination: {id, name: label}, inserted: 1, processed: 1, total: 1, complete: true, failures: []});
   const add = async (id: string, label: string) => {
-    if (!ports.isCurrent()) return;
+    if (!current()) return;
+    if (flight.current) return;
+    flight.current = true;
     setBusy(true); setError(undefined);
     try {
       const operationId = await ports.requestId();
-      if (!ports.isCurrent()) return;
-      if (destination === 'playlist') await ports.api.request(routePath('post_playlists_id_entries', {id}), 'POST', {operationId, itemIds: [target.itemId]});
-      else await ports.api.request(routePath('post_collections_id_items_batch', {id}), 'POST', {addItemIds: [target.itemId], removeItemIds: []});
-      if (!ports.isCurrent()) return;
+      if (!current()) return;
+      if (destination === 'playlist') await ports.api.request(routePath('post_playlists_id_entries', {id}), 'POST', {operationId, itemIds: [target.itemId]}, lifetime.signal);
+      else await ports.api.request(routePath('post_collections_id_items_batch', {id}), 'POST', {addItemIds: [target.itemId], removeItemIds: []}, lifetime.signal);
+      if (!current()) return;
       finish(id, label);
-    } catch { if (ports.isCurrent()) setError(t('next.selection.pickerFailed')); }
-    finally { if (ports.isCurrent()) setBusy(false); }
+    } catch { if (current()) setError(t('next.selection.pickerFailed')); }
+    finally { flight.current = false; if (current()) setBusy(false); }
   };
   const create = async (value: string) => {
-    if (!value.trim() || !ports.isCurrent()) return;
+    if (!value.trim() || !current()) return;
     if (destination === 'collection' && !canCreate) { setError(t('next.selection.collectionOwnerOnly')); return; }
+    if (flight.current) return;
+    flight.current = true;
     setBusy(true); setError(undefined);
     try {
       const operationId = await ports.requestId();
-      if (!ports.isCurrent()) return;
+      if (!current()) return;
       if (destination === 'playlist') {
-        const made = await ports.api.request<{playlistId: string}>(routePath('post_playlists'), 'POST', {name: value, itemIds: [target.itemId], operationId});
-        if (ports.isCurrent()) finish(made.playlistId, value);
+        const made = await ports.api.request<{playlistId: string}>(routePath('post_playlists'), 'POST', {name: value, itemIds: [target.itemId], operationId}, lifetime.signal);
+        if (current()) finish(made.playlistId, value);
       } else {
-        const made = await ports.api.request<{id: string}>(`/v1/libraries/${encodeURIComponent(target.libraryId)}/collections`, 'POST', {name: value});
-        await ports.api.request(routePath('post_collections_id_items_batch', {id: made.id}), 'POST', {addItemIds: [target.itemId], removeItemIds: []});
-        if (ports.isCurrent()) finish(made.id, value);
+        const made = await ports.api.request<{id: string}>(`/v1/libraries/${encodeURIComponent(target.libraryId)}/collections`, 'POST', {name: value}, lifetime.signal);
+        if (!current()) return;
+        await ports.api.request(routePath('post_collections_id_items_batch', {id: made.id}), 'POST', {addItemIds: [target.itemId], removeItemIds: []}, lifetime.signal);
+        if (current()) finish(made.id, value);
       }
-    } catch { if (ports.isCurrent()) setError(t('next.selection.pickerFailed')); }
-    finally { if (ports.isCurrent()) setBusy(false); }
+    } catch { if (current()) setError(t('next.selection.pickerFailed')); }
+    finally { flight.current = false; if (current()) setBusy(false); }
   };
   const Picker = destination === 'playlist' ? PlaylistPicker : CollectionPicker;
-  return <Picker open onOpenChange={value => { if (!value) onClose(); }} selection={{count: 1}} anchorRef={anchorRef}
+  return <Picker open onOpenChange={value => { if (!value) close(); }} selection={{count: 1}} anchorRef={anchorRef}
     entries={entries} query={query} onQueryChange={setQuery} loading={snapshot.phase === 'idle' || snapshot.phase === 'loading'}
     mode={mode} onModeChange={next => { if (next === 'new' && destination === 'collection' && !canCreate) { setError(t('next.selection.collectionOwnerOnly')); return; } setMode(next); }}
     name={name} onNameChange={setName} onAdd={id => { const entry = entries.find(row => row.id === id); void add(id, entry?.name ?? ''); }}
