@@ -76,6 +76,9 @@ export function MetadataSettingsPage({api, isCurrent, onLibraries}: {api: Librar
     ...(draft.subtitlePassword ? {openSubtitlesPassword: draft.subtitlePassword} : {}),
   };
   const dirty = bytes !== document.localArtworkLimitBytes || draft.adult !== document.includeAdult || draft.edge !== document.artworkMaxEdge || secretValue(draft.tmdb) !== undefined || secretValue(draft.tvdb) !== undefined || Object.keys(subtitleChanges).length > 0 || Object.keys(draft.libraries).length > 0;
+  const pendingCount = Number(bytes !== document.localArtworkLimitBytes) + Number(draft.adult !== document.includeAdult) + Number(draft.edge !== document.artworkMaxEdge)
+    + Number(secretValue(draft.tmdb) !== undefined) + Number(secretValue(draft.tvdb) !== undefined) + Object.keys(subtitleChanges).length
+    + Object.values(draft.libraries).reduce((count, change) => count + Object.keys(change).length - 2, 0);
   const save = async () => {
     if (flight.current || !current() || bytes === undefined || !dirty) return;
     flight.current = true; setBusy(true); setError(undefined);
@@ -135,7 +138,7 @@ export function MetadataSettingsPage({api, isCurrent, onLibraries}: {api: Librar
         <div><p>{summary.text}</p><Button size="small" disabled={busy || !!Object.keys(subtitleChanges).length || document.openSubtitles.keySource === 'none'} onClick={() => {void check();}}>{t(busy ? 'server.metadata.openSubtitlesTesting' : 'server.metadata.openSubtitlesTest')}</Button></div>
       </SettingsRow>
     </SettingsGroup>
-    {dirty ? <div className={styles.saveBar}><Button size="small" variant="text" disabled={busy} onClick={() => {if (current()) {setDraft(draftFor(document)); setError(undefined);}}}>{t('metadata.settings.discard')}</Button>
+    {dirty ? <div className={styles.saveBar}><span className={styles.pending}>{t('web.metadata.pendingCount', {count: pendingCount})}</span><Button size="small" variant="text" disabled={busy} onClick={() => {if (current()) {setDraft(draftFor(document)); setError(undefined);}}}>{t('metadata.settings.discard')}</Button>
       <Button size="small" variant="primary" disabled={busy || bytes === undefined} onClick={() => {void save();}}>{t('web.metadata.saveChanges')}</Button></div> : null}
     {error ? <Button size="small" variant="text" disabled={busy} onClick={() => {if (current()) setReload(value => value + 1);}}>{t('action.refresh')}</Button> : null}
   </div>;
