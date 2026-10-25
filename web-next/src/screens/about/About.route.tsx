@@ -28,7 +28,7 @@ function About() {
       <a href="https://github.com/PorticoMediaServer/portico-server" target="_blank" rel="noopener noreferrer">{t('licenses.source.title')}</a>
     </section>
     <section className={styles.box}>
-      <a href="https://getportico.tv/help" target="_blank" rel="noopener noreferrer">{t('web.about.help')}</a>
+      <a href="https://getportico.tv/docs/" target="_blank" rel="noopener noreferrer">{t('web.about.help')}</a>
       <a href="https://getportico.tv/terms" target="_blank" rel="noopener noreferrer">{t('web.about.terms')}</a>
       <a href="https://getportico.tv/privacy" target="_blank" rel="noopener noreferrer">{t('web.about.privacy')}</a>
     </section>

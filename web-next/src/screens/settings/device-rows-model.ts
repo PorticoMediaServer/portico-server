@@ -9,8 +9,8 @@ export function isDeviceSyntheticRow(id: string): boolean {
   return (deviceSyntheticRowIds as readonly string[]).includes(id);
 }
 /** The drawn external Help address; the row opens it, the address is what the row shows. */
-export const deviceHelpAddress = 'getportico.tv/help';
-export const deviceHelpURL = 'https://getportico.tv/help';
+export const deviceHelpAddress = 'getportico.tv/docs/';
+export const deviceHelpURL = 'https://getportico.tv/docs/';
 
 /** Real facts only: the connected server's name and version, never a guessed value. */
 export function deviceRowState(row: SettingsRow, facts: DeviceRowFacts): SettingPresentation | undefined {

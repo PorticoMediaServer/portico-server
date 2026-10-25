@@ -36,8 +36,8 @@ test('the Server version row shows the real reported version and vanishes when i
 
 test('the Help row is present and opens the drawn address externally', () => {
   assert.deepEqual(deviceRowState(row('device.help'), {serverName: 'Portico demo'}), {present: true});
-  assert.equal(deviceHelpAddress, 'getportico.tv/help');
-  assert.equal(deviceHelpURL, 'https://getportico.tv/help');
+  assert.equal(deviceHelpAddress, 'getportico.tv/docs/');
+  assert.equal(deviceHelpURL, 'https://getportico.tv/docs/');
 });
 
 test('rows outside the Device section are never given a synthetic state', () => {
