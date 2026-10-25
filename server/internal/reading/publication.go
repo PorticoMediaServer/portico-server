@@ -46,12 +46,6 @@ func Inspect(f *Source) (Publication, error) {
 			return out, err
 		}
 		out.Metadata.Direction = c.Metadata.Direction
-		if c.Metadata.Author != "" {
-			out.Metadata.Author = c.Metadata.Author
-		}
-		if out.Metadata.Language == "" {
-			out.Metadata.Language = c.Metadata.Language
-		}
 		out.Metadata.ExplicitPublicationType = c.Metadata.ExplicitPublicationType
 		out.Metadata.PublicationTypeField, out.Metadata.PublicationTypeRaw, out.Metadata.PublicationTypeComplete = c.Metadata.PublicationTypeField, c.Metadata.PublicationTypeRaw, c.Metadata.PublicationTypeComplete
 		out.PageNames = c.Names
