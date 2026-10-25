@@ -5,6 +5,7 @@ import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
 import {CoverCard} from '../../kit/cards';
 import {Icon} from '../../kit/Icon';
+import {TextField} from '../../kit/controls';
 import {WindowedGrid} from '../../kit/layout';
 import {Skeleton, StateView} from '../../kit/states';
 import {useShellWidth} from '../../shell/viewport';
@@ -15,7 +16,7 @@ import styles from './entry.module.css';
 
 const {t} = defaultI18n;
 type Captured = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
-type Common = Readonly<{context: Captured['context']; bindings: ReturnType<typeof createReadBindings>; libraryId: string; kind: ReadingPeriodicalType; reportError: (error: unknown) => void}>;
+type Common = Readonly<{context: Captured['context']; bindings: ReturnType<typeof createReadBindings>; libraryId: string; kind: ReadingPeriodicalType; issueDate?: string; reportError: (error: unknown) => void}>;
 type Groups = Common & Readonly<{mode: 'groups'; pages: ReturnType<typeof createReadingPeriodicalGroupsCollection>}>;
 type Issues = Common & Readonly<{mode: 'issues'; pages: ReturnType<typeof createReadingPeriodicalIssuesCollection>}>;
 type Resources = Groups | Issues;
@@ -27,20 +28,24 @@ export function ReadPeriodicalEntry({libraryId, kind, seriesId}: {libraryId: str
   return captured ? <BoundPeriodicals key={JSON.stringify([libraryId, kind, seriesId])} captured={captured} libraryId={libraryId} kind={kind} seriesId={seriesId}/> : null;
 }
 function BoundPeriodicals({captured, libraryId, kind, seriesId}: {captured: Captured; libraryId: string; kind: ReadingPeriodicalType; seriesId?: string}) {
+  const [issueDate, setIssueDate] = useState('');
   const [resources, setResources] = useState<Resources>(), [retry, setRetry] = useState(0), [retired, setRetired] = useState(false);
   useEffect(() => {
     const bindings = createReadBindings(captured.context);
-    const common: Common = {context: captured.context, bindings, libraryId, kind, reportError: error => {if (bindings.authority.isCurrent()) captured.binding.home.effects.reportError(error);}};
-    const next: Resources = seriesId ? {...common, mode: 'issues', pages: createReadingPeriodicalIssuesCollection(bindings.client, libraryId, seriesId, kind)}
+    const common: Common = {context: captured.context, bindings, libraryId, kind, issueDate: issueDate || undefined, reportError: error => {if (bindings.authority.isCurrent()) captured.binding.home.effects.reportError(error);}};
+    const next: Resources = seriesId ? {...common, mode: 'issues', pages: createReadingPeriodicalIssuesCollection(bindings.client, libraryId, seriesId, kind, issueDate || undefined)}
       : {...common, mode: 'groups', pages: createReadingPeriodicalGroupsCollection(bindings.client, libraryId, kind)};
     setRetired(false); setResources(next);
     const off = bindings.authority.subscribe(() => {setRetired(true); setResources(undefined);});
     return () => {off(); next.pages.dispose(); void bindings.dispose().catch(() => {});};
-  }, [captured.context, libraryId, kind, seriesId, retry]);
+  }, [captured.context, libraryId, kind, seriesId, retry, issueDate]);
   const onRetry = () => setRetry(value => value + 1);
-  if (retired) return <Failure retry={onRetry}/>;
-  if (!resources || resources.context !== captured.context) return <Skeleton height={320}/>;
-  return resources.mode === 'groups' ? <GroupRows resources={resources} retry={onRetry}/> : <IssueRows resources={resources} retry={onRetry}/>;
+  const content = retired ? <Failure retry={onRetry}/>
+    : !resources || resources.context !== captured.context || resources.issueDate !== (issueDate || undefined) ? <Skeleton height={320}/>
+    : resources.mode === 'groups' ? <GroupRows resources={resources} retry={onRetry}/> : <IssueRows resources={resources} retry={onRetry}/>;
+  return <>{kind === 'newspaper' && seriesId && <div className={styles.dateFilter}>
+    <TextField label={t('next.reader.goToDate')} type="date" value={issueDate} onChange={event => {if (captured.context.isCurrent()) setIssueDate(event.currentTarget.value);}}/>
+  </div>}{content}</>;
 }
 function Failure({retry}: {retry: () => void}) {
   return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: retry}}/>;
