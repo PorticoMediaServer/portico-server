@@ -366,7 +366,16 @@ func (s *Service) mutatePlaylistCaptured(a ResourceActor, id, action, target str
 	}
 	if action != "create" {
 		rev++
-		if _, e = tx.Exec(`UPDATE catalog_playlists SET revision=? WHERE token=?`, rev, id); e != nil {
+		// The playlist's own last change follows a real edit of it — a new name or summary,
+		// an added, removed or reordered item — not a share change or a delete. The revision
+		// and receipt stay the fence; updated_at only records when that fence moved.
+		edited := action == "update" || action == "add" || action == "remove" || action == "reorder"
+		if edited {
+			_, e = tx.Exec(`UPDATE catalog_playlists SET revision=?,updated_at=? WHERE token=?`, rev, time.Now().UTC().Format(time.RFC3339), id)
+		} else {
+			_, e = tx.Exec(`UPDATE catalog_playlists SET revision=? WHERE token=?`, rev, id)
+		}
+		if e != nil {
 			return out, e
 		}
 	}

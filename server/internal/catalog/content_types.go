@@ -159,6 +159,12 @@ type ContentEntry struct {
 	// list view's columns. Absent when unknown.
 	Rating     *float64 `json:"rating,omitempty"`
 	Resolution string   `json:"resolution,omitempty"`
+	// Pinned and LastChanged are a saved playlist card's own facts: whether this
+	// viewer pinned it, and when the playlist itself last changed (its creation,
+	// or its last name, summary or items edit). Playlist directory cards only;
+	// both stay absent on every other entry.
+	Pinned      bool   `json:"pinned,omitempty"`
+	LastChanged string `json:"lastChanged,omitempty"`
 	// OverviewSource names the biography source ("Wikipedia") when Overview is
 	// provider text; absent for owner/local text. Artist entities only.
 	OverviewSource string `json:"overviewSource,omitempty"`

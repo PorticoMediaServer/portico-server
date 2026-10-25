@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"portico.local/server/internal/identity"
 )
@@ -66,7 +67,14 @@ func AppendPlaylistItemsTx(ctx context.Context, tx *sql.Tx, a ResourceActor, pla
 		}
 		appended++
 	}
-	if err = tx.QueryRowContext(ctx, `UPDATE catalog_playlists SET revision=revision+1 WHERE token=? RETURNING revision`, playlist).Scan(&revision); err != nil {
+	// The revision moves on every call, as it always has; the playlist's own last change
+	// moves only when an item really landed.
+	if appended > 0 {
+		err = tx.QueryRowContext(ctx, `UPDATE catalog_playlists SET revision=revision+1,updated_at=? WHERE token=? RETURNING revision`, time.Now().UTC().Format(time.RFC3339), playlist).Scan(&revision)
+	} else {
+		err = tx.QueryRowContext(ctx, `UPDATE catalog_playlists SET revision=revision+1 WHERE token=? RETURNING revision`, playlist).Scan(&revision)
+	}
+	if err != nil {
 		return 0, 0, err
 	}
 	return revision, appended, nil

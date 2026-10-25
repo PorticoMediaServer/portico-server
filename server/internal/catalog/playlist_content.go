@@ -121,7 +121,12 @@ func (s *Service) PlaylistDirectory(r ContentRequest, a ResourceActor) (ContentE
 		args = append(args, c.Value, c.Value, c.ID)
 	}
 	args = append(args, r.Limit+1)
-	rows, e := tx.Query(`SELECT p.token,p.name,p.summary,p.entry_count,`+key+` AS sort_value`+where+` ORDER BY `+key+` `+r.Direction+`,p.token `+r.Direction+` LIMIT ?`, args...)
+	// The card's own two facts: this viewer's pin (the same viewer-scoped predicate the
+	// Pinned filter reads, bound once here) and the playlist's own last change, which is its
+	// creation until an edit writes updated_at. The sort keeps ordering by that same value.
+	rows, e := tx.Query(`SELECT p.token,p.name,p.summary,p.entry_count,`+key+` AS sort_value,`+
+		`EXISTS(SELECT 1 FROM saved_pins pin WHERE pin.owner_key=? AND pin.kind='playlist' AND pin.resource_id=p.token AND pin.pinned=1),`+
+		`COALESCE(NULLIF(p.updated_at,''),p.created_at)`+where+` ORDER BY `+key+` `+r.Direction+`,p.token `+r.Direction+` LIMIT ?`, append([]any{actorKey(a)}, args...)...)
 	if e != nil {
 		return out, e
 	}
@@ -131,7 +136,7 @@ func (s *Service) PlaylistDirectory(r ContentRequest, a ResourceActor) (ContentE
 		var v ContentEntry
 		var n int
 		var value string
-		if e = rows.Scan(&v.ID, &v.Title, &v.Overview, &n, &value); e != nil {
+		if e = rows.Scan(&v.ID, &v.Title, &v.Overview, &n, &value, &v.Pinned, &v.LastChanged); e != nil {
 			rows.Close()
 			return out, e
 		}

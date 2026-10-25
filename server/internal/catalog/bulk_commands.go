@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"portico.local/server/internal/identity"
 )
@@ -241,6 +242,13 @@ func (s *Service) applyBulkCommand(ctx context.Context, tx *sql.Tx, p identity.P
 		inserted, e := result.RowsAffected()
 		if e != nil {
 			return e
+		}
+		// A membership that really landed is a change to the playlist itself; an item the
+		// "end" placement skipped is not. The revision still advances with this job's chunk.
+		if inserted == 1 {
+			if _, e = tx.Exec(`UPDATE catalog_playlists SET updated_at=? WHERE token=?`, time.Now().UTC().Format(time.RFC3339), target); e != nil {
+				return e
+			}
 		}
 		return recordBulkMembershipOutcome(tx, job, item, inserted == 1)
 	case "collection-add":

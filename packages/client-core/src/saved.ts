@@ -50,7 +50,7 @@ export function personalHistoryPath(options: Readonly<{ period?: HistoryPeriod; 
   return routePath("get_personal_history") + "?" + (params);
 }
 export type PlaylistOccurrence = Readonly<{ id: string; kind: 'playlist_entry'; hidden: true } | { id: string; kind: 'playlist_entry'; hidden: false; media: ContentEntry }>;
-export type PlaylistCard = Readonly<{ id: string; kind: 'playlist'; title: string; subtitle?: string; count?: number; artworkPaths?:readonly string[]; navigation: Readonly<{ view: 'playlist'; entityId: string }> }>;
+export type PlaylistCard = Readonly<{ id: string; kind: 'playlist'; title: string; subtitle?: string; count?: number; /** This viewer pinned the playlist. */ pinned?: boolean; /** When the playlist itself last changed (its creation, or its last name/summary/items edit). */ lastChanged?: string; artworkPaths?:readonly string[]; navigation: Readonly<{ view: 'playlist'; entityId: string }> }>;
 export type SavedEntry = ContentEntry | PlaylistOccurrence | PlaylistCard | SavedReadingGroupCard;
 export const savedEntryKey = (entry: SavedEntry): string => entry.kind === 'reading_group' ? `reading-group:${entry.id}` : entry.id;
 export type SavedProjection = Readonly<Omit<ContentProjection, 'scope' | 'sections' | 'navigation'> & {
@@ -94,6 +94,13 @@ export type SavedError = Readonly<{ code: string; message: string; retryable: bo
 export type SavedSnapshot = Readonly<{ generation: number; scope: SavedScope; route: SavedRoute | null; phase: 'idle' | 'loading' | 'ready' | 'error' | 'refresh-required'; projection: SavedProjection | null; playlist: PlaylistResource | null; error: SavedError | null; pagination: Readonly<{ cursor: string | null; history: readonly (string | null)[]; canPrevious: boolean; next: readonly Readonly<{ sectionId: string; cursor: string }>[] }>; pending: readonly Readonly<{ intent: SavedIntent; phase: 'queued' | 'sending' | 'retry-required' | 'conflict' }>[]; mutationError: SavedError | null; lastReceipt: SavedReceipt | null; candidates: SavedCandidates | null; candidatesLoading: boolean; candidatesError: SavedError | null; order: SavedOrder | null; orderLoading: boolean; orderError: SavedError | null }>;
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const text = (v: unknown, max = 512): v is string => typeof v === 'string' && v.length <= max && !/[\x00-\x1f\x7f]/.test(v);
+/** A published instant: RFC3339 UTC with seconds, bounded and round-trip parseable, so a
+ * corrupted date is refused here and can never reach a formatter as fiction. */
+const instant = (v: unknown): v is string => {
+ if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/.test(v)) return false;
+ const time = Date.parse(v);
+ return Number.isFinite(time) && new Date(time).toISOString().slice(0, 19) === v.slice(0, 19);
+};
 const prose = (v: unknown, max: number, multiline = false): v is string => typeof v === 'string' && v.length <= max * 2 && [...v].length <= max && !(multiline ? /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/ : /[\x00-\x1f\x7f]/).test(v);
 const id = (v: unknown): v is string => text(v, 256) && v.length > 0;
 const int = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
@@ -152,9 +159,9 @@ function entry(v: unknown, view: SavedRoute['view']): SavedEntry {
  }
  if (view === 'playlists') {
   if (!id(v.id) || v.kind !== 'playlist' || !prose(v.title, 200) || !record(v.navigation) || v.navigation.view !== 'playlist' || v.navigation.entityId !== v.id || v.playback !== undefined) invalid();
-  if (v.subtitle !== undefined && !prose(v.subtitle, 4000, true) || v.count !== undefined && !int(v.count)) invalid();
+  if (v.subtitle !== undefined && !prose(v.subtitle, 4000, true) || v.count !== undefined && !int(v.count) || v.pinned !== undefined && typeof v.pinned !== 'boolean' || v.lastChanged !== undefined && v.lastChanged !== '' && !instant(v.lastChanged)) invalid();
   const artworkPaths=v.artworkPaths===undefined?undefined:list(v.artworkPaths,4).map(path=>{if(!text(path,4096))invalid();return path;});
-  return { id: v.id, kind: 'playlist', title: v.title,...(artworkPaths?{artworkPaths:Object.freeze(artworkPaths)}:{}), navigation: { view: 'playlist', entityId: v.id }, ...(v.subtitle === undefined ? {} : { subtitle: v.subtitle as string }), ...(v.count === undefined ? {} : { count: v.count as number }) };
+  return { id: v.id, kind: 'playlist', title: v.title,...(v.pinned === true ? {pinned:true} : {}),...(v.lastChanged === undefined || v.lastChanged === '' ? {} : {lastChanged: v.lastChanged as string}),...(artworkPaths?{artworkPaths:Object.freeze(artworkPaths)}:{}), navigation: { view: 'playlist', entityId: v.id }, ...(v.subtitle === undefined ? {} : { subtitle: v.subtitle as string }), ...(v.count === undefined ? {} : { count: v.count as number }) };
  }
  return media(v);
 }
