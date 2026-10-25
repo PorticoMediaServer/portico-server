@@ -46,6 +46,14 @@ func (s *Service) BrowseCapabilitiesForViewer(viewer Viewer, library, pivot stri
 	if err != nil {
 		return out, err
 	}
+	var magazines, newspapers bool
+	if lib.Kind == "book" {
+		dated := common + ` AND m.series_id IS NOT NULL AND m.issue_date IS NOT NULL`
+		err = s.read().QueryRow(`SELECT EXISTS(SELECT 1 FROM reading_attribution_members m WHERE `+dated+` AND m.publication_type='magazine'),EXISTS(SELECT 1 FROM reading_attribution_members m WHERE `+dated+` AND m.publication_type='newspaper' AND length(m.issue_date)=10)`, append(append([]any{}, args...), args...)...).Scan(&magazines, &newspapers)
+		if err != nil {
+			return out, err
+		}
+	}
 	kind := "ebook"
 	if lib.Kind == "comic" {
 		kind = "comic"
@@ -72,6 +80,22 @@ func (s *Service) BrowseCapabilitiesForViewer(viewer Viewer, library, pivot stri
 			p.DefaultSort = []BrowseSortSelection{}
 		}
 		out.Pivots = append(out.Pivots, p)
+		if entry.ID == "books" {
+			for _, periodical := range []struct {
+				id, label string
+				available bool
+			}{{"magazines", "library.tab.magazines", magazines}, {"newspapers", "library.tab.newspapers", newspapers}} {
+				if !periodical.available {
+					continue
+				}
+				offered := BrowsePivotCapability{ID: periodical.id, LabelKey: periodical.label, EntityKinds: []string{}, DefaultSort: []BrowseSortSelection{}, SupportedViews: []string{"grid"}, Browsable: false, Sorts: []string{}, Filters: []string{}, Paging: "keyset", FacetSource: &BrowseFacetSource{Endpoint: "/v1/libraries/{id}/reading/periodicals", Field: "publicationType"}}
+				out.Pivots = append(out.Pivots, offered)
+				if periodical.id == pivot {
+					copy := offered
+					out.ResolvedPivot = &copy
+				}
+			}
+		}
 		if entry.ID == pivot {
 			copy := p
 			out.ResolvedPivot = &copy
