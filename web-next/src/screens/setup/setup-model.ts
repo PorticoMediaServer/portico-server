@@ -3,15 +3,17 @@ import {passwordStrength} from '@core/password-strength.ts';
 import {presentError} from '@core/presentation/errors.ts';
 
 export type SetupMode = 'hosted' | 'local';
-export type SetupLibraryKind = 'movie' | 'tv' | 'anime' | 'music' | 'audiobook';
+export type SetupLibraryKind = 'movie' | 'tv' | 'anime' | 'music' | 'audiobook' | 'book' | 'comic';
 
-/** The five drawn kinds (auth3), in the frame's order. */
-export const setupLibraryKinds: readonly Readonly<{id: SetupLibraryKind; label: MessageId; icon: 'i-film' | 'i-tvlib' | 'i-category' | 'i-music' | 'i-headph'}>[] = Object.freeze([
+/** The seven drawn library kinds (owner-libraries#13), in frame order. */
+export const setupLibraryKinds: readonly Readonly<{id: SetupLibraryKind; label: MessageId; icon: 'i-film' | 'i-tvlib' | 'i-category' | 'i-music' | 'i-headph' | 'i-book'}>[] = Object.freeze([
   {id: 'movie', label: 'web.libraryKind.plural', icon: 'i-film'},
   {id: 'tv', label: 'web.libraryKind.plural', icon: 'i-tvlib'},
   {id: 'anime', label: 'web.libraryKind.plural', icon: 'i-category'},
   {id: 'music', label: 'web.libraryKind.plural', icon: 'i-music'},
   {id: 'audiobook', label: 'web.libraryKind.plural', icon: 'i-headph'},
+  {id: 'book', label: 'web.libraryKind.plural', icon: 'i-book'},
+  {id: 'comic', label: 'web.libraryKind.plural', icon: 'i-book'},
 ]);
 
 export function libraryKindLabel(kind: SetupLibraryKind): string {

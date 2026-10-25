@@ -1,5 +1,6 @@
-import {useEffect, useMemo, useSyncExternalStore} from 'react';
+import {useEffect, useMemo, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
+import {FolderPicker} from '../settings/libraries/FolderPicker';
 import {Button, TextField} from '../../kit/controls';
 import {AuthStage} from '../../kit/accounts/AuthStage';
 import {ServicesStrength} from '../../kit/accounts/ServicesAuth';
@@ -90,7 +91,9 @@ function SetupSteps({steps, label}: {steps: ReturnType<typeof setupSteps>; label
 }
 
 function FirstLibrary({flow, state}: {flow: SetupFlow; state: SetupSnapshot}) {
-  const ready = setupNameValid(state.libraryName) && state.path.trim().length > 0 && !state.busy;
+  const [picking, setPicking] = useState(false);
+  const folderApi = flow.libraryFolderApi();
+  const ready = setupNameValid(state.libraryName) && (!!state.folders?.length || state.path.trim().length > 0) && !state.busy;
   return <AuthStage legal={false} contentClassName={styles.contentLibrary}>
     <p className={styles.okline}><Icon name="i-okc" size={20}/>{t('web.setup.youOwn', {server: state.serverName})}</p>
     <h1>{t('web.setup.firstLibrary')}</h1>
@@ -104,8 +107,12 @@ function FirstLibrary({flow, state}: {flow: SetupFlow; state: SetupSnapshot}) {
     <div className={styles.field}><TextField variant="auth" label={t('web.setup.folderName')} value={state.libraryName} maxLength={80}
       required disabled={state.busy} onChange={event => flow.setLibraryName(event.currentTarget.value)}/></div>
     <div className={styles.legend}>{t('web.setup.folder')}</div>
-    <div className={styles.field}><TextField variant="auth" label={t('web.setup.orTypePath')} value={state.path} required disabled={state.busy}
-      autoComplete="off" spellCheck={false} onChange={event => flow.setPath(event.currentTarget.value)}/></div>
+    {folderApi ? <>
+      <div className={styles.setupFolders}>{state.folders?.map(path => <div key={path} className={styles.setupFolder}><Icon name="i-folder" size={20}/><span>{path}</span><Button variant="text" size="small" icon="i-x" aria-label={`${t('next.ownerLibraries.explorer.removeChosen')} ${path}`} disabled={state.busy} onClick={() => flow.setFolders(state.folders?.filter(value => value !== path) ?? [])}/></div>)}</div>
+      <Button variant="glass" disabled={state.busy} onClick={() => setPicking(true)}>{t('next.ownerLibraries.explorer.choose')}</Button>
+      <FolderPicker open={picking && !state.busy} onOpenChange={setPicking} api={folderApi} onChoose={flow.setPath} onChooseMany={flow.setFolders} initialPaths={state.folders}/>
+    </> : <div className={styles.field}><TextField variant="auth" label={t('web.setup.orTypePath')} value={state.path} required disabled={state.busy}
+      autoComplete="off" spellCheck={false} onChange={event => flow.setPath(event.currentTarget.value)}/></div>}
     {state.error && <p className={styles.error} role="alert"><Icon name="i-warn" size={20}/>{state.error}</p>}
     <div className={styles.btnRow}>
       <Button variant="primary" size="hero" loading={state.busy} disabled={!ready} onClick={() => void flow.addLibrary()}>{t('web.setup.addLibraryScan')}</Button>
