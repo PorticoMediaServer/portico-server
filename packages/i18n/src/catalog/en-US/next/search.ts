@@ -4,4 +4,5 @@ export const searchMessages = {
   'next.search.preferToTalk': 'Prefer to talk?',
   'next.search.remoteMicrophoneHelp': "Hold your remote's microphone button and say what you want.",
   'next.search.tvShow': 'TV show',
+  'next.search.resume': '{episode}, {remaining}',
 } as const;
