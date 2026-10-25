@@ -25,7 +25,12 @@ type readingFixture struct {
 	s                           *reading.Service
 	p                           identity.Principal
 	library, item, source, path string
+	fileAuthor                  string
 }
+
+// fixtureFileAuthor is the one exact creator the built-in readingtest EPUB and
+// CBZ publications carry. A caller-supplied publication does not assume one.
+const fixtureFileAuthor = "Portico"
 
 // The scan, identity, permissions, schema, helper and filesystem are real. No
 // replacement Reading tables, permissive authorizer or playback source trick
@@ -82,6 +87,9 @@ func newReadingFixture(t *testing.T, kind, format string, publications ...[]byte
 		t.Fatal(err)
 	}
 	r := &readingFixture{f: f, d: d, s: s, p: p, library: library.ID, path: path}
+	if len(publications) == 0 && (format == "epub" || format == "cbz") {
+		r.fileAuthor = fixtureFileAuthor
+	}
 	if err = f.db.QueryRow(`SELECT pid(e.public_id),a.token FROM reading_publications p JOIN catalog_entities e ON e.id=p.item_id JOIN catalog_libraries cl ON cl.id=e.library_id JOIN catalog_assets a ON a.id=p.asset_id WHERE cl.library_id=?`, library.ID).Scan(&r.item, &r.source); err != nil {
 		t.Fatal(err)
 	}

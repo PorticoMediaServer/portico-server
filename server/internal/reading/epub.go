@@ -44,9 +44,9 @@ type packageXML struct {
 	XMLName  xml.Name
 	Metadata struct {
 		XMLName  xml.Name
-		Title    string `xml:"title"`
-		Author   string `xml:"creator"`
-		Language string `xml:"language"`
+		Title    string        `xml:"title"`
+		Creators []epubCreator `xml:"http://purl.org/dc/elements/1.1/ creator"`
+		Language string        `xml:"language"`
 		Types    []struct {
 			Value string `xml:",chardata"`
 			Inner string `xml:",innerxml"`
@@ -86,6 +86,47 @@ func decodeXML(b []byte, out any) error {
 			return ErrInvalid
 		}
 	}
+}
+
+// epubCreator keeps the exact package value, its raw inner XML and its optional
+// relator role.
+type epubCreator struct {
+	Value string `xml:",chardata"`
+	Inner string `xml:",innerxml"`
+	Role  string `xml:"role,attr"`
+}
+
+// readingCreator returns the package's one exact creator from the Dublin Core
+// namespace. An EPUB may carry several dc:creator values, and a creator may
+// carry a relator role. Only a single exact author value is accepted; a
+// different role (an editor, say), a nested value that would hide further
+// names, or more than one distinct author publishes no author rather than
+// choosing one.
+func readingCreator(values []epubCreator) string {
+	if len(values) > 64 {
+		return ""
+	}
+	exact := ""
+	for _, creator := range values {
+		// Chardata drops markup while innerxml keeps it. Declining the whole
+		// set keeps a nested name from being silently discarded.
+		if strings.Contains(creator.Inner, "<") {
+			return ""
+		}
+		role := strings.TrimSpace(creator.Role)
+		if role != "" && !strings.EqualFold(role, "aut") && !strings.EqualFold(role, "author") {
+			continue
+		}
+		value := strings.TrimSpace(creator.Value)
+		if value == "" {
+			continue
+		}
+		if exact != "" && value != exact {
+			return ""
+		}
+		exact = value
+	}
+	return exact
 }
 
 func OpenEPUB(ctx context.Context, r io.ReaderAt, size int64) (*EPUB, error) {
@@ -133,7 +174,7 @@ func openEPUBArchive(ctx context.Context, a *archive) (*EPUB, error) {
 	if len(p.Manifest) > MaxEntries || len(p.Spine.Items) > MaxEntries {
 		return nil, ErrLimit
 	}
-	e := &EPUB{archive: a, Package: pkg, Metadata: Metadata{Title: p.Metadata.Title, Author: p.Metadata.Author, Language: p.Metadata.Language, PublicationTypeField: "{http://purl.org/dc/elements/1.1/}type"}, allowed: map[string]string{"mimetype": "text/plain", "META-INF/container.xml": "application/xml", pkg: "application/oebps-package+xml"}}
+	e := &EPUB{archive: a, Package: pkg, Metadata: Metadata{Title: p.Metadata.Title, Author: readingCreator(p.Metadata.Creators), Language: p.Metadata.Language, PublicationTypeField: "{http://purl.org/dc/elements/1.1/}type"}, allowed: map[string]string{"mimetype": "text/plain", "META-INF/container.xml": "application/xml", pkg: "application/oebps-package+xml"}}
 	if p.XMLName.Local == "package" && p.XMLName.Space == "http://www.idpf.org/2007/opf" && p.Metadata.XMLName.Local == "metadata" && p.Metadata.XMLName.Space == p.XMLName.Space {
 		values := make([]string, 0, len(p.Metadata.Types))
 		scalar := true

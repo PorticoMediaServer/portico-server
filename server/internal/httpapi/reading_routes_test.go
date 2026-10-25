@@ -92,8 +92,8 @@ func readingOpened(t *testing.T, r *readingFixture, h http.Handler) ReadingSessi
 	if err := json.Unmarshal(w.Body.Bytes(), &manifest); err != nil {
 		t.Fatal(err)
 	}
-	if manifest.SessionID == "" || manifest.ItemID != r.item || manifest.SourceID != r.source || len(manifest.Revision) != 64 || manifest.Size <= 0 || manifest.Metadata.Title == "" || manifest.Metadata.Author != "" {
-		t.Fatal("manifest must project actual selected source and catalogue identity", manifest)
+	if manifest.SessionID == "" || manifest.ItemID != r.item || manifest.SourceID != r.source || len(manifest.Revision) != 64 || manifest.Size <= 0 || manifest.Metadata.Title == "" || manifest.Metadata.Author != r.fileAuthor {
+		t.Fatal("manifest must project actual selected source and accepted catalogue author", manifest)
 	}
 	for _, private := range []string{r.path, r.f.owner.AccessToken, "file://", "sourceUrl"} {
 		if strings.Contains(w.Body.String(), private) {

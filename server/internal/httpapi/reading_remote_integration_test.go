@@ -218,7 +218,7 @@ func readingRemoteRegistered(t *testing.T, savedProfile bool) {
 				}
 				base := "/v1/reading/sessions/" + manifest.SessionID
 				if !savedProfile {
-					if len(manifest.Resources) == 0 || len(manifest.Spine) == 0 || manifest.Metadata.Author != "" {
+					if len(manifest.Resources) == 0 || len(manifest.Spine) == 0 || manifest.Metadata.Author != fixtureFileAuthor {
 						t.Fatal("default-profile manifest did not inspect original source", manifest)
 					}
 					w = readingHTTP(t, h, "DELETE", base, token, "", nil)

@@ -227,6 +227,9 @@ func (s *Service) Prepare(ctx context.Context, p identity.Principal, item, sourc
 	if err = s.adoptPublicationType(ctx, p, f.Selection, document.Metadata); err != nil {
 		return nil, Publication{}, err
 	}
+	if err = s.adoptEmbeddedAuthor(ctx, p, f.Selection, document.EmbeddedAuthor); err != nil {
+		return nil, Publication{}, err
+	}
 	if err = s.adoptTextCount(ctx, p, f); err != nil {
 		return nil, Publication{}, err
 	}

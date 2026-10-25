@@ -2,8 +2,12 @@ package reading
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"strconv"
+	"strings"
+	"unicode/utf8"
 
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
@@ -11,10 +15,14 @@ import (
 )
 
 type Publication struct {
-	Conversion      *MobiProvenance
-	Sequential      bool
-	Selection       Selection
-	Metadata        Metadata
+	Conversion *MobiProvenance
+	Sequential bool
+	Selection  Selection
+	Metadata   Metadata
+	// EmbeddedAuthor is the package's own single creator, when it carries
+	// exactly one exact value. It is evidence for adoption only; it never
+	// substitutes for the catalogue's accepted author.
+	EmbeddedAuthor  string
 	Resources       []Resource
 	Spine           []string
 	PageNames       []string
@@ -35,6 +43,7 @@ func Inspect(f *Source) (Publication, error) {
 		out.Metadata.Direction = e.Metadata.Direction
 		out.Metadata.ExplicitPublicationType = e.Metadata.ExplicitPublicationType
 		out.Metadata.PublicationTypeField, out.Metadata.PublicationTypeRaw, out.Metadata.PublicationTypeComplete = e.Metadata.PublicationTypeField, e.Metadata.PublicationTypeRaw, e.Metadata.PublicationTypeComplete
+		out.EmbeddedAuthor = acceptedEmbeddedAuthor(e.Metadata.Author)
 		out.Resources = e.Resources
 		out.Spine = e.Spine
 		out.Contents, err = e.Contents(f.ctx)
@@ -49,6 +58,7 @@ func Inspect(f *Source) (Publication, error) {
 		out.Metadata.Direction = c.Metadata.Direction
 		out.Metadata.ExplicitPublicationType = c.Metadata.ExplicitPublicationType
 		out.Metadata.PublicationTypeField, out.Metadata.PublicationTypeRaw, out.Metadata.PublicationTypeComplete = c.Metadata.PublicationTypeField, c.Metadata.PublicationTypeRaw, c.Metadata.PublicationTypeComplete
+		out.EmbeddedAuthor = acceptedEmbeddedAuthor(c.Metadata.Author)
 		out.PageNames = c.Names
 	case "pdf":
 		if err := f.CheckPDF(); err != nil {
@@ -61,6 +71,91 @@ func Inspect(f *Source) (Publication, error) {
 		return out, err
 	}
 	return out, nil
+}
+
+// acceptedEmbeddedAuthor keeps only an exact, storable creator value. A value
+// the accepted-value reader would reject would make the whole title's accepted
+// facts unreadable, so such a value publishes nothing rather than a repaired
+// name. The file's own string is otherwise kept exactly, never split.
+func acceptedEmbeddedAuthor(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > 4096 || !utf8.ValidString(value) || strings.ContainsAny(value, "\x00\r\n") {
+		return ""
+	}
+	return value
+}
+
+// adoptEmbeddedAuthor publishes the publication's own single creator as
+// accepted file-metadata evidence. It is called only from the Prepare that
+// opened this exact source. The writer rechecks the same current inventory
+// observation and same-source association in its own transaction before it
+// writes, and an unchanged observation writes nothing. Owner overrides keep
+// their existing precedence over this row. The normalized accepted fields carry
+// no title, so the embedded title is deliberately not published here; the
+// catalogue title remains the path rule's title.
+func (s *Service) adoptEmbeddedAuthor(ctx context.Context, p identity.Principal, selected Selection, author string) error {
+	if author == "" || (selected.Format != "epub" && selected.Format != "cbz") {
+		return nil
+	}
+	if s == nil || s.DB == nil {
+		return ErrUnavailable
+	}
+	gate, err := dbwork.Begin(ctx, s.DB, dbwork.ClassBackgroundMedia)
+	if err != nil {
+		return err
+	}
+	defer gate.Rollback()
+	tx := gate.Tx()
+	current, err := s.selectTx(ctx, tx, p, selected.ItemID, selected.SourceID)
+	if err != nil {
+		return err
+	}
+	// The opened publication is the evidence. A different current revision is a
+	// different file, so its package facts are never attributed to this one.
+	if current.Revision != selected.Revision || current.object != selected.object || current.inventory != selected.inventory || current.inventoryRow != selected.inventoryRow {
+		return ErrChanged
+	}
+	var text, revision, object string
+	err = tx.QueryRowContext(ctx, `SELECT text_value,source_revision,inventory_object_id FROM reading_source_values WHERE item_id=? AND asset_id=? AND field='author' AND source='file-metadata'`, current.Entity, current.Asset).Scan(&text, &revision, &object)
+	if err == nil && text == author && revision == current.inventory && object == current.inventoryRow {
+		return nil
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM reading_source_values WHERE item_id=? AND asset_id=? AND field='author' AND source='file-metadata'`, current.Entity, current.Asset); err != nil {
+		return err
+	}
+	// Recheck the exact observation at publication, as the path publisher does.
+	// The insert selects only a current object of this same source and library.
+	result, err := tx.ExecContext(ctx, `INSERT INTO reading_source_values(item_id,asset_id,field,text_value,number_value,source,inventory_object_id,source_revision)
+ SELECT ?1,?2,'author',?3,NULL,'file-metadata',o.id,o.revision FROM inventory_objects o
+ JOIN catalog_assets a ON a.token=o.asset_id AND a.id=?2
+ JOIN reading_publications p ON p.item_id=?1 AND p.asset_id=a.id
+ JOIN catalog_asset_links link ON link.entity_id=p.item_id AND link.asset_id=p.asset_id
+ JOIN catalog_entities e ON e.id=p.item_id JOIN catalog_libraries cl ON cl.id=e.library_id
+ JOIN library_sources s ON s.id=o.source_id AND s.library_id=cl.library_id
+ WHERE o.id=?4 AND o.revision=?5 AND o.root_incarnation=s.incarnation AND o.retired=0`, current.Entity, current.Asset, author, current.inventoryRow, current.inventory)
+	if err != nil {
+		return err
+	}
+	if n, err := result.RowsAffected(); err != nil {
+		return err
+	} else if n != 1 {
+		return ErrChanged
+	}
+	automatic, err := compactcatalog.ReadingAutomaticFieldsTx(ctx, tx, current.Entity)
+	if err != nil {
+		return err
+	}
+	value := ""
+	if automatic.Author != nil {
+		value = automatic.Author.Value
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE metadata_owner_fields SET automatic_value=? WHERE kind='item' AND entity_id=? AND field='author' AND automatic_value<>?`, value, current.Entity, value); err != nil {
+		return err
+	}
+	return gate.Commit()
 }
 
 type LibraryRow struct {

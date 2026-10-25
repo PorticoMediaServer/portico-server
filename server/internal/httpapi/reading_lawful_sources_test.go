@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/xml"
 	"fmt"
 	"image"
 	"net/url"
@@ -15,6 +17,36 @@ import (
 
 	"portico.local/server/internal/reading"
 )
+
+// comicInfoWriter reads the fixture's own ComicInfo.xml, independently of the
+// server's publication and database, using the same exact root entry and field
+// the real parser accepts.
+func comicInfoWriter(t *testing.T, raw []byte) string {
+	t.Helper()
+	z, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range z.File {
+		if entry.Name != "ComicInfo.xml" {
+			continue
+		}
+		body, err := entry.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer body.Close()
+		var info struct {
+			Writer string `xml:"Writer"`
+		}
+		if err = xml.NewDecoder(body).Decode(&info); err != nil {
+			t.Fatal("lawful ComicInfo.xml", err)
+		}
+		return strings.TrimSpace(info.Writer)
+	}
+	t.Fatal("lawful input has no ComicInfo.xml")
+	return ""
+}
 
 // These optional large fixtures are retained outside Git by the lane owner.
 // Their provenance is in publisher-fixture-custody.json. A configured run must
@@ -107,8 +139,8 @@ func TestReadingPrivateLawfulComicPagesAndReturnedVariants(t *testing.T) {
 		{"1905-11-12-page.jpg", "8eae9b9e60c695ce5da0bd136231b6a9e9a8abe52dd82d7e6bee379cfe37d20a", 1775, 2427},
 		{"1905-11-19-page.jpg", "7de67d3a65bcc70c1f557c3ddaafd5527d6f4790d4ae95baf626154047a636d0", 1741, 2405},
 	}
-	if len(publication.PageNames) != len(pages) || publication.Metadata.Author != "" {
-		t.Fatal("not the actual six page facts or authoritative author omission", publication)
+	if len(publication.PageNames) != len(pages) || publication.Metadata.Author != comicInfoWriter(t, raw) {
+		t.Fatal("not the actual six page facts or accepted embedded author", publication)
 	}
 	revision := publication.Selection.Revision
 	for index, page := range pages {

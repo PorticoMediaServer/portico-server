@@ -86,8 +86,8 @@ func TestReadingPrivateEPUBAndComicActualAssets(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if document.Metadata.Author != "" {
-				t.Fatal("file author resurrected over authoritative omission")
+			if document.Metadata.Author != fixtureFileAuthor {
+				t.Fatalf("file author evidence: got %q want %q", document.Metadata.Author, fixtureFileAuthor)
 			}
 			var path string
 			if tc.format == "epub" {
