@@ -3,8 +3,12 @@ import assert from 'node:assert/strict';
 import {createWebScreenRegistry, defineWebAction, defineWebScreen, invokeWebAction, webScreenIdForRoute, webScreenPaths} from '../src/route-registry.ts';
 const Screen = () => null;
 test('every existing destination has a stable screen id, with no prefix/opaque-id inference', () => {
-  assert.equal(Object.keys(webScreenPaths).length, 20);
+  assert.equal(Object.keys(webScreenPaths).length, 22);
   for (const [id, path] of Object.entries(webScreenPaths)) assert.equal(webScreenIdForRoute(path), id);
+  assert.equal(webScreenIdForRoute('/person/$personId'), 'person');
+  assert.equal(webScreenIdForRoute('/read/$itemId'), 'read');
+  assert.equal(webScreenIdForRoute('/person/some-id'), undefined);
+  assert.equal(webScreenIdForRoute('/read/some-id'), undefined);
   assert.equal(webScreenIdForRoute('/library/some-id'), undefined);
   assert.equal(webScreenIdForRoute('/settings/extra'), undefined);
 });
