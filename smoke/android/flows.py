@@ -192,6 +192,7 @@ def main():
     parser.add_argument("--server", default="https://demo.getportico.tv")
     parser.add_argument("--creds", required=True, help="private JSON with username and password")
     parser.add_argument("--build", default="unknown", help="build SHA for the report")
+    parser.add_argument("--skip-playback", action="store_true", help="hold decode steps while Media owns readiness")
     args = parser.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
@@ -324,7 +325,10 @@ def main():
     checks.run("home", home)
     checks.run("library", library)
     checks.run("detail", detail)
-    checks.run("playback", play)
+    if args.skip_playback:
+        checks.blocked("playback", "held: Media owns playback/decoder readiness for this window")
+    else:
+        checks.run("playback", play)
     if args.mode == "tv":
         checks.run("focus-walk", focus_walk)
     else:

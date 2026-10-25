@@ -17,6 +17,7 @@ SERIAL=emulator-5554
 OUT=""
 CREDS=/home/justin/projects/Portico/.private/demo-testing/active-credentials.json
 SERVER=https://demo.getportico.tv
+PLAYBACK=yes
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -24,6 +25,7 @@ while [ $# -gt 0 ]; do
     --serial) SERIAL="$2"; shift 2 ;;
     --creds) CREDS="$2"; shift 2 ;;
     --server) SERVER="$2"; shift 2 ;;
+    --skip-playback) PLAYBACK=no; shift ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -72,8 +74,9 @@ cleanup() {
 trap cleanup EXIT
 
 # 2. Core flows.
-python3 "$SHELL_DIR/smoke/android/flows.py" --serial "$SERIAL" --apk "$ARTIFACT" --mode phone \
-  --out "$OUT/core" --creds "$CREDS" --server "$SERVER" --build "$PIN" >> "$LOG" 2>&1
+FLOW_ARGS=(--serial "$SERIAL" --apk "$ARTIFACT" --mode phone --out "$OUT/core" --creds "$CREDS" --server "$SERVER" --build "$PIN")
+[ "$PLAYBACK" = "no" ] && FLOW_ARGS+=(--skip-playback)
+python3 "$SHELL_DIR/smoke/android/flows.py" "${FLOW_ARGS[@]}" >> "$LOG" 2>&1
 CORE=$?
 say "$([ $CORE -eq 0 ] && echo PASS || echo FAIL)" "core flows exit=$CORE"
 
