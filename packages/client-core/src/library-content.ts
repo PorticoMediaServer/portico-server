@@ -16,7 +16,12 @@ export interface LibraryContentApi { request<T>(path: string, method?: string, b
 export type ContentEntryKind = 'ebook' | 'comic' | 'movie' | 'show' | 'season' | 'episode' | 'artist' | 'album' | 'song' | 'book' | 'audiobook_file' | 'chapter' | 'collection' | 'category' | 'author' | 'book_series' | 'disc' | 'extra' | 'playlist';
 /** `params` fill a parameterised heading (a Discover personal row: "{genre} for you"); name it with `serverTextLabel`. */
 export type ContentHeading = Readonly<{ key: string; fallback: string; params?: Readonly<Record<string, string>> }>;
+/** Explicit display fact on an already admitted Reading leaf. Commands still
+ * obtain their own viewer-fenced mark response; progress never supplies this. */
+export type ReadingEntryMark = Readonly<{itemId: string; read: boolean; revision: number}>;
 export type ContentEntry = Readonly<{
+  pageCount?: number;
+  readingMark?: ReadingEntryMark;
   audioFacts?: MusicTechnicalFacts;
   publicationType?: 'book' | 'magazine' | 'newspaper';
   dateBased?:boolean;special?:boolean;new?:boolean; show?:Readonly<{id:string;name:string}>;
@@ -167,6 +172,15 @@ function entry(v: unknown): ContentEntry {
   if ((v.kind==='ebook'||v.kind==='comic') && (v.playback!=null||v.durationMs!=null||v.duration!=null)) invalid();
   const row: { -readonly [K in keyof ContentEntry]: ContentEntry[K] } = { id: v.id, kind: v.kind as ContentEntryKind, title: (v.title ?? '') as string };
   if ((v.kind === 'ebook' || v.kind === 'comic') && (v.publicationType === 'book' || v.publicationType === 'magazine' || v.publicationType === 'newspaper')) row.publicationType = v.publicationType;
+  if (v.kind === 'ebook' || v.kind === 'comic') {
+    if (count(v.pageCount) && v.pageCount > 0) row.pageCount = v.pageCount; else left('entry.pageCount', v.pageCount);
+    const mark = v.readingMark;
+    if (mark !== undefined) {
+      if (record(mark) && mark.itemId === row.id && typeof mark.read === 'boolean' && count(mark.revision)) {
+        row.readingMark = Object.freeze({itemId: row.id, read: mark.read, revision: mark.revision});
+      } else left('entry.readingMark', mark);
+    }
+  }
   if (v.audioFacts !== undefined && v.kind === 'song') {
     const facts = parseMusicTechnicalFacts(v.audioFacts);
     if (facts) row.audioFacts = facts; else left('entry.audioFacts', v.audioFacts);
