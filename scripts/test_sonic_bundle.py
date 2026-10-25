@@ -426,20 +426,47 @@ class SonicBundleTests(unittest.TestCase):
             finally:
                 stream.close()
 
+    def test_model_stream_refuses_a_second_compressed_stream(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            archive, _ = self.model_export(root)
+            first = archive.read_bytes()
+            second = lzma.compress(b'additional stream')
+            # Exercise both decoder.unused_data and a second stream reached by
+            # finish() after the decoder's first 64 KiB input chunk.
+            for padding in (0, 1 << 16):
+                with self.subTest(padding=padding):
+                    joined = root / f'joined-{padding}.tar.xz'
+                    joined.write_bytes(first + bytes(padding) + second)
+                    output = root / f'out-{padding}'
+                    with self.assertRaises(ValueError):
+                        bundle.model_extract(joined, output)
+                    self.assertFalse(output.exists())
+
     def test_model_archive_requires_the_full_end_of_archive_trailer(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             archive, _ = self.model_export(root)
             with lzma.open(archive, 'rb') as source:
                 raw = source.read()
-            self.assertEqual(raw[-1024:], bytes(1024))
-            for drop in (1024, 512):
-                stripped = root / f'no-trailer-{drop}.tar.xz'
+            # tarfile pads a record to 10 KiB. Removing only its last blocks
+            # leaves the real two-block trailer intact, so locate the trailer
+            # immediately after the five member payloads before truncating it.
+            end = 0
+            members = 0
+            while raw[end:end + 512] != bytes(512):
+                _, size = bundle.model_header(raw[end:end + 512])
+                end += 512 + ((size + 511) // 512) * 512
+                members += 1
+            self.assertEqual(members, 5)
+            self.assertEqual(raw[end:end + 1024], bytes(1024))
+            for blocks in (0, 1):
+                stripped = root / f'no-trailer-{blocks}.tar.xz'
                 with lzma.open(stripped, 'wb') as sink:
-                    sink.write(raw[:-drop])
+                    sink.write(raw[:end + blocks * 512])
                 with self.assertRaises(ValueError):
-                    bundle.model_extract(stripped, root / f'out-{drop}')
-                self.assertFalse((root / f'out-{drop}').exists())
+                    bundle.model_extract(stripped, root / f'out-{blocks}')
+                self.assertFalse((root / f'out-{blocks}').exists())
 
     def test_model_publish_leaves_an_existing_destination_untouched(self):
         with tempfile.TemporaryDirectory() as temporary:
