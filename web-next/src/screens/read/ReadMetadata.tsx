@@ -8,7 +8,7 @@ import {MetadataEditor} from '../metadata/MetadataEditor';
 import {screenLifetime, type ScreenContext} from '../detail/context';
 
 /** Reading items are nonplayable: resolve their library through the existing owner metadata response. */
-export function ReadMetadata({context, itemId, onClose, anchor}: {context: ScreenContext; itemId: string; onClose: () => void; anchor: RefObject<HTMLElement | null>}) {
+export function ReadMetadata({context, itemId, libraryId: expectedLibraryId, onClose, anchor}: {context: ScreenContext; itemId: string; libraryId?: string; onClose: () => void; anchor: RefObject<HTMLElement | null>}) {
   const [ready, setReady] = useState<Readonly<{target: RepairTarget; life: ReturnType<typeof screenLifetime>}>>(), [failed, setFailed] = useState(false), [retry, setRetry] = useState(0);
   useEffect(() => {
     let active = true; const life = screenLifetime(context);
@@ -18,13 +18,13 @@ export function ReadMetadata({context, itemId, onClose, anchor}: {context: Scree
     void life.api.request<unknown>(encodedRoutePath('get_metadata_kind_id', {kind: 'item', id: encodeURIComponent(itemId)}), 'GET', undefined, life.signal()).then(raw => {
       if (!active || !life.current()) return;
       const libraryId = (raw as {libraryId?: unknown} | null)?.libraryId;
-      if (typeof libraryId !== 'string' || !libraryId || libraryId.length > 256) throw new Error('invalid_metadata_target');
+      if (typeof libraryId !== 'string' || !libraryId || libraryId.length > 256 || expectedLibraryId !== undefined && libraryId !== expectedLibraryId) throw new Error('invalid_metadata_target');
       const selected: RepairTarget = Object.freeze({kind: 'item', id: itemId, libraryId});
       validateRepair(raw, context.scope, selected);
       setReady({target: selected, life});
     }).catch(error => {if (active && life.current()) {setFailed(true); context.effects.reportError(error);}});
     return () => {active = false; life.dispose();};
-  }, [context, itemId, retry]);
+  }, [context, itemId, expectedLibraryId, retry]);
   const owner = context.identity?.viewer;
   if (!context.isCurrent() || owner?.authority !== 'local' || owner.role !== 'owner') return null;
   return <Dialog open placement="right" width={520} title={defaultI18n.t('entry.editMetadata')} onOpenChange={open => {if (!open) onClose();}} returnFocusRef={anchor}>

@@ -1,4 +1,4 @@
-import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import {generatedCoverTint} from '@design';
 import type {FactPart} from '@portico/client-core/kit-model';
@@ -10,6 +10,9 @@ import {WindowedGrid} from '../../kit/layout';
 import {CoverCard} from '../../kit/cards';
 import {GeneratedCover} from '../../kit/artwork';
 import {Skeleton, StateView} from '../../kit/states';
+import {Menu, MenuItem} from '../../kit/overlays';
+import {useLibraryScreenContext} from '../browse/screen-context';
+import {ReadMetadata} from './ReadMetadata';
 import {createReadBindings} from './bindings';
 import {createReadingCollection, createReadingContinueCollection, type ReadingContinueItem, type ReadingLibraryItem} from './library-collection';
 import {readDestination} from './navigation';
@@ -115,6 +118,8 @@ export function ReadLibraryEntry({libraryId, header, onMore, view = 'discover'}:
   return captured ? <BoundReadLibrary key={libraryId} captured={captured} libraryId={libraryId} header={header} onMore={onMore} view={view}/> : null;
 }
 function BoundReadLibrary({captured, libraryId, header, onMore, view}: {captured: Captured; libraryId: string; header: ReactNode; onMore?: (item: ReadingLibraryItem, anchor: HTMLButtonElement) => void; view: 'discover' | 'books'}) {
+  const context = useLibraryScreenContext(captured);
+  const [menu, setMenu] = useState<Readonly<{item: ReadingLibraryItem; anchor: HTMLButtonElement}>>(), [editor, setEditor] = useState<Readonly<{item: ReadingLibraryItem; anchor: HTMLButtonElement}>>();
   const errorSink = useRef(captured.binding.home.effects.reportError); errorSink.current = captured.binding.home.effects.reportError;
   const library = captured.context.facts.identity.libraries.find(library => library.id === libraryId);
   const isReading = library?.kind === 'book' || library?.kind === 'comic';
@@ -125,12 +130,24 @@ function BoundReadLibrary({captured, libraryId, header, onMore, view}: {captured
     const bindings = createReadBindings(captured.context), books = createReadingCollection(bindings.client, libraryId),
       resume = createReadingContinueCollection(bindings.client, libraryId);
     setRetired(false);
-    const off = bindings.authority.subscribe(() => setRetired(true));
+    setMenu(undefined); setEditor(undefined);
+    const off = bindings.authority.subscribe(() => {setRetired(true); setMenu(undefined); setEditor(undefined);});
     setResources({books, resume, bindings, reportError: error => {if (bindings.authority.isCurrent()) errorSink.current(error);}});
     return () => {off();books.dispose();resume.dispose(); void bindings.dispose().catch(() => {});};
   }, [captured.context, libraryId, isReading, retry]);
+  const viewer = context.identity?.viewer, canEdit = viewer?.authority === 'local' && viewer.role === 'owner';
+  const editorContext = useMemo(() => ({...context, isCurrent: () => context.isCurrent() && !!editor && resources !== undefined && resources.bindings.authority.isCurrent()
+    && editor.item.libraryId === libraryId && resources.books.collection.residentItems().includes(editor.item)}), [context, editor, resources, libraryId]);
+  const openMore = onMore ?? (canEdit ? (item: ReadingLibraryItem, anchor: HTMLButtonElement) => {
+    if (context.isCurrent() && resources?.bindings.authority.isCurrent() && item.libraryId === libraryId && resources.books.collection.residentItems().includes(item)) setMenu({item, anchor});
+  } : undefined);
   if (!isReading || !library) return <StateView title={t('next.states.notFound')} body={t('next.states.notFoundBody')}/>;
   const again = () => setRetry(value => value + 1);
   return <>{header}{retired ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: again}}/>
-    : resources ? <LibraryRows resources={resources} libraryId={libraryId} name={library.name} comic={library.kind === 'comic'} view={view} onMore={onMore} onRetry={again}/> : <Skeleton height={320}/>}</>;
+    : resources ? <LibraryRows resources={resources} libraryId={libraryId} name={library.name} comic={library.kind === 'comic'} view={view} onMore={openMore} onRetry={again}/> : <Skeleton height={320}/>}
+    {menu && canEdit && <Menu open title={menu.item.title} anchorRef={{current: menu.anchor}} onOpenChange={open => {if (!open) setMenu(undefined);}}>
+      <MenuItem onSelect={() => {if (context.isCurrent() && resources?.bindings.authority.isCurrent() && resources.books.collection.residentItems().includes(menu.item)) setEditor(menu);}}>{t('entry.editMetadata')}</MenuItem>
+    </Menu>}
+    {editor && canEdit && <ReadMetadata context={editorContext} itemId={editor.item.id} libraryId={libraryId} anchor={{current: editor.anchor}} onClose={() => {setEditor(undefined); setMenu(undefined); again();}}/>}
+  </>;
 }
