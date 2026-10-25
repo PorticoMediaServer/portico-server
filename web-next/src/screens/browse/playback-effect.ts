@@ -55,3 +55,21 @@ export function createScreenArtistPlayEffect(input: Readonly<{isCurrent: () => b
     if (!current()) throw new DOMException('Search playback changed', 'AbortError');
   };
 }
+
+/** Whole album in the server's disc/track order (or its own shuffle), not the
+ * loaded track page. Keep the original page and runtime across admission. */
+export function createScreenAlbumPlayEffect(input: Readonly<{isCurrent: () => boolean; runtime: () => Pick<NonNullable<ShellBindings['playback']>['runtime'], 'playFromQueue'> | undefined}>): NonNullable<ScreenContext['effects']['playAlbum']> {
+  const authorityCurrent = input.isCurrent.bind(input), getRuntime = input.runtime.bind(input);
+  return async (albumId, shuffle, signal, callerCurrent) => {
+    const capturedAlbumId = albumId, capturedShuffle = shuffle;
+    signal.throwIfAborted();
+    if (!authorityCurrent() || !callerCurrent()) throw new DOMException('Album playback changed', 'AbortError');
+    const runtime = getRuntime();
+    if (!runtime) throw new DOMException('Playback is still loading', 'AbortError');
+    const current = () => !signal.aborted && authorityCurrent() && callerCurrent() && getRuntime() === runtime;
+    if (!current()) throw new DOMException('Album playback changed', 'AbortError');
+    await runtime.playFromQueue({container: {kind: 'album', id: capturedAlbumId}}, {signal, isCurrent: current}, {shuffle: capturedShuffle});
+    signal.throwIfAborted();
+    if (!current()) throw new DOMException('Album playback changed', 'AbortError');
+  };
+}
