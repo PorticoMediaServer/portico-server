@@ -123,10 +123,11 @@ type HardwareStatus struct {
 	Effective  string          `json:"effective"`
 	Device     string          `json:"device"`
 	Probes     []HardwareProbe `json:"probes"`
-	// Devices are the adapters this host exposes, the measured per-format grid,
-	// the one failure worth reporting and when the newest probe ran. They answer
-	// Server › Streaming › Hardware from probes that ran here; Empty when the
-	// delivery service publishes no inventory.
+	// Devices are the adapters this host exposes, the selected backend's
+	// qualified per-format cells, the one failure worth reporting and when the
+	// newest probe ran. They answer Server › Streaming › Hardware from probes
+	// that ran here and from the probe playback selected, not from a second
+	// guess at policy; empty when the delivery service publishes no inventory.
 	Devices   []decoder.HardwareFactDevice `json:"devices"`
 	Formats   []decoder.HardwareFactFormat `json:"formats"`
 	LastError *decoder.HardwareFactFault   `json:"lastError"`
@@ -137,7 +138,7 @@ type HardwareStatus struct {
 // exist and the measured grid beside them. A source that only probes backends
 // leaves the device rows empty rather than inventing them.
 type HardwareFactSource interface {
-	Facts(ctx context.Context, device, effective string) decoder.HardwareFacts
+	Facts(ctx context.Context, device, configured string) decoder.HardwareFacts
 }
 
 type ToneMappingStatus struct {
@@ -223,7 +224,7 @@ func (c *Capacity) Report(ctx context.Context, s TranscodeSettings, sessions Ses
 	hardware := HardwareStatus{Configured: s.HardwareBackend, Effective: effective, Device: s.HardwareDevice, Probes: probes,
 		Devices: []decoder.HardwareFactDevice{}, Formats: []decoder.HardwareFactFormat{}}
 	if facts, ok := c.Probes.(HardwareFactSource); ok && facts != nil {
-		measured := facts.Facts(ctx, s.HardwareDevice, effective)
+		measured := facts.Facts(ctx, s.HardwareDevice, s.HardwareBackend)
 		if measured.Devices != nil {
 			hardware.Devices = measured.Devices
 		}

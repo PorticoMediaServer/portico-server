@@ -12,14 +12,17 @@ type HardwareFactDevice struct {
 	// owner's screen turns into the frame's own wording (Quick Sync, NVENC, …).
 	// Empty means no backend has earned this adapter yet.
 	Method string `json:"method,omitempty"`
-	// InUse marks the adapter the effective backend's conversions run on.
+	// InUse marks the adapter the selected probe ran on: the witness decides, not
+	// a shared backend name, so two cards of one vendor are never both marked.
 	InUse bool `json:"inUse"`
 }
 
-// HardwareFactFormat is one row of the settings grid: whether this server will
-// decode and encode that format in hardware right now. False is a statement
-// about behaviour, not about the card: an unprobed cell is decoded by the
-// processor because hardware decode is never assumed.
+// HardwareFactFormat is one row of the settings grid: whether the backend
+// playback selected now is qualified to decode and encode that format in
+// hardware. False means that backend's probe has no such cell, so a session
+// would plan the processor for it. It describes selected capabilities, not one
+// session's executed graph: burn-in, Dolby Vision profile 5 reshaping and a
+// mid-session fallback can still differ.
 type HardwareFactFormat struct {
 	Format string `json:"format"`
 	Decode bool   `json:"decode"`
@@ -69,9 +72,10 @@ var hardwareFactFormatOrder = []string{"h264", "hevc8", "hevc10", "av1", "vp9", 
 
 // hardwareFactDecodeKeys are the decode cells that count for one grid row.
 var hardwareFactDecodeKeys = map[string][]string{
-	"h264":   {"h264:8"},
-	"hevc8":  {"hevc:8"},
-	"hevc10": {"hevc:10", "hevc:12"},
+	"h264":  {"h264:8"},
+	"hevc8": {"hevc:8"},
+	// A 12-bit success does not prove 10-bit: they are separate cells.
+	"hevc10": {"hevc:10"},
 	"av1":    {"av1:8", "av1:10"},
 	"vp9":    {"vp9:8", "vp9:10"},
 	// VC-1 needs a licensed fixture before it can be probed, so it stays false:
@@ -90,46 +94,95 @@ var hardwareFactEncodeKeys = map[string][]string{
 }
 
 // ComposeHardwareFacts answers the drawn Hardware rows from what this process
-// measured. Devices come from discovery, the grid and the adapter's method from
-// real probes, and effective is the backend the owner's setting resolved to.
-func ComposeHardwareFacts(devices []HardwareDevice, probes []HardwareProbe, effective string) HardwareFacts {
+// measured. Devices come from discovery; the grid, each adapter's method and the
+// adapter conversions run on come from the probe the delivery service selected,
+// never from a second guess at the policy. That probe is the selected backend's
+// own qualified capability: it is not proof of one session's executed graph,
+// which plan stages, burn-in, Dolby Vision profile 5 reshaping and a mid-session
+// software fallback can still change. configured is the owner's own choice;
+// selected is what playback would use right now, nil when nothing is selected.
+func ComposeHardwareFacts(devices []HardwareDevice, probes []HardwareProbe, configured string, selected *HardwareProbe) HardwareFacts {
 	out := HardwareFacts{Devices: []HardwareFactDevice{}, Formats: []HardwareFactFormat{}}
+	// proven maps a render node to the backend a real probe ran on it. A backend
+	// probed through its own default selector (no node named) is the backend's
+	// own choice of adapter, which is the first one discovery lists for it; the
+	// claim is still a real probe, never discovery alone.
 	proven := map[string]HardwareBackend{}
-	usable := false
+	defaulted := map[HardwareBackend]bool{}
 	for _, probe := range probes {
 		if !probe.Available || probe.Backend == BackendSoftware {
 			continue
 		}
-		usable = true
-		if probe.Device != "" {
-			if _, seen := proven[probe.Device]; !seen {
-				proven[probe.Device] = probe.Backend
-			}
+		if probe.Device == "" {
+			defaulted[probe.Backend] = true
+			continue
+		}
+		if _, seen := proven[probe.Device]; !seen {
+			proven[probe.Device] = probe.Backend
 		}
 	}
+	assigned := map[HardwareBackend]bool{}
 	for _, device := range devices {
-		method, inUse := "", false
-		if backend, ok := proven[device.Path]; ok {
-			method = hardwareFactMethod(backend)
-			inUse = string(backend) == effective
-		} else if len(device.Backends) > 0 {
-			// Found but not yet proven: name the method the adapter is expected
-			// to offer, and say nothing about what it can do.
-			method = hardwareFactMethod(device.Backends[0])
+		backend, ok := proven[device.Path]
+		if !ok {
+			for _, candidate := range device.Backends {
+				if defaulted[candidate] && !assigned[candidate] {
+					backend, ok = candidate, true
+					break
+				}
+			}
 		}
-		out.Devices = append(out.Devices, HardwareFactDevice{ID: device.ID, Name: hardwareFactDeviceName(device), Method: method, InUse: inUse})
+		if ok {
+			assigned[backend] = true
+		}
+		fact := HardwareFactDevice{ID: device.ID, Name: hardwareFactDeviceName(device)}
+		if ok {
+			fact.Method = hardwareFactMethod(backend)
+			fact.InUse = servedBy(device, backend, selected)
+		}
+		out.Devices = append(out.Devices, fact)
 	}
 	for _, format := range hardwareFactFormatOrder {
 		out.Formats = append(out.Formats, HardwareFactFormat{Format: format,
-			Decode: anyProbeCell(probes, func(probe HardwareProbe) map[string]bool { return probe.DecodeCodecs }, hardwareFactDecodeKeys[format]),
-			Encode: anyProbeCell(probes, func(probe HardwareProbe) map[string]bool { return probe.OutputQuality }, hardwareFactEncodeKeys[format]),
+			Decode: selected != nil && probeSays(selected.DecodeCodecs, hardwareFactDecodeKeys[format]),
+			Encode: selected != nil && probeSays(selected.OutputQuality, hardwareFactEncodeKeys[format]),
 		})
 	}
-	if !usable {
-		out.Fault = hardwareFactFault()
+	// A working backend the owner deliberately turned off is not a fault, and a
+	// cold cache is not one either: only a selection that fell back because
+	// every candidate failed is.
+	if configured != string(BackendSoftware) {
+		switch {
+		case selected == nil:
+			out.Fault = hardwareFactFault(nil)
+		case selected.Backend == BackendSoftware && selected.Reason == ProbeEncodeFailed:
+			out.Fault = hardwareFactFault(nil)
+		case selected.Backend != BackendSoftware && !selected.Available && selected.Reason != ProbeWarming:
+			out.Fault = hardwareFactFault(selected)
+		}
 	}
 	out.LastTest = newestProbeTime()
 	return out
+}
+
+// servedBy says whether this adapter is the one the selected probe ran on. The
+// probe is the witness: its own adapter ID or render node decides, so two cards
+// that share a backend are never both marked in use. A probe that names no
+// adapter is the backend's own default, which is the first adapter discovery
+// lists for that backend.
+func servedBy(device HardwareDevice, backend HardwareBackend, selected *HardwareProbe) bool {
+	if selected == nil || !selected.Available || selected.Backend != backend {
+		return false
+	}
+	if selected.Device != "" {
+		return selected.Device == device.Path
+	}
+	for _, candidate := range device.Backends {
+		if candidate == backend {
+			return true
+		}
+	}
+	return false
 }
 
 // hardwareFactMethod turns a backend into the stable method token the owner's
@@ -148,16 +201,11 @@ func hardwareFactDeviceName(device HardwareDevice) string {
 	return device.ID
 }
 
-func anyProbeCell(probes []HardwareProbe, cells func(HardwareProbe) map[string]bool, keys []string) bool {
-	for _, probe := range probes {
-		if !probe.Available {
-			continue
-		}
-		measured := cells(probe)
-		for _, key := range keys {
-			if measured[key] {
-				return true
-			}
+// probeSays reports whether one probe measured any of these cells as working.
+func probeSays(cells map[string]bool, keys []string) bool {
+	for _, key := range keys {
+		if cells[key] {
+			return true
 		}
 	}
 	return false
@@ -165,7 +213,12 @@ func anyProbeCell(probes []HardwareProbe, cells func(HardwareProbe) map[string]b
 
 // hardwareFactFault names the most recent failing probe. A timer-out or a
 // confinement refusal is already in the observation's reason and detail.
-func hardwareFactFault() *HardwareFactFault {
+func hardwareFactFault(selected *HardwareProbe) *HardwareFactFault {
+	if selected != nil {
+		if observation, ok := LastProbeObservation(selected.Backend, selected.Device); ok && !observation.Available {
+			return &HardwareFactFault{Backend: observation.Backend, Device: observation.Device, Reason: observation.Reason, Detail: observation.Detail}
+		}
+	}
 	observations := ProbeObservations()
 	sort.SliceStable(observations, func(i, j int) bool { return observations[i].At.After(observations[j].At) })
 	for _, observation := range observations {

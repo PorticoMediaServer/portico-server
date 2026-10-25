@@ -81,6 +81,19 @@ func (s *Service) HardwareReport(ctx context.Context) []decoder.HardwareProbe {
 	return s.hardware.Report(ctx, s.hardwareFFmpeg, cfg.HardwareDevice)
 }
 
+// HardwareSelection is the probe playback would execute with right now: it is
+// the same call selectHardware makes, without that call's capability note, so a
+// read cannot change what the server reports about itself. It never starts a
+// probe: a cold cache answers software-and-warming now, exactly as a session
+// would, and the background warm-up fills the cache for the next read.
+func (s *Service) HardwareSelection() decoder.HardwareProbe {
+	cfg := s.DeliveryConfiguration()
+	if s.hardware == nil || s.hardwareFFmpeg == "" || cfg.HardwareBackend == string(decoder.BackendSoftware) {
+		return decoder.HardwareProbe{Backend: decoder.BackendSoftware, Available: true, Reason: decoder.ProbeDisabled}
+	}
+	return s.hardware.SelectCached(s.hardwareFFmpeg, cfg.HardwareBackend, cfg.HardwareDevice)
+}
+
 // HardwareDevices names the adapters this host exposes, by the name their
 // drivers give them. Discovery only: an adapter is not a capability until a
 // probe has run on it.

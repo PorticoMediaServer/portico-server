@@ -23,7 +23,7 @@ export type TelemetryReading=ReportInterval & {window:TelemetryWindow;series:Rec
 export type HardwareProbe={backend:string;supported:boolean;detail:string;device?:string;encoder?:string};
 /** One adapter the server found, named as its driver names it. `method` is a stable token. */
 export type HardwareDeviceFact={id:string;name:string;method?:string;inUse:boolean};
-/** Who does one format's job on this server right now, from the last probe. */
+/** Whether the backend playback selected is qualified to do one format's job. */
 export type HardwareFormatFact={format:string;decode:boolean;encode:boolean};
 /** The one failure worth reporting: shown only when no hardware backend works. */
 export type HardwareFault={backend?:string;device?:string;reason:string;detail?:string};

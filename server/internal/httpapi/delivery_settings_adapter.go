@@ -67,11 +67,12 @@ func (p playbackProbes) Probe(ctx context.Context, device string) []telemetry.Ha
 // Facts adds the adapters that exist and the measured per-format grid to the
 // backend probes. Every value comes from a probe that ran on this host; an
 // unprobed cell stays false, which reads as the processor doing that job.
-func (p playbackProbes) Facts(ctx context.Context, device, effective string) decoder.HardwareFacts {
+func (p playbackProbes) Facts(ctx context.Context, device, configured string) decoder.HardwareFacts {
 	if p.playback == nil {
 		return decoder.HardwareFacts{Devices: []decoder.HardwareFactDevice{}, Formats: []decoder.HardwareFactFormat{}}
 	}
-	return decoder.ComposeHardwareFacts(p.playback.HardwareDevices(ctx), p.playback.HardwareReport(ctx), effective)
+	selected := p.playback.HardwareSelection()
+	return decoder.ComposeHardwareFacts(p.playback.HardwareDevices(ctx), p.playback.HardwareReport(ctx), configured, &selected)
 }
 
 // RegistryDeliverySettings answers delivery questions from the owner settings
