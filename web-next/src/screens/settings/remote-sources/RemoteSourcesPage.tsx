@@ -233,10 +233,24 @@ const libraryKinds: readonly {id: LibraryKind; icon: IconName; label: MessageId;
 ];
 const SIX_HOURS = 21_600;
 
-export function AddSourceDialog({service, api, serverId, viewerId, open, isCurrent, reportError, onClose, onCreated}: Readonly<{
+type AddSourceProps = Readonly<{
   service: RemoteSourceService; api: LibraryContentApi; serverId: string; viewerId: string; open: boolean;
   isCurrent: () => boolean; reportError: (error: unknown) => void; onClose: () => void; onCreated: (source: RemoteSource) => void;
-}>) {
+}>;
+
+/** The wizard's library reader belongs to this opening: created in a layout
+ * pass from the page's reader and scope, retired with it, and the body keyed to
+ * that exact resource so a replay or replacement starts clean. */
+export function AddSourceDialog(props: AddSourceProps) {
+  const owned = useOwnedResource(
+    () => new LibraryManagementService({api: props.api, scope: {serverId: props.serverId, viewerId: props.viewerId}}),
+    value => value.dispose(),
+    [props.api, props.serverId, props.viewerId, props.service]);
+  if (!owned) return null;
+  return <AddSourceLoaded key={owned.id} {...props} libraries={owned.value}/>;
+}
+
+function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, reportError, onClose, onCreated, libraries}: AddSourceProps & Readonly<{libraries: LibraryManagementService}>) {
   const [step, setStep] = useState<WizardStep>('what');
   const [family, setFamily] = useState<SourceFamily>('webdav');
   const [sourceKind, setSourceKind] = useState<SourceKind>('webdav');
@@ -302,8 +316,6 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   const [busy, setBusy] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(false);
   // The folders step: chosen folders, the library they join, and what the done step reports.
-  const libraries = useMemo(() => new LibraryManagementService({api, scope: {serverId, viewerId}}), [api, serverId, viewerId]);
-  useEffect(() => () => libraries.dispose(), [libraries]);
   const librarySnapshot = useSyncExternalStore(libraries.subscribe, libraries.getSnapshot, libraries.getSnapshot);
   const [chosen, setChosen] = useState<readonly RemoteFolder[]>([]);
   const [picking, setPicking] = useState(false);
