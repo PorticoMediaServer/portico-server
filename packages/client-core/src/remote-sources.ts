@@ -43,14 +43,16 @@ export type RemoteFolder=Readonly<{name:string;path:string;relative:string;hidde
 export type RemoteFolderPage=Readonly<{sourceId:string;generation:string;path:string;relative:string;entries:readonly RemoteFolder[];nextCursor:string;truncated:boolean}>;
 /** One library that uses folders from a source, and how many of its folders do. */
 export type SourceLibraryUse=Readonly<{libraryId:string;name:string;kind:string;folders:number}>;
+/** A source's folder health, published only when every enabled folder agrees
+ * on the same stored code. Absence is not a healthy or idle claim. */
+export type RemoteSourceHealth='ready'|'healthy'|'degraded'|'inventory_running'|'cancelled'|'offline'|'root_changed'|'removing';
 /** One source folder's real active scan: closed state/mode/phase codes and
  * stored counters/timestamps. sourceGeneration/runPolicyRevision are the values
  * the run captured, not proof of the current source or policy. No percentage,
  * job error, path or guess. */
-export type RemoteSourceHealth='ready'|'inventory_running'|'cancelled'|'offline'|'root_changed'|'removing';
 export type RemoteScanStateCode='queued'|'running'|'paused';
 export type RemoteScanMode='first-import'|'incremental'|'integrity'|'full';
-export type RemoteScanPhase='inventory'|'basic_pending'|'basic_running'|'analysis_enqueue'|'reconciling'|'verifying'|'extras';
+export type RemoteScanPhase='inventory'|'legacy_inventory'|'basic_pending'|'basic_running'|'analysis_enqueue'|'reconciling'|'sidecars'|'verifying'|'extras';
 export type RemoteScanState=Readonly<{state:RemoteScanStateCode;mode?:RemoteScanMode;phase?:RemoteScanPhase;sourceGeneration:number;runPolicyRevision:number;processed:number;discovered:number;analyzed:number;warnings:number;startedAt?:string;completedAt?:string;finishedAt?:string}>;
 /** A source's present state: the reads it holds now, when it was last checked,
  * and the libraries its folders went into. Nothing here is estimated. */
@@ -229,12 +231,12 @@ function sourceAdvancedSettings(raw:unknown,id:string):SourceAdvancedSettings{
 }
 const scanStates:readonly RemoteScanStateCode[]=['queued','running','paused'];
 const scanModes:readonly RemoteScanMode[]=['first-import','incremental','integrity','full'];
-const scanPhases:readonly RemoteScanPhase[]=['inventory','basic_pending','basic_running','analysis_enqueue','reconciling','verifying','extras'];
+const scanPhases:readonly RemoteScanPhase[]=['inventory','legacy_inventory','basic_pending','basic_running','analysis_enqueue','reconciling','sidecars','verifying','extras'];
 function scanTimestamp(value:unknown):string|undefined{
  return typeof value==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)&&Number.isFinite(Date.parse(value))?value:undefined;
 }
 const scanBounded=(value:unknown):value is number=>integer(value)&&value<=2**40;
-const sourceHealths:readonly RemoteSourceHealth[]=['ready','inventory_running','cancelled','offline','root_changed','removing'];
+const sourceHealths:readonly RemoteSourceHealth[]=['ready','healthy','degraded','inventory_running','cancelled','offline','root_changed','removing'];
 function remoteScan(raw:unknown):RemoteScanState|undefined{
  if(!record(raw)||!scanStates.includes(raw.state as RemoteScanStateCode)||!scanBounded(raw.sourceGeneration)||!scanBounded(raw.runPolicyRevision)||!scanBounded(raw.processed)||!scanBounded(raw.discovered)||!scanBounded(raw.analyzed)||!scanBounded(raw.warnings))return undefined;
  const started=scanTimestamp(raw.startedAt),completed=scanTimestamp(raw.completedAt),finished=scanTimestamp(raw.finishedAt);

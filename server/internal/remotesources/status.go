@@ -42,10 +42,19 @@ type SourceScanState struct {
 	FinishedAt        string `json:"finishedAt,omitempty"`
 }
 
-var sourceHealths = map[string]bool{"ready": true, "inventory_running": true, "cancelled": true, "offline": true, "root_changed": true, "removing": true}
+// sourceHealths is the closed set library_sources.health can hold for a folder:
+// ready/removing from the catalogue, offline/root_changed from availability and
+// scan failure, inventory_running/cancelled from a running scan, and
+// healthy/degraded from a finished scan or analysis. A stored value outside the
+// set is not published.
+var sourceHealths = map[string]bool{"ready": true, "healthy": true, "degraded": true, "inventory_running": true, "cancelled": true, "offline": true, "root_changed": true, "removing": true}
 var scanStates = map[string]bool{"queued": true, "running": true, "paused": true}
 var scanModes = map[string]bool{"first-import": true, "incremental": true, "integrity": true, "full": true}
-var scanPhases = map[string]bool{"inventory": true, "basic_pending": true, "basic_running": true, "analysis_enqueue": true, "reconciling": true, "verifying": true, "extras": true}
+
+// scanPhases is the closed set inventory_runs.phase can hold while a run is
+// active: the schema default inventory, the analysis stages, the reconcile,
+// sidecar and verify passes, extras, and the legacy inventory pass.
+var scanPhases = map[string]bool{"inventory": true, "legacy_inventory": true, "basic_pending": true, "basic_running": true, "analysis_enqueue": true, "reconciling": true, "sidecars": true, "verifying": true, "extras": true}
 
 type SourceStatus struct {
 	SourceID         string             `json:"sourceId"`
