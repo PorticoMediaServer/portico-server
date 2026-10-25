@@ -211,3 +211,9 @@
   .sbar .field input { font-weight: var(--type-body-strong-weight); }
   .song small > span { display: none; }
 }
+
+/* Phone-app 7: the Search title sits above the field until the viewer types; frame 4's
+   Cancel then takes over in the bar. */
+@media (max-width: 599px) {
+  .phoneSearchTitle { margin: 0 0 12px; font-size: 2rem; line-height: 1.15; font-weight: 800; letter-spacing: -.035em; }
+}

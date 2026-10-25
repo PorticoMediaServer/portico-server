@@ -144,7 +144,9 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
   </div>;
   return <div className={styles.search} style={{'--search-card-scale': size, '--search-columns': Math.max(1, Math.round(7 / size))} as React.CSSProperties}>
     <div className={styles.wash} aria-hidden="true" />
-    {/* Frame 4: the phone bar is the app's search field and Cancel, not the desktop field. */}
+    {/* Phone-app 7 draws the Search title only before typing; frame 4's Cancel belongs to the
+        results state, so it is absent on the empty one. */}
+    {compact && !text.trim() && <h1 className={styles.phoneSearchTitle}>{t('web.search.title')}</h1>}
     <div className={styles.sbar}>
       <form className={styles.field} role="search" onSubmit={event => { event.preventDefault(); submit(true); }}>
         <TextField ref={input} variant={compact ? 'search' : 'large-search'} type="search" autoComplete="off" spellCheck={false} value={text}
@@ -154,7 +156,7 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
           trailing={text ? <Button variant="icon" icon="i-x" iconOnly aria-label={t('web.search.clear')} onClick={() => { setText(''); setChip('all'); input.current?.focus(); }} />
             : <span className={styles.hint}><kbd>{t('next.controls.searchShortcut')}</kbd>{t('next.controls.searchFromAnywhere')}</span>} />
       </form>
-      {compact && context.effects.openHome && <Button variant="text" size="small" className={styles.cancel}
+      {compact && text.trim() && context.effects.openHome && <Button variant="text" size="small" className={styles.cancel}
         onClick={() => runScreenCommand(context, () => { context.effects.openHome?.(); })}>{t('action.cancel')}</Button>}
     </div>
     {selection?.isActive() ? selection.toolbar : text.trim() && !(empty && !group) && <div className={styles.chips} role="group" aria-label={t('web.search.title')}>{SEARCH_CHIPS.map(value => {
