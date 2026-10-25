@@ -28,6 +28,7 @@ export * from './audio-effects.ts';
 export * from './music-preferences.ts';
 export * from './music-signal.ts';
 export * from './music-mixes.ts';
+export * from './music-mixes-controller.ts';
 import {sessionEndMessage} from './session-end.ts';
 import {serviceText} from './presentation/service-text.ts';
 import {TUNER_RESERVED, tunerHandedOver} from './live-handover.ts';
