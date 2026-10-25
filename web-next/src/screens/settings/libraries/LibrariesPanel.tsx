@@ -3,6 +3,7 @@ import {defaultI18n} from '@i18n';
 import type {LibraryContentApi} from '@core/library-content.ts';
 import {LibraryManagementService, type ManagedLibrary} from '@core/library-management.ts';
 import {reorderLibraries} from '@core/server-admin/libraries.ts';
+import {metadataAgentPath, parseMetadataAgent} from '@core/server-admin/metadata-agent.ts';
 import {Button} from '../../../kit/controls';
 import {Menu} from '../../../kit/overlays/Popover';
 import {Icon} from '../../../kit/Icon';
@@ -29,6 +30,19 @@ export function LibrariesPanel({api, service, onEdit, onError}: {
   const [busy, setBusy] = useState<string>(), [menu, setMenu] = useState<string>(), [adding, setAdding] = useState(false), [removing, setRemoving] = useState<string>();
   const directory = snapshot.directory;
   const libraries = directory.data?.items ?? [];
+  const menuLibrary = libraries.find(library => library.id === menu);
+  const [agentFact, setAgentFact] = useState<Readonly<{api: LibraryContentApi; library: ManagedLibrary; online: boolean}>>();
+  useEffect(() => {
+    if (!menuLibrary) return;
+    let live = true;
+    void api.request<unknown>(metadataAgentPath(menuLibrary.id), 'GET').then(raw => {
+      if (!live) return;
+      const agent = parseMetadataAgent(raw);
+      setAgentFact({api, library: menuLibrary, online: agent.libraryId === menuLibrary.id && agent.libraryKind === menuLibrary.kind && agent.agent === 'online'});
+    }).catch(() => {if (live) setAgentFact({api, library: menuLibrary, online: false});});
+    return () => {live = false;};
+  }, [api, menuLibrary]);
+  const onlineMenu = agentFact?.api === api && agentFact.library === menuLibrary && agentFact.online;
   useEffect(() => { void service.loadLibraries().catch(onError); }, [service, onError]);
   const scan = async (library: ManagedLibrary) => {
     setBusy(library.id);
@@ -67,14 +81,14 @@ export function LibrariesPanel({api, service, onEdit, onError}: {
             onClick={() => { const library = libraries.find(value => value.id === row.id); if (library) void scan(library); }}>
             {t('next.settingsSpec.server.libraries.groups.0.rows.0.control.itemActions.0.label')}
           </Button>}
-      <Menu open={menu === row.id} onOpenChange={open => setMenu(open ? row.id : undefined)} title={row.name} items={[
+      <Menu open={menu === row.id} onOpenChange={open => {setAgentFact(undefined); setMenu(open ? row.id : undefined);}} title={row.name} items={[
         {id: 'edit', label: t('next.settingsSpec.server.libraries.groups.0.rows.0.control.itemActions.1.label'), onSelect: () => onEdit(row.id)},
         ...(row.canScan && !row.scanning ? [{id: 'scan', label: t('next.settingsSpec.server.libraries.groups.0.rows.0.control.itemActions.0.label'), onSelect: () => {
           const library = libraries.find(value => value.id === row.id); if (library) void scan(library);
         }}] : []),
-        {id: 'unmatched', label: t('next.settings.libraries.unmatched'), onSelect: () => {
+        ...(onlineMenu && menu === row.id ? [{id: 'unmatched', label: t('next.settings.libraries.unmatched'), onSelect: () => {
           void router.navigate({to: '/library/$libraryId', params: {libraryId: row.id}, search: {unmatched: true}}).catch(onError);
-        }},
+        }}] : []),
         {id: 'up', label: t('next.settings.moveUp', {name: row.name}), disabled: !row.canMoveUp, onSelect: () => {
           const library = libraries.find(value => value.id === row.id); if (library) void move(library, -1);
         }},
