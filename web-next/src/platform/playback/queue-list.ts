@@ -46,18 +46,38 @@ export function createWebQueueListPort(source: QueueListSource): WebQueueListPor
     if (at < 0) return empty;
     const shown = all.slice(at, at + 50), items = new Map(view.items.map(item => [item.entryId, item]));
     const readable = (entry: typeof shown[number] | undefined) => !!entry && !entry.hidden && items.get(entry.id)?.itemId === entry.itemId;
+    // Only the accepted wire window supplies availability and absolute positions.
+    // QueueSnapshot placeholders and visible-array indexes establish neither.
+    const window = view.window?.queueId === queue.id && view.window.revision === queue.revision ? view.window : undefined;
+    const facts = new Map(window?.entries.map(entry => [entry.entryId, entry]));
+    const supplied = !!window && facts.size === window.entries.length && window.entries.every((entry, index) =>
+      typeof entry.position === 'number' && Number.isSafeInteger(entry.position) && entry.position >= 0
+      && (index === 0 || entry.position > window.entries[index - 1].position!));
+    const position = (entry: typeof shown[number] | undefined) => {
+      return supplied && entry ? facts.get(entry.id)?.position : undefined;
+    };
+    const currentPosition = readable(shown[0]) && facts.get(shown[0].id)?.available === true ? position(shown[0]) : undefined;
+    const upcoming = (entry: typeof shown[number] | undefined) => {
+      const at = position(entry);
+      return !!entry && readable(entry) && facts.get(entry.id)?.available === true
+        && at !== undefined && currentPosition !== undefined && at > currentPosition;
+    };
     const busy = sending || workspace.phase === 'sending';
     const entries = Object.freeze(shown.map((entry, index): WebQueueListEntry => {
       const item = items.get(entry.id), known = readable(entry);
       const playing = entry.id === queue.currentEntryId;
-      const allowed = known && !playing && !busy && workspace.phase === 'ready';
+      const allowed = upcoming(entry) && !playing && !busy && workspace.phase === 'ready';
       return Object.freeze({entryId: entry.id, ...(known && item ? {title: item.title} : {}), hidden: !known,
         pending: entry.hidden && entry.pending === true, playing,
-        canPlay: allowed && source.selectable && !!item && queueVideoKind(item.kind), canMoveUp: allowed && index > 1 && readable(shown[index - 1]),
-        canMoveDown: allowed && readable(shown[index + 1]), canRemove: allowed});
+        canPlay: allowed && source.selectable && !!item && queueVideoKind(item.kind),
+        canMoveUp: allowed && upcoming(shown[index - 1]) && position(shown[index - 1])! + 1 === position(entry),
+        canMoveDown: allowed && upcoming(shown[index + 1]) && position(entry)! + 1 === position(shown[index + 1]), canRemove: allowed});
     }));
     const remaining = view.remainingCount;
-    const more = remaining !== undefined && Number.isSafeInteger(remaining) && remaining >= 0 ? Math.max(0, remaining - (shown.length - 1)) : null;
+    const shownPositions = shown.map(position), counted = currentPosition !== undefined && shownPositions.every(value => value !== undefined)
+      && new Set(shownPositions).size === shown.length && shownPositions.slice(1).every(value => value! > currentPosition);
+    const more = counted && remaining !== undefined && Number.isSafeInteger(remaining) && remaining >= shown.length - 1
+      ? remaining - (shown.length - 1) : null;
     const failure = error ?? (workspace.error ? 'queue_edit_failed' as const : undefined);
     const snapshot: WebQueueListSnapshot = Object.freeze({current: true, fence: source.fence, queueId: queue.id, revision: queue.revision,
       currentEntryId: queue.currentEntryId ?? undefined, entries, more, change: busy ? 'sending' : failure ? 'failed' : 'idle', ...(failure ? {error: failure} : {})});

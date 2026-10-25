@@ -13,7 +13,9 @@ function fixture(hidden = false, selectable = true, kind = 'movie') {
     repeat: 'off', shuffled: false, currentEntryId: 'current', currentPlaybackId: 'session', entries: ['current', 'first', 'second'].map<QueueSnapshot['entries'][number]>((id, index) =>
       hidden && index === 2 ? {id, removed: false, hidden: true} : {id, removed: false, hidden: false, itemId: 'item_' + id,
         editionId: null, partId: null, sourceContext: {kind: 'item', id: 'item_' + id, revision: null, entryId: null}})};
-  let view: QueuePlaybackView = {queue, highestSequence: '0', current: {id: 'session', generation: 1, state: 'playing'},
+  let view: QueuePlaybackView = {queue, window: {queueId: queue.id, revision: queue.revision, segments: [],
+    entries: queue.entries.map((entry, position) => ({entryId: entry.id, position, available: !entry.hidden}))},
+    highestSequence: '0', current: {id: 'session', generation: 1, state: 'playing'},
     next: {entryId: 'first', available: true, reason: 'ready'}, items: queue.entries.flatMap(entry => entry.hidden ? [] :
       [{entryId: entry.id, itemId: entry.itemId, title: entry.id, kind, libraryId: 'library'}]), remainingCount: 2,
     postPlay: {nextEntryId: 'first', available: true, reason: 'ready', countdownSeconds: 0, autoplay: false,
@@ -28,6 +30,7 @@ function fixture(hidden = false, selectable = true, kind = 'movie') {
     play: async (entryId, revision, lifetime) => {plays.push({entryId, revision, signal: lifetime.signal});},
     edit: async (revision, intent, lifetime) => {edits.push({revision, intent, signal: lifetime.signal});}});
   return {port, edits, plays, life, lifetime: {signal: life.signal, isCurrent: () => !life.signal.aborted},
+    setWindow(window: QueuePlaybackView['window']) {view = {...view, window};},
     replace() {view = {...view};workspace = {...workspace};}};
 }
 
@@ -76,5 +79,36 @@ test('Up Next selection is absent for unsupported ownership and non-video rows',
     assert.equal(snapshot.entries[1]!.canPlay, false);
     await assert.rejects(f.port.play(snapshot, 'first', f.lifetime));
     assert.equal(f.plays.length, 0);
+  }
+});
+
+test('Up Next refuses a move across absolute gaps while keeping an available loaded selection', async () => {
+  const f = fixture();
+  f.setWindow({queueId: 'queue', revision: '1', segments: [], entries: [
+    {entryId: 'current', position: 0, available: true}, {entryId: 'first', position: 2, available: true},
+    {entryId: 'second', position: 4, available: true}]});
+  const snapshot = f.port.getSnapshot();
+  assert.equal(snapshot.entries[1]!.canMoveDown, false);
+  assert.equal(snapshot.entries[2]!.canMoveUp, false);
+  await assert.rejects(f.port.move(snapshot, 'second', -1, f.lifetime));
+  assert.equal(f.edits.length, 0);
+  assert.equal(snapshot.entries[2]!.canPlay, true);
+});
+
+test('Up Next never invents missing or foreign wire availability and positions', () => {
+  const examples: QueuePlaybackView['window'][] = [undefined,
+    {queueId: 'other', revision: '1', segments: [], entries: []},
+    {queueId: 'queue', revision: '2', segments: [], entries: []},
+    {queueId: 'queue', revision: '1', segments: [], entries: [
+      {entryId: 'current', position: 0, available: true}, {entryId: 'first', available: true},
+      {entryId: 'second', position: 2, available: true}]},
+    {queueId: 'queue', revision: '1', segments: [], entries: [
+      {entryId: 'current', position: 0, available: true}, {entryId: 'first', position: 1},
+      {entryId: 'second', position: 2, available: false}]}];
+  for (const window of examples) {
+    const f = fixture();f.setWindow(window);
+    const snapshot = f.port.getSnapshot();
+    for (const row of snapshot.entries) assert.deepEqual([row.canPlay, row.canRemove, row.canMoveUp, row.canMoveDown], [false, false, false, false]);
+    assert.equal(snapshot.entries[1]!.title, 'first', 'known metadata does not establish queue availability');
   }
 });
