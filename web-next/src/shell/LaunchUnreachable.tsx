@@ -47,6 +47,11 @@ export function LaunchUnreachableScreen({facts, onRetry, onSwitchServer, now: fi
   };
   const firstFailure = t('next.states.triesSince', {count: facts.attempt, time: defaultI18n.time(facts.firstFailureAt)});
   return <>
+    {facts.libraries && facts.libraries.length > 0 && <div className={styles.lastKnownBar} data-last-known-bar role="status">
+      <ServerMark size={20} />
+      <b>{facts.serverName ?? ''}</b>
+      <span className={styles.lastKnownLibraries}>{facts.libraries.map(library => library.name).join(' · ')}</span>
+    </div>}
     <StateLayout className={styles.page} backdrop={{kind: 'colour', shape: 'side'}} tone="warning" icon="i-srvoff"
       contentStyle={{top: width >= 1024 ? 500 : 250}}
       title={computerOffline ? t('next.states.thisComputerOffline') : facts.serverName ? t('next.states.cantReach', {server: facts.serverName}) : t('next.states.cantReachServer')}

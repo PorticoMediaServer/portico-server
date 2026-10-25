@@ -17,6 +17,7 @@ import {browserViewerStorage} from '../platform/viewer-selection-storage';
 import {browserServerDisplay} from '../platform/server-display';
 import {parseServerSignIn,signInLabelKey} from '@core/sign-in.ts';
 import {defaultI18n} from '@i18n';
+import {lastKnownShell, rememberShell} from './last-known';
 import {browserAppSessionActions,signOutBrowserPorticoAccount,type BrowserAppSessionActions} from '../platform/app-sessions';
 import {browserConnectionEnvironment, restoreBrowserConnection, trackBrowserConnection, forgetBrowserConnection} from '../platform/server-connections';
 import {displayableTransportCode, launchFailure, retryDelayMs} from './connection-retry';
@@ -56,6 +57,8 @@ export type LaunchUnreachable = Readonly<{
   startedAt: number;
   nextRetryAt: number;
   retrying: boolean;
+  /** The libraries from the last successful launch, for the top bar only. */
+  libraries?: readonly {id: string; name: string; kind: string}[];
 }>;
 export type ShellBootstrapSnapshot = Readonly<{phase: 'restoring' | 'signed-out' | 'ready' | 'error' | 'unreachable'; binding?: ShellBindings; context?: ShellAssemblyContext; entry?: boolean; error?: unknown; unreachable?: LaunchUnreachable}>;
 
@@ -113,6 +116,7 @@ async function readFacts(api: HttpLocalApi, session: LocalSession, preferences: 
     }),
   ]);
   if (system.id !== session.viewer.serverId) throw new Error('The server identity changed.');
+  rememberShell(session.viewer.serverId, system.name, libraries.items.map(({id, name, kind}) => ({id, name, kind})));
   await inbox.load();
   signal.throwIfAborted();
   return {identity: {viewer: session.viewer, libraries: libraries.items, serverName: system.name, serverVersion: system.version, signIn:system.signIn, ...profile,
@@ -219,8 +223,10 @@ export class ShellBootstrap {
 
   private unreachable(wait: {attempt: number; firstFailureAt: number; startedAt: number; nextRetryAt: number}, category: 'unreachable' | 'offline' | 'timeout', error?: unknown): LaunchUnreachable {
     const saved = this.launch, code = displayableTransportCode((error as {code?: unknown} | null)?.code);
+    const known = saved?.serverId ? lastKnownShell(saved.serverId) : undefined;
     return Object.freeze({
       ...(saved ? {serverName: saved.serverId ? browserServerDisplay().name(saved.serverId) : undefined, address: saved.address, owner: saved.owner} : {address: '', owner: false}),
+      ...(known ? {serverName: known.serverName, libraries: known.libraries} : {}),
       category,
       ...(code ? {code} : {}),
       ...wait, retrying: false,
