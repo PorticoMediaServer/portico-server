@@ -31,10 +31,10 @@ export function ReadMarkAction({client, itemId, isCurrent, reportError}: {client
     return () => {held.live = false; held.controller.abort(); if (opening.current === held) opening.current = undefined;};
   }, [client, itemId, load]);
   const held = view.opening, mark = view.mark;
-  if (!held || !current(held) || !client.canMarkRead(itemId) || !mark) return null;
+  if (!held || !current(held) || !client.canMarkRead(itemId) || !mark && !view.failed) return null;
   const press = async () => {
     if (!current(held) || held.busy) return;
-    if (held.needsRead) {await load(held); return;}
+    if (held.needsRead || !mark) {await load(held); return;}
     const command = held.command ?? Object.freeze({operationId: crypto.randomUUID(), expectedRevision: mark.revision, read: !mark.read});
     held.command = command; held.busy = true; setView({opening: held, mark, busy: true});
     try {
@@ -49,6 +49,6 @@ export function ReadMarkAction({client, itemId, isCurrent, reportError}: {client
       }
     } finally {held.busy = false;}
   };
-  const label = defaultI18n.t(view.failed ? 'next.states.tryAgain' : mark.read ? 'next.reader.markUnread' : 'next.reader.markRead');
-  return <Button variant="glass" icon="i-check" iconOnly aria-label={label} title={label} aria-pressed={mark.read} disabled={view.busy} onClick={() => {void press();}}/>;
+  const label = defaultI18n.t(view.failed ? 'next.states.tryAgain' : mark?.read ? 'next.reader.markUnread' : 'next.reader.markRead');
+  return <Button variant="glass" icon="i-check" iconOnly aria-label={label} title={label} aria-pressed={mark?.read} disabled={view.busy} onClick={() => {void press();}}/>;
 }
