@@ -137,6 +137,7 @@ func Registry() []Field {
 		field("advertiseUrl", "connectivity", "string", "", nil, nil, nil, "hot", "client connection candidates", "External address clients may use to reach this server. Use a hostname with no path. HTTPS addresses can also be listed by Hosted."),
 		field("trustedProxies", "connectivity", "string-list", []string{}, nil, nil, nil, "hot", "request locality and forwarded client address", "Reverse proxies (addresses or CIDR networks) whose forwarded client address this server believes. Other peers are judged by their own address."),
 		field("uploadCapacityKbps", "connectivity", "integer", 0, bounded(0), bounded(100000000), nil, "next-operation", "remote playback admission", "The home connection's upload speed in kbps. New remote streams share about 80% of it and get a lower quality when it is busy. 0 means unknown: no budget."),
+		field("people.invitation_days", "people", "integer", 7, bounded(1), bounded(30), nil, "hot", "access invitation creation", "How long a new invitation stays usable, in days. The invitation dialog offers 1, 3, 7 and 30 and starts at this value; an invitation already started keeps the expiry it was opened with."),
 		field("pausedSessionTimeoutMinutes", "connectivity", "integer", 0, bounded(0), bounded(1440), nil, "hot", "playback session sweeper", "End video sessions paused for longer than this many minutes, freeing their stream slot. Audio and Live are never ended. 0 means never."),
 		field("advertisedInterface", "connectivity", "string", "", nil, nil, nil, "hot", "LAN route publication", "The network interface whose address LAN clients are given. Empty advertises all available interfaces."),
 		field("ownAddressEnabled", "connectivity", "boolean", false, nil, nil, nil, "hot", "custom certificate TLS and route publication", "Serve the owner's own secure address independently of the Portico route."),
@@ -210,6 +211,10 @@ type Settings struct {
 	// never silently switches the trash off.
 	// MissingTitles and MissingTitlesDays are the owner's rule for titles whose
 	// files are no longer on disk (catalog.MissingRule reads them).
+	// PeopleInvitationDays is how long a new invitation stays usable, in days.
+	// A document saved before the field existed reads as 0, which the accessor
+	// resolves to the shipped default of 7 days.
+	PeopleInvitationDays int    `json:"people.invitation_days"`
 	MissingTitles     string `json:"library.missingTitles"`
 	MissingTitlesDays int    `json:"library.missingTitlesDays"`
 	// SegmentDetection is the server's intro and credits detection mode
@@ -269,7 +274,7 @@ type LogRetention struct {
 // fresh database and a document saved before these fields existed agree.
 func DefaultSettings() Settings {
 	chapterNames := true
-	return Settings{AnalysisStorageGiB: 32, AnalysisStageStorageMiB: 256, SubtitleTrackLimit: medialimits.DefaultSubtitleTracks, SubtitleFileLimitMiB: medialimits.DefaultSubtitleFileMiB, Name: "Portico", TranscodingEnabled: true, ConversionMode: "all", OutputFormat: "auto", DownloadMaxQuality: "original", MusicAwayQuality: "original", HDRToneMapping: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferMs: 60000, PlayedRetentionMs: 180000, SessionStorageMiB: 4096, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, MissingTitles: "after_days", MissingTitlesDays: 30, SegmentDetection: "standard", SegmentUseChapterNames: &chapterNames, SegmentShortestEpisode: 2, SegmentShortestFilm: 10, SegmentIntroWindow: "usual", SegmentCreditsWindow: "usual", SegmentFilmCreditsWindow: "usual", SegmentTVMode: "server", SegmentAnimeMode: "server", SegmentMovieMode: "server", SegmentViewerConfidencePercent: 50, SegmentAutomaticConfidencePercent: 85,
+	return Settings{AnalysisStorageGiB: 32, AnalysisStageStorageMiB: 256, SubtitleTrackLimit: medialimits.DefaultSubtitleTracks, SubtitleFileLimitMiB: medialimits.DefaultSubtitleFileMiB, Name: "Portico", TranscodingEnabled: true, ConversionMode: "all", OutputFormat: "auto", DownloadMaxQuality: "original", MusicAwayQuality: "original", HDRToneMapping: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferMs: 60000, PlayedRetentionMs: 180000, SessionStorageMiB: 4096, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, MissingTitles: "after_days", MissingTitlesDays: 30, PeopleInvitationDays: 7, SegmentDetection: "standard", SegmentUseChapterNames: &chapterNames, SegmentShortestEpisode: 2, SegmentShortestFilm: 10, SegmentIntroWindow: "usual", SegmentCreditsWindow: "usual", SegmentFilmCreditsWindow: "usual", SegmentTVMode: "server", SegmentAnimeMode: "server", SegmentMovieMode: "server", SegmentViewerConfidencePercent: 50, SegmentAutomaticConfidencePercent: 85,
 		RemoteSignInPolicy: "allow", LANNetworks: networkpolicy.DefaultHomeNetworks(), AccessURLs: []string{}, LANDiscoveryEnabled: true, TrustedProxies: []string{}, LogLevel: "info", LogDetailMinutes: 30, LogRetention: []LogRetention{}}
 }
 

@@ -38,6 +38,10 @@ export type PeopleStreamLimits = Readonly<{
 export type PeopleBindings = Readonly<{
   client: SettingsPeopleClient; serverName: string; libraries: readonly {id: string; name: string}[]; actor: {accountId: string; role: AccessTier};
   authority: Readonly<{scope: SettingsViewerScope; isCurrent: () => boolean; subscribe: (listener: () => void) => () => void; onAuthorityChanged: () => void}>;
+  /** The owner's invitation expiry in hours, read from the loaded runtime
+   * document when a new invitation form opens. A started invitation keeps the
+   * value it opened with. */
+  inviteExpiryHours?: () => number | undefined;
   streamLimits?: PeopleStreamLimits; invitations?: SettingsInvitations; invite?: (opener: HTMLElement) => void; signIn?: 'local' | 'portico'; openHome: () => void; reportError: (error: unknown) => void;
 }>;
 
@@ -51,6 +55,11 @@ function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
   const {client} = bindings;
   const [issued, setIssued] = useState<ServerInvitation>(), [inviteOpen, setInviteOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false), [choices, setChoices] = useState<InviteChoices>(defaultInviteChoices);
+  /** The drawn ladder is whole days on the server and hours in the dialog. */
+  const openedChoices = (): InviteChoices => {
+    const hours = bindings.inviteExpiryHours?.();
+    return hours && Number.isFinite(hours) && hours > 0 ? Object.freeze({...defaultInviteChoices, expiresInHours: hours}) : defaultInviteChoices;
+  };
   const [formBusy, setFormBusy] = useState(false), [formError, setFormError] = useState<unknown>(), [retained, setRetained] = useState<InviteAttempt>();
   const inviteLife = useRef(new AbortController()), inviteOpener = useRef<HTMLElement | null>(null), alive = useRef(true);
   const formSession = useRef(0), formActive = useRef(false);
@@ -64,6 +73,7 @@ function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
     ++formSession.current; formActive.current = true;
     inviteOpener.current = opener;
     setFormError(undefined);
+    setChoices(openedChoices());
     setFormOpen(true);
   };
   const choicesOf = (attempt: InviteAttempt): InviteChoices => ({role: attempt.body.role === 'admin' ? 'admin' : 'member',

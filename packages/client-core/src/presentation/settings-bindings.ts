@@ -38,6 +38,7 @@ const bindings:Readonly<Record<string,SettingsBinding>>={
  'segments.viewerFloor':{form:'runtime',key:'segments.viewerConfidencePercent',codec:'number-choice'},
  'segments.autoFloor':{form:'runtime',key:'segments.automaticConfidencePercent',codec:'number-choice'},
  'segments.mode':{form:'runtime',key:'library.segmentDetection'},
+ 'people.inviteExpiry':{form:'runtime',key:'people.invitation_days',codec:'number-choice'},
  'people.maxStreamsEach':{form:'runtime',key:'perAccountCap',codec:'unlimited'},
  'people.communityActivity':{form:'runtime',key:'home.communityActivityEnabled'},
  'integrations.requestsPerMinute':{form:'runtime',key:'apiRequestsPerMinute'},

@@ -181,6 +181,13 @@ export function SettingsEntry() {
         client: new SettingsPeopleClient(context.api, current), serverName: context.facts.serverName, libraries: identity.libraries,
         actor: {accountId: viewer.accountId, role}, streamLimits: peopleStreamLimits,
         invitations: new SettingsInvitations(context.api, current, context.api.baseUrl, viewer.serverId), signIn: identity.signIn, openHome, reportError,
+        // The owner's invite expiry, in whole days on the server and hours in the
+        // dialog, read live so a save is used by the next invitation only.
+        inviteExpiryHours: () => {
+          const state = controller.rowState(settingsRowIndex.get('people.inviteExpiry')!.row);
+          const days = Number(state.value);
+          return Number.isFinite(days) && days > 0 ? days * 24 : undefined;
+        },
         authority: {scope: {serverId: viewer.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId, sessionFamilyId: session.sessionFamilyId},
           isCurrent: current, subscribe: listener => {authorityListeners.add(listener); return () => {authorityListeners.delete(listener);};}, onAuthorityChanged: openHome},
       } : undefined;
