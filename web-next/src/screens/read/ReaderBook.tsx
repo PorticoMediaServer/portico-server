@@ -1,3 +1,4 @@
+import {readingSearchStepIndex} from './search-step';
 import {useCallback, useEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import type {ReadingPreferences} from '@portico/client-core';
@@ -73,7 +74,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
     : panel === 'search' ? <ReaderPanel label={t('next.reader.search')} tabs={[{id: 'search', label: t('next.reader.search')}]}
       selected="search" onSelect={() => {}} onClose={() => setPanel(undefined)}><ReaderSearch query={query} onQuery={setQuery} hits={searchHits} current={currentHit} loading={searching}
         resultSummary={!searching && query.trim() && hits.length < 100 ? t('next.reader.matches', {count: hits.length}) : undefined}
-        onStep={direction => {const index = hits.findIndex(hit => hit.id === currentHit), next = hits[(index + (direction === 'next' ? 1 : -1) + hits.length) % hits.length]; if (next) {setCurrentHit(next.id); navigate(next.location);}}}
+        onStep={direction => {const index = readingSearchStepIndex(hits.length, hits.findIndex(hit => hit.id === currentHit), direction), next = index === undefined ? undefined : hits[index]; if (next) {setCurrentHit(next.id); navigate(next.location);}}}
         copy={{search: t('next.reader.search'), clear: t('next.reader.clear'), move: t('next.reader.move'), wholeWords: t('next.reader.wholeWords'), searchAll: t('next.reader.searchAll')}}/></ReaderPanel>
       : panel === 'display' ? <ReadingDisplay controller={controller} authority={authority} copy={readingDisplayCopy(defaultI18n, presentation, 7)}
         scale={{min: 1, max: 7, step: 1, ticks: [1, 2, 3, 4, 5, 6, 7]}} presentation={presentation} popover={layout.displayPopover} label={t('next.reader.display')}
