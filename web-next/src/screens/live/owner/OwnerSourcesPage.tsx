@@ -2,10 +2,10 @@ import {useEffect, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import type {LibraryContentApi} from '@core/library-content.ts';
 import {ConsoleClient} from '@core/console.ts';
-import {liveDefaultsForm} from '@core/server-admin/server-forms.ts';
+import {liveDefaultsForm, recordingForm} from '@core/server-admin/server-forms.ts';
 import {channelRequestID} from '@core/live-source-draft.ts';
 import {errorMessage} from '@core/presentation/errors.ts';
-import {Button} from '../../../kit/controls';
+import {Button, Tabs} from '../../../kit/controls';
 import {Dialog} from '../../../kit/overlays';
 import {LiveSourceController, type OwnerLiveSource} from './source-controller';
 import {RemoteSourceController} from './remote-source-controller';
@@ -21,6 +21,7 @@ import {ChannelMapController} from '../../settings/server-livetv/channel-map-con
 import {SourceSettingsDialog} from '../../settings/server-livetv/SourceSettingsDialog';
 import {ChannelMapDialog} from '../../settings/server-livetv/ChannelMapDialog';
 import {terminal} from './lifetime';
+import {RecordingDefaults} from '../../settings/server-livetv/recording/RecordingDefaults';
 import styles from './owner.module.css';
 const t = defaultI18n.t;
 type Modal = {kind: 'remote'; controller: RemoteSourceController} | {kind: 'upload'; controller: UploadSourceController} | {kind: 'discover'} |
@@ -41,8 +42,9 @@ export function createOwnerSources(options: OwnerSourcesOptions) {
   }};
   const sources = new LiveSourceController(api, options.serverId, current, reportError);
   const defaults = liveDefaultsForm({api, serverId: options.serverId, console: new ConsoleClient(api, {serverId: options.serverId, viewerId: options.viewerId}), operationId: channelRequestID});
-  children.add(sources);children.add(defaults);
-  return {sources, defaults, api, current, reportError, serverId: options.serverId,
+  const recording = recordingForm({api, serverId: options.serverId, console: new ConsoleClient(api, {serverId: options.serverId, viewerId: options.viewerId}), operationId: channelRequestID});
+  children.add(sources);children.add(defaults);children.add(recording);
+  return {sources, defaults, recording, api, current, reportError, serverId: options.serverId,
     track<T extends {dispose: () => void}>(child: T): T {if (!current()) child.dispose();else children.add(child);return child;},
     release(child: {dispose: () => void}) {children.delete(child);child.dispose();},
     subscribe: (listener: () => void) => {listeners.add(listener);return () => {listeners.delete(listener);};}, dispose};
@@ -52,7 +54,7 @@ export function OwnerSourcesPage({source}: {source: OwnerSources}) {
   const snapshot = useSyncExternalStore(source.sources.subscribe, source.sources.getSnapshot, source.sources.getSnapshot);
   const defaults = useSyncExternalStore(source.defaults.subscribe, source.defaults.getSnapshot, source.defaults.getSnapshot);
   const active = useSyncExternalStore(source.subscribe, source.current, () => false);
-  const [modal, setModal] = useState<Modal>();
+  const [modal, setModal] = useState<Modal>(), [tab, setTab] = useState('sources');
   useEffect(() => {void source.sources.load();void source.defaults.load();return () => source.dispose();}, [source]);
   useEffect(() => {
     if (!snapshot.document?.refresh.some(row => row.state === 'refreshing')) return;
@@ -65,6 +67,10 @@ export function OwnerSourcesPage({source}: {source: OwnerSources}) {
   const remote = (tuner?: string) => {if (source.current()) setModal({kind: 'remote', controller: source.track(new RemoteSourceController(source.api, source.serverId, source.current, source.reportError, channelRequestID, tuner))});};
   const saved = () => {if (source.current()) {setModal(undefined);void source.sources.load();}};
   return <>
+    <Tabs value={tab} onValueChange={value => {if (source.current()) {setModal(undefined);setTab(value);}}} aria-label={t('next.settingsSpec.server.live.title')} items={[
+      {value: 'sources', label: t('web.liveTv.sources')}, {value: 'recording', label: t('settings.server.recording')},
+    ]}/>
+    {tab === 'recording' ? <RecordingDefaults form={source.recording} current={source.current} reportError={source.reportError}/> : <>
     {!!snapshot.error && <p role="alert" className={styles.error}>{errorMessage(snapshot.error)}</p>}
     <SourceList snapshot={snapshot} refresh={() => void source.sources.load()} add={kind => {
       if (!source.current()) return;
@@ -79,6 +85,7 @@ export function OwnerSourcesPage({source}: {source: OwnerSources}) {
     {!!defaults.loadError && <p role="alert" className={styles.error}>{errorMessage(defaults.loadError)}<Button size="small" onClick={() => {if (source.current()) void source.defaults.load();}}>{t('action.tryAgain')}</Button></p>}
     {!!defaults.saveError && <p role="alert" className={styles.error}>{errorMessage(defaults.saveError)}</p>}
     <LiveDefaults form={source.defaults} isCurrent={source.current} failure={source.reportError}/>
+    </>}
     {modal?.kind === 'remote' && <RemoteSourceDialog controller={modal.controller} close={close} saved={saved}/>}
     {modal?.kind === 'upload' && <UploadSourceDialog controller={modal.controller} close={close} saved={saved}/>}
     {modal?.kind === 'discover' && <DiscoverTuners api={source.api} serverId={source.serverId} isCurrent={source.current} reportError={source.reportError} close={close} useTuner={remote}/>}
