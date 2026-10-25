@@ -41,3 +41,16 @@
 .details { margin:2px 16px 0; padding:12px 14px; border-radius:12px; background:var(--color-raised); font-size:var(--type-audiobook-detail-fact-size); }
 .details dt { margin-top:8px; }
 .details dd { margin:4px 0 12px; color:var(--color-text-tertiary); font-size:var(--type-audiobook-detail-meta-size); }
+
+/* desktop-listen's book page: the album-style hero, chapters beside About this book. */
+.page[data-layout='desktop'] { display: grid; grid-template-columns: minmax(0,1fr) 360px; column-gap: 48px; align-items: start; padding: 0 56px 90px; }
+.page[data-layout='desktop'] .nav { grid-column: 1 / -1; padding: 12px 0 0; }
+.page[data-layout='desktop'] .hero { grid-column: 1 / -1; display: grid; grid-template-columns: 300px minmax(0,1fr); gap: 32px; text-align: left; padding: 20px 0 0; align-items: end; }
+.page[data-layout='desktop'] .cover { width: 300px; height: 300px; margin: 0; }
+.page[data-layout='desktop'] .actions { grid-column: 1 / -1; margin: 20px 0 0; }
+.page[data-layout='desktop'] .progress { grid-column: 1 / -1; margin: 12px 0 0; }
+.page[data-layout='desktop'] .aside { grid-column: 2; grid-row: 2; display: grid; gap: 8px; align-content: start; }
+.page[data-layout='desktop'][data-audiobook-view='book'] > section { grid-column: 1; grid-row: 2; }
+.page[data-layout='desktop'] .about { -webkit-line-clamp: unset; }
+.page[data-layout='desktop'][data-audiobook-view='author'] > section,
+.page[data-layout='desktop'][data-audiobook-view='book_series'] > section { grid-column: 1 / -1; }

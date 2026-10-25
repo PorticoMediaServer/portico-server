@@ -354,7 +354,7 @@ function BoundLibrary({captured, library, search, tabs: offered, musicLookup}: {
     else if (entry.kind === 'book') navigate({view: 'book', entityId: entry.entityId});
     else if (entry.entityId) navigate({view: 'browse', entityId: entry.entityId});
   };
-  if (library.kind === 'audiobook' && width < 1024 && (view === 'book' || view === 'author' || view === 'book_series') && search.entityId)
+  if (library.kind === 'audiobook' && (view === 'book' || view === 'author' || view === 'book_series') && search.entityId)
     return <AudiobookEntry context={context} target={{libraryId: library.id, view, entityId: search.entityId}}/>;
   return <>{unmatched ? <><LibraryIdentity {...header}/><NeedsAttention artwork={context.artwork} libraryId={library.id} libraryName={library.name} api={resources.life.api} onOpen={openAttention} onEdit={context.effects.editMetadata ? editAttention : undefined}/></>
     : view === 'show' || view === 'season' ? <LibraryShow context={context} captured={captured} libraryId={library.id} search={search}/>

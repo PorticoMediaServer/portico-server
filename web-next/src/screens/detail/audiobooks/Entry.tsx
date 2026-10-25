@@ -14,6 +14,7 @@ import {ScreenProblem} from '../ScreenProblem';
 import {t} from '../text';
 import styles from './audiobooks.module.css';
 import {AudiobookMore} from './More';
+import {useShellWidth} from '../../../shell/viewport';
 
 type Props = {context: ScreenContext; target: AudiobookTarget; onMore?: (target: ContentEntry, anchor: HTMLElement) => void};
 export function AudiobookEntry({context, target, onMore}: Props) {
@@ -26,6 +27,7 @@ export function AudiobookEntry({context, target, onMore}: Props) {
 }
 const duration = (value: number | undefined) => value === undefined ? undefined : serviceI18n().duration(value);
 function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: Props['onMore']}) {
+  const phone = useShellWidth() < 1024;
   const state = useSyncExternalStore(binding.service.subscribe, binding.service.getSnapshot, binding.service.getSnapshot);
   const [expanded, setExpanded] = useState(false), [finished, setFinished] = useState<boolean>(), [busy, setBusy] = useState(false);
   const [more, setMore] = useState<Readonly<{entry: ContentEntry; page: ContentProjection; anchor: HTMLElement}>>();
@@ -65,7 +67,7 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
     return effect({libraryId: page.scope.libraryId, itemId: more.entry.id, kind: more.entry.kind, title: more.entry.title}, more.anchor);
   });
   const open = (entry: ContentEntry) => run(() => binding.open(page, entry));
-  return <article className={styles.page} data-audiobook-view={page.scope.view}>
+  return <article className={styles.page} data-audiobook-view={page.scope.view} data-layout={phone ? 'phone' : 'desktop'}>
     <AmbientArt className={styles.ambient} treatment="phone" source={binding.context.artwork.ambient(cover)}/>
     <nav className={styles.nav}>
       {binding.context.effects.back && <Button variant="ghost" icon="i-left" iconOnly aria-label={t('action.back')} onClick={() => run(() => {binding.current(page);binding.context.effects.back?.();})}/>}
@@ -90,7 +92,7 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
       {!book && !author && primaryBook && <Button className={styles.round} icon="i-retry" iconOnly aria-label={t('action.startOver')} onClick={() => open(primaryBook)}/>}
     </div>
     {book && remaining && <div className={styles.progress}>{ratio !== undefined && <span><i style={{width: `${Math.min(1, Math.max(0, ratio)) * 100}%`}}/></span>}{t('title.resumeRemaining', {remaining})}</div>}
-    {book && entity.overview && <><p className={styles.about} data-expanded={expanded || undefined}>{entity.overview}</p>{!expanded && <button className={styles.readMore} onClick={() => setExpanded(true)}>{t('web.person.readMore')}</button>}</>}
+    {book && entity.overview && <aside className={styles.aside}><p className={styles.about} data-expanded={expanded || undefined}>{entity.overview}</p>{!expanded && <button className={styles.readMore} onClick={() => setExpanded(true)}>{t('web.person.readMore')}</button>}</aside>}
     {state.error && <ScreenProblem context={binding.context} error={state.error} retry={() => {void binding.load().catch(binding.context.effects.reportError);}}/>}
     {rows && <section><div className={styles.sectionHead}><h2>{t(book ? 'next.browse.chapters' : 'library.tab.books')}</h2><span>{rows.totalCount}</span></div>
       {rows.entries.map((entry, index) => book ? <div key={entry.id}><Chapter entry={entry} index={index} page={page} binding={binding}/>{entry.kind === 'audiobook_file' && hasLeafActions && <Button variant="ghost" icon="i-more" iconOnly aria-label={t('card.more', {title: entry.title})} onClick={event => run(() => leafMore(entry, event.currentTarget))}/>}</div>
