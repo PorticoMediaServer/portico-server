@@ -73,3 +73,21 @@ export function createScreenAlbumPlayEffect(input: Readonly<{isCurrent: () => bo
     if (!current()) throw new DOMException('Album playback changed', 'AbortError');
   };
 }
+
+/** Radio membership and refill are the server's seeded selector. A screen never
+ * ranks songs or constructs an endlessly growing item list in the browser. */
+export function createScreenRadioPlayEffect(input: Readonly<{isCurrent: () => boolean; runtime: () => Pick<NonNullable<ShellBindings['playback']>['runtime'], 'playFromQueue'> | undefined}>): NonNullable<ScreenContext['effects']['playRadio']> {
+  const authorityCurrent = input.isCurrent.bind(input), getRuntime = input.runtime.bind(input);
+  return async (seedId, signal, callerCurrent) => {
+    const capturedSeedId = seedId;
+    signal.throwIfAborted();
+    if (!authorityCurrent() || !callerCurrent()) throw new DOMException('Radio seed changed', 'AbortError');
+    const runtime = getRuntime();
+    if (!runtime) throw new DOMException('Playback is still loading', 'AbortError');
+    const current = () => !signal.aborted && authorityCurrent() && callerCurrent() && getRuntime() === runtime;
+    if (!current()) throw new DOMException('Radio seed changed', 'AbortError');
+    await runtime.playFromQueue({container: {kind: 'radio', id: capturedSeedId}}, {signal, isCurrent: current});
+    signal.throwIfAborted();
+    if (!current()) throw new DOMException('Radio seed changed', 'AbortError');
+  };
+}
