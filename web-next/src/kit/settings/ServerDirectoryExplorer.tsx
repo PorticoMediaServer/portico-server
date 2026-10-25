@@ -4,6 +4,7 @@ import type {LibraryContentApi} from '@core/library-content.ts';
 import {browseServerFilesystem} from '@core/library-management.ts';
 import {Button, Switch, TextField} from '../controls';
 import {Dialog} from '../overlays/Dialog';
+import {Skeleton} from '../states';
 import styles from './server-directory-explorer.module.css';
 
 const t = defaultI18n.t;
@@ -128,7 +129,7 @@ export function ServerDirectoryExplorer({open, onOpenChange, api, onChoose, onCh
         <section className={styles.explorerMain} aria-label={t('next.ownerLibraries.explorer.folders')}>
           <header className={styles.pickerListHeader}><b>{t('next.ownerLibraries.explorer.folders')}</b><label>{t('next.ownerLibraries.explorer.showHidden')}<Switch aria-label={t('next.ownerLibraries.explorer.showHidden')} checked={showHidden} disabled={busy} onCheckedChange={value => {if (current()) {setShowHidden(value); void read(page?.path, value);}}}/></label></header>
           {failed ? <div role="alert" className={styles.pickerNote}><p>{t('next.ownerLibraries.explorer.failed')}</p><p>{t('next.ownerLibraries.explorer.failedHelp')}</p></div> : null}
-          {busy && !page ? <p role="status">{t('next.ownerLibraries.explorer.reading')}</p> : null}
+          {busy && !page ? <div aria-busy="true"><p role="status">{t('next.ownerLibraries.explorer.reading')}</p>{[0, 1, 2].map(index => <Skeleton key={index} height={52}/>)}</div> : null}
           {page && !page.path ? <div className={styles.pickerRoots}>{places.map(root => <div key={root.path}>{rootButton(root)}</div>)}</div> : null}
           {page?.path ? <ul className={styles.pickerList}>{page.entries.filter(entry => entry.kind === 'directory').map(entry => <li key={entry.path} className={styles.pickerEntry} data-hidden={entry.hidden || undefined}>
             {onChooseMany ? <input type="checkbox" aria-label={entry.path} checked={chosen.includes(entry.path)} disabled={!entry.readable || busy || !chosen.includes(entry.path) && chosen.length >= 64} onChange={() => toggle(entry.path)}/> : null}
