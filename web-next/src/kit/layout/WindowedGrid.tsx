@@ -9,6 +9,8 @@ export type GridItemContext = Readonly<{index: number; key: string; focused: boo
 export type WindowedGridProps<T> = {
   collection: WindowedCollection<T>; renderItem: (item: T, context: GridItemContext) => ReactNode; renderPlaceholder: (index: number) => ReactNode;
   label: string; height: number | string; cardWidth: number; rowHeight: number; gap?: number; rowGap?: number; overscanRows?: number; stickyOffset?: number;
+  /** Position once after this collection total and viewport are observed. */
+  initialIndex?: number;
   onVisibleRange?: (first: number, last: number) => void; onItemFocus?: (item: T, index: number) => void; reducedMotion?: boolean;
   ref?: Ref<WindowedGridHandle>; className?: string; style?: CSSProperties;
 };
@@ -16,7 +18,8 @@ export type WindowedGridProps<T> = {
 // Keep even million-item spans below the smallest supported browser's box limit.
 const MAX_SCROLL_HEIGHT = 8_000_000;
 export function WindowedGrid<T>({collection, renderItem, renderPlaceholder, label, height, cardWidth, rowHeight, gap = 20, rowGap = 30, overscanRows = 1, stickyOffset = 0,
-  onVisibleRange, onItemFocus, reducedMotion = false, ref, className, style}: WindowedGridProps<T>) {
+  initialIndex, onVisibleRange, onItemFocus, reducedMotion = false, ref, className, style}: WindowedGridProps<T>) {
+  const initialPosition = useRef<WindowedCollection<T> | undefined>(undefined);
   const root = useRef<HTMLDivElement>(null), pendingFocus = useRef<number | null>(null), [viewport, setViewport] = useState({width: 0, height: 0, top: 0});
   const [focused, setFocused] = useState<string | null>(null), motion = useLayoutMotion(reducedMotion);
   const snapshot = useSyncExternalStore(collection.subscribe, collection.getSnapshot, collection.getSnapshot);
@@ -53,6 +56,11 @@ export function WindowedGrid<T>({collection, renderItem, renderPlaceholder, labe
     scrollLayout(element, 0, Math.min(maxPhysical, Math.max(0, target * maxPhysical / maxLogical)), instant, repeat);
     if (focus) setViewport(previous => ({...previous}));
   }, [total, columns, pitch, rowHeight, logicalTop, usableHeight, maxPhysical, maxLogical, motion.reduced]);
+  useLayoutEffect(() => {
+    if (initialPosition.current === collection || initialIndex === undefined || !Number.isSafeInteger(initialIndex)
+      || initialIndex < 0 || snapshot.total === undefined || initialIndex >= snapshot.total || viewport.width <= 0 || viewport.height <= 0) return;
+    initialPosition.current = collection; jump(initialIndex);
+  }, [collection, initialIndex, snapshot.total, viewport.width, viewport.height, jump]);
   useImperativeHandle(ref, () => ({scrollToIndex: (index, options) => jump(index, options?.focus)}), [jump]);
   useLayoutEffect(() => {
     const index = pendingFocus.current; if (index === null) return;
