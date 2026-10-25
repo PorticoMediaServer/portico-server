@@ -2291,6 +2291,23 @@ CREATE TABLE personal_completed_plays(
  PRIMARY KEY(profile_id,playback_id)) WITHOUT ROWID, STRICT;
 CREATE INDEX personal_completed_plays_item ON personal_completed_plays(item_id);
 CREATE TABLE personal_history(id TEXT NOT NULL,profile_id TEXT NOT NULL,item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,started_at TEXT NOT NULL,updated_at TEXT NOT NULL,sequence INTEGER NOT NULL,position INTEGER NOT NULL,unit INTEGER NOT NULL DEFAULT 0 CHECK(unit BETWEEN 0 AND 99),completed INTEGER NOT NULL,PRIMARY KEY(profile_id,id)) STRICT;
+-- A viewer's own finished chapters. A fact exists only when accepted personal
+-- progress showed playback crossing the chapter's end, never from the book's
+-- container mark, the current chapter or a part's early completion threshold.
+-- The chapter definition and the linked source asset are stored with it so a
+-- replaced chapter or audio file cannot inherit the tick: a fact is published
+-- only while both still match what was actually played.
+CREATE TABLE personal_chapter_completions(
+ profile_id TEXT NOT NULL,
+ file_entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ chapter_index INTEGER NOT NULL CHECK(chapter_index>=0),
+ start_ms INTEGER NOT NULL CHECK(start_ms>=0),
+ end_ms INTEGER NOT NULL CHECK(end_ms>start_ms),
+ asset_id INTEGER NOT NULL REFERENCES catalog_assets(id) ON DELETE CASCADE,
+ asset_size INTEGER NOT NULL,
+ asset_modified_ns INTEGER NOT NULL,
+ completed_at TEXT NOT NULL,
+ PRIMARY KEY(profile_id,file_entity_id,chapter_index)) STRICT;
 CREATE TABLE personal_activity_revisions(profile_id TEXT PRIMARY KEY,revision INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE TABLE saved_operation_fences(owner_key TEXT NOT NULL,domain TEXT NOT NULL,operation_id TEXT NOT NULL,request_hash TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(owner_key,domain,operation_id)) STRICT;
 CREATE TABLE personal_snapshots(profile_id TEXT NOT NULL,item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,revision INTEGER NOT NULL,state TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(profile_id,item_id,revision)) STRICT;
@@ -6139,6 +6156,8 @@ CREATE INDEX lyric_candidates_item_id_fk ON lyric_candidates(item_id);
 CREATE INDEX lyric_resources_asset_id_fk ON lyric_resources(asset_id);
 CREATE INDEX mb_jobs_item_id_fk ON mb_jobs(item_id);
 CREATE INDEX mb_jobs_album_id_fk ON mb_jobs(album_id);
+CREATE INDEX personal_chapter_completions_asset_id_fk ON personal_chapter_completions(asset_id);
+CREATE INDEX personal_chapter_completions_file_entity_id_fk ON personal_chapter_completions(file_entity_id);
 CREATE INDEX personal_conflicts_item_id_fk ON personal_conflicts(item_id);
 CREATE INDEX personal_evidence_fences_item_id_fk ON personal_evidence_fences(item_id);
 CREATE INDEX personal_explicit_events_item_id_fk ON personal_explicit_events(item_id);

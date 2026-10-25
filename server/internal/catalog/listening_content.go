@@ -667,13 +667,20 @@ func (s *Service) enrichListeningEntries(r ContentRequest, spec listeningSection
 				return ErrCursor
 			}
 			var start, end float64
-			var available bool
-			if e = s.read().QueryRow(`SELECT c.start_seconds,c.end_seconds,EXISTS(SELECT 1 FROM catalog_item_availability a WHERE a.entity_id=c.file_id AND a.available=1 AND a.retired=0) FROM catalog_book_chapters c WHERE c.file_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND c.chapter_index=?`, itemID, chapterIndex).Scan(&start, &end, &available); e != nil {
+			var available, watched bool
+			// A finished chapter is this profile's own stored fact, and only
+			// while the chapter definition and the file's linked source still
+			// match what was played. Nothing is inferred from the book's
+			// finished mark or from the chapter the resume point is in.
+			if e = s.read().QueryRow(`SELECT c.start_seconds,c.end_seconds,EXISTS(SELECT 1 FROM catalog_item_availability a WHERE a.entity_id=c.file_id AND a.available=1 AND a.retired=0),EXISTS(SELECT 1 FROM personal_chapter_completions f WHERE f.profile_id=? AND f.file_entity_id=c.file_id AND f.chapter_index=c.chapter_index AND f.start_ms=CAST(round(c.start_seconds*1000) AS INTEGER) AND f.end_ms=CAST(round(c.end_seconds*1000) AS INTEGER) AND EXISTS(SELECT 1 FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id WHERE l.entity_id=f.file_entity_id AND a.id=f.asset_id AND a.size=f.asset_size AND a.modified_ns=f.asset_modified_ns)) FROM catalog_book_chapters c WHERE c.file_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND c.chapter_index=?`, r.Profile, itemID, chapterIndex).Scan(&start, &end, &available, &watched); e != nil {
 				return e
 			}
 			duration := end - start
 			v.Duration = &duration
 			v.Available = &available
+			if watched {
+				v.Watched = &watched
+			}
 			v.Navigation = &ContentNavigation{View: "item", EntityID: itemID}
 			if available {
 				v.Playback = &ContentPlayback{ItemID: itemID, StartSeconds: &start}
