@@ -1,3 +1,4 @@
+import type {LibraryContentApi} from '@core/library-content.ts';
 import {routePath} from '../../../../packages/contracts/src/routes.ts';
 import {initializeServer, resumeServerSetup, type PendingAccountSetup, type SetupDraftStore, type SetupSession} from '@core/setup-onboarding.ts';
 import type {HttpLocalApi, LocalSession} from '@core/index.ts';
@@ -24,7 +25,8 @@ export type SetupPorts = Readonly<{
   continueHosted: (server: SetupServer, input: Readonly<{name: string}>) => Promise<void>;
   resumeHosted?: (server: SetupServer, pending: PendingAccountSetup) => Promise<void>;
   /** Bound to the admitted owner, never the pre-admission setup bearer. */
-  addLibrary: (input: Readonly<{kind: SetupLibraryKind; name: string; path: string}>) => Promise<void>;
+  addLibrary: (input: Readonly<{kind: SetupLibraryKind; name: string; path: string; folders?: readonly string[]}>) => Promise<void>;
+  libraryFolders?: LibraryContentApi;
   complete: () => void;
   hostname?: () => string;
 }>;
@@ -42,6 +44,7 @@ export type SetupSnapshot = Readonly<{
   kind: SetupLibraryKind;
   libraryName: string;
   path: string;
+  folders?: readonly string[];
   busy: boolean;
   error?: string;
   connectError?: unknown;
@@ -119,7 +122,12 @@ export class SetupFlow {
   setConfirm = (confirm: string) => {if (!this.state.busy) this.publish({confirm});};
   setKind = (kind: SetupLibraryKind) => {if (!this.state.busy) this.publish({kind, libraryName: defaultLibraryName(kind)});};
   setLibraryName = (libraryName: string) => {if (!this.state.busy) this.publish({libraryName});};
-  setPath = (path: string) => {if (!this.state.busy) this.publish({path});};
+  setPath = (path: string) => {if (!this.state.busy) this.publish({path, folders: undefined});};
+  libraryFolderApi = () => !this.disposed && this.state.phase === 'library' ? this.ports.libraryFolders : undefined;
+  setFolders = (folders: readonly string[]) => {
+    if (this.disposed || this.state.phase !== 'library' || this.state.busy || folders.length > 64 || folders.some(path => !path || path.length > 8192)) return;
+    this.publish({folders: Object.freeze([...new Set(folders)]), path: ''});
+  };
   submitHosted = async (): Promise<void> => {
     const server = this.server;
     if (!server || this.state.phase !== 'form' || this.state.busy || this.state.mode !== 'hosted' || !setupNameValid(this.state.name)) return;
@@ -158,11 +166,12 @@ export class SetupFlow {
   };
   addLibrary = async (): Promise<void> => {
     const server = this.server, state = this.state;
-    if (!server || state.phase !== 'library' || state.busy || !setupNameValid(state.libraryName) || !state.path.trim()) return;
+    if (!server || state.phase !== 'library' || state.busy || !setupNameValid(state.libraryName) || !state.folders?.length && !state.path.trim()) return;
     const op = this.operation();
     this.publish({busy: true, error: undefined});
+    if (!this.current(server, op) || this.state.phase !== 'library' || !this.state.busy) return;
     try {
-      await this.ports.addLibrary({kind: state.kind, name: state.libraryName.trim(), path: state.path.trim()});
+      await this.ports.addLibrary({kind: state.kind, name: state.libraryName.trim(), path: state.path.trim(), ...(state.folders?.length ? {folders: Object.freeze([...state.folders])} : {})});
       if (this.current(server, op)) this.ports.complete();
     } catch (error) {
       if (this.current(server, op)) this.publish({busy: false, error: setupErrorMessage(error)});

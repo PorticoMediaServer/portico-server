@@ -11,7 +11,7 @@ function SetupRoute() {
   const [value] = useState(() => {
     const lifetime = new BrowserSetupComposition(browserAccountOrigin(import.meta.env, location));
     const base = createBrowserSetupPorts({draft: browserSetupDraft, acceptLocal: lifetime.acceptLocal,
-      continueHosted: lifetime.continueHosted, resumeHosted: lifetime.resumeHosted, addLibrary: lifetime.addLibrary,
+      continueHosted: lifetime.continueHosted, resumeHosted: lifetime.resumeHosted, addLibrary: lifetime.addLibrary, libraryFolders: lifetime.libraryFolders,
       complete: () => {void router.navigate({to: '/', replace: true});}});
     return {lifetime, ports: {...base, connect: (signal: AbortSignal) => lifetime.connect(base.connect, signal)}};
   });
