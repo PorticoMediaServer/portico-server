@@ -1,3 +1,4 @@
+import {useEffect} from 'react';
 import {createRoot} from 'react-dom/client';
 import {IconSprite} from '../../src/kit/Icon';
 import {NeedsAttention} from '../../src/screens/metadata/NeedsAttention';
@@ -31,7 +32,28 @@ const total = entries.length;
 // ?empty draws frame 4's done state; the drawn pending row above already draws its working state.
 const empty = new URLSearchParams(location.search).has('empty');
 const api = {request: async <T,>() => ({libraryId: 'library', total: empty ? 0 : total, entries: empty ? [] : entries, nextCursor: ''}) as T};
+// ?dialog=search or ?dialog=id clicks the shipped row action after paint, so the drawn
+// dialogs open through the production path; ?number=1 types the bare number that asks for
+// the provider picker. No dialog markup is duplicated here.
 function Specimen() {
+  const params = new URLSearchParams(location.search), dialog = params.get('dialog'), number = params.get('number') === '1';
+  useEffect(() => {
+    if (!dialog) return;
+    const label = dialog === 'search' ? 'Search by hand' : 'Enter a provider ID';
+    const button = [...document.querySelectorAll('button')].find(item => (item.textContent || '').trim() === label);
+    button?.click();
+  }, [dialog]);
+  useEffect(() => {
+    if (!dialog || !number) return;
+    const timer = setTimeout(() => {
+      const input = document.querySelector('input');
+      if (!input) return;
+      const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      set?.call(input, '280');
+      input.dispatchEvent(new Event('input', {bubbles: true}));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [dialog, number]);
   return <div style={{padding: '32px', maxWidth: 1000}}><IconSprite /><NeedsAttention libraryId="library" api={api} /></div>;
 }
 createRoot(document.getElementById('root')!).render(<Specimen />);
