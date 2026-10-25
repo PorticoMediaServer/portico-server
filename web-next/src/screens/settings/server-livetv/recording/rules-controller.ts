@@ -58,10 +58,10 @@ export class RecordingRulesController extends OwnerStore<State> {
   async toggle(rule: OwnerRule) {
     if (!this.isActive() || this.snapshot.draft || this.snapshot.saving || this.pending || needsRuleOwner(rule) || !this.snapshot.rules.includes(rule)) return false;
     this.open(rule);
-    const draft = this.snapshot.draft;
+    const draft = this.getSnapshot().draft;
     if (!draft || draft.id !== rule.id) return false;
     this.edit(draft, {enabled: !rule.enabled});
-    const changed = this.snapshot.draft;
+    const changed = this.getSnapshot().draft;
     return changed ? this.save(changed) : false;
   }
   close(expected: RuleDraft) {if (this.snapshot.draft !== expected) return;if (this.isActive() && !this.snapshot.saving && !this.pending) {this.invalidate();this.publish({...this.snapshot, draft: undefined, guideLoading: false, series: []});}}
