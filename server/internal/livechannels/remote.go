@@ -616,6 +616,11 @@ func (s *Store) Remove(ctx context.Context, a Authority, sid string, revision in
 				return ErrUnavailable
 			}
 		}
+		// This source may itself be a dependent guide consumer. The dependency
+		// rows above block removing a guide source, not removing its consumer.
+		if _, e = tx.ExecContext(ctx, `DELETE FROM live_source_dependencies WHERE kind='guide' AND id=?`, sid); e != nil {
+			return ErrUnavailable
+		}
 		_, e = tx.ExecContext(ctx, `INSERT INTO live_source_removals VALUES(?,?,?,?)`, sid, requestID, revision, time.Now().UTC().Format(time.RFC3339))
 		if e != nil {
 			return ErrUnavailable
