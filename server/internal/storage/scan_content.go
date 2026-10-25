@@ -122,13 +122,20 @@ func runScanCommand(ctx context.Context, binary string, args []string, path stri
 	}
 	for i, arg := range args {
 		if arg == path || arg == "bluray:"+path {
-			if arg != prefix+path {
+			argPrefix := ""
+			if arg == "bluray:"+path {
+				argPrefix = "bluray:"
+			}
+			// A directory reader takes either the structure tool's plain path
+			// or FFmpeg's closed bluray: input; the mount path keeps exactly
+			// that spelling. A file scan keeps its single declared protocol.
+			if !directory && argPrefix != prefix || directory && arg != path && argPrefix != "bluray:" {
 				return true, errors.New("invalid scan input protocol")
 			}
 			if index != -1 {
 				return true, errors.New("ambiguous scan input")
 			}
-			index = i
+			index, prefix = i, argPrefix
 		}
 	}
 	if index < 0 || len(args) > 128 {
