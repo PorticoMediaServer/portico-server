@@ -31,7 +31,9 @@ const total = entries.length;
 // A read-only attention page; every command is inert so the specimen cannot pretend to work.
 // ?empty draws frame 4's done state; the drawn pending row above already draws its working state.
 const empty = new URLSearchParams(location.search).has('empty');
-const api = {request: async <T,>() => ({libraryId: 'library', total: empty ? 0 : total, entries: empty ? [] : entries, nextCursor: ''}) as T};
+const working = new URLSearchParams(location.search).has('working');
+const shown = working ? [{...entries[0], reason: 'pending', candidates: [], actions: []}, {...entries[2], reason: 'searching', candidates: [], actions: []}, entries[3]] : entries;
+const api = {request: async <T,>() => ({libraryId: 'library', total: empty ? 0 : shown.length, entries: empty ? [] : shown, nextCursor: ''}) as T};
 // ?dialog=search or ?dialog=id clicks the shipped row action after paint, so the drawn
 // dialogs open through the production path; ?number=1 types the bare number that asks for
 // the provider picker. No dialog markup is duplicated here.
