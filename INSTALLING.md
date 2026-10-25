@@ -227,7 +227,7 @@ only where you intend to allow media writes. To upgrade, pull the chosen image,
 stop and remove the old container, then run the same command with the new tag
 and the same state volume. Removing the container does not remove a named
 volume; do not delete that volume when upgrading.
-`/config` must be mounted. If `/transcode` is absent or RAM-backed, Storage reports a disk-mapping notice and uses a disk-backed `/config/Transcode`. `TZ` and `UMASK` are honoured without writing `/etc`. The Unraid Community Applications template is `packaging/unraid/portico.xml` (`99:100`); the TrueNAS SCALE custom app is `packaging/truenas/compose.yaml` (`568:568`). Use a local cache pool for the database. NFS, SMB and Unraid FUSE pool mounts raise a quiet storage notice. The image includes an
+`/config` must be mounted. If `/transcode` is absent or RAM-backed, Storage reports a disk-mapping notice and uses a disk-backed `/config/Transcode`. `TZ` and `UMASK` are honoured without writing `/etc`. The Unraid Community Applications templates are `packaging/unraid/portico.xml` (`99:100`) for Intel or AMD, which passes `/dev/dri`, and `packaging/unraid/portico-nvidia.xml` for NVIDIA, which starts with the driver runtime; both name Unraid so the one GPU remedy the server shows is Unraid's rather than Docker's. The TrueNAS SCALE custom app is `packaging/truenas/compose.yaml` (`568:568`). Use a local cache pool for the database. NFS, SMB and Unraid FUSE pool mounts raise a quiet storage notice. The image includes an
 init for orphan reaping and the server's own restart parent; restore and Restart
 work without a Docker restart policy. A restart policy remains useful for host
 reboots or crashes. Allow at least 45 seconds for container stop.
