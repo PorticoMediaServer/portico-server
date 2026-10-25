@@ -14,10 +14,10 @@ import {
   type GetReadingPeriodicalGroupsResponse, type GetReadingPeriodicalIssuesResponse,
   routePath, errors, decodeGetReadingSeriesItemsResponse, decodeGetReadingDiscoverResponse, decodeGetReadingContinueResponse, decodeGetReadingItemsResponse, decodeGetItemsItemIdReadingVersionsResponse,
   decodePostReadingSessionsResponse, decodeGetReadingSessionsSessionIdProgressResponse,
-  decodePutReadingSessionsSessionIdProgressResponse,
+  decodePutReadingSessionsSessionIdProgressResponse, decodeGetReadingSessionsSessionIdSearchResponse,
   type GetReadingSeriesItemsResponse, type GetReadingDiscoverResponse, type GetReadingContinueResponse, type GetReadingItemsResponse, type GetItemsItemIdReadingVersionsResponse,
   type PostReadingSessionsRequest, type PostReadingSessionsResponse,
-  type GetReadingSessionsSessionIdProgressResponse,
+  type GetReadingSessionsSessionIdProgressResponse, type GetReadingSessionsSessionIdSearchResponse,
   type PutReadingSessionsSessionIdProgressRequest, type PutReadingSessionsSessionIdProgressResponse,
 } from '../../contracts/src/index.ts';
 import {schemas} from '../../contracts/src/schemas.ts';
@@ -33,6 +33,95 @@ export function parseReadingManifest(raw: unknown): ReadingManifest {
   const offered = typeof raw === 'object' && raw !== null && !Array.isArray(raw) && (raw as Record<string, unknown>).canAnnotate === true;
   const saveOffered = typeof raw === 'object' && raw !== null && !Array.isArray(raw) && (raw as Record<string, unknown>).canSaveFile === true;
   return frozen({...value, ...(offered ? {canAnnotate: true as const} : {}), ...(saveOffered ? {canSaveFile: true as const} : {})});
+}
+
+export type ReadingSearchStatus = 'indexed' | 'pending' | 'unsupported' | 'evicted' | 'excluded';
+export type ReadingSearchCoverage = Readonly<{status: ReadingSearchStatus; reason?: string}>;
+/** One exact hit: utf16Offset is in the section's normalized text; matchStart/
+ * matchLength are UTF-16 indices INSIDE excerpt. Neither is a CFI or DOM offset. */
+export type ReadingSearchHit = Readonly<{sectionPath: string; sectionIndex: number; utf16Offset: number; excerpt: string; matchStart: number; matchLength: number}>;
+export type ReadingSearchPage = Readonly<{sessionId: string; sourceId: string; sourceRevision: string; indexRevision: number; coverage: ReadingSearchCoverage; hits: readonly ReadingSearchHit[]; next?: string}>;
+/** Retained original witness the response must match. Converted engine sessions
+ * must supply the original source revision, not the converted output revision. */
+export type ReadingSearchWitness = Readonly<{sessionId: string; sourceId: string; expectedRevision: string; format: string; converted: boolean; spine: readonly string[]; xhtml: (path: string) => boolean}>;
+
+const readingSearchStatuses: readonly ReadingSearchStatus[] = ['indexed', 'pending', 'unsupported', 'evicted', 'excluded'];
+const readingSearchCursor = /^[A-Za-z0-9_-]{1,512}$/;
+const readingSearchStatus = (value: unknown): value is ReadingSearchStatus => typeof value === 'string' && readingSearchStatuses.includes(value as ReadingSearchStatus);
+const splitSurrogate = (value: string, index: number) => index > 0 && index < value.length
+  && (value.charCodeAt(index - 1) & 0xFC00) === 0xD800 && (value.charCodeAt(index) & 0xFC00) === 0xDC00;
+function wellFormed(value: string): boolean {
+  for (let index = 0; index < value.length; index++) {
+    const unit = value.charCodeAt(index);
+    if (unit >= 0xD800 && unit <= 0xDBFF) {
+      if (++index >= value.length) return false;
+      const low = value.charCodeAt(index);
+      if (!(low >= 0xDC00 && low <= 0xDFFF)) return false;
+    } else if (unit >= 0xDC00 && unit <= 0xDFFF) return false;
+  }
+  return true;
+}
+
+const boundedText = (value: unknown, max: number): value is string => typeof value === 'string' && value.length > 0 && value.length <= max && !/[\p{Cc}]/u.test(value) && wellFormed(value);
+function readingSearchWitness(value: ReadingSearchWitness): boolean {
+  return typeof value === 'object' && value !== null
+    && id(value.sessionId) && boundedText(value.sourceId, 256) && revision(value.expectedRevision)
+    && engineFormat(value.format) && typeof value.converted === 'boolean'
+    && Array.isArray(value.spine) && value.spine.length <= 4096 && value.spine.every(path => typeof path === 'string' && member(path) && wellFormed(path))
+    && typeof value.xhtml === 'function';
+}
+
+/** Public strict entry for an untrusted body: witness and limit first, then the
+ * official decoder, then the cross-field checks. Unknown keys and malformed
+ * shapes therefore fail as invalid_document rather than an incidental error. */
+export function parseReadingSearchPage(raw: unknown, witness: ReadingSearchWitness, limit: number): ReadingSearchPage {
+  if (!readingSearchWitness(witness)) fail('invalid_request');
+  if (!integer(limit, 1, 50)) fail('invalid_request');
+  let decoded: GetReadingSessionsSessionIdSearchResponse;
+  try { decoded = decodeGetReadingSessionsSessionIdSearchResponse(raw); }
+  catch { return fail('invalid_document'); }
+  return parseDecodedReadingSearchPage(decoded, witness, limit);
+}
+
+/** Bounded decoded-only parser. IDs/revision must equal the retained witness;
+ * nonindexed coverage never carries hits or a continuation; indexed hits must be
+ * exact spine XHTML with safe UTF-16 ranges and one hit per section position. */
+function parseDecodedReadingSearchPage(raw: GetReadingSessionsSessionIdSearchResponse, witness: ReadingSearchWitness, limit: number): ReadingSearchPage {
+  if (!id(raw.sessionId) || !boundedText(raw.sourceId, 256) || !revision(raw.sourceRevision)) fail('invalid_document');
+  if (raw.sessionId !== witness.sessionId || raw.sourceId !== witness.sourceId || raw.sourceRevision !== witness.expectedRevision) fail('invalid_document');
+  if (!integer(raw.indexRevision, 0, Number.MAX_SAFE_INTEGER)) fail('invalid_document');
+  const coverage = raw.coverage, status = coverage.status;
+  if (!readingSearchStatus(status)) fail('invalid_document');
+  if (coverage.reason !== undefined && (typeof coverage.reason !== 'string' || coverage.reason.length > 64 || !wellFormed(coverage.reason) || /[\p{Cc}]/u.test(coverage.reason))) fail('invalid_document');
+  if (!Array.isArray(raw.hits) || raw.hits.length > limit) fail('invalid_document');
+  const indexed = status === 'indexed';
+  if (!indexed && raw.hits.length !== 0) fail('invalid_document');
+  if (!indexed && raw.next !== undefined) fail('invalid_document');
+  if (raw.next !== undefined && (typeof raw.next !== 'string' || !readingSearchCursor.test(raw.next))) fail('invalid_document');
+  // A converted engine session or a non-EPUB source has no EPUB index
+  // coordinates; only the explicit unsupported fallback is truthful.
+  if ((witness.format !== 'epub' || witness.converted) && status !== 'unsupported') fail('invalid_document');
+  const hits: ReadingSearchHit[] = [];
+  const keys = new Set<string>();
+  for (const hit of raw.hits) {
+    if (typeof hit.sectionPath !== 'string' || !member(hit.sectionPath) || !wellFormed(hit.sectionPath) || !integer(hit.sectionIndex, 0, 4095)) fail('invalid_document');
+    if (indexed && (witness.spine[hit.sectionIndex] !== hit.sectionPath || !witness.xhtml(hit.sectionPath))) fail('invalid_document');
+    if (!integer(hit.utf16Offset, 0, 8 << 20)) fail('invalid_document');
+    if (typeof hit.excerpt !== 'string' || hit.excerpt.length > 8192 || !wellFormed(hit.excerpt)) fail('invalid_document');
+    if (!integer(hit.matchStart, 0, hit.excerpt.length) || !integer(hit.matchLength, 1, hit.excerpt.length) || hit.matchStart + hit.matchLength > hit.excerpt.length) fail('invalid_document');
+    if (splitSurrogate(hit.excerpt, hit.matchStart) || splitSurrogate(hit.excerpt, hit.matchStart + hit.matchLength)) fail('invalid_document');
+    // One literal query at one section position yields at most one hit; a
+    // different excerpt range at the same path/index/offset is still a duplicate.
+    const key = [hit.sectionPath, hit.sectionIndex, hit.utf16Offset].join('\u0000');
+    if (keys.has(key)) fail('invalid_document');
+    keys.add(key);
+    hits.push(Object.freeze({sectionPath: hit.sectionPath, sectionIndex: hit.sectionIndex, utf16Offset: hit.utf16Offset, excerpt: hit.excerpt, matchStart: hit.matchStart, matchLength: hit.matchLength}));
+  }
+  return frozen({
+    sessionId: raw.sessionId, sourceId: raw.sourceId, sourceRevision: raw.sourceRevision, indexRevision: raw.indexRevision,
+    coverage: Object.freeze({status, ...(coverage.reason !== undefined ? {reason: coverage.reason} : {})}),
+    hits: Object.freeze(hits), ...(raw.next !== undefined ? {next: raw.next} : {}),
+  });
 }
 
 /** Derived from the generated official response, never a hand-written mirror. */
@@ -748,6 +837,32 @@ export class ReadingSession {
       if (observed !== 'image/jpeg' && observed !== 'image/png' && observed !== 'image/webp') return fail('invalid_response');
       const body = await bytes(r, 16 << 20, active, check);
       return Object.freeze({index, name: this.manifest.pageNames![index], bytes: body, mime: observed});
+    });
+  };
+  /** Bounded literal search over this retained session's persisted index.
+   * Returns an immutable page; nonindexed coverage is fallback evidence, never
+   * a "no matches" claim. Never returns or fabricates a CFI. */
+  search = async (queryText: string, options: Readonly<{limit?: number; cursor?: string; signal?: AbortSignal}> = {}): Promise<ReadingSearchPage> => {
+    this.#check();
+    const q = typeof queryText === 'string' ? queryText.trim() : '';
+    const limit = options.limit ?? 20, cursor = options.cursor ?? '';
+    // Reject a lone surrogate before URL encoding can replace it with U+FFFD and
+    // search different text.
+    if (!wellFormed(q) || !q || q.length > 1024 || !integer(limit, 1, 50) || cursor !== '' && !readingSearchCursor.test(cursor)) fail('invalid_request');
+    const witness: ReadingSearchWitness = {
+      sessionId: this.manifest.sessionId, sourceId: this.manifest.sourceId,
+      expectedRevision: this.manifest.conversion?.originalRevision ?? this.manifest.revision,
+      format: this.manifest.format, converted: this.manifest.conversion !== undefined,
+      spine: this.manifest.spine ?? [],
+      xhtml: path => this.manifest.resources?.some(resource => resource.path === path && resource.mime.toLowerCase() === 'application/xhtml+xml') === true,
+    };
+    return this.#control(async () => {
+      const out = await this.#client.json(
+        query(routePath('get_reading_sessions_sessionId_search', {sessionId: this.manifest.sessionId}), {q, ...(cursor ? {cursor} : {}), limit}),
+        'GET', undefined, options.signal, decodeGetReadingSessionsSessionIdSearchResponse, 2 << 20,
+        undefined, this.signal, value => value.sourceRevision);
+      this.#check();
+      return parseDecodedReadingSearchPage(out, witness, limit);
     });
   };
   progress = async (signal?: AbortSignal): Promise<ReadingProgress> => {
