@@ -25,6 +25,14 @@ export function readerChapterMarks(items: readonly ReaderTocItem[], location?: R
   return items.map((item, index) => ({id: item.id, start: item.location.progression, end: starts[index + 1] ?? 1,
     current: location ? location.progression >= item.location.progression && (starts[index + 1] === undefined || location.progression < starts[index + 1]) : undefined}));
 }
+/** Fixed page ordinals/counts are actual renderer facts, never inferred EPUB pages. */
+export function readerPagePosition(location: ReaderLocation | null, count: number | undefined): string | undefined {
+  if (!location) return;
+  if (location.format !== 'epub' && count !== undefined && Number.isSafeInteger(count) && count > 0) {
+    return t('next.reader.pageOf', {page: location.pageLabel ?? defaultI18n.number(location.page + 1), count: defaultI18n.number(count)});
+  }
+  return location.pageLabel ? t('next.reader.pageLabel', {page: location.pageLabel}) : undefined;
+}
 export type ReaderBookState = Readonly<{publication: ReadingPublication; controller: ReadingController; authority: ReaderMountAuthority; location?: ReaderLocation; contentsTarget?: ReaderContentsTarget}>;
 
 export function ReaderBook({book, active, reportError, onBack, onOpenSettings, environment = 'web'}: {environment?: ReaderEnvironment; book: ReaderBookState; active: boolean; reportError: (error: unknown) => void; onBack: () => void; onOpenSettings: () => void}) {
@@ -110,7 +118,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
       direction: publication.format === 'cbz' && value.preferences.comicDirection !== 'file' ? value.preferences.comicDirection === 'rtl' ? 'rtl' : 'ltr'
         : value.metadata?.direction === 'rtl' ? 'rtl' : 'ltr', tapTurnEnabled: value.preferences.tapToTurn, showPageArrows: layout.showPageArrows,
       chapters: readerChapterMarks(value.toc, value.location ?? undefined),
-      chapter: value.location?.chapter, pages: value.location?.pageLabel ? t('next.reader.pageLabel', {page: value.location.pageLabel}) : undefined,
+      chapter: value.location?.chapter, pages: readerPagePosition(value.location, value.metadata?.pageCount),
       remainingInSection: value.location?.pagesLeftInSection === undefined ? undefined : t('next.reader.sectionRemaining', {count: value.location.pagesLeftInSection}),
       percent: value.location ? defaultI18n.percent(value.location.progression) : undefined, panel: panelContent, panelReflows: layout.panelReflows(panel),
       fixedPageStrip: fixed ? <FixedPageStrip controller={controller} authority={authority} format={publication.format} reportError={code => reportError({code})}/> : undefined,
