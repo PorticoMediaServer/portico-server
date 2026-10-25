@@ -339,7 +339,7 @@ export function settingsBindingPatch(binding:SettingsBinding,value:unknown,sourc
   const values=Object.fromEntries(Object.entries(binding.fields).map(([name,key])=>{const v=(value as Record<string,unknown>)[name];if(binding.key==='segments.libraryModes'?v!=='server'&&v!=='standard'&&v!=='thorough'&&v!=='off':v!=='ask'&&v!=='auto'&&v!=='off')throw new Error('Invalid setting matrix.');return [key,v];}));
   return binding.form==='preferences'?preferenceBindingPatch(binding,values,sources):{form:binding.form,values};
  }
- if(binding.codec==='missing-rule'){if(value==='never')return {form:binding.form,values:{'library.missingTitles':'never'}};if(value==='now')return {form:binding.form,values:{'library.missingTitles':'immediately'}};const n=value==='7d'?7:value==='30d'?30:value==='90d'?90:undefined;if(n===undefined)throw new Error('Custom is derived.');return {form:binding.form,values:{'library.missingTitles':'after_days','library.missingTitlesDays':n}};}
+ if(binding.codec==='missing-rule'){if(value==='never')return {form:binding.form,values:{'library.missingTitles':'never'}};if(value==='now')return {form:binding.form,values:{'library.missingTitles':'immediately'}};const custom=value&&typeof value==='object'&&!Array.isArray(value)&&Object.keys(value).length===1?(value as Record<string,unknown>).days:undefined;const n=value==='7d'?7:value==='30d'?30:value==='90d'?90:custom;if(typeof n!=='number'||!Number.isSafeInteger(n)||n<1||n>3650)throw new Error('Invalid missing-title retention days.');return {form:binding.form,values:{'library.missingTitles':'after_days','library.missingTitlesDays':n}};}
  let raw=value;
  if(binding.codec==='artwork-size'){
   if(value!=='small'&&value!=='standard'&&value!=='large')throw new Error('Invalid setting value.');
