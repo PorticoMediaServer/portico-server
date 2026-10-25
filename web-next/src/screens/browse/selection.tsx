@@ -15,7 +15,7 @@ import {SelectionBar} from '../../kit/selection';
 import type {CardSelection} from '../../kit/cards';
 import type {BrowseMember} from './controller';
 import type {LibraryPlayRow, LibraryPlaySelection} from './play-selection';
-import {createSelectionActions, personalTargetIsLeaf, type PersonalSelectionAction, type SelectionActionsOptions} from './selection-actions';
+import {createSelectionActions, personalTargetIsLeaf, personalTargetSupportsJob, type PersonalSelectionAction, type SelectionActionsOptions} from './selection-actions';
 import {wholeViewQuery} from './selection-query';
 
 /** The library's selection surface. It rides the existing headless play adapter,
@@ -66,7 +66,7 @@ export type LibrarySelection = Readonly<{
   registerWindow: (first: number, last: number) => void;
   /** The one path the bar's personal buttons use; also the test seam. */
   personal: (action: PersonalSelectionAction) => Promise<void>;
-  /** Queue and the destination pickers, offered for leaf explicit picks only. */
+  /** Queue retains real explicit identities; destination pickers currently use leaves. */
   queue: (placement: 'next' | 'end') => Promise<void>;
   addToPlaylist: (anchor: HTMLElement) => Promise<void>;
   addToCollection: (anchor: HTMLElement) => Promise<void>;
@@ -90,6 +90,16 @@ function explicitLeafItems(selection: BrowseSelection | undefined): readonly str
   return ids;
 }
 
+/** Queue keeps displayed aggregate identities for the server's real expansion. */
+function explicitQueueItems(selection: BrowseSelection | undefined): readonly string[] | undefined {
+  const target = selection?.target;
+  if (!target || target.mode !== 'explicit' || !target.items.length || !selection?.summary.every.queue) return undefined;
+  if (target.items.some(pick => !('libraryId' in pick.item) || !['movie', 'episode', 'song', 'audiobook_file', 'show', 'season', 'album', 'artist', 'book', 'collection'].includes(pick.item.kind))) return undefined;
+  const ids: string[] = [];
+  for (const pick of target.items) {if (!('id' in pick.item)) return undefined; ids.push(pick.item.id);}
+  return ids;
+}
+
 type BrowseSelection = SelectionSnapshot<BrowseSelectionContext>;
 
 /** A personal action is offered only when the model says every selected title has
@@ -97,7 +107,7 @@ type BrowseSelection = SelectionSnapshot<BrowseSelectionContext>;
  * a whole-view job is dispatchable without dropping a kind or exclusion refinement. */
 function personalOffers(selection: BrowseSelection | undefined, actions: SelectionActionsOptions | undefined, host: LibrarySelectionHost) {
   if (!actions || !host.captureOperation || !host.isOperationCurrent || !selection?.target) return {watched: false, myList: false, favorite: false};
-  const usable = personalTargetIsLeaf(selection.target);
+  const usable = personalTargetSupportsJob(selection.target);
   const dispatchable = selection.target.mode !== 'query' || selectionQuerySelector(selection.target).ok;
   return {watched: usable && dispatchable && selection.summary.every.watched, myList: usable && dispatchable && selection.summary.every.myList,
     favorite: usable && dispatchable && selection.summary.every.favorite};
@@ -145,7 +155,7 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {visible: Visi
   const offers = personalOffers(current.selection, actions, playSelection), leafItems = explicitLeafItems(current.selection);
   const queueLease = !!playSelection.captureOperation && !!playSelection.isOperationCurrent && !!actions?.signal
     && !actions.signal.aborted && actions.isCurrent();
-  const canQueue = !!leafItems && !!enqueue && queueLease && summary.every.queue, canPlaylist = !!leafItems && (!!destinations?.playlist || !!props.pickers) && queueLease && summary.every.playlist,
+  const canQueue = !!explicitQueueItems(current.selection) && !!enqueue && queueLease && summary.every.queue, canPlaylist = !!leafItems && (!!destinations?.playlist || !!props.pickers) && queueLease && summary.every.playlist,
     canCollection = !!leafItems && (!!destinations?.collection || !!props.pickers) && queueLease && summary.every.collection;
   return <SelectionBar
     selection={{count: summary.count, kind: summary.types.length === 1 ? summary.types[0].kind : undefined}}
@@ -236,7 +246,7 @@ export function createLibrarySelection({playSelection, owner, descriptor, action
     const operation = playSelection.captureOperation();
     const snapshot = playSelection.getSnapshot().selection;
     if (!operation || operation.target !== snapshot?.target) throw new Error('selection-target-required');
-    const items = explicitLeafItems(snapshot);
+    const items = explicitQueueItems(snapshot);
     if (!items) throw new Error('leaf-explicit-selection-required');
     const isCurrent = () => !signal.aborted && actions.isCurrent() && playSelection.isOperationCurrent!(operation)
       && playSelection.getSnapshot().selection?.target === operation.target;

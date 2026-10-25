@@ -1,6 +1,7 @@
+import {validateHomeEntry} from './home.ts';
 import {DetailService, type DetailApi, type DetailScope} from './detail.ts';
 import {MediaSelectionService, selectionItem} from './media-selection.ts';
-import {validateContentEntry, type ContentEntry} from './library-content.ts';
+import type {ContentEntry} from './library-content.ts';
 import type {SegmentInput} from './playback-v1/queue.ts';
 import type {QueueHeader} from './playback-v1/types.ts';
 import type {V1QueuePlayer} from './playback-v1/v1-queue-player.ts';
@@ -34,7 +35,21 @@ export async function readCatalogueSelectionItem(options: CatalogueSelectionOpti
   const {api, scope, requestId, signal, isCurrent} = options, lifetime = {signal, isCurrent};
   const availablePorts = Object.freeze({...ports});
   requireCurrent(lifetime);
-  const entry = validateContentEntry(input), target = selectionItem(entry);
+  const entry = validateHomeEntry(input), target = selectionItem(entry);
+  if (!target && entry.libraryId && ['show', 'season', 'album', 'artist', 'book', 'collection'].includes(entry.kind)) {
+    const offered = entry.homeActions?.selection;
+    // Canonical displayed-container selection offers describe server-expanded
+    // membership. They never borrow an entry.playback/resume child identity.
+    return checkedItem({kind: entry.kind, id: entry.id, libraryId: entry.libraryId, capabilities: selectionCapabilities(entry.kind, {
+      play: availablePorts.play === true && offered?.play === true,
+      queue: availablePorts.queue === true && offered?.queue === true,
+      myList: availablePorts.myList === true && offered?.myList === true,
+      favorite: availablePorts.favorite === true && offered?.favorite === true,
+      watched: availablePorts.watched === true && offered?.watched === true,
+      edit: availablePorts.edit === true && offered?.edit === true,
+      delete: availablePorts.delete === true && offered?.delete === true,
+    })});
+  }
   if (!target || target.itemId !== entry.id) throw unavailable();
   const service = new DetailService({api: capturedApi(api, lifetime), scope: Object.freeze({...scope}), requestId});
   const stop = () => service.dispose();
@@ -127,14 +142,14 @@ export type CatalogueSelectionQueuePort = Readonly<{
   enqueueSegments(segments: readonly SegmentInput[], placement: 'next' | 'end', lifetime: CatalogueSelectionLifetime): Promise<QueueHeader>;
 }>;
 
-/** Explicit bounded picks in pick order. No query or parent expansion is
- * performed here; each item must carry the independent Detail enqueue grant. */
+/** Explicit bounded picks in pick order. Expansion stays on the server; each
+ * leaf has its Detail enqueue grant and each parent its canonical selection grant. */
 export async function enqueueCatalogueSelection(player: CatalogueSelectionQueuePort, items: readonly SelectionItem[],
   placement: 'next' | 'end', lifetime: CatalogueSelectionLifetime): Promise<QueueHeader> {
   const captured = Object.freeze({signal: lifetime.signal, isCurrent: lifetime.isCurrent});
   requireCurrent(captured);
   if (!['next', 'end'].includes(placement) || !items.length || items.length > 256
-    || items.some(item => !['movie', 'episode', 'song', 'audiobook_file'].includes(item.kind))) throw unavailable();
+    || items.some(item => !['movie', 'episode', 'song', 'audiobook_file', 'show', 'season', 'album', 'artist', 'book', 'collection'].includes(item.kind))) throw unavailable();
   const segments = catalogueSelectionSegments(items, 'queue');
   const result = await player.enqueueSegments(segments, placement, captured);
   requireCurrent(captured);
