@@ -759,6 +759,7 @@ export const enUS = {
   'search.chip.albums': 'Albums',
   'search.chip.songs': 'Songs',
   'search.chip.audiobooks': 'Audiobooks',
+  'search.chip.reading': 'Books',
   'search.chip.liveTV': 'Live TV',
   'search.topResult': 'Top result',
   'search.kind.movie': 'Movie',
