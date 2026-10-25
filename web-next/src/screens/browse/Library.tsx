@@ -7,7 +7,8 @@ import {appliedFilterParts, browseToolbarModel, type TextEnvironment} from '@por
 import {LibraryHeader, LibrarySwitcher, StickyBrowseHeader, BrowseToolbar, type LibraryChoice, type BrowseLabels} from '../../kit/browse';
 import {Tabs} from '../../kit/controls';
 import {AmbientArt} from '../../kit/artwork';
-import {GridSkeleton, StateView} from '../../kit/states';
+import {StateView} from '../../kit/states';
+import {LoadingGrid} from '../../kit/states/LoadingGrid';
 import type {ShellArtwork} from '../../shell/artwork';
 import {useShellWidth} from '../../shell/viewport';
 import {BrowseResults} from './BrowseResults';
@@ -74,7 +75,7 @@ export function LibraryScreen(bindings: LibraryBindings) {
   if (state.phase === 'error') return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: controller.retry}}/>;
   return <div className={styles.library}>
     <LibraryIdentity {...bindings}/>
-    {state.phase === 'ready' && state.capabilities && state.sort ? <LibraryBrowse {...bindings}/> : <GridSkeleton elapsedMs={300} window={{width, height: window.innerHeight, scrollTop: 0}} itemCount={21}/>}
+    {state.phase === 'ready' && state.capabilities && state.sort ? <LibraryBrowse {...bindings}/> : <LoadingGrid key={bindings.library.id} width={width}/>}
     {state.phase === 'ready' && bindings.unmatchedHelp && state.predicates.some(node => 'field' in node && node.field === 'match' && node.operator === 'equals' && node.value === 'unmatched') ? <p className={styles.unmatchedHelp}>{bindings.unmatchedHelp}</p> : null}
   </div>;
 }
