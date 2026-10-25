@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import {useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import type {LibraryContentApi} from '@core/library-content.ts';
 import type {LibraryManagementService, ManagedLibrary} from '@core/library-management.ts';
@@ -36,18 +36,22 @@ export function AddLibrary({open, onOpenChange, api, service, onError, initialKi
   const [kind, setKind] = useState<Kind>(initialKind), [name, setName] = useState(KINDS.find(value => value.id === initialKind)!.label), [touched, setTouched] = useState(false);
   const [path, setPath] = useState(''), [source, setSource] = useState<'online' | 'local'>('online');
   const [picking, setPicking] = useState(false), [busy, setBusy] = useState(false), [failed, setFailed] = useState(false);
+  const submitting = useRef(false);
   const choose = (next: Kind) => { setKind(next); if (!touched) setName(KINDS.find(value => value.id === next)!.label); };
   const create = async () => {
+    if (submitting.current || !open || !name.trim() || !path.trim()) return;
+    submitting.current = true;
     setBusy(true); setFailed(false);
     try {
       await service.createLibrary({name: name.trim(), kind, path, metadataAgent: metadataAgentFor(kind) === 'local' ? 'local' : source});
+      if (service.getSnapshot().mutation.phase !== 'complete') {setFailed(true);return;}
       onOpenChange(false); setName(KINDS[0].label); setPath(''); setKind('movie'); setTouched(false); setSource('online');
     } catch (error) { setFailed(true); onError(error); }
-    finally { setBusy(false); }
+    finally {submitting.current = false; setBusy(false);}
   };
   return <>
-    <Dialog open={open} onOpenChange={onOpenChange} size="md" title={t('next.settingsSpec.server.libraries.panels.newLibrary.title')}
-      footer={<><Button onClick={() => onOpenChange(false)}>{t('next.settings.cancel')}</Button>
+    <Dialog open={open} onOpenChange={value => {if (!submitting.current) onOpenChange(value);}} dismissOnBack={!busy} dismissOnOutsidePress={!busy} showCloseButton={!busy} size="md" title={t('next.settingsSpec.server.libraries.panels.newLibrary.title')}
+      footer={<><Button disabled={busy} onClick={() => {if (!submitting.current) onOpenChange(false);}}>{t('next.settings.cancel')}</Button>
         <Button variant="primary" loading={busy} disabled={busy || !name.trim() || !path.trim()} onClick={() => { void create(); }}>{t('next.settingsSpec.server.libraries.panels.newLibrary.footer.primary')}</Button></>}>
       <div className={styles.form}>
         <RichSelect label={t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.label')}
