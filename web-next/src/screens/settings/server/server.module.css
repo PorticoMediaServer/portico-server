@@ -23,3 +23,7 @@
 .backupEmpty { margin: 0; font-size: var(--type-synopsis-size); color: var(--color-text-tertiary); }
 .backupFolder { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .backupFolder .storagePath { flex: 1; min-width: 0; }
+
+.storageCleanup { grid-column: 1 / -1; display: flex; justify-content: flex-end; }
+.cleanupFields { display: flex; flex-direction: column; gap: 16px; }
+.cleanupDanger { color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 12%, transparent); }
