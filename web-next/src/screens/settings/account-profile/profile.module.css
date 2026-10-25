@@ -18,3 +18,4 @@
 .profileName small { display: block; margin-top: 3px; font-size: var(--type-chip-size); color: var(--color-text-tertiary); }
 .profileActions { display: flex; align-items: center; gap: 10px; }
 .addProfile { margin-top: 12px; }
+.danger { color: var(--color-record); }

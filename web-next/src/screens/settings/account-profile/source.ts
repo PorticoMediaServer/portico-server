@@ -1,6 +1,6 @@
 import {routePath} from '../../../../../packages/contracts/src/routes.ts';
 import {CodedError} from '@core/server-messages.ts';
-import {ManagedProfilesClient, parseDirectSnapshot, type DirectSnapshot, type ManagedProfile, type ProfileAPI, type ProfileArt} from '@core/profile-management.ts';
+import {ManagedProfilesClient, parseDirectSnapshot, type DirectSnapshot, type ManagedProfile, type ProfileAPI, type ProfileArt, type ProfileDeletion} from '@core/profile-management.ts';
 
 export type ProfileSettingsScope = Readonly<{serverId: string; accountId: string; profileId: string}>;
 export type ProfileSettingsSnapshot = Readonly<{
@@ -90,6 +90,21 @@ export class ProfileSettingsSource {
   }
   rename = (name: string): Promise<void> => this.edit({name});
   color = (art: ProfileArt): Promise<void> => this.edit({art});
+  previewDelete = async (target: Pick<ManagedProfile, 'id' | 'revision'>): Promise<ProfileDeletion> => {
+    if (!this.current() || this.snapshot.busy || this.pending) throw new CodedError('conflict', 'Refresh the profiles before trying again.');
+    const document = this.requireManager();
+    const profile = document.profiles.find(candidate => candidate.id === target.id && candidate.revision === target.revision && !candidate.primary);
+    if (!profile) throw new CodedError('conflict', 'Refresh the profiles before trying again.');
+    const preview = await this.client.previewDelete(profile, this.lifetime.signal);
+    if (!this.current()) throw new CodedError('forbidden', 'The selected profile is no longer available.');
+    return Object.freeze({...preview});
+  };
+  deleteProfile = (preview: ProfileDeletion): Promise<void> => this.mutate(async document => {
+    if (!document.profiles.some(profile => profile.id === preview.profileId && !profile.primary) || preview.primary) {
+      throw new CodedError('forbidden', 'The main profile cannot be deleted.');
+    }
+    await this.client.delete(preview, this.lifetime.signal);
+  });
   private edit(change: {name?: string; art?: ProfileArt}): Promise<void> {
     const selectedId = this.getSnapshot().selectedId;
     return this.mutate(async document => {

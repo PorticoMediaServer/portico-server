@@ -50,6 +50,7 @@ import {createScreenPlayEffect} from '../browse/playback-effect';
 import {ProfileSettingsSource} from './account-profile/source';
 import {profileSettingState, changeProfileSetting} from './account-profile/rows';
 import {ProfileList} from './account-profile/ProfileList';
+import {ProfileDelete} from './account-profile/ProfileDelete';
 import {observeProfileFailures} from './account-profile/failures';
 
 // A carry contains calendar bounds only. The captured session object owns its lifetime.
@@ -90,7 +91,7 @@ export function SettingsEntry() {
     const profiles = route.scope === 'account' && route.section === 'profile' && viewer.authority === 'local'
       ? new ProfileSettingsSource(context.api, {serverId: viewer.serverId, accountId: viewer.accountId, profileId: viewer.profileId}, current) : undefined;
     const offProfileFailures = profiles ? observeProfileFailures(profiles, current, reportError) : undefined;
-    const profileRow = (id: string) => !!profiles && ['profile.list', 'profile.name', 'profile.color', 'profile.username'].includes(id);
+    const profileRow = (id: string) => !!profiles && ['profile.list', 'profile.name', 'profile.color', 'profile.username', 'profile.delete'].includes(id);
     const platform = settingsPlatform();
     const privacy = createPrivacySettingsSurfaces({api: context.api, serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId]), isCurrent: current, reportError});
     // One row's engine. A preset row is answered by the rule below instead, so its
@@ -160,6 +161,7 @@ export function SettingsEntry() {
       ? new SegmentIntrosSource({api: context.api, isCurrent: current, reportError}) : undefined;
     const source = createSettingsBindings(controller, options, identity, {openHome, signIn,
       special: (row, state, rowContext, openPanel) => {
+        if (row.id === 'profile.delete' && profiles) return <ProfileDelete source={profiles} isCurrent={current} onFailure={reportError} />;
         if (row.id === 'profile.list' && profiles) return <ProfileList source={profiles} isCurrent={current} onFailure={reportError} onSelect={() => {
           requestAnimationFrame(() => {if (current()) document.getElementById('profile.name')?.querySelector<HTMLInputElement>('input')?.focus();});
         }} />;
