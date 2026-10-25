@@ -18,13 +18,15 @@ export type SettingsSections = Readonly<{
 
 /** The parent supplies actual domain adapters. This layer owns no query resolver or key map. */
 export function createSettingsBindings(controller: SettingsController, options: SettingsControllerOptions, identity: ShellIdentity, sections: SettingsSections): SettingsBindings {
-  /** A switch row belongs to the direction its server is not already in. The
-   * local direction stays out until its own surface is mounted; a drawn action
-   * with no handler would be a dead control. */
+  /** A switch row belongs to the direction its server is not already in. Both
+   * drawn directions have their own surface; without the captured owner switch
+   * they stay out rather than becoming dead controls. */
   const signInSwitch = (rowId: string): {present: boolean; disabled?: boolean} | undefined => {
-    if (!sections.signIn?.ownerSwitch) return undefined;
-    const want = rowId === 'signin.switchToPortico' || rowId === 'signin.startOverPortico' ? 'local' : undefined;
-    if (!want) return ['signin.switchToLocal', 'signin.startOverLocal'].includes(rowId) ? {present: false} : undefined;
+    // The Change group offers the opposite direction from the one in use.
+    const want = rowId === 'signin.switchToPortico' || rowId === 'signin.startOverPortico' ? 'local'
+      : rowId === 'signin.switchToLocal' || rowId === 'signin.startOverLocal' ? 'portico' : undefined;
+    if (!want) return undefined;
+    if (!sections.signIn?.ownerSwitch) return {present: false};
     const snapshot = sections.signIn.getSnapshot();
     return {present: !!snapshot.document && snapshot.document.signIn === want, disabled: snapshot.loading};
   };
