@@ -88,6 +88,7 @@ type ReadingSessionRequest struct {
 	SourceID string `json:"sourceId"`
 }
 type ReadingSessionResponse struct {
+	CanSaveFile bool              `json:"canSaveFile,omitempty"`
 	CanAnnotate bool              `json:"canAnnotate,omitempty"`
 	Contents    ReadingContents   `json:"contents,omitempty"`
 	Sequential  bool              `json:"sequential,omitempty"`
