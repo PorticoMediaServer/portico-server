@@ -31,7 +31,10 @@ func countEPUBText(ctx context.Context, e *EPUB) (*int64, error) {
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}
-			return nil, nil
+			if errors.Is(err, ErrInvalid) || errors.Is(err, ErrLimit) {
+				return nil, nil
+			}
+			return nil, err
 		}
 		total += int64(len(data))
 		count, ok := countXHTMLText(ctx, data)
