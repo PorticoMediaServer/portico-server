@@ -69,6 +69,8 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
   const dismissHint = useCallback(() => {setHint(false); try {globalThis.localStorage?.setItem(hintKey, '1');} catch { /* Disabled storage simply keeps the hint dismissed for this mount. */ }}, []);
   const [hitsQuery, setHitsQuery] = useState('');
   const queryRef = useRef(query); queryRef.current = query;
+  const searchMove = useRef<object | undefined>(undefined);
+  const activeRef = useRef(active); activeRef.current = active;
   const visibleHits = hitsQuery === query ? hits : [];
   const anchor = useRef<HTMLButtonElement>(null);
   const contentsError = useRef(reportError); contentsError.current = reportError;
@@ -117,11 +119,26 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
     })().catch(error => {if (queryCurrent && authority.isCurrent()) reportError(error);}).finally(() => {if (queryCurrent) setSearching(false);});
     return () => {queryCurrent = false; life.abort();};
   }, [controller, authority, active, query, reportError]);
+  const openSearchHit = (hit: ReaderSearchResult) => {
+    const current = controller.getSnapshot();
+    if (searchMove.current || queryRef.current !== query || !visibleHits.includes(hit) || !active || !authority.isCurrent()
+      || publication.signal.aborted || current.status !== 'ready' || current.sourceId !== publication.source.id
+      || current.sourceRevision !== publication.source.revision) return;
+    const operation = {}; searchMove.current = operation;
+    void controller.navigateSearchResult(hit).then(() => {
+      const accepted = controller.getSnapshot();
+      if (searchMove.current !== operation || queryRef.current !== query || !activeRef.current || !authority.isCurrent() || publication.signal.aborted
+        || accepted.status !== 'ready' || accepted.sourceId !== publication.source.id || accepted.sourceRevision !== publication.source.revision) return;
+      setCurrentHit(hit.id);
+      if (presentation === 'phone') setPanel(undefined);
+    }).catch(error => {if (queryRef.current === query && authority.isCurrent() && !publication.signal.aborted) reportError(error);})
+      .finally(() => {if (searchMove.current === operation) searchMove.current = undefined;});
+  };
   const stepSearch = (direction: 'previous' | 'next') => {
     if (queryRef.current !== query) return;
     const index = readingSearchStepIndex(visibleHits.length, visibleHits.findIndex(hit => hit.id === currentHit), direction);
     const next = index === undefined ? undefined : visibleHits[index];
-    if (next) {setCurrentHit(next.id); navigate(next.location);}
+    if (next) openSearchHit(next);
   };
   const currentContentsId = snapshot.status === 'ready' && snapshot.sourceId === publication.source.id && snapshot.sourceRevision === publication.source.revision
     ? readerCurrentContentsId(snapshot.toc, snapshot.location) : undefined;
@@ -132,7 +149,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
   const searchHits: ReaderSearchHit[] = visibleHits.map(hit => {
     const start = hit.excerpt.toLocaleLowerCase().indexOf(query.toLocaleLowerCase());
     const context = start < 0 ? [{text: hit.excerpt}] : [{text: hit.excerpt.slice(0, start)}, {text: hit.excerpt.slice(start, start + query.length), match: true}, {text: hit.excerpt.slice(start + query.length)}];
-    return {id: hit.id, chapter: hit.chapter, page: hit.location.pageLabel, context, onNavigate: () => {if (queryRef.current !== query) return; setCurrentHit(hit.id); navigate(hit.location);}};
+    return {id: hit.id, chapter: hit.chapter, page: hit.location.pageLabel, context, onNavigate: () => openSearchHit(hit)};
   });
   const panelContent = !active ? undefined : panel === 'contents' ? (fixed
     ? <ReaderPanel label={t('next.reader.pagesStrip')} tabs={[...(snapshot.toc.length > 0 ? [{id: 'contents', label: t('next.reader.contents')}] : []), {id: 'pages', label: t('next.reader.pagesStrip')}]}
