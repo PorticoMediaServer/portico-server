@@ -23,6 +23,7 @@ import {createSettingsBindings} from './bindings';
 import {LibraryManagementService} from '@core/library-management.ts';
 import {LibrariesPanel} from './libraries/LibrariesPanel';
 import {LibraryScanAction} from './libraries/LibraryActions';
+import {LibraryLyricsAction} from './libraries/LibraryLyricsAction';
 import {isLibraryPanelContext, libraryScanAction} from './libraries/model';
 import {createServerSettingsSurfaces} from './server';
 import {createTroubleshootingSurfaces} from './server/troubleshooting';
@@ -166,6 +167,10 @@ export function SettingsEntry() {
           return <LibraryFolders libraryId={rowContext.recordId} api={options.api}
             scope={{serverId: viewer.serverId, viewerId: options.viewerId}} isCurrent={current} onError={reportError} />;
         }
+        if (row.id === 'libraries.fetchLyrics' && isLibraryPanelContext(rowContext) && rowContext.recordId && libraries && role === 'owner')
+          return <LibraryLyricsAction key={rowContext.recordId} api={context.api} libraryId={rowContext.recordId} isCurrent={current}
+            disabled={state.disabled === true || state.saving === true || controller.rowState(settingsRowIndex.get('libraries.lyrics')!.row, rowContext).value !== 'lrclib'}
+            label={defaultI18n.t(row.control.label ?? row.label)} onError={reportError}/>;
         if (row.control.type === 'action' && libraryScanAction(row.id) && isLibraryPanelContext(rowContext) && rowContext.recordId && libraries)
           return <LibraryScanAction rowId={row.id} label={defaultI18n.t(row.control.label ?? row.label)} libraryId={rowContext.recordId} service={libraries} onError={reportError} />;
         return row.id === 'metadata.perLibrary' ? <Button variant="glass" size="small" onClick={() => openSettings('libraries')}>{defaultI18n.t(row.control.label ?? row.label)}</Button> : null;
@@ -178,11 +183,11 @@ export function SettingsEntry() {
       // server-section configuration read would replace that page with a failure.
       getSnapshot: section => section.scope === 'server' && section.id === 'remote-sources' ? remoteSourcesPageSnapshot : source.getSnapshot(section),
       load: section => section.scope === 'server' && section.id === 'remote-sources' ? Promise.resolve() : source.load(section),
-      eligible: (row, selected) => server?.eligible(row) ?? ((row.id === 'libraries.folders' || row.id === 'libraries.skipped' && !!libraries) ? current() && isLibraryPanelContext(selected) && controller.sectionVisible(selected.section) : libraryScanAction(row.id) ? current() && !!libraries && selected.panelId === 'library' && !!selected.recordId && controller.sectionVisible(selected.section) : isSubtitlePreview(row.id) ? current() && controller.sectionVisible(selected.section) : isDeviceSyntheticRow(row.id) ? current() && controller.sectionVisible(selected.section) && deviceRowState(row, deviceFacts) !== undefined : row.id === 'music.eq' ? current() && controller.sectionVisible(selected.section) && musicEqualizerAvailable(platform) : row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected)),
+      eligible: (row, selected) => server?.eligible(row) ?? ((row.id === 'libraries.folders' || row.id === 'libraries.skipped' && !!libraries || row.id === 'libraries.fetchLyrics' && !!libraries && role === 'owner') ? current() && isLibraryPanelContext(selected) && controller.sectionVisible(selected.section) : libraryScanAction(row.id) ? current() && !!libraries && selected.panelId === 'library' && !!selected.recordId && controller.sectionVisible(selected.section) : isSubtitlePreview(row.id) ? current() && controller.sectionVisible(selected.section) : isDeviceSyntheticRow(row.id) ? current() && controller.sectionVisible(selected.section) && deviceRowState(row, deviceFacts) !== undefined : row.id === 'music.eq' ? current() && controller.sectionVisible(selected.section) && musicEqualizerAvailable(platform) : row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected)),
       rowState: (row, selected) => {
         const privacyState = privacy.rowState(row);
         if (privacyState !== undefined) return privacyState;
-        if (row.id === 'libraries.folders' || row.id === 'libraries.skipped' && !!libraries) return {present: current() && isLibraryPanelContext(selected) && controller.sectionVisible(selected.section)};
+        if (row.id === 'libraries.folders' || row.id === 'libraries.skipped' && !!libraries || row.id === 'libraries.fetchLyrics' && !!libraries && role === 'owner') return {present: current() && isLibraryPanelContext(selected) && controller.sectionVisible(selected.section)};
         if (libraryScanAction(row.id)) return {present: current() && !!libraries && selected.panelId === 'library' && !!selected.recordId && controller.sectionVisible(selected.section)};
         if (isSubtitlePreview(row.id)) return {present: current() && controller.sectionVisible(selected.section)};
         const device = isDeviceSyntheticRow(row.id) ? deviceRowState(row, deviceFacts) : undefined;
