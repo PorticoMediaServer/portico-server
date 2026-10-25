@@ -1,4 +1,3 @@
-import type {EntryActionTarget} from '../../shell/entry-actions';
 import type {BrowserDownloadPort} from '../../platform/browser-download';
 import type {EntryActionTarget} from '../../shell/entry-actions';
 import type {HttpLocalApi} from '@core/index.ts';

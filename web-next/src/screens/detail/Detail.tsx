@@ -232,12 +232,6 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
   const model = useMemo(() => files && fileInfoModel(files.files.map(fileFacts), files.manage ? {audience: 'owner', manageSurface: phone ? 'phone' : 'desktop', ownerFacts: {locations: files.files.map(file => ({id: file.id, path: file.path, canDelete: files.manage?.delete})), canSplit: files.manage.split && files.files.length >= 2, canMerge: phone && files.manage.merge}} : {audience: 'viewer'}, env, phone ? 'phone' : 'desktop'), [files, phone]);
   const viewer = binding.context.identity?.viewer, owner = viewer?.role === 'owner' && viewer.authority === 'local';
   const offered = (id: string) => data.actions.some(action => action.id === id && action.enabled);
-  const leaf = ['movie', 'episode', 'song', 'audiobook_file'].includes(data.item.kind);
-  const invokeEntry = (effect: typeof binding.context.effects.addToPlaylist) => runScreenCommand(binding.context, () => {
-    binding.current(data);
-    if (!effect || !trigger.current) return;
-    return effect({libraryId: data.scope.libraryId, itemId: data.item.id, kind: data.item.kind, title: data.item.title}, trigger.current);
-  });
   const refreshPath = owner ? refreshMetadataPath(data.item.kind, data.item.id) : undefined;
   const refresh = () => {
     if (!refreshPath) return;
@@ -258,15 +252,13 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
       {offered('favorite') && <MenuItem icon="i-heart" selected={data.personal.favorite} onSelect={() => { void binding.mutate(data, {action: 'favorite', value: !data.personal.favorite}).catch(binding.context.effects.reportError); }}>{t(data.personal.favorite ? 'entry.removeFromFavorites' : 'entry.addToFavorites')}</MenuItem>}
       {offered('rating') && <MenuItem icon="i-star" onSelect={() => setRating(true)}>{t('entry.rate')}</MenuItem>}
       {personal && <MenuSeparator />}
-      {leaf && offered('add_to_playlist') && binding.context.effects.addToPlaylist && <MenuItem onSelect={() => invokeEntry(binding.context.effects.addToPlaylist)}>{t('entry.addToPlaylist')}</MenuItem>}
-      {leaf && offered('add_to_collection') && binding.context.effects.addToCollection && <MenuItem onSelect={() => invokeEntry(binding.context.effects.addToCollection)}>{t('entry.addToCollection')}</MenuItem>}
       {differentVersion && <MenuItem icon="i-film" onSelect={chooseVersion}>{t('next.overlays.differentVersion')}</MenuItem>}
       {downloadAvailable && <MenuItem icon="i-download" onSelect={() => runScreenCommand(binding.context, openDownload)}>{t('next.detail.downloadAction')}</MenuItem>}
       {leaf && offered('add_to_playlist') && binding.context.effects.addToPlaylist && <MenuItem icon="i-listadd" onSelect={() => destination(binding.context.effects.addToPlaylist)}>{t('next.selection.addToPlaylist')}</MenuItem>}
       {leaf && offered('add_to_collection') && binding.context.effects.addToCollection && <MenuItem icon="i-layers" onSelect={() => destination(binding.context.effects.addToCollection)}>{t('next.selection.addToCollection')}</MenuItem>}
       {leaf && owner && detailActions(data, {platform: 'web'}).more.some(group => group.actions.some(action => action.id === 'delete')) && binding.context.effects.deleteTitle && <MenuItem icon="i-trash" onSelect={() => destination(binding.context.effects.deleteTitle)}>{t('next.selection.deleteMenu')}</MenuItem>}
       <MenuItem icon="i-info" onSelect={loadFiles}>{t('next.overlays.fileInfo')}</MenuItem>
-      {refreshPath && <><MenuSeparator /><MenuGroup label={t('next.overlays.owner')} ownerOnly><MenuItem icon="i-refresh" onSelect={refresh}>{t('entry.refreshMetadata')}</MenuItem>{leaf && binding.context.effects.deleteTitle && <MenuItem onSelect={() => invokeEntry(binding.context.effects.deleteTitle)}>{t('entry.delete')}</MenuItem>}</MenuGroup></>}
+      {refreshPath && <><MenuSeparator /><MenuGroup label={t('next.overlays.owner')} ownerOnly><MenuItem icon="i-refresh" onSelect={refresh}>{t('entry.refreshMetadata')}</MenuItem></MenuGroup></>}
     </Menu>
     {downloadView && downloadView.active.data === data && (downloadView.options?.policy.allowDownloads
       ? <DownloadNotice open onOpenChange={value => { if (!value) closeDownload(); }} title={data.item.title} artwork={binding.context.artwork.foreground(data.item.posterUrl, 88, 2 / 3)} options={downloadView.options} busy={downloadView.busy}
