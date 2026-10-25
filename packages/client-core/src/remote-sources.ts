@@ -387,7 +387,7 @@ export class RemoteSourceService{
   if(!this.live()||(guard&&!guard())||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');
   if(!text(clientId,512)||clientId.trim().length<8||!text(clientSecret,2048)||clientSecret.length<8)throw new Error('Invalid OAuth client.');
   const epoch=this.epoch;
-  const raw=await this.request('/v1/storage/sources/rclone/drive/oauth/start','POST',{clientId:clientId.trim(),clientSecret},guard);
+  const raw=await this.request(routePath('post_storage_source_drive_oauth_start'),'POST',routeBody('post_storage_source_drive_oauth_start',{clientId:clientId.trim(),clientSecret}),guard);
   if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
   this.fence(raw);
   if(!record(raw)||!text(raw.authorizationUrl,8192)||!raw.authorizationUrl||!text(raw.state,128)||!raw.state)invalid();
@@ -405,13 +405,13 @@ export class RemoteSourceService{
  }
  async driveOAuthStatus(state:string,guard?:()=>boolean):Promise<DriveOAuthStatus>{
   if(!this.live()||(guard&&!guard())||!text(state,128)||!state)throw new Error('Invalid sign-in.');
-  return await this.driveOAuthAnswer('/v1/storage/sources/rclone/drive/oauth/status',{state},guard);
+  return await this.driveOAuthAnswer(routePath('post_storage_source_drive_oauth_status'),{state},guard);
  }
  async driveOAuthPaste(state:string,redirectUrl:string,guard?:()=>boolean):Promise<DriveOAuthStatus>{
   if(!this.live()||(guard&&!guard())||!text(state,128)||!state||!text(redirectUrl,8192)||!redirectUrl.trim())throw new Error('Invalid sign-in address.');
   // This only records the address's code; the single status owner exchanges it.
   const epoch=this.epoch;
-  const raw=await this.request('/v1/storage/sources/rclone/drive/oauth/paste','POST',{state,redirectUrl:redirectUrl.trim()},guard);
+  const raw=await this.request(routePath('post_storage_source_drive_oauth_paste'),'POST',routeBody('post_storage_source_drive_oauth_paste',{state,redirectUrl:redirectUrl.trim()}),guard);
   if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
   this.fence(raw);
   if(!record(raw)||typeof raw.phase!=='string'||!['pending','ready','expired','denied'].includes(raw.phase))invalid();
@@ -419,7 +419,7 @@ export class RemoteSourceService{
  }
  async driveOAuthCancel(state:string):Promise<void>{
   if(!this.live()||!text(state,128)||!state)return;
-  try{await this.request('/v1/storage/sources/rclone/drive/oauth/cancel','POST',{state});}catch{/* A closed session needs no second report. */}
+  try{await this.request(routePath('post_storage_source_drive_oauth_cancel'),'POST',routeBody('post_storage_source_drive_oauth_cancel',{state}));}catch{/* A closed session needs no second report. */}
  }
  /** The server account's own rclone configuration, by remote name and type only. */
  async rcloneConfig():Promise<RcloneConfigView>{
