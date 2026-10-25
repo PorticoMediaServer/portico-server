@@ -21,6 +21,7 @@ export function decodeAccountRecoveryCompleteResponse(input: unknown): types.Acc
 export function decodeAccountRecoveryRequestResponse(input: unknown): types.AccountRecoveryRequestResponse { return decode("AccountRecoveryRequestResponse", input) as types.AccountRecoveryRequestResponse; }
 export function decodeAccountSecurityActionResponse(input: unknown): types.AccountSecurityActionResponse { return decode("AccountSecurityActionResponse", input) as types.AccountSecurityActionResponse; }
 export function decodeAccountSecurityEmailConfirmResponse(input: unknown): types.AccountSecurityEmailConfirmResponse { return decode("AccountSecurityEmailConfirmResponse", input) as types.AccountSecurityEmailConfirmResponse; }
+export function decodeAccountSecurityEmailResendResponse(input: unknown): types.AccountSecurityEmailResendResponse { return decode("AccountSecurityEmailResendResponse", input) as types.AccountSecurityEmailResendResponse; }
 export function decodeAccountSecurityGetResponse(input: unknown): types.AccountSecurityGetResponse { return decode("AccountSecurityGetResponse", input) as types.AccountSecurityGetResponse; }
 export function decodeAccountSecurityMfaConfirmResponse(input: unknown): types.AccountSecurityMfaConfirmResponse { return decode("AccountSecurityMfaConfirmResponse", input) as types.AccountSecurityMfaConfirmResponse; }
 export function decodeAccountSecurityProofResponse(input: unknown): types.AccountSecurityProofResponse { return decode("AccountSecurityProofResponse", input) as types.AccountSecurityProofResponse; }

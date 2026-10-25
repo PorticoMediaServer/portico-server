@@ -788,6 +788,9 @@ export const schemas = {
       "familyId": {
         "type": "string"
       },
+      "maskedAddress": {
+        "type": "string"
+      },
       "otpAuthUri": {
         "type": "string"
       },
@@ -796,6 +799,11 @@ export const schemas = {
           "type": "string"
         },
         "type": "array"
+      },
+      "resendsRemaining": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       },
       "secret": {
         "type": "string"
@@ -976,6 +984,9 @@ export const schemas = {
       "familyId": {
         "type": "string"
       },
+      "maskedAddress": {
+        "type": "string"
+      },
       "otpAuthUri": {
         "type": "string"
       },
@@ -984,6 +995,11 @@ export const schemas = {
           "type": "string"
         },
         "type": "array"
+      },
+      "resendsRemaining": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       },
       "secret": {
         "type": "string"
@@ -1094,6 +1110,9 @@ export const schemas = {
       "familyId": {
         "type": "string"
       },
+      "maskedAddress": {
+        "type": "string"
+      },
       "otpAuthUri": {
         "type": "string"
       },
@@ -1102,6 +1121,133 @@ export const schemas = {
           "type": "string"
         },
         "type": "array"
+      },
+      "resendsRemaining": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "secret": {
+        "type": "string"
+      },
+      "signOut": {
+        "type": "boolean"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "accountId",
+      "familyId",
+      "status"
+    ],
+    "type": "object"
+  },
+  "AccountSecurityEmailResendRequest": {
+    "properties": {
+      "challengeId": {
+        "type": "string"
+      },
+      "operationId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "challengeId",
+      "operationId"
+    ],
+    "type": "object"
+  },
+  "AccountSecurityEmailResendResponse": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "challengeId": {
+        "type": "string"
+      },
+      "deletionPreview": {
+        "properties": {
+          "affectedServers": {
+            "items": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "canDelete": {
+            "type": "boolean"
+          },
+          "deletionToken": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "ownedServers": {
+            "items": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "deletionToken",
+          "expiresAt",
+          "ownedServers",
+          "affectedServers",
+          "canDelete"
+        ],
+        "type": "object"
+      },
+      "expiresAt": {
+        "format": "date-time",
+        "type": "string"
+      },
+      "familyId": {
+        "type": "string"
+      },
+      "maskedAddress": {
+        "type": "string"
+      },
+      "otpAuthUri": {
+        "type": "string"
+      },
+      "recoveryCodes": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "resendsRemaining": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       },
       "secret": {
         "type": "string"
@@ -1273,6 +1419,9 @@ export const schemas = {
       "familyId": {
         "type": "string"
       },
+      "maskedAddress": {
+        "type": "string"
+      },
       "otpAuthUri": {
         "type": "string"
       },
@@ -1281,6 +1430,11 @@ export const schemas = {
           "type": "string"
         },
         "type": "array"
+      },
+      "resendsRemaining": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       },
       "secret": {
         "type": "string"
