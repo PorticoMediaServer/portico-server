@@ -27,18 +27,18 @@ import (
 // watched state and resume point that go with it) stops while they have paused
 // it.
 func (s *Service) AcceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool) error {
-	return acceptPlaybackProgress(tx, v, playbackID, item, sequence, position, duration, state, canonical, 0, nil, time.Now().UTC())
+	return acceptPlaybackProgress(tx, v, playbackID, item, sequence, position, duration, state, canonical, 0, nil, 0, state == "playing", time.Now().UTC())
 }
 
 // AcceptPlaybackProgressEvidence is AcceptPlaybackProgress with the player's
 // own reported rate and whether this report follows a seek. Both are needed to
 // prove a played interval; callers that cannot report them keep the plain form
 // and record no chapter mark.
-func (s *Service) AcceptPlaybackProgressEvidence(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool, rate float64, seeked *bool) error {
-	return acceptPlaybackProgress(tx, v, playbackID, item, sequence, position, duration, state, canonical, rate, seeked, time.Now().UTC())
+func (s *Service) AcceptPlaybackProgressEvidence(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool, rate float64, seeked *bool, generation int, playing bool) error {
+	return acceptPlaybackProgress(tx, v, playbackID, item, sequence, position, duration, state, canonical, rate, seeked, generation, playing, time.Now().UTC())
 }
 
-func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool, rate float64, seeked *bool, clock time.Time) error {
+func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool, rate float64, seeked *bool, generation int, playing bool, clock time.Time) error {
 	// Match the timeline's millisecond bound even when no runtime is known.
 	const maximumSeconds = float64(int64(1)<<40) / 1000
 	if math.IsNaN(position) || math.IsInf(position, 0) || position < 0 || position > maximumSeconds || math.IsNaN(duration) || math.IsInf(duration, 0) || duration < 0 || duration > maximumSeconds || sequence < 0 || sequence > 9007199254740991 || (state != "playing" && state != "paused" && state != "ended") {
@@ -123,7 +123,7 @@ func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item stri
 		if previousRun, e = readChapterRun(tx, profile, playbackID); e != nil {
 			return e
 		}
-		if source, e = chapterSourceFor(tx, entityID, playbackID); e != nil {
+		if source, e = chapterSourceFor(tx, entityID, playbackID, generation); e != nil {
 			return e
 		}
 		if preferenceRevision, e = profileServerPreferenceRevision(tx, v); e != nil {
@@ -195,13 +195,18 @@ func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item stri
 				}
 				break
 			}
-			currentRun := chapterRunEvidence{sequence: sequence, position: positionMs, state: state, rateMilli: rateMilli(rate), seeked: *seeked, preferenceRevision: preferenceRevision, assetRevision: source.assetRevision, assetID: source.assetID, assetSize: source.assetSize, assetModified: source.assetModified, item: entityID, at: clock, valid: true}
+			currentRun := chapterRunEvidence{sequence: sequence, position: positionMs, playing: playing, rateMilli: rateMilli(rate), seeked: *seeked, generation: generation, preferenceRevision: preferenceRevision, assetRevision: source.assetRevision, assetID: source.assetID, assetSize: source.assetSize, assetModified: source.assetModified, item: entityID, at: clock, valid: true}
 			if source.assetID != 0 && source.assetRevision != 0 {
-				if e = recordChapterCompletions(tx, profile, entityID, previousRun, currentRun, clock); e != nil {
+				if e = recordChapterCompletions(tx, profile, entityID, previousRun, currentRun, positionMillis(duration), terminal, clock); e != nil {
 					return e
 				}
 			}
-			if e = storeChapterRun(tx, profile, playbackID, currentRun, now); e != nil {
+			if terminal {
+				// The physical end closes the run; nothing continues from it.
+				if _, e = tx.Exec(`DELETE FROM personal_playback_runs WHERE profile_id=? AND playback_id=?`, profile, playbackID); e != nil {
+					return e
+				}
+			} else if e = storeChapterRun(tx, profile, playbackID, currentRun, now); e != nil {
 				return e
 			}
 		}
@@ -271,15 +276,17 @@ func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item stri
 }
 
 // chapterRunEvidence is the last accepted report of one playback: the accepted
-// sequence, the session's own state and rate, the source and chapter definition
-// it was played against, and when it was accepted. It is control evidence, not
-// the viewer's resume point or a manual watched choice.
+// sequence, the session's presentation generation and whether it was actually
+// playing, the player's rate, the source and chapter definition it was played
+// against, and when it was accepted. It is control evidence, not the viewer's
+// resume point or a manual watched choice.
 type chapterRunEvidence struct {
 	sequence           int64
 	position           int64
-	state              string
+	playing            bool
 	rateMilli          int64
 	seeked             bool
+	generation         int
 	preferenceRevision int64
 	assetRevision      int64
 	assetID            int64
@@ -291,7 +298,7 @@ type chapterRunEvidence struct {
 }
 
 // chapterSource is the file's current chapter definition generation and the
-// asset the playback session actually selected, which must still be linked.
+// asset observation the playback session pinned when it started.
 type chapterSource struct {
 	assetRevision int64
 	assetID       int64
@@ -302,7 +309,7 @@ type chapterSource struct {
 func readChapterRun(tx *sql.Tx, profile, playbackID string) (chapterRunEvidence, error) {
 	var out chapterRunEvidence
 	var stamp string
-	err := tx.QueryRow(`SELECT sequence,position_ms,state,rate_milli,seeked,preference_revision,asset_revision,asset_id,asset_size,asset_modified_ns,item_id,reported_at FROM personal_playback_runs WHERE profile_id=? AND playback_id=?`, profile, playbackID).Scan(&out.sequence, &out.position, &out.state, &out.rateMilli, &out.seeked, &out.preferenceRevision, &out.assetRevision, &out.assetID, &out.assetSize, &out.assetModified, &out.item, &stamp)
+	err := tx.QueryRow(`SELECT sequence,position_ms,playing,rate_milli,seeked,generation,preference_revision,asset_revision,asset_id,asset_size,asset_modified_ns,item_id,reported_at FROM personal_playback_runs WHERE profile_id=? AND playback_id=?`, profile, playbackID).Scan(&out.sequence, &out.position, &out.playing, &out.rateMilli, &out.seeked, &out.generation, &out.preferenceRevision, &out.assetRevision, &out.assetID, &out.assetSize, &out.assetModified, &out.item, &stamp)
 	if errors.Is(err, sql.ErrNoRows) {
 		return out, nil
 	}
@@ -318,29 +325,27 @@ func readChapterRun(tx *sql.Tx, profile, playbackID string) (chapterRunEvidence,
 }
 
 func storeChapterRun(tx *sql.Tx, profile, playbackID string, run chapterRunEvidence, now string) error {
-	_, err := tx.Exec(`INSERT INTO personal_playback_runs(profile_id,playback_id,item_id,sequence,position_ms,state,rate_milli,seeked,preference_revision,asset_revision,asset_id,asset_size,asset_modified_ns,reported_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
- ON CONFLICT(profile_id,playback_id) DO UPDATE SET item_id=excluded.item_id,sequence=excluded.sequence,position_ms=excluded.position_ms,state=excluded.state,rate_milli=excluded.rate_milli,seeked=excluded.seeked,preference_revision=excluded.preference_revision,asset_revision=excluded.asset_revision,asset_id=excluded.asset_id,asset_size=excluded.asset_size,asset_modified_ns=excluded.asset_modified_ns,reported_at=excluded.reported_at`, profile, playbackID, run.item, run.sequence, run.position, run.state, run.rateMilli, run.seeked, run.preferenceRevision, run.assetRevision, run.assetID, run.assetSize, run.assetModified, now)
+	_, err := tx.Exec(`INSERT INTO personal_playback_runs(profile_id,playback_id,item_id,sequence,position_ms,playing,rate_milli,seeked,generation,preference_revision,asset_revision,asset_id,asset_size,asset_modified_ns,reported_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+ ON CONFLICT(profile_id,playback_id) DO UPDATE SET item_id=excluded.item_id,sequence=excluded.sequence,position_ms=excluded.position_ms,playing=excluded.playing,rate_milli=excluded.rate_milli,seeked=excluded.seeked,generation=excluded.generation,preference_revision=excluded.preference_revision,asset_revision=excluded.asset_revision,asset_id=excluded.asset_id,asset_size=excluded.asset_size,asset_modified_ns=excluded.asset_modified_ns,reported_at=excluded.reported_at`, profile, playbackID, run.item, run.sequence, run.position, run.playing, run.rateMilli, run.seeked, run.generation, run.preferenceRevision, run.assetRevision, run.assetID, run.assetSize, run.assetModified, now)
 	return err
 }
 
-// chapterSourceFor resolves the file's definition generation and the asset its
-// playback session selected. A file whose session or linked asset is unknown
-// yields no source, so nothing is recorded for it.
-func chapterSourceFor(tx *sql.Tx, item int64, playbackID string) (chapterSource, error) {
+// chapterSourceFor resolves the file's chapter revision and the source
+// observation the playback session pinned. If the current asset no longer
+// matches the pin, or the file no longer links it, there is no source and the
+// report cannot be attributed to bytes the session actually played.
+func chapterSourceFor(tx *sql.Tx, item int64, playbackID string, generation int) (chapterSource, error) {
 	var out chapterSource
-	// The revision comes from asset_chapter_facts, which moves only when the
-	// source's chapter boundaries or its size/mtime really change. It is the
-	// generation a completion binds to and cannot recur once it moves on.
-	err := tx.QueryRow(`SELECT COALESCE(f.revision,0),a.id,a.size,a.modified_ns
+	err := tx.QueryRow(`SELECT COALESCE(f.revision,0),a.id,pin.size,pin.modified_ns
  FROM catalog_entities file
- JOIN playback_sessions s ON s.id=?2 AND s.item_id=file.id
- JOIN catalog_assets a ON a.token=s.asset_id
+ JOIN playback_sessions s ON s.id=?2 AND s.item_id=file.id AND s.generation=?3
+ JOIN playback_source_pins pin ON pin.session_id=s.id AND pin.asset_id=s.asset_id
+ JOIN catalog_assets a ON a.token=pin.asset_id AND a.size=pin.size AND a.modified_ns=pin.modified_ns
  JOIN catalog_asset_links l ON l.entity_id=file.id AND l.asset_id=a.id
  LEFT JOIN asset_chapter_facts f ON f.asset_id=a.token
- WHERE file.id=?1`, item, playbackID).Scan(&out.assetRevision, &out.assetID, &out.assetSize, &out.assetModified)
+ WHERE file.id=?1`, item, playbackID, generation).Scan(&out.assetRevision, &out.assetID, &out.assetSize, &out.assetModified)
 	if errors.Is(err, sql.ErrNoRows) {
-		// No session or no linked source (a downloaded play, a file being
-		// rescanned): there is nothing to bind a completion to.
+		// No session, no pin, a replaced source or no linked asset: withhold.
 		return chapterSource{}, nil
 	}
 	return out, err
@@ -372,24 +377,32 @@ const (
 	chapterAdvanceTolerance = 500.0
 )
 
-// chapterRunContinues proves the interval between two accepted reports of one
-// playback is playback, not a jump. Both must be playing reports of the same
-// item and session with consecutive accepted sequence, the same player rate,
-// the same privacy generation, chapter definition and source asset; the
-// position must advance by exactly rate x elapsed time within rounding. A
-// pause, resume, seek, skipped report, source change or privacy toggle changes
-// one of those and starts a new interval instead.
-func chapterRunContinues(previous, current chapterRunEvidence) bool {
+func chapterRunSameIdentities(previous, current chapterRunEvidence) bool {
 	if !previous.valid || !current.valid || previous.item != current.item || current.sequence != previous.sequence+1 {
 		return false
 	}
-	if previous.state != "playing" || current.state != "playing" || current.seeked || current.rateMilli <= 0 || previous.rateMilli != current.rateMilli {
+	if current.generation <= 0 || previous.generation != current.generation {
+		return false
+	}
+	if !previous.playing || current.seeked || current.rateMilli <= 0 || previous.rateMilli != current.rateMilli {
 		return false
 	}
 	if previous.preferenceRevision != current.preferenceRevision || previous.assetRevision != current.assetRevision {
 		return false
 	}
-	if previous.assetID != current.assetID || previous.assetSize != current.assetSize || previous.assetModified != current.assetModified {
+	return previous.assetID == current.assetID && previous.assetSize == current.assetSize && previous.assetModified == current.assetModified
+}
+
+// chapterRunContinues proves the interval between two accepted reports of one
+// playback is playback, not a jump. Both must be playing reports of the same
+// item, presentation generation and session with consecutive accepted
+// sequence, the same player rate, the same privacy generation, chapter revision
+// and pinned source; the position must advance by exactly rate x elapsed time
+// within rounding. A pause, buffer, error, resume, seek, skipped report, source
+// change, replan or privacy toggle changes one of those and starts a new
+// interval instead.
+func chapterRunContinues(previous, current chapterRunEvidence) bool {
+	if !chapterRunSameIdentities(previous, current) || !current.playing {
 		return false
 	}
 	elapsed := current.at.Sub(previous.at)
@@ -404,12 +417,41 @@ func chapterRunContinues(previous, current chapterRunEvidence) bool {
 	return math.Abs(float64(advance)-expected) <= chapterAdvanceTolerance
 }
 
+// chapterEndsAtEof lets a genuine end-of-file report close the prior played
+// interval: the previous report was playing and the remaining span to the
+// physical end is no more than the rate could have played in the elapsed time.
+// An ended report without that previous interval, or any early completion
+// threshold, closes nothing.
+func chapterEndsAtEof(previous, current chapterRunEvidence, durationMs int64, terminal bool) bool {
+	if !terminal || durationMs <= 0 || !chapterRunSameIdentities(previous, current) {
+		return false
+	}
+	if previous.position >= durationMs || current.position < durationMs-positionMillis(1) {
+		return false
+	}
+	elapsed := current.at.Sub(previous.at)
+	if elapsed <= 0 || elapsed > chapterReportGap {
+		return false
+	}
+	remaining := float64(durationMs - previous.position)
+	played := float64(current.rateMilli)/1000*float64(elapsed.Milliseconds()) + chapterAdvanceTolerance
+	return remaining <= played
+}
+
 // recordChapterCompletions marks the chapters whose end lies inside an interval
-// the session proved was played. One indexed statement finds the candidates by
-// their canonical end milliseconds; the exact end counts and one millisecond
-// before it does not. Rounded boundaries must still be a real span.
-func recordChapterCompletions(tx *sql.Tx, profile string, item int64, previous, current chapterRunEvidence, clock time.Time) error {
-	if !chapterRunContinues(previous, current) {
+// the session proved was played, or the physical end an ended-at-file report
+// closed. One indexed statement finds the candidates by their canonical end
+// milliseconds; the exact end counts and one millisecond before it does not.
+// Rounded boundaries must still be a real span. A row left from an older source
+// or definition is replaced by the admitted binding rather than blocking it.
+func recordChapterCompletions(tx *sql.Tx, profile string, item int64, previous, current chapterRunEvidence, durationMs int64, terminal bool, clock time.Time) error {
+	var from, to int64
+	switch {
+	case chapterRunContinues(previous, current):
+		from, to = previous.position, current.position
+	case chapterEndsAtEof(previous, current, durationMs, terminal):
+		from, to = previous.position, durationMs
+	default:
 		return nil
 	}
 	_, err := tx.Exec(`INSERT INTO personal_chapter_completions(profile_id,file_entity_id,chapter_index,start_ms,end_ms,asset_revision,asset_id,asset_size,asset_modified_ns,completed_at)
@@ -418,7 +460,16 @@ func recordChapterCompletions(tx *sql.Tx, profile string, item int64, previous, 
  WHERE c.file_id=? AND c.start_seconds>=0 AND c.start_seconds<c.end_seconds AND c.end_seconds>0 AND c.end_seconds<1e15
   AND CAST(round(c.start_seconds*1000) AS INTEGER)<CAST(round(c.end_seconds*1000) AS INTEGER)
   AND CAST(round(c.end_seconds*1000) AS INTEGER)>? AND CAST(round(c.end_seconds*1000) AS INTEGER)<=?
- ON CONFLICT(profile_id,file_entity_id,chapter_index) DO NOTHING`, profile, current.assetRevision, current.assetID, current.assetSize, current.assetModified, clock.Format("2006-01-02T15:04:05.000Z"), item, previous.position, current.position)
+ ON CONFLICT(profile_id,file_entity_id,chapter_index) DO UPDATE SET
+  start_ms=excluded.start_ms,end_ms=excluded.end_ms,asset_revision=excluded.asset_revision,
+  asset_id=excluded.asset_id,asset_size=excluded.asset_size,asset_modified_ns=excluded.asset_modified_ns,
+  completed_at=excluded.completed_at
+ WHERE personal_chapter_completions.start_ms<>excluded.start_ms
+  OR personal_chapter_completions.end_ms<>excluded.end_ms
+  OR personal_chapter_completions.asset_revision<>excluded.asset_revision
+  OR personal_chapter_completions.asset_id<>excluded.asset_id
+  OR personal_chapter_completions.asset_size<>excluded.asset_size
+  OR personal_chapter_completions.asset_modified_ns<>excluded.asset_modified_ns`, profile, current.assetRevision, current.assetID, current.assetSize, current.assetModified, clock.Format("2006-01-02T15:04:05.000Z"), item, from, to)
 	return err
 }
 

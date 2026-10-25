@@ -62,7 +62,7 @@ type Service struct {
 	// AuthorityTx is wired by HTTP composition, never a remote policy lookup.
 	AuthorityTx         ControlAuthorityTx
 	ContinueAuthorityTx ControlAuthorityTx
-	PersonalProgress    func(*sql.Tx, identity.Viewer, string, string, int64, float64, float64, string, bool, float64, *bool) error
+	PersonalProgress    func(*sql.Tx, identity.Viewer, string, string, int64, float64, float64, string, bool, float64, *bool, int, bool) error
 	Subtitles           *subtitles.Service
 	Prepared            *preparedmedia.Service
 	// Delivery seams. Owner administration, viewer preferences and hardware
@@ -667,14 +667,14 @@ func (s *Service) ProgressContext(ctx context.Context, p identity.Principal, id 
 // rate. It is the same accepted evidence path; the rate only lets a reader tell
 // a played interval from a jump.
 func (s *Service) ProgressReportedContext(ctx context.Context, p identity.Principal, id string, generation int, sequence int64, position float64, state string, rate float64) error {
-	return s.ProgressEvidenceContext(ctx, p, id, generation, sequence, position, state, rate, nil)
+	return s.ProgressEvidenceContext(ctx, p, id, generation, sequence, position, state, rate, nil, state == "playing")
 }
 
 // ProgressEvidenceContext adds whether this report follows a seek. Nil means
 // the caller cannot say, which withholds chapter completion for the interval;
 // a report that follows a seek still moves the resume point but no played
 // interval crosses it.
-func (s *Service) ProgressEvidenceContext(ctx context.Context, p identity.Principal, id string, generation int, sequence int64, position float64, state string, rate float64, seeked *bool) error {
+func (s *Service) ProgressEvidenceContext(ctx context.Context, p identity.Principal, id string, generation int, sequence int64, position float64, state string, rate float64, seeked *bool, playing bool) error {
 	if math.IsNaN(rate) || math.IsInf(rate, 0) || rate < 0 {
 		return requestinput.New("invalid playback rate")
 	}
@@ -690,12 +690,12 @@ func (s *Service) ProgressEvidenceContext(ctx context.Context, p identity.Princi
 	}
 	tx := gated3.Tx()
 	defer gated3.Rollback()
-	if e = s.progressTx(gated3.Context(), tx, p, id, generation, sequence, position, state, rate, seeked); e != nil {
+	if e = s.progressTx(gated3.Context(), tx, p, id, generation, sequence, position, state, rate, seeked, playing); e != nil {
 		return e
 	}
 	return gated3.Commit()
 }
-func (s *Service) progressTx(ctx context.Context, tx *sql.Tx, p identity.Principal, id string, generation int, sequence int64, position float64, state string, rate float64, seeked *bool) error {
+func (s *Service) progressTx(ctx context.Context, tx *sql.Tx, p identity.Principal, id string, generation int, sequence int64, position float64, state string, rate float64, seeked *bool, playing bool) error {
 	var e error
 	if e = checkSessionOccurrenceTx(ctx, tx, id); e != nil {
 		return e
@@ -734,7 +734,7 @@ func (s *Service) progressTx(ctx context.Context, tx *sql.Tx, p identity.Princip
 		return e
 	}
 	if s.PersonalProgress != nil {
-		if e = s.PersonalProgress(tx, p.Viewer, id, item, sequence, position, duration, state, canonical, rate, seeked); e != nil {
+		if e = s.PersonalProgress(tx, p.Viewer, id, item, sequence, position, duration, state, canonical, rate, seeked, generation, playing); e != nil {
 			return e
 		}
 	} else {
