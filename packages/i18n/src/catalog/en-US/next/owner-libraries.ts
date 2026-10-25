@@ -97,6 +97,8 @@ export const ownerLibrariesMessages = {
   'next.ownerLibraries.typeToConfirm': 'Type the name to confirm',
   'next.ownerLibraries.removeFolderBody': 'Its titles become missing titles. Files on disk aren’t touched.',
   'next.ownerLibraries.advancedHint': 'Changing a scan step makes the scan depth read Custom.',
+  'next.ownerLibraries.explorer.title': 'Choose folders',
+  'next.ownerLibraries.explorer.noneChosen': 'No folders chosen',
   'next.ownerLibraries.explorer.subtitle': 'Folders on {server}',
   'next.ownerLibraries.explorer.up': 'Up one folder',
   'next.ownerLibraries.explorer.path': 'Folder path',
