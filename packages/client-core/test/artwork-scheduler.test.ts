@@ -90,6 +90,25 @@ test('after the retries run out the key is failed for a cooldown', async () => {
   assert.equal(h.started.filter(k => k === 'x').length, 5);
 });
 
+test('an attempt nobody waits for any more does not fail the key', async () => {
+  const h = harness();
+  const gone = new AbortController();
+  const leaving = h.scheduler.load('poster', {signal: gone.signal});
+  await settle();
+  gone.abort();
+  await assert.rejects(leaving, {name: 'AbortError'});
+  // The loader settles after its caller left. The native image reports only through the
+  // mounted view, so this is exactly what a card unmounted mid-load looks like: the
+  // request ends with nobody waiting, at the timeout or before it.
+  h.fail('poster', {retryable: false});
+  await settle();
+  const again = h.scheduler.load('poster');
+  await settle();
+  assert.deepEqual(h.started, ['poster', 'poster'], 'a later mount asks the server again at once');
+  h.finish('poster');
+  assert.equal(await again, 'url:poster');
+});
+
 test('the cache is bounded and releases least recently used values', async () => {
   const h = harness({concurrency: 10, maxEntries: 2});
   for (const k of ['a', 'b', 'c']) { const p = h.scheduler.load(k); await settle(); h.finish(k); await p; }

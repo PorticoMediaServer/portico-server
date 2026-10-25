@@ -403,6 +403,17 @@ export class ArtworkScheduler<V> {
     }, error => {
       if (this.disposed) return;
       this.finishAttempt(entry);
+      // Nobody waits for this picture any more: the caller that wanted it has gone, so the
+      // failure says nothing about the key. A loader that can only settle through a mounted
+      // view - the native image does - always ends here once its card unmounts mid-load and
+      // the attempt times out. A cooldown would then make the next mount reject without
+      // asking the server, which is a blank card that a reload cannot explain.
+      if (!entry.waiters.size) {
+        if (this.entries.get(key) === entry) this.entries.delete(key);
+        if (this.screen?.pending.delete(key)) this.scheduleFlush();
+        this.notify();
+        return;
+      }
       const failure: ArtworkFailure = timedOut ? {retryable: true} : this.classify(error);
       if (failure.retryable && entry.attempts <= this.backoffMs.length && entry.waiters.size) {
         const backoff = this.backoffMs[entry.attempts - 1] ?? 0;
