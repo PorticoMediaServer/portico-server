@@ -272,7 +272,7 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
       <MenuGroup>
         {differentVersion && <MenuItem icon="i-film" onSelect={chooseVersion}>{t('next.overlays.differentVersion')}</MenuItem>}
         <MenuItem icon="i-info" onSelect={loadFiles}>{t('next.overlays.fileInfo')}</MenuItem>
-        <MenuItem icon="i-stack" onSelect={loadFiles}>{t('next.overlays.discTitles')}</MenuItem>
+        <MenuItem icon="i-stack" onSelect={() => { setTitlesOpen(true); loadFiles(); }}>{t('next.overlays.discTitles')}</MenuItem>
       </MenuGroup>
       {ownerRows && <MenuGroup label={t(sheet ? 'next.overlays.ownerOnly' : 'next.overlays.owner')} ownerOnly>{canEditMetadata && <MenuItem onSelect={() => destination(binding.context.effects.editMetadata)}>{t('entry.editMetadata')}</MenuItem>}{refreshPath && <MenuItem icon="i-refresh" onSelect={refresh}>{t('entry.refreshMetadata')}</MenuItem>}{canDelete && <MenuItem icon="i-trash" destructive onSelect={() => destination(binding.context.effects.deleteTitle)}>{t('entry.delete')}</MenuItem>}</MenuGroup>}
     </Menu>
@@ -286,6 +286,8 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
     {rating && <TitleRating binding={binding} data={data} returnFocusRef={trigger} onClose={() => setRating(false)} />}
     {fileOpen && model && <FileInfo model={model} subject={data.item.title} disc={files?.disc} layout={phone ? 'phone' : 'desktop'} open onOpenChange={closeFiles} returnFocusRef={trigger} onManage={action => runScreenCommand(binding.context, () => { binding.current(data); closeFiles(false); setManage(action); })} />}
     {fileOpen && !model && <Dialog open onOpenChange={closeFiles} title={t('next.overlays.fileInfo')} returnFocusRef={trigger}>{failed ? <ScreenFailure retry={loadFiles} /> : <DetailLoading shape="panel" />}</Dialog>}
+    <DiscTitles open={titlesOpen && !!files?.disc} onOpenChange={value => { if (!value) setTitlesOpen(false); }} disc={files?.disc}
+      file={files?.disc ? model?.files.find(entry => entry.id === files.disc!.fileId)?.display.heading.text : undefined} returnFocusRef={trigger} />
     {manage && files && <FileManagement binding={binding} data={data} files={files} action={manage} onClose={() => setManage(undefined)} returnFocusRef={trigger} />}
   </>;
 }
