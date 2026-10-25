@@ -67,3 +67,16 @@ test('Actual processing is independent of requested state and display rounding',
  const unknown=musicSignal({...base,server:{route:'converted',quality:'320',delivered:{codec:'opus'}}});
  assert.equal(unknown.state?.key,'player.signal.server.converted');
 });
+
+test('MS5: accepted baked gain is measured, not called off, when the current mode is off',()=>{
+ const step=(input:MusicSignalInput)=>musicSignal(input).steps.find(value=>value.id==='leveling')?.value;
+ const baked=step({...base,server:{route:'original',loudnessAppliedDb:-12},normalization:'off',levelingApplied:false});
+ assert.equal(typeof baked==='object'&&baked.key,'player.signal.line.loudness');
+ assert.equal(typeof baked==='object'?formatSignalText(baked,defaultI18n.t):undefined,'Loudness −12.0 dB');
+ const zero=step({...base,server:{route:'original',loudnessAppliedDb:0},normalization:'off',levelingApplied:false});
+ assert.equal(typeof zero==='object'&&zero.key,'player.signal.off');
+ const absent=step({...base,server:{route:'original'},normalization:'off',levelingApplied:false});
+ assert.equal(typeof absent==='object'&&absent.key,'player.signal.off');
+ const renderer=step({...base,server:{route:'original'},normalization:'track',levelingApplied:true,levelingGainDb:-3.2});
+ assert.equal(typeof renderer==='object'&&renderer.key,'player.signal.leveling.applied');
+});

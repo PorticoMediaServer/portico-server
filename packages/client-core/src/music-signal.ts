@@ -145,7 +145,10 @@ export function musicSignal(input:MusicSignalInput):MusicSignalModel{
  else if(server)serverValue=text('player.signal.server.asIs');
  steps.push({id:'server',label:text('player.signal.step.server'),value:serverValue,note:serverNote,changed:converted});
  const leveling=server?.loudnessAppliedDb!==undefined||input.levelingApplied;
- steps.push({id:'leveling',label:text('player.signal.step.leveling'),value:output.passthrough?text('player.signal.notApplied'):input.normalization==='off'?text('player.signal.off'):leveling&&gainKnown(gain)?text('player.signal.leveling.applied',{mode:input.normalization,gain:signalGain(gain)}):text('player.signal.notApplied'),changed:output.passthrough!==true&&gainChanged});
+ // An accepted plan can carry measured baked gain while the current preference has moved to
+ // off; the pinned gain stays audible and the unknown mode must not be guessed.
+ const baked=server?.loudnessAppliedDb;
+ steps.push({id:'leveling',label:text('player.signal.step.leveling'),value:output.passthrough?text('player.signal.notApplied'):baked!==undefined&&baked!==0&&gainKnown(baked)&&input.normalization==='off'?text('player.signal.line.loudness',{gain:signalGain(baked)}):input.normalization==='off'?text('player.signal.off'):leveling&&gainKnown(gain)?text('player.signal.leveling.applied',{mode:input.normalization,gain:signalGain(gain)}):text('player.signal.notApplied'),changed:output.passthrough!==true&&gainChanged});
  steps.push({id:'eq',label:text('player.signal.step.eq'),value:output.passthrough?text('player.signal.notApplied'):input.eqApplied?text('player.signal.eq.on'):!input.eqOn?text('player.signal.off'):text('player.signal.notApplied'),changed:output.passthrough!==true&&input.eqApplied});
  if(output.platform==='desktop'&&output.exclusive===true)steps.push({id:'volume',label:text('player.volume'),...(typeof output.volume==='number'&&output.volume>=0&&output.volume<=1?{percent:output.volume}:{}),changed:volumeChanged});
  let outputValue:SignalText|undefined;
