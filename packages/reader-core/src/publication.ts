@@ -1,5 +1,5 @@
 import type {ReadingSession,ReadingLocation,ReadingProgress} from '@portico/client-core';
-import type {ReaderSource,ReaderFormat,ReaderMetadata,ReaderLocation,ReaderRange} from './ports.ts';
+import type {ReaderSource,ReaderFormat,ReaderMetadata,ReaderLocation,ReaderRange,ReaderContentsTarget} from './ports.ts';
 import type {ComicPageProvider} from './comic/archive.ts';
 import {rasterInfo} from './comic/image.ts';
 import {abortScope,abortReason} from './abort.ts';
@@ -14,6 +14,7 @@ export type ReadingPublication=Readonly<{
   format:ReaderFormat;source:ReaderSource;metadata:ReaderMetadata;signal:AbortSignal;
   comicPages?:(source:ReaderSource,signal:AbortSignal)=>Promise<ComicPageProvider>;
   resumeLocation(progress:ReadingProgress):ReaderLocation|null;
+  contentsTarget(index:number):ReaderContentsTarget;
   /** Local retirement only. The caller still owns captured session.close(). */
   dispose():void;
 }>;
@@ -38,6 +39,7 @@ export function readingLocationFromReader(location:ReaderLocation):ReadingLocati
 
 export async function createReadingPublication(session:ReaderSessionInput,callerSignal?:AbortSignal):Promise<ReadingPublication> {
   const manifest=session.manifest,{sourceId:id,revision,size,sessionId,sequential}=manifest,life=new AbortController();
+  const contents=Object.freeze((manifest.contents??[]).map(entry=>Object.freeze({...entry})));
   const scope=abortScope([session.signal,life.signal,...callerSignal?[callerSignal]:[]]),signal=scope.signal;
   const current=()=>{
     throwIfAborted(signal);
@@ -115,13 +117,18 @@ export async function createReadingPublication(session:ReaderSessionInput,caller
       }});
     } else if(format==='epub') {
       const entries=Object.freeze((manifest.resources??[]).map(entry=>Object.freeze({...entry})));
-      source=Object.freeze({id,revision,size,resources:Object.freeze({entries,async read(path:string,taskSignal:AbortSignal) {
+      source=Object.freeze({id,revision,size,contents,resources:Object.freeze({entries,async read(path:string,taskSignal:AbortSignal) {
         const entry=entries.find(entry=>entry.path===path);if(!entry)throw new ReaderError('invalid_source');
         return run(taskSignal,async active=>{const bytes=await session.readAsset(path,active);
           if(!(bytes instanceof Uint8Array)||bytes.length!==entry.size)throw new ReaderError('invalid_source');return bytes.slice();});
       }})});
     } else source=Object.freeze({id,revision,size});
     const publication:ReadingPublication={format,source,metadata,signal,dispose,
+      contentsTarget(index) {
+        current();
+        if(format!=='epub'||!Number.isSafeInteger(index)||index<0||index>=contents.length)throw new ReaderError('invalid_location');
+        return Object.freeze({sourceId:id,sourceRevision:revision,index});
+      },
       resumeLocation(response) {
         current();const progress=response.progress;if(progress===null)return null;
         if(progress.sourceId!==id)throw new ReaderError('invalid_source');

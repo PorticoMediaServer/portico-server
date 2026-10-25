@@ -6,6 +6,8 @@ export interface ReaderSource {
   readonly revision: string;
   readonly size: number;
   readonly resources?: ReaderResources;
+  /** Captured manifest entries for this source, never caller-supplied URLs. */
+  readonly contents?: readonly ReaderContentsEntry[];
   /** Genuine interactive from-start stream; never a synthetic random reader. */
   readonly sequential?: ReaderSequentialSource;
   read?(range: ReaderRange, signal: AbortSignal): Promise<Uint8Array>;
@@ -33,6 +35,9 @@ export type ReaderLocation = ObservedLocation & (
 export type ReaderTocItem = Readonly<{
   id: string; label: string; location: ReaderLocation; children?: readonly ReaderTocItem[];
 }>;
+export type ReaderContentsEntry = Readonly<{title: string; depth: number; section: string; fragment?: string}>;
+/** A detail selection can cross a session reopen only for the same source revision. */
+export type ReaderContentsTarget = Readonly<{sourceId: string; sourceRevision: string; index: number}>;
 export type ReaderMetadata = Readonly<{
   title?: string; author?: string; language?: string;
   direction?: 'ltr' | 'rtl' | 'vertical'; pageCount?: number;
@@ -83,6 +88,8 @@ export interface ReaderDocument<Preferences extends object> {
   readonly revision: string;
   readonly metadata: ReaderMetadata;
   readonly toc: readonly ReaderTocItem[];
+  /** Resolve a captured manifest entry through this already-open engine. */
+  resolveContents?(index: number, signal: AbortSignal): Promise<ReaderLocation>;
   mount(options: ReaderMount<Preferences>): Promise<ReaderView<Preferences>>;
   search(query: string, options: ReaderSearchOptions): AsyncIterable<ReaderSearchResult>;
   /** Real fixed-page preview; width 32..2048, bytes at most 16MiB. */

@@ -243,3 +243,32 @@ test('retiring an old authority cannot close its replacement; current retirement
   await f.controller.setOverride({textSize:7});current.abort();assert.equal(f.controller.getSnapshot().status,'closed');assert.deepEqual(f.controller.getSnapshot().overriddenKeys,[]);
   await new Promise(done=>setImmediate(done));assert.equal(f.viewsDisposed,2);assert.equal(f.docsDisposed,2);
 });
+
+test('contents commands resolve only the captured document identity before navigating',async()=>{
+  const f=fixture(),calls:number[]=[],navigated:unknown[]=[];
+  const resolved={format:'epub' as const,cfi:'epubcfi(/6/2!/4/2)',progression:0};
+  f.document.resolveContents=async(index,signal)=>{assert.equal(signal.aborted,false);calls.push(index);return resolved;};
+  f.view.navigate=async target=>{navigated.push(target);};
+  await f.controller.open({source,format:'epub',container});
+  await assert.rejects(f.controller.navigateContents({sourceId:'another-source',sourceRevision:source.revision,index:0}),{code:'invalid_source'});
+  await assert.rejects(f.controller.navigateContents({sourceId:source.id,sourceRevision:'another-revision',index:0}),{code:'invalid_source'});
+  await assert.rejects(f.controller.navigateContents({sourceId:source.id,sourceRevision:source.revision,index:-1}),{code:'invalid_location'});
+  assert.deepEqual(calls,[]);assert.deepEqual(navigated,[]);
+  await f.controller.navigateContents({sourceId:source.id,sourceRevision:source.revision,index:0});
+  assert.deepEqual(calls,[0]);assert.deepEqual(navigated,[{kind:'location',location:resolved}]);await f.controller.close();
+});
+
+test('a retired or caller-aborted contents resolution never reaches the mounted view',async()=>{
+  for(const retire of ['close','caller'] as const){
+    const f=fixture(),pending=deferred<import('../src/ports.ts').ReaderLocation>(),caller=new AbortController();let reads=0,moves=0;
+    f.document.resolveContents=async()=>{reads++;return pending.promise;};
+    f.view.navigate=async()=>{moves++;};
+    await f.controller.open({source,format:'epub',container});
+    const command=f.controller.navigateContents({sourceId:source.id,sourceRevision:source.revision,index:0},caller.signal);
+    const rejected=assert.rejects(command,{code:'aborted'});
+    await new Promise(done=>setImmediate(done));assert.equal(reads,1);
+    if(retire==='close')await f.controller.close();else caller.abort();
+    pending.resolve({format:'epub',cfi:'epubcfi(/6/2!/4/2)',progression:0});
+    await rejected;assert.equal(moves,0);await f.controller.close();
+  }
+});

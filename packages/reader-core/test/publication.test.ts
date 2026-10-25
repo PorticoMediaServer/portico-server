@@ -33,6 +33,19 @@ test('EPUB publication supplies original enumerated assets only and preserves om
   assert.deepEqual(await publication.source.resources!.read('chapter.xhtml',active()),new Uint8Array([1]));assert.deepEqual(f.calls,['asset']);publication.dispose();
 });
 
+test('contents selection captures the actual manifest index and source revision without reading bytes',async()=>{
+  const f=fixture('epub');
+  f.replaceManifest({contents:[{title:'Chapter',depth:0,section:'chapter.xhtml',fragment:'part-one'}]});
+  const publication=await createReadingPublication(f.session);
+  assert.deepEqual(publication.contentsTarget(0),{sourceId:'asset',sourceRevision:f.session.manifest.revision,index:0});
+  assert.deepEqual(publication.source.contents,[{title:'Chapter',depth:0,section:'chapter.xhtml',fragment:'part-one'}]);
+  assert.ok(Object.isFrozen(publication.source.contents));assert.ok(Object.isFrozen(publication.source.contents![0]));
+  assert.throws(()=>publication.contentsTarget(-1),{code:'invalid_location'});
+  assert.throws(()=>publication.contentsTarget(1),{code:'invalid_location'});assert.deepEqual(f.calls,[]);
+  f.replaceManifest({revision:'b'.repeat(64)});
+  assert.throws(()=>publication.contentsTarget(0),{code:'invalid_source'});publication.dispose();
+});
+
 test('comic publication inspects actual returned variants, never supplies an archive reader, and bounds before I/O',async()=>{
   const f=fixture('cbz'),publication=await createReadingPublication(f.session);
   assert.equal(publication.source.read,undefined);assert.equal(publication.source.resources,undefined);assert.equal(publication.metadata.pageCount,1);

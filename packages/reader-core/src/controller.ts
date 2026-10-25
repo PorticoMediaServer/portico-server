@@ -1,6 +1,6 @@
 import type {ReaderAdapter, ReaderDocument, ReaderFormat, ReaderLocation, ReaderNavigation, ReaderMetadata,
   ReaderSearchOptions, ReaderSearchResult, ReaderSnapshot, ReaderSource, ReaderView, ReaderViewport,
-  ReaderZoom, ReaderSurfaceInput, ReaderPageImage} from './ports.ts';
+  ReaderZoom, ReaderSurfaceInput, ReaderPageImage, ReaderContentsTarget} from './ports.ts';
 import {ReaderError, readerErrorCode, throwIfAborted} from './errors.ts';
 import {validateSource} from './source.ts';
 import {validateViewport} from './layout.ts';
@@ -180,6 +180,29 @@ export class ReaderController<P extends object> {
     if (target.kind === 'progression' && (!Number.isFinite(target.value) || target.value < 0 || target.value > 1))
       return Promise.reject(new ReaderError('invalid_location'));
     return this.enqueue((view, signal) => view.navigate(target, signal));
+  }
+  navigateContents(target: ReaderContentsTarget, callerSignal?: AbortSignal): Promise<void> {
+    const session = this.session, document = session?.document;
+    const captured = Object.freeze({...target});
+    if (!Number.isSafeInteger(captured.index) || captured.index < 0) return Promise.reject(new ReaderError('invalid_location'));
+    if (!session || !document || !this.current(session)) return Promise.reject(new ReaderError('closed'));
+    if (document.id !== captured.sourceId || document.revision !== captured.sourceRevision) return Promise.reject(new ReaderError('invalid_source'));
+    if (document.format !== 'epub' || !document.resolveContents) return Promise.reject(new ReaderError('unsupported_operation'));
+    const resolve = document.resolveContents.bind(document);
+    return this.enqueue(async (view, signal) => {
+      const task = abortScope([signal, ...(callerSignal ? [callerSignal] : [])]);
+      try {
+        throwIfAborted(task.signal);
+        if (!this.current(session) || session.document !== document) throw new ReaderError('closed');
+        if (document.id !== captured.sourceId || document.revision !== captured.sourceRevision) throw new ReaderError('invalid_source');
+        const location = await resolve(captured.index, task.signal);
+        throwIfAborted(task.signal);
+        if (!this.current(session) || session.document !== document) throw new ReaderError('closed');
+        if (document.id !== captured.sourceId || document.revision !== captured.sourceRevision) throw new ReaderError('invalid_source');
+        validateLocation(location, 'epub');
+        await view.navigate({kind: 'location', location}, task.signal);
+      } finally { task.dispose(); }
+    });
   }
   updatePreferences(preferences: Readonly<P>): Promise<void> {
     this.base = copy(preferences); this.publishPreferences();

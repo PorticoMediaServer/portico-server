@@ -63,8 +63,8 @@ async function cancellable<T>(promise: Promise<T>, signal: AbortSignal): Promise
  * ambient network client is imported. Online assets and local ZIPs share this. */
 export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(options: EpubAdapterOptions): ReaderAdapter<P> {
   return {format:'epub',async open({source,signal:parent}) {
-    const id=source.id,revision=source.revision,size=source.size,resources=source.resources;
-    const currentSource=()=>source.id===id&&source.revision===revision&&source.size===size&&source.resources===resources;
+    const id=source.id,revision=source.revision,size=source.size,resources=source.resources,contents=source.contents;
+    const currentSource=()=>source.id===id&&source.revision===revision&&source.size===size&&source.resources===resources&&source.contents===contents;
     const unchanged=()=>{if(!currentSource())throw new ReaderError('invalid_source');};
     const lifetime=new AbortController(),scope=abortScope([parent,lifetime.signal]),signal=scope.signal;
     let assets:Awaited<ReturnType<typeof openEpubArchive>>;
@@ -157,6 +157,38 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
       }
       const toc=await mapToc(b.toc??[]);
       const document:ReaderDocument<P>={id,revision,format:'epub',metadata,toc,
+        async resolveContents(index,callerSignal) {
+          const task=abortScope([signal,callerSignal]);
+          try {
+            throwIfAborted(task.signal);unchanged();
+            if(!Number.isSafeInteger(index)||index<0||index>511||!contents||contents.length>512)throw new ReaderError('invalid_location');
+            const entry=contents[index];
+            if(!entry||typeof entry.section!=='string'||safeArchivePath(entry.section)!==entry.section||
+              entry.fragment!==undefined&&(typeof entry.fragment!=='string'||entry.fragment.length>1024||/[\p{Cc}]/u.test(entry.fragment)))throw new ReaderError('invalid_location');
+            const {section,fragment}=entry;
+            const target=b.resolveHref(section+(fragment?'#'+encodeURIComponent(fragment):''));
+            if(!target||b.sections[target.index]?.id!==section)throw new ReaderError('invalid_location');
+            // Reuse the engine's admitted source loader with the actual caller
+            // signal; Section.createDocument only has the book-wide signal.
+            const text=await loadText(section,task.signal);
+            throwIfAborted(task.signal);unchanged();
+            if(contents[index]!==entry||entry.section!==section||entry.fragment!==fragment)throw new ReaderError('invalid_source');
+            if(text===null)throw new ReaderError('invalid_location');
+            const doc=new DOMParser().parseFromString(text,'application/xhtml+xml');
+            if(doc.querySelector('parsererror'))throw new ReaderError('invalid_book');
+            const node=typeof target.anchor==='function'?target.anchor(doc):null;
+            if(fragment&&!(node instanceof Node)&&!(node instanceof Range))throw new ReaderError('invalid_location');
+            const range=doc.createRange();
+            if(node instanceof Range)range.setStart(node.startContainer,node.startOffset);
+            else if(node instanceof Node)range.selectNodeContents(node);
+            else range.selectNodeContents(doc.body??doc.documentElement);
+            range.collapse(true);
+            const prefix=doc.createRange();prefix.selectNodeContents(doc.body??doc.documentElement);prefix.setEnd(range.startContainer,range.startOffset);
+            const location:ReaderLocation={format:'epub',cfi:cfiAt(b,target.index,range),section,
+              progression:progression(b,target.index,prefix.toString().length/Math.max(1,(doc.body??doc.documentElement).textContent?.length??1))};
+            throwIfAborted(task.signal);unchanged();return Object.freeze(location);
+          }finally{task.dispose();}
+        },
         async mount(mount) {
           throwIfAborted(signal);throwIfAborted(mount.signal);unchanged();if(mounted)throw new ReaderError('invalid_book');mounted=true;
           view=await mountEpub(b,{...mount,onLocation(value){if(currentSource())mount.onLocation(value);},
