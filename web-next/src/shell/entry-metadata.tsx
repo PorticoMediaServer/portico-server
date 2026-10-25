@@ -118,9 +118,12 @@ function CheckedAggregateMetadata({value}: {value: Open & {target: AggregateMeta
   </Dialog>;
 }
 
+const aggregateOpen = (value: Open): value is Open & {target: AggregateMetadataTarget} => 'entityKind' in value.target;
+const itemOpen = (value: Open): value is Open & {target: EntryActionTarget} => 'itemId' in value.target;
+
 export function EntryMetadataHost() {
   const value = useSyncExternalStore(listener => {listeners.add(listener); return () => {listeners.delete(listener);};}, () => opened, () => null);
   if (!value || !current(value)) return null;
-  return 'entityKind' in value.target ? <CheckedAggregateMetadata key={value.id} value={{...value, target: value.target}}/>
-    : <CheckedMetadata key={value.id} value={{...value, target: value.target}}/>;
+  if (aggregateOpen(value)) return <CheckedAggregateMetadata key={value.id} value={value}/>;
+  return itemOpen(value) ? <CheckedMetadata key={value.id} value={value}/> : null;
 }
