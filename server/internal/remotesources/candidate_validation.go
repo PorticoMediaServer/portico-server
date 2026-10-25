@@ -52,7 +52,7 @@ func (s *Service) beginCandidateTest(ctx context.Context, source string, limits 
 		s.serveMu.Unlock()
 		return nil, nil, storage.ErrRemoteOffline
 	}
-	if s.sourceTests[source] != nil {
+	if s.sourceTests[source] != nil || s.sourceRemovals[source] {
 		s.serveMu.Unlock()
 		return nil, nil, storage.ErrBusy
 	}

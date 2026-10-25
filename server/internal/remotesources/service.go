@@ -51,6 +51,7 @@ type Service struct {
 	serveMu             sync.Mutex
 	serveLeases         map[string]*sourceProcessLease
 	sourceTests         map[string]*sourceTestScope
+	sourceRemovals      map[string]bool
 	readLeases          map[string]map[int64]*SourceReadLease
 	serveClosed         bool
 	serveLife           context.Context
@@ -99,6 +100,7 @@ func New(db *sql.DB, state string, managed *mounts.Service) (*Service, error) {
 		return nil, err
 	}
 	managed.NativeBusy = s.PlaybackActive
+	managed.GuardSourceRemoval = s.guardSourceRemoval
 	managed.NativeInvalidated = s.invalidate
 	managed.PrepareSourceCandidate = s.prepareSourceCandidate
 	// No acquisition survives a server process. Remove only our private spool names.

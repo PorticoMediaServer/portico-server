@@ -70,7 +70,7 @@ func (s *Service) reserveSourceProcess(ctx context.Context, source, generation s
 	if s.serveLeases == nil {
 		s.serveLeases = make(map[string]*sourceProcessLease)
 	}
-	if s.serveLeases[source] != nil || s.sourceTests[source] != nil {
+	if s.serveLeases[source] != nil || s.sourceTests[source] != nil || s.sourceRemovals[source] {
 		return nil, storage.ErrBusy
 	}
 	life, cancel := context.WithCancel(ctx)

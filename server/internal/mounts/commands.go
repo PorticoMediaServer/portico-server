@@ -155,7 +155,7 @@ func (s *Service) Command(ctx context.Context, actor, id string, c Command, auth
 		return zero, e
 	}
 	if c.sourceGeneration != 0 {
-		if c.sourceGeneration < 1 || c.Action != "configure" || id == "" || c.ExpectedRevision != 0 || c.Setup != nil || c.CacheBytes != nil || c.CacheFloor != nil {
+		if c.sourceGeneration < 1 || (c.Action != "configure" && c.Action != "delete") || id == "" || c.ExpectedRevision != 0 || c.Setup != nil || c.CacheBytes != nil || c.CacheFloor != nil {
 			gated2.Rollback()
 			return zero, ErrInvalid
 		}
@@ -227,13 +227,32 @@ func (s *Service) Command(ctx context.Context, actor, id string, c Command, auth
 	if m.ControlRevision != c.ExpectedRevision || m.RemovalPending {
 		return zero, ErrCommandConflict
 	}
+	if c.sourceGeneration != 0 {
+		if s.GuardSourceRemoval == nil {
+			return zero, ErrUnavailable
+		}
+		release, err := s.GuardSourceRemoval(ctx, id)
+		if err != nil {
+			return zero, err
+		}
+		if release == nil {
+			return zero, ErrUnavailable
+		}
+		defer release()
+	}
 	if c.Action == "delete" && s.NativeBusy != nil && s.NativeBusy(id) {
+		if c.sourceGeneration != 0 {
+			return zero, ErrSourceInUse
+		}
 		return zero, errors.New("stop active playback using this source before removal")
 	}
 	if (c.Action == "start" || c.Action == "restart") && !s.mountSupported() {
 		return zero, requestinput.New("Managed mounts are unavailable on this host. Native listing and playback remain available.")
 	}
 	if c.Action == "delete" && (m.DesiredState != "stopped" || s.active[id] != nil) {
+		if c.sourceGeneration != 0 {
+			return zero, ErrSourceInUse
+		}
 		return zero, errors.New("stop the managed mount and wait for its process to exit before removing it")
 	}
 	var gated3 *dbwork.Write
@@ -245,6 +264,20 @@ func (s *Service) Command(ctx context.Context, actor, id string, c Command, auth
 	defer gated3.Rollback()
 	if e = authorize(tx); e != nil {
 		return zero, e
+	}
+	if c.sourceGeneration != 0 {
+		control, err := importedSourceControlTx(ctx, tx, id, c.sourceGeneration)
+		if err != nil {
+			return zero, err
+		}
+		if control != c.ExpectedRevision {
+			return zero, ErrCommandConflict
+		}
+		// This is logical removal only. The existing worker owns guarded private
+		// allocation/config cleanup after physical process retirement.
+		if _, e = tx.ExecContext(ctx, `UPDATE remote_sources SET removed=1,state='removed' WHERE id=? AND removed=0 AND generation=?`, id, c.sourceGeneration); e != nil {
+			return zero, e
+		}
 	}
 	desired := "running"
 	if c.Action == "stop" || c.Action == "delete" {
@@ -277,6 +310,9 @@ func (s *Service) Command(ctx context.Context, actor, id string, c Command, auth
 	}
 	if e = gated3.Commit(); e != nil {
 		return zero, e
+	}
+	if c.sourceGeneration != 0 && s.NativeInvalidated != nil {
+		s.NativeInvalidated(id)
 	}
 	if c.Action != "start" {
 		s.available[id] = false
