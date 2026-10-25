@@ -13,9 +13,14 @@ import (
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/readingcap"
 )
 
-const readingTextRuleVersion = 1
+// A positive bump makes every existing reading_text_counts row pending once:
+// the cache join, the pending window and every consumer require this exact
+// rule. Version 2 adds the exact PDF Info/Author determination to the same
+// preparation, so already-counted PDFs run the bounded helper again.
+const readingTextRuleVersion = readingcap.TextCountRuleVersion
 const readingPageRuleVersion = 1
 const maxCountDocument = 8 << 20
 const maxCountPublication = 64 << 20

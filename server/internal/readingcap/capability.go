@@ -6,6 +6,14 @@ package readingcap
 
 import "runtime"
 
+// TextCountRuleVersion is the current rule for one determined reading_text_counts
+// fact: the complete text count, opening lines and structural page count. It is
+// a positive bump by construction, so every existing row becomes pending once
+// and is re-prepared by the existing background worker. Version 2 adds the
+// document's exact Info/Author determination to the same PDF preparation, which
+// requires the helper to run again on every already-counted PDF.
+const TextCountRuleVersion = 2
+
 // CB7 reports whether this build and platform may expose local CB7 sources.
 // The default build is dark.
 func CB7() bool { return buildEnabled() && platformSupportsCB7() }

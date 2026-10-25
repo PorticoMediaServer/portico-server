@@ -7,6 +7,7 @@ import (
 	"math"
 	"sync"
 	"unicode"
+	"unicode/utf8"
 
 	"rsc.io/pdf"
 )
@@ -16,53 +17,76 @@ const pdfReadWindow = 256 << 10
 
 // parsePDFText runs only in the isolated helper process. It first walks the
 // complete page tree itself and counts every Page leaf; the declared /Count is
-// never consulted. Then it reads the page content streams of the pinned parser;
-// it does not read the Info dictionary, render pages, run OCR, execute actions,
-// load external resources or resolve host files. The helper's RLIMIT_AS/RLIMIT_CPU
-// bound every allocation and CPU path the parser can reach, so a decoded-work
-// explosion kills only the child.
-func parsePDFText(ctx context.Context, r io.ReaderAt, size int64) (count *int64, opening string, pages *int64, err error) {
+// never consulted. Then it reads the page content streams of the pinned parser
+// and the exact Info/Author string as bounded file evidence. It renders no
+// pages, runs no OCR, executes no action and loads no external resource or host
+// file. The helper's RLIMIT_AS/RLIMIT_CPU bound every allocation and CPU path
+// the parser can reach, so a decoded-work explosion kills only the child.
+func parsePDFText(ctx context.Context, r io.ReaderAt, size int64) (count *int64, opening, author string, pages *int64, err error) {
 	if size <= 0 || size > maxCountPDFSource {
-		return nil, "", nil, nil
+		return nil, "", "", nil, nil
 	}
 	reader := &pdfReader{ctx: ctx, source: r, size: size}
 	defer func() {
 		if recover() != nil {
-			count, opening, pages = nil, "", nil
+			count, opening, author, pages = nil, "", "", nil
 			err = reader.err
 		}
 	}()
 	if err = ctx.Err(); err != nil {
-		return nil, "", nil, err
+		return nil, "", "", nil, err
 	}
 	document, e := pdf.NewReader(reader, size)
 	if reader.err != nil {
-		return nil, "", nil, reader.err
+		return nil, "", "", nil, reader.err
 	}
 	if e != nil {
-		return nil, "", nil, nil
+		return nil, "", "", nil, nil
 	}
-	// Encrypted documents are not counted even when an empty user password would
+	// Encrypted documents are not read even when an empty user password would
 	// let the parser decrypt them: no DRM/password path is part of this rule.
 	if !document.Trailer().Key("Encrypt").IsNull() {
-		return nil, "", nil, nil
+		return nil, "", "", nil, nil
 	}
 	leaves, ok := pdfStructuralPages(document)
 	if reader.err != nil {
-		return nil, "", nil, reader.err
+		return nil, "", "", nil, reader.err
 	}
 	if !ok {
-		return nil, "", nil, nil
+		return nil, "", "", nil, nil
 	}
 	total := int64(len(leaves))
 	pages = &total
 	// A structurally complete page tree is a real fact even when the text layer
 	// is image-only or unsupported. Only the text count becomes unknown then.
+	author = pdfInfoAuthor(document)
 	count, opening, err = pdfTextLeaves(ctx, reader, leaves)
 	if err != nil {
-		return nil, "", pages, err
+		return nil, "", author, pages, err
 	}
-	return count, opening, pages, nil
+	return count, opening, author, pages, nil
+}
+
+// pdfInfoAuthor returns the document's exact single Info dictionary author.
+// The Info value must be a dictionary and Author a PDF string; a missing entry,
+// name, array, stream, XMP packet or outline title publishes nothing. The value
+// is never split, guessed or repaired, and a value that cannot be stored exactly
+// (invalid UTF-8 or over 4096 bytes) publishes nothing instead of a shortened
+// name.
+func pdfInfoAuthor(document *pdf.Reader) string {
+	info := document.Trailer().Key("Info")
+	if info.Kind() != pdf.Dict {
+		return ""
+	}
+	value := info.Key("Author")
+	if value.Kind() != pdf.String {
+		return ""
+	}
+	author := value.Text()
+	if author == "" || len(author) > 4096 || !utf8.ValidString(author) {
+		return ""
+	}
+	return author
 }
 
 // pdfStructuralPages validates the complete bounded page tree. Every child must
