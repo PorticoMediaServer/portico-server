@@ -39,6 +39,10 @@ type Service struct {
 	Mobi        *MobiConverter
 	PDFRaster   *PDFRaster
 	AdoptCover  CoverAdopter
+	// TextIndexChanged is the bounded post-commit wake for explicit owner
+	// reread invalidation. It must only signal an existing worker; it performs
+	// no indexing, IO or new work in the request.
+	TextIndexChanged func()
 	// Changed queues metadata inventory for the actual captured folder source.
 	// It runs only outside source/DB locks, never as content-read authority.
 	Changed        func(library, folderSource string)

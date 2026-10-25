@@ -1282,11 +1282,12 @@ func run() (runErr error) {
 	// metadata admission and source/scene fences. Bounded indexed passes resume
 	// from the adopted rows; failures stay unknown and are retried after a rest.
 	textCounts := &reading.TextCountPreparation{DB: db, Prepare: readingService.PrepareTextCount, Index: readingService.PrepareTextIndex, PrimaryPublicationSQL: readingService.PrimaryPublicationSQL, Admission: workAdmission.Admit}
+	textCountWake := worker.NewSignal()
+	readingService.TextIndexChanged = textCountWake.Wake
 	supervise.Supervise(ctx, "cmd.reading-text-counts", func(life context.Context) {
-		wake := worker.NewSignal()
-		unregister := dbwork.WakeOnTables(wake, "reading_publications", "inventory_objects", "library_sources", "catalog_assets")
+		unregister := dbwork.WakeOnTables(textCountWake, "reading_publications", "inventory_objects", "library_sources", "catalog_assets")
 		defer unregister()
-		worker.Run(life, "cmd.reading-text-counts", wake, textCounts.Step)
+		worker.Run(life, "cmd.reading-text-counts", textCountWake, textCounts.Step)
 	})
 	// Unopened cover coverage: the same explicit EPUB cover item or first comic
 	// page an open adopts, under the registered background source authority and

@@ -178,6 +178,20 @@ func (s *Service) Reread(ctx context.Context, p identity.Principal, req RereadRe
 	if err = adoptRereadFactsTx(accept, tx, current, facts); err != nil {
 		return out, err
 	}
+	if selected.Format == "epub" {
+		// Explicit owner reread is the bounded way to retry an unchanged EPUB.
+		// The state delete trigger owns sections, FTS postings, budget and epoch.
+		if _, err = tx.ExecContext(accept, `DELETE FROM reading_text_index_state WHERE item_id=? AND asset_id=?`, current.Entity, current.Asset); err != nil {
+			return out, err
+		}
+		if s.TextIndexChanged != nil {
+			// Signal only after this transaction commits, before the writer gate
+			// releases. The callback is the existing worker's nonblocking Wake.
+			if err = dbwork.AfterCommit(tx, s.TextIndexChanged); err != nil {
+				return out, err
+			}
+		}
+	}
 	after, err := auth.MetadataRevision(accept, tx, selected.ItemID)
 	if err != nil {
 		return out, err
