@@ -118,6 +118,14 @@ func TestRestrictedBookGroupCountTracksVisibleBooks(t *testing.T) {
 	if err = c.DB.QueryRow(`SELECT token FROM catalog_book_groups WHERE kind=2 AND name='Other Saga'`).Scan(&otherSaga); err != nil {
 		t.Fatal(err)
 	}
+	// Unrestricted, the fixture names both authors, so the restricted page's
+	// single author is the guard and not a missing membership.
+	free.EntityID = otherSaga
+	if all, err := s.Content(free); err != nil {
+		t.Fatal(err)
+	} else if context := listeningSectionByID(t, all, "context"); context.TotalCount != 2 || len(context.Entries) != 2 {
+		t.Fatalf("hidden series unrestricted authors: %+v", context)
+	}
 	r.EntityID = otherSaga
 	hiddenPage, err := s.Content(r)
 	if err != nil {
