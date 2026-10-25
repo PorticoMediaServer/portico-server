@@ -125,3 +125,11 @@
 .editorFooter { flex: none; align-items: center; gap: 12px; padding: 16px 32px 24px; box-shadow: 0 -1px 0 var(--color-line); }
 .pending { margin-right: auto; font-size: 14px; font-weight: 600; color: var(--color-text-secondary); }
 @media (max-width: 600px) { .generalFields { grid-template-columns: minmax(0, 1fr); gap: 14px; } .editor > .fields, .editor > .generalFields, .editor > .artwork { padding: 18px 20px; } .editorTabs { padding: 0 20px; } .editorFooter { padding: 14px 20px 18px; } }
+
+.creditHeader { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.creditHeader h3 { margin: 0; font-size: 16px; }
+.creditHeader small { color: var(--color-text-tertiary); }
+.creditHeader .lock { margin-left: auto; }
+.creditRow { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 12px; padding: 12px; border-radius: 12px; background: rgba(7,16,24,.5); }
+.creditRow[data-new] { box-shadow: inset 0 0 0 1px var(--color-accent); }
+@media (max-width: 600px) { .creditRow { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .creditRow > :first-child { grid-column: 1 / -1; } }
