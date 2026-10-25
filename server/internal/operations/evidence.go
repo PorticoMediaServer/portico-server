@@ -307,7 +307,7 @@ func (s *Store) CreateExport(ctx context.Context, p identity.Principal, auth Aut
 			return ErrCapacity
 		}
 		out = Export{ID: identity.Token(), ExpiresAt: apiwire.Instant(s.now() + int64(time.Hour/time.Millisecond)), Manifest: ExportManifest{Version: RegistryRevision, From: c.From, To: c.To, Included: c.Components, Excluded: []string{"secrets", "raw logs", "media", "databases", "feedback text", "routes and paths"}, Redaction: "Typed allowlist before persistence and projection; no automatic upload", MaxBytes: 1 << 20, IncludePaths: bool(c.IncludePaths)}, Snapshot: snapshot}
-		if c.IncludePaths && seen["snapshot"] {
+		if bool(c.IncludePaths) && seen["snapshot"] {
 			facts, err := readExportPathFacts(ctx, tx)
 			if err != nil {
 				return err
