@@ -54,6 +54,7 @@ type RepairIdentity struct {
 	Locked   bool   `json:"locked"`
 }
 type RepairCandidate struct {
+	IdentityID string                         `json:"identityId,omitempty"`
 	Orders     []metadataprovider.ScreenOrder `json:"orders,omitempty"`
 	ID         string                         `json:"id"`
 	Provider   string                         `json:"provider"`
