@@ -117,7 +117,7 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
             {snapshot.seasonPagination.nextCursor && <MenuItem onSelect={() => pageSeasons(true)}>{t('title.laterSeasons')}</MenuItem>}
           </Menu>}
         {selectedSeason?.episodeCount !== undefined && <span className={styles.progress}>{t('count.episodes', {count: selectedSeason.episodeCount})}</span>}
-        {selectedProgress ? <span className={styles.progress}>{t('title.seasonProgress', {watched: selectedProgress.watched, total: selectedProgress.total})}</span>
+        {selectedProgress ? <><span className={styles.progressDivider} aria-hidden="true" /><span className={styles.watchedProgress}><span className={styles.watchedMeter} aria-hidden="true"><i style={{width: `${selectedProgress.total > 0 ? 100 * selectedProgress.watched / selectedProgress.total : 0}%`}} /></span>{t('title.seasonProgress', {watched: selectedProgress.watched, total: selectedProgress.total})}</span></>
           : null}
         <Menu open={filterMenu} onOpenChange={setFilterMenu} title={t('next.controls.filters')} trigger={<Chip variant="toolbar" icon="i-filter">{t('next.controls.filters')}</Chip>}>
           <MenuItem selected={!snapshot.route?.playState} onSelect={() => setPlayState('all')}>{t('next.controls.all')}</MenuItem>
