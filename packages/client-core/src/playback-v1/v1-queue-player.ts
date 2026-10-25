@@ -1009,12 +1009,12 @@ export class V1QueuePlayer implements QueueController {
     const subtitle = session.presentation.subtitle;
     const subtitles: StartOptions['subtitles'] = {trackId: subtitle?.trackId ?? null,
       ...(subtitle ? {delivery: subtitle.delivery === 'device' ? 'embeddedClient' : subtitle.delivery === 'sidecar' ? 'sidecar' : 'burn'} : {})};
-    const generation = ++this.generation; ++this.epoch;
+    const generation = ++this.generation, changeSequence = this.changeSequence; ++this.epoch;
     const intent = this.playback.beginQueueIntent(expected.itemId, false, state);
     const operationCurrent = () => !this.disposed && generation === this.generation && sessionChangeCurrent(context);
     const current = () => {
       const live = this.playback.getSnapshot();
-      return operationCurrent() && this.header?.id === expected.queueId && this.header.revision === header.revision
+      return operationCurrent() && changeSequence === this.changeSequence && live.intent === state && this.header?.id === expected.queueId && this.header.revision === header.revision
         && this.header.current?.entryId === expected.entryId && live.intentId === intent
         && live.playbackRun === expected.playbackRun && live.session?.id === expected.sessionId
         && live.session.generation === expected.generation;
