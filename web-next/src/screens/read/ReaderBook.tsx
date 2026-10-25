@@ -144,7 +144,10 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
       selected="contents" onSelect={() => {}} onClose={() => setPanel(undefined)}><ReaderContents entries={contents(snapshot.toc)}/></ReaderPanel>)
     : panel === 'search' ? <ReaderPanel label={t('next.reader.search')} tabs={[{id: 'search', label: t('next.reader.search')}]}
       selected="search" onSelect={() => {}} onClose={() => setPanel(undefined)}><ReaderSearch query={query} onQuery={setQuery} hits={searchHits} current={currentHit} loading={searching}
-        resultSummary={searchComplete && hitsQuery === query && query.trim() ? t('next.reader.matches', {count: visibleHits.length}) : undefined}
+        resultSummary={hitsQuery === query && query.trim() && !searching
+          ? searchComplete ? t('next.reader.matches', {count: visibleHits.length})
+            : visibleHits.length > 0 ? t('next.reader.matchesShown', {count: visibleHits.length}) : undefined
+          : undefined}
         onSearchAll={query.trim() ? () => {if (!authority.isCurrent() || !query.trim()) return; void router.navigate({to: '/search', search: {q: query.trim()}}).catch(reportError);} : undefined}
         onStep={stepSearch}
         copy={{search: t('next.reader.search'), clear: t('next.reader.clear'), move: t('next.reader.move'), wholeWords: t('next.reader.wholeWords'), searchAll: t('next.reader.searchAll')}}/></ReaderPanel>
