@@ -9,7 +9,7 @@ import type {GetAdminLibraryChannelsBlockPresetsResponse} from '../../../../../.
 export type BlockPreset = GetAdminLibraryChannelsBlockPresetsResponse['result']['items'][number];
 export type BlockPresetBody = BlockPreset['body'];
 type Intent = Readonly<{id?:string; body:Readonly<{expectedRevision:number;operationId:string;name:string;body:BlockPresetBody}>}>;
-type Snapshot = Readonly<{items:readonly BlockPreset[];cursor?:string;loaded:boolean;busy:boolean;pending?:Intent;reconcile:boolean;error?:boolean}>;
+type Snapshot = Readonly<{items:readonly BlockPreset[];cursor?:string;loaded:boolean;applicationOrders?:readonly string[];busy:boolean;pending?:Intent;reconcile:boolean;error?:boolean}>;
 const empty:Snapshot=Object.freeze({items:Object.freeze([]),loaded:false,busy:false,reconcile:false});
 const terminal=(error:unknown)=>{const e=(error&&typeof error==='object'?error:{}) as {status?:number;code?:string};return e.status===401||e.status===403||['unauthorized','forbidden','not_permitted'].includes(e.code??'');};
 function freeze<T>(value:T):T {if(value&&typeof value==='object'){for(const child of Object.values(value))freeze(child);Object.freeze(value);}return value;}
@@ -43,9 +43,11 @@ export class BlockPresetsSource {
       if(!owns())return;
       const page=this.checked(response) as typeof response.result;
       if(page.items.length>100||page.nextCursor.length>2048||cursor&&page.nextCursor===cursor)throw new Error('invalid_block_preset_page');
+      const applicationOrders=page.enumerations.applicationOrder;
+      if(applicationOrders!==undefined&&(applicationOrders.length>4||new Set(applicationOrders).size!==applicationOrders.length||applicationOrders.some(order=>!orders.includes(order))))throw new Error('invalid_block_preset_application_orders');
       const items=more?[...before,...page.items]:page.items;
       if(items.length>2000||new Set(items.map(item=>item.id)).size!==items.length||items.some(item=>!this.validRecord(item)))throw new Error('invalid_block_preset_page');
-      this.publish({items:freeze(structuredClone(items)),cursor:page.nextCursor||undefined,loaded:true,reconcile:false});
+      this.publish({items:freeze(structuredClone(items)),cursor:page.nextCursor||undefined,loaded:true,applicationOrders:applicationOrders===undefined?undefined:Object.freeze([...applicationOrders]),reconcile:false});
     }catch(error){if(owns())this.failure(error);}finally{if(this.flight===flight){this.flight=undefined;this.publish({busy:false});}}
   };
   private validBody(body:BlockPresetBody){return safe(body.libraryId,128)&&safe(body.description,400)&&orders.includes(body.order)&&Number.isInteger(body.durationMinutes)&&body.durationMinutes>=5&&body.durationMinutes<=1440&&Number.isInteger(body.startMinute)&&body.startMinute>=-1&&body.startMinute<=1439&&body.days.length<=7&&new Set(body.days).size===body.days.length&&body.days.every(day=>days.includes(day))&&body.criteria.length<=16&&body.criteria.every(row=>!!row.field&&safe(row.field,64)&&['includes','excludes'].includes(row.operator)&&row.values.length>0&&row.values.length<=200&&row.values.every(value=>!!value&&safe(value,200)));}
@@ -96,7 +98,7 @@ export class BlockPresetsSource {
   /** Read-only application: copy the checked definition into the caller's
    * unsaved channel. Later preset writes cannot change this copied rule. */
   apply=async(record:BlockPreset,config:LibraryChannelConfig,block:LibraryChannelBlock,caller:AbortSignal,callerCurrent:()=>boolean):Promise<LibraryChannelConfig|undefined>=>{
-    if(!this.current()||this.flight||this.intent||!this.state.loaded||this.state.reconcile||caller.aborted||!callerCurrent()||!this.state.items.includes(record)||record.body.order==='least-played'||!record.body.libraryId||config.rules.length>=16)return;
+    if(!this.current()||this.flight||this.intent||!this.state.loaded||this.state.reconcile||caller.aborted||!callerCurrent()||!this.state.items.includes(record)||record.body.order==='least-played'&&!this.state.applicationOrders?.includes('least-played')||!record.body.libraryId||config.rules.length>=16)return;
     let ruleId:string,definition:BlockPresetBody,baseline:LibraryChannelConfig;
     try{ruleId='rule-'+channelRequestID().slice(0,24);definition=freeze(structuredClone(record.body));baseline=structuredClone(config);}catch{return;}
     const list=this.state.items;
@@ -123,7 +125,7 @@ export class BlockPresetsSource {
       const filter:BrowseNode|undefined=clauses.length?{all:clauses}:undefined;
       if(filter){validateBrowseQuery(capabilities,filter);const leaves=(node:BrowseNode):number=>'field'in node?1:'not'in node?leaves(node.not):('all'in node?node.all:node.any).reduce((sum,child)=>sum+leaves(child),0);if(leaves(filter)>capabilities.queryLimits.maximumClauses||new TextEncoder().encode(JSON.stringify(filter)).length>capabilities.queryLimits.maximumBytes)throw new Error('unsupported_block_preset_size');}
       const base=baseline.rules.find(rule=>rule.id===baseline.defaultRuleId);if(!base)throw new Error('invalid_block_preset_channel');
-      const rule={...base,id:ruleId,name:record.name,mode:definition.order==='shuffle'?'shuffle-bag' as const:'sequential' as const,weights:[],query:{...base.query,libraryIds:[definition.libraryId],kinds:capabilities.library.kind==='movie'?['movie' as const]:['episode' as const],showIds:[],genres:[],yearFrom:0,yearThrough:0,recentDays:0,text:'',includeItemIds:[],excludeItemIds:[],filter,order:definition.order==='recent'?'recent' as const:'title' as const,limit:0}};
+      const rule={...base,id:ruleId,name:record.name,mode:definition.order==='shuffle'?'shuffle-bag' as const:'sequential' as const,weights:[],query:{...base.query,libraryIds:[definition.libraryId],kinds:capabilities.library.kind==='movie'?['movie' as const]:['episode' as const],showIds:[],genres:[],yearFrom:0,yearThrough:0,recentDays:0,text:'',includeItemIds:[],excludeItemIds:[],filter,order:definition.order==='least-played'?'least-played' as const:definition.order==='recent'?'recent' as const:'title' as const,limit:0}};
       const result=parseLibraryChannelConfig({...baseline,rules:[...baseline.rules,rule],blocks:baseline.blocks.map(row=>row.id===block.id?{...row,ruleId}:row)});
       if(!owns())return;return freeze(result);
     }catch(error){if(owns())this.failure(error);return;}finally{if(this.flight===flight){this.flight=undefined;this.publish({busy:false});}}
