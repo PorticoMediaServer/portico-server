@@ -9,7 +9,7 @@ import {validateHomeEntry,type HomeEntry} from './home.ts';
 import {firstOfEach,keepReadable,noteSkipped,oneOf,oneOfOr} from './tolerant.ts';
 /** How many results each group shows when every group is searched at once (the server's `SearchPreviewLimit`). */
 export const SEARCH_PREVIEW_LIMIT=12;
-export type SearchGroup='movies'|'shows'|'episodes'|'artists'|'albums'|'songs'|'books'|'collections'|'authors'|'people'|'live-tv';
+export type SearchGroup='movies'|'shows'|'episodes'|'artists'|'albums'|'songs'|'books'|'reading'|'collections'|'authors'|'people'|'live-tv';
 export type SearchSort='relevance'|'title'|'releaseYear'|'dateAdded';
 export type SearchDirection='asc'|'desc';
 export type SearchGroupStatus='success'|'error';
@@ -23,13 +23,13 @@ export type SearchData=Readonly<{scope:Readonly<{serverId:string;libraryId:'';li
 export type SearchSnapshot=Readonly<{generation:number;scope:ContentScope;query:SearchQuery|null;phase:'idle'|'loading'|'ready'|'error'|'refresh-required';data:SearchData|null;groups:readonly SearchGroupResult[];pagination:Readonly<{cursor:string|null;canPrevious:boolean}>;error:Readonly<{code:string;message:string;retryable:boolean}>|null}>;
 export type SearchHistoryEntry=Readonly<{q:string;updatedAt:string;uses:number}>;
 export type SearchHistoryPage=Readonly<{serverId:string;viewerFence:string;entries:readonly SearchHistoryEntry[];maxEntries:number}>;
-const groups:readonly SearchGroup[]=['movies','shows','episodes','artists','albums','songs','books','collections','authors','people','live-tv'];
+const groups:readonly SearchGroup[]=['movies','shows','episodes','artists','albums','songs','books','reading','collections','authors','people','live-tv'];
 const sorts:readonly SearchSort[]=['relevance','title','releaseYear','dateAdded'];
 const directions:readonly SearchDirection[]=['asc','desc'];
 const statuses:readonly SearchGroupStatus[]=['success','error'];
 const errorCodes:readonly SearchGroupErrorCode[]=['','search_group_timeout','search_group_unavailable'];
-const kinds={movies:'movie',shows:'show',episodes:'episode',artists:'artist',albums:'album',songs:'song',books:'book',collections:'collection',authors:'author',people:'person','live-tv':'channel'} as const;
-const targets={movies:'item',shows:'show',episodes:'item',artists:'artist',albums:'album',songs:'item',books:'book',collections:'collection',authors:'author',people:'person','live-tv':'channel'} as const;
+const kinds={movies:'movie',shows:'show',episodes:'episode',artists:'artist',albums:'album',songs:'song',books:'book',reading:'reading',collections:'collection',authors:'author',people:'person','live-tv':'channel'} as const;
+const targets={movies:'item',shows:'show',episodes:'item',artists:'artist',albums:'album',songs:'item',books:'book',reading:'item',collections:'collection',authors:'author',people:'person','live-tv':'channel'} as const;
 const entityGroups:readonly SearchGroup[]=['people','live-tv'];
 const object=(v:unknown):v is Record<string,unknown>=>typeof v==='object'&&v!==null&&!Array.isArray(v);
 const text=(v:unknown,max=4096):v is string=>typeof v==='string'&&v.length<=max&&!/[\x00-\x1f\x7f]/.test(v);
@@ -137,7 +137,7 @@ function parse(raw:unknown,op:Operation,s:ContentScope,limit:number):SearchData{
   const items=firstOfEach('search','items',keepReadable('search','items',array(value.items,op.query.group?limit:Math.min(limit,SEARCH_PREVIEW_LIMIT)),v=>{
    if(entityGroups.includes(group))return entityEntry(v,group);
    const media=validateHomeEntry(v);
-   if(!id(media.libraryId)||media.kind!==kinds[group]||media.navigation?.view!==targets[group]||media.navigation.entityId!==media.id)invalid();
+   if(!id(media.libraryId)||(group==='reading'?media.kind!=='ebook'&&media.kind!=='comic':media.kind!==kinds[group])||media.navigation?.view!==targets[group]||media.navigation.entityId!==media.id)invalid();
    if(media.playback&&(!['movies','episodes','songs'].includes(group)||media.playback.itemId!==media.id||media.available===false))invalid();
    return media;
   }),e=>e.id);
