@@ -638,8 +638,6 @@ table api_credential_use
 table api_credentials
 table api_events
 table api_idempotency
-table app_report_entries
-table app_reports
 table artwork_candidates
 table artwork_compaction_failures
 table artwork_dirty

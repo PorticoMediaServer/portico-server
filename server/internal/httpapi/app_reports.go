@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -47,11 +48,26 @@ func (AppReportLevel) JSONSchema() map[string]any {
 }
 
 func (AppReportCode) JSONSchema() map[string]any {
-	values := make([]any, 0, len(appReportCodes))
+	codes := make([]string, 0, len(appReportCodes))
 	for code := range appReportCodes {
-		values = append(values, string(code))
+		codes = append(codes, string(code))
+	}
+	sort.Strings(codes)
+	values := make([]any, 0, len(codes))
+	for _, code := range codes {
+		values = append(values, code)
 	}
 	return map[string]any{"type": "string", "enum": values}
+}
+
+func (AppReportEntry) JSONSchema() map[string]any {
+	return map[string]any{"type": "object", "additionalProperties": false, "required": []any{"atMs", "level", "code"},
+		"properties": map[string]any{"atMs": map[string]any{"type": "integer"}, "level": AppReportLevel("").JSONSchema(), "code": AppReportCode("").JSONSchema()}}
+}
+
+func (AppReportRequest) JSONSchema() map[string]any {
+	return map[string]any{"type": "object", "additionalProperties": false, "required": []any{"entries"},
+		"properties": map[string]any{"entries": map[string]any{"type": "array", "minItems": 1, "maxItems": 200, "items": AppReportEntry{}.JSONSchema()}}}
 }
 
 type AppReportEntry struct {
@@ -112,18 +128,6 @@ func registerAppReports(registry *apikit.Registry, d Dependencies) {
 			return AppReportReceipt{}, &apierror.Error{Code: "invalid_request"}
 		}
 		now := time.Now().UnixMilli()
-		for _, entry := range in.Entries {
-			if entry.Level != "info" && entry.Level != "warn" && entry.Level != "error" {
-				return AppReportReceipt{}, &apierror.Error{Code: "invalid_request"}
-			}
-			if _, ok := appReportCodes[entry.Code]; !ok {
-				return AppReportReceipt{}, &apierror.Error{Code: "invalid_request"}
-			}
-			// A client timestamp is untrusted: prior 24 hours and at most 5 minutes ahead.
-			if entry.AtMs < now-appReportPastMs || entry.AtMs > now+appReportSkewMs {
-				return AppReportReceipt{}, &apierror.Error{Code: "invalid_request"}
-			}
-		}
 		intent := appReportIntent(in)
 		tx, err := d.DB.BeginTx(ctx, nil)
 		if err != nil {
@@ -138,6 +142,8 @@ func registerAppReports(registry *apikit.Registry, d Dependencies) {
 		if actor.DeviceID == "" {
 			return AppReportReceipt{}, &apierror.Error{Code: "not_permitted"}
 		}
+		// The original intent is served before any freshness or rate rule, so its own
+		// receipt replays for the full seven days even after its entries are older.
 		var existingID, existingIntent string
 		err = tx.QueryRowContext(ctx, `SELECT id,intent_sha FROM app_reports WHERE authority=? AND account_id=? AND profile_id=? AND device_id=? AND operation_id=?`,
 			actor.Authority, actor.AccountID, actor.ProfileID, actor.DeviceID, operation).Scan(&existingID, &existingIntent)
@@ -145,11 +151,30 @@ func registerAppReports(registry *apikit.Registry, d Dependencies) {
 			if existingIntent != intent {
 				return AppReportReceipt{}, &apierror.Error{Code: "revision_mismatch"}
 			}
-			// A replay returns the original receipt, never a second stored payload.
-			return loadAppReport(ctx, tx, existingID)
+			// An expired receipt is purged and refused, never replayed.
+			if _, e := tx.ExecContext(ctx, `DELETE FROM app_reports WHERE id=? AND expires_ms<=?`, existingID, now); e != nil {
+				return AppReportReceipt{}, e
+			}
+			receipt, e := loadAppReport(ctx, tx, existingID)
+			if e == sql.ErrNoRows {
+				return AppReportReceipt{}, &apierror.Error{Code: "not_permitted"}
+			}
+			return receipt, e
 		}
 		if err != sql.ErrNoRows {
 			return AppReportReceipt{}, err
+		}
+		for _, entry := range in.Entries {
+			if entry.Level != "info" && entry.Level != "warn" && entry.Level != "error" {
+				return AppReportReceipt{}, &apierror.Error{Code: "invalid_request"}
+			}
+			if _, ok := appReportCodes[entry.Code]; !ok {
+				return AppReportReceipt{}, &apierror.Error{Code: "invalid_request"}
+			}
+			// A client timestamp is untrusted: prior 24 hours and at most 5 minutes ahead.
+			if entry.AtMs < now-appReportPastMs || entry.AtMs > now+appReportSkewMs {
+				return AppReportReceipt{}, &apierror.Error{Code: "invalid_request"}
+			}
 		}
 		var recent, stored int
 		if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM app_reports WHERE authority=? AND account_id=? AND device_id=? AND created_ms>?`,
