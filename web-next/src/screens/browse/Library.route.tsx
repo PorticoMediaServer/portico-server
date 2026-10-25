@@ -135,6 +135,7 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
   // cannot draw a control this screen cannot perform.
   const selection = useMemo(() => createLibrarySelection({
     playSelection,
+    owner: context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local',
     descriptor: () => resources.controller.wholeSelection(),
     actions: {api: resources.life.api, events: context.events, requestId: async () => randomId(),
       signal: resources.life.signal(), isCurrent: () => resources.life.current(), reportError: context.effects.reportError},

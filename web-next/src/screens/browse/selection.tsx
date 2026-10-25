@@ -38,6 +38,8 @@ export type LibraryDestinations = Readonly<{
 
 export type LibrarySelectionOptions = Readonly<{
   playSelection: LibrarySelectionHost;
+  /** Current local owner fact; only explains the hard delete bound, never grants a write. */
+  owner?: boolean;
   /** The server's optional descriptor for this exact page, when the controller holds one. */
   descriptor?: () => BrowseWholeSelection | undefined;
   /** The real job ports. Absent means the bar offers no personal action at all. */
@@ -114,6 +116,7 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {progress: Pro
   return <SelectionBar
     selection={{count: summary.count, kind: summary.types.length === 1 ? summary.types[0].kind : undefined}}
     actions={{
+      ...(props.owner && summary.count > 200 ? {deleteDisabledReason: defaultI18n.t('next.selection.tooMany')} : {}),
       ...(canPlay ? {onPlay: () => { void playSelection.play().catch(reportError); }} : {}),
       ...(offers.watched ? {onWatchedChange: (watched: boolean) => { void personal({watched}); }} : {}),
       ...(offers.myList ? {onMyList: () => { void personal({watchlist: true}); }} : {}),
@@ -133,7 +136,7 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {progress: Pro
     sticky />;
 }
 
-export function createLibrarySelection({playSelection, descriptor, actions, enqueue, destinations, reportError}: LibrarySelectionOptions): LibrarySelection {
+export function createLibrarySelection({playSelection, owner, descriptor, actions, enqueue, destinations, reportError}: LibrarySelectionOptions): LibrarySelection {
   const leafItems = () => {
     const items = explicitLeafItems(playSelection.getSnapshot().selection);
     if (!items) throw new Error('leaf-explicit-selection-required');
@@ -197,7 +200,7 @@ export function createLibrarySelection({playSelection, descriptor, actions, enqu
     }
   };
   return {
-    toolbar: <LibrarySelectionToolbar progress={progress} playSelection={playSelection} descriptor={descriptor} actions={actions} enqueue={enqueue} destinations={destinations} reportError={reportError} personal={personal} queue={queue} addToPlaylist={addToPlaylist} addToCollection={addToCollection} />,
+    toolbar: <LibrarySelectionToolbar progress={progress} owner={owner} playSelection={playSelection} descriptor={descriptor} actions={actions} enqueue={enqueue} destinations={destinations} reportError={reportError} personal={personal} queue={queue} addToPlaylist={addToPlaylist} addToCollection={addToCollection} />,
     entry: (member, index) => {
       const current = snapshot(), row = rowFor(member, index);
       if (!row || current.phase !== 'ready') return undefined;
