@@ -29,6 +29,7 @@ export type HomeDestination =
   | {to: '/live'; search: {group?: string; sourceId?: string}};
 export function entryDestination(entry: ContentEntry): HomeDestination {
   const navigation = entry.navigation;
+  if (entry.kind === 'radio' || navigation?.view === 'radio') throw new DOMException('Radio requires its captured seed admission', 'AbortError');
   if(entry.kind==='playlist'||navigation?.view==='playlist')return{to:'/saved',search:{resourceId:navigation?.entityId??entry.id}};
   if (entry.libraryId && navigation && navigation.view !== 'item') return {to: '/library/$libraryId', params: {libraryId: entry.libraryId}, search: {view: navigation.view, entityId: navigation.entityId ?? entry.id}};
   return {to: '/item/$itemId', params: {itemId: navigation?.entityId ?? entry.id}};

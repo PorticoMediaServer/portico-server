@@ -79,8 +79,8 @@ function RecentTiles({section, actions, artwork, nowPlayingAlbumId}: {section: C
         return <div key={entry.id} role="listitem" className={styles.item}>
           <button type="button" className={styles.tile} data-playing={playing || undefined} onClick={action.onOpen}>
             <span className={styles.art}>{art && <Artwork source={art} alt="" />}</span>
-            <span className={styles.copy}><span className={styles.title}>{playing && <span className={styles.levels} role="img" aria-label={defaultI18n.t('next.browse.playing')}><i/><i/><i/></span>}{entry.displayTitle ?? entry.title}</span>
-              <small className={styles.artist}>{entry.artist?.name}</small></span>
+            <span className={styles.copy}><span className={styles.title}>{playing && <span className={styles.levels} role="img" aria-label={defaultI18n.t('next.browse.playing')}><i/><i/><i/></span>}{entry.kind === 'radio' ? defaultI18n.t('music.radioNamed', {name: entry.displayTitle ?? entry.title}) : entry.displayTitle ?? entry.title}</span>
+              <small className={styles.artist}>{entry.artist?.name ?? (entry.kind === 'radio' ? defaultI18n.t('music.radio') : undefined)}</small></span>
           </button>
         </div>;
       })}
