@@ -61,6 +61,9 @@ export function preferenceValueLabel(key: string, value: string | number): strin
   if ((key === 'music.qualityAway' || key === 'music.qualityMobile') && typeof value === 'string' && (savedMusicQualities as readonly string[]).includes(value)) return musicQualityPresentation(value as SavedMusicQuality).label;
   if (typeof value === 'number') {
     if (key.endsWith('Seconds')) return text('pref.unit.seconds', {count: value})!;
+    // Registry durations are stored in milliseconds; a value newer than this build's drawn
+    // choices still reads in seconds, exactly, never as a bare millisecond count.
+    if (key.endsWith('Ms')) return text('pref.unit.seconds', {count: value / 1000})!;
     if (key.endsWith('Episodes')) return text('pref.unit.episodes', {count: value})!;
     if (key.endsWith('Percent')) return text('pref.unit.percent', {value})!;
     if (key.endsWith('Speed')) return value === 1 ? text('pref.unit.speedNormal')! : text('pref.unit.speed', {value})!;
