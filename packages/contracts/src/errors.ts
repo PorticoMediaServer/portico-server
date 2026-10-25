@@ -529,6 +529,24 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "personal_needs_resolution",
+    "status": 409,
+    "message": "The request could not be completed.",
+    "retry": "never"
+  },
+  {
+    "code": "personal_needs_review",
+    "status": 409,
+    "message": "The request could not be completed.",
+    "retry": "never"
+  },
+  {
+    "code": "personal_state_conflict",
+    "status": 409,
+    "message": "The request could not be completed.",
+    "retry": "never"
+  },
+  {
     "code": "playback_authority_unavailable",
     "status": 503,
     "message": "Playback authority is not available.",

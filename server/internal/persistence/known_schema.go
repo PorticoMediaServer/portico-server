@@ -541,6 +541,7 @@ index queue_v1_snapshots_queue
 index queues_v1_idle
 index queues_v1_owner
 index quick_connect_expiry_v1
+index reading_annotation_sets_publication
 index reading_attribution_author_facet
 index reading_attribution_issue_date
 index reading_attribution_pending
@@ -1279,6 +1280,9 @@ table queue_v1_snapshots
 table queue_v1_sonic_windows
 table queues_v1
 table quick_connect_v1
+table reading_annotation_rects
+table reading_annotation_sets
+table reading_annotations
 table reading_attribution_members
 table reading_attribution_state
 table reading_progress

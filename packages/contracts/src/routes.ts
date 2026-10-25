@@ -5527,6 +5527,27 @@ export const routes = [
     "admission": "media"
   },
   {
+    "id": "get_items_itemId_reading_mark",
+    "method": "GET",
+    "path": "/v1/items/{itemId}/reading/mark",
+    "summary": "Read this profile's explicit Reading completion mark",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "get_items_itemId_reading_versions",
     "method": "GET",
     "path": "/v1/items/{itemId}/reading/versions",
@@ -7328,7 +7349,9 @@ export const routes = [
       "libraryId",
       "limit",
       "seriesLimit",
-      "shortReadsLimit"
+      "shortReadsLimit",
+      "newIssuesLimit",
+      "newspaperLimit"
     ],
     "errors": [
       "invalid_request",
@@ -7415,6 +7438,9 @@ export const routes = [
     "bodyLimit": 0,
     "query": [
       "publicationType",
+      "issueDate",
+      "year",
+      "month",
       "cursor",
       "limit"
     ],
@@ -7452,6 +7478,38 @@ export const routes = [
       "not_found",
       "revision_mismatch",
       "request_in_progress",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_reading_sessions_sessionId_annotations",
+    "method": "GET",
+    "path": "/v1/reading/sessions/{sessionId}/annotations",
+    "summary": "Read the current profile's annotations for this exact publication version",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "revision"
+    ],
+    "headers": [
+      "If-Match"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_required",
+      "revision_mismatch",
+      "request_in_progress",
+      "body_too_large",
       "internal"
     ],
     "status": 200,
@@ -8074,6 +8132,32 @@ export const routes = [
     "requires": "session",
     "lane": "security",
     "cost": "constant",
+    "bodyLimit": 16384,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "revision_mismatch",
+      "sign_in_kind_portico",
+      "sign_in_kind_local",
+      "move_collision",
+      "move_confirmation",
+      "move_code_invalid",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "security-fence"
+  },
+  {
+    "id": "get_sign_in_move_waiting",
+    "method": "GET",
+    "path": "/v1/admin/sign-in/move/waiting",
+    "summary": "Manage the server sign-in move",
+    "access": "owner",
+    "requires": "session",
+    "lane": "security",
+    "cost": "page_sized",
     "bodyLimit": 16384,
     "errors": [
       "invalid_request",
@@ -13593,6 +13677,31 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "post_reading_offline_progress",
+    "method": "POST",
+    "path": "/v1/reading/offline/progress",
+    "summary": "Reconcile an observed location from this viewer's signed offline publication",
+    "access": "device",
+    "requires": "playback",
+    "lane": "media",
+    "cost": "page_sized",
+    "bodyLimit": 32768,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_required",
+      "revision_mismatch",
+      "request_in_progress",
+      "body_too_large",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "media-body"
+  },
+  {
     "id": "post_reading_sessions",
     "method": "POST",
     "path": "/v1/reading/sessions",
@@ -13614,6 +13723,35 @@ export const routes = [
       "internal"
     ],
     "status": 200,
+    "http": true,
+    "admission": "media-body"
+  },
+  {
+    "id": "post_reading_sessions_sessionId_file_save",
+    "method": "POST",
+    "path": "/v1/reading/sessions/{sessionId}/file-save",
+    "summary": "Save the selected original file through its live authenticated Reader session",
+    "access": "device",
+    "requires": "playback",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "headers": [
+      "If-Match"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_required",
+      "revision_mismatch",
+      "request_in_progress",
+      "body_too_large",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "application/octet-stream",
     "http": true,
     "admission": "media-body"
   },
@@ -15178,6 +15316,34 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "put_items_itemId_reading_mark",
+    "method": "PUT",
+    "path": "/v1/items/{itemId}/reading/mark",
+    "summary": "Set an explicit Reading completion mark without changing its location",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal",
+      "rate_limited",
+      "personal_state_conflict",
+      "personal_needs_resolution",
+      "personal_needs_review",
+      "operation_expired",
+      "idempotency_key_reused",
+      "stale_continuation"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "default"
+  },
+  {
     "id": "put_items_personal_state_batch",
     "method": "PUT",
     "path": "/v1/items/personal-state:batch",
@@ -15391,6 +15557,34 @@ export const routes = [
     "status": 200,
     "http": true,
     "admission": "default"
+  },
+  {
+    "id": "put_reading_sessions_sessionId_annotations",
+    "method": "PUT",
+    "path": "/v1/reading/sessions/{sessionId}/annotations",
+    "summary": "Change an annotation under current profile, source version and collection CAS",
+    "access": "device",
+    "requires": "playback",
+    "lane": "media",
+    "cost": "page_sized",
+    "bodyLimit": 32768,
+    "headers": [
+      "If-Match"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_required",
+      "revision_mismatch",
+      "request_in_progress",
+      "body_too_large",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "media-body"
   },
   {
     "id": "put_reading_sessions_sessionId_progress",
@@ -19123,6 +19317,7 @@ export const routePaths = {
   "get_items_id_source_availability": "/v1/items/{id}/source-availability",
   "get_items_id_trickplay": "/v1/items/{id}/trickplay",
   "get_items_id_trickplay_set_thumbnails_vtt": "/v1/items/{id}/trickplay/{set}/thumbnails.vtt",
+  "get_items_itemId_reading_mark": "/v1/items/{itemId}/reading/mark",
   "get_items_itemId_reading_versions": "/v1/items/{itemId}/reading/versions",
   "get_items_screen_metadata": "/v1/items/{id}/metadata/screen",
   "get_job": "/v1/jobs/{id}",
@@ -19203,6 +19398,7 @@ export const routePaths = {
   "get_reading_periodical_groups": "/v1/libraries/{libraryId}/reading/periodicals",
   "get_reading_periodical_issues": "/v1/libraries/{libraryId}/reading/periodicals/{seriesId}/issues",
   "get_reading_series_items": "/v1/libraries/{libraryId}/reading/series/{seriesId}",
+  "get_reading_sessions_sessionId_annotations": "/v1/reading/sessions/{sessionId}/annotations",
   "get_reading_sessions_sessionId_assets": "/v1/reading/sessions/{sessionId}/assets",
   "get_reading_sessions_sessionId_pages_pageIndex": "/v1/reading/sessions/{sessionId}/pages/{pageIndex}",
   "get_reading_sessions_sessionId_progress": "/v1/reading/sessions/{sessionId}/progress",
@@ -19228,6 +19424,7 @@ export const routePaths = {
   "get_shows_id_seasons": "/v1/shows/{id}/seasons",
   "get_shows_screen_metadata": "/v1/shows/{id}/metadata/screen",
   "get_sign_in_move": "/v1/admin/sign-in/move",
+  "get_sign_in_move_waiting": "/v1/admin/sign-in/move/waiting",
   "get_sign_in_policy": "/v1/admin/sign-in/policy",
   "get_sign_in_settings": "/v1/admin/sign-in",
   "get_storage_mounts": "/v1/storage/mounts",
@@ -19461,7 +19658,9 @@ export const routePaths = {
   "post_quick_connect_decision": "/v1/quick-connect/decision",
   "post_quick_connect_review": "/v1/quick-connect/review",
   "post_quick_connect_token": "/v1/quick-connect/token",
+  "post_reading_offline_progress": "/v1/reading/offline/progress",
   "post_reading_sessions": "/v1/reading/sessions",
+  "post_reading_sessions_sessionId_file_save": "/v1/reading/sessions/{sessionId}/file-save",
   "post_saved_resources": "/v1/saved-resources",
   "post_setup_account_complete": "/v1/setup/account/complete",
   "post_setup_finish": "/v1/setup/finish",
@@ -19528,6 +19727,7 @@ export const routePaths = {
   "put_items_id_metadata_musicbrainz": "/v1/items/{id}/metadata/musicbrainz",
   "put_items_id_metadata_screen": "/v1/items/{id}/metadata/screen",
   "put_items_id_personal_state": "/v1/items/{id}/personal-state",
+  "put_items_itemId_reading_mark": "/v1/items/{itemId}/reading/mark",
   "put_items_personal_state_batch": "/v1/items/personal-state:batch",
   "put_libraries_id_metadata_agent": "/v1/libraries/{id}/metadata/agent",
   "put_libraries_id_metadata_screen": "/v1/libraries/{id}/metadata/screen",
@@ -19538,6 +19738,7 @@ export const routePaths = {
   "put_me_library_navigation": "/v1/me/library-navigation",
   "put_metadata_settings": "/v1/admin/metadata/settings",
   "put_playlists_id_shares": "/v1/playlists/{id}/shares",
+  "put_reading_sessions_sessionId_annotations": "/v1/reading/sessions/{sessionId}/annotations",
   "put_reading_sessions_sessionId_progress": "/v1/reading/sessions/{sessionId}/progress",
   "put_saved_pins_kind_id": "/v1/saved-pins/{kind}/{id}",
   "put_saved_pins_order": "/v1/saved-pins/order",
