@@ -108,8 +108,11 @@ func TestVerifiedRegistrationAtomicRetryAndMailEligibility(t *testing.T) {
 	if ok, e := mail.MailEligible(ctx, *delivery); e != nil || ok {
 		t.Fatalf("consumed verification still deliverable: %v", e)
 	}
+	if replay, err := s.CreateRegistration(ctx, binding, q); err != nil || replay.ID != r.ID {
+		t.Fatalf("own completed username lost its request replay: %v", err)
+	}
 	q.Password = "DifferentPass8"
-	if _, err = s.CreateRegistration(ctx, binding, q); !errors.Is(err, identity.ErrConflict) {
+	if _, err = s.CreateRegistration(ctx, binding, q); !errors.Is(err, identity.ErrConflict) || errors.Is(err, identity.ErrUsernameUnavailable) {
 		t.Fatalf("changed request reused: %v", err)
 	}
 	if _, err = s.Store.Authenticate(ctx, security.Hash(a.AccessToken)); err != nil {
@@ -613,5 +616,50 @@ func TestResetFactorResultPreservesLinkAndFactorGuards(t *testing.T) {
 	}
 	if err = s.ResetPassword(ctx, token, "AnotherStrong9", "not-a-factor"); !errors.Is(err, identity.ErrChallenge) || errors.Is(err, identity.ErrResetFactor) {
 		t.Fatalf("used link reported a live factor refusal: %v", err)
+	}
+}
+
+func TestUnavailablePublicUsernameDoesNotSendAnotherCode(t *testing.T) {
+	s := accountSecurityFixture(t)
+	ctx := context.Background()
+	verifiedAccount(t, s, "takenhandle")
+	var before int
+	if err := s.Store.DB.QueryRow(`SELECT count(*) FROM account_registrations`).Scan(&before); err != nil {
+		t.Fatal(err)
+	}
+	q := postgres.RegistrationInput{Username: "  TakenHandle  ", Password: "StrongPass9", ContactAddress: "unrelated@example.test", SessionMode: "native", RequestID: security.RandomID("")}
+	if _, err := s.CreateRegistration(ctx, security.RandomID(""), q); !errors.Is(err, identity.ErrUsernameUnavailable) || !errors.Is(err, identity.ErrConflict) {
+		t.Fatal("confirmed public collision was not typed", err)
+	}
+	var after int
+	if err := s.Store.DB.QueryRow(`SELECT count(*) FROM account_registrations`).Scan(&after); err != nil || after != before {
+		t.Fatal("rejected name created a registration", before, after, err)
+	}
+	var addressAttempts int
+	if err := s.Store.DB.QueryRow(`SELECT COALESCE(sum(attempts),0) FROM account_security_limits WHERE kind='registration-email'`).Scan(&addressAttempts); err != nil || addressAttempts < 2 {
+		t.Fatal("collision bypassed address accounting", addressAttempts, err)
+	}
+}
+
+func TestRegistrationFinalUsernameRaceStillRequiresProofAndUniqueInsert(t *testing.T) {
+	s := accountSecurityFixture(t)
+	ctx := context.Background()
+	binding := security.RandomID("")
+	q := postgres.RegistrationInput{Username: "racehandle", Password: "StrongPass9", ContactAddress: "first@example.test", SessionMode: "native", RequestID: security.RandomID("")}
+	r, err := s.CreateRegistration(ctx, binding, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	code := mailPayload(t, s, mailoutbox.Registration, r.ID).Code
+	verifiedAccount(t, s, "racehandle")
+	if _, err = s.VerifyRegistration(ctx, r.ID, binding, "wrong-code", "", ""); !errors.Is(err, identity.ErrChallenge) || errors.Is(err, identity.ErrUsernameUnavailable) {
+		t.Fatal("unproved collision was disclosed", err)
+	}
+	if _, err = s.VerifyRegistration(ctx, r.ID, binding, code, "", ""); !errors.Is(err, identity.ErrUsernameUnavailable) {
+		t.Fatal("accepting username collision was not typed", err)
+	}
+	var accounts int
+	if err = s.Store.DB.QueryRow(`SELECT count(*) FROM accounts WHERE username='racehandle'`).Scan(&accounts); err != nil || accounts != 1 {
+		t.Fatal("collision changed authoritative account", accounts, err)
 	}
 }

@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"errors"
+	"fmt"
 	"golang.org/x/crypto/bcrypt"
 	"portico.local/hosted/internal/security"
 	"regexp"
@@ -13,6 +14,9 @@ import (
 
 var ErrCredentials = errors.New("invalid credentials")
 var ErrConflict = errors.New("username unavailable")
+
+// Only a confirmed public username uniqueness collision has this class.
+var ErrUsernameUnavailable = fmt.Errorf("public username collision: %w", ErrConflict)
 var ErrInvalid = errors.New("invalid account input")
 
 type Account struct {

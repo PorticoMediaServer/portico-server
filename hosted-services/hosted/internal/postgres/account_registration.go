@@ -92,6 +92,27 @@ func (s *AccountSecurity) CreateRegistration(ctx context.Context, binding string
 	if e = s.Limit(ctx, "registration-name", q.Username, 10, time.Hour); e != nil {
 		return out, e
 	}
+	// Public handle only, after the existing source/address/name budgets. This
+	// is advisory: the proof-backed unique INSERT below remains authoritative.
+	var unavailable bool
+	if e = s.Store.DB.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM accounts WHERE username=$1)`, q.Username).Scan(&unavailable); e != nil {
+		return out, e
+	}
+	if unavailable {
+		// A matching request may have completed since the first replay read.
+		// Preserve that receipt before reporting a fresh-name collision.
+		e = s.Store.DB.QueryRowContext(ctx, `SELECT id,request_hash FROM account_registrations WHERE binding_hash=$1 AND request_id=$2`, security.Hash(binding), q.RequestID).Scan(&existing, &stored)
+		if e == nil {
+			if !equalSecret(stored, digest) {
+				return out, identity.ErrConflict
+			}
+			return s.RegistrationView(ctx, existing, binding)
+		}
+		if !errors.Is(e, sql.ErrNoRows) {
+			return out, e
+		}
+		return out, identity.ErrUsernameUnavailable
+	}
 	hash, e := s.Identity.HashPassword(ctx, q.Password)
 	if e != nil {
 		return out, e
@@ -212,7 +233,7 @@ func (s *AccountSecurity) VerifyRegistration(ctx context.Context, id, binding, c
 		if e = tx.Commit(); e != nil {
 			return out, e
 		}
-		return out, identity.ErrConflict
+		return out, identity.ErrUsernameUnavailable
 	}
 	if e != nil {
 		return out, e

@@ -472,6 +472,8 @@ func failure(w http.ResponseWriter, e error) {
 		fail(w, 401, "invalid_credentials", "Sign-in credentials are not valid.", false)
 	case errors.Is(e, directory.ErrDenied):
 		fail(w, 403, "permission_denied", "This operation is not permitted.", false)
+	case errors.Is(e, identity.ErrUsernameUnavailable):
+		fail(w, 409, "username_unavailable", "That username is already taken. Choose another.", false)
 	case errors.Is(e, identity.ErrConflict), errors.Is(e, directory.ErrConflict):
 		fail(w, 409, "conflict", "The operation conflicts with current state.", false)
 	case errors.Is(e, identity.ErrInvalid), errors.Is(e, directory.ErrInvalid):
