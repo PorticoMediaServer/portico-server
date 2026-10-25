@@ -11,7 +11,9 @@ export function GlobalShortcuts({playback}: {playback: Pick<ShellPlaybackBinding
       if (event.defaultPrevented || event.repeat || event.ctrlKey || event.metaKey || event.altKey || event.key !== '?') return;
       const target = event.target;
       if (target instanceof Element && target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="slider"],[role="menu"],[role="dialog"]')) return;
-      if (document.querySelector('[role="dialog"],[role="menu"],[aria-modal="true"],[data-watch-screen]:not([hidden])')) return;
+      const surfaces = document.querySelectorAll('[role="dialog"],[role="menu"],[aria-modal="true"],[data-watch-screen]');
+      if ([...surfaces].some(surface => !surface.closest('[hidden],[aria-hidden="true"]') && surface.getClientRects().length > 0
+        && getComputedStyle(surface).visibility !== 'hidden')) return;
       event.preventDefault();
       returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       setOpen(true);
