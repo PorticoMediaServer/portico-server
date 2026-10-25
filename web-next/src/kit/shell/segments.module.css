@@ -59,3 +59,9 @@
 
 /* owner-libraries#23b: the episode the adjusted marker belongs to. */
 .sheetContext { margin: -8px 0 0; font-size: var(--type-caption-size); font-weight: 600; color: var(--color-text-tertiary); }
+
+/* owner-libraries#23b: the sheet's acts stack Save over Cancel at phone size. */
+@media (max-width: 599px) {
+ .sheetActs { display: flex; flex-direction: column; gap: 10px; }
+ .sheetActs > * { width: 100%; }
+}

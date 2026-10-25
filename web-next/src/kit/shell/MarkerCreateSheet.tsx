@@ -2,6 +2,7 @@ import {useLayoutEffect, useRef, useState} from 'react';
 import {createI18n} from '@i18n';
 import {Button, Select} from '../controls';
 import {BottomSheet} from '../overlays/BottomSheet';
+import {usePhone} from '../overlays/shared';
 import {readSegmentClock, segmentClock} from './model';
 import type {ShellTranslate} from './ServerIdentity';
 import {segmentEditKinds, type SegmentKind} from './SegmentWindows';
@@ -21,6 +22,7 @@ export function CreateMarkerSheet({duration, busy = false, onSave, onCancel, onP
   onPreviewAt: (start: number) => void;
   t?: ShellTranslate;
 }>) {
+  const phone = usePhone();
   const [kind, setKind] = useState<SegmentKind | undefined>(undefined);
   const [startText, setStartText] = useState(''), [endText, setEndText] = useState('');
   const start = readSegmentClock(startText), end = readSegmentClock(endText);
@@ -55,8 +57,8 @@ export function CreateMarkerSheet({duration, busy = false, onSave, onCancel, onP
     if (from === undefined || duration <= 0 || from < 0 || from > duration) return;
     onPreviewAt(Math.max(0, from - 3));
   };
-  return <BottomSheet open onOpenChange={open => {if (!open) onCancel();}} title={t('web.segments.addTitle')}
-    footer={<><Button variant="glass" size="compact" disabled={busy} onClick={onCancel}>{t('next.shell.cancel')}</Button><Button variant="primary" size="compact" disabled={busy || !valid} onClick={save}>{t('next.shell.save')}</Button></>}>
+  return <BottomSheet open onOpenChange={open => {if (!open) onCancel();}} title={t('web.segments.addTitle')} footerClassName={styles.sheetActs}
+    footer={phone ? <><Button variant="primary" size="compact" disabled={busy || !valid} onClick={save}>{t('next.shell.save')}</Button><Button variant="glass" size="compact" disabled={busy} onClick={onCancel}>{t('next.shell.cancel')}</Button></> : <><Button variant="glass" size="compact" disabled={busy} onClick={onCancel}>{t('next.shell.cancel')}</Button><Button variant="primary" size="compact" disabled={busy || !valid} onClick={save}>{t('next.shell.save')}</Button></>}>
     <div className={styles.adjustSheet}>
       <Select label={t('web.segments.kindLabel')} placeholder={t('web.segments.chooseType')} value={kind} disabled={busy} options={segmentEditKinds.map(value => ({value, label: t('web.segments.kind', {kind: value})}))}
         onValueChange={value => {if (!current()) return;const next = segmentEditKinds.find(candidate => String(candidate) === value);if (next) setKind(next);}} />

@@ -59,6 +59,7 @@ type AdjustLease = {
 };
 
 function AdjustSheet({opening, ending, duration, edit, context, onChange, onSave, onCancel, onDismiss, onPreview, t = tDefault}: SegmentWindowsProps & {t?: ShellTranslate}) {
+  const phone = usePhone();
   const live = useRef<AdjustLease | undefined>(undefined);
   const [lease, setLease] = useState<AdjustLease | undefined>(undefined);
   const token = edit?.opening;
@@ -127,8 +128,8 @@ function AdjustSheet({opening, ending, duration, edit, context, onChange, onSave
   const range = zoomedSegmentRange([{start: edit.start, end: edit.end}], duration, edit.kind === 'credits' || edit.kind === 'outro')
     ?? zoomedSegmentRange([mark], duration, false) ?? {start: 0, end: Math.max(duration, 1)};
   const percent = (value: number) => (value - range.start) / (range.end - range.start) * 100;
-  return <BottomSheet open onOpenChange={open => {if (!open) cancel();}} title={t('web.segments.adjustTitle')}
-    footer={<><Button variant="glass" size="compact" onClick={cancel}>{t('next.shell.cancel')}</Button><Button variant="primary" size="compact" disabled={!valid.start || !valid.end} onClick={save}>{t('next.shell.save')}</Button></>}>
+  return <BottomSheet open onOpenChange={open => {if (!open) cancel();}} title={t('web.segments.adjustTitle')} footerClassName={styles.sheetActs}
+    footer={phone ? <><Button variant="primary" size="compact" disabled={!valid.start || !valid.end} onClick={save}>{t('next.shell.save')}</Button><Button variant="glass" size="compact" onClick={cancel}>{t('next.shell.cancel')}</Button></> : <><Button variant="glass" size="compact" onClick={cancel}>{t('next.shell.cancel')}</Button><Button variant="primary" size="compact" disabled={!valid.start || !valid.end} onClick={save}>{t('next.shell.save')}</Button></>}>
     <div className={styles.adjustSheet}>
       <Select label={t('web.segments.kindLabel')} value={edit.kind} options={segmentEditKinds.map(kind => ({value: kind, label: t('web.segments.kind', {kind})}))} onValueChange={chooseKind} />
       {context ? <p className={styles.sheetContext}>{context}</p> : null}
