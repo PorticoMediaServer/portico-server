@@ -1,3 +1,4 @@
+import {queryDeleteTarget} from './selection-delete-query';
 import {QuerySelectionEditorSurface} from './QuerySelectionEditorSurface';
 import {LibraryPickerSurface, type LibraryPickerOptions} from './LibraryPickerSurface';
 import type {EntryActionPorts, EntryDestination} from '../../shell/entry-actions';
@@ -160,7 +161,7 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {visible: Visi
   return <SelectionBar
     selection={{count: summary.count, kind: summary.types.length === 1 ? summary.types[0].kind : undefined}}
     actions={{
-      ...(props.deletion && summary.library.kind === 'single' && summary.count <= 200 && summary.every.delete && current.selection.target?.mode === 'explicit' && queueLease ? {onDelete: () => {try {props.openDelete();} catch (error) {reportError(error);}}} : {}),
+      ...(props.deletion && summary.library.kind === 'single' && summary.count <= 200 && summary.every.delete && (current.selection.target?.mode === 'explicit' || current.selection.target?.mode === 'query' && queryDeleteTarget(current.selection.target)) && queueLease ? {onDelete: () => {try {props.openDelete();} catch (error) {reportError(error);}}} : {}),
 ...(props.owner && props.deletion && summary.library.kind !== 'single' ? {deleteDisabledReason: defaultI18n.t('next.selection.oneLibrary')} : {}),
       ...(props.owner && props.deletion && summary.library.kind === 'single' && summary.count > 200 && queueLease ? {onDelete: () => {try {props.openDelete();} catch (error) {reportError(error);}}, deleteExplanation: defaultI18n.t('next.selection.tooMany')} : {}),
       ...(props.editor && summary.every.edit && (summary.types.length === 1 || !!playSelection.keepOnly) && (current.selection.target?.mode === 'explicit' || summary.types.length > 1 && !!playSelection.keepOnly || current.selection.target?.mode === 'query' && selectionQuerySelector(current.selection.target).ok) && queueLease ? {onEdit: (anchor: HTMLElement) => {try {props.openEditor(anchor);} catch (error) {reportError(error);}}, editMode: summary.types.length > 1 ? 'mixed' as const : 'editable' as const} : {}),
@@ -209,7 +210,7 @@ export function createLibrarySelection({playSelection, owner, descriptor, action
   const openDelete = () => {
     const selection = playSelection.getSnapshot().selection, operation = playSelection.captureOperation?.();
     if (!deletion || deletion.signal.aborted || !deletion.isCurrent() || !selection || selection.summary.library.kind !== 'single' || !operation || operation.target !== selection.target || !playSelection.isOperationCurrent?.(operation)
-      || (selection.summary.count <= 200 && (!selection.summary.every.delete || selection.summary.library.kind !== 'single' || operation.target.mode !== 'explicit'))) throw new Error('selection-delete-unavailable');
+      || (selection.summary.count <= 200 && (!selection.summary.every.delete || selection.summary.library.kind !== 'single' || operation.target.mode === 'query' && !queryDeleteTarget(operation.target)))) throw new Error('selection-delete-unavailable');
     closeDelete();
     const lifetime = new AbortController();
     const current = () => !lifetime.signal.aborted && !deletion.signal.aborted && deletion.isCurrent() && playSelection.isOperationCurrent?.(operation) === true;
