@@ -181,7 +181,13 @@ export function playbackEvidence(readings) {
   const ready = live.filter(r => r.readyState >= 2);
   if (!ready.length) return {ok: false, reason: `readyState never reached HAVE_CURRENT_DATA (saw ${live.map(r => r.readyState).join(',')})`};
   const times = live.map(r => r.currentTime);
+  if (times.some(time => !Number.isFinite(time))) {
+    return {ok: false, reason: 'currentTime contains a nonfinite measurement'};
+  }
   const advanced = Math.max(...times) - Math.min(...times);
+  if (!Number.isFinite(advanced)) {
+    return {ok: false, reason: 'currentTime advancement is nonfinite'};
+  }
   const playing = live.some(r => !r.paused);
   if (!playing) return {ok: false, reason: `video stayed paused (${times.join(', ')})`};
   if (advanced < 0.5) return {ok: false, reason: `currentTime did not advance (${times.join(', ')})`};
