@@ -14,13 +14,14 @@ var (
 	ErrChallenge = errors.New("challenge invalid or expired")
 	// Preserve the existing challenge class while distinguishing a rejected
 	// factor on an otherwise live reset link for the route presenter.
-	ErrResetFactor      = fmt.Errorf("reset factor invalid: %w", ErrChallenge)
-	ErrRateLimited      = errors.New("account security rate limit")
-	ErrMailUnavailable  = errors.New("account mail is not configured")
-	ErrPushUnavailable  = errors.New("device push is not configured")
-	ErrLastMethod       = errors.New("cannot remove final usable sign-in method")
-	ErrRecentAuth       = errors.New("fresh account authentication required")
-	ErrProviderConflict = errors.New("provider identity unavailable")
+	ErrResetFactor        = fmt.Errorf("reset factor invalid: %w", ErrChallenge)
+	ErrResetLinkMalformed = fmt.Errorf("reset link incomplete: %w", ErrChallenge)
+	ErrRateLimited        = errors.New("account security rate limit")
+	ErrMailUnavailable    = errors.New("account mail is not configured")
+	ErrPushUnavailable    = errors.New("device push is not configured")
+	ErrLastMethod         = errors.New("cannot remove final usable sign-in method")
+	ErrRecentAuth         = errors.New("fresh account authentication required")
+	ErrProviderConflict   = errors.New("provider identity unavailable")
 )
 
 // SecurityIntent is an explicit, one-use authorization for one operation on one

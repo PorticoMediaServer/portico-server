@@ -238,6 +238,8 @@ func (h *Handler) securityRoutes(mux *http.ServeMux) {
 		}
 		if e := h.Security.ResetPassword(r.Context(), q.Token, q.NewPassword, q.Factor); e != nil {
 			switch {
+			case errors.Is(e, identity.ErrResetLinkMalformed):
+				fail(w, 400, "invalid_link", "This link is not complete.", false)
 			case errors.Is(e, identity.ErrResetFactor):
 				fail(w, 400, "mfa_invalid", "The authenticator or recovery code is not valid.", false)
 			case errors.Is(e, identity.ErrChallenge):

@@ -75,7 +75,10 @@ func (s *AccountSecurity) RequestRecovery(ctx context.Context, q RecoveryRequest
 	return tx.Commit()
 }
 func (s *AccountSecurity) ResetPassword(ctx context.Context, token, password, factor string) error {
-	if len(token) < 32 || len(token) > 128 || len(factor) > 128 {
+	if len(token) < 32 || len(token) > 128 {
+		return identity.ErrResetLinkMalformed
+	}
+	if len(factor) > 128 {
 		return identity.ErrChallenge
 	}
 	if e := s.Limit(ctx, "reset-token", token, 10, 15*time.Minute); e != nil {

@@ -569,6 +569,9 @@ func TestMFAFailuresEscalateAcrossFreshChallenges(t *testing.T) {
 // presentation result must not consume the link or relax its attempt budget.
 func TestResetFactorResultPreservesLinkAndFactorGuards(t *testing.T) {
 	s := accountSecurityFixture(t)
+	if err := s.ResetPassword(context.Background(), "short", "NewStrongPass8", ""); !errors.Is(err, identity.ErrResetLinkMalformed) || !errors.Is(err, identity.ErrChallenge) {
+		t.Fatalf("incomplete link result: %v", err)
+	}
 	ctx := context.Background()
 	a := verifiedAccount(t, s, "resettyped")
 	enrollment := securityAction(t, s, a, "mfa_enroll", "")
