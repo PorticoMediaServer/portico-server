@@ -86,7 +86,7 @@ li:first-child > .feedbackRow { border-top: 0; }
 .support .none { padding: 22px; }
 .permissions { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; padding: 16px 20px; border: 1px solid color-mix(in srgb, var(--color-amber) 20%, transparent); border-radius: 12px; background: color-mix(in srgb, var(--color-amber) 8%, transparent); }
 .permissions .panelHead h3 { font-size: var(--type-row-subtitle-size); }
-.permissions .lede { grid-column: 1; font-size: var(--type-caption-size); }
+.permissions .lede { grid-column: 1; font-size: var(--type-troubleshooting-permission-lede-size); line-height: var(--type-troubleshooting-permission-lede-line); }
 .permissions > div:last-child { grid-column: 2; grid-row: 1 / 3; align-self: center; }
 .support .exportRow, .support .exportReady { margin: 0; padding: 16px 22px; background: var(--color-raised); }
 .support .exportRow + .exportRow, .support .exportReady { margin-top: -10px; }
