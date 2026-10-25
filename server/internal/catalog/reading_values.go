@@ -195,7 +195,7 @@ func publishReadingPathValuesTx(ctx context.Context, tx *sql.Tx, item, asset int
 	for _, field := range []struct {
 		name  string
 		value *compactcatalog.ReadingValue
-	}{{"author", v.Author}, {"series", v.Series}} {
+	}{{"author", v.Author}, {"issueDate", v.IssueDate}, {"series", v.Series}} {
 		if field.value != nil {
 			next = append(next, readingPathField{field: field.name, text: field.value.Value, source: string(field.value.Source), object: object, revision: revision})
 		}

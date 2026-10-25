@@ -90,6 +90,11 @@ func readingAutomaticValuesTx(ctx context.Context, tx *sql.Tx, items []int64) (m
 			} else {
 				v.Series = value
 			}
+		case "issueDate":
+			if !text.Valid || number.Valid || source != ReadingFileName || !ValidReadingIssueDate(text.String) {
+				return nil, ErrReadingValue
+			}
+			v.IssueDate = &ReadingValue{Value: text.String, Source: source}
 		case "seriesNumber":
 			if text.Valid || !number.Valid || math.IsInf(number.Float64, 0) || math.IsNaN(number.Float64) || number.Float64 < 0 {
 				return nil, ErrReadingValue

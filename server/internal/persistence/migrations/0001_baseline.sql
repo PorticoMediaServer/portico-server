@@ -197,7 +197,7 @@ CREATE TABLE reading_publications(
 CREATE TABLE reading_source_values(
  item_id INTEGER NOT NULL,
  asset_id INTEGER NOT NULL,
- field TEXT NOT NULL CHECK(field IN('author','series','seriesNumber')),
+ field TEXT NOT NULL CHECK(field IN('author','series','seriesNumber','issueDate')),
  text_value TEXT,
  number_value REAL,
  source TEXT NOT NULL CHECK(source IN('file-name','folder','file-metadata')),
@@ -205,7 +205,8 @@ CREATE TABLE reading_source_values(
  source_revision TEXT NOT NULL CHECK(length(source_revision)>0),
  PRIMARY KEY(item_id,asset_id,field,source),
  FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE,
- CHECK((field IN('author','series') AND text_value IS NOT NULL AND length(text_value) BETWEEN 1 AND 4096 AND number_value IS NULL)
+ CHECK(field<>'issueDate' OR (source='file-name' AND length(text_value) IN(7,10))),
+ CHECK((field IN('author','series','issueDate') AND text_value IS NOT NULL AND length(text_value) BETWEEN 1 AND 4096 AND number_value IS NULL)
     OR (field='seriesNumber' AND text_value IS NULL AND number_value IS NOT NULL AND number_value>=0 AND number_value<=1.7976931348623157e308))) WITHOUT ROWID, STRICT;
 -- Explicit recognized file type, separate from ebook/comic entity and owner metadata.
 CREATE TABLE reading_publication_types(
@@ -8432,16 +8433,20 @@ CREATE TABLE reading_attribution_members(
  item_id INTEGER NOT NULL CHECK(item_id>0),
  publication_type TEXT CHECK(publication_type IN('book','magazine','newspaper')),
  publication_type_source TEXT CHECK(publication_type_source IN('owner','file-metadata')),
+ issue_date TEXT CHECK(issue_date IS NULL OR length(issue_date) IN(7,10)),
+ issue_date_source TEXT CHECK(issue_date_source='file-name'),
  author_value TEXT,author_key TEXT,author_source TEXT CHECK(author_source IN('owner','file-metadata','file-name','folder')),
  series_value TEXT,series_key TEXT,series_id TEXT,series_source TEXT CHECK(series_source IN('owner','file-metadata','file-name','folder')),
  numbered_order INTEGER NOT NULL CHECK(numbered_order IN(0,1)),
  number_value REAL NOT NULL CHECK(number_value>=0 AND number_value<=1.7976931348623157e308),
  sort_key TEXT NOT NULL,
  CHECK((publication_type IS NULL)=(publication_type_source IS NULL)),
+ CHECK((issue_date IS NULL)=(issue_date_source IS NULL)),
  PRIMARY KEY(library_id,generation,item_id),
  CHECK((author_value IS NULL AND author_key IS NULL AND author_source IS NULL) OR (author_value IS NOT NULL AND author_key IS NOT NULL AND author_source IS NOT NULL)),
  CHECK((series_value IS NULL AND series_key IS NULL AND series_id IS NULL AND series_source IS NULL) OR (series_value IS NOT NULL AND series_key IS NOT NULL AND series_id IS NOT NULL AND series_source IS NOT NULL)),
  CHECK(numbered_order=0 OR number_value=0)) WITHOUT ROWID, STRICT;
+CREATE INDEX reading_attribution_issue_date ON reading_attribution_members(library_id,generation,publication_type,series_id,issue_date,item_id);
 CREATE INDEX reading_attribution_series_seek ON reading_attribution_members(library_id,generation,series_id,numbered_order,number_value,sort_key COLLATE BINARY,item_id);
 CREATE INDEX reading_attribution_author_facet ON reading_attribution_members(library_id,generation,author_key,item_id);
 CREATE INDEX reading_attribution_series_facet ON reading_attribution_members(library_id,generation,series_key,item_id);
