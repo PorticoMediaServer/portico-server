@@ -52,4 +52,5 @@ export const savedMessages = {
   'next.saved.visibleToEveryone': 'Visible to everyone',
   'next.saved.native.holdRowActions': 'Hold OK on a row for Go to item, Move up, Move down and Remove',
   'next.saved.native.editElsewhere': 'Reordering, renaming and sharing are on a phone, tablet or computer.',
+  'next.saved.openInLibrary': 'Open in {library}',
 } as const satisfies Record<`next.${string}`, string>;
