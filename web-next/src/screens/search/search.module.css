@@ -152,3 +152,24 @@
 .section .selectGroup { opacity: 0; }
 .section:hover .selectGroup,.section:focus-within .selectGroup { opacity: 1; }
 @media (pointer: coarse) { .section .selectGroup { opacity: 1; } }
+
+/* Frame 4: the phone search bar is the app's field and Cancel, not the desktop field. */
+.sbar { position: relative; }
+@media (max-width: 599px) {
+  .sbar { display: flex; align-items: center; gap: 10px; }
+  .sbar .field { flex: 1; min-width: 0; }
+  .sbar .cancel[data-variant='text'] { flex: none; color: var(--color-text-secondary); font-size: 15.5px; font-weight: 600; }
+  /* The drawn top result: the title's own art behind it, the artist's circle when it has
+     one, its real facts, and Play only where this title really plays. */
+  .phoneTop { position: relative; display: flex; align-items: center; gap: 16px; width: 100%; min-height: 148px; margin: 14px 0 2px; padding: 14px 16px; border-radius: 14px; overflow: hidden; background: var(--color-raised); isolation: isolate; }
+  .phoneTopBg { position: absolute; inset: -30%; width: 160%; height: 160%; object-fit: cover; filter: blur(40px) saturate(1.4); opacity: .5; z-index: -1; }
+  .phoneTopOpen { position: absolute; inset: 0; z-index: 0; border: 0; background: transparent; cursor: pointer; }
+  .phoneTopOpen:focus-visible { outline: 3px solid var(--color-focus); outline-offset: -3px; border-radius: 14px; }
+  .phoneTopRing { position: relative; z-index: 1; flex: none; display: grid; pointer-events: none; place-items: center; width: 96px; height: 96px; border-radius: 50%; overflow: hidden; background: var(--color-raised-high); box-shadow: 0 16px 30px -12px var(--color-shadow), 0 0 0 3px color-mix(in srgb, var(--color-text) 14%, transparent); font-size: 30px; font-weight: 800; }
+  .phoneTopRing > * { width: 100%; height: 100%; }
+  .phoneTopCopy { position: relative; z-index: 1; flex: 1; min-width: 0; pointer-events: none; }
+  .phoneTopCopy > small { display: block; font-size: 12.5px; font-weight: 700; color: var(--color-accent-strong); }
+  .phoneTopCopy > b { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; margin: 3px 0 4px; font-size: 25px; font-weight: 800; letter-spacing: -.035em; line-height: 1.05; }
+  .phoneTopCopy > :last-child { font-size: 13px; color: var(--color-text-secondary); }
+  .phoneTopPlay { position: relative; z-index: 2; flex: none; width: 46px; height: 46px; border-radius: 50%; }
+}

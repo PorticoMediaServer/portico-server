@@ -138,14 +138,19 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
   </div>;
   return <div className={styles.search} style={{'--search-card-scale': size, '--search-columns': Math.max(1, Math.round(7 / size))} as React.CSSProperties}>
     <div className={styles.wash} aria-hidden="true" />
-    <form className={styles.field} role="search" onSubmit={event => { event.preventDefault(); submit(true); }}>
-      <TextField ref={input} variant="large-search" type="search" autoComplete="off" spellCheck={false} value={text}
-        aria-label={t('web.search.title')} placeholder={t('next.controls.searchLibraries')}
-        onChange={event => { setText(event.currentTarget.value); setChip('all'); committed.current = ''; }}
-        onKeyDown={event => { if (event.key === 'ArrowDown') { event.preventDefault(); results.current?.querySelector<HTMLElement>('button:not(:disabled),a[href]')?.focus(); } }}
-        trailing={text ? <Button variant="icon" icon="i-x" iconOnly aria-label={t('web.search.clear')} onClick={() => { setText(''); setChip('all'); input.current?.focus(); }} />
-          : <span className={styles.hint}><kbd>{t('next.controls.searchShortcut')}</kbd>{t('next.controls.searchFromAnywhere')}</span>} />
-    </form>
+    {/* Frame 4: the phone bar is the app's search field and Cancel, not the desktop field. */}
+    <div className={styles.sbar}>
+      <form className={styles.field} role="search" onSubmit={event => { event.preventDefault(); submit(true); }}>
+        <TextField ref={input} variant={compact ? 'search' : 'large-search'} type="search" autoComplete="off" spellCheck={false} value={text}
+          aria-label={t('web.search.title')} placeholder={t('next.controls.searchLibraries')}
+          onChange={event => { setText(event.currentTarget.value); setChip('all'); committed.current = ''; }}
+          onKeyDown={event => { if (event.key === 'ArrowDown') { event.preventDefault(); results.current?.querySelector<HTMLElement>('button:not(:disabled),a[href]')?.focus(); } }}
+          trailing={text ? <Button variant="icon" icon="i-x" iconOnly aria-label={t('web.search.clear')} onClick={() => { setText(''); setChip('all'); input.current?.focus(); }} />
+            : <span className={styles.hint}><kbd>{t('next.controls.searchShortcut')}</kbd>{t('next.controls.searchFromAnywhere')}</span>} />
+      </form>
+      {compact && context.effects.openHome && <Button variant="text" size="small" className={styles.cancel}
+        onClick={() => runScreenCommand(context, () => { context.effects.openHome?.(); })}>{t('action.cancel')}</Button>}
+    </div>
     {selection?.isActive() ? selection.toolbar : text.trim() && !(empty && !group) && <div className={styles.chips} role="group" aria-label={t('web.search.title')}>{SEARCH_CHIPS.map(value => {
       const capability = showing?.capabilities.groups.find(item => item.id === value.id), result = groups.find(item => item.id === value.id) ?? binding.summary().find(item => item.id === value.id);
       if (value.id !== 'all' && capability?.available === false) return null;
@@ -164,7 +169,8 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
       {empty && <SearchEmpty title={t(group ? 'web.search.nothingIn' : 'web.search.noMatches', group ? {group: t(searchGroupLabel(group))} : {query: text.trim()})} body={group ? undefined : t('web.search.noMatchesBody')}
         action={group ? <Button variant="primary" size="compact" onClick={() => setChip('all')}>{t('web.search.everything')}</Button> : undefined} />}
       {empty && !group && recentBlock}
-      {top && <TopResult binding={binding} result={top} fallbackArtwork={topAlbumArt} />}
+      {top && <TopResult binding={binding} result={top} fallbackArtwork={topAlbumArt} compact={compact}
+        onOpen={() => runScreenCommand(context, () => { if (!top) return; binding.open(top.entry); commit(); })} />}
       {group && !empty ? <SearchGroupWindow binding={binding} group={group} result={groups.find(value => value.id === group)} selection={selection} onCommit={commit} />
         : orderedSearchGroups(groups).map((result, groupIndex) => {
           const entries = result.items.filter(entry => entry !== top?.entry), cap = result.id === 'episodes' || result.id === 'songs' ? 4 : result.id === 'movies' || result.id === 'shows' ? 7 : 4;

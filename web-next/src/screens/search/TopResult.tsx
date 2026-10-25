@@ -8,13 +8,15 @@ import {episodeCode} from '@core/presentation/card-caption.ts';
 import {AmbientArt} from '../../kit/artwork';
 import {Button} from '../../kit/controls';
 import {SearchResultHero, TitleFactsLine} from '../../kit/title/TitleParts';
+import {Artwork} from '../../kit/artwork';
 import {TitleActions} from '../detail/Detail';
 import {t, environment} from '../detail/text';
 import type {SearchBindings} from './bindings';
 import detailStyles from '../detail/detail.module.css';
 import {runScreenCommand} from '../detail/context';
+import styles from './search.module.css';
 
-export function TopResult({binding, result, fallbackArtwork}: {binding: SearchBindings; result: TopSearchResult; fallbackArtwork?: string}) {
+export function TopResult({binding, result, fallbackArtwork, compact, onOpen}: {binding: SearchBindings; result: TopSearchResult; fallbackArtwork?: string; compact?: boolean; onOpen?: () => void}) {
   const entry = result.entry, title = binding.topTitle, show = binding.topShow;
   const titleState = useSyncExternalStore(title.service.subscribe, title.service.getSnapshot, title.service.getSnapshot);
   const showState = useSyncExternalStore(show.service.subscribe, show.service.getSnapshot, show.service.getSnapshot);
@@ -39,6 +41,24 @@ export function TopResult({binding, result, fallbackArtwork}: {binding: SearchBi
   const kind = topResultKindLabel(result.group), allFacts = kind ? [{id: 'kind', role: 'context' as const, text: t(kind)}, ...facts] : facts;
   const next = series?.nextUp, code = next && episodeCode(next, t), action = primary.data?.actions.find(value => value.enabled && value.playback && value.id !== 'start_over');
   const showPlay = () => runScreenCommand(binding.context, () => { if (series && primary.data && action) { show.current(series); return show.primary.play(primary.data, action.id); } });
+  // Frame 4's phone top result: one card with the title's own background, the artist's
+  // circle when it has one, its real facts, and a Play only where a title really plays.
+  if (compact) {
+    const movieAction = movie?.actions.find(value => value.enabled && value.playback && value.id !== 'start_over');
+    const play = movie && movieAction ? () => runScreenCommand(binding.context, () => { if (movie && movieAction) { title.current(movie); return title.play(movie, movieAction.id); } })
+      : series && action ? showPlay : undefined;
+    const phoneTitle = media?.displayTitle ?? entry.title, artist = entry.kind === 'artist';
+    const initials = entry.title.split(/\s+/).filter(Boolean).slice(0, 2).map(word => Array.from(word)[0]).join('');
+    const background = source ? binding.context.artwork.foreground(source, 640, 3 / 2) : undefined;
+    const ring = artist && source ? binding.context.artwork.foreground(source, 240, 1) : undefined;
+    return <section className={styles.phoneTop} aria-label={t('search.topResult')}>
+      {background && <Artwork className={styles.phoneTopBg} source={background} alt="" />}
+      <button type="button" className={styles.phoneTopOpen} aria-label={phoneTitle} onClick={onOpen ?? (() => runScreenCommand(binding.context, () => binding.open(entry)))} />
+      {artist && <span className={styles.phoneTopRing}>{ring ? <Artwork source={ring} alt="" /> : initials}</span>}
+      <span className={styles.phoneTopCopy}><small>{t('search.topResult')}</small><b>{phoneTitle}</b><TitleFactsLine parts={allFacts} /></span>
+      {play && <Button className={styles.phoneTopPlay} variant="primary" icon="i-play" iconOnly aria-label={t('next.controls.play')} onClick={play} />}
+    </section>;
+  }
   return <SearchResultHero title={media?.displayTitle ?? entry.title} eyebrow={t('search.topResult')} facts={<TitleFactsLine parts={allFacts} />} synopsis={movie?.item.overview ?? series?.show.overview ?? media?.overview}
     artwork={<AmbientArt treatment="title" source={preferenceValue<boolean>(preferences, 'appearance.showBackdrops') ? binding.context.artwork.ambient(source) : undefined} foreground={preferenceValue<boolean>(preferences, 'appearance.showBackdrops') ? binding.context.artwork.foreground(source, 1600, 16 / 9) : undefined} foregroundFrameStyle={{left: '30%', width: '70%', height: '100%'}} position="50% 6%" />}
     actions={movie ? <TitleActions binding={title} data={movie} topResult /> : series ? <div className={detailStyles.actions}>
