@@ -53,7 +53,7 @@ import {QUEUE_WINDOW_MAX, QueueClient, saveQueueAsPlaylist, type CreateResult, t
 import {audioTransitionsEnabled} from '../audio-effects.ts';
 import type {NativeListeningV1Control, NativeListeningV1Event} from '../playback/native-listening.ts';
 import {playableAudio} from './audio-render.ts';
-import {ContractError, consecutiveOnAlbum, id, parseDiscTitleRef, type QueueEntry, type QueueHeader, type Selector, type ServerEvent, type Session} from './types.ts';
+import {ContractError, consecutiveOnAlbum, id, parseDiscTitleRef, type DiscTitleRef, type QueueEntry, type QueueHeader, type Selector, type ServerEvent, type Session} from './types.ts';
 
 /** Items per `items` selector segment, and segments per create (spec §8). */
 const SEGMENT_ITEMS = 500, MAX_SEGMENTS = 16;
@@ -77,7 +77,8 @@ export interface QueueSessionTransport {
   start(target: StartTarget, options: StartOptions, key?: string, durationSeconds?: number, signal?: AbortSignal): Promise<{session: Session; playback: PlaybackSession}>;
   /** Tracks a session another request started (a queue create with startPlayback, an advance). */
   adopt(session: Session, durationSeconds: number): PlaybackSession;
-  duration(itemId: string, versionId?: string, signal?: AbortSignal): Promise<number>;
+  /** A returned accepted title reference pins its own duration; never read the main title instead. */
+  duration(itemId: string, versionId?: string, signal?: AbortSignal, discTitle?: DiscTitleRef): Promise<number>;
   stopPlayback(id: string, signal?: AbortSignal): Promise<void>;
   /** The server replaced or completed this session: nothing more is reported for it. */
   retire(id: string): void;
@@ -707,7 +708,8 @@ export class V1QueuePlayer implements QueueController {
     if (isCurrent && (session.queue?.queueId !== this.header?.id || session.queue?.entryId !== this.header?.current?.entryId || !entry?.available || session.itemId !== entry.itemId)) {
       this.abandon(session); throw new ContractError('queue playback session');
     }
-    const duration = entry?.durationMs !== undefined ? entry.durationMs / 1000 : await this.api.duration(session.itemId ?? '', session.versionId, signal);
+    const duration = session.discTitle ? await this.api.duration(session.itemId ?? '', session.versionId, signal, session.discTitle)
+      : entry?.durationMs !== undefined ? entry.durationMs / 1000 : await this.api.duration(session.itemId ?? '', session.versionId, signal);
     if (!current()) { this.abandon(session); return; }
     await this.adoptPlayback(session, this.api.adopt(session, duration), intent, current);
   }
@@ -904,7 +906,7 @@ export class V1QueuePlayer implements QueueController {
         const nextTarget = Object.freeze({...target, sessionId: session.id, generation: session.presentation.generation,
           itemId: selected.itemId, versionId, entryId: command.body.entryId});
         queueEditWindow(header, window, nextTarget);
-        const duration = await this.api.duration(selected.itemId, versionId, lifetime.signal); checkOld();
+        const duration = await this.api.duration(selected.itemId, versionId, lifetime.signal, session.discTitle); checkOld();
         if (!Number.isFinite(duration) || duration < 0) throw new ContractError('queue selection duration');
         const acceptedSession = () => {
           const active = this.session;

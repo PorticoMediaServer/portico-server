@@ -14,7 +14,7 @@ import {SessionsClient, type SessionChange, type StartOptions, type StartTarget,
 import {requireSessionChangeCurrent, type SessionChangeContext} from './change-context.ts';
 import type {PlayerFailureCode} from '../client-profile.ts';
 import type {TimelineReport, TimelineState} from './timeline.ts';
-import {parseSessionEnd, type Session, type SessionEnd} from './types.ts';
+import {parseSessionEnd, type DiscTitleRef, type Session, type SessionEnd} from './types.ts';
 import {toPlaybackSession} from './session-shape.ts';
 
 export {toPlaybackSession};
@@ -56,10 +56,10 @@ export class V1PlaybackApi implements PlaybackApi {
   }
 
   /** A title's duration from its playback options (the default version's), in seconds. */
-  async duration(itemId: string, versionId?: string, signal?: AbortSignal): Promise<number> {
+  async duration(itemId: string, versionId?: string, signal?: AbortSignal, discTitle?: DiscTitleRef): Promise<number> {
     try {
-      const o = await this.optionsClient.options(itemId, {}, signal);
-      const v = o.versions.find(x => x.id === (versionId ?? o.preferred?.versionId)) ?? o.versions[0];
+      const o = await this.optionsClient.options(itemId, discTitle ? {versionId, discTitle} : {}, signal);
+      const v = o.versions.find(x => x.id === (versionId ?? o.preferred?.versionId)) ?? (discTitle ? undefined : o.versions[0]);
       return v ? v.durationMs / 1000 : 0;
     } catch {
       return 0; // The engine reports the duration once it has the media.
@@ -69,7 +69,9 @@ export class V1PlaybackApi implements PlaybackApi {
   /** Starts a session and returns it in the service's shape; the session is then tracked. */
   async start(target: StartTarget, options: StartOptions, key: string = this.key(), durationSeconds?: number, signal?: AbortSignal): Promise<{session: Session; playback: PlaybackSession}> {
     const session = await this.sessions.start(target, options, key, {signal});
-    return {session, playback: this.adopt(session, durationSeconds ?? await this.duration(session.itemId ?? '', session.versionId, signal))};
+    return {session, playback: this.adopt(session, session.discTitle
+      ? await this.duration(session.itemId ?? '', session.versionId, signal, session.discTitle)
+      : durationSeconds ?? await this.duration(session.itemId ?? '', session.versionId, signal))};
   }
 
   /** Tracks a session another request started (a queue create with startPlayback, an advance). */
@@ -121,7 +123,8 @@ export class V1PlaybackApi implements PlaybackApi {
       updated = await this.sessions.patch(id, current.revision, body, context?.signal);
     }
     checkSession(updated);
-    const duration = durationSeconds ?? await this.duration(updated.itemId ?? '', updated.versionId, context?.signal);
+    const duration = updated.discTitle ? await this.duration(updated.itemId ?? '', updated.versionId, context?.signal, updated.discTitle)
+      : durationSeconds ?? await this.duration(updated.itemId ?? '', updated.versionId, context?.signal);
     checkSession(updated);
     return {session: updated, playback: this.adopt(updated, duration)};
   }
