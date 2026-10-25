@@ -1510,6 +1510,8 @@ export const webMessages = {
   'web.segments.trust': '{trust, select, automatic {Can skip automatically} approved {Approved} hidden {Not shown to viewers} other {Viewers can skip}}',
   'web.segments.watch': 'Watch',
   'web.segments.approve': 'Approve',
+  'web.segments.approve': 'Approve',
+  'web.segments.dismiss': 'Dismiss',
   'web.segments.adjust': 'Adjust',
   'web.segments.adjustTitle': 'Adjust marker',
   'web.segments.addTitle': 'Add a marker',

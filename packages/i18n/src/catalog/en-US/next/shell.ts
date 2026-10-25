@@ -88,6 +88,7 @@ export const shellMessages = {
   'next.shell.startsAt': 'Starts at',
   'next.shell.endsAt': 'Ends at',
   'next.shell.dragOrType': 'Drag the handles, or type the times',
+  'next.shell.markerMenu': 'Marker actions',
   'next.shell.previewSegment': 'Watch from 3 seconds before',
   'next.shell.timeRange': '{start} to {end}',
   'next.shell.oneSecondEarlier': 'One second earlier',

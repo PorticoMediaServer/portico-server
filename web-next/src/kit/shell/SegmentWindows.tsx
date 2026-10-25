@@ -4,6 +4,7 @@ import type {FactPart} from '@core/presentation/kit-model';
 import {Icon} from '../Icon';
 import {Button, Select} from '../controls';
 import {BottomSheet} from '../overlays/BottomSheet';
+import {Menu} from '../overlays/Popover';
 import {usePhone} from '../overlays/shared';
 import {readSegmentClock, segmentClock, zoomedSegmentRange} from './model';
 import type {ShellTranslate} from './ServerIdentity';
@@ -18,14 +19,14 @@ export type SegmentEdit = Readonly<{id: string; opening: number; start: number; 
 export type SegmentWindowsProps = {
   duration: number; opening: readonly SegmentMark[]; ending: readonly SegmentMark[]; edit?: SegmentEdit;
   onEdit: (mark: SegmentMark) => void; onChange: (draft: SegmentEdit) => void; onSave: (draft: SegmentEdit) => void; onCancel: (opening: number) => void;
-  onPreview: (mark: SegmentMark, start: number) => void; onApprove: (mark: SegmentMark) => void; t?: ShellTranslate;
+  onPreview: (mark: SegmentMark, start: number) => void; onApprove: (mark: SegmentMark) => void; onDismiss: (mark: SegmentMark) => void; t?: ShellTranslate;
 };
 export function SegmentWindows(props: SegmentWindowsProps) {
   const t = props.t ?? tDefault, phone = usePhone();
   return <><div className={styles.windows}><SegmentWindow {...props} phone={phone} marks={props.opening} endWindow={false} title={t('next.shell.opening')} /><SegmentWindow {...props} phone={phone} marks={props.ending} endWindow title={t('next.shell.end')} /></div>
     {phone && props.edit ? <AdjustSheet key={props.edit.opening} {...props} t={t} /> : null}</>;
 }
-function SegmentWindow({marks, duration, endWindow, title, edit, onChange, onEdit, onSave, onCancel, onPreview, onApprove, phone, t = tDefault}: SegmentWindowsProps & {marks: readonly SegmentMark[]; endWindow: boolean; title: string; phone: boolean}) {
+function SegmentWindow({marks, duration, endWindow, title, edit, onChange, onEdit, onSave, onCancel, onPreview, onApprove, onDismiss, phone, t = tDefault}: SegmentWindowsProps & {marks: readonly SegmentMark[]; endWindow: boolean; title: string; phone: boolean}) {
   const [validStart, setValidStart] = useState(true), [validEnd, setValidEnd] = useState(true);
   const range = zoomedSegmentRange(marks, duration, endWindow);
   if (!range) return null;
@@ -35,7 +36,9 @@ function SegmentWindow({marks, duration, endWindow, title, edit, onChange, onEdi
       const editing = edit?.id === mark.id, start = editing ? edit.start : mark.start, end = editing ? edit.end : mark.end;
       return <span key={mark.id}><span className={styles.segment} data-kind={mark.kind} data-suggested={mark.suggested && !editing || undefined} data-editing={editing || undefined} style={{left: `${percent(start)}%`, width: `${percent(end) - percent(start)}%`}} />{editing && !phone && <><SegmentHandle label={t('next.shell.segmentStart', {kind: mark.label})} value={start} min={0} max={end - .1} range={range} onChange={value => onChange({...edit, start: value})} /><SegmentHandle label={t('next.shell.segmentEnd', {kind: mark.label})} value={end} min={start + .1} max={duration} range={range} onChange={value => onChange({...edit, end: value})} /></>}</span>;
     })}</div>
-    {marks.map(mark => edit && edit.id === mark.id && !phone ? <div className={styles.marker} key={mark.id}><div className={styles.markerLine}><b>{mark.label}</b><span>{t('next.shell.dragOrType')}</span></div><div className={styles.editRow}><TimeField label={t('next.shell.startsAt')} onValid={setValidStart} value={edit.start} min={0} max={edit.end - .1} onValue={value => onChange({...edit, start: value})} /><TimeField label={t('next.shell.endsAt')} onValid={setValidEnd} value={edit.end} min={edit.start + .1} max={duration} onValue={value => onChange({...edit, end: value})} /><button type="button" className={styles.save} disabled={!validStart || !validEnd} onClick={() => onSave(edit)}>{t('next.shell.save')}</button><button type="button" className={styles.cancel} onClick={() => onCancel(edit.opening)}>{t('next.shell.cancel')}</button></div></div> : <div className={styles.marker} key={mark.id}><div className={styles.markerLine}><b>{mark.label}</b><span>{t('next.shell.timeRange', {start: segmentClock(mark.start), end: segmentClock(mark.end)})}</span><span className={styles.markerActions}><button type="button" aria-label={t('next.shell.previewSegment')} onClick={() => onPreview(mark, Math.max(0, mark.start - 3))}><Icon name="i-play" size={14} /></button>{mark.suggested && <button type="button" aria-label={t('next.shell.approveSegment', {kind: mark.label})} onClick={() => onApprove(mark)}><Icon name="i-check" size={17} /></button>}<button type="button" aria-label={t('next.shell.editSegment', {kind: mark.label})} onClick={() => onEdit(mark)}><Icon name="i-edit" size={16} /></button></span></div><div className={styles.markerFacts}><span className={styles.trust} data-tone={mark.trustTone}>{mark.trust}</span>{mark.facts.map(fact => <span key={fact.id}>{fact.text}</span>)}</div></div>)}
+    {marks.map(mark => edit && edit.id === mark.id && !phone ? <div className={styles.marker} key={mark.id}><div className={styles.markerLine}><b>{mark.label}</b><span>{t('next.shell.dragOrType')}</span></div><div className={styles.editRow}><TimeField label={t('next.shell.startsAt')} onValid={setValidStart} value={edit.start} min={0} max={edit.end - .1} onValue={value => onChange({...edit, start: value})} /><TimeField label={t('next.shell.endsAt')} onValid={setValidEnd} value={edit.end} min={edit.start + .1} max={duration} onValue={value => onChange({...edit, end: value})} /><button type="button" className={styles.save} disabled={!validStart || !validEnd} onClick={() => onSave(edit)}>{t('next.shell.save')}</button><button type="button" className={styles.cancel} onClick={() => onCancel(edit.opening)}>{t('next.shell.cancel')}</button></div></div> : <div className={styles.marker} key={mark.id}><div className={styles.markerLine}><b>{mark.label}</b><span>{t('next.shell.timeRange', {start: segmentClock(mark.start), end: segmentClock(mark.end)})}</span><span className={styles.markerActions}>{phone
+  ? <MarkerMenu mark={mark} onPreview={onPreview} onApprove={onApprove} onEdit={onEdit} onDismiss={onDismiss} t={t} />
+  : <><button type="button" aria-label={t('next.shell.previewSegment')} onClick={() => onPreview(mark, Math.max(0, mark.start - 3))}><Icon name="i-play" size={14} /></button>{mark.suggested && <button type="button" aria-label={t('next.shell.approveSegment', {kind: mark.label})} onClick={() => onApprove(mark)}><Icon name="i-check" size={17} /></button>}<button type="button" aria-label={t('next.shell.editSegment', {kind: mark.label})} onClick={() => onEdit(mark)}><Icon name="i-edit" size={16} /></button></>}</span></div><div className={styles.markerFacts}><span className={styles.trust} data-tone={mark.trustTone}>{mark.trust}</span>{mark.facts.map(fact => <span key={fact.id}>{fact.text}</span>)}</div></div>)}
   </section>;
 }
 /** owner-libraries#23b/#25: at phone size the adjust step is one sheet with the
@@ -160,6 +163,65 @@ function TimeStepper({label, value, min, max, onStep, onCommit, onValid, t = tDe
     onClick={event => {if (event.detail === 0) onStep(delta);}}>{delta < 0 ? '−' : '+'}</button>;
   return <div className={styles.stepper}><span className={styles.stepperLabel}>{label}</span><div className={styles.stepperRow}>{button(-1)}
     <TimeField label={label} value={value} min={min} max={max} onValue={onCommit} onValid={onValid} />{button(1)}</div></div>;
+}
+
+/** The phone marker menu keeps one committed admission for the exact mark and
+ * callbacks of the current render, and one opening for an admission that is
+ * still current. A replaced admission retires its opening in layout, an
+ * unmount retires both, and a retained opener, close or action refuses once the
+ * object it was rendered with is no longer live. */
+type MarkerAdmission = Readonly<{
+  mark: SegmentMark;
+  onPreview: (mark: SegmentMark, start: number) => void;
+  onApprove: (mark: SegmentMark) => void;
+  onEdit: (mark: SegmentMark) => void;
+  onDismiss: (mark: SegmentMark) => void;
+}>;
+type MarkerOpening = Readonly<{admission: MarkerAdmission}>;
+
+function MarkerMenu({mark, onPreview, onApprove, onEdit, onDismiss, t = tDefault}: {
+  mark: SegmentMark; onPreview: (mark: SegmentMark, start: number) => void; onApprove: (mark: SegmentMark) => void;
+  onEdit: (mark: SegmentMark) => void; onDismiss: (mark: SegmentMark) => void; t?: ShellTranslate;
+}) {
+  const admitted = useRef<MarkerAdmission | undefined>(undefined);
+  const live = useRef<MarkerOpening | undefined>(undefined);
+  const [admission, setAdmission] = useState<MarkerAdmission | undefined>(undefined);
+  const [opening, setOpening] = useState<MarkerOpening | undefined>(undefined);
+  useLayoutEffect(() => {
+    const current = admitted.current;
+    if (current && current.mark === mark && current.onPreview === onPreview && current.onApprove === onApprove && current.onEdit === onEdit && current.onDismiss === onDismiss) return;
+    const next: MarkerAdmission = {mark, onPreview, onApprove, onEdit, onDismiss};
+    admitted.current = next;setAdmission(next);
+    if (live.current && live.current.admission !== next) {live.current = undefined;setOpening(undefined);}
+    return () => {
+      if (admitted.current === next) admitted.current = undefined;
+      if (live.current?.admission === next) {live.current = undefined;setOpening(undefined);}
+    };
+  }, [mark, onPreview, onApprove, onEdit, onDismiss]);
+  const retire = (expected: MarkerOpening) => {
+    if (live.current !== expected) return;
+    live.current = undefined;setOpening(undefined);
+  };
+  const changeOpen = (next: boolean) => {
+    if (!next) {if (opening) retire(opening);return;}
+    if (opening || live.current) return;
+    if (!admission || admitted.current !== admission) return;
+    const lease: MarkerOpening = {admission};
+    live.current = lease;setOpening(lease);
+  };
+  const run = (action: (current: MarkerAdmission) => void) => {
+    const current = live.current;
+    if (!current || opening !== current) return;
+    live.current = undefined;setOpening(undefined);
+    action(current.admission);
+  };
+  const shown = opening?.admission.mark ?? admission?.mark ?? mark;
+  return <Menu open={opening !== undefined} onOpenChange={changeOpen} title={shown.label} trigger={<Button variant="icon" icon="i-more" iconOnly aria-label={t('next.shell.markerMenu')} />} items={[
+    {id: 'watch', label: t('next.shell.previewSegment'), onSelect: () => run(current => current.onPreview(current.mark, Math.max(0, current.mark.start - 3)))},
+    ...(shown.suggested ? [{id: 'approve', label: t('web.segments.approve'), onSelect: () => run(current => current.onApprove(current.mark))}] : []),
+    {id: 'adjust', label: t('web.segments.adjust'), onSelect: () => run(current => current.onEdit(current.mark))},
+    {id: 'dismiss', label: t('web.segments.dismiss'), description: t('web.segments.trust', {trust: 'hidden'}), destructive: true, onSelect: () => run(current => current.onDismiss(current.mark))},
+  ]} />;
 }
 
 function SegmentHandle({label, value, min, max, range, onChange}: {label: string; value: number; min: number; max: number; range: {start: number; end: number}; onChange: (value: number) => void}) {

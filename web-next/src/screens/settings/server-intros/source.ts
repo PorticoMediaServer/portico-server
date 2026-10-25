@@ -13,6 +13,7 @@ export type SegmentIntrosReads = Readonly<{
   approveSeason: (id: string, season: number | undefined, kinds: readonly SegmentKind[]) => Promise<number>;
   redetect: (id: string) => Promise<number>;
   approveMarker: (entry: SegmentReviewEntry, marker: SegmentReviewMarker) => Promise<unknown>;
+  dismissMarker: (entry: SegmentReviewEntry, marker: SegmentReviewMarker) => Promise<unknown>;
   editMarker: (entry: SegmentReviewEntry, marker: SegmentReviewMarker, kind: SegmentKind, startUS: string, endUS: string) => Promise<unknown>;
 }>;
 
@@ -24,6 +25,7 @@ export function segmentIntrosReads(api: SegmentApi): SegmentIntrosReads {
     approveSeason: (id, season, kinds) => approveSegments(api, id, kinds, season),
     redetect: id => redetectSegments(api, id),
     approveMarker: (entry, marker) => editSegmentMarker(api, entry, {action: 'approve', markerId: marker.id}),
+    dismissMarker: (entry, marker) => editSegmentMarker(api, entry, {action: 'dismiss', markerId: marker.id}),
     editMarker: (entry, marker, kind, startUS, endUS) => editSegmentMarker(api, entry, {action: 'edit', markerId: marker.id, kind, startUS, endUS}),
   };
 }
@@ -248,6 +250,28 @@ export class SegmentIntrosSource {
     this.publish({busy: 'marker', note: undefined, actionError: undefined});
     try {
       await this.reads.approveMarker(entry, marker);
+      if (!this.current() || generation !== this.titleGeneration) return;
+      await this.reloadTitle(generation);
+    } catch (error) {
+      if (!this.current() || generation !== this.titleGeneration) return;
+      this.publish({actionError: error});
+      this.report(error);
+    } finally {
+      if (this.current() && generation === this.titleGeneration) this.publish({busy: undefined});
+    }
+  };
+  dismissMarker = async (entry: SegmentReviewEntry, marker: SegmentReviewMarker): Promise<void> => {
+    if (!this.current() || this.state.busy) return;
+    const snapshot = this.state, title = snapshot.title;
+    if (!title || title.id !== snapshot.titleId) return;
+    // The exact rendered row and marker must still belong to the open title; a
+    // replacement object with the same item id is refused, never adopted.
+    if (!title.seasons.some(season => season.entries.some(value => value === entry))) return;
+    if (!entry.markers.some(value => value === marker)) return;
+    const generation = this.titleGeneration;
+    this.publish({busy: 'marker', note: undefined, actionError: undefined});
+    try {
+      await this.reads.dismissMarker(entry, marker);
       if (!this.current() || generation !== this.titleGeneration) return;
       await this.reloadTitle(generation);
     } catch (error) {
