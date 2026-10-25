@@ -143,3 +143,46 @@ test('retry from a terminal provider choice creates a fresh transaction request 
   assert.equal(requests.length, 2); assert.notEqual(requests[0], requests[1]); assert.deepEqual(destinations, ['https://provider.example/authorize','https://provider.example/authorize']);
   assert.equal(p.authenticated(), 0); flow.dispose();
 });
+
+
+function providerRetryPort() {
+  const p = port(), expiresAt = new Date(Date.now() + 60000).toISOString();
+  const original = {transactionId: 'original', provider: 'google' as const, mode: 'login' as const, status: 'onboarding' as const, expiresAt, needsUsername: true, contactVerified: true, mfaRequired: false, verifiedEmail: 'proved@example.test', onboardingToken: 'original-onboarding'};
+  let reads = 0;
+  p.value.client.transaction = async () => {reads++; return reads === 1 ? original : {...original, onboardingToken: 'rotated-onboarding'};};
+  return {...p, original, reads: () => reads};
+}
+test('confirmed provider username refusal refreshes only the original transaction before an explicit retry', async () => {
+  const p = providerRetryPort(), proofs: string[] = [];
+  p.value.client.complete = async (_id, input) => {
+    proofs.push(input.onboardingToken ?? '');
+    if (proofs.length === 1) throw new ApiError(409, 'username_unavailable', 'untrusted server message', false);
+    return {account: {id: 'new-account', username: 'different_name', displayName: 'Actual name'}, familyId: 'accepted-family', accessToken: 'test-access', expiresAt: p.original.expiresAt};
+  };
+  const flow = new ServicesAuthFlow(p.value, p.done); await flow.initialize(); await flow.finishProvider('taken_name', 'Actual name');
+  assert.equal((flow.getSnapshot().error as ApiError).code, 'username_unavailable'); assert.equal(p.reads(), 2); assert.deepEqual(proofs, ['original-onboarding']);
+  assert.doesNotMatch(JSON.stringify(flow.getSnapshot()), /original-onboarding|rotated-onboarding/);
+  await flow.finishProvider('different_name', 'Actual name'); assert.deepEqual(proofs, ['original-onboarding','rotated-onboarding']); assert.equal(flow.getSnapshot().mode, 'ready'); flow.dispose();
+});
+test('generic provider conflict never rotates or substitutes the original completion proof', async () => {
+  const p = providerRetryPort(); p.value.client.complete = async () => {throw new ApiError(409, 'conflict', 'conflict', false);};
+  const flow = new ServicesAuthFlow(p.value, p.done); await flow.initialize(); await flow.finishProvider('chosen_name', 'Actual name');
+  assert.equal(p.reads(), 1); assert.equal((flow.getSnapshot().error as ApiError).code, 'conflict'); assert.equal(flow.getSnapshot().mode, 'provider'); flow.dispose();
+});
+test('provider proof refresh refuses the browser binding successor without adopting or completing it', async () => {
+  const p = providerRetryPort(); let complete = 0;
+  p.value.client.complete = async () => {complete++; throw new ApiError(409, 'username_unavailable', 'taken', false);};
+  const flow = new ServicesAuthFlow(p.value, p.done); await flow.initialize();
+  p.value.client.transaction = async () => ({...p.original, transactionId: 'successor', onboardingToken: 'successor-secret'});
+  await flow.finishProvider('taken_name', 'Actual name'); assert.equal(flow.getSnapshot().mode, 'signin'); assert.equal((flow.getSnapshot().error as {code: string}).code, 'account_changed');
+  await flow.finishProvider('new_name', 'Actual name'); assert.equal(complete, 1); assert.doesNotMatch(JSON.stringify(flow.getSnapshot()), /successor-secret/); flow.dispose();
+});
+test('a failed refresh retains the exact rejected transaction for a later explicit retry', async () => {
+  const p = providerRetryPort(), proofs: string[] = [];
+  p.value.client.complete = async (_id, input) => {proofs.push(input.onboardingToken ?? ''); if (proofs.length === 1) throw new ApiError(409, 'username_unavailable', 'taken', false); return {account: {id: 'new-account', username: 'new_name', displayName: 'Actual name'}, familyId: 'accepted-family', accessToken: 'test-access', expiresAt: p.original.expiresAt};};
+  const flow = new ServicesAuthFlow(p.value, p.done); await flow.initialize();
+  p.value.client.transaction = async () => {throw new ApiError(503, 'unavailable', 'unavailable', true);};
+  await flow.finishProvider('taken_name', 'Actual name'); assert.equal((flow.getSnapshot().error as ApiError).code, 'unavailable');
+  p.value.client.transaction = async () => ({...p.original, onboardingToken: 'rotated-onboarding'});
+  await flow.finishProvider('new_name', 'Actual name'); assert.deepEqual(proofs, ['original-onboarding','rotated-onboarding']); assert.equal(flow.getSnapshot().mode, 'ready'); flow.dispose();
+});

@@ -1,3 +1,5 @@
+import {ApiError} from '@core/index.ts';
+import {CodedError} from '@core/server-messages.ts';
 import {AccountAttemptIds, MFARequiredError, type IdentityOptions, type IdentityProvider, type IdentityTransaction, type MFAChallenge, type Registration} from '@core/hosted-security.ts';
 import {routeBody, routePath} from '../../../packages/contracts/src/hosted/routes.ts';
 import {accountIdentity, currentAccountWork, sameAccount, type AccountIdentity, type ServicesAccount} from './session';
@@ -13,6 +15,7 @@ export class ServicesAuthFlow {
   private disposed = false;
   private challenge?: MFAChallenge;
   private transaction?: IdentityTransaction;
+  private providerRefresh?: IdentityTransaction;
   private readyIdentity?: AccountIdentity;
   private ids = new AccountAttemptIds(async () => crypto.randomUUID());
   constructor(private readonly account: ServicesAccount, private readonly signedIn: (gesture?: boolean) => void,
@@ -29,7 +32,7 @@ export class ServicesAuthFlow {
   }
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private publish(value: Partial<AuthSnapshot>) { if (this.disposed) return; this.state = {...this.state, ...value}; for (const listener of this.listeners) listener(); }
-  dispose() { this.disposed = true; this.operation?.abort(); this.listeners.clear(); this.challenge = undefined; this.transaction = undefined; this.ids.clear(); }
+  dispose() { this.disposed = true; this.operation?.abort(); this.listeners.clear(); this.challenge = undefined; this.transaction = undefined; this.providerRefresh = undefined; this.ids.clear(); }
   go(mode: AuthMode) { if (this.operation) return; this.challenge = undefined; this.publish({mode, error: undefined, retryAt: 0}); }
   recovery() { if (!this.operation && this.challenge) this.publish({mode: this.state.mode === 'factor' ? 'recovery' : 'factor', error: undefined}); }
   startAgain() { if (!this.operation) { this.publish({registration: undefined, resends: 0}); this.go('create'); } }
@@ -47,7 +50,7 @@ export class ServicesAuthFlow {
         if (tx.status === 'failed') {
           // The current browser-bound transaction is terminal. It proves no
           // email/account collision and cannot be completed or adopted.
-          this.transaction = undefined; this.ids.clear('provider');
+          this.transaction = undefined; this.providerRefresh = undefined; this.ids.clear('provider');
           this.publish({mode: 'provider-stopped', provider: tx.provider}); return;
         }
         if (tx.needsUsername && tx.contactVerified) {
@@ -94,7 +97,7 @@ export class ServicesAuthFlow {
     return this.run(async signal => {
       await this.account.client.request(routePath('identity_cancel'), 'POST', undefined, signal);
       if (!signal.aborted) {
-        this.transaction = undefined; this.ids.clear('provider');
+        this.transaction = undefined; this.providerRefresh = undefined; this.ids.clear('provider');
         this.publish({mode: 'signin', provider: undefined, suggestedName: undefined, verifiedEmail: undefined});
       }
     });
@@ -119,12 +122,37 @@ export class ServicesAuthFlow {
       if (!signal.aborted) this.publish({mode: 'sent'});
     });
   }
+  /** Only a confirmed failed username insert rotates onboarding proof. Read
+   * that same transaction; never adopt the browser cookie's successor or retry
+   * an uncertain completion with a newly substituted request/proof. */
+  private async refreshProvider(original: IdentityTransaction, signal: AbortSignal) {
+    const current = () => !this.disposed && !signal.aborted && this.transaction === original;
+    if (!current()) throw new CodedError('cancelled', 'The provider sign-in changed.');
+    const fresh = await this.account.client.transaction(undefined, signal);
+    if (!current()) throw new CodedError('cancelled', 'The provider sign-in changed.');
+    if (!fresh || fresh.transactionId !== original.transactionId || fresh.provider !== original.provider || fresh.mode !== 'login' || !fresh.needsUsername || !fresh.contactVerified
+      || !['onboarding', 'verified'].includes(fresh.status) || fresh.verifiedEmail !== original.verifiedEmail || fresh.expiresAt !== original.expiresAt || Date.parse(fresh.expiresAt) <= Date.now() || !fresh.onboardingToken) {
+      this.transaction = undefined; this.providerRefresh = undefined;
+      this.publish({mode: 'signin', provider: undefined, verifiedEmail: undefined, suggestedName: undefined});
+      throw new CodedError('account_changed', 'The provider sign-in changed.');
+    }
+    this.transaction = fresh; this.providerRefresh = undefined;
+  }
   finishProvider(username: string, displayName: string) {
     return this.run(async signal => {
+      if (this.providerRefresh) await this.refreshProvider(this.providerRefresh, signal);
       const transaction = this.transaction; if (!transaction?.needsUsername || !transaction.contactVerified) return;
-      const accepted = await this.account.service.authenticateIfSignedOut(inner => this.account.client.complete(transaction.transactionId,
-        {username: username.trim(), displayName: displayName.trim(), ...(transaction.onboardingToken ? {onboardingToken: transaction.onboardingToken} : {})}, AbortSignal.any([inner, signal])));
-      if (!signal.aborted) { this.readyIdentity = accountIdentity(accepted); this.transaction = undefined; this.publish({mode: 'ready'}); }
+      let accepted: Awaited<ReturnType<ServicesAccount['service']['authenticateIfSignedOut']>>;
+      try {
+        accepted = await this.account.service.authenticateIfSignedOut(inner => this.account.client.complete(transaction.transactionId,
+          {username: username.trim(), displayName: displayName.trim(), ...(transaction.onboardingToken ? {onboardingToken: transaction.onboardingToken} : {})}, AbortSignal.any([inner, signal])));
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 409 && error.code === 'username_unavailable' && !signal.aborted && this.transaction === transaction) {
+          this.providerRefresh = transaction; await this.refreshProvider(transaction, signal);
+        }
+        throw error;
+      }
+      if (!signal.aborted) { this.readyIdentity = accountIdentity(accepted); this.transaction = undefined; this.providerRefresh = undefined; this.publish({mode: 'ready'}); }
     });
   }
   continue() {
