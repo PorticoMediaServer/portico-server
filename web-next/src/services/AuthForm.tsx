@@ -32,12 +32,16 @@ export function ServicesAuthForm({account, onSignedIn, initialMode = 'signin', i
   const retryLabel = t('services.signin.tryIn', {time: `${Math.floor(retrySeconds / 60)}:${String(retrySeconds % 60).padStart(2, '0')}`});
   const busy = state.busy, blocked = busy || retrySeconds > 0, mode = state.mode;
   const back = <button type="button" disabled={busy} onClick={() => flow.go('signin')}>{t('auth.backToSignIn')}</button>;
+  // Frame 7 draws the create form's way back with the same left arrow the provider
+  // screen's Cancel uses; the code and reset screens draw it as plain text.
+  const backAction = <button type="button" disabled={busy} onClick={() => flow.go('signin')}><ServicesBackAction>{t('auth.backToSignIn')}</ServicesBackAction></button>;
   const title = mode === 'create' ? t('auth.createYourAccount') : mode === 'verify' || mode === 'sent' ? t('auth.checkEmail') : mode === 'forgot' ? t('auth.forgotPasswordTitle') : mode === 'factor' ? t('auth.enterVerificationCode') : mode === 'recovery' ? t('services.signin.recovery') : mode === 'provider' ? t('auth.chooseUsername') : mode === 'ready' ? t('services.provider.ready') : heading ?? t('auth.welcomeHome');
   const body = mode === 'create' ? t('auth.oneAccount') : mode === 'verify' && state.registration ? t('auth.codeSentTo', {address: state.registration.maskedAddress}) : mode === 'sent' ? t('auth.resetLinkSent') : mode === 'forgot' ? t('auth.resetLinkLedeEmail') : mode === 'factor' ? t('services.signin.twoStep') : mode === 'recovery' ? t('services.signin.recoveryBody') : mode === 'provider' ? t('services.provider.lastThing') : mode === 'ready' ? t('services.provider.readyBody') : lead ?? t('auth.accountLead');
   const providers = state.options?.providers.filter(item => item.enabled).sort((a, b) => a.id.localeCompare(b.id)) ?? [];
   const providerButtons = <>{providers.map(item => <ServicesProviderButton key={item.id} provider={item.id} disabled={busy} onClick={() => void flow.provider(item.id)}>{t(item.id === 'apple' ? 'services.provider.apple' : 'services.provider.google')}</ServicesProviderButton>)}{providers.length > 0 && state.options?.password && <div className={mode === 'signin' ? signInStyles.divider : undefined}><ServicesDivider>{t(mode === 'create' ? 'services.provider.createDivider' : 'auth.orWithEmail')}</ServicesDivider></div>}</>;
   const content = <>
     {mode === 'verify' && <ServicesStateIcon tone="info" icon="i-mail" size={32} />}
+    {mode === 'sent' && <ServicesStateIcon tone="info" icon="i-mail" size={26} />}
     {mode === 'ready' && <ServicesStateIcon />}
     {mode === 'provider' && state.provider && <ServicesProviderContext provider={state.provider} email={state.verifiedEmail} />}
     {!(invitation && mode === 'signin') && <><ServicesHeading singleLine>{title}</ServicesHeading>{mode === 'verify' && state.registration ? <ServicesRegistrationLead address={state.registration.maskedAddress} /> : <ServicesLead>{body}</ServicesLead>}</>}
@@ -63,7 +67,7 @@ export function ServicesAuthForm({account, onSignedIn, initialMode = 'signin', i
         <div><AuthPasswordField label={<ServicesLabel detail={t('auth.passwordRule')}>{t('auth.password')}</ServicesLabel>} name="new-password" autoComplete="new-password" value={password} onChange={event => setPassword(event.currentTarget.value)} disabled={busy} required aria-describedby={password ? 'signup-strength' : undefined} /><ServicesStrength password={password} id="signup-strength" /></div>
         <ServicesActions><Button variant="primary" type="submit" loading={busy} disabled={blocked || !/^\S+@\S+\.\S+$/.test(email.trim()) || username.trim().length < 3 || !passwordStrength(password).acceptable}>{retrySeconds ? retryLabel : t('action.continue')}</Button></ServicesActions>
       </form>
-      <AuthLinks>{back}</AuthLinks><ServicesTerms />
+      <AuthLinks>{backAction}</AuthLinks><ServicesTerms />
     </>}
     {mode === 'verify' && state.registration && <>
       <form className={styles.form} onSubmit={submit(() => flow.verify(code))}>
@@ -82,7 +86,7 @@ export function ServicesAuthForm({account, onSignedIn, initialMode = 'signin', i
     {mode === 'sent' && <><ServicesQuiet>{t('services.recovery.expiry')}</ServicesQuiet><AuthLinks>{back}</AuthLinks></>}
     {(mode === 'factor' || mode === 'recovery') && <>
       <form className={styles.form} onSubmit={submit(() => flow.signIn(username, password, code))}>
-        {mode === 'factor' ? <ServicesVerificationCode label={false}><AuthCodeBoxes length={6} value={code} onChange={setCode} onComplete={() => {}} label={t('auth.code')} disabled={busy} /></ServicesVerificationCode> : <TextField variant="auth" name="recovery-code" autoComplete="one-time-code" label={t('services.signin.recovery')} placeholder={t('services.recovery.codePlaceholder')} value={code} onChange={event => setCode(event.currentTarget.value)} disabled={busy} />}
+        {mode === 'factor' ? <ServicesVerificationCode label={false}><AuthCodeBoxes length={6} value={code} onChange={setCode} onComplete={() => {}} label={t('auth.code')} disabled={busy} /></ServicesVerificationCode> : <TextField variant="auth" name="recovery-code" autoComplete="one-time-code" label={t('accounts.signIn.recoveryCode')} placeholder={t('services.recovery.codePlaceholder')} value={code} onChange={event => setCode(event.currentTarget.value)} disabled={busy} />}
         {mode === 'factor' && <AuthLinks><span>{t('services.signin.lostPhone')}</span><button type="button" disabled={busy} onClick={() => flow.recovery()}>{t('services.signin.recovery')}</button></AuthLinks>}
         <ServicesActions><Button variant="primary" type="submit" loading={busy} disabled={blocked || (mode === 'factor' ? code.length !== 6 : !code.trim())}>{retrySeconds ? retryLabel : t('action.continue')}</Button></ServicesActions>
       </form><AuthLinks>{mode === 'recovery' ? <button type="button" disabled={busy} onClick={() => flow.recovery()}>{t('services.signin.authenticator')}</button> : back}</AuthLinks>
