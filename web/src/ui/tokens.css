@@ -326,6 +326,10 @@
   --type-live-mini-title-line: normal;
   --type-live-mini-title-weight: 700;
   --type-live-mini-title-tracking: 0em;
+  --type-live-owner-source-title-size: 1.03125rem;
+  --type-live-owner-source-title-line: normal;
+  --type-live-owner-source-title-weight: 700;
+  --type-live-owner-source-title-tracking: 0em;
   --type-live-monogram-size: 0.8125rem;
   --type-live-monogram-line: normal;
   --type-live-monogram-weight: 800;

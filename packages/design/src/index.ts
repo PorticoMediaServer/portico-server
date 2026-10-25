@@ -127,6 +127,7 @@ const handheldType = {
   liveChromeTitle: type(34, 36.72, 800, -.035), liveChromeTabletTitle: type(24, 25.92, 800, -.035),
   liveChromePhoneTitle: type(18, 19.44, 800, -.035), liveChromeNumber: type(11, 'normal', 800, -.01),
   liveMiniTitle: type(15.5, 'normal', 700),
+  liveOwnerSourceTitle: type(16.5, 'normal', 700),
   liveMonogram: type(13, 'normal', 800), bannerKind: type(14, 'normal', 600), fallbackLabel: type(12, 'normal', 700),
   personTitle: type(14, 'normal', 700), detailHeading: type(17, 'normal', 700), starring: type(14, 'normal', 400),
   reportSection: type(20, 'normal', 700, -.015), reportTitle: type(17, 21.25, 700, -.015),
