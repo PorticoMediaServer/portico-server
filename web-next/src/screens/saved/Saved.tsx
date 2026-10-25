@@ -11,7 +11,7 @@ import type {PersonalResource, PersonalResourceEntry, PersonalSavedService} from
 import {serverTextLabel} from '@core/presentation/server-text.ts';
 import {shapeFor} from '@core/presentation/card-shape.ts';
 import {dependsOn} from '@core/freshness-hub.ts';
-import {Button, Chip, Select, Tabs, Switch} from '../../kit/controls';
+import {Button, Chip, Tabs, Switch} from '../../kit/controls';
 import {FiltersButton, SortMenu, ViewToggle} from '../../kit/browse';
 import {MenuRow, Popover} from '../../kit/overlays';
 import {PlaylistMosaic, PosterCard, SquareCard, NewPlaylistCard, type CardSelection} from '../../kit/cards';
@@ -143,15 +143,20 @@ function SavedLists(bindings: SavedViewBindings & {onCreate: () => void}) {
     {wash.length ? <div className={styles.wash} aria-hidden="true"><AmbientArt sources={wash} treatment="library" height={640} /></div> : null}
     {list === 'playlists'
       ? <div className={styles.toolbar}>
-          {projection?.filters.map(filter => <Select key={filter.id} aria-label={defaultI18n.has(filter.labelKey) ? t(filter.labelKey) : t('playlists.filter')}
-            value={'filter' in route ? route.filter ?? 'all' : 'all'} options={filter.options.map(option => ({value: option.id, label: option.label}))}
-            onValueChange={filter => { if (route.view === 'playlists') effects.selectRoute({...route, filter: filter as PlaylistListFilter}); }} />)}
+          {projection?.sorts.length ? <SortMenu variant="saved" sorts={projection.sorts.map(sort => ({...sort, defaultDirection: sort.directions[0] ?? 'asc', expensive: false, applicableKinds: []}))}
+            value={savedSortSelection(route, projection)} label={playlistSortName}
+            onValueChange={value => { if (route.view === 'playlists') effects.selectRoute({...route, sort: value.field, direction: value.direction}); }} /> : null}
+          {projection?.filters.length ? <><span className={styles.separator} aria-hidden="true"/>
+            {projection.filters.map(filter => {
+              const selected = 'filter' in route ? route.filter ?? 'all' : 'all';
+              return <div key={filter.id} className={styles.playlistFilters} role="group" aria-label={defaultI18n.has(filter.labelKey) ? t(filter.labelKey) : t('playlists.filter')}>
+                {filter.options.map(option => <Chip key={option.id} variant="quick" selected={selected === option.id} count={option.count}
+                  onClick={() => { if (route.view === 'playlists') effects.selectRoute({...route, filter: selected === option.id ? 'all' : option.id as PlaylistListFilter}); }}>{option.label}</Chip>)}
+              </div>;
+            })}</> : null}
           {bindings.catalogueSelection?.toolbar ?? bindings.selection?.toolbar}
           <div className={styles.toolbarEnd}>
             {total !== undefined && <span>{t('web.saved.items', {count: total})}</span>}
-            {projection?.sorts.length ? <Select aria-label={t('saved.sort')} value={'sort' in route ? route.sort ?? projection.query.sort : projection.query.sort}
-              options={projection.sorts.map(sort => ({value: sort.id, label: savedSortName(sort)}))}
-              onValueChange={sort => { if (route.view === 'playlists') effects.selectRoute({...route, sort}); }} /> : null}
             {projection?.actions?.includes('create_playlist') && <Button icon="i-plus" size="small" onClick={bindings.onCreate}>{t('web.saved.newPlaylist')}</Button>}
           </div>
         </div>
@@ -168,6 +173,13 @@ const savedSortKeys = {title: 'web.saved.sort.title', added: 'web.saved.sort.add
 function savedSortName(sort: Readonly<{id: string; labelKey: string}>): string {
   const key = savedSortKeys[sort.id as keyof typeof savedSortKeys];
   return key ? t(key) : defaultI18n.has(sort.labelKey) ? t(sort.labelKey) : t('web.saved.sort.other');
+}
+/** The playlist directory's own orders are the catalogue's playlist words: Name,
+ * Date created, Last changed and Number of items (collections.html 1 and 14a). */
+const playlistSortFields = {title: 'title', created: 'created', updated: 'updated', count: 'count'} as const;
+function playlistSortName(sort: Readonly<{id: string; labelKey: string}>): string {
+  const field = playlistSortFields[sort.id as keyof typeof playlistSortFields];
+  return field ? t('playlists.sort', {field}) : defaultI18n.has(sort.labelKey) ? t(sort.labelKey) : t('web.saved.sort.other');
 }
 /** The saved list's own order, as the server published it. */
 function savedSortSelection(route: SavedViewBindings['route'], projection: SavedProjection | null) {

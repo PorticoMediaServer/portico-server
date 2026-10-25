@@ -18,6 +18,9 @@
 .wash > * { width: 100%; height: 100%; }
 .toolbar { position: relative; z-index: var(--layer-content); display: flex; align-items: center; gap: 8px; padding: 22px var(--shell-gutter, var(--gutter-desktop)) 0; }
 .separator { width: 1px; height: 24px; margin: 0 6px; background: var(--color-line); flex: none; }
+/* collections.html 1 and 14a: the Playlists Show groups, one scrolling row of chips. */
+.playlistFilters { display: flex; align-items: center; gap: 8px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.playlistFilters::-webkit-scrollbar { display: none; }
 .resultCount { font-size: calc(var(--type-caption-size) * 14 / 13); color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
 .toolbarEnd { margin-left: auto; display: flex; align-items: center; gap: 10px; color: var(--color-text-tertiary); font-size: calc(var(--type-caption-size) * 14 / 13); }
 .directoryCount { color: var(--color-text-secondary); font-size: calc(var(--type-caption-size) * 29 / 26); font-weight: var(--type-caption-strong-weight); }
