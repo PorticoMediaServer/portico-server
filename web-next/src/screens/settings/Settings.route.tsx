@@ -47,6 +47,10 @@ import {SettingsInvitations} from './invitations';
 import {ServerIntros} from './server-intros/ServerIntros';
 import {SegmentIntrosSource} from './server-intros/source';
 import {createScreenPlayEffect} from '../browse/playback-effect';
+import {ProfileSettingsSource} from './account-profile/source';
+import {profileSettingState, changeProfileSetting} from './account-profile/rows';
+import {ProfileList} from './account-profile/ProfileList';
+import {observeProfileFailures} from './account-profile/failures';
 
 // A carry contains calendar bounds only. The captured session object owns its lifetime.
 const historyContexts = new WeakMap<ShellAssemblyContext, ReportContext>();
@@ -83,6 +87,10 @@ export function SettingsEntry() {
     const openSettings = (section: string) => {if (current()) void router.navigate({to: '/settings', search: () => ({scope: 'server', section})});};
     // A drawn link names the page that owns its value, so it opens that row too.
     const openSettingsRow = (target: {scope: 'account' | 'server'; section: string; row?: string}) => {if (current()) void router.navigate({to: '/settings', search: () => target});};
+    const profiles = route.scope === 'account' && route.section === 'profile' && viewer.authority === 'local'
+      ? new ProfileSettingsSource(context.api, {serverId: viewer.serverId, accountId: viewer.accountId, profileId: viewer.profileId}, current) : undefined;
+    const offProfileFailures = profiles ? observeProfileFailures(profiles, current, reportError) : undefined;
+    const profileRow = (id: string) => !!profiles && ['profile.list', 'profile.name', 'profile.color', 'profile.username'].includes(id);
     const platform = settingsPlatform();
     const privacy = createPrivacySettingsSurfaces({api: context.api, serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId]), isCurrent: current, reportError});
     // One row's engine. A preset row is answered by the rule below instead, so its
@@ -152,6 +160,9 @@ export function SettingsEntry() {
       ? new SegmentIntrosSource({api: context.api, isCurrent: current, reportError}) : undefined;
     const source = createSettingsBindings(controller, options, identity, {openHome, signIn,
       special: (row, state, rowContext, openPanel) => {
+        if (row.id === 'profile.list' && profiles) return <ProfileList source={profiles} isCurrent={current} onFailure={reportError} onSelect={() => {
+          requestAnimationFrame(() => {if (current()) document.getElementById('profile.name')?.querySelector<HTMLInputElement>('input')?.focus();});
+        }} />;
         const storageControl = server?.special(row, state);
         if (storageControl !== undefined) return storageControl;
         const privacyControl = privacy.special(row, state);
@@ -194,12 +205,18 @@ export function SettingsEntry() {
     });
     const deviceFacts = {serverName: identity.serverName, ...(identity.serverVersion === undefined ? {} : {serverVersion: identity.serverVersion})};
     const settings: SettingsBindings = {...source,
+      subscribe: listener => {const off = source.subscribe(listener), offProfiles = profiles?.subscribe(listener);return () => {off();offProfiles?.();};},
+      change: (row, value, selected) => {
+        if (profiles && profileRow(row.id)) {void changeProfileSetting(profiles, row.id, value)?.catch(reportError);return;}
+        source.change(row, value, selected);
+      },
       // The Remote sources page owns its own checked source reads; the generic
       // server-section configuration read would replace that page with a failure.
-      getSnapshot: section => section.scope === 'server' && section.id === 'remote-sources' ? remoteSourcesPageSnapshot : source.getSnapshot(section),
-      load: section => section.scope === 'server' && section.id === 'remote-sources' ? Promise.resolve() : source.load(section),
-      eligible: (row, selected) => server?.eligible(row) ?? ((row.id === 'libraries.folders' || (row.id === 'libraries.skipped' || row.id === 'libraries.unmatched') && !!libraries || row.id === 'libraries.fetchLyrics' && !!libraries && role === 'owner') ? current() && isLibraryPanelContext(selected) && controller.sectionVisible(selected.section) : libraryScanAction(row.id) ? current() && !!libraries && selected.panelId === 'library' && !!selected.recordId && controller.sectionVisible(selected.section) : isSubtitlePreview(row.id) ? current() && controller.sectionVisible(selected.section) : isDeviceSyntheticRow(row.id) ? current() && controller.sectionVisible(selected.section) && deviceRowState(row, deviceFacts) !== undefined : row.id === 'music.eq' ? current() && controller.sectionVisible(selected.section) && musicEqualizerAvailable(platform) : row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected)),
+      getSnapshot: section => section.scope === 'account' && section.id === 'profile' && profiles ? profiles.getSnapshot() : section.scope === 'server' && section.id === 'remote-sources' ? remoteSourcesPageSnapshot : source.getSnapshot(section),
+      load: section => section.scope === 'account' && section.id === 'profile' && profiles ? Promise.all([profiles.load(), source.load(section)]).then(() => undefined) : section.scope === 'server' && section.id === 'remote-sources' ? Promise.resolve() : source.load(section),
+      eligible: (row, selected) => profileRow(row.id) ? current() && selected.section.scope === 'account' && selected.section.id === 'profile' : server?.eligible(row) ?? ((row.id === 'libraries.folders' || (row.id === 'libraries.skipped' || row.id === 'libraries.unmatched') && !!libraries || row.id === 'libraries.fetchLyrics' && !!libraries && role === 'owner') ? current() && isLibraryPanelContext(selected) && controller.sectionVisible(selected.section) : libraryScanAction(row.id) ? current() && !!libraries && selected.panelId === 'library' && !!selected.recordId && controller.sectionVisible(selected.section) : isSubtitlePreview(row.id) ? current() && controller.sectionVisible(selected.section) : isDeviceSyntheticRow(row.id) ? current() && controller.sectionVisible(selected.section) && deviceRowState(row, deviceFacts) !== undefined : row.id === 'music.eq' ? current() && controller.sectionVisible(selected.section) && musicEqualizerAvailable(platform) : row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected)),
       rowState: (row, selected) => {
+        if (profiles && profileRow(row.id)) return row.id === 'profile.list' ? {present: current() && !!profiles.getSnapshot().document} : profileSettingState(profiles, row.id)!;
         const privacyState = privacy.rowState(row);
         if (privacyState !== undefined) return privacyState;
         if (row.id === 'libraries.folders' || (row.id === 'libraries.skipped' || row.id === 'libraries.unmatched') && !!libraries || row.id === 'libraries.fetchLyrics' && !!libraries && role === 'owner') return {present: current() && isLibraryPanelContext(selected) && controller.sectionVisible(selected.section)};
@@ -210,7 +227,7 @@ export function SettingsEntry() {
       },
     };
     setFailure(false);setOwned({context, settings, dashboard});
-    return () => {active = false;previewLife.abort();signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();intros?.dispose();server?.dispose();troubleshooting?.dispose();controller.dispose();};
+    return () => {active = false;offProfileFailures?.();profiles?.dispose();previewLife.abort();signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();intros?.dispose();server?.dispose();troubleshooting?.dispose();controller.dispose();};
   // The captured identity decides which sections exist (main profile, manageServer,
   // role). It can be replaced without the assembly context object changing, so
   // every fact the gate reads is a dependency: a newer identity must rebuild the
