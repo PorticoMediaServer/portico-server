@@ -92,21 +92,29 @@ export function watchPanelModel(runtime:WebShellPlaybackRuntime,snapshot:WebPlay
   const enabled=offer.enabled&&options.qualities.some(option=>option.applicable!==false&&qualityChoiceOf(option)===choice);
   qualityRows.push({id:offer.id,label,detail,selected:selected===choice,enabled});
  }
+ // These ports are capabilities: a host that predates one simply has no such control, so a
+ // stand-in runtime without the method reads as absent instead of being called into a throw.
+ const readStyle=typeof runtime.subtitleStyle==='function'?runtime.subtitleStyle.bind(runtime):undefined;
+ const readSleep=typeof runtime.sleepTimer==='function'?runtime.sleepTimer.bind(runtime):undefined;
+ const writeSleep=typeof runtime.setSleepTimer==='function'?runtime.setSleepTimer.bind(runtime):undefined;
+ const writeStyle=typeof runtime.setSubtitleStyle==='function'?runtime.setSubtitleStyle.bind(runtime):undefined;
+ const writeTiming=typeof runtime.setSubtitleOffset==='function'?runtime.setSubtitleOffset.bind(runtime):undefined;
  const timingPlan=matched?plan:null;
  // The plan's own signed correction is exact to the millisecond; a value the replan wire
  // cannot carry is no control at all, never a silent zero or a rounded clock.
  const timingBase=timingPlan&&timingPlan.mode==='track'&&timingPlan.selected?.enabled?(()=>{const offsetUs=Number(timingPlan.offsetUs);return Number.isSafeInteger(offsetUs)?offsetUs/1000:undefined;})():undefined;
- const subtitleTiming=timingBase!==undefined&&Number.isSafeInteger(timingBase)&&Math.abs(timingBase)<=600000?Object.freeze({offsetSeconds:timingBase/1000,
+ const subtitleTiming=timingBase!==undefined&&writeTiming&&Number.isSafeInteger(timingBase)&&Math.abs(timingBase)<=600000?Object.freeze({offsetSeconds:timingBase/1000,
   shift:async(deltaMs:number)=>{check();if(!Number.isSafeInteger(deltaMs)||deltaMs===0)throw new Error('playback_subtitle_unavailable');
    const next=timingBase+deltaMs;
    if(!Number.isSafeInteger(next)||Math.abs(next)>600000)throw new Error('playback_subtitle_unavailable');
-   await runtime.setSubtitleOffset(fence,next);}}):undefined;
+   await writeTiming(fence,next);}}):undefined;
+ const readProvider=typeof runtime.subtitleProvider==='function'?runtime.subtitleProvider.bind(runtime):undefined;
  // desktop-player f3: a search that cannot run stays visible with the server's own reason.
- const style=matched?runtime.subtitleStyle(fence):undefined;
- const sleep=matched?runtime.sleepTimer(fence):undefined;
- const sleepTimer=matched?Object.freeze({minutes:sleep?.minutes??0,set:(minutes:number)=>{check();runtime.setSleepTimer(fence,minutes);}}):undefined;
- const subtitleStyle=style?Object.freeze({...style,set:(patch:Readonly<{size?:SubtitlePreferences['size'];background?:SubtitlePreferences['background']}>)=>{check();runtime.setSubtitleStyle(fence,patch);}}):undefined;
- const provider=matched?runtime.subtitleProvider(fence):undefined;
+ const style=matched?readStyle?.(fence):undefined;
+ const sleep=matched?readSleep?.(fence):undefined;
+ const sleepTimer=matched&&writeSleep?Object.freeze({minutes:sleep?.minutes??0,set:(minutes:number)=>{check();writeSleep(fence,minutes);}}):undefined;
+ const subtitleStyle=style&&writeStyle?Object.freeze({...style,set:(patch:Readonly<{size?:SubtitlePreferences['size'];background?:SubtitlePreferences['background']}>)=>{check();writeStyle(fence,patch);}}):undefined;
+ const provider=matched?readProvider?.(fence):undefined;
  const subtitleSearch=provider&&!provider.enabled?Object.freeze({reason:subtitleReason(provider.reason,t)}):undefined;
  let speeds:readonly number[]=[];try{speeds=runtime.speedChoices(fence);}catch{/* source changed */}
  const speed=Object.freeze(speeds.map(rate=>Object.freeze({id:String(rate),label:rate===1?t('player.opt.normalSpeed'):t('next.dock.rate',{rate}),selected:snapshot.presentation?.rate===rate,enabled:true})));
