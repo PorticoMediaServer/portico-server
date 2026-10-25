@@ -65,7 +65,7 @@ export function ServerIntros({source, modeRows, onPreview}: {source: SegmentIntr
           <span data-kind="intro">{t('web.segments.kind', {kind: 'intro'})}</span>
           <span data-kind="recap">{t('web.segments.kind', {kind: 'recap'})}</span>
           <span data-kind="credits">{t('web.segments.kind', {kind: 'credits'})}</span>
-          <span data-kind="waiting">{t('web.segments.titleSuggested', {count: 1}).replace('1', '…')}</span>
+          <span data-kind="waiting">{t('web.segments.waitingReview')}</span>
         </div>
       </header>
       {!status?.libraries.length ? <p className={styles.empty}>{t('web.segments.noLibraries')}</p> : <div className={styles.columns}>
@@ -89,7 +89,7 @@ export function ServerIntros({source, modeRows, onPreview}: {source: SegmentIntr
         </div>
 
         <div className={styles.pane}>
-          {!title ? <p className={styles.empty}>{t('web.segments.chooseTitle')}</p> : <Review title={title} season={snapshot.season} entries={entries} snapshot={snapshot} edit={edit}
+          {!title ? snapshot.titleLoading ? <p className={styles.loading} role="status">{t('web.segments.loading')}</p> : snapshot.titleError ? <ReviewNotice tone="bad" onRetry={() => {if (snapshot.titleId) void source.openTitle(snapshot.titleId);}}>{t('web.segments.error')}</ReviewNotice> : <p className={styles.empty}>{t('web.segments.chooseTitle')}</p> : <Review title={title} season={snapshot.season} entries={entries} snapshot={snapshot} edit={edit}
             onSeason={value => source.selectSeason(value)} onApproveAll={() => {void source.approve();}} onDetect={() => {void source.detectAgain();}}
             onRetryTitle={() => {if (snapshot.titleId) void source.openTitle(snapshot.titleId);}}
             onEdit={(entry, marker) => setEdit({entryId: entry.itemId, marker, start: seconds(marker.startUS), end: seconds(marker.endUS)})}
@@ -153,7 +153,7 @@ function Episode({entry, title, edit, busy, onEdit, onChange, onSave, onCancel, 
     <header className={styles.episodeHead}>
       {title.kind === 'show' && <span className={styles.number}>{entry.number}</span>}
       <b>{entry.title || t('web.segments.untitled')}</b>
-      {duration > 0 && <span className={styles.duration}>{Math.round(duration / 60)} min</span>}
+      {duration > 0 && <span className={styles.duration}>{t('web.segments.durationMinutes', {count: Math.round(duration / 60)})}</span>}
       <span className={styles.state} data-todo={todo > 0 || undefined}>{todo > 0 ? t('web.segments.titleSuggested', {count: todo}) : t('web.segments.entryState', {state: 'complete'})}</span>
     </header>
     {duration > 0 && (opening.length || ending.length)
