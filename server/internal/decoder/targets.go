@@ -140,7 +140,7 @@ func (t ConversionTarget) Normalized() (ConversionTarget, error) {
 		return t, ErrInvalidConfiguration
 	}
 	switch t.AudioCodec {
-	case "aac", "ac3", "eac3", "opus", "flac", "dts", "dts_hd", "truehd", "mp3", "mp2", "alac":
+	case "aac", "ac3", "eac3", "opus", "flac", "dts", "truehd", "mp3", "mp2", "alac":
 	default:
 		return t, ErrInvalidConfiguration
 	}

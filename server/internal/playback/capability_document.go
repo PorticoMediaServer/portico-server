@@ -567,10 +567,17 @@ func deviceAudioName(codec string) string {
 		return "eac3"
 	case "ac-3":
 		return "ac3"
-	case "dts-hd", "dtshd":
-		return "dts_hd"
 	case "mlp":
 		return "truehd"
+	}
+	for _, dts := range []string{"dts-hd", "dtshd", "dts_hd"} {
+		if codec == dts || strings.HasPrefix(codec, dts+" ") || strings.HasPrefix(codec, dts+"_") {
+			// The scanner records every DTS stream as "dts" and keeps the
+			// variant (core, HRA, MA, X, Express) beside it. A device that
+			// declares its DTS family must match that codec, or the
+			// declaration is dead and its DTS audio is converted for no reason.
+			return "dts"
+		}
 	}
 	return audioFamily(codec)
 }

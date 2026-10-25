@@ -75,7 +75,7 @@ func (o *ObservedPlayback) Valid() bool {
 		if a.Handling != "" && !slices.Contains([]string{"passthrough", "decoded", "pcm", "mixed"}, a.Handling) {
 			return false
 		}
-		if a.Codec != "" && !slices.Contains([]string{"aac", "ac3", "eac3", "truehd", "dts", "dts_hd", "flac", "alac", "pcm", "opus", "mp3", "mp2", "vorbis", "ac4"}, a.Codec) {
+		if a.Codec != "" && !slices.Contains([]string{"aac", "ac3", "eac3", "truehd", "dts", "flac", "alac", "pcm", "opus", "mp3", "mp2", "vorbis", "ac4"}, a.Codec) {
 			return false
 		}
 		if a.ObjectAudio != "" && a.ObjectAudio != "atmos" && a.ObjectAudio != "dtsx" {

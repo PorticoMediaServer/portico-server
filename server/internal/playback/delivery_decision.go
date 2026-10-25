@@ -413,7 +413,7 @@ var (
 	tsCopyVideo   = []string{"h264", "hevc", "mpeg2video"}
 	tsCopyAudio   = []string{"aac", "mp3", "mp2", "ac3", "eac3"}
 	fmp4CopyVideo = []string{"h264", "hevc", "av1", "vp9"}
-	fmp4CopyAudio = []string{"aac", "mp3", "ac3", "eac3", "flac", "opus", "alac", "truehd", "dts", "dts_hd"}
+	fmp4CopyAudio = []string{"aac", "mp3", "ac3", "eac3", "flac", "opus", "alac", "truehd", "dts"}
 )
 
 // hlsTransports lists the device's HLS transports this server can produce, in

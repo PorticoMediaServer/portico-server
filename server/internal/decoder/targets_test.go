@@ -65,7 +65,7 @@ func TestConversionTargetsDescribeEveryOutput(t *testing.T) {
 			t.Fatal(g, err)
 		}
 	}
-	for _, codec := range []string{"ac3", "eac3", "dts", "dts_hd", "truehd"} {
+	for _, codec := range []string{"ac3", "eac3", "dts", "truehd"} {
 		target := ConversionTarget{VideoCodec: "hevc", AudioCodec: codec, AudioChannels: 8}
 		g, err := BuildConversion(ConversionRequest{Target: &target, CopyVideo: true, CopyAudio: true})
 		if err != nil || argValue(g.Audio, "-c:a") != "copy" {

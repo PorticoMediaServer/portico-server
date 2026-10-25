@@ -138,10 +138,9 @@ func audioCodecString(codec string) string {
 	case "flac":
 		return "fLaC"
 	case "dts":
+		// Every DTS stream is scanned as "dts", whatever its variant; the
+		// codec string names the core that MPEG-TS carries.
 		return "dtsc"
-	case "dts_hd":
-		// The source facts do not distinguish DTS-HD High Resolution from MA.
-		return ""
 	case "truehd":
 		return "mlpa"
 	}
