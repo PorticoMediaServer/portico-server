@@ -25,6 +25,41 @@ type FilesystemRoot struct {
 	Description   string `json:"description"`
 	NetworkTarget string `json:"networkTarget,omitempty"`
 	DriveType     string `json:"driveType,omitempty"`
+	// Classification is the server's own read of the file system behind the root:
+	// a network drive or mounted network share is "network", every other root is
+	// "local". Clients present it and never infer it from a path.
+	Classification string `json:"classification,omitempty"`
+}
+
+// networkFilesystems and localFilesystems are the file system types the picker
+// can name from the drive or mount table it already reads. Any other type,
+// including a bare "fuse" or an empty name, stays unknown: the server does not
+// assert local storage without evidence.
+var networkFilesystems = map[string]bool{
+	"nfs": true, "nfs4": true, "cifs": true, "smb": true, "smb3": true, "smbfs": true,
+	"afpfs": true, "sshfs": true, "fuse.sshfs": true, "davfs": true, "davfs2": true,
+	"webdav": true, "fuse.rclone": true, "rclone": true, "9p": true,
+	"ceph": true, "glusterfs": true, "lustre": true, "gpfs": true,
+}
+var localFilesystems = map[string]bool{
+	"ext2": true, "ext3": true, "ext4": true, "xfs": true, "btrfs": true, "zfs": true,
+	"f2fs": true, "reiserfs": true, "jfs": true, "nilfs2": true, "bcachefs": true, "erofs": true,
+	"vfat": true, "msdos": true, "fat": true, "fat32": true, "exfat": true,
+	"ntfs": true, "ntfs3": true, "hfs": true, "hfsplus": true, "apfs": true, "ufs": true,
+	"iso9660": true, "cd9660": true, "udf": true,
+}
+
+// classificationOf turns a known file system type into the picker's
+// classification. An unknown or generic type returns no value.
+func classificationOf(filesystem string) string {
+	name := strings.ToLower(filesystem)
+	if networkFilesystems[name] {
+		return "network"
+	}
+	if localFilesystems[name] {
+		return "local"
+	}
+	return ""
 }
 
 // FilesystemEntry is one directory (or, when files are requested, one file).

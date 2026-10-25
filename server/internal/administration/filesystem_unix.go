@@ -91,6 +91,23 @@ func mountPoints() []struct{ Path, Type string } {
 	return out
 }
 
+// mountClassification follows the mount the path actually lives on.
+func mountClassification(path string) string {
+	longest, filesystem := "", ""
+	for _, mount := range mountPoints() {
+		if mount.Path == "" || !strings.HasPrefix(path, mount.Path) {
+			continue
+		}
+		if mount.Path != "/" && len(path) > len(mount.Path) && path[len(mount.Path)] != '/' {
+			continue
+		}
+		if len(mount.Path) > len(longest) {
+			longest, filesystem = mount.Path, mount.Type
+		}
+	}
+	return classificationOf(filesystem)
+}
+
 // FilesystemRoots publishes "/" plus every real mount point the kernel reports,
 // so a NAS mounted at /mnt/media is one click away.
 func FilesystemRoots() []FilesystemRoot {
@@ -98,7 +115,11 @@ func FilesystemRoots() []FilesystemRoot {
 	seen := map[string]bool{"/": true}
 	paths := []string{}
 	kinds := map[string]string{}
+	rootType := ""
 	for _, mount := range mountPoints() {
+		if mount.Path == "/" {
+			rootType = mount.Type
+		}
 		if pseudoFilesystems[mount.Type] || seen[mount.Path] || mount.Path == "" || !strings.HasPrefix(mount.Path, "/") {
 			continue
 		}
@@ -110,11 +131,12 @@ func FilesystemRoots() []FilesystemRoot {
 		kinds[mount.Path] = mount.Type
 	}
 	sort.Strings(paths)
+	out[0].Classification = classificationOf(rootType)
 	for _, path := range paths {
-		out = append(out, FilesystemRoot{Path: path, Name: path, Kind: "mount", Description: "Mounted " + kinds[path]})
+		out = append(out, FilesystemRoot{Path: path, Name: path, Kind: "mount", Description: "Mounted " + kinds[path], Classification: classificationOf(kinds[path])})
 	}
 	if home, err := os.UserHomeDir(); err == nil && home != "" && !seen[home] {
-		out = append(out, FilesystemRoot{Path: home, Name: "Home", Kind: "home", Description: "This account's home folder"})
+		out = append(out, FilesystemRoot{Path: home, Name: "Home", Kind: "home", Description: "This account's home folder", Classification: mountClassification(home)})
 	}
 	return out
 }
