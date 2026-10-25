@@ -45,3 +45,26 @@ for (const [name, readings, ok] of [
     if (ok) assert.equal(verdict.advanced, 0.5);
   });
 }
+
+for (const value of [NaN, Infinity, -Infinity]) {
+  test(`checkpoint playback refuses a present nonfinite clock: ${String(value)}`, () => {
+    const verdict = playbackEvidence([{...frame, currentTime: value}, {...frame, currentTime: 2}]);
+    assert.equal(verdict.ok, false);
+    assert.equal(verdict.reason, 'currentTime contains a nonfinite measurement');
+  });
+}
+
+test('checkpoint playback refuses advancement overflow between finite clocks', () => {
+  const verdict = playbackEvidence([
+    {...frame, currentTime: -Number.MAX_VALUE},
+    {...frame, currentTime: Number.MAX_VALUE},
+  ]);
+  assert.equal(verdict.ok, false);
+  assert.equal(verdict.reason, 'currentTime advancement is nonfinite');
+});
+
+test('an absent video sample contributes no measured clock', () => {
+  const verdict = playbackEvidence([{present: false, currentTime: NaN}, ...samples({})]);
+  assert.equal(verdict.ok, true);
+  assert.equal(verdict.advanced, 1);
+});
