@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {HttpLocalApi} from '@portico/client-core';
 import {routePath} from '../../../packages/contracts/src/index.ts';
-import {createReadingCollection, createReadingContinueCollection} from '../../src/screens/read/library-collection.ts';
+import {createReadingCollection, createReadingContinueCollection, createReadingSeriesCollection} from '../../src/screens/read/library-collection.ts';
 import {readItemEligibility} from '../../src/screens/read/navigation.ts';
 
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
@@ -115,4 +115,46 @@ test('a retired Continue capture aborts and discards a late response without pub
   f.api.setAccessToken('replacement-unit-token'); assert.equal(f.client.signal.aborted, true); f.rows.dispose(); f.release();
   await settle(() => f.cancelled === 1);
   assert.equal(f.rows.collection.resident().items, 0); assert.equal(f.rows.collection.itemAt(0), undefined); assert.equal(f.calls.length, 1);
+});
+
+function seriesFixture(wrongSeries = false) {
+  const seriesId = 's'.repeat(43), signedCursor = `${'a'.repeat(171)}.${'b'.repeat(43)}`;
+  const calls: URL[] = [];
+  const api = new HttpLocalApi('http://127.0.0.1:39117', 'unit-token', async input => {
+    const url = new URL(String(input)); calls.push(url);
+    const start = url.searchParams.has('cursor') ? 60 : 0;
+    const items = Array.from({length: start === 0 ? 60 : 2}, (_, index) => ({
+      id: `unit-${100 - start - index}`, sourceId: `source-${start + index}`, libraryId: 'unit-library',
+      title: `Title ${100 - start - index}`, format: 'epub', inventoryAvailable: true,
+      series: {id: wrongSeries ? 'x'.repeat(43) : seriesId, name: 'Accepted series', source: 'owner'},
+    }));
+    return new Response(JSON.stringify({items, ...(start === 0 ? {nextCursor: signedCursor} : {})}),
+      {headers: {'Content-Type': 'application/json'}});
+  });
+  const client = api.reading({viewer: {accountId: 'unit-account', profileId: 'unit-profile', serverId: 'unit-server', authority: 'local', role: 'member'}, isCurrent: () => true});
+  const rows = createReadingSeriesCollection(client, 'unit-library', seriesId);
+  return {rows, calls, signedCursor, seriesId, dispose() {rows.dispose(); client.dispose();}};
+}
+
+test('series collection preserves producer order and forwards the signed cursor without generic browse', async t => {
+  const f = seriesFixture(); t.after(() => f.dispose()); assert.equal(f.calls.length, 0);
+  f.rows.collection.ensureRange(0, 12);
+  await settle(() => f.rows.collection.itemAt(60) !== undefined && f.rows.collection.getSnapshot().totalIsLowerBound === false);
+  assert.equal(f.rows.collection.itemAt(0)?.id, 'unit-100');
+  assert.equal(f.rows.collection.itemAt(1)?.id, 'unit-99');
+  assert.equal(f.rows.collection.itemAt(60)?.id, 'unit-40');
+  assert.equal(f.rows.collection.getSnapshot().total, 62);
+  assert.equal(f.calls.length, 2);
+  assert.ok(f.calls.every(url => url.pathname === routePath('get_reading_series_items', {libraryId: 'unit-library', seriesId: f.seriesId})));
+  assert.equal(f.calls[0].searchParams.has('cursor'), false);
+  assert.equal(f.calls[1].searchParams.get('cursor'), f.signedCursor);
+  assert.equal(Object.hasOwn(f.rows.collection.itemAt(0)!, 'progress'), false);
+});
+
+test('a mismatched series member never enters the resident collection', async t => {
+  const f = seriesFixture(true); t.after(() => f.dispose());
+  f.rows.collection.ensureRange(0, 1);
+  await settle(() => f.rows.collection.getSnapshot().status === 'error');
+  assert.equal(f.rows.collection.itemAt(0), undefined);
+  assert.equal(f.rows.collection.resident().items, 0);
 });

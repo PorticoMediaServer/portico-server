@@ -12,6 +12,14 @@ export function createReadingCollection(client: ReadingClient, libraryId: string
     (cursor, limit, signal) => client.list({libraryId, cursor, limit}, signal));
 }
 
+/** Server-issued series identity and signed cursors define membership and order.
+ * Reuse the bounded collection; never sort a generic browse result or derive an id
+ * from a label. No progress, numbering or page-count facts are added here. */
+export function createReadingSeriesCollection(client: ReadingClient, libraryId: string, seriesId: string) {
+  return cursorCollection<ReadingLibraryItem>(libraryId, item => item.id, item => item.libraryId,
+    (cursor, limit, signal) => client.series(libraryId, seriesId, {cursor, limit}, signal));
+}
+
 /** The canonical recent index already selects the actual progressed version.
  * Keep its observed/CAS/stale/location facts intact; never Prepare every row. */
 export function createReadingContinueCollection(client: ReadingClient, libraryId?: string) {
