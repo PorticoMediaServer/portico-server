@@ -247,7 +247,46 @@ func rebuildEffectiveCreditsTx(ctx context.Context, tx *sql.Tx, entity int64) er
 			return e
 		}
 	}
-	return touchOwnTx(ctx, tx, entity)
+	if err = touchOwnTx(ctx, tx, entity); err != nil {
+		return err
+	}
+	if decided {
+		return publishOwnerCreditDerivationsTx(ctx, tx, entity)
+	}
+	return nil
+}
+
+// Owner decisions and refreshes of an owner-decided family publish the current
+// search/person-related/rec facet membership in the same transaction, not a
+// window of stale credit membership while the ordinary dirty queue catches up.
+func publishOwnerCreditDerivationsTx(ctx context.Context, tx *sql.Tx, entity int64) error {
+	ids := []int64{entity}
+	rows, err := tx.QueryContext(ctx, `SELECT show_id FROM catalog_episodes WHERE entity_id=? UNION SELECT album_id FROM catalog_songs WHERE entity_id=? UNION SELECT book_id FROM catalog_book_files WHERE entity_id=?`, entity, entity, entity)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var parent int64
+		if err = rows.Scan(&parent); err != nil {
+			rows.Close()
+			return err
+		}
+		if parent > 0 && parent != entity {
+			ids = append(ids, parent)
+		}
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	if err = deriveSearch(ctx, tx, mustJSON([]int64{entity})); err != nil {
+		return err
+	}
+	if err = deriveRelated(ctx, tx, mustJSON([]int64{entity})); err != nil {
+		return err
+	}
+	return deriveRecFacets(ctx, tx, ids)
 }
 
 // SaveOwnerCreditsTx writes only normalized decisions and their one effective
