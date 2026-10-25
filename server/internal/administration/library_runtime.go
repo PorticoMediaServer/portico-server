@@ -63,7 +63,11 @@ func effectiveLibraryPolicy(ctx context.Context, tx *sql.Tx, id, kind string, v 
 		v.Providers = append(v.Providers, ProviderSelection{MediaKind: libraryMediaKind(kind), Provider: providerID, Language: provider.Language, Region: provider.Region})
 	}
 	if len(v.Providers) == 0 {
-		v.Providers = append(v.Providers, ProviderSelection{MediaKind: libraryMediaKind(kind), Provider: "local"})
+		// Nothing online is selected, but the language and region are still the
+		// library's own stored choices. Publishing them keeps the page showing what
+		// the owner picked, and stops a later return to an online provider from
+		// sending blanks that would clear them.
+		v.Providers = append(v.Providers, ProviderSelection{MediaKind: libraryMediaKind(kind), Provider: "local", Language: provider.Language, Region: provider.Region})
 	}
 	// Every contributing revision only increases, so all administration and
 	// domain writers invalidate this single optimistic revision without hashes.
