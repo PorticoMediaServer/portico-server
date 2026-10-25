@@ -16,15 +16,18 @@ export function AssistantsPanel({baseUrl, isCurrent, openCreateKey, reportError}
   openCreateKey: () => void | Promise<void>;
   reportError: (error: unknown) => void;
 }>) {
-  const address = assistantAddress(baseUrl), [copied, setCopied] = useState(false), generation = useRef(0);
-  useEffect(() => { generation.current++; setCopied(false); return () => { generation.current++; }; }, [baseUrl]);
+  const address = assistantAddress(baseUrl), [copied, setCopied] = useState(false), generation = useRef({active: false});
+  useEffect(() => {
+    const epoch = {active: true}; generation.current = epoch; setCopied(false);
+    return () => {epoch.active = false;};
+  }, [baseUrl]);
   const copy = async () => {
     if (!isCurrent()) return;
     const held = generation.current;
     try {
       await navigator.clipboard.writeText(address);
-      if (isCurrent() && held === generation.current) setCopied(true);
-    } catch (error) { if (isCurrent() && held === generation.current) reportError(error); }
+      if (isCurrent() && held.active && held === generation.current) setCopied(true);
+    } catch (error) { if (isCurrent() && held.active && held === generation.current) reportError(error); }
   };
   const create = () => {
     if (!isCurrent()) return;

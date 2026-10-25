@@ -209,7 +209,7 @@ export class SettingsController {
     const formIds = new Set([...settingsRowIndex.values()].filter(location => location.section === section && this.eligible(location.row))
       .map(location => settingsBinding(location.row.id)?.form)
       .map(id => id === 'connectivityStatus' ? 'connectivity' : id)
-      .filter((id): id is SettingsBindingForm => !!id && !!this.forms[id]));
+      .filter((id): id is NonNullable<typeof id> => id !== undefined && !!this.forms[id]));
     const reads = [...formIds].map(id => ({id: `form/${id}`, load: async () => {const form = this.forms[id]!;await form.load();if (form.error()) throw form.error();}}));
     if (section.scope === 'server' && this.forms.runtime) reads.push({id: 'configuration', load: this.readConfiguration});
     if (section.scope === 'server' && section.id === 'storage' && this.forms.runtime) reads.push({id: 'backups', load: this.backups.load});
