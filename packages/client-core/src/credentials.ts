@@ -380,12 +380,13 @@ export class CredentialSessionService<Authority = string> {
       this.record.revocations.push(authority);
   }
   private async compensate(session:HostedSession){
+    const familyId=session.familyId,authority=this.api.authorityFromSession(session);
     await this.coordinator.runExclusive(async()=>{
       await this.reload(false);
       // A replay can return the same family another current flow already
       // accepted. Cleanup of an abandoned response must not revoke that family.
-      if(this.record.active?.session.familyId===session.familyId)return;
-      this.addRevocation(this.api.authorityFromSession(session));
+      if(this.record.active?.session.familyId===familyId)return;
+      this.addRevocation(authority);
       try{await this.persist();await this.retryInside()}catch{this.publish(this.record.active?"error":"signedOut","Session revocation is waiting for secure storage.")}
     });
   }

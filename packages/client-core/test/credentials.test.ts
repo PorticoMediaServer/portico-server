@@ -50,6 +50,22 @@ test('intentional form retirement from successful session publication keeps the 
  await service.authenticateIfSignedOut(async()=>session(),{},()=>current);
  assert.equal(storage.value()?.active?.session.familyId,'family');assert.deepEqual(revoked,[]);
 });
+test('queued compensation retains the exact issued authority before waiting behind a new adoption',async()=>{
+ const storage=store(),entered=held<void>(),answer=held<HostedSession>(),writing=held<void>(),release=held<void>();
+ const revoked:string[]=[];let gate=true;
+ const service=new CredentialSessionService(api(async()=>session(),async token=>{revoked.push(token)}),{
+  load:storage.load,save:async value=>{if(gate&&value.active?.session.familyId==='accepted'){gate=false;writing.resolve();await release.promise}await storage.save(value)},
+ },uuid);
+ const old=service.authenticateIfSignedOut(()=>{entered.resolve();return answer.promise});await entered.promise;
+ const accepted=service.adopt({...session('accepted'),familyId:'accepted'});
+ const late={...session('abandoned'),familyId:'abandoned'};answer.resolve(late);
+ await assert.rejects(old);await writing.promise;
+ // Response objects are not authority containers after their handoff. Cleanup
+ // already captured the original values before its coordinator turn queued.
+ late.familyId='accepted';late.refreshToken='refresh-accepted';
+ release.resolve();await accepted;await service.synchronize();
+ assert.deepEqual(revoked,['refresh-abandoned']);assert.equal(storage.value()?.active?.session.familyId,'accepted');
+});
 test('refresh is single flight, stores receipt before request, hides refresh secret',async()=>{const storage=store();let calls=0;const service=new CredentialSessionService(api(async()=>{calls++;assert.ok(storage.value()?.active?.pendingRequestId);await delay();return session('two')}),storage,uuid);await service.adopt(session(),{profileId:'p'});assert.equal('refreshToken' in service.getSnapshot().session!,false);const [a,b]=await Promise.all([service.accessSession(true),service.accessSession(true)]);assert.equal(calls,1);assert.equal(a.accessToken,b.accessToken);assert.equal(storage.value()?.active?.pendingRequestId,undefined);assert.equal(service.getSnapshot().context?.profileId,'p')});
 test('ambiguous rotation survives restart with exact receipt',async()=>{const storage=store();const ids:string[]=[];const first=new CredentialSessionService(api(async(_token:string,id:string)=>{ids.push(id);throw new Error('network')}),storage,uuid);await first.adopt(session());await assert.rejects(first.accessSession(true));const second=new CredentialSessionService(api(async(_token:string,id:string)=>{ids.push(id);return session('two')}),storage,uuid);await second.accessSession();assert.equal(ids[0],ids[1]);assert.equal(ids.length,2)});
 test('logout fences a late refresh and revokes without restoring session',async()=>{const storage=store();let resolve:any;const revoked:string[]=[];const service=new CredentialSessionService(api(()=>new Promise(r=>resolve=r),async token=>{revoked.push(token)}),storage,uuid);await service.adopt(session());const pending=service.accessSession(true);await delay();const logout=service.logout();assert.equal(service.getSnapshot().phase,'signedOut');resolve(session('two'));await assert.rejects(pending);await logout;await delay();assert.equal(service.getSnapshot().phase,'signedOut');assert.equal(storage.value()?.active,undefined);assert.ok(revoked.includes('refresh-two'))});
