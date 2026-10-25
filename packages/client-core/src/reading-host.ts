@@ -7,6 +7,8 @@ import {decodePostReadingSessionsResponse, decodeGetReadingSessionsSessionIdProg
 export type ReadingHostSession = Pick<ReadingSession, 'manifest' | 'signal' | 'headPDF' | 'readRange' | 'readAsset' | 'page' | 'progress' | 'saveProgress'> & Partial<Pick<ReadingSession, 'openSequential'>>;
 export type ReadingHostTransport = Readonly<{send: (message: string) => void; subscribe: (listener: (message: string) => void) => () => void}>;
 export type ReadingHostContentsTarget = Readonly<{sourceId: string; sourceRevision: string; index: number}>;
+/** Window-local vertical hinge band from the real platform posture, when reported. */
+export type ReadingHostCrease = Readonly<{left: number; right: number}>;
 type RecordValue = Record<string, unknown>;
 const record = (v: unknown): v is RecordValue => typeof v === 'object' && v !== null && !Array.isArray(v);
 const integer = (v: unknown, min: number, max: number): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= min && v <= max;
@@ -46,6 +48,13 @@ function errorInfo(error: unknown) {
   return error instanceof ReadingError ? {code: error.code, status: error.status} : {code: 'reading_unavailable'};
 }
 
+/** Optional layout fact; a missing value is the ordinary no-hinge window. */
+function creaseOf(value: unknown): ReadingHostCrease | undefined {
+  if (value === undefined) return;
+  if (!record(value) || typeof value.left !== 'number' || typeof value.right !== 'number' || !Number.isFinite(value.left) || !Number.isFinite(value.right)
+    || value.left <= 0 || value.right < value.left || value.right - value.left > 120) fail('invalid_bridge');
+  return Object.freeze({left: value.left, right: value.right});
+}
 /** A contents index is meaningful only for this exact opened publication. */
 function contentsTarget(value: unknown, manifest: ReadingManifest): ReadingHostContentsTarget | undefined {
   if (value === undefined) return;
@@ -57,14 +66,16 @@ function contentsTarget(value: unknown, manifest: ReadingManifest): ReadingHostC
 /** RN retains the actual captured facade. Its caller still owns session.close().
  * Binary messages are pulled in <=48KiB chunks; just one original member/page is
  * retained, with an idle deadline, never a book/archive cache. */
-export function createReadingHost({session, channel, preferences, initialProgress, initialContentsTarget, current, send, onBack, onSettings, onUnavailable}: Readonly<{
+export function createReadingHost({session, channel, preferences, initialProgress, initialContentsTarget, crease, current, send, onBack, onSettings, onUnavailable}: Readonly<{
   session: ReadingHostSession; channel: string; preferences: () => PreferenceSnapshot; initialProgress: ReadingProgress;
-  initialContentsTarget?: ReadingHostContentsTarget; onUnavailable?: () => void;
+  initialContentsTarget?: ReadingHostContentsTarget; crease?: ReadingHostCrease; onUnavailable?: () => void;
   current: () => boolean; send: (message: string) => void; onBack: () => void; onSettings: () => void;
 }>) {
   if (!/^[A-Za-z0-9_-]{16,128}$/.test(channel)) fail();
   const manifest = session.manifest, life = new AbortController(), requests = new Map<number, AbortController>();
   const capturedContentsTarget = contentsTarget(initialContentsTarget, manifest);
+  let capturedCrease: ReadingHostCrease | undefined;
+  try {capturedCrease = creaseOf(crease);} catch {capturedCrease = undefined;}
   let started = false, active = true, last = 0, binaryRequest = false, transfer: {id: number; bytes: Uint8Array; offset: number; timer: ReturnType<typeof setTimeout>} | undefined;
   type Sequential = {id: number; life: AbortController; reader?: Pick<ReadableStreamDefaultReader<Uint8Array>, 'read' | 'cancel' | 'releaseLock'>; total: number; pulling: boolean; timer?: ReturnType<typeof setTimeout>};
   let sequential: Sequential | undefined;
@@ -105,7 +116,7 @@ export function createReadingHost({session, channel, preferences, initialProgres
       if (started || !valid()) return;
       if (capturedContentsTarget && data.contentsTarget !== true) {dispose(); onUnavailable?.(); return;}
       started = true; post({kind: 'initial', manifest, preferences: preferences(), progress: initialProgress, active,
-        ...(capturedContentsTarget ? {contentsTarget: capturedContentsTarget} : {})}); return;
+        ...(capturedContentsTarget ? {contentsTarget: capturedContentsTarget} : {}), ...(capturedCrease ? {crease: capturedCrease} : {})}); return;
     }
     if (!started || data.channel !== channel || !valid()) return;
     if (data.kind === 'sequential-cancel' && sequential && data.stream === sequential.id) {stopSequential(sequential); release(); return;}
@@ -186,11 +197,18 @@ export function createReadingHost({session, channel, preferences, initialProgres
     })().catch(error => {if (transfer?.id === id) release(); post({kind: 'reply', id, error: errorInfo(error)});})
       .finally(() => {clearTimeout(deadline); if (ownsBinary) binaryRequest = false; requests.delete(id);});
   };
-  return Object.freeze({receive, dispose, confirm: () => {if (started) post({kind: 'preferences', preferences: preferences()});}, setActive: (value: boolean) => {active = value; if (started) post({kind: 'active', active});}});
+  return Object.freeze({receive, dispose, confirm: () => {if (started) post({kind: 'preferences', preferences: preferences()});},
+    setActive: (value: boolean) => {active = value; if (started) post({kind: 'active', active});},
+    setCrease: (value: ReadingHostCrease | undefined) => {
+      try {capturedCrease = creaseOf(value);} catch {capturedCrease = undefined;}
+      if (started) post({kind: 'layout', ...(capturedCrease ? {crease: capturedCrease} : {})});
+    }});
 }
 
 export type ReadingGuest = Readonly<{
   session: ReadingHostSession; initialProgress: ReadingProgress; contentsTarget?: ReadingHostContentsTarget;
+  /** The actual window fold, updated by the host when the posture changes. */
+  readonly crease?: ReadingHostCrease; onCrease: (listener: () => void) => () => void;
   preferences: Readonly<{getSnapshot: () => PreferenceSnapshot; subscribe: (listener: () => void) => () => void}>;
   onActive: (listener: (active: boolean) => void) => () => void;
   back: () => Promise<void>; openSettings: () => Promise<void>; dispose: () => void;
@@ -200,7 +218,8 @@ export function connectReadingHost(transport: ReadingHostTransport): Readonly<{r
   const life = new AbortController(), waiting = new Map<number, {resolve: (value: unknown) => void; reject: (error: unknown) => void}>();
   const listeners = new Set<() => void>(), activeListeners = new Set<(active: boolean) => void>();
   let cancelSequential: ((reason: unknown) => void) | undefined;
-  let channel: string | undefined, sequence = 0, snapshot: PreferenceSnapshot, initialized = false, active = true, binaryTail = Promise.resolve();
+  let channel: string | undefined, sequence = 0, snapshot: PreferenceSnapshot, initialized = false, active = true, binaryTail = Promise.resolve(), crease: ReadingHostCrease | undefined;
+  const creaseListeners = new Set<() => void>();
   let resolveReady!: (guest: ReadingGuest) => void, rejectReady!: (error: unknown) => void;
   const ready = new Promise<ReadingGuest>((resolve, reject) => {resolveReady = resolve; rejectReady = reject;});
   void ready.catch(() => {});
@@ -209,7 +228,7 @@ export function connectReadingHost(transport: ReadingHostTransport): Readonly<{r
     cancelSequential?.(reason);
     life.abort(reason); clearTimeout(startDeadline); off(); rejectReady(reason);
     for (const pending of waiting.values()) pending.reject(reason);
-    waiting.clear(); listeners.clear(); activeListeners.clear();
+    waiting.clear(); listeners.clear(); activeListeners.clear(); creaseListeners.clear();
   };
   function call(method: string, args: RecordValue = {}, signal?: AbortSignal): Promise<unknown> {
     if (!channel || life.signal.aborted || signal?.aborted) return Promise.reject(new ReadingError('cancelled'));
@@ -293,6 +312,11 @@ export function connectReadingHost(transport: ReadingHostTransport): Readonly<{r
         const initialContentsTarget = contentsTarget(data.contentsTarget, manifest);
         snapshot = parsePreferenceSnapshot(data.preferences);
         const initialProgress = frozen(decodeGetReadingSessionsSessionIdProgressResponse(data.progress));
+        let initialCrease: ReadingHostCrease | undefined;
+        // Optional layout geometry: an invalid band means the ordinary one-page
+        // window, never a broken identity/channel packet.
+        try {initialCrease = creaseOf(data.crease);} catch {initialCrease = undefined;}
+        crease = initialCrease;
         // Older trusted app hosts omit this optional v1 state. New hosts retain
         // activity through Settings even before the guest has finished loading.
         if (data.active !== undefined && typeof data.active !== 'boolean') fail();
@@ -311,7 +335,8 @@ export function connectReadingHost(transport: ReadingHostTransport): Readonly<{r
           progress: async signal => decodeGetReadingSessionsSessionIdProgressResponse(await call('progress', {}, signal)),
           saveProgress: async (request, signal): Promise<ReadingSavedProgress> => decodePutReadingSessionsSessionIdProgressResponse(await call('save', request, signal)),
         });
-        resolveReady(Object.freeze({session, initialProgress, ...(initialContentsTarget ? {contentsTarget: initialContentsTarget} : {}),
+        resolveReady(Object.freeze({session, initialProgress, ...(initialContentsTarget ? {contentsTarget: initialContentsTarget} : {}), get crease() {return crease;},
+          onCrease: (listener: () => void) => {if (life.signal.aborted) return () => {}; creaseListeners.add(listener); return () => {creaseListeners.delete(listener);};},
           preferences: Object.freeze({getSnapshot: () => snapshot, subscribe: (listener: () => void) => {listeners.add(listener); return () => {listeners.delete(listener);};}}),
           onActive: (listener: (active: boolean) => void) => {
             if (life.signal.aborted) return () => {};
@@ -322,6 +347,7 @@ export function connectReadingHost(transport: ReadingHostTransport): Readonly<{r
       } else if (initialized && data.channel === channel) {
         if (data.kind === 'retired') {dispose(new ReadingError(record(data.error) && typeof data.error.code === 'string' ? data.error.code : 'cancelled')); return;}
         if (data.kind === 'preferences') {snapshot = parsePreferenceSnapshot(data.preferences); for (const listener of [...listeners]) listener();}
+        else if (data.kind === 'layout') {try {crease = creaseOf(data.crease);} catch {return;} for (const listener of [...creaseListeners]) listener();}
         else if (data.kind === 'active' && typeof data.active === 'boolean') {active = data.active; for (const listener of [...activeListeners]) listener(active);}
         else if (data.kind === 'reply' && integer(data.id, 1, sequence)) {
           const pending = waiting.get(data.id); if (!pending) return;

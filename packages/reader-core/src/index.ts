@@ -6,7 +6,7 @@ export type {ReadingController, ReadingControllerOptions} from './reading.ts';
 export {createReadingPublication,readerLocationFromReading,readingLocationFromReader} from './publication.ts';
 export type {ReaderSessionInput,ReadingPublication} from './publication.ts';
 export {MAX_READER_RANGE_BYTES, readRange, sourceFromBlob, validateSource} from './source.ts';
-export {planFixedLayout, spreadFits, compactLandscape, validateViewport} from './layout.ts';
+export {planFixedLayout, spreadFits, compactLandscape, validateViewport, creaseSpread, validReaderCrease} from './layout.ts';
 export type {FixedLayoutInput} from './layout.ts';
 
 export {createEpubAdapter} from './epub/index.ts';

@@ -56,6 +56,36 @@ async function run() {
     await update({comicFit:'height'});const comicHeight=dimensions();assert(Math.abs(comicHeight.height-viewport.height)<2&&comicHeight.width<comicWidth.width,'actual comic height fit');checks.push('comicFit changes actual raster render dimensions');
     await reader.setOverride({comicDirection:'rtl'});await update({comicDirection:'ltr',comicFit:'width',twoPages:true,firstPageAlone:false});assert(pages()[0]>pages()[1],'local direction retained');assert(reader.getZoom()?.fit==='width','unoverridden fit applies live');
     await reader.close();await reader.open({source:cbz,format:'cbz',container:surface,viewport});assert(pages()[0]<pages()[1]&&reader.getSnapshot().overriddenKeys.length===0,'local comic direction resets on close');checks.push('comic local overrides retain precedence, unoverridden Settings apply, and close resets overrides');
+    // foldable6/tablet-read3: a real book crease splits the pages into physical panes,
+    // a zoomed page stays inside its own pane, and pan reaches its corners.
+    await reader.close();await update({twoPages:true,firstPageAlone:false,comicDirection:'ltr',comicFit:'auto'});
+    const bookViewport={width:890,height:626,crease:{left:445,right:445}};
+    await reader.open({source:cbz,format:'cbz',container:surface,viewport:bookViewport});
+    let clips=Array.from(surface.querySelectorAll<HTMLElement>('[data-reader-page]'));assert(clips.length===2,'crease shows two pane surfaces');
+    let [leftPane,rightPane]=clips,lb=leftPane.getBoundingClientRect(),rb=rightPane.getBoundingClientRect();
+    assert(Math.abs(lb.left)<1&&Math.abs(lb.width-445)<1,'left page pane starts at zero and ends at the crease');
+    assert(Math.abs(rb.left-445)<1&&Math.abs(rb.width-445)<1,'right page pane starts after the crease');
+    assert(getComputedStyle(leftPane).overflow==='auto','pane is its own scroll boundary');
+    await reader.setZoom({kind:'scale',value:2});
+    // Zoom replaces the DOM: re-query so every assertion uses the live panes.
+    clips=Array.from(surface.querySelectorAll<HTMLElement>('[data-reader-page]'));[leftPane,rightPane]=clips;
+    const pageElement=leftPane.firstElementChild?.firstElementChild as HTMLElement|undefined;
+    assert(!!pageElement&&pageElement.getBoundingClientRect().width>leftPane.clientWidth,'zoomed page is wider than its pane');
+    assert(leftPane.scrollWidth>leftPane.clientWidth,'the pane scrolls the oversized page');
+    const fixed=leftPane.getBoundingClientRect();
+    await reader.pan({x:leftPane.scrollWidth,y:leftPane.scrollHeight});
+    assert(leftPane.scrollLeft>0&&leftPane.scrollTop>0,'pan reaches the page corners inside the pane');
+    assert(Math.abs(leftPane.getBoundingClientRect().left-fixed.left)<1&&Math.abs(leftPane.getBoundingClientRect().height-fixed.height)<1,'the pane stays fixed at the crease while its content pans');
+    // Dragging the other visible page scrolls that pane, not the logical current page.
+    clips=Array.from(surface.querySelectorAll<HTMLElement>('[data-reader-page]'));[leftPane,rightPane]=clips;
+    const leftBefore=leftPane.scrollLeft,rightBox=rightPane.getBoundingClientRect();
+    rightPane.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerId:7,pointerType:'touch',clientX:rightBox.left+80,clientY:rightBox.top+80}));
+    rightPane.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,pointerId:7,pointerType:'touch',clientX:rightBox.left+40,clientY:rightBox.top+40}));
+    rightPane.dispatchEvent(new PointerEvent('pointerup',{bubbles:true,pointerId:7,pointerType:'touch',clientX:rightBox.left+40,clientY:rightBox.top+40}));
+    assert(rightPane.scrollLeft>0&&leftPane.scrollLeft===leftBefore,'dragging the second page moves only its own pane');
+    await update({comicDirection:'rtl'});const visual=pages();assert(visual[0]>visual[1],'RTL keeps the later page on the physical left');
+    checks.push('a book crease splits physical panes, zoom is panned inside its pane, and RTL keeps one reversal');
+    await reader.close();
     return {status:'pass',checks,pdfRevision:pdf.revision,comicRevision:cbz.revision,workers,terminated,qualification:'Real lawful local/offline files through canonical confirmed-snapshot factory; no public Read authorization or full-screen/frame/hardware acceptance.'};
   }finally{await reader.close();(window as unknown as {readerCleanup:unknown}).readerCleanup={surfaceChildren:surface.children.length,overrides:reader.getSnapshot().overriddenKeys.length,workers,terminated};}
 }

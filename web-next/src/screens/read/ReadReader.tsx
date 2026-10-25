@@ -15,7 +15,7 @@ export type ReadReaderProps<P extends object> = ReaderSurfaceProps<P> & Readonly
 }>;
 
 /** The checked main controller is the single state and navigation owner for all formats. */
-export function ReadReader<P extends object>({controller, source, format, initialLocation, metadata, signal, authority, reportError, presentation, state, onBack}: ReadReaderProps<P>) {
+export function ReadReader<P extends object>({controller, source, format, initialLocation, metadata, signal, authority, reportError, presentation, state, onBack, crease}: ReadReaderProps<P>) {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const chrome = presentation(snapshot);
   const navigate = useCallback((target: Parameters<ReaderController<P>['navigate']>[0]) => {
@@ -34,7 +34,7 @@ export function ReadReader<P extends object>({controller, source, format, initia
     fixedPage={format !== 'epub'} holdOpen={chrome.holdOpen || !publicationReady || snapshot.selection !== null}
     textSelectionActive={snapshot.selection !== null}
     subscribeSurfaceInput={controller.subscribeSurfaceInput} onTurn={turn} onSeek={seek} onBack={onBack}>
-    <ReaderSurface controller={controller} source={source} format={format} initialLocation={initialLocation} metadata={metadata} signal={signal} authority={authority} reportError={reportError} />
+    <ReaderSurface controller={controller} source={source} format={format} initialLocation={initialLocation} metadata={metadata} signal={signal} authority={authority} reportError={reportError} crease={crease} />
     {snapshot.status !== 'ready' && state && <div className={styles.state}>{state(snapshot)}</div>}
   </ReaderChrome>;
 }
