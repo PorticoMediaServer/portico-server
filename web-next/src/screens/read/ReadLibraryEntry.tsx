@@ -47,7 +47,12 @@ const generated = (item: Readonly<{title: string; author?: Readonly<{value: stri
 function resumeRows(resources: Resources, items: readonly ReadingContinueItem[]): readonly ReadResumeItem[] {
   return items.map(row => ({id: row.item.id, card: {
     artwork: resources.artwork.foreground(row.item.coverUrl, 380, 2 / 3),
+    /** desktop-read 1b: an issue keeps its own 3:4 cover, a book keeps the drawn spine. */
+    kind: row.item.publicationType?.value === 'magazine' ? 'magazine' as const : row.item.publicationType?.value === 'newspaper' ? 'newspaper' as const : 'book' as const,
     model: {title: row.item.title, caption: authorFacts(row.item.author), progress: row.progress.location.progression},
+    /** desktop-read 1b: where you are, from the saved location's own section. A stale
+     *  location is not presented as current, and no remaining time is inferred. */
+    ...(row.progress.stale || !row.progress.location.section ? {} : {location: {id: 'section', text: row.progress.location.section, role: 'context' as const}}),
     fallback: generated(row.item), disabled: !row.item.inventoryAvailable, visible: true, playLabel: t('next.reader.read'),
     onNavigate: () => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/item/$itemId', params: {itemId: row.item.id}}).catch(resources.reportError);},
     onPlay: row.item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(row.item.id, row.item.sourceId)).catch(resources.reportError);} : undefined,
@@ -114,7 +119,11 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
       }})),
     }] : []),
     ...(series.length ? [{id: 'series', kind: 'series' as const, heading: t('library.tab.series'), items: series.map(summary => ({id: summary.id, card: {
-      model: {title: summary.name, caption: [{id: 'read', text: t('next.reader.seriesReadCount', {read: defaultI18n.number(summary.readCount), count: defaultI18n.number(summary.count)}), role: 'identity' as const}]},
+      model: {title: summary.name, caption: [
+        /** desktop-read 1b/4c: the real number of titles, then the real read tally. */
+        {id: 'count', text: comic ? t('next.reader.volumeCount', {count: summary.count}) : t('lib.count', {count: summary.count, pivot: 'books'}), role: 'context' as const},
+        {id: 'read', text: t('next.reader.seriesReadCount', {read: defaultI18n.number(summary.readCount), count: defaultI18n.number(summary.count)}), role: 'identity' as const},
+      ]},
       covers: summary.preview.map(item => resources.artwork.foreground(item.coverUrl, 380, 2 / 3) ?? {id: item.id, generated: {title: item.title, glyph: Array.from(item.title)[0] ?? '', tint: generatedCoverTint(item.title)}}),
       segments: [], visible: true,
       onNavigate: () => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId}, search: {view: 'series', entityId: summary.id}}).catch(resources.reportError);},
