@@ -79,6 +79,13 @@ type DriveOAuthCancelResponse struct {
 // driveOAuthActor binds a sign-in to the verified owner session, not only to the
 // account: the viewer fence carries the identity epoch, so another same-owner
 // session cannot take over or read this one.
+// sameOwnerSession proves the rechecked principal is the exact verified session
+// that started this request, not merely another session for the same account.
+func sameOwnerSession(first identity.Principal, firstScope catalog.AdminScope, again identity.Principal, againScope catalog.AdminScope) bool {
+	return first.Authority == again.Authority && first.AccountID == again.AccountID && first.ProfileID == again.ProfileID &&
+		first.Epoch == again.Epoch && firstScope.ViewerFence == againScope.ViewerFence
+}
+
 func driveOAuthActor(p identity.Principal, viewerFence string) string {
 	actor, _ := json.Marshal([]string{p.Authority, p.AccountID, p.ProfileID, viewerFence})
 	return string(actor)
@@ -100,9 +107,10 @@ func registerDriveOAuth(registry *apikit.Registry, d Dependencies) {
 		if err != nil {
 			return DriveOAuthStartResponse{}, &apierror.Error{Code: "invalid_request"}
 		}
-		if _, _, err = d.storageOwner(r); err != nil {
+		again, againScope, err := d.storageOwner(r)
+		if err != nil || !sameOwnerSession(p, scope, again, againScope) {
 			d.DriveOAuth.Cancel(driveOAuthActor(p, scope.ViewerFence), state)
-			return DriveOAuthStartResponse{}, rcloneConnectionFailure(err)
+			return DriveOAuthStartResponse{}, &apierror.Error{Code: "not_permitted"}
 		}
 		return DriveOAuthStartResponse{Scope: scope, AuthorizationURL: authorizationURL, State: state}, nil
 	})
@@ -123,8 +131,9 @@ func registerDriveOAuth(registry *apikit.Registry, d Dependencies) {
 			}
 			return DriveOAuthPasteResponse{}, &apierror.Error{Code: "invalid_request"}
 		}
-		if _, _, err = d.storageOwner(r); err != nil {
-			return DriveOAuthPasteResponse{}, rcloneConnectionFailure(err)
+		again, againScope, err := d.storageOwner(r)
+		if err != nil || !sameOwnerSession(p, scope, again, againScope) {
+			return DriveOAuthPasteResponse{}, &apierror.Error{Code: "not_permitted"}
 		}
 		return DriveOAuthPasteResponse{Scope: scope, Phase: driveoauth.Pending}, nil
 	})
@@ -146,8 +155,10 @@ func registerDriveOAuth(registry *apikit.Registry, d Dependencies) {
 			}
 			return DriveOAuthStatusResponse{}, &apierror.Error{Code: "invalid_request"}
 		}
-		if _, _, err = d.storageOwner(r); err != nil {
-			return DriveOAuthStatusResponse{}, rcloneConnectionFailure(err)
+		again, againScope, err := d.storageOwner(r)
+		if err != nil || !sameOwnerSession(p, scope, again, againScope) {
+			d.DriveOAuth.Cancel(driveOAuthActor(p, scope.ViewerFence), in.State)
+			return DriveOAuthStatusResponse{}, &apierror.Error{Code: "not_permitted"}
 		}
 		return DriveOAuthStatusResponse{Scope: scope, Phase: result.Phase, Token: result.Token}, nil
 	})

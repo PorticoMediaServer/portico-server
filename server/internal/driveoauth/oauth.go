@@ -77,7 +77,9 @@ type session struct {
 	code         string
 	errorCode    string
 	listener     net.Listener
-	closed       bool
+	conn         net.Conn
+	callbackDone bool
+	retired      bool
 	exchanging   bool
 	flight       context.CancelFunc
 }
@@ -87,13 +89,15 @@ type exchangeFunc func(ctx context.Context, clientID, clientSecret, code, verifi
 // Store holds the in-flight sign-ins. It is deliberately small and in-memory: a
 // restart loses pending sign-ins, never a saved source.
 type Store struct {
-	mu       sync.Mutex
-	sessions map[string]*session
-	order    []string
-	limit    int
-	exchange exchangeFunc
-	stop     chan struct{}
-	done     chan struct{}
+	mu        sync.Mutex
+	sessions  map[string]*session
+	order     []string
+	limit     int
+	exchange  exchangeFunc
+	stop      chan struct{}
+	done      chan struct{}
+	closeOnce sync.Once
+	closed    bool
 }
 
 // New starts the bounded expiry sweep. Close ends it.
@@ -138,12 +142,11 @@ func (s *Store) Close() {
 	if s == nil {
 		return
 	}
-	select {
-	case <-s.stop:
-	default:
-		close(s.stop)
-	}
+	s.closeOnce.Do(func() { close(s.stop) })
 	<-s.done
+	s.mu.Lock()
+	s.closed = true
+	s.mu.Unlock()
 }
 
 func randomValue(bytes int) (string, error) {
@@ -182,6 +185,11 @@ func (s *Store) Start(actor, clientID, clientSecret string) (string, string, err
 		expires: time.Now().Add(sessionTTL), listener: listener,
 	}
 	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		_ = listener.Close()
+		return "", "", ErrInvalid
+	}
 	for len(s.order) >= s.limit {
 		s.dropLocked(s.order[0])
 	}
@@ -211,84 +219,119 @@ func digest(value string) []byte {
 
 // serve answers the first valid loopback redirect for this session. Unrelated or
 // malformed requests are refused without consuming the callback, within one
-// bounded deadline.
+// bounded deadline. A successful callback closes the listener but does not retire
+// the session: the exchange still has to happen.
 func (s *Store) serve(current *session) {
 	listener := current.listener
 	deadline := time.Now().Add(acceptTimeout)
 	if tcp, ok := listener.(*net.TCPListener); ok {
 		_ = tcp.SetDeadline(deadline)
 	}
-	terminal := func() {
+	defer func() {
 		_ = listener.Close()
 		s.mu.Lock()
-		if current.code != "" || current.errorCode != "" {
-			current.closed = true
+		if current.conn != nil {
+			_ = current.conn.Close()
+			current.conn = nil
 		}
 		s.mu.Unlock()
-	}
-	defer terminal()
+	}()
 	for time.Now().Before(deadline) {
 		conn, err := listener.Accept()
 		if err != nil {
 			return
 		}
-		code, state, failure, valid := readRedirect(conn)
-		_ = conn.Close()
-		if !valid {
-			continue
-		}
-		if state != current.state {
-			continue
-		}
-		if failure != "" {
-			s.fail(current, failure)
+		s.mu.Lock()
+		if current.retired || current.callbackDone {
+			s.mu.Unlock()
+			_ = conn.Close()
 			return
 		}
-		if s.accept(current, code) {
-			return
+		current.conn = conn
+		s.mu.Unlock()
+		transition, code, failure, state := readRedirect(conn, current.port)
+		if state != current.state || transition == "" || transition == "refused" {
+			if transition == "refused" || state != current.state {
+				writePage(conn, "400 Bad Request", "Portico could not use this address.")
+			}
+			_ = conn.Close()
+			s.mu.Lock()
+			current.conn = nil
+			s.mu.Unlock()
+			continue
 		}
+		accepted := transition == "code" && s.accept(current, code)
+		if transition == "denied" {
+			accepted = s.fail(current, failure)
+		}
+		if !accepted {
+			writePage(conn, "400 Bad Request", "Portico could not use this address.")
+			_ = conn.Close()
+			s.mu.Lock()
+			current.conn = nil
+			s.mu.Unlock()
+			continue
+		}
+		if transition == "denied" {
+			writePage(conn, "403 Forbidden", "Google did not finish the sign-in. Return to Portico.")
+		} else {
+			writePage(conn, "200 OK", "You can close this window and return to Portico.")
+		}
+		return
 	}
 }
 
-// readRedirect parses one bounded HTTP request and reports its redirect query.
-func readRedirect(conn net.Conn) (code, state, failure string, valid bool) {
+// readRedirect parses one bounded HTTP request and reports its redirect query:
+// transition is "code", "denied", "refused" or "" (unrelated).
+func readRedirect(conn net.Conn, port int) (transition, code, failure, state string) {
 	_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 	head, err := readHead(conn, requestLimit)
 	if err != nil {
-		return "", "", "", false
+		return "refused", "", "", ""
 	}
-	line, _, ok := strings.Cut(head, "\r\n")
-	if !ok || !strings.HasPrefix(line, "GET ") {
-		writePage(conn, "400 Bad Request", "Portico could not use this address.")
-		return "", "", "", false
+	lines := strings.Split(head, "\r\n")
+	if len(lines) == 0 {
+		return "refused", "", "", ""
 	}
-	target := strings.TrimPrefix(line, "GET ")
-	target = strings.TrimSuffix(strings.TrimSuffix(target, " HTTP/1.1"), " HTTP/1.0")
+	parts := strings.Split(lines[0], " ")
+	if len(parts) != 3 || parts[0] != "GET" || (parts[2] != "HTTP/1.1" && parts[2] != "HTTP/1.0") {
+		return "refused", "", "", ""
+	}
+	host := ""
+	for _, line := range lines[1:] {
+		key, value, ok := strings.Cut(line, ":")
+		if ok && strings.EqualFold(strings.TrimSpace(key), "host") {
+			host = strings.TrimSpace(value)
+		}
+	}
+	if host != "127.0.0.1:"+strconv.Itoa(port) {
+		return "refused", "", "", ""
+	}
+	target := parts[1]
 	if !strings.HasPrefix(target, documentPath+"?") {
-		writePage(conn, "400 Bad Request", "Portico could not use this address.")
-		return "", "", "", false
+		return "refused", "", "", ""
 	}
 	values, err := url.ParseQuery(strings.TrimPrefix(target, documentPath+"?"))
 	if err != nil || len(values["state"]) != 1 {
-		writePage(conn, "400 Bad Request", "Portico could not use this address.")
-		return "", "", "", false
+		return "refused", "", "", ""
 	}
 	state = values["state"][0]
 	if len(state) < 1 || len(state) > stateLimit {
-		writePage(conn, "400 Bad Request", "Portico could not use this address.")
-		return "", "", "", false
+		return "refused", "", "", ""
 	}
-	if failures := values["error"]; len(failures) == 1 {
-		writePage(conn, "403 Forbidden", "Google did not finish the sign-in. Return to Portico.")
-		return "", state, failures[0], true
+	if errors := values["error"]; len(errors) == 1 && len(values["code"]) == 0 {
+		if len(errors[0]) < 1 || len(errors[0]) > 128 {
+			return "refused", "", "", ""
+		}
+		return "denied", "", errors[0], state
 	}
-	codes := values["code"]
-	if len(codes) != 1 || len(codes[0]) < 1 || len(codes[0]) > codeLimit || strings.ContainsAny(codes[0], "\r\n\x00") {
-		writePage(conn, "400 Bad Request", "Portico could not use this address.")
-		return "", "", "", false
+	if len(values["code"]) != 1 || len(values["error"]) != 0 {
+		return "refused", "", "", ""
 	}
-	writePage(conn, "200 OK", "You can close this window and return to Portico.")
-	return codes[0], state, "", true
+	if len(values["code"][0]) < 1 || len(values["code"][0]) > codeLimit || strings.ContainsAny(values["code"][0], "\r\n\x00") {
+		return "refused", "", "", ""
+	}
+	return "code", values["code"][0], "", state
 }
 
 func readHead(conn net.Conn, limit int) (string, error) {
@@ -314,14 +357,15 @@ func writePage(conn net.Conn, status, body string) {
 		"<!doctype html><title>Portico</title><p>"+body+"</p>")
 }
 
-func (s *Store) fail(current *session, failure string) {
+func (s *Store) fail(current *session, failure string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if current.closed || s.sessions[current.state] != current || time.Now().After(current.expires) {
-		return
+	if current.retired || current.callbackDone || current.code != "" || current.exchanging || s.sessions[current.state] != current || time.Now().After(current.expires) {
+		return false
 	}
 	current.errorCode = failure
-	current.code = ""
+	current.callbackDone = true
+	return true
 }
 
 // accept records the code exactly once for a live session.
@@ -331,10 +375,11 @@ func (s *Store) accept(current *session, code string) bool {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if current.closed || s.sessions[current.state] != current || current.code != "" || current.errorCode != "" || time.Now().After(current.expires) {
+	if current.retired || current.callbackDone || s.sessions[current.state] != current || current.code != "" || current.errorCode != "" || time.Now().After(current.expires) {
 		return false
 	}
 	current.code = code
+	current.callbackDone = true
 	return true
 }
 
@@ -364,9 +409,17 @@ func (s *Store) Paste(actor, state, redirectURL string) error {
 	if err != nil || len(values["state"]) != 1 || values["state"][0] != state {
 		return ErrInvalid
 	}
-	if failures := values["error"]; len(failures) == 1 {
-		s.fail(current, failures[0])
+	if failures := values["error"]; len(failures) == 1 && len(values["code"]) == 0 {
+		if len(failures[0]) < 1 || len(failures[0]) > 128 {
+			return ErrInvalid
+		}
+		if !s.fail(current, failures[0]) {
+			return ErrInvalid
+		}
 		return ErrDenied
+	}
+	if len(values["error"]) != 0 {
+		return ErrInvalid
 	}
 	codes := values["code"]
 	if len(codes) != 1 {
@@ -413,7 +466,7 @@ func (s *Store) Status(ctx context.Context, actor, state string) (Result, error)
 	token, err := s.exchange(flight, clientID, clientSecret, code, verifier, redirectURI)
 	cancel()
 	s.mu.Lock()
-	live := s.sessions[state] == current && !current.closed && current.actor == actor && time.Now().Before(current.expires)
+	live := s.sessions[state] == current && !current.retired && current.actor == actor && time.Now().Before(current.expires)
 	s.dropLocked(state)
 	s.mu.Unlock()
 	if !live || err != nil {
@@ -447,7 +500,11 @@ func (s *Store) dropLocked(state string) {
 	if current == nil {
 		return
 	}
-	current.closed = true
+	current.retired = true
+	if current.conn != nil {
+		_ = current.conn.Close()
+		current.conn = nil
+	}
 	if current.flight != nil {
 		current.flight()
 		current.flight = nil
@@ -515,10 +572,16 @@ func googleExchange(ctx context.Context, clientID, clientSecret, code, verifier,
 	if !strings.EqualFold(payload.TokenType, "Bearer") {
 		return Token{}, ErrExchange
 	}
-	if payload.ExpiresIn <= 0 || time.Duration(payload.ExpiresIn)*time.Second > maxLifetime {
+	if payload.ExpiresIn <= 0 || payload.ExpiresIn > int64(maxLifetime/time.Second) {
 		return Token{}, ErrExchange
 	}
-	if !strings.Contains(payload.Scope, "https://www.googleapis.com/auth/drive.readonly") {
+	granted := false
+	for _, scope := range strings.Fields(payload.Scope) {
+		if scope == "https://www.googleapis.com/auth/drive.readonly" || scope == "https://www.googleapis.com/auth/drive" {
+			granted = true
+		}
+	}
+	if !granted {
 		return Token{}, ErrExchange
 	}
 	expiry := time.Now().Add(time.Duration(payload.ExpiresIn) * time.Second).UTC().Format(time.RFC3339)
