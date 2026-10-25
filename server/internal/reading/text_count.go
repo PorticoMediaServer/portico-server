@@ -16,6 +16,7 @@ import (
 )
 
 const readingTextRuleVersion = 1
+const readingPageRuleVersion = 1
 const maxCountDocument = 8 << 20
 const maxCountPublication = 64 << 20
 
@@ -205,15 +206,20 @@ func textBlock(name string) bool {
 // textCountCached reports whether this exact admitted row/revision/rule (and
 // the current opening-text rule) is already carried. A cached NULL word_count is
 // a determined unsupported/partial publication fact, not a transient
-// acquisition outcome.
+// acquisition outcome. PDF rows also need the current structural page rule: a
+// known word count without a validated page fact is still pending coverage.
 func (s *Service) textCountCached(ctx context.Context, selected Selection) (bool, error) {
 	g, err := dbwork.BeginSnapshot(ctx, s.DB)
 	if err != nil {
 		return false, err
 	}
 	defer g.Rollback()
+	query := `SELECT 1 FROM reading_text_counts WHERE item_id=? AND asset_id=? AND inventory_object_id=? AND source_revision=? AND rule_version=? AND opening_rule_version=1`
+	if selected.Format == "pdf" {
+		query += ` AND page_rule_version=1 AND page_count BETWEEN 1 AND 4096`
+	}
 	var cached int
-	err = g.Tx().QueryRowContext(ctx, `SELECT 1 FROM reading_text_counts WHERE item_id=? AND asset_id=? AND inventory_object_id=? AND source_revision=? AND rule_version=? AND opening_rule_version=1`, selected.Entity, selected.Asset, selected.inventoryRow, selected.inventory, readingTextRuleVersion).Scan(&cached)
+	err = g.Tx().QueryRowContext(ctx, query, selected.Entity, selected.Asset, selected.inventoryRow, selected.inventory, readingTextRuleVersion).Scan(&cached)
 	if err == nil {
 		return true, nil
 	}
@@ -226,12 +232,12 @@ func (s *Service) textCountCached(ctx context.Context, selected Selection) (bool
 // adoptTextCountRow writes the one row for this exact item/asset; the caller
 // has just rechecked that the selection is still current under its own opener.
 // Opening text is retained only from the same complete, valid extraction.
-func adoptTextCountRow(ctx context.Context, tx *sql.Tx, current Selection, count *int64, opening string) error {
+func adoptTextCountRow(ctx context.Context, tx *sql.Tx, current Selection, count *int64, opening string, pageCount *int64, pageRule int) error {
 	var openingValue any
 	if opening != "" {
 		openingValue = opening
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO reading_text_counts(item_id,asset_id,word_count,inventory_object_id,source_revision,rule_version,opening_lines,opening_rule_version) VALUES(?,?,?,?,?,?,?,1) ON CONFLICT(item_id,asset_id) DO UPDATE SET word_count=excluded.word_count,inventory_object_id=excluded.inventory_object_id,source_revision=excluded.source_revision,rule_version=excluded.rule_version,opening_lines=excluded.opening_lines,opening_rule_version=excluded.opening_rule_version WHERE reading_text_counts.word_count IS NOT excluded.word_count OR reading_text_counts.inventory_object_id<>excluded.inventory_object_id OR reading_text_counts.source_revision<>excluded.source_revision OR reading_text_counts.rule_version<>excluded.rule_version OR reading_text_counts.opening_lines IS NOT excluded.opening_lines OR reading_text_counts.opening_rule_version<>1`, current.Entity, current.Asset, count, current.inventoryRow, current.inventory, readingTextRuleVersion, openingValue)
+	_, err := tx.ExecContext(ctx, `INSERT INTO reading_text_counts(item_id,asset_id,word_count,inventory_object_id,source_revision,rule_version,opening_lines,opening_rule_version,page_count,page_rule_version) VALUES(?,?,?,?,?,?,?,1,?,?) ON CONFLICT(item_id,asset_id) DO UPDATE SET word_count=excluded.word_count,inventory_object_id=excluded.inventory_object_id,source_revision=excluded.source_revision,rule_version=excluded.rule_version,opening_lines=excluded.opening_lines,opening_rule_version=excluded.opening_rule_version,page_count=excluded.page_count,page_rule_version=excluded.page_rule_version WHERE reading_text_counts.word_count IS NOT excluded.word_count OR reading_text_counts.inventory_object_id<>excluded.inventory_object_id OR reading_text_counts.source_revision<>excluded.source_revision OR reading_text_counts.rule_version<>excluded.rule_version OR reading_text_counts.opening_lines IS NOT excluded.opening_lines OR reading_text_counts.opening_rule_version<>1 OR reading_text_counts.page_count IS NOT excluded.page_count OR reading_text_counts.page_rule_version<>excluded.page_rule_version`, current.Entity, current.Asset, count, current.inventoryRow, current.inventory, readingTextRuleVersion, openingValue, pageCount, pageRule)
 	return err
 }
 
@@ -271,7 +277,7 @@ func (s *Service) adoptTextCount(ctx context.Context, p identity.Principal, f *S
 	if current.Revision != selected.Revision || current.inventoryRow != selected.inventoryRow || current.object != selected.object || current.inventory != selected.inventory {
 		return ErrChanged
 	}
-	if err = adoptTextCountRow(ctx, gate.Tx(), current, count, opening); err != nil {
+	if err = adoptTextCountRow(ctx, gate.Tx(), current, count, opening, nil, 0); err != nil {
 		return err
 	}
 	return gate.Commit()
@@ -279,40 +285,45 @@ func (s *Service) adoptTextCount(ctx context.Context, p identity.Principal, f *S
 
 // This cached file text is published only by a prepared, source-authorized
 // manifest. List/Search metadata never receives the body excerpt.
-func (s *Service) publicationTextFacts(ctx context.Context, p identity.Principal, selected Selection) (*int64, string, error) {
+func (s *Service) publicationTextFacts(ctx context.Context, p identity.Principal, selected Selection) (*int64, string, *int64, error) {
 	if selected.Format != "epub" && selected.Format != "pdf" {
-		return nil, "", nil
+		return nil, "", nil, nil
 	}
 	gate, err := dbwork.BeginSnapshot(ctx, s.DB)
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 	defer gate.Rollback()
 	current, err := s.selectTx(ctx, gate.Tx(), p, selected.ItemID, selected.SourceID)
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 	if current.Revision != selected.Revision || current.inventoryRow != selected.inventoryRow || current.inventory != selected.inventory {
-		return nil, "", ErrChanged
+		return nil, "", nil, ErrChanged
 	}
-	var count sql.NullInt64
+	var count, pages sql.NullInt64
 	var opening sql.NullString
-	var rule int
-	err = gate.Tx().QueryRowContext(ctx, `SELECT word_count,opening_lines,opening_rule_version FROM reading_text_counts WHERE item_id=? AND asset_id=? AND inventory_object_id=? AND source_revision=? AND rule_version=?`, current.Entity, current.Asset, current.inventoryRow, current.inventory, readingTextRuleVersion).Scan(&count, &opening, &rule)
+	var rule, pageRule int
+	err = gate.Tx().QueryRowContext(ctx, `SELECT word_count,opening_lines,opening_rule_version,page_count,page_rule_version FROM reading_text_counts WHERE item_id=? AND asset_id=? AND inventory_object_id=? AND source_revision=? AND rule_version=?`, current.Entity, current.Asset, current.inventoryRow, current.inventory, readingTextRuleVersion).Scan(&count, &opening, &rule, &pages, &pageRule)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, "", nil
+		return nil, "", nil, nil
 	}
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 	var words *int64
 	if count.Valid {
 		value := count.Int64
 		words = &value
 	}
+	var pageCount *int64
+	if selected.Format == "pdf" && pageRule == readingPageRuleVersion && pages.Valid && pages.Int64 >= 1 && pages.Int64 <= 4096 {
+		value := pages.Int64
+		pageCount = &value
+	}
 	text := ""
 	if rule == 1 && opening.Valid {
 		text = opening.String
 	}
-	return words, text, nil
+	return words, text, pageCount, nil
 }

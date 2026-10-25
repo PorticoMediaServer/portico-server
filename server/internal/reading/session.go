@@ -222,7 +222,8 @@ func (s *Service) Prepare(ctx context.Context, p identity.Principal, item, sourc
 	if values.Author != nil {
 		document.Metadata.Author = values.Author.Value
 	}
-	document.Metadata.WordCount, document.Metadata.OpeningLines, err = s.publicationTextFacts(ctx, p, document.Selection)
+	var pageCount *int64
+	document.Metadata.WordCount, document.Metadata.OpeningLines, pageCount, err = s.publicationTextFacts(ctx, p, document.Selection)
 	if err != nil {
 		return nil, Publication{}, err
 	}
@@ -233,6 +234,10 @@ func (s *Service) Prepare(ctx context.Context, p identity.Principal, item, sourc
 	if document.Selection.Format == "cbz" && len(document.PageNames) > 0 {
 		count := int64(len(document.PageNames))
 		document.Metadata.PageCount = &count
+	} else if document.Selection.Format == "pdf" && pageCount != nil {
+		// Exact structural pages prepared from the same canonical source/rule;
+		// never used for reading time or Short reads membership.
+		document.Metadata.PageCount = pageCount
 	}
 	if values.Series != nil {
 		document.Metadata.SeriesLibraryID = document.Selection.library

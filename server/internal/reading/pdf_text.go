@@ -42,42 +42,44 @@ const (
 var pdfTextHelperExecutable = os.Executable
 
 type pdfTextResult struct {
-	Count   int64  `json:"count"`
-	Opening string `json:"opening"`
+	Count   *int64 `json:"count,omitempty"`
+	Opening string `json:"opening,omitempty"`
+	Pages   *int64 `json:"pages,omitempty"`
 }
 
-// countPDFText counts complete supported page text. A nil count is unknown: an
+// countPDFText returns the complete text count (nil when unknown) and the exact
+// structural page count from the same bounded child. A nil count is unknown: an
 // empty/image-only document, encryption, unsupported filters/fonts, malformed or
-// over-budget structure never yields zero or a partial count. A blank page is
-// not a failure; every page up to the budget is inspected, and the page count
-// itself is never counted as text.
-func countPDFText(ctx context.Context, r io.ReaderAt, size int64) (*int64, string, error) {
+// over-budget structure never yields zero or a partial count. A structurally
+// complete page tree is a real fact even when the text is image-only, and a
+// blank page counts as a page. The page count itself is never counted as text.
+func countPDFText(ctx context.Context, r io.ReaderAt, size int64) (*int64, string, *int64, error) {
 	if size <= 0 || size > maxCountPDFSource {
-		return nil, "", nil
+		return nil, "", nil, nil
 	}
 	if err := ctx.Err(); err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 	tempDir := filepath.Clean(os.TempDir())
 	file, err := os.CreateTemp(tempDir, "portico-pdftext-*")
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 	name := file.Name()
 	defer os.Remove(name)
 	if err = copyPDFSource(ctx, r, size, file); err != nil {
 		file.Close()
 		if errors.Is(err, ErrInvalid) {
-			return nil, "", nil
+			return nil, "", nil, nil
 		}
-		return nil, "", err
+		return nil, "", nil, err
 	}
 	if err = file.Close(); err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 	executable, err := pdfTextHelperExecutable()
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 	// The helper's argument vector is ours alone: the executable, the fixed
 	// subcommand and the private temporary path. No source-controlled text is
@@ -90,26 +92,26 @@ func countPDFText(ctx context.Context, r io.ReaderAt, size int64) (*int64, strin
 	childprocess.Configure(command)
 	runErr := command.Run()
 	if ctx.Err() != nil {
-		return nil, "", ctx.Err()
+		return nil, "", nil, ctx.Err()
 	}
 	if runErr != nil {
 		var exit *exec.ExitError
 		if errors.As(runErr, &exit) && exit.ExitCode() == pdfHelperUnknown {
-			return nil, "", nil
+			return nil, "", nil, nil
 		}
 		// A signal, OOM kill, CPU limit or helper crash is a parser-process
 		// failure, not a determination: retry it rather than caching a fact.
-		return nil, "", fmt.Errorf("pdf text extractor: %w", runErr)
+		return nil, "", nil, fmt.Errorf("pdf text extractor: %w", runErr)
 	}
 	var result pdfTextResult
 	if err = json.Unmarshal(output.Bytes(), &result); err != nil {
-		return nil, "", fmt.Errorf("pdf text extractor result: %w", err)
+		return nil, "", nil, fmt.Errorf("pdf text extractor result: %w", err)
 	}
-	if result.Count <= 0 || len(result.Opening) > 4096 {
-		return nil, "", fmt.Errorf("pdf text extractor result")
+	if result.Pages == nil || *result.Pages < 1 || *result.Pages > 4096 || len(result.Opening) > 4096 ||
+		(result.Count != nil && *result.Count <= 0) || (result.Count == nil && result.Opening != "") {
+		return nil, "", nil, fmt.Errorf("pdf text extractor result")
 	}
-	count := result.Count
-	return &count, result.Opening, nil
+	return result.Count, result.Opening, result.Pages, nil
 }
 
 // copyPDFSource snapshots the admitted source through its own ReaderAt, so every
@@ -183,14 +185,14 @@ func RunPDFTextHelper(path string) int {
 	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > maxCountPDFSource {
 		return pdfHelperUnknown
 	}
-	count, opening, err := parsePDFText(context.Background(), file, info.Size())
+	count, opening, pages, err := parsePDFText(context.Background(), file, info.Size())
 	if err != nil {
 		return pdfHelperRetry
 	}
-	if count == nil {
+	if pages == nil {
 		return pdfHelperUnknown
 	}
-	if err = json.NewEncoder(os.Stdout).Encode(pdfTextResult{Count: *count, Opening: opening}); err != nil {
+	if err = json.NewEncoder(os.Stdout).Encode(pdfTextResult{Count: count, Opening: opening, Pages: pages}); err != nil {
 		return pdfHelperRetry
 	}
 	return pdfHelperOK
