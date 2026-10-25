@@ -13,6 +13,7 @@ import {WatchSkipPrompt} from './SkipPrompt';
 import {WatchUndoPrompt} from './UndoPrompt';
 import {WatchUpNextPrompt} from './UpNextPrompt';
 import {WatchMusicNowPlaying} from './music/NowPlaying';
+import {setAppLogContext} from '../../platform/app-log';
 import type {WatchBindings, WatchSurfaces, WatchGeometry} from './types';
 import type {LiveChromePort} from '../live/live-chrome-types';
 import {createWatchPlayOn, remotePictureKeepsCaptions, type WatchPlaybackContext, type WatchPlayOnBinding} from './play-on-binding';
@@ -163,6 +164,8 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
   // even when the browser itself has no Cast or AirPlay transport.
   const castAvailable = !!cast && (remoteState?.airPlayAvailable || snapshot?.fence?.kind === 'queue' && (remoteState?.cast.available || !!cast.receivers));
   const remotePlaying = remoteState?.remote?.phase === 'playing';
+  // The code-only journal belongs to this signed-in server/account/profile only.
+  useEffect(() => { const a = binding?.runtime.getSnapshot().authority; setAppLogContext(a ? `${a.serverId}:${a.accountId}:${a.profileId}` : undefined); }, [binding]);
   const media = useMemo(() => new PlaybackMediaOwner<HTMLVideoElement>(), []);
   const cache = useMemo(() => new PlaybackPresentations(runtime), [runtime]);
   const presentations = useMemo(() => snapshot && binding ? cache.update(snapshot, playbackPresentation(snapshot, binding.environment, binding.artwork, binding.skips)).map(value =>

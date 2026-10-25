@@ -9,6 +9,7 @@ import {BrowserEqualizer, parseEqualizer, type EqualizerSettings} from './audio/
 import {loadDeviceEqualizer} from './audio/equalizer-store';
 import {configureDestination, outputClockLag, type BrowserAudioFacts} from './audio/output';
 import {MediaCarrier} from './audio/carrier';
+import {noteAppLog} from '../app-log';
 import {listeningDiagnostic, type ListeningEffectsPort} from './listening-effects';
 
 /**
@@ -138,6 +139,7 @@ export class DecodeAudioRender {
       if (this.disposed || attempt !== this.resumeAttempt || revision !== this.revision || current.intentId !== before.intentId || sessionKey(current.session) !== key || current.intent !== 'playing') return;
       this.service.pause();
       this.listening.listeningNotice('audio_autoplay_blocked');
+      noteAppLog('audio_autoplay_blocked', 'warn');
     };
     void this.context.resume().then(() => { if (this.context.state !== 'running') refused(); }, refused);
     // AudioContext.resume may remain pending under autoplay policy. An actual media-element
