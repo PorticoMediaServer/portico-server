@@ -17,6 +17,7 @@ import (
 // values are library facets, never audiobook Author entities. Its integer
 // identifiers come only from the database, not from query operands.
 type readingBrowseScope struct {
+	mobi       bool
 	library    int64
 	kind       string
 	generation compactcatalog.ReadingGeneration
@@ -59,7 +60,7 @@ func (s *Service) readingBrowseScope(library string) (*readingBrowseScope, error
 	if dbwork.Snapshot(s.Context()) == nil && !dbwork.InWriteTx(s.Context()) {
 		return nil, ErrReadingProjectionChanged
 	}
-	out := &readingBrowseScope{kind: lib.Kind}
+	out := &readingBrowseScope{kind: lib.Kind, mobi: lib.Kind == "book" && s.readingMobiConfigured()}
 	var rule int
 	err = s.read().QueryRow(`SELECT c.id,a.namespace,a.input_generation,a.ready_generation,a.publication_rule_version
  FROM catalog_libraries c JOIN reading_attribution_state a ON a.library_id=c.id
@@ -71,7 +72,11 @@ func (s *Service) readingBrowseScope(library string) (*readingBrowseScope, error
 }
 
 func (r *readingBrowseScope) fence() string {
-	return fmt.Sprintf("reading:%d:%d:%d:%s", r.generation.Namespace, r.generation.Input, r.generation.Ready, r.kind)
+	value := fmt.Sprintf("reading:%d:%d:%d:%s", r.generation.Namespace, r.generation.Input, r.generation.Ready, r.kind)
+	if r.mobi {
+		return value + ":mobi-v1"
+	}
+	return value
 }
 
 func (r *readingBrowseScope) memberScope() string {
@@ -82,20 +87,20 @@ func (r *readingBrowseScope) memberScope() string {
 // intentionally retains an unavailable title: availability orders the primary
 // publication but is not an extra visibility requirement.
 func (r *readingBrowseScope) eligibleSQL(entity string) string {
-	kind, formats := "20", "'epub','pdf'"
+	kind, formats := "20", r.sourceFormatsSQL()
 	if r.kind == "comic" {
-		kind, formats = "21", "'cbz','pdf'"
+		kind = "21"
 	}
 	return `EXISTS(SELECT 1 FROM catalog_entities reading_title
  JOIN reading_publications reading_publication ON reading_publication.item_id=reading_title.id
  JOIN catalog_asset_links reading_link ON reading_link.entity_id=reading_title.id AND reading_link.asset_id=reading_publication.asset_id
  WHERE reading_title.id=` + entity + ` AND reading_title.library_id=` + strconv.FormatInt(r.library, 10) + `
  AND reading_title.kind=` + kind + ` AND reading_title.retired=0 AND reading_publication.format IN(` + formats + `)
- AND reading_publication.asset_id=` + readingPrimaryPublicationSQL("reading_title.id") + `)`
+ AND reading_publication.asset_id=` + r.primaryPublicationSQL("reading_title.id") + `)`
 }
 
-func readingPrimaryPublicationSQL(item string) string {
-	return `(SELECT candidate.asset_id FROM reading_publications candidate WHERE candidate.item_id=` + item + `
+func (r *readingBrowseScope) primaryPublicationSQL(item string) string {
+	return `(SELECT candidate.asset_id FROM reading_publications candidate WHERE candidate.item_id=` + item + ` AND candidate.format IN(` + r.sourceFormatsSQL() + `)
  ORDER BY EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=candidate.item_id
  AND available.asset_id=(SELECT token FROM catalog_assets WHERE id=candidate.asset_id) AND available.available=1) DESC,candidate.asset_id LIMIT 1)`
 }
@@ -193,4 +198,25 @@ func (s *Service) readingBrowseCursorKeys(where string, args []any, sorts []Brow
 		return nil, ErrStaleContinuation
 	}
 	return full, nil
+}
+
+// Metadata offering only. The Reading service still authorizes and validates
+// every exact source acquisition; this setting never grants source access.
+// Main supplies the outcome of the actual qualified converter constructor.
+func (s *Service) ConfigureReadingMobi(available bool) {
+	if s != nil && s.state != nil {
+		s.state.readingMobi.Store(available)
+	}
+}
+func (s *Service) readingMobiConfigured() bool {
+	return s != nil && s.state != nil && s.state.readingMobi.Load()
+}
+func (r *readingBrowseScope) sourceFormatsSQL() string {
+	if r.kind == "comic" {
+		return "'cbz','pdf'"
+	}
+	if r.mobi {
+		return "'epub','pdf','mobi','azw3'"
+	}
+	return "'epub','pdf'"
 }

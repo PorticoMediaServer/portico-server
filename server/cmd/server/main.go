@@ -1239,6 +1239,7 @@ func run() (runErr error) {
 	} else {
 		readingService.Mobi = mobiConverter
 	}
+	cat.ConfigureReadingMobi(readingService.Mobi != nil)
 	defer readingService.Close()
 	apiDependencies.Reading = readingService
 	// Unopened EPUB coverage: the same complete counter and text-count custody

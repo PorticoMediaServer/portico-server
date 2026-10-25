@@ -130,14 +130,11 @@ func (r *readingBrowseScope) project(s *Service, rows []browseRow) ([]ContentEnt
 	for i, row := range rows {
 		ids[i] = row.entity
 	}
-	formats := "'epub','pdf'"
-	if r.kind == "comic" {
-		formats = "'cbz','pdf'"
-	}
+	formats := r.sourceFormatsSQL()
 	query := `SELECT m.item_id,l.library_id,m.publication_type,COALESCE(m.author_value,''),
  EXISTS(SELECT 1 FROM reading_publications p JOIN catalog_asset_links selected_link ON selected_link.entity_id=p.item_id AND selected_link.asset_id=p.asset_id
  JOIN catalog_assets a ON a.id=p.asset_id JOIN inventory_item_availability available ON available.item_id=p.item_id AND available.asset_id=a.token
- WHERE p.item_id=m.item_id AND p.format IN(` + formats + `) AND p.asset_id=` + readingPrimaryPublicationSQL("m.item_id") + ` AND available.available=1)
+ WHERE p.item_id=m.item_id AND p.format IN(` + formats + `) AND p.asset_id=` + r.primaryPublicationSQL("m.item_id") + ` AND available.available=1)
  FROM reading_attribution_members m JOIN catalog_libraries l ON l.id=m.library_id
  WHERE ` + r.memberScope() + ` AND m.item_id IN(` + placeholders(len(ids)) + `)`
 	read, err := s.read().Query(query, ids...)
