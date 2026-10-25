@@ -43,6 +43,40 @@ jobs:
           echo "exit=$status"
           tail -n 20 "$RUNNER_TEMP/web-licences/setup.log"
           exit "$status"
+      - name: Materialize locked optional licence inputs without executing them
+        run: |
+          status=0
+          node --experimental-strip-types --input-type=module > "$RUNNER_TEMP/web-licences/optional-inputs.log" 2>&1 <<'JS' || status=$?
+          import {readFileSync, existsSync, realpathSync, lstatSync} from 'node:fs';
+          import {execFileSync} from 'node:child_process';
+          import {createRequire} from 'node:module';
+          import path from 'node:path';
+          import {lockPackages, productionPackages} from './packages/client-core/src/licences/inventory.ts';
+          const npm = realpathSync(execFileSync('which', ['npm'], {encoding: 'utf8'}).trim());
+          const pacote = createRequire(npm)('pacote');
+          const root = process.cwd(), lock = JSON.parse(readFileSync('package-lock.json', 'utf8'));
+          let hydrated = 0;
+          for (const item of productionPackages(lockPackages(lock))) {
+            if (item.name.startsWith('@portico/') || item.name === 'portico-web') continue;
+            const directory = path.resolve(root, item.path);
+            if (existsSync(path.join(directory, 'package.json'))) continue;
+            const entry = lock.packages[item.path];
+            if (++hydrated > 64 || !entry?.optional || entry.link || !item.path.startsWith('node_modules/') || item.path.split('/').includes('..')
+                || !directory.startsWith(root + '/node_modules/') || existsSync(directory)
+                || !/^https:\/\/registry\.npmjs\.org\//.test(entry.resolved ?? '') || !/^sha512-/.test(entry.integrity ?? '')) throw new Error('Unsupported missing licence input: ' + item.path);
+            for (let parent = path.dirname(directory); parent !== root; parent = path.dirname(parent)) {
+              if (existsSync(parent) && lstatSync(parent).isSymbolicLink()) throw new Error('Symlink licence input parent');
+            }
+            // npm's own extractor verifies the committed tarball integrity; extract never runs lifecycle scripts.
+            await pacote.extract(entry.resolved, directory, {integrity: entry.integrity, ignoreScripts: true});
+            const actual = JSON.parse(readFileSync(path.join(directory, 'package.json'), 'utf8'));
+            if (actual.name !== item.name || actual.version !== item.version) throw new Error('Locked licence input identity mismatch');
+            console.log('Prepared locked optional licence input ' + item.name + '@' + item.version);
+          }
+          JS
+          echo "exit=$status"
+          tail -n 20 "$RUNNER_TEMP/web-licences/optional-inputs.log"
+          exit "$status"
       - name: Run the existing licence generator
         run: |
           status=0
