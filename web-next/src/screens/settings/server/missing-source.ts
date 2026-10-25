@@ -16,6 +16,8 @@ export class SettingsMissingSource {
   private readonly lifetime = new AbortController();
   private read?: AbortController;
   private cursor = '';
+  private removing = false;
+  private ownsRead(read: AbortController) {return this.current() && this.read === read && !read.signal.aborted && !this.removing;}
   constructor(private readonly api: TitleIdentityApi, private readonly isCurrent: () => boolean, private readonly reportError: (error: unknown) => void) {}
   private current() {return !this.lifetime.signal.aborted && this.isCurrent();}
   getSnapshot = (): MissingSnapshot => this.current() ? this.state : empty;
@@ -26,24 +28,26 @@ export class SettingsMissingSource {
     this.reportError(error);
   }
   load = async (cursor = ''): Promise<void> => {
-    if (!this.current() || this.state.busy) return;
+    if (!this.current() || this.removing) return;
     this.read?.abort();const read = new AbortController();this.read = read;
     this.publish({phase: 'loading'});
+    if (!this.ownsRead(read)) return;
     try {
       const page = await listMissingTitles(this.api, {cursor: cursor || undefined, limit: 100}, read.signal);
-      if (!this.current() || this.read !== read || read.signal.aborted) return;
+      if (!this.ownsRead(read)) return;
       this.cursor = cursor;this.publish({phase: 'ready', page});
     } catch (error) {
-      if (this.current() && this.read === read && !read.signal.aborted) {this.publish({phase: 'error'});this.failure(error);}
+      if (this.ownsRead(read)) {this.publish({phase: 'error'});this.failure(error);}
     }
   };
   refresh = () => this.load(this.cursor);
   /** The dialog captures the actual page and count. A refreshed page invalidates
    * that confirmation; the owner must inspect and confirm its new count. */
   remove = async (page: MissingTitlesPage, typed: string): Promise<void> => {
-    if (!this.current() || this.state.busy || this.state.phase !== 'ready' || this.state.page !== page || !page.total || typed !== String(page.total)) return;
-    this.read?.abort();this.read = undefined;this.publish({busy: true, removed: undefined});
+    if (!this.current() || this.removing || this.state.phase !== 'ready' || this.state.page !== page || !page.total || typed !== String(page.total)) return;
+    this.removing = true;this.read?.abort();this.read = undefined;this.publish({busy: true, removed: undefined});
     try {
+      if (!this.current() || !this.removing) return;
       const removed = parseMissingEmptied(await this.api.request(routePath('empty_missing_titles'), 'POST', {}, this.lifetime.signal));
       if (!this.current()) return;
       // A lost response is not retried. Read the current list and require another
@@ -51,7 +55,7 @@ export class SettingsMissingSource {
       this.publish({removed, page: undefined, phase: 'idle'});
     } catch (error) {
       if (this.current()) {this.publish({page: undefined, phase: 'error'});this.failure(error);}
-    } finally {this.publish({busy: false});}
+    } finally {this.removing = false;this.publish({busy: false});}
     if (this.current()) await this.load();
   };
   dispose = () => {this.read?.abort();this.lifetime.abort();this.state = empty;this.listeners.clear();};
