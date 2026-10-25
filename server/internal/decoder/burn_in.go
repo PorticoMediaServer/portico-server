@@ -44,24 +44,14 @@ func burnFilter(b BurnIn, facts *ToolchainFacts) (string, []string, error) {
 		}
 		return draw, nil, nil
 	case "pgs", "vobsub", "mks", "dvb":
-		if b.Width < 1 || b.Height < 1 || b.Width > 8192 || b.Height > 4320 {
-			return "", nil, ErrInvalidConfiguration
-		}
 		if facts != nil && !facts.Filters["overlay"] {
 			return "", nil, fmt.Errorf("subtitle_burn_filter_unavailable")
 		}
-		mux := map[string]string{"pgs": "sup", "vobsub": "vobsub", "mks": "matroska", "dvb": "matroska"}[b.Format]
-		formats := mux
-		if b.Format == "vobsub" {
-			formats += " ,mpeg"
-			formats = strings.ReplaceAll(formats, " ", "")
+		inputs, err := bitmapSubtitleInput(b)
+		if err != nil {
+			return "", nil, err
 		}
-		// Undo only this input's demuxer-origin subtraction. Global copyts
-		// would also retain the sought movie's audio clock and offset it twice.
-		inputs := []string{"-itsoffset", seconds(b.InputStartUS), "-protocol_whitelist", "file", "-format_whitelist", formats, "-f", mux, "-i", b.File}
-		// The bitmap owns its canvas. Fit it without distorting its glyphs,
-		// centering transparent padding when a cropped video has a different shape.
-		fit := fmt.Sprintf("scale=w='max(2,trunc(iw*min(%d/iw,%d/ih)/2)*2)':h='max(2,trunc(ih*min(%d/iw,%d/ih)/2)*2)',pad=%d:%d:(ow-iw)/2:(oh-ih)/2:color=black@0", b.Width, b.Height, b.Width, b.Height, b.Width, b.Height)
+		fit := subtitleFit(b)
 		cue := fmt.Sprintf("[1:s:0]settb=AVTB,setpts=PTS+(%s)/TB,format=rgba,%s", seconds(b.OffsetUS-b.PositionUS), fit)
 		overlay := "overlay=eof_action=pass:shortest=0"
 		if b.DynamicRange == "hdr10" || b.DynamicRange == "hlg" {
@@ -72,6 +62,33 @@ func burnFilter(b BurnIn, facts *ToolchainFacts) (string, []string, error) {
 		return filter, inputs, nil
 	}
 	return "", nil, ErrInvalidConfiguration
+}
+
+// bitmapSubtitleInput opens one sealed bitmap subtitle file with only the
+// demuxer its format needs. Undo only this input's demuxer-origin subtraction:
+// global copyts would also retain the sought movie's audio clock and offset it
+// twice. The processor burn and the device composite share it, so both read one
+// file the same way.
+func bitmapSubtitleInput(b BurnIn) ([]string, error) {
+	if b.Width < 1 || b.Height < 1 || b.Width > 8192 || b.Height > 4320 {
+		return nil, ErrInvalidConfiguration
+	}
+	mux := map[string]string{"pgs": "sup", "vobsub": "vobsub", "mks": "matroska", "dvb": "matroska"}[b.Format]
+	if mux == "" {
+		return nil, ErrInvalidConfiguration
+	}
+	formats := mux
+	if b.Format == "vobsub" {
+		formats += " ,mpeg"
+		formats = strings.ReplaceAll(formats, " ", "")
+	}
+	return []string{"-itsoffset", seconds(b.InputStartUS), "-protocol_whitelist", "file", "-format_whitelist", formats, "-f", mux, "-i", b.File}, nil
+}
+
+// subtitleFit fits a bitmap's own canvas without distorting its glyphs, centering
+// transparent padding when a cropped video has a different shape.
+func subtitleFit(b BurnIn) string {
+	return fmt.Sprintf("scale=w='max(2,trunc(iw*min(%d/iw,%d/ih)/2)*2)':h='max(2,trunc(ih*min(%d/iw,%d/ih)/2)*2)',pad=%d:%d:(ow-iw)/2:(oh-ih)/2:color=black@0", b.Width, b.Height, b.Width, b.Height, b.Width, b.Height)
 }
 
 // FFmpeg parses AVOptions and then the filter graph, so paths need both

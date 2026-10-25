@@ -88,6 +88,7 @@ const (
 // HardwareProbe is the cached result of one bounded encode. NativeFilters says
 // whether the backend's own tone-map/scale filters ran, not merely its encoder.
 type HardwareProbe struct {
+	BurnInFilters      bool            `json:"-"`
 	DeinterlaceFilters bool            `json:"-"`
 	DecodeCodecs       map[string]bool `json:"-"`
 	SelectedDeviceID   string          `json:"-"`
@@ -551,6 +552,7 @@ func (d *HardwareDetector) probe(ctx context.Context, executable string, backend
 		}
 		out.DecodeCodecs = d.probeDecodeCodecs(ctx, executable, backend, device, timeout)
 		out.DeinterlaceFilters = d.probeDeinterlace(ctx, executable, spec, backend, device, timeout)
+		out.BurnInFilters = d.probeBurnIn(ctx, executable, spec, backend, device, timeout)
 	}
 	if ctx.Err() != nil {
 		return invalidHardwareObservation(out, ProbeTimedOut)
@@ -917,7 +919,14 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 		if err != nil {
 			return out, err
 		}
-		native := r.BurnIn == nil && backend != BackendSoftware && spec.scale != nil && (r.ToneMap && r.Probe.NativeFilters && spec.toneMap != nil || !r.ToneMap && (r.Probe.ScaleFilters || r.Probe.NativeFilters))
+		native := backend != BackendSoftware && spec.scale != nil && (r.ToneMap && r.Probe.NativeFilters && spec.toneMap != nil || !r.ToneMap && (r.Probe.ScaleFilters || r.Probe.NativeFilters))
+		// A subtitle burn-in used to download the picture on purpose. When the
+		// device's own composite passed its probe, the frames stay where they
+		// are and the device blends the subtitle surface in instead.
+		deviceBurnIn := r.BurnIn != nil && native && r.Probe.BurnInFilters && hardwareBurnInSupported(backend, *r.BurnIn, target)
+		if r.BurnIn != nil && !deviceBurnIn {
+			native = false
+		}
 		if r.DisableHardwareDecode {
 			native = false
 		}
@@ -963,6 +972,7 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 			}
 		}
 		filters := []string{}
+		composite := ""
 		hardwareFrames := decode == ExecutionHardware
 		if hardwareFrames && (!native || r.Deinterlace && !useNativeDeinterlace || r.MaxFrameRate > 0) {
 			filters = append(filters, "hwdownload", "format="+hardwareDownloadFormat(r.SourceBitDepth))
@@ -1017,6 +1027,17 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 			case BackendQSV:
 				filters = append(filters, "vpp_qsv=format="+surface)
 			}
+			if deviceBurnIn {
+				burnInput := *r.BurnIn
+				burnInput.DynamicRange = target.DynamicRange
+				graph, extra, err := hardwareBurnInGraph(backend, burnInput, strings.Join(filters, ","))
+				if err != nil {
+					return out, err
+				}
+				composite, out.ExtraInput = graph, extra
+				out.VideoMap = "[burn_output]"
+				out.Stages = append(out.Stages, HardwareStage{"subtitle_burn_in", ExecutionHardware})
+			}
 		} else {
 			if r.ToneMap {
 				if r.Toolchain != nil && r.Toolchain.VulkanAvailable && spec.upload == "" && (target.DolbyVisionProfile > 0 && DolbyVisionBaseRange(target.DolbyVisionProfile, target.DolbyVisionCompatibility) == "" || !r.Toolchain.Filters["zscale"] || !r.Toolchain.Filters["tonemap"]) {
@@ -1070,7 +1091,9 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 		if len(hdr10PlusOptions) > 0 && (backend != BackendSoftware || decode != ExecutionSoftware || native || len(filters) > 0 || out.VideoMap != "" || len(out.ExtraInput) > 0) {
 			return out, ErrInvalidConfiguration
 		}
-		if len(filters) > 0 {
+		if composite != "" {
+			out.Video = append(out.Video, "-filter_complex", composite)
+		} else if len(filters) > 0 {
 			if out.VideoMap != "" {
 				out.Video = append(out.Video, "-filter_complex", "[0:v:0]"+strings.Join(filters, ",")+"[burn_output]")
 			} else {
