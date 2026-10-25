@@ -21,6 +21,7 @@ const tvdbTerminalDeleteQuery = `DELETE FROM tvdb_publication_operations WHERE i
 
 // Captured authority shared by the acquisition and fresh-target projection phases.
 type tvdbPublication struct {
+	LookupEpoch                                                 int64
 	ScreenFence                                                 string
 	ID, Show, Incarnation, Library, Phase, Status, Title, Order string
 	// Show is the public id; ShowID is its integer entity row, used in every
@@ -58,6 +59,16 @@ func readTVDBPublication(ctx context.Context, tx *sql.Tx, show string) (tvdbPubl
 	err = tx.QueryRowContext(ctx, `SELECT h.incarnation,cl.library_id,j.status,e.title,e.year,j.episode_order,j.generation,j.revision,j.provider_id,j.page,j.attempts,j.apply_after,j.lease,j.lease_until,p.incarnation,p.revision,p.algorithm,p.refresh_mode,h.source_revision,h.hierarchy_revision,h.selection_revision,h.descriptive_revision,COALESCE(es.incarnation,''),COALESCE(es.revision,0)
   FROM tvdb_jobs j JOIN catalog_entities e ON e.id=j.show_id JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries l ON l.id=cl.library_id JOIN tvdb_publication_heads h ON h.show_id=e.id JOIN tvdb_provider_policies p ON p.library_id=cl.library_id LEFT JOIN tvdb_publication_sets es ON es.show_id=e.id
   WHERE j.show_id=? AND l.kind IN('tv','anime') AND p.enabled=1 AND p.algorithm='tvdb-series-exact-title-year-v1'`+screenTVDBFilter(ctx), showID).Scan(&p.Incarnation, &p.Library, &p.Status, &p.Title, &p.Year, &p.Order, &p.Generation, &p.JobRevision, &p.Provider, &p.Page, &p.Attempts, &p.After, &p.ID, &p.LeaseUntil, &p.Policy, &p.PolicyRevision, &p.Algorithm, &p.Mode, &p.Source, &p.Hierarchy, &p.Selection, &p.Description, &p.Set, &p.SetRevision)
+	if err == nil {
+		online, epoch, e := onlineLookupPolicyTx(ctx, tx)
+		if e != nil {
+			return p, e
+		}
+		if !online {
+			return p, sql.ErrNoRows
+		}
+		p.LookupEpoch = epoch
+	}
 	if err == nil && screenTVDBRestricted(ctx) {
 		b, e := readScreenBase(ctx, tx, "show", show)
 		if e != nil {
@@ -334,6 +345,7 @@ func (s *Service) failTVDBPublication(ctx context.Context, p tvdbPublication, pr
 	return gated2.Commit()
 }
 func (s *Service) runTVDBAcquisition(ctx context.Context, p tvdbPublication) error {
+	ctx = s.lookupContext(ctx)
 	requestCtx := ctx
 	if screenTVDBRestricted(ctx) {
 		var cancel context.CancelFunc

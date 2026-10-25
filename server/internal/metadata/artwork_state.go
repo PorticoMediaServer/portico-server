@@ -171,7 +171,11 @@ func artworkFence(ctx context.Context, tx *sql.Tx, t RepairTarget) (string, erro
 	if err != nil {
 		return "", err
 	}
-	parts := []any{t, ent.library, authority}
+	online, epoch, err := onlineLookupPolicyTx(ctx, tx)
+	if err != nil {
+		return "", err
+	}
+	parts := []any{t, ent.library, authority, online, epoch}
 	var head string
 	if err = tx.QueryRowContext(ctx, `SELECT incarnation||':'||revision FROM artwork_entity_heads WHERE kind=? AND entity_id=?`, t.Kind, entity).Scan(&head); err != nil {
 		return "", err

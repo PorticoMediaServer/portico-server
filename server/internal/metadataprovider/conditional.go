@@ -72,6 +72,10 @@ func conditionalFrom(resp *http.Response, previous Conditional) Conditional {
 // rawConditional is raw with validators. A 304 returns ErrNotModified and the validators to
 // store; every other outcome behaves exactly as the unconditional call does.
 func (t *transport) rawConditional(ctx context.Context, client *http.Client, base, route, token string, budget int64, in Conditional) ([]byte, Conditional, error) {
+	check, admissionErr := networkAdmission(ctx)
+	if admissionErr != nil {
+		return nil, in, admissionErr
+	}
 	if client == nil {
 		client = t.client
 	}
@@ -97,6 +101,9 @@ func (t *transport) rawConditional(ctx context.Context, client *http.Client, bas
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	in.apply(req)
+	if err := check(); err != nil {
+		return nil, in, err
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -105,6 +112,9 @@ func (t *transport) rawConditional(ctx context.Context, client *http.Client, bas
 		return nil, in, &Error{Provider: t.provider, Code: "unavailable"}
 	}
 	defer resp.Body.Close()
+	if err := check(); err != nil {
+		return nil, in, err
+	}
 	if resp.StatusCode == http.StatusNotModified {
 		return nil, conditionalFrom(resp, in), ErrNotModified
 	}
@@ -118,6 +128,9 @@ func (t *transport) rawConditional(ctx context.Context, client *http.Client, bas
 	}
 	raw, err := readBounded(ctx, resp, budget, t.provider)
 	if err != nil {
+		return nil, in, err
+	}
+	if err := check(); err != nil {
 		return nil, in, err
 	}
 	return raw, conditionalFrom(resp, Conditional{}), nil

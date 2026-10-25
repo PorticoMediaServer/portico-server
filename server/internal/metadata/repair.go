@@ -78,6 +78,7 @@ type RepairSnapshot struct {
 	Artwork           []ArtworkChoice        `json:"artwork"`
 }
 type RepairState struct {
+	OnlineLookups           *bool             `json:"onlineLookups,omitempty"`
 	ArtworkFallbackURL      string            `json:"artworkFallbackUrl,omitempty"`
 	CanMakeEpisodeThumbnail bool              `json:"canMakeEpisodeThumbnail,omitempty"`
 	TargetItemKind          string            `json:"-"`
@@ -301,6 +302,11 @@ func (s *Service) readRepairState(ctx context.Context, tx *sql.Tx, t RepairTarge
 	if err != nil {
 		return out, err
 	}
+	online, _, err := onlineLookupPolicyTx(ctx, tx)
+	if err != nil {
+		return out, err
+	}
+	out.OnlineLookups = &online
 	out.CanMakeEpisodeThumbnail, err = s.CanMakeEpisodeThumbnailTx(ctx, tx, t)
 	if err == nil && out.TargetItemKind == "episode" {
 		var show, digest string
