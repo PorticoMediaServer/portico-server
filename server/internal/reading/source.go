@@ -171,6 +171,12 @@ type Source struct {
 func (f *Source) Context() context.Context { return f.ctx }
 
 func (s *Service) Open(ctx context.Context, p identity.Principal, item, sourceID, expected string) (*Source, error) {
+	return s.open(ctx, p, item, sourceID, expected, false)
+}
+
+// localOnly is checked against the exact resolved selection before any provider
+// IO. Offline preparation cannot acquire an interactive remote Reading lease.
+func (s *Service) open(ctx context.Context, p identity.Principal, item, sourceID, expected string, localOnly bool) (*Source, error) {
 	v, err := s.Resolve(ctx, p, item, sourceID)
 	if err != nil {
 		return nil, err
@@ -181,6 +187,9 @@ func (s *Service) Open(ctx context.Context, p identity.Principal, item, sourceID
 	// Remote reads use the retained interactive session resolver, never a
 	// playback/analysis scheduling pool as operation authority.
 	if s.Storage.IsRemote(v.path) {
+		if localOnly {
+			return nil, ErrUnavailable
+		}
 		return s.openRemote(ctx, p, v, nil)
 	}
 	// A typed nil mount service must not become a nonnil mountOwner interface.

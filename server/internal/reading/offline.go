@@ -102,7 +102,7 @@ func (s *Service) OfflineDocument(ctx context.Context, p identity.Principal, ite
 		return OfflineDocument{}, ErrUnavailable
 	}
 	out := OfflineDocument{Resources: []OfflineResource{}, Spine: []string{}, PageNames: []string{}, Contents: []OfflineContents{}}
-	f, err := s.Open(ctx, p, item, source, "")
+	f, err := s.open(ctx, p, item, selected.SourceID, selected.Revision, true)
 	if err != nil {
 		return out, err
 	}

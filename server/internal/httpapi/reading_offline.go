@@ -166,7 +166,7 @@ func (d Dependencies) readingOfflineProgress(w http.ResponseWriter, r *http.Requ
 		original = *body.ObservationReceipt
 	}
 	if err = d.Downloads.VerifyPublicationObservation(r.Context(), claims, original, body.StartedAt, body.ObservedAt); err != nil {
-		readingFailure(w, err)
+		readingFailure(w, downloadError(err))
 		return
 	}
 	expires, err := time.Parse(time.RFC3339Nano, claims.ExpiresAt)
