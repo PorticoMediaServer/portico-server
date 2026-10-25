@@ -179,6 +179,10 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   const [finishBusy, setFinishBusy] = useState(false);
   const [finishError, setFinishError] = useState('');
   const [summary, setSummary] = useState<Readonly<{library?: string; folders: number}>>({folders: 0});
+  const [leaving, setLeaving] = useState<'' | 'saved' | 'unsaved'>('');
+  const [leaveChoice, setLeaveChoice] = useState<'keep' | 'remove'>('keep');
+  const [leaveRemove, setLeaveRemove] = useState(false);
+  const [leaveError, setLeaveError] = useState('');
   const testAttempt = useRef(0), active = useRef(false), pending = useRef(false), lifetime = useRef(0);
   const [formToken, setFormToken] = useState(0);
   // A saved handler belongs to its rendered form, even if invoked after reopen.
@@ -187,7 +191,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     setStep('connection'); setDraft(emptyDraft); setResult(undefined); setError(''); setCreated(undefined);
     setProfile(undefined); setValues(sourceReadPreset('once')); setBusy(false); setLoadingProfile(false);
     setChosen([]); setPicking(false); setAttachMode('new'); setLibraryName(''); setKind('movie'); setExistingId('');
-    setFinishBusy(false); setFinishError(''); setSummary({folders: 0});
+    setFinishBusy(false); setFinishError(''); setSummary({folders: 0}); setLeaving(''); setLeaveRemove(false); setLeaveError(''); setLeaveChoice('keep');
     testAttempt.current++; lifetime.current++; setFormToken(lifetime.current); pending.current = false;
   };
   const updateDraft = (patch: Partial<WebDavDraft>) => {testAttempt.current++;setResult(undefined);setError('');setDraft(current => ({...current, ...patch}));};
@@ -267,9 +271,27 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
       if (isCurrent()) setFinishError(attachFailure(value));
     } finally {if (isCurrent()) setFinishBusy(false);}
   };
-  const close = () => {
-    if (busy || pending.current || finishBusy) return;
-    active.current=false;pending.current=false;lifetime.current++;setDraft(emptyDraft);setResult(undefined);setError('');setChosen([]);onClose();
+  /** Leaving before the end is a real choice once the source is saved, and the
+   * dialog says exactly what is kept and what is removed. */
+  const close = (force = false) => {
+    if (finishBusy) return;
+    if (!force && step !== 'done') {
+      const saved = created ?? service.getSnapshot().sources.find(source => source.id === nextSourceId.current);
+      if (saved) {setLeaving('saved');setLeaveRemove(false);setLeaveError('');setLeaveChoice('keep');return;}
+      if (step !== 'connection') {setLeaving('unsaved');setLeaveError('');return;}
+      if (!draft.name.trim() && !draft.root.trim() && !draft.username && !draft.password) {force = true;}
+      else {setLeaving('unsaved');setLeaveError('');return;}
+    }
+    if (busy || pending.current) return;
+    active.current=false;pending.current=false;lifetime.current++;setDraft(emptyDraft);setResult(undefined);setError('');setChosen([]);setLeaving('');onClose();
+  };
+  const removeAndLeave = async () => {
+    const saved = created ?? service.getSnapshot().sources.find(source => source.id === nextSourceId.current);
+    if (!saved || leaveRemove) return;
+    setLeaveRemove(true);setLeaveError('');
+    try {await service.remove(saved, isCurrent);const state = service.getSnapshot();if (state.error) {setLeaveError(state.error);return;}close(true);}
+    catch (value) {setLeaveError(remoteErrorText(value));}
+    finally {setLeaveRemove(false);}
   };
   useEffect(() => {if (attachMode === 'existing' && !existingId && librarySnapshot.directory.data?.items.length) setExistingId(librarySnapshot.directory.data.items[0].id);}, [attachMode, existingId, librarySnapshot.directory.data]);
   const sourceNow = created ?? (step === 'folders' || step === 'done' ? service.getSnapshot().sources.find(source => source.id === nextSourceId.current) : undefined);
@@ -280,12 +302,12 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     <Button size="compact" variant="primary" loading={finishBusy} disabled={finishBusy || (!!chosen.length && attachMode === 'new' && !libraryName.trim())} onClick={() => void finish()}>{t('next.remoteSources.finish')}</Button>
   </>;
   const doneFooter = <>
-    <Button size="compact" variant="glass" onClick={close}>{t('next.remoteSources.done')}</Button>
+    <Button size="compact" variant="glass" onClick={() => close()}>{t('next.remoteSources.done')}</Button>
     <Button size="compact" variant="glass" onClick={reset}>{t('next.remoteSources.addAnother')}</Button>
     {sourceNow && <Button size="compact" variant="primary" onClick={() => {active.current=false;onCreated(sourceNow);}}>{t('next.remoteSources.openSource', {name: sourceNow.name})}</Button>}
   </>;
   const footer = step === 'connection'
-    ? <><Button size="compact" variant="glass" disabled={busy} onClick={close}>{t('next.remoteSources.cancel')}</Button><Button size="compact" variant="primary" disabled={busy || !result} onClick={create}>{t('next.remoteSources.saveAndContinue')}</Button></>
+    ? <><Button size="compact" variant="glass" disabled={busy} onClick={() => close()}>{t('next.remoteSources.cancel')}</Button><Button size="compact" variant="primary" disabled={busy || !result} onClick={create}>{t('next.remoteSources.saveAndContinue')}</Button></>
     : step === 'reading'
       ? <><Button size="compact" variant="glass" disabled={busy} onClick={() => setStep('connection')}>{t('next.remoteSources.back')}</Button><Button size="compact" variant="primary" disabled={busy || loadingProfile || !profile} onClick={saveReading}>{t('next.remoteSources.save')}</Button></>
       : step === 'folders' ? foldersFooter : doneFooter;
@@ -367,6 +389,28 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     </div>}
     {picking && sourceNow && <RemoteFolderPicker service={service} sourceId={sourceNow.id} sourceName={sourceNow.name} open={picking}
       onOpenChange={setPicking} onChoose={folders => setChosen(current => [...current, ...folders.filter(folder => !current.some(value => value.relative === folder.relative))])}/>}
+    <Dialog open={leaving !== ''} role="alertdialog" width={520} title={t('next.remoteSources.leaveTitle')}
+      onOpenChange={value => {if (!value && !leaveRemove) setLeaving('');}}
+      description={leaving === 'saved' ? t('next.remoteSources.leaveSavedBody', {name: sourceNow?.name ?? ''}) : t('next.remoteSources.leaveUnsavedBody')}
+      footer={<>
+        <Button size="compact" variant="glass" disabled={leaveRemove} onClick={() => setLeaving('')}>{t('next.remoteSources.stayHere')}</Button>
+        <Button size="compact" variant="primary" loading={leaveRemove} disabled={leaveRemove}
+          onClick={() => {if (leaving === 'saved' && leaveChoice === 'remove') void removeAndLeave(); else close(true);}}>{t('next.remoteSources.leave')}</Button>
+      </>}>
+      {leaving === 'saved' && <div className={styles.leaveRows} role="radiogroup" aria-label={t('next.remoteSources.leaveTitle')}>
+        <button type="button" role="radio" aria-checked={leaveChoice === 'keep'} className={styles.leaveRow}
+          data-picked={leaveChoice === 'keep' || undefined} onClick={() => setLeaveChoice('keep')}>
+          <span className={styles.choiceRadio} aria-hidden="true"/><span><b>{t('next.remoteSources.keepIt')}</b>
+            <small>{t('next.remoteSources.keepItHelp', {name: sourceNow?.name ?? ''})}</small></span>
+        </button>
+        <button type="button" role="radio" aria-checked={leaveChoice === 'remove'} className={styles.leaveRow}
+          data-picked={leaveChoice === 'remove' || undefined} onClick={() => setLeaveChoice('remove')}>
+          <span className={styles.choiceRadio} aria-hidden="true"/><span><b>{t('next.remoteSources.removeIt')}</b>
+            <small>{t('next.remoteSources.removeItHelp', {name: sourceNow?.name ?? ''})}</small></span>
+        </button>
+      </div>}
+      {leaveError && <p className={styles.error} role="alert">{leaveError}</p>}
+    </Dialog>
   </Dialog>;
 }
 
@@ -585,8 +629,7 @@ function SourceReadingDialog({service, source, isCurrent, reportError, onClose}:
     {error && <p className={styles.error} role="alert">{error}</p>}
     {!profile && !error && <p className={styles.muted} role="status">{t('next.remoteSources.loading')}</p>}
     <fieldset disabled={disabled} className={styles.readingFields}>
-      <RichSelect disabled={disabled} aria-label={t('next.remoteSources.readingMode')} value={sourceReadPresetName(values) ?? 'custom'} options={[...presetOptions, ...(sourceReadPresetName(values) ? [] : [{value: 'custom', label: t('next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.4.label'), disabled: true}])]}
-        onValueChange={value => {if (value !== 'custom') setValues(sourceReadPreset(value as SourceReadPreset));}}/>
+      <ReadingChoices values={values} origin={source.origin} rangeSupport={source.rangeSupport} disabled={disabled} onChange={setValues}/>
       <div className={styles.limits}>
         <SettingNumber label={t('next.remoteSources.connections')} value={values.connections} min={1} max={32} unit={t('next.remoteSources.atOnce')} disabled={disabled} onCommit={value => {if (value !== null) setValues({...values, connections: value});}}/>
         <SettingNumber label={t('next.remoteSources.requestsPerSecond')} value={values.requestsPerSecond} min={1} max={50} unit={t('next.remoteSources.aSecond')} disabled={disabled} onCommit={value => {if (value !== null) setValues({...values, requestsPerSecond: value});}}/>
