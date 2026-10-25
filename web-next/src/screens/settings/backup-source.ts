@@ -1,8 +1,8 @@
-import {deleteBackup, getBackups, getBackupSettings, inspectBackupSource, isAuthenticationFailure, restoreBackup, startBackup, updateBackupSettings, waitForBackupCompletion, type BackupSettings, type BackupSettingsPatch, type BackupTransport} from '@core/backups.ts';
-import type {BackupsDocument, RestoreSource, RestoreStaged} from '@core/administration.ts';
+import {deleteBackup, getBackups, getBackupSettings, inspectBackupSource, isAuthenticationFailure, restoreBackup, startBackup, updateBackupSettings, waitForBackupCompletion, waitForServerAnswer, type BackupSettings, type BackupSettingsPatch, type BackupTransport} from '@core/backups.ts';
+import {isRestoreRefusalCode, type RestoreRefusalCode, type BackupsDocument, type RestoreSource, type RestoreStaged} from '@core/administration.ts';
 import {randomId} from '@core/random-id.ts';
 
-export type SettingsBackupSnapshot = Readonly<{settings?: BackupSettings; document?: BackupsDocument; staged?: RestoreStaged; busy: boolean}>;
+export type SettingsBackupSnapshot = Readonly<{settings?: BackupSettings; document?: BackupsDocument; staged?: RestoreStaged; restorePhase?: 'preparing' | 'restarting'; restoreJobId?: string; restoreError?: RestoreRefusalCode | true; restoreEncrypted?: boolean; busy: boolean}>;
 export type SettingsRestoreSelection = Readonly<{encrypted: boolean; isCurrent: () => boolean}>;
 const empty: SettingsBackupSnapshot = Object.freeze({busy: false});
 
@@ -12,11 +12,14 @@ export class SettingsBackupSource {
   private readonly lifetime = new AbortController();
   private loading?: Promise<void>;
   private candidate?: AbortController;
+  private restoring?: object;
+  private restoreIntent?: {source: RestoreSource; operationId: string; jobId?: string};
   private readonly selections = new WeakMap<SettingsRestoreSelection, {source: RestoreSource; signal: AbortSignal; candidate: AbortController; transferred: boolean}>();
   constructor(private readonly api: BackupTransport, private readonly serverId: string, private readonly isCurrent: () => boolean, private readonly notify: () => void) {}
   private current = () => !this.lifetime.signal.aborted && this.isCurrent();
   getSnapshot = () => this.current() ? this.state : empty;
   private publish(state: SettingsBackupSnapshot) {if (this.current()) {this.state = Object.freeze(state);this.notify();}}
+  private restoreActive() {return !!this.state.document?.restore && !this.state.document.restore.errorCode;}
   private requireCurrent() {if (!this.current()) throw new DOMException('The backup scope ended.', 'AbortError');}
   private refuse(error: unknown): never {
     if (isAuthenticationFailure(error)) {this.dispose();this.notify();}
@@ -27,7 +30,8 @@ export class SettingsBackupSource {
     if (!this.current() || this.state.busy) return Promise.resolve();
     if (this.loading) return this.loading;
     const task = Promise.all([getBackupSettings(this.api, this.serverId, this.lifetime.signal), getBackups(this.api, this.serverId, this.lifetime.signal)]).then(([settings, document]) => {
-      this.publish({...this.state, settings, document});
+      if (document.lastRestore?.jobId && document.lastRestore.jobId === this.restoreIntent?.jobId) this.restoreIntent = undefined;
+      this.publish({...this.state, settings, document, ...(document.lastRestore?.jobId && document.lastRestore.jobId === this.state.restoreJobId ? {restorePhase: undefined, staged: undefined, restoreError: undefined} : {})});
     }).catch(error => this.refuse(error)).finally(() => {if (this.loading === task) this.loading = undefined;});
     this.loading = task;return task;
   };
@@ -69,12 +73,15 @@ export class SettingsBackupSource {
       request.signal.throwIfAborted();
       const inspection = await inspectBackupSource(this.api, this.serverId, selected, request.signal);
       this.requireCurrent();request.signal.throwIfAborted();return inspection;
-    } catch (error) {this.refuse(error);} finally {this.lifetime.signal.removeEventListener('abort', abort);signal.removeEventListener('abort', abort);}
+    } catch (error) {
+      if (this.current() && !request.signal.aborted) {const code = (error as {code?: unknown})?.code;this.publish({...this.state, restoreError: typeof code === 'string' && isRestoreRefusalCode(code) ? code : true, restoreEncrypted: undefined});}
+      this.refuse(error);
+    } finally {this.lifetime.signal.removeEventListener('abort', abort);signal.removeEventListener('abort', abort);}
   }
   /** Inspection establishes the exact candidate. A later command cannot retarget its path or ID. */
   async prepareRestore(source: RestoreSource, signal: AbortSignal): Promise<SettingsRestoreSelection> {
     this.requireCurrent();
-    if (signal.aborted || this.loading || this.state.busy || this.state.document?.running || this.state.document?.restore || this.state.staged) throw new DOMException('Another backup action is active.', 'AbortError');
+    if (signal.aborted || this.restoring || this.loading || this.state.busy || this.state.document?.running || this.restoreActive() || this.state.staged) throw new DOMException('Another backup action is active.', 'AbortError');
     this.cancelRestoreSelection();
     const candidate = new AbortController();this.candidate = candidate;
     const selected = Object.freeze('backupId' in source ? {backupId: source.backupId} : {path: source.path});
@@ -100,18 +107,54 @@ export class SettingsBackupSource {
     this.requireCurrent();
     const captured = this.selections.get(selection);
     if (!captured || !selection.isCurrent()) throw new DOMException('The restore selection ended.', 'AbortError');
-    if (this.loading || this.state.busy || this.state.document?.running || this.state.document?.restore || this.state.staged) return undefined;
+    if (this.restoring || this.loading || this.state.busy || this.state.document?.running || this.restoreActive() || this.state.staged) return undefined;
     if (selection.encrypted ? typeof passphrase !== 'string' || !passphrase.length : passphrase !== undefined) throw new Error('Invalid restore passphrase input.');
-    const request = this.linkSignals([captured.signal, signal, this.candidate!.signal]);
-    this.publish({...this.state, busy: true});
+    const sourceKey = (source: RestoreSource) => 'backupId' in source ? `backup:${source.backupId}` : `path:${source.path}`;
+    if (this.restoreIntent && sourceKey(this.restoreIntent.source) !== sourceKey(captured.source)) throw new Error('restore_result_unconfirmed');
+    // The server's restore receipt is bound to source+operation, not a retained passphrase.
+    const intent = this.restoreIntent ?? {source: captured.source, operationId: randomId(), jobId: undefined};
+    this.restoreIntent = intent;
+    const request = this.linkSignals([captured.signal, signal, captured.candidate.signal]);
+    const flight = {};this.restoring = flight;
+    const current = () => this.current() && this.restoring === flight && this.restoreIntent === intent && this.candidate === captured.candidate && !request.signal.aborted;
+    this.publish({...this.state, busy: true, restorePhase: 'preparing', restoreJobId: intent.jobId, restoreError: undefined, restoreEncrypted: selection.encrypted});
     try {
-      request.signal.throwIfAborted();
-      this.requireCurrent();
-      const staged = await restoreBackup(this.api, this.serverId, randomId(), captured.source, request.signal, passphrase);
-      this.requireCurrent();request.signal.throwIfAborted();
-      if (!selection.isCurrent()) throw new DOMException('The restore selection ended.', 'AbortError');
-      this.publish({...this.state, staged});return staged;
-    } catch (error) {this.refuse(error);} finally {request.dispose();this.publish({...this.state, busy: false});}
+      if (!current() || !selection.isCurrent()) throw new DOMException('The restore selection ended.', 'AbortError');
+      const staged = await restoreBackup(this.api, this.serverId, intent.operationId, intent.source, request.signal, passphrase, {
+        isCurrent: current,
+        onAccepted: jobId => {
+          if (!current() || intent.jobId && intent.jobId !== jobId) throw new Error('restore_job_changed');
+          intent.jobId = jobId;this.publish({...this.state, restoreJobId: jobId});
+        },
+        onProgress: document => {
+          if (!current()) return;
+          this.publish({...this.state, document, restorePhase: document.lastRestore?.jobId === intent.jobId ? undefined : document.restore?.result ? 'restarting' : 'preparing'});
+        },
+      });
+      if (!current()) throw new DOMException('The restore selection ended.', 'AbortError');
+      this.publish({...this.state, staged, restorePhase: 'restarting'});
+      // Staging itself requests the graceful restart. Never issue a second restart.
+      const document = await waitForServerAnswer(async () => {
+        if (!current()) throw new DOMException('The restore selection ended.', 'AbortError');
+        const document = await getBackups(this.api, this.serverId, request.signal);
+        if (!current()) throw new DOMException('The restore selection ended.', 'AbortError');
+        if (!intent.jobId || document.lastRestore?.jobId !== intent.jobId) throw new Error('restore_result_pending');
+        return document;
+      }, {signal: request.signal});
+      if (!current()) throw new DOMException('The restore selection ended.', 'AbortError');
+      this.restoreIntent = undefined;
+      this.publish({...this.state, document, staged: undefined, restorePhase: undefined, restoreError: undefined});
+      return staged;
+    } catch (error) {
+      if (this.current()) {
+        const completed = !!intent.jobId && this.state.document?.lastRestore?.jobId === intent.jobId;
+        const code = (error as {code?: unknown})?.code;
+        if (completed || typeof code === 'string' && isRestoreRefusalCode(code)) this.restoreIntent = undefined;
+        this.publish({...this.state, restorePhase: undefined, restoreError: completed || request.signal.aborted ? undefined : typeof code === 'string' && isRestoreRefusalCode(code) ? code : true});
+        if (completed && this.state.document?.lastRestore?.outcome === 'rolled_back') throw Object.assign(new Error('restore_rolled_back'), {code: 'restore_rolled_back'});
+      }
+      this.refuse(error);
+    } finally {request.dispose();if (this.restoring === flight) {this.restoring = undefined;this.publish({...this.state, busy: false});}}
   }
   /** Delete one backup the owner chose from the current list; an unlisted id is refused. */
   async remove(backupId: string, signal: AbortSignal): Promise<boolean> {
@@ -136,5 +179,5 @@ export class SettingsBackupSource {
     for (const signal of all) {signal.addEventListener('abort', abort, {once: true});if (signal.aborted) request.abort();}
     return {signal: request.signal, dispose: () => {for (const signal of all) signal.removeEventListener('abort', abort);}};
   }
-  dispose() {this.lifetime.abort();this.cancelRestoreSelection();this.loading = undefined;this.state = empty;}
+  dispose() {this.lifetime.abort();this.restoreIntent = undefined;this.restoring = undefined;this.cancelRestoreSelection();this.loading = undefined;this.state = empty;}
 }

@@ -29,3 +29,5 @@
 .cleanupDanger { color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 12%, transparent); }
 
 .storageWarning { color: var(--color-amber); }
+
+.restoreStatus { display: grid; gap: 12px; margin-bottom: 16px; }
