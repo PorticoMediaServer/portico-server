@@ -69,6 +69,7 @@ const primaryPublicationSQL = `(SELECT candidate.asset_id FROM reading_publicati
 
 type LibraryRow struct {
 	ID, LibraryID, Title, Format, SourceID string
+	IssueDate                              string
 	CoverURL                               string
 	InventoryAvailable                     bool
 	// Catalogue facts, distinct from package identity and read availability.
