@@ -134,10 +134,14 @@ func aacRate(c AudioDecodeCap, source int) int {
 var errAudioPlan = errors.New("audio plan unavailable")
 
 func capAllowsRate(c AudioDecodeCap, rate int) bool {
+	// An enumerated rate must still fit the device's declared ceiling.
+	if rate <= 0 || c.MaxSampleRate > 0 && rate > c.MaxSampleRate {
+		return false
+	}
 	if len(c.SampleRates) > 0 {
 		return slices.Contains(c.SampleRates, rate)
 	}
-	return c.MaxSampleRate <= 0 || rate <= c.MaxSampleRate
+	return true
 }
 
 // codecMatches maps FFmpeg's codec name to the capability vocabulary.
@@ -197,7 +201,7 @@ var lossless = map[string]bool{"flac": true, "alac": true, "wavpack": true, "ape
 func isLossless(codec string) bool { return lossless[codec] || strings.HasPrefix(codec, "pcm_") }
 
 // convertedRate is the source rate when the FLAC capability allows it, else the
-// highest standard rate it allows at or under the source, else its lowest.
+// highest same-family standard rate it allows at or under the source, else zero.
 func convertedRate(c AudioDecodeCap, source int) int {
 	if source <= 0 {
 		return 0
