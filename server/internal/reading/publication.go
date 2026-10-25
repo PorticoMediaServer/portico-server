@@ -40,7 +40,7 @@ func Inspect(f *Source) (Publication, error) {
 		if err != nil {
 			return out, err
 		}
-	case "cbz":
+	case "cbz", "cbr", "cb7":
 		c, err := f.comic()
 		if err != nil {
 			return out, err

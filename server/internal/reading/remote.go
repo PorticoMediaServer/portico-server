@@ -177,6 +177,11 @@ func (f *Source) epub() (*EPUB, error) {
 	return OpenEPUB(f.ctx, f, f.Size)
 }
 func (f *Source) comic() (*Comic, error) {
+	if f.Format == "cbr" || f.Format == "cb7" {
+		// Classic archives are read through the same leased source reader; the
+		// format is refused unless its pinned decoder is linked in.
+		return OpenClassicComic(f.ctx, f.Format, f, f.Size)
+	}
 	if f.Sequential() {
 		return OpenSequentialComic(f.ctx, SequentialSource{Size: f.Size, Open: func(ctx context.Context) (io.ReadCloser, error) {
 			if err := ctx.Err(); err != nil {
