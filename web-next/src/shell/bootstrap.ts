@@ -19,7 +19,7 @@ import {parseServerSignIn,signInLabelKey} from '@core/sign-in.ts';
 import {defaultI18n} from '@i18n';
 import {browserAppSessionActions,signOutBrowserPorticoAccount,type BrowserAppSessionActions} from '../platform/app-sessions';
 import {browserConnectionEnvironment, restoreBrowserConnection, trackBrowserConnection, forgetBrowserConnection} from '../platform/server-connections';
-import {displayableTransportCode, launchFailure, retryDelayMs} from './connection-retry';
+import {displayableTransportCode, launchFailure, retryDelayMs, serverIsStarting} from './connection-retry';
 import {browserEventStream, browserFeedEnvironment} from '../platform/event-feed';
 import {freshnessFor, type FreshnessRuntime} from '../platform/freshness';
 import {authenticatedArtwork, type ShellArtwork} from './artwork';
@@ -47,7 +47,7 @@ export type LaunchUnreachable = Readonly<{
   serverName?: string;
   address: string;
   owner: boolean;
-  category: 'unreachable' | 'offline' | 'timeout';
+  category: 'unreachable' | 'offline' | 'timeout' | 'starting';
   code?: string;
   /** Failed connections since the first one, starting at 1. */
   attempt: number;
@@ -173,6 +173,7 @@ export class ShellBootstrap {
     const current = () => this.epoch === epoch && !controller.signal.aborted;
     const task = this.restore(epoch, controller.signal, current).then(() => { if (current()) this.clearWait(); }).catch(error => {
       if (!current()) return;
+      if (serverIsStarting(error)) {this.waitAfterFailure(error, 'starting');return;}
       const category = this.transportError === error ? launchFailure(error, globalThis.navigator?.onLine) : 'other';
       if (category !== 'other') { this.waitAfterFailure(error, category); return; }
       this.fence(); this.publish({phase: 'error', error});
@@ -181,7 +182,7 @@ export class ShellBootstrap {
   };
 
   /** Failures and retries stay on the drawn page; the saved credential is untouched. */
-  private waitAfterFailure(error: unknown, category: 'unreachable' | 'offline' | 'timeout') {
+  private waitAfterFailure(error: unknown, category: 'unreachable' | 'offline' | 'timeout' | 'starting') {
     const now = Date.now();
     const attempt = (this.failure?.attempt ?? 0) + 1;
     const firstFailureAt = this.failure?.firstFailureAt ?? now;
@@ -217,7 +218,7 @@ export class ShellBootstrap {
     this.waitWakers = undefined;
   }
 
-  private unreachable(wait: {attempt: number; firstFailureAt: number; startedAt: number; nextRetryAt: number}, category: 'unreachable' | 'offline' | 'timeout', error?: unknown): LaunchUnreachable {
+  private unreachable(wait: {attempt: number; firstFailureAt: number; startedAt: number; nextRetryAt: number}, category: 'unreachable' | 'offline' | 'timeout' | 'starting', error?: unknown): LaunchUnreachable {
     const saved = this.launch, code = displayableTransportCode((error as {code?: unknown} | null)?.code);
     return Object.freeze({
       ...(saved ? {serverName: saved.serverId ? browserServerDisplay().name(saved.serverId) : undefined, address: saved.address, owner: saved.owner} : {address: '', owner: false}),

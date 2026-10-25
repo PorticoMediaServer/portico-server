@@ -43,3 +43,11 @@ export function launchFailure(error: unknown, deviceOnline: boolean | undefined)
   const category = presentError(error, 'generic', {deviceOnline}).category;
   return category === 'unreachable' || category === 'offline' || category === 'timeout' ? category : 'other';
 }
+
+/** The early-bound server listener publishes this exact unavailable response.
+ * No message, arbitrary503 or identity refusal can become startup progress. */
+export function serverIsStarting(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const value = error as {status?: unknown; code?: unknown};
+  return value.status === 503 && value.code === 'starting';
+}
