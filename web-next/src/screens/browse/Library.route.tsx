@@ -177,6 +177,10 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
     if (!resources.life.current() || entry.libraryId !== library.id) return;
     const edit = context.effects.editMetadata;
     if (!edit) return;
+    if (matching && entry.kind === 'song' && entry.parentId) {
+      void edit({libraryId: library.id, entityId: entry.parentId, entityKind: 'album', title: entry.parentTitle ?? entry.title, initialTab: 'matching'}, anchor).catch(context.effects.reportError);
+      return;
+    }
     if (entry.kind === 'show' || entry.kind === 'album' || entry.kind === 'book') {
       void edit({libraryId: library.id, entityId: entry.entityId, entityKind: entry.kind, title: entry.title, initialTab: matching ? 'matching' : 'general'}, anchor).catch(context.effects.reportError);
       return;
