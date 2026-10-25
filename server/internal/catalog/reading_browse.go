@@ -11,6 +11,7 @@ import (
 
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/readingcap"
 	"portico.local/server/internal/sorttext"
 )
 
@@ -142,7 +143,7 @@ func (r *readingBrowseScope) project(s *Service, rows []browseRow, profile strin
  JOIN inventory_objects o ON o.id=c.inventory_object_id AND o.asset_id=a.token AND o.revision=c.source_revision
  JOIN library_sources source ON source.id=o.source_id AND source.library_id=m.library_id AND source.incarnation=o.root_incarnation
  WHERE p.item_id=m.item_id AND p.asset_id=` + r.primaryPublicationSQL("m.item_id") + `
- AND p.format IN('pdf','cbz') AND c.rule_version=1 AND c.page_rule_version=1 AND c.page_count BETWEEN 1 AND 4096
+ AND p.format IN(` + readingcap.ComicFormatsSQL() + `) AND c.rule_version=1 AND c.page_rule_version=1 AND c.page_count BETWEEN 1 AND 4096
  AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND o.size=a.size AND o.modified_ns=a.modified_ns
  AND source.enabled=1 AND source.health NOT IN('offline','root_changed','removing') ORDER BY o.id LIMIT 1)`
 	mark, markRevision := "NULL", "NULL"

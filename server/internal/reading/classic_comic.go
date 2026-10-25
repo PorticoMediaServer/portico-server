@@ -36,6 +36,7 @@ func OpenClassicComic(ctx context.Context, format string, ra io.ReaderAt, size i
 		var info struct {
 			XMLName                           xml.Name
 			Title, Writer, Manga, LanguageISO string
+			Series, Number                    string
 			Format                            []struct {
 				XMLName xml.Name
 				Value   string `xml:",chardata"`
@@ -47,6 +48,7 @@ func OpenClassicComic(ctx context.Context, format string, ra io.ReaderAt, size i
 			return nil, err
 		}
 		c.Metadata.Title, c.Metadata.Author, c.Metadata.Language = info.Title, info.Writer, info.LanguageISO
+		c.Series, c.SeriesNumber = info.Series, info.Number
 		if info.Manga == "YesAndRightToLeft" {
 			c.Metadata.Direction = "rtl"
 		}

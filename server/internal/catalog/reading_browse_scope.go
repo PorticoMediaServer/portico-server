@@ -11,6 +11,7 @@ import (
 
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/readingcap"
 )
 
 // readingBrowseScope is a private, snapshot-bound dispatch context. Accepted
@@ -74,7 +75,13 @@ func (s *Service) readingBrowseScope(library string) (*readingBrowseScope, error
 func (r *readingBrowseScope) fence() string {
 	value := fmt.Sprintf("reading:%d:%d:%d:%s", r.generation.Namespace, r.generation.Input, r.generation.Ready, r.kind)
 	if r.mobi {
-		return value + ":mobi-v1"
+		value += ":mobi-v1"
+	}
+	// The admitted engine domain is part of the selection readiness this fence
+	// guards, so a build that enables another local format cannot reuse a page,
+	// facet or saved witness computed without it.
+	if readingcap.CB7() {
+		value += ":cb7-v1"
 	}
 	return value
 }
@@ -95,12 +102,12 @@ func (r *readingBrowseScope) eligibleSQL(entity string) string {
  JOIN reading_publications reading_publication ON reading_publication.item_id=reading_title.id
  JOIN catalog_asset_links reading_link ON reading_link.entity_id=reading_title.id AND reading_link.asset_id=reading_publication.asset_id
  WHERE reading_title.id=` + entity + ` AND reading_title.library_id=` + strconv.FormatInt(r.library, 10) + `
- AND reading_title.kind=` + kind + ` AND reading_title.retired=0 AND reading_publication.format IN(` + formats + `)
+ AND reading_title.kind=` + kind + ` AND reading_title.retired=0 AND reading_publication.format IN(` + formats + `) AND ` + readingcap.LocalCB7SQL("reading_publication") + `
  AND reading_publication.asset_id=` + r.primaryPublicationSQL("reading_title.id") + `)`
 }
 
 func (r *readingBrowseScope) primaryPublicationSQL(item string) string {
-	return `(SELECT candidate.asset_id FROM reading_publications candidate WHERE candidate.item_id=` + item + ` AND candidate.format IN(` + r.sourceFormatsSQL() + `)
+	return `(SELECT candidate.asset_id FROM reading_publications candidate WHERE candidate.item_id=` + item + ` AND candidate.format IN(` + r.sourceFormatsSQL() + `) AND ` + readingcap.LocalCB7SQL("candidate") + `
  ORDER BY EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=candidate.item_id
  AND available.asset_id=(SELECT token FROM catalog_assets WHERE id=candidate.asset_id) AND available.available=1) DESC,candidate.asset_id LIMIT 1)`
 }
@@ -216,7 +223,7 @@ func (s *Service) readingMobiConfigured() bool {
 // single-library SQL never infer format support from member metadata.
 func (r *readingBrowseScope) sourceFormats() []string {
 	if r.kind == "comic" {
-		return []string{"cbz", "pdf"}
+		return readingcap.ComicFormats()
 	}
 	if r.mobi {
 		return []string{"epub", "pdf", "mobi", "azw3"}

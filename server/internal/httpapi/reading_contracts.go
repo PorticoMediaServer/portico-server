@@ -4,16 +4,19 @@ package httpapi
 // Neither a filesystem path, a book-origin URL nor a credential is a resource.
 type ReadingFormat string
 
+// Wire vocabulary is additive and build-independent: every build publishes the
+// same enum. Whether this server can actually ingest and open a format is a
+// runtime capability, never a contract shape.
 func (ReadingFormat) JSONSchema() map[string]any {
-	return map[string]any{"type": "string", "enum": []string{"epub", "pdf", "cbz"}}
+	return map[string]any{"type": "string", "enum": []string{"epub", "pdf", "cbz", "cb7"}}
 }
 
 // ReadingSourceFormat describes the real original file. Conversion never widens
-// ReadingFormat, which remains the EPUB/PDF/CBZ engine/publication coordinate union.
+// ReadingFormat, which remains the engine/publication coordinate union.
 type ReadingSourceFormat string
 
 func (ReadingSourceFormat) JSONSchema() map[string]any {
-	return map[string]any{"type": "string", "enum": []string{"epub", "pdf", "cbz", "mobi", "azw3"}}
+	return map[string]any{"type": "string", "enum": []string{"epub", "pdf", "cbz", "mobi", "azw3", "cb7"}}
 }
 
 type ReadingDirection string

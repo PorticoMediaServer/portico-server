@@ -16,6 +16,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/mediasource"
 	"portico.local/server/internal/mounts"
+	"portico.local/server/internal/readingcap"
 	"portico.local/server/internal/readingidentity"
 	"portico.local/server/internal/remotesources"
 	"portico.local/server/internal/sourceaccess"
@@ -65,11 +66,11 @@ const publicationJoins = ` CROSS JOIN reading_publications p ON p.item_id=e.id
 const publicationObjectEligible = `o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND o.root_incarnation=s.incarnation
  AND o.size=a.size AND o.modified_ns=a.modified_ns AND s.enabled=1 AND s.health NOT IN('offline','root_changed','removing')`
 
-const publicationEligible = `e.retired=0 AND cl.retired=0 AND e.kind IN(20,21)
- AND ((lib.kind='book' AND e.kind=20 AND p.format IN('epub','pdf','mobi','azw3')) OR (lib.kind='comic' AND e.kind=21 AND p.format IN('cbz','pdf'))) AND link.available=1 AND a.available=1 AND available.available=1
- AND ` + publicationObjectEligible
+var publicationEligible = `e.retired=0 AND cl.retired=0 AND e.kind IN(20,21)
+ AND ((lib.kind='book' AND e.kind=20 AND p.format IN('epub','pdf','mobi','azw3')) OR (lib.kind='comic' AND e.kind=21 AND p.format IN(` + readingcap.ComicFormatsSQL() + `))) AND link.available=1 AND a.available=1 AND available.available=1
+ AND (p.format<>'cb7' OR s.kind='local') AND ` + publicationObjectEligible
 
-const selectPublication = `SELECT ` + publicationFields + ` FROM catalog_entities e` + publicationJoins + `
+var selectPublication = `SELECT ` + publicationFields + ` FROM catalog_entities e` + publicationJoins + `
  WHERE e.public_id=pid_blob(?) AND (?='' OR a.token=?) AND ` + publicationEligible + ` AND (p.format NOT IN('mobi','azw3') OR ?=1) ORDER BY a.id,o.id LIMIT 1`
 
 func (s *Service) selectTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item, sourceID string) (Selection, error) {
@@ -102,7 +103,7 @@ func (s *Service) selectionValid(v Selection) error {
 	if v.Size <= 0 || v.Size > MaxSource || !filepath.IsAbs(v.root) || !filepath.IsLocal(v.relative) || v.relative == "." || v.rootIdentity == "" {
 		return ErrInvalid
 	}
-	if v.Format != "epub" && v.Format != "pdf" && v.Format != "cbz" && v.Format != "mobi" && v.Format != "azw3" {
+	if v.Format != "epub" && v.Format != "pdf" && v.Format != "cbz" && v.Format != "mobi" && v.Format != "azw3" && !(v.Format == "cb7" && readingcap.CB7()) {
 		return ErrInvalid
 	}
 	if filepath.Clean(filepath.Join(v.root, v.relative)) != filepath.Clean(v.path) {

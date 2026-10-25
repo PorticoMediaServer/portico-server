@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/readingcap"
 )
 
 // Scan-time cover preparation covers unopened local EPUB and CBZ publications.
@@ -37,7 +38,7 @@ var ErrCoverInvalid = errors.New("reading cover is not an adoptable image")
 // The worker's own domain: book EPUB or comic CBZ from a local source. Remote
 // publications are excluded rather than staged whole; PDF is excluded because
 // its cover would be a renderer guess.
-const coverWorkerDomain = `((e.kind=20 AND lib.kind='book' AND p.format='epub') OR (e.kind=21 AND lib.kind='comic' AND p.format='cbz')) AND s.kind='local'`
+var coverWorkerDomain = `((e.kind=20 AND lib.kind='book' AND p.format='epub') OR (e.kind=21 AND lib.kind='comic' AND p.format IN(` + readingcap.ComicArchiveFormatsSQL() + `))) AND s.kind='local'`
 
 // The leased source's registered background owner label. It is never a user or
 // owner principal.

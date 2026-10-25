@@ -14,6 +14,7 @@ import (
 	"portico.local/server/internal/mediaexec"
 	"portico.local/server/internal/mediatools"
 	"portico.local/server/internal/naming"
+	"portico.local/server/internal/readingcap"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/subtitles"
 	"strconv"
@@ -376,7 +377,10 @@ func SupportedForKind(path, kind string) bool {
 		return extension == ".epub" || extension == ".pdf" || extension == ".mobi" || extension == ".azw3"
 	}
 	if kind == "comic" {
-		return extension == ".cbz" || extension == ".pdf"
+		if extension == ".cbz" || extension == ".pdf" {
+			return true
+		}
+		return extension == ".cb7" && readingcap.CB7()
 	}
 	audio := false
 	switch extension {

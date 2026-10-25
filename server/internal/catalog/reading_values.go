@@ -68,7 +68,7 @@ func refreshReadingDirectoryTx(ctx context.Context, tx *sql.Tx, job string, sour
 	}
 	base, lower, upper, rootPrefix := readingDirectoryBindings(key, directory, source.ResolvedPath, string(filepath.Separator))
 	args := []any{source.ID, source.Incarnation, base, lower, upper, rootPrefix}
-	const from = ` FROM inventory_objects o INDEXED BY inventory_objects_directory
+	from := ` FROM inventory_objects o INDEXED BY inventory_objects_directory
  JOIN catalog_assets a ON a.token=o.asset_id
  JOIN reading_publications p ON p.asset_id=a.id
  JOIN catalog_asset_links link ON link.entity_id=p.item_id AND link.asset_id=p.asset_id
@@ -81,7 +81,7 @@ func refreshReadingDirectoryTx(ctx context.Context, tx *sql.Tx, job string, sour
  AND o.retired=0 AND o.state='available' AND o.unsupported_reason=''
  AND e.retired=0 AND cl.retired=0 AND link.available=1 AND a.available=1
  AND ` + readingDirectoryPathSQL + `
- AND ((e.kind=20 AND lib.kind='book' AND p.format IN('epub','pdf')) OR (e.kind=21 AND lib.kind='comic' AND p.format IN('cbz','pdf')))
+ AND ((e.kind=20 AND lib.kind='book' AND p.format IN('epub','pdf')) OR (e.kind=21 AND lib.kind='comic' AND p.format IN('cbz','pdf','cb7'))) AND (p.format<>'cb7' OR s.kind='local')
  AND o.id=(SELECT first.id FROM inventory_objects first INDEXED BY inventory_objects_asset WHERE first.asset_id=a.token AND first.source_id=o.source_id AND first.root_incarnation=o.root_incarnation AND first.relative_path=o.relative_path AND first.retired=0 ORDER BY first.id LIMIT 1)`
 	rows, err := tx.QueryContext(ctx, `SELECT e.id,o.relative_path,e.kind,a.path`+from+` ORDER BY e.id,a.id`, args...)
 	if err != nil {

@@ -51,7 +51,7 @@ func seriesScopeDigest(library, series, kind string, scope SeriesScope, limit in
 	h := sha256.New()
 	h.Write([]byte("portico.reading.series.scope.v1\x00"))
 	var u [8]byte
-	for _, value := range []string{library, series, kind, scope.Profile, scope.Fence, scope.RestrictionFence} {
+	for _, value := range []string{library, series, kind, scope.Profile, scope.Fence, scope.RestrictionFence, scope.Formats} {
 		if !utf8.ValidString(value) {
 			return [32]byte{}, ErrChanged
 		}

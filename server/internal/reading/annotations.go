@@ -206,7 +206,7 @@ func (f *Source) annotationLocation(l Location) error {
 				return ErrInvalid
 			}
 		}
-	case "cbz":
+	case "cbz", "cb7":
 		c, err := f.comic()
 		if err != nil {
 			return f.StopAndRecheck(err)

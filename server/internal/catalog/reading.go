@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/readingcap"
 )
 
 // readingFormat is deliberately separate from audio Book/Part and timed video.
@@ -17,7 +18,7 @@ func readingFormat(path, kind string) string {
 	if kind == "book" && (ext == ".epub" || ext == ".pdf" || ext == ".mobi" || ext == ".azw3") {
 		return ext[1:]
 	}
-	if kind == "comic" && (ext == ".cbz" || ext == ".pdf") {
+	if kind == "comic" && (ext == ".cbz" || ext == ".pdf" || ext == ".cb7" && readingcap.CB7()) {
 		return ext[1:]
 	}
 	return ""

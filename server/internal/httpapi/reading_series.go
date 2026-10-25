@@ -49,6 +49,9 @@ func (d Dependencies) readingSeriesScopeTx(ctx context.Context, tx *sql.Tx, capt
 	// This is the existing browse viewer fence, from the same live facts as
 	// its predicate. No cached restriction or earlier authority snapshot enters.
 	out.Fence = fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d:%d:%d:%s", presentationIdentity(live), live.Epoch, policy, restriction, out.RestrictionFence))))
+	if d.Reading != nil {
+		out.Formats = d.Reading.SourceFormatScope()
+	}
 	err = tx.QueryRowContext(ctx, `SELECT r.revision,COALESCE(v.revision,0) FROM library_revisions r LEFT JOIN viewer_revisions v ON v.library_id=r.library_id AND v.profile_id=? WHERE r.library_id=?`, out.Profile, library).Scan(&out.Catalog, &out.Viewer)
 	return out, err
 }
