@@ -1,11 +1,11 @@
-import {Fragment, useEffect, useMemo, useRef, useState} from 'react';
+import {Fragment, useLayoutEffect, useEffect, useMemo, useRef, useState} from 'react';
 import type {DeletionPreview, IdentityProvider, SecurityIntent, SecurityPurpose, SecurityResult, SecurityState} from '@core/hosted-security.ts';
 import {passwordStrength} from '@core/password-strength.ts';
 import {ApiError} from '@core/index.ts';
 import {runAccountExport} from '@core/account-notifications.ts';
 import {AuthCodeBoxes, AuthPasswordField} from '../kit/accounts';
 import {ServicesAuthenticator, ServicesBadge, ServicesDangerAction, ServicesGroup, ServicesRecoveryCodes, ServicesRowNote, ServicesWorkspaceRow} from '../kit/accounts/ServicesWorkspace';
-import {HostedError, ServicesLabel, ServicesNotice, ServicesQuiet, ServicesStrength} from '../kit/accounts/ServicesAuth';
+import {HostedError, ServicesLabel, ServicesNotice, ServicesQuiet, ServicesStrength, ServicesAuthStage, ServicesHeading, ServicesActions} from '../kit/accounts/ServicesAuth';
 import {Button, TextField} from '../kit/controls';
 import {Dialog} from '../kit/overlays';
 import {accountIdentity, sameAccount, currentAccountWork, type AccountIdentity, type ServicesAccount} from './session';
@@ -14,7 +14,7 @@ import type {WorkspaceApi} from './workspace-api';
 import styles from './services.module.css';
 
 type Task = 'password_set_or_change' | 'email_change' | 'mfa_enroll' | 'mfa_disable' | 'recovery_codes';
-export function SecurityPanel({account, api, identity, username, onDeleted, error: parentError}: {account: ServicesAccount; api: WorkspaceApi; identity: AccountIdentity; username: string; onDeleted?: () => void; error?: unknown}) {
+export function SecurityPanel({account, api, identity, username, onDeleted, onSecurityEnded, error: parentError}: {account: ServicesAccount; api: WorkspaceApi; identity: AccountIdentity; username: string; onDeleted?: () => void; onSecurityEnded?: (codes?: readonly string[]) => void; error?: unknown}) {
   const {t} = useMemo(servicesI18n, []);
   const [state, setState] = useState<SecurityState>(), [offered, setOffered] = useState<IdentityProvider[]>([]);
   const [error, setError] = useState<unknown>(), [task, setTask] = useState<Task>(), [deleting, setDeleting] = useState(false);
@@ -104,7 +104,7 @@ export function SecurityPanel({account, api, identity, username, onDeleted, erro
       <ServicesGroup title={t('services.security.yourData')}><ServicesWorkspaceRow phoneIcon="i-file" title={t('web.account.export.button')} help={t('web.account.export.help')}><Button size="small" icon="i-download" loading={exporting} onClick={() => void download()}>{t('web.account.export.button')}</Button></ServicesWorkspaceRow></ServicesGroup>
       {exportPending && <ServicesQuiet>{t('web.account.export.preparing')}</ServicesQuiet>}
       <ServicesGroup title={t('web.deleteAccount.title')} danger><ServicesWorkspaceRow phoneIcon="i-trash" title={t('web.deleteAccount.row')} help={t('web.deleteAccount.help')}><ServicesDangerAction compact icon="i-trash" onClick={() => setDeleting(true)}>{t('web.deleteAccount.action')}</ServicesDangerAction></ServicesWorkspaceRow></ServicesGroup>
-      {task && <SecurityTask key={task} account={account} identity={identity} state={state} task={task} onClose={() => { setTask(undefined); void api.security(life.current?.signal).then(setState, setError); }} />}
+      {task && <SecurityTask key={task} account={account} identity={identity} state={state} task={task} onSecurityEnded={onSecurityEnded} onClose={() => { setTask(undefined); void api.security(life.current?.signal).then(setState, setError); }} />}
       {deleting && <DeleteAccount account={account} identity={identity} target={state.contactAddress || username} onDeleted={onDeleted} onClose={() => setDeleting(false)} />}
     </>}
     <Dialog open={Boolean(disconnecting)} onOpenChange={open => { if (!open && !busy) setDisconnecting(undefined); }} title={t('web.hostedSecurity.disconnectTitle', {provider: disconnecting ? providerName(disconnecting.provider) : ''})}
@@ -112,31 +112,44 @@ export function SecurityPanel({account, api, identity, username, onDeleted, erro
   </>;
 }
 
-function SecurityTask({account, identity, state, task, onClose}: {account: ServicesAccount; identity: AccountIdentity; state: SecurityState; task: Task; onClose: () => void}) {
+function SecurityTask({account, identity, state, task, onClose, onSecurityEnded}: {account: ServicesAccount; identity: AccountIdentity; state: SecurityState; task: Task; onClose: () => void; onSecurityEnded?: (codes?: readonly string[]) => void}) {
   const {t} = useMemo(servicesI18n, []), [operationId] = useState(() => crypto.randomUUID());
   const [password, setPassword] = useState(''), [factor, setFactor] = useState(''), [value, setValue] = useState(''), [code, setCode] = useState('');
   const [result, setResult] = useState<SecurityResult>(), [error, setError] = useState<unknown>(), [busy, setBusy] = useState(false);
   const life = useRef<AbortController | null>(null);
-  useEffect(() => { life.current = new AbortController(); return () => { life.current?.abort(); }; }, []);
+  const pending = useRef(false);
+  useLayoutEffect(() => {const controller = new AbortController(); life.current = controller; return () => controller.abort();}, []);
   const codes = result?.recoveryCodes, confirm = result?.challengeId;
   const title = t(codes ? 'web.hostedSecurity.newCodesTitle' : confirm ? task === 'mfa_enroll' ? 'web.hostedSecurity.addToAuthenticator' : 'web.hostedSecurity.checkEmail' : task === 'password_set_or_change' ? 'account.changePasswordTitle' : task === 'email_change' ? 'web.hostedSecurity.changeEmailTitle' : task === 'mfa_disable' ? 'web.twoStep.turnOffConfirmTitle' : task === 'mfa_enroll' ? 'web.twoStep.turnOnTitle' : 'web.hostedSecurity.newCodesTitle');
   const submit = async () => {
-    if (busy || !life.current) return;
-    const signal = life.current.signal; setBusy(true); setError(undefined);
+    if (pending.current || !life.current || life.current.signal.aborted) return;
+    const signal = life.current.signal; pending.current = true; setBusy(true); setError(undefined);
     try {
       const intent: SecurityIntent = {purpose: task as SecurityPurpose, target: task === 'email_change' ? value.trim() : '', operationId};
       const proof = confirm ? undefined : await currentAccountWork(account, session =>
         account.client.passwordProof(intent, password, factor, identity, session.accessToken, signal), identity);
       // A proof response may have arrived after another tab changed the account. Acquire and
       // check the current family again before the separate mutation is allowed to leave.
-      const output = await currentAccountWork(account, session => confirm ?
-        account.client.confirm(task === 'mfa_enroll' ? 'mfa' : 'email', confirm, code, operationId, identity, session.accessToken, signal) :
-        account.client.action(intent, proof!.proof, task === 'password_set_or_change' ? value : '', identity, session.accessToken, signal), identity);
+      const session = await currentAccountWork(account, async session => session, identity);
+      signal.throwIfAborted();
+      const output = confirm ?
+        await account.client.confirm(task === 'mfa_enroll' ? 'mfa' : 'email', confirm, code, operationId, identity, session.accessToken, signal) :
+        await account.client.action(intent, proof!.proof, task === 'password_set_or_change' ? value : '', identity, session.accessToken, signal);
+      signal.throwIfAborted();
+      if (output.signOut) {
+        const current = account.service.getSnapshot().session;
+        const original = current && sameAccount(accountIdentity(current), identity);
+        const cleanup = account.service.logoutIfCurrent(identity);
+        if (original) onSecurityEnded?.(output.recoveryCodes);
+        await cleanup;
+        return;
+      }
+      await currentAccountWork(account, async () => undefined, identity);
       if (signal.aborted) return;
       setPassword(''); setFactor('');
       if (output.challengeId || output.recoveryCodes) setResult(output); else onClose();
     } catch (value) { if (!signal.aborted) setError(value); }
-    finally { if (!signal.aborted) setBusy(false); }
+    finally {pending.current = false; if (!signal.aborted) setBusy(false);}
   };
   const ready = confirm ? code.length === 6 : Boolean(password) && (!state.mfaEnabled || Boolean(factor.trim())) && (task === 'password_set_or_change' ? passwordStrength(value).acceptable : task !== 'email_change' || /^\S+@\S+\.\S+$/.test(value.trim()));
   const commitLabel = t(confirm ? 'web.hostedSecurity.confirm' : task === 'password_set_or_change' ? 'account.changePasswordTitle' : task === 'email_change' ? 'services.security.sendCode' : task === 'mfa_disable' ? 'web.hostedSecurity.turnOff' : 'action.continue');
@@ -200,6 +213,17 @@ function DeleteAccount({account, identity, target, onClose, onDeleted}: {account
     {preview?.ownedServers.length ? <ServicesNotice tone="info">{t('services.security.stillOwn', {servers: preview.ownedServers.map(server => server.name).join(', ')})}</ServicesNotice> : preview?.canDelete ? <><ServicesQuiet>{t('web.deleteAccount.member', {count: preview.affectedServers.length})}</ServicesQuiet><TextField label={t('web.deleteAccount.typeLabel', {value: target})} value={typed} onChange={event => setTyped(event.currentTarget.value)} disabled={busy} /></> : preview ? <ServicesNotice>{t('web.deleteAccount.cannot')}</ServicesNotice> : null}
   </Dialog>;
 }
+/** One receipt-backed, memory-only view remains after MFA ends the old family. */
+export function SignedOutRecoveryCodes({codes, onDone}: {codes: readonly string[]; onDone: () => void}) {
+  const {t} = servicesI18n(), [error, setError] = useState<unknown>();
+  return <ServicesAuthStage variant="state"><ServicesHeading>{t('web.hostedSecurity.newCodesTitle')}</ServicesHeading>
+    <ServicesQuiet>{t('services.security.codesBody')}</ServicesQuiet>{error ? <HostedError error={error}/> : null}
+    <ServicesRecoveryCodes codes={codes} onCopy={() => void navigator.clipboard.writeText(codes.join('\n')).catch(setError)}
+      onDownload={() => downloadText(codes.join('\n'), 'portico-recovery-codes.txt')}/>
+    <ServicesActions><Button variant="primary" onClick={onDone}>{t('action.done')}</Button></ServicesActions>
+  </ServicesAuthStage>;
+}
+
 function downloadText(value: string, filename: string, type = 'text/plain') {
   const url = URL.createObjectURL(new Blob([value], {type}));
   const link = document.createElement('a'); link.href = url; link.download = filename; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);

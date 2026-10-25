@@ -1,4 +1,5 @@
 import {ApiError} from '@core/index.ts';
+import {parseSecurityResult} from '@core/hosted-security.ts';
 import {routeBody, routePath} from '../../../packages/contracts/src/hosted/routes.ts';
 import {verificationLink} from './fragments';
 import {accountIdentity, currentAccountWork, type ServicesAccount} from './session';
@@ -26,11 +27,14 @@ export async function verifyEmail(account: ServicesAccount, token: string, signa
     }
   }
   if (link?.kind === 'email_change' && account.service.getSnapshot().session) {
-    const identity = await currentAccountWork(account, async session => {
-      await account.client.request(routePath('account_security_email_confirm'), 'POST',
-        routeBody('account_security_email_confirm', {challengeId: link.resource, code: link.code, operationId: crypto.randomUUID()}), signal, session.accessToken);
-      return accountIdentity(session);
-    });
+    const session = await currentAccountWork(account, async session => session);
+    const identity = accountIdentity(session);
+    signal.throwIfAborted();
+    const raw = await account.client.request(routePath('account_security_email_confirm'), 'POST',
+      routeBody('account_security_email_confirm', {challengeId: link.resource, code: link.code, operationId: crypto.randomUUID()}), signal, session.accessToken);
+    signal.throwIfAborted();
+    const result = parseSecurityResult(raw, identity);
+    if (result.status !== 'email_changed' || !result.signOut) throw new ApiError(502, 'invalid_response', 'invalid_response', false);
     // Hosted invalidates every sign-in. Retire this browser's reviewed family,
     // preserving an account another tab adopted while cleanup was queued.
     await account.service.logoutIfCurrent(identity);

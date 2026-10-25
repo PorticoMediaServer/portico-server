@@ -13,6 +13,7 @@ import {ServicesAuthForm} from './AuthForm';
 import {DevicePage} from './DevicePage';
 import {ResetPage, VerifyPage} from './LinkPages';
 import {AccountPage} from './AccountPage';
+import {SignedOutRecoveryCodes} from './SecurityPanel';
 import {JoinPage, ShortJoinPage} from './JoinPage';
 import {ServicesHomePage} from './HomePage';
 import {RegisteredSignInPage} from './SignInPage';
@@ -83,12 +84,14 @@ function AccountRoute() {
   const {account, session} = useAccount(), {tab} = workspace.useSearch<ServicesRouter>();
   const [authenticating, setAuthenticating] = useState(() => !session), [deleted, setDeleted] = useState(false);
   const {t} = servicesI18n();
-  useEffect(() => {if (session) setDeleted(false);}, [session]);
+  const [securityEnded, setSecurityEnded] = useState<{codes?: readonly string[]}>();
+  useEffect(() => {if (session) {setDeleted(false);setSecurityEnded(undefined);}}, [session]);
   useEffect(() => { if (!session) setAuthenticating(true); }, [session]);
+  if (securityEnded?.codes?.length && !session) return <SignedOutRecoveryCodes codes={securityEnded.codes} onDone={() => setSecurityEnded({})}/>;
   if (deleted && !session) return <ServicesAuthStage><ServicesStateIcon/><ServicesHeading>{t('web.deleteAccount.doneTitle')}</ServicesHeading>
     <ServicesLead>{t('web.deleteAccount.doneBody')}</ServicesLead><ServicesActions><Button variant="glass" onClick={() => {setDeleted(false);location.assign('/');}}>{t('web.link.backToPortico')}</Button></ServicesActions></ServicesAuthStage>;
-  if (!session || authenticating) return <ServicesAuthForm account={account} onSignedIn={() => setAuthenticating(false)} />;
-  return <AccountPage account={account} session={session} section={tab as 'devices' | 'security' | 'servers' | 'notifications'} onDeleted={() => setDeleted(true)} />;
+  if (!session || authenticating) return <ServicesAuthForm account={account} before={securityEnded ? <ServicesNotice>{t('services.signin.ended')}</ServicesNotice> : undefined} onSignedIn={() => {setSecurityEnded(undefined);setAuthenticating(false);}} />;
+  return <AccountPage account={account} session={session} section={tab as 'devices' | 'security' | 'servers' | 'notifications'} onDeleted={() => setDeleted(true)} onSecurityEnded={codes => setSecurityEnded({...(codes ? {codes: Object.freeze([...codes])} : {})})} />;
 }
 function DeviceRoute() {
   const {account, bootstrap} = root.useRouteContext<ServicesRouter>(), link = bootstrap.getSnapshot().link;
