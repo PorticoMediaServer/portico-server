@@ -3,6 +3,7 @@ import {defaultI18n} from '@i18n';
 import type {LibraryManagementService} from '@core/library-management.ts';
 import type {ShellArtwork} from '../../../shell/artwork';
 import {Artwork} from '../../../kit/artwork/Artwork';
+import {LibraryScanAction} from './LibraryActions';
 import styles from './library-header.module.css';
 
 const pivots: Readonly<Record<string, string>> = {movie: 'movies', show: 'shows', artist: 'artists', album: 'albums', song: 'songs', book: 'books'};
@@ -32,6 +33,7 @@ export function LibraryHeader({libraryId, name, service, artwork, onError}: Read
         {active ? <span role="status">{defaultI18n.t('next.settings.libraries.scanning')}</span> : scan?.finishedAt && Number.isFinite(Date.parse(scan.finishedAt)) && ['complete', 'complete_with_warnings'].includes(scan.status)
           ? <span>{defaultI18n.t('server.libraries.scanned', {when: defaultI18n.dateTime(scan.finishedAt)})}</span> : null}
       </div>
+      {library?.actions.includes('scan') && <div className={styles.actions}><LibraryScanAction rowId="libraries.scanNow" label={defaultI18n.t('next.settingsSpec.server.libraries.panels.library.tabs.3.groups.0.rows.0.control.label')} libraryId={libraryId} service={service} onError={onError} /></div>}
     </div>
   </header>;
 }
