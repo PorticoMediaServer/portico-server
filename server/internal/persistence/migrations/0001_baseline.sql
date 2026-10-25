@@ -8800,3 +8800,30 @@ CREATE TRIGGER credit_source_publications_no_replace BEFORE INSERT ON credit_sou
  BEGIN SELECT RAISE(ABORT,'credit source publication already exists'); END;
 CREATE TRIGGER credit_source_rows_no_replace BEFORE INSERT ON credit_source_rows WHEN EXISTS(SELECT 1 FROM credit_source_rows WHERE source_row_id=NEW.source_row_id)
  BEGIN SELECT RAISE(ABORT,'credit source row already exists'); END;
+
+-- Reading My List groups are private dynamic references, never catalogue entities.
+-- Library identity is intentionally not rebound/cascaded when a library disappears.
+CREATE TABLE reading_saved_groups (
+ reference_id TEXT PRIMARY KEY CHECK(length(reference_id) BETWEEN 1 AND 128),
+ owner_key TEXT NOT NULL CHECK(length(owner_key)>0), server_id TEXT NOT NULL CHECK(length(server_id)>0),
+ library_id TEXT NOT NULL CHECK(length(library_id) BETWEEN 1 AND 128),
+ group_kind TEXT NOT NULL CHECK(group_kind IN('series','magazine','newspaper')),
+ series_key TEXT COLLATE BINARY NOT NULL CHECK(length(CAST(series_key AS BLOB)) BETWEEN 1 AND 1048576),
+ listed INTEGER NOT NULL CHECK(listed IN(0,1)), revision INTEGER NOT NULL CHECK(revision BETWEEN 1 AND 9007199254740991),
+ UNIQUE(owner_key,server_id,library_id,group_kind,series_key)
+) STRICT;
+CREATE INDEX reading_saved_groups_owner_listed ON reading_saved_groups(owner_key,server_id,listed,reference_id);
+CREATE TABLE reading_saved_group_receipts (
+ owner_key TEXT NOT NULL, server_id TEXT NOT NULL, operation_id TEXT NOT NULL,
+ request_hash TEXT NOT NULL, response TEXT NOT NULL, created_at TEXT NOT NULL,
+ PRIMARY KEY(owner_key,server_id,operation_id)
+) STRICT;
+CREATE INDEX reading_saved_group_receipts_expiry ON reading_saved_group_receipts(created_at);
+CREATE TABLE reading_saved_group_owners (
+ owner_key TEXT NOT NULL, server_id TEXT NOT NULL,
+ revision INTEGER NOT NULL CHECK(revision BETWEEN 1 AND 9007199254740991),
+ PRIMARY KEY(owner_key,server_id)
+) STRICT;
+CREATE TRIGGER reading_saved_group_identity_immutable BEFORE UPDATE OF reference_id,owner_key,server_id,library_id,group_kind,series_key ON reading_saved_groups
+ WHEN NEW.reference_id<>OLD.reference_id OR NEW.owner_key<>OLD.owner_key OR NEW.server_id<>OLD.server_id OR NEW.library_id<>OLD.library_id OR NEW.group_kind<>OLD.group_kind OR NEW.series_key<>OLD.series_key
+ BEGIN SELECT RAISE(ABORT,'private Reading group reference identity is immutable'); END;

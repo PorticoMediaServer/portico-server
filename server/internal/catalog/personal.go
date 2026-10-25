@@ -573,7 +573,7 @@ func (s *Service) setPersonal(account, profile, item string, m PersonalMutation,
 
 func (s *Service) CleanupPersonalReceipts() error {
 	cutoff := time.Now().UTC().Add(-30 * 24 * time.Hour).Format(time.RFC3339)
-	for _, table := range []string{"personal_receipts", "personal_batch_receipts", "playlist_receipts", "saved_resource_receipts", "personal_activity_receipts", "personal_snapshots"} {
+	for _, table := range []string{"personal_receipts", "personal_batch_receipts", "playlist_receipts", "saved_resource_receipts", "reading_saved_group_receipts", "personal_activity_receipts", "personal_snapshots"} {
 		if _, e := dbwork.ExecWrite(context.Background(), s.db, dbwork.ClassFrom(context.Background(), dbwork.ClassInteractive), `DELETE FROM `+table+` WHERE rowid IN(SELECT rowid FROM `+table+` WHERE created_at<? LIMIT 1000)`, cutoff); e != nil {
 			return e
 		}

@@ -38,6 +38,9 @@ func (d Dependencies) readingRoutes(mux *http.ServeMux) {
 			handler(w, r)
 		})
 	}
+	register("GET /v1/libraries/{libraryId}/reading/groups/{groupKind}/{seriesId}/my-list", nil, d.readingSavedGroup)
+	register("PUT /v1/libraries/{libraryId}/reading/groups/{groupKind}/{seriesId}/my-list", nil, d.readingSetSavedGroup(&personalLimiter{}))
+	register("DELETE /v1/reading/saved-groups/{referenceId}", nil, d.readingRemoveSavedGroup(&personalLimiter{}))
 	register("GET /v1/items/{itemId}/reading/favorite", nil, d.readingFavorite)
 	register("PUT /v1/items/{itemId}/reading/favorite", nil, d.readingSetFavorite(&personalLimiter{}))
 	register("GET /v1/items/{itemId}/reading/my-list", nil, d.readingSaved)
