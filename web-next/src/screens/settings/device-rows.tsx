@@ -1,3 +1,5 @@
+import {useState} from 'react';
+import {Licences} from '../../kit/states/Licences';
 import {defaultI18n} from '@i18n';
 import type {SettingsRow} from '@core/presentation/settings-spec.ts';
 import {Button} from '../../kit/controls';
@@ -13,6 +15,8 @@ function DeviceLink({label, onClick}: {label: string; onClick: () => void}) {
 
 /** The drawn Device rows whose control is a route or an external address, not a stored value. */
 export function DeviceRowControl({row, onSwitchServer}: {row: SettingsRow; onSwitchServer: () => void}) {
+  const [licensesOpen, setLicensesOpen] = useState(false);
+  if (row.id === 'device.licenses') return <><DeviceLink label={defaultI18n.t(row.control.label ?? row.label)} onClick={() => setLicensesOpen(true)}/><Licences open={licensesOpen} onOpenChange={setLicensesOpen}/></>;
   if (row.id === 'device.server') return <DeviceLink label={defaultI18n.t('next.settingsSpec.account.device.groups.3.rows.0.control.label')} onClick={onSwitchServer}/>;
   if (row.id === 'device.help') return <DeviceLink label={deviceHelpAddress} onClick={() => window.open(deviceHelpURL, '_blank', 'noopener,noreferrer')}/>;
   return null;

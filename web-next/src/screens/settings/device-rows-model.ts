@@ -3,7 +3,7 @@ import type {SettingsRow} from '@core/presentation/settings-spec.ts';
 import type {SettingPresentation} from '../../kit/settings';
 
 /** Rows the web Device section owns beyond the controller's value-backed rows. */
-export const deviceSyntheticRowIds = ['device.server', 'device.serverVersion', 'device.help'] as const;
+export const deviceSyntheticRowIds = ['device.server', 'device.serverVersion', 'device.help', 'device.licenses'] as const;
 export type DeviceRowFacts = Readonly<{serverName: string; serverVersion?: string}>;
 export function isDeviceSyntheticRow(id: string): boolean {
   return (deviceSyntheticRowIds as readonly string[]).includes(id);
@@ -16,6 +16,7 @@ export const deviceHelpURL = 'https://getportico.tv/help';
 export function deviceRowState(row: SettingsRow, facts: DeviceRowFacts): SettingPresentation | undefined {
   if (row.id === 'device.server') return {present: true, help: defaultI18n.t('next.settingsSpec.account.device.groups.3.rows.0.help', {server: facts.serverName})};
   if (row.id === 'device.serverVersion') return facts.serverVersion ? {present: true, value: facts.serverVersion, displayValue: facts.serverVersion, readOnly: true} : undefined;
+  if (row.id === 'device.licenses') return {present: true};
   if (row.id === 'device.help') return {present: true};
   return undefined;
 }
