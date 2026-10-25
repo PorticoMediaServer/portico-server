@@ -236,6 +236,7 @@ func (s *Service) ConfigureDAV(ctx context.Context, actor, id string, in DAVInpu
 	}
 	committed = true
 	s.invalidate(source.ID)
+	_ = s.clearSourceCache(context.Background(), source.ID)
 	_ = s.refreshBindings(ctx)
 	return receipt, nil
 }
@@ -331,6 +332,7 @@ func (s *Service) RemoveDAV(ctx context.Context, actor, id, op string, generatio
 		return zero, err
 	}
 	s.invalidate(id)
+	_ = s.clearSourceCache(context.Background(), id)
 	_ = s.refreshBindings(ctx)
 	return receipt, nil
 }

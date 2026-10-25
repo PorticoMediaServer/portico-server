@@ -5,14 +5,15 @@ import {SettingNumber} from '../../../kit/settings';
 import styles from './remote-sources.module.css';
 
 const t = defaultI18n.t;
+const formatBytes = (bytes: number) => bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(1)} GB` : bytes >= 1024 ** 2 ? `${Math.round(bytes / 1024 ** 2)} MB` : `${Math.round(bytes / 1024)} KB`;
 
 /** The drawn Advanced groups (remote-sources.html#4b, #4c), over the values the
  * server actually applies: the folders' check interval, the start and watch
  * passes, the full re-check, the mount's real read cache, and the whole-file
  * analysis stages. Rows the server cannot honour are not drawn. */
-export function SourceAdvancedRows({values, cacheSupported, transportSupported, cacheApplied, cacheError, observedInterval, disabled, onChange}: Readonly<{
+export function SourceAdvancedRows({values, cacheSupported, transportSupported, cacheApplied, cacheError, cacheUsedBytes, observedInterval, disabled, onChange}: Readonly<{
   values: SourceAdvanced; cacheSupported: boolean; transportSupported: boolean; cacheApplied: boolean; cacheError?: string;
-  observedInterval: number; disabled: boolean; onChange: (values: SourceAdvanced) => void;
+  cacheUsedBytes: number; observedInterval: number; disabled: boolean; onChange: (values: SourceAdvanced) => void;
 }>) {
   const set = <K extends keyof SourceAdvanced,>(key: K, value: SourceAdvanced[K]) => onChange({...values, [key]: value});
   const intervals = [
@@ -100,6 +101,7 @@ export function SourceAdvancedRows({values, cacheSupported, transportSupported, 
         value={String(values.cacheFloorBytes / (1024 * 1024 * 1024))}
         options={floors.map((size, index) => ({value: size, label: t(`next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.2.rows.0.control.options.${index}.label` as never)}))}
         onValueChange={value => set('cacheFloorBytes', gb(value))}/>
+      <p className={styles.note} role="status">{t('next.remoteSources.advCacheUsed', {used: formatBytes(cacheUsedBytes)})}</p>
       {!cacheApplied && <p className={styles.note} role="status">{t('next.remoteSources.advCachePending')}</p>}
       {cacheError && <p className={styles.error} role="alert">{t(cacheError === 'source_changed' ? 'next.remoteSources.advCacheChanged'
         : cacheError === 'mount_unavailable' ? 'next.remoteSources.advCacheUnavailable'

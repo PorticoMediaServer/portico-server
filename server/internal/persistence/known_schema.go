@@ -550,6 +550,7 @@ index rec_profile_signals_work
 index remote_inventory_check_job
 index remote_listing_directory_history
 index remote_listing_retention
+index remote_source_cache_lru
 index retained_title_identities_state
 index retained_title_state_profile
 index saved_entry_undo_expiry
@@ -1292,6 +1293,7 @@ table remote_scan_cursors
 table remote_scan_generations
 table remote_scan_observation_hashes
 table remote_scan_observations
+table remote_source_cache_entries
 table remote_source_operations
 table remote_source_read_profiles
 table remote_source_settings

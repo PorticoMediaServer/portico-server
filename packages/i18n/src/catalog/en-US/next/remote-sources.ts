@@ -248,6 +248,7 @@ export const remoteSourcesMessages = {
   'next.remoteSources.advObserved': 'Currently every {minutes} minutes',
   'next.remoteSources.advObservedHelp': 'These folders have their own check interval that this page does not offer. Choose one above to make it this source’s setting.',
   'next.remoteSources.advCachePending': 'Saved. The storage program applies the new cache the next time it restarts.',
+  'next.remoteSources.advCacheUsed': 'In use now: {used}.',
   'next.remoteSources.advCacheFailed': 'Saved, but the storage program refused the new cache. Check the server messages for the reason.',
   'next.remoteSources.advCacheChanged': 'Saved, but this source changed before the storage program took the new cache. Save again to apply it.',
   'next.remoteSources.advCacheUnavailable': 'Saved, but the storage program that holds this source is not running. The cache applies when it starts.',

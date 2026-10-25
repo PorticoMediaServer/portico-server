@@ -44,6 +44,7 @@ type SourceStatus struct {
 	ProgramVersion  string `json:"programVersion,omitempty"`
 	ProgramRevision int64  `json:"programRevision,omitempty"`
 	ProgramIncluded bool   `json:"programIncluded,omitempty"`
+	CacheUsedBytes  int64  `json:"cacheUsedBytes"`
 	Remote          string `json:"remote,omitempty"`
 	BackgroundSpeed string `json:"backgroundSpeed,omitempty"`
 }
@@ -120,6 +121,9 @@ func (s *Service) ReadSourceStatus(ctx context.Context, identities *identity.Ser
 		if bundled, e := rcloneprogram.Resolve(); e == nil {
 			out.ProgramIncluded = bundled.Path == executable
 		}
+	}
+	if err = snapshot.Tx().QueryRowContext(ctx, `SELECT COALESCE(SUM(used_bytes),0) FROM remote_source_cache_entries WHERE source_id=?`, row.ID).Scan(&out.CacheUsedBytes); err != nil {
+		return SourceStatus{}, err
 	}
 	if err = snapshot.Tx().QueryRowContext(ctx, `SELECT background_speed FROM maintenance_settings WHERE singleton=1`).Scan(&out.BackgroundSpeed); err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return SourceStatus{}, err

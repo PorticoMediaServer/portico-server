@@ -108,6 +108,8 @@ type SourceAdvancedSettings struct {
 	CacheApplied bool `json:"cacheApplied"`
 	// CacheError names why the mount did not take the saved cache, when it did not.
 	CacheError string `json:"cacheError,omitempty"`
+	// CacheUsedBytes is what this source's own cache holds now.
+	CacheUsedBytes int64 `json:"cacheUsedBytes"`
 	// ScanIntervalObserved is the shortest interval the folders really have,
 	// even when it is not one the page offers. It is reported, never relabelled.
 	ScanIntervalObserved int            `json:"scanIntervalObserved"`
@@ -369,20 +371,26 @@ func (s *Service) ReadSourceAdvanced(ctx context.Context, identities *identity.S
 	if err != nil {
 		return SourceAdvancedSettings{}, err
 	}
-	return advancedSettings(row, settings, ""), nil
+	out := advancedSettings(row, settings, "")
+	out.CacheSupported = true
+	if err = snapshot.Tx().QueryRowContext(ctx, `SELECT COALESCE(SUM(used_bytes),0) FROM remote_source_cache_entries WHERE source_id=?`, source).Scan(&out.CacheUsedBytes); err != nil {
+		return SourceAdvancedSettings{}, err
+	}
+	return out, nil
 }
 
 func advancedSettings(row Source, settings advancedRow, cacheError string) SourceAdvancedSettings {
 	// Applied is read from the stored projection alone: asking to disable the
 	// cache is only applied once the mount really reports no cache.
-	applied := settings.appliedBytes == settings.values.CacheBytes &&
-		(settings.values.CacheFloorBytes == 0 || settings.appliedFloor == settings.values.CacheFloorBytes)
+	applied := settings.values.CacheBytes == 0 || row.MountID == "" && settings.saved ||
+		settings.appliedBytes == settings.values.CacheBytes &&
+			(settings.values.CacheFloorBytes == 0 || settings.appliedFloor == settings.values.CacheFloorBytes)
 	return SourceAdvancedSettings{
 		SourceID:             row.ID,
 		Generation:           strconv.FormatInt(row.Generation, 10),
 		Revision:             settings.revision,
 		Saved:                settings.saved,
-		CacheSupported:       row.MountID != "",
+		CacheSupported:       true,
 		CacheApplied:         applied,
 		CacheError:           cacheError,
 		ScanIntervalObserved: settings.observedIntervalSecond,
@@ -434,11 +442,6 @@ func (s *Service) SaveSourceAdvanced(ctx context.Context, identities *identity.S
 	if !v.valid() {
 		return SourceAdvancedSettings{}, storage.ErrRemoteConfig
 	}
-	if v.CacheBytes != 0 || v.CacheFloorBytes != 0 {
-		if row.MountID == "" {
-			return SourceAdvancedSettings{}, storage.ErrRemoteConfig
-		}
-	}
 	if revision == 0 {
 		_, err = tx.ExecContext(ctx, `INSERT INTO remote_source_settings(source_id,revision,scan_interval_seconds,watch_for_changes,scan_on_start,full_recheck_days,cache_bytes,cache_floor_bytes,seek_previews,chapter_images,waveforms,loudness,checksums,intros_mode,double_check_folders,dir_cache_seconds,read_buffer_bytes,connect_timeout_seconds,idle_timeout_seconds,retries,low_level_retries) VALUES(?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 			source, v.ScanIntervalSeconds, v.WatchForChanges, v.ScanOnStart, v.FullRecheckDays, v.CacheBytes, v.CacheFloorBytes, v.SeekPreviews, v.ChapterImages, v.Waveforms, v.Loudness, v.Checksums, v.IntrosMode, v.DoubleCheckFolders, v.DirCacheSeconds, v.ReadBufferBytes, v.ConnectTimeoutSeconds, v.IdleTimeoutSeconds, v.Retries, v.LowLevelRetries)
@@ -461,6 +464,11 @@ func (s *Service) SaveSourceAdvanced(ctx context.Context, identities *identity.S
 		return SourceAdvancedSettings{}, err
 	}
 	settings := advancedRow{values: v, saved: true, revision: revision + 1, appliedBytes: current.appliedBytes, appliedFloor: current.appliedFloor, observedIntervalSecond: current.observedIntervalSecond}
+	if row.MountID == "" {
+		// A source read directly by the server keeps its cache itself: the saved
+		// size is what its cache uses, and nothing mount-side has to apply it.
+		settings.appliedBytes, settings.appliedFloor = v.CacheBytes, v.CacheFloorBytes
+	}
 	cacheError := ""
 	if row.MountID != "" {
 		apply := cacheApply{admitted: row, revision: revision + 1, values: v}
@@ -485,7 +493,12 @@ func (s *Service) SaveSourceAdvanced(ctx context.Context, identities *identity.S
 	if current.values.transport() != v.transport() {
 		s.transportCommitted(source)
 	}
-	return advancedSettings(row, settings, cacheError), nil
+	out := advancedSettings(row, settings, cacheError)
+	out.CacheSupported = true
+	if used, e := s.cacheUsed(context.Background(), source); e == nil {
+		out.CacheUsedBytes = used
+	}
+	return out, nil
 }
 
 func (v SourceAdvanced) transport() SourceTransport {

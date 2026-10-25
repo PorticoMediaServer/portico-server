@@ -36,6 +36,7 @@ type object struct {
 	cache                      *os.File
 	cached, ceiling, floor     int64
 	terminal                   error
+	rangeCache                 *rangeCache
 }
 
 func (s *Service) Acquire(ctx context.Context, path, lane string) (storage.RemoteObject, error) {
@@ -172,6 +173,11 @@ func (s *Service) Acquire(ctx context.Context, path, lane string) (storage.Remot
 	if err = s.check(ctx, b, o.generation); err != nil {
 		return nil, err
 	}
+	if b.Kind == "webdav" {
+		if cache, cacheErr := s.openRangeCache(ctx, b, o.generation, o.snapshot); cacheErr == nil && cache != nil {
+			o.rangeCache = cache
+		}
+	}
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -262,6 +268,10 @@ func (o *object) OpenRange(parent context.Context, offset, length int64) (io.Rea
 		return nil, err
 	}
 	if o.conditional != nil {
+		if cached, ok := o.fromRangeCache(ctx, offset, length); ok {
+			release()
+			return cached, nil
+		}
 		response, e := o.conditional.Open(ctx, http.MethodGet, fmt.Sprintf("bytes=%d-%d", offset, offset+length-1))
 		if e != nil {
 			release()
@@ -324,6 +334,36 @@ func (o *object) OpenRange(parent context.Context, offset, length int64) (io.Rea
 	reader := io.NewSectionReader(o.cache, offset, length)
 	return &readCloser{Reader: reader, close: func() error { release(); return nil }}, nil
 }
+
+// fromRangeCache serves a read from this source's own cache when the requested
+// bytes are inside the immutable prefix already held, fetching and appending
+// only the gap. A seek beyond the prefix bypasses the cache rather than
+// inventing a sparse entry.
+func (o *object) fromRangeCache(ctx context.Context, offset, length int64) (io.ReadCloser, bool) {
+	cache := o.rangeCache
+	if cache == nil || offset < 0 || offset > cache.cached {
+		return nil, false
+	}
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if offset > cache.cached {
+		return nil, false
+	}
+	end := offset + length
+	if end > cache.cached {
+		response, err := o.conditional.Open(ctx, http.MethodGet, fmt.Sprintf("bytes=%d-%d", cache.cached, end-1))
+		if err != nil {
+			return nil, false
+		}
+		appendErr := cache.append(ctx, response.Body, end)
+		closeErr := response.Body.Close()
+		if appendErr != nil || closeErr != nil || end > cache.cached {
+			return nil, false
+		}
+	}
+	return io.NopCloser(io.NewSectionReader(cache.file, offset, length)), true
+}
+
 func (o *object) Close() error {
 	o.once.Do(func() {
 		o.cancel()
@@ -338,6 +378,12 @@ func (o *object) Close() error {
 			name := o.cache.Name()
 			_ = o.cache.Close()
 			_ = os.Remove(name)
+		}
+		if o.rangeCache != nil {
+			commit, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			_ = o.rangeCache.commit(commit)
+			cancel()
+			o.rangeCache = nil
 		}
 		o.mu.Unlock()
 		if o.release != nil {

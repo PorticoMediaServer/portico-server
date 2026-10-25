@@ -395,6 +395,27 @@ func (s *Service) invalidate(id string) {
 // writes — a source added, a scan finished, a job cancelled — so the loop is
 // woken by commits rather than by a thirty-second clock that issued three delete
 // transactions on an idle server forever. The safety tick is the backstop.
+func (s *Service) reconcileSourceCaches(ctx context.Context) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id FROM remote_sources WHERE removed=0 LIMIT 16`)
+	if err != nil {
+		return
+	}
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil {
+			ids = append(ids, id)
+		}
+	}
+	rows.Close()
+	for _, id := range ids {
+		if ctx.Err() != nil {
+			return
+		}
+		s.reconcileSourceCache(ctx, id, s.private)
+	}
+}
+
 func (s *Service) Run(ctx context.Context) {
 	if s.startReadRuntime(ctx) != nil {
 		return

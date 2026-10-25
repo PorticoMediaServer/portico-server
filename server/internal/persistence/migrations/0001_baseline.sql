@@ -3589,6 +3589,12 @@ CREATE TABLE remote_source_settings(
  loudness INTEGER NOT NULL CHECK(loudness IN(0,1)),
  checksums INTEGER NOT NULL CHECK(checksums IN(0,1)))
  STRICT;
+CREATE TABLE remote_source_cache_entries(
+ source_id TEXT NOT NULL REFERENCES remote_sources(id) ON DELETE CASCADE,
+ cache_key TEXT NOT NULL, file_name TEXT NOT NULL, used_bytes INTEGER NOT NULL CHECK(used_bytes>=0),
+ object_size INTEGER NOT NULL CHECK(object_size>=0), accessed_ms INTEGER NOT NULL,
+ PRIMARY KEY(source_id,cache_key)) STRICT;
+CREATE INDEX remote_source_cache_lru ON remote_source_cache_entries(source_id,accessed_ms);
 CREATE TABLE remote_scan_observations(
  source_id TEXT NOT NULL REFERENCES remote_sources(id) ON DELETE CASCADE,
  relative_path TEXT NOT NULL,source_generation TEXT NOT NULL,revision INTEGER NOT NULL CHECK(revision>0),
