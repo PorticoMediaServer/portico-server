@@ -1124,6 +1124,7 @@ export const webMessages = {
   'web.chooser.loading': 'Loading your servers',
   'web.chooser.checkingAgain': 'Checking again in {seconds, plural, one {# second} other {# seconds}}',
   'web.chooser.connecting': 'Opening {server}…',
+  'web.chooser.openingBody': 'Portico is checking that it’s online and signing you in.',
   'web.chooser.current': 'Current server',
   'web.chooser.noneTitle': 'No servers yet',
   'web.chooser.noneBody': 'Set up a Portico server and connect it to this account, or open an invitation from a server’s owner.',
