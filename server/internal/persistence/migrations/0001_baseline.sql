@@ -2380,8 +2380,8 @@ CREATE TABLE lyric_fetch_runs (
  created_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL
 ) STRICT;
 CREATE TABLE metadata_runtime_settings(
- default_language TEXT NOT NULL DEFAULT 'en' CHECK(length(default_language)=2),
- default_region TEXT NOT NULL DEFAULT 'US' CHECK(length(default_region)=2),
+ default_language TEXT NOT NULL DEFAULT 'en' CHECK(default_language IN('en','ja','fr','de','es','it','pt','nl','sv','no','da','fi','pl','cs','sk','hu','ro','el','tr','ru','uk','ar','he','hi','th','vi','ko','zh')),
+ default_region TEXT NOT NULL DEFAULT 'US' CHECK(length(default_region)=2 AND default_region GLOB '[A-Z][A-Z]'),
  singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL DEFAULT 1,
  artwork_max_edge INTEGER NOT NULL DEFAULT 1920 CHECK(artwork_max_edge IN(1280,1920,2560)),
  local_artwork_limit_bytes INTEGER NOT NULL DEFAULT 2147483648 CHECK(local_artwork_limit_bytes>0),
