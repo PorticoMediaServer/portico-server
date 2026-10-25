@@ -68,12 +68,16 @@ function GroupRows({resources, retry}: {resources: Groups; retry: () => void}) {
     renderItem={group => <CoverCard kind={resources.kind} context="grid" density="grid" visible
       artwork={resources.context.artwork.foreground(group.latest.item.coverUrl, 380, 3 / 4)} fallback={<Icon name="i-book" size={40}/>}
       model={{title: group.name, caption: [{id: 'date', text: dateLabel(group.latest.issueDate), role: 'identity'}, {id: 'issues', text: t('next.reader.issueCount', {count: group.issueCount}), role: 'identity'}]}}
+      playLabel={t('next.reader.read')} onPlay={group.latest.item.inventoryAvailable ? () => {
+        if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(group.latest.item.id, group.latest.item.sourceId)).catch(resources.reportError);
+      } : undefined}
       onNavigate={() => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId: resources.libraryId}, search: {view: 'series', pivot: resources.kind === 'magazine' ? 'magazines' : 'newspapers', entityId: group.id}}).catch(resources.reportError);}}/>}/>}</GridFrame></section>;
 }
 function IssueRows({resources, retry}: {resources: Issues; retry: () => void}) {
   const state = useSyncExternalStore(resources.pages.collection.subscribe, resources.pages.collection.getSnapshot, resources.pages.collection.getSnapshot);
   const name = resources.pages.collection.residentItems()[0]?.item.series?.name;
   if (state.status === 'error') return <Failure retry={retry}/>;
+  if (state.status === 'ready' && state.total === 0) return <StateView title={t('title.nothingHere')}/>;
   const open = (issue: ReadingPeriodicalIssue, read: boolean) => {
     if (!resources.bindings.authority.isCurrent()) return;
     void router.navigate(read ? readDestination(issue.item.id, issue.item.sourceId) : {to: '/item/$itemId', params: {itemId: issue.item.id}}).catch(resources.reportError);
