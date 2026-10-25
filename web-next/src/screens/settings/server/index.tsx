@@ -5,6 +5,8 @@ import type {SettingPresentation} from '../../../kit/settings';
 import {Icon} from '../../../kit/Icon';
 import type {SettingsBackupSource} from '../backup-source';
 import {StorageBackupFolder, StorageBackupNow, StorageBackups, StorageRestoreFile, type BackupSurfaceProps} from './Backups';
+import {SettingsCacheSource} from './cache-source';
+import {EmptyCache} from './EmptyCache';
 import {StorageDataFolder, StorageUsage} from './StorageUsage';
 import {BackupProtection} from '../server-storage/BackupProtection';
 import {DownloadsUsage} from '../server-storage/DownloadsUsage';
@@ -33,6 +35,7 @@ export type SettingsServerOptions = Readonly<{
 
 /** Owner-only Storage facts and controls. One shared sweep feeds both drawn rows. */
 export function createServerSettingsSurfaces(options: SettingsServerOptions): SettingsServerSurfaces {
+  const cache = new SettingsCacheSource(options.transport, options.isCurrent, options.reportError);
   const downloads = new DownloadsUsageSource(options.transport, options.isCurrent, options.reportError);
   const storage = new SettingsStorageSource(options.transport, options.serverId, options.isCurrent);
   const cleanup = new SettingsCleanupSource(options.transport, options.serverId, options.isCurrent, () => storage.getSnapshot().report, storage.retry, options.reportError);
@@ -49,7 +52,8 @@ export function createServerSettingsSurfaces(options: SettingsServerOptions): Se
       const target = linkTarget(row), text = row.control.label && t(row.control.label);
       if (target && text) return <button type="button" className={styles.sectionLink} onClick={() => {if (options.isCurrent()) options.openTarget(target);}}>{text}<Icon name="i-right" size={16} /></button>;
       const label = state.label ?? row.label;
-      return row.id === 'storage.dataFolder' ? <StorageDataFolder source={storage} label={label} />
+      return row.id === 'storage.emptyCache' ? <EmptyCache source={cache}/>
+        : row.id === 'storage.dataFolder' ? <StorageDataFolder source={storage} label={label} />
         : row.id === 'storage.usage' ? <StorageUsage source={storage} label={label} cleanup={cleanup} />
         : row.id === 'storage.downloads' ? <DownloadsUsage source={downloads} label={label} />
         : row.id === 'storage.backupKeysNote' ? <span className={styles.storageNote}>{t('next.settings.backup.keysNotice')}</span>
@@ -61,6 +65,6 @@ export function createServerSettingsSurfaces(options: SettingsServerOptions): Se
         : undefined;
     },
     rowState: row => storageRowState(row, facts()),
-    dispose: () => {downloads.dispose();cleanup.dispose();storage.dispose();},
+    dispose: () => {cache.dispose();downloads.dispose();cleanup.dispose();storage.dispose();},
   };
 }

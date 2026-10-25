@@ -7,11 +7,11 @@ export type SettingsTarget = Readonly<{scope: 'account' | 'server'; section: str
  * Rows whose drawn control this batch does not own yet. They stay absent rather
  * than showing an empty control or a setting with no engine (ruling 3).
  */
-export const pendingServerRows: ReadonlySet<string> = new Set(['storage.networkNotice', 'storage.emptyCache',
+export const pendingServerRows: ReadonlySet<string> = new Set(['storage.networkNotice',
   'storage.upgradeCopy']);
 
 /** The rows this page draws from its own owner-scoped producers. */
-export const factRows: ReadonlySet<string> = new Set(['storage.dataFolder', 'storage.usage', 'storage.downloads']);
+export const factRows: ReadonlySet<string> = new Set(['storage.dataFolder', 'storage.usage', 'storage.downloads', 'storage.emptyCache']);
 
 /** The Retention rows that name the page which owns their value. */
 export const sectionLinkRows: ReadonlySet<string> = new Set(['storage.keepHistory', 'storage.keepLogsLink']);
