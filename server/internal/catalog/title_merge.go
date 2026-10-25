@@ -60,6 +60,9 @@ func MergeTitlesTx(ctx context.Context, tx *sql.Tx, from, into int64) error {
 // absorbTx moves everything that hangs off one entity onto another of the
 // same kind and deletes the first. Children must already have been moved.
 func absorbTx(ctx context.Context, tx *sql.Tx, from, into int64, kind compactcatalog.Kind) error {
+	if err := moveChannelPlaysTx(ctx, tx, from, into); err != nil {
+		return err
+	}
 	rows, err := tx.QueryContext(ctx, `SELECT provider,provider_kind,provider_id FROM catalog_external_ids WHERE entity_id=? ORDER BY provider,provider_kind,provider_id`, from)
 	if err != nil {
 		return err
