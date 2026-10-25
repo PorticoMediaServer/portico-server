@@ -104,7 +104,8 @@ export function LibraryBrowse(bindings: LibraryBrowseBindings) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const snapshot = useSyncExternalStore(controller.collection.subscribe, controller.collection.getSnapshot, controller.collection.getSnapshot);
   const [filtersOpen, setFiltersOpen] = useState(false), width = useShellWidth(), compact = width < 600;
-  const {cardActions, menu: cardMenu} = useLibraryCardMenu({controller, queryRevision: state.queryRevision, actions: bindings.selection.actions});
+  const {wrap: wrapCard, menu: cardMenu} = useLibraryCardMenu({admission: controller, queryRevision: state.queryRevision});
+  const cardActions = useCallback((member: BrowseMember, index: number) => wrapCard(bindings.selection.actions(member, index), member.entry), [wrapCard, bindings.selection]);
   const model = useMemo(() => state.capabilities && state.sort ? browseToolbarModel(state.capabilities, library.kind, state.predicates, state.sort, {...env, owner: bindings.owner, scope: controller.source.base?.length ? 'group' : 'library'}) : undefined,
     [state.capabilities, state.sort, state.predicates, library.kind, env, bindings.owner, controller]);
   const sort = useCallback((sort: BrowseSortSelection) => {try {controller.setQuery(controller.getSnapshot().predicates, sort);} catch (error) {reportError(error);}}, [controller, reportError]);

@@ -380,7 +380,9 @@ function BoundLibrary({captured, library, search, tabs: offered, musicLookup, re
       onBack={() => {const back = context.effects.back; if (back) {back(); return;} void router.navigate({to: '/library/$libraryId', params: {libraryId: library.id}, search: {}}).catch(context.effects.reportError);}} />
     : browse ? <LibraryScreen {...bindings}/> : <LibraryDiscoveryScreen service={resources.service} route={contentRoute} musicMixes={musicMixes} mixesTarget={search.section === 'mixes'} reportError={context.effects.reportError} header={<LibraryIdentity {...header}/>} empty={empty}
       appearance={appearanceBase} preferences={appearance} reducedMotion={appearance.reducedMotion} artwork={context.artwork} env={bindings.env}
-      actions={discoveryActions} nowPlayingAlbumId={nowPlayingAlbumId} onSeeAll={section => {const target = section.seeAll;if (target) navigate({pivot: target.pivot, query: target.query, sort: target.sort});}}/>}
+      actions={discoveryActions} nowPlayingAlbumId={nowPlayingAlbumId} onSeeAll={section => {const target = section.seeAll;if (target) navigate({pivot: target.pivot, query: target.query, sort: target.sort});}}
+      selectionInput={context.identity && (context.identity.viewer.authority === 'local' || context.identity.viewer.authority === 'hosted') ? {context, playback: runtime, metadataFence: () => captured.context.viewerFence,
+        principal: {serverId: context.identity.viewer.serverId, authority: context.identity.viewer.authority, accountId: context.identity.viewer.accountId, profileId: context.identity.viewer.profileId}} : undefined}/>}
     {saving && <SaveView context={context} definition={saving} onClose={() => setSaving(undefined)}/>}</>;
 }
 function LibraryRouteScreen() {
