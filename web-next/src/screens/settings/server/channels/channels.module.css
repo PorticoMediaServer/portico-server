@@ -24,3 +24,20 @@
 .empty p { margin: 0; max-width: 560px; font-size: var(--type-body-size); line-height: var(--type-body-line); color: var(--color-text-tertiary); }
 .templates { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 @media (max-width:600px) { .heading { align-items: flex-start; flex-direction: column; } .row { grid-template-columns:44px minmax(0,1fr) auto; } .badge { grid-column:2; grid-row:2; justify-self:start; } .row > :last-child { grid-column:3; grid-row:1; } }
+.editorBody { padding-top: 4px; }
+.editorGrid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 24px; align-items: start; }
+.editorFields { display: grid; gap: 18px; border: 0; margin: 0; padding: 0; min-width: 0; }
+.editorSection { display: grid; gap: 14px; border-top: 1px solid var(--color-line); padding-top: 18px; }
+.editorSection h3, .preview h3 { margin: 0; font-size: var(--type-body-size); font-weight: var(--type-body-strong-weight); }
+.control { display: flex; justify-content: space-between; align-items: center; gap: 16px; color: var(--color-text-secondary); font-size: var(--type-body-size); }
+.control > :last-child { max-width: 62%; }
+.choices { display: flex; gap: 12px 18px; flex-wrap: wrap; margin-top: 8px; }
+.choices label { display: inline-flex; align-items: center; gap: 8px; font-size: var(--type-row-subtitle-size); }
+.choices input { accent-color: var(--color-accent-strong); }
+.help { margin: 0; color: var(--color-text-tertiary); font-size: var(--type-caption-size); line-height: var(--type-caption-line); }
+.preview { display: grid; gap: 12px; padding: 18px; border-radius: 12px; background: var(--color-raised); position: sticky; top: 0; font-size: var(--type-row-subtitle-size); line-height: var(--type-body-line); }
+.preview p, .preview ul, .preview h4 { margin: 0; }
+.preview ul { padding-left: 18px; display: grid; gap: 8px; }
+.preview h4 { font-size: var(--type-caption-size); font-weight: var(--type-body-strong-weight); color: var(--color-text-tertiary); }
+.danger { color: var(--color-record); border-color: color-mix(in srgb, var(--color-record) 36%, transparent); }
+@media (max-width: 720px) { .editorGrid { grid-template-columns: minmax(0, 1fr); } .preview { position: static; } .control { align-items: flex-start; flex-direction: column; gap: 8px; } .control > :last-child { max-width: 100%; width: 100%; } }
