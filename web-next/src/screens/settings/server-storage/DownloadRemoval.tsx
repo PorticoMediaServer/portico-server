@@ -32,7 +32,7 @@ export function DownloadRemoval({source, row, disabled}: Readonly<{source: Downl
   return <>
     <Button size="small" variant="glass" disabled={disabled || state.busy || !!locked && locked.profileKey !== row.profileKey} onClick={open}>{t('server.downloadUsage.remove')}</Button>
     <Dialog open={held} title={t('server.downloadUsage.removeTitle', {name})} onOpenChange={value => {if (!value) close();}} dismissOnBack={!state.busy} dismissOnOutsidePress={!state.busy} showCloseButton={!state.busy}
-      footer={<><Button size="small" variant="glass" disabled={state.busy} onClick={close}>{t('action.cancel')}</Button><Button size="small" variant="primary" disabled={state.busy} onClick={() => {void submit();}}>{t(state.pending ? 'action.tryAgain' : 'server.downloadUsage.remove')}</Button></>}>
+      footer={<><Button size="small" variant="glass" disabled={state.busy} onClick={close}>{t('action.cancel')}</Button><Button size="small" variant="glass" className={styles.cleanupDanger} disabled={state.busy} onClick={() => {void submit();}}>{t(state.pending ? 'action.tryAgain' : 'action.remove')}</Button></>}>
       <p>{t('server.downloadUsage.removeBody')}</p>
       {state.error && <p role="alert" className={styles.backupFailure}>{t('error.unconfirmedChange')}</p>}
     </Dialog>
