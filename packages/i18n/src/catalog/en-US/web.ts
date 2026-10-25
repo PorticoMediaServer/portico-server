@@ -2008,6 +2008,7 @@ export const webMessages = {
   'web.metadata.creditRole': 'Role',
   'web.metadata.saveCredits': 'Save credits',
   'web.metadata.moreThanOneMatch': 'More than one match',
+  'web.metadata.chooseMatchHelp': 'Choosing a match fetches its details again. Locked fields keep your values, and the artwork you chose stays.',
   'web.metadata.currentMatch': 'Current match',
   'web.metadata.searchProvider': 'Search the provider',
   'web.metadata.searchProviderHelp': 'Title, or a provider id',
