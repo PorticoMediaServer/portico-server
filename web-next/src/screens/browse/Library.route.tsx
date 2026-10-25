@@ -1,3 +1,4 @@
+import {LibraryMetadataMenu} from '../metadata/LibraryMetadataMenu';
 import {ReadSeriesEntry} from '../read/ReadSeriesEntry';
 import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {useLocation, useParams, useSearch} from '@tanstack/react-router';
@@ -160,7 +161,7 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
   const appearanceBase = {view: appearance.libraryView, cardWidth: (width < 600 ? 112 : 170) * (size === 'small' ? .8 : size === 'large' ? 1.2 : 1), backdrops: appearance.showBackdrops, cardSize: size};
   const header = {library, libraries: context.identity?.libraries ?? [], pivot: requested?.id ?? 'discover', tabs: tabs.map(tab => ({value: tab.id, label: t(tab.label)})),
     appearance: appearanceBase, preferences: appearance, libraryViewOverride: choice?.defaultView === appearance.libraryView ? choice.view : undefined,
-    artwork: context.artwork, libraryMenu: undefined,
+    artwork: context.artwork, libraryMenu: context.effects.editMetadata && onlineAttention ? <LibraryMetadataMenu key={agentKey} onUnmatched={() => {if (resources.life.current()) navigate({unmatched: true});}}/> : undefined,
     onLibrary: (id: string) => navigate({}, id), onLibraries: () => {void router.navigate({to: '/libraries'}).catch(context.effects.reportError);},
     onPivot: (id: string) => {const tab = tabs.find(tab => tab.id === id);if (!tab) return;
       if (tab.shows === 'unmatched') {navigate({unmatched: true});return;}
