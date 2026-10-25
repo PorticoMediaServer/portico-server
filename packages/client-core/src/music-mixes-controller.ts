@@ -13,9 +13,21 @@ export type MusicMixesSnapshot = Readonly<{phase: 'idle' | 'loading' | 'ready' |
 export type MusicMixPrincipal = Readonly<{serverId: string; authority: 'local' | 'hosted'; accountId: string; profileId: string}>;
 export type MusicMixesOptions = Readonly<{api: DetailApi; principal: MusicMixPrincipal; requestId: () => Promise<string>;
   signal: AbortSignal; isCurrent: () => boolean; t: Parameters<typeof musicMixDisplayName>[2]}>;
-const cancelled = () => new DOMException('Music Mixes changed', 'AbortError');
+const cancelled = () => Object.assign(new Error('Music Mixes changed'), {name: 'AbortError'});
 const invalid = () => Object.assign(new Error('invalid_music_mixes'), {code: 'invalid_music_mixes'});
 const status = (error: unknown, value: number) => typeof error === 'object' && error !== null && 'status' in error && error.status === value;
+/** Native AbortSignal lacks the static any helper. Link only for the request's
+ * lifetime, and remove every upstream listener on cancellation or completion. */
+function linkedMusicMixSignal(signals: readonly AbortSignal[]) {
+  const controller = new AbortController();
+  const detach = () => {for (const source of signals) source.removeEventListener('abort', abort);};
+  const abort = () => {controller.abort();detach();};
+  for (const source of signals) {
+    if (source.aborted) {abort();break;}
+    source.addEventListener('abort', abort, {once: true});
+  }
+  return {signal: controller.signal, dispose: detach};
+}
 function freeze<T>(value: T): T {
   if (value && typeof value === 'object') {for (const child of Object.values(value)) freeze(child);Object.freeze(value);}
   return value;
@@ -63,7 +75,7 @@ export function createMusicMixesController(options: MusicMixesOptions) {
     if (!current()) return Promise.reject(cancelled());
     if (pending) return pending;
     const controller = new AbortController(), ticket = ++generation;read = controller;
-    const active = AbortSignal.any([signal, life.signal, controller.signal]);
+    const linked = linkedMusicMixSignal([signal, life.signal, controller.signal]), active = linked.signal;
     abortCommands();raw = [];
     const task = Promise.resolve().then(async () => {
       try {
@@ -77,17 +89,17 @@ export function createMusicMixesController(options: MusicMixesOptions) {
         if (status(error, 401) || status(error, 403)) dispose();
         if (current() && ticket === generation && !active.aborted) publish({phase: 'error', rows: Object.freeze([]), error});
         throw error;
-      } finally {if (read === controller) {read = undefined;pending = undefined;}}
+      } finally {linked.dispose();if (read === controller) {read = undefined;pending = undefined;}}
     });
     pending = task;publish({phase: 'loading', rows: Object.freeze([])});return task;
   };
   const capture = (row: MusicMixRow, caller: MusicMixLifetime) => {
     if (!contains(row) || caller.signal.aborted || !caller.isCurrent()) throw cancelled();
     const ticket = generation, controller = new AbortController();commands.add(controller);
-    const active = AbortSignal.any([signal, life.signal, controller.signal, caller.signal]);
+    const linked = linkedMusicMixSignal([signal, life.signal, controller.signal, caller.signal]), active = linked.signal;
     const valid = () => !active.aborted && ticket === generation && contains(row) && caller.isCurrent();
     const assert = () => {if (!valid()) throw cancelled();};
-    return {controller, signal: active, isCurrent: valid, assert, finish: () => {commands.delete(controller);}};
+    return {controller, signal: active, isCurrent: valid, assert, finish: () => {linked.dispose();commands.delete(controller);}};
   };
   const stale = async (error: unknown, stillCurrent: () => boolean): Promise<boolean> => {
     if (status(error, 401) || status(error, 403)) {dispose();return false;}
