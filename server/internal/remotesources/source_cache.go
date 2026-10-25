@@ -174,12 +174,13 @@ func (c *rangeCache) append(ctx context.Context, stream io.Reader, end int64) er
 		return storage.ErrRemoteLimit
 	}
 	growth := end - c.guard.cached
-	volume, err := mounts.CacheVolumeKey(c.service.private)
+	directory := filepath.Dir(c.file.Name())
+	volume, err := mounts.CacheVolumeKey(directory)
 	if err != nil {
 		return storage.ErrRemoteLimit
 	}
 	disk := reserveVolumeGrowth(volume, floor, growth, func(floor, total int64) bool {
-		return mounts.CacheSpaceFor(c.service.private, floor, total)
+		return mounts.CacheSpaceFor(directory, floor, total)
 	})
 	if disk == nil {
 		return storage.ErrRemoteLimit
