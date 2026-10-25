@@ -207,7 +207,7 @@ func matrixRows() []matrixRow {
 		{source: "09_dv_p81_hvc1", build: build("mp4", "hevc", dv(8, 1, "hvc1"), aac), want: routes(V, "original:safari_hdr appletv_dv shield_avr ultra google_tv"), wantAudio: audioCodecs("aac")},
 		{source: "10_dv_p81_dvh1_hdr_only", build: build("mp4", "hevc", dv(8, 1, "dvh1"), aac), want: routes(V, "original:appletv_dv shield_avr google_tv", "copy_remux:safari_hdr ultra"), wantAudio: audioCodecs("aac")},
 		{source: "11_mkv_dv_p7_truehd", build: build("mkv", "hevc", dv(7, 1, ""), surround("truehd")), want: routes(V, "audio_conversion:safari_hdr appletv_dv ultra google_tv", "original:shield_avr"), wantAudio: audioCodecs("aac", "truehd:shield_avr", "flac:android androidtv chromium firetv ios tvos safari_hdr appletv_dv")},
-		// Google TV advertises AV1 decode but not AV1-in-HLS. Shield here has no AV1 probe.
+		// The older Google TV 4K declares no AV1 decoder. Shield here has no AV1 probe.
 		{source: "12_mkv_av1_10_opus", build: build("mkv", "av1", av1, SourceAudio{Codec: "opus", Channels: 2}), want: routes(V, "copy_remux:chromium"), wantAudio: audioCodecs("aac", "opus:chromium android androidtv firetv shield_avr", "flac:ios tvos safari_hdr appletv_dv")},
 		// Chromecast gen 3 has no VP9 claim; 'Chromecast' is not a shared codec profile.
 		{source: "13_webm_vp9_opus", build: build("webm", "vp9", vp9, SourceAudio{Codec: "opus", Channels: 2}), want: routes(V, "original:chromium android androidtv firetv webos tizen shield_avr ultra google_tv"), wantAudio: audioCodecs("aac", "opus:chromium android androidtv firetv webos tizen shield_avr ultra google_tv", "flac:ios tvos safari_hdr appletv_dv")},

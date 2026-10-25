@@ -2074,22 +2074,6 @@
        "hdr10",
        "hlg"
       ]
-     },
-     {
-      "codec": "av1",
-      "evidence": "declared",
-      "bitDepths": [
-       8,
-       10
-      ],
-      "maxWidth": 3840,
-      "maxHeight": 2160,
-      "dynamicRanges": [
-       "sdr",
-       "hdr10",
-       "hlg",
-       "hdr10plus"
-      ]
      }
     ],
     "audio": [
@@ -2128,8 +2112,7 @@
       ],
       "video": [
        "h264",
-       "hevc",
-       "av1"
+       "hevc"
       ],
       "audio": [
        "aac",
@@ -2143,8 +2126,7 @@
       ],
       "video": [
        "vp8",
-       "vp9",
-       "av1"
+       "vp9"
       ],
       "audio": [
        "opus",
