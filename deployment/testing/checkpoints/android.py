@@ -118,6 +118,16 @@ def main():
     d.wait_text('12 Angry Men',20)
    movies=flow('movies-browse',browse_movies)
    if a.mode=='tv':
+    if a.flavour=='firetv' and movies:
+     def menu_back():
+      before=d.nodes();focused=next((n for n in before if n.get('focused') is True and n.get('label')),None)
+      if not focused:raise Refusal('focused-menu-target-unavailable')
+      prior={n.get('label') for n in before if n.get('label')};d.key('KEYCODE_MENU');time.sleep(1)
+      actions={n.get('label') for n in d.nodes() if n.get('label') not in prior and re.fullmatch(r'Play(?: next)?|Add to.*|Mark.*|Select|More.*',str(n.get('label','')))}
+      if not actions:raise Refusal('menu-context-not-observed')
+      d.key('KEYCODE_BACK');time.sleep(1);after=d.nodes()
+      if any(n.get('label') in actions for n in after) or not any(n.get('focused') is True and n.get('label')==focused['label'] for n in after):raise Refusal('menu-back-focus-not-restored')
+     flow('fire-os-menu-back',menu_back)
     def focus_walk():
      seen=set()
      for _ in range(12):

@@ -85,6 +85,9 @@ def main():
                     if not mapping.is_file() or bundle.read_bytes()!=embedded:raise RuntimeError('matching-source-map-unavailable')
                     (destination/'index.android.bundle').write_bytes(embedded);(destination/'index.android.bundle.map').write_bytes(mapping.read_bytes())
                     proof={'nativeMain':pin,'variant':variant,'bundleSHA256':hashlib.sha256(embedded).hexdigest(),'mapSHA256':hashlib.sha256(mapping.read_bytes()).hexdigest(),'apkSHA256':summary['sha256']};(destination/'source-map-receipt.json').write_text(json.dumps(proof,indent=2)+'\n')
+                    if flavour=='firetv':
+                        spec=importlib.util.spec_from_file_location('fire_artifact',Path(__file__).with_name('firetv-artifact.py'));module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);proof=module.audit(Path(summary['apk']),native/'apps/native/licences/android-firetv.txt');(destination/'firetv-platform-proof.json').write_text(json.dumps(proof,indent=2)+'\n')
+                        report['flows'].append({'surface':'fire-os-tv','id':'no-gms-cast-artifact','status':proof['status']})
                     packages[flavour]=summary;report['flows'].append({'surface':'android-google' if flavour=='google' else 'fire-os-tv','id':'published-main-package','status':'pass','variant':variant})
                 except RuntimeError as error:report['flows'].append({'surface':'android-google' if flavour=='google' else 'fire-os-tv','id':'published-main-package','status':'fail','class':type(error).__name__,'variant':variant})
         report.update(artifact=str(artifact),reader=str(reader),packages=packages)
