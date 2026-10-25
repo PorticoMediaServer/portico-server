@@ -82,15 +82,24 @@ func (r *readingBrowseScope) memberScope() string {
 // intentionally retains an unavailable title: availability orders the primary
 // publication but is not an extra visibility requirement.
 func (r *readingBrowseScope) eligibleSQL(entity string) string {
-	kind, formats := "20", "'epub','pdf'"
+	kind := "'book'"
 	if r.kind == "comic" {
-		kind, formats = "21", "'cbz','pdf'"
+		kind = "'comic'"
+	} else if r.kind != "book" {
+		return "0"
 	}
+	return readingEligiblePublicationSQL(entity, strconv.FormatInt(r.library, 10), kind)
+}
+
+// Expressions are fixed server-owned aliases/integers, never request text.
+// Batch Saved groups and single-library browse share one publication rule.
+func readingEligiblePublicationSQL(entity, library, kind string) string {
 	return `EXISTS(SELECT 1 FROM catalog_entities reading_title
  JOIN reading_publications reading_publication ON reading_publication.item_id=reading_title.id
  JOIN catalog_asset_links reading_link ON reading_link.entity_id=reading_title.id AND reading_link.asset_id=reading_publication.asset_id
- WHERE reading_title.id=` + entity + ` AND reading_title.library_id=` + strconv.FormatInt(r.library, 10) + `
- AND reading_title.kind=` + kind + ` AND reading_title.retired=0 AND reading_publication.format IN(` + formats + `)
+ WHERE reading_title.id=` + entity + ` AND reading_title.library_id=` + library + `
+ AND reading_title.retired=0 AND ((` + kind + `='book' AND reading_title.kind=20 AND reading_publication.format IN('epub','pdf'))
+ OR (` + kind + `='comic' AND reading_title.kind=21 AND reading_publication.format IN('cbz','pdf')))
  AND reading_publication.asset_id=` + readingPrimaryPublicationSQL("reading_title.id") + `)`
 }
 
