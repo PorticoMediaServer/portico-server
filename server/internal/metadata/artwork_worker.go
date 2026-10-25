@@ -615,7 +615,7 @@ func artworkSlotHeld(ctx context.Context, tx *sql.Tx, j artworkWork, entity int6
 	if j.actor != "" || j.preview {
 		return false, nil
 	}
-	return automaticArtworkOccupied(ctx, tx, j.target, entity, j.role, j.subject, j.provider, j.fence, false)
+	return automaticArtworkOccupied(ctx, tx, j.target, entity, j.role, j.subject, j.provider, j.candidate, j.fence, false)
 }
 
 func (s *Service) failArtwork(ctx context.Context, j artworkWork, problem error) error {
