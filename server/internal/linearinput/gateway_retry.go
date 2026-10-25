@@ -27,15 +27,19 @@ func (b *acquiredBody) Close() error {
 	return b.err
 }
 
+func (g *Gateway) retryWindow() time.Duration {
+	window := time.Duration(g.input.RetryWindowSeconds) * time.Second
+	if window <= 0 {
+		return time.Minute
+	}
+	return window
+}
+
 // openRetry applies the admitted retry window to initial acquisition as well as
 // reconnects. The ordinary per-read timeout remains independent. A successful
 // stream keeps running after the window, under the original source lifetime.
 func (g *Gateway) openRetry(tsOnly bool) (*remotemedia.Client, *http.Response, *bufio.Reader, error) {
-	window := time.Duration(g.input.RetryWindowSeconds) * time.Second
-	if window <= 0 {
-		window = time.Minute
-	}
-	until := time.Now().Add(window)
+	until := time.Now().Add(g.retryWindow())
 	delay := time.Duration(0)
 	if tsOnly {
 		delay = time.Second
@@ -73,6 +77,17 @@ func (g *Gateway) openRetry(tsOnly bool) (*remotemedia.Client, *http.Response, *
 				err = ErrUnavailable
 			} else if prefix[0] != 0x47 && (tsOnly || !bytes.Equal(prefix, []byte("#EXTM3U"))) {
 				err, invalid = ErrFormat, true
+			} else if !tsOnly && bytes.Equal(prefix, []byte("#EXTM3U")) {
+				// The initial manifest is finite, so admit its complete bounded body
+				// before withdrawing acquisition time. A slow prefix is not success.
+				data, readErr := io.ReadAll(io.LimitReader(reader, maxManifest+1))
+				if len(data) > maxManifest {
+					err, invalid = ErrFormat, true
+				} else if readErr != nil {
+					err = ErrUnavailable
+				} else {
+					reader = bufio.NewReaderSize(bytes.NewReader(data), 4096)
+				}
 			}
 		}
 		stopped := deadline.Stop()

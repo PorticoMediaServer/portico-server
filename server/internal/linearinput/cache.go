@@ -2,7 +2,7 @@ package linearinput
 
 import (
 	"context"
-	"io"
+	"errors"
 	"time"
 )
 
@@ -19,6 +19,14 @@ type cachedResource struct {
 func (g *Gateway) resourceBytes(ctx context.Context, res resource, rng string) (*cachedResource, error) {
 	key := res.kind + "\n" + res.url + "\n" + rng
 	g.mu.Lock()
+	if g.done && errors.Is(g.failure, ErrRetryWindow) {
+		g.mu.Unlock()
+		return nil, ErrRetryWindow
+	}
+	if g.closing || g.ctx.Err() != nil {
+		g.mu.Unlock()
+		return nil, ErrUnavailable
+	}
 	now := time.Now()
 	for k, v := range g.cache {
 		if !v.expires.IsZero() && !v.expires.After(now) {
@@ -54,33 +62,19 @@ func (g *Gateway) resourceBytes(ctx context.Context, res resource, rng string) (
 		g.mu.Unlock()
 		return nil, ErrUnavailable
 	}
-	work, cancel := context.WithCancel(g.ctx)
-	defer cancel()
-	limit := int64(maxSegment)
-	if res.kind == "manifest" {
-		limit = maxManifest
-	}
-	if res.kind == "key" {
-		limit = 16
-	}
-	client, resp, e := g.fetch(work, res.url, rng)
-	if e == nil {
-		entry.data, e = io.ReadAll(io.LimitReader(resp.Body, limit+1))
-		resp.Body.Close()
-		client.Close()
-		g.untrack(client, resp.Body)
-		entry.location = res.url
-		if resp.Request != nil && resp.Request.URL != nil {
-			entry.location = resp.Request.URL.String()
-		}
-		if resp.StatusCode == 206 && res.kind == "media" {
-			entry.contentRange = resp.Header.Get("Content-Range")
-		}
-		if int64(len(entry.data)) > limit {
-			e = ErrFormat
-		}
-	}
+	var e error
+	entry.data, entry.location, entry.contentRange, e = g.resourceData(res, rng)
 	g.mu.Lock()
+	if g.done && errors.Is(g.failure, ErrRetryWindow) {
+		e = ErrRetryWindow
+	}
+	if !errors.Is(e, ErrRetryWindow) && (g.closing || g.ctx.Err() != nil) {
+		e = ErrUnavailable
+	}
+	if errors.Is(e, ErrRetryWindow) {
+		g.done, g.span.Ended, g.span.Reconnecting, g.failure = true, true, false, ErrRetryWindow
+		g.signal()
+	}
 	for e == nil && g.cacheBytes+int64(len(entry.data)) > maxSegment {
 		oldest := ""
 		var until time.Time
@@ -113,5 +107,8 @@ func (g *Gateway) resourceBytes(ctx context.Context, res resource, rng string) (
 	entry.expires = time.Now().Add(ttl)
 	close(entry.ready)
 	g.mu.Unlock()
+	if errors.Is(e, ErrRetryWindow) {
+		g.cancel()
+	}
 	return entry, e
 }
