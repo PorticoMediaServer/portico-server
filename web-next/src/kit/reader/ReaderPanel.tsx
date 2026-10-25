@@ -43,6 +43,8 @@ export function ReaderPanel({label, tabs, selected, onSelect, onClose, children,
 /** Presentation entries contain navigation callbacks, never a parallel annotation store. */
 export type ReaderContentsEntry = Readonly<{
   id: string; label: string; page?: string; current?: boolean; finished?: boolean; progress?: number;
+  /** Literal renderer-observed remaining position, never an outline estimate. */
+  remaining?: string;
   onNavigate: () => void; children?: readonly ReaderContentsEntry[];
 }>;
 export function ReaderContents({entries}: Readonly<{entries: readonly ReaderContentsEntry[]}>) {
@@ -51,7 +53,10 @@ export function ReaderContents({entries}: Readonly<{entries: readonly ReaderCont
     return <div key={entry.id}><button type="button" className={styles.chapter} data-current={entry.current || undefined} data-finished={entry.finished || undefined}
       aria-current={entry.current ? 'location' : undefined} onClick={entry.onNavigate}>
       {entry.finished && <Icon name="i-check" size={18} />}<span className={styles.chapterName}>{entry.label}</span>{entry.page && <span className={styles.page}>{entry.page}</span>}
-      {entry.current && progress !== undefined && <span className={styles.chapterProgress} aria-hidden="true"><i style={{width: `${progress * 100}%`}} /></span>}
+      {entry.current && (progress !== undefined || entry.remaining) && <span className={styles.chapterStatus}>
+        {progress !== undefined && <span className={styles.chapterProgress} data-with-remaining={!!entry.remaining || undefined} aria-hidden="true"><i style={{width: `${progress * 100}%`}} /></span>}
+        {entry.remaining && <span>{entry.remaining}</span>}
+      </span>}
     </button>{entry.children?.length ? <div className={styles.nested}><ReaderContents entries={entry.children} /></div> : null}</div>;
   })}</div>;
 }
