@@ -1352,6 +1352,16 @@ export class WebShellPlaybackRuntime {
     await stack.service.changePlayback({subtitleTrackId: track.id, subtitleOffsetMs: offsetMs});
     if (this.current(stack)) this.sync();
   }
+  /** The server's own subtitle-provider facts for this fence's plan. Read-only: whether
+   * subtitles found online can be searched at all, and the server's reason when they cannot. */
+  subtitleProvider(fence: PlaybackFence): Readonly<{enabled: boolean; reason?: string}> | undefined {
+    if (fence.kind !== 'queue' || !this.matches(fence)) return undefined;
+    const state = this.stack.subtitles?.getSnapshot(), plan = state?.plan, catalog = state?.catalog;
+    if (!plan || !catalog || plan.sessionId !== fence.sessionId || plan.generation !== fence.generation
+      || plan.sourceId !== fence.sourceId || catalog.itemId !== fence.itemId) return undefined;
+    const provider = catalog.provider;
+    return Object.freeze({enabled: provider.enabled, ...(provider.reason ? {reason: provider.reason} : {})});
+  }
   /** Drawn temporary choices for this actual subject; music and live have no speed picker. */
   speedChoices(fence: PlaybackFence): readonly number[] {
     const stack = this.require(fence);

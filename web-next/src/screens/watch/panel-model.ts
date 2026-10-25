@@ -2,6 +2,7 @@ import type {WebPlaybackRuntimeSnapshot,WebShellPlaybackRuntime} from '../../pla
 import type {QualityChoice} from '@core/playback-v1/choices.ts';
 import {audioStreamIndex,fixedQuality,isQualityChoice,qualityChoiceOf} from '@core/playback-v1/choices.ts';
 import {videoTrackName,videoTrackWords} from '@core/video-track-labels.ts';
+import {subtitleReason} from '@core/subtitles.ts';
 import {sameFence,type QueuePlaybackFence} from '../../../../packages/player-core/src/index.ts';
 import type {I18n} from '@i18n';
 import type {TrackChoice} from '../../kit/media';
@@ -13,6 +14,8 @@ export type WatchPanelModel=Readonly<{
  quality:readonly WatchRadioChoice[];speed:readonly WatchRadioChoice[];
  qualityLabel?:string;qualityAccessibleLabel?:string;qualityNotes:readonly string[];audioNotes:readonly string[];automatic:boolean;audioLabel?:string;subtitleLabel?:string;
  subtitleTiming?:Readonly<{offsetSeconds:number;shift(deltaMs:number):Promise<void>}>;
+ /** Draws the search row only when the server says why it cannot be used. */
+ subtitleSearch?:Readonly<{reason:string}>;
  isCurrent():boolean;selectAudio(id:string):Promise<void>;selectSubtitle(id:string):Promise<void>;
  selectQuality(id:string):Promise<void>;selectSpeed(id:string):void;
 }>;
@@ -91,9 +94,12 @@ export function watchPanelModel(runtime:WebShellPlaybackRuntime,snapshot:WebPlay
    const next=timingBase+deltaMs;
    if(!Number.isSafeInteger(next)||Math.abs(next)>600000)throw new Error('playback_subtitle_unavailable');
    await runtime.setSubtitleOffset(fence,next);}}):undefined;
+ // desktop-player f3: a search that cannot run stays visible with the server's own reason.
+ const provider=matched?runtime.subtitleProvider(fence):undefined;
+ const subtitleSearch=provider&&!provider.enabled?Object.freeze({reason:subtitleReason(provider.reason,t)}):undefined;
  let speeds:readonly number[]=[];try{speeds=runtime.speedChoices(fence);}catch{/* source changed */}
  const speed=Object.freeze(speeds.map(rate=>Object.freeze({id:String(rate),label:rate===1?t('player.opt.normalSpeed'):t('next.dock.rate',{rate}),selected:snapshot.presentation?.rate===rate,enabled:true})));
- return Object.freeze({fence,audio,subtitles:Object.freeze(subtitleRows),quality:Object.freeze(qualityRows),speed,automatic:selected==='automatic',qualityLabel,qualityNotes,audioNotes,...(subtitleTiming?{subtitleTiming}:{}),
+ return Object.freeze({fence,audio,subtitles:Object.freeze(subtitleRows),quality:Object.freeze(qualityRows),speed,automatic:selected==='automatic',qualityLabel,qualityNotes,audioNotes,...(subtitleTiming?{subtitleTiming}:{}),...(subtitleSearch?{subtitleSearch}:{}),
   qualityAccessibleLabel:qualityLabel?(selected==='automatic'?t('player.quality.automaticNow',{quality:qualityLabel}):qualityLabel):undefined,
   audioLabel:audio.find(r=>r.selected)?.primary,subtitleLabel:subtitleRows.find(r=>r.selected)?.primary,isCurrent,
   selectAudio:async id=>{check();if(!audio.some(r=>r.id===id&&!r.unavailable))throw new Error('playback_audio_unavailable');await runtime.selectAudio(fence,id);},
