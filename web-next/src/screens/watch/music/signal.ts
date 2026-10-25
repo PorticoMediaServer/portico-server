@@ -25,11 +25,11 @@ export function watchMusicSignal(snapshot: WebPlaybackRuntimeSnapshot, equalizer
   const server: MusicSignalInput['server'] = {route: info.route,
     ...(delivered ? {delivered: {codec: delivered.codec, bitDepth: delivered.bitDepth, sampleRate: delivered.sampleRate, channels: delivered.channels, layout: delivered.layout}} : {}),
     ...(info.losses.some(loss => loss.feature === 'atmos' || loss.feature === 'dtsx') ? {atmosLost: true} : {}),
-    ...(session.presentation.audioRender && typeof session.presentation.audioRender.loudnessAppliedDb === 'number' ? {loudnessAppliedDb: session.presentation.audioRender.loudnessAppliedDb} : {})};
+    ...(session.presentation.audio && typeof session.presentation.audio.loudnessAppliedDb === 'number' ? {loudnessAppliedDb: session.presentation.audio.loudnessAppliedDb} : {})};
   const resampled = !!(observed?.sampleRate && sourceAudio.sampleRate && observed.sampleRate !== sourceAudio.sampleRate);
   const output: MusicSignalInput['output'] = {platform: 'browser', device: 'browser',
     ...(observed?.sampleRate ? {sampleRate: observed.sampleRate} : {}), ...(observed?.bitDepth ? {bitDepth: observed.bitDepth} : {}),
-    ...(observed?.handling === 'passthrough' ? {passthrough: true} : observed?.handling !== 'passthrough' && observed?.layout ? {decodedLayout: observed.layout} : {}),
+    ...(observed?.handling === 'passthrough' ? {passthrough: true} : observed?.layout ? {decodedLayout: observed.layout} : {}),
     ...(resampled ? {resampledBy: 'browser' as const} : {})};
   return musicSignal({source, server, output, eqOn, eqApplied: false, normalization: 'off', levelingApplied: false, ...(fallback ? {fallback} : {})});
 }
