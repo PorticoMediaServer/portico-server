@@ -62,3 +62,10 @@ func (SourceLibraryUse) JSONSchema() map[string]any {
 	shape["properties"].(map[string]any)["lastCompleteAt"].(map[string]any)["format"] = "date-time"
 	return shape
 }
+
+func (SavedSourceTestResult) JSONSchema() map[string]any {
+	type wire SavedSourceTestResult
+	shape := statusWireSchema[wire]()
+	shape["properties"].(map[string]any)["errorCode"].(map[string]any)["enum"] = statusCodes(contactErrorCodes)
+	return shape
+}
