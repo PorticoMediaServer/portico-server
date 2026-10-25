@@ -16,7 +16,9 @@ Owner: lane `ds-m0-smoke`, family `P0-SMOKE`.
 | iOS and tvOS | the Mac over `ssh portico-mac-build`, one Xcode job | Apple simulators exist only there |
 
 Nothing here starts a build. Release owns builds and deploys; this harness consumes their
-artifacts and reports the SHA it saw.
+artifacts and reports the SHA it saw. During the current custody hold, do not run Android or
+Apple drivers, builds or installs without an explicit Release handoff and frozen artifact pin.
+R3 setup is permanently Release-exclusive; this family must never initialize or drive it.
 
 ## Credentials
 
@@ -58,15 +60,16 @@ hide the rest of the run.
 
 ## Android
 
-One emulator, phone or TV:
+Only after Release explicitly hands off the named device and frozen artifact, one emulator, phone or TV:
 
 ```bash
 python3 smoke/android/flows.py --serial emulator-5554 --apk /path/app.apk \
     --mode phone --out /path/scratch/android-phone --creds /path/private/creds.json
 ```
 
-Install, cold launch, sign in, Home, Library, Detail and Play. Playback is confirmed from
-`dumpsys media_session` reporting `PLAYING`, not from a request log. TV adds a 12-press D-pad
+Install, cold launch, sign in, Home, Library, Detail and Play. The Android check observes
+`dumpsys media_session` reporting `PLAYING`; that is session-state evidence and does not establish
+decoded frames, audible output or physical-device acceptance. TV adds a 12-press D-pad
 walk that must reach at least three distinct labelled controls.
 
 ## Apple
