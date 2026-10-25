@@ -58,7 +58,12 @@ sections; `SectionPath` is the stable anchor identity.
   - `excluded`: the document could not be admitted to the payload budget. Zero
     payload, exact observation, no retry loop.
   - `unsupported`: a determined refusal (malformed/oversized/textless/script)
-    with a bounded `reason`. Zero payload.
+    with a bounded `reason`. Zero payload. A session search with no exact state
+    distinguishes `unsupported/source` (the retained observation is not on a
+    local source) and `unsupported/version` (it is not the canonical-primary
+    book EPUB the producer is scheduled for), so `pending` only ever means a
+    selection inside the actual producer domain. An existing determined state is
+    preserved even when the observation has since moved outside that domain.
 - Transient acquisition, cancellation, timeout or source-change failures write
   no state row and are retried after the pass rest.
 
