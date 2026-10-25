@@ -1,5 +1,5 @@
 import {ReaderError} from '../errors.ts';
-import {spreadFits, compactLandscape, validateViewport} from '../layout.ts';
+import {spreadFits, compactLandscape, creaseSpread, validateViewport} from '../layout.ts';
 import type {ReaderViewport} from '../ports.ts';
 /** Narrow engine input. This is structurally satisfied by the canonical fifteen
  * property Reading facade; no defaults, raw registry keys or write API here. */
@@ -26,10 +26,12 @@ export function epubDisplay(preferences: EpubDisplayPreferences, viewport: Reade
   const lineHeight = normalLineHeight * {tight: 0.875, normal: 1, loose: 1.15625}[p.lineSpacing];
   const normalMargin = phoneLandscape ? 56 : compact ? 24 : viewport.width < 1024 ? 84 : viewport.width >= 1400 ? 150 : 76;
   const margin = normalMargin * {narrow:0.65,normal:1,wide:1.35}[p.margins];
-  const columns = p.layout === 'pages' && p.twoPages && (spreadFits(viewport) || compactLandscape(viewport)) ? 2 : 1;
+  const fold = creaseSpread(viewport);
+  const columns = p.layout === 'pages' && p.twoPages && (spreadFits(viewport) || compactLandscape(viewport) || creaseSpread(viewport)) ? 2 : 1;
   const top = phoneLandscape ? 40 : compact ? 86 : 100;
   const bottom = phoneLandscape ? 38 : compact ? 86 : viewport.width < 1024 ? 120 : viewport.width >= 1400 ? 96 : 112;
-  const columnGap = columns === 2 ? phoneLandscape ? 44 : viewport.width >= 1400 ? 104 : 100 : 0;
+  // foldable6: a book fold keeps the drawn72 pt gutter, and the crease sits inside it.
+  const columnGap = columns === 2 ? fold ? 72 : phoneLandscape ? 44 : viewport.width >= 1400 ? 104 : 100 : 0;
   const contentWidth = viewport.width - 2*margin + columnGap;
   // Foliate adds half a column gap to each outer edge. Compensate in its
   // container width, then invert g/(1-g) to obtain the exact drawn gap.

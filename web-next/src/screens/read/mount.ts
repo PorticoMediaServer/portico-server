@@ -1,4 +1,4 @@
-import {readerErrorCode, type ReaderController, type ReaderErrorCode, type ReaderFormat, type ReaderLocation, type ReaderMetadata, type ReaderSource} from '@portico/reader-core';
+import {readerErrorCode, type ReaderController, type ReaderCrease, type ReaderErrorCode, type ReaderFormat, type ReaderLocation, type ReaderMetadata, type ReaderSource, type ReaderViewport} from '@portico/reader-core';
 
 export type ReaderMountAuthority = Readonly<{
   isCurrent: () => boolean;
@@ -18,14 +18,21 @@ export type ReaderSurfaceMountOptions<P extends object> = Readonly<{
   reportError: (code: ReaderErrorCode) => void;
   /** Await disposal before reusing a DOM container (including StrictMode reconnect). */
   settled?: Promise<void>;
+  /** Actual platform book fold for this window; absent when no hinge is reported. */
+  crease?: ReaderCrease;
 }>;
-export type ReaderSurfaceMount = Readonly<{ready: Promise<void>; close: () => Promise<void>}>;
+const key = (crease: ReaderCrease | undefined) => crease ? `${crease.left}:${crease.right}` : '';
+export type ReaderSurfaceMount = Readonly<{ready: Promise<void>; close: () => Promise<void>; setCrease: (crease: ReaderCrease | undefined) => void}>;
 
 /** The core owns the document, preferences, location and view; this owns only DOM lifetime. */
-export function mountReaderSurface<P extends object>({controller, source, format, initialLocation, metadata, signal, authority, container, reportError, settled = Promise.resolve()}: ReaderSurfaceMountOptions<P>): ReaderSurfaceMount {
-  let active = true, opened = false, opening = false, frame: number | undefined, width = 0, height = 0;
+export function mountReaderSurface<P extends object>({controller, source, format, initialLocation, metadata, signal, authority, container, reportError, settled = Promise.resolve(), crease: initialCrease}: ReaderSurfaceMountOptions<P>): ReaderSurfaceMount {
+  let active = true, opened = false, opening = false, frame: number | undefined, width = 0, height = 0, crease = initialCrease;
+  // Applied engine state, not desired: a same-size posture change must still reach
+  // the engine. In-flight resizes serialize and then drain the latest request.
+  let engineKey = '', inflight = false, dirty = false;
   let closeResult: Promise<void> | undefined;
   const current = () => active && authority.isCurrent() && !signal?.aborted;
+  const viewport = (): ReaderViewport => ({width, height, ...(crease ? {crease} : {})});
   let offAuthority = () => {}, offSession = () => {}, resolveSize: (() => void) | undefined;
   const waitForSize = new Promise<void>(resolve => { resolveSize = resolve; });
   const observer = new ResizeObserver(() => {
@@ -48,14 +55,24 @@ export function mountReaderSurface<P extends object>({controller, source, format
   const resize = () => {
     frame = undefined;
     if (!current() || controller.getSnapshot().status !== 'ready') return;
-    const nextWidth = container.clientWidth, nextHeight = container.clientHeight;
-    if (nextWidth <= 0 || nextHeight <= 0 || nextWidth === width && nextHeight === height) return;
-    width = nextWidth; height = nextHeight;
-    void controller.resize({width, height}).catch(error => {
+    const nextWidth = container.clientWidth, nextHeight = container.clientHeight, nextCrease = key(crease);
+    if (nextWidth <= 0 || nextHeight <= 0) return;
+    if (inflight) {dirty = true; return;}
+    if (nextWidth === width && nextHeight === height && nextCrease === engineKey) return;
+    width = nextWidth; height = nextHeight; inflight = true; dirty = false;
+    const requestedKey = nextCrease;
+    void controller.resize(viewport()).then(() => {
+      // The controller committed this exact size and crease.
+      engineKey = requestedKey;
+    }, error => {
       // A refused resize is not an applied viewport. Let a later observation of
       // the same size retry, without invalidating a newer resize's dimensions.
       if (current() && width === nextWidth && height === nextHeight) {width = 0; height = 0;}
       failed(error);
+    }).finally(() => {
+      inflight = false;
+      // A->B->A while B was in flight must still issue A after B commits.
+      if (current() && dirty) {dirty = false; resize();}
     });
   };
   const measure = () => {
@@ -76,8 +93,10 @@ export function mountReaderSurface<P extends object>({controller, source, format
     if (!current()) return;
     width = container.clientWidth; height = container.clientHeight;
     opening = true;
-    await controller.open({source, format, container, metadata, signal, location: initialLocation, viewport: {width, height}});
+    const openedCrease = crease;
+    await controller.open({source, format, container, metadata, signal, location: initialLocation, viewport: viewport()});
     opening = false;
+    if (current()) {engineKey = key(openedCrease);}
     if (!current()) { await close(); return; }
     opened = true;
     // A replacement open retires this mount before its old parent can abort.
@@ -90,5 +109,11 @@ export function mountReaderSurface<P extends object>({controller, source, format
     });
     measure();
   })().catch(failed);
-  return Object.freeze({ready, close});
+  const setCrease = (next: ReaderCrease | undefined) => {
+    crease = next;
+    // A refused same-size posture change is retried by the next observation; a
+    // zero-size or not-yet-open surface takes the crease when it opens.
+    if (opened) {frame = undefined; resize();}
+  };
+  return Object.freeze({ready, close, setCrease});
 }

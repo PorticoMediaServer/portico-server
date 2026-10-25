@@ -19,7 +19,9 @@ export interface ReaderResources {
   read(path: string, signal: AbortSignal): Promise<Uint8Array>;
 }
 export type ReaderFormat = 'epub' | 'pdf' | 'cbz';
-export type ReaderViewport = Readonly<{width: number; height: number}>;
+export type ReaderCrease = Readonly<{left: number; right: number}>;
+/** Window-local vertical hinge band reported by the platform, when there is one. */
+export type ReaderViewport = Readonly<{width: number; height: number; crease?: ReaderCrease}>;
 export type ReaderRect = Readonly<{x: number; y: number; width: number; height: number}>;
 type ObservedLocation = Readonly<{
   progression: number;

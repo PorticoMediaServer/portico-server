@@ -27,14 +27,14 @@ const connection = connectReadingHost({
 });
 
 function NativeReading({guest}: {guest: ReadingGuest}) {
-  const [book, setBook] = useState<ReaderBookState>(), [failed, setFailed] = useState(false), [active, setActive] = useState(true);
+  const [book, setBook] = useState<ReaderBookState>(), [failed, setFailed] = useState(false), [active, setActive] = useState(true), [crease, setCrease] = useState(guest.crease);
   const reportError = useCallback(() => setFailed(true), []);
   const progressRef = useRef<ReturnType<typeof bindReadingProgress>>(undefined);
   useEffect(() => {
     let alive = true, fonts: ReadFonts | undefined;
     let publication: Awaited<ReturnType<typeof createReadingPublication>> | undefined;
     let reader: ReturnType<typeof bindReadPreferences> | undefined, progress: ReturnType<typeof bindReadingProgress> | undefined;
-    const offActive = guest.onActive(setActive);
+    const offActive = guest.onActive(setActive), offCrease = guest.onCrease(() => setCrease(guest.crease));
     const authority = {isCurrent: () => alive && !guest.session.signal.aborted,
       subscribe(listener: () => void) {guest.session.signal.addEventListener('abort', listener); return () => guest.session.signal.removeEventListener('abort', listener);}};
     void (async () => {
@@ -49,13 +49,13 @@ function NativeReading({guest}: {guest: ReadingGuest}) {
       setBook({publication, controller: reader.controller, authority, contentsTarget: guest.contentsTarget, location: publication.resumeLocation(guest.initialProgress) ?? undefined});
     })().catch(() => {if (alive) setFailed(true);});
     return () => {
-      alive = false; offActive(); progressRef.current = undefined;
+      alive = false; offActive(); offCrease(); progressRef.current = undefined;
       void (async () => {try {await progress?.stop(); await reader?.dispose();} finally {publication?.dispose(); fonts?.dispose(); guest.dispose();}})();
     };
   }, [guest]);
   if (failed) return <StateView title={defaultI18n.t('next.states.pageFailed')} body={defaultI18n.t('next.states.pageFailedBody')}/>;
   return <div className={styles.host} hidden={!active} aria-hidden={!active} inert={!active}>{book
-    ? <ReaderBook environment="native" book={book} active={active} reportError={reportError} onBack={() => {void (async () => {await progressRef.current?.stop(); await guest.back();})().catch(reportError);}} onOpenSettings={() => {void guest.openSettings();}}/>
+    ? <ReaderBook environment="native" book={book} active={active} crease={crease} reportError={reportError} onBack={() => {void (async () => {await progressRef.current?.stop(); await guest.back();})().catch(reportError);}} onOpenSettings={() => {void guest.openSettings();}}/>
     : <Skeleton height="100dvh"/>}</div>;
 }
 function NativeReaderEntry() {

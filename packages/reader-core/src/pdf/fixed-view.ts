@@ -1,7 +1,7 @@
 import {throwSignalAborted as throwIfAborted} from '../abort.ts';
 import {abortScope,abortReason} from '../abort.ts';
 import type {ReaderDocument,ReaderLocation,ReaderView} from '../ports.ts';
-import {planFixedLayout} from '../layout.ts';
+import {planFixedLayout, fixedVisualPanes, validReaderCrease} from '../layout.ts';
 
 /** Adapter-private projection of the canonical Reading facade, never a store. */
 export type FixedPreferences={twoPages:boolean;firstPageAlone:boolean;comicFit:'auto'|'width'|'height';comicDirection:'file'|'ltr'|'rtl'|'vertical';pdfView:'automatic'|'spread'|'width'|'page'};
@@ -12,10 +12,14 @@ type Zoom={kind:'scale';value:number}|{kind:'fit';value:'page'|'width'|'height'|
 /** Both fixed formats use the common spread planner and their own real page renderer. */
 export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',pageCount:number,fileDirection:'ltr'|'rtl'|'vertical',load:FixedPageLoader,options:Parameters<ReaderDocument<P>['mount']>[0]):Promise<ReaderView<P>>{
   const document=options.container.ownerDocument,host=document.createElement('div');
+  const paneStyle=document.createElement('style');paneStyle.textContent='[data-reader-fixed] [data-reader-page]{scrollbar-width:none}[data-reader-fixed] [data-reader-page]::-webkit-scrollbar{display:none}';document.head.append(paneStyle);
   host.tabIndex=0;host.setAttribute('role','document');
   host.dataset.readerFixed=format;Object.assign(host.style,{position:'relative',display:'flex',width:'100%',height:'100%',overflow:'auto',overscrollBehavior:'contain',touchAction:'none'});
   let preferences=options.preferences,viewport=options.viewport,page=0,closed=false,version=0,mutation=0,rendering=0,scrolling=false;
   let zoom:Zoom|undefined,scale=1,fittedScale=1,verticalWidth:number|undefined,location:ReaderLocation|null=null,cleanup:(()=>void)[]=[],pending:AbortController|undefined;
+  let foldPanes:Map<number,{clip:HTMLDivElement;scale:number}>|undefined,dragPane:HTMLDivElement|undefined,gesturePage:number|undefined;
+  const scrollState=(at=gesturePage??page)=>{const pane=foldPanes?.get(at);return pane?{left:pane.clip.scrollLeft,top:pane.clip.scrollTop,width:pane.clip.clientWidth,height:pane.clip.clientHeight}:{left:host.scrollLeft,top:host.scrollTop,width:viewport.width,height:viewport.height};};
+  const scrollTo=(left:number,top:number,at=gesturePage??page)=>{const pane=foldPanes?.get(at);if(pane){pane.clip.scrollLeft=Math.max(0,left);pane.clip.scrollTop=Math.max(0,top);}else{host.scrollLeft=Math.max(0,left);host.scrollTop=Math.max(0,top);}};
   const surfacesByPage=new Map<number,PageSurface>();
   const lifetime=new AbortController(),scope=abortScope([lifetime.signal,options.signal]),signal=scope.signal;
   const direction=():'ltr'|'rtl'|'vertical'=>{const value:FixedPreferences['comicDirection']=preferences.comicDirection;return format==='cbz'&&value!=='file'?value:fileDirection;};
@@ -48,6 +52,38 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
       }
       // A continuous column has one stable page width despite different scan
       // resolutions. Each page retains its actual aspect ratio.
+      const fold=!vertical?validReaderCrease(viewport):undefined;
+      if(fold){
+        // foldable6: physical panes around the reported crease. A cover or a last
+        // page sits on its own recto/verso side; each page fits its own pane so
+        // unequal aspects never cross the hinge.
+        const lone=visualPages.length===1?(preferences.firstPageAlone&&visualPages[0]===0?'cover' as const:visualPages[0]===pageCount-1?'last' as const:'only' as const):undefined;
+        const panes=fixedVisualPanes(viewport,visualPages,direction()==='rtl'?'rtl':'ltr',lone);
+        Object.assign(next.style,{position:'relative',display:'block',flex:'none',width:`${viewport.width}px`,height:`${viewport.height}px`,minWidth:'0',margin:'0'});
+        const panesById=new Map<number,{clip:HTMLDivElement;scale:number}>();
+        let applied=0,fittedCurrent=0;
+        for(const {page:pageNumber,pane} of panes){
+          const index=visualPages.indexOf(pageNumber),surface=surfaces[index];
+          const fitAll=Math.min(pane.width/surface.width,pane.height/surface.height);
+          const fitted=Math.min(fitAll,layout.fit==='width'?pane.width/surface.width:layout.fit==='height'?pane.height/surface.height:fitAll);
+          const renderScale=zoom?.kind==='scale'?zoom.value:fitted;
+          if(!Number.isFinite(renderScale)||renderScale<=0)throw new Error('page_invalid');
+          const w=surface.width*renderScale,h=surface.height*renderScale,clip=document.createElement('div'),content=document.createElement('div'),target=document.createElement('div');
+          clip.dataset.readerPage=String(pageNumber);
+          // The pane clips at the hinge, and scrolls the page inside itself so a
+          // zoomed page can be panned to every edge without crossing the crease.
+          Object.assign(clip.style,{position:'absolute',left:`${pane.x}px`,top:'0px',width:`${pane.width}px`,height:`${pane.height}px`,overflow:'auto',scrollbarWidth:'none'});
+          const cw=Math.max(pane.width,w),ch=Math.max(pane.height,h);
+          Object.assign(content.style,{position:'relative',width:`${cw}px`,height:`${ch}px`});
+          Object.assign(target.style,{position:'absolute',left:`${(cw-w)/2}px`,top:`${(ch-h)/2}px`,width:`${w}px`,height:`${h}px`});
+          content.append(target);clip.append(content);next.append(clip);panesById.set(pageNumber,{clip,scale:renderScale});
+          releases.push(await surface.mount(target,renderScale,operation));throwIfAborted(operation);
+          if(pageNumber===at){applied=renderScale;fittedCurrent=fitted;}
+        }
+        if(!(applied>0))throw new Error('page_invalid');
+        if(closed||current!==version)throw new DOMException('','AbortError');
+        clean();cleanup=releases;host.replaceChildren(next);foldPanes=panesById;page=at;scale=applied;fittedScale=fittedCurrent;verticalWidth=undefined;
+      }else{
       const width=vertical?(verticalWidth??surfaces[visualPages.indexOf(at)].width):surfaces.reduce((sum,s)=>sum+s.width,0),height=vertical?surfaces.reduce((sum,s)=>sum+s.height*width/s.width,0):Math.max(...surfaces.map(s=>s.height));
       const currentSurface=surfaces[visualPages.indexOf(at)],fitHeight=vertical?currentSurface.height*width/currentSurface.width:height;
       const fitted=layout.fit==='width'?viewport.width/width:layout.fit==='height'?viewport.height/fitHeight:Math.min(viewport.width/width,viewport.height/fitHeight);
@@ -60,10 +96,12 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
         releases.push(await surface.mount(target,renderScale,operation));throwIfAborted(operation);
       }
       if(closed||current!==version)throw new DOMException('','AbortError');
-      clean();cleanup=releases;host.replaceChildren(next);page=at;scale=requested;fittedScale=fitted;if(vertical)verticalWidth=width;
+      clean();cleanup=releases;host.replaceChildren(next);foldPanes=undefined;page=at;scale=requested;fittedScale=fitted;if(vertical)verticalWidth=width;
+      }
       for(const [index,surface]of created)surfacesByPage.set(index,surface);
       for(const [index,surface]of surfacesByPage)if(!visualPages.includes(index)){surface.dispose();surfacesByPage.delete(index);}
-      host.scrollLeft=direction()==='rtl'?host.scrollWidth-host.clientWidth:0;host.scrollTop=vertical?(next.querySelector<HTMLElement>(`[data-reader-page="${at}"]`)!.offsetTop+(anchorOffset??0)):0;
+      if(foldPanes){for(const {clip} of foldPanes.values()){clip.scrollLeft=0;clip.scrollTop=0;}}
+      else{host.scrollLeft=direction()==='rtl'?host.scrollWidth-host.clientWidth:0;host.scrollTop=vertical?(next.querySelector<HTMLElement>(`[data-reader-page="${at}"]`)!.offsetTop+(anchorOffset??0)):0;}
       location={format,page,progression:pageCount===1?0:page/(pageCount-1)};options.onLocation(location);
     }catch(error){for(const release of releases.reverse())release();for(const surface of created.values())surface.dispose();throw error;}finally{rendering--;task.dispose();}
   }
@@ -78,8 +116,8 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
     if(!tap)tap={id:event.pointerId,x:event.clientX,y:event.clientY,multiple:false,moved:false};else{tap.multiple=true;clearTap();options.onSurfaceInput?.({kind:'activity'});}
     // PDF text selection must retain browser handles and native selection semantics.
     if(event.pointerType!=='touch'&&(event.target as Element)?.closest?.('[data-reader-text] span'))return;
-    pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});host.setPointerCapture?.(event.pointerId);
-    if(pointers.size===1)drag={x:event.clientX,y:event.clientY,left:host.scrollLeft,top:host.scrollTop};else{pinch=distance();drag=undefined;}
+    pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});try{host.setPointerCapture?.(event.pointerId);}catch{/* synthetic pointers */}
+    if(pointers.size===1){const hit=(event.target as Element|null)?.closest?.('[data-reader-page]');const pane=hit instanceof HTMLElement&&foldPanes?.get(Number(hit.dataset.readerPage))?.clip===hit?hit:undefined;dragPane=pane;gesturePage=pane?Number(pane.dataset.readerPage):undefined;const at=pane?{left:pane.scrollLeft,top:pane.scrollTop}:scrollState();drag={x:event.clientX,y:event.clientY,left:at.left,top:at.top};}else{pinch=distance();drag=undefined;dragPane=undefined;}
   };
   const onMove=(event:PointerEvent)=>{
     if(!pointers.has(event.pointerId))return;
@@ -87,10 +125,10 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
     if(pointers.size>1||tap?.moved)options.onSurfaceInput?.({kind:'activity'});
     pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});const nextDistance=distance();
     if(pinch&&nextDistance){const next=Math.max(.05,Math.min(8,scale*nextDistance/pinch));pinch=nextDistance;gestureZoom({kind:'scale',value:next});}
-    else if(drag&&tap?.moved){host.scrollLeft=drag.left+drag.x-event.clientX;host.scrollTop=drag.top+drag.y-event.clientY;}
+    else if(drag&&tap?.moved){if(dragPane){dragPane.scrollLeft=Math.max(0,drag.left+drag.x-event.clientX);dragPane.scrollTop=Math.max(0,drag.top+drag.y-event.clientY);}else scrollTo(drag.left+drag.x-event.clientX,drag.top+drag.y-event.clientY);}
   };
-  const onUp=(event:PointerEvent)=>{
-    pointers.delete(event.pointerId);pinch=undefined;drag=undefined;
+  const onUp=(event:PointerEvent)=>{dragPane=undefined;
+    pointers.delete(event.pointerId);pinch=undefined;drag=undefined;if(!pointers.size)gesturePage=undefined;
     if(tap?.id===event.pointerId){
       const candidate=tap;tap=undefined;
       if(!candidate.multiple&&!candidate.moved&&event.type==='pointerup'&&Math.hypot(event.clientX-candidate.x,event.clientY-candidate.y)<8&&document.getSelection()?.isCollapsed!==false){
@@ -122,23 +160,23 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
       await render(at,taskSignal);
     },
     async applyPreferences(next,taskSignal){
-      throwIfAborted(taskSignal);const own=++mutation,previous=preferences,before=plan(),left=host.scrollLeft,top=host.scrollTop;preferences=next;
+      throwIfAborted(taskSignal);const own=++mutation,previous=preferences,before=plan(),held=scrollState();preferences=next;
       const after=plan(),samePages=before.visualPages.join(',')===after.visualPages.join(',');
       if(samePages&&before.fit===after.fit&&before.direction===after.direction)return;
-      try{await render(page,taskSignal);if(samePages&&zoom?.kind==='scale'){host.scrollLeft=left;host.scrollTop=top;}}
+      try{await render(page,taskSignal);if(samePages&&zoom?.kind==='scale')scrollTo(held.left,held.top,page);}
       catch(error){if(own===mutation)preferences=previous;throw error;}
     },
     async resize(next,taskSignal){const own=++mutation,previous=viewport;viewport=next;try{await render(page,taskSignal);}catch(error){if(own===mutation)viewport=previous;throw error;}},
     getLocation(){return location;},
     async setZoom(next,taskSignal){
       if(next.kind==='scale'&&(!Number.isFinite(next.value)||next.value<.05||next.value>8)||next.kind==='fit'&&!['page','width','height','spread'].includes(next.value))throw new Error('zoom_invalid');
-      const own=++mutation,previous=zoom,x=(host.scrollLeft+viewport.width/2)/scale,y=(host.scrollTop+viewport.height/2)/scale;zoom=next;
-      try{await render(page,taskSignal);host.scrollLeft=Math.max(0,x*scale-viewport.width/2);host.scrollTop=Math.max(0,y*scale-viewport.height/2);}catch(error){if(own===mutation)zoom=previous;throw error;}
+      const own=++mutation,previous=zoom,anchor=gesturePage??page,held=scrollState(anchor),x=(held.left+held.width/2)/scale,y=(held.top+held.height/2)/scale;zoom=next;
+      try{await render(page,taskSignal);scrollTo(x*scale-held.width/2,y*scale-held.height/2,anchor);}catch(error){if(own===mutation)zoom=previous;throw error;}
     },
     getZoom(){return {scale,...zoom?.kind==='scale'?{}:{fit:plan().fit}};},
     canTurnAtFit(){return zoom?.kind!=='scale'||Math.abs(scale-fittedScale)<=1e-6;},
-    async pan(position,taskSignal){throwIfAborted(taskSignal);if(closed||!Number.isFinite(position.x)||!Number.isFinite(position.y))throw new Error('pan_invalid');host.scrollLeft=Math.max(0,position.x);host.scrollTop=Math.max(0,position.y);},
-    dispose(){if(closed)return;closed=true;version++;clearTap();pending?.abort();lifetime.abort();scope.dispose();clean();for(const surface of surfacesByPage.values())surface.dispose();surfacesByPage.clear();host.remove();}
+    async pan(position,taskSignal){throwIfAborted(taskSignal);if(closed||!Number.isFinite(position.x)||!Number.isFinite(position.y))throw new Error('pan_invalid');scrollTo(position.x,position.y,page);},
+    dispose(){if(closed)return;closed=true;version++;clearTap();pending?.abort();lifetime.abort();scope.dispose();clean();for(const surface of surfacesByPage.values())surface.dispose();surfacesByPage.clear();paneStyle.remove();host.remove();}
   };
   const onScroll=()=>{
     clearTap();if(closed||rendering||scrolling)return;options.onSurfaceInput?.({kind:'activity'});
