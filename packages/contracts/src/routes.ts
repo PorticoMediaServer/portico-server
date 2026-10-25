@@ -8223,6 +8223,27 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "id": "get_storage_source_status",
+    "method": "GET",
+    "path": "/v1/storage/sources/{id}/status",
+    "summary": "Read one remote source's present state and the libraries that use it",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin"
+  },
+  {
     "id": "get_storage_sources",
     "method": "GET",
     "path": "/v1/storage/sources",
@@ -18892,6 +18913,7 @@ export const routePaths = {
   "get_storage_source_rclone_operation": "/v1/storage/sources/rclone/operations/{id}",
   "get_storage_source_rclone_providers": "/v1/storage/sources/rclone/providers",
   "get_storage_source_read_profile": "/v1/storage/sources/{id}/settings/read-profile",
+  "get_storage_source_status": "/v1/storage/sources/{id}/status",
   "get_storage_sources": "/v1/storage/sources",
   "get_storage_status": "/v1/admin/storage/status",
   "get_subtitle_fonts_cjk": "/v1/subtitle-fonts/cjk",

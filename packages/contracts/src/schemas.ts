@@ -126168,6 +126168,9 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "coverUrl": {
+                  "type": "string"
+                },
                 "format": {
                   "enum": [
                     "epub",
@@ -126353,6 +126356,9 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "coverUrl": {
+                    "type": "string"
+                  },
                   "format": {
                     "enum": [
                       "epub",
@@ -126473,6 +126479,9 @@ export const schemas = {
                             "source"
                           ],
                           "type": "object"
+                        },
+                        "coverUrl": {
+                          "type": "string"
                         },
                         "format": {
                           "enum": [
@@ -126612,6 +126621,9 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "coverUrl": {
+              "type": "string"
+            },
             "format": {
               "enum": [
                 "epub",
@@ -126723,6 +126735,9 @@ export const schemas = {
                 "source"
               ],
               "type": "object"
+            },
+            "coverUrl": {
+              "type": "string"
             },
             "format": {
               "enum": [
@@ -148717,6 +148732,118 @@ export const schemas = {
     "required": [
       "scope",
       "settings"
+    ],
+    "type": "object"
+  },
+  "GetStorageSourceStatusRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetStorageSourceStatusResponse": {
+    "properties": {
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      },
+      "status": {
+        "properties": {
+          "analysisReads": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "connectionsInUse": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "errorCode": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "string"
+          },
+          "lastCheckedAt": {
+            "type": "string"
+          },
+          "libraries": {
+            "items": {
+              "properties": {
+                "folders": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "libraryId": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "libraryId",
+                "name",
+                "kind",
+                "folders"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "playbackReads": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "rangeSupport": {
+            "type": "string"
+          },
+          "scanIntervalSeconds": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceId",
+          "generation",
+          "state",
+          "rangeSupport",
+          "lastCheckedAt",
+          "connectionsInUse",
+          "playbackReads",
+          "analysisReads",
+          "scanIntervalSeconds",
+          "libraries"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "status"
     ],
     "type": "object"
   },
@@ -182066,6 +182193,9 @@ export const schemas = {
       "metadata": {
         "properties": {
           "author": {
+            "type": "string"
+          },
+          "coverUrl": {
             "type": "string"
           },
           "direction": {

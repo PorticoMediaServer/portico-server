@@ -89,3 +89,19 @@
 .doneRows b { font-size: var(--type-row-subtitle-size); font-weight: var(--type-body-strong-weight); }
 .doneRows small { font-size: var(--type-caption-size); color: var(--color-text-tertiary); line-height: var(--type-troubleshooting-log-line); }
 @media (max-width: 720px) { .kindTiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* The source's own state (remote-sources.html#7, #7d, #7f). */
+.statusBox { display: grid; gap: 10px; padding: 14px 16px; border-radius: 12px; background: var(--color-raised); }
+.statusHead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.statusOrigin { font-family: var(--font-mono); font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
+.statusNotice { margin: 0; font-size: var(--type-caption-size); color: var(--color-text-secondary); }
+.statusRows { display: grid; gap: 8px; margin: 0; }
+.statusRows > div { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 12px; align-items: baseline; }
+.statusRows dt { font-size: var(--type-caption-size); font-weight: var(--type-body-strong-weight); color: var(--color-text-tertiary); }
+.statusRows dd { margin: 0; font-size: var(--type-caption-size); color: var(--color-text-secondary); line-height: var(--type-troubleshooting-log-line); }
+.usedList { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.usedList li { display: flex; align-items: center; gap: 10px; font-size: var(--type-row-subtitle-size); color: var(--color-text-secondary); }
+.usedList li small { display: block; font-size: var(--type-label-size); color: var(--color-text-tertiary); }
+.attachRow { display: flex; align-items: flex-end; gap: 10px; }
+.attachRow > :first-child { flex: 1; min-width: 0; }
+@media (max-width: 720px) { .statusRows > div { grid-template-columns: 1fr; gap: 2px; } }

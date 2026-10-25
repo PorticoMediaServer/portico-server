@@ -130498,6 +130498,9 @@
                       ],
                       "type": "object"
                     },
+                    "coverUrl": {
+                      "type": "string"
+                    },
                     "format": {
                       "enum": [
                         "epub",
@@ -130683,6 +130686,9 @@
                         ],
                         "type": "object"
                       },
+                      "coverUrl": {
+                        "type": "string"
+                      },
                       "format": {
                         "enum": [
                           "epub",
@@ -130803,6 +130809,9 @@
                                 "source"
                               ],
                               "type": "object"
+                            },
+                            "coverUrl": {
+                              "type": "string"
                             },
                             "format": {
                               "enum": [
@@ -130942,6 +130951,9 @@
                   ],
                   "type": "object"
                 },
+                "coverUrl": {
+                  "type": "string"
+                },
                 "format": {
                   "enum": [
                     "epub",
@@ -131053,6 +131065,9 @@
                     "source"
                   ],
                   "type": "object"
+                },
+                "coverUrl": {
+                  "type": "string"
                 },
                 "format": {
                   "enum": [
@@ -153599,6 +153614,118 @@
         "required": [
           "scope",
           "settings"
+        ],
+        "type": "object"
+      },
+      "GetStorageSourceStatusRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetStorageSourceStatusResponse": {
+        "properties": {
+          "scope": {
+            "properties": {
+              "serverId": {
+                "type": "string"
+              },
+              "viewerFence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "serverId",
+              "viewerFence"
+            ],
+            "type": "object"
+          },
+          "status": {
+            "properties": {
+              "analysisReads": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "connectionsInUse": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "errorCode": {
+                "type": "string"
+              },
+              "generation": {
+                "type": "string"
+              },
+              "lastCheckedAt": {
+                "type": "string"
+              },
+              "libraries": {
+                "items": {
+                  "properties": {
+                    "folders": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "libraryId",
+                    "name",
+                    "kind",
+                    "folders"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "playbackReads": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "rangeSupport": {
+                "type": "string"
+              },
+              "scanIntervalSeconds": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "sourceId": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sourceId",
+              "generation",
+              "state",
+              "rangeSupport",
+              "lastCheckedAt",
+              "connectionsInUse",
+              "playbackReads",
+              "analysisReads",
+              "scanIntervalSeconds",
+              "libraries"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "scope",
+          "status"
         ],
         "type": "object"
       },
@@ -200712,6 +200839,9 @@
           "metadata": {
             "properties": {
               "author": {
+                "type": "string"
+              },
+              "coverUrl": {
                 "type": "string"
               },
               "direction": {
@@ -418066,6 +418196,9 @@
                             ],
                             "type": "object"
                           },
+                          "coverUrl": {
+                            "type": "string"
+                          },
                           "format": {
                             "enum": [
                               "epub",
@@ -466790,6 +466923,9 @@
                                 ],
                                 "type": "object"
                               },
+                              "coverUrl": {
+                                "type": "string"
+                              },
                               "format": {
                                 "enum": [
                                   "epub",
@@ -467057,6 +467193,9 @@
                                   ],
                                   "type": "object"
                                 },
+                                "coverUrl": {
+                                  "type": "string"
+                                },
                                 "format": {
                                   "enum": [
                                     "epub",
@@ -467177,6 +467316,9 @@
                                           "source"
                                         ],
                                         "type": "object"
+                                      },
+                                      "coverUrl": {
+                                        "type": "string"
                                       },
                                       "format": {
                                         "enum": [
@@ -467398,6 +467540,9 @@
                             ],
                             "type": "object"
                           },
+                          "coverUrl": {
+                            "type": "string"
+                          },
                           "format": {
                             "enum": [
                               "epub",
@@ -467609,6 +467754,9 @@
                     "metadata": {
                       "properties": {
                         "author": {
+                          "type": "string"
+                        },
+                        "coverUrl": {
                           "type": "string"
                         },
                         "direction": {
@@ -500139,6 +500287,181 @@
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/storage/sources/{id}/status": {
+      "get": {
+        "operationId": "get_storage_source_status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    },
+                    "status": {
+                      "properties": {
+                        "analysisReads": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "connectionsInUse": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "errorCode": {
+                          "type": "string"
+                        },
+                        "generation": {
+                          "type": "string"
+                        },
+                        "lastCheckedAt": {
+                          "type": "string"
+                        },
+                        "libraries": {
+                          "items": {
+                            "properties": {
+                              "folders": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "kind": {
+                                "type": "string"
+                              },
+                              "libraryId": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "libraryId",
+                              "name",
+                              "kind",
+                              "folders"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "playbackReads": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "rangeSupport": {
+                          "type": "string"
+                        },
+                        "scanIntervalSeconds": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        },
+                        "state": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "sourceId",
+                        "generation",
+                        "state",
+                        "rangeSupport",
+                        "lastCheckedAt",
+                        "connectionsInUse",
+                        "playbackReads",
+                        "analysisReads",
+                        "scanIntervalSeconds",
+                        "libraries"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "status"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read one remote source's present state and the libraries that use it",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "invalid_request",
+          "administration_unavailable",
+          "internal"
+        ],
+        "x-lane": "default",
         "x-scope": "admin"
       }
     },

@@ -1,0 +1,41 @@
+package httpapi
+
+import (
+	"context"
+	"net/http"
+
+	"portico.local/apikit"
+	"portico.local/apikit/apierror"
+	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/mounts"
+	"portico.local/server/internal/remotesources"
+)
+
+type SourceStatusResponse struct {
+	Scope  catalog.AdminScope         `json:"scope"`
+	Status remotesources.SourceStatus `json:"status"`
+}
+
+// registerSourceStatus publishes one source's present state: its health in the
+// server's words, the provider reads it holds now, when it was last checked and
+// which libraries use its folders. It reads no provider.
+func registerSourceStatus(registry *apikit.Registry, d Dependencies) {
+	failures := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "administration_unavailable", "internal"}
+	v1Route(registry, apikit.Metadata{ID: "get_storage_source_status", Method: "GET", Path: "/v1/storage/sources/{id}/status", Summary: "Read one remote source's present state and the libraries that use it", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (SourceStatusResponse, error) {
+		p, scope, err := d.storageOwner(r)
+		if err != nil {
+			return SourceStatusResponse{}, folderError(err)
+		}
+		if d.RemoteSources == nil {
+			return SourceStatusResponse{}, folderError(mounts.ErrUnavailable)
+		}
+		if r.URL.RawQuery != "" {
+			return SourceStatusResponse{}, &apierror.Error{Code: "invalid_request"}
+		}
+		status, err := d.RemoteSources.ReadSourceStatus(ctx, d.Identity, p, r.PathValue("id"))
+		if err != nil {
+			return SourceStatusResponse{}, folderError(err)
+		}
+		return SourceStatusResponse{Scope: scope, Status: status}, nil
+	})
+}

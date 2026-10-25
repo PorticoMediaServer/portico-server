@@ -21,6 +21,11 @@ export type SourceReadPreset='list'|'once'|'everything'|'ask';
  * absolute path the catalog uses for it, and the path inside the source. */
 export type RemoteFolder=Readonly<{name:string;path:string;relative:string;hidden:boolean}>;
 export type RemoteFolderPage=Readonly<{sourceId:string;generation:string;path:string;relative:string;entries:readonly RemoteFolder[];nextCursor:string}>;
+/** One library that uses folders from a source, and how many of its folders do. */
+export type SourceLibraryUse=Readonly<{libraryId:string;name:string;kind:string;folders:number}>;
+/** A source's present state: the reads it holds now, when it was last checked,
+ * and the libraries its folders went into. Nothing here is estimated. */
+export type RemoteSourceStatus=Readonly<{sourceId:string;generation:string;state:string;errorCode?:string;rangeSupport:string;lastCheckedAt:string;connectionsInUse:number;playbackReads:number;analysisReads:number;scanIntervalSeconds:number;libraries:readonly SourceLibraryUse[]}>;
 const sourceReadPresets:Readonly<Record<SourceReadPreset,SourceReadValues>>=Object.freeze({
  list:{scanDepth:'file_list_only',wholeFileReads:false,connections:2,requestsPerSecond:2,bytesPerSecond:0},
  once:{scanDepth:'basic',wholeFileReads:false,connections:4,requestsPerSecond:4,bytesPerSecond:0},
@@ -52,6 +57,15 @@ function remoteFolder(raw:unknown):RemoteFolder{
 function remoteFolderPage(raw:unknown,id:string):RemoteFolderPage{
  if(!record(raw)||raw.sourceId!==id||!text(raw.generation,64)||!raw.generation||!text(raw.path)||!text(raw.relative)||!Array.isArray(raw.entries)||!text(raw.nextCursor,255))invalid();
  return Object.freeze({sourceId:id,generation:raw.generation,path:raw.path,relative:raw.relative,entries:Object.freeze(raw.entries.map(remoteFolder)),nextCursor:raw.nextCursor});
+}
+function sourceLibraryUse(raw:unknown):SourceLibraryUse{
+ if(!record(raw)||!text(raw.libraryId,256)||!raw.libraryId||!text(raw.name,512)||!text(raw.kind,32)||!integer(raw.folders)||raw.folders<1)invalid();
+ return Object.freeze({libraryId:raw.libraryId,name:raw.name,kind:raw.kind,folders:raw.folders});
+}
+function remoteSourceStatus(raw:unknown,id:string):RemoteSourceStatus{
+ if(!record(raw)||raw.sourceId!==id||!text(raw.generation,64)||!raw.generation||!text(raw.state,100)||!text(raw.rangeSupport,32)||!text(raw.lastCheckedAt,64)||!integer(raw.connectionsInUse)||!integer(raw.playbackReads)||!integer(raw.analysisReads)||!integer(raw.scanIntervalSeconds)||!Array.isArray(raw.libraries)||raw.libraries.length>200)invalid();
+ if(raw.errorCode!==undefined&&!text(raw.errorCode,100))invalid();
+ return Object.freeze({sourceId:id,generation:raw.generation,state:raw.state,...(raw.errorCode===undefined?{}:{errorCode:raw.errorCode as string}),rangeSupport:raw.rangeSupport,lastCheckedAt:raw.lastCheckedAt,connectionsInUse:raw.connectionsInUse,playbackReads:raw.playbackReads,analysisReads:raw.analysisReads,scanIntervalSeconds:raw.scanIntervalSeconds,libraries:Object.freeze(raw.libraries.map(sourceLibraryUse))});
 }
 /** `alreadyDone`: the last command found, on a fresh read, that what it asked for is already so (a share removed elsewhere). */
 export type RemoteState=Readonly<{sources:readonly RemoteSource[];loading:boolean;busy:boolean;error:string;errorCode:string;operationId:string|null;ambiguous:boolean;receipt:RemoteReceipt|null;alreadyDone:boolean;mountSupported:boolean}>;
@@ -244,6 +258,17 @@ async networkPolicy(libraryId:string):Promise<NetworkPolicy>{const epoch=this.ep
   this.fence(raw);
   if(!record(raw)||!record(raw.folders))invalid();
   return remoteFolderPage(raw.folders,id);
+ }
+ /** What the source is doing now, and where its folders went; one bounded read. */
+ async readStatus(id:string,guard?:()=>boolean):Promise<RemoteSourceStatus>{
+  if(!this.live()||(guard&&!guard()))throw new Error('Scope changed.');
+  if(!text(id,256)||!id)throw new Error('Invalid source.');
+  const epoch=this.epoch;
+  const raw=await this.request(encodedRoutePath('get_storage_source_status',{id:encodeURIComponent(id)}),'GET',undefined,guard);
+  if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
+  this.fence(raw);
+  if(!record(raw)||!record(raw.status))invalid();
+  return remoteSourceStatus(raw.status,id);
  }
 }
 export type SourceAvailability='ready'|'unavailable'|'changed'|'unsupported'|'resolve_on_play';

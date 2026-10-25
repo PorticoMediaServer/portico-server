@@ -354,6 +354,7 @@ export function decodeGetStorageSourceOperationsIdResponse(input: unknown): type
 export function decodeGetStorageSourceRcloneOperationResponse(input: unknown): types.GetStorageSourceRcloneOperationResponse { return decode("GetStorageSourceRcloneOperationResponse", input) as types.GetStorageSourceRcloneOperationResponse; }
 export function decodeGetStorageSourceRcloneProvidersResponse(input: unknown): types.GetStorageSourceRcloneProvidersResponse { return decode("GetStorageSourceRcloneProvidersResponse", input) as types.GetStorageSourceRcloneProvidersResponse; }
 export function decodeGetStorageSourceReadProfileResponse(input: unknown): types.GetStorageSourceReadProfileResponse { return decode("GetStorageSourceReadProfileResponse", input) as types.GetStorageSourceReadProfileResponse; }
+export function decodeGetStorageSourceStatusResponse(input: unknown): types.GetStorageSourceStatusResponse { return decode("GetStorageSourceStatusResponse", input) as types.GetStorageSourceStatusResponse; }
 export function decodeGetStorageSourcesResponse(input: unknown): types.GetStorageSourcesResponse { return decode("GetStorageSourcesResponse", input) as types.GetStorageSourcesResponse; }
 export function decodeGetStorageStatusResponse(input: unknown): types.GetStorageStatusResponse { return decode("GetStorageStatusResponse", input) as types.GetStorageStatusResponse; }
 export function decodeGetSubtitleFontsCjkResponse(input: unknown): types.GetSubtitleFontsCjkResponse { return decode("GetSubtitleFontsCjkResponse", input) as types.GetSubtitleFontsCjkResponse; }

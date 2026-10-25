@@ -2,7 +2,7 @@ import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react'
 import {defaultI18n, type MessageId} from '@i18n';
 import {
   RemoteSourceService, sourceReadPreset, sourceReadPresetName,
-  type DAVConnectionResult, type RemoteFolder, type RemoteSource, type SourceReadPreset, type SourceReadSettings, type SourceReadValues,
+  type DAVConnectionResult, type RemoteFolder, type RemoteSource, type RemoteSourceStatus, type SourceReadPreset, type SourceReadSettings, type SourceReadValues,
 } from '@core/remote-sources.ts';
 import {LibraryManagementService, type ManagedLibrary} from '@core/library-management.ts';
 import {readLibraryInventoryConfig, saveLibraryFolder} from '@core/server-admin/libraries.ts';
@@ -87,6 +87,13 @@ function authFailure(error: unknown): boolean {
 function refreshFailure(error: unknown): boolean {
   return !!error && typeof error === 'object' && (error as {code?: string}).code === 'refresh_failed';
 }
+/** The server's own check time, in the owner's local words. */
+function checkedWhen(value: string): string {
+  const when = new Date(value);
+  if (Number.isNaN(when.getTime())) return value;
+  try { return new Intl.DateTimeFormat(undefined, {dateStyle: 'medium', timeStyle: 'short'}).format(when); }
+  catch { return when.toISOString(); }
+}
 /** A folder attachment failure names the one thing the owner can act on: the
  * folders are saved on the source either way, so this never reads as data loss. */
 function attachFailure(error: unknown): string {
@@ -130,7 +137,7 @@ export function RemoteSourcesPage({api, serverId, viewerId, isCurrent, reportErr
       </SettingsRow>)}
     </SettingsGroup>
     <AddSourceDialog service={service} api={api} serverId={serverId} viewerId={viewerId} open={adding} isCurrent={isCurrent} reportError={reportError} onClose={() => setAdding(false)} onCreated={source => {setAdding(false);setManaging(source);}}/>
-    {managing && <ManageSourceDialog key={managing.id} service={service} source={managing} isCurrent={isCurrent} reportError={reportError} onClose={() => setManaging(undefined)} onRemoved={() => setManaging(undefined)}/>}
+    {managing && <ManageSourceDialog key={managing.id} service={service} source={managing} api={api} serverId={serverId} viewerId={viewerId} isCurrent={isCurrent} reportError={reportError} onClose={() => setManaging(undefined)} onRemoved={() => setManaging(undefined)}/>}
     {snapshot.loading && sources.length > 0 && <Button size="xs" variant="text" onClick={refresh}>{t('next.remoteSources.refresh')}</Button>}
   </div>;
 }
@@ -371,8 +378,9 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
 }
 
 
-function ManageSourceDialog({service, source, isCurrent, reportError, onClose, onRemoved}: Readonly<{
-  service: RemoteSourceService; source: RemoteSource; isCurrent: () => boolean; reportError: (error: unknown) => void; onClose: () => void; onRemoved: () => void;
+function ManageSourceDialog({service, source, api, serverId, viewerId, isCurrent, reportError, onClose, onRemoved}: Readonly<{
+  service: RemoteSourceService; source: RemoteSource; api: LibraryContentApi; serverId: string; viewerId: string;
+  isCurrent: () => boolean; reportError: (error: unknown) => void; onClose: () => void; onRemoved: () => void;
 }>) {
   const [draft, setDraft] = useState<WebDavDraft>({name: source.name, root: '', username: '', password: '', insecureLocal: source.insecureLocal});
   const [result, setResult] = useState<DAVConnectionResult>();
@@ -382,9 +390,17 @@ function ManageSourceDialog({service, source, isCurrent, reportError, onClose, o
   const [busy, setBusy] = useState(false);
   const [typed, setTyped] = useState('');
   const [confirming, setConfirming] = useState(false);
+  const [status, setStatus] = useState<RemoteSourceStatus>();
+  const libraries = useMemo(() => new LibraryManagementService({api, scope: {serverId, viewerId}}), [api, serverId, viewerId]);
+  const librarySnapshot = useSyncExternalStore(libraries.subscribe, libraries.getSnapshot, libraries.getSnapshot);
+  const [attachTo, setAttachTo] = useState('');
+  const [picking, setPicking] = useState(false);
+  const [attachBusy, setAttachBusy] = useState(false);
+  const [attachNote, setAttachNote] = useState('');
   const testAttempt = useRef(0), active = useRef(true), pending = useRef(false), lifetime = useRef(0);
   const attemptGuard = () => { const captured = lifetime.current; return () => active.current && lifetime.current === captured && isCurrent(); };
   useEffect(() => () => {active.current=false;lifetime.current++;}, []);
+  useEffect(() => () => libraries.dispose(), [libraries]);
   const updateDraft = (patch: Partial<WebDavDraft>) => {testAttempt.current++;setResult(undefined);setError('');setDraft(current => ({...current, ...patch}));};
   useEffect(() => {
     const guard = attemptGuard();
@@ -393,7 +409,24 @@ function ManageSourceDialog({service, source, isCurrent, reportError, onClose, o
       setProfile(next);
       setValues(next.saved ? next.values : sourceReadPreset('list'));
     }).catch(value => {if (guard()) setError(remoteErrorText(value));});
-  }, [service, source.id, isCurrent]);
+    service.readStatus(source.id, guard).then(next => {if (guard()) setStatus(next);}).catch(() => {});
+    void libraries.loadLibraries();
+  }, [service, source.id, isCurrent, libraries]);
+  useEffect(() => {if (!attachTo && status?.libraries.length) setAttachTo(status.libraries[0].libraryId);}, [attachTo, status]);
+  useEffect(() => {if (!attachTo && librarySnapshot.directory.data?.items.length) setAttachTo(librarySnapshot.directory.data.items[0].id);}, [attachTo, librarySnapshot.directory.data]);
+  const attach = async (folders: readonly RemoteFolder[]) => {
+    if (!attachTo || attachBusy) return;
+    setAttachBusy(true); setAttachNote('');
+    try {
+      for (const folder of folders) {
+        const config = await readLibraryInventoryConfig(api, {serverId, viewerId}, attachTo);
+        await saveLibraryFolder(api, attachTo, undefined, {name: folder.name, path: folder.path, classification: 'local', followSymlinks: false, intervalSeconds: SIX_HOURS, expectedRevision: config.revision, acceptReplacement: false});
+      }
+      const next = await service.readStatus(source.id, attemptGuard());
+      if (active.current) setStatus(next);
+    } catch (value) {if (active.current) setAttachNote(attachFailure(value));}
+    finally {if (active.current) setAttachBusy(false);}
+  };
   const test = async () => {
     const guard = attemptGuard();
     if (pending.current || !guard()) return;
@@ -440,8 +473,26 @@ function ManageSourceDialog({service, source, isCurrent, reportError, onClose, o
   const close = () => {if (busy || pending.current) return;done();};
   return <Dialog open onOpenChange={value => {if (!value) close();}} title={source.name} width={760} footer={<Button size="compact" variant="glass" disabled={busy} onClick={close}>{t('next.remoteSources.cancel')}</Button>}>
     {error && <p className={styles.error} role="alert">{error}</p>}
+    <section className={styles.statusBox} aria-label={t('next.remoteSources.status')}>
+      <div className={styles.statusHead}><SourceStatus source={source}/>{source.origin && <span className={styles.statusOrigin}>{source.origin}</span>}</div>
+      {problemId(source) && <p className={styles.statusNotice}>{t(problemId(source)!)}</p>}
+      <dl className={styles.statusRows}>
+        <div><dt>{t('next.remoteSources.rightNow')}</dt><dd>{!status ? '—'
+          : status.connectionsInUse === 0 ? t('next.remoteSources.nothingReading')
+            : status.playbackReads > 0 ? t('next.remoteSources.readingNow', {watching: status.playbackReads, connections: status.connectionsInUse})
+              : t('next.remoteSources.connectionsNow', {connections: status.connectionsInUse})}</dd></div>
+        <div><dt>{t('next.remoteSources.lastChecked')}</dt><dd>{!status ? '—' : status.lastCheckedAt
+          ? t('next.remoteSources.checkedAt', {when: checkedWhen(status.lastCheckedAt)})
+          : t('next.remoteSources.neverChecked')}</dd></div>
+        <div><dt>{t('next.remoteSources.usedBy')}</dt><dd>{!status ? '—'
+          : status.libraries.length
+            ? status.libraries.map(use => `${use.name} · ${use.folders}`).join(', ')
+            : t('next.remoteSources.noLibraryUses')}</dd></div>
+        {!!status?.scanIntervalSeconds && <div><dt>{t('next.remoteSources.scanning')}</dt>
+          <dd>{t('next.remoteSources.scansEveryHours', {hours: Math.round(status.scanIntervalSeconds / 3600) || 1})}</dd></div>}
+      </dl>
+    </section>
     <section className={styles.group}><h3>{t('next.remoteSources.connection')}</h3>
-      <p className={styles.note}><SourceStatus source={source}/> {source.origin ?? ''}</p>
       <TextField label={t('next.remoteSources.name')} value={draft.name} maxLength={100} disabled={busy} onChange={event => updateDraft({name: event.target.value})}/>
       <TextField label={t('next.remoteSources.address')} value={draft.root} placeholder={source.origin ?? t('next.settingsSpec.server.remote-sources.panels.source.tabs.0.groups.0.rows.1.control.placeholder')} disabled={busy}
         autoCapitalize="off" spellCheck={false} style={{fontFamily: 'var(--font-mono)'}} onChange={event => updateDraft({root: event.target.value})}/>
@@ -464,6 +515,20 @@ function ManageSourceDialog({service, source, isCurrent, reportError, onClose, o
       <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.label')}<small className={styles.note}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.help')}</small></span><Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.label')} checked={values.wholeFileReads} disabled={busy} onCheckedChange={value => setValues({...values, wholeFileReads: value})}/></label>
       <Button size="compact" variant="primary" disabled={busy || !profile} onClick={() => void saveReading()}>{t('next.remoteSources.save')}</Button>
     </section>
+    <section className={styles.group}><h3>{t('next.remoteSources.foldersSection')}</h3>
+      <p className={styles.note}>{t('next.remoteSources.foldersNote')}</p>
+      {!!status?.libraries.length && <ul className={styles.usedList}>{status.libraries.map(use => <li key={use.libraryId}>
+        <Icon name="i-library" size={18}/><span>{use.name}<small>{t('next.remoteSources.foldersInLibrary', {count: use.folders})}</small></span></li>)}</ul>}
+      {librarySnapshot.directory.data?.items.length
+        ? <div className={styles.attachRow}>
+          <RichSelect aria-label={t('next.remoteSources.attachTo')} value={attachTo} disabled={attachBusy}
+            options={librarySnapshot.directory.data.items.map(library => ({value: library.id, label: library.name, description: t(libraryKinds.find(value => value.id === library.kind)?.label ?? libraryKinds[0].label)}))}
+            onValueChange={setAttachTo}/>
+          <Button size="small" variant="glass" icon="i-folder" disabled={attachBusy || !attachTo} onClick={() => setPicking(true)}>{t('next.remoteSources.chooseFolders')}</Button>
+        </div>
+        : <p className={styles.note}>{t('next.remoteSources.noLibraryUses')}</p>}
+      {attachNote && <p className={styles.error} role="alert">{attachNote}</p>}
+    </section>
     <section className={styles.danger}><h3>{t('next.remoteSources.disconnect')}</h3><p>{t('next.remoteSources.disconnectBody')}</p>
       {!confirming ? <Button size="compact" variant="text" onClick={() => setConfirming(true)}>{t('next.remoteSources.disconnect')}</Button> : <>
         <p>{t('next.remoteSources.disconnectConfirm')}</p>
@@ -472,5 +537,7 @@ function ManageSourceDialog({service, source, isCurrent, reportError, onClose, o
           <Button size="compact" variant="primary" disabled={busy || typed.trim() !== source.name} onClick={() => void disconnect()}>{t('next.remoteSources.disconnect')}</Button></div>
       </>}
     </section>
+    {picking && <RemoteFolderPicker service={service} sourceId={source.id} sourceName={source.name} open={picking}
+      onOpenChange={setPicking} onChoose={folders => {setPicking(false);void attach(folders);}}/>}
   </Dialog>;
 }
