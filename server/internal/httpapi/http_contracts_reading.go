@@ -3,6 +3,9 @@ package httpapi
 import "portico.local/apikit"
 
 func registerReadingHTTPContracts(registry *apikit.Registry) error {
+	if err := registerReadingSavedGroupHTTPContracts(registry); err != nil {
+		return err
+	}
 	if err := registerReadingFavoriteHTTPContracts(registry); err != nil {
 		return err
 	}
