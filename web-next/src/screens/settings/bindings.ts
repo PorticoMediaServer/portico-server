@@ -30,14 +30,14 @@ export function createSettingsBindings(controller: SettingsController, options: 
     getSnapshot: section => section.scope === 'server' && section.id === 'signin' && sections.signIn ? sections.signIn.getSnapshot() : controller.getSnapshot(section),
     sectionVisible: controller.sectionVisible,
     eligible: (row, context) => {
-      const fact = row.id === 'signin.switchToPortico' && sections.signIn?.ownerSwitch
+      const fact = ['signin.switchToPortico', 'signin.startOverPortico'].includes(row.id) && sections.signIn?.ownerSwitch
         ? {present: !!sections.signIn.getSnapshot().document} : sections.signIn?.rowState(row.id);
       return fact ? controller.sectionVisible(context.section) && fact.present : controller.eligible(row, context);
     },
     audience: section => ['dashboard', 'libraries', 'people'].includes(section.id) ? 'administrators' : 'owner',
     serverHealth: controller.serverHealth,
     serverFacts: controller.serverFacts,
-    rowState: (row, context) => row.id === 'signin.switchToPortico' && sections.signIn?.ownerSwitch
+    rowState: (row, context) => ['signin.switchToPortico', 'signin.startOverPortico'].includes(row.id) && sections.signIn?.ownerSwitch
       ? {present: !!sections.signIn.getSnapshot().document, disabled: sections.signIn.getSnapshot().loading}
       : sections.signIn?.rowState(row.id) ?? controller.rowState(row, context),
     change: (row, value, context) => {if (!sections.change?.(row, value, context)) controller.change(row, value, context);},
