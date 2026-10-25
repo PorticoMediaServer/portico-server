@@ -5,7 +5,7 @@ on:
       scope:
         description: Full checkpoint, or only a previously failed server module
         type: choice
-        options: [all, server]
+        options: [all, server, server-residual]
         default: all
 permissions:
   contents: read
@@ -19,7 +19,7 @@ env:
   PORTICO_TEST_TIER: default
 jobs:
   repository:
-    if: ${{ inputs.scope != 'server' }}
+    if: ${{ inputs.scope == 'all' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: ${{ fromJSON(inputs.scope == 'server' && '["server"]' || '["apikit","server"]') }}
+        module: ${{ fromJSON(inputs.scope == 'all' && '["apikit","server"]' || '["server"]') }}
     services:
       postgres:
         image: postgres:17
@@ -42,7 +42,8 @@ jobs:
         options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+      - id: go-tools
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
           go-version-file: ${{ matrix.module }}/go.mod
           cache: ${{ matrix.module != 'apikit' }}
@@ -74,7 +75,12 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/checkpoint-go"
           status=0
-          ../scripts/test-go-module.sh '${{ matrix.module }}' > "$RUNNER_TEMP/checkpoint-go/tests.log" 2>&1 || status=$?
+          if [ '${{ inputs.scope }}' = server-residual ]; then
+            # Only the three packages which failed the preceding full server checkpoint.
+            go test ./internal/httpapi ./internal/metadata ./internal/operations > "$RUNNER_TEMP/checkpoint-go/tests.log" 2>&1 || status=$?
+          else
+            ../scripts/test-go-module.sh '${{ matrix.module }}' > "$RUNNER_TEMP/checkpoint-go/tests.log" 2>&1 || status=$?
+          fi
           echo "exit=$status"
           tail -n 20 "$RUNNER_TEMP/checkpoint-go/tests.log"
           exit "$status
@@ -86,7 +92,7 @@ jobs:
             if [ -r "$path" ]; then printf '%s\n' "$path"; cat "$path"; fi
           done
       - name: Check generated contracts
-        if: matrix.module == 'server'
+        if: ${{ !cancelled() && matrix.module == 'server' && steps.go-tools.outcome == 'success' }}
         run: |
           mkdir -p "$RUNNER_TEMP/checkpoint-go"
           status=0
@@ -95,6 +101,7 @@ jobs:
           tail -n 20 "$RUNNER_TEMP/checkpoint-go/generation.log"
           exit "$status"
       - name: Vet application and maintained SQLite driver
+        if: ${{ !cancelled() && steps.go-tools.outcome == 'success' }}
         working-directory: ${{ matrix.module }}
         run: |
           mkdir -p "$RUNNER_TEMP/checkpoint-go"
@@ -113,7 +120,7 @@ jobs:
           retention-days: 14
 
   clients:
-    if: ${{ inputs.scope != 'server' }}
+    if: ${{ inputs.scope == 'all' }}
     timeout-minutes: 60
     runs-on: ubuntu-latest
     steps:
@@ -154,7 +161,7 @@ jobs:
         run: npm run check --workspace portico-web-next
 
   security:
-    if: ${{ inputs.scope != 'server' }}
+    if: ${{ inputs.scope == 'all' }}
     uses: ./.github/workflows/security.yml
     with: {nightly: true}
 
