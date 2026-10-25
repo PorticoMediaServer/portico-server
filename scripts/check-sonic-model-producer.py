@@ -9,6 +9,21 @@ import subprocess
 ROOT = Path(__file__).resolve().parent.parent
 INPUTS = ('scripts/prepare-musicnn-model.py', 'scripts/export-musicnn-onnx.py',
           'third_party/musicnn/requirements-export.txt', 'third_party/musicnn/LICENSE.md')
+RUNTIME = 'server/internal/sonic/runtime.go'
+
+
+def check_runtime_pin(root, lock):
+    """The runtime pins the reviewed model id, version, digest and size in Go source."""
+    source = root / RUNTIME
+    if source.is_symlink() or not source.is_file():
+        raise ValueError('Sonic runtime source is not a regular file')
+    text = source.read_text()
+    for name, expected in (('ModelID', lock['modelId']), ('ModelVersion', lock['onnx']['version']),
+                           ('ModelSHA256', lock['onnx']['sha256'])):
+        if re.findall(r'\b' + name + r'\s*=\s*"([^"]*)"', text) != [expected]:
+            raise ValueError('Sonic runtime %s differs from the reviewed model pin' % name)
+    if re.findall(r'\bmodel\.Bytes\s*!=\s*(\d+)', text) != [str(lock['onnx']['bytes'])]:
+        raise ValueError('Sonic runtime model size differs from the reviewed model pin')
 
 
 def check(metadata, repository, root=ROOT):
@@ -35,6 +50,9 @@ def check(metadata, repository, root=ROOT):
     previous = json.loads(subprocess.run(['git', 'show', producer + ':' + name], cwd=root,
                                         check=True, capture_output=True).stdout)
     current = json.loads((root / name).read_text())
+    # The runtime constants are checked against the reviewed pin before the
+    # comparison below removes the output byte pin from these copies.
+    check_runtime_pin(root, current)
     # The only permitted source difference is the explicit output byte pin.
     # Original weights, licence, graph/version and every converter stay fixed.
     for lock in (previous, current):
