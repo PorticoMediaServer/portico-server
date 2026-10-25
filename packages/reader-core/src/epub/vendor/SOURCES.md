@@ -21,5 +21,9 @@ Changes from upstream:
 - Replace one CSS-prefix lookbehind expression and `findLastIndex` with
   equivalent local helpers so the paginator parses and navigates on iOS15.1.
   These changes do not establish whole-engine or native-host acceptance.
+- Apply the trusted app document's style nonce, before connection, to the
+  paginator shadow layout and its two renderer-owned section style elements.
+  Publication styles and their sanitization/CSP are unchanged; publication
+  markup is never consulted for a nonce.
 
 The shared installed dependency and immutable dependency seed are unchanged.

@@ -3,6 +3,15 @@
 import { unprefixEpubCss, lastLinearIndex } from './compat.js'
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
 
+// Only renderer-owned styles receive the trusted app document's nonce. Never
+// take a nonce from publication markup or change a publication's style policy.
+const rendererStyle = (targetDocument, appDocument) => {
+    const style = targetDocument.createElement('style')
+    const nonce = appDocument.querySelector('meta[name="portico-style-nonce"]')?.content
+    if (nonce && nonce !== '__PORTICO_STYLE_NONCE__') style.nonce = nonce
+    return style
+}
+
 const debounce = (f, wait, immediate) => {
     let timeout
     return (...args) => {
@@ -477,7 +486,8 @@ export class Paginator extends HTMLElement {
     #lastVisibleRange
     constructor() {
         super()
-        this.#root.innerHTML = `<style>
+        const style = rendererStyle(this.ownerDocument, this.ownerDocument)
+        style.textContent = `
         :host {
             display: block;
             container-type: size;
@@ -566,14 +576,16 @@ export class Paginator extends HTMLElement {
             font-size: .75em;
             opacity: .6;
         }
-        </style>
-        <div id="top">
+        `
+        this.#root.innerHTML = `<div id="top">
             <div id="background" part="filter"></div>
             <div id="header"></div>
             <div id="container"></div>
             <div id="footer"></div>
         </div>
         `
+
+        this.#root.prepend(style)
 
         this.#top = this.#root.getElementById('top')
         this.#background = this.#root.getElementById('background')
@@ -1006,9 +1018,9 @@ export class Paginator extends HTMLElement {
             const view = this.#createView()
             const afterLoad = doc => {
                 if (doc.head) {
-                    const $styleBefore = doc.createElement('style')
+                    const $styleBefore = rendererStyle(doc, this.ownerDocument)
                     doc.head.prepend($styleBefore)
-                    const $style = doc.createElement('style')
+                    const $style = rendererStyle(doc, this.ownerDocument)
                     doc.head.append($style)
                     this.#styleMap.set(doc, [$styleBefore, $style])
                 }
