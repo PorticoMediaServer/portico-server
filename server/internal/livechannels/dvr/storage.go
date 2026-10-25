@@ -4,10 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/livechannels"
 	"time"
 )
+
+// forecastWindow is the one scope the storage status forecasts over. The
+// reported hours are derived from it, so the fact cannot drift from the query.
+const forecastWindow = 24 * time.Hour
 
 var ErrStorageFloor = errors.New("recording storage free-space floor reached")
 var ErrStorageCap = errors.New("recording storage cap reached")
@@ -89,23 +94,29 @@ func estimateBytesTx(ctx context.Context, tx *sql.Tx, source string, seconds int
 	if e != nil {
 		return 0, e
 	}
-	rate = max(float64(2500000), rate*1.25)
-	rate = min(rate, float64(1<<30))
+	rate = min(rate*1.25, float64(1<<30))
+	if rate <= 0 {
+		// 20 Mb/s is the labelled fallback only when the source has no measured
+		// completion. It is not a minimum for a source that already has evidence.
+		rate = 2500000
+	}
 	return int64(rate * float64(max(int64(0), min(seconds, int64((1<<53-1)/(1<<30)))))), nil
 }
 func (s *Store) StorageStatus(ctx context.Context, a livechannels.Authority) (StorageStatus, error) {
-	out := StorageStatus{ForecastHours: 24, ForecastDescription: "Next 24 hours. Recent measured source rate plus 25% headroom, or 20 Mb/s without evidence. Forecasts are estimates; free-space floor and cap are checked on every write.", CaptureAvailable: s.captureAvailable}
+	hours := int(forecastWindow / time.Hour)
+	out := StorageStatus{ForecastHours: hours, ForecastDescription: fmt.Sprintf("Next %d hours. Recent measured source rate plus 25%% headroom, or 20 Mb/s without evidence. Forecasts are estimates; free-space floor and cap are checked on every write.", hours), CaptureAvailable: s.captureAvailable}
 	p, e := s.GetStoragePolicy(ctx, a)
 	if e != nil {
 		return out, e
 	}
 	out.Policy = p
+	measurement := StorageMeasurement{}
 	if s.storage == nil {
+		// Pending-delete and forecast bytes are recording-state facts, not
+		// filesystem measurements. Missing storage does not make them zero.
 		out.Warning = "storage-unavailable"
-		return out, nil
-	}
-	measurement, e := s.storage.Measure(ctx)
-	if e != nil {
+	} else if measurement, e = s.storage.Measure(ctx); e != nil {
+		measurement = StorageMeasurement{}
 		out.Warning = "storage-unavailable"
 	} else {
 		out.Measurement = measurement
@@ -125,7 +136,9 @@ func (s *Store) StorageStatus(ctx context.Context, a livechannels.Authority) (St
 	if e = tx.QueryRowContext(ctx, `SELECT COALESCE(SUM(bytes),0) FROM dvr_recordings WHERE state='pending-delete'`).Scan(&out.PendingDeleteBytes); e != nil {
 		return out, e
 	}
-	rows, e := tx.QueryContext(ctx, `SELECT source_id,SUM(max(0,(min(end_ms,?)-max(start_ms,?))/1000)) FROM dvr_recordings WHERE state IN('scheduled','conflicted','waiting-source','waiting-guide','preparing','recording') AND start_ms<? AND end_ms>? GROUP BY source_id`, s.now().Add(24*time.Hour).UnixMilli(), s.now().UnixMilli(), s.now().Add(24*time.Hour).UnixMilli(), s.now().UnixMilli())
+	now := s.now()
+	horizon := now.Add(forecastWindow)
+	rows, e := tx.QueryContext(ctx, `SELECT source_id,SUM(max(0,(min(end_ms,?)-max(start_ms,?))/1000)) FROM dvr_recordings WHERE state IN('scheduled','conflicted','waiting-source','waiting-guide','preparing','recording') AND start_ms<? AND end_ms>? GROUP BY source_id`, horizon.UnixMilli(), now.UnixMilli(), horizon.UnixMilli(), now.UnixMilli())
 	if e != nil {
 		return out, e
 	}
