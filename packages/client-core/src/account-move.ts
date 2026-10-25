@@ -43,9 +43,11 @@ export function parseAccountMove(raw:unknown):AccountMove{
  if(!obj(raw)||!text(raw.id,128)||!['portico','local'].includes(String(raw.from))||!['portico','local'].includes(String(raw.to))||raw.from===raw.to||typeof raw.startOver!=='boolean'||!['preview','moving_to_portico','moving_to_local','complete','cancelled'].includes(String(raw.stage))||!count(raw.revision)||raw.revision<1||!text(raw.serverName,120)||typeof raw.ownAddressRequired!=='boolean')invalid();
  for(const key of ['people','profiles','invitations','waiting'])if(!count(raw[key]))invalid();
  if(Number(raw.waiting)>Number(raw.people)||raw.ownAddressRequired!==(raw.to==='local')||raw.stage==='moving_to_local'&&raw.to!=='local'||raw.stage==='moving_to_portico'&&raw.to!=='portico')invalid();
+ const hasRetained=Object.hasOwn(raw,'retainedProfiles'),hasRemoved=Object.hasOwn(raw,'removedProfiles');
+ if(hasRetained!==hasRemoved||hasRetained&&(!raw.startOver||!count(raw.retainedProfiles)||!count(raw.removedProfiles)||!Number.isSafeInteger(Number(raw.retainedProfiles)+Number(raw.removedProfiles))||Number(raw.retainedProfiles)+Number(raw.removedProfiles)!==raw.profiles))invalid();
  // Start over deliberately has no device count; a guided move must report its real count.
  if(raw.startOver?Object.hasOwn(raw,'devices'):!count(raw.devices))invalid();
- return Object.freeze({id:raw.id,from:raw.from as SignInKind,to:raw.to as SignInKind,startOver:raw.startOver,stage:raw.stage as AccountMove['stage'],revision:raw.revision,people:raw.people as number,profiles:raw.profiles as number,invitations:raw.invitations as number,waiting:raw.waiting as number,serverName:raw.serverName,ownAddressRequired:raw.ownAddressRequired,...(raw.startOver?{}:{devices:raw.devices as number})});
+ return Object.freeze({id:raw.id,from:raw.from as SignInKind,to:raw.to as SignInKind,startOver:raw.startOver,stage:raw.stage as AccountMove['stage'],revision:raw.revision,people:raw.people as number,profiles:raw.profiles as number,invitations:raw.invitations as number,waiting:raw.waiting as number,serverName:raw.serverName,ownAddressRequired:raw.ownAddressRequired,...(raw.startOver?{}:{devices:raw.devices as number}),...(hasRetained?{retainedProfiles:raw.retainedProfiles as number,removedProfiles:raw.removedProfiles as number}:{})});
 }
 export function parseMovePasswordTicket(raw:unknown,now=Date.now()):MovePasswordTicket{
  if(!obj(raw)||!secret(raw.ticket)||Object.keys(raw).some(key=>!['ticket','expiresAt'].includes(key)))invalid();
