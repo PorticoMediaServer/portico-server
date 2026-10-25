@@ -18,6 +18,7 @@ import type {ReaderMountAuthority} from './mount';
 import type {ReaderChapterMark} from './ReaderChrome';
 import fixedStyles from './fixed-page.module.css';
 import {ReaderMatchNavigation} from './ReaderMatchNavigation';
+import {ReaderBrowserHint} from './ReaderBrowserHint';
 const {t} = defaultI18n;
 const directionIcon = (rtl: boolean): 'i-rtl' | 'i-ltr' => rtl ? 'i-rtl' : 'i-ltr';
 /** A chapter mark is the file's own contents entry; its end is the next entry, never a guess. */
@@ -164,6 +165,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
         ...(layout.fullscreen && document.fullscreenEnabled ? [{id: 'fullscreen', label: t('next.reader.fullscreen'), icon: 'i-fs' as const, separatorBefore: true,
           onPress: (element: HTMLButtonElement) => {const root = element.closest<HTMLElement>('[data-reader-root]'); void (document.fullscreenElement ? document.exitFullscreen() : root?.requestFullscreen())?.catch(reportError);}}] : []),
       ]})}/>
+    {active && environment === 'web' && snapshot.status === 'ready' && <ReaderBrowserHint visible={presentation === 'phone' && !panel && !currentHit}/>}
     {fixed && <FixedPageMenus controller={controller} authority={authority} format={publication.format} reportError={code => reportError({code})}
       open={fixedMenu} onOpenChange={setFixedMenu} anchorRef={zoomAnchor} directionRef={directionAnchor}/>}
   </>;
