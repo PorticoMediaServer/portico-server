@@ -57,7 +57,8 @@ function RegisteredWatchPlayback({binding}: {binding: WatchBindings | undefined}
     ? watchEndCard(detail.data, entry => binding.artwork.foreground(entry.posterUrl, 260, 2 / 3, {group: 'playback'}),
       id => router.navigate({to: '/item/$itemId', params: {itemId: id}}),
       value => detail.data ? detailBinding.mutate(detail.data, {action: 'rating', value}) : Promise.reject(new Error('rating_unavailable')),
-      collectionNext)
+      collectionNext,
+      url => binding.artwork.foreground(url, 1024, 16 / 9, {group: 'playback', priority: 'high'}))
     : undefined;
   const matches = !!held && !!target && held.key === watchBodyKey(target);
   // desktop-player f6: the drawer reads the same retained title page the portrait body owns.

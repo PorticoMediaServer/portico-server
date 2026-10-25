@@ -3,6 +3,7 @@ import {defaultI18n} from '@i18n';
 import {playbackIdentity, type FactPart} from '@core/presentation/kit-model/index.ts';
 import {sameFence, type PlaybackFence} from '../../../../packages/player-core/src/index.ts';
 import {Icon, type IconName} from '../../kit/Icon';
+import {Artwork} from '../../kit/artwork';
 import {Button, Slider} from '../../kit/controls';
 import {Menu, type MenuEntry} from '../../kit/overlays';
 import {KeyboardShortcuts} from '../../kit/states';
@@ -301,6 +302,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
           right={liveRight} onMiniGuideOpenChange={setLiveGuideOpen} canPlayPause={can(mainKind)} canSeek={can('seek')} reportError={binding.reportError}/>
       </div> : <>
         <div className={styles.shade} />
+        {endCard?.backdrop && <><div className={styles.endAmbient} aria-hidden="true"><Artwork source={endCard.backdrop} alt="" width="100%" height="100%" /></div><div className={styles.endVeil} aria-hidden="true" /></>}
         <div className={styles.top}>
           <Control large icon="i-down" label={t('player.minimize')} action={onCollapse} />
           <div className={styles.identity}><h2>{identity?.title}</h2><p>{identity && <Facts parts={identity.subtitle} />}</p></div>

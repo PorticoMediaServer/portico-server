@@ -6,6 +6,8 @@ import type {WatchCollectionNext} from './collection-next';
  * rating permission, the rating itself and the server's related row. Nothing is inferred. */
 export type WatchEndCard = Readonly<{
   title: string;
+  /** The title's own backdrop, as the drawn finished card's ambient layer. */
+  backdrop?: ArtworkSource;
   related: readonly Readonly<{id: string; title: string; year?: number; poster?: ArtworkSource}>[];
   rating?: Readonly<{value: number | null; set(value: number | null): Promise<void>}>;
   /** The next member of the collection in its own order, when the server has one. */
@@ -18,7 +20,7 @@ type RelatedEntry = Readonly<{id: string; title: string; year?: number; posterUr
 
 export function watchEndCard(data: DetailProjection | undefined, poster: (entry: RelatedEntry) => ArtworkSource | undefined,
   navigate: (itemId: string) => void | Promise<void>, setRating: (value: number | null) => Promise<void>,
-  collection?: WatchCollectionNext): WatchEndCard | undefined {
+  collection?: WatchCollectionNext, backdrop?: (url: string) => ArtworkSource | undefined): WatchEndCard | undefined {
   if (!data || data.item.kind !== 'movie') return undefined;
   const seen = new Set<string>(), related: {id: string; title: string; year?: number; poster?: ArtworkSource}[] = [];
   for (const entry of data.related?.rows.flatMap(row => row.entries) ?? []) {
@@ -29,8 +31,10 @@ export function watchEndCard(data: DetailProjection | undefined, poster: (entry:
     if (related.length === 12) break;
   }
   const canRate = data.actions.some(action => action.enabled && action.id === 'rating');
+  const backdropArt = data.item.backdropUrl && backdrop ? backdrop(data.item.backdropUrl) : undefined;
   return Object.freeze({
     title: data.item.title,
+    ...(backdropArt ? {backdrop: backdropArt} : {}),
     related: Object.freeze(related.map(entry => Object.freeze(entry))),
     ...(canRate ? {rating: Object.freeze({value: data.personal.rating, set: setRating})} : {}),
     ...(collection ? {collection: Object.freeze({...collection})} : {}),
