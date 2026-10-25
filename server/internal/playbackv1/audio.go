@@ -34,7 +34,7 @@ func (s *Service) audioChoice(ctx context.Context, c Caller, item, kind string, 
 			if slices.Contains(containers, "aac") {
 				containers = append(containers, "adts")
 			}
-			choice.AudioDecode = append(choice.AudioDecode, playback.AudioDecodeCap{Codec: a.Codec, Containers: containers, MaxChannels: a.MaxChannels, MaxSampleRate: a.MaxSampleRate, MaxBitDepth: a.MaxBitDepth})
+			choice.AudioDecode = append(choice.AudioDecode, playback.AudioDecodeCap{Codec: a.Codec, Containers: containers, MaxChannels: a.MaxChannels, MaxSampleRate: a.MaxSampleRate, SampleRates: a.SampleRates, MaxBitDepth: a.MaxBitDepth})
 		}
 	}
 	asset, err := s.Playback.SelectedAsset(ctx, item, choice)
