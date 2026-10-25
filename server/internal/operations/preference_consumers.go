@@ -69,7 +69,7 @@ var preferenceConsumers = func() map[string]string {
 	for _, key := range []string{"region.formats", "region.dateOrder", "region.firstDay", "region.sizeUnits"} {
 		m[key] = "client.regionPreferences"
 	}
-	for _, network := range []string{"home", "remote"} {
+	for _, network := range []string{"home", "remote", "mobile"} {
 		m["quality."+network] = "server.playback.delivery_policy"
 	}
 	return m

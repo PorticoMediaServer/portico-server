@@ -147,6 +147,7 @@ var settingConsumers = map[string]settingConsumer{
 	"operations.Settings.library.missingTitles":                              {"internal/catalog/missing.go", "literal:library.missingTitles", "Keep or remove missing titles by the owner rule"},
 	"operations.Settings.library.segmentDetection":                           {"internal/mediaanalysis/segment_modes.go", "literal:library.segmentDetection", "Choose the server's intro and credits detection mode"},
 	"operations.Settings.library.missingTitlesDays":                          {"internal/catalog/missing.go", "literal:library.missingTitlesDays", "Keep or remove missing titles by the owner rule"},
+	"operations.Settings.logDetailMinutes":                                   {"internal/httpapi/admin_diagnostics.go", "LogDetailMinutes", "Publish the saved duration used by the explicit detailed-log window command"},
 	"operations.Settings.logLevel":                                           {"cmd/server/administration.go", "LogLevel", "Choose recorded log detail"},
 	"operations.Settings.logRetention.category":                              {"internal/httpapi/admin_diagnostics.go", "LogRetentionDays", "Prune the message log by category"},
 	"operations.Settings.logRetention.days":                                  {"internal/httpapi/admin_diagnostics.go", "LogRetentionDays", "Prune the message log by category"},

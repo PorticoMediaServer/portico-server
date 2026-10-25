@@ -39,7 +39,19 @@ func TestQualityDefaultsR25PublishedPolicyStoredOriginal(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
+	// The remote choice is explicit only for that lane; cellular has its own
+	// saved preference and must keep its default until the viewer changes it.
+	if got := read("wifi"); got["qualityMode"] != "original" {
+		t.Fatal("stored remote Original overwritten", got)
+	}
+	if got := read("cellular"); got["qualityMode"] != "720p-high" {
+		t.Fatal("remote preference leaked into the mobile lane", got)
+	}
+	w = f.call("PATCH", "/v1/preferences", map[string]any{"expectedRevision": 2, "idempotencyKey": "stored-mobile-original", "scope": "profile-device-class", "deviceClass": "web", "values": map[string]any{"quality.mobile": "original"}})
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
 	if got := read("cellular"); got["qualityMode"] != "original" {
-		t.Fatal("stored Original overwritten", got)
+		t.Fatal("stored mobile Original overwritten", got)
 	}
 }
