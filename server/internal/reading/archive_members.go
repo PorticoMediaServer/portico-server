@@ -50,8 +50,17 @@ func openMembers(ctx context.Context, format string, ra io.ReaderAt, size int64)
 		// Ordinary CBZ keeps its canonical openArchive admission; this alternate
 		// reader must never become a weaker ZIP path.
 		return nil, archiveFormatError("cbz")
-	case "cbr", "cb7":
+	case "cbr":
 		return openClassicArchive(ctx, format, ra, size)
+	case "cb7":
+		// CB7 decoding runs only in the owned bounded helper; the parent never
+		// parses the archive in its own address space.
+		members, err := cb7Members(ctx, ra, size)
+		if err != nil {
+			return nil, err
+		}
+		sortMembers(members)
+		return &listMembers{files: members, close: func() error { return nil }}, nil
 	default:
 		return nil, ErrArchiveFormat
 	}

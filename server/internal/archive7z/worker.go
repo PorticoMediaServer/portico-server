@@ -28,9 +28,14 @@ const (
 	Mode = "__reading-archive7z"
 )
 
+type Member struct {
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+}
+
 type reply struct {
 	Error   string   `json:"error,omitempty"`
-	Members []string `json:"members,omitempty"`
+	Members []Member `json:"members,omitempty"`
 	Size    int64    `json:"size,omitempty"`
 }
 
@@ -141,12 +146,12 @@ func list(stdin io.Reader, stdout io.Writer) error {
 	}
 	defer os.RemoveAll(directory)
 	defer reader.Close()
-	names := []string{}
+	names := []Member{}
 	for _, file := range reader.File {
 		if !plainMember(file.Name, file.FileInfo().IsDir(), file.UncompressedSize64) {
 			continue
 		}
-		names = append(names, file.Name)
+		names = append(names, Member{Name: file.Name, Size: int64(file.UncompressedSize64)})
 	}
 	return json.NewEncoder(stdout).Encode(reply{Members: names})
 }

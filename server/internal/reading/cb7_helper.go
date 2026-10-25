@@ -1,6 +1,7 @@
 package reading
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -23,8 +24,11 @@ const (
 )
 
 type cb7ListReply struct {
-	Error   string   `json:"error"`
-	Members []string `json:"members"`
+	Error   string `json:"error"`
+	Members []struct {
+		Name string `json:"name"`
+		Size int64  `json:"size"`
+	} `json:"members"`
 }
 
 // cb7HelperPath is this same server executable: the worker is a hidden mode of
@@ -106,8 +110,8 @@ func runCB7Helper(ctx context.Context, ra io.ReaderAt, size int64, args ...strin
 	return body, nil
 }
 
-// cb7MemberNames lists a CB7's admitted image members through the helper.
-func cb7MemberNames(ctx context.Context, ra io.ReaderAt, size int64) ([]string, error) {
+// cb7Members lists a CB7's admitted image members through the helper.
+func cb7Members(ctx context.Context, ra io.ReaderAt, size int64) ([]archiveMember, error) {
 	body, err := runCB7Helper(ctx, ra, size, "list")
 	if err != nil {
 		return nil, err
@@ -122,12 +126,21 @@ func cb7MemberNames(ctx context.Context, ra io.ReaderAt, size int64) ([]string, 
 	if len(reply.Members) == 0 || len(reply.Members) > MaxEntries {
 		return nil, ErrArchiveFormat
 	}
-	for _, name := range reply.Members {
-		if !safePath(name) || !isImageMember(name) {
+	out := make([]archiveMember, 0, len(reply.Members))
+	for _, member := range reply.Members {
+		if !safePath(member.Name) || !isImageMember(member.Name) || member.Size <= 0 || member.Size > MaxMember {
 			return nil, ErrArchiveFormat
 		}
+		name, memberSize := member.Name, member.Size
+		out = append(out, archiveMember{Name: name, Size: memberSize, Open: func() (io.ReadCloser, error) {
+			body, err := cb7MemberBytes(ctx, ra, size, name)
+			if err != nil {
+				return nil, err
+			}
+			return io.NopCloser(bytes.NewReader(body)), nil
+		}})
 	}
-	return reply.Members, nil
+	return out, nil
 }
 
 // cb7MemberBytes reads one page through the helper under the same deadline.
