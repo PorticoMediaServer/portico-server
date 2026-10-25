@@ -179,14 +179,17 @@ func annotationString(min, max int) map[string]any {
 func annotationIDSchema() map[string]any {
 	return map[string]any{"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_-]{1,64}$"}
 }
+func annotationObject(required []string, properties map[string]any) map[string]any {
+	return map[string]any{"type": "object", "additionalProperties": false, "required": required, "properties": properties}
+}
 func annotationLocationSchema() map[string]any {
-	return map[string]any{
-		"type": "object", "additionalProperties": false, "required": []string{"format", "progression"},
-		"properties": map[string]any{"format": ReadingFormat("").JSONSchema(), "cfi": annotationString(10, 4096), "section": annotationString(0, 1024), "pageIndex": annotationInteger(1000000), "progression": map[string]any{"type": "number", "minimum": 0, "maximum": 1}},
-		"oneOf": []any{
-			map[string]any{"properties": map[string]any{"format": map[string]any{"const": "epub"}}, "required": []string{"cfi"}, "not": map[string]any{"required": []string{"pageIndex"}}},
-			map[string]any{"properties": map[string]any{"format": map[string]any{"enum": []string{"pdf", "cbz"}}}, "required": []string{"pageIndex"}, "not": map[string]any{"anyOf": []any{map[string]any{"required": []string{"cfi"}}, map[string]any{"required": []string{"section"}}}}},
-		}}
+	progression := map[string]any{"type": "number", "minimum": 0, "maximum": 1}
+	return map[string]any{"oneOf": []any{
+		annotationObject([]string{"format", "cfi", "progression"}, map[string]any{
+			"format": map[string]any{"type": "string", "enum": []string{"epub"}}, "cfi": annotationString(10, 4096), "section": annotationString(0, 1024), "progression": progression}),
+		annotationObject([]string{"format", "pageIndex", "progression"}, map[string]any{
+			"format": map[string]any{"type": "string", "enum": []string{"pdf", "cbz"}}, "pageIndex": annotationInteger(1000000), "progression": progression}),
+	}}
 }
 func (ReadingAnnotation) JSONSchema() map[string]any {
 	return map[string]any{
@@ -204,12 +207,10 @@ func (ReadingAnnotationSavedResponse) JSONSchema() map[string]any {
 	return map[string]any{"type": "object", "additionalProperties": false, "required": []string{"revision"}, "properties": map[string]any{"revision": map[string]any{"type": "integer", "minimum": 1, "maximum": 9007199254740991}}}
 }
 func (ReadingAnnotationRequest) JSONSchema() map[string]any {
-	return map[string]any{
-		"type": "object", "additionalProperties": false, "required": []string{"expectedRevision", "operation", "id"},
-		"properties": map[string]any{"expectedRevision": annotationInteger(9007199254740990), "operation": ReadingAnnotationOperation("").JSONSchema(), "id": annotationIDSchema(), "kind": ReadingAnnotationKind("").JSONSchema(), "location": annotationLocationSchema(), "text": annotationString(0, 8192), "note": annotationString(0, 4096), "colour": ReadingAnnotationColour("").JSONSchema()},
-		"oneOf": []any{
-			map[string]any{"properties": map[string]any{"operation": map[string]any{"const": "delete"}}},
-			map[string]any{"properties": map[string]any{"operation": map[string]any{"const": "upsert"}}, "required": []string{"kind", "location"}},
-		},
-	}
+	return map[string]any{"oneOf": []any{
+		annotationObject([]string{"expectedRevision", "operation", "id"}, map[string]any{
+			"expectedRevision": annotationInteger(9007199254740990), "operation": map[string]any{"type": "string", "enum": []string{"delete"}}, "id": annotationIDSchema()}),
+		annotationObject([]string{"expectedRevision", "operation", "id", "kind", "location"}, map[string]any{
+			"expectedRevision": annotationInteger(9007199254740990), "operation": map[string]any{"type": "string", "enum": []string{"upsert"}}, "id": annotationIDSchema(), "kind": ReadingAnnotationKind("").JSONSchema(), "location": annotationLocationSchema(), "text": annotationString(0, 8192), "note": annotationString(0, 4096), "colour": ReadingAnnotationColour("").JSONSchema()}),
+	}}
 }
