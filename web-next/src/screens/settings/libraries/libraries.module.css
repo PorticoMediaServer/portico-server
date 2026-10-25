@@ -31,7 +31,7 @@
   overflow-wrap: anywhere;
 }
 
-.folder {
+.folder, .lastScan {
   font-size: var(--type-caption-size);
   font-weight: var(--type-micro-weight);
   color: var(--color-text-tertiary);
@@ -200,3 +200,9 @@
 .skippedEmptyIcon {display: inline-flex; align-items: center; justify-content: center; width: 54px; height: 54px; border-radius: 16px; margin-bottom: 16px; background: var(--color-raised-high); color: var(--color-text-secondary);}
 .skippedEmpty b {font-size: 18px; font-weight: 800; letter-spacing: -.015em;}
 .skippedEmpty p {margin: 8px 0 0; max-width: 420px; font-size: 14.5px; line-height: 1.5; color: var(--color-text-secondary);}
+
+.lastScan { display: none; }
+@media (max-width: 599px) {
+  .folder { display: none; }
+  .lastScan:not(:empty) { display: block; }
+}

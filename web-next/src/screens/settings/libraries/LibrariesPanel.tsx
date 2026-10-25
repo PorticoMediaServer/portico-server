@@ -43,6 +43,12 @@ export function LibrariesPanel({api, service, onEdit, onError}: {
     return () => {live = false;};
   }, [api, menuLibrary]);
   const onlineMenu = agentFact?.api === api && agentFact.library === menuLibrary && agentFact.online;
+  const lastScanLabel = (id: string) => {
+    const job = libraries.find(library => library.id === id)?.lastScan;
+    if (!job) return t('next.ownerLibraries.neverScanned');
+    if ((job.status === 'complete' || job.status === 'complete_with_warnings') && job.finishedAt && Number.isFinite(Date.parse(job.finishedAt))) return t('server.libraries.scanned', {when: defaultI18n.dateTime(job.finishedAt)});
+    return undefined;
+  };
   useEffect(() => { void service.loadLibraries().catch(onError); }, [service, onError]);
   const scan = async (library: ManagedLibrary) => {
     setBusy(library.id);
@@ -74,6 +80,7 @@ export function LibrariesPanel({api, service, onEdit, onError}: {
       <span className={styles.identity}>
         <b className={styles.name}>{row.name}</b>
         <small className={styles.folder}>{row.folder}</small>
+        <small className={styles.lastScan}>{lastScanLabel(row.id)}</small>
       </span>
       {row.scanning
         ? <span className={styles.scanning} role="status"><Icon name="i-refresh" size={16} />{t('next.settings.libraries.scanning')}</span>
