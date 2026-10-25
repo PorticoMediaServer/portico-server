@@ -198,6 +198,31 @@ func (s *Service) optionsTx(ctx context.Context, tx *sql.Tx, p identity.Principa
 		return out, nil
 	}
 	out.Options = append(out.Options, decorate(original, live))
+	// A recipe's audio path depends on this source's own tracks. Load them once
+	// so the options list judges producibility exactly as admission does in
+	// qualityReason: a 5.1 source under the rich recipe is written through AAC,
+	// and only an unknown or wider source needs the FLAC carrier. A Dolby Vision
+	// picture with no base layer (profile 5) has nothing a prepared copy could
+	// show, so its optimized steps are not offered rather than offered and failed.
+	sourceAudio, sourceAudioKnown := []int(nil), false
+	noBaseLayer := false
+	if !audioKind(found.Kind) && found.Asset != "" {
+		if facts, err := playback.DeliverySourceTx(ctx, tx, found.Asset); err == nil {
+			sourceAudio, sourceAudioKnown = sourceChannels(facts), true
+			if facts.Video != nil && facts.Video.DynamicRange == assets.RangeDolbyVision {
+				noBaseLayer = decoder.DolbyVisionBaseRange(facts.Video.DolbyVisionProfile, facts.Video.DolbyVisionCompatibility) == ""
+			}
+		}
+	}
+	producible := func(id string) bool {
+		if id == "" {
+			return false
+		}
+		if sourceAudioKnown {
+			return preparedmedia.ProducibleForSource(id, sourceAudio)
+		}
+		return preparedmedia.Producible(id)
+	}
 	automatic := original
 	automatic.Available = out.Source.Available && allowed
 	if automatic.Available {
@@ -225,7 +250,7 @@ func (s *Service) optionsTx(ctx context.Context, tx *sql.Tx, p identity.Principa
 			case !transcoding:
 				automatic.Available = false
 				automatic.Reason = playback.RungReasonTranscodeOff
-			case owner && preparedmedia.Producible(automatic.PreparedProfileID):
+			case owner && producible(automatic.PreparedProfileID):
 				automatic.RequiresPrepare = true
 			default:
 				automatic.Available = false
@@ -239,15 +264,6 @@ func (s *Service) optionsTx(ctx context.Context, tx *sql.Tx, p identity.Principa
 	// Audio uses Original or an actual Automatic audio recipe. The video steps
 	// remain visible as inapplicable, without pretending to describe audio quality.
 	device := playback.CapabilityDocumentTx(ctx, tx, p)
-	// A Dolby Vision picture with no base layer (profile 5) has nothing a
-	// prepared copy could show: its optimized steps are not offered, rather
-	// than offered and failed.
-	noBaseLayer := false
-	if !audioKind(found.Kind) && found.Asset != "" {
-		if facts, err := playback.DeliverySourceTx(ctx, tx, found.Asset); err == nil && facts.Video != nil && facts.Video.DynamicRange == assets.RangeDolbyVision {
-			noBaseLayer = decoder.DolbyVisionBaseRange(facts.Video.DolbyVisionProfile, facts.Video.DolbyVisionCompatibility) == ""
-		}
-	}
 	presets := playback.QualityLadder
 	for _, preset := range presets {
 		if !audioKind(found.Kind) && !s.deliveryConfig().DownloadQualityAllowed(preset.ID) {
@@ -279,7 +295,7 @@ func (s *Service) optionsTx(ctx context.Context, tx *sql.Tx, p identity.Principa
 		recipe, recipeErr := preparedmedia.ProfileByID(option.PreparedProfileID)
 		// Finished versions remain usable without an available encoder. New
 		// work must pass the same recipe and inventory checks as the producer.
-		if recipeErr != nil || version == nil && (noBaseLayer || !preparedmedia.Producible(option.PreparedProfileID)) {
+		if recipeErr != nil || version == nil && (noBaseLayer || !producible(option.PreparedProfileID)) {
 			option.Reason = ReasonNotOptimized
 			out.Options = append(out.Options, decorate(option, live))
 			continue
