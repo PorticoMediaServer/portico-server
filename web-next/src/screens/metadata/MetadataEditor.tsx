@@ -88,6 +88,7 @@ export function MetadataEditor({api, scope, target, onClose}: {
         onCommit={rows => run({action: 'edit_relationships', role: 'credit', confirm: true, relationships: rows})}
         onLock={locked => void run({action: 'relationship_lock', role: 'credit', locked})} /> : null}
       {shown === 'matching' ? <Matching data={data} busy={state.phase === 'saving'} onSearch={query => void run({action: 'search', query})}
+        onRetry={() => void run({action: 'retry'})} onLock={locked => void run({action: 'relationship_lock', role: 'identity', locked})}
         onUse={(provider, candidateId, order) => void run({action: 'identify', provider, candidateId, ...(order ? {order} : {})})} /> : null}
       {shown === 'artwork' ? <Artwork data={data} busy={state.phase === 'saving'} onUse={(role, candidateId) => void run({action: 'select_artwork', role, candidateId})}
         onLock={(role, subject, locked) => void run({action: 'artwork_lock', role, subject, locked})}
@@ -196,29 +197,32 @@ function History({data, busy, onUndo, onAll}: {data: RepairData; busy: boolean; 
 }
 
 
-/** Frame 10: the current match, a search, and the server's own candidates. The identity
- * lock has no supported repair command in this service, so it is not drawn as a dead control. */
-function Matching({data, busy, onSearch, onUse}: {
+/** Frame 10: current identity, its lock, and the server's own matching commands. */
+function Matching({data, busy, onSearch, onUse, onRetry, onLock}: {
   data: RepairData; busy: boolean; onSearch: (query: string) => void;
-  onUse: (provider: string, candidateId: string, order?: string) => void;
+  onUse: (provider: string, candidateId: string, order?: string) => void; onRetry: () => void; onLock: (locked: boolean) => void;
 }) {
-  const [query, setQuery] = useState(''), [order, setOrder] = useState<string>();
+  const [query, setQuery] = useState(''), [orders, setOrders] = useState<Readonly<Record<string, string>>>({});
   const identity = data.snapshot.identity;
   return <div className={styles.fields}>
     <section className={styles.candidate}>
       <div><b>{t('web.metadata.currentMatch')}</b>
         <small>{identity ? `${providerName(identity.provider)} · ${identity.type} · ${identity.id} · ${identity.status}` : t('web.metadata.matchStatus.unmatched')}</small></div>
+      <button type="button" className={styles.lock} disabled={busy} aria-pressed={identity?.locked === true}
+        onClick={() => onLock(identity?.locked !== true)}>{t(identity?.locked ? 'web.metadata.identityLocked' : 'web.metadata.identityUnlocked')}</button>
     </section>
     <form className={styles.matchSearch} onSubmit={event => {event.preventDefault(); if (query.trim() && !busy) onSearch(query.trim());}}>
       <TextField label={t('web.metadata.searchProvider')} description={t('web.metadata.searchProviderHelp')} value={query} onChange={event => setQuery(event.currentTarget.value)} />
       <Button size="small" type="submit" disabled={busy || !query.trim()}>{t('web.search.title')}</Button>
+      <Button size="small" type="button" disabled={busy} onClick={onRetry}>{t('server.attention.lookUpAgain')}</Button>
     </form>
     {data.candidates.map(candidate => {
-      const chosen = order ?? candidate.orders?.[0]?.id;
+      const key = `${candidate.provider}:${candidate.id}`;
+      const chosen = candidate.orders?.find(item => item.id === orders[key])?.id ?? candidate.orders?.[0]?.id;
       return <div key={candidate.id} className={styles.candidate}>
         <div><b>{candidate.title}{candidate.year ? ` (${candidate.year})` : ''}</b><small>{providerName(candidate.provider)}{candidate.subtitle ? ` · ${candidate.subtitle}` : ''}</small>
           {candidate.orders && candidate.orders.length > 1 ? <label className={styles.order}>{t('metadata.attention.episodeOrder')}
-            <select value={chosen} onChange={event => setOrder(event.currentTarget.value)}>{candidate.orders.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : null}</div>
+            <select value={chosen} onChange={event => {const value = event.currentTarget.value; setOrders(current => ({...current, [key]: value}));}}>{candidate.orders.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : null}</div>
         <Button size="small" disabled={busy} onClick={() => onUse(candidate.provider, candidate.id, candidate.orders?.length ? chosen : undefined)}>{t('web.liveSource.useThis')}</Button>
       </div>;
     })}
