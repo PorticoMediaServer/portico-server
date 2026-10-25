@@ -1009,7 +1009,7 @@ type Credit struct {
 
 // SetCreditsTx replaces an entity's credits from one provider, creating the
 // people they name.
-func SetCreditsTx(ctx context.Context, tx *sql.Tx, entity int64, provider string, credits []Credit) error {
+func setCreditProjectionProviderTx(ctx context.Context, tx *sql.Tx, entity int64, provider string, credits []Credit) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_credits WHERE entity_id=? AND provider=?`, entity, provider); err != nil {
 		return err
 	}
