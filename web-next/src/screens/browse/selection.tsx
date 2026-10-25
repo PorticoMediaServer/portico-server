@@ -156,7 +156,7 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {visible: Visi
       ...(props.editor && summary.every.edit && (summary.types.length === 1 || !!playSelection.keepOnly) && (current.selection.target?.mode === 'explicit' || summary.types.length > 1 && !!playSelection.keepOnly || current.selection.target?.mode === 'query' && selectionQuerySelector(current.selection.target).ok) && queueLease ? {onEdit: (anchor: HTMLElement) => {try {props.openEditor(anchor);} catch (error) {reportError(error);}}, editMode: summary.types.length > 1 ? 'mixed' as const : 'editable' as const} : {}),
       ...(canPlay ? {onPlay: () => { void playSelection.play().catch(reportError); }} : {}),
       ...(offers.watched ? {onWatchedChange: (watched: boolean) => { void personal({watched}).catch(reportError); }} : {}),
-      ...(offers.myList ? {onMyList: () => { void personal({watchlist: true}).catch(reportError); }} : {}),
+      ...(offers.myList ? {onMyList: () => { void personal({watchlist: true}).catch(reportError); }, onRemoveFromMyList: () => { void personal({watchlist: false}).catch(reportError); }} : {}),
       ...(offers.favorite ? {onFavorite: () => { void personal({favorite: true}).catch(reportError); }} : {}),
       ...(canQueue ? {onQueue: (placement: 'next' | 'end') => { void queue(placement).catch(reportError); }} : {}),
       ...(canPlaylist ? {onPlaylist: (anchor: HTMLElement) => { void addToPlaylist(anchor).catch(reportError); }} : {}),
