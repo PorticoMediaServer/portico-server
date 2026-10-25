@@ -1,6 +1,8 @@
-import {useEffect, useLayoutEffect, useState, useSyncExternalStore} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {t} from './text';
+import {defaultI18n} from '@i18n';
 import type {FactPart} from '@core/presentation/kit-model';
+import {clockText} from '@core/presentation/kit-model/text.ts';
 import {LibraryContentService, type ContentEntry, type ContentProjection, type ContentSection} from '@core/library-content.ts';
 import {dependsOn} from '@core/freshness-hub.ts';
 import {useFreshDocument} from '../../platform/freshness';
@@ -9,9 +11,14 @@ import {Button} from '../../kit/controls';
 import {Lockup} from '../../kit/layout';
 import {TitleFactsLine} from '../../kit/title/TitleParts';
 import {StateView} from '../../kit/states';
+import {TrackTable, type TrackRowData} from '../../kit/browse';
+import {Menu} from '../../kit/overlays';
 import {useShellWidth} from '../../shell/viewport';
 import {runScreenCommand, screenLifetime, type ScreenContext} from './context';
 import {TitleRow} from './Detail';
+import {entrySubject} from './model';
+import {cardText} from '@core/presentation/kit-model';
+import {MusicEntryMenu} from './MusicEntryMenu';
 import styles from './artist.module.css';
 
 export type ArtistScreenProps = Readonly<{context: ScreenContext; libraryId: string; artistId: string; onBack?: () => void}>;
@@ -19,10 +26,11 @@ export type ArtistScreenProps = Readonly<{context: ScreenContext; libraryId: str
 /** One page's own content lease: a fresh guarded service, admission signal and lifetime, owned by a
  * layout effect so a replayed setup never reuses a disposed one. */
 type Lease = Readonly<{service: LibraryContentService; signal: AbortSignal; isCurrent: () => boolean; dispose: () => void}>;
+type Witness = () => boolean;
 
 /** desktop-listen's artist page on its canonical library route (`?view=artist&entityId=`): the
- * artist's circle and colours, the facts the artist view publishes, Play of the whole server-side
- * artist container, and the artist's albums with their admitted total and real paging. */
+ * artist's circle, the facts the view publishes, Play/Shuffle of the whole server-side artist
+ * container, the server-ranked Top songs, then the artist's albums. */
 export function ArtistScreen({context, libraryId, artistId}: ArtistScreenProps) {
   const [lease, setLease] = useState<Lease>();
   useLayoutEffect(() => {
@@ -32,7 +40,6 @@ export function ArtistScreen({context, libraryId, artistId}: ArtistScreenProps) 
       isCurrent: () => !life.signal.aborted && scope.current() && context.isCurrent(),
       dispose: () => { life.abort(); service.cancel(); service.dispose(); scope.dispose(); }});
     setLease(next);
-    // Synchronous retirement: this lease ends here; a replayed setup builds a fresh one.
     return () => { next.dispose(); setLease(current => current === next ? undefined : current); };
   }, [context, libraryId, artistId]);
   if (!lease) return <p className={styles.loading} role="status">{t('music.loading')}</p>;
@@ -49,28 +56,26 @@ function ArtistBody({context, libraryId, artistId, lease}: {context: ScreenConte
     void service.select({libraryId, view: 'artist', entityId: artistId}).then(() => {
       if (!active || !lease.isCurrent()) return;
       const value = service.getSnapshot(), projection = value.projection;
-      if (value.phase !== 'ready' || !projection || projection.entity?.id !== artistId || projection.scope.libraryId !== libraryId) setFailed(true);
+      if (value.phase !== 'ready' || !projection || projection.entity?.id !== artistId || projection.scope.libraryId !== libraryId || projection.scope.view !== 'artist' || projection.scope.entityId !== artistId) setFailed(true);
     }, error => { if (active && lease.isCurrent()) { setFailed(true); context.effects.reportError(error); } });
     return () => { active = false; };
   }, [service, lease, libraryId, artistId, context]);
-  // The admitted page re-reads when the library or its titles change; never a client-side ranking.
   useFreshDocument(() => [dependsOn.libraries], async refresh => { if (lease.isCurrent()) await service.revalidate(refresh); }, () => lease.isCurrent() && service.getSnapshot().phase === 'ready');
   const projection: ContentProjection | undefined = content.phase === 'ready' ? content.projection ?? undefined : undefined;
   const artist = projection?.entity;
-  // Gate the drawn page on this exact admitted artist and view before anything is announced.
   const admitted = !!projection && !!artist && artist.kind === 'artist' && artist.id === artistId
     && projection.scope.libraryId === libraryId && projection.scope.view === 'artist' && projection.scope.entityId === artistId
     ? {catalog: projection.revision.catalog, viewer: projection.revision.viewer} : undefined;
-  const section: ContentSection | undefined = projection && admitted ? (content.appended.find(value => value.id === 'items') ?? projection.sections.find(value => value.id === 'items')) : undefined;
-  const albums: readonly ContentEntry[] = section?.entries ?? [];
+  const section = (id: string): ContentSection | undefined => projection && admitted
+    ? (content.appended.find(value => value.id === id) ?? projection.sections.find(value => value.id === id)) : undefined;
   if (!projection || !artist || !admitted) return failed || content.phase === 'error' || content.phase === 'refresh-required'
     ? <StateView title={t('title.nothingHere')} />
     : <p className={styles.loading} role="status">{t('music.loading')}</p>;
+  const albumsSection = section('items'), top = section('top_songs');
+  const albums: readonly ContentEntry[] = albumsSection?.entries ?? [];
   const playArtist = context.effects.playArtist;
-  // An absent section count stays absent; a published zero is the only zero drawn.
-  const total = section && typeof section.totalCount === 'number' && Number.isFinite(section.totalCount) ? section.totalCount : undefined;
-  // The admitted page's own revision pair is the witness; a different one is another admission.
-  const witness = () => {
+  const total = albumsSection && typeof albumsSection.totalCount === 'number' && Number.isFinite(albumsSection.totalCount) ? albumsSection.totalCount : undefined;
+  const witness: Witness = () => {
     if (!lease.isCurrent() || !context.isCurrent()) return false;
     const live = service.getSnapshot();
     if (live.phase !== 'ready') return false;
@@ -104,10 +109,94 @@ function ArtistBody({context, libraryId, artistId, lease}: {context: ScreenConte
         </div>}
       </div>
     </header>
+    {top && <ArtistTopSongs context={context} lease={lease} libraryId={libraryId} top={top} witness={witness} phone={phone} />}
     {albums.length > 0 && <TitleRow heading={t('music.albums')} entries={albums} binding={{context}} />}
-    {section?.nextCursor && <div className={styles.more}><Button size="small" onClick={() => runScreenCommand(context, () => {
+    {albumsSection?.nextCursor && <div className={styles.more}><Button size="small" onClick={() => runScreenCommand(context, () => {
       if (!witness()) throw new DOMException('Artist page changed', 'AbortError');
       return service.next('items');
     })}>{t('title.nextPage')}</Button></div>}
   </div>;
+}
+
+/** The server-ranked table and its own row menu, owned by one exact opening: published in a
+ * layout-owned ref, retired with the section, the page or unmount, and never able to act after a
+ * same-revision replacement of the drawn rows. */
+type Opening = Readonly<{song: ContentEntry; anchor: HTMLButtonElement}>;
+
+/** Without a real radio port there is no menu to open, so the table draws no ⋯ at all. */
+const columnsWithoutActions = Object.freeze([
+  {id: 'number' as const, width: '44px'}, {id: 'title' as const, width: 'minmax(0,1fr)'}, {id: 'plays' as const, width: '90px'}, {id: 'duration' as const, width: '80px'},
+]);
+
+function playableSong(song: ContentEntry, libraryId: string): boolean {
+  return song.kind === 'song' && song.libraryId === libraryId && song.available !== false && !song.missing
+    && song.playback !== undefined && song.playback.itemId === song.id;
+}
+
+function ArtistTopSongs({context, lease, libraryId, top, witness, phone}: {
+  context: ScreenContext; lease: Lease; libraryId: string; top: ContentSection; witness: Witness; phone: boolean;
+}) {
+  const [opening, setOpening] = useState<Opening>();
+  const live = useRef<Opening | undefined>(undefined);
+  const currentRows = useRef<readonly ContentEntry[]>([]), anchor = useRef<HTMLButtonElement | null>(null);
+  const rows = top.entries.filter(entry => entry.kind === 'song' && entry.libraryId === libraryId), radioPort = context.effects.playRadio;
+  // The row membership a retained handler may act on is published after commit, never during render.
+  useLayoutEffect(() => { currentRows.current = rows; }, [rows]);
+  anchor.current = opening?.anchor ?? null;
+  // Retirement is synchronous: a replaced section or page takes exactly this opening with it.
+  useLayoutEffect(() => {
+    live.current = undefined;
+    setOpening(undefined);
+    return () => { live.current = undefined; };
+  }, [lease, top]);
+  const retire = (expected: Opening) => {
+    if (live.current !== expected) return;
+    live.current = undefined;
+    setOpening(current => current === expected ? undefined : current);
+  };
+  // A radio seed needs the admitted row, not item-play eligibility; only a real radio port can act.
+  const owns = (value: Opening) => live.current === value && !!radioPort && witness() && currentRows.current.includes(value.song);
+  const textEnv = {t, get locale() { return defaultI18n.region.formatLocale; }};
+  const data: readonly TrackRowData[] = rows.map((song, index) => {
+    const duration = clockText(song.duration);
+    return {
+    id: song.id, text: cardText(entrySubject(song), 'song-row', textEnv), number: (top.start ?? 0) + index + 1,
+    ...(song.plays === undefined ? {} : {plays: song.plays}),
+    ...(duration === undefined ? {} : {duration: {id: 'duration', role: 'value' as const, text: duration}}),
+    playable: playableSong(song, libraryId),
+    };
+  });
+  const play = (id: string) => {
+    const song = rows.find(entry => entry.id === id), target = song?.playback;
+    if (!song || !target || !currentRows.current.includes(song) || !playableSong(song, libraryId)) throw new DOMException('Song unavailable', 'AbortError');
+    if (!witness()) throw new DOMException('Artist playback changed', 'AbortError');
+    return context.effects.play({libraryId, itemId: target.itemId, startSeconds: target.startSeconds ?? 0}, lease.signal,
+      () => witness() && currentRows.current.includes(song) && playableSong(song, libraryId));
+  };
+  if (rows.length === 0) return null;
+  return <section className={styles.topSongs} aria-label={t('music.topSongs')}>
+    <h2 className={styles.sectionHeading}>{t('music.topSongs')}</h2>
+    <TrackTable variant="top-songs" label={t('music.topSongs')} rows={data} platform={phone ? 'phone' : 'desktop'} startIndex={top.start ?? 0} totalCount={top.totalCount}
+      columns={radioPort ? undefined : columnsWithoutActions}
+      onPlay={id => runScreenCommand(context, () => play(id))}
+      onMore={(id, anchor) => {
+        const song = rows.find(entry => entry.id === id);
+        if (!anchor || !radioPort || !song || !witness() || !currentRows.current.includes(song)) return;
+        const next: Opening = Object.freeze({song, anchor});
+        live.current = next;
+        setOpening(next);
+      }} />
+    {top.nextCursor && <div className={styles.more}><Button size="small" onClick={() => runScreenCommand(context, () => {
+      const snapshot = lease.service.getSnapshot();
+      const current = snapshot.appended.find(section => section.id === 'top_songs')
+        ?? snapshot.projection?.sections.find(section => section.id === 'top_songs');
+      if (!witness() || current !== top)
+        throw new DOMException('Artist page changed', 'AbortError');
+      return lease.service.next('top_songs');
+    })}>{t('title.nextPage')}</Button></div>}
+    {opening && owns(opening) && <Menu open onOpenChange={value => { if (!value) retire(opening); }}
+      title={opening.song.title} anchorRef={anchor} returnFocusRef={anchor}>
+      <MusicEntryMenu context={context} seed={{id: opening.song.id, title: opening.song.title}} signal={lease.signal} current={() => owns(opening)} />
+    </Menu>}
+  </section>;
 }

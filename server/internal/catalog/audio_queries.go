@@ -1,6 +1,8 @@
 package catalog
 
 import (
+	"portico.local/server/internal/entityid"
+	"portico.local/server/internal/identity"
 	"portico.local/server/internal/requestinput"
 	"strconv"
 	"strings"
@@ -262,4 +264,87 @@ func (s *Service) BookChapters(book, cursor string, limit int) ([]BookChapter, s
 		next = out[len(out)-1].ID
 	}
 	return out, next, rows.Err()
+}
+
+// The enclosing signed content cursor carries only the last public item ID.
+// Resolve its full ordering tuple in the same admitted scope and snapshot;
+// long sort keys never need truncation or a larger client cursor.
+type artistSongsPage struct {
+	Plays    int64
+	SortKey  string
+	EntityID int64
+}
+
+// ArtistTopSongs lists the songs this library admits to this artist, ranked by the profile's own
+// play count with a stable sort-key/entity tie and bounded by pageLimit. Membership, availability
+// and restrictions are the library's existing predicates; the count is that whole scope.
+func (s *Service) ArtistTopSongs(profile, library, artist, cursor string, limit int, restrictions identity.ContentRestrictions) ([]ContentEntry, string, int, error) {
+	limit = pageLimit(limit)
+	restriction, bound := ItemRestrictionSQL("item.id", restrictions)
+	ranked := `WITH ranked AS (
+ SELECT item.id AS entity_id, item.public_id AS public_id, item.sort_key AS sort_key,
+        COALESCE(personal.play_count,0) AS plays
+ FROM catalog_song_artists sa
+ JOIN catalog_entities artist ON artist.id=sa.artist_id
+ JOIN catalog_entities item ON item.id=sa.song_id
+ JOIN catalog_libraries lib ON lib.id=item.library_id AND lib.library_id=? AND lib.retired=0
+ LEFT JOIN catalog_personal_sort_rows personal ON personal.profile_id=? AND personal.entity_id=item.id
+ WHERE artist.public_id=pid_blob(?) AND artist.retired=0
+   AND artist.library_id=item.library_id
+   AND ` + homeVisible("item.id") + ` AND ` + restriction + `
+)`
+	base := append([]any{library, profile, artist}, bound...)
+	var count int
+	if err := s.read().QueryRow(ranked+` SELECT count(*) FROM ranked`, base...).Scan(&count); err != nil {
+		return nil, "", 0, err
+	}
+	page, hasPage := artistSongsPage{Plays: -1}, false
+	if cursor != "" {
+		if _, ok := entityid.Decode(cursor); !ok {
+			return nil, "", 0, requestinput.New("invalid artist songs cursor")
+		}
+		if err := s.read().QueryRow(ranked+` SELECT plays,sort_key,entity_id FROM ranked WHERE public_id=pid_blob(?)`, append(base, cursor)...).Scan(&page.Plays, &page.SortKey, &page.EntityID); err != nil {
+			return nil, "", 0, requestinput.New("invalid artist songs cursor")
+		}
+		hasPage = true
+	}
+	rows, err := s.read().Query(ranked+`
+ SELECT pid(public_id) FROM ranked
+ WHERE (? = 0 OR plays < ? OR (plays = ? AND (sort_key > ? OR (sort_key = ? AND entity_id > ?))))
+ ORDER BY plays DESC, sort_key, entity_id LIMIT ?`,
+		append(base, boolInt(hasPage), page.Plays, page.Plays, page.SortKey, page.SortKey, page.EntityID, limit+1)...)
+	if err != nil {
+		return nil, "", 0, err
+	}
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, "", 0, err
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, "", 0, err
+	}
+	next := ""
+	if len(ids) > limit {
+		ids = ids[:limit]
+		next = ids[len(ids)-1]
+	}
+	out, err := s.homeEntries(profile, ids)
+	if err != nil {
+		return nil, "", 0, err
+	}
+	return out, next, count, nil
+}
+
+func boolInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }
