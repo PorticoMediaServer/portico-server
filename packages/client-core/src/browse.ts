@@ -1,7 +1,7 @@
 import {unreadableServerResponse} from './server-messages.ts';
 import {routePath,routePattern} from '../../contracts/src/routes.ts';
 const readingFacetRoute=routePattern('get_library_facets');
-const readingPeriodicalRoute=routePattern('get_reading_periodical_groups').replace('{libraryId}', '{id}');
+const readingPeriodicalRoute=routePattern('get_reading_periodical_groups');
 /** Browse engine contract. The server owns the vocabulary, the query grammar and
  * every count; this module only parses what it publishes and refuses to send a
  * query the published capabilities cannot execute. No client-side filtering,

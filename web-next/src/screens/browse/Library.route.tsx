@@ -52,7 +52,7 @@ function readingTabs(capabilities: BrowseCapabilities | undefined, kind: string)
     const tab = base.find(tab => tab.pivot === pivot.id || tab.id === pivot.id);
     if (tab && !out.some(candidate => candidate.id === tab.id)) out.push(tab);
   }
-  return out;
+  return out.length > 1 ? out : base;
 }
 
 function ReadingLibrary({captured, library, search}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch}) {
