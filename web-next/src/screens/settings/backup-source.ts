@@ -36,6 +36,7 @@ export class SettingsBackupSource {
     if (!this.current() || requestSignal.aborted || this.loading || this.state.busy || !this.state.settings) return false;
     this.publish({...this.state, busy: true});
     try {
+      this.requireCurrent();
       requestSignal.throwIfAborted();
       const settings = await updateBackupSettings(this.api, this.serverId, patch, requestSignal);
       if (!this.current() || requestSignal.aborted) return false;
