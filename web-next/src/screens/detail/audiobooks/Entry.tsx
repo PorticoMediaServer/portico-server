@@ -13,6 +13,7 @@ import {DetailLoading} from '../Loading';
 import {ScreenProblem} from '../ScreenProblem';
 import {t} from '../text';
 import styles from './audiobooks.module.css';
+import {AudiobookMore} from './More';
 
 type Props = {context: ScreenContext; target: AudiobookTarget; onMore?: (target: ContentEntry, anchor: HTMLElement) => void};
 export function AudiobookEntry({context, target, onMore}: Props) {
@@ -69,6 +70,7 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
     <nav className={styles.nav}>
       {binding.context.effects.back && <Button variant="ghost" icon="i-left" iconOnly aria-label={t('action.back')} onClick={() => run(() => {binding.current(page);binding.context.effects.back?.();})}/>}
       {onMore && <Button variant="ghost" icon="i-more" iconOnly aria-label={t('card.more', {title: entity.title})} onClick={event => run(() => {binding.current(page);onMore(entity, event.currentTarget);})}/>}
+      {!onMore && <AudiobookMore binding={binding} page={page} entry={entity}/>}
     </nav>
     <header className={styles.hero}>
       <div className={author ? styles.disc : styles.cover}><Artwork source={binding.context.artwork.foreground(cover, 464, 1)} alt=""/>{author && <b>{entity.title.split(/\s+/u).filter(Boolean).slice(0, 2).map(word => word[0]).join('')}</b>}</div>
@@ -107,8 +109,8 @@ function Chapter({entry, index, page, binding}: {entry: ContentEntry; index: num
   const resume = page.listening?.resume;
   const current = !!resume && entry.playback?.itemId === resume.itemId && resume.positionSeconds >= (entry.playback.startSeconds ?? 0) && entry.duration !== undefined && resume.positionSeconds < (entry.playback.startSeconds ?? 0) + entry.duration;
   const fraction = current && resume && entry.duration ? (resume.positionSeconds - (entry.playback?.startSeconds ?? 0)) / entry.duration : undefined;
-  return <button className={styles.chapter} data-current={current || undefined} disabled={!entry.playback || entry.available === false || entry.missing} onClick={() => runScreenCommand(binding.context, () => binding.play(page, entry))}>
+  return <div className={styles.chapterRow}><button className={styles.chapter} data-current={current || undefined} disabled={!entry.playback || entry.available === false || entry.missing} onClick={() => runScreenCommand(binding.context, () => binding.play(page, entry))}>
     <span className={styles.number}>{index + 1}</span><span className={styles.chapterTitle}>{entry.title}</span><span className={styles.duration}>{entry.duration === undefined ? undefined : formatClock(entry.duration)}</span>
     {fraction !== undefined && <span className={styles.chapterProgress}><i style={{width: `${Math.min(1, Math.max(0, fraction)) * 100}%`}}/></span>}
-  </button>;
+  </button>{entry.kind === 'audiobook_file' && <AudiobookMore binding={binding} page={page} entry={entry}/>}</div>;
 }

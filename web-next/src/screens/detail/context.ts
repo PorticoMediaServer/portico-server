@@ -1,5 +1,6 @@
 import type {EntryActionTarget} from '../../shell/entry-actions';
 import type {BrowserDownloadPort} from '../../platform/browser-download';
+import type {EntryActionTarget} from '../../shell/entry-actions';
 import type {HttpLocalApi} from '@core/index.ts';
 import type {ContentScope} from '@core/library-content.ts';
 import type {SearchEntry} from '@core/search.ts';
