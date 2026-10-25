@@ -21,7 +21,10 @@ type EffectiveCredit struct {
 // ReadEffectiveCredits reads the ONE public materialization, including its private
 // repair provenance. Public/person/derived readers continue to use catalog_credits.
 func ReadEffectiveCredits(ctx context.Context, q CreditSourceReader, entity int64) ([]EffectiveCredit, error) {
-	rows, err := q.QueryContext(ctx, `SELECT COALESCE(c.source_row_id,''),COALESCE(c.owner_entry_id,''),c.provider,c.source_status,c.credited_name,rl.label,dl.label,c.credit_id,c.provider_person_id,COALESCE(p.identity_key,''),COALESCE(p.token,''),c.source_ordinal FROM catalog_credits c JOIN catalog_credit_labels rl ON rl.id=c.role_id JOIN catalog_credit_labels dl ON dl.id=c.department_id LEFT JOIN catalog_people p ON p.id=c.person_id WHERE c.entity_id=? ORDER BY c.ord`, entity)
+	rows, err := q.QueryContext(ctx, `SELECT COALESCE(c.source_row_id,''),COALESCE(c.owner_entry_id,''),c.provider,c.source_status,c.credited_name,rl.label,dl.label,
+ COALESCE(r.original_record_reference,''),COALESCE(r.original_credit_id,c.credit_id),COALESCE(r.original_provider_person_id,c.provider_person_id),COALESCE(r.original_person_identity_key,p.identity_key,''),COALESCE(r.original_person_token,p.token,''),
+ COALESCE(r.original_target_kind,CASE WHEN c.person_id IS NULL THEN 'scoped_credit' ELSE 'person' END),COALESCE(r.original_target_id,p.token,c.credit_id),COALESCE(r.original_credited_name,c.credited_name),COALESCE(r.original_role,rl.label),COALESCE(r.original_department,dl.label),COALESCE(r.original_source_ordinal,c.source_ordinal)
+ FROM catalog_credits c JOIN catalog_credit_labels rl ON rl.id=c.role_id JOIN catalog_credit_labels dl ON dl.id=c.department_id LEFT JOIN catalog_people p ON p.id=c.person_id LEFT JOIN credit_source_rows r ON r.source_row_id=c.source_row_id AND r.entity_id=c.entity_id WHERE c.entity_id=? ORDER BY c.ord`, entity)
 	if err != nil {
 		return nil, err
 	}
@@ -29,19 +32,14 @@ func ReadEffectiveCredits(ctx context.Context, q CreditSourceReader, entity int6
 	out := []EffectiveCredit{}
 	for rows.Next() {
 		var c EffectiveCredit
-		if err = rows.Scan(&c.SourceRowID, &c.OwnerEntryID, &c.Provider, &c.SourceStatus, &c.CreditedName, &c.Role, &c.Department, &c.Original.CreditID, &c.Original.ProviderPersonID, &c.Original.PersonIdentityKey, &c.Original.PersonToken, &c.Original.SourceOrdinal); err != nil {
+		args := []any{&c.SourceRowID, &c.OwnerEntryID, &c.Provider, &c.SourceStatus, &c.CreditedName, &c.Role, &c.Department}
+		args = append(args, creditSourceTupleDest(&c.Original)...)
+		if err = rows.Scan(args...); err != nil {
 			return nil, err
 		}
-		if c.Original.PersonToken != "" {
-			c.Original.TargetKind = "person"
-			c.Original.TargetID = c.Original.PersonToken
-		} else {
-			c.Original.TargetKind = "scoped_credit"
-			c.Original.TargetID = c.Original.CreditID
+		if len(out) >= 4096 {
+			return nil, errors.New("effective credit budget exceeded")
 		}
-		c.Original.CreditedName = c.CreditedName
-		c.Original.Role = c.Role
-		c.Original.Department = c.Department
 		out = append(out, c)
 	}
 	return out, rows.Err()
@@ -124,6 +122,9 @@ func missingCreditStatus(original capturedCredit, current []capturedCredit) stri
 // RebuildEffectiveCreditsTx is the only normalized projection. Owner-saved order
 // precedes new untouched source evidence; a lock freezes the complete sequence.
 func RebuildEffectiveCreditsTx(ctx context.Context, tx *sql.Tx, entity int64) error {
+	return creditProjectionChange(ctx, tx, func() error { return rebuildEffectiveCreditsTx(ctx, tx, entity) })
+}
+func rebuildEffectiveCreditsTx(ctx context.Context, tx *sql.Tx, entity int64) error {
 	current, err := creditHeads(ctx, tx, entity)
 	if err != nil {
 		return err
@@ -242,7 +243,7 @@ func RebuildEffectiveCreditsTx(ctx context.Context, tx *sql.Tx, entity int64) er
 		if person != nil {
 			providerPerson = c.Original.ProviderPersonID
 		}
-		if _, e = tx.ExecContext(ctx, `INSERT INTO catalog_credits(entity_id,ord,person_id,role_id,department_id,credited_name,provider,credit_id,provider_person_id,source_ordinal,source_row_id,owner_entry_id,source_status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, entity, position, person, role, department, c.CreditedName, c.Provider, c.Original.CreditID, providerPerson, position, source, owner, c.SourceStatus); e != nil {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO catalog_credits(entity_id,ord,person_id,role_id,department_id,credited_name,provider,credit_id,provider_person_id,source_ordinal,source_row_id,owner_entry_id,source_status) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, entity, position, person, role, department, c.CreditedName, c.Provider, c.Original.CreditID, providerPerson, c.Original.SourceOrdinal, source, owner, c.SourceStatus); e != nil {
 			return e
 		}
 	}
@@ -253,6 +254,12 @@ func RebuildEffectiveCreditsTx(ctx context.Context, tx *sql.Tx, entity int64) er
 // projection. expectedRevision is the captured family revision inside the outer
 // repair document CAS transaction. Exclusions survive ordinary list saves.
 func SaveOwnerCreditsTx(ctx context.Context, tx *sql.Tx, entity, expectedRevision int64, entries []OwnerCreditEntry, locked bool, actor, observed string) error {
+	captured := append([]OwnerCreditEntry(nil), entries...)
+	return creditProjectionChange(ctx, tx, func() error {
+		return saveOwnerCreditsTx(ctx, tx, entity, expectedRevision, captured, locked, actor, observed)
+	})
+}
+func saveOwnerCreditsTx(ctx context.Context, tx *sql.Tx, entity, expectedRevision int64, entries []OwnerCreditEntry, locked bool, actor, observed string) error {
 	if entity <= 0 || expectedRevision < 0 || len(entries) > 512 || !creditCustodyText(actor, 256, true) || !creditCustodyText(observed, 64, true) {
 		return errors.New("invalid owner credits")
 	}
@@ -363,4 +370,29 @@ func sortCapturedCredits(rows []capturedCredit) {
 		}
 		return a.source < b.source
 	})
+}
+
+// Keep failed repository calls noncommittable even if an outer caller handles
+// their error. Nested calls use SQLite's nearest same-name savepoint semantics.
+func creditProjectionChange(ctx context.Context, tx *sql.Tx, change func() error) (err error) {
+	if _, err = tx.ExecContext(ctx, `SAVEPOINT effective_credit_change`); err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			cleanup := context.WithoutCancel(ctx)
+			if _, e := tx.ExecContext(cleanup, `ROLLBACK TO effective_credit_change`); e != nil {
+				err = errors.Join(err, e, tx.Rollback())
+				return
+			}
+			if _, e := tx.ExecContext(cleanup, `RELEASE effective_credit_change`); e != nil {
+				err = errors.Join(err, e, tx.Rollback())
+			}
+		}
+	}()
+	if err = change(); err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `RELEASE effective_credit_change`)
+	return err
 }

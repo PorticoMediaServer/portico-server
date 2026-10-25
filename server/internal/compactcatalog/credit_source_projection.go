@@ -11,6 +11,14 @@ import (
 // ordinal or generated person identity. Missing legacy evidence is not invented.
 func creditRecordReference(ctx context.Context, tx *sql.Tx, entity int64, provider string) (string, error) {
 	var reference string
+	var accepted string
+	e := tx.QueryRowContext(ctx, `SELECT p.provider||':'||p.provider_type||':'||p.provider_id FROM screen_metadata_work w JOIN screen_metadata_publications p ON p.id=w.accepted_publication WHERE w.target_kind='item' AND w.target_id=? AND p.provider=? AND p.decision='accepted'`, entity, provider).Scan(&accepted)
+	if e == nil {
+		return accepted, nil
+	}
+	if !errors.Is(e, sql.ErrNoRows) {
+		return "", e
+	}
 	if provider == "manual" {
 		err := tx.QueryRowContext(ctx, `SELECT observed_at FROM metadata_relationship_decisions WHERE kind='item' AND entity_id=? AND relationship='credit'`, entity).Scan(&reference)
 		if err != nil {
@@ -18,7 +26,7 @@ func creditRecordReference(ctx context.Context, tx *sql.Tx, entity int64, provid
 		}
 		return "accepted-owner:" + reference, nil
 	}
-	err := tx.QueryRowContext(ctx, `SELECT provider_id FROM provider_evidence WHERE item_id=? AND provider=? AND provider_id<>''`, entity, provider).Scan(&reference)
+	err := tx.QueryRowContext(ctx, `SELECT pe.provider||':'||CASE WHEN json_extract(pe.payload,'$.identity.type') IN('movie','episode','anime') THEN json_extract(pe.payload,'$.identity.type') WHEN pe.provider='anilist' THEN 'anime' WHEN e.kind=4 THEN 'episode' ELSE 'movie' END||':'||CAST(pe.provider_id AS TEXT) FROM provider_evidence pe JOIN catalog_entities e ON e.id=pe.item_id WHERE pe.item_id=? AND pe.provider=? AND pe.provider_id>0 AND e.kind IN(1,4)`, entity, provider).Scan(&reference)
 	if err == nil {
 		return reference, nil
 	}
@@ -67,6 +75,13 @@ func captureCreditProviderTx(ctx context.Context, tx *sql.Tx, entity int64, prov
 // path; rebuilding owner overrides never invokes it or mutates canonical people.
 func SetCreditsTx(ctx context.Context, tx *sql.Tx, entity int64, provider string, credits []Credit) error {
 	if provider == "manual" {
+		var decided bool
+		if e := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM credit_owner_families WHERE entity_id=?)`, entity).Scan(&decided); e != nil {
+			return e
+		}
+		if decided {
+			return errors.New("normalized owner credits require owner writer")
+		}
 		return setCreditProjectionProviderTx(ctx, tx, entity, provider, credits)
 	}
 	record, err := creditRecordReference(ctx, tx, entity, provider)
@@ -88,6 +103,9 @@ func SetCreditsTx(ctx context.Context, tx *sql.Tx, entity int64, provider string
 	return SetCreditsFromRecordTx(ctx, tx, entity, provider, record, time.Now().UTC().Format(time.RFC3339Nano), credits)
 }
 func SetCreditsFromRecordTx(ctx context.Context, tx *sql.Tx, entity int64, provider, record, observed string, credits []Credit) error {
+	return creditProjectionChange(ctx, tx, func() error { return setCreditsFromRecordTx(ctx, tx, entity, provider, record, observed, credits) })
+}
+func setCreditsFromRecordTx(ctx context.Context, tx *sql.Tx, entity int64, provider, record, observed string, credits []Credit) error {
 	if len(credits) > CreditSourcePublicationMax {
 		return errors.New("credit source publication exceeds bound")
 	}
@@ -104,7 +122,10 @@ func SetCreditsFromRecordTx(ctx context.Context, tx *sql.Tx, entity int64, provi
 // same repair CAS transaction. Without truthful original record evidence it
 // refuses the cutover rather than inventing or relabeling a provider identity.
 func CaptureLegacyCreditSourcesTx(ctx context.Context, tx *sql.Tx, entity int64, observed string) error {
-	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT provider FROM catalog_credits WHERE entity_id=? AND source_row_id IS NULL ORDER BY provider COLLATE BINARY`, entity)
+	return creditProjectionChange(ctx, tx, func() error { return captureLegacyCreditSourcesTx(ctx, tx, entity, observed) })
+}
+func captureLegacyCreditSourcesTx(ctx context.Context, tx *sql.Tx, entity int64, observed string) error {
+	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT provider FROM catalog_credits WHERE entity_id=? AND source_row_id IS NULL AND owner_entry_id IS NULL ORDER BY provider COLLATE BINARY`, entity)
 	if err != nil {
 		return err
 	}
@@ -132,4 +153,23 @@ func CaptureLegacyCreditSourcesTx(ctx context.Context, tx *sql.Tx, entity int64,
 		}
 	}
 	return RebuildEffectiveCreditsTx(ctx, tx, entity)
+}
+
+// CanCaptureCreditProviderTx is a bounded eligibility read, not a grant or write.
+func CanCaptureCreditProviderTx(ctx context.Context, tx *sql.Tx, entity int64, provider string) (bool, error) {
+	var count int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM catalog_credits WHERE entity_id=? AND provider=?`, entity, provider).Scan(&count); err != nil {
+		return false, err
+	}
+	if count > CreditSourcePublicationMax {
+		return false, nil
+	}
+	reference, err := creditRecordReference(ctx, tx, entity, provider)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return creditCustodyText(reference, 256, true), nil
 }

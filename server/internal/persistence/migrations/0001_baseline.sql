@@ -496,15 +496,17 @@ CREATE TABLE catalog_credits(
  credit_id TEXT NOT NULL,
  provider_person_id TEXT NOT NULL DEFAULT '',
  source_ordinal INTEGER NOT NULL,
- source_row_id TEXT REFERENCES credit_source_rows(source_row_id),
- owner_entry_id TEXT REFERENCES credit_owner_entries(entry_id),
+ source_row_id TEXT,
+ owner_entry_id TEXT,
  source_status TEXT NOT NULL DEFAULT 'current' CHECK(source_status IN('current','missing','replaced')),
+ FOREIGN KEY(source_row_id,entity_id) REFERENCES credit_source_rows(source_row_id,entity_id),
+ FOREIGN KEY(owner_entry_id,entity_id) REFERENCES credit_owner_entries(entry_id,entity_id),
  PRIMARY KEY(entity_id,ord)) WITHOUT ROWID, STRICT;
 CREATE INDEX catalog_credits_person ON catalog_credits(person_id,entity_id);
 CREATE INDEX catalog_credits_provider_person ON catalog_credits(provider,provider_person_id,entity_id) WHERE provider_person_id<>'';
 CREATE INDEX catalog_credits_name ON catalog_credits(credited_name,entity_id);
-CREATE INDEX catalog_credits_source_row ON catalog_credits(source_row_id);
-CREATE INDEX catalog_credits_owner_entry ON catalog_credits(owner_entry_id);
+CREATE INDEX catalog_credits_source_row ON catalog_credits(source_row_id,entity_id);
+CREATE INDEX catalog_credits_owner_entry ON catalog_credits(owner_entry_id,entity_id);
 CREATE TABLE catalog_credit_names(
  name TEXT PRIMARY KEY,
  credits INTEGER NOT NULL) WITHOUT ROWID, STRICT;
@@ -8773,6 +8775,7 @@ CREATE TABLE credit_owner_entries(
  CHECK((operation='add' AND source_row_id IS NULL) OR(operation<>'add' AND source_row_id IS NOT NULL))
 ) STRICT;
 CREATE UNIQUE INDEX credit_owner_entries_source ON credit_owner_entries(entity_id,source_row_id) WHERE source_row_id IS NOT NULL;
+CREATE UNIQUE INDEX credit_owner_entries_entity_id ON credit_owner_entries(entry_id,entity_id);
 -- Only the one-way closure transition may update a publication header.
 CREATE TRIGGER credit_source_publications_close BEFORE UPDATE ON credit_source_publications
  WHEN NOT(OLD.sealed=0 AND NEW.sealed=1 AND NEW.publication_id=OLD.publication_id AND NEW.entity_id=OLD.entity_id AND NEW.provider=OLD.provider AND NEW.accepted_record_reference=OLD.accepted_record_reference AND NEW.observed_at=OLD.observed_at AND NEW.member_count=OLD.member_count)

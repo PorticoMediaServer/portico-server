@@ -2014,6 +2014,8 @@ export const webMessages = {
   'web.metadata.department': 'Department',
   'web.metadata.departmentExample': 'Acting, Directing…',
   'web.metadata.noCredits': 'No credits.',
+  'web.metadata.creditSourceMissing': 'Captured credit · original source missing',
+  'web.metadata.creditSourceReplaced': 'Captured credit · original source replaced',
   'web.metadata.creditCharacter': 'Character',
   'web.metadata.creditRole': 'Role',
   'web.metadata.saveCredits': 'Save credits',

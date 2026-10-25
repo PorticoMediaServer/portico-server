@@ -30,18 +30,21 @@ type RepairField struct {
 	Values    []string `json:"values,omitempty"`
 }
 type RepairRelationship struct {
-	RecordID   string `json:"recordId,omitempty"`
-	Provider   string `json:"provider,omitempty"`
-	Department string `json:"department,omitempty"`
-	Kind       string `json:"kind"`
-	TargetKind string `json:"targetKind"`
-	TargetID   string `json:"targetId"`
-	Label      string `json:"label"`
-	Role       string `json:"role,omitempty"`
-	Ordinal    int    `json:"ordinal"`
-	Source     string `json:"source"`
-	Locked     bool   `json:"locked"`
-	Observed   string `json:"observedAt,omitempty"`
+	SourceRowID  string `json:"sourceRowId,omitempty"`
+	OwnerEntryID string `json:"ownerEntryId,omitempty"`
+	SourceStatus string `json:"sourceStatus,omitempty"`
+	RecordID     string `json:"recordId,omitempty"`
+	Provider     string `json:"provider,omitempty"`
+	Department   string `json:"department,omitempty"`
+	Kind         string `json:"kind"`
+	TargetKind   string `json:"targetKind"`
+	TargetID     string `json:"targetId"`
+	Label        string `json:"label"`
+	Role         string `json:"role,omitempty"`
+	Ordinal      int    `json:"ordinal"`
+	Source       string `json:"source"`
+	Locked       bool   `json:"locked"`
+	Observed     string `json:"observedAt,omitempty"`
 }
 type RepairIdentity struct {
 	Engine   string `json:"engine,omitempty"`
@@ -71,11 +74,12 @@ type RepairHistory struct {
 	Observed string `json:"observedAt"`
 }
 type RepairSnapshot struct {
-	RelationshipLocks map[string]bool        `json:"relationshipLocks"`
-	Fields            map[string]RepairField `json:"fields"`
-	Identity          *RepairIdentity        `json:"identity,omitempty"`
-	Relationships     []RepairRelationship   `json:"relationships"`
-	Artwork           []ArtworkChoice        `json:"artwork"`
+	CanEditProviderCredits bool                   `json:"canEditProviderCredits,omitempty"`
+	RelationshipLocks      map[string]bool        `json:"relationshipLocks"`
+	Fields                 map[string]RepairField `json:"fields"`
+	Identity               *RepairIdentity        `json:"identity,omitempty"`
+	Relationships          []RepairRelationship   `json:"relationships"`
+	Artwork                []ArtworkChoice        `json:"artwork"`
 }
 type RepairState struct {
 	OnlineLookups           *bool             `json:"onlineLookups,omitempty"`
@@ -256,6 +260,12 @@ func readRepairSnapshot(ctx context.Context, tx *sql.Tx, t RepairTarget) (Repair
 			out.Identity.Locked = out.Identity.Locked || locked
 		}
 	}
+	if t.Kind == "item" {
+		out.CanEditProviderCredits, err = creditOverridesAvailable(ctx, tx, entity)
+		if err != nil {
+			return out, ent, err
+		}
+	}
 	out.Relationships, err = readRepairRelationships(ctx, tx, t)
 	if err != nil {
 		return out, ent, err
@@ -423,6 +433,11 @@ func recordRepair(ctx context.Context, tx *sql.Tx, t RepairTarget, before Repair
 	entity, err := resolveEntity(ctx, tx, t.ID)
 	if err != nil {
 		return err
+	}
+	if t.Kind == "item" {
+		if err = attachCreditHistorySources(ctx, tx, entity, &before); err != nil {
+			return err
+		}
 	}
 	a, _ := json.Marshal(before)
 	b, _ := json.Marshal(after)
