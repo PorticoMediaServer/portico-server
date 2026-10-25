@@ -1,3 +1,5 @@
+import {defaultI18n} from '@i18n';
+import type {HomeSelectionProgress} from '@core/home-selection/types.ts';
 import {useSyncExternalStore, type ReactNode} from 'react';
 import type {BrowseWholeSelection} from '@core/browse.ts';
 import type {BrowseSelectionContext, SelectionOperation, SelectionQuery, SelectionSnapshot} from '@core/selection-model/index.ts';
@@ -88,8 +90,12 @@ function personalOffers(selection: BrowseSelection | undefined, actions: Selecti
     favorite: usable && dispatchable && selection.summary.every.favorite};
 }
 
-function LibrarySelectionToolbar(props: LibrarySelectionOptions & {personal: (action: PersonalSelectionAction) => Promise<void>; queue: (placement: 'next' | 'end') => Promise<void>; addToPlaylist: (anchor: HTMLElement) => Promise<void>; addToCollection: (anchor: HTMLElement) => Promise<void>}) {
+type PersonalProgress = Readonly<{operation: SelectionOperation<BrowseSelectionContext>; value: HomeSelectionProgress}>;
+type ProgressStore = Readonly<{subscribe: (listener: () => void) => () => void; getSnapshot: () => PersonalProgress | undefined}>;
+
+function LibrarySelectionToolbar(props: LibrarySelectionOptions & {progress: ProgressStore; personal: (action: PersonalSelectionAction) => Promise<void>; queue: (placement: 'next' | 'end') => Promise<void>; addToPlaylist: (anchor: HTMLElement) => Promise<void>; addToCollection: (anchor: HTMLElement) => Promise<void>}) {
   const {playSelection, descriptor, actions, enqueue, destinations, personal, queue, addToPlaylist, addToCollection, reportError} = props;
+  const progress = useSyncExternalStore(props.progress.subscribe, props.progress.getSnapshot, props.progress.getSnapshot);
   const current = useSyncExternalStore(playSelection.subscribe, playSelection.getSnapshot, playSelection.getSnapshot);
   if (current.phase !== 'ready' || !current.selection?.active) return null;
   const summary = current.selection.summary, whole = descriptor?.(), selectWhole = playSelection.selectWhole;
@@ -116,6 +122,8 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {personal: (ac
       ...(canPlaylist ? {onPlaylist: (anchor: HTMLElement) => { void addToPlaylist(anchor); }} : {}),
       ...(canCollection ? {onCollection: (anchor: HTMLElement) => { void addToCollection(anchor); }} : {}),
     }}
+    context={progress && actions?.isCurrent() && !actions.signal?.aborted && playSelection.isOperationCurrent?.(progress.operation)
+      ? defaultI18n.t(progress.value.totalKnown ? 'next.selection.jobProgress' : 'next.selection.jobPreparing', {done: progress.value.done, total: progress.value.total}) : undefined}
     selectAll={selectAll}
     onSelectAll={selectAll ? () => { try {
       if (queryHeld) playSelection.clear();
@@ -152,7 +160,15 @@ export function createLibrarySelection({playSelection, descriptor, actions, enqu
     if (!destinations?.collection) throw new Error('selection-collection-unavailable');
     await destinations.collection(leafItems(), anchor);
   };
-  const personalRunner = actions ? createSelectionActions({...actions, reportError}) : undefined;
+  const progressListeners = new Set<() => void>();
+  let progressValue: PersonalProgress | undefined;
+  const progress: ProgressStore = {subscribe: listener => {progressListeners.add(listener); return () => {progressListeners.delete(listener);};}, getSnapshot: () => progressValue};
+  const personalRunner = actions ? createSelectionActions({...actions, reportError, progress: (operation, value, jobs) => {
+    if (!playSelection.isOperationCurrent?.(operation as SelectionOperation<BrowseSelectionContext>)) return;
+    progressValue = Object.freeze({operation: operation as SelectionOperation<BrowseSelectionContext>, value});
+    for (const listener of progressListeners) listener();
+    actions.progress?.(operation, value, jobs);
+  }}) : undefined;
   const personal = async (action: PersonalSelectionAction) => {
     if (!actions || !playSelection.captureOperation || !playSelection.isOperationCurrent) throw new Error('selection-actions-unavailable');
     const selection = playSelection.getSnapshot().selection, target = selection?.target;
@@ -165,8 +181,9 @@ export function createLibrarySelection({playSelection, descriptor, actions, enqu
     if (selection!.summary.every[fact] !== true) throw new Error('selection-grant-unavailable');
     const operation = playSelection.captureOperation?.() ?? null;
     if (!operation || operation.target !== target) throw new Error('selection-operation-required');
-    await personalRunner!.personal(operation, action, actions.signal,
-      () => playSelection.isOperationCurrent?.(operation) === true);
+    try {await personalRunner!.personal(operation, action, actions.signal,
+      () => playSelection.isOperationCurrent?.(operation) === true);}
+    finally {if (progressValue?.operation === operation) {progressValue = undefined; for (const listener of progressListeners) listener();}}
   };
   const snapshot = () => playSelection.getSnapshot(), rowFor = (member: BrowseMember, index: number) => {
     const rows = snapshot().rows;
@@ -180,7 +197,7 @@ export function createLibrarySelection({playSelection, descriptor, actions, enqu
     }
   };
   return {
-    toolbar: <LibrarySelectionToolbar playSelection={playSelection} descriptor={descriptor} actions={actions} enqueue={enqueue} destinations={destinations} reportError={reportError} personal={personal} queue={queue} addToPlaylist={addToPlaylist} addToCollection={addToCollection} />,
+    toolbar: <LibrarySelectionToolbar progress={progress} playSelection={playSelection} descriptor={descriptor} actions={actions} enqueue={enqueue} destinations={destinations} reportError={reportError} personal={personal} queue={queue} addToPlaylist={addToPlaylist} addToCollection={addToCollection} />,
     entry: (member, index) => {
       const current = snapshot(), row = rowFor(member, index);
       if (!row || current.phase !== 'ready') return undefined;
