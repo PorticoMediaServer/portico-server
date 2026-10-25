@@ -824,6 +824,37 @@ async function main() {
       });
     }
 
+    if (signedIn && want('settings-persist')) {
+      await check('settings-persist', async () => {
+        // Core flow 7 asks for client settings that actually stick, not just a screen that draws.
+        await page.goto(origin + '/settings', {waitUntil: 'domcontentloaded'});
+        await settle(page, {quiet: 2000});
+        const toggle = page.getByRole('switch', {name: /notification dot/i}).first();
+        assert(await toggle.count(), 'Settings draws no client switch to exercise');
+        const readState = async () => (await toggle.getAttribute('aria-checked')) ?? String(await toggle.isChecked().catch(() => ''));
+        const before = await readState();
+        await toggle.click({timeout: 8000});
+        await page.waitForTimeout(1800);
+        const flipped = await readState();
+        assert(flipped !== before, `the switch did not change (${before} -> ${flipped})`);
+        await page.reload({waitUntil: 'domcontentloaded'});
+        await settle(page, {quiet: 2500});
+        const afterToggle = page.getByRole('switch', {name: /notification dot/i}).first();
+        assert(await afterToggle.count(), 'the switch disappeared after a reload');
+        const persisted = (await afterToggle.getAttribute('aria-checked')) ?? String(await afterToggle.isChecked().catch(() => ''));
+        assert(persisted === flipped, `the setting did not persist: ${before} -> ${flipped} -> ${persisted} after reload`);
+        // Restore the original value so the demo is left as found.
+        await afterToggle.click({timeout: 8000});
+        await page.waitForTimeout(1500);
+        await page.reload({waitUntil: 'domcontentloaded'});
+        await settle(page, {quiet: 2000});
+        const restored = page.getByRole('switch', {name: /notification dot/i}).first();
+        const restoredState = (await restored.getAttribute('aria-checked')) ?? String(await restored.isChecked().catch(() => ''));
+        return {detail: `notification dot ${before} -> ${flipped}, persisted after reload (${persisted}), restored to ${restoredState}`,
+          evidence: {screenshot: await evidence.shot(page, 'settings-persist'), before, flipped, persisted, restored: restoredState}};
+      });
+    }
+
     if (signedIn && want('settings-owner')) {
       await check('settings-owner', async () => {
         // The shell hides every server section unless the session is on the primary profile, so
