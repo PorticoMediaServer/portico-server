@@ -5,7 +5,7 @@ import {StateView} from '../kit/states';
 import {ServicesAuthStage, HostedError, ServicesNotice} from '../kit/accounts/ServicesAuth';
 import {ServicesHeader, ServicesStart} from '../kit/accounts/ServicesWorkspace';
 import {ServerlessAccountMenu} from '../screens/accounts/ServerlessAccountMenu';
-import {AccountPage} from './AccountPage';
+import {ServicesDirectoryPage, ServicesLocalServerPage} from './DirectoryPage';
 import {ServicesInvitationDialog, ShortJoinPage} from './JoinPage';
 import {parseShortInvitationCode} from '@core/short-invitation-code.ts';
 import {distributionPage} from './distribution';
@@ -26,6 +26,8 @@ function BoundHome({account, session}: {account: ServicesAccount; session: Omit<
   type Read = {api: typeof api; attempt: number; active: boolean; controller: AbortController; value?: WorkspaceServers};
   const [loaded, setLoaded] = useState<Read>(), [error, setError] = useState<unknown>(), [attempt, retry] = useState(0);
   const live = useRef<Read | null>(null);
+  const [intent,setIntent]=useState<'join'|'setup'|'local'>();
+  const reload=useCallback(()=>{setIntent(undefined);retry(value=>value+1);},[]);
   useLayoutEffect(() => {
     const read: Read = {api, attempt, active: true, controller: new AbortController()}; live.current = read; setError(undefined);
     void api.servers(read.controller.signal).then(value => {
@@ -35,12 +37,21 @@ function BoundHome({account, session}: {account: ServicesAccount; session: Omit<
   }, [api, attempt]);
   const sourceCurrent = useCallback(() => Boolean(loaded && loaded.api === api && loaded.attempt === attempt && loaded.active && live.current === loaded && !loaded.controller.signal.aborted), [loaded, api, attempt]);
   const servers = sourceCurrent() ? loaded?.value : undefined;
+  const localCurrent=useCallback(()=>{const current=account.service.getSnapshot().session;return Boolean(sourceCurrent()&&current?.familyId&&current.account.id===accountId&&current.familyId===familyId);},[account,accountId,familyId,sourceCurrent]);
   if (error) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
     primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => retry(value => value + 1)}} />;
   if (!servers) return <ServicesAuthStage><></></ServicesAuthStage>;
-  return servers.items.length ? <AccountPage account={account} session={session} section="servers" /> : <Start account={account} session={session} servers={servers} sourceCurrent={sourceCurrent} />;
+  if(intent==='local')return <ServicesLocalServerPage current={localCurrent} onBack={()=>setIntent(undefined)} />;
+  if(!servers.items.length||intent==='join'||intent==='setup')return <Start account={account} session={session} servers={servers} sourceCurrent={sourceCurrent} initialSection={intent} />;
+  const name=session.account.displayName||session.account.username;
+  const header=<ServicesHeader notifications={false} avatar={<ServerlessAccountMenu username={session.account.username} name={name} t={t}
+    onAccount={()=>location.assign('/account')} onJoin={()=>setIntent('join')} onSetup={()=>setIntent('setup')} onApps={()=>location.assign(distributionPage)}
+    onHelp={()=>window.open('https://getportico.tv/docs/','_blank','noopener,noreferrer')}
+    onSignOut={()=>{void account.service.logoutIfCurrent(accountIdentity(session)).catch(setError);}} />} />;
+  return <ServicesDirectoryPage account={account} session={session} api={api} initial={servers} sourceCurrent={sourceCurrent} header={header}
+    onEmpty={reload} onJoin={()=>setIntent('join')} onSetup={()=>setIntent('setup')} onLocal={()=>setIntent('local')} />;
 }
-function Start({account, session, servers, sourceCurrent}: {account: ServicesAccount; session: Omit<HostedSession, 'refreshToken'>; servers: WorkspaceServers; sourceCurrent: () => boolean}) {
+function Start({account, session, servers, sourceCurrent, initialSection}: {account: ServicesAccount; session: Omit<HostedSession, 'refreshToken'>; servers: WorkspaceServers; sourceCurrent: () => boolean; initialSection?: 'join'|'setup'}) {
   const {t} = useMemo(servicesI18n, []);
   const showEnding = useMembershipEnding(account, accountIdentity(session), servers.membershipEnding, sourceCurrent);
   type InvitationOpening = Readonly<{link: JoinLink; pasted: string}>;
@@ -60,10 +71,11 @@ function Start({account, session, servers, sourceCurrent}: {account: ServicesAcc
     const visible = id === 'setup' && !target?.getClientRects().length ? document.getElementById('setup-details') : target;
     visible?.scrollIntoView({block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
   };
+  useLayoutEffect(()=>{if(initialSection)scrollToCard(initialSection);},[initialSection]);
   if (shortJoin !== undefined) return <ShortJoinPage account={account} initialCode={shortJoin} onBack={() => setShortJoin(undefined)} />;
   const name = session.account.displayName || session.account.username;
   const ending = servers.membershipEnding;
-  return <><ServicesStart returning={Boolean(ending)} notice={showEnding.visible && ending ? <div ref={showEnding.mount}><ServicesNotice tone="info"><b>{t('services.start.endedTitle', {server: ending.serverName ?? t('services.start.thisServer')})}</b> {t('web.chooser.refusedBody')}</ServicesNotice></div> : undefined} header={<ServicesHeader notifications={false} avatar={<ServerlessAccountMenu username={session.account.username} name={name} t={t}
+  return <><ServicesStart returning={Boolean(ending)||Boolean(initialSection)} notice={showEnding.visible && ending ? <div ref={showEnding.mount}><ServicesNotice tone="info"><b>{t('services.start.endedTitle', {server: ending.serverName ?? t('services.start.thisServer')})}</b> {t('web.chooser.refusedBody')}</ServicesNotice></div> : undefined} header={<ServicesHeader notifications={false} avatar={<ServerlessAccountMenu username={session.account.username} name={name} t={t}
     onAccount={() => location.assign('/account')} onJoin={() => scrollToCard('join')} onSetup={() => scrollToCard('setup')} onApps={() => scrollToCard('apps')}
     onHelp={() => window.open('https://getportico.tv/docs/', '_blank', 'noopener,noreferrer')}
     onSignOut={() => run(async () => {await account.service.logoutIfCurrent(accountIdentity(session));})} />} />}

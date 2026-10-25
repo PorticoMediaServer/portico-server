@@ -175,4 +175,5 @@ export const servicesMessages = {
   'services.workspace.emptyServersBody': 'When a server is shared with your Portico Account, it appears here.',
   'services.feed.exportBody': 'Your download is waiting. It’s kept for a few days.',
   'services.feed.reviewDevices': 'Review devices',
+  'services.directory.justNow': 'just now',
 } as const;
