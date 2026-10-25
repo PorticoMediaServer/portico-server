@@ -17,7 +17,10 @@ import type {MessageId, MessageValues} from '../../i18n/src/index.ts';
  *
  * A choice never outlives one play.
  */
-export type PendingTrackChoice = Readonly<{itemId: string; audioStreamIndex?: number; subtitle?: 'off' | Readonly<{language?: string; resourceId?: string}>}>;
+export type PendingTrackChoice = Readonly<{itemId: string; versionId?: string;
+  /** Local-only original screen/authority witness; never serialized or rebound. */
+  isCurrent?: () => boolean;
+  audioStreamIndex?: number; subtitle?: 'off' | Readonly<{language?: string; resourceId?: string}>}>;
 
 let pending: PendingTrackChoice | undefined;
 
@@ -30,7 +33,7 @@ export function takePendingTrackChoice(itemId: string): PendingTrackChoice | und
   if (!pending || pending.itemId !== itemId) return undefined;
   const out = pending;
   pending = undefined;
-  return out;
+  return out.isCurrent?.() === false ? undefined : out;
 }
 
 export function peekPendingTrackChoice(itemId: string): PendingTrackChoice | undefined {
