@@ -82,6 +82,9 @@ func (d Dependencies) readingPrincipal(w http.ResponseWriter, r *http.Request) (
 // titles or paths and never re-reads per item.
 func readingItemProjection(row reading.LibraryRow) ReadingItem {
 	out := ReadingItem{CoverURL: row.CoverURL, ID: row.ID, LibraryID: row.LibraryID, Title: row.Title, Format: ReadingSourceFormat(row.Format), SourceID: row.SourceID, InventoryAvailable: row.InventoryAvailable}
+	if row.MarkKnown {
+		out.ReadingMark = &ReadingItemMark{ItemID: row.ID, Read: row.MarkRead, Revision: row.MarkRevision}
+	}
 	if row.PublicationType != nil {
 		out.PublicationType = &ReadingPublicationTypeValue{Value: ReadingPublicationType(row.PublicationType.Value), Source: ReadingPublicationTypeSource(row.PublicationType.Source)}
 	}
