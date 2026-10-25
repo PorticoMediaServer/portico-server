@@ -1,3 +1,4 @@
+import {expectedRemoteSource} from '../remote-source-selection.ts';
 import {encodedRoutePath,routePath} from '../../../contracts/src/routes.ts';
 import {parseLibraryDocument,type LibraryAdminDocument,type LibrarySettings} from '../administration.ts';
 import {parseInventorySource,type InventorySource,type SourceSettings} from '../library-inventory.ts';
@@ -33,7 +34,7 @@ export async function reorderLibraries(api:LibraryContentApi,libraryIds:readonly
 export async function saveLibraryFolder(api:LibraryContentApi,libraryId:string,sourceId:string|undefined,input:SourceSettings,signal?:AbortSignal):Promise<InventorySource>{
  if(!Number.isSafeInteger(input.expectedRevision)||input.expectedRevision<1||!Number.isSafeInteger(input.intervalSeconds)||input.intervalSeconds<0)throw new Error('Invalid folder revision or interval.');
  const path=sourceId?encodedRoutePath('patch_admin_libraries_id_sources_source',{id:libraryID(libraryId),source:libraryID(sourceId)}):encodedRoutePath('post_admin_libraries_id_sources',{id:libraryID(libraryId)});
- const source=parseInventorySource(await api.request<unknown>(path,sourceId?'PATCH':'POST',durationIntent(input,{intervalSeconds:'intervalMs'}),signal),libraryId);
+ const source=parseInventorySource(await api.request<unknown>(path,sourceId?'PATCH':'POST',durationIntent({...input,...(input.expectedRemoteSource!==undefined?{expectedRemoteSource:expectedRemoteSource(input.expectedRemoteSource)}:{})},{intervalSeconds:'intervalMs'}),signal),libraryId);
  if(sourceId&&source.id!==sourceId)throw new Error('Library folder identity changed.');
  return source;
 }

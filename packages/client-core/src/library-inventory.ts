@@ -1,3 +1,4 @@
+import type {ExpectedRemoteSource} from './remote-source-selection.ts';
 import type {RouteResponse} from "../../contracts/src/routes.ts";
 import {encodedRoutePath} from "../../contracts/src/routes.ts";
 /** Local/mounted inventory administration. No provider credentials, persistent
@@ -12,7 +13,7 @@ export const scanOperations=['probe','local_metadata','subtitles','checksum','ch
 export type ScanOperation=typeof scanOperations[number];
 export type ScanPolicy=Readonly<{tier:ScanTier;revision:number;operations:readonly ScanOperation[]}>;
 export type InventorySource=Readonly<{id:string;libraryId:string;kind:string;name:string;path:string;resolvedPath:string;classification:'local'|'network';generation:number;health:string;enabled:boolean;followSymlinks:boolean;identityConfirmed:boolean;intervalSeconds:number;nextScanAt:string;lastCompleteAt:string;lastProgressAt:string}>;
-export type SourceSettings=Readonly<{name:string;path:string;classification:'local'|'network';followSymlinks:boolean;intervalSeconds:number;expectedRevision:number;acceptReplacement:boolean}>;
+export type SourceSettings=Readonly<{expectedRemoteSource?:ExpectedRemoteSource;name:string;path:string;classification:'local'|'network';followSymlinks:boolean;intervalSeconds:number;expectedRevision:number;acceptReplacement:boolean}>;
 export type InventoryConfig=Readonly<{scope:Readonly<{serverId:string;viewerFence:string}>;libraryId:string;revision:number;sources:readonly InventorySource[];policy:ScanPolicy}>;
 export type InventoryObject=Readonly<{id:string;sourceId:string;assetId:string;itemId:string;title:string;relativePath:string;revision:string;state:string;size:number;modifiedNs:number;missingSince:string;analysisState:string;analysisError:string;unsupportedReason:string}>;
 export type InventoryFilter=Readonly<{sourceId?:string;state?:''|'available'|'missing'|'unsupported'}>;
