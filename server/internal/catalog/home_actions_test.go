@@ -567,7 +567,7 @@ func TestHomeNotInterestedOfferUsesPersonalWriterSupportAndVisibleIdentity(t *te
 		show.Navigation = &ContentNavigation{View: "show", EntityID: homeItem(t, db, "m1").Public}
 		rows[0].Entries = append(rows[0].Entries, show)
 		if err := dbwork.WithReadSnapshot(context.Background(), db, func(ctx context.Context) error {
-			return s.WithContext(ctx).ProjectHomeActions(homeRequestFixture("all").Viewer, HomeActionAuthority{Personal: personal}, rows, nil)
+			return s.WithContext(ctx).ProjectHomeActions(homeRequestFixture().Viewer, HomeActionAuthority{Personal: personal}, rows, nil)
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -576,7 +576,7 @@ func TestHomeNotInterestedOfferUsesPersonalWriterSupportAndVisibleIdentity(t *te
 			if entry.HomeActions == nil || entry.HomeActions.NotInterested != expected {
 				t.Fatalf("personal=%v kind=%s index=%d actions=%+v", personal, entry.Kind, i, entry.HomeActions)
 			}
-			if entry.HomeActions.Selection != (HomeSelectionActions{}) {
+			if entry.HomeActions.Selection != selectionOffers(HomeActionAuthority{Personal: personal}, entry.Kind, false, false) {
 				t.Fatal("Not interested changed bulk offers")
 			}
 		}
