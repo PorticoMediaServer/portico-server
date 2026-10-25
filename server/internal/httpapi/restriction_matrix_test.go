@@ -584,6 +584,9 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/admin/metadata-providers":                      exempt(reasonAdmin),
 		"GET /v1/admin/operations/{panel}":                      exempt(reasonAdmin),
 		"GET /v1/admin/playback/diagnostics":                    exempt(reasonAdmin),
+		// Registered by registerHardwareFacts with apikit.Owner + ScopeAdmin and a
+		// constant answer; it classifies exactly like the capacity read beside it.
+		"GET /v1/admin/playback/hardware":                       exempt(reasonAdmin),
 		"GET /v1/admin/segments":                                exempt(reasonAdmin),
 		"GET /v1/admin/segments/titles":                         exempt(reasonAdmin),
 		"GET /v1/admin/segments/titles/{id}":                    exempt(reasonAdmin),
