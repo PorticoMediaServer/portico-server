@@ -2,7 +2,7 @@ import {useCallback, useLayoutEffect, useEffect, useMemo, useRef, useState, useS
 import {defaultI18n, type MessageId} from '@i18n';
 import {
   RemoteSourceService, cloudTokenDraft, driveOAuthDraft, driveServiceAccountDraft, s3SourceDraft, sourceReadPreset, sourceReadPresetName,
-  type CloudTokenFields, type DAVConnectionResult, type DriveKeyFields, type RcloneConfigView, type RcloneProgram, type RcloneTestResult, type RemoteFolder, type RemoteSource, type S3SourceFields, type RemoteSourceStatus, type RemoteScanMode, type RemoteScanPhase, type RemoteScanStateCode, type SourceAdvanced, type SourceReadPreset, type SourceReadSettings, type SourceReadValues,
+  type CloudTokenFields, type DAVConnectionResult, type DriveKeyFields, type RcloneConfigView, type RcloneProgram, type RcloneTestResult, type RemoteFolder, type RemoteSource, type S3SourceFields, type RemoteSourceStatus, type RemoteScanMode, type RemoteScanPhase, type RemoteSourceHealth, type RemoteScanStateCode, type SourceAdvanced, type SourceReadPreset, type SourceReadSettings, type SourceReadValues,
 } from '@core/remote-sources.ts';
 import {LibraryManagementService, type ManagedLibrary} from '@core/library-management.ts';
 import {readLibraryInventoryConfig, saveLibraryFolder} from '@core/server-admin/libraries.ts';
@@ -57,6 +57,11 @@ const scanStateWord = (state: RemoteScanStateCode): MessageId => state === 'queu
 const scanModeWord = (mode: RemoteScanMode | undefined): MessageId | undefined => mode === 'first-import' ? 'next.remoteSources.scanModeFirst'
   : mode === 'incremental' ? 'next.remoteSources.scanModeIncremental' : mode === 'integrity' ? 'next.remoteSources.scanModeIntegrity'
     : mode === 'full' ? 'next.remoteSources.scanModeFull' : undefined;
+/** The drawn words for the all-agree folder health; absent stays absent. */
+const healthWord = (health: RemoteSourceHealth): MessageId => health === 'ready' ? 'next.remoteSources.healthReady'
+  : health === 'inventory_running' ? 'next.remoteSources.healthInventoryRunning' : health === 'cancelled' ? 'next.remoteSources.healthCancelled'
+    : health === 'offline' ? 'next.remoteSources.healthOffline' : health === 'root_changed' ? 'next.remoteSources.healthRootChanged'
+      : 'next.remoteSources.healthRemoving';
 const scanPhaseWord = (phase: RemoteScanPhase | undefined): MessageId | undefined => phase === 'inventory' ? 'next.remoteSources.scanPhaseInventory'
   : phase === 'basic_pending' ? 'next.remoteSources.scanPhaseBasicPending' : phase === 'basic_running' ? 'next.remoteSources.scanPhaseBasicRunning'
     : phase === 'analysis_enqueue' ? 'next.remoteSources.scanPhaseAnalysis' : phase === 'reconciling' ? 'next.remoteSources.scanPhaseReconciling'
@@ -1287,6 +1292,8 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, openSecti
             : t('next.remoteSources.noLibraryUses')}</dd></div>
         {!!status?.scanIntervalSeconds && <div><dt>{t('next.remoteSources.scanning')}</dt>
           <dd>{t('next.remoteSources.scansEveryHours', {hours: Math.round(status.scanIntervalSeconds / 3600) || 1})}</dd></div>}
+        {status?.health && <div><dt>{t('next.remoteSources.health')}</dt><dd>{t(healthWord(status.health))}</dd></div>}
+        {status?.lastCompleteAt && <div><dt>{t('next.remoteSources.lastComplete')}</dt><dd>{checkedWhen(status.lastCompleteAt)}</dd></div>}
         {status?.scan && <>
           <div><dt>{t('next.remoteSources.scanState')}</dt><dd>{[scanStateWord(status.scan.state), scanModeWord(status.scan.mode), scanPhaseWord(status.scan.phase)]
             .filter((word): word is MessageId => Boolean(word)).map(word => t(word)).join(' · ')}</dd></div>
