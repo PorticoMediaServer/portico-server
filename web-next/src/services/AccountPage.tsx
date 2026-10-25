@@ -40,7 +40,7 @@ function BoundAccount({account, session, section}: {account: ServicesAccount; se
     onSection={select} onSignOut={signOut} actions={actions} phoneActions={section === 'devices' ? actions : undefined} unread={state.unread} description={description}>{error ? <HostedError error={error} /> : null}{children}</ServicesWorkspace>;
   if (section === 'devices') return <DevicesPanel api={api} frame={(children, actions) => frame(children, actions, t('services.workspace.devicesBody'))} />;
   if (section === 'notifications') return frame(<FeedPanel feed={feed} onReviewDevices={() => select('devices')} />,
-    <Button size="small" disabled={state.busy || !state.unread} onClick={() => void feed.markRead('all')}>{t('web.account.notif.markAll')}</Button>);
+    <Button size="small" icon="i-check" disabled={state.busy || !state.unread} onClick={() => void feed.markRead('all')}>{t('web.account.notif.markAll')}</Button>);
   if (section === 'security') return frame(<SecurityPanel account={account} api={api} identity={identity} username={session.account.username} />,
     undefined, t('services.workspace.securityBody'));
   return frame(<ServersPanel api={api} />, undefined, t('web.hostedAccount.serversHelp'));

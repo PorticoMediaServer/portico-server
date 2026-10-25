@@ -7,6 +7,7 @@ import {ServicesFeed} from './feed';
 import {serviceNoticeCopy} from './notification-copy';
 import {servicesI18n} from './i18n';
 import {servicesNoticeTime} from './time';
+import styles from './services.module.css';
 
 type Commit = {active: boolean; running: boolean};
 type FeedTicket = {feed: ServicesFeed; retired: boolean; commit?: Commit};
@@ -69,7 +70,7 @@ export function FeedPanel({feed, onReviewDevices}: {feed: ServicesFeed; onReview
         : offer ? <Button size="small" variant="primary" icon="i-download" iconSize={16} loading={downloading === item.detail.exportId} disabled={Boolean(downloading)} onClick={() => void download(offer)}>{t('action.download')}</Button> : undefined;
       return <ServicesFeedRow key={item.id} {...copy} unread={!item.read} when={servicesNoticeTime(i18n, item.occurredAt)} actions={actions} />;
     })}</ServicesGroup> : null}
-    {state.cursor && <Button size="small" variant="text" disabled={state.busy} onClick={() => void feed.older()}>{t('web.account.notif.older')}</Button>}
+    {state.cursor && <div className={styles.pager}><Button size="small" disabled={state.busy} onClick={() => void feed.older()}>{t('web.account.notif.older')}</Button></div>}
     <ServicesGroup title={t('web.account.notif.prefsTitle')} description={t('web.account.notif.prefsHelp')}>
       <ServicesWorkspaceRow title={t('web.account.notif.prefServerOffline')}><Switch checked={state.preferences?.serverOffline ?? false} disabled={!state.preferences || state.busy} aria-label={t('web.account.notif.prefServerOffline')} onCheckedChange={checked => void feed.savePreferences(checked)} /></ServicesWorkspaceRow>
     </ServicesGroup>
