@@ -1,3 +1,4 @@
+import type {ArtworkSource} from '../../kit/artwork';
 import {generatedCoverTint} from '@design';
 import type {ReadCoverItem} from './ReadLibrary';
 
@@ -10,6 +11,7 @@ export type RecentReadingItem = Readonly<{
   id: string;
   sourceId: string;
   title: string;
+  coverUrl?: string;
   author?: Readonly<{value: string}>;
   inventoryAvailable: boolean;
 }>;
@@ -20,10 +22,11 @@ export type RecentReadingItem = Readonly<{
  */
 export function recentCards(
   items: readonly RecentReadingItem[],
-  actions: Readonly<{kind?: 'book' | 'comic'; read: string; open: (item: RecentReadingItem) => void; play: (item: RecentReadingItem) => void}>,
+  actions: Readonly<{artwork?: (url: string | undefined) => ArtworkSource | undefined; kind?: 'book' | 'comic'; read: string; open: (item: RecentReadingItem) => void; play: (item: RecentReadingItem) => void}>,
 ): readonly ReadCoverItem[] {
   return items.map(item => ({id: item.id, card: {
     kind: actions.kind ?? 'book',
+    artwork: actions.artwork?.(item.coverUrl),
     context: 'shelf',
     density: 'shelf',
     model: {

@@ -31,6 +31,7 @@ type Resources = Readonly<{
   resume: ReturnType<typeof createReadingContinueCollection>;
   bindings: ReturnType<typeof createReadBindings>;
   reportError: (error: unknown) => void;
+  artwork: Captured['context']['artwork'];
 }>;
 const {t} = defaultI18n;
 
@@ -45,6 +46,7 @@ const generated = (item: Readonly<{title: string; author?: Readonly<{value: stri
 /** The accepted Continue index already names the actual progressed version. */
 function resumeRows(resources: Resources, items: readonly ReadingContinueItem[]): readonly ReadResumeItem[] {
   return items.map(row => ({id: row.item.id, card: {
+    artwork: resources.artwork.foreground(row.item.coverUrl, 380, 2 / 3),
     model: {title: row.item.title, caption: authorFacts(row.item.author), progress: row.progress.location.progression},
     fallback: generated(row.item), disabled: !row.item.inventoryAvailable, visible: true, playLabel: t('next.reader.read'),
     onNavigate: () => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/item/$itemId', params: {itemId: row.item.id}}).catch(resources.reportError);},
@@ -96,11 +98,12 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
       id: 'recent', kind: 'covers' as const, heading: t('next.layout.recentIn', {library: name}),
       items: recentCards(recent, {kind: comic ? 'comic' : 'book', read: t('next.reader.read'),
         open: entry => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/item/$itemId', params: {itemId: entry.id}}).catch(resources.reportError);},
+        artwork: url => resources.artwork.foreground(url, 380, 2 / 3),
         play: entry => {if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(entry.id, entry.sourceId)).catch(resources.reportError);}}),
     }] : []),
     ...(shortReads.length ? [{id: 'short-reads', kind: 'covers' as const, heading: t('next.reader.shortReads'), subtitle: t('next.reader.underThreeHours'),
       items: shortReads.map(entry => ({id: entry.item.id, card: {
-        kind: 'book' as const, context: 'shelf' as const, density: 'shelf' as const, visible: true,
+        artwork: resources.artwork.foreground(entry.item.coverUrl, 380, 2 / 3), kind: 'book' as const, context: 'shelf' as const, density: 'shelf' as const, visible: true,
         model: {title: entry.item.title, caption: [...authorFacts(entry.item.author), {id: 'estimate', text: t('next.reader.aboutDuration', {duration: defaultI18n.duration(entry.estimatedSeconds)}), role: 'identity' as const}]},
         generated: {title: entry.item.title, glyph: Array.from(entry.item.title)[0] ?? '', tint: generatedCoverTint(entry.item.title)},
         disabled: !entry.item.inventoryAvailable, playLabel: t('next.reader.read'),
@@ -110,7 +113,7 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
     }] : []),
     ...(series.length ? [{id: 'series', kind: 'series' as const, heading: t('library.tab.series'), items: series.map(summary => ({id: summary.id, card: {
       model: {title: summary.name, caption: [{id: 'read', text: t('next.reader.seriesReadCount', {read: defaultI18n.number(summary.readCount), count: defaultI18n.number(summary.count)}), role: 'identity' as const}]},
-      covers: summary.preview.map(item => ({id: item.id, generated: {title: item.title, glyph: Array.from(item.title)[0] ?? '', tint: generatedCoverTint(item.title)}})),
+      covers: summary.preview.map(item => resources.artwork.foreground(item.coverUrl, 380, 2 / 3) ?? {id: item.id, generated: {title: item.title, glyph: Array.from(item.title)[0] ?? '', tint: generatedCoverTint(item.title)}}),
       segments: [], visible: true,
       onNavigate: () => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId}, search: {view: 'series', entityId: summary.id}}).catch(resources.reportError);},
     }}))}] : []),
@@ -124,7 +127,7 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
       {state.total === 0 || !showGrid ? null : <div ref={grid} className={styles.books} data-view="grid">
         <WindowedGrid collection={resources.books.collection} label={name}
           height={height} cardWidth={cardWidth} rowHeight={cardWidth * 1.5 + 58} gap={20} rowGap={30} renderPlaceholder={() => <Skeleton width={cardWidth} height={cardWidth * 1.5}/>}
-          renderItem={item => <CoverCard kind={comic ? 'comic' : 'book'} model={{title: item.title, caption: authorFacts(item.author)}} context="grid" density="grid" visible
+          renderItem={item => <CoverCard artwork={resources.artwork.foreground(item.coverUrl, cardWidth * 2, 2 / 3)} kind={comic ? 'comic' : 'book'} model={{title: item.title, caption: authorFacts(item.author)}} context="grid" density="grid" visible
             generated={{title: item.title, glyph: Array.from(item.title)[0] ?? '', tint: generatedCoverTint(item.title)}} disabled={!item.inventoryAvailable && !onToggle}
             onNavigate={() => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/item/$itemId', params: {itemId: item.id}}).catch(resources.reportError);}}
             onPlay={item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(item.id, item.sourceId)).catch(resources.reportError);} : undefined}
@@ -160,7 +163,7 @@ function BoundReadLibrary({captured, libraryId, header, onMore, view}: {captured
     setRetired(false);
     setMenu(undefined); setEditor(undefined); setSelection(undefined); setBulk(undefined);
     const off = bindings.authority.subscribe(() => {setRetired(true); setMenu(undefined); setEditor(undefined); setSelection(undefined); setBulk(undefined);});
-    setResources({books, resume, bindings, reportError: error => {if (bindings.authority.isCurrent()) errorSink.current(error);}});
+    setResources({books, resume, bindings, artwork: captured.context.artwork, reportError: error => {if (bindings.authority.isCurrent()) errorSink.current(error);}});
     return () => {off();books.dispose();resume.dispose(); void bindings.dispose().catch(() => {});};
   }, [captured.context, libraryId, isReading, retry]);
   const viewer = context.identity?.viewer, canEdit = viewer?.authority === 'local' && viewer.role === 'owner';
