@@ -20,15 +20,20 @@ export function FolderPicker({open, onOpenChange, api, onChoose}: Readonly<{
   const [suggestions, setSuggestions] = useState<readonly string[]>([]);
   useEffect(() => {
     setSuggestions([]);
-    if (!open || !typed || typed === page?.path) return;
+    if (!open || !typed || typed === page?.path || !page?.separator) return;
+    const boundary = typed.lastIndexOf(page.separator);
+    if (boundary < 0) return;
+    const parent = typed.slice(0, boundary + page.separator.length);
+    const prefix = typed.slice(boundary + page.separator.length);
+    if (prefix.length > 255) return;
     const active = new AbortController();
     const timer = setTimeout(() => {
-      void browseServerFilesystem(api, {path: typed, includeFiles: false, showHidden, limit: 8}, active.signal).then(next => {
-        if (!active.signal.aborted) setSuggestions(next.suggestions);
+      void browseServerFilesystem(api, {path: parent, prefix, includeFiles: false, showHidden, limit: 8}, active.signal).then(next => {
+        if (!active.signal.aborted) setSuggestions(next.entries.filter(entry => entry.kind === 'directory' && entry.readable).map(entry => entry.path));
       }, () => {});
     }, 250);
     return () => { clearTimeout(timer); active.abort(); };
-  }, [api, open, typed, page?.path, showHidden]);
+  }, [api, open, typed, page?.path, page?.separator, showHidden]);
   const request = useRef<AbortController | undefined>(undefined);
   const read = useCallback(async (path?: string, hidden = false, cursor?: string) => {
     request.current?.abort();
@@ -75,7 +80,7 @@ export function FolderPicker({open, onOpenChange, api, onChoose}: Readonly<{
   }
   return <Dialog open={open} onOpenChange={changeOpen} size="md" title={t('next.settings.chooseFolder')} description={t('next.settings.folderBreadcrumbs')}
     footer={<><Button onClick={() => changeOpen(false)}>{t('next.settings.cancel')}</Button>
-      <Button variant="primary" disabled={!page?.path || busy || failed} onClick={() => { if (page?.path) { onChoose(page.path); changeOpen(false); } }}>{t('next.settings.chooseThisFolder')}</Button></>}>
+      <Button variant="primary" disabled={!page?.path || typed !== page.path || busy || failed} onClick={() => { if (page?.path && typed === page.path && !busy && !failed) { onChoose(page.path); changeOpen(false); } }}>{t('next.settings.chooseThisFolder')}</Button></>}>
     <div className={styles.picker}>
       {breadcrumbs.length > 0 && <nav aria-label={t('next.settings.folderPath')}>
         {breadcrumbs.map((crumb, index) => <span key={crumb.path}>
