@@ -139,7 +139,7 @@ function seriesFixture(wrongSeries = false) {
 test('series collection preserves producer order and forwards the signed cursor without generic browse', async t => {
   const f = seriesFixture(); t.after(() => f.dispose()); assert.equal(f.calls.length, 0);
   f.rows.collection.ensureRange(0, 12);
-  await settle(() => f.rows.collection.getSnapshot().totalIsLowerBound === false);
+  await settle(() => f.rows.collection.itemAt(60) !== undefined && f.rows.collection.getSnapshot().totalIsLowerBound === false);
   assert.equal(f.rows.collection.itemAt(0)?.id, 'unit-100');
   assert.equal(f.rows.collection.itemAt(1)?.id, 'unit-99');
   assert.equal(f.rows.collection.itemAt(60)?.id, 'unit-40');
