@@ -706,6 +706,9 @@ func (s *Service) MutateActivity(profile string, m ActivityMutation, authorize f
 	if _, e = tx.Exec(`DELETE FROM personal_history WHERE profile_id=?`, profile); e != nil {
 		return out, e
 	}
+	if _, e = tx.Exec(`DELETE FROM personal_music_radios WHERE profile_id=?`, profile); e != nil {
+		return out, e
+	}
 	if _, e = tx.Exec(`INSERT INTO personal_activity_revisions VALUES(?,1) ON CONFLICT(profile_id) DO UPDATE SET revision=revision+1`, profile); e != nil {
 		return out, e
 	}

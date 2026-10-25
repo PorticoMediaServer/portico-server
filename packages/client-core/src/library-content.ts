@@ -14,13 +14,15 @@ export type ContentSurface = ContentView;
 export type ContentRoute = Readonly<{ sort?: string; direction?: 'asc' | 'desc'; category?: string; q?: string } & { libraryId: string; view: ContentView; entityId?: string }>;
 export type ContentScope = Readonly<{ viewerId: string; serverId: string }>;
 export interface LibraryContentApi { request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> }
-export type ContentEntryKind = 'ebook' | 'comic' | 'movie' | 'show' | 'season' | 'episode' | 'artist' | 'album' | 'song' | 'book' | 'audiobook_file' | 'chapter' | 'collection' | 'category' | 'author' | 'book_series' | 'disc' | 'extra' | 'playlist';
+export type ContentEntryKind = 'ebook' | 'comic' | 'movie' | 'show' | 'season' | 'episode' | 'artist' | 'album' | 'song' | 'book' | 'audiobook_file' | 'chapter' | 'collection' | 'category' | 'author' | 'book_series' | 'disc' | 'extra' | 'playlist' | 'radio';
 /** `params` fill a parameterised heading (a Discover personal row: "{genre} for you"); name it with `serverTextLabel`. */
 export type ContentHeading = Readonly<{ key: string; fallback: string; params?: Readonly<Record<string, string>> }>;
 /** Explicit display fact on an already admitted Reading leaf. Commands still
  * obtain their own viewer-fenced mark response; progress never supplies this. */
 export type ReadingEntryMark = Readonly<{itemId: string; read: boolean; revision: number}>;
 export type ContentEntry = Readonly<{
+  /** The original admitted radio seed; a radio card is not a catalogue song. */
+  radioSeed?: Readonly<{id: string; kind: 'artist' | 'album' | 'song'}>;
   pageCount?: number;
   readingMark?: ReadingEntryMark;
   audioFacts?: MusicTechnicalFacts;
@@ -51,7 +53,7 @@ export type ContentEntry = Readonly<{
   removed?:boolean;
   artworkPaths?: readonly string[];
   yearMin?:number; yearMax?:number; origin?:'automatic'|'owner';
-  navigation?: Readonly<{ view: ContentView | 'item' | 'playlist'; entityId?: string; category?: string }>;
+  navigation?: Readonly<{ view: ContentView | 'item' | 'playlist' | 'radio'; entityId?: string; category?: string }>;
   playback?: Readonly<{ itemId: string; startSeconds?: number }>;
   /** An episode's air date (YYYY-MM-DD): show workspace pages, and episode rows of a browse page. */
   airDate?: string;
@@ -116,7 +118,7 @@ export type LibraryContentSnapshot = Readonly<{
 }>;
 const views: readonly string[] = ['discover','browse','collections','categories','show','season','artist','album','book','collection','releases','songs','authors','series','author','book_series','disc'];
 const entityViews = new Set(['show','season','artist','album','book','collection','author','book_series','disc']);
-const entryKinds: readonly string[] = ['ebook','comic','movie','show','season','episode','artist','album','song','book','audiobook_file','chapter','collection','category','author','book_series','disc','extra','playlist'];
+const entryKinds: readonly string[] = ['ebook','comic','movie','show','season','episode','artist','album','song','book','audiobook_file','chapter','collection','category','author','book_series','disc','extra','playlist','radio'];
 /** Unknown string kinds are future server cards; only their entries are omitted. */
 export const unknownContentEntryKind = (v: unknown): boolean => record(v) && typeof v.kind === 'string' && !entryKinds.includes(v.kind);
 const optional = <K extends string, V>(key: K, value: V | undefined): Partial<Record<K, V>> => (value === undefined ? {} : { [key]: value } as Record<K, V>);
@@ -173,6 +175,12 @@ function entry(v: unknown): ContentEntry {
   if (!record(v) || !id(v.id) || !entryKinds.includes(v.kind as string) || !string(v.title ?? '', 2048)) invalid();
   if ((v.kind==='ebook'||v.kind==='comic') && (v.playback!=null||v.durationMs!=null||v.duration!=null)) invalid();
   const row: { -readonly [K in keyof ContentEntry]: ContentEntry[K] } = { id: v.id, kind: v.kind as ContentEntryKind, title: (v.title ?? '') as string };
+  if (v.kind === 'radio') {
+    const seed = v.radioSeed;
+    if (!record(seed) || !id(seed.id) || !['artist', 'album', 'song'].includes(seed.kind as string)
+      || v.id !== `radio:${seed.id}` || v.playback != null) invalid();
+    row.radioSeed = Object.freeze({id: seed.id as string, kind: seed.kind as 'artist' | 'album' | 'song'});
+  }
   if ((v.kind === 'ebook' || v.kind === 'comic') && (v.publicationType === 'book' || v.publicationType === 'magazine' || v.publicationType === 'newspaper')) row.publicationType = v.publicationType;
   if (v.kind === 'ebook' || v.kind === 'comic') {
     if (count(v.pageCount) && v.pageCount > 0) row.pageCount = v.pageCount; else left('entry.pageCount', v.pageCount);
@@ -284,8 +292,9 @@ function entry(v: unknown): ContentEntry {
   // Where the entry leads is exact: an entry that cannot say it is not shown.
   if (v.navigation !== undefined && v.navigation !== null) {
     const n = v.navigation;
-    if (!record(n) || !(views.includes(n.view as string) || n.view === 'item' || n.view === 'playlist') || (n.entityId !== undefined && !string(n.entityId, 256)) || (n.category !== undefined && !string(n.category, 256))) invalid();
-    row.navigation = Object.freeze({ view: n.view as ContentView | 'item' | 'playlist', ...(n.entityId === undefined ? {} : { entityId: n.entityId as string }), ...(n.category === undefined ? {} : { category: n.category as string }) });
+    if (!record(n) || !(views.includes(n.view as string) || n.view === 'item' || n.view === 'playlist' || n.view === 'radio') || (n.entityId !== undefined && !string(n.entityId, 256)) || (n.category !== undefined && !string(n.category, 256))) invalid();
+    if (v.kind === 'radio' && (n.view !== 'radio' || n.entityId !== row.radioSeed?.id) || v.kind !== 'radio' && n.view === 'radio') invalid();
+    row.navigation = Object.freeze({ view: n.view as ContentView | 'item' | 'playlist' | 'radio', ...(n.entityId === undefined ? {} : { entityId: n.entityId as string }), ...(n.category === undefined ? {} : { category: n.category as string }) });
   }
   // Playback that cannot be read is left out when the entry still opens something; otherwise the entry is refused.
   if (v.playback !== undefined && v.playback !== null) {

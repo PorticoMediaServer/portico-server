@@ -8932,3 +8932,23 @@ CREATE INDEX app_reports_recipient ON app_reports(recipient_account_id,created_m
 CREATE TRIGGER hosted_membership_endings_retention_insert AFTER INSERT ON hosted_membership_endings BEGIN INSERT INTO maintenance_retention_rows(table_name,record_key,created_ms) VALUES('hosted_membership_endings',CAST(NEW.rowid AS TEXT),NEW.ended_ms) ON CONFLICT(table_name,record_key) DO UPDATE SET created_ms=excluded.created_ms; END;
 CREATE TRIGGER hosted_membership_endings_retention_update AFTER UPDATE OF sequence ON hosted_membership_endings BEGIN UPDATE maintenance_retention_rows SET created_ms=NEW.ended_ms WHERE table_name='hosted_membership_endings' AND record_key=CAST(NEW.rowid AS TEXT); END;
 CREATE TRIGGER hosted_membership_endings_retention_delete AFTER DELETE ON hosted_membership_endings BEGIN DELETE FROM maintenance_retention_rows WHERE table_name='hosted_membership_endings' AND record_key=CAST(OLD.rowid AS TEXT); END;
+-- The current profile's finite recent radios, recorded only by accepted playback starts.
+CREATE TABLE personal_music_radios(
+ profile_id TEXT NOT NULL,
+ seed_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ last_started_ms INTEGER NOT NULL CHECK(last_started_ms>=0),
+ last_session_id TEXT NOT NULL,
+ PRIMARY KEY(profile_id,seed_id)) STRICT;
+CREATE INDEX personal_music_radios_recent ON personal_music_radios(profile_id,last_started_ms DESC,seed_id DESC);
+CREATE TRIGGER personal_music_radios_revision_INSERT AFTER INSERT ON personal_music_radios BEGIN
+ INSERT INTO personal_activity_revisions VALUES(NEW.profile_id,1) ON CONFLICT(profile_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT NEW.profile_id,library.library_id,1 FROM catalog_entities seed JOIN catalog_libraries library ON library.id=seed.library_id WHERE seed.id=NEW.seed_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;
+END;
+CREATE TRIGGER personal_music_radios_revision_UPDATE AFTER UPDATE ON personal_music_radios BEGIN
+ INSERT INTO personal_activity_revisions VALUES(NEW.profile_id,1) ON CONFLICT(profile_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT NEW.profile_id,library.library_id,1 FROM catalog_entities seed JOIN catalog_libraries library ON library.id=seed.library_id WHERE seed.id=NEW.seed_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;
+END;
+CREATE TRIGGER personal_music_radios_revision_DELETE AFTER DELETE ON personal_music_radios BEGIN
+ INSERT INTO personal_activity_revisions VALUES(OLD.profile_id,1) ON CONFLICT(profile_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT OLD.profile_id,library.library_id,1 FROM catalog_entities seed JOIN catalog_libraries library ON library.id=seed.library_id WHERE seed.id=OLD.seed_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;
+END;

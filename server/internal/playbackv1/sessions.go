@@ -1156,6 +1156,9 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 		if err := s.Playback.PublishPresentationTx(ctx, tx, c.Principal, media.ID, view.StartPositionMs, replacing, false); err != nil {
 			return err
 		}
+		if err := s.recordRadioStartTx(ctx, tx, c, r); err != nil {
+			return err
+		}
 		if old.id != "" && old.ended == 0 {
 			if err := s.endTx(ctx, tx, old, now, "replaced", ""); err != nil {
 				return err

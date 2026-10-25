@@ -87,7 +87,15 @@ func (ReadingPublicationType) JSONSchema() map[string]any {
 	return map[string]any{"type": "string", "enum": []string{"book", "magazine", "newspaper"}}
 }
 
+type MusicRadioSeed struct {
+	ID   string `json:"id"`
+	Kind string `json:"kind"`
+}
+
 type ContentEntry struct {
+	// Radio is a journey from this exact permitted artist, album or song,
+	// never a song entity manufactured from a play count.
+	RadioSeed  *MusicRadioSeed      `json:"radioSeed,omitempty"`
 	AudioFacts *MusicTechnicalFacts `json:"audioFacts,omitempty"`
 	Badges     MusicFormatBadges    `json:"badges,omitempty"`
 	// ReadingMark is an explicit current-profile choice, never inferred from

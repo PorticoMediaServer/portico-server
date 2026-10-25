@@ -41,7 +41,6 @@ func (s *Service) musicDiscover(r ContentRequest, revision ContentRevision) ([]C
 	visible = strings.ReplaceAll(visible, "projected.entity_id", "e.entity_id")
 	visible = strings.ReplaceAll(visible, "WHERE album.id=", `WHERE EXISTS(SELECT 1 FROM catalog_item_availability av WHERE av.entity_id=i.id AND av.available=1 AND av.retired=0) AND album.id=`)
 	specs := []listenDiscoverSpec{
-		{"recently_played", "Recently played", `SELECT pid(entity.public_id) id FROM catalog_personal_sort_rows e INDEXED BY catalog_personal_order_last JOIN catalog_entities entity ON entity.id=e.entity_id WHERE e.profile_id=? AND e.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND e.kind=6 AND e.last_played_at<>'' AND ` + visible, `e.last_played_at DESC,e.entity_id DESC`, append([]any{r.Profile, r.Library}, bind...)},
 		{"new_albums", "New albums", `SELECT pid(entity.public_id) id FROM catalog_browse_rows e INDEXED BY catalog_browse_recent_works JOIN catalog_entities entity ON entity.id=e.entity_id WHERE e.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND e.kind=6 AND e.recent_text IS NOT NULL AND e.recent_text>=? AND e.recent_text<=? AND ` + visible, `e.recent_text DESC,e.entity_id DESC`, append([]any{r.Library, now.Add(-7 * 24 * time.Hour).UTC().Format("2006-01-02T15:04:05.000Z"), now.UTC().Format("2006-01-02T15:04:05.000Z")}, bind...)},
 	}
 	if actor, ok := viewerFromPersonalKey(r.Profile); ok {
@@ -60,7 +59,17 @@ func (s *Service) musicDiscover(r ContentRequest, revision ContentRevision) ([]C
 		}
 		sec := ContentSection{}
 		next := listenDiscoverCursor{Now: cursor.Now}
-		if id == "artists" || id == "genres" {
+		if id == "recently_played" {
+			var err error
+			sec, err = s.musicDiscoverRecent(r, cursor.Offset, now)
+			if err != nil {
+				return nil, err
+			}
+			if sec.NextCursor != "" {
+				next.Offset = cursor.Offset + r.Limit
+				sec.NextCursor = ""
+			}
+		} else if id == "artists" || id == "genres" {
 			page, err := s.BrowseEntities(r.Viewer, BrowseRequest{ServerID: r.ServerID, Library: r.Library, Profile: r.Profile, ViewerFence: r.ViewerFence, Pivot: id, Limit: r.Limit, Cursor: cursor.Inner})
 			if err != nil {
 				return nil, err
