@@ -51,10 +51,10 @@ export function MetadataEditor({api, scope, target, onClose, initialTab = 'gener
     }).map(([field, value]) => ({field, ...value}));
   }, [data, draft]);
   useEffect(() => {
-    if (state.phase !== 'ready' || !data || changed.length || !attentionInProgress(data.snapshot.identity?.status ?? '')) return;
+    if (shown !== 'matching' || state.phase !== 'ready' || !data || changed.length || !attentionInProgress(data.snapshot.identity?.status ?? '')) return;
     const timer = setTimeout(() => {void service.refresh(data);}, 2000);
     return () => clearTimeout(timer);
-  }, [service, state.phase, data, changed.length]);
+  }, [service, shown, state.phase, data, changed.length]);
   const edit = async (fields: NonNullable<RepairCommand['fields']>) => {
     if (!data) return;
     setError(undefined);
