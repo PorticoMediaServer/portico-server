@@ -106,6 +106,15 @@ func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item stri
 			return e
 		}
 	}
+	// The newest accepted report for this playback is the only record of what
+	// was played since the last one. It is read before this report's own history
+	// write replaces it.
+	evidence := chapterEvidence{}
+	if kind == int64(compactcatalog.Part) {
+		if evidence, e = personalChapterEvidence(tx, profile, playbackID); e != nil {
+			return e
+		}
+	}
 	positionMs := positionMillis(position)
 	if position >= threshold || completed {
 		_, e = tx.Exec(`INSERT INTO personal_history(id,profile_id,item_id,started_at,updated_at,sequence,position,unit,completed) VALUES(?,?,?,?,?,?,?,0,?) ON CONFLICT(profile_id,id) DO UPDATE SET updated_at=excluded.updated_at,sequence=excluded.sequence,position=excluded.position,completed=max(personal_history.completed,excluded.completed) WHERE excluded.sequence>personal_history.sequence`, playbackID, profile, entityID, now, now, sequence, positionMs, completed)
@@ -145,6 +154,16 @@ func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item stri
 	for _, c := range out.Conflicts {
 		if c.Field == "watched" {
 			blocked++
+		}
+	}
+	// Personal chapter completion joins the same accepted transaction, after the
+	// paused-history return and the personal, playback and container fences
+	// above. It writes from this playback's own evidence only; the owner's
+	// recordPlay history is never consulted, so a paused or overridden viewer
+	// learns nothing here.
+	if kind == int64(compactcatalog.Part) && blocked == 0 && (canonical || completed) {
+		if e = recordChapterCompletions(tx, profile, entityID, sequence, evidence, positionMs, clock); e != nil {
+			return e
 		}
 	}
 	if (canonical || completed) && blocked == 0 {
@@ -209,6 +228,85 @@ func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item stri
 		return snapshotPersonalByID(tx, profile, entityID, out)
 	}
 	return nil
+}
+
+// chapterEvidence is the newest accepted personal report for one playback: the
+// position that was reported and when. It is the raw evidence, not the viewer's
+// resume point, so a manual watched choice or a book pointer cannot stand in
+// for having listened.
+type chapterEvidence struct {
+	sequence int64
+	position int64
+	at       time.Time
+	valid    bool
+}
+
+func personalChapterEvidence(tx *sql.Tx, profile, playbackID string) (chapterEvidence, error) {
+	var out chapterEvidence
+	var stamp string
+	err := tx.QueryRow(`SELECT sequence,position,updated_at FROM personal_history WHERE profile_id=? AND id=?`, profile, playbackID).Scan(&out.sequence, &out.position, &stamp)
+	if errors.Is(err, sql.ErrNoRows) {
+		return out, nil
+	}
+	if err != nil {
+		return out, err
+	}
+	at, err := time.Parse(time.RFC3339Nano, stamp)
+	if err != nil {
+		// Without a readable time there is no bound for how much was played.
+		return out, nil
+	}
+	out.at, out.valid = at, true
+	return out, nil
+}
+
+// chapterPlayedSlack absorbs report latency and rounding between two accepted
+// reports. A report further ahead than the wall clock allowed is a seek, not
+// listening, and crosses nothing.
+const chapterPlayedSlack = 2 * time.Second
+
+// recordChapterCompletions marks the chapters whose end was passed between two
+// consecutive accepted reports of one playback. The interval is bounded by the
+// time that passed between them, so a forward seek marks nothing. The first
+// report of a play, a duplicate, an out-of-order report and a backwards seek
+// mark nothing; a backwards seek keeps what was already finished. The part's
+// own completed flag is deliberately not consulted: parts finish up to thirty
+// seconds before their physical end, which would finish a last chapter early.
+func recordChapterCompletions(tx *sql.Tx, profile string, file int64, sequence int64, previous chapterEvidence, currentMs int64, clock time.Time) error {
+	// Only evidence newer than what was accepted can add to the record; a
+	// duplicate or out-of-order report changes nothing.
+	if !previous.valid || sequence <= previous.sequence || currentMs <= previous.position {
+		return nil
+	}
+	elapsed := clock.Sub(previous.at)
+	if elapsed < 0 || currentMs-previous.position > (elapsed+chapterPlayedSlack).Milliseconds() {
+		return nil
+	}
+	// Bind the fact to the audio the chapter was heard from. A file replaced
+	// behind the same boundaries is different listening.
+	var assetID, assetSize, assetModified int64
+	if err := tx.QueryRow(`SELECT a.id,a.size,a.modified_ns FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id WHERE l.entity_id=? ORDER BY l.part_index,l.asset_id LIMIT 1`, file).Scan(&assetID, &assetSize, &assetModified); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+	// A fact whose chapter definition or source no longer exists was not earned
+	// by the content now at that index; clear it rather than let it reappear if a
+	// later scan restores the old shape.
+	if _, err := tx.Exec(`DELETE FROM personal_chapter_completions WHERE profile_id=? AND file_entity_id=? AND (asset_id<>? OR asset_size<>? OR asset_modified_ns<>? OR NOT EXISTS(SELECT 1 FROM catalog_book_chapters c WHERE c.file_id=personal_chapter_completions.file_entity_id AND c.chapter_index=personal_chapter_completions.chapter_index AND CAST(round(c.start_seconds*1000) AS INTEGER)=personal_chapter_completions.start_ms AND CAST(round(c.end_seconds*1000) AS INTEGER)=personal_chapter_completions.end_ms))`, profile, file, assetID, assetSize, assetModified); err != nil {
+		return err
+	}
+	// One indexed statement, not a row loop: file_id is indexed and only ends
+	// inside (previous, current] are candidates. The end itself counts; one
+	// millisecond before it does not.
+	_, err := tx.Exec(`INSERT INTO personal_chapter_completions(profile_id,file_entity_id,chapter_index,start_ms,end_ms,asset_id,asset_size,asset_modified_ns,completed_at)
+ SELECT ?,c.file_id,c.chapter_index,CAST(round(c.start_seconds*1000) AS INTEGER),CAST(round(c.end_seconds*1000) AS INTEGER),?,?,?,?
+ FROM catalog_book_chapters c
+ WHERE c.file_id=? AND c.start_seconds>=0 AND c.start_seconds<c.end_seconds AND c.end_seconds>0 AND c.end_seconds<1e15
+  AND CAST(round(c.end_seconds*1000) AS INTEGER)>? AND CAST(round(c.end_seconds*1000) AS INTEGER)<=?
+ ON CONFLICT(profile_id,file_entity_id,chapter_index) DO NOTHING`, profile, assetID, assetSize, assetModified, clock.Format("2006-01-02T15:04:05.000Z"), file, previous.position, currentMs)
+	return err
 }
 
 type HistoryEntry struct {
