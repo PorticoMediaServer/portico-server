@@ -651,3 +651,43 @@ test('a presentation the service was handed by the subtitle route loads, and the
   assert.equal(t.server.session(before.id)!.reports.at(-1)!.positionMs, 52_000);
   assert.equal(t.server.session(before.id)!.ended, false);
 });
+
+test('queued selection receipts cannot forget a replacement registration with the same session and generation', async ctx => {
+  const t = setup(ctx, {mount: false});
+  const {session} = await t.web.transport.start({itemId: 'movie'}, {startFrom: 'beginning', state: 'paused'});
+  const first = t.web.transport.adopt(session, 7200);
+  const old = t.web.transport.selectionRegistration?.(session.id, first);
+  assert.ok(old?.current());
+  assert.equal(t.web.transport.selectionRegistration?.(session.id), undefined, 'bare id cannot claim an existing registration');
+  const second = t.web.transport.adopt(session, 7200);
+  const current = t.web.transport.selectionRegistration?.(session.id, second);
+  assert.ok(current?.current());
+  assert.equal(old.current(), false, 'same generation re-registration retires the original receipt');
+  assert.equal(old.forget(() => true), false);
+  assert.equal(t.web.transport.session(session.id), session);
+  assert.equal(current.forget(() => false), false, 'a refused ownership guard leaves the registration alone');
+  assert.equal(current.forget(() => true), true);
+  assert.equal(t.web.transport.session(session.id), undefined);
+  assert.equal(current.current(), false);
+  const absent = t.web.transport.selectionRegistration?.(session.id);
+  assert.ok(absent?.current(), 'bare id can capture known absence');
+  t.web.transport.adopt(session, 7200);
+  assert.equal(absent.current(), false, 'a later registration retires known absence too');
+  assert.equal(absent.forget(() => true), false);
+});
+
+test('queued selection receipt never detaches an installed controller or playback owner', async ctx => {
+  const t = setup(ctx, {mount: false});
+  await t.player.playItem('movie', 120);
+  const installed = t.playback.getSnapshot().session;
+  assert.ok(installed);
+  const session = t.web.transport.session(installed.id);
+  assert.ok(session);
+  const adopted = t.web.transport.adopt(session, installed.duration);
+  const receipt = t.web.transport.selectionRegistration?.(session.id, adopted);
+  assert.ok(receipt);
+  assert.equal(receipt.current(), false, 'installed occurrences have an owner');
+  assert.equal(receipt.forget(() => true), false);
+  assert.equal(t.playback.getSnapshot().session?.id, installed.id);
+  assert.equal(t.web.transport.session(session.id), session);
+});

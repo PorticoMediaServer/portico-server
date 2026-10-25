@@ -265,7 +265,21 @@ export class WebShellPlaybackRuntime {
         await this.capabilityPublisher.publish(profile, life.signal);
       } catch (error) {stackReference.capabilityRejected = true;throw error;}
     }});
-    const queue = new V1QueuePlayer({http, api: web.transport, playback: service, viewer: this.source.authority, events: this.source.events, key: this.env.key, musicDefaults: this.source.settings.musicDefaults, audiobookPreferences: this.source.settings.audiobookPreferences, quality: this.source.settings.defaultQuality, retainQueueIds: () => this.retainedQueueIds(stackReference)});
+    const queue = new V1QueuePlayer({http, api: web.transport, playback: service, viewer: this.source.authority, events: this.source.events, key: this.env.key, musicDefaults: this.source.settings.musicDefaults, audiobookPreferences: this.source.settings.audiobookPreferences, quality: this.source.settings.defaultQuality, retainQueueIds: () => this.retainedQueueIds(stackReference),
+      retireQueuedSelection: async (session, isUnowned) => {
+        // Use this stack's original viewer-bound API, never a latest transport or
+        // raw stop fallback. The private registration guard survives every await.
+        const current = () => this.current(stackReference) && !life.signal.aborted && isUnowned();
+        if (!current()) return false;
+        const cleanupHttp: V1Http = {send: async request => {
+          if (!current()) throw new DOMException('Queue selection retired', 'AbortError');
+          const result = await inner.send({...request, signal: life.signal});
+          if (!current()) throw new DOMException('Queue selection retired', 'AbortError');
+          return result;
+        }};
+        await new SessionsClient(cleanupHttp, this.env.timers).stop(session.id, undefined, life.signal);
+        return current();
+      }});
     // The actual controller retains its ordered stop barrier across consecutive channel starts.
     service.useChannelPlayback(this.channelControl);
     queue.setCompletionPolicy(() => 'hold');

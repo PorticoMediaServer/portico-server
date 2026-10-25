@@ -40,6 +40,7 @@ import type {BrowserAudioFacts} from './audio/output';
 import {listeningDiagnostic, type ListeningEffectsPort} from './listening-effects';
 import type {DiscTitleRef, Session} from '@core/playback-v1/types.ts';
 import type {QueueSessionTransport} from '@core/playback-v1/v1-queue-player.ts';
+import {QueueSelectionRegistrations, type QueueSelectionRegistration} from '@core/playback-v1/selection-registration.ts';
 import {WebMediaPlayer, type HlsModule, type SubtitleTimeline, type VideoLike, type WebPlayerNotice, type WebPlayerTimers, type WebMediaPlayerOptions} from './web-media-player.ts';
 
 /** What the binding tells the player screen in words (the screen owns the wording). */
@@ -267,6 +268,8 @@ export class WebPlayback implements PlaybackAdapter {
   private readonly client: SessionsClient;
   private readonly options: PlaybackOptionsClient;
   private readonly known = new Map<string, Session>();
+  private readonly registrations = new QueueSelectionRegistrations();
+  private readonly selectionAdoptions = new WeakMap<PlaybackSession, Readonly<{id: string; registration: QueueSelectionRegistration}>>();
   private readonly changedListeners = new Set<(session: Session) => void>();
   private readonly positions = new Map<string, number>();
   private readonly retired = new Set<string>();
@@ -676,7 +679,7 @@ export class WebPlayback implements PlaybackAdapter {
   private controllerChanged() {
     const held = this.controller.getSnapshot().session, service = this.service;
     if (!held || !service) return;
-    this.known.set(held.id, held);
+    this.remember(held);
     const shown = service.getSnapshot().session;
     if (shown?.id === held.id && held.presentation.generation > shown.generation) service.installPresentation(toPlaybackSession(held, shown.duration));
   }
@@ -686,6 +689,7 @@ export class WebPlayback implements PlaybackAdapter {
     // This device's own doing (the queue moved on, the title finished) is not news to it, even
     // when the server's notice of it overtakes the answer that carries the next session.
     if (OWN_ENDS.includes(end.reason)) return;
+    this.registrations.changed(sessionId);
     this.known.delete(sessionId);
     for (const l of [...this.endedListeners]) l(sessionId, end);
   }
@@ -778,19 +782,36 @@ export class WebPlayback implements PlaybackAdapter {
   // ── PlaybackApi and the queue player's transport ────────────────────────
 
   private remember(session: Session): Session {
+    this.registrations.changed(session.id);
     this.known.set(session.id, session);
     // Bounded: sessions leave by retire, forget and stop; this is the backstop.
-    if (this.known.size > 16) this.known.delete(this.known.keys().next().value!);
+    if (this.known.size > 16) {
+      const oldest = this.known.keys().next().value!;
+      this.registrations.changed(oldest);this.known.delete(oldest);
+    }
     return session;
   }
 
   private dropped(id: string) {
+    this.registrations.changed(id);
     this.known.delete(id);
     this.positions.delete(id);
     if (this.controller.getSnapshot().session?.id === id) {
       this.controller.detach();
       // The element keeps what it shows until the service names the next session.
     }
+  }
+
+  /** Private receipt for exactly this registration (or known absence). Never
+   * detach the controller/service: an installed occurrence belongs to its owner. */
+  private captureSelectionRegistration(id: string): QueueSelectionRegistration {
+    const original = this.known.get(id);
+    const uninstalled = () => !this.disposed && this.controller.getSnapshot().session?.id !== id && this.service?.getSnapshot().session?.id !== id;
+    return this.registrations.capture(id, () => uninstalled() && this.known.get(id) === original, () => {
+      if (!uninstalled() || this.known.get(id) !== original) return false;
+      this.known.delete(id);this.positions.delete(id);this.registrations.changed(id);
+      return true;
+    });
   }
 
   private makeTransport(): WebPlayback['transport'] {
@@ -813,7 +834,16 @@ export class WebPlayback implements PlaybackAdapter {
     return {
       start,
       duration,
-      adopt: (session: Session, durationSeconds: number) => toPlaybackSession(self.remember(session), durationSeconds),
+      adopt: (session: Session, durationSeconds: number) => {
+        const playback = toPlaybackSession(self.remember(session), durationSeconds);
+        self.selectionAdoptions.set(playback, {id: session.id, registration: self.captureSelectionRegistration(session.id)});
+        return playback;
+      },
+      selectionRegistration(id: string, adopted?: PlaybackSession) {
+        if (adopted) {const original = self.selectionAdoptions.get(adopted);return original?.id === id ? original.registration : undefined;}
+        // A bare id cannot claim another caller's existing registration.
+        return self.known.has(id) ? undefined : self.captureSelectionRegistration(id);
+      },
       retire(id: string) { self.retired.add(id); if (self.retired.size > 64) self.retired.delete(self.retired.values().next().value!); self.dropped(id); },
       forget(id: string) { self.dropped(id); },
       reportedSeq: () => 0,
@@ -836,6 +866,7 @@ export class WebPlayback implements PlaybackAdapter {
         } else if (!self.retired.has(id)) {
           await self.client.stop(id, self.positions.get(id), signal);
         }
+        self.registrations.changed(id);
         self.known.delete(id);
         self.positions.delete(id);
       },
