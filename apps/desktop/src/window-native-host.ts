@@ -1,14 +1,17 @@
+import {createCaptionControls} from './caption-controls';
 import {createDesktopWindowController} from './window-controller.ts';
 import {nativeWindowBridge,type WindowBridge,type WindowChromeHostState,type WindowSnapshot} from './window.ts';
 /** Headless binding of existing shell markers to the actual native window.
- * Caption drawing stays with the OS while visual source is frozen. */
+ * Windows controls report mounted geometry; Mac/Linux retain native controls. */
 export function createDesktopNativeWindowHost(options:Readonly<{
   onEnvironment:(value:{os:WindowSnapshot['os'];fullscreen:boolean})=>void;
   bridge?:WindowBridge;prepareToClose?:()=>Promise<void>;page?:Document;
 }>){
   const page=options.page??document,report=()=>console.warn('window_unavailable');
+  let captions:ReturnType<typeof createCaptionControls>|undefined;
   const controller=createDesktopWindowController({bridge:options.bridge??nativeWindowBridge,onEnvironment:options.onEnvironment,
-    onSnapshot(){},onError:report,prepareToClose:options.prepareToClose});
+    onSnapshot(native,state){captions?.update(native,state);},onError:report,prepareToClose:options.prepareToClose});
+  captions=createCaptionControls({action:value=>controller.action(value),geometry:value=>controller.geometry(value)});
   const interactive='a,button,input,textarea,select,summary,[contenteditable]:not([contenteditable=false]),[role=button],[role=link],[data-window-no-drag]';
   const region=(event:MouseEvent)=>{
     const native=controller.native();
@@ -33,7 +36,7 @@ export function createDesktopNativeWindowHost(options:Readonly<{
   };
   page.addEventListener('mousedown',down,true);page.addEventListener('mouseup',up,true);
   const timer=setInterval(()=>{void controller.read();},200);void controller.read();
-  return Object.freeze({update:(state:WindowChromeHostState)=>controller.update(state),dispose(){
-    if(closing)return closing;clearInterval(timer);page.removeEventListener('mousedown',down,true);page.removeEventListener('mouseup',up,true);closing=controller.dispose();return closing;
+  return Object.freeze({render:captions.render,update:(state:WindowChromeHostState)=>controller.update(state),dispose(){
+    if(closing)return closing;captions?.dispose();clearInterval(timer);page.removeEventListener('mousedown',down,true);page.removeEventListener('mouseup',up,true);closing=controller.dispose();return closing;
   }});
 }
