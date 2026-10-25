@@ -195,6 +195,8 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
     <div className={styles.guideAmbient} data-guide-ambient aria-hidden="true"/>
     <header className={styles.guideHeader} data-guide-header>
       <h1>{title}</h1>
+      {phone && <Segmented className={styles.guidePhoneView} variant="view" aria-label={t('channels.view')} value={view} onValueChange={value => {if (value === 'guide' || value === 'list') onViewChange(value);}}
+        items={[{value: 'list', label: t('channels.viewList'), icon: 'i-list'}, {value: 'guide', label: t('channels.viewGuide'), icon: 'i-timeline'}]}/>}
       {switcher && <Select className={styles.guideSwitcher} aria-label={t('channels.source')} value={switcher.value} options={switcher.options} onValueChange={switcher.onChange}/>}
       {summary && <p className={styles.guideSource}>
         <strong>{summary.name}</strong>
@@ -225,9 +227,9 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
         <div className={styles.guideSortField}><span className={styles.guideSortPrefix}>{t('channels.sort')}</span>
           <Select className={styles.guideSort} aria-label={t('channels.sort')} value={sort.value} options={sort.options} onValueChange={sort.onChange}/>
         </div>
-        <Segmented className={styles.guideView} variant="view" aria-label={t('channels.view')} value={view} onValueChange={value => {if (value === 'guide' || value === 'list') onViewChange(value);}}
+        {!phone && <Segmented className={styles.guideView} variant="view" aria-label={t('channels.view')} value={view} onValueChange={value => {if (value === 'guide' || value === 'list') onViewChange(value);}}
           items={[{value: 'guide', label: t('title.viewGrid'), icon: 'i-timeline', accessibleLabel: t('title.viewGrid')},
-            {value: 'list', label: t('title.viewList'), icon: 'i-list', accessibleLabel: t('title.viewList')}]}/>
+            {value: 'list', label: t('title.viewList'), icon: 'i-list', accessibleLabel: t('title.viewList')}]}/>}
       </div>
     </div>
     {problem && <div className={styles.guideProblem}>{problem}</div>}
