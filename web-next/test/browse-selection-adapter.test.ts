@@ -166,7 +166,8 @@ test('Queue and the destination pickers take the explicit leaf ids in order', as
   const destinations = {playlist: async (items: readonly string[], anchor: HTMLElement) => { calls.push(['playlist', items, anchor]); },
     collection: async (items: readonly string[], anchor: HTMLElement) => { calls.push(['collection', items, anchor]); }};
   const {selection} = fake();
-  const adapter = createLibrarySelection({playSelection: selection, enqueue, destinations, reportError: () => {}});
+  const actions = {signal: new AbortController().signal, isCurrent: () => true};
+  const adapter = createLibrarySelection({playSelection: selection, enqueue, destinations, actions: actions as never, reportError: () => {}});
   const html = renderToStaticMarkup(createElement('div', null, adapter.toolbar));
   assert.match(html, />Add to queue</);
   assert.match(html, />Add to playlist</);
@@ -188,7 +189,7 @@ test('container and whole-view picks are offered no Queue or destination action'
     displayItems: [{key: 'key-0', item: {kind: 'show', id: 's1', libraryId: 'a', capabilities}}]};
   const container = fake({selection: {active: true, summary: {count: 1, types: [{kind: 'show', count: 1}], library: {kind: 'single', libraryId: 'a'}, every: capabilities},
     selectedKeys: ['key-0'], version: 1, registeredWindowCount: 1, registeredItemCount: 1, lastSectionId: 'library', target: containerTarget}});
-  const adapter = createLibrarySelection({playSelection: container.selection, enqueue, destinations, reportError: () => {}});
+  const adapter = createLibrarySelection({playSelection: container.selection, enqueue, destinations, actions: {signal: new AbortController().signal, isCurrent: () => true} as never, reportError: () => {}});
   const html = renderToStaticMarkup(createElement('div', null, adapter.toolbar));
   assert.doesNotMatch(html, />Add to queue</);
   assert.doesNotMatch(html, />Add to playlist</);
@@ -226,4 +227,68 @@ test('clearing a captured selection while preparing a personal job prevents subm
   const adapter = createLibrarySelection({playSelection: fake({}, host).selection, actions: actions as never, reportError: () => {}});
   await assert.rejects(adapter.personal({watched: true}), /cancelled/);
   assert.equal(requested, 0);
+});
+
+
+test('queue requires both a model operation and the route lifetime', async () => {
+  let dispatched = 0;
+  const enqueue = async () => {dispatched++;};
+  for (const host of [{captureOperation: undefined}, {isOperationCurrent: undefined}]) {
+    const adapter = createLibrarySelection({playSelection: fake({}, host).selection, enqueue,
+      actions: {signal: new AbortController().signal, isCurrent: () => true} as never, reportError: () => {}});
+    assert.doesNotMatch(renderToStaticMarkup(createElement('div', null, adapter.toolbar)), />Add to queue</);
+    await assert.rejects(adapter.queue('end'), /selection-queue-unavailable/);
+  }
+  for (const actions of [undefined, {isCurrent: () => true}]) {
+    const adapter = createLibrarySelection({playSelection: fake().selection, enqueue, actions: actions as never, reportError: () => {}});
+    assert.doesNotMatch(renderToStaticMarkup(createElement('div', null, adapter.toolbar)), />Add to queue</);
+    await assert.rejects(adapter.queue('end'), /selection-queue-unavailable/);
+  }
+  assert.equal(dispatched, 0);
+});
+
+test('queue rejects a captured target that differs from the displayed explicit target', async () => {
+  let dispatched = 0;
+  const adapter = createLibrarySelection({playSelection: fake({}, {captureOperation: () => ({target: {...target}})}).selection,
+    enqueue: async () => {dispatched++;}, actions: {signal: new AbortController().signal, isCurrent: () => true} as never, reportError: () => {}});
+  await assert.rejects(adapter.queue('next'), /selection-target-required/);
+  assert.equal(dispatched, 0);
+});
+
+test('queue carries the captured model and route fences through asynchronous preparation', async () => {
+  for (const retire of ['model', 'route', 'signal', 'target']) {
+    let modelCurrent = true, routeCurrent = true, displayedTarget = target, checks = 0;
+    const life = new AbortController(), operation = {target};
+    const original = fake({}, {captureOperation: () => operation,
+      isOperationCurrent: (captured: unknown) => captured === operation && modelCurrent}).selection;
+    const host = {...original as object, getSnapshot: () => ({...(original as {getSnapshot: () => object}).getSnapshot(), selection: {target: displayedTarget}})};
+    const adapter = createLibrarySelection({playSelection: host as never,
+      actions: {signal: life.signal, isCurrent: () => routeCurrent} as never, reportError: () => {},
+      enqueue: async input => {
+        assert.equal(input.signal, life.signal);
+        assert.equal(input.isCurrent(), true);
+        await Promise.resolve();
+        if (retire === 'model') modelCurrent = false;
+        if (retire === 'route') routeCurrent = false;
+        if (retire === 'signal') life.abort();
+        if (retire === 'target') displayedTarget = {...target};
+        assert.equal(input.isCurrent(), false, retire);
+        checks++;
+      }});
+    await adapter.queue('end');
+    assert.equal(checks, 1);
+  }
+});
+
+test('queue never enters its executor after the captured operation or route retires', async () => {
+  for (const retired of ['model', 'route', 'signal']) {
+    let dispatched = 0;
+    const life = new AbortController();
+    if (retired === 'signal') life.abort();
+    const adapter = createLibrarySelection({playSelection: fake({}, {isOperationCurrent: () => retired !== 'model'}).selection,
+      enqueue: async () => {dispatched++;}, actions: {signal: life.signal, isCurrent: () => retired !== 'route'} as never, reportError: () => {}});
+    assert.doesNotMatch(retired === 'model' ? '' : renderToStaticMarkup(createElement('div', null, adapter.toolbar)), />Add to queue</);
+    await assert.rejects(adapter.queue('next'), {name: 'AbortError'});
+    assert.equal(dispatched, 0);
+  }
 });
