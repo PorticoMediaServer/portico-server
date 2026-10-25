@@ -29,8 +29,9 @@ export function createPersonBindings(context: ScreenContext) {
   let generation = 0, personId = '', state: PersonSnapshot = {phase: 'idle', role: 'all'};
   let read: AbortController | undefined;
   const collections = new Map<string, WindowedCollection<PersonCredit>>();
+  const collectionUsers = new Map<WindowedCollection<PersonCredit>, number>();
   const publish = (next: PersonSnapshot) => { state = Object.freeze(next); for (const listener of listeners) listener(); };
-  const clear = () => { for (const collection of collections.values()) collection.dispose(); collections.clear(); };
+  const clear = () => { for (const collection of collections.values()) collection.dispose(); collections.clear(); collectionUsers.clear(); };
   const current = (page: PersonPage) => { life.assert(); if (state.phase !== 'ready' || state.page !== page) throw new DOMException('Person changed', 'AbortError'); };
   const select = async (id: string, role: PersonRole = 'all') => {
     life.assert(); const request = ++generation; read?.abort(); clear(); personId = id;
@@ -74,16 +75,47 @@ export function createPersonBindings(context: ScreenContext) {
     const collection = createWindowedCollection<PersonCredit>({pageSize, maxConcurrent: 1, maxResidentPages: 5, keyOf: credit => JSON.stringify([credit.media.libraryId, credit.media.id]), fetchPage: (start, _count, signal) => fetch(Math.floor(start / pageSize), signal)});
     collections.set(key, collection); return collection;
   };
+  const acquireCredits = (page: PersonPage, kind?: string) => {
+    current(page);
+    const collection = credits(page, kind), request = generation;
+    collectionUsers.set(collection, (collectionUsers.get(collection) ?? 0) + 1);
+    let active = true;
+    return {
+      collection,
+      current: () => active && life.current() && generation === request && state.phase === 'ready' && state.page === page,
+      release() {
+        if (!active) return;
+        active = false;
+        const users = collectionUsers.get(collection);
+        // A select/dispose already retired this exact object. An old cleanup
+        // must never remove or dispose a successor collection for the same key.
+        if (users === undefined) return;
+        if (users > 1) {collectionUsers.set(collection, users - 1);return;}
+        collectionUsers.delete(collection);
+        for (const [key, held] of collections) if (held === collection) collections.delete(key);
+        collection.dispose();
+      },
+    };
+  };
   return {
-    context, select, credits, current,
+    context, select, credits, acquireCredits, current,
     getSnapshot: () => state,
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    openKnownFor(page: PersonPage, entry: PersonCredit['media']) {
+      current(page);
+      if (!page.person.knownFor.includes(entry)) throw new DOMException('Person title changed', 'AbortError');
+      context.effects.openEntry(entry);
+    },
     open(page: PersonPage, credit: PersonCredit) {
-      life.assert();
+      current(page);
       if (state.page !== page || ![...collections.values()].some(collection => collection.residentItems().includes(credit))) throw new DOMException('Person title changed', 'AbortError');
       context.effects.openEntry(credit.media);
     },
-    retry: () => select(personId, state.role),
+    retry: (expected = state) => {
+      life.assert();
+      if (state !== expected) throw new DOMException('Person request changed', 'AbortError');
+      return select(personId, expected.role);
+    },
     cancel() { generation++; read?.abort(); clear(); personId = ''; publish({phase: 'idle', role: 'all'}); },
     dispose() { generation++; life.dispose(); read?.abort(); clear(); personId = ''; publish({phase: 'idle', role: 'all'}); listeners.clear(); },
   };

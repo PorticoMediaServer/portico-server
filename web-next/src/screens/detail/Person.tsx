@@ -1,5 +1,5 @@
 import {t, locale} from './text';
-import {useEffect, useMemo, useState, useSyncExternalStore} from 'react';
+import {useEffect, useLayoutEffect, useState, useSyncExternalStore} from 'react';
 import type {PersonPage, PersonCredit} from '@core/people.ts';
 import type {ContentEntry} from '@core/library-content.ts';
 import {Chip, Button} from '../../kit/controls';
@@ -23,11 +23,10 @@ const groupHeading = (kind: string | undefined) => t(kind === 'movie' ? 'search.
 
 export type PersonScreenProps = {binding: PersonBindings; personId: string};
 export function PersonScreen({binding, personId}: PersonScreenProps) {
-  useEffect(() => { void binding.select(personId).catch(binding.context.effects.reportError); return () => binding.cancel(); }, [binding, personId]);
   const snapshot = useSyncExternalStore(binding.subscribe, binding.getSnapshot, binding.getSnapshot);
   const [full, setFull] = useState(false), width = useShellWidth(), phone = width < 1024;
   useEffect(() => setFull(false), [personId]);
-  if (!snapshot.page) return snapshot.phase === 'error' ? <ScreenProblem context={binding.context} error={snapshot.error} retry={() => { void binding.retry(); }} /> : <DetailLoading />;
+  if (!snapshot.page) return snapshot.phase === 'error' ? <ScreenProblem context={binding.context} error={snapshot.error} retry={() => runScreenCommand(binding.context, () => binding.retry(snapshot))} /> : <DetailLoading />;
   const page = snapshot.page, {person} = page, art = binding.context.artwork;
   const initials = person.name.split(/\s+/).filter(Boolean).slice(0, 2).map(word => Array.from(word)[0]).join('');
   const born = date(person.birthDate), died = date(person.deathDate);
@@ -39,7 +38,7 @@ export function PersonScreen({binding, personId}: PersonScreenProps) {
   const bornText = born ? (died ? t('web.person.lived', {born, died}) : t('web.person.born', {date: born})) : undefined;
   const roleChips = <div className={phone ? styles.phoneChips : styles.chips}>{(['all', 'cast', 'crew'] as const).map(role => <Chip key={role} variant={phone ? 'default' : 'quick'} selected={snapshot.role === role} onClick={() => runScreenCommand(binding.context, () => { binding.current(page); return binding.select(person.id, role); })}>{t(role === 'all' ? 'web.search.all' : role === 'cast' ? 'web.person.cast' : 'web.person.crew')}</Chip>)}</div>;
   return <article className={styles.person} data-person-screen data-phone={phone || undefined}>
-    {phone && <div className={styles.phoneBar} data-person-phone-bar><Button variant="icon" icon="i-left" iconOnly aria-label={t('accounts.signIn.back')} onClick={() => runScreenCommand(binding.context, () => binding.context.effects.back?.())} /></div>}
+    {phone && <div className={styles.phoneBar} data-person-phone-bar><Button variant="icon" icon="i-left" iconOnly aria-label={t('accounts.signIn.back')} onClick={() => runScreenCommand(binding.context, () => {binding.current(page);binding.context.effects.back?.();})} /></div>}
     <header className={styles.hero} data-person-hero>
       <AmbientArt className={styles.wash} treatment="artist" sources={person.knownFor.slice(0, 3).flatMap(entry => { const source = art.ambient(entry.backdropUrl ?? entry.posterUrl); return source ? [source] : []; })} />
       <div className={styles.portrait} data-person-disc><PersonCircle covers={phone ? [] : covers} initials={initials} alt={person.name} initialsSize={phone ? 38 : 128} /></div>
@@ -82,14 +81,27 @@ export function PersonScreen({binding, personId}: PersonScreenProps) {
 }
 
 function PhoneKnownFor({binding, page}: {binding: PersonBindings; page: PersonPage}) {
-  const open = (entry: ContentEntry) => runScreenCommand(binding.context, () => { if (binding.context.isCurrent()) binding.context.effects.openEntry(entry); });
+  const open = (entry: ContentEntry) => runScreenCommand(binding.context, () => binding.openKnownFor(page, entry));
   return <div data-person-knownfor><Shelf heading={t('web.person.knownFor')} items={page.person.knownFor} getKey={entry => entry.id} platform="phone-web" style={{marginTop: 18}}
     renderItem={entry => <PosterCard className={styles.knownCard} model={entryCard(entry, {t, locale: locale()})} context="detail"
       artwork={binding.context.artwork.foreground(entry.posterUrl, 380, 2 / 3)} watched={entry.watched} onNavigate={() => open(entry)} />} /></div>;
 }
 
-function PersonCredits({binding, page, kind, total, heading, phone, showHeading = true}: {binding: PersonBindings; page: PersonPage; kind?: string; total: number; heading: string; phone: boolean; showHeading?: boolean}) {
-  const collection = useMemo(() => binding.credits(page, kind), [binding, page, kind]);
+type PersonCreditsProps = {binding: PersonBindings; page: PersonPage; kind?: string; total: number; heading: string; phone: boolean; showHeading?: boolean};
+type CreditLease = ReturnType<PersonBindings['acquireCredits']>;
+function PersonCredits(props: PersonCreditsProps) {
+  const {binding, page, kind} = props;
+  const [published, publish] = useState<Readonly<{binding: PersonBindings; page: PersonPage; kind?: string; lease: CreditLease}>>();
+  useLayoutEffect(() => {
+    const lease = binding.acquireCredits(page, kind);
+    publish({binding, page, kind, lease});
+    return lease.release;
+  }, [binding, page, kind]);
+  const owned = published && published.binding === binding && published.page === page && published.kind === kind && published.lease.current() ? published.lease : undefined;
+  return owned ? <PersonCreditGrid {...props} lease={owned}/> : null;
+}
+function PersonCreditGrid({binding, page, kind, total, heading, phone, showHeading = true, lease}: PersonCreditsProps & {lease: CreditLease}) {
+  const collection = lease.collection;
   const state = useSyncExternalStore(collection.subscribe, collection.getSnapshot, collection.getSnapshot);
   const columns = Math.max(1, Math.min(total, 4));
   const grouped = kind !== undefined && !phone;
@@ -106,11 +118,11 @@ function PersonCredits({binding, page, kind, total, heading, phone, showHeading 
       const textPresentation: CardTextPresentation | undefined = !phone && extraPresentation.some(Boolean) ? {extraCaption: extraPresentation} : undefined;
       return <PosterCard className={phone ? styles.phoneCreditCard : undefined} model={{title: model.title, caption: [], progress: model.progress}} context="detail" textPresentation={textPresentation}
         artwork={binding.context.artwork.foreground(credit.media.posterUrl, 380, 2 / 3)} watched={credit.media.watched} extraCaption={extraCaption}
-        onNavigate={() => runScreenCommand(binding.context, () => binding.open(page, credit))} />;
+        onNavigate={() => runScreenCommand(binding.context, () => {if (!lease.current()) throw new DOMException('Person credit opening retired', 'AbortError');binding.open(page, credit);})} />;
     }} />;
   return <section className={phone ? styles.phoneGroup : styles.group} data-person-group={kind ?? 'all'}>
     {showHeading && <h2>{heading}{total !== undefined && <span className={styles.groupCount}>{total}</span>}</h2>}
-    {state.status === 'error' && <ScreenFailure retry={() => collection.retry()} />}
+    {state.status === 'error' && <ScreenFailure retry={() => {if (lease.current()) collection.retry();}} />}
     {grouped ? <div className={styles.track}>{grid}</div> : grid}
   </section>;
 }
