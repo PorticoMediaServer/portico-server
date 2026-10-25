@@ -21,6 +21,7 @@ export const readerMessages = {
   'next.reader.hintMiddle': 'Middle',
   'next.reader.hintLeftThird': 'Left third',
   'next.reader.hintRightThird': 'Right third',
+  'next.reader.hintSwipe': 'Swipe left or right to turn the page, too',
   'next.reader.hintSelect': 'Press and hold a word to select text',
   'next.reader.hintGotIt': 'Got it',
   'next.reader.volumeNumber': 'Volume {number}',
