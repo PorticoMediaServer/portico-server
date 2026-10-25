@@ -23,17 +23,9 @@ func (s *Service) recordRadioStartTx(ctx context.Context, tx *sql.Tx, c Caller, 
 	if err != nil || !ownsQueue(c, q) {
 		return ErrNotFound
 	}
-	l, err := s.readLayout(ctx, tx, q)
-	if err != nil {
-		return err
-	}
-	_, segment, ok := l.sourceIndexOf(r.entryID)
-	if !ok {
-		return ErrNotFound
-	}
 	snapshot, ordinalText, ok := strings.Cut(r.entryID, "-")
 	ordinal, err := strconv.ParseInt(ordinalText, 10, 64)
-	if !ok || err != nil || snapshot != l.segments[segment].snapshot {
+	if !ok || err != nil || ordinal < 0 {
 		return ErrNotFound
 	}
 	var raw string
@@ -47,8 +39,16 @@ func (s *Service) recordRadioStartTx(ctx context.Context, tx *sql.Tx, c Caller, 
 	if !isRadioSource(selector) {
 		return nil
 	}
-	item, err := l.key(snapshot, ordinal)
-	if err != nil || item != r.item {
+	var segmentID string
+	if err = tx.QueryRowContext(ctx, `SELECT id FROM queue_v1_segments INDEXED BY queue_v1_segments_entry WHERE queue_id=? AND snapshot_id=? AND first_ordinal<=? AND ?<first_ordinal+count AND NOT EXISTS(SELECT 1 FROM queue_v1_removals removed WHERE removed.snapshot_id=? AND removed.ordinal=?) ORDER BY first_ordinal DESC LIMIT 1`, q.id, snapshot, ordinal, ordinal, snapshot, ordinal).Scan(&segmentID); err != nil {
+		return ErrNotFound
+	}
+	var chunk []byte
+	if err = tx.QueryRowContext(ctx, `SELECT keys FROM queue_v1_chunks WHERE snapshot_id=? AND chunk_no=?`, snapshot, ordinal/chunkKeys).Scan(&chunk); err != nil {
+		return ErrNotFound
+	}
+	item, ok := chunkKey(chunk, int(ordinal%chunkKeys))
+	if !ok || item != r.item {
 		return ErrRevision
 	}
 	var seed int64

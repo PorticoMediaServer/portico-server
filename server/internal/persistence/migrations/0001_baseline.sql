@@ -8968,3 +8968,6 @@ CREATE TRIGGER personal_music_radios_revision_DELETE AFTER DELETE ON personal_mu
  INSERT INTO personal_activity_revisions VALUES(OLD.profile_id,1) ON CONFLICT(profile_id) DO UPDATE SET revision=revision+1;
  INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT OLD.profile_id,library.library_id,1 FROM catalog_entities seed JOIN catalog_libraries library ON library.id=seed.library_id WHERE seed.id=OLD.seed_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;
 END;
+
+-- Exact admitted occurrence lookup must not load a whole large queue in its writer.
+CREATE INDEX queue_v1_segments_entry ON queue_v1_segments(queue_id,snapshot_id,first_ordinal);
