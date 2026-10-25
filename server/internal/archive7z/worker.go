@@ -1,13 +1,9 @@
-// Command readingarchive7z is the owned resource-bounded CB7 helper. The server
-// never parses a 7z archive in its own address space: it starts this program
-// with a fixed argument vector, feeds the leased bytes on stdin within a bounded
-// spool, and reads a small typed result. The helper refuses encoded headers,
-// external streams, oversized headers, members and output. The parent owns the
-// process group, deadline, hard address-space/CPU/scratch/output limits and the
-// private scratch root (TMPDIR): the helper only writes beneath that root, and a
-// SIGKILL cannot clean up on its behalf, so the parent removes it after a
-// physical wait.
-package main
+// Package archive7z is the owned resource-bounded CB7 worker. It runs only as a
+// hidden mode of the one server executable (fixed argument vector, stdin for the
+// archive, stdout for a typed reply or page bytes) so no second binary, PATH
+// search or external decoder is installed. The parent owns the scratch root,
+// deadlines, process-group kill and physical wait; this package owns parsing.
+package archive7z
 
 import (
 	"encoding/binary"
@@ -22,11 +18,14 @@ import (
 )
 
 const (
-	maxSource      = 2 << 30
+	MaxSource      = 2 << 30
 	maxHeaderBytes = 16 << 20
-	maxMemberBytes = 32 << 20
-	maxMembers     = 4096
+	MaxMember      = 32 << 20
+	MaxMembers     = 4096
 	maxNameLength  = 1024
+	// Mode is the hidden first argument that dispatches the server executable
+	// into this worker before normal startup.
+	Mode = "__reading-archive7z"
 )
 
 type reply struct {
@@ -35,55 +34,53 @@ type reply struct {
 	Size    int64    `json:"size,omitempty"`
 }
 
-func main() {
+// Main runs one worker invocation and returns the process exit code. All owned
+// resources unwind before it returns.
+func Main(args []string, stdin io.Reader, stdout io.Writer) int {
 	code := 0
-	if err := run(); err != nil {
-		emit(reply{Error: err.Error()})
+	if err := run(args, stdin, stdout); err != nil {
+		_ = json.NewEncoder(stdout).Encode(reply{Error: err.Error()})
 		code = 2
 	}
-	os.Exit(code)
+	return code
 }
 
-// run keeps every owned resource unwinding through defers before main exits; a
-// fail path returns an error instead of calling os.Exit inside a worker.
-func run() error {
-	// The isolation this helper provides depends on real resource limits: a
-	// platform that cannot set them refuses to parse anything.
+func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	if err := limitProcess(); err != nil {
 		return err
 	}
-	if len(os.Args) < 2 {
+	if len(args) == 0 {
 		return errors.New("mode required")
 	}
-	switch os.Args[1] {
+	switch args[0] {
 	case "list":
-		return list()
+		return list(stdin, stdout)
 	case "page":
-		if len(os.Args) != 3 {
+		if len(args) != 2 {
 			return errors.New("member required")
 		}
-		return page(os.Args[2])
+		return page(stdin, stdout, args[1])
 	default:
 		return errors.New("unknown mode")
 	}
 }
 
-// spool copies stdin into a private bounded file; 7z needs random access and the
-// helper never receives an original filesystem path.
-func spool() (string, int64, error) {
+// spool copies stdin into the parent-provided private scratch root; 7z needs
+// random access and no archive path is ever passed on the command line.
+func spool(stdin io.Reader) (string, int64, error) {
 	directory, err := os.MkdirTemp("", "portico-cb7-")
 	if err != nil {
 		return "", 0, err
 	}
 	file, err := os.Create(filepath.Join(directory, "archive.7z"))
 	if err != nil {
-		os.RemoveAll(directory)
+		_ = os.RemoveAll(directory)
 		return "", 0, err
 	}
-	written, err := io.Copy(file, io.LimitReader(os.Stdin, maxSource+1))
+	written, err := io.Copy(file, io.LimitReader(stdin, MaxSource+1))
 	closeErr := file.Close()
-	if err != nil || closeErr != nil || written > maxSource {
-		os.RemoveAll(directory)
+	if err != nil || closeErr != nil || written > MaxSource {
+		_ = os.RemoveAll(directory)
 		return "", 0, errors.New("archive too large")
 	}
 	return directory, written, nil
@@ -114,31 +111,31 @@ func admit(path string, size int64) error {
 	return nil
 }
 
-func open() (*sevenzip.ReadCloser, string, error) {
-	directory, size, err := spool()
+func open(stdin io.Reader) (*sevenzip.ReadCloser, string, error) {
+	directory, size, err := spool(stdin)
 	if err != nil {
 		return nil, "", err
 	}
 	archive := filepath.Join(directory, "archive.7z")
 	if err = admit(archive, size); err != nil {
-		os.RemoveAll(directory)
+		_ = os.RemoveAll(directory)
 		return nil, "", err
 	}
 	reader, err := sevenzip.OpenReader(archive)
 	if err != nil {
-		os.RemoveAll(directory)
+		_ = os.RemoveAll(directory)
 		return nil, "", errors.New("archive refused")
 	}
-	if len(reader.File) == 0 || len(reader.File) > maxMembers {
-		reader.Close()
-		os.RemoveAll(directory)
+	if len(reader.File) == 0 || len(reader.File) > MaxMembers {
+		_ = reader.Close()
+		_ = os.RemoveAll(directory)
 		return nil, "", errors.New("member count out of bounds")
 	}
 	return reader, directory, nil
 }
 
-func list() error {
-	reader, directory, err := open()
+func list(stdin io.Reader, stdout io.Writer) error {
+	reader, directory, err := open(stdin)
 	if err != nil {
 		return err
 	}
@@ -151,15 +148,14 @@ func list() error {
 		}
 		names = append(names, file.Name)
 	}
-	emit(reply{Members: names})
-	return nil
+	return json.NewEncoder(stdout).Encode(reply{Members: names})
 }
 
-func page(name string) error {
+func page(stdin io.Reader, stdout io.Writer, name string) error {
 	if !plainName(name) {
 		return errors.New("invalid member")
 	}
-	reader, directory, err := open()
+	reader, directory, err := open(stdin)
 	if err != nil {
 		return err
 	}
@@ -174,11 +170,11 @@ func page(name string) error {
 			return errors.New("member refused")
 		}
 		defer body.Close()
-		out, err := io.ReadAll(io.LimitReader(body, maxMemberBytes+1))
-		if err != nil || int64(len(out)) != int64(file.UncompressedSize64) || len(out) > maxMemberBytes {
+		out, err := io.ReadAll(io.LimitReader(body, MaxMember+1))
+		if err != nil || int64(len(out)) != int64(file.UncompressedSize64) || len(out) > MaxMember {
 			return errors.New("member out of bounds")
 		}
-		if _, err = os.Stdout.Write(out); err != nil {
+		if _, err = stdout.Write(out); err != nil {
 			return errors.New("output failed")
 		}
 		return nil
@@ -204,7 +200,7 @@ func plainName(name string) bool {
 }
 
 func plainMember(name string, dir bool, size uint64) bool {
-	if dir || size == 0 || size > maxMemberBytes || !plainName(name) {
+	if dir || size == 0 || size > MaxMember || !plainName(name) {
 		return false
 	}
 	lower := strings.ToLower(name)
@@ -214,8 +210,4 @@ func plainMember(name string, dir bool, size uint64) bool {
 		}
 	}
 	return false
-}
-
-func emit(value reply) {
-	_ = json.NewEncoder(os.Stdout).Encode(value)
 }

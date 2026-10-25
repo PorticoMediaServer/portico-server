@@ -16,6 +16,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	adminops "portico.local/server/internal/administration"
+	"portico.local/server/internal/archive7z"
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/audiofacts"
 	"portico.local/server/internal/backup"
@@ -87,6 +88,11 @@ func newDriveOAuth() *driveoauth.Store {
 }
 
 func main() {
+	// The bounded CB7 worker is a hidden mode of this same executable, dispatched
+	// before any normal startup so it never opens the server's own state.
+	if len(os.Args) >= 2 && os.Args[1] == archive7z.Mode {
+		os.Exit(archive7z.Main(os.Args[2:], os.Stdin, os.Stdout))
+	}
 	// The media process shim (mediaexec) replaces itself with the sandboxed
 	// tool; it must not start anything else first.
 	if handled, e := mediaexec.RunHelper(os.Args[1:]); handled {

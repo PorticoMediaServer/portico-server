@@ -7,8 +7,9 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"time"
+
+	"portico.local/server/internal/archive7z"
 )
 
 // CB7 decoding runs in the owned bounded helper, never in this process. The
@@ -16,7 +17,6 @@ import (
 // gives it a private scratch root through TMPDIR, owns the process group and
 // deadline, and removes the scratch root only after the physical wait.
 const (
-	cb7HelperName    = "readingarchive7z"
 	cb7ListMaxBytes  = 1 << 20
 	cb7PageMaxBytes  = MaxMember
 	cb7HelperTimeout = 90 * time.Second
@@ -27,18 +27,14 @@ type cb7ListReply struct {
 	Members []string `json:"members"`
 }
 
+// cb7HelperPath is this same server executable: the worker is a hidden mode of
+// the one installed binary, never a second file, PATH lookup or override.
 func cb7HelperPath() (string, error) {
-	if override := os.Getenv("PORTICO_ARCHIVE7Z"); override != "" {
-		if filepath.IsAbs(override) {
-			return override, nil
-		}
-		return "", ErrArchiveFormat
-	}
 	executable, err := os.Executable()
 	if err != nil {
 		return "", ErrArchiveFormat
 	}
-	return filepath.Join(filepath.Dir(executable), cb7HelperName), nil
+	return executable, nil
 }
 
 // runCB7Helper starts the helper with a fixed argv, its own scratch root and a
@@ -75,7 +71,7 @@ func runCB7Helper(ctx context.Context, ra io.ReaderAt, size int64, args ...strin
 		return nil, ErrLimit
 	}
 	defer input.Close()
-	command := exec.CommandContext(deadline, path, args...)
+	command := exec.CommandContext(deadline, path, append([]string{archive7z.Mode}, args...)...)
 	command.Env = []string{"TMPDIR=" + scratch, "HOME=" + scratch, "PATH="}
 	command.Stdin = input
 	stdout, pipeErr := command.StdoutPipe()
