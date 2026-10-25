@@ -6,6 +6,8 @@
   "sourceCommit": "516acb2a0ff5ef73f64547898e018e793152c506",
   "license": "ISC",
   "licenseSHA256": "60c4194f702ddd969f969577743546327b4e9db560c07ec286be5cec27f55fcd",
+  "releaseTag": "musicnn-mtt-516acb2a0ff5ef73f64547898e018e793152c506-onnx1",
+  "releaseTag": "musicnn-mtt-516acb2a0ff5ef73f64547898e018e793152c506-onnx1",
   "graph": {
     "input": "model/Placeholder",
     "training": "model/Placeholder_2",

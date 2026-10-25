@@ -2,6 +2,7 @@
 """Build, verify and fetch the pinned Linux Sonic distribution (no installation)."""
 import argparse
 import hashlib
+import io
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -12,11 +13,13 @@ import struct
 import subprocess
 import tarfile
 import tempfile
+import urllib.error
 import urllib.request
 
 ROOT = Path(__file__).resolve().parent.parent
 MAX_ARCHIVE = 128 << 20
 MAX_CONTENT = 256 << 20
+MAX_MODEL = 64 << 20
 # These remain the distribution's ordinary OS runtime, as in the FFmpeg bundle.
 SYSTEM = {'libc.so.6', 'libm.so.6', 'libdl.so.2', 'libpthread.so.0', 'librt.so.1',
           'libstdc++.so.6', 'libgcc_s.so.1', 'ld-linux-x86-64.so.2', 'ld-linux-aarch64.so.1'}
@@ -346,6 +349,125 @@ def fetch(output, target):
         extract(archive, output, target)
 
 
+def model_release(model_lock):
+    tag = model_lock.get('releaseTag')
+    if not isinstance(tag, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,100}', tag):
+        raise ValueError('invalid model release tag')
+    return tag
+
+
+def model_name(model_lock):
+    version = model_lock['onnx']['version']
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,100}', version):
+        raise ValueError('invalid model version')
+    return 'musicnn-mtt-' + version + '.tar.xz'
+
+
+def model_reference(model_lock, path):
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > 64 << 10:
+        raise ValueError('invalid model conformance reference')
+    reference = json.loads(path.read_text())
+    if not isinstance(reference, dict) or reference.get('modelSHA256') != model_lock['onnx']['sha256']:
+        raise ValueError('conformance reference describes different model bytes')
+    return reference
+
+
+def model_package(output, model, conformance):
+    """Publish the exact reviewed model trio once, with its reference and pin."""
+    _, model_lock = locks()
+    if output.exists() or output.is_symlink():
+        raise ValueError('refusing to replace a published model export')
+    model_identity(model, model_lock)
+    model_reference(model_lock, conformance)
+    members = [(f'musicnn-mtt/{name}', model / name, 0o644) for name in ('model.onnx', 'model.json', 'LICENSE.md')]
+    members += [('conformance.json', conformance, 0o644), ('model.lock.json', None, 0o644)]
+    epoch = int(os.environ.get('SOURCE_DATE_EPOCH', '0'))
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(output, 'w:xz') as archive:
+        for name, source, mode in members:
+            if source is None:
+                stream = io.BytesIO(json.dumps(model_lock, indent=2).encode() + b'\n')
+                size = stream.getbuffer().nbytes
+            else:
+                stream, size = source.open('rb'), source.stat().st_size
+            info = tarfile.TarInfo(name)
+            info.size, info.mode, info.mtime = size, mode, epoch
+            info.uid = info.gid = 0
+            info.uname = info.gname = ''
+            with stream:
+                archive.addfile(info, stream)
+
+
+def model_extract(archive, output):
+    """Verify and atomically publish one pinned model export; never install or infer."""
+    _, model_lock = locks()
+    if output.exists() or output.is_symlink():
+        raise ValueError('model export output already exists')
+    expected = {f'musicnn-mtt/{name}' for name in ('model.onnx', 'model.json', 'LICENSE.md')}
+    expected |= {'conformance.json', 'model.lock.json'}
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='sonic-model-', dir=output.parent) as temporary:
+        stage = Path(temporary) / 'export'
+        stage.mkdir()
+        with tarfile.open(archive) as source:
+            members = source.getmembers()
+            if len(members) > 16 or sum(member.size for member in members) > MAX_MODEL:
+                raise ValueError('unbounded model export archive')
+            names = [member.name for member in members]
+            if len(names) != len(set(names)) or not all(member.isfile() for member in members):
+                raise ValueError('duplicate or unsupported model export member')
+            for member in members:
+                safe_path(member.name)
+            if set(names) != expected:
+                raise ValueError('unexpected model export members')
+            source.extractall(stage, filter='data')
+        model_identity(stage / 'musicnn-mtt', model_lock)
+        if json.loads((stage / 'model.lock.json').read_text()) != model_lock:
+            raise ValueError('model export provenance differs from the reviewed pin')
+        model_reference(model_lock, stage / 'conformance.json')
+        if output.exists() or output.is_symlink():
+            raise ValueError('model export output appeared during verification')
+        stage.rename(output)
+
+
+def model_fetch(output, base=None):
+    """Fetch the durable reviewed model export from its own pinned, non-latest release."""
+    _, model_lock = locks()
+    tag, name = model_release(model_lock), model_name(model_lock)
+    base = (base or 'https://github.com/PorticoMediaServer/portico-server/releases/download/' + tag).rstrip('/') + '/'
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='sonic-model-fetch-', dir=output.parent) as temporary:
+        try:
+            with urllib.request.urlopen(base + 'checksums.sha256', timeout=60) as response:
+                sums = response.read((64 << 10) + 1).decode('ascii')
+        except urllib.error.HTTPError as error:
+            if error.code == 404:
+                raise ValueError('model export is not published yet') from None
+            raise
+        if len(sums) > 64 << 10:
+            raise ValueError('unbounded model checksum list')
+        matches = [line.split()[0] for line in sums.splitlines()
+                   if len(line.split()) == 2 and line.split()[1].removeprefix('./') == name]
+        if len(matches) != 1 or not re.fullmatch('[0-9a-f]{64}', matches[0]):
+            raise ValueError('missing unique model export checksum')
+        archive = Path(temporary) / name
+        size = 0
+        with urllib.request.urlopen(base + name, timeout=120) as response, archive.open('wb') as stream:
+            while block := response.read(1 << 20):
+                size += len(block)
+                if size > MAX_MODEL:
+                    raise ValueError('unbounded model export download')
+                stream.write(block)
+        if digest(archive) != matches[0]:
+            raise ValueError('model export download checksum mismatch')
+        model_extract(archive, output)
+
+
+def model_verify(directory):
+    _, model_lock = locks()
+    return model_identity(directory, model_lock)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest='command', required=True)
@@ -361,9 +483,21 @@ def main():
             for key in ('helper', 'sdk', 'model'):
                 command.add_argument('--' + key, type=Path, required=True)
             command.add_argument('--source-revision', required=True)
+    for name in ('model-package', 'model-fetch', 'model-verify'):
+        command = commands.add_parser(name)
+        command.add_argument('output', type=Path)
+        if name == 'model-package':
+            command.add_argument('--model', type=Path, required=True)
+            command.add_argument('--conformance', type=Path, required=True)
     args = parser.parse_args()
     try:
-        if args.command == 'package':
+        if args.command == 'model-package':
+            model_package(args.output, args.model, args.conformance)
+        elif args.command == 'model-fetch':
+            model_fetch(args.output)
+        elif args.command == 'model-verify':
+            model_verify(args.output)
+        elif args.command == 'package':
             args.output.parent.mkdir(parents=True, exist_ok=True)
             package(args.helper, args.sdk, args.model, args.target, args.output, args.source_revision)
         elif args.command == 'extract':
@@ -380,7 +514,10 @@ def main():
         parser.exit(1, 'Sonic bundle verification failed: ' + str(error) + '\n')
     except (OSError, KeyError, tarfile.TarError, subprocess.CalledProcessError):
         parser.exit(1, 'Sonic bundle verification failed; no bundle published.\n')
-    print('Sonic bundle ' + args.command + ' passed (' + args.target + ').')
+    if args.command.startswith('model-'):
+        print('Sonic model export ' + args.command.removeprefix('model-') + ' passed.')
+    else:
+        print('Sonic bundle ' + args.command + ' passed (' + args.target + ').')
 
 
 if __name__ == '__main__':

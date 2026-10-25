@@ -21,15 +21,31 @@ env:
 jobs:
   model:
     permissions:
-      contents: read
+      contents: write
       actions: read
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with: {fetch-depth: 0}
+      - name: Reuse the durable reviewed model export when it is already pinned
+        id: retained
+        shell: bash
+        run: |
+          set +e
+          output="$(python3 scripts/sonic-bundle.py model-fetch .sonic-model 2>&1)"
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          if [ "$status" -eq 0 ]; then
+            echo 'fetched=1' >> "$GITHUB_OUTPUT"
+          elif [[ "$output" == *'model export is not published yet'* ]]; then
+            echo 'fetched=0' >> "$GITHUB_OUTPUT"
+          else
+            exit "$status"
+          fi
       - name: Verify the retained model producer before download
-        if: inputs.modelRunId != ''
+        if: inputs.modelRunId != '' && steps.retained.outputs.fetched != '1'
         env: {GH_TOKEN: '${{ github.token }}', MODEL_RUN_ID: '${{ inputs.modelRunId }}'}
         shell: bash
         run: |
@@ -38,14 +54,14 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$MODEL_RUN_ID" > "$RUNNER_TEMP/model-run.json"
           python3 scripts/check-sonic-model-producer.py "$RUNNER_TEMP/model-run.json" --repository "$GITHUB_REPOSITORY"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        if: inputs.modelRunId != ''
+        if: inputs.modelRunId != '' && steps.retained.outputs.fetched != '1'
         with:
           name: sonic-original-model
           path: .sonic-model
           run-id: ${{ inputs.modelRunId }}
           github-token: ${{ github.token }}
       - name: Export the verified original ISC model once
-        if: inputs.modelRunId == ''
+        if: inputs.modelRunId == '' && steps.retained.outputs.fetched != '1'
         shell: bash
         run: |
           set -euo pipefail
@@ -89,6 +105,22 @@ jobs:
           bundle['model_identity'](pathlib.Path('.sonic-model/musicnn-mtt'), bundle['locks']()[1])
           print('Original-model artifact matches the reviewed runtime pin.')
           PYMODEL
+      - name: Publish the reviewed model export once, never as latest
+        if: steps.retained.outputs.fetched != '1'
+        env: {GH_TOKEN: '${{ github.token }}'}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$(python3 -c "import json;print(json.load(open('third_party/musicnn/model.lock.json'))['releaseTag'])")"
+          version="$(python3 -c "import json;print(json.load(open('third_party/musicnn/model.lock.json'))['onnx']['version'])")"
+          name="musicnn-mtt-${version}.tar.xz"
+          python3 scripts/sonic-bundle.py model-package ".sonic-model/$name" --model .sonic-model/musicnn-mtt --conformance .sonic-model/conformance.json
+          (cd .sonic-model && sha256sum "$name" > checksums.sha256)
+          if gh release view "$tag" >/dev/null 2>&1; then echo "Model export $tag is already published; review a new pin instead of replacing it." >&2; exit 1; fi
+          gh release create "$tag" ".sonic-model/$name" .sonic-model/checksums.sha256 --target "$GITHUB_SHA" --prerelease --latest=false \
+            --title "Sonic model $version" \
+            --notes 'Fixed musicnn MTT model exported once from the original ISC wheel with the pinned converters, with the original-checkpoint CPU conformance reference and the reviewed pin. Weights are ISC (musicnn, Pons and Serra) trained on MagnaTagATune (Law et al., 2009). This is a model input pin, never a runtime bundle, and it is never marked latest.'
+          python3 scripts/sonic-bundle.py model-fetch .sonic-model-verify
   build:
     needs: model
     strategy:
