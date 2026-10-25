@@ -15,7 +15,7 @@ export function ProfileOtherSignOut({command, isCurrent, onFailure, disabled}: {
   useEffect(() => {live.current = true;return () => {live.current = false;active.current = undefined;};}, [command]);
   const currentAttempt = (attempt: Attempt) => live.current && active.current === attempt && latest.current.command === attempt.command && latest.current.isCurrent();
   const close = (attempt: Attempt) => {
-    if (!currentAttempt(attempt) || attempt.claimed) return;
+    if (!currentAttempt(attempt)) return;
     active.current = undefined;setConfirmation(undefined);setBusy(false);
   };
   const run = async (attempt: Attempt) => {
