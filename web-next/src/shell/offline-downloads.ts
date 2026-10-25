@@ -56,20 +56,3 @@ export function clearOfflineDownloads(): void {
   installed = undefined;
   try { port?.retire?.(); } catch { /* nothing left to retire */ }
 }
-
-const SELECTION_CHANNEL = 'portico.viewer-selection.v1';
-
-/** Tell other windows this selection was replaced; it carries no identity or data. */
-export function announceSelectionReplaced(): void {
-  try { const channel = new BroadcastChannel(SELECTION_CHANNEL); channel.postMessage('replaced'); channel.close(); } catch { /* no channel */ }
-}
-
-/** Another window replaced the selected session/profile/server/family. */
-export function watchSelectionReplaced(listener: () => void): () => void {
-  try {
-    const channel = new BroadcastChannel(SELECTION_CHANNEL);
-    const onMessage = () => listener();
-    channel.addEventListener('message', onMessage);
-    return () => { channel.removeEventListener('message', onMessage); channel.close(); };
-  } catch { return () => {}; }
-}
