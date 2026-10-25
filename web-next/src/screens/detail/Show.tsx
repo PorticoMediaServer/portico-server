@@ -1,5 +1,5 @@
 import {t, locale, environment as env} from './text';
-import {Fragment, useEffect, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {Fragment, useEffect, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {preferenceValue} from '@core/preferences.ts';
 import type {ShowWorkspaceRoute, ShowWorkspaceData, ShowSettings, WorkspaceSeason, WorkspaceShowCredit} from '@core/show-workspace.ts';
 import {cardText, episodeLabel, titleFactParts, type FactPart} from '@core/presentation/kit-model';
@@ -8,7 +8,7 @@ import {AmbientArt, Artwork} from '../../kit/artwork';
 import {Icon} from '../../kit/Icon';
 import {Lockup} from '../../kit/layout';
 import {EpisodeTile} from '../../kit/cards';
-import {Menu, MenuItem, Popover} from '../../kit/overlays';
+import {Menu, MenuItem, MenuSeparator, Popover} from '../../kit/overlays';
 import {OwnerTag, ServerMark} from '../../kit/shell';
 import {StateView} from '../../kit/states';
 import {useShellWidth} from '../../shell/viewport';
@@ -29,6 +29,7 @@ import {TitleTabs} from './TitleTabs';
 import {ScreenProblem} from './ScreenProblem';
 import {runScreenCommand} from './context';
 import {GenreNames} from './GenreNames';
+import type {ContainerState} from '@core/container-state.ts';
 import {SeasonMenu} from './SeasonMenu';
 
 export type ShowScreenProps = {binding: ShowBindings; target: ShowWorkspaceRoute};
@@ -36,6 +37,28 @@ export function ShowScreen({binding, target}: ShowScreenProps) {
   const key = JSON.stringify(target);
   useEffect(() => { const route: ShowWorkspaceRoute = JSON.parse(key), request = new AbortController(); void binding.select(route, request.signal).catch(error => { if (!request.signal.aborted) binding.context.effects.reportError(error); }); return () => { request.abort(); binding.cancel(); }; }, [binding, key]);
   return <ShowBody binding={binding} />;
+}
+
+/** Root §14: complete-season actions; the display editor remains show-scoped. */
+export function SeasonOptions({binding, data, label}: {binding: ShowBindings; data: ShowWorkspaceData; label: string}) {
+  const [open, setOpen] = useState(false), [display, setDisplay] = useState(false), [state, setState] = useState<ContainerState>();
+  const anchor = useRef<HTMLButtonElement>(null), owner = binding.canManage();
+  useEffect(() => {
+    setState(undefined);
+    if (!open) return;
+    const request = new AbortController();
+    void binding.readSeasonState(data, request.signal).then(value => { if (!request.signal.aborted) setState(value); }).catch(error => { if (!request.signal.aborted) binding.context.effects.reportError(error); });
+    return () => request.abort();
+  }, [binding, data, open]);
+  const complete = !!state && (state.watchedCount ?? 0) > 0 && state.unwatchedCount === 0;
+  return <>
+    <Menu presentation="anchored" open={open} onOpenChange={setOpen} title={t('next.detail.seasonOptions', {season: label})} trigger={<Button ref={anchor} variant="icon" size="small" icon="i-more" iconOnly aria-label={t('next.detail.seasonOptions', {season: label})} />}>
+      <MenuItem onSelect={() => runScreenCommand(binding.context, () => binding.playSeason(data))}>{t('next.detail.playSeason')}</MenuItem>
+      <MenuItem disabled={!state} onSelect={() => runScreenCommand(binding.context, () => { if (!state) return; return binding.setSeasonWatched(data, state, !complete); })}>{t(complete ? 'next.detail.markSeasonUnwatched' : 'next.detail.markSeasonWatched')}</MenuItem>
+      {owner && <><MenuSeparator /><MenuItem onSelect={() => runScreenCommand(binding.context, () => { binding.current(data); if (!binding.canManage()) throw new DOMException('Show management changed', 'AbortError'); setDisplay(true); })}>{t('next.detail.episodeDisplay')}</MenuItem></>}
+    </Menu>
+    {owner && <Popover open={display} onOpenChange={setDisplay} anchorRef={anchor} returnFocusRef={anchor} width={540} className={styles.settingsMenu} title={t('title.showSettings')}><ShowSettingsMenu binding={binding} data={data} /></Popover>}
+  </>;
 }
 
 /** The drawn season row: its years, episode count and the viewer's real progress. */
@@ -119,6 +142,7 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
         {selectedSeason?.episodeCount !== undefined && <span className={styles.progress}>{t('count.episodes', {count: selectedSeason.episodeCount})}</span>}
         {selectedProgress ? <><span className={styles.progressDivider} aria-hidden="true" /><span className={styles.watchedProgress}><span className={styles.watchedMeter} aria-hidden="true"><i style={{width: `${selectedProgress.total > 0 ? 100 * selectedProgress.watched / selectedProgress.total : 0}%`}} /></span>{t('title.seasonProgress', {watched: selectedProgress.watched, total: selectedProgress.total})}</span></>
           : null}
+        <div className={styles.toolbarActions}>
         <Menu presentation="anchored" open={orderMenu} onOpenChange={setOrderMenu} title={t('next.detail.episodeOrder')} trigger={<Chip variant="toolbar" icon="i-sort" trailingIcon="i-down">{t('next.detail.episodeOrder')}</Chip>}>
           <MenuItem selected={(snapshot.route?.episodeDirection ?? 'asc') === 'asc'} onSelect={() => runScreenCommand(binding.context, () => { binding.current(data); setOrderMenu(false); return binding.service.selectEpisodeDirection('asc'); })}>{t('next.detail.episodeOrder')}</MenuItem>
           <MenuItem selected={snapshot.route?.episodeDirection === 'desc'} onSelect={() => runScreenCommand(binding.context, () => { binding.current(data); setOrderMenu(false); return binding.service.selectEpisodeDirection('desc'); })}>{t('next.detail.reverseEpisodeOrder')}</MenuItem>
@@ -134,6 +158,8 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
           <button type="button" aria-label={t('next.controls.list')} aria-pressed={layout === 'list'} onClick={() => runScreenCommand(binding.context, () => binding.view.layout('list'))}><Icon name="i-list" size={18} /></button>
           <button type="button" aria-label={t('next.controls.grid')} aria-pressed={layout === 'grid'} onClick={() => runScreenCommand(binding.context, () => binding.view.layout('grid'))}><Icon name="i-grid" size={18} /></button>
         </span>
+        {data.selected.seasonId && <SeasonOptions binding={binding} data={data} label={seasonLabel} />}
+        </div>
       </div>
       {snapshot.phase === 'error' || snapshot.phase === 'refresh-required' ? <ScreenFailure retry={() => { void binding.service.retry(); }} /> : null}
       {!episodes.length && snapshot.phase === 'ready' && <StateView title={t('title.noEpisodes')} body={t('title.noEpisodesBody')} />}

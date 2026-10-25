@@ -2,6 +2,8 @@
 
 .toolbar { display: flex; align-items: center; gap: 16px; margin-bottom: 22px; }
 
+.toolbarActions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+
 .progress { font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
 
 .progressDivider { width: 1px; height: 22px; background: var(--color-line); }
@@ -12,7 +14,7 @@
 
 .watchedMeter i { display: block; height: 100%; background: var(--color-accent-strong); }
 
-.hide { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: var(--type-caption-size); color: var(--color-text-secondary); }
+.hide { margin-left: 12px; display: flex; align-items: center; gap: 10px; font-size: var(--type-caption-size); color: var(--color-text-secondary); }
 
 .layoutToggle { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border-radius: 8px; background: color-mix(in srgb, var(--color-text) 6%, transparent); }
 
@@ -52,6 +54,7 @@
 .progress, .progressDivider, .watchedProgress { display: none; }
 
 .hide { margin-left: 0; }
+.toolbarActions { margin-left: 0; flex-wrap: wrap; }
 
 .layoutToggle { display: none; }
 

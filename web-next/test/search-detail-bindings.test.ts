@@ -529,3 +529,34 @@ test('title credit windows read lazily, bound resident pages and revisit evicted
   assert.notEqual(collection.getSnapshot().status, 'error');
   collection.dispose(); binding.dispose(); assert.equal(collection.residentItems().length, 0);
 });
+
+test('season actions use complete server state and CAS, never the visible episode subset',async()=>{
+ const writes:unknown[]=[];
+ const state={revision:17,watched:false,watermark:'',watchlisted:false,favorite:false,watchedCount:6,unwatchedCount:18,libraryId:'library'};
+ const owner=setup(async(path,method,body)=>{
+  if(path.includes('/show-workspace'))return showPage();
+  if(path==='/v1/containers/season/season/personal-state'){
+   if(method==='PUT'){writes.push(body);return {...state,revision:18,watched:true};}return state;
+  }
+  if(path==='/v1/containers/show/show/personal-state')return {...state,revision:1};
+  throw new Error('Unexpected route '+path);
+ });
+ const binding=createShowBindings(owner.context);await binding.select({libraryId:'library',showId:'show'});
+ const data=binding.service.getSnapshot().data!;
+ assert.equal(data.episodes.sections[0].entries.length,1);
+ const complete=await binding.readSeasonState(data);assert.equal(complete.watchedCount,6);assert.equal(complete.unwatchedCount,18);
+ await assert.rejects(binding.setSeasonWatched(data,{...complete},true),{name:'AbortError'});assert.equal(writes.length,0);
+ await binding.setSeasonWatched(data,complete,true);assert.deepEqual(writes,[{expectedRevision:17,watched:true}]);
+ await assert.rejects(binding.setSeasonWatched(data,complete,false),{name:'AbortError'});assert.equal(writes.length,1);
+ binding.dispose();
+});
+
+test('season play captures actual selected season and retires after the selected workspace changes',async()=>{
+ const held=deferred<void>();let calls=0,guard:(()=>boolean)|undefined;
+ const owner=setup(async path=>path.includes('/show-workspace')?showPage():{revision:1,watched:false,watermark:'',watchlisted:false,favorite:false,libraryId:'library'});
+ const context={...owner.context,effects:{...owner.context.effects,playSeason:async(id:string,signal:AbortSignal,current:()=>boolean)=>{calls++;assert.equal(id,'season');assert.equal(signal.aborted,false);guard=current;await held.promise;}}};
+ const binding=createShowBindings(context);await binding.select({libraryId:'library',showId:'show'});
+ const data=binding.service.getSnapshot().data!,pending=binding.playSeason(data);assert.equal(guard?.(),true);
+ await binding.service.refresh();assert.equal(guard?.(),false);held.resolve();await assert.rejects(pending,{name:'AbortError'});
+ await assert.rejects(binding.playSeason(data),{name:'AbortError'});assert.equal(calls,1);binding.dispose();
+});

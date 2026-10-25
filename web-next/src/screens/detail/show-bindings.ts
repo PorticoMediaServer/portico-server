@@ -28,6 +28,7 @@ export function createShowBindings(context: ScreenContext) {
   let viewIdentity = '';
   let subject: Readonly<{libraryId: string; showId: string; title: string}> | undefined;
   const offSubject = service.subscribe(() => { const data = service.getSnapshot().data; if (data && service.getSnapshot().phase === 'ready') subject = {libraryId: data.scope.libraryId, showId: data.show.id, title: data.show.title}; });
+  const seasonReads = new WeakMap<ContainerState, Readonly<{data: ShowWorkspaceData; seasonId: string}>>();
   let personal: ContainerState | undefined, busy = false, intent = 0, disposed = false;
   let selection: AbortController | undefined;
   let playbackRequest: AbortController | undefined;
@@ -96,6 +97,31 @@ export function createShowBindings(context: ScreenContext) {
         if (!fresh || !action) throw new DOMException('Episode playback unavailable', 'AbortError');
         await listedPlayback.play(fresh, action.id, undefined, active);
       } finally { if (playbackRequest === controller) playbackRequest = undefined; }
+    },
+    async readSeasonState(data: ShowWorkspaceData, signal?: AbortSignal) {
+      current(data); const seasonId = data.selected.seasonId;
+      if (!seasonId) throw new DOMException('Season selection changed', 'AbortError');
+      const state = await getContainerState(life.api, 'season', seasonId, life.signal(signal));
+      current(data); signal?.throwIfAborted();
+      if (data.selected.seasonId !== seasonId || state.libraryId !== data.scope.libraryId) throw new DOMException('Season selection changed', 'AbortError');
+      seasonReads.set(state, {data, seasonId}); return state;
+    },
+    async setSeasonWatched(data: ShowWorkspaceData, before: ContainerState, value: boolean) {
+      current(data); const held = seasonReads.get(before);
+      if (!held || held.data !== data || held.seasonId !== data.selected.seasonId || busy) throw new DOMException('Season state changed', 'AbortError');
+      busy = true; publish();
+      try {
+        await setContainerState(life.api, 'season', held.seasonId, {expectedRevision: before.revision, watched: value}, life.signal());
+        current(data); seasonReads.delete(before); await service.refresh();
+      } finally { busy = false; publish(); }
+    },
+    async playSeason(data: ShowWorkspaceData, signal?: AbortSignal) {
+      current(data); const seasonId = data.selected.seasonId, effect = context.effects.playSeason;
+      if (!seasonId || !effect) throw new DOMException('Season playback unavailable', 'AbortError');
+      const active = life.signal(signal);
+      const stillSelected = () => life.current() && service.getSnapshot().phase === 'ready' && service.getSnapshot().data === data && service.getSnapshot().data?.selected.seasonId === seasonId;
+      await effect(seasonId, active, stillSelected);
+      current(data); active.throwIfAborted();
     },
     closeEpisode() { life.assert(); service.updateAnchor({...service.getSnapshot().anchor, expandedEpisodeId: null}); episode.service.cancel(); },
     async revalidate(refresh?: Parameters<ShowWorkspaceService['revalidate']>[0]) {
