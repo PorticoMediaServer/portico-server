@@ -1,3 +1,4 @@
+import type {HomeSelectionProgress} from '@core/home-selection/types.ts';
 import type {JobArgs, JobRequest} from '@core/bulk-jobs.ts';
 import type {HomeApi} from '@core/home.ts';
 import type {EventsClient} from '@core/playback-v1/events.ts';
@@ -16,6 +17,7 @@ export type SelectionActionsOptions = Readonly<{
   /** The route's lifetime; an absent signal is a private, never-aborted one. */
   signal?: AbortSignal;
   reportError: (error: unknown) => void;
+  progress?: (operation: AnyOperation, value: HomeSelectionProgress, jobIds: readonly string[]) => void;
 }>;
 
 export type SelectionActionResult = Readonly<{updated: number; failed: number; jobs: readonly string[]}>;
@@ -52,7 +54,7 @@ type RetainedAttempt = {
   promise?: Promise<SelectionActionResult>;
 };
 
-export function createSelectionActions({api, events, requestId, isCurrent, reportError, signal: lifetime}: SelectionActionsOptions) {
+export function createSelectionActions({api, events, requestId, isCurrent, reportError, progress, signal: lifetime}: SelectionActionsOptions) {
   const routeSignal = lifetime ?? new AbortController().signal;
   // One immutable task body per captured target/action. A lost response or a
   // failed job poll retains the same operation id, selector and args (and any
@@ -98,7 +100,7 @@ export function createSelectionActions({api, events, requestId, isCurrent, repor
       try {
         tasks = await captured.tasks;
         if (!tasks.length) throw new SelectionActionError('empty-selection');
-        await runSelectionJobs(api, tasks, AbortSignal.any([routeSignal, signal]), captured.current, () => {}, undefined, events);
+        await runSelectionJobs(api, tasks, AbortSignal.any([routeSignal, signal]), captured.current, (value, jobs) => {if (captured.current()) progress?.(operation, value, jobs);}, undefined, events);
         attempts.delete(key);
         return outcome(tasks);
       } catch (error) {
