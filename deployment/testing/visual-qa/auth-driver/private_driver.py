@@ -26,7 +26,7 @@ def reload_credentials(path: Path) -> dict:
             os.close(fd)
 
 
-def private_capture(argv: list[str], directory: Path, name: str, *, timeout: int = 30) -> tuple[int, Path, Path]:
+def private_capture(argv: list[str], directory: Path, name: str, *, timeout: int = 30, input_bytes: bytes | None = None) -> tuple[int, Path, Path]:
     """Capture BOTH streams before any display; don't raise argv-bearing errors."""
     if Path(name).name != name or not name:
         raise RuntimeError('invalid private output name')
@@ -41,7 +41,12 @@ def private_capture(argv: list[str], directory: Path, name: str, *, timeout: int
             fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
             handles.append(os.fdopen(fd, 'wb'))
         try:
-            result = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=handles[0], stderr=handles[1], timeout=timeout, check=False)
+            # Secret fill uses the CLI's --text-stdin support. Bytes never enter
+            # argv, shell source, a recording, or a returned display summary.
+            if input_bytes is not None and not isinstance(input_bytes, bytes):
+                raise TypeError('private input must be bytes')
+            input_options = {'input': input_bytes} if input_bytes is not None else {'stdin': subprocess.DEVNULL}
+            result = subprocess.run(argv, **input_options, stdout=handles[0], stderr=handles[1], timeout=timeout, check=False)
             code = result.returncode
         except subprocess.TimeoutExpired:
             code = 124
