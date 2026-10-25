@@ -39,7 +39,8 @@ type SourceFolderPage struct {
 	Entries    []SourceFolder `json:"entries"`
 	NextCursor string         `json:"nextCursor"`
 	// Truncated says this folder holds more folders than one bounded listing
-	// examines. The page then stops honestly instead of guessing a next page.
+	// examines. Paging still walks the names that listing did examine, and the
+	// page stops when those run out instead of guessing beyond them.
 	Truncated bool `json:"truncated"`
 }
 
@@ -108,7 +109,7 @@ func (s *Service) ListSourceFolders(ctx context.Context, identities *identity.Se
 	default:
 		// A mounted remote is a normalized mount on this server; its folders are
 		// read through a root that cannot leave the source or follow a symlink.
-		listing, err = mountedFolders(row.RootPath, relative, showHidden)
+		listing, err = mountedFolders(ctx, row.RootPath, relative, showHidden)
 	}
 	if err != nil {
 		return empty, err
@@ -132,10 +133,11 @@ func (s *Service) ListSourceFolders(ctx context.Context, identities *identity.Se
 	total := len(kept)
 	if total > limit {
 		out.Entries = kept[:limit]
-		// More really remain after the last name, so the next page is real.
-		if !listing.truncated {
-			out.NextCursor = out.Entries[len(out.Entries)-1].Name
-		}
+		// More filtered folders really remain after the last name, so the next
+		// page is real. That holds after a truncated bounded scan too: the next
+		// request lists this folder again and continues after this name, so the
+		// examined names stay reachable and the last of them ends the paging.
+		out.NextCursor = out.Entries[len(out.Entries)-1].Name
 	}
 	if out.Entries == nil {
 		out.Entries = []SourceFolder{}
@@ -254,8 +256,14 @@ type folderListing struct {
 
 // mountedFolders lists the folders of a mounted remote through a directory
 // pinned by descriptor: every step is opened relative to the previous one with
-// no symlink following, and one read examines a bounded number of names.
-func mountedFolders(root, relative string, showHidden bool) (folderListing, error) {
+// no symlink following, and one read examines a bounded number of names. The
+// caller's context is checked between those synchronous mount calls, so a
+// cancelled or expired request stops at the next step; a mount call that is
+// already blocked is not interrupted by these checks.
+func mountedFolders(ctx context.Context, root, relative string, showHidden bool) (folderListing, error) {
+	if err := ctx.Err(); err != nil {
+		return folderListing{}, err
+	}
 	handle, err := storage.OpenRootedDir(root)
 	if err != nil {
 		return folderListing{}, mountedError(err)
@@ -264,6 +272,12 @@ func mountedFolders(root, relative string, showHidden bool) (folderListing, erro
 	directory := handle
 	if relative != "" {
 		for _, part := range strings.Split(relative, "/") {
+			if e := ctx.Err(); e != nil {
+				if directory != handle {
+					directory.Close()
+				}
+				return folderListing{}, e
+			}
 			next, err := directory.Child(part)
 			if directory != handle {
 				directory.Close()
@@ -283,6 +297,11 @@ func mountedFolders(root, relative string, showHidden bool) (folderListing, erro
 	}
 	out := folderListing{entries: make([]SourceFolder, 0, 32), truncated: more}
 	for _, name := range names {
+		// Every name costs one open on the mount, so cancellation is checked
+		// between names rather than once per page.
+		if e := ctx.Err(); e != nil {
+			return folderListing{}, e
+		}
 		if !validFolderName(name) || !showHidden && strings.HasPrefix(name, ".") || !directory.IsDirectoryEntry(name) {
 			continue
 		}
