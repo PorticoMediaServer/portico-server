@@ -123,7 +123,10 @@ func (d Dependencies) readingFileSave(w http.ResponseWriter, r *http.Request) {
 			fail(err)
 			return
 		}
-		chunk := buffer[:int(min(int64(len(buffer)), f.Size-offset))]
+		chunk := buffer
+		if remaining := f.Size - offset; remaining < int64(len(chunk)) {
+			chunk = chunk[:remaining]
+		}
 		var n int
 		var err error
 		if stream != nil {
