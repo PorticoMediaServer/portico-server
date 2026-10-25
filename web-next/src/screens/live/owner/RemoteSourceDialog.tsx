@@ -15,7 +15,7 @@ const t = defaultI18n.t;
 export function RemoteSourceDialog({controller, close, saved}: {controller: RemoteSourceController; close: () => void; saved: () => void}) {
   const owner = useRef(controller);owner.current = controller;
   useEffect(() => () => controller.dispose(), [controller]);
-  const closeCurrent = dialogAction(owner, controller, () => {controller.dispose();close();}), savedCurrent = dialogAction(owner, controller, saved);
+  const closeCurrent = dialogAction(owner, controller, () => {controller.dispose();if (owner.current === controller) close();}), savedCurrent = dialogAction(owner, controller, saved);
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const {draft, preview, confirm, busy} = state;
   const skipped = preview && importSkipped(t, defaultI18n.has, preview.preview.diagnostics);

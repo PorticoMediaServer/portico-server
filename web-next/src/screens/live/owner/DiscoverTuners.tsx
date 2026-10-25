@@ -18,7 +18,7 @@ export function DiscoverTuners({api, serverId, isCurrent, reportError, close, us
   const owner = useRef(controller);owner.current = controller;
   const {busy, result, error} = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   useEffect(() => {void controller.search();return () => controller.dispose();}, [controller]);
-  const closeCurrent = dialogAction(owner, controller, () => {controller.dispose();close();});
+  const closeCurrent = dialogAction(owner, controller, () => {controller.dispose();if (owner.current === controller) close();});
   return <Dialog open width={520} title={t('web.liveSource.discoverTitle')} description={t('web.liveSource.discoverLede')} onOpenChange={open => {if (!open) closeCurrent();}}
     footer={<><Button size="small" variant="text" onClick={closeCurrent}>{t('action.close')}</Button><Button size="small" icon="i-refresh" loading={busy} onClick={dialogAction(owner, controller, () => void controller.search())}>{t('web.liveSource.searchAgain')}</Button></>}>
     <div className={styles.fields}>

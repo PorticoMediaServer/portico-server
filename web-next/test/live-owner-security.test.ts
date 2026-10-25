@@ -25,7 +25,7 @@ test('uploaded text is absent after explicit or implicit retirement', async () =
     assert.equal(controller.getSnapshot().draft.playlist, '');assert.equal(controller.getSnapshot().preview, undefined);assert.equal(notifications, 1);
   }
 });
-for (const error of [{status: 401}, {statusCode: 403}, {code: 'session_expired'}, {code: 'not_permitted'}, {code: 'invalid_token'}]) {
+for (const error of [{status: 401}, {statusCode: 403}, {code: 'session_expired'}, {code: 'not_permitted'}, {code: 'invalid_token'}, {code: 'SESSION EXPIRED'}, {status: 503, statusCode: 401}]) {
   test(`terminal boundary ${JSON.stringify(error)} clears before notifying/reporting`, async () => {
     let deny = false, reports = 0;
     const api = {async request<T>() {if (deny) throw {...error, password: 'secret'};return document as T;}};
@@ -97,4 +97,18 @@ test('invalid save receipts cannot publish success', async () => {
   remoteController.edit(initial);await remoteController.check();assert.equal(await remoteController.save(), false);remoteController.dispose();
   const uploadController = new UploadSourceController({async request<T>(path: string) {return (path.endsWith('/preview') ? upload : {saved: true}) as T;}}, 'server', () => true, () => {});
   uploadController.edit({name: 'Stored'});await uploadController.read('playlist', async () => '#EXTM3U');await uploadController.check();assert.equal(await uploadController.save(), false);uploadController.dispose();
+});
+
+test('terminal auth codes retire upload, remote and discovery before any retained result', async () => {
+  for (const make of [
+    (api: any) => new UploadSourceController(api, 'server', () => true, () => {}),
+    (api: any) => new RemoteSourceController(api, 'server', () => true, () => {}),
+    (api: any) => new DiscoveryController(api, 'server', () => true, () => {}),
+  ]) {
+    const controller = make({async request() {throw {statusCode: 403, password: 'SECRET'};}});
+    if (controller instanceof UploadSourceController) {controller.edit({name: 'Stored'});await controller.read('playlist', async () => 'PRIVATE');await controller.check();assert.equal(controller.getSnapshot().draft.playlist, '');}
+    else if (controller instanceof RemoteSourceController) {controller.edit({...initial, password: 'PRIVATE'});await controller.check();assert.equal(controller.getSnapshot().draft.password, '');}
+    else {await controller.search();assert.equal(controller.getSnapshot().result, undefined);}
+    assert.equal(controller.isActive(), false);assert.equal(JSON.stringify(controller.getSnapshot()).includes('SECRET'), false);
+  }
 });
