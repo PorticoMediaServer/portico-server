@@ -39,7 +39,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const [menu, setMenu] = useState(false), [retry, setRetry] = useState(0);
   const [saving, setSaving] = useState(false);
   const [attempt, setAttempt] = useState<ReadAttempt>();
-  const attemptRef = useRef<ReadAttempt>();
+  const attemptRef = useRef<ReadAttempt | undefined>(undefined);
   const renderIdentity = useRef({context: captured.context, sourceId, retry});
   renderIdentity.current = {context: captured.context, sourceId, retry};
   const [detail, setDetail] = useState<Readonly<{attempt?: ReadAttempt; manifest?: ReadingManifest; progress?: ReadingProgress; client?: ReturnType<typeof createReadBindings>['client']; targets?: readonly ReaderContentsTarget[]; failed?: boolean}>>({});
