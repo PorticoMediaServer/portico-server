@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useRef, useState} from 'react';
+import {useLayoutEffect, useMemo, useRef, useState} from 'react';
 import {passwordStrength} from '@core/password-strength.ts';
 import {AuthPasswordField} from '../kit/accounts';
 import {HostedError, ServicesBackLink, ServicesAuthStage, ServicesHeading, ServicesLead, ServicesNotice, ServicesStrength, ServicesActions, ServicesLabel, ServicesStateIcon} from '../kit/accounts/ServicesAuth';
@@ -27,8 +27,16 @@ export function ResetPage({account, token}: {account: ServicesAccount; token?: s
   const [password, setPassword] = useState(''), [confirm, setConfirm] = useState(''), [factor, setFactor] = useState('');
   const [busy, setBusy] = useState(false), [done, setDone] = useState(false), [error, setError] = useState<unknown>();
   const [mismatch, setMismatch] = useState(false);
-  const operation = useRef<AbortController | null>(null);
-  useEffect(() => () => operation.current?.abort(), []);
+  const source = useMemo(() => ({account, token}), [account, token]);
+  type Flight = {source: typeof source; live: boolean; operation?: AbortController};
+  const active = useRef<Flight | null>(null), [flight, setFlight] = useState<Flight>();
+  const form = {source, password, confirm, factor}, committed = useRef<typeof form | null>(null);
+  useLayoutEffect(() => {
+    const current: Flight = {source, live: true}; active.current = current; setFlight(current);
+    setPassword(''); setConfirm(''); setFactor(''); setBusy(false); setDone(false); setError(undefined); setMismatch(false);
+    return () => {current.live = false; if (active.current === current) active.current = null; current.operation?.abort();};
+  }, [source]);
+  useLayoutEffect(() => {committed.current = form; return () => {if (committed.current === form) committed.current = null;};});
   const status = (error as {status?: number} | undefined)?.status;
   const code = (error as {code?: string} | undefined)?.code;
   // The reset route names its own closed states: a dead, used, superseded or
@@ -41,15 +49,16 @@ export function ResetPage({account, token}: {account: ServicesAccount; token?: s
   const factorWrong = code === 'mfa_invalid';
   const passwordWrong = code === 'password_invalid';
   const submit = async () => {
-    if (!token || operation.current) return;
+    if (!token || !flight?.live || flight.source !== source || active.current !== flight || committed.current !== form || flight.operation || busy || done || cutOff || expired) return;
     if (password !== confirm) { setMismatch(true); return; }
-    const controller = new AbortController(); operation.current = controller;
+    const controller = new AbortController(); flight.operation = controller;
+    const current = () => flight.live && active.current === flight && flight.operation === controller && !controller.signal.aborted;
     setBusy(true); setError(undefined); setMismatch(false);
     try {
       await resetPassword(account, token, password, factor, controller.signal);
-      if (!controller.signal.aborted) { setPassword(''); setConfirm(''); setFactor(''); setDone(true); }
-    } catch (value) { if (!controller.signal.aborted) setError(value); }
-    finally { if (operation.current === controller) operation.current = null; if (!controller.signal.aborted) setBusy(false); }
+      if (current()) { setPassword(''); setConfirm(''); setFactor(''); setDone(true); }
+    } catch (value) { if (current()) setError(value); }
+    finally { if (current()) {flight.operation = undefined; setBusy(false);} }
   };
   if (done) return <PasswordChanged />;
   return <ServicesAuthStage variant="reset"><ServicesHeading singleLine>{t('web.reset.title')}</ServicesHeading>
@@ -78,7 +87,8 @@ export function VerifyPage({account, token}: {account: ServicesAccount; token?: 
   const {t} = useMemo(servicesI18n, []);
   const [outcome, setOutcome] = useState<VerificationOutcome>();
   const [error, setError] = useState<unknown>();
-  useEffect(() => {
+  useLayoutEffect(() => {
+    setOutcome(undefined); setError(undefined);
     if (!token) return;
     const controller = new AbortController();
     void verifyEmail(account, token, controller.signal).then(result => { if (!controller.signal.aborted) setOutcome(result); }, value => { if (!controller.signal.aborted) setError(value); });
