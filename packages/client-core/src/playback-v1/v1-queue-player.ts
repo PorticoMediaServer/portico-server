@@ -62,6 +62,7 @@ const MUSIC_CONTAINERS = ['album', 'artist', 'disc'];
 
 export type V1Viewer = Readonly<{serverId: string; authority: 'local' | 'hosted'; accountId: string; profileId: string}>;
 /** Captured by the player while this exact output is still selected. */
+export type V1QueuePolicyIntent = Readonly<{action: 'repeat'; repeat: 'off' | 'one' | 'all'} | {action: 'shuffle'; shuffled: boolean}>;
 export type V1PlaybackTarget = Readonly<{sessionId: string; generation: number; playbackRun: number; itemId: string; versionId: string; queueId: string; entryId: string}>;
 /** Captured caller lifetime; its predicate must remain current across this start's own output change. */
 export type V1PlayItemContext = Readonly<{signal?: AbortSignal; isCurrent?: () => boolean; state?: 'playing' | 'paused'}>;
@@ -177,6 +178,8 @@ export class V1QueuePlayer implements QueueController {
   private endedId?: string;
   private generation = 0;
   private changeSequence = 0;
+  private policySequence = 0;
+  private refreshSequence = 0;
   private disposed = false;
   private detach?: () => void;
   private unsubscribe?: () => void;
@@ -298,11 +301,14 @@ export class V1QueuePlayer implements QueueController {
 
   /** Reads the header and the window around the current entry, and rebuilds the view. */
   async refresh(signal?: AbortSignal): Promise<void> {
-    const id = this.header?.id;
-    if (!id) return;
+    const id = this.header?.id, generation = this.generation, sequence = ++this.refreshSequence;
+    const current = () => !this.disposed && !signal?.aborted && this.header?.id === id
+      && generation === this.generation && sequence === this.refreshSequence;
+    if (!id || !current()) return;
     const header = await this.client.header(id, signal);
-    this.window = await this.client.window(id, WINDOW_BEFORE, WINDOW_AFTER, signal);
-    this.accept(header);
+    if (!current()) return;
+    const window = await this.client.window(id, WINDOW_BEFORE, WINDOW_AFTER, signal);
+    if (current()) this.accept(header, window);
   }
 
   private accept(header: QueueHeader, window?: readonly QueueEntry[]) {
@@ -866,6 +872,39 @@ export class V1QueuePlayer implements QueueController {
   /** NEW-37: save the queue as a playlist; a long queue's copy is followed by replaying the key. */
   saveAsPlaylist(queueId: string, name: string, onProgress?: (save: QueuePlaylistSave) => void, signal?: AbortSignal): Promise<QueuePlaylistSave> {
     return saveQueueAsPlaylist(this.client, queueId, name, {onProgress, signal});
+  }
+
+  /** Policy edits from retained player controls use their opening output and queue revision. */
+  async setQueuePolicy(expected: V1PlaybackTarget, expectedRevision: string, intent: V1QueuePolicyIntent, context: SessionChangeContext): Promise<void> {
+    requireSessionChangeCurrent(context);
+    if (intent.action === 'repeat' ? !['off', 'one', 'all'].includes(intent.repeat)
+      : intent.action !== 'shuffle' || typeof intent.shuffled !== 'boolean') throw new ContractError('queue policy');
+    const generation = this.generation, sequence = ++this.policySequence;
+    let acceptedRevision: string | undefined;
+    const current = () => {
+      const p = this.playback.getSnapshot(), session = this.session, header = this.header;
+      return !this.disposed && generation === this.generation && sequence === this.policySequence && sessionChangeCurrent(context)
+        && p.playbackRun === expected.playbackRun && p.itemId === expected.itemId
+        && p.session?.id === expected.sessionId && p.session.generation === expected.generation
+        && session?.id === expected.sessionId && session.presentation.generation === expected.generation
+        && session.versionId === expected.versionId && session.itemId === expected.itemId
+        && session.queue?.queueId === expected.queueId && session.queue.entryId === expected.entryId
+        && header?.id === expected.queueId && header.current?.entryId === expected.entryId
+        && (header.revision === expectedRevision || acceptedRevision !== undefined && header.revision === acceptedRevision);
+    };
+    const check = () => {if (!current()) throw new DOMException('Queue policy retired', 'AbortError');};
+    check(); ++this.refreshSequence;
+    const change = intent.action === 'repeat' ? {repeat: intent.repeat} : {shuffle: {on: intent.shuffled}};
+    const result = await this.client.update(expected.queueId, expectedRevision, change, context.signal);
+    acceptedRevision = result.queue.revision; check();
+    if (result.session || result.queue.id !== expected.queueId || result.queue.current?.entryId !== expected.entryId
+      || (intent.action === 'repeat' ? result.queue.repeat !== intent.repeat : !!result.queue.shuffle !== intent.shuffled)) throw new ContractError('queue policy result');
+    // Reordering changes the window. Read it under the accepted revision, then prove that revision still holds.
+    const window = await this.client.window(expected.queueId, WINDOW_BEFORE, WINDOW_AFTER, context.signal); check();
+    const header = await this.client.header(expected.queueId, context.signal); check();
+    if (header.revision !== acceptedRevision || header.current?.entryId !== expected.entryId) throw new DOMException('Queue policy changed', 'AbortError');
+    this.invalidateAudioPreparation();
+    check(); ++this.refreshSequence; this.accept(header, window);
   }
 
   /** The workspace's edits (Up Next): remove, reorder (one moved entry), repeat, shuffle, add. */

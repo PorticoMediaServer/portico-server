@@ -116,9 +116,9 @@ export class QueueClient {
     return parsePage((await call(this.http, {method: 'GET', path: encodedRoutePath("list_queue_entries", {"id": enc(id)}) + "?from=" + (Math.max(0, from)) + "&limit=" + (n), signal})).body, parseEntry);
   }
 
-  private async command(id: string, revision: string, method: 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown): Promise<Readonly<{queue: QueueHeader; session?: Session}>> {
+  private async command(id: string, revision: string, method: 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown, signal?: AbortSignal): Promise<Readonly<{queue: QueueHeader; session?: Session}>> {
     try {
-      const r = await call(this.http, {method, path, headers: {'If-Match': revision, 'Idempotency-Key': this.key(), ...(method === 'PATCH' ? {'Content-Type': 'application/merge-patch+json'} : {})}, body});
+      const r = await call(this.http, {method, path, headers: {'If-Match': revision, 'Idempotency-Key': this.key(), ...(method === 'PATCH' ? {'Content-Type': 'application/merge-patch+json'} : {})}, body, signal});
       const b = r.body as {queue?: unknown; session?: unknown} | undefined;
       const header = obj(b) && b.queue !== undefined ? b.queue : b;
       return Object.freeze({queue: parseQueue(header), session: obj(b) && b.session !== undefined ? parseSession(b.session) : undefined});
@@ -143,8 +143,8 @@ export class QueueClient {
     return this.command(id, revision, 'POST', encodedRoutePath("move_queue_entry", {"id": enc(id), "entryId": enc(entryId)}), to);
   }
   /** Repeat and shuffle. Shuffle on makes the current entry position 0 of a new seeded order. */
-  update(id: string, revision: string, change: Readonly<{repeat?: 'off' | 'one' | 'all'; shuffle?: Readonly<{on: boolean; seed?: string}>}>) {
-    return this.command(id, revision, 'PATCH', encodedRoutePath("update_queue", {"id": enc(id)}), change);
+  update(id: string, revision: string, change: Readonly<{repeat?: 'off' | 'one' | 'all'; shuffle?: Readonly<{on: boolean; seed?: string}>}>, signal?: AbortSignal) {
+    return this.command(id, revision, 'PATCH', encodedRoutePath("update_queue", {"id": enc(id)}), change, signal);
   }
   /** Completion, Next, Previous or jump to an entry. Returns the next session when one starts. */
   advance(id: string, revision: string, reason: 'completion' | 'next' | 'previous' | 'entry', entryId?: string) {
