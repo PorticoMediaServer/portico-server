@@ -573,6 +573,7 @@ export class WebPlayback implements PlaybackAdapter {
         this.renderUnavailableSession = session.id;
         this.slot.hold(false);
         listeningDiagnostic('audio_processing_unavailable');
+        service.listeningFallback('processing');
         if (!service.fallbackAudioRender()) service.audioRenderFailed('audio_render_failed');
         return;
       }

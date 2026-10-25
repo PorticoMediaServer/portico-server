@@ -388,6 +388,7 @@ export class DecodeAudioRender {
       catch { this.service.fallbackAudioRender(); }
       // This song continues through the dry path. Saved intent remains on, actual EQ is false.
       listeningDiagnostic('equalizer_filter_unavailable', error);
+      this.service.listeningFallback('eq');
     }
     this.reportProcessing();
   }

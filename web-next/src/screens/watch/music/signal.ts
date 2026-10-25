@@ -11,8 +11,14 @@ const LOSSLESS = new Set(['flac', 'alac', 'pcm', 'wavpack', 'truehd', 'dts_hd'])
 export function watchMusicSignal(snapshot: WebPlaybackRuntimeSnapshot, equalizer: EqualizerSettings | null): MusicSignalModel | undefined {
   const session = snapshot.session, info = session?.playbackInfo, observed = session?.observedPlayback?.audio;
   const sourceAudio = info?.source.audio;
-  if (!session || !info || !sourceAudio?.codec) return undefined;
   const eqOn = equalizer?.enabled === true;
+  const fallback = snapshot.playback.musicFallback === 'eq' ? 'eq' as const : undefined;
+  if (!session || !info || !sourceAudio?.codec) {
+    // No committed comparison: a real engine fallback still has a drawn line, from the
+    // engine's own fact alone, and never a guessed format.
+    if (!fallback) return undefined;
+    return musicSignal({source: {}, output: {platform: 'browser', device: 'browser'}, eqOn, eqApplied: false, normalization: 'off', levelingApplied: false, fallback});
+  }
   const source: MusicSignalInput['source'] = {codec: sourceAudio.codec, bitDepth: sourceAudio.bitDepth, sampleRate: sourceAudio.sampleRate,
     channels: sourceAudio.channels, layout: sourceAudio.layout, lossless: LOSSLESS.has(sourceAudio.codec), atmos: sourceAudio.objectAudio === 'atmos'};
   const delivered = info.delivered.audio;
@@ -25,5 +31,5 @@ export function watchMusicSignal(snapshot: WebPlaybackRuntimeSnapshot, equalizer
     ...(observed?.sampleRate ? {sampleRate: observed.sampleRate} : {}), ...(observed?.bitDepth ? {bitDepth: observed.bitDepth} : {}),
     ...(observed?.handling === 'passthrough' ? {passthrough: true} : observed?.handling !== 'passthrough' && observed?.layout ? {decodedLayout: observed.layout} : {}),
     ...(resampled ? {resampledBy: 'browser' as const} : {})};
-  return musicSignal({source, server, output, eqOn, eqApplied: false, normalization: 'off', levelingApplied: false});
+  return musicSignal({source, server, output, eqOn, eqApplied: false, normalization: 'off', levelingApplied: false, ...(fallback ? {fallback} : {})});
 }

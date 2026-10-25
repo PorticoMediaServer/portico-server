@@ -711,6 +711,8 @@ export type PlaybackSnapshot = {
   listeningDeadlines?: ListeningDeadlines;
   audioEffects: AudioEffectsSnapshot;
   listeningNotice?: ListeningNoticeCode;
+  /** The music engine fell back for this song: the signal path says so, never a notice. */
+  musicFallback?: 'processing' | 'eq';
   channel?: ChannelReference;
   linear?: ChannelProjection;
   /** The channel's start can't proceed (occurrence status "recoverable"); `linear.media.errorCode` says why. */
@@ -887,7 +889,9 @@ export class PlaybackService {
     };
   }
   private update(patch: Partial<PlaybackSnapshot>) {
-    if(patch.intent==='playing'||patch.phase==='idle'||patch.phase==='error'||patch.error||'intentId' in patch&&patch.intentId!==this.snapshot.intentId)patch={...patch,listeningNotice:undefined};
+    if(patch.intent==='playing'||patch.phase==='idle'||patch.phase==='error'||patch.error||'intentId' in patch&&patch.intentId!==this.snapshot.intentId)patch={...patch,listeningNotice:undefined,musicFallback:undefined};
+    // A fallback lasts for this song only; the next item starts with the engine again.
+    if(patch.itemId!==undefined&&patch.itemId!==this.snapshot.itemId)patch={...patch,musicFallback:undefined};
     const changed='session' in patch&&(patch.session?.id!==this.snapshot.session?.id||patch.session?.generation!==this.snapshot.session?.generation);
     if(changed||patch.phase==='idle'||patch.phase==='error'||patch.phase==='ended'){
       const actual=patch.phase==='idle'||patch.phase==='error'||patch.phase==='ended'?undefined:patch.nativeListening;
@@ -1109,6 +1113,10 @@ export class PlaybackService {
     const effects=this.snapshot.audioEffects;
     if(!effects.rendering||effects.effectiveRate===effectiveRate&&effects.waiting===waiting)return;
     this.update({audioEffects:{...effects,effectiveRate,waiting}});
+  }
+  /** A lasting engine fallback for this song, read by the signal path; never a notice. */
+  listeningFallback(kind:'processing'|'eq'){
+    if(this.snapshot.musicFallback!==kind)this.update({musicFallback:kind});
   }
   listeningNotice(code:ListeningNoticeCode){
     if(code!=='audio_autoplay_blocked'&&code!=='listening_policy_failed')return;

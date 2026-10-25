@@ -33,6 +33,8 @@ export type MusicOutputFacts=Readonly<{
 export type MusicSignalInput=Readonly<{
  source:MusicFormatFacts;server?:MusicServerSignal;output:MusicOutputFacts;
  eqOn:boolean;eqApplied:boolean;normalization:'off'|'track'|'album';levelingApplied:boolean;
+ /** The engine fell back for this song, so the line says what was lost, not a notice. */
+ fallback?:'eq';
  /** Actual gain used by this song's renderer, after Never boost/peak limits. */
  levelingGainDb?:number;
 }>;
@@ -110,6 +112,7 @@ export function musicSignal(input:MusicSignalInput):MusicSignalModel{
   else if((server.quality==='320'||server.quality==='96')&&positive(delivered?.bitrateBps))state=text('player.signal.line.convertedBitrate',{kbps:Math.round(delivered.bitrateBps/1000)});
   else if(delivered?.codec)state=text('player.signal.server.converted',{format:codecName(delivered.codec)});
  }else if(input.eqOn||input.eqApplied){rule=2;state=text(input.eqApplied?'player.signal.line.eqOn':'player.signal.line.eqUnavailable');}
+ else if(input.fallback==='eq'){rule=2;state=text('player.signal.line.eqUnavailable');}
  else if(gainChanged){rule=3;state=text('player.signal.line.loudness',{gain:signalGain(gain)});}
  else if(volumeChanged){rule='desktop-volume';state=text('player.signal.line.volume',{level:output.volume!});}
  else if(output.resampledBy&&positive(output.sampleRate)){
