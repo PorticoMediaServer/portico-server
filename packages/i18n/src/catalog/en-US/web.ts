@@ -2353,6 +2353,7 @@ export const webMessages = {
   'api.webhooks.full': 'This server keeps up to {count} webhooks. Remove one to add another.',
   'api.webhooks.urlProblem': 'Use a full web address that starts with http:// or https:// and has no user name or password in it.',
   'api.webhooks.secretHelp': 'Leave empty and Portico makes one and shows it to you once.',
+  'api.webhooks.secretProblem': 'Use 16 to 128 characters: letters, numbers or symbols, with no spaces.',
   'api.webhooks.secretKept': 'The signing secret stays as it is (it ends in {hint}). To change it, choose Replace the secret from the webhook’s menu.',
   'api.webhooks.secretTitle': 'Copy the signing secret now',
   'api.webhooks.rotateTitle': 'Replace the secret for “{name}”?',
