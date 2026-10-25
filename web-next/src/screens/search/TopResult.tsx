@@ -14,7 +14,7 @@ import type {SearchBindings} from './bindings';
 import detailStyles from '../detail/detail.module.css';
 import {runScreenCommand} from '../detail/context';
 
-export function TopResult({binding, result}: {binding: SearchBindings; result: TopSearchResult}) {
+export function TopResult({binding, result, fallbackArtwork}: {binding: SearchBindings; result: TopSearchResult; fallbackArtwork?: string}) {
   const entry = result.entry, title = binding.topTitle, show = binding.topShow;
   const titleState = useSyncExternalStore(title.service.subscribe, title.service.getSnapshot, title.service.getSnapshot);
   const showState = useSyncExternalStore(show.service.subscribe, show.service.getSnapshot, show.service.getSnapshot);
@@ -32,7 +32,7 @@ export function TopResult({binding, result}: {binding: SearchBindings; result: T
   const movie = entry.kind === 'movie' && titleState.data?.item.id === entry.id && titleState.phase === 'ready' ? titleState.data : undefined;
   const series = entry.kind === 'show' && showState.data?.show.id === entry.id && showState.phase === 'ready' ? showState.data : undefined;
   const media = 'libraryId' in entry ? entry : undefined;
-  const source = media?.backdropUrl || series?.show.backdropUrl || movie?.item.backdropUrl || entry.posterUrl;
+  const source = media?.backdropUrl || series?.show.backdropUrl || movie?.item.backdropUrl || entry.posterUrl || fallbackArtwork;
   const facts = titlePageFacts(movie ? {year: movie.item.year, durationSeconds: movie.item.duration, genres: movie.metadata.genres.map(value => value.name), contentRating: movie.facts?.contentRating}
     : series ? {year: series.show.year, seasonCount: series.seasonTotalCount, genres: series.show.genres}
       : media ? {year: media.year, seasonCount: media.seasonCount, genres: media.genres, artist: media.artist?.name, author: media.author, durationSeconds: media.duration} : {}, environment);
