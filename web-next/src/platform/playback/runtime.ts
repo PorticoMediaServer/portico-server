@@ -213,7 +213,12 @@ export class WebShellPlaybackRuntime {
         stackReference.capacityWait = wait;
         this.sync();
       }});
-    const http = startFailureHttp({http: capacity, api: this.source.api, events: this.source.events, life: life.signal, now: this.env.timers?.now,
+    const page = this.env.page ?? (typeof document === 'undefined' ? undefined : document);
+    const visibility = page ? {hidden: () => page.visibilityState !== 'visible', onVisible(listener: () => void) {
+      const changed = () => {if (page.visibilityState === 'visible') listener();};
+      page.addEventListener('visibilitychange', changed);return () => page.removeEventListener('visibilitychange', changed);
+    }} : undefined;
+    const http = startFailureHttp({http: capacity, api: this.source.api, events: this.source.events, visibility, life: life.signal, now: this.env.timers?.now,
       isCurrent: () => this.current(stackReference), captureCurrent: () => stackReference.capacityCurrent,
       isInitial: () => !stackReference.queue.currentSession() && !stackReference.service.getSnapshot().session,
       publish: failure => {if (this.current(stackReference)) {stackReference.startFailure = failure;this.sync();}},

@@ -52,9 +52,14 @@ export function WatchStreamLimitSessions({api, failure, isCurrent, excludeSessio
     active.current?.life.abort();
     active.current = lease;
     setView({lease});
+    const off = failure?.subscribeSessions(items => {
+      if (active.current !== lease || lease.life.signal.aborted || !lease.isCurrent()) return;
+      ++serial.current;lease.items = offered(lease, items);
+      setView({lease, ...(lease.pending ? {pending: lease.pending} : {})});
+    });
     reload(lease);
     // Retirement is synchronous: this lease, and only this lease, ends here.
-    return () => { lease.life.abort(); if (active.current === lease) active.current = undefined; };
+    return () => {off?.();lease.life.abort(); if (active.current === lease) active.current = undefined; };
   }, [api, failure, isCurrent, excludeSessionId, reload]);
   // The handler names the rendered lease and the exact offered row; nothing is reread for authority.
   const stop = (lease: Lease, row: RemotePlaybackControls) => {

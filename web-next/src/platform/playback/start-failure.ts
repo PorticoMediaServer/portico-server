@@ -1,17 +1,19 @@
 import {call, PlaybackApiError, type V1Http, type V1Response} from '@core/playback-v1/http.ts';
 import {playbackFailurePermanent} from '@core/playback-messages.ts';
-import {playbackControlsService, type RemotePlaybackControls} from '@core/playback-controls.ts';
-import type {HttpLocalApi} from '@core/index.ts';
+import {playbackControlsService, type AccountStreamLimit, type RemotePlaybackControls} from '@core/playback-controls.ts';
+import {capacityChangedEventType, parseCapacityChangedEvent} from '@core/account-capacity.ts';
+import type {HttpLocalApi, PageVisibility} from '@core/index.ts';
 import type {EventsClient} from '@core/playback-v1/events.ts';
 import {routePath} from '../../../../packages/contracts/src/routes.ts';
 
 export type WebPlaybackStartFailure = Readonly<{
   code: string; scope: 'account' | 'server' | 'unknown'; retryable: boolean;
-  streamLimit?: Readonly<{scope: 'account'; playing: number; limit: number}>;
+  streamLimit?: AccountStreamLimit;
   isCurrent(): boolean;
   retry(): Promise<void>;
   cancel(): void;
   remote(): Promise<Readonly<{items: readonly RemotePlaybackControls[]; nextCursor: string}>>;
+  subscribeSessions(listener: (items: readonly RemotePlaybackControls[]) => void): () => void;
   stop(row: RemotePlaybackControls): Promise<void>;
 }>;
 const retired = () => new DOMException('Playback start retired', 'AbortError');
@@ -22,7 +24,8 @@ const starts: ReadonlySet<string> = new Set([routePath('start_playback_session')
  * key and revision, rather than calling Play against a newer runtime or selection.
  * This sits outside capacityRetryHttp, whose directed conversion retries stay intact. */
 export function startFailureHttp(input: Readonly<{
-  http: V1Http; api: HttpLocalApi; events: Pick<EventsClient, 'on'>; life: AbortSignal;
+  http: V1Http; api: HttpLocalApi; events: Pick<EventsClient, 'on'> & Partial<Pick<EventsClient, 'onResync' | 'getStatus' | 'subscribeStatus'>>; life: AbortSignal;
+  visibility?: PageVisibility;
   isCurrent(): boolean; isInitial(): boolean; captureCurrent(): (() => boolean) | undefined;
   now?: () => number; publish(failure: WebPlaybackStartFailure | undefined): void;
   cancelStart(): void;
@@ -47,10 +50,30 @@ export function startFailureHttp(input: Readonly<{
       return valid;
     };
     const assert = () => {if (!current()) throw retired();};
-    let mine: WebPlaybackStartFailure | undefined, automaticRetries = 0, firstRecovery: number | undefined;
+    let mine: WebPlaybackStartFailure | undefined, automaticRetries = 0, firstRecovery: number | undefined, automaticPending = false;
+    const consumed = new Set<string>();let refreshes = 0;
+    const foreground = () => input.visibility?.hidden() === false;
+    const waitForForeground = async () => {
+      while (!foreground()) {
+        assert();
+        await new Promise<void>((resolve, reject) => {
+          let off: (() => void) | undefined;
+          const abort = () => {off?.();signal.removeEventListener('abort', abort);reject(retired());};
+          off = input.visibility?.onVisible(() => {off?.();signal.removeEventListener('abort', abort);resolve();});
+          signal.addEventListener('abort', abort, {once: true});
+          if (signal.aborted || !off) abort();
+        });
+      }
+      assert();
+    };
     try {
       for (;;) {
         assert();
+        if (automaticPending) {
+          await waitForForeground();
+          if (firstRecovery === undefined || now() - firstRecovery > 30_000) throw retired();
+          automaticPending = false;
+        }
         let response: V1Response | undefined, error: PlaybackApiError;
         try {
           response = await input.http.send(captured);
@@ -74,69 +97,137 @@ export function startFailureHttp(input: Readonly<{
         if (response && (response.status === 412 || ['idempotency_key_reused', 'invalid_request', 'revision_mismatch', 'revision_required', 'factor_setup_required', 'access_revoked'].includes(error!.code))) return response;
         const scope = error!.code !== 'stream_limit_reached' ? 'unknown'
           : error!.reason === 'owner_server_cap' ? 'server' : error!.reason === 'owner_account_cap' || error!.streamLimit ? 'account' : 'unknown';
-        const limit = scope === 'account' ? error!.streamLimit : undefined;
+        const refusedLimit = scope === 'account' ? error!.streamLimit : undefined;
+        let limit = refusedLimit && refusedLimit.playing >= refusedLimit.limit ? refusedLimit : undefined;
         let wake: (() => void) | undefined, requested = false, busy = false, readSerial = 0;
+        let dirty = false, scheduled = false, refreshing = false, visibilityEpoch = 0;
         let offered: readonly RemotePlaybackControls[] = Object.freeze([]);
+        const sessionListeners = new Set<(items: readonly RemotePlaybackControls[]) => void>();
         const service = playbackControlsService(<T,>(path: string, method?: string, body?: unknown) => input.api.request<T>(path, method, body, signal));
         const shown = () => current() && active === failure;
         const check = () => {if (!shown()) throw retired();};
+        const publishSessions = (rows: readonly RemotePlaybackControls[], latestLimit: typeof limit) => {
+          check();offered = Object.freeze(rows.filter(row => row.actions.includes('stop') && row.state !== 'ended'));
+          // Once capacity is available this is a recovery transition, not an
+          // "Already playing on 0 screens" failure. Keep numeric failure facts
+          // only while the actual read still reports a full account.
+          const blocked = latestLimit && latestLimit.playing >= latestLimit.limit ? latestLimit : undefined;
+          const changed = limit?.limit !== blocked?.limit || limit?.playing !== blocked?.playing;
+          limit = blocked;if (changed) input.publish(failure);
+          for (const listener of [...sessionListeners]) listener(offered);
+        };
         const completeRead = async () => {
           check();const rows: RemotePlaybackControls[] = [], cursors = new Set<string>();let cursor = '';
+          let firstLimit: AccountStreamLimit | undefined, coherent = true;
           // An incomplete page can never prove a stream ended. Bound the read,
           // refuse a looping cursor, and never infer capacity from a partial list.
           for (let page = 0; page < 20; page++) {
             const value = await service.remote(cursor, 100);check();rows.push(...value.items);
+            if (page === 0) firstLimit = value.streamLimit;
+            else if (firstLimit?.limit !== value.streamLimit?.limit || firstLimit?.playing !== value.streamLimit?.playing) coherent = false;
             if (!value.nextCursor) {
               if (new Set(rows.map(row => row.sessionId)).size !== rows.length) throw retired();
-              return Object.freeze(rows);
+              if (!coherent) {dirty = true;queueMicrotask(invalidate);throw retired();}
+              // Only the final page's actual durable-slot fact accompanies a
+              // complete read. The number of controls rows is never a slot count.
+              return Object.freeze({items: Object.freeze(rows), streamLimit: value.streamLimit});
             }
             if (cursors.has(value.nextCursor)) throw retired();
             cursors.add(value.nextCursor);cursor = value.nextCursor;
           }
           throw retired();
         };
+        const supportsRecovery = (read: Awaited<ReturnType<typeof completeRead>>, before: readonly RemotePlaybackControls[]) => read.streamLimit
+          ? read.streamLimit.scope === 'account' && read.streamLimit.playing < read.streamLimit.limit
+          : before.some(row => !read.items.some(value => value.sessionId === row.sessionId));
         const resume = (automatic: boolean) => {
           check();if (requested) throw retired();
           if (automatic) {
+            if (!foreground()) throw retired();
             const at = now();firstRecovery ??= at;
             if (automaticRetries >= 5 || at - firstRecovery > 30_000) throw retired();
             automaticRetries++;
+            automaticPending = true;
           }
           requested = true;active = undefined;input.publish(undefined);wake?.();
         };
         const confirmFreed = async (row: RemotePlaybackControls) => {
-          const remaining = await completeRead();check();
+          if (!foreground()) {dirty = true;return;}
+          const epoch = visibilityEpoch, remaining = await completeRead();check();
+          if (!foreground() || epoch !== visibilityEpoch) {invalidate();return;}
           // A complete fresh account read after the original offered row's Stop
           // acknowledgement (or its newer ended event) is the capacity evidence.
-          if (!remaining.some(value => value.sessionId === row.sessionId)) resume(true);
+          if (supportsRecovery(remaining, [row])) resume(true);
+          else publishSessions(remaining.items, remaining.streamLimit);
+        };
+        // Hints, reconnect, foreground and the existing ended-event path all use
+        // one read/admission gate. Never issue a POST from an event callback.
+        const invalidate = () => {
+          if (scope !== 'account' || !shown()) return;
+          dirty = true;
+          if (!foreground() || busy || refreshing || scheduled || refreshes >= 20) return;
+          scheduled = true;
+          queueMicrotask(() => {
+            scheduled = false;
+            if (!dirty || !shown() || !foreground() || busy || refreshing || refreshes >= 20) return;
+            dirty = false;refreshing = true;refreshes++;const ticket = ++readSerial, epoch = visibilityEpoch, before = offered;
+            void completeRead().then(rows => {
+              check();if (ticket !== readSerial) return;
+              if (!foreground() || epoch !== visibilityEpoch) {dirty = true;return;}
+              if (supportsRecovery(rows, before)) resume(true);
+              else publishSessions(rows.items, rows.streamLimit);
+            }).catch(() => {}).finally(() => {refreshing = false;if (dirty) invalidate();});
+          });
+        };
+        const consume = (id: string) => {
+          if (!id || id.length > 128 || consumed.has(id) || consumed.size >= 128) return false;
+          consumed.add(id);return true;
         };
         const failure: WebPlaybackStartFailure = Object.freeze({code: error!.code, scope,
-          retryable: !playbackFailurePermanent(error!), ...(limit ? {streamLimit: limit} : {}), isCurrent: shown,
+          retryable: !playbackFailurePermanent(error!), get streamLimit() {return limit;}, isCurrent: shown,
           async retry() {check();if (scope === 'account' || playbackFailurePermanent(error!)) throw retired();resume(false);},
           cancel() {if (shown()) {controller.abort();input.cancelStart();}},
           async remote() {
-            check();if (scope !== 'account') throw retired();const ticket = ++readSerial;
+            check();if (scope !== 'account' || busy || refreshing) throw retired();const ticket = ++readSerial, epoch = visibilityEpoch;
             const rows = await completeRead();check();if (ticket !== readSerial || busy) throw retired();
-            offered = Object.freeze(rows.filter(row => row.actions.includes('stop') && row.state !== 'ended'));
+            // One initial guarded reconciliation covers a release whose hint
+            // preceded attachment/baseline. Subsequent attempts need a new real
+            // trigger, rather than a failure -> mount -> POST recursion.
+            if (automaticRetries === 0 && rows.streamLimit && foreground() && epoch === visibilityEpoch && supportsRecovery(rows, [])) {
+              resume(true);return Object.freeze({items: rows.items, nextCursor: ''});
+            }
+            publishSessions(rows.items, rows.streamLimit);
             return Object.freeze({items: offered, nextCursor: ''});
           },
+          subscribeSessions(listener) {check();sessionListeners.add(listener);return () => {sessionListeners.delete(listener);};},
           async stop(row) {
-            check();if (scope !== 'account' || busy || !offered.includes(row) || !row.actions.includes('stop')) throw retired();
+            check();if (scope !== 'account' || busy || refreshing || !offered.includes(row) || !row.actions.includes('stop')) throw retired();
             busy = true;++readSerial;
-            try {await service.stopAccount(row.sessionId);check();await confirmFreed(row);} finally {busy = false;}
+            try {await service.stopAccount(row.sessionId);check();await confirmFreed(row);} finally {busy = false;if (dirty) invalidate();}
           },
         });
         mine = active = failure;
         // A revisioned ended event is only a hint to reread. It is never permission
         // to retry a session not present in this failure's own scoped offered rows.
-        const off = input.events.on('session.updated', event => {
-          if (scope !== 'account' || !shown() || busy || event.resource?.kind !== 'session') return;
+        const offEnded = scope === 'account' ? input.events.on('session.updated', event => {
+          if (scope !== 'account' || !shown() || !foreground() || event.resource?.kind !== 'session') return;
           const row = offered.find(value => value.sessionId === event.resource?.id);
           const data = event.data as {state?: unknown} | undefined;
           if (!row || data?.state !== 'ended' || !/^\d{1,32}$/.test(event.revision ?? '') || BigInt(event.revision!) <= BigInt(row.revision)) return;
-          busy = true;++readSerial;
-          void confirmFreed(row).catch(() => {}).finally(() => {busy = false;});
-        });
+          if (consume(event.id)) invalidate();
+        }) : () => {};
+        const offCapacity = scope === 'account' ? input.events.on(capacityChangedEventType, event => {
+          if (!shown() || !foreground()) return;
+          const hint = parseCapacityChangedEvent(event);
+          if (hint && consume(hint.id)) invalidate();
+        }) : () => {};
+        const offVisible = scope === 'account' ? input.visibility?.onVisible(() => {visibilityEpoch++;invalidate();}) : undefined;
+        const offResync = scope === 'account' ? input.events.onResync?.(() => {if (foreground()) invalidate();}) : undefined;
+        let connected = input.events.getStatus?.().connected;
+        const offStatus = scope === 'account' && input.events.getStatus ? input.events.subscribeStatus?.(() => {
+          const next = input.events.getStatus!().connected, reconnected = connected === false && next;
+          connected = next;if (reconnected && foreground()) invalidate();
+        }) : undefined;
         try {
           input.publish(failure);
           assert();
@@ -146,7 +237,7 @@ export function startFailureHttp(input: Readonly<{
             signal.addEventListener('abort', abort, {once: true});
             if (signal.aborted) abort();else if (requested) wake();
           });
-        } finally {off();}
+        } finally {offEnded();offCapacity();offVisible?.();offResync?.();offStatus?.();sessionListeners.clear();}
       }
     } finally {if (active === mine && mine) {active = undefined;input.publish(undefined);}}
   }};
