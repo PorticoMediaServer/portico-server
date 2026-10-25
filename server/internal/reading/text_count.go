@@ -7,7 +7,9 @@ import (
 	"encoding/xml"
 	"errors"
 	"io"
+	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
@@ -20,32 +22,72 @@ const maxCountPublication = 64 << 20
 // Count only complete admitted XHTML spine text. A nil count is unknown, not
 // zero. This is descriptive metadata; no source or viewer grant comes from it.
 func countEPUBText(ctx context.Context, e *EPUB) (*int64, error) {
+	count, _, err := inspectEPUBText(ctx, e)
+	return count, err
+}
+
+// Opening text is retained only from complete, valid admitted body text. It is
+// a bounded excerpt, never an estimate or HTML returned for execution.
+func inspectEPUBText(ctx context.Context, e *EPUB) (*int64, string, error) {
 	var total, words int64
+	opening := ""
 	for _, name := range e.Spine {
 		file := e.archive.files[name]
 		if file == nil || e.allowed[name] != "application/xhtml+xml" || file.UncompressedSize64 > maxCountDocument || file.UncompressedSize64 > uint64(maxCountPublication-total) {
-			return nil, nil
+			return nil, opening, nil
 		}
 		data, err := e.archive.read(ctx, name, maxCountDocument)
 		if err != nil {
 			if ctx.Err() != nil {
-				return nil, ctx.Err()
+				return nil, "", ctx.Err()
 			}
-			// Only complete acquired bytes can establish malformed/unsupported text.
-			// Even a length/format refusal here may wrap a truncated provider read.
-			return nil, err
+			return nil, "", err
 		}
 		total += int64(len(data))
-		count, ok := countXHTMLText(ctx, data)
+		excerpt := &openingText{}
+		count, ok := countXHTMLTextObserved(ctx, data, excerpt.add)
 		if !ok {
 			if ctx.Err() != nil {
-				return nil, ctx.Err()
+				return nil, "", ctx.Err()
 			}
-			return nil, nil
+			return nil, opening, nil
 		}
 		words += count
+		if opening == "" {
+			opening = excerpt.text.String()
+		}
 	}
-	return &words, nil
+	return &words, opening, nil
+}
+
+type openingText struct {
+	text        strings.Builder
+	space, full bool
+}
+
+func (o *openingText) add(value string) {
+	if o.full {
+		return
+	}
+	for _, r := range value {
+		if unicode.IsSpace(r) {
+			o.space = o.text.Len() > 0
+			continue
+		}
+		size := utf8.RuneLen(r)
+		if o.space {
+			size++
+		}
+		if o.text.Len()+size > 4096 {
+			o.full = true
+			return
+		}
+		if o.space {
+			o.text.WriteByte(' ')
+			o.space = false
+		}
+		o.text.WriteRune(r)
+	}
 }
 
 // Rule 1: count maximal Unicode letter/number/mark runs containing a letter or
@@ -54,6 +96,9 @@ func countEPUBText(ctx context.Context, e *EPUB) (*int64, error) {
 // head content are not publication text. Scripts requiring dictionary word
 // segmentation are unsupported, rather than receiving a whitespace guess.
 func countXHTMLText(ctx context.Context, data []byte) (int64, bool) {
+	return countXHTMLTextObserved(ctx, data, nil)
+}
+func countXHTMLTextObserved(ctx context.Context, data []byte, observe func(string)) (int64, bool) {
 	d := xml.NewDecoder(bytes.NewReader(data))
 	d.Strict = true
 	const xhtml = "http://www.w3.org/1999/xhtml"
@@ -100,10 +145,16 @@ func countXHTMLText(ctx context.Context, data []byte) (int64, bool) {
 			}
 			if textBlock(v.Name.Local) {
 				boundary()
+				if observe != nil && body > 0 && skip == 0 {
+					observe(" ")
+				}
 			}
 		case xml.EndElement:
 			if textBlock(v.Name.Local) {
 				boundary()
+				if observe != nil && body > 0 && skip == 0 {
+					observe(" ")
+				}
 			}
 			if depth == skip {
 				skip = 0
@@ -123,6 +174,9 @@ func countXHTMLText(ctx context.Context, data []byte) (int64, bool) {
 			}
 			if body == 0 || skip != 0 {
 				continue
+			}
+			if observe != nil {
+				observe(string(v))
 			}
 			for _, r := range string(v) {
 				if unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Thai, unicode.Lao, unicode.Khmer, unicode.Myanmar) {
@@ -160,7 +214,7 @@ func (s *Service) adoptTextCount(ctx context.Context, p identity.Principal, f *S
 		return err
 	}
 	var cached int
-	err = g.Tx().QueryRowContext(ctx, `SELECT 1 FROM reading_text_counts WHERE item_id=? AND asset_id=? AND inventory_object_id=? AND source_revision=? AND rule_version=?`, selected.Entity, selected.Asset, selected.inventoryRow, selected.inventory, readingTextRuleVersion).Scan(&cached)
+	err = g.Tx().QueryRowContext(ctx, `SELECT 1 FROM reading_text_counts WHERE item_id=? AND asset_id=? AND inventory_object_id=? AND source_revision=? AND rule_version=? AND opening_rule_version=1`, selected.Entity, selected.Asset, selected.inventoryRow, selected.inventory, readingTextRuleVersion).Scan(&cached)
 	g.Rollback()
 	if err == nil {
 		return nil
@@ -172,7 +226,7 @@ func (s *Service) adoptTextCount(ctx context.Context, p identity.Principal, f *S
 	if err != nil {
 		return err
 	}
-	count, err := countEPUBText(ctx, e)
+	count, opening, err := inspectEPUBText(ctx, e)
 	if err != nil {
 		return err
 	}
@@ -191,9 +245,53 @@ func (s *Service) adoptTextCount(ctx context.Context, p identity.Principal, f *S
 	if current.Revision != selected.Revision || current.inventoryRow != selected.inventoryRow || current.object != selected.object || current.inventory != selected.inventory {
 		return ErrChanged
 	}
-	_, err = gate.Tx().ExecContext(ctx, `INSERT INTO reading_text_counts(item_id,asset_id,word_count,inventory_object_id,source_revision,rule_version) VALUES(?,?,?,?,?,?) ON CONFLICT(item_id,asset_id) DO UPDATE SET word_count=excluded.word_count,inventory_object_id=excluded.inventory_object_id,source_revision=excluded.source_revision,rule_version=excluded.rule_version WHERE reading_text_counts.word_count IS NOT excluded.word_count OR reading_text_counts.inventory_object_id<>excluded.inventory_object_id OR reading_text_counts.source_revision<>excluded.source_revision OR reading_text_counts.rule_version<>excluded.rule_version`, current.Entity, current.Asset, count, current.inventoryRow, current.inventory, readingTextRuleVersion)
+	var openingValue any
+	if opening != "" {
+		openingValue = opening
+	}
+	_, err = gate.Tx().ExecContext(ctx, `INSERT INTO reading_text_counts(item_id,asset_id,word_count,inventory_object_id,source_revision,rule_version,opening_lines,opening_rule_version) VALUES(?,?,?,?,?,?,?,1) ON CONFLICT(item_id,asset_id) DO UPDATE SET word_count=excluded.word_count,inventory_object_id=excluded.inventory_object_id,source_revision=excluded.source_revision,rule_version=excluded.rule_version,opening_lines=excluded.opening_lines,opening_rule_version=excluded.opening_rule_version WHERE reading_text_counts.word_count IS NOT excluded.word_count OR reading_text_counts.inventory_object_id<>excluded.inventory_object_id OR reading_text_counts.source_revision<>excluded.source_revision OR reading_text_counts.rule_version<>excluded.rule_version OR reading_text_counts.opening_lines IS NOT excluded.opening_lines OR reading_text_counts.opening_rule_version<>1`, current.Entity, current.Asset, count, current.inventoryRow, current.inventory, readingTextRuleVersion, openingValue)
 	if err != nil {
 		return err
 	}
 	return gate.Commit()
+}
+
+// This cached file text is published only by a prepared, source-authorized
+// manifest. List/Search metadata never receives the body excerpt.
+func (s *Service) publicationTextFacts(ctx context.Context, p identity.Principal, selected Selection) (*int64, string, error) {
+	if selected.Format != "epub" {
+		return nil, "", nil
+	}
+	gate, err := dbwork.BeginSnapshot(ctx, s.DB)
+	if err != nil {
+		return nil, "", err
+	}
+	defer gate.Rollback()
+	current, err := s.selectTx(ctx, gate.Tx(), p, selected.ItemID, selected.SourceID)
+	if err != nil {
+		return nil, "", err
+	}
+	if current.Revision != selected.Revision || current.inventoryRow != selected.inventoryRow || current.inventory != selected.inventory {
+		return nil, "", ErrChanged
+	}
+	var count sql.NullInt64
+	var opening sql.NullString
+	var rule int
+	err = gate.Tx().QueryRowContext(ctx, `SELECT word_count,opening_lines,opening_rule_version FROM reading_text_counts WHERE item_id=? AND asset_id=? AND inventory_object_id=? AND source_revision=? AND rule_version=?`, current.Entity, current.Asset, current.inventoryRow, current.inventory, readingTextRuleVersion).Scan(&count, &opening, &rule)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, "", nil
+	}
+	if err != nil {
+		return nil, "", err
+	}
+	var words *int64
+	if count.Valid {
+		value := count.Int64
+		words = &value
+	}
+	text := ""
+	if rule == 1 && opening.Valid {
+		text = opening.String
+	}
+	return words, text, nil
 }
