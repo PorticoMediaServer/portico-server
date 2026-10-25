@@ -128,6 +128,12 @@ const handheldType = {
   liveChromePhoneTitle: type(18, 19.44, 800, -.035), liveChromeNumber: type(11, 'normal', 800, -.01),
   liveMiniTitle: type(15.5, 'normal', 700),
   liveOwnerSourceTitle: type(16.5, 'normal', 700),
+  // owner-dashboard phone composition: preserve the drawn metrics when lifting raw CSS.
+  dashboardPhoneBarTitle: type(16.5, 19.8, 800, -.015), dashboardPhoneBarDetail: type(12, 14.4, 600),
+  dashboardPhoneHeading: type(40, 40, 800, -.04), dashboardPhoneName: type(19, 'normal', 800, -.02),
+  dashboardPhoneAlert: type(15.5, 20.15, 700), dashboardPhoneAlertBody: type(14, 20.3, 400),
+  dashboardPhoneTask: type(13, 18.2, 400), dashboardPhoneCalm: type(15, 19.5, 700),
+  dashboardPhoneFigure: type(34, 37.4, 800, -.03), dashboardPhoneAvatar: type(10, 'normal', 800),
   liveMonogram: type(13, 'normal', 800), bannerKind: type(14, 'normal', 600), fallbackLabel: type(12, 'normal', 700),
   personTitle: type(14, 'normal', 700), detailHeading: type(17, 'normal', 700), starring: type(14, 'normal', 400),
   reportSection: type(20, 'normal', 700, -.015), reportTitle: type(17, 21.25, 700, -.015),
