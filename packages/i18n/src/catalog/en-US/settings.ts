@@ -681,6 +681,7 @@ export const settingsMessages = {
   'web.metadata.field.role': 'Character or role',
   'web.metadata.field.department': 'Department',
   'web.metadata.addPerson': 'Add person',
+  'metadata.attention.chooseRelease': 'Choose a release',
   'metadata.attention.openAlbum': 'Open the album',
   'metadata.attention.openBook': 'Open the book',
   'metadata.attention.useMatch': 'Use this match',
