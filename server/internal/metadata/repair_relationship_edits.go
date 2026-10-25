@@ -50,6 +50,15 @@ func setRelationshipLock(ctx context.Context, tx *sql.Tx, t RepairTarget, class 
 			kept = append(kept, v)
 		}
 	}
+	if class == "credit" && t.Kind == "item" {
+		available, e := creditOverridesAvailable(ctx, tx, entity)
+		if e != nil {
+			return e
+		}
+		if available {
+			return applyEffectiveCreditSet(ctx, tx, t, entity, kept, locked, actor, now, false)
+		}
+	}
 	raw, _ := json.Marshal(kept)
 	_, err = tx.ExecContext(ctx, `INSERT INTO metadata_relationship_decisions(kind,entity_id,relationship,value_json,source,locked,actor,observed_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(kind,entity_id,relationship) DO UPDATE SET locked=excluded.locked,actor=excluded.actor,observed_at=excluded.observed_at`, t.Kind, entity, class, string(raw), "owner_lock", locked, actor, now)
 	if err != nil {
@@ -117,6 +126,15 @@ func applyRelationshipSet(ctx context.Context, tx *sql.Tx, t RepairTarget, class
 	current, err := readRepairRelationships(ctx, tx, t)
 	if err != nil {
 		return err
+	}
+	if class == "credit" {
+		available, e := creditOverridesAvailable(ctx, tx, entity)
+		if e != nil {
+			return e
+		}
+		if available || restore {
+			return applyEffectiveCreditSet(ctx, tx, t, entity, values, locked, actor, now, restore)
+		}
 	}
 	// This writer replaces only the manual family. A provider edit must not
 	// be acknowledged when the published provider row would remain unchanged.

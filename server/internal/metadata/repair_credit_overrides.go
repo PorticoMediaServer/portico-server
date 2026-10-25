@@ -1,0 +1,217 @@
+package metadata
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
+
+	"portico.local/server/internal/compactcatalog"
+)
+
+// Provider overrides are offered only when every existing raw seam can be
+// captured from real accepted record evidence inside the repair transaction.
+func creditOverridesAvailable(ctx context.Context, tx *sql.Tx, entity int64) (bool, error) {
+	var count int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM catalog_credits WHERE entity_id=?`, entity).Scan(&count); err != nil {
+		return false, err
+	}
+	if count > 100 {
+		return false, nil
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT provider FROM catalog_credits WHERE entity_id=? AND source_row_id IS NULL AND owner_entry_id IS NULL`, entity)
+	if err != nil {
+		return false, err
+	}
+	providers := []string{}
+	for rows.Next() {
+		var p string
+		if err = rows.Scan(&p); err != nil {
+			rows.Close()
+			return false, err
+		}
+		providers = append(providers, p)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return false, err
+	}
+	for _, provider := range providers {
+		ok, e := compactcatalog.CanCaptureCreditProviderTx(ctx, tx, entity, provider)
+		if e != nil {
+			return false, e
+		}
+		if !ok {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+func creditRelationshipKey(row RepairRelationship) string {
+	return row.Provider + "\x00" + row.RecordID + "\x00" + row.TargetKind + "\x00" + row.TargetID
+}
+func applyEffectiveCreditSet(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, values []RepairRelationship, locked bool, actor, now string, restore bool) error {
+	if len(values) > 100 {
+		return ErrRepairInput
+	}
+	if err := compactcatalog.CaptureLegacyCreditSourcesTx(ctx, tx, entity, now); err != nil {
+		return err
+	}
+	current, err := readRepairRelationships(ctx, tx, t)
+	if err != nil {
+		return err
+	}
+	bySource := map[string]RepairRelationship{}
+	byTuple := map[string][]RepairRelationship{}
+	byAdd := map[string]RepairRelationship{}
+	for _, row := range current {
+		if row.Kind != "credit" {
+			continue
+		}
+		if row.SourceRowID != "" {
+			bySource[row.SourceRowID] = row
+		}
+		byTuple[creditRelationshipKey(row)] = append(byTuple[creditRelationshipKey(row)], row)
+		if row.OwnerEntryID != "" && row.SourceRowID == "" {
+			byAdd[row.OwnerEntryID] = row
+		}
+	}
+	entries := []compactcatalog.OwnerCreditEntry{}
+	included := map[string]bool{}
+	for _, v := range values {
+		if v.Kind != "credit" || !publicationTitle(v.Label, 300) || v.Label == "" || !publicationText(v.Role, 500) || !publicationTitle(v.Department, 200) {
+			return ErrRepairInput
+		}
+		entry := compactcatalog.OwnerCreditEntry{CreditedName: v.Label, Role: v.Role, Department: v.Department}
+		if v.RecordID == "" && v.SourceRowID == "" && v.OwnerEntryID == "" && len(byTuple[creditRelationshipKey(v)]) == 0 {
+			entry.Operation = "add"
+			entries = append(entries, entry)
+			continue
+		}
+		var old RepairRelationship
+		var found bool
+		if v.SourceRowID != "" {
+			old, found = bySource[v.SourceRowID]
+		} else if v.OwnerEntryID != "" {
+			old, found = byAdd[v.OwnerEntryID]
+		} else {
+			matches := byTuple[creditRelationshipKey(v)]
+			if len(matches) == 1 {
+				old = matches[0]
+				found = true
+			}
+		}
+		if !found && !(restore && v.SourceRowID != "") {
+			return ErrRepairInput
+		}
+		if !restore && (!found || old.Provider != v.Provider || old.RecordID != v.RecordID || old.TargetKind != v.TargetKind || old.TargetID != v.TargetID) {
+			return ErrRepairInput
+		}
+		source := old.SourceRowID
+		if restore && source == "" {
+			source = v.SourceRowID
+		}
+		if source == "" {
+			if old.OwnerEntryID == "" {
+				return ErrRepairInput
+			}
+			entry.Operation = "add"
+			entry.EntryID = old.OwnerEntryID
+			included["add:"+entry.EntryID] = true
+		} else {
+			var label, role, department string
+			if err = tx.QueryRowContext(ctx, `SELECT original_credited_name,original_role,original_department FROM credit_source_rows WHERE entity_id=? AND source_row_id=?`, entity, source).Scan(&label, &role, &department); err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					return ErrRepairInput
+				}
+				return err
+			}
+			entry.SourceRowID = source
+			entry.Operation = "retain"
+			if v.Label != label || v.Role != role || v.Department != department {
+				entry.Operation = "edit"
+			}
+			included[source] = true
+		}
+		entries = append(entries, entry)
+	}
+	for _, row := range current {
+		source := row.SourceRowID
+		if row.Kind == "credit" && source != "" && !included[source] {
+			entries = append(entries, compactcatalog.OwnerCreditEntry{SourceRowID: source, Operation: "exclude", CreditedName: row.Label, Role: row.Role, Department: row.Department})
+		}
+	}
+	var revision int64
+	err = tx.QueryRowContext(ctx, `SELECT revision FROM credit_owner_families WHERE entity_id=?`, entity).Scan(&revision)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if err = compactcatalog.SaveOwnerCreditsTx(ctx, tx, entity, revision, entries, locked, actor, now); err != nil {
+		return err
+	}
+	// JSON is history/audit only; public rows were already materialized atomically.
+	normalized, err := readRepairRelationships(ctx, tx, t)
+	if err != nil {
+		return err
+	}
+	credits := []RepairRelationship{}
+	for _, row := range normalized {
+		if row.Kind == "credit" {
+			credits = append(credits, row)
+		}
+	}
+	raw, err := json.Marshal(credits)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO metadata_relationship_decisions(kind,entity_id,relationship,value_json,source,locked,actor,observed_at) VALUES(?,?,'credit',?,'manual',?,?,?) ON CONFLICT(kind,entity_id,relationship) DO UPDATE SET value_json=excluded.value_json,source=excluded.source,locked=excluded.locked,actor=excluded.actor,observed_at=excluded.observed_at`, t.Kind, entity, string(raw), locked, actor, now)
+	return err
+}
+
+func normalizedCreditFamily(ctx context.Context, tx *sql.Tx, entity int64) (bool, error) {
+	var exists bool
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM credit_owner_families WHERE entity_id=?)`, entity).Scan(&exists)
+	return exists, err
+}
+
+// The first normalized decision can start from a legacy rendered document. Its
+// undo snapshot receives only exact current-head references captured in that same
+// CAS transaction; no historical/name/role search or later record rebinding.
+func attachCreditHistorySources(ctx context.Context, tx *sql.Tx, entity int64, before *RepairSnapshot) error {
+	normal, err := normalizedCreditFamily(ctx, tx, entity)
+	if err != nil || !normal {
+		return err
+	}
+	before.Relationships = append([]RepairRelationship(nil), before.Relationships...)
+	for n := range before.Relationships {
+		row := &before.Relationships[n]
+		if row.Kind != "credit" || row.SourceRowID != "" || row.OwnerEntryID != "" {
+			continue
+		}
+		rows, e := tx.QueryContext(ctx, `SELECT r.source_row_id FROM credit_source_heads h JOIN credit_source_publication_members m ON m.publication_id=h.publication_id JOIN credit_source_rows r ON r.source_row_id=m.source_row_id WHERE h.entity_id=? AND h.provider=? AND r.original_credit_id=? AND r.original_target_kind=? AND r.original_target_id=? ORDER BY m.position LIMIT 2`, entity, row.Provider, row.RecordID, row.TargetKind, row.TargetID)
+		if e != nil {
+			return e
+		}
+		ids := []string{}
+		for rows.Next() {
+			var id string
+			if e = rows.Scan(&id); e != nil {
+				rows.Close()
+				return e
+			}
+			ids = append(ids, id)
+		}
+		e = rows.Err()
+		rows.Close()
+		if e != nil {
+			return e
+		}
+		if len(ids) != 1 {
+			return ErrRepairInput
+		}
+		row.SourceRowID = ids[0]
+		row.SourceStatus = "current"
+	}
+	return nil
+}
