@@ -16,6 +16,7 @@ export type ReadingManifest = Immutable<PostReadingSessionsResponse>;
 export type ReadingItem = GetReadingItemsResponse['items'][number];
 export type ReadingContinueItem = GetReadingContinueResponse['items'][number];
 export type ReadingDiscover = GetReadingDiscoverResponse;
+export type ReadingShortRead = NonNullable<ReadingDiscover['rows'][number]['shortReads']>[number];
 export type ReadingSeriesPage = GetReadingSeriesItemsResponse;
 export type ReadingAuthor = NonNullable<ReadingItem['author']>;
 export type ReadingSeries = NonNullable<ReadingItem['series']>;
@@ -279,10 +280,11 @@ export class ReadingClient {
     if (out.items.length > 100 || out.items.some(row => !id(row.id) || !id(row.sourceId) || !format(row.format))) fail('invalid_document');
     return out;
   }
-  async discover(options: Readonly<{libraryId?: string; limit?: number; seriesLimit?: number}> = {}, signal?: AbortSignal): Promise<ReadingDiscover> {
+  async discover(options: Readonly<{libraryId?: string; limit?: number; seriesLimit?: number; shortReadsLimit?: number}> = {}, signal?: AbortSignal): Promise<ReadingDiscover> {
     if (options.libraryId !== undefined && !id(options.libraryId) || !integer(options.limit ?? 20, 1, 100) || options.seriesLimit !== undefined && (options.libraryId === undefined || !id(options.libraryId) || !integer(options.seriesLimit,1,20))) fail('invalid_request');
+    if (options.shortReadsLimit !== undefined && (options.libraryId === undefined || !id(options.libraryId) || !integer(options.shortReadsLimit, 1, 20))) fail('invalid_request');
     const out = await this.json(query(routePath('get_reading_discover'), options), 'GET', undefined, signal, decodeGetReadingDiscoverResponse, 2 << 20);
-    if (out.rows.length < 1 || out.rows.length > 2 || out.rows[0].key !== 'recent' || out.rows[0].series !== undefined || out.rows[0].items.length > (options.limit ?? 20)) fail('invalid_document');
+    if (out.rows.length < 1 || out.rows.length > 3 || out.rows[0].key !== 'recent' || out.rows[0].series !== undefined || out.rows[0].shortReads !== undefined || out.rows[0].items.length > (options.limit ?? 20)) fail('invalid_document');
     const seen = new Set<string>();
     const checkItem = (item: ReadingItem, libraryId?: string) => {
       if (!id(item.id) || !id(item.libraryId) || !id(item.sourceId) || !format(item.format) || (libraryId !== undefined && item.libraryId !== libraryId)) fail('invalid_document');
@@ -292,8 +294,22 @@ export class ReadingClient {
       if(seen.has(item.id)) fail('invalid_document');
       seen.add(item.id);
     }
-    const row=out.rows[1];
-    if(row!==undefined){
+    let seriesSeen = false, shortSeen = false;
+    for (const row of out.rows.slice(1)) {
+      if (row.key === 'short-reads') {
+        const short = row.shortReads ?? fail('invalid_document');
+        if (shortSeen || options.shortReadsLimit === undefined || row.series !== undefined || row.items.length !== 0 || short.length < 1 || short.length > options.shortReadsLimit) fail('invalid_document');
+        shortSeen = true;
+        const ids = new Set<string>();
+        for (const entry of short) {
+          checkItem(entry.item, options.libraryId);
+          if (entry.item.format !== 'epub' || !integer(entry.wordCount, 1, 44999) || !integer(entry.estimatedSeconds, 1, 10800) || entry.estimatedSeconds !== Math.ceil(entry.wordCount * 60 / 250) || ids.has(entry.item.id)) fail('invalid_document');
+          ids.add(entry.item.id);
+        }
+        continue;
+      }
+      if (seriesSeen || shortSeen || row.shortReads !== undefined) fail('invalid_document');
+      seriesSeen = true;
       const series=row.series??fail('invalid_document');
       if(options.seriesLimit===undefined || row.key!=='series' || row.items.length!==0 || series.length<1 || series.length>options.seriesLimit)fail('invalid_document');
       const seriesIds=new Set<string>(), previews=new Set<string>();
