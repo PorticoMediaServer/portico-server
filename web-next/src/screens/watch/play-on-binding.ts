@@ -1,3 +1,5 @@
+import {defaultI18n} from '@i18n';
+import {shellLanguage} from '../../shell/settings';
 import type {GetItemsIdResponse} from '../../../../packages/contracts/src/types.ts';
 import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
 import {parseMediaItem} from '@core/media-item.ts';
@@ -28,7 +30,7 @@ export function remotePictureKeepsCaptions(snapshot: WebPlaybackRuntimeSnapshot)
     &&(current.subtitleSelection==='off'||current.subtitleSelection==='disabled');
 }
 
-export type WatchPlaybackContext = Pick<ShellAssemblyContext, 'api' | 'session' | 'isCurrent' | 'epoch'>;
+export type WatchPlaybackContext = Pick<ShellAssemblyContext, 'api' | 'session' | 'isCurrent' | 'epoch'> & Partial<Pick<ShellAssemblyContext, 'preferences' | 'facts'>>;
 /** Created only by the mounted persistent host. The same real video owns AirPlay. */
 export function createWatchPlayOn(context: WatchPlaybackContext, binding: WatchBindings, video: HTMLVideoElement, applicationId?: string) {
   const life = new AbortController(), authority = binding.runtime.getSnapshot().authority;
@@ -52,7 +54,9 @@ export function createWatchPlayOn(context: WatchPlaybackContext, binding: WatchB
     return {title: item.title, kind: item.kind, artworkPath: item.posterUrl ?? item.backdropUrl,
       ...(raw.episode ? {seriesTitle: raw.episode.showTitle, season: raw.episode.seasonNumber, episode: raw.episode.number} : {})};
   };
-  const receivers = new WatchReceivers({api: {request: (path, method, body, signal) => api.request(path, method, body, signal)}, runtime: binding.runtime, t: binding.environment.t, isCurrent, reportError: binding.reportError});
+  const preferences = context.preferences?.getSnapshot('web') ?? context.facts?.preferences;
+  const language = preferences ? shellLanguage(preferences) : defaultI18n;
+  const receivers = new WatchReceivers({api: {request: (path, method, body, signal) => api.request(path, method, body, signal)}, runtime: binding.runtime, t: language.t, isCurrent, reportError: binding.reportError});
   const linkTv = watchLinkTv({request: (path, method, body, signal) => api.request(path, method, body, signal)});
   const sender = new WebCastSender({api, serverOrigin: context.api.baseUrl, castApplicationId: applicationId,
     describe: async itemId => (await describeItem(itemId)).title});
