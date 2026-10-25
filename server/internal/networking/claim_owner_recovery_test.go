@@ -56,8 +56,15 @@ func TestOwnerRecoveryEmptyLaneSleepsUntilActualWake(t *testing.T) {
 			}
 		}
 	}
-	waitForStatements(3)
+	// With no setup return resolver, one empty recovery pass reads saved
+	// watches, expired owner captures, queued denials and the pending-work
+	// predicate. Wait for that final predicate before measuring idle work.
+	const emptyPassStatements = 4
+	waitForStatements(emptyPassStatements)
 	before := read().Statements
+	if before != emptyPassStatements {
+		t.Fatalf("empty recovery startup read %d statements, wanted %d", before, emptyPassStatements)
+	}
 	select {
 	case <-time.After(31 * time.Second):
 	case <-done:
@@ -67,7 +74,7 @@ func TestOwnerRecoveryEmptyLaneSleepsUntilActualWake(t *testing.T) {
 		t.Fatalf("empty recovery polled SQLite after its startup read: %d -> %d", before, after)
 	}
 	h.wakeClaimRecovery()
-	waitForStatements(before + 3)
+	waitForStatements(before + emptyPassStatements)
 	if tr.finalizes != 0 || tr.retrieves != 0 || tr.cancels != 0 {
 		t.Fatal("empty recovery performed remote claim work")
 	}
