@@ -229,6 +229,7 @@ async function main() {
 
   let signedIn = false;
   let sessionProfileSwitch = false;
+  let searchState = null;
   const libraryNames = [];
   const check = (id, run, options) => report.check(id, async () => { await recover(); return run(); }, options);
 
@@ -659,9 +660,14 @@ async function main() {
 
     if (signedIn && want('search')) {
       await check('search', async () => {
-        await page.goto(origin + '/search', {waitUntil: 'domcontentloaded'});
-        await settle(page, {quiet: 1200});
-        const input = await findAny(page, [{role: 'searchbox'}, {css: 'input[type=search]'}, {role: 'textbox'}, {css: 'input[name=q]'}]);
+        // Use the drawn search entry in the shell, not a directly typed URL.
+        await page.goto(origin + '/', {waitUntil: 'domcontentloaded'});
+        await settle(page, {quiet: 1500});
+        const entry = await findAny(page, [{role: 'link', name: /^Search/}, {role: 'button', name: /^Search/}, {css: 'a[href^="/search"]'}], {timeout: 4000});
+        assert(entry, 'the shell draws no search entry');
+        await entry.click({timeout: 8000});
+        await settle(page, {quiet: 1500});
+        const input = await findAny(page, [{role: 'searchbox'}, {css: 'input[type=search]'}, {role: 'textbox'}, {css: 'input[name=q]'}], {timeout: 5000});
         assert(input, 'Search draws no search field');
         await input.click({timeout: 8000});
         await input.fill('angry', {timeout: 8000});
@@ -671,7 +677,24 @@ async function main() {
         const text = await bodyText(page);
         assert(text.trim().length > 40, 'Search rendered almost no text for a query');
         assert(cards >= 1, `Search for "angry" returned ${cards} result cards`);
-        return {detail: `query "angry": ${cards} cards`, evidence: {screenshot: await evidence.shot(page, 'search'), cards}};
+        searchState = {query: 'angry', cards};
+        return {detail: `reached from the shell; query "angry": ${cards} cards`, evidence: {screenshot: await evidence.shot(page, 'search'), cards}};
+      });
+
+      await check('search-empty', async () => {
+        assert(searchState, 'the search check did not run, so there is no search surface to reuse');
+        const input = await findAny(page, [{role: 'searchbox'}, {css: 'input[type=search]'}, {role: 'textbox'}], {timeout: 5000});
+        assert(input, 'the search field is gone after a query');
+        await input.fill('zzqx no such title');
+        await page.keyboard.press('Enter');
+        await page.waitForTimeout(3000);
+        const text = await bodyText(page);
+        const cards = await page.locator('article[data-card-kind]').count();
+        const emptyState = /no results|nothing found|no matches|nothing matches/i.test(text);
+        assert(emptyState || cards === 0, `a nonsense query still drew ${cards} results and no empty state: ${text.replace(/\n/g, ' ').slice(0, 160)}`);
+        assert(!/That page isn't here/i.test(text), 'the search screen crashed into the missing-page state for a nonsense query');
+        return {detail: `nonsense query: ${cards} cards, empty state ${emptyState ? 'drawn' : 'not drawn (zero results instead)'}`,
+          evidence: {screenshot: await evidence.shot(page, 'search-empty'), cards, emptyState}};
       });
     }
 
