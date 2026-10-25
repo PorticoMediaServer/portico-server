@@ -6,6 +6,7 @@ import {Icon, type IconName} from '../../kit/Icon';
 import {Button, Slider} from '../../kit/controls';
 import {Menu, type MenuEntry} from '../../kit/overlays';
 import {KeyboardShortcuts} from '../../kit/states';
+import {LossNotice} from '../../kit/media';
 import {dispatchWatch, watchClock, watchIsPortrait, watchSeek, watchSeekBounds, watchShortcutTarget, watchStepIntent, type WatchIntent} from './model';
 import {settledPlaybackChanged, settledPlaybackKey, type SettledPlayback} from './screen-state';
 import type {WatchPanel, WatchRect, WatchScreenProps} from './types';
@@ -365,6 +366,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
         </>}
       </>}
     </div>
+    {open && surfaces?.loss && <LossNotice notice={surfaces.loss.notice} enabled={surfaces.loss.enabled} layout={mobile ? 'phone' : 'desktop'} />}
     <div className={styles.notices}>{open && surfaces?.notices}</div>
     <div className={styles.prompts}>{open && surfaces?.prompts}</div>
     <div ref={body} className={styles.body} style={rectStyle(geometry?.body)} data-watch-retained-body onScroll={event => {

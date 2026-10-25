@@ -8,6 +8,7 @@ import type {TrickplayFrame} from '@core/trickplay.ts';
 import type {ArtworkSource} from '../../kit/artwork/types';
 import type {LiveChromePort} from '../live/live-chrome-types';
 import type {WatchEndCard} from './end-card';
+import type {PlaybackLossNotice} from '../../kit/media';
 
 /** Structurally matches the parent's binding. The screen never creates or mounts media. */
 export type WatchBindings = Readonly<{
@@ -42,6 +43,9 @@ export type WatchSurfaces = Readonly<{
   together?: ReactNode;
   prompts?: ReactNode;
   notices?: ReactNode;
+  /** One real loss note for this playback, drawn once and only when the device's
+   * "Picture and sound notices" setting allows it. */
+  loss?: Readonly<{notice: PlaybackLossNotice; enabled: boolean}>;
   /** Actual delivered-quality copy from the media adapter, bound to this source. */
   quality?: Readonly<{fence: PlaybackFence; automatic: boolean; label: string; accessibleLabel: string}>;
   tracks?: Readonly<{fence: PlaybackFence; audio?: string; subtitles?: string}>;

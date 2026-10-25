@@ -31,10 +31,10 @@ function RadioColumn({title,rows,select,reportError}:{title:string;rows:readonly
 /** The drawn single options panel. Every visible radio row has actual source membership and
  * every action calls that same runtime with its captured full fence. No optimistic selection.
  * On a phone the drawn sheet lists one row per control; each row opens its own panel. */
-export function WatchOptions({model,context,i18n,reportError,openSettings}:{openSettings():void|Promise<void>;model:WatchPanelModel;context:WatchPanelContext;i18n:I18n;reportError(error:unknown):void}){
- const root=useRef<HTMLDivElement>(null),rowRefs=useRef(new Map<Section,HTMLButtonElement>()),lastSection=useRef<Section|null>(null),t=i18n.t;
+export function WatchOptions({model,context,i18n,reportError,openSettings,info}:{openSettings():void|Promise<void>;model:WatchPanelModel;context:WatchPanelContext;i18n:I18n;reportError(error:unknown):void;/** Playback info f2: the phone reaches the same panel from its own options sheet. */info?:boolean}){
+ const root=useRef<HTMLDivElement>(null),rowRefs=useRef(new Map<string,HTMLButtonElement>()),lastSection=useRef<Section|null>(null),t=i18n.t;
  const icons:Readonly<Record<Section,IconName>>=Object.freeze({subtitles:'i-cc',audio:'i-audio',quality:'i-quality',speed:'i-gauge'});
- const sections=phoneOptionRows(model,t).map(row=>({...row,icon:icons[row.id]}));
+ const sections=[...phoneOptionRows(model,t),...(info?[{id:'info' as const,label:t('next.info.title'),value:undefined,detail:undefined}]:[])].map(row=>({...row,icon:row.id==='info'?'i-info' as IconName:icons[row.id as Section]}));
  const asked=sectionOf(context.panel),section=asked&&sections.some(row=>row.id===asked)?asked:null;
  useLayoutEffect(()=>{
   if(context.layout!=='phone')return;

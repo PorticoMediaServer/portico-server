@@ -5,6 +5,7 @@ import {videoTrackName,videoTrackWords} from '@core/video-track-labels.ts';
 import {sameFence,type QueuePlaybackFence} from '../../../../packages/player-core/src/index.ts';
 import type {I18n} from '@i18n';
 import type {TrackChoice} from '../../kit/media';
+import {lossSentences} from './loss-copy';
 
 export type WatchRadioChoice=Readonly<{id:string;label:string;detail?:string;selected:boolean;enabled:boolean}>;
 export type WatchPanelModel=Readonly<{
@@ -64,8 +65,12 @@ export function watchPanelModel(runtime:WebShellPlaybackRuntime,snapshot:WebPlay
   :offers.deliveryPolicy!.networkClass==='remote'?t('next.kit.quality.away',{quality:limit}):undefined):undefined;
  const routeNote=action==='transcode'?(qualityLabel?t('player.quality.converting',{quality:qualityLabel}):undefined):action?t('player.quality.playingOriginal'):undefined;
  const qualityNotes=Object.freeze([networkNote,routeNote].filter((note):note is string=>!!note));
- // f3b: a version with one audio track says so in place of a choice.
- const audioNotes=Object.freeze(version.audio.length===1?[t('player.opt.oneAudioTrack')]:[]);
+ // f3b: a version with one audio track says so in place of a choice. Frame 7: the
+ // audio footer also says what this device does with the chosen track when something
+ // is lost, in the notice's own words.
+ const audioLoss=session.playbackInfo?lossSentences(i18n,session.playbackInfo,session.observedPlayback,'sound'):undefined;
+ const audioNotes=Object.freeze([...(version.audio.length===1?[t('player.opt.oneAudioTrack')]:[]),
+  ...(audioLoss?[`${audioLoss.loss} ${audioLoss.replacement}`.trim()]:[])]);
  for(const offer of source.qualities){
   const choice=offer.kind==='automatic'?'automatic':offer.kind==='original'?'original':isQualityChoice(offer.id)?offer.id:undefined;
   if(!choice)continue;qualityIds.set(offer.id,choice);
