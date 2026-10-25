@@ -287,10 +287,10 @@ func (l *listMembers) Members() []archiveMember { return l.files }
 func (l *listMembers) Close() error             { return l.close() }
 
 // sevenZipHeader admits a CB7 header without the parser allocating from it.
-// The 7z plain header is a byte stream of property ids with declared sizes; this
-// reads the file count and folder count from that stream and refuses anything
-// above the publication's own bounds before sevenzip.NewReader is constructed.
-// Any structure it cannot parse exactly is refused, never guessed.
+// The plain header is walked as the grammar the pinned decoder reads: top-level
+// id+size properties, the declared file count, and folder coder records whose
+// method, property size and LZMA/LZMA2 dictionary are bounded here. Anything the
+// walk cannot parse exactly is refused, never guessed.
 const (
 	sevenZipHeaderEnd      = 0x00
 	sevenZipHeaderMain     = 0x04
@@ -298,6 +298,8 @@ const (
 	sevenZipHeaderUnpack   = 0x07
 	sevenZipHeaderFolders  = 0x0B
 	sevenZipMaxHeaderBytes = 16 << 20
+	sevenZipMaxCoders      = 64
+	sevenZipMaxCoderProps  = 64 << 10
 )
 
 type sevenZipCursor struct {
@@ -344,7 +346,6 @@ func (c *sevenZipCursor) skip(n uint64) bool {
 	return true
 }
 
-// sevenZipProperty walks one id+size record and returns its body region.
 func (c *sevenZipCursor) property() (byte, *sevenZipCursor, bool) {
 	id, ok := c.byte()
 	if !ok || id == sevenZipHeaderEnd {
@@ -357,9 +358,33 @@ func (c *sevenZipCursor) property() (byte, *sevenZipCursor, bool) {
 	return id, &sevenZipCursor{body: c.body[c.at-int(size) : c.at]}, true
 }
 
-// boundedSevenZipHeader parses the plain header and returns the declared file
-// and folder counts. A count above MaxEntries, a malformed number, or a body it
-// cannot walk exactly is refused.
+// lzmaDictionary reads a bounded dictionary size from LZMA or LZMA2 coder
+// properties. Unknown layouts are refused rather than assumed safe.
+func lzmaDictionary(method uint64, props []byte) (uint64, bool) {
+	switch method {
+	case 0x030101: // LZMA
+		if len(props) != 5 {
+			return 0, false
+		}
+		return uint64(props[1]) | uint64(props[2])<<8 | uint64(props[3])<<16 | uint64(props[4])<<24, true
+	case 0x21: // LZMA2
+		if len(props) != 1 {
+			return 0, false
+		}
+		if props[0] > 40 {
+			return 0, false
+		}
+		dict := uint64(2) | uint64(props[0]&1)
+		return dict << (props[0]/2 + 11), true
+	}
+	// Methods without a dictionary property still must have small properties.
+	return 0, true
+}
+
+// boundedSevenZipHeader returns declared file and folder counts after walking
+// the plain header grammar, including each folder's coders. A count above
+// MaxEntries, an unknown method, oversized coder properties or a dictionary
+// beyond the member budget is refused.
 func boundedSevenZipHeader(body []byte) (files, folders uint64, ok bool) {
 	c := &sevenZipCursor{body: body}
 	marker, ok := c.byte()
@@ -382,18 +407,15 @@ func boundedSevenZipHeader(body []byte) (files, folders uint64, ok bool) {
 			}
 			files = count
 			for {
-				inner, innerRegion, valid := region.property()
+				inner, _, valid := region.property()
 				if !valid {
 					return 0, 0, false
 				}
 				if inner == sevenZipHeaderEnd {
 					break
 				}
-				_ = innerRegion
 			}
 		case sevenZipHeaderMain:
-			// StreamsInfo: skip a declared pack block, then read the folder count
-			// under UnpackInfo when present.
 			stream := &sevenZipCursor{body: region.body}
 			for {
 				sub, subRegion, valid := stream.property()
@@ -406,19 +428,74 @@ func boundedSevenZipHeader(body []byte) (files, folders uint64, ok bool) {
 				if sub != sevenZipHeaderUnpack {
 					continue
 				}
-				folderID, ok := subRegion.byte()
-				if !ok || folderID != sevenZipHeaderFolders {
-					return 0, 0, false
-				}
-				count, ok := subRegion.number()
+				count, ok := sevenZipFolders(subRegion)
 				if !ok || count == 0 || count > MaxEntries {
 					return 0, 0, false
 				}
 				folders = count
-				break
 			}
 		}
 	}
+}
+
+// sevenZipFolders walks UnpackInfo: kFolder, folder count, external flag, then
+// each folder's coder records with their bounded methods and properties.
+func sevenZipFolders(region *sevenZipCursor) (uint64, bool) {
+	id, ok := region.byte()
+	if !ok || id != sevenZipHeaderFolders {
+		return 0, false
+	}
+	count, ok := region.number()
+	if !ok || count == 0 || count > MaxEntries {
+		return 0, false
+	}
+	external, ok := region.byte()
+	if !ok || external != 0 {
+		return 0, false
+	}
+	for folder := uint64(0); folder < count; folder++ {
+		coders, ok := region.number()
+		if !ok || coders == 0 || coders > sevenZipMaxCoders {
+			return 0, false
+		}
+		for coder := uint64(0); coder < coders; coder++ {
+			flags, ok := region.byte()
+			if !ok {
+				return 0, false
+			}
+			methodSize := uint64(flags & 0x0F)
+			if methodSize == 0 || methodSize > 15 {
+				return 0, false
+			}
+			var method uint64
+			for i := uint64(0); i < methodSize; i++ {
+				part, ok := region.byte()
+				if !ok {
+					return 0, false
+				}
+				method = method<<8 | uint64(part)
+			}
+			var props []byte
+			if flags&0x20 != 0 {
+				size, ok := region.number()
+				if !ok || size > sevenZipMaxCoderProps || !region.skip(size) {
+					return 0, false
+				}
+				props = region.body[region.at-int(size) : region.at]
+			}
+			switch method {
+			case 0x030101, 0x21: // LZMA, LZMA2: dictionary must fit the member budget.
+				dict, ok := lzmaDictionary(method, props)
+				if !ok || dict > uint64(MaxMember) {
+					return 0, false
+				}
+			case 0x00, 0x03, 0x04, 0x03030103, 0x0303011B, 0x06, 0x08, 0x09: // Copy, Delta, BCJ x86/ARM/etc.
+			default:
+				return 0, false
+			}
+		}
+	}
+	return count, true
 }
 
 // openSevenZip admits CB7 only after the plain header's own declared file and
