@@ -1,4 +1,5 @@
 import {parseMusicTechnicalFacts, type MusicTechnicalFacts} from './music-facts.ts';
+import {parseMusicBadges, type MusicFormatBadge} from './music-badges.ts';
 import type {RouteResponse} from "../../contracts/src/routes.ts";
 import {encodedRoutePath} from "../../contracts/src/routes.ts";
 import {wireDurations,wireDisplayDurations} from './wire-units.ts';
@@ -23,6 +24,7 @@ export type ContentEntry = Readonly<{
   pageCount?: number;
   readingMark?: ReadingEntryMark;
   audioFacts?: MusicTechnicalFacts;
+  badges?: readonly MusicFormatBadge[];
   publicationType?: 'book' | 'magazine' | 'newspaper';
   dateBased?:boolean;special?:boolean;new?:boolean; show?:Readonly<{id:string;name:string}>;
   favorite?:boolean;releaseDate?:string;artistType?:'Group'|'Person';albumCount?:number;displayTitle?:string;narrators?:readonly string[];series?:readonly Readonly<{name:string;position?:string}>[];publisher?:string;language?:string;edition?:string;publishedYear?:number;bookProgress?:BookProgress;
@@ -184,6 +186,10 @@ function entry(v: unknown): ContentEntry {
   if (v.audioFacts !== undefined && v.kind === 'song') {
     const facts = parseMusicTechnicalFacts(v.audioFacts);
     if (facts) row.audioFacts = facts; else left('entry.audioFacts', v.audioFacts);
+  }
+  if (v.badges !== undefined && v.kind === 'album') {
+    const badges = parseMusicBadges(v.badges);
+    if (badges) row.badges = badges; else left('entry.badges', v.badges);
   }
   if (v.libraryId !== undefined) { if (!id(v.libraryId)) invalid(); row.libraryId = v.libraryId; }
   if (synopsis(v.overview)) row.overview = v.overview; else left('entry.overview', v.overview);

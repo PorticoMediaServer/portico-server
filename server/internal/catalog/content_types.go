@@ -89,6 +89,7 @@ func (ReadingPublicationType) JSONSchema() map[string]any {
 
 type ContentEntry struct {
 	AudioFacts *MusicTechnicalFacts `json:"audioFacts,omitempty"`
+	Badges     MusicFormatBadges    `json:"badges,omitempty"`
 	// ReadingMark is an explicit current-profile choice, never inferred from
 	// progression. Absent for ineligible viewers or an unrecorded mark.
 	ReadingMark *ReadingMark `json:"readingMark,omitempty"`

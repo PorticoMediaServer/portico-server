@@ -90,6 +90,13 @@ func (s *Service) listeningEntity(r ContentRequest, title string) (*ContentEntry
 		if err := s.listeningAlbumFacts(r.Viewer, artID, out); err != nil {
 			return nil, err
 		}
+		// Whole-album format descriptors do not depend on the current track page.
+		if kind == "album" {
+			out.Badges, e = s.albumMusicBadges(r, artID)
+			if e != nil {
+				return nil, e
+			}
+		}
 	}
 	if artKind == "book" {
 		if err := s.listeningBookFacts(r, out); err != nil {
