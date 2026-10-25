@@ -336,6 +336,17 @@ func Open(db *sql.DB, id string) (*os.File, error) {
 	return f, nil
 }
 
+// DiscImage reports whether this path is a disc image the bounded disc reader
+// can open as one title (VIDEO §3 VS-4a). The catalogue classifies it as video
+// media and the analysis probes its main title, never its ISO file structure.
+func DiscImage(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".iso", ".img":
+		return true
+	}
+	return false
+}
+
 func SupportedForKind(path, kind string) bool {
 	extension := strings.ToLower(filepath.Ext(path))
 	if kind == "book" {

@@ -338,3 +338,22 @@ func TestDiscScopedFFmpegInputs(t *testing.T) {
 		}
 	}
 }
+
+// The main title is the longest title of at least a minute; ties keep disc
+// order and shorter titles stay listed behind it (VIDEO §3 VS-4b).
+func TestMainTitleIsTheLongestOfAtLeastAMinute(t *testing.T) {
+	titles := []Title{
+		{DiscOrder: 0, DurationMs: 900_000},
+		{DiscOrder: 1, DurationMs: 7_200_000},
+		{DiscOrder: 2, DurationMs: 7_200_000},
+		{DiscOrder: 3, DurationMs: 60_000},
+	}
+	p := Probe{Schema: Schema, Kind: "bluray", Packaging: "iso", Encryption: "none", Titles: titles}
+	main, ok := p.MainTitle()
+	if !ok || main.DiscOrder != 1 || main.DurationMs != 7_200_000 {
+		t.Fatalf("main title: %+v %v", main, ok)
+	}
+	if empty := (Probe{Schema: Schema, Kind: "dvd", Packaging: "iso", Encryption: "none"}); func() bool { _, ok := empty.MainTitle(); return ok }() {
+		t.Fatal("an empty probe named a main title")
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/disc"
 	"portico.local/server/internal/localmetadata"
 	"portico.local/server/internal/mediaanalysis"
 	"portico.local/server/internal/remotesources"
@@ -348,6 +349,13 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 		s.recordDescriptorAnalysis(ctx, path, err)
 	} else if s.storage.IsRemote(path) {
 		f, err = s.inspectRemote(ctx, path, before)
+	} else if assets.DiscImage(path) {
+		f, err = s.inspectDisc(ctx, job, object, revision, policy.Revision, readContext("probe"), probe, path)
+		if errors.Is(err, disc.ErrEncrypted) {
+			// Portico ships no disc decryption (VIDEO §3 VS-4). The image is
+			// catalogued as unsupported rather than probed as a broken file.
+			return s.analysisOutcome(parent, job, object, revision, queuedPolicy, true, "unsupported_disc_image")
+		}
 	} else {
 		f, err = probe.InspectScan(readContext("probe"), path)
 		if err == nil {
@@ -513,6 +521,29 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 	}
 	return nil
 }
+
+// inspectDisc probes one disc image as a single title. The bounded helper
+// observes the disc structure, the committed structure picks the main title
+// (the longest of at least a minute, ties by disc order), and only that title's
+// timed media is read through the closed disc input (VIDEO §3 VS-4a/VS-4b).
+func (s *Service) inspectDisc(ctx context.Context, job, object, revision string, policyRevision int64, readCtx context.Context, probe assets.Probe, path string) (assets.Facts, error) {
+	structure, err := (disc.Tool{}).ProbeLocal(readCtx, path)
+	if err != nil {
+		return assets.Facts{}, err
+	}
+	if structure.Encryption != "" {
+		return assets.Facts{}, disc.ErrEncrypted
+	}
+	title, ok := structure.MainTitle()
+	if !ok {
+		return assets.Facts{}, errors.New("disc has no title of at least a minute")
+	}
+	if err = s.catalog.CommitInventoryDiscProbe(ctx, job, object, revision, policyRevision, structure); err != nil {
+		return assets.Facts{}, err
+	}
+	return probe.InspectDiscScan(readCtx, path, structure, title)
+}
+
 func (s *Service) analysisOutcome(ctx context.Context, job, object, revision string, policy int64, warning bool, code string) error {
 	gated3, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if err != nil {

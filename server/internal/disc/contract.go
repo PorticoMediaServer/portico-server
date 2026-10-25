@@ -199,6 +199,18 @@ func (p Probe) OrderedTitles() []Title {
 	sort.SliceStable(out, func(i, j int) bool { return out[i].DurationMs > out[j].DurationMs })
 	return out
 }
+
+// MainTitle is the title a disc plays by default: the longest title of at
+// least a minute, ties keeping disc order. Shorter titles stay listed after it.
+func (p Probe) MainTitle() (Title, bool) {
+	for _, t := range p.OrderedTitles() {
+		if t.DurationMs >= 60_000 {
+			return t, true
+		}
+	}
+	return Title{}, false
+}
+
 func (t Title) Key(kind string) string {
 	if kind == "bluray" && t.Playlist != nil {
 		return fmt.Sprintf("bd:%05d", *t.Playlist)

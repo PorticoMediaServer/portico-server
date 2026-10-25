@@ -42,9 +42,14 @@ func inventoryEvent(ctx context.Context, tx *sql.Tx, source, job, object, asset,
 	return err
 }
 func InventoryMedia(path, kind string) (bool, string) {
-	ext := strings.ToLower(filepath.Ext(path))
-	if (ext == ".iso" || ext == ".img") && kind != "music" && kind != "audiobook" {
-		return true, "unsupported_disc_image"
+	if assets.DiscImage(path) {
+		// A disc image is one title; its main title is probed during analysis.
+		// Audio, book and comic libraries keep rejecting images: they have
+		// no video title to probe.
+		if kind == "music" || kind == "audiobook" || kind == "book" || kind == "comic" {
+			return false, ""
+		}
+		return true, ""
 	}
 	return assets.SupportedForKind(path, kind), ""
 }
