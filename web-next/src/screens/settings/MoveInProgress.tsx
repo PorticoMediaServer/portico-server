@@ -15,10 +15,12 @@ const retire = (scope: Scope) => {if (!scope.retired) {scope.retired = true; sco
 
 /** One subscription for the real move in flight: the same owner-fenced read the
  * switch rows consult. A refusal or outage leaves `undefined`, never a guess. */
+const noSubscribe = () => () => {};
+const noMove = () => null;
 export function SignInMoveWatch({source, children}: {
   source?: SettingsOwnerSwitch; children: (move: AccountMove | undefined) => ReactNode;
 }) {
-  const move = useSyncExternalStore(source?.subscribeMove ?? (() => () => {}), source?.getMove ?? (() => null));
+  const move = useSyncExternalStore(source?.subscribeMove ?? noSubscribe, source?.getMove ?? noMove);
   // One read per captured context; refreshMove itself refuses when the surface is gone.
   const read = useRef('');
   useEffect(() => { if (source && read.current !== source.contextId) { read.current = source.contextId; source.refreshMove(); } }, [source]);
