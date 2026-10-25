@@ -4,6 +4,7 @@ import type {DetailProjection, FileInfoProjection} from '@core/detail.ts';
 import type {ContentEntry} from '@core/library-content.ts';
 import type {DownloadOptionsView} from '@core/downloads.ts';
 import type {BrowserDownloadTarget} from '../../platform/browser-download';
+import type {EntryActionTarget} from '../../shell/entry-actions';
 import {DownloadNotice} from './DownloadNotice';
 import type {PlaybackOptions} from '@core/playback-v1/types.ts';
 import {detailActions} from '@core/presentation/detail-actions.ts';
@@ -240,7 +241,7 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
   const differentVersion = versions?.data === data && !versions.request.signal.aborted && versions.options.versions.length > 1;
   const personal = (phone && offered('watched')) || offered('favorite') || offered('rating');
   const kind = data.item.kind;
-  const entryTarget = kind === 'movie' || kind === 'episode' || kind === 'song' || kind === 'audiobook_file'
+  const entryTarget: EntryActionTarget | undefined = kind === 'movie' || kind === 'episode' || kind === 'song' || kind === 'audiobook_file'
     ? {libraryId: data.scope.libraryId, itemId: data.item.id, kind, title: data.item.title} : undefined;
   const leaf = !!entryTarget;
   const destination = (effect: typeof binding.context.effects.addToPlaylist) => runScreenCommand(binding.context, () => {
