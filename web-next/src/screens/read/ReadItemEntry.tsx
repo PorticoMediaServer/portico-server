@@ -1,10 +1,11 @@
-import {useEffect, useRef, useState, type CSSProperties} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState, type CSSProperties} from 'react';
 import {defaultI18n} from '@i18n';
 import {generatedCoverTint} from '@design';
 import {createReadingPublication, type ReaderContentsTarget} from '@portico/reader-core';
 import {stageContentsTarget, retireContentsTarget} from './contents-handoff';
 import {ReaderContents, type ReaderContentsEntry} from '../../kit/reader/ReaderPanel';
-import type {ReadingManifest, ReadingProgress} from '@portico/client-core';
+import type {ReadingManifest, ReadingProgress, ReadingSession} from '@portico/client-core';
+import {saveReadingFile} from './save-file';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
 import {Icon} from '../../kit/Icon';
@@ -32,12 +33,20 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const errorSink = useRef(captured.binding.home.effects.reportError); errorSink.current = captured.binding.home.effects.reportError;
   const [sourceId, setSourceId] = useState(() => eligibility.versions.find(version => version.inventoryAvailable)?.sourceId);
   const [menu, setMenu] = useState(false), [retry, setRetry] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const fileScope = useRef<{life: AbortController; session?: ReadingSession; saving: boolean} | undefined>(undefined);
+  useLayoutEffect(() => {
+    const scope = {life: new AbortController(), session: undefined as ReadingSession | undefined, saving: false};
+    fileScope.current = scope; setSaving(false);
+    return () => {scope.life.abort(); if (fileScope.current === scope) fileScope.current = undefined;};
+  }, [captured.context, eligibility.itemId, sourceId, retry]);
   const [detail, setDetail] = useState<Readonly<{manifest?: ReadingManifest; progress?: ReadingProgress; targets?: readonly ReaderContentsTarget[]; failed?: boolean}>>({});
   const publicationReady = useRef(false);
   const captureTarget = useRef<((index: number) => ReaderContentsTarget) | undefined>(undefined);
   const anchor = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     const bindings = createReadBindings(captured.context); let active = true;
+    const scope = fileScope.current;
     let publication: Awaited<ReturnType<typeof createReadingPublication>> | undefined;
     publicationReady.current = false; captureTarget.current = undefined; setDetail({});
     const off = bindings.authority.subscribe(() => {if (active) {publicationReady.current = false; setDetail({failed: true});}});
@@ -48,6 +57,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
       publication = await createReadingPublication(session);
       if (!active || !bindings.authority.isCurrent()) {publication.dispose(); return;}
       if (active && bindings.authority.isCurrent()) {publicationReady.current = true;
+        if (scope && !scope.life.signal.aborted && fileScope.current === scope) scope.session = session;
         captureTarget.current = index => {if (!active || !bindings.authority.isCurrent()) throw new Error('source_changed'); return publication!.contentsTarget(index);};
         setDetail({manifest: session.manifest, progress,
         targets: session.manifest.format === 'epub' ? (session.manifest.contents ?? []).map((_, index) => publication!.contentsTarget(index)) : []});}
@@ -59,6 +69,18 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const manifest = detail.manifest, version = eligibility.versions.find(version => version.sourceId === sourceId);
   if (!manifest || !version || manifest.sourceId !== sourceId) return <Skeleton height={480}/>;
   const title = manifest.metadata.title ?? '', author = manifest.metadata.author;
+  const canSaveFile = manifest.canSaveFile === true && manifest.size <= 64 << 20;
+  const saveFile = async () => {
+    const scope = fileScope.current, session = scope?.session;
+    if (!scope || !session || scope.saving || scope.life.signal.aborted || !context.isCurrent()
+      || session.manifest !== manifest || !publicationReady.current || !canSaveFile) return;
+    scope.saving = true; setSaving(true);
+    const current = () => fileScope.current === scope && !scope.life.signal.aborted && scope.session === session
+      && context.isCurrent() && publicationReady.current;
+    try {await saveReadingFile(session, scope.life.signal, current);}
+    catch (error) {if (current()) errorSink.current(error);}
+    finally {scope.saving = false; if (fileScope.current === scope) setSaving(false);}
+  };
   const tint = generatedCoverTint(title);
   const saved = detail.progress?.progress;
   const progression = saved && !saved.stale && saved.sourceId === manifest.sourceId && saved.sourceRevision === manifest.revision && saved.location.format === manifest.format ? saved.location.progression : undefined;
@@ -88,7 +110,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     ambient={<span className={styles.ambient} style={{'--read-tint-first': tint.first, '--read-tint-second': tint.second} as CSSProperties} aria-hidden="true"/>}
     actions={progression !== undefined && progression > 0 ? <ResumeButton icon="i-book" progress={progression} remaining={defaultI18n.percent(progression)} onClick={() => open()}>{t('next.cards.read')}</ResumeButton>
       : <Button variant="primary" icon="i-book" onClick={() => open()}>{t('next.reader.read')}</Button>}
-    under={<>{canEdit && <><Button ref={editorAnchor} size="small" variant="glass" icon="i-more" iconOnly aria-label={t('next.controls.more')} onClick={() => setMore(value => !value)}/><Menu open={more} onOpenChange={setMore} title={title} anchorRef={editorAnchor}><MenuItem onSelect={() => {if (context.isCurrent()) setEditing(true);}}>{t('entry.editMetadata')}</MenuItem></Menu></>}{chooseVersion ? <><Button ref={anchor} size="small" variant="glass" onClick={() => setMenu(value => !value)} aria-label={t('next.reader.version')}>
+    under={<>{(canEdit || canSaveFile) && <><Button ref={editorAnchor} size="small" variant="glass" icon="i-more" iconOnly aria-label={t('next.controls.more')} onClick={() => setMore(value => !value)}/><Menu open={more} onOpenChange={setMore} title={title} anchorRef={editorAnchor}>{canEdit && <MenuItem onSelect={() => {if (context.isCurrent()) setEditing(true);}}>{t('entry.editMetadata')}</MenuItem>}{canSaveFile && <MenuItem disabled={saving} onSelect={() => {void saveFile();}}>{t('next.reader.saveFile')}</MenuItem>}</Menu></>}{chooseVersion ? <><Button ref={anchor} size="small" variant="glass" onClick={() => setMenu(value => !value)} aria-label={t('next.reader.version')}>
       {version.format.toUpperCase()}<Icon name="i-down" size={14}/></Button>
       <Menu open={menu} onOpenChange={setMenu} title={t('next.reader.version')} anchorRef={anchor}>{eligibility.versions.map(candidate => <MenuItem key={candidate.sourceId}
         selected={candidate.sourceId === sourceId} disabled={!candidate.inventoryAvailable} onSelect={() => setSourceId(candidate.sourceId)} description={defaultI18n.bytes(candidate.size)}>
