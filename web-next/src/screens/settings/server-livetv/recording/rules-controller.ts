@@ -55,6 +55,15 @@ export class RecordingRulesController extends OwnerStore<State> {
       options: {prePaddingMs: null, postPaddingMs: null, keepPolicy: null, newEpisodesOnly: false, priority: 0, folderTemplate: ''}};
     this.publish({...this.snapshot, loading: false, guideLoading: false, draft, error: undefined, series: [], day: new Date().toISOString().slice(0, 10), sourceId: rule?.sourceId ?? '', guideCursor: ''});
   }
+  async toggle(rule: OwnerRule) {
+    if (!this.isActive() || this.snapshot.draft || this.snapshot.saving || this.pending || needsRuleOwner(rule) || !this.snapshot.rules.includes(rule)) return false;
+    this.open(rule);
+    const draft = this.snapshot.draft;
+    if (!draft || draft.id !== rule.id) return false;
+    this.edit(draft, {enabled: !rule.enabled});
+    const changed = this.snapshot.draft;
+    return changed ? this.save(changed) : false;
+  }
   close(expected: RuleDraft) {if (this.snapshot.draft !== expected) return;if (this.isActive() && !this.snapshot.saving && !this.pending) {this.invalidate();this.publish({...this.snapshot, draft: undefined, guideLoading: false, series: []});}}
   edit(expected: RuleDraft, patch: Partial<Pick<RuleDraft, 'name' | 'owner' | 'options' | 'enabled'>>) {if (this.snapshot.draft !== expected) return;if (this.isActive() && !this.snapshot.saving && !this.pending && this.snapshot.draft) this.publish({...this.snapshot, draft: {...this.snapshot.draft, ...patch}, error: undefined});}
   choose(expected: RuleDraft, series: RecordingSeries) {

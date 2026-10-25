@@ -3,7 +3,7 @@ import {defaultI18n} from '@i18n';
 import {recordingAllowed, recordingOwnerKey, recordingOwnerLabel} from '@core/server-admin/recording-policy.ts';
 import {errorMessage} from '@core/presentation/errors.ts';
 import {Button, Select, Switch, TextField} from '../../../../kit/controls';
-import {Dialog} from '../../../../kit/overlays';
+import {Dialog, Menu} from '../../../../kit/overlays';
 import {SettingsRow} from '../../../../kit/shell/SettingsSurfaces';
 import {needsRuleOwner, type RecordingRulesController, type OwnerRule} from './rules-controller';
 import type {RecordingPermissionsController} from './permissions-controller';
@@ -14,6 +14,7 @@ export function RecordingRules({controller, permissions, sources}: {controller: 
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const policy = useSyncExternalStore(permissions.subscribe, permissions.getSnapshot, permissions.getSnapshot);
   const [remove, setRemove] = useState<OwnerRule>();
+  const [menu, setMenu] = useState<string>();
   const editor = useRef<HTMLDivElement>(null);
   useEffect(() => {void controller.load();}, [controller]);
   const draft = state.draft;
@@ -38,8 +39,13 @@ export function RecordingRules({controller, permissions, sources}: {controller: 
       ...policy.owners.filter(row => recordingOwnerKey(row.owner) === recordingOwnerKey(rule.owner)).map(recordingOwnerLabel),
       rule.options.newEpisodesOnly ? t('guide.newOnly') : undefined,
     ].filter(Boolean).join(' · ')}>
-      <Button size="small" variant="text" disabled={busy || !!draft} onClick={() => controller.open(rule)}>{t(needsRuleOwner(rule) ? 'web.recordingRules.replaceOwned' : 'web.recordingRules.editRule')}</Button>
-      <Button size="small" variant="text" disabled={state.saving || !!draft || !!state.uncertain && remove !== rule} onClick={() => {if (controller.isActive()) setRemove(rule);}}>{t('web.recordingRules.remove')}</Button>
+      <Menu open={menu === rule.id} onOpenChange={open => setMenu(open ? rule.id : undefined)} title={t('server.row.actions', {name: rule.name})}
+        trigger={<Button size="small" variant="icon" icon="i-more" iconOnly disabled={busy || !!draft} aria-label={t('server.row.actions', {name: rule.name})}/>}
+        items={[
+          {id: 'edit', label: t(needsRuleOwner(rule) ? 'web.recordingRules.replaceOwned' : 'web.recordingRules.editRule'), onSelect: () => controller.open(rule)},
+          ...(!needsRuleOwner(rule) ? [{id: 'toggle', label: t(rule.enabled ? 'web.recordingRules.pauseRule' : 'web.recordingRules.resumeRule'), onSelect: () => {void controller.toggle(rule);}}] : []),
+          {id: 'remove', label: t('web.recordingRules.remove'), destructive: true, onSelect: () => {if (controller.isActive()) setRemove(rule);}},
+        ]}/>
     </SettingsRow>)}
     {state.cursor && <Button size="small" disabled={busy || !!draft} loading={state.loading} onClick={() => void controller.load(true)}>{t('action.showMore')}</Button>}
     <Button size="small" variant="text" disabled={state.loading || busy || !!draft} onClick={() => void controller.load()}>{t('action.refresh')}</Button>
