@@ -19,6 +19,8 @@ export type CardSelection = Readonly<{
   active: boolean;
   checked: boolean;
   preview?: boolean;
+  /** Paint-only range hover; the owner retains registered membership and anchor. */
+  onPreview?: (enabled: boolean) => void;
   /** Localized range hint supplied by the selection owner when an anchor exists. */
   hint?: Readonly<{text: string; shortcut?: string}>;
   /** Optional decorative SelectionCircle; CardFrame owns the single interactive target. */

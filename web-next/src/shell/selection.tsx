@@ -49,7 +49,12 @@ export function createShellSelection(context: ShellAssemblyContext, playback: Ho
       acceptedContext = JSON.stringify(next); acceptedEnvironment = JSON.stringify(nextEnvironment); controller.setContext(next, nextEnvironment);
     }
   };
-  const off = [controller.subscribe(() => { for (const listener of listeners) listener(); }), context.home.subscribe(sync), router.subscribe('onResolved', sync)];
+  let preview: {windowId: string; target: string; keys: readonly string[]} | undefined;
+  const emit = () => {if (!retired) for (const listener of listeners) listener();};
+  const clearPreview = () => {if (!preview) return;preview = undefined;emit();};
+  const releasePreview = (event: KeyboardEvent) => {if (event.key === 'Shift') clearPreview();};
+  window.addEventListener('keyup', releasePreview);window.addEventListener('blur', clearPreview);
+  const off = [controller.subscribe(() => {preview = undefined;emit();}), context.home.subscribe(sync), router.subscribe('onResolved', sync)];
   window.addEventListener('resize', sync);
   const perform = (work: () => void) => { try { work(); } catch (error) { reportError(error); } };
   const windowId = (row: HomeRow) => 'home:' + row.id;
@@ -71,7 +76,23 @@ export function createShellSelection(context: ShellAssemblyContext, playback: Ho
       const change = controller.toggle(windowId(row), key, range);
       if (!change.ok) throw Object.assign(new Error(change.reason), {code: change.reason});
     });
-    return {active: snapshot.active, checked: selected(key), onToggle: intent => toggle(intent.range), onExit: () => controller.clear(),
+    const range = () => {try {return currentRow(row) && liveCurrent(row) ? controller.previewRange(windowId(row), key) : undefined;} catch {return undefined;}};
+    const hintRange = snapshot.active && !selected(key) ? range() : undefined;
+    const named = hintRange?.ok ? hintRange.keys.map(value => {
+      const entry = row.entries.find(entry => {const identity = homeEntrySelection(entry, platform);return identity && controller.key(identity) === value;});
+      return entry?.title;
+    }) : [];
+    const hint = hintRange?.ok && named.length && named.every((value): value is string => typeof value === 'string')
+      ? {text: defaultI18n.t('next.selection.rangeTitles', {first: named[0]!, last: named.at(-1)!, count: hintRange.keys.length}), shortcut: defaultI18n.t('next.selection.shift')} : undefined;
+    return {active: snapshot.active, checked: selected(key), ...(hint ? {hint} : {}),
+      preview: snapshot.active && preview?.windowId === windowId(row) && preview.keys.includes(key),
+      onPreview: enabled => {
+        if (!enabled || !snapshot.active || !currentRow(row) || !liveCurrent(row)) {clearPreview();return;}
+        if (preview?.windowId === windowId(row) && preview.target === key) return;
+        const value = range();if (!value?.ok) {clearPreview();return;}
+        preview = {windowId: windowId(row), target: key, keys: value.keys};emit();
+      },
+      onToggle: intent => toggle(intent.range), onExit: () => controller.clear(),
       control: <SelectionCircle selected={selected(key)} selecting={snapshot.active} accessibilityLabel={defaultI18n.t('next.home.select', {title})}
         interactive={false} />};
   }
@@ -116,6 +137,6 @@ export function createShellSelection(context: ShellAssemblyContext, playback: Ho
     }),
     phoneSelection: (): ReactNode => controller.getSnapshot().selection.active ? <SelectionPhoneBar source={source} /> : undefined,
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    dispose: () => { retired = true; controller.dispose(); for (const cleanup of off) cleanup(); window.removeEventListener('resize', sync); anchor.current = null; listeners.clear(); },
+    dispose: () => { retired = true; controller.dispose(); for (const cleanup of off) cleanup(); window.removeEventListener('resize', sync); window.removeEventListener('keyup', releasePreview);window.removeEventListener('blur', clearPreview);preview = undefined;anchor.current = null; listeners.clear(); },
   };
 }

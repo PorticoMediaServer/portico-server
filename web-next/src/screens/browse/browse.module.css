@@ -18,8 +18,8 @@
 .listRow:hover, .listRow:focus-within { background: color-mix(in srgb, var(--color-text) 5.5%, transparent); }
 .listRow > span { text-align: right; white-space: nowrap; }
 .listTitle { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.listTitle > button { display: flex; align-items: center; gap: 16px; width: 100%; min-width: 0; padding: 0; border: 0; background: none; color: var(--color-text); font: inherit; font-size: var(--type-body-strong-size); font-weight: var(--type-body-strong-weight); text-align: left; cursor: pointer; }
-.listTitle > button > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.listTitle > button[data-layout-primary] { display: flex; align-items: center; gap: 16px; width: 100%; min-width: 0; padding: 0; border: 0; background: none; color: var(--color-text); font: inherit; font-size: var(--type-body-strong-size); font-weight: var(--type-body-strong-weight); text-align: left; cursor: pointer; }
+.listTitle > button[data-layout-primary] > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .listArt { display: block; flex: none; width: 36px; height: 54px; border-radius: 5px; overflow: hidden; }
 .resolution { padding: 2px 7px; border-radius: 6px; font-size: var(--type-card-subtitle-size); font-weight: var(--type-row-heading-weight); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 22%, transparent); }
 .listWatched { display: flex; justify-content: center; align-items: center; }
@@ -70,3 +70,8 @@
   font-size: var(--type-caption-size);
   line-height: 1.5;
 }
+
+.listRow[data-selected="true"] .listTitle > button[data-layout-primary] { color: var(--color-accent-strong); }
+.listRow[data-preview="true"] { background: color-mix(in srgb,var(--color-accent-strong) 12%,transparent); }
+.listRow[data-preview="true"] .listTitle > button[data-variant="row"][aria-pressed="false"] { background: color-mix(in srgb,var(--color-accent-strong) 45%,transparent); box-shadow: inset 0 0 0 2px var(--color-accent-strong); }
+.listRow:hover .listTitle > button[data-variant="row"],.listRow:focus-within .listTitle > button[data-variant="row"] { opacity: 1; }

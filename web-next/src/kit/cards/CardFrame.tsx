@@ -1,3 +1,4 @@
+import {useSelectionRangePreview} from './selection-range';
 import {useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type CSSProperties, type MouseEvent, type RefObject} from 'react';
 import {defaultI18n} from '@i18n';
 import type {FactPart} from '@portico/client-core/kit-model';
@@ -56,6 +57,7 @@ export function CardFrame({children, kind, primaryClassName, playIcon = 'i-play'
     for (const child of primary.children) observer.observe(child);
     return () => observer.disconnect();
   }, [artworkRef, hasAuxiliary]);
+  const rangeInteraction = useSelectionRangePreview(selection, disabled);
   const selectionHintId = useId();
   const selectionHint = selection?.hint ?? (selection && !selection.active ? {text: defaultI18n.t('next.selection.select')} : undefined);
   const pending = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -87,7 +89,8 @@ export function CardFrame({children, kind, primaryClassName, playIcon = 'i-play'
     if (held.current) { held.current = false; event.preventDefault(); return; }
     activateCard(onNavigate, selection, {range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});
   };
-  return <article className={cx(styles.card, styles[kind], styles[`context-${props.context ?? 'shelf'}`], props.density === 'grid' && styles['context-grid'], selection?.active && styles.selecting, selection?.checked && styles.selected, selection?.preview && styles.range, !!hold && styles.holding, props.next && styles.next, className)} style={style} data-card-kind={kind} data-disabled={disabled || undefined}>
+  return <article className={cx(styles.card, styles[kind], styles[`context-${props.context ?? 'shelf'}`], props.density === 'grid' && styles['context-grid'], selection?.active && styles.selecting, selection?.checked && styles.selected, selection?.preview && styles.range, !!hold && styles.holding, props.next && styles.next, className)} style={style} data-card-kind={kind} data-disabled={disabled || undefined}
+    {...rangeInteraction}>
     <button type="button" disabled={disabled} ref={primaryRef} className={cx(styles.primary, primaryClassName)} aria-label={model.title} aria-pressed={selection?.active ? selection.checked : undefined} onClick={click} onFocus={props.onFocus} onBlur={event => {cancelHold(); props.onBlur?.(event);}}
       onKeyDown={event => { if (event.key === 'Escape') { cancelHold(); if (selection?.active) { event.preventDefault(); event.stopPropagation(); selection.onExit(); } } }}
       onPointerDown={event => {

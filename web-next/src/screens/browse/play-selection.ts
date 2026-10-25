@@ -79,6 +79,7 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
   let window: Window | undefined, handles = new WeakMap<LibraryPlayRow, Readonly<{window: Window; run: string}>>();
   let whole: Readonly<{query: SelectionQuery; unregister: () => void}> | undefined;
   let playing: Readonly<{operation: SelectionOperation<BrowseSelectionContext>; controller: AbortController}> | undefined;
+  let rangeTarget: LibraryPlayRow | undefined, rangeKeys = new Set<string>();
   let error: unknown;
   let state: LibraryPlaySelectionSnapshot = Object.freeze({phase: 'waiting', rows: Object.freeze([]), resolving: false, playing: false, canPlay: false});
   const notify = () => {for (const listener of [...listeners]) listener();};
@@ -89,7 +90,9 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
       ...(selection ? {selection} : {}), playing: !!playing, canPlay: !!playback && !!selection?.summary.every.play, canQueue: !!queue && !!selection?.summary.every.queue,
       ...(error === undefined ? {} : {error})});notify();
   };
+  const clearPreview = () => {if (!rangeTarget) return;rangeTarget = undefined;rangeKeys.clear();publish();};
   const clearWindow = () => {
+    rangeTarget = undefined;rangeKeys.clear();
     const previous = window;window = undefined;
     previous?.controller.abort();for (const unregister of previous?.registrations ?? []) unregister();
     handles = new WeakMap();
@@ -159,6 +162,7 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
         expected = Object.freeze({queryRevision: snapshot.queryRevision, revision: snapshot.revision});
         modelOff = model.subscribe(() => {
           if (closed) return;
+          rangeTarget = undefined;rangeKeys.clear();
           if (playing && !model!.isOperationCurrent(playing.operation)) playing.controller.abort();
           publish();
         });publish();
@@ -260,6 +264,28 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
       const handle = handles.get(row);
       if (!handle || handle.window !== window || !source.contains(row.entry)) return false;
       return model.previewRange(handle.run, row.key).ok;
+    },
+    clearPreview,
+    setPreview(row: LibraryPlayRow, enabled: boolean) {
+      if (!enabled) {clearPreview();return;}
+      const handle = handles.get(row);
+      if (!current() || !model || !handle || handle.window !== window || !source.contains(row.entry)) {clearPreview();return;}
+      if (rangeTarget === row) return;
+      const range = model.previewRange(handle.run, row.key);
+      if (!range.ok) {clearPreview();return;}
+      rangeTarget = row;rangeKeys = new Set(range.keys);publish();
+    },
+    rangePreviewed(row: LibraryPlayRow): boolean {
+      const handle = handles.get(row);
+      return current() && !!rangeTarget && !!handle && handle.window === window && source.contains(row.entry) && rangeKeys.has(row.key);
+    },
+    rangeHint(row: LibraryPlayRow) {
+      const handle = handles.get(row);
+      if (!current() || !model || !handle || handle.window !== window || !source.contains(row.entry)) return;
+      const range = model.previewRange(handle.run, row.key);
+      if (!range.ok) return;
+      const first = state.rows.find(value => value.key === range.keys[0]), last = state.rows.find(value => value.key === range.keys.at(-1));
+      return first && last ? {first: first.entry.title, last: last.entry.title, count: range.keys.length} : undefined;
     },
     /** The model's own membership for this current registered row: explicit picks
      * and whole-view members alike, with the same window/handle currency guards. */
