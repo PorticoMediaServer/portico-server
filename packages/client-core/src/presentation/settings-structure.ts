@@ -121,6 +121,8 @@ type RowCopy = Readonly<{
   scope?: SettingsScope;
   /** Shown only while another preference has this value (the countdown, while auto-play is on). */
   when?: Readonly<{key: string; equals: PreferenceValue}>;
+  /** Keep a dependent control visible, but editable only for these parent values. */
+  enableWhen?: Readonly<{key: string; in: readonly PreferenceValue[]}>;
 }>;
 
 export type SettingsRow =
@@ -282,6 +284,7 @@ const accountPages: readonly AuthoredPage[] = [
       {id: 'sound', title: 'next.settingsSpec.account.music.groups.0.title', rows: [
         pref('music.audioNormalization', 'settings.row.volumeLeveling', {type: 'choice', choices: (['off', 'track', 'album'] as const).map(value => ({value, label: `pref.value.music.audioNormalization.${value}` as MessageId}))}, {help: 'settings.help.volumeLeveling', needs: c => c.audioEffects !== false}),
         pref('music.crossfadeMs', 'pref.label.music.crossfadeMs', {type: 'choice', choices: [{value: 0, label: 'pref.value.music.crossfadeMs.0'}, ...seconds(2, 4, 6, 8, 10, 12)]}, {help: 'pref.help.music.crossfadeMs', needs: c => c.audioEffects !== false}),
+        toggle('music.smoothTransitions', 'next.settingsSpec.account.music.groups.0.rows.1.children.0.label', {help: 'next.settingsSpec.account.music.groups.0.rows.1.children.0.help', enableWhen: {key: 'music.crossfadeMs', in: [2000, 4000, 6000, 8000, 10000, 12000]}, needs: c => c.audioEffects !== false}),
         toggle('music.gapless', 'pref.label.music.gapless', {help: 'settings.help.gapless', needs: c => c.audioEffects !== false}),
       ]},
       {id: 'lyrics', title: 'next.settingsSpec.account.music.groups.1.title', rows: [
