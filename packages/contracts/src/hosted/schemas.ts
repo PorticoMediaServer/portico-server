@@ -3585,6 +3585,13 @@ export const schemas = {
       },
       "status": {
         "type": "string"
+      },
+      "transitionMode": {
+        "enum": [
+          "switch",
+          "start-over"
+        ],
+        "type": "string"
       }
     },
     "required": [

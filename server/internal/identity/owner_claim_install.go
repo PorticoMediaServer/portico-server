@@ -3,8 +3,11 @@ package identity
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"strings"
 	"time"
+
+	"portico.local/server/internal/claimweb"
 )
 
 // InstallOwnerClaimTx is called only by the networking installation hook. The
@@ -30,6 +33,27 @@ func (s *Service) InstallOwnerClaimTx(ctx context.Context, tx *sql.Tx, operation
 	var account, username string
 	if err = tx.QueryRowContext(ctx, `SELECT account_id,approved_username FROM networking_claim_intents WHERE operation_id=? AND owner_id=? AND owner_profile_id=? AND owner_epoch=? AND purpose='switch' AND current_owner_account_id='' AND owner_change_reserved=1`, operation, c.owner, c.profile, c.epoch).Scan(&account, &username); err != nil {
 		return err
+	}
+	// Final CAS: the stored signed start's mode must still be the confirmed move's
+	// mode. A legacy start with no mode is an ordinary switch only.
+	var startPayload []byte
+	if err = tx.QueryRowContext(ctx, `SELECT start_payload FROM identity_owner_completions WHERE operation_id=?`, operation).Scan(&startPayload); err != nil {
+		return err
+	}
+	var storedStart claimweb.OwnerStart
+	if json.Unmarshal(startPayload, &storedStart) != nil {
+		return ErrUnauthorized
+	}
+	var startOver bool
+	if err = tx.QueryRowContext(ctx, `SELECT start_over FROM identity_moves WHERE id=?`, c.move).Scan(&startOver); err != nil {
+		return err
+	}
+	want := "switch"
+	if startOver {
+		want = "start-over"
+	}
+	if storedStart.TransitionMode != want && !(storedStart.TransitionMode == "" && !startOver) {
+		return ErrUnauthorized
 	}
 	if !validHostedAccountID(account) || !directName(username) || len(username) < 3 || len(username) > 64 || username != strings.ToLower(strings.TrimSpace(username)) || strings.ContainsAny(username, " \t\r\n@") {
 		return ErrUnauthorized

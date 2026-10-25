@@ -74,7 +74,7 @@ async function lookup(account: ServicesAccount, request: HostedSetupClaimLink, s
     const raw = await account.api.send(routePath('server_claim_lookup'), 'POST', {code: request.code}, signal, session.accessToken);
     signal.throwIfAborted();
     const claim = decodeServerClaimLookupResponse(raw), now = Date.now();
-    if (claim.code !== request.code || claim.purpose !== 'setup' || claim.ownerTransactionId !== undefined || !claim.setupTransactionId || !identifier(claim.setupTransactionId) ||
+    if (claim.code !== request.code || claim.transitionMode !== undefined || claim.purpose !== 'setup' || claim.ownerTransactionId !== undefined || !claim.setupTransactionId || !identifier(claim.setupTransactionId) ||
         claim.status !== 'pending' && claim.status !== 'approved' || claim.name !== request.nameHint || !claim.name ||
         new TextEncoder().encode(claim.name).length > 120 || !claim.serverId.startsWith('srv_') ||
         !currentUTCTimestamp(claim.requestedAt) || Date.parse(claim.requestedAt) > now + 60000 ||

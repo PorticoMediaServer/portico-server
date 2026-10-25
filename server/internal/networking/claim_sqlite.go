@@ -5,8 +5,10 @@ import (
 	"context"
 	"crypto/ed25519"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"math"
+	"portico.local/server/internal/claimweb"
 	"portico.local/server/internal/dbwork"
 	"time"
 )
@@ -35,9 +37,12 @@ type ApprovalFacts struct {
 	TargetUsername string
 	ClaimPurpose
 	Binding
-	Revision  int64
-	IssuedAt  time.Time
-	ExpiresAt time.Time
+	// TransitionMode is the signed closed mode from a v3 approval. Empty on a v2
+	// approval, which is ordinary switch by definition.
+	TransitionMode string
+	Revision       int64
+	IssuedAt       time.Time
+	ExpiresAt      time.Time
 }
 type ApprovalVerifier func(context.Context, []byte) (ApprovalFacts, error)
 type SQLiteStore struct {
@@ -390,6 +395,18 @@ func (s *SQLiteStore) Approve(ctx context.Context, expected Intent, proof []byte
 	}
 	if _, e = s.positive(ctx, tx, expected); e != nil {
 		return Intent{}, e
+	}
+	// A switch approval must carry the same signed mode the stored start bound to
+	// this claim; legacy v1 start / v2 approval are both ordinary switch.
+	if facts.Purpose == "switch" {
+		var startPayload []byte
+		if e = tx.QueryRowContext(ctx, `SELECT start_payload FROM identity_owner_completions WHERE operation_id=?`, expected.OperationID).Scan(&startPayload); e != nil {
+			return Intent{}, ErrApprovalRequired
+		}
+		var start claimweb.OwnerStart
+		if json.Unmarshal(startPayload, &start) != nil || start.TransitionMode != facts.TransitionMode {
+			return Intent{}, ErrApprovalRequired
+		}
 	}
 	if facts.Purpose == "change-owner" || facts.Purpose == "switch" {
 		if facts.AccountID == expected.CurrentOwnerAccountID {

@@ -27,6 +27,7 @@ type approvalWire struct {
 	CurrentOwnerAccountID string `json:"currentOwnerAccountId"`
 	PreviousOwnerRole     string `json:"previousOwnerRole"`
 	ReturnRegistrationID  string `json:"returnRegistrationId"`
+	TransitionMode        string `json:"transitionMode,omitempty"`
 	IssuedAt              string `json:"issuedAt"`
 	ExpiresAt             string `json:"expiresAt"`
 }
@@ -97,7 +98,14 @@ func verifyApprovalAt(ctx context.Context, audience, keyID string, pin ed25519.P
 	}
 
 	var wire approvalWire
-	if canonicalApprovalJSON(raw, &wire) != nil || wire.Kind != "portico.claim.approval" || wire.Version != "2" || wire.Audience != audience || wire.ApprovalRevision < 1 {
+	if canonicalApprovalJSON(raw, &wire) != nil || wire.Kind != "portico.claim.approval" || (wire.Version != "2" && wire.Version != "3") || wire.Audience != audience || wire.ApprovalRevision < 1 {
+		return ApprovalFacts{}, ErrInvalid
+	}
+	// A v2 approval is ordinary switch only. A v3 approval must state its closed
+	// mode, and only a switch claim may carry one.
+	if wire.Version == "2" && wire.TransitionMode != "" ||
+		wire.Version == "3" && wire.TransitionMode != "switch" && wire.TransitionMode != "start-over" ||
+		wire.TransitionMode != "" && wire.Purpose != "switch" {
 		return ApprovalFacts{}, ErrInvalid
 	}
 	public, e := approvalBase64(wire.PublicKey, ed25519.PublicKeySize)
@@ -120,5 +128,5 @@ func verifyApprovalAt(ctx context.Context, audience, keyID string, pin ed25519.P
 	if e = ctx.Err(); e != nil {
 		return ApprovalFacts{}, e
 	}
-	return ApprovalFacts{TargetUsername: wire.TargetUsername, ClaimPurpose: purpose, Binding: b, Revision: wire.ApprovalRevision, IssuedAt: issued, ExpiresAt: expires}, nil
+	return ApprovalFacts{TargetUsername: wire.TargetUsername, ClaimPurpose: purpose, Binding: b, TransitionMode: wire.TransitionMode, Revision: wire.ApprovalRevision, IssuedAt: issued, ExpiresAt: expires}, nil
 }

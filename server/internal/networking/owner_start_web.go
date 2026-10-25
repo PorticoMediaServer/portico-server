@@ -102,7 +102,24 @@ func (h *ClaimHandler) beginOwnerWebClaim(ctx context.Context, v Intent, address
 			return out, err
 		}
 		digest := sha256.Sum256(claimPayload)
-		start = claimweb.OwnerStart{Kind: claimweb.OwnerStartKind, Audience: transport.origin, ClaimHash: base64.RawURLEncoding.EncodeToString(digest[:]), OperationID: v.OperationID, ServerID: v.ServerID, PublicKey: original.PublicKey, LocalGeneration: v.LocalGeneration, Address: address, Purpose: "switch", State: state, CodeChallenge: codeChallenge, InstallationID: installation, ServerChallenge: base64.RawURLEncoding.EncodeToString(challenge), IssuedAt: now, ExpiresAt: expires}
+		// The mode comes only from this server's own confirmed move. A start-over
+		// emits the versioned start with its closed mode; every ordinary switch keeps
+		// the legacy v1 document byte-for-byte.
+		var startOver bool
+		if err = h.store.db.QueryRowContext(ctx, `SELECT m.start_over
+ FROM networking_claim_intents i JOIN identity_moves m ON m.owner_id=i.owner_id
+ WHERE i.operation_id=? AND i.purpose='switch' AND i.current_owner_account_id=''
+ AND m.from_kind='local' AND m.to_kind='portico' AND m.stage='preview' AND m.owner_confirmed=1`, v.OperationID).Scan(&startOver); err != nil {
+			// Missing, changed or unreadable authoritative move state cannot be
+			// turned into an ordinary switch. Capture below repeats this binding
+			// in the accepting transaction before any Hosted request.
+			return out, ErrStale
+		}
+		kind, mode := claimweb.OwnerStartKind, ""
+		if startOver {
+			kind, mode = claimweb.OwnerStartKindV2, "start-over"
+		}
+		start = claimweb.OwnerStart{Kind: kind, Audience: transport.origin, ClaimHash: base64.RawURLEncoding.EncodeToString(digest[:]), OperationID: v.OperationID, ServerID: v.ServerID, PublicKey: original.PublicKey, LocalGeneration: v.LocalGeneration, Address: address, Purpose: "switch", State: state, CodeChallenge: codeChallenge, InstallationID: installation, ServerChallenge: base64.RawURLEncoding.EncodeToString(challenge), IssuedAt: now, ExpiresAt: expires, TransitionMode: mode}
 		proof, err := signer.SignOwnerStart(ctx, v.Binding, out.Signed, start)
 		if err != nil {
 			return out, err

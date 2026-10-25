@@ -145,7 +145,7 @@ export async function hostedApprovalPurpose(account: ServicesAccount, store: Hos
   signal.throwIfAborted();await current(store,pending);signal.throwIfAborted();
   const claim=decodeServerClaimLookupResponse(raw);
   if(claim.code!==pending.request.code)throw invalid();
-  if(claim.purpose==='setup'&&claim.setupTransactionId&&claim.ownerTransactionId===undefined)return 'setup';
+  if(claim.purpose==='setup'&&claim.transitionMode===undefined&&claim.setupTransactionId&&claim.ownerTransactionId===undefined)return 'setup';
   if(claim.purpose==='switch'&&claim.ownerTransactionId&&claim.setupTransactionId===undefined)return 'switch';
   throw invalid();
 }
