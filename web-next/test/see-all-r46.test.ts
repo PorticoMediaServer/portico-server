@@ -128,7 +128,9 @@ test('the row screen is the drawn see-all header over the kit page, seven column
   const screen = read('../src/screens/browse/HomeRow.tsx'), route = read('../src/screens/browse/HomeRow.route.tsx'), css = read('../src/screens/browse/home-row-r46.module.css');
   assert.match(screen, /import styles from '\.\/home-row-r46\.module\.css'/);
   assert.match(screen, /homeRowReasonParts/);
-  assert.match(screen, /<AmbientArt className=\{styles\.ambient\} sources=\{ambient\} treatment="library"/);
+  assert.match(screen, /return compact \? \{source: sources\[0\], treatment: 'library-phone'\} : \{sources, treatment: 'library'\};/);
+  assert.match(screen, /homeRowAmbientView\(ambient, compact\)/);
+  assert.match(screen, /<AmbientArt className=\{compact \? styles\.ambientPhone : styles\.ambient\} \{\.\.\.ambientView\} width="100%" height=\{compact \? 760 : 560\}/);
   assert.match(screen, /variant="primary" size="hero" icon="i-play"/);
   assert.match(screen, /variant="glass" size="hero" icon="i-shuffle"/);
   // The frame draws seven fluid columns at 1440 on Medium; 170 is that column's card size.
