@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Build one published native main with the exact immutable Reader producer."""
-import argparse,datetime,fcntl,hashlib,importlib.util,json,os,signal,subprocess,tarfile,tempfile
+import argparse,datetime,fcntl,hashlib,importlib.util,json,os,signal,subprocess,tarfile,tempfile,zipfile
 from pathlib import Path,PurePosixPath
 ROOT=Path('/home/justin/projects/Portico');LANE=ROOT/'.worktrees/ui-2026/v3-release';PROGRAM=ROOT/'.worktrees/ui-2026/_program'
 REPORT=None;RUN_OUT=None
@@ -75,8 +75,22 @@ def main():
             try:fcntl.flock(gradle,fcntl.LOCK_EX|fcntl.LOCK_NB)
             except BlockingIOError:raise Unavailable('gradle-busy')
             run(['npm','ci','--no-audit','--no-fund','--legacy-peer-deps'],out/'dependencies.log',native/'apps/native',env,timeout=240)
-            run([str(node),str(native/'apps/native/scripts/package-android-emulator.mjs'),'--variant','googleDebug','--abi','x86_64','--reader-bundle',str(reader),'--libmpv-dir',str(ROOT/'.artifacts/v3-release/engine-r2/android'),'--output',str(artifact),'--timeout','1800'],out/'package.log',native,env,timeout=1900)
-        summary=json.loads((artifact/'manifest.json').read_text()) if (artifact/'manifest.json').exists() else json.loads((out/'package.log').read_text().splitlines()[-1]);report.update(artifact=str(artifact),reader=str(reader),package=summary);report['flows'].append({'surface':'android','id':'published-main-package','status':'pass'});(out/'result.json').write_text(json.dumps(report,indent=2)+'\n');(ROOT/'.private/v3-checkpoints/native-candidate.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps({'status':'BUILT','nativeMain':pin,'serverMirror':source,'artifact':str(artifact),'reader':str(reader)}))
+            packages={}
+            for flavour,variant in [('google','googleDebug'),('firetv','firetvRelease')]:
+                destination=artifact/flavour;destination.mkdir(exist_ok=True);log=out/('package-'+flavour+'.log')
+                try:
+                    run([str(node),str(native/'apps/native/scripts/package-android-emulator.mjs'),'--variant',variant,'--abi','x86_64','--reader-bundle',str(reader),'--libmpv-dir',str(ROOT/'.artifacts/v3-release/engine-r2/android'),'--output',str(destination),'--timeout','1800'],log,native,env,timeout=1900)
+                    summary=json.loads(log.read_text().splitlines()[-1]);build=native/'apps/native/android/app/build';bundle=build/'generated/assets/react'/variant/'index.android.bundle';mapping=build/'generated/sourcemaps/react'/variant/'index.android.bundle.map'
+                    with zipfile.ZipFile(summary['apk']) as archive:embedded=archive.read('assets/index.android.bundle')
+                    if not mapping.is_file() or bundle.read_bytes()!=embedded:raise RuntimeError('matching-source-map-unavailable')
+                    (destination/'index.android.bundle').write_bytes(embedded);(destination/'index.android.bundle.map').write_bytes(mapping.read_bytes())
+                    proof={'nativeMain':pin,'variant':variant,'bundleSHA256':hashlib.sha256(embedded).hexdigest(),'mapSHA256':hashlib.sha256(mapping.read_bytes()).hexdigest(),'apkSHA256':summary['sha256']};(destination/'source-map-receipt.json').write_text(json.dumps(proof,indent=2)+'\n')
+                    packages[flavour]=summary;report['flows'].append({'surface':'android-google' if flavour=='google' else 'fire-os-tv','id':'published-main-package','status':'pass','variant':variant})
+                except RuntimeError as error:report['flows'].append({'surface':'android-google' if flavour=='google' else 'fire-os-tv','id':'published-main-package','status':'fail','class':type(error).__name__,'variant':variant})
+        report.update(artifact=str(artifact),reader=str(reader),packages=packages)
+        if 'google' in packages:report['package']=packages['google']
+        (out/'result.json').write_text(json.dumps(report,indent=2)+'\n');(ROOT/'.private/v3-checkpoints/native-candidate.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps({'status':'BUILT' if packages else 'FAILED','nativeMain':pin,'serverMirror':source,'artifact':str(artifact),'reader':str(reader),'flavours':list(packages)}))
+
 if __name__=='__main__':
     def interrupt(*_):raise SystemExit(143)
     signal.signal(signal.SIGTERM,interrupt)

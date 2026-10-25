@@ -64,7 +64,7 @@ class Device:
    time.sleep(1)
   raise Refusal('expected-ui-timeout')
 def safe_diagnostics(raw):
- origins={'home-card','home-assembly','assembly-error','restore-error','route-memory','home-registration','artwork-error','native-http','app-render','library-menu'};operations={'report-error','saved-route-summary','bindings','attached','screen','producer','produced','element','dispatch','response','rejected','primary-play','menu'};classes={'Error','TypeError','ReferenceError','RangeError','SyntaxError','AbortError','ApiError','PlaybackApiError','RouteError','ContractError','RequestTimeoutError','unknown'};codes={'other','unoffered_home_playback','native_home_authority_required','stale_home_context','home-visible-registration-limit','invalid_response','invalid_home','invalid_scope','invalid_request','request_failed','network_error','network_unavailable','offline','timeout','cancelled','unauthorized','forbidden','access_refused','identity_mismatch','route_unavailable','certificate_unverified','certificate_untrusted','identity_code_needed','invalid_identity','invalid_signature','invalid_address','clocks_disagree','route_stale','random_unavailable','not_found','unavailable','unsupported','unsupported_media','no_playable_version','capabilities_required','revision_required','stale_revision','conflict','session_expired','lease_expired','stale_selection_context','invalid_playback_target','artwork_pending','rate_limited','server_busy'}
+ origins={'home-card','home-assembly','assembly-error','restore-error','route-probe','route-memory','home-registration','artwork-error','native-http','app-render','library-menu'};operations={'report-error','saved-route-summary','bindings','attached','screen','producer','produced','element','dispatch','response','rejected','primary-play','menu'};classes={'Error','TypeError','ReferenceError','RangeError','SyntaxError','AbortError','ApiError','PlaybackApiError','RouteError','ContractError','RequestTimeoutError','unknown'};codes={'other','unoffered_home_playback','native_home_authority_required','stale_home_context','home-visible-registration-limit','invalid_response','invalid_home','invalid_scope','invalid_request','request_failed','network_error','network_unavailable','offline','timeout','cancelled','unauthorized','forbidden','access_refused','identity_mismatch','route_unavailable','certificate_unverified','certificate_untrusted','identity_code_needed','invalid_identity','invalid_signature','invalid_address','clocks_disagree','route_stale','random_unavailable','not_found','unavailable','unsupported','unsupported_media','no_playable_version','capabilities_required','revision_required','stale_revision','conflict','session_expired','lease_expired','stale_selection_context','invalid_playback_target','artwork_pending','rate_limited','server_busy'}
  rows=[]
  for line in raw.splitlines():
   if '[home-play-r25] ' not in line:continue
@@ -86,11 +86,13 @@ def safe_diagnostics(raw):
   if len(rows)>=256:break
  return rows
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--target',type=Path,required=True);p.add_argument('--mode',choices=ALLOWED,required=True);p.add_argument('--out',type=Path,required=True);p.add_argument('--disabled',type=json.loads,default=[]);a=p.parse_args();os.umask(0o077)
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--target',type=Path,required=True);p.add_argument('--mode',choices=ALLOWED,required=True);p.add_argument('--out',type=Path,required=True);p.add_argument('--flavour',choices=['google','firetv'],default='google');p.add_argument('--disabled',type=json.loads,default=[]);a=p.parse_args();os.umask(0o077)
  if a.target.is_symlink() or a.target.stat().st_mode&0o077 or a.target.stat().st_uid!=os.getuid():p.error('private owned target required')
+ surface='fire-os-tv' if a.flavour=='firetv' else 'android-'+a.mode
+ if a.flavour=='firetv' and a.mode!='tv':p.error('Fire OS requires TV allocation')
  out=a.out;out.mkdir(parents=True,exist_ok=False);private=ROOT/'.private/v3-checkpoints'/('flow-'+out.parent.name+'-'+out.name);private.mkdir(mode=0o700,exist_ok=False);server=ROOT/'.worktrees/ui-2026/v3-release/server';legacy=load('legacy_android_flows',server/'smoke/android/flows.py');target=json.loads(a.target.read_text());d=Device(target,a.mode,out,private,server);flows=[];log=(private/'native-logcat.log').open('wb');capture=subprocess.Popen(['adb','-s',d.serial,'logcat','-v','brief','-T','1','ReactNativeJS:W','AndroidRuntime:E','*:S'],stdout=log,stderr=subprocess.STDOUT)
  def flow(name,fn):
-  record={'surface':'android-'+a.mode,'id':name}
+  record={'surface':surface,'id':name}
   if record['surface']+':'+name in a.disabled:record.update(status='dropped',manual='Justin hands-on; flaky twice');flows.append(record);return False
   started=time.monotonic()
   try:fn();record['status']='pass'
@@ -139,7 +141,7 @@ def main():
     if a.mode=='phone':d.tap('Home');d.wait_text(legacy.HOME_ROWS.pattern,20)
     d.tap('Settings(?:,.*)?');d.wait_text('Settings',15)
    flow('settings-open',settings)
-  else:flows.append({'surface':'android-'+a.mode,'id':'remaining-core-flows','status':'unavailable','dependency':'retained-family Home failed; no reset/re-auth fallback'})
+  else:flows.append({'surface':surface,'id':'remaining-core-flows','status':'unavailable','dependency':'retained-family Home failed; no reset/re-auth fallback'})
  finally:
   with contextlib.suppress(Exception):d.key('KEYCODE_MEDIA_STOP')
   with contextlib.suppress(Exception):subprocess.run(['adb','-s',d.serial,'shell','am','force-stop',PACKAGE],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=10)
@@ -147,7 +149,7 @@ def main():
   try:capture.wait(timeout=5)
   except subprocess.TimeoutExpired:capture.kill();capture.wait()
   log.close();(out/'native-receipts.json').write_text(json.dumps(safe_diagnostics((private/'native-logcat.log').read_text(errors='replace')),indent=2)+'\n');(out/'result.json').write_text(json.dumps({'flows':flows,'authState':'retained; never cleared','cleanup':'media Stop requested; app and log capture stopped','coverage':'bounded restored-family core subset; full sign-in/seek/subtitles/Reading/search/profile acceptance remains separate'},indent=2)+'\n')
- print(json.dumps({'surface':'android-'+a.mode,'flows':[{k:v for k,v in row.items() if k!='screenshot'} for row in flows]}));return int(any(f['status']=='fail' for f in flows))
+ print(json.dumps({'surface':surface,'flows':[{k:v for k,v in row.items() if k!='screenshot'} for row in flows]}));return int(any(f['status']=='fail' for f in flows))
 if __name__=='__main__':
  def stop(*_):raise SystemExit(143)
  signal.signal(signal.SIGTERM,stop);signal.signal(signal.SIGHUP,stop)

@@ -18,25 +18,28 @@ def main():
   try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
   except BlockingIOError:print('Native checkpoint already active; untouched.');return 0
   if not a.skip_build:
-   with (out/'build-coordinator.log').open('wb') as log:code=subprocess.run(['python3',str(Path(__file__).with_name('native-build.py')),'--config',str(a.config)],stdout=log,stderr=subprocess.STDOUT,timeout=3000).returncode
+   with (out/'build-coordinator.log').open('wb') as log:code=subprocess.run(['python3',str(Path(__file__).with_name('native-build.py')),'--config',str(a.config)],stdout=log,stderr=subprocess.STDOUT,timeout=5400).returncode
    if code:
-    rows=[{'surface':'android-'+mode,'id':'core-flows','status':'unavailable','dependency':'native build failed or busy'} for mode in NAMES];(out/'result.json').write_text(json.dumps({'flows':rows},indent=2)+'\n');return 0
-  candidate=json.loads((PRIVATE/'native-candidate.json').read_text());package=candidate['package'];apk=Path(package['apk'])
-  if not apk.is_file() or hashlib.sha256(apk.read_bytes()).hexdigest()!=package['sha256']:raise RuntimeError('candidate-artifact-hash')
+    rows=[{'surface':name,'id':'core-flows','status':'unavailable','dependency':'native build failed or busy'} for name in ['android-phone','android-tv','fire-os-tv']];(out/'result.json').write_text(json.dumps({'flows':rows},indent=2)+'\n');return 0
+  candidate=json.loads((PRIVATE/'native-candidate.json').read_text());packages=candidate.get('packages',{'google':candidate.get('package')})
   targetfile=PRIVATE/'android-targets.json'
   if not targetfile.exists():
-   rows=[{'surface':'android-'+mode,'id':'core-flows','status':'unavailable','dependency':'Release target qualification pending'} for mode in NAMES];(out/'result.json').write_text(json.dumps({'flows':rows},indent=2)+'\n');return 0
+   rows=[{'surface':name,'id':'core-flows','status':'unavailable','dependency':'Release target qualification pending'} for name in ['android-phone','android-tv','fire-os-tv']];(out/'result.json').write_text(json.dumps({'flows':rows},indent=2)+'\n');return 0
   if targetfile.is_symlink() or targetfile.stat().st_mode&0o077:raise RuntimeError('private-target-file-required')
   targets=json.loads(targetfile.read_text());statefile=PRIVATE/'native-state.json';state=json.loads(statefile.read_text()) if statefile.exists() else {'history':{},'dropped':[]}
-  for mode,name in NAMES.items():
-   if mode not in targets:rows.append({'surface':'android-'+mode,'id':'core-flows','status':'unavailable','dependency':'device target unqualified'});continue
+  for mode,flavour in [('phone','google'),('tv','google'),('tv','firetv')]:
+   name=NAMES[mode];surface='fire-os-tv' if flavour=='firetv' else 'android-'+mode;package=packages.get(flavour)
+   if not package:rows.append({'surface':surface,'id':'core-flows','status':'unavailable','dependency':'flavour build failed or not in frozen candidate'});continue
+   apk=Path(package['apk'])
+   if not apk.is_file() or hashlib.sha256(apk.read_bytes()).hexdigest()!=package['sha256']:raise RuntimeError('candidate-artifact-hash')
+   if mode not in targets:rows.append({'surface':surface,'id':'core-flows','status':'unavailable','dependency':'device target unqualified'});continue
    target=targets[mode];flags=target['targetArgs'];serial=flags[flags.index('--serial')+1];attached=devices()
-   if serial in attached or len(attached)>=2 or any(avd(d)==name for d in attached):rows.append({'surface':'android-'+mode,'id':'core-flows','status':'unavailable','dependency':'allocated device or emulator capacity busy'});continue
+   if serial in attached or len(attached)>=2 or any(avd(d)==name for d in attached):rows.append({'surface':surface,'id':'core-flows','status':'unavailable','dependency':'allocated device or emulator capacity busy'});continue
    if not re.fullmatch('emulator-[0-9]{4,5}',serial):raise RuntimeError('invalid-allocated-serial')
-   port=int(serial.split('-')[1]);emulator=Path.home()/'Android/Sdk/emulator/emulator';private=PRIVATE/(out.name+'-'+mode);private.mkdir(mode=0o700);targetpath=private/'target.json';targetpath.write_text(json.dumps(target));log=(private/'emulator.log').open('wb');process=None
+   port=int(serial.split('-')[1]);emulator=Path.home()/'Android/Sdk/emulator/emulator';private=PRIVATE/(out.name+'-'+mode+'-'+flavour);private.mkdir(mode=0o700);targetpath=private/'target.json';targetpath.write_text(json.dumps(target));log=(private/'emulator.log').open('wb');process=None
    try:
     command=[str(emulator),'-avd',name,'-port',str(port),'-no-window','-no-audio','-no-boot-anim','-no-snapshot','-gpu','swiftshader_indirect','-memory','2048','-cores','2'];process=subprocess.Popen(command,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
-    (PRIVATE/'android-custody.json').write_text(json.dumps({'run':out.name,'mode':mode,'avd':name,'pid':process.pid,'state':'checkpoint','maxSeconds':600})+'\n')
+    (PRIVATE/'android-custody.json').write_text(json.dumps({'run':out.name,'mode':mode,'flavour':flavour,'avd':name,'pid':process.pid,'state':'checkpoint','maxSeconds':600})+'\n')
     until=time.monotonic()+180
     while time.monotonic()<until:
      if process.poll() is not None:raise RuntimeError('owned-emulator-exited')
@@ -47,9 +50,9 @@ def main():
     adb(serial,'shell','wm','dismiss-keyguard')
     installed=adb(serial,'install','-r','-d',str(apk),timeout=180)
     if installed.returncode or 'Success' not in installed.stdout:raise RuntimeError('candidate-install-failed')
-    flowout=out/mode
+    flowout=out/(mode if flavour=='google' else 'firetv')
     with (private/'flow-driver.log').open('wb') as logs:
-     driver=subprocess.Popen(['python3',str(Path(__file__).with_name('android.py')),'--target',str(targetpath),'--mode',mode,'--out',str(flowout),'--disabled',json.dumps(state['dropped'])],stdout=logs,stderr=subprocess.STDOUT,start_new_session=True)
+     driver=subprocess.Popen(['python3',str(Path(__file__).with_name('android.py')),'--target',str(targetpath),'--mode',mode,'--flavour',flavour,'--out',str(flowout),'--disabled',json.dumps(state['dropped'])],stdout=logs,stderr=subprocess.STDOUT,start_new_session=True)
      try:driver.wait(timeout=600)
      finally:
       if driver.poll() is None:
@@ -64,7 +67,7 @@ def main():
      if row['status']=='pass':history['passed']=True
      if row.get('timeout'):history['timeouts']+=1
      if history['passed'] and history['timeouts']>=2 and key not in state['dropped']:state['dropped'].append(key)
-   except Exception as error:rows.append({'surface':'android-'+mode,'id':'core-flows','status':'fail','class':type(error).__name__})
+   except Exception as error:rows.append({'surface':surface,'id':'core-flows','status':'fail','class':type(error).__name__})
    finally:
     # Only the exact AVD booted by this process is ours. Never clear userdata,
     # auth/protected records, snapshots, another emulator, or CertTest.
@@ -80,8 +83,8 @@ def main():
        process.wait()
      until=time.monotonic()+15
      while serial in devices() and time.monotonic()<until:time.sleep(1)
-    log.close();(PRIVATE/'android-custody.json').write_text(json.dumps({'run':out.name,'mode':mode,'avd':name,'state':'returned','authState':'preserved'})+'\n')
-  statefile.write_text(json.dumps(state,indent=2)+'\n');(out/'result.json').write_text(json.dumps({'nativeMain':candidate['nativeMain'],'serverMirror':candidate['serverMirror'],'apkSHA256':package['sha256'],'flows':rows,'dropped':state['dropped'],'cleanup':'all own AVD processes stopped; originals/auth/CertTest preserved'},indent=2)+'\n');print(json.dumps({'nativeMain':candidate['nativeMain'],'flows':rows,'dropped':state['dropped']}));return 0
+    log.close();(PRIVATE/'android-custody.json').write_text(json.dumps({'run':out.name,'mode':mode,'flavour':flavour,'avd':name,'state':'returned','authState':'preserved'})+'\n')
+  statefile.write_text(json.dumps(state,indent=2)+'\n');(out/'result.json').write_text(json.dumps({'nativeMain':candidate['nativeMain'],'serverMirror':candidate['serverMirror'],'apkSHA256s':{name:value['sha256'] for name,value in packages.items() if value},'flows':rows,'dropped':state['dropped'],'cleanup':'all own AVD processes stopped; originals/auth/CertTest preserved'},indent=2)+'\n');print(json.dumps({'nativeMain':candidate['nativeMain'],'flows':rows,'dropped':state['dropped']}));return 0
 if __name__=='__main__':
  def stop(*_):raise SystemExit(143)
  signal.signal(signal.SIGTERM,stop);signal.signal(signal.SIGHUP,stop)

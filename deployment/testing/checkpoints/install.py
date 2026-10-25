@@ -17,7 +17,7 @@ def main():
         helper=native.parent/'visual-qa/auth-driver/private_driver.py';helper.parent.mkdir(parents=True,exist_ok=True);atomic(helper,source.parent.parent.joinpath('visual-qa/auth-driver/private_driver.py').read_bytes())
     units=Path.home()/'.config/systemd/user';units.mkdir(parents=True,exist_ok=True)
     jobs=[('portico-v3-checkpoints','','*-*-* 00,04,08,12,16,20:47:00 UTC','75min'),('portico-v3-ci-audit',' --audit-ci','*-*-* *:50:00 UTC','5min'),('portico-v3-ledger',' --refresh-ledger','*-*-* 00,06,12,18:35:00 UTC','5min')]
-    if args.android:jobs.append(('portico-v3-android','','*-*-* 01,05,09,13,17,21:17:00 UTC','65min'))
+    if args.android:jobs.append(('portico-v3-android','','*-*-* 01,05,09,13,17,21:17:00 UTC','140min'))
     for name,flags,calendar,timeout in jobs:
         entry=native/'native-checkpoint.py' if name=='portico-v3-android' else installed
         service=f'''[Unit]
