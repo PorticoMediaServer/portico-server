@@ -19,12 +19,12 @@ import {router} from '../../router';
 import {Skeleton, StateView} from '../../kit/states';
 import {LibraryEmpty} from '../../kit/states/LibraryEmpty';
 import {useShellWidth} from '../../shell/viewport';
-import {createEpisodeSelection} from '../detail/episode-selection';
-import {ShowScreen} from '../detail/Show';
+import {ShowBody} from '../detail/Show';
+import {DetailLoading} from '../detail/Loading';
+import {useShowRoute} from '../detail/use-show-route';
 import {AlbumScreen} from '../detail/Album';
 import {ArtistScreen} from '../detail/Artist';
 import {AudiobookEntry} from '../detail/audiobooks/Entry';
-import {createShowBindings} from '../detail/show-bindings';
 import type {ScreenContext} from '../detail/context';
 import {screenLifetime} from '../detail/context';
 import type {WebPlaybackRuntimeSnapshot} from '../../platform/playback/types';
@@ -152,17 +152,11 @@ function LiveReadingLibrary({captured, library, search, onMarked, context, life}
   if (search.view === 'browse' || search.query) return <BoundLibrary captured={captured} library={library} search={search} tabs={tabs} readingMarkAll={markAll}/>;
   return <ReadLibraryEntry libraryId={library.id} header={header} view="discover"/>;
 }
-function LibraryShow({context, captured, libraryId, search}: {context: ScreenContext; captured: ProtectedLibraryScreen; libraryId: string; search: LibraryScreenSearch}) {
-  const binding = useMemo(() => createShowBindings(context), [context]);
-  useEffect(() => () => binding.dispose(), [binding]);
-  const runtime = captured.binding.playback?.runtime;
-  const selection = useMemo(() => {
-    const viewer = captured.context.session().viewer;
-    if (viewer.authority !== 'local' && viewer.authority !== 'hosted') throw new DOMException('Screen authority unavailable', 'AbortError');
-    return createEpisodeSelection(context, binding, {serverId: viewer.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId}, () => captured.context.viewerFence, runtime);
-  }, [captured.context, context, binding, runtime]);
-  useEffect(() => {selection.start(); return () => selection.dispose();}, [selection]);
-  return <ShowScreen binding={binding} selection={selection} target={{libraryId, ...(search.view === 'season' ? {seasonId: search.entityId} : {showId: search.entityId})}}/>;
+function LibraryShow({captured, libraryId, search}: {captured: ProtectedLibraryScreen; libraryId: string; search: LibraryScreenSearch}) {
+  const href = useLocation({select: location => location.href});
+  const context = useCommittedLibraryScreenContext(captured, href, () => router.state.location.href === href);
+  const owned = useShowRoute(context, captured, {libraryId, ...(search.view === 'season' ? {seasonId: search.entityId} : {showId: search.entityId})});
+  return owned ? <ShowBody binding={owned.binding} selection={owned.selection}/> : <DetailLoading/>;
 }
 type ScanLease = Readonly<{context: ScreenContext; libraryId: string; life: {api: {request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>}; current: () => boolean}; signal: AbortSignal; service: LibraryManagementService; pending: {current: boolean}}>;
 /** The reading library's ⋯ keeps the owner's online unmatched entry, and adds only the rows
@@ -433,7 +427,7 @@ function CommittedLibrary({captured, library, search, readingMarkAll, frame, res
   if (library.kind === 'audiobook' && (view === 'book' || view === 'author' || view === 'book_series') && search.entityId)
     return <AudiobookEntry context={context} target={{libraryId: library.id, view, entityId: search.entityId}}/>;
   return <>{unmatched ? <><LibraryIdentity {...header}/><NeedsAttention artwork={context.artwork} libraryId={library.id} libraryName={library.name} api={resources.life.api} onOpen={openAttention} onEdit={context.effects.editMetadata ? editAttention : undefined}/></>
-    : view === 'show' || view === 'season' ? <LibraryShow context={context} captured={captured} libraryId={library.id} search={search}/>
+    : view === 'show' || view === 'season' ? <LibraryShow captured={captured} libraryId={library.id} search={search}/>
     : view === 'artist' && search.entityId ? <ArtistScreen context={context} libraryId={library.id} artistId={search.entityId}
       onBack={() => {const back = context.effects.back; if (back) {back(); return;} void router.navigate({to: '/library/$libraryId', params: {libraryId: library.id}, search: {}}).catch(context.effects.reportError);}} />
     : view === 'album' && search.entityId ? <AlbumScreen context={context} libraryId={library.id} albumId={search.entityId} actions={actions}
