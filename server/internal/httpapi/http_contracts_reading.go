@@ -1,6 +1,9 @@
 package httpapi
 
-import "portico.local/apikit"
+import (
+	"portico.local/apikit"
+	"portico.local/server/internal/reading"
+)
 
 func registerReadingHTTPContracts(registry *apikit.Registry) error {
 	if err := registerReadingSavedGroupHTTPContracts(registry); err != nil {
@@ -46,6 +49,14 @@ func registerReadingHTTPContracts(registry *apikit.Registry) error {
 	}
 	m = metadata("get_items_itemId_reading_versions", "GET", "/v1/items/{itemId}/reading/versions", "List a reading publication's actual versions", apikit.ScopeRead)
 	if err := apikit.RegisterHTTP[struct{}, ReadingVersionsResponse](registry, m); err != nil {
+		return err
+	}
+	m = metadata("post_items_itemId_reading_reread", "POST", "/v1/items/{itemId}/reading/reread", "Re-read the exact reading source and refresh file metadata", apikit.ScopePlayback)
+	m.Access = apikit.Owner
+	m.Lane, m.Admission, m.Cost = apikit.Media, laneMediaBody, apikit.Constant
+	m.BodyLimit = 4096
+	m.Errors = append(m.Errors, "metadata_conflict")
+	if err := apikit.RegisterHTTP[reading.RereadRequest, reading.RereadResult](registry, m); err != nil {
 		return err
 	}
 	m = metadata("post_reading_sessions", "POST", "/v1/reading/sessions", "Open an authorized reading publication", apikit.ScopePlayback)

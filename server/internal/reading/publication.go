@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"math"
-	"reflect"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -163,6 +162,23 @@ func (s *Service) adoptEmbeddedFacts(ctx context.Context, p identity.Principal, 
 	return gate.Commit()
 }
 
+// fileMetadataFact is one file-metadata row's value and evidence. A field
+// absent from a field map is unknown and keeps its original row and evidence.
+type fileMetadataFact struct {
+	text, object, revision string
+	number                 sql.NullFloat64
+}
+
+var fileMetadataFields = [...]string{"author", "series", "seriesNumber"}
+
+func requestedFileMetadataFact(text string, number sql.NullFloat64, current Selection) fileMetadataFact {
+	fact := fileMetadataFact{text: text, number: number}
+	if text != "" || number.Valid {
+		fact.object, fact.revision = current.inventoryRow, current.inventory
+	}
+	return fact
+}
+
 // adoptFileMetadataTx publishes normalized file-metadata facts for the exact
 // current observation. The caller holds the gate transaction and has already
 // rechecked the observed item/asset/object/revision tuple, and it commits after
@@ -170,28 +186,29 @@ func (s *Service) adoptEmbeddedFacts(ctx context.Context, p identity.Principal, 
 // rechecks the same current object at insertion and refuses a changed one.
 // Owner overrides keep their existing precedence over these automatic values.
 func adoptFileMetadataTx(ctx context.Context, tx *sql.Tx, current Selection, author, series string, number *float64) error {
-	type stored struct {
-		text, object, revision string
-		number                 sql.NullFloat64
+	seriesNumber := sql.NullFloat64{}
+	if series != "" && number != nil {
+		seriesNumber = sql.NullFloat64{Float64: *number, Valid: true}
 	}
-	next := map[string]stored{}
-	if author != "" {
-		next["author"] = stored{text: author, object: current.inventoryRow, revision: current.inventory}
-	}
-	if series != "" {
-		next["series"] = stored{text: series, object: current.inventoryRow, revision: current.inventory}
-		if number != nil {
-			next["seriesNumber"] = stored{object: current.inventoryRow, revision: current.inventory, number: sql.NullFloat64{Float64: *number, Valid: true}}
-		}
-	}
-	old := map[string]stored{}
+	return adoptFileMetadataFieldsTx(ctx, tx, current, map[string]fileMetadataFact{
+		"author":       requestedFileMetadataFact(author, sql.NullFloat64{}, current),
+		"series":       requestedFileMetadataFact(series, sql.NullFloat64{}, current),
+		"seriesNumber": requestedFileMetadataFact("", seriesNumber, current),
+	})
+}
+
+// adoptFileMetadataFieldsTx writes only the fields present in fields. Unknown
+// fields keep their original rows and evidence rather than being cleared or
+// copied onto this observation.
+func adoptFileMetadataFieldsTx(ctx context.Context, tx *sql.Tx, current Selection, fields map[string]fileMetadataFact) error {
+	old := map[string]fileMetadataFact{}
 	rows, err := tx.QueryContext(ctx, `SELECT field,COALESCE(text_value,''),number_value,source_revision,inventory_object_id FROM reading_source_values WHERE item_id=? AND asset_id=? AND source='file-metadata' AND field IN('author','series','seriesNumber')`, current.Entity, current.Asset)
 	if err != nil {
 		return err
 	}
 	for rows.Next() {
 		var field string
-		var value stored
+		var value fileMetadataFact
 		if err = rows.Scan(&field, &value.text, &value.number, &value.revision, &value.object); err != nil {
 			rows.Close()
 			return err
@@ -203,15 +220,28 @@ func adoptFileMetadataTx(ctx context.Context, tx *sql.Tx, current Selection, aut
 	if err != nil {
 		return err
 	}
-	if reflect.DeepEqual(old, next) {
+	changed := false
+	for _, field := range fileMetadataFields {
+		fact, ok := fields[field]
+		if ok && old[field] != fact {
+			changed = true
+			break
+		}
+	}
+	if !changed {
 		return nil
 	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM reading_source_values WHERE item_id=? AND asset_id=? AND source='file-metadata' AND field IN('author','series','seriesNumber')`, current.Entity, current.Asset); err != nil {
-		return err
+	for _, field := range fileMetadataFields {
+		if _, ok := fields[field]; !ok {
+			continue
+		}
+		if _, err = tx.ExecContext(ctx, `DELETE FROM reading_source_values WHERE item_id=? AND asset_id=? AND source='file-metadata' AND field=?`, current.Entity, current.Asset, field); err != nil {
+			return err
+		}
 	}
-	for _, field := range []string{"author", "series", "seriesNumber"} {
-		fact, ok := next[field]
-		if !ok {
+	for _, field := range fileMetadataFields {
+		fact, ok := fields[field]
+		if !ok || fact.text == "" && !fact.number.Valid {
 			continue
 		}
 		var text, value any
