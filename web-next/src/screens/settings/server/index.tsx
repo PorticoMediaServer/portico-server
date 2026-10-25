@@ -15,7 +15,6 @@ import {DownloadRemovalSource} from '../server-storage/download-removal-source';
 import {DownloadsUsageSource} from '../server-storage/downloads-usage-source';
 import {SettingsStorageSource, type StorageTransport} from './storage-source';
 import {sectionLinkRows, sectionTarget, storageRowState, type SettingsTarget, type StorageRowFacts} from './rows';
-import {SettingsCleanupSource} from './cleanup-source';
 import styles from './server.module.css';
 
 const t = defaultI18n.t;
@@ -43,7 +42,6 @@ export function createServerSettingsSurfaces(options: SettingsServerOptions): Se
   const downloads = new DownloadsUsageSource(options.transport, options.isCurrent, options.reportError);
   const downloadRemoval = new DownloadRemovalSource(options.transport, downloads, options.isCurrent, options.reportError);
   const storage = new SettingsStorageSource(options.transport, options.serverId, options.isCurrent, options.reportError);
-  const cleanup = new SettingsCleanupSource(options.transport, options.serverId, options.isCurrent, () => storage.getSnapshot().report, storage.retry, options.reportError);
   const backups: BackupSurfaceProps = {source: options.backups, subscribe: options.subscribe, isCurrent: options.isCurrent, scopeKey: options.scopeKey, reportError: options.reportError};
   const facts = (): StorageRowFacts => {
     const snapshot = options.backups.getSnapshot();
@@ -66,7 +64,7 @@ export function createServerSettingsSurfaces(options: SettingsServerOptions): Se
       return row.id === 'storage.networkNotice' ? <span className={styles.storageWarning} role="status">{t('next.settings.storage.sharedDrive')}</span>
         : row.id === 'storage.emptyCache' ? <EmptyCache source={cache}/>
         : row.id === 'storage.dataFolder' ? <StorageDataFolder source={storage} label={label} />
-        : row.id === 'storage.usage' ? <StorageUsage source={storage} label={label} cleanup={cleanup} />
+        : row.id === 'storage.usage' ? <StorageUsage source={storage} label={label} />
         : row.id === 'storage.downloads' ? <DownloadsUsage source={downloads} removal={downloadRemoval} label={label} />
         : row.id === 'storage.backupKeysNote' ? <span className={styles.storageNote}>{t('next.settings.backup.keysNotice')}</span>
         : row.id === 'storage.backupPassphrase' ? <BackupProtection {...backups} label={label} />
@@ -79,6 +77,6 @@ export function createServerSettingsSurfaces(options: SettingsServerOptions): Se
     rowState: row => storageRowState(row, facts()),
     pageSnapshot,
     subscribe: storage.subscribe,
-    dispose: () => {downloadRemoval.dispose();cache.dispose();downloads.dispose();cleanup.dispose();storage.dispose();},
+    dispose: () => {downloadRemoval.dispose();cache.dispose();downloads.dispose();storage.dispose();},
   };
 }

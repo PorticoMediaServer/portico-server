@@ -1,4 +1,4 @@
-import {decodeGetAdminStorageUsageResponse} from '../../../../../packages/contracts/src/decoders.ts';
+import {decodeGetAdminStorageUsageResponse, decodeGetDataStorageUsageResponse} from '../../../../../packages/contracts/src/decoders.ts';
 import {routePath} from '../../../../../packages/contracts/src/routes.ts';
 
 export type StorageCategory = Readonly<{
@@ -8,7 +8,16 @@ export type StorageCategory = Readonly<{
 export type StorageReport = Readonly<{
   stateDirectory: string; stateDirectoryOnNetwork?: boolean; totalBytes: number; totalBytesText: string; truncated: boolean; categories: readonly StorageCategory[];
 }>;
-export type StorageSnapshot = Readonly<{phase: 'idle' | 'loading' | 'ready' | 'error'}> & Readonly<{report?: StorageReport; error?: boolean}>;
+/** The server's data-folder layout: the folders the space row draws and the
+ * notices the drive row shows. */
+export type DataUsage = Readonly<{
+  dataDirectory: string;
+  transcodeDirectory: string;
+  transcodeBytes: number;
+  folders: readonly Readonly<{name: string; bytes: number}>[];
+  notices: readonly Readonly<{code: string; message: string}>[];
+}>;
+export type StorageSnapshot = Readonly<{phase: 'idle' | 'loading' | 'ready' | 'error'}> & Readonly<{report?: StorageReport; usage?: DataUsage; error?: boolean}>;
 
 const idleStorageSnapshot: StorageSnapshot = Object.freeze({phase: 'idle'});
 
@@ -29,6 +38,16 @@ export function storageReport(value: unknown, serverId: string): StorageReport {
       oldestDays: category.oldestDays, retentionKey: category.retentionKey}))) });
 }
 
+/** The data-folder usage, cross-checked against the measured state folder so a
+ * stale or wrong-server answer cannot replace the drawn rows. */
+export function dataUsage(value: unknown, stateDirectory: string): DataUsage {
+  const result = decodeGetDataStorageUsageResponse(value);
+  if (!result.dataDirectory || result.dataDirectory !== stateDirectory) throw new Error('other_server');
+  return Object.freeze({dataDirectory: result.dataDirectory, transcodeDirectory: result.transcodeDirectory ?? '', transcodeBytes: result.transcodeBytes ?? 0,
+    folders: Object.freeze(result.folders.map(folder => Object.freeze({name: folder.name, bytes: folder.bytes}))),
+    notices: Object.freeze(result.notices.map(notice => Object.freeze({code: notice.code, message: notice.message})))});
+}
+
 /** One selected-server owner read, shared by every storage row on the page. */
 export class SettingsStorageSource {
   private state: StorageSnapshot = idleStorageSnapshot;
@@ -46,9 +65,13 @@ export class SettingsStorageSource {
       this.publish({phase: 'loading'});
       if (!this.current()) return;
       try {
-        const value = await this.transport.request<unknown>(routePath('get_admin_storage_usage'), 'GET', undefined, this.lifetime.signal);
+        const [value, layout] = await Promise.all([
+          this.transport.request<unknown>(routePath('get_admin_storage_usage'), 'GET', undefined, this.lifetime.signal),
+          this.transport.request<unknown>(routePath('get_data_storage_usage'), 'GET', undefined, this.lifetime.signal),
+        ]);
         if (!this.current()) return;
-        this.publish({phase: 'ready', report: storageReport(value, this.serverId)});
+        const report = storageReport(value, this.serverId);
+        this.publish({phase: 'ready', report, usage: dataUsage(layout, report.stateDirectory)});
       } catch (error) {
         if (!this.current()) return;
         const failure = error && typeof error === 'object' ? error as {status?: number; code?: string} : {};
