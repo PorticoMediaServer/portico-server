@@ -19,8 +19,8 @@ export class BrowserAppSessionActions {
  /** Forget follows an identity failure: the address may now be somebody else's.
   * Remove only the captured family's local record/pin/routes. Never reconnect,
   * revoke remotely, or send that family a token while forgetting it. */
- async forgetServer(session:LocalSession):Promise<boolean>{
-  this.probe.cancel();const captured=await this.store.signOutServer(session.viewer.serverId,session.sessionFamilyId);
+ async forgetServer(session:LocalSession,capture?:Readonly<{isCurrent:()=>boolean;expectedRevision:number}>):Promise<boolean>{
+  this.probe.cancel();const captured=await this.store.signOutServer(session.viewer.serverId,session.sessionFamilyId,capture?.isCurrent,capture?.expectedRevision);
   for(const entry of captured)browserTabProfileTrust.forgetAccount(entry.connection.pin.serverId,entry.connection.session.viewer.accountId);
   return captured.length>0;
  }

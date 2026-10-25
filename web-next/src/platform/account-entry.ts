@@ -3,7 +3,7 @@ import {ServerSignInProbe, parseServerSignIn, type ServerSignIn} from '@core/sig
 import {directSignIn, directSignInContinuation, shouldRetireAccountSession, completeDirectSignInChallenge, changeRequiredPassword, parseDirectSnapshot, type DirectSignIn, type DirectSnapshot} from '@core/profile-management.ts';
 import {inspectDirectServer, connectPairedServer, connectPairedPorticoServer, connectHostedServer, rememberNativeSession, type ConnectionEnvironment, type RememberedServer} from '@core/server-connections.ts';
 import {assertFirstContactIdentity, RouteError, sameServerPin, type ServerPin} from '@core/route-identity.ts';
-import {knownServerRoutes, type AppSessionStore} from '@core/app-sessions.ts';
+import {knownServerRoutes, type AppSessionStore, type AppServerSession, type SignInKind} from '@core/app-sessions.ts';
 import {acceptPorticoInvitation, acceptShortPorticoInvitation, porticoSignIn, type HostedRequestApi} from '@core/portico-servers.ts';
 import type {JoinLink} from '@core/join-link.ts';
 import {parseShortInvitationCode} from '@core/short-invitation-code.ts';
@@ -25,6 +25,7 @@ import {createBrowserOwnerClaim, type BrowserOwnerClaim} from './owner-claim';
 import {createBrowserSetupClaim, type BrowserSetupClaim} from './setup-claim';
 import {buildHostedSignInStartURL} from '@core/hosted-sign-in-start.ts';
 import type {AccountServerAccess} from './account-server-access';
+import {CapturedAccountIdentityFailure, type AccountIdentityFailureBinding} from './account-identity-failure';
 
 type InvitationCapability=Readonly<{code:string}|{shortCode:string}>;
 type RegisteredController=Pick<BrowserRegisteredSignIn,'prepare'|'finish'|'completeChallenge'|'cancel'>;
@@ -42,7 +43,7 @@ export type AccountEntryState = Readonly<{
  server?:ServerSignIn; origin?:string; pin?:ServerPin; snapshot?:DirectSnapshot;
  invitation?:PreviewInvitationResponse; joined?:Readonly<{origin:string;signIn:'local'|'portico'}>;
  movePreview?:MoveCodePreview; ownerReset?:OwnerResetDetails; setupCompleted?:true;
- busy?:boolean; error?:unknown;
+ busy?:boolean; error?:unknown; identityFailure?:Readonly<{serverName:string;failure:'local-changed'|'unconfirmed'}>;
 }>;
 type EntryPorts = Readonly<{
  store:AppSessionStore; actions:BrowserAppSessionActions;
@@ -60,6 +61,7 @@ type EntryPorts = Readonly<{
  setupReturn?:()=>SetupReturnController;
  setupRequired?:(origin:string,pin:ServerPin)=>void;
  rememberName?:(api:HttpLocalApi,name:string)=>void;
+ serverName?:(serverId:string)=>string|undefined;
 }>;
 
 /** Web account entry keeps credential entry behind an explicit kind and private-key proof.
@@ -77,6 +79,7 @@ export class BrowserAccountEntry {
  private moveTicket?:Readonly<{ticket:string;revision:number;expiresAt:string}>;
  private hostedChallenge?:Readonly<{account:AccountServerAccess;hosted:NonNullable<RememberedServer['hosted']>}>;
  private offHostedChallenge?:()=>void;
+ private identityFailure?:CapturedAccountIdentityFailure;
  readonly probe:ServerSignInProbe;
  constructor(private readonly ports:EntryPorts,probe=new ServerSignInProbe()){this.probe=probe;}
  getSnapshot=()=>this.state;
@@ -85,8 +88,9 @@ export class BrowserAccountEntry {
  subscribeAuthorityRetired=(listener:()=>void)=>{this.retiredListeners.add(listener);return()=>{this.retiredListeners.delete(listener);};};
  private retired(){for(const listener of this.retiredListeners){try{listener();}catch{ /* Clear every other secret-bearing view too. */ }}}
  private stopAuthorityWatch(){const off=this.offSelection;this.offSelection=undefined;try{off?.();}catch{ /* Retirement must still clear the captured authority. */ }}
- private operation(){this.controller?.abort();const epoch=++this.epoch,controller=this.controller=new AbortController();return {signal:controller.signal,current:()=>!this.disposed&&epoch===this.epoch&&!controller.signal.aborted};}
+ private operation(){this.identityFailure?.dispose();this.identityFailure=undefined;this.controller?.abort();const epoch=++this.epoch,controller=this.controller=new AbortController();return {signal:controller.signal,current:()=>!this.disposed&&epoch===this.epoch&&!controller.signal.aborted};}
  private release(){
+  this.identityFailure?.dispose();this.identityFailure=undefined;
   this.clearHostedChallenge();
   this.stopAuthorityWatch();const api=this.api,registered=this.registered,ownerReturn=this.ownerReturn,reset=this.takeOwnerReset(),hadAuthority=!!this.session||!!this.challenge||!!registered||!!ownerReturn||!!reset;
   this.api=undefined;this.session=undefined;this.challenge=undefined;this.challengeRevision=undefined;this.moveProof=undefined;this.moveTicket=undefined;this.registered=undefined;this.registeredChallenge=undefined;this.ownerReturn=undefined;
@@ -652,12 +656,20 @@ export class BrowserAccountEntry {
   catch(error){if(op.current()){this.publish({...state,busy:false,error});this.watchAuthority();}}
  }
  async loadProfiles(){return this.restoreProfiles();}
- private async restoreProfiles(expected?:Readonly<{pin:ServerPin;session:LocalSession}>){
+ /** Public callbacks carry no session, family, token, origin or pin. The chooser
+  * callback navigates only; this entry retires its own private state first. */
+ serverIdentityFailure(chooseServer:()=>void):AccountIdentityFailureBinding|undefined{
+  return this.identityFailure?.isCurrent()?this.identityFailure.binding(chooseServer):undefined;
+ }
+ private async restoreProfiles(expected?:Readonly<{pin:ServerPin;session:LocalSession;signIn?:SignInKind}>){
   this.cancel();const op=this.operation();this.publish({phase:'profiles',busy:true});
+  let saved:AppServerSession|undefined,revision=0;
   try{
-   const entry=await this.ports.store.selected();if(!entry)throw new Error('Choose a server first.');
-   const matches=(saved:typeof entry|undefined)=>!expected||!!saved&&saved.signIn==='portico'&&sameServerPin(saved.connection.pin,expected.pin)&&saved.connection.session.sessionFamilyId===expected.session.sessionFamilyId&&(['serverId','authority','accountId','profileId','role'] as const).every(key=>saved.connection.session.viewer[key]===expected.session.viewer[key]);
+   const record=await this.ports.store.read();if(!op.current())return;
+   const entry=record.servers.find(value=>value.connection.pin.serverId===record.selectedServerId);if(!entry)throw new Error('Choose a server first.');
+   const matches=(saved:typeof entry|undefined)=>!expected||!!saved&&saved.signIn===(expected.signIn??'portico')&&sameServerPin(saved.connection.pin,expected.pin)&&saved.connection.session.sessionFamilyId===expected.session.sessionFamilyId&&(['serverId','authority','accountId','profileId','role'] as const).every(key=>saved.connection.session.viewer[key]===expected.session.viewer[key]);
    if(!matches(entry))throw new CodedError('cancelled','The server selection changed.');
+   saved=entry;revision=record.revision;
    const restored=await this.ports.restore(entry.connection.session);
    if(!op.current()){restored?.api.getRouteConnection()?.dispose();return;}if(!restored)throw new Error('This server sign-in has ended.');
    this.api=restored.api;this.session=restored.session;
@@ -670,7 +682,22 @@ export class BrowserAccountEntry {
    if(!op.current())return;
    this.publish({phase:snapshot.twoStepSetupRequired?'two-step-setup':'profiles',server,origin:restored.api.baseUrl,pin:entry.connection.pin,snapshot,busy:false});
    this.watchAuthority();
-  }catch(error){if(op.current()){this.release();this.publish({phase:'profiles',error});}}
+  }catch(error){if(op.current()){
+   this.release();
+   const serverName=saved&&this.ports.serverName?.(saved.connection.pin.serverId);
+   if(saved&&serverName&&error instanceof RouteError&&error.code==='identity_mismatch'){
+    const captured=saved;
+    let failure:CapturedAccountIdentityFailure|undefined;
+    failure=new CapturedAccountIdentityFailure({saved:captured,revision,serverName,store:this.ports.store,actions:this.ports.actions,
+     current:()=>op.current()&&this.identityFailure===failure,
+     notify:()=>{if(failure&&op.current()&&this.identityFailure===failure)this.publish({...this.state,identityFailure:failure.isCurrent()?{serverName,failure:failure.failure}:undefined});},
+     observe:this.ports.observeSelection,
+     retry:()=>this.restoreProfiles({pin:captured.connection.pin,session:captured.connection.session,signIn:captured.signIn}),retire:()=>this.cancel()});
+    this.identityFailure=failure;
+   }
+   const failure=this.identityFailure;
+   this.publish({phase:'profiles',error,...(failure?.isCurrent()?{identityFailure:{serverName:serverName!,failure:failure.failure}}:{})});
+  }}
  }
  async chooseProfile(profileId:string,pin='',remember=false){
   const state=this.state,api=this.api,session=this.session;if(state.phase!=='profiles'||!state.snapshot||state.snapshot.twoStepSetupRequired||!api||!session)return;
@@ -688,4 +715,4 @@ export class BrowserAccountEntry {
 
  dispose(){this.cancel();this.disposed=true;this.probe.dispose();this.listeners.clear();this.retiredListeners.clear();}
 }
-export function createBrowserAccountEntry(options:Pick<EntryPorts,'invitationDestination'>={}){return new BrowserAccountEntry({store:browserAppSessions(),actions:browserAppSessionActions(),environment:browserConnectionEnvironment,restore:restoreBrowserConnection,inspect:inspectDirectServer,connect:connectPairedServer,remember:rememberNativeSession,observeSelection:observeBrowserSessionChanges,registered:()=>createBrowserRegisteredSignIn(buildHostedSignInStartURL),ownerReturn:createBrowserOwnerClaim,setupReturn:createBrowserSetupClaim,setupRequired:(origin)=>location.assign(new URL('/setup',origin).href),rememberName:(api,name)=>browserServerDisplay().remember(api,name),...options});}
+export function createBrowserAccountEntry(options:Pick<EntryPorts,'invitationDestination'>={}){return new BrowserAccountEntry({store:browserAppSessions(),actions:browserAppSessionActions(),environment:browserConnectionEnvironment,restore:restoreBrowserConnection,inspect:inspectDirectServer,connect:connectPairedServer,remember:rememberNativeSession,observeSelection:observeBrowserSessionChanges,registered:()=>createBrowserRegisteredSignIn(buildHostedSignInStartURL),ownerReturn:createBrowserOwnerClaim,setupReturn:createBrowserSetupClaim,setupRequired:(origin)=>location.assign(new URL('/setup',origin).href),rememberName:(api,name)=>browserServerDisplay().remember(api,name),serverName:id=>browserServerDisplay().name(id),...options});}
