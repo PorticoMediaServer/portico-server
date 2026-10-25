@@ -43,6 +43,8 @@ def main():
      if serial in devices() and avd(serial)==name and adb(serial,'shell','getprop','sys.boot_completed').stdout.strip()=='1':break
      time.sleep(2)
     else:raise RuntimeError('emulator-boot-deadline')
+    adb(serial,'shell','input','keyevent','KEYCODE_WAKEUP')
+    adb(serial,'shell','wm','dismiss-keyguard')
     installed=adb(serial,'install','-r','-d',str(apk),timeout=180)
     if installed.returncode or 'Success' not in installed.stdout:raise RuntimeError('candidate-install-failed')
     flowout=out/mode
@@ -76,6 +78,8 @@ def main():
       except subprocess.TimeoutExpired:
        with contextlib.suppress(ProcessLookupError):os.killpg(process.pid,signal.SIGKILL)
        process.wait()
+     until=time.monotonic()+15
+     while serial in devices() and time.monotonic()<until:time.sleep(1)
     log.close();(PRIVATE/'android-custody.json').write_text(json.dumps({'run':out.name,'mode':mode,'avd':name,'state':'returned','authState':'preserved'})+'\n')
   statefile.write_text(json.dumps(state,indent=2)+'\n');(out/'result.json').write_text(json.dumps({'nativeMain':candidate['nativeMain'],'serverMirror':candidate['serverMirror'],'apkSHA256':package['sha256'],'flows':rows,'dropped':state['dropped'],'cleanup':'all own AVD processes stopped; originals/auth/CertTest preserved'},indent=2)+'\n');print(json.dumps({'nativeMain':candidate['nativeMain'],'flows':rows,'dropped':state['dropped']}));return 0
 if __name__=='__main__':

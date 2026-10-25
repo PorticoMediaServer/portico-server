@@ -208,7 +208,7 @@ class Job:
         if self.report.get('runtimeExit') and startup.is_file():shutil.copyfile(startup,destination/'startup-private.log')
         for file in self.out.iterdir():
             if not file.is_file() or file.is_symlink():continue
-            if file.name in ['report.log','generation.patch.log','browser-results.log','reader-guest-receipt.log','reader-guest.tar'] or re.fullmatch(r'flow-[a-z0-9-]+\.(?:jpg|log)',file.name) or file.name.startswith('build-') and file.suffix=='.log':shutil.copyfile(file,destination/file.name)
+            if file.name in ['report.log','generation.patch.log','browser-results.log','reader-guest-receipt.log','reader-guest.tar','reading-layout.log'] or re.fullmatch(r'flow-[a-z0-9-]+\.(?:jpg|log)',file.name) or file.name.startswith('build-') and file.suffix=='.log':shutil.copyfile(file,destination/file.name)
         shutil.rmtree(self.work)
 
 class Mailbox:

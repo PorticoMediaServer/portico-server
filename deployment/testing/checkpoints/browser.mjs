@@ -62,7 +62,7 @@ try{
   else if(/\/reading\/sessions(?:\/[^/]+)?$/.test(url.pathname))operation='reading-sessions';
   if(!operation)return;const row={phase,operation,method:response.request().method(),status:response.status()};
   if(operation==='reading-sessions'&&response.request().method()==='POST'&&response.status()===200){try{const data=await response.json();if(['epub','pdf','comic'].includes(data.format))row.format=data.format;}catch{}}
-  if(response.status()>=400){try{const data=await response.json(),code=data?.error?.code??data?.code;if(['invalid_credentials','session_mode_denied','origin_denied','invalid_request','forbidden','source_unavailable','metadata_conflict','challenge_invalid','rate_limited','session_expired','stream_limit_reached','conversion_capacity','transcode_not_allowed','unsupported_media','connection_too_slow','queue_building','not_permitted','no_tuner_available'].includes(code))row.code=code;}catch{}}
+  if(response.status()>=400){try{const data=await response.json(),code=data?.error?.code??data?.code;if(['invalid_credentials','session_mode_denied','origin_denied','invalid_request','forbidden','source_unavailable','internal','metadata_conflict','challenge_invalid','rate_limited','session_expired','stream_limit_reached','conversion_capacity','transcode_not_allowed','unsupported_media','connection_too_slow','queue_building','not_permitted','no_tuner_available'].includes(code))row.code=code;}catch{}}
   network.push(row);
  }catch{}});
  page.on('request',request=>{try{const u=new URL(request.url());if(phase==='reading-nonblank-no-egress'&&!['data:','blob:','about:'].includes(u.protocol)&&u.origin!==input.origin)external.push({method:request.method(),foreignOrigin:true});}catch{}});
