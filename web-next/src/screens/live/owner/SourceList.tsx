@@ -33,9 +33,9 @@ export function SourceList({snapshot, refresh, add, configure, channels, act}: S
           {id: 'upload', label: t('web.liveTv.upload'), description: t('web.liveTv.uploadMeta'), onSelect: () => add('upload')},
         ]}/>
     </div></div>
-    <p className={styles.lede}>{t('web.liveTv.sourcesLede')}</p>
+    <p className={styles.lede}>{t('next.liveOwner.sourcesLede')}</p>
     {!snapshot.document && snapshot.loading && <p role="status">{t('status.loadingThing', {thing: t('server.thing.liveSources')})}</p>}
-    {snapshot.document && !snapshot.document.sources.length && <div className={styles.empty}><h4>{t('live.noSources')}</h4><p>{t('web.liveTv.noSourcesHelp')}</p></div>}
+    {snapshot.document && !snapshot.document.sources.length && <div className={styles.empty}><h4>{t('live.noSources')}</h4><p>{t('web.liveTv.noSourcesHelp')}</p><Button size="small" icon="i-plus" onClick={() => setAddOpen(true)}>{t('web.liveTv.addSource')}</Button></div>}
     {!!snapshot.document?.sources.length && <div className={styles.sources}>{snapshot.document.sources.map(source => {
       const status = snapshot.document!.refresh.find(value => value.sourceId === source.id);
       const state = liveSourceState(source, status);
@@ -50,7 +50,7 @@ export function SourceList({snapshot, refresh, add, configure, channels, act}: S
       return <Fragment key={source.id}><div className={styles.source} data-paused={source.state === 'disabled' || undefined}>
         <span className={styles.sourceIcon}><Icon name="i-tv" size={22}/></span>
         <div className={styles.facts}><b>{source.name}</b><p>{facts.map((fact, index) => <span key={index}>{fact}</span>)}</p></div>
-        <span className={styles.badge} data-tone={state.tone} role={state.live ? 'status' : undefined}>{t(state.id)}</span>
+        <span className={styles.badge} data-tone={state.tone} data-live={state.live || undefined} data-paused={source.state === 'disabled' || undefined} role={state.live ? 'status' : undefined}>{t(state.id)}</span>
         <Menu open={menu === source.id} onOpenChange={open => setMenu(open ? source.id : undefined)} title={source.name}
           trigger={<Button variant="icon" size="small" icon="i-more" iconOnly disabled={!!snapshot.busy} aria-label={t('server.row.actions', {name: source.name})}/>}
           items={[

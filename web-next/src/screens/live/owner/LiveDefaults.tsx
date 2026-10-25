@@ -22,7 +22,7 @@ export function LiveDefaults({form, isCurrent, failure}: {form: DefaultsForm; is
       {number('web.dvrSettings.guideDays', draft.guideDays, 1, 21, value => form.set({guideDays: value}), 'settings.unit.days', 'web.dvrSettings.guideDaysHelp')}
       <SettingsRow label={t('web.dvrSettings.userAgent')} help={t('web.dvrSettings.userAgentHelp')}><TextField value={draft.userAgent} maxLength={200} variant="setting" disabled={state.saving}
         aria-label={t('web.dvrSettings.userAgent')} onChange={event => {if (isCurrent()) form.set({userAgent: event.currentTarget.value});}}/></SettingsRow>
-      <SettingsRow label={t('web.dvrSettings.logoImport')}><Switch checked={draft.logoImport} disabled={state.saving} aria-label={t('web.dvrSettings.logoImport')}
+      <SettingsRow label={t('next.liveOwner.logoImport')} help={t('next.liveOwner.logoImportHelp')}><Switch checked={draft.logoImport} disabled={state.saving} aria-label={t('next.liveOwner.logoImport')}
         onCheckedChange={logoImport => {if (isCurrent()) form.set({logoImport});}}/></SettingsRow>
       <SettingsRow label={t('web.dvrSettings.discovery')} help={t('web.dvrSettings.discoveryHelp')}><Switch checked={draft.discoveryEnabled} disabled={state.saving} aria-label={t('web.dvrSettings.discovery')}
         onCheckedChange={discoveryEnabled => {if (isCurrent()) form.set({discoveryEnabled});}}/></SettingsRow>
