@@ -16,6 +16,7 @@ export type ContentEntryKind = 'ebook' | 'comic' | 'movie' | 'show' | 'season' |
 /** `params` fill a parameterised heading (a Discover personal row: "{genre} for you"); name it with `serverTextLabel`. */
 export type ContentHeading = Readonly<{ key: string; fallback: string; params?: Readonly<Record<string, string>> }>;
 export type ContentEntry = Readonly<{
+  publicationType?: 'book' | 'magazine' | 'newspaper';
   dateBased?:boolean;special?:boolean;new?:boolean; show?:Readonly<{id:string;name:string}>;
   favorite?:boolean;releaseDate?:string;artistType?:'Group'|'Person';albumCount?:number;displayTitle?:string;narrators?:readonly string[];series?:readonly Readonly<{name:string;position?:string}>[];publisher?:string;language?:string;edition?:string;publishedYear?:number;bookProgress?:BookProgress;
   id: string; libraryId?: string; kind: ContentEntryKind; title: string; subtitle?: string; posterUrl?: string; backdropUrl?: string; /** An episode's own still, never inherited from the season or show (absent when it has none). */ stillUrl?: string; overview?: string;
@@ -163,6 +164,7 @@ function entry(v: unknown): ContentEntry {
   if (!record(v) || !id(v.id) || !entryKinds.includes(v.kind as string) || !string(v.title ?? '', 2048)) invalid();
   if ((v.kind==='ebook'||v.kind==='comic') && (v.playback!=null||v.durationMs!=null||v.duration!=null)) invalid();
   const row: { -readonly [K in keyof ContentEntry]: ContentEntry[K] } = { id: v.id, kind: v.kind as ContentEntryKind, title: (v.title ?? '') as string };
+  if ((v.kind === 'ebook' || v.kind === 'comic') && (v.publicationType === 'book' || v.publicationType === 'magazine' || v.publicationType === 'newspaper')) row.publicationType = v.publicationType;
   if (v.libraryId !== undefined) { if (!id(v.libraryId)) invalid(); row.libraryId = v.libraryId; }
   if (synopsis(v.overview)) row.overview = v.overview; else left('entry.overview', v.overview);
   for (const field of ['subtitle', 'posterUrl', 'backdropUrl', 'stillUrl'] as const) {
