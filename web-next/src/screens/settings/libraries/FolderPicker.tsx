@@ -51,7 +51,9 @@ export function FolderPicker({open, onOpenChange, api, onChoose}: Readonly<{
       <Button variant="primary" disabled={!page?.path || busy || failed} onClick={() => { if (page?.path) { onChoose(page.path); changeOpen(false); } }}>{t('next.settings.chooseThisFolder')}</Button></>}>
     <div className={styles.picker}>
       <div className={styles.pickerPath}>
-        <TextField label={t('next.settings.folderPath')} value={typed} onChange={event => setTyped(event.currentTarget.value)} />
+        <TextField label={t('next.settings.folderPath')} value={typed} onChange={event => setTyped(event.currentTarget.value)} onKeyDown={event => {
+          if (event.key === 'Enter' && !event.nativeEvent.isComposing && !busy) { event.preventDefault(); go(typed); }
+        }} />
         <Button disabled={busy} onClick={() => go(typed)}>{t('next.settings.go')}</Button>
         <Button disabled={busy || !page?.parent} onClick={() => { if (page?.parent) go(page.parent); }}>{t('next.settings.up')}</Button>
       </div>
@@ -61,16 +63,16 @@ export function FolderPicker({open, onOpenChange, api, onChoose}: Readonly<{
           setShowHidden(next); void read(page?.path, next);
         }} /> {t('next.settings.hiddenFolders')}
       </label>
-      {failed && <p role="alert" className={styles.pickerNote}>{t('next.settings.folderUnreadable')}</p>}
-      {busy && !page && <p role="status">{t('next.settings.loading')}</p>}
+      {failed && <p role="alert" className={styles.pickerNote}>{t('next.ownerLibraries.explorer.failed')}</p>}
+      {busy && !page && <p role="status">{t('next.ownerLibraries.explorer.reading')}</p>}
       {page && !page.path && <ul className={styles.pickerList}>{page.roots.map(root => <li key={root.path}>
         <button type="button" className={styles.pickerRow} onClick={() => go(root.path)}><span>{root.name}</span><small>{root.path}</small></button></li>)}</ul>}
       {page && page.path && (page.entries.length
         ? <ul className={styles.pickerList}>{page.entries.filter(entry => entry.kind === 'directory').map(entry => <li key={entry.path}>
           <button type="button" className={styles.pickerRow} disabled={!entry.readable} onClick={() => go(entry.path)}>
-            <span>{entry.name}</span>{!entry.readable && <small>{t('next.settings.folderUnreadable')}</small>}</button></li>)}</ul>
-        : <p className={styles.pickerNote}>{t('next.settings.noFolders')}</p>)}
-      {page?.nextCursor && <Button disabled={busy} onClick={() => { void read(page.path, showHidden, page.nextCursor); }}>{t('next.settings.loadMore')}</Button>}
+            <span>{entry.name}</span>{entry.symlink && <small>{t('next.ownerLibraries.explorer.link')}</small>}{!entry.readable && <small>{t('next.ownerLibraries.explorer.noAccess')}</small>}</button></li>)}</ul>
+        : <p className={styles.pickerNote}>{t('next.ownerLibraries.explorer.noFolders')}</p>)}
+      {page?.nextCursor && <Button disabled={busy} onClick={() => { void read(page.path, showHidden, page.nextCursor); }}>{t('next.ownerLibraries.explorer.more')}</Button>}
     </div>
   </Dialog>;
 }
