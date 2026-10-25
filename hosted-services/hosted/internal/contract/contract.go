@@ -125,7 +125,7 @@ func Definitions() []apikit.Definition {
 		route[NoBody, postgres.OIDCView]("GET", "/v1/identity/transactions/{id}", "identity_transaction_get", "Read a provider sign-in transaction.", Public, apikit.ScopeSession, 200).lane(security),
 		// contract: answers 202 with identity.MFAChallenge when MFA is required, and
 		// 200 with postgres.OIDCCompletion for a link or proof transaction.
-		route[postgres.OIDCCompleteInput, identity.Session]("POST", "/v1/identity/transactions/{id}/complete", "identity_transaction_complete", "Complete a provider sign-in transaction.", Public, apikit.ScopeSession, 200).lane(security),
+		route[postgres.OIDCCompleteInput, identity.Session]("POST", "/v1/identity/transactions/{id}/complete", "identity_transaction_complete", "Complete a provider sign-in transaction.", Public, apikit.ScopeSession, 200).lane(security).errors("username_unavailable"),
 		route[httpapi.NativeAppleRequest, postgres.OIDCView]("POST", "/v1/identity/transactions/{id}/native-apple", "identity_transaction_native_apple", "Present a native Sign in with Apple assertion.", Public, apikit.ScopeSession, 200).lane(security),
 		route[httpapi.ContactRequest, postgres.ContactChallenge]("POST", "/v1/identity/transactions/{id}/contact", "identity_transaction_contact", "Send a contact verification code.", Public, apikit.ScopeSession, 202).lane(security),
 		route[httpapi.ChallengeCodeRequest, postgres.OIDCView]("POST", "/v1/identity/transactions/{id}/contact/verify", "identity_transaction_contact_verify", "Verify a contact verification code.", Public, apikit.ScopeSession, 200).lane(security),

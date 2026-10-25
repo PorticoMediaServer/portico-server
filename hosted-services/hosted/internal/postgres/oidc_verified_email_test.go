@@ -153,15 +153,30 @@ func TestOIDCVerifiedEmailHTTPFactsAndCollision(t *testing.T) {
 	captureIdentityFacts(t, "provider-onboarding", out, fields)
 	token := emailField(t, fields, "onboardingToken")
 	body, _ := json.Marshal(postgres.OIDCCompleteInput{Username: "strict-owner", DisplayName: "User-entered fixture name", OnboardingToken: token})
-	out, _ = f.call(t, v, binding, false, "", "POST", string(body))
+	out, fields = f.call(t, v, binding, false, "", "POST", string(body))
 	if out.Code != 409 {
 		t.Fatalf("real username collision status %d", out.Code)
+	}
+	var collision struct {
+		Code string `json:"code"`
+	}
+	if json.Unmarshal(fields["error"], &collision) != nil || collision.Code != "username_unavailable" {
+		t.Fatal("confirmed username refusal lost its closed code")
 	}
 	out, fields = f.call(t, v, binding, false, "", "GET", "")
 	if out.Code != 200 || emailField(t, fields, "verifiedEmail") != "provider-fixture@example.test" || emailField(t, fields, "status") != "onboarding" {
 		t.Fatal("collision lost the verified current transaction fact")
 	}
 	captureIdentityFacts(t, "provider-username-collision", out, fields)
+	currentToken := emailField(t, fields, "onboardingToken")
+	if currentToken == "" || currentToken == token {
+		t.Fatal("collision did not rotate the original onboarding token")
+	}
+	retry, _ := json.Marshal(postgres.OIDCCompleteInput{Username: "provider_retry", DisplayName: "User-entered fixture name", OnboardingToken: currentToken})
+	out, _ = f.call(t, v, binding, false, "", "POST", string(retry))
+	if out.Code != 200 {
+		t.Fatalf("same proved transaction could not finish after choosing another username: %d", out.Code)
+	}
 }
 
 func TestOIDCVerifiedEmailUsesOnlyCurrentVerifiedContact(t *testing.T) {

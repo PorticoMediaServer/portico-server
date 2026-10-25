@@ -184,7 +184,8 @@ func (o *OIDCLogin) CompleteFlow(ctx context.Context, id, binding, access string
 			if e = tx.Commit(); e != nil {
 				return out, e
 			}
-			return out, identity.ErrConflict
+			// This is the confirmed public-handle unique-insert refusal only.
+			return out, identity.ErrUsernameUnavailable
 		}
 		if e != nil {
 			return out, e
