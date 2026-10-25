@@ -1082,7 +1082,7 @@ export class WebShellPlaybackRuntime {
     const epoch = stack.imageEpoch = (stack.imageEpoch ?? 0) + 1;
     const abort = new AbortController(); stack.imageAbort = abort;
     const surface = stack.imageSurface = createImageSubtitleSurface(video as HTMLVideoElement, this.subtitleReader(stack, abort.signal),
-      () => { if (this.current(stack) && stack.imageEpoch === epoch) { stack.imageFailed = true; stack.forcedLines = undefined; this.runtimeProblem = 'playback_subtitles_failed'; this.sync(); } });
+      () => { if (this.current(stack) && stack.imageEpoch === epoch) { stack.imageFailed = true; stack.forcedLines = undefined; this.clearRecordedSidecar(stack, 'image', key); this.runtimeProblem = 'playback_subtitles_failed'; this.sync(); } });
     if (!surface) { stack.imageKey = undefined; return; }
     surface.setDelay(Number(plan.offsetUs) / 1e6);
     surface.setForcedOnly(stack.forcedOnly === true);
@@ -1109,9 +1109,9 @@ export class WebShellPlaybackRuntime {
   }
   /** Retiring one path clears the record only when that path still owns it, so a late image
    * teardown can never erase the successor text track (or the reverse). */
-  private clearRecordedSidecar(stack: Stack, path: 'text' | 'image'): void {
+  private clearRecordedSidecar(stack: Stack, path: 'text' | 'image', key?: string): void {
     const recorded = stack.subtitleRecorded;
-    if (!recorded || recorded.path !== path) return;
+    if (!recorded || recorded.path !== path || (key !== undefined && recorded.key !== key)) return;
     stack.subtitleRecorded = undefined;
     stack.web.slot.selectSidecarSubtitle(null);
   }
@@ -1163,7 +1163,7 @@ export class WebShellPlaybackRuntime {
         if (!this.current(stack) || stack.documentKey !== key || abort.signal.aborted) return;
         if (!read.unchanged) { document = read.document; etag = read.etag; }
         if (document) { surface.show(document.cues, Number(plan.offsetUs) / 1e6); surface.guard(true); this.recordSidecar(stack, 'text', key, plan.selected?.id ?? null); }
-      } catch { if (this.current(stack) && !abort.signal.aborted) { this.surface?.clear(); this.runtimeProblem = 'playback_subtitles_failed'; this.sync(); } }
+      } catch { if (this.current(stack) && !abort.signal.aborted) { this.surface?.clear(); this.clearRecordedSidecar(stack, 'text', key); this.runtimeProblem = 'playback_subtitles_failed'; this.sync(); } }
       finally { if (this.current(stack) && stack.documentKey === key && !abort.signal.aborted) stack.documentTimer = this.setTimer(() => { void load(); }, 25_000); }
     };
     void load();
