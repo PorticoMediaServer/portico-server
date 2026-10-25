@@ -1,7 +1,6 @@
 package reading
 
 import (
-	"archive/zip"
 	"context"
 	"errors"
 	"fmt"
@@ -48,42 +47,9 @@ func openMembers(ctx context.Context, format string, ra io.ReaderAt, size int64)
 	}
 	switch strings.ToLower(format) {
 	case "cbz":
-		// The established ZIP admission runs before zip.NewReader materialises
-		// the central directory.
-		if err := inspectDirectory(ra, size); err != nil {
-			return nil, err
-		}
-		zr, err := zip.NewReader(ra, size)
-		if err != nil {
-			return nil, archiveFailure(err)
-		}
-		if len(zr.File) > MaxEntries {
-			return nil, ErrLimit
-		}
-		seen := map[string]bool{}
-		out := make([]archiveMember, 0, len(zr.File))
-		var expanded int64
-		for _, f := range zr.File {
-			if !memberName(f.Name, seen) {
-				continue
-			}
-			if !f.Mode().IsRegular() {
-				continue
-			}
-			expanded += int64(f.UncompressedSize64)
-			if expanded > MaxExpanded || int64(f.UncompressedSize64) > MaxMember {
-				return nil, ErrLimit
-			}
-			if !safeMember(f.Name, f.FileInfo().IsDir(), f.UncompressedSize64) {
-				continue
-			}
-			member := f
-			out = append(out, archiveMember{Name: member.Name, Size: int64(member.UncompressedSize64), Open: member.Open})
-		}
-		if len(out) == 0 {
-			return nil, ErrInvalid
-		}
-		return &zipMembers{files: out}, nil
+		// Ordinary CBZ keeps its canonical openArchive admission; this alternate
+		// reader must never become a weaker ZIP path.
+		return nil, archiveFormatError("cbz")
 	case "cbr", "cb7":
 		return openClassicArchive(ctx, format, ra, size)
 	default:

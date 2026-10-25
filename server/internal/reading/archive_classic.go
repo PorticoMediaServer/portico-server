@@ -76,9 +76,30 @@ func (i readerAtInfo) Sys() any           { return nil }
 // header set is materialised before admission: each Next is bounded by the same
 // dictionary/read limits, counted against MaxEntries and MaxExpanded, and solid,
 // encrypted or multi-volume archives are refused whole.
+// RAR3-era containers may select the separate PPM allocator inside the first
+// Read (decode29_ppm), whose heap is not governed by MaxDictionarySize. Only the
+// RAR5 signature is admitted; a legacy RAR4 container is refused before the
+// parser runs rather than promising a bound the option does not provide.
+func preflightRAR(ra io.ReaderAt) error {
+	var head [8]byte
+	if _, err := ra.ReadAt(head[:], 0); err != nil {
+		return archiveFailure(err)
+	}
+	if head[0] != 'R' || head[1] != 'a' || head[2] != 'r' || head[3] != '!' || head[4] != 0x1a || head[5] != 0x07 {
+		return ErrInvalid
+	}
+	if head[6] != 0x01 || head[7] != 0x00 {
+		return archiveFormatError("cbr")
+	}
+	return nil
+}
+
 func openRAR(ctx context.Context, ra io.ReaderAt, size int64) (memberArchive, error) {
 	if size < 22 || size > MaxSource {
 		return nil, ErrLimit
+	}
+	if err := preflightRAR(ra); err != nil {
+		return nil, err
 	}
 	reader, err := rardecode.NewReader(&contextReader{ctx: ctx, r: io.NewSectionReader(ra, 0, size)},
 		rardecode.MaxDictionarySize(maxRARDictionary))
