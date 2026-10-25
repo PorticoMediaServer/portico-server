@@ -12,6 +12,7 @@ import {WatchScreen} from './WatchScreen';
 import {WatchSkipPrompt} from './SkipPrompt';
 import {WatchUndoPrompt} from './UndoPrompt';
 import {WatchUpNextPrompt} from './UpNextPrompt';
+import {WatchMusicNowPlaying} from './music/NowPlaying';
 import type {WatchBindings, WatchSurfaces, WatchGeometry} from './types';
 import type {LiveChromePort} from '../live/live-chrome-types';
 import {createWatchPlayOn, remotePictureKeepsCaptions, type WatchPlaybackContext, type WatchPlayOnBinding} from './play-on-binding';
@@ -314,6 +315,7 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
     <MediaSurface finished={snapshot?.presentation?.finished} expanded={expanded} dockSlot={dockSlot} expandedSlot={expandedSlot} hidden={!activeVideo} nativeRenderActive={snapshot?.nativeVideoSurfaceActive} className={styles.surface}>
       <video ref={video} playsInline preload="none" aria-label={playbackIdentityLabel(presentations, snapshot?.fence && fenceKey(snapshot.fence))} />
     </MediaSurface>
+    {binding && snapshot && <WatchMusicNowPlaying binding={binding} snapshot={snapshot} expanded={expanded && !remotePlaying} onCollapse={collapse} phone={phone} />}
     {binding && snapshot && <WatchScreen binding={binding} snapshot={snapshot} expanded={expanded && !remotePlaying} onCollapse={collapse} surfaceSlotRef={expandedSlot} onControlsVisibleChange={setControlsVisible}
       surfaces={drawnSurfaces} geometry={geometry} live={live}
       windowPort={windowPort} />}
