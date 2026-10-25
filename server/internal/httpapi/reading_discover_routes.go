@@ -12,9 +12,29 @@ import (
 // ReadingDiscoverRow is one server-composed Discover row. The key names the row
 // the client asked for; items use the same public projection as List/Continue.
 type ReadingDiscoverRow struct {
-	Key    string                  `json:"key"`
-	Items  []ReadingItem           `json:"items"`
-	Series []ReadingDiscoverSeries `json:"series,omitempty"`
+	Key        string                  `json:"key"`
+	Items      []ReadingItem           `json:"items"`
+	Series     []ReadingDiscoverSeries `json:"series,omitempty"`
+	ShortReads []ReadingShortRead      `json:"shortReads,omitempty"`
+}
+
+// Seconds round up for display only; membership uses the exact complete count.
+type ReadingShortRead struct {
+	Item             ReadingItem `json:"item"`
+	WordCount        int64       `json:"wordCount"`
+	EstimatedSeconds int64       `json:"estimatedSeconds"`
+}
+
+func (ReadingShortRead) JSONSchema() map[string]any {
+	type wire ReadingShortRead
+	shape, _ := apikit.Schema(reflect.TypeFor[wire]())
+	shape["additionalProperties"] = false
+	props := shape["properties"].(map[string]any)
+	props["wordCount"].(map[string]any)["minimum"] = 1
+	props["wordCount"].(map[string]any)["maximum"] = 44999
+	props["estimatedSeconds"].(map[string]any)["minimum"] = 1
+	props["estimatedSeconds"].(map[string]any)["maximum"] = 10800
+	return shape
 }
 
 // ReadingDiscoverSeries is a summary of actual eligible library membership.
@@ -72,7 +92,16 @@ func (d Dependencies) readingDiscover(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	discover, err := d.readingService().Discover(r.Context(), p, r.URL.Query().Get("libraryId"), reading.DiscoverLimits{Recent: limit, Series: seriesLimit})
+	shortReadsLimit := 0
+	if raw := r.URL.Query().Get("shortReadsLimit"); r.URL.Query().Has("shortReadsLimit") {
+		var err error
+		shortReadsLimit, err = strconv.Atoi(raw)
+		if err != nil || shortReadsLimit < 1 || shortReadsLimit > 20 || r.URL.Query().Get("libraryId") == "" {
+			readingFailure(w, reading.ErrInvalid)
+			return
+		}
+	}
+	discover, err := d.readingService().Discover(r.Context(), p, r.URL.Query().Get("libraryId"), reading.DiscoverLimits{Recent: limit, Series: seriesLimit, ShortReads: shortReadsLimit})
 	if err != nil {
 		readingFailure(w, err)
 		return
@@ -93,6 +122,13 @@ func (d Dependencies) readingDiscover(w http.ResponseWriter, r *http.Request) {
 		}
 		out.Rows = append(out.Rows, row)
 	}
+	if len(discover.ShortReads) > 0 {
+		short := make([]ReadingShortRead, 0, len(discover.ShortReads))
+		for _, row := range discover.ShortReads {
+			short = append(short, ReadingShortRead{Item: readingItemProjection(row.Item), WordCount: row.WordCount, EstimatedSeconds: row.EstimatedSeconds})
+		}
+		out.Rows = append(out.Rows, ReadingDiscoverRow{Key: "short-reads", Items: []ReadingItem{}, ShortReads: short})
+	}
 	write(w, 200, out)
 }
 
@@ -100,6 +136,6 @@ func (d Dependencies) readingDiscover(w http.ResponseWriter, r *http.Request) {
 // operation; the vocabulary is a rows-only payload of the existing item shape.
 func registerReadingDiscoverHTTPContract(registry *apikit.Registry) error {
 	errors := []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_required", "revision_mismatch", "request_in_progress", "body_too_large", "internal"}
-	m := apikit.Metadata{ID: "get_reading_discover", Method: "GET", Path: "/v1/reading/discover", Summary: "Read the server-composed Discover rows", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Errors: errors, Query: []string{"libraryId", "limit", "seriesLimit"}}
+	m := apikit.Metadata{ID: "get_reading_discover", Method: "GET", Path: "/v1/reading/discover", Summary: "Read the server-composed Discover rows", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Errors: errors, Query: []string{"libraryId", "limit", "seriesLimit", "shortReadsLimit"}}
 	return apikit.RegisterHTTP[struct{}, ReadingDiscoverResponse](registry, m)
 }

@@ -223,6 +223,17 @@ CREATE TABLE reading_publication_types(
  PRIMARY KEY(item_id,asset_id),
  FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
 CREATE INDEX reading_publication_types_inventory_object ON reading_publication_types(inventory_object_id);
+-- Complete deterministic source-text evidence; NULL is unknown, never a zero guess.
+CREATE TABLE reading_text_counts(
+ item_id INTEGER NOT NULL,
+ asset_id INTEGER NOT NULL,
+ word_count INTEGER CHECK(word_count IS NULL OR word_count BETWEEN 0 AND 67108864),
+ inventory_object_id TEXT NOT NULL REFERENCES inventory_objects(id) ON DELETE CASCADE,
+ source_revision TEXT NOT NULL CHECK(length(source_revision)>0),
+ rule_version INTEGER NOT NULL CHECK(rule_version>0),
+ PRIMARY KEY(item_id,asset_id),
+ FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
+CREATE INDEX reading_text_counts_inventory_object ON reading_text_counts(inventory_object_id);
 CREATE TABLE reading_progress(
  owner_key TEXT NOT NULL,
  item_id INTEGER NOT NULL,
