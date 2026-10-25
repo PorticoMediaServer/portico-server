@@ -128,6 +128,7 @@ export const servicesMessages = {
   'services.start.libraryBody': 'Point Portico at a folder. Your server appears here, ready to open.',
   'services.workspace.subtitle': 'Not part of any one server',
   'services.workspace.title': 'Portico Account',
+  'services.start.accountMenuDescription': 'Devices, security, servers and notifications',
   'services.workspace.sections': 'Portico Account sections',
   'services.workspace.devices': 'Devices',
   'services.workspace.security': 'Security',
