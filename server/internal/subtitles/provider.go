@@ -107,9 +107,17 @@ func (s *Service) Search(ctx context.Context, p identity.Principal, item string,
 		return out, e
 	}
 
+	lookupEpoch, e := localonly.CaptureOnline(ctx, tx)
+	if e != nil {
+		return out, e
+	}
 	if e = gated.Commit(); e != nil {
 		return out, e
 	}
+	if e = localonly.CheckOnline(ctx, dbwork.ReadHandle(ctx, s.db), lookupEpoch); e != nil {
+		return out, e
+	}
+	ctx = localonly.WithOnlineAdmission(ctx, s.db, lookupEpoch)
 	var candidates []ProviderCandidate
 	if advanced, ok := s.provider.(MediaSearchProvider); ok {
 		candidates, e = advanced.SearchMedia(ctx, media)
@@ -126,6 +134,15 @@ func (s *Service) Search(ctx context.Context, p identity.Principal, item string,
 	}
 	tx = gated2.Tx()
 	defer gated2.Rollback()
+	if e = localonly.CheckOnline(ctx, tx, lookupEpoch); e != nil {
+		return out, e
+	}
+	if local, err := localonly.Item(ctx, tx, item); err != nil || local {
+		if err != nil {
+			return out, err
+		}
+		return out, localonly.Err
+	}
 	current, e := sourceQuery(ctx, tx, item, m.SourceID)
 	if e != nil {
 		return out, e
@@ -198,9 +215,23 @@ func (s *Service) Apply(ctx context.Context, p identity.Principal, item string, 
 	if !src.Available || src.size != size || src.modified != modified || provider != s.provider.ID() {
 		return Receipt{}, ErrConflict
 	}
+	if local, err := localonly.Item(ctx, tx, item); err != nil || local {
+		if err != nil {
+			return Receipt{}, err
+		}
+		return Receipt{}, localonly.Err
+	}
+	lookupEpoch, e := localonly.CaptureOnline(ctx, tx)
+	if e != nil {
+		return Receipt{}, e
+	}
 	if e = gated3.Commit(); e != nil {
 		return Receipt{}, e
 	}
+	if e = localonly.CheckOnline(ctx, dbwork.ReadHandle(ctx, s.db), lookupEpoch); e != nil {
+		return Receipt{}, e
+	}
+	ctx = localonly.WithOnlineAdmission(ctx, s.db, lookupEpoch)
 	raw, e := s.provider.Download(ctx, file)
 	if e != nil {
 		return Receipt{}, e
@@ -210,5 +241,5 @@ func (s *Service) Apply(ctx context.Context, p identity.Principal, item string, 
 		return Receipt{}, e
 	}
 	mutation := Mutation{OperationID: m.OperationID, SourceID: srcID, Scope: m.Scope, Format: "srt", Language: language, Title: title, Rights: m.Rights, OffsetUS: "0"}
-	return s.publish(ctx, p, item, mutation, digest, publication{source: src, origin: "provider", provider: provider, attribution: attribution, originalDigest: digestBytes(raw)}, canonical)
+	return s.publish(ctx, p, item, mutation, digest, publication{lookupEpoch: lookupEpoch, source: src, origin: "provider", provider: provider, attribution: attribution, originalDigest: digestBytes(raw)}, canonical)
 }

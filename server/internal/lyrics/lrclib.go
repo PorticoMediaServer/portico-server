@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"portico.local/server/internal/metadataprovider"
 )
 
 // LRCLIB implements only read/search. The optional origin is operator-supplied,
@@ -141,6 +143,10 @@ func publicIP(ip netip.Addr) bool {
 	return true
 }
 func (p *LRCLIB) Search(ctx context.Context, query string) ([]acquired, error) {
+	check, e := metadataprovider.BeginNetworkAdmission(ctx)
+	if e != nil {
+		return nil, e
+	}
 	req, e := http.NewRequestWithContext(ctx, http.MethodGet, p.origin+"/api/search?"+url.Values{"q": {query}}.Encode(), nil)
 	if e != nil {
 		return nil, ErrUnavailable
@@ -152,6 +158,9 @@ func (p *LRCLIB) Search(ctx context.Context, query string) ([]acquired, error) {
 			return nil, errProviderPaused
 		}
 		return nil, ErrUnavailable
+	}
+	if e = check(); e != nil {
+		return nil, e
 	}
 	response, e := p.client.Do(req)
 	if e != nil {
@@ -168,6 +177,9 @@ func (p *LRCLIB) Search(ctx context.Context, query string) ([]acquired, error) {
 	raw, e := io.ReadAll(io.LimitReader(response.Body, (4<<20)+1))
 	if e != nil || len(raw) > 4<<20 {
 		return nil, ErrUnavailable
+	}
+	if e = check(); e != nil {
+		return nil, e
 	}
 	var records []struct {
 		ID           int64   `json:"id"`

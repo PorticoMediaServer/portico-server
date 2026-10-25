@@ -15,6 +15,7 @@ import (
 
 type mbLocalArtist struct{ ID, Name string }
 type mbBase struct {
+	LookupEpoch                            int64
 	Music                                  musicInputs
 	Library, Incarnation                   string
 	Revision                               int64
@@ -160,6 +161,14 @@ func readMBBase(ctx context.Context, tx *sql.Tx, kind, id string) (mbBase, error
 		b.HintProblem = b.Music.Problem
 	}
 	e = tx.QueryRowContext(ctx, `SELECT incarnation,revision,enabled,algorithm FROM mb_provider_policies WHERE library_id=?`, b.Library).Scan(&b.PolicyIncarnation, &b.PolicyRevision, &b.Enabled, &b.Algorithm)
+	if e == nil {
+		online, epoch, err := onlineLookupPolicyTx(ctx, tx)
+		if err != nil {
+			return b, err
+		}
+		b.Enabled = b.Enabled && online
+		b.LookupEpoch = epoch
+	}
 	return b, e
 }
 
