@@ -303,10 +303,19 @@ func (s *Store) fetchSource(ctx context.Context, f SourceFetcher, c remoteConfig
 		return SourceInput{}, 0, e
 	}
 	d, v, e := RuntimeConfigurationTx(ctx, tx, c.Draft.ID)
-	tx.Rollback()
 	if e != nil {
+		tx.Rollback()
 		return SourceInput{}, 0, e
 	}
+	var guideDefaults LiveDefaults
+	if v.GuideSourceID != "" {
+		guideDefaults, _, e = RuntimeConfigurationTx(ctx, tx, v.GuideSourceID)
+		if e != nil {
+			tx.Rollback()
+			return SourceInput{}, 0, e
+		}
+	}
+	tx.Rollback()
 	var guideRevision int64
 	fetchCtx, cancel := context.WithCancel(ctx)
 	unregister := []func(){}
@@ -392,6 +401,9 @@ func (s *Store) fetchSource(ctx context.Context, f SourceFetcher, c remoteConfig
 		c.Approvals = append(c.Approvals, guide.Approvals...)
 	}
 	f.defaults = d
+	if v.GuideSourceID != "" {
+		f.guideUserAgent = guideDefaults.UserAgent
+	}
 	in, count, e := f.fetch(fetchCtx, c)
 	if e != nil {
 		return in, count, e

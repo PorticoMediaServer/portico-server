@@ -191,7 +191,11 @@ func (f SourceFetcher) fetch(ctx context.Context, c remoteConfig) (SourceInput, 
 		if remaining <= 0 {
 			return in, 0, ErrInvalid
 		}
-		file, digest, e := readGuideFile(ctx, d.GuideURL, p, remaining)
+		guidePolicy := p
+		if f.guideUserAgent != "" {
+			guidePolicy.UserAgent = f.guideUserAgent
+		}
+		file, digest, e := readGuideFile(ctx, d.GuideURL, guidePolicy, remaining)
 		in.guideFile, in.guideDigest = file, digest
 		if e != nil {
 			return in, 0, e

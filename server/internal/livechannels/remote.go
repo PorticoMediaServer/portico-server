@@ -81,8 +81,9 @@ type RemoteStatus struct {
 }
 
 type SourceFetcher struct {
-	Resolver remotemedia.Resolver
-	defaults LiveDefaults
+	Resolver       remotemedia.Resolver
+	defaults       LiveDefaults
+	guideUserAgent string
 }
 
 // maxSealed bounds private source/playlist snapshots. Large guide bodies stay
