@@ -3,6 +3,7 @@ package identity
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -10,7 +11,10 @@ import (
 )
 
 var (
-	ErrChallenge        = errors.New("challenge invalid or expired")
+	ErrChallenge = errors.New("challenge invalid or expired")
+	// Preserve the existing challenge class while distinguishing a rejected
+	// factor on an otherwise live reset link for the route presenter.
+	ErrResetFactor      = fmt.Errorf("reset factor invalid: %w", ErrChallenge)
 	ErrRateLimited      = errors.New("account security rate limit")
 	ErrMailUnavailable  = errors.New("account mail is not configured")
 	ErrPushUnavailable  = errors.New("device push is not configured")

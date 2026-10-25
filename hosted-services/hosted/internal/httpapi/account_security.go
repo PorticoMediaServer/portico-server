@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"net/http"
 	"portico.local/hosted/internal/identity"
 	"portico.local/hosted/internal/mailoutbox"
@@ -236,7 +237,16 @@ func (h *Handler) securityRoutes(mux *http.ServeMux) {
 			return
 		}
 		if e := h.Security.ResetPassword(r.Context(), q.Token, q.NewPassword, q.Factor); e != nil {
-			failure(w, e)
+			switch {
+			case errors.Is(e, identity.ErrResetFactor):
+				fail(w, 400, "mfa_invalid", "The authenticator or recovery code is not valid.", false)
+			case errors.Is(e, identity.ErrChallenge):
+				fail(w, 410, "reset_link_unavailable", "This password-reset link cannot be used.", false)
+			case errors.Is(e, identity.ErrInvalid):
+				fail(w, 400, "password_invalid", "Choose a password that meets the password rules.", false)
+			default:
+				failure(w, e)
+			}
 			return
 		}
 		write(w, 200, StatusResponse{Status: "password_reset"})

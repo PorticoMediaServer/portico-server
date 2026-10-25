@@ -147,7 +147,7 @@ func (s *AccountSecurity) ResetPassword(ctx context.Context, token, password, fa
 		if e = tx.Commit(); e != nil {
 			return e
 		}
-		return identity.ErrChallenge
+		return identity.ErrResetFactor
 	}
 	hash, e := s.Identity.HashPassword(ctx, password)
 	if e != nil {

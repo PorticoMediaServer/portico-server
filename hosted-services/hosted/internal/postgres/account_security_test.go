@@ -564,3 +564,51 @@ func TestMFAFailuresEscalateAcrossFreshChallenges(t *testing.T) {
 		t.Fatal("stale count not restarted", rows, err)
 	}
 }
+
+// A live link's rejected factor is distinct from an unusable link. The typed
+// presentation result must not consume the link or relax its attempt budget.
+func TestResetFactorResultPreservesLinkAndFactorGuards(t *testing.T) {
+	s := accountSecurityFixture(t)
+	ctx := context.Background()
+	a := verifiedAccount(t, s, "resettyped")
+	enrollment := securityAction(t, s, a, "mfa_enroll", "")
+	key, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(enrollment.Secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var now time.Time
+	if err = s.Store.DB.QueryRow(`SELECT clock_timestamp()`).Scan(&now); err != nil {
+		t.Fatal(err)
+	}
+	enabled, err := s.ConfirmEnrollment(ctx, a.AccessToken, enrollment.ChallengeID, identity.HOTP(key, uint64(now.Unix()/30), 6), security.RandomID(""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.RequestRecovery(ctx, postgres.RecoveryRequest{Username: "resettyped", ContactAddress: "resettyped@example.test", RequestID: security.RandomID("")}); err != nil {
+		t.Fatal(err)
+	}
+	var id string
+	if err = s.Store.DB.QueryRow(`SELECT id FROM account_email_challenges WHERE account_id=$1 AND purpose='password_reset'`, a.Account.ID).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	token := mailPayload(t, s, mailoutbox.PasswordReset, id).Code
+	if err = s.ResetPassword(ctx, token, "NewStrongPass8", "not-a-factor"); !errors.Is(err, identity.ErrResetFactor) || !errors.Is(err, identity.ErrChallenge) {
+		t.Fatalf("factor result: %v", err)
+	}
+	var attempts int
+	if err = s.Store.DB.QueryRow(`SELECT attempts FROM account_email_challenges WHERE id=$1`, id).Scan(&attempts); err != nil || attempts != 1 {
+		t.Fatal("factor attempt was not retained", attempts, err)
+	}
+	if err = s.ResetPassword(ctx, token, "x", enabled.RecoveryCodes[0]); !errors.Is(err, identity.ErrInvalid) {
+		t.Fatalf("password result: %v", err)
+	}
+	if err = s.ResetPassword(ctx, token, "NewStrongPass8", enabled.RecoveryCodes[0]); err != nil {
+		t.Fatal("invalid password consumed recovery factor or link", err)
+	}
+	if err = s.ResetPassword(ctx, token, "NewStrongPass8", enabled.RecoveryCodes[0]); err != nil {
+		t.Fatal("exact reset replay changed", err)
+	}
+	if err = s.ResetPassword(ctx, token, "AnotherStrong9", "not-a-factor"); !errors.Is(err, identity.ErrChallenge) || errors.Is(err, identity.ErrResetFactor) {
+		t.Fatalf("used link reported a live factor refusal: %v", err)
+	}
+}
