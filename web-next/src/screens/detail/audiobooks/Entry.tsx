@@ -62,7 +62,7 @@ function Narrators({names, linked, onOpen, locale}: {names: readonly string[]; l
 function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: Props['onMore']}) {
   const phone = useShellWidth() < 1024;
   const state = useSyncExternalStore(binding.service.subscribe, binding.service.getSnapshot, binding.service.getSnapshot);
-  const [expanded, setExpanded] = useState(false), [chaptersExpanded, setChaptersExpanded] = useState(false), [finished, setFinished] = useState<boolean>(), [watchlisted, setWatchlisted] = useState<boolean>(), [narratorFilter, setNarratorFilter] = useState(false);
+  const [expanded, setExpanded] = useState(false), [chaptersExpanded, setChaptersExpanded] = useState(false), [finished, setFinished] = useState<boolean>(), [watchlisted, setWatchlisted] = useState<boolean>(), [filters, setFilters] = useState<Readonly<{narrator: boolean; series: boolean}>>({narrator: false, series: false});
   // One captured page operation at a time, claimed synchronously before any I/O.
   const operation = useRef<Operation | undefined>(undefined), [busy, setBusy] = useState<Operation['kind'] | undefined>(undefined);
   const owns = (op: Operation) => {
@@ -101,7 +101,7 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
     };
     reads.current = {token};
     operation.current = undefined; setBusy(undefined);
-    setExpanded(false); setChaptersExpanded(false); setFinished(undefined); setWatchlisted(undefined); setNarratorFilter(false); setMore(undefined);
+    setExpanded(false); setChaptersExpanded(false); setFinished(undefined); setWatchlisted(undefined); setFilters({narrator: false, series: false}); setMore(undefined);
     if (pageAtRender?.scope.view === 'book') {
       void binding.finished(pageAtRender).then(value => {if (live()) setFinished(value.watched);}, error => {if (live()) binding.context.effects.reportError(error);});
       // A server that does not offer the container flag withholds the button; a real failure reports.
@@ -110,8 +110,8 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
         if (error instanceof ApiError && [403, 404, 405, 501].includes(error.status)) return;
         binding.context.effects.reportError(error);
       });
-      // The narrator link appears only when this library's Books pivot publishes that filter.
-      void binding.narratorSupported(pageAtRender).then(value => {if (live()) setNarratorFilter(value);}, error => {
+      // Narrator and series links appear only when this library's Books pivot publishes each filter.
+      void binding.filterSupport(pageAtRender).then(value => {if (live()) setFilters(value);}, error => {
         if (!live()) return;
         if (error instanceof ApiError && [403, 404, 405, 501].includes(error.status)) return;
         binding.context.effects.reportError(error);
@@ -128,6 +128,8 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
   const rows = book ? chapters?.entries.length ? chapters : files : state.appended.find(section => section.id === 'books');
   const context = state.appended.find(section => section.id === 'context')?.entries ?? [];
   const series = context.find(entry => entry.kind === 'book_series'), authorEntry = context.find(entry => entry.kind === 'author');
+  // The filter can only use a series name this book publishes exactly; otherwise its series page stands.
+  const seriesTarget = series && entity.series?.find(value => value.name === series.title);
   const progress = entity.bookProgress, resume = page.listening?.resume;
   const ratio = progress?.positionMs !== undefined && progress.durationMs ? progress.positionMs / progress.durationMs : undefined;
   const remaining = duration(progress?.remainingMs === undefined ? undefined : progress.remainingMs / 1000);
@@ -159,11 +161,11 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
     </nav>
     <header className={styles.hero}>
       <div className={author ? styles.disc : styles.cover}><Artwork source={binding.context.artwork.foreground(cover, 464, 1)} alt=""/>{author && <b>{entity.title.split(/\s+/u).filter(Boolean).slice(0, 2).map(word => word[0]).join('')}</b>}</div>
-      {book && series ? <button className={styles.eyebrow} onClick={() => open(series)}>{series.title}</button> : !book && <p className={styles.eyebrow}>{t(author ? 'filter.field.author' : 'library.tab.series')}</p>}
+      {book && series ? <button className={styles.eyebrow} onClick={() => run(() => filters.series && seriesTarget ? binding.openSeries(page, series, seriesTarget.name) : open(series))}>{series.title}</button> : !book && <p className={styles.eyebrow}>{t(author ? 'filter.field.author' : 'library.tab.series')}</p>}
       <h1>{entity.displayTitle ?? entity.title}</h1>
       {entity.author && (authorEntry ? <button className={styles.author} onClick={() => open(authorEntry)}>{entity.author}</button> : <div className={styles.author}>{entity.author}</div>)}
       <div className={styles.meta}>
-        {book && !!entity.narrators?.length && <span><Narrators names={entity.narrators} linked={narratorFilter} locale={serviceI18n().locale}
+        {book && !!entity.narrators?.length && <span><Narrators names={entity.narrators} linked={filters.narrator} locale={serviceI18n().locale}
           onOpen={name => run(() => binding.openNarrator(page, name))}/></span>}
         {!book && entity.count !== undefined && <strong>{t('next.kit.books', {count: entity.count})}</strong>}
         {entity.duration !== undefined && <span>{duration(entity.duration)}</span>}

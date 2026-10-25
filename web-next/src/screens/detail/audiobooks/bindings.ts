@@ -16,8 +16,22 @@ export function createAudiobookBindings(context: ScreenContext, input: Audiobook
       || page.entity?.id !== target.entityId || page.entity.kind !== target.view) throw new DOMException('Audiobook page changed', 'AbortError');
   };
   const entries = () => service.getSnapshot().appended.flatMap(section => section.entries);
-  // The exact page whose checked capabilities the narrator link may act on.
-  let narratorFact: Readonly<{page: ContentProjection; capabilities: BrowseCapabilities}> | undefined;
+  // The exact page whose checked filters may act, and the one opener both links use.
+  let filterFact: Readonly<{page: ContentProjection; capabilities: BrowseCapabilities}> | undefined;
+  const openFilter = async (page: ContentProjection, field: 'narrator' | 'series', name: string, member: boolean) => {
+    current(page);
+    if (target.view !== 'book' || !filterFact || filterFact.page !== page || !member || typeof name !== 'string' || !name.trim()) throw new DOMException('Book filter unavailable', 'AbortError');
+    const open = context.effects.openBrowse;
+    if (!open) throw new DOMException('Browse unavailable', 'AbortError');
+    // validateBrowseQuery does not check kind applicability: the requested field itself must be
+    // book-applicable and offer equals, never merely present because the other link was.
+    const descriptor = filterFact.capabilities.fields.find(value => value.id === field);
+    if (!descriptor || !descriptor.applicableKinds.includes('book') || !descriptor.operators.includes('equals')) throw new DOMException('Book filter unavailable', 'AbortError');
+    const query = Object.freeze({field, operator: 'equals' as const, value: name});
+    validateBrowseQuery(filterFact.capabilities, query);
+    open({libraryId: target.libraryId, pivot: 'books', query});
+    current(page);
+  };
   const play = async (page: ContentProjection, entry: ContentEntry, startSeconds = entry.playback?.startSeconds ?? 0) => {
     current(page);
     if (!entries().includes(entry) || !entry.playback || entry.available === false || entry.missing) throw new DOMException('Audiobook target unavailable', 'AbortError');
@@ -37,30 +51,38 @@ export function createAudiobookBindings(context: ScreenContext, input: Audiobook
       current(page);return result;
     },
     play,
-    /** Reads and retains this exact page's own checked Books capabilities. */
-    async narratorSupported(page: ContentProjection) {
+    /** Reads once and retains this exact page's own checked Books capabilities: which real
+     * filters it offers for book kinds, so only those become destinations. */
+    async filterSupport(page: ContentProjection) {
+      const none = Object.freeze({narrator: false, series: false});
       current(page);
-      if (target.view !== 'book' || !context.effects.openBrowse) return false;
+      if (target.view !== 'book' || !context.effects.openBrowse) return none;
       const capabilities = parseBrowseCapabilities(await life.api.request<unknown>(browseCapabilitiesPath(target.libraryId, 'books')));
       current(page);
-      if (capabilities.library.id !== target.libraryId || capabilities.library.kind !== page.scope.libraryKind) return false;
+      if (capabilities.library.id !== target.libraryId || capabilities.library.kind !== page.scope.libraryKind) return none;
       const pivot = capabilities.resolvedPivot;
-      if (!pivot || pivot.id !== 'books' || !pivot.browsable) return false;
-      const field = capabilities.fields.find(value => value.id === 'narrator');
-      if (!field || !field.applicableKinds.includes('book') || !field.operators.includes('equals')) return false;
-      narratorFact = Object.freeze({page, capabilities});
-      return true;
+      if (!pivot || pivot.id !== 'books' || !pivot.browsable) return none;
+      const offers = (id: string) => {
+        const field = capabilities.fields.find(value => value.id === id);
+        return !!field && field.applicableKinds.includes('book') && field.operators.includes('equals');
+      };
+      const support = Object.freeze({narrator: offers('narrator'), series: offers('series')});
+      if (support.narrator || support.series) filterFact = Object.freeze({page, capabilities});
+      return support;
     },
     /** Opens this library's Books filtered by the exact narrator the page drew. */
     async openNarrator(page: ContentProjection, name: string) {
+      await openFilter(page, 'narrator', name, page.entity?.narrators?.includes(name) === true);
+    },
+    /** Opens this library's Books filtered by the exact drawn series row, and only when this book's
+     * own published series name is character-for-character that same drawn title. */
+    async openSeries(page: ContentProjection, entry: ContentEntry, name: string) {
       current(page);
-      if (target.view !== 'book' || !narratorFact || narratorFact.page !== page || !page.entity?.narrators?.includes(name)) throw new DOMException('Narrator filter unavailable', 'AbortError');
-      const open = context.effects.openBrowse;
-      if (!open) throw new DOMException('Browse unavailable', 'AbortError');
-      const query = Object.freeze({field: 'narrator' as const, operator: 'equals' as const, value: name});
-      validateBrowseQuery(narratorFact.capabilities, query);
-      open({libraryId: target.libraryId, pivot: 'books', query});
-      current(page);
+      // Exactly the context rows Entry renders: only the appended context section.
+      const rows = service.getSnapshot().appended.filter(section => section.id === 'context').flatMap(section => section.entries);
+      if (entry.kind !== 'book_series' || entry.libraryId !== target.libraryId || entry.title !== name || !rows.includes(entry)
+        || page.entity?.series?.some(value => value.name === name) !== true) throw new DOMException('Book filter unavailable', 'AbortError');
+      await openFilter(page, 'series', name, true);
     },
     /** The book's own Watchlist flag, read from the container state the server already keeps. */
     async watchlisted(page: ContentProjection) {
