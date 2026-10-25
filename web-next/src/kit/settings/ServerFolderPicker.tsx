@@ -3,6 +3,7 @@ import {defaultI18n} from '@i18n';
 import {browseServerFilesystem} from '@core/library-management.ts';
 import type {LibraryContentApi} from '@core/library-content.ts';
 import type {FilesystemPage} from '@core/administration.ts';
+import {ServerDirectoryExplorer} from './ServerDirectoryExplorer';
 import {Dialog} from '../overlays/Dialog';
 import {Button, TextField} from '../controls';
 import {Icon} from '../Icon';
@@ -11,7 +12,14 @@ import styles from './settings.module.css';
 const t = defaultI18n.t;
 export type ServerFolderPickerProps = Readonly<{open: boolean; onClose: () => void; api: LibraryContentApi; initialPath?: string; onChoose: (paths: readonly string[]) => void; multiple?: boolean; purpose?: 'folder' | 'backup'; returnFocusRef?: React.RefObject<HTMLElement | null>}>;
 /** The same bounded explorer serves folders and the drawn single backup file/folder picker. */
-export function ServerFolderPicker({open, onClose, api, initialPath = '', onChoose, multiple = false, purpose = 'folder', returnFocusRef}: ServerFolderPickerProps) {
+export function ServerFolderPicker(props: ServerFolderPickerProps) {
+ const single = useCallback((path: string) => props.onChoose([path]), [props.onChoose]);
+ const close = useCallback((open: boolean) => {if (!open) props.onClose();}, [props.onClose]);
+ if (props.purpose !== 'backup') return <ServerDirectoryExplorer open={props.open} onOpenChange={close} api={props.api} initialPath={props.initialPath} returnFocusRef={props.returnFocusRef} onChoose={single} onChooseMany={props.multiple ? props.onChoose : undefined} checkWritable={!props.multiple}/>;
+ return <BackupFolderPicker {...props}/>;
+}
+
+function BackupFolderPicker({open, onClose, api, initialPath = '', onChoose, multiple = false, purpose = 'folder', returnFocusRef}: ServerFolderPickerProps) {
   const backup = purpose === 'backup', many = multiple && !backup;
   const [page, setPage] = useState<FilesystemPage>(), [path, setPath] = useState(initialPath), [hidden, setHidden] = useState(false), [busy, setBusy] = useState(false), [failed, setFailed] = useState(false), [selected, setSelected] = useState<readonly string[]>([]), [file, setFile] = useState<string>();
   const request = useRef<AbortController | undefined>(undefined), initial = useRef(initialPath); initial.current = initialPath;

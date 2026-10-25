@@ -4,7 +4,7 @@ import type {LibraryContentApi} from '@core/library-content.ts';
 import type {LibraryManagementService, ManagedLibrary} from '@core/library-management.ts';
 import {Button, RichSelect, TextField} from '../../../kit/controls';
 import {Dialog} from '../../../kit/overlays/Dialog';
-import {FolderPicker} from './FolderPicker';
+import {FolderPicker, ChosenServerFolders} from './FolderPicker';
 import {localOnlyKind, metadataAgentFor} from './model';
 import styles from './libraries.module.css';
 
@@ -66,7 +66,7 @@ export function AddLibrary({open, onOpenChange, api, service, onError, initialKi
           <TextField label={t('next.settings.folderPath')} value={path} onChange={event => {setPath(event.currentTarget.value); setPaths([]);}} />
           <Button onClick={() => setPicking(true)}>{t('next.settings.chooseFolder')}</Button>
         </div>
-        {paths.length ? <div className={styles.chosenFolders}>{paths.map(value => <Button key={value} size="small" variant="glass" icon="i-x" aria-label={`${t('next.ownerLibraries.explorer.removeChosen')} ${value}`} onClick={() => {if (!submitting.current) setPaths(previous => previous.filter(item => item !== value));}}>{value}</Button>)}</div> : null}
+        {paths.length ? <ChosenServerFolders paths={paths} disabled={busy} onRemove={value => {if (!submitting.current) setPaths(previous => previous.filter(item => item !== value));}}/> : null}
         {localOnlyKind(kind)
           ? <p className={styles.formNote}>{t('next.settings.libraries.localOnly')}</p>
           : <RichSelect label={t('next.settingsSpec.server.libraries.panels.library.tabs.2.groups.0.rows.0.label')} value={source}

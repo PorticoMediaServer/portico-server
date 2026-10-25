@@ -1,0 +1,101 @@
+.pickerNote { margin: 0; font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pickerPath {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.pickerPath > :first-child {
+  flex: 1;
+}
+
+.pickerList {
+  margin: 0;
+  padding: 0;
+  max-height: 340px;
+  overflow: auto;
+  list-style: none;
+  border-top: 1px solid var(--color-line-soft);
+}
+
+.pickerRow {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--color-line-soft);
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--type-synopsis-size);
+  font-weight: var(--type-body-strong-weight);
+  text-align: left;
+  cursor: pointer;
+}
+
+.pickerRow small {
+  font-size: var(--type-label-size);
+  font-weight: var(--type-micro-weight);
+  color: var(--color-text-tertiary);
+}
+
+.pickerRow:disabled {
+  cursor: default;
+  opacity: .6;
+}
+
+/* The server explorer is one scroll-contained surface, with actual Places at left. */
+.explorer { height: min(740px, calc(100dvh - 48px)); }
+.explorerBody { display: flex; min-height: 0; padding: 0; overflow: hidden; }
+.explorerBody .picker { flex: 1; min-width: 0; min-height: 0; gap: 16px; }
+.explorerBody .pickerPath { margin: 16px 28px 0; align-items: center; }
+.pickerBreadcrumbs { display: flex; align-items: center; flex: 1; min-width: 0; overflow-x: auto; border: 1px solid var(--color-line-strong); border-radius: 12px; padding: 2px 6px; }
+.pickerBreadcrumbs > :last-child { margin-left: auto; }
+.explorerColumns { display: grid; grid-template-columns: 236px minmax(0, 1fr); flex: 1; min-height: 0; border-top: 1px solid var(--color-line-soft); }
+.explorerColumns[data-roots] { grid-template-columns: minmax(0, 1fr); }
+.pickerPlaces { padding: 14px 10px; overflow-y: auto; border-right: 1px solid var(--color-line-soft); background: var(--color-raised-soft); }
+.pickerPlaces h4 { margin: 2px 10px 8px; color: var(--color-text-tertiary); font-size: var(--type-caption-size); }
+.pickerPlace { display: flex; flex-direction: column; gap: 3px; width: 100%; padding: 9px 10px; border: 0; border-radius: 10px; color: inherit; font: inherit; text-align: left; background: none; cursor: pointer; overflow-wrap: anywhere; }
+.pickerPlace small { color: var(--color-text-tertiary); }
+.pickerPlace[aria-current], .pickerPlace:hover { background: var(--color-raised-bright); }
+.explorerMain { display: flex; flex-direction: column; min-height: 0; min-width: 0; padding: 16px 24px; gap: 12px; }
+.pickerListHeader { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: var(--type-caption-size); }
+.pickerListHeader label { display: flex; align-items: center; gap: 8px; color: var(--color-text-tertiary); }
+.explorerMain .pickerList { flex: 1; min-height: 0; max-height: none; }
+.pickerEntry { display: flex; align-items: center; gap: 12px; padding: 0 8px; border-bottom: 1px solid var(--color-line-soft); }
+.pickerEntry input { flex: none; width: 20px; height: 20px; accent-color: var(--color-accent); }
+.pickerEntry .pickerRow { flex: 1; min-width: 0; border: 0; padding: 14px 4px; overflow-wrap: anywhere; }
+.pickerEntry[data-hidden] .pickerRow { color: var(--color-text-tertiary); }
+.pickerEntry small { flex: none; border: 1px solid var(--color-line-soft); border-radius: 5px; padding: 2px 5px; color: var(--color-text-tertiary); }
+.pickerRoots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 14px; overflow-y: auto; }
+.pickerRoots .pickerPlace { border: 1px solid var(--color-line-soft); min-height: 100px; padding: 18px; }
+.explorerFooter { flex-wrap: wrap; }
+.chosenFolders { display: flex; align-items: center; flex-wrap: wrap; flex: 1; min-width: 0; gap: 8px; }
+.chosenFolders > span { color: var(--color-text-tertiary); font-size: var(--type-caption-size); }
+.chosenFolders button { max-width: 100%; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+ .explorer { height: 100%; }
+ .explorerBody .pickerPath { flex-wrap: wrap; margin: 12px 16px 0; }
+ .pickerBreadcrumbs { order: -1; flex-basis: 100%; }
+ .explorerColumns { grid-template-columns: minmax(0, 1fr); }
+ .pickerPlaces { display: flex; gap: 4px; border-right: 0; border-bottom: 1px solid var(--color-line-soft); overflow-x: auto; }
+ .pickerPlaces h4 { display: none; }
+ .pickerPlaces > div { flex: 0 0 140px; }
+ .explorerMain { padding: 12px 16px; }
+ .pickerListHeader { flex-wrap: wrap; }
+ .chosenFolders { flex-basis: 100%; max-height: 120px; overflow-y: auto; }
+}
+
+.chosenFolders button > span { white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+ .explorerColumns { grid-template-rows: auto minmax(0, 1fr); }
+ .explorerColumns[data-roots] { grid-template-rows: minmax(0, 1fr); }
+}
