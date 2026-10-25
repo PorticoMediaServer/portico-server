@@ -592,6 +592,21 @@ func finishScanTx(ctx context.Context, tx *sql.Tx, job, source string) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM inventory_source_active WHERE job_id=?`, job); err != nil {
 		return err
 	}
-	_, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO inventory_changes(source_id,job_id,kind,created_at) VALUES(?,?,'scan_completed',?)`, source, job, now)
+	if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO inventory_changes(source_id,job_id,kind,created_at) VALUES(?,?,'scan_completed',?)`, source, job, now); err != nil {
+		return err
+	}
+	// A source that asked for a second folder pass gets one when this run found
+	// anything to change: the follow-up scan lists every folder again, and a
+	// stable second pass finds nothing, so the loop ends there.
+	doubleCheck, err := remotesources.DoubleCheckFoldersTx(ctx, tx, source)
+	if err != nil || !doubleCheck {
+		return err
+	}
+	var changed bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_changes WHERE job_id=? AND kind<>'scan_completed')`, job).Scan(&changed); err != nil || !changed {
+		return err
+	}
+	next := time.Now().UTC().Add(30 * time.Second).Format(time.RFC3339Nano)
+	_, err = tx.ExecContext(ctx, `UPDATE library_sources SET next_scan_at=? WHERE id=? AND interval_seconds>0 AND enabled=1`, next, source)
 	return err
 }

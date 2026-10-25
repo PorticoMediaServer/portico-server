@@ -1,6 +1,7 @@
 import {defaultI18n} from '@i18n';
 import type {SourceAdvanced} from '@core/remote-sources.ts';
 import {RichSelect, Switch} from '../../../kit/controls';
+import {SettingNumber} from '../../../kit/settings';
 import styles from './remote-sources.module.css';
 
 const t = defaultI18n.t;
@@ -9,8 +10,8 @@ const t = defaultI18n.t;
  * server actually applies: the folders' check interval, the start and watch
  * passes, the full re-check, the mount's real read cache, and the whole-file
  * analysis stages. Rows the server cannot honour are not drawn. */
-export function SourceAdvancedRows({values, cacheSupported, cacheApplied, cacheError, observedInterval, disabled, onChange}: Readonly<{
-  values: SourceAdvanced; cacheSupported: boolean; cacheApplied: boolean; cacheError?: string;
+export function SourceAdvancedRows({values, cacheSupported, transportSupported, cacheApplied, cacheError, observedInterval, disabled, onChange}: Readonly<{
+  values: SourceAdvanced; cacheSupported: boolean; transportSupported: boolean; cacheApplied: boolean; cacheError?: string;
   observedInterval: number; disabled: boolean; onChange: (values: SourceAdvanced) => void;
 }>) {
   const set = <K extends keyof SourceAdvanced,>(key: K, value: SourceAdvanced[K]) => onChange({...values, [key]: value});
@@ -31,6 +32,12 @@ export function SourceAdvancedRows({values, cacheSupported, cacheApplied, cacheE
   const cacheSizes = ['0', '2', '4', '8', '16', '32', '64'] as const;
   const floors = ['1', '2', '4', '8', '16'] as const;
   const gb = (value: string) => Number(value) * 1024 * 1024 * 1024;
+  const introsOptions = [
+    {value: 'off', label: 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.3.control.options.0.label'},
+    {value: 'inherit', label: 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.3.control.options.1.label'},
+    {value: 'sound', label: 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.3.control.options.2.label'},
+    {value: 'picture', label: 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.3.control.options.3.label'},
+  ] as const;
   const offered = intervals.some(option => option.value === String(values.scanIntervalSeconds));
   const observedUnknown = observedInterval > 0 && !intervals.some(option => option.value === String(observedInterval));
   const intervalValue = observedUnknown && !offered ? String(observedInterval) : String(values.scanIntervalSeconds);
@@ -54,6 +61,9 @@ export function SourceAdvancedRows({values, cacheSupported, cacheApplied, cacheE
       options={fullRechecks.map(option => ({value: option.value, label: t(option.label), description: t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.3.help')}))}
       onValueChange={value => set('fullRecheckDays', Number(value))}/>
 
+    <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.4.label')}<small className={styles.note}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.4.help')}</small></span>
+      <Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.4.label')} checked={values.doubleCheckFolders} disabled={disabled} onCheckedChange={value => set('doubleCheckFolders', value)}/></label>
+
     <p className={styles.advTitle}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.title')}</p>
     <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.0.label')}<small className={styles.note}>{t('next.remoteSources.advWholeFileHint')}</small></span>
       <Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.0.label')} checked={values.seekPreviews} disabled={disabled} onCheckedChange={value => set('seekPreviews', value)}/></label>
@@ -65,6 +75,9 @@ export function SourceAdvancedRows({values, cacheSupported, cacheApplied, cacheE
       <Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.3.label')} checked={values.loudness} disabled={disabled} onCheckedChange={value => set('loudness', value)}/></label>
     <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.4.label')}</span>
       <Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.4.label')} checked={values.checksums} disabled={disabled} onCheckedChange={value => set('checksums', value)}/></label>
+    <RichSelect disabled={disabled} aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.3.label')}
+      value={values.introsMode} options={introsOptions.map(option => ({value: option.value, label: t(option.label), description: t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.3.help')}))}
+      onValueChange={value => set('introsMode', value as SourceAdvanced['introsMode'])}/>
 
     {cacheSupported && <>
       <p className={styles.advTitle}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.2.title')}</p>
@@ -80,6 +93,24 @@ export function SourceAdvancedRows({values, cacheSupported, cacheApplied, cacheE
       {cacheError && <p className={styles.error} role="alert">{t(cacheError === 'source_changed' ? 'next.remoteSources.advCacheChanged'
         : cacheError === 'mount_unavailable' ? 'next.remoteSources.advCacheUnavailable'
           : 'next.remoteSources.advCacheFailed')}</p>}
+    </>}
+    {transportSupported && <>
+      <p className={styles.advTitle}>{t('next.remoteSources.advRcloneSettings')}</p>
+      <p className={styles.note}>{t('next.remoteSources.advRcloneHelp')}</p>
+      <div className={styles.transportGrid}>
+        <SettingNumber label={t('next.remoteSources.advKeepFolderLists')} value={Math.round(values.dirCacheSeconds / 60)} min={0} max={1440}
+          unit={t('next.remoteSources.advMinutesUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('dirCacheSeconds', Math.round(value) * 60);}}/>
+        <SettingNumber label={t('next.remoteSources.advReadBuffer')} value={Math.round(values.readBufferBytes / (1024 * 1024))} min={0} max={1024}
+          unit={t('next.remoteSources.advMegabytesUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('readBufferBytes', Math.round(value) * 1024 * 1024);}}/>
+        <SettingNumber label={t('next.remoteSources.advConnectTimeout')} value={values.connectTimeoutSeconds} min={0} max={600}
+          unit={t('next.remoteSources.advSecondsUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('connectTimeoutSeconds', Math.round(value));}}/>
+        <SettingNumber label={t('next.remoteSources.advIdleTimeout')} value={values.idleTimeoutSeconds} min={0} max={3600}
+          unit={t('next.remoteSources.advSecondsUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('idleTimeoutSeconds', Math.round(value));}}/>
+        <SettingNumber label={t('next.remoteSources.advRetries')} value={values.retries} min={0} max={10}
+          unit={t('next.remoteSources.advTimesUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('retries', Math.round(value));}}/>
+        <SettingNumber label={t('next.remoteSources.advLowRetries')} value={values.lowLevelRetries} min={0} max={10}
+          unit={t('next.remoteSources.advTimesUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('lowLevelRetries', Math.round(value));}}/>
+      </div>
     </>}
   </>;
 }

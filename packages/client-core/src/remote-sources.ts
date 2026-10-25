@@ -45,7 +45,7 @@ export type SourceLibraryUse=Readonly<{libraryId:string;name:string;kind:string;
 export type RemoteSourceStatus=Readonly<{sourceId:string;generation:string;state:string;errorCode?:string;rangeSupport:string;lastCheckedAt:string;connectionsInUse:number;playbackReads:number;analysisReads:number;scanIntervalSeconds:number;libraries:readonly SourceLibraryUse[];librariesTruncated:boolean}>;
 /** The drawn Advanced page: how a source's folders are checked, the disk its
  * read cache may use, and which analysis stages run for files found through it. */
-export type SourceAdvanced=Readonly<{scanIntervalSeconds:number;watchForChanges:boolean;scanOnStart:boolean;fullRecheckDays:number;cacheBytes:number;cacheFloorBytes:number;seekPreviews:boolean;chapterImages:boolean;waveforms:boolean;loudness:boolean;checksums:boolean}>;
+export type SourceAdvanced=Readonly<{scanIntervalSeconds:number;watchForChanges:boolean;scanOnStart:boolean;fullRecheckDays:number;cacheBytes:number;cacheFloorBytes:number;seekPreviews:boolean;chapterImages:boolean;waveforms:boolean;loudness:boolean;checksums:boolean;introsMode:'off'|'inherit'|'sound'|'picture';doubleCheckFolders:boolean;dirCacheSeconds:number;readBufferBytes:number;connectTimeoutSeconds:number;idleTimeoutSeconds:number;retries:number;lowLevelRetries:number}>;
 export type SourceAdvancedSettings=Readonly<{sourceId:string;generation:string;revision:number;saved:boolean;cacheSupported:boolean;cacheApplied:boolean;cacheError?:string;scanIntervalObserved:number;values:SourceAdvanced}>;
 const sourceReadPresets:Readonly<Record<SourceReadPreset,SourceReadValues>>=Object.freeze({
  list:{scanDepth:'file_list_only',wholeFileReads:false,connections:2,requestsPerSecond:2,bytesPerSecond:0},
@@ -85,13 +85,16 @@ function sourceLibraryUse(raw:unknown):SourceLibraryUse{
 }
 function sourceAdvanced(raw:unknown):SourceAdvanced{
  if(!record(raw))invalid();
- const {scanIntervalSeconds,watchForChanges,scanOnStart,fullRecheckDays,cacheBytes,cacheFloorBytes,seekPreviews,chapterImages,waveforms,loudness,checksums}=raw;
+ const {scanIntervalSeconds,watchForChanges,scanOnStart,fullRecheckDays,cacheBytes,cacheFloorBytes,seekPreviews,chapterImages,waveforms,loudness,checksums,doubleCheckFolders,dirCacheSeconds,readBufferBytes,connectTimeoutSeconds,idleTimeoutSeconds,retries,lowLevelRetries}=raw;
  if(!integer(scanIntervalSeconds)||![0,900,3600,21600,86400,604800].includes(scanIntervalSeconds))invalid();
  if(typeof watchForChanges!=='boolean'||typeof scanOnStart!=='boolean')invalid();
  if(!integer(fullRecheckDays)||![0,7,14,30].includes(fullRecheckDays))invalid();
  if(!integer(cacheBytes)||cacheBytes>64*1024*1024*1024||!integer(cacheFloorBytes)||cacheFloorBytes>1024*1024*1024*1024)invalid();
- if(![seekPreviews,chapterImages,waveforms,loudness,checksums].every(value=>typeof value==='boolean'))invalid();
- return Object.freeze({scanIntervalSeconds,watchForChanges,scanOnStart,fullRecheckDays,cacheBytes,cacheFloorBytes,seekPreviews,chapterImages,waveforms,loudness,checksums}) as SourceAdvanced;
+ if(![seekPreviews,chapterImages,waveforms,loudness,checksums,doubleCheckFolders].every(value=>typeof value==='boolean'))invalid();
+ const introsMode=raw.introsMode;
+ if(introsMode!=='off'&&introsMode!=='inherit'&&introsMode!=='sound'&&introsMode!=='picture')invalid();
+ for(const value of [dirCacheSeconds,readBufferBytes,connectTimeoutSeconds,idleTimeoutSeconds,retries,lowLevelRetries])if(!integer(value))invalid();
+ return Object.freeze({scanIntervalSeconds,watchForChanges,scanOnStart,fullRecheckDays,cacheBytes,cacheFloorBytes,seekPreviews,chapterImages,waveforms,loudness,checksums,introsMode,doubleCheckFolders,dirCacheSeconds,readBufferBytes,connectTimeoutSeconds,idleTimeoutSeconds,retries,lowLevelRetries}) as SourceAdvanced;
 }
 function sourceAdvancedSettings(raw:unknown,id:string):SourceAdvancedSettings{
  if(!record(raw)||raw.sourceId!==id||!text(raw.generation,64)||!raw.generation||!integer(raw.revision)||typeof raw.saved!=='boolean'||typeof raw.cacheSupported!=='boolean'||typeof raw.cacheApplied!=='boolean'||!integer(raw.scanIntervalObserved))invalid();

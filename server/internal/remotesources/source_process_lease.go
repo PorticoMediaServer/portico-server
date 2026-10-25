@@ -21,6 +21,7 @@ type sourceProcessLease struct {
 	generation         string
 	root               string
 	profile            SourceReadProfile
+	transport          SourceTransport
 	life               context.Context
 	cancel             context.CancelFunc
 	released           atomic.Bool
@@ -55,6 +56,10 @@ func (s *Service) reserveSourceProcess(ctx context.Context, source, generation s
 	if profile.Revision != profileRevision {
 		return nil, storage.ErrRemoteChanged
 	}
+	transport, err := TransportTx(ctx, snapshot.Tx(), source)
+	if err != nil {
+		return nil, err
+	}
 	var root string
 	if err = snapshot.Tx().QueryRowContext(ctx, `SELECT root FROM remote_sources WHERE id=? AND removed=0`, source).Scan(&root); err != nil || !filepath.IsAbs(root) {
 		return nil, storage.ErrRemoteConfig
@@ -74,7 +79,7 @@ func (s *Service) reserveSourceProcess(ctx context.Context, source, generation s
 		return nil, storage.ErrBusy
 	}
 	life, cancel := context.WithCancel(ctx)
-	lease := &sourceProcessLease{service: s, source: source, generation: generation, root: root, profile: profile, life: life, cancel: cancel}
+	lease := &sourceProcessLease{service: s, source: source, generation: generation, root: root, profile: profile, transport: transport, life: life, cancel: cancel}
 	s.serveLeases[source] = lease
 	return lease, nil
 }
@@ -118,6 +123,18 @@ func (l *sourceProcessLease) Check(ctx context.Context) error {
 		}
 		l.cancel()
 		return err
+	}
+	transport, err := TransportTx(ctx, snapshot.Tx(), l.source)
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		l.cancel()
+		return err
+	}
+	if transport != l.transport {
+		l.cancel()
+		return storage.ErrRemoteChanged
 	}
 	var root string
 	err = snapshot.Tx().QueryRowContext(ctx, `SELECT root FROM remote_sources WHERE id=? AND removed=0`, l.source).Scan(&root)

@@ -36,6 +36,51 @@ type SourceAdvanced struct {
 	Waveforms           bool  `json:"waveforms"`
 	Loudness            bool  `json:"loudness"`
 	Checksums           bool  `json:"checksums"`
+	// IntrosMode chooses whether intro and credit detection runs for the files
+	// found through this source, and whether it follows the library's mode.
+	IntrosMode string `json:"introsMode"`
+	// DoubleCheckFolders lists each folder a second time during a scan, so a
+	// move during the first listing is caught instead of silently missed.
+	DoubleCheckFolders bool `json:"doubleCheckFolders"`
+	// Transport values belong to a mounted source's rclone program. Zero keeps
+	// the bundled program's own default, reported separately as the effective
+	// value by SourceTransportEffective.
+	DirCacheSeconds       int   `json:"dirCacheSeconds"`
+	ReadBufferBytes       int64 `json:"readBufferBytes"`
+	ConnectTimeoutSeconds int   `json:"connectTimeoutSeconds"`
+	IdleTimeoutSeconds    int   `json:"idleTimeoutSeconds"`
+	Retries               int   `json:"retries"`
+	LowLevelRetries       int   `json:"lowLevelRetries"`
+}
+
+// SourceTransport is the mounted program's transport subset, applied to the
+// rclone serve command of this source and to nothing else.
+type SourceTransport struct {
+	DirCacheSeconds       int
+	ReadBufferBytes       int64
+	ConnectTimeoutSeconds int
+	IdleTimeoutSeconds    int
+	Retries               int
+	LowLevelRetries       int
+}
+
+// Effective fills zero values with the bundled program's current defaults, for
+// display only; the stored values keep zero as "the program's default".
+func (t SourceTransport) Effective() SourceTransport {
+	out := t
+	if out.ConnectTimeoutSeconds == 0 {
+		out.ConnectTimeoutSeconds = 10
+	}
+	if out.IdleTimeoutSeconds == 0 {
+		out.IdleTimeoutSeconds = 30
+	}
+	if out.Retries == 0 {
+		out.Retries = 1
+	}
+	if out.LowLevelRetries == 0 {
+		out.LowLevelRetries = 1
+	}
+	return out
 }
 
 // AnalysisSwitches is the analysis subset the scan pipeline consults for one
@@ -71,7 +116,25 @@ type SourceAdvancedChange struct {
 	Values             SourceAdvanced `json:"values"`
 }
 
-var advancedFieldNames = []string{"scanIntervalSeconds", "watchForChanges", "scanOnStart", "fullRecheckDays", "cacheBytes", "cacheFloorBytes", "seekPreviews", "chapterImages", "waveforms", "loudness", "checksums"}
+// JSONSchema publishes the closed reason codes and the projection distinction
+// on the page response, so the official schema carries them too.
+func (SourceAdvancedSettings) JSONSchema() map[string]any {
+	type wire SourceAdvancedSettings
+	shape, _ := apikit.Schema(reflect.TypeFor[wire]())
+	props, _ := shape["properties"].(map[string]any)
+	if props == nil {
+		return shape
+	}
+	if field, ok := props["cacheError"].(map[string]any); ok {
+		field["enum"] = []string{"source_changed", "mount_unavailable", "cache_refused", "cache_record_failed"}
+	}
+	if field, ok := props["cacheApplied"].(map[string]any); ok {
+		field["description"] = "Observed projection of the cache the mount has actually applied, not the desired configuration."
+	}
+	return shape
+}
+
+var advancedFieldNames = []string{"scanIntervalSeconds", "watchForChanges", "scanOnStart", "fullRecheckDays", "cacheBytes", "cacheFloorBytes", "seekPreviews", "chapterImages", "waveforms", "loudness", "checksums", "introsMode", "doubleCheckFolders", "dirCacheSeconds", "readBufferBytes", "connectTimeoutSeconds", "idleTimeoutSeconds", "retries", "lowLevelRetries"}
 
 // A settings value is complete by construction: omitted, null or extra fields
 // are refused, so a partial document can never silently switch analysis off.
@@ -136,6 +199,9 @@ func (SourceAdvanced) JSONSchema() map[string]any {
 	if field, ok := props["cacheFloorBytes"].(map[string]any); ok {
 		field["description"] = "0 keeps the mount's current free-space floor; otherwise 1 GiB through 1 TiB."
 	}
+	if field, ok := props["introsMode"].(map[string]any); ok {
+		field["enum"] = []string{"off", "inherit", "sound", "picture"}
+	}
 	return shape
 }
 
@@ -154,7 +220,7 @@ var scanIntervals = map[int]bool{0: true, 900: true, 3600: true, 21600: true, 86
 var fullRecheckDays = map[int]bool{0: true, 7: true, 14: true, 30: true}
 
 func defaultAdvanced() SourceAdvanced {
-	return SourceAdvanced{ScanIntervalSeconds: 0, FullRecheckDays: 0, SeekPreviews: true, ChapterImages: true, Waveforms: true, Loudness: true, Checksums: true}
+	return SourceAdvanced{ScanIntervalSeconds: 0, FullRecheckDays: 0, SeekPreviews: true, ChapterImages: true, Waveforms: true, Loudness: true, Checksums: true, IntrosMode: "inherit"}
 }
 
 func (v SourceAdvanced) valid() bool {
@@ -165,6 +231,14 @@ func (v SourceAdvanced) valid() bool {
 		return false
 	}
 	if v.CacheFloorBytes != 0 && (v.CacheFloorBytes < 1<<30 || v.CacheFloorBytes > 1<<40) {
+		return false
+	}
+	if v.IntrosMode != "off" && v.IntrosMode != "inherit" && v.IntrosMode != "sound" && v.IntrosMode != "picture" {
+		return false
+	}
+	if v.DirCacheSeconds < 0 || v.DirCacheSeconds > 86400 || v.ReadBufferBytes < 0 || v.ReadBufferBytes > 1<<30 ||
+		v.ConnectTimeoutSeconds < 0 || v.ConnectTimeoutSeconds > 600 || v.IdleTimeoutSeconds < 0 || v.IdleTimeoutSeconds > 3600 ||
+		v.Retries < 0 || v.Retries > 10 || v.LowLevelRetries < 0 || v.LowLevelRetries > 10 {
 		return false
 	}
 	return true
@@ -188,8 +262,8 @@ type advancedRow struct {
 
 func readAdvancedTx(ctx context.Context, tx *sql.Tx, source string) (advancedRow, error) {
 	var row advancedRow
-	err := tx.QueryRowContext(ctx, `SELECT revision,scan_interval_seconds,watch_for_changes,scan_on_start,full_recheck_days,cache_bytes,cache_floor_bytes,cache_applied_bytes,cache_applied_floor_bytes,seek_previews,chapter_images,waveforms,loudness,checksums FROM remote_source_settings WHERE source_id=?`, source).
-		Scan(&row.revision, &row.values.ScanIntervalSeconds, &row.values.WatchForChanges, &row.values.ScanOnStart, &row.values.FullRecheckDays, &row.values.CacheBytes, &row.values.CacheFloorBytes, &row.appliedBytes, &row.appliedFloor, &row.values.SeekPreviews, &row.values.ChapterImages, &row.values.Waveforms, &row.values.Loudness, &row.values.Checksums)
+	err := tx.QueryRowContext(ctx, `SELECT revision,scan_interval_seconds,watch_for_changes,scan_on_start,full_recheck_days,cache_bytes,cache_floor_bytes,cache_applied_bytes,cache_applied_floor_bytes,seek_previews,chapter_images,waveforms,loudness,checksums,intros_mode,double_check_folders,dir_cache_seconds,read_buffer_bytes,connect_timeout_seconds,idle_timeout_seconds,retries,low_level_retries FROM remote_source_settings WHERE source_id=?`, source).
+		Scan(&row.revision, &row.values.ScanIntervalSeconds, &row.values.WatchForChanges, &row.values.ScanOnStart, &row.values.FullRecheckDays, &row.values.CacheBytes, &row.values.CacheFloorBytes, &row.appliedBytes, &row.appliedFloor, &row.values.SeekPreviews, &row.values.ChapterImages, &row.values.Waveforms, &row.values.Loudness, &row.values.Checksums, &row.values.IntrosMode, &row.values.DoubleCheckFolders, &row.values.DirCacheSeconds, &row.values.ReadBufferBytes, &row.values.ConnectTimeoutSeconds, &row.values.IdleTimeoutSeconds, &row.values.Retries, &row.values.LowLevelRetries)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return advancedRow{}, err
 	}
@@ -299,11 +373,11 @@ func (s *Service) SaveSourceAdvanced(ctx context.Context, identities *identity.S
 		}
 	}
 	if revision == 0 {
-		_, err = tx.ExecContext(ctx, `INSERT INTO remote_source_settings(source_id,revision,scan_interval_seconds,watch_for_changes,scan_on_start,full_recheck_days,cache_bytes,cache_floor_bytes,seek_previews,chapter_images,waveforms,loudness,checksums) VALUES(?,1,?,?,?,?,?,?,?,?,?,?,?)`,
-			source, v.ScanIntervalSeconds, v.WatchForChanges, v.ScanOnStart, v.FullRecheckDays, v.CacheBytes, v.CacheFloorBytes, v.SeekPreviews, v.ChapterImages, v.Waveforms, v.Loudness, v.Checksums)
+		_, err = tx.ExecContext(ctx, `INSERT INTO remote_source_settings(source_id,revision,scan_interval_seconds,watch_for_changes,scan_on_start,full_recheck_days,cache_bytes,cache_floor_bytes,seek_previews,chapter_images,waveforms,loudness,checksums,intros_mode,double_check_folders,dir_cache_seconds,read_buffer_bytes,connect_timeout_seconds,idle_timeout_seconds,retries,low_level_retries) VALUES(?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			source, v.ScanIntervalSeconds, v.WatchForChanges, v.ScanOnStart, v.FullRecheckDays, v.CacheBytes, v.CacheFloorBytes, v.SeekPreviews, v.ChapterImages, v.Waveforms, v.Loudness, v.Checksums, v.IntrosMode, v.DoubleCheckFolders, v.DirCacheSeconds, v.ReadBufferBytes, v.ConnectTimeoutSeconds, v.IdleTimeoutSeconds, v.Retries, v.LowLevelRetries)
 	} else {
-		_, err = tx.ExecContext(ctx, `UPDATE remote_source_settings SET revision=revision+1,scan_interval_seconds=?,watch_for_changes=?,scan_on_start=?,full_recheck_days=?,cache_bytes=?,cache_floor_bytes=?,seek_previews=?,chapter_images=?,waveforms=?,loudness=?,checksums=? WHERE source_id=? AND revision=?`,
-			v.ScanIntervalSeconds, v.WatchForChanges, v.ScanOnStart, v.FullRecheckDays, v.CacheBytes, v.CacheFloorBytes, v.SeekPreviews, v.ChapterImages, v.Waveforms, v.Loudness, v.Checksums, source, revision)
+		_, err = tx.ExecContext(ctx, `UPDATE remote_source_settings SET revision=revision+1,scan_interval_seconds=?,watch_for_changes=?,scan_on_start=?,full_recheck_days=?,cache_bytes=?,cache_floor_bytes=?,seek_previews=?,chapter_images=?,waveforms=?,loudness=?,checksums=?,intros_mode=?,double_check_folders=?,dir_cache_seconds=?,read_buffer_bytes=?,connect_timeout_seconds=?,idle_timeout_seconds=?,retries=?,low_level_retries=? WHERE source_id=? AND revision=?`,
+			v.ScanIntervalSeconds, v.WatchForChanges, v.ScanOnStart, v.FullRecheckDays, v.CacheBytes, v.CacheFloorBytes, v.SeekPreviews, v.ChapterImages, v.Waveforms, v.Loudness, v.Checksums, v.IntrosMode, v.DoubleCheckFolders, v.DirCacheSeconds, v.ReadBufferBytes, v.ConnectTimeoutSeconds, v.IdleTimeoutSeconds, v.Retries, v.LowLevelRetries, source, revision)
 	}
 	if err != nil {
 		return SourceAdvancedSettings{}, err
@@ -341,7 +415,24 @@ func (s *Service) SaveSourceAdvanced(ctx context.Context, identities *identity.S
 	if v.ScanIntervalSeconds > 0 {
 		settings.observedIntervalSecond = v.ScanIntervalSeconds
 	}
+	if current.values.transport() != v.transport() {
+		s.transportCommitted(source)
+	}
 	return advancedSettings(row, settings, cacheError), nil
+}
+
+func (v SourceAdvanced) transport() SourceTransport {
+	return SourceTransport{DirCacheSeconds: v.DirCacheSeconds, ReadBufferBytes: v.ReadBufferBytes, ConnectTimeoutSeconds: v.ConnectTimeoutSeconds, IdleTimeoutSeconds: v.IdleTimeoutSeconds, Retries: v.Retries, LowLevelRetries: v.LowLevelRetries}
+}
+
+// transportCommitted retires a source's serve process after its transport
+// values changed, so the next read starts the program with the saved values.
+func (s *Service) transportCommitted(source string) {
+	s.serveMu.Lock()
+	if lease := s.serveLeases[source]; lease != nil {
+		lease.cancel()
+	}
+	s.serveMu.Unlock()
 }
 
 // cacheApply is the exact accepted settings a cache change belongs to.
@@ -631,4 +722,27 @@ func (s AnalysisSwitches) Filter(operations []string) []string {
 		kept = append(kept, op)
 	}
 	return kept
+}
+
+// TransportTx reads the mounted program's transport values for one source.
+// Zero values keep the bundled program's defaults.
+func TransportTx(ctx context.Context, tx *sql.Tx, source string) (SourceTransport, error) {
+	var t SourceTransport
+	err := tx.QueryRowContext(ctx, `SELECT dir_cache_seconds,read_buffer_bytes,connect_timeout_seconds,idle_timeout_seconds,retries,low_level_retries FROM remote_source_settings WHERE source_id=?`, source).
+		Scan(&t.DirCacheSeconds, &t.ReadBufferBytes, &t.ConnectTimeoutSeconds, &t.IdleTimeoutSeconds, &t.Retries, &t.LowLevelRetries)
+	if errors.Is(err, sql.ErrNoRows) {
+		return SourceTransport{}, nil
+	}
+	return t, err
+}
+
+// DoubleCheckFoldersTx reports the saved second-listing choice for the remote
+// source that contains a library source, if any.
+func DoubleCheckFoldersTx(ctx context.Context, tx *sql.Tx, librarySource string) (bool, error) {
+	var on bool
+	err := tx.QueryRowContext(ctx, `SELECT st.double_check_folders FROM library_sources s JOIN remote_source_settings st ON st.source_id=s.remote_source_id WHERE s.id=?`, librarySource).Scan(&on)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return on, err
 }

@@ -245,8 +245,8 @@ func keys(m map[string]segmentLibrary) []string {
 // current revision has not been measured in its library's mode (a thorough
 // measurement also serves standard).
 func (s *Service) segmentConsider(ctx context.Context, tx *sql.Tx, object string, enabled map[string]segmentLibrary) error {
-	var revision, library, relative, analyzed string
-	err := tx.QueryRowContext(ctx, `SELECT o.revision,src.library_id,o.relative_path,o.analysis_revision FROM inventory_objects o JOIN library_sources src ON src.id=o.source_id WHERE o.id=? AND o.retired=0 AND o.state='available' AND o.root_incarnation=src.incarnation AND src.enabled=1`, object).Scan(&revision, &library, &relative, &analyzed)
+	var revision, library, relative, analyzed, source string
+	err := tx.QueryRowContext(ctx, `SELECT o.revision,src.library_id,o.relative_path,o.analysis_revision,o.source_id FROM inventory_objects o JOIN library_sources src ON src.id=o.source_id WHERE o.id=? AND o.retired=0 AND o.state='available' AND o.root_incarnation=src.incarnation AND src.enabled=1`, object).Scan(&revision, &library, &relative, &analyzed, &source)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -258,6 +258,24 @@ func (s *Service) segmentConsider(ctx context.Context, tx *sql.Tx, object string
 	// measured once its probe has given it a duration.
 	if !ok || strings.HasSuffix(strings.ToLower(relative), ".strm") || analyzed != revision {
 		return nil
+	}
+	// The source's own page can switch intro and credit detection off for the
+	// files found through it, or choose the listening or picture mode.
+	var sourceMode string
+	e := tx.QueryRowContext(ctx, `SELECT st.intros_mode FROM library_sources s JOIN remote_source_settings st ON st.source_id=s.remote_source_id WHERE s.id=?`, source).Scan(&sourceMode)
+	if e != nil && !errors.Is(e, sql.ErrNoRows) {
+		return e
+	}
+	if e == nil {
+		switch sourceMode {
+		case "off":
+			_, e = tx.ExecContext(ctx, `DELETE FROM segment_files WHERE object_id=? AND state='pending'`, object)
+			return e
+		case "sound":
+			l.Mode = SegmentModeStandard
+		case "picture":
+			l.Mode = SegmentModeThorough
+		}
 	}
 	var current, mode, state, planning string
 	err = tx.QueryRowContext(ctx, `SELECT source_revision,mode,state,planning_policy FROM segment_files WHERE object_id=?`, object).Scan(&current, &mode, &state, &planning)

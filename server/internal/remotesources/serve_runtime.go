@@ -365,6 +365,9 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 		return nil, storage.ErrBusy
 	}
 	spec := rcloneprogram.ServeCommandSpec{SourceID: slot.source, SourceGeneration: slot.generation, ApprovedProgramDigest: material.ApprovedProgramDigest, PrivateDirectory: s.private, Configuration: material.Configuration, Remote: material.Remote, Port: endpoint, MetadataPort: metadata, Username: identity.Token(), Password: identity.Token(), Connections: slot.profile.Limits.Connections, RequestsPerSecond: slot.profile.Limits.RequestsPerSecond, BytesPerSecond: slot.profile.Limits.BytesPerSecond, SequentialReads: slot.sequential,
+		DirCacheSeconds: slot.transport.DirCacheSeconds, ReadBufferBytes: slot.transport.ReadBufferBytes,
+		ConnectTimeoutSeconds: slot.transport.ConnectTimeoutSeconds, IdleTimeoutSeconds: slot.transport.IdleTimeoutSeconds,
+		Retries: slot.transport.Retries, LowLevelRetries: slot.transport.LowLevelRetries,
 		Enforce: func(cmd *exec.Cmd) error {
 			if err := slot.Check(ctx); err != nil {
 				return err

@@ -51,7 +51,15 @@ type ServeCommandSpec struct {
 	CacheDirectory  string
 	CacheBytes      int64
 	CacheFloor      int64
-	Enforce         func(*exec.Cmd) error
+	// Transport belongs to this source's own rclone program. Zero keeps the
+	// bundled program's defaults, which are also what the owner sees.
+	DirCacheSeconds       int
+	ReadBufferBytes       int64
+	ConnectTimeoutSeconds int
+	IdleTimeoutSeconds    int
+	Retries               int
+	LowLevelRetries       int
+	Enforce               func(*exec.Cmd) error
 }
 
 // PreparedServe is not a running process. Its owning supervisor retains process
@@ -117,7 +125,28 @@ func PrepareServe(ctx context.Context, program Program, spec ServeCommandSpec) (
 	if err = os.WriteFile(file, spec.Configuration, 0600); err != nil {
 		return nil, err
 	}
-	args := []string{"serve", "webdav", spec.Remote, "--read-only", "--addr", net.JoinHostPort("127.0.0.1", strconv.Itoa(spec.Port)), "--config", file, "--ask-password=false", "--dir-cache-time=0s", "--poll-interval=0", "--vfs-read-ahead=0", "--buffer-size=0", "--vfs-read-chunk-size=1M", "--vfs-read-chunk-size-limit=1M", "--vfs-read-chunk-streams=0", "--retries=1", "--low-level-retries=1", "--contimeout=10s", "--timeout=30s", "--use-json-log", "--log-level=DEBUG", "--max-connections", strconv.Itoa(spec.Connections), "--tpslimit", strconv.Itoa(spec.RequestsPerSecond), "--tpslimit-burst=1", "--sftp-connections", strconv.Itoa(spec.Connections)}
+	// The source's own transport values replace the program defaults; zero in a
+	// field means "use the bundled default" and is reported the same way.
+	connectTimeout, idleTimeout := spec.ConnectTimeoutSeconds, spec.IdleTimeoutSeconds
+	if connectTimeout == 0 {
+		connectTimeout = 10
+	}
+	if idleTimeout == 0 {
+		idleTimeout = 30
+	}
+	retries, lowLevelRetries := spec.Retries, spec.LowLevelRetries
+	if retries == 0 {
+		retries = 1
+	}
+	if lowLevelRetries == 0 {
+		lowLevelRetries = 1
+	}
+	args := []string{"serve", "webdav", spec.Remote, "--read-only", "--addr", net.JoinHostPort("127.0.0.1", strconv.Itoa(spec.Port)), "--config", file, "--ask-password=false",
+		"--dir-cache-time=" + strconv.Itoa(spec.DirCacheSeconds) + "s", "--poll-interval=0", "--vfs-read-ahead=0",
+		"--buffer-size=" + strconv.FormatInt(spec.ReadBufferBytes, 10), "--vfs-read-chunk-size=1M", "--vfs-read-chunk-size-limit=1M", "--vfs-read-chunk-streams=0",
+		"--retries=" + strconv.Itoa(retries), "--low-level-retries=" + strconv.Itoa(lowLevelRetries),
+		"--contimeout=" + strconv.Itoa(connectTimeout) + "s", "--timeout=" + strconv.Itoa(idleTimeout) + "s",
+		"--use-json-log", "--log-level=DEBUG", "--max-connections", strconv.Itoa(spec.Connections), "--tpslimit", strconv.Itoa(spec.RequestsPerSecond), "--tpslimit-burst=1", "--sftp-connections", strconv.Itoa(spec.Connections)}
 	if spec.SequentialReads {
 		for i, arg := range args {
 			if arg == "--vfs-read-chunk-size=1M" {

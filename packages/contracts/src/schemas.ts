@@ -149018,9 +149018,16 @@ export const schemas = {
       "settings": {
         "properties": {
           "cacheApplied": {
+            "description": "Observed projection of the cache the mount has actually applied, not the desired configuration.",
             "type": "boolean"
           },
           "cacheError": {
+            "enum": [
+              "source_changed",
+              "mount_unavailable",
+              "cache_refused",
+              "cache_record_failed"
+            ],
             "type": "string"
           },
           "cacheSupported": {
@@ -149065,6 +149072,19 @@ export const schemas = {
               "checksums": {
                 "type": "boolean"
               },
+              "connectTimeoutSeconds": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "dirCacheSeconds": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "doubleCheckFolders": {
+                "type": "boolean"
+              },
               "fullRecheckDays": {
                 "enum": [
                   0,
@@ -149076,8 +149096,37 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "idleTimeoutSeconds": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "introsMode": {
+                "enum": [
+                  "off",
+                  "inherit",
+                  "sound",
+                  "picture"
+                ],
+                "type": "string"
+              },
               "loudness": {
                 "type": "boolean"
+              },
+              "lowLevelRetries": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "readBufferBytes": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "retries": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
               "scanIntervalSeconds": {
                 "enum": [
@@ -149116,7 +149165,15 @@ export const schemas = {
               "chapterImages",
               "waveforms",
               "loudness",
-              "checksums"
+              "checksums",
+              "introsMode",
+              "doubleCheckFolders",
+              "dirCacheSeconds",
+              "readBufferBytes",
+              "connectTimeoutSeconds",
+              "idleTimeoutSeconds",
+              "retries",
+              "lowLevelRetries"
             ],
             "type": "object"
           }
@@ -196714,6 +196771,19 @@ export const schemas = {
           "checksums": {
             "type": "boolean"
           },
+          "connectTimeoutSeconds": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "dirCacheSeconds": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "doubleCheckFolders": {
+            "type": "boolean"
+          },
           "fullRecheckDays": {
             "enum": [
               0,
@@ -196725,8 +196795,37 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "idleTimeoutSeconds": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "introsMode": {
+            "enum": [
+              "off",
+              "inherit",
+              "sound",
+              "picture"
+            ],
+            "type": "string"
+          },
           "loudness": {
             "type": "boolean"
+          },
+          "lowLevelRetries": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "readBufferBytes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "retries": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "scanIntervalSeconds": {
             "enum": [
@@ -196765,7 +196864,15 @@ export const schemas = {
           "chapterImages",
           "waveforms",
           "loudness",
-          "checksums"
+          "checksums",
+          "introsMode",
+          "doubleCheckFolders",
+          "dirCacheSeconds",
+          "readBufferBytes",
+          "connectTimeoutSeconds",
+          "idleTimeoutSeconds",
+          "retries",
+          "lowLevelRetries"
         ],
         "type": "object"
       }
@@ -196797,9 +196904,16 @@ export const schemas = {
       "settings": {
         "properties": {
           "cacheApplied": {
+            "description": "Observed projection of the cache the mount has actually applied, not the desired configuration.",
             "type": "boolean"
           },
           "cacheError": {
+            "enum": [
+              "source_changed",
+              "mount_unavailable",
+              "cache_refused",
+              "cache_record_failed"
+            ],
             "type": "string"
           },
           "cacheSupported": {
@@ -196844,6 +196958,19 @@ export const schemas = {
               "checksums": {
                 "type": "boolean"
               },
+              "connectTimeoutSeconds": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "dirCacheSeconds": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "doubleCheckFolders": {
+                "type": "boolean"
+              },
               "fullRecheckDays": {
                 "enum": [
                   0,
@@ -196855,8 +196982,37 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "idleTimeoutSeconds": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "introsMode": {
+                "enum": [
+                  "off",
+                  "inherit",
+                  "sound",
+                  "picture"
+                ],
+                "type": "string"
+              },
               "loudness": {
                 "type": "boolean"
+              },
+              "lowLevelRetries": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "readBufferBytes": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "retries": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
               "scanIntervalSeconds": {
                 "enum": [
@@ -196895,7 +197051,15 @@ export const schemas = {
               "chapterImages",
               "waveforms",
               "loudness",
-              "checksums"
+              "checksums",
+              "introsMode",
+              "doubleCheckFolders",
+              "dirCacheSeconds",
+              "readBufferBytes",
+              "connectTimeoutSeconds",
+              "idleTimeoutSeconds",
+              "retries",
+              "lowLevelRetries"
             ],
             "type": "object"
           }
