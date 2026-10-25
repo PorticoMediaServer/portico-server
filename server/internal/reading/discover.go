@@ -13,6 +13,7 @@ type DiscoverLimits struct {
 	// Series opts into the ready, single-library series composition.
 	Series     int
 	ShortReads int
+	Newspaper  int
 }
 
 // Discover composes real title rows and, when requested, exact series summaries
@@ -22,6 +23,7 @@ type Discover struct {
 	Recent     []LibraryRow
 	Series     []DiscoverSeries
 	ShortReads []ShortRead
+	Newspaper  *PeriodicalGroup
 }
 
 // Discover returns the bounded server-composed rows for one authorized library
@@ -29,6 +31,9 @@ type Discover struct {
 // profile/library/restriction predicate as List.
 func (s *Service) Discover(ctx context.Context, p identity.Principal, library string, limits DiscoverLimits) (Discover, error) {
 	out := Discover{Recent: []LibraryRow{}}
+	if limits.Newspaper < 0 || limits.Newspaper > 1 || limits.Newspaper > 0 && library == "" {
+		return out, ErrInvalid
+	}
 	if limits.ShortReads < 0 || limits.ShortReads > 20 || limits.ShortReads > 0 && library == "" {
 		return out, ErrInvalid
 	}
@@ -99,6 +104,9 @@ func (s *Service) Discover(ctx context.Context, p identity.Principal, library st
 	}
 	if err == nil && limits.ShortReads > 0 {
 		out.ShortReads, err = s.discoverShortReadsTx(ctx, tx, library, limits.ShortReads, filter, args)
+	}
+	if err == nil && limits.Newspaper > 0 {
+		out.Newspaper, err = s.discoverNewspaperTx(ctx, tx, p, library, filter, args)
 	}
 	return out, err
 }
