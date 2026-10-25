@@ -151685,6 +151685,142 @@
         ],
         "type": "object"
       },
+      "GetReadingSearchRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetReadingSearchResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "anchor": {
+            "additionalProperties": false,
+            "properties": {
+              "matchUnit": {
+                "enum": [
+                  "utf16"
+                ],
+                "type": "string"
+              },
+              "normalization": {
+                "enum": [
+                  "xhtml-body-blockspace-fields-v1"
+                ],
+                "type": "string"
+              },
+              "offsetUnit": {
+                "enum": [
+                  "utf16"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "normalization",
+              "offsetUnit",
+              "matchUnit"
+            ],
+            "type": "object"
+          },
+          "hits": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "coverUrl": {
+                  "maxLength": 2048,
+                  "type": "string"
+                },
+                "excerpt": {
+                  "maxLength": 8192,
+                  "type": "string"
+                },
+                "itemId": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "libraryId": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "matchLength": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "matchStart": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "sectionIndex": {
+                  "maximum": 4095,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "sectionPath": {
+                  "maxLength": 1024,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "sourceId": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "sourceRevision": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "title": {
+                  "maxLength": 4096,
+                  "type": "string"
+                },
+                "utf16Offset": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "libraryId",
+                "itemId",
+                "sourceId",
+                "sourceRevision",
+                "sectionPath",
+                "sectionIndex",
+                "utf16Offset",
+                "excerpt",
+                "matchStart",
+                "matchLength"
+              ],
+              "type": "object"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "indexRevision": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "indexedOnly": {
+            "enum": [
+              true
+            ],
+            "type": "boolean"
+          },
+          "next": {
+            "maxLength": 512,
+            "type": "string"
+          }
+        },
+        "required": [
+          "indexedOnly",
+          "indexRevision",
+          "anchor",
+          "hits"
+        ],
+        "type": "object"
+      },
       "GetReadingSeriesItemsRequest": {
         "properties": {},
         "required": [],
@@ -257177,6 +257313,9 @@
           "protocolVersion": {
             "type": "string"
           },
+          "receiverId": {
+            "type": "string"
+          },
           "source": {
             "properties": {
               "entryId": {
@@ -257291,6 +257430,370 @@
         ],
         "type": "object"
       },
+      "SocialPostV1CastControllersCheckRequest": {
+        "properties": {
+          "attemptId": {
+            "pattern": "^$|^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          },
+          "bindingId": {
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          },
+          "controlToken": {
+            "maxLength": 48,
+            "minLength": 1,
+            "type": "string"
+          },
+          "ticket": {
+            "maxLength": 256,
+            "type": "string"
+          }
+        },
+        "required": [
+          "bindingId",
+          "controlToken"
+        ],
+        "type": "object"
+      },
+      "SocialPostV1CastControllersCheckResponse": {
+        "properties": {
+          "attemptId": {
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          },
+          "binding": {
+            "properties": {
+              "bootstrapId": {
+                "type": "string"
+              },
+              "id": {
+                "pattern": "^[A-Za-z0-9_-]{1,128}$",
+                "type": "string"
+              },
+              "receiverId": {
+                "type": "string"
+              },
+              "scope": {
+                "properties": {
+                  "accountId": {
+                    "type": "string"
+                  },
+                  "authority": {
+                    "type": "string"
+                  },
+                  "profileId": {
+                    "type": "string"
+                  },
+                  "senderDeviceId": {
+                    "type": "string"
+                  },
+                  "senderFamilyId": {
+                    "type": "string"
+                  },
+                  "serverId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "serverId",
+                  "authority",
+                  "accountId",
+                  "profileId",
+                  "senderDeviceId",
+                  "senderFamilyId"
+                ],
+                "type": "object"
+              },
+              "targetFamilyId": {
+                "type": "string"
+              },
+              "targetGeneration": {
+                "type": "string"
+              },
+              "targetId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "bootstrapId",
+              "receiverId",
+              "targetId",
+              "targetFamilyId",
+              "targetGeneration",
+              "scope"
+            ],
+            "type": "object"
+          },
+          "ticket": {
+            "maxLength": 43,
+            "minLength": 43,
+            "type": "string"
+          }
+        },
+        "required": [
+          "binding"
+        ],
+        "type": "object"
+      },
+      "SocialPostV1CastControllersRegisterRequest": {
+        "properties": {
+          "bootstrapId": {
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          },
+          "controlToken": {
+            "maxLength": 48,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "bootstrapId",
+          "controlToken"
+        ],
+        "type": "object"
+      },
+      "SocialPostV1CastControllersRegisterResponse": {
+        "properties": {
+          "attemptId": {
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          },
+          "binding": {
+            "properties": {
+              "bootstrapId": {
+                "type": "string"
+              },
+              "id": {
+                "pattern": "^[A-Za-z0-9_-]{1,128}$",
+                "type": "string"
+              },
+              "receiverId": {
+                "type": "string"
+              },
+              "scope": {
+                "properties": {
+                  "accountId": {
+                    "type": "string"
+                  },
+                  "authority": {
+                    "type": "string"
+                  },
+                  "profileId": {
+                    "type": "string"
+                  },
+                  "senderDeviceId": {
+                    "type": "string"
+                  },
+                  "senderFamilyId": {
+                    "type": "string"
+                  },
+                  "serverId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "serverId",
+                  "authority",
+                  "accountId",
+                  "profileId",
+                  "senderDeviceId",
+                  "senderFamilyId"
+                ],
+                "type": "object"
+              },
+              "targetFamilyId": {
+                "type": "string"
+              },
+              "targetGeneration": {
+                "type": "string"
+              },
+              "targetId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "bootstrapId",
+              "receiverId",
+              "targetId",
+              "targetFamilyId",
+              "targetGeneration",
+              "scope"
+            ],
+            "type": "object"
+          },
+          "ticket": {
+            "maxLength": 43,
+            "minLength": 43,
+            "type": "string"
+          }
+        },
+        "required": [
+          "binding"
+        ],
+        "type": "object"
+      },
+      "SocialPostV1CastControllersValidateRequest": {
+        "properties": {
+          "attemptId": {
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          },
+          "binding": {
+            "properties": {
+              "bootstrapId": {
+                "type": "string"
+              },
+              "id": {
+                "pattern": "^[A-Za-z0-9_-]{1,128}$",
+                "type": "string"
+              },
+              "receiverId": {
+                "type": "string"
+              },
+              "scope": {
+                "properties": {
+                  "accountId": {
+                    "type": "string"
+                  },
+                  "authority": {
+                    "type": "string"
+                  },
+                  "profileId": {
+                    "type": "string"
+                  },
+                  "senderDeviceId": {
+                    "type": "string"
+                  },
+                  "senderFamilyId": {
+                    "type": "string"
+                  },
+                  "serverId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "serverId",
+                  "authority",
+                  "accountId",
+                  "profileId",
+                  "senderDeviceId",
+                  "senderFamilyId"
+                ],
+                "type": "object"
+              },
+              "targetFamilyId": {
+                "type": "string"
+              },
+              "targetGeneration": {
+                "type": "string"
+              },
+              "targetId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "bootstrapId",
+              "receiverId",
+              "targetId",
+              "targetFamilyId",
+              "targetGeneration",
+              "scope"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "binding",
+          "attemptId"
+        ],
+        "type": "object"
+      },
+      "SocialPostV1CastControllersValidateResponse": {
+        "properties": {
+          "attemptId": {
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          },
+          "binding": {
+            "properties": {
+              "bootstrapId": {
+                "type": "string"
+              },
+              "id": {
+                "pattern": "^[A-Za-z0-9_-]{1,128}$",
+                "type": "string"
+              },
+              "receiverId": {
+                "type": "string"
+              },
+              "scope": {
+                "properties": {
+                  "accountId": {
+                    "type": "string"
+                  },
+                  "authority": {
+                    "type": "string"
+                  },
+                  "profileId": {
+                    "type": "string"
+                  },
+                  "senderDeviceId": {
+                    "type": "string"
+                  },
+                  "senderFamilyId": {
+                    "type": "string"
+                  },
+                  "serverId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "serverId",
+                  "authority",
+                  "accountId",
+                  "profileId",
+                  "senderDeviceId",
+                  "senderFamilyId"
+                ],
+                "type": "object"
+              },
+              "targetFamilyId": {
+                "type": "string"
+              },
+              "targetGeneration": {
+                "type": "string"
+              },
+              "targetId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "bootstrapId",
+              "receiverId",
+              "targetId",
+              "targetFamilyId",
+              "targetGeneration",
+              "scope"
+            ],
+            "type": "object"
+          },
+          "ticket": {
+            "maxLength": 43,
+            "minLength": 43,
+            "type": "string"
+          }
+        },
+        "required": [
+          "binding"
+        ],
+        "type": "object"
+      },
       "SocialPostV1CastReconnectRequest": {
         "properties": {
           "deviceId": {
@@ -257312,6 +257815,9 @@
       "SocialPostV1CastReconnectResponse": {
         "properties": {
           "applicationId": {
+            "type": "string"
+          },
+          "controllerBootstrapId": {
             "type": "string"
           },
           "device": {
@@ -257440,6 +257946,9 @@
       "SocialPostV1CastRedeemResponse": {
         "properties": {
           "applicationId": {
+            "type": "string"
+          },
+          "controllerBootstrapId": {
             "type": "string"
           },
           "device": {
@@ -330564,6 +331073,9 @@
                   "protocolVersion": {
                     "type": "string"
                   },
+                  "receiverId": {
+                    "type": "string"
+                  },
                   "source": {
                     "properties": {
                       "entryId": {
@@ -331400,6 +331912,685 @@
         "x-scope": "admin"
       }
     },
+    "/v1/cast/controllers/check": {
+      "post": {
+        "operationId": "social_post_v1_cast_controllers_check",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "attemptId": {
+                    "pattern": "^$|^[A-Za-z0-9_-]{1,128}$",
+                    "type": "string"
+                  },
+                  "bindingId": {
+                    "pattern": "^[A-Za-z0-9_-]{1,128}$",
+                    "type": "string"
+                  },
+                  "controlToken": {
+                    "maxLength": 48,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "ticket": {
+                    "maxLength": 256,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "bindingId",
+                  "controlToken"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "attemptId": {
+                      "pattern": "^[A-Za-z0-9_-]{1,128}$",
+                      "type": "string"
+                    },
+                    "binding": {
+                      "properties": {
+                        "bootstrapId": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "pattern": "^[A-Za-z0-9_-]{1,128}$",
+                          "type": "string"
+                        },
+                        "receiverId": {
+                          "type": "string"
+                        },
+                        "scope": {
+                          "properties": {
+                            "accountId": {
+                              "type": "string"
+                            },
+                            "authority": {
+                              "type": "string"
+                            },
+                            "profileId": {
+                              "type": "string"
+                            },
+                            "senderDeviceId": {
+                              "type": "string"
+                            },
+                            "senderFamilyId": {
+                              "type": "string"
+                            },
+                            "serverId": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "serverId",
+                            "authority",
+                            "accountId",
+                            "profileId",
+                            "senderDeviceId",
+                            "senderFamilyId"
+                          ],
+                          "type": "object"
+                        },
+                        "targetFamilyId": {
+                          "type": "string"
+                        },
+                        "targetGeneration": {
+                          "type": "string"
+                        },
+                        "targetId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "bootstrapId",
+                        "receiverId",
+                        "targetId",
+                        "targetFamilyId",
+                        "targetGeneration",
+                        "scope"
+                      ],
+                      "type": "object"
+                    },
+                    "ticket": {
+                      "maxLength": 43,
+                      "minLength": 43,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "binding"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Manage shared playback for the signed-in profile",
+        "x-access": "device",
+        "x-admission": "default",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "internal",
+          "receiver_required",
+          "capacity_reached",
+          "cast_access_ended",
+          "cast_code_consumed",
+          "cast_code_expired",
+          "cast_code_not_found",
+          "cast_code_revoked",
+          "cast_device_expired",
+          "cast_device_not_found",
+          "cast_device_revoked",
+          "cast_unavailable",
+          "device_required",
+          "entry_not_found",
+          "grant_not_accepted",
+          "grant_not_pending",
+          "group_ended",
+          "group_full",
+          "handoff_expired",
+          "handoff_in_progress",
+          "handoff_not_ready",
+          "handoff_source_conflict",
+          "handoff_source_revision_conflict",
+          "handoff_state_conflict",
+          "host_required",
+          "idempotency_key_reused",
+          "invalid_request",
+          "invite_consumed",
+          "invite_expired",
+          "invite_not_found",
+          "invite_revoked",
+          "invite_wrong_recipient",
+          "media_no_longer_accessible",
+          "member_not_found",
+          "membership_revoked",
+          "not_found",
+          "participant_incompatible",
+          "playback_authority_unavailable",
+          "queue_full",
+          "rate_limited",
+          "receiver_key_mismatch",
+          "revision_conflict",
+          "target_unavailable"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 262144,
+        "x-scope": "playback"
+      }
+    },
+    "/v1/cast/controllers/register": {
+      "post": {
+        "operationId": "social_post_v1_cast_controllers_register",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "bootstrapId": {
+                    "pattern": "^[A-Za-z0-9_-]{1,128}$",
+                    "type": "string"
+                  },
+                  "controlToken": {
+                    "maxLength": 48,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "bootstrapId",
+                  "controlToken"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "attemptId": {
+                      "pattern": "^[A-Za-z0-9_-]{1,128}$",
+                      "type": "string"
+                    },
+                    "binding": {
+                      "properties": {
+                        "bootstrapId": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "pattern": "^[A-Za-z0-9_-]{1,128}$",
+                          "type": "string"
+                        },
+                        "receiverId": {
+                          "type": "string"
+                        },
+                        "scope": {
+                          "properties": {
+                            "accountId": {
+                              "type": "string"
+                            },
+                            "authority": {
+                              "type": "string"
+                            },
+                            "profileId": {
+                              "type": "string"
+                            },
+                            "senderDeviceId": {
+                              "type": "string"
+                            },
+                            "senderFamilyId": {
+                              "type": "string"
+                            },
+                            "serverId": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "serverId",
+                            "authority",
+                            "accountId",
+                            "profileId",
+                            "senderDeviceId",
+                            "senderFamilyId"
+                          ],
+                          "type": "object"
+                        },
+                        "targetFamilyId": {
+                          "type": "string"
+                        },
+                        "targetGeneration": {
+                          "type": "string"
+                        },
+                        "targetId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "bootstrapId",
+                        "receiverId",
+                        "targetId",
+                        "targetFamilyId",
+                        "targetGeneration",
+                        "scope"
+                      ],
+                      "type": "object"
+                    },
+                    "ticket": {
+                      "maxLength": 43,
+                      "minLength": 43,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "binding"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Manage shared playback for the signed-in profile",
+        "x-access": "device",
+        "x-admission": "default",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "internal",
+          "receiver_required",
+          "capacity_reached",
+          "cast_access_ended",
+          "cast_code_consumed",
+          "cast_code_expired",
+          "cast_code_not_found",
+          "cast_code_revoked",
+          "cast_device_expired",
+          "cast_device_not_found",
+          "cast_device_revoked",
+          "cast_unavailable",
+          "device_required",
+          "entry_not_found",
+          "grant_not_accepted",
+          "grant_not_pending",
+          "group_ended",
+          "group_full",
+          "handoff_expired",
+          "handoff_in_progress",
+          "handoff_not_ready",
+          "handoff_source_conflict",
+          "handoff_source_revision_conflict",
+          "handoff_state_conflict",
+          "host_required",
+          "idempotency_key_reused",
+          "invalid_request",
+          "invite_consumed",
+          "invite_expired",
+          "invite_not_found",
+          "invite_revoked",
+          "invite_wrong_recipient",
+          "media_no_longer_accessible",
+          "member_not_found",
+          "membership_revoked",
+          "not_found",
+          "participant_incompatible",
+          "playback_authority_unavailable",
+          "queue_full",
+          "rate_limited",
+          "receiver_key_mismatch",
+          "revision_conflict",
+          "target_unavailable"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 262144,
+        "x-scope": "playback"
+      }
+    },
+    "/v1/cast/controllers/validate": {
+      "post": {
+        "operationId": "social_post_v1_cast_controllers_validate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "attemptId": {
+                    "pattern": "^[A-Za-z0-9_-]{1,128}$",
+                    "type": "string"
+                  },
+                  "binding": {
+                    "properties": {
+                      "bootstrapId": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "pattern": "^[A-Za-z0-9_-]{1,128}$",
+                        "type": "string"
+                      },
+                      "receiverId": {
+                        "type": "string"
+                      },
+                      "scope": {
+                        "properties": {
+                          "accountId": {
+                            "type": "string"
+                          },
+                          "authority": {
+                            "type": "string"
+                          },
+                          "profileId": {
+                            "type": "string"
+                          },
+                          "senderDeviceId": {
+                            "type": "string"
+                          },
+                          "senderFamilyId": {
+                            "type": "string"
+                          },
+                          "serverId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "serverId",
+                          "authority",
+                          "accountId",
+                          "profileId",
+                          "senderDeviceId",
+                          "senderFamilyId"
+                        ],
+                        "type": "object"
+                      },
+                      "targetFamilyId": {
+                        "type": "string"
+                      },
+                      "targetGeneration": {
+                        "type": "string"
+                      },
+                      "targetId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "bootstrapId",
+                      "receiverId",
+                      "targetId",
+                      "targetFamilyId",
+                      "targetGeneration",
+                      "scope"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "binding",
+                  "attemptId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "attemptId": {
+                      "pattern": "^[A-Za-z0-9_-]{1,128}$",
+                      "type": "string"
+                    },
+                    "binding": {
+                      "properties": {
+                        "bootstrapId": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "pattern": "^[A-Za-z0-9_-]{1,128}$",
+                          "type": "string"
+                        },
+                        "receiverId": {
+                          "type": "string"
+                        },
+                        "scope": {
+                          "properties": {
+                            "accountId": {
+                              "type": "string"
+                            },
+                            "authority": {
+                              "type": "string"
+                            },
+                            "profileId": {
+                              "type": "string"
+                            },
+                            "senderDeviceId": {
+                              "type": "string"
+                            },
+                            "senderFamilyId": {
+                              "type": "string"
+                            },
+                            "serverId": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "serverId",
+                            "authority",
+                            "accountId",
+                            "profileId",
+                            "senderDeviceId",
+                            "senderFamilyId"
+                          ],
+                          "type": "object"
+                        },
+                        "targetFamilyId": {
+                          "type": "string"
+                        },
+                        "targetGeneration": {
+                          "type": "string"
+                        },
+                        "targetId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "bootstrapId",
+                        "receiverId",
+                        "targetId",
+                        "targetFamilyId",
+                        "targetGeneration",
+                        "scope"
+                      ],
+                      "type": "object"
+                    },
+                    "ticket": {
+                      "maxLength": 43,
+                      "minLength": 43,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "binding"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Manage shared playback for the signed-in profile",
+        "x-access": "device",
+        "x-admission": "default",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "internal",
+          "receiver_required",
+          "capacity_reached",
+          "cast_access_ended",
+          "cast_code_consumed",
+          "cast_code_expired",
+          "cast_code_not_found",
+          "cast_code_revoked",
+          "cast_device_expired",
+          "cast_device_not_found",
+          "cast_device_revoked",
+          "cast_unavailable",
+          "device_required",
+          "entry_not_found",
+          "grant_not_accepted",
+          "grant_not_pending",
+          "group_ended",
+          "group_full",
+          "handoff_expired",
+          "handoff_in_progress",
+          "handoff_not_ready",
+          "handoff_source_conflict",
+          "handoff_source_revision_conflict",
+          "handoff_state_conflict",
+          "host_required",
+          "idempotency_key_reused",
+          "invalid_request",
+          "invite_consumed",
+          "invite_expired",
+          "invite_not_found",
+          "invite_revoked",
+          "invite_wrong_recipient",
+          "media_no_longer_accessible",
+          "member_not_found",
+          "membership_revoked",
+          "not_found",
+          "participant_incompatible",
+          "playback_authority_unavailable",
+          "queue_full",
+          "rate_limited",
+          "receiver_key_mismatch",
+          "revision_conflict",
+          "target_unavailable"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 262144,
+        "x-scope": "playback"
+      }
+    },
     "/v1/cast/devices/{id}": {
       "delete": {
         "operationId": "social_delete_v1_cast_devices_id",
@@ -331538,6 +332729,9 @@
                 "schema": {
                   "properties": {
                     "applicationId": {
+                      "type": "string"
+                    },
+                    "controllerBootstrapId": {
                       "type": "string"
                     },
                     "device": {
@@ -331771,6 +332965,9 @@
                 "schema": {
                   "properties": {
                     "applicationId": {
+                      "type": "string"
+                    },
+                    "controllerBootstrapId": {
                       "type": "string"
                     },
                     "device": {
@@ -529935,6 +531132,233 @@
         "x-lane": "default",
         "x-max-body-bytes": 4096,
         "x-scope": "playback"
+      }
+    },
+    "/v1/reading/search": {
+      "get": {
+        "operationId": "get_reading_search",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "libraryId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "anchor": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "matchUnit": {
+                          "enum": [
+                            "utf16"
+                          ],
+                          "type": "string"
+                        },
+                        "normalization": {
+                          "enum": [
+                            "xhtml-body-blockspace-fields-v1"
+                          ],
+                          "type": "string"
+                        },
+                        "offsetUnit": {
+                          "enum": [
+                            "utf16"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "normalization",
+                        "offsetUnit",
+                        "matchUnit"
+                      ],
+                      "type": "object"
+                    },
+                    "hits": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "coverUrl": {
+                            "maxLength": 2048,
+                            "type": "string"
+                          },
+                          "excerpt": {
+                            "maxLength": 8192,
+                            "type": "string"
+                          },
+                          "itemId": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "libraryId": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "matchLength": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "matchStart": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "sectionIndex": {
+                            "maximum": 4095,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "sectionPath": {
+                            "maxLength": 1024,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "sourceId": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "sourceRevision": {
+                            "maxLength": 128,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "title": {
+                            "maxLength": 4096,
+                            "type": "string"
+                          },
+                          "utf16Offset": {
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "libraryId",
+                          "itemId",
+                          "sourceId",
+                          "sourceRevision",
+                          "sectionPath",
+                          "sectionIndex",
+                          "utf16Offset",
+                          "excerpt",
+                          "matchStart",
+                          "matchLength"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 50,
+                      "type": "array"
+                    },
+                    "indexRevision": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "indexedOnly": {
+                      "enum": [
+                        true
+                      ],
+                      "type": "boolean"
+                    },
+                    "next": {
+                      "maxLength": 512,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "indexedOnly",
+                    "indexRevision",
+                    "anchor",
+                    "hits"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Search the persisted Reading index across the viewer's ready libraries",
+        "x-access": "device",
+        "x-admission": "browsing",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_required",
+          "revision_mismatch",
+          "request_in_progress",
+          "body_too_large",
+          "internal",
+          "search_busy"
+        ],
+        "x-lane": "browsing",
+        "x-scope": "read"
       }
     },
     "/v1/reading/sessions": {

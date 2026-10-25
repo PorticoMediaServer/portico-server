@@ -4959,6 +4959,7 @@ remote_source_cache_entries.file_name
 remote_source_cache_entries.object_size
 remote_source_cache_entries.source_id
 remote_source_cache_entries.used_bytes
+remote_source_contacts.last_check_ms
 remote_source_contacts.last_error_code
 remote_source_contacts.last_failure_ms
 remote_source_contacts.last_success_ms
