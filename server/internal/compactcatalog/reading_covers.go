@@ -22,7 +22,7 @@ func ReadingCoverDigestsTx(ctx context.Context, tx *sql.Tx, entities []int64) (m
 		return nil, err
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT a.entity_id,o.digest FROM json_each(?) selected
- JOIN artwork_selections a ON a.kind='item' AND a.entity_id=selected.value AND a.role='cover' AND a.subject=''
+ CROSS JOIN artwork_selections a ON a.kind='item' AND a.entity_id=selected.value AND a.role='cover' AND a.subject=''
  JOIN artwork_objects o ON o.digest=a.digest AND o.status='ready'`, string(encoded))
 	if err != nil {
 		return nil, err

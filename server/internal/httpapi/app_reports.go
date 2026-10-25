@@ -260,28 +260,28 @@ func registerAppReports(registry *apikit.Registry, d Dependencies) {
 		if err != nil {
 			return AppReportRecipient{}, err
 		}
-		gated, err := dbwork.BeginSnapshot(ctx, d.DB)
+		recipientSnap, err := dbwork.BeginSnapshot(ctx, d.DB)
 		if err != nil {
 			return AppReportRecipient{}, err
 		}
-		defer gated.Rollback()
-		if _, err := d.appReportActorTx(ctx, gated.Tx(), p); err != nil {
+		defer recipientSnap.Rollback()
+		if _, err := d.appReportActorTx(ctx, recipientSnap.Tx(), p); err != nil {
 			return AppReportRecipient{}, err
 		}
-		out, _, err := appReportRecipientTx(ctx, gated.Tx())
+		out, _, err := appReportRecipientTx(ctx, recipientSnap.Tx())
 		if err != nil {
 			return AppReportRecipient{}, err
 		}
-		if err := gated.Rollback(); err != nil {
+		if err := recipientSnap.Rollback(); err != nil {
 			return AppReportRecipient{}, err
 		}
 		// A separate snapshot catches retirement while the recipient was read.
-		fresh, err := dbwork.BeginSnapshot(ctx, d.DB)
+		freshSnap, err := dbwork.BeginSnapshot(ctx, d.DB)
 		if err != nil {
 			return AppReportRecipient{}, err
 		}
-		defer fresh.Rollback()
-		if _, err := d.appReportActorTx(ctx, fresh.Tx(), p); err != nil {
+		defer freshSnap.Rollback()
+		if _, err := d.appReportActorTx(ctx, freshSnap.Tx(), p); err != nil {
 			return AppReportRecipient{}, err
 		}
 		return out, nil
@@ -291,18 +291,18 @@ func registerAppReports(registry *apikit.Registry, d Dependencies) {
 		if err != nil {
 			return nil, err
 		}
-		gated, err := dbwork.BeginSnapshot(ctx, d.DB)
+		reportsSnap, err := dbwork.BeginSnapshot(ctx, d.DB)
 		if err != nil {
 			return nil, err
 		}
-		defer gated.Rollback()
-		tx := gated.Tx()
+		defer reportsSnap.Rollback()
+		reportsTx := reportsSnap.Tx()
 		// Canonical local-owner admission, checked freshly in this read transaction.
-		if _, err = d.tierAuthorityTx(ctx, tx, p, identity.TierOwner); err != nil {
+		if _, err = d.tierAuthorityTx(ctx, reportsTx, p, identity.TierOwner); err != nil {
 			return nil, err
 		}
 		now := time.Now().UnixMilli()
-		rows, err := tx.QueryContext(ctx, `SELECT id FROM app_reports WHERE recipient_account_id=? AND expires_ms>? ORDER BY created_ms DESC,id DESC LIMIT ?`, p.AccountID, now, appReportStoredMax)
+		rows, err := reportsTx.QueryContext(ctx, `SELECT id FROM app_reports WHERE recipient_account_id=? AND expires_ms>? ORDER BY created_ms DESC,id DESC LIMIT ?`, p.AccountID, now, appReportStoredMax)
 		if err != nil {
 			return nil, err
 		}
@@ -321,7 +321,7 @@ func registerAppReports(registry *apikit.Registry, d Dependencies) {
 		}
 		out := make([]AppReportReceipt, 0, len(ids))
 		for _, id := range ids {
-			receipt, e := loadAppReport(ctx, tx, id)
+			receipt, e := loadAppReport(ctx, reportsTx, id)
 			if e != nil {
 				return nil, e
 			}
@@ -329,7 +329,7 @@ func registerAppReports(registry *apikit.Registry, d Dependencies) {
 		}
 		// End the data snapshot before the second proof: rechecking the old
 		// transaction could not observe a session revoked during the read.
-		if err := gated.Rollback(); err != nil {
+		if err := reportsSnap.Rollback(); err != nil {
 			return nil, err
 		}
 		again, err := d.owner(r)
