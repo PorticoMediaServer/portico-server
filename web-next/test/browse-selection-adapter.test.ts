@@ -185,12 +185,13 @@ test('Queue and the destination pickers take the explicit leaf ids in order', as
   assert.deepEqual(calls, [['playlist', ['m1'], anchor], ['collection', ['m1'], anchor]]);
 });
 
-test('container and whole-view picks are offered no Queue or destination action', async () => {
+test('ungranted containers refuse Queue and legacy destinations stay leaf-only', async () => {
   const enqueue = async () => { throw new Error('must not run'); };
   const destinations = {playlist: async () => { throw new Error('must not run'); }};
-  const containerTarget = {...target, items: [{key: 'key-0', item: {kind: 'show', id: 's1', libraryId: 'a', capabilities}}],
-    displayItems: [{key: 'key-0', item: {kind: 'show', id: 's1', libraryId: 'a', capabilities}}]};
-  const container = fake({selection: {active: true, summary: {count: 1, types: [{kind: 'show', count: 1}], library: {kind: 'single', libraryId: 'a'}, every: capabilities},
+  const ungranted = {...capabilities, queue: false};
+  const containerTarget = {...target, items: [{key: 'key-0', item: {kind: 'show', id: 's1', libraryId: 'a', capabilities: ungranted}}],
+    displayItems: [{key: 'key-0', item: {kind: 'show', id: 's1', libraryId: 'a', capabilities: ungranted}}]};
+  const container = fake({selection: {active: true, summary: {count: 1, types: [{kind: 'show', count: 1}], library: {kind: 'single', libraryId: 'a'}, every: ungranted},
     selectedKeys: ['key-0'], version: 1, registeredWindowCount: 1, registeredItemCount: 1, lastSectionId: 'library', target: containerTarget}});
   const adapter = createLibrarySelection({playSelection: container.selection, enqueue, destinations, actions: {signal: new AbortController().signal, isCurrent: () => true} as never, reportError: () => {}});
   const html = renderToStaticMarkup(createElement('div', null, adapter.toolbar));
@@ -198,6 +199,16 @@ test('container and whole-view picks are offered no Queue or destination action'
   assert.doesNotMatch(html, />Add to playlist</);
   await assert.rejects(adapter.queue('next'), /leaf-explicit-selection-required/);
   await assert.rejects(adapter.addToPlaylist({} as HTMLElement), /leaf-explicit-selection-required/);
+  const grantedTarget = {...containerTarget, items: containerTarget.items.map(pick => ({...pick, item: {...pick.item, capabilities}})),
+    displayItems: containerTarget.displayItems.map(pick => ({...pick, item: {...pick.item, capabilities}}))};
+  const granted = fake({selection: {active: true, summary: {count: 1, types: [{kind: 'show', count: 1}], library: {kind: 'single', libraryId: 'a'}, every: capabilities},
+    selectedKeys: ['key-0'], version: 1, registeredWindowCount: 1, registeredItemCount: 1, lastSectionId: 'library', target: grantedTarget}});
+  let queued: readonly string[] | undefined;
+  const allowed = createLibrarySelection({playSelection: granted.selection, enqueue: async input => {queued = input.items; assert.equal(input.isCurrent(), true);},
+    actions: {signal: new AbortController().signal, isCurrent: () => true} as never, reportError: () => {}});
+  assert.match(renderToStaticMarkup(createElement('div', null, allowed.toolbar)), />Add to queue</);
+  await allowed.queue('next');
+  assert.deepEqual(queued, ['s1']); // The actual granted parent, never its first episode.
 });
 
 
@@ -264,7 +275,7 @@ test('queue carries the captured model and route fences through asynchronous pre
     const life = new AbortController(), operation = {target};
     const original = fake({}, {captureOperation: () => operation,
       isOperationCurrent: (captured: unknown) => captured === operation && modelCurrent}).selection;
-    const host = {...original as object, getSnapshot: () => ({...(original as {getSnapshot: () => object}).getSnapshot(), selection: {target: displayedTarget}})};
+    const host = {...original as object, getSnapshot: () => {const snapshot = (original as {getSnapshot: () => {selection: Record<string, unknown>}}).getSnapshot();return {...snapshot, selection: {...snapshot.selection, target: displayedTarget}};}};
     const adapter = createLibrarySelection({playSelection: host as never,
       actions: {signal: life.signal, isCurrent: () => routeCurrent} as never, reportError: () => {},
       enqueue: async input => {

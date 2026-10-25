@@ -12,12 +12,14 @@ export type LibraryDeleteOptions = EntryActionPorts & Readonly<{signal: AbortSig
 const t = defaultI18n.t;
 export function LibraryDeleteSurface({session, options, onClose}: {session: LibraryEditorSession; options: LibraryDeleteOptions; onClose(): void}) {
   const anchor = useRef<HTMLElement | null>(session.anchor);
-  const producer = useMemo(() => new LibraryDeleteProducer(), [session]);
+  const owner = useMemo(() => ({session, producer: new LibraryDeleteProducer()}), [session]);
+  const producer = owner.producer;
   const targetCount = session.operation.target.mode === 'explicit' ? session.operation.target.items.length : session.operation.target.total;
   const tooMany = targetCount > 200;
   const [resolutionError, setResolutionError] = useState(false);
   const state = useSyncExternalStore(producer.subscribe, producer.getSnapshot, producer.getSnapshot);
   useEffect(() => {
+    const session = owner.session;
     const target = session.operation.target;
     if (tooMany || !session.current()) return;
     setResolutionError(false);
@@ -39,7 +41,7 @@ export function LibraryDeleteSurface({session, options, onClose}: {session: Libr
       check();combined.throwIfAborted();producer.open(targets, ports);
     })().catch(() => {if (!combined.aborted && session.current()) setResolutionError(true);});
     return () => {local.abort();producer.close();};
-  }, [producer, session, options, tooMany]);
+  }, [owner, producer, options, tooMany]);
   const close = () => {session.lifetime.abort(); producer.close(); onClose();};
   const run = () => {void (state.phase === 'uncertain' ? producer.retry() : producer.confirm());};
   if (state.phase === 'uncertain' || state.phase === 'error') return <Dialog open onOpenChange={open => {if (!open) close();}}

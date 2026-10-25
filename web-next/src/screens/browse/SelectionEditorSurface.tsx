@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useRef, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import type {BulkMetadataPreview} from '@core/home-selection/index.ts';
 import type {BulkReceipt} from '@core/metadata-bulk.ts';
@@ -21,7 +21,7 @@ export function SelectionEditorSurface({session, options, onKeepOnly, onClose}: 
   const types = session.operation.target.mode === 'explicit' ? [...session.operation.target.items.reduce((counts, pick) => counts.set(pick.item.kind, (counts.get(pick.item.kind) ?? 0) + 1), new Map<SelectionKind, number>())].map(([kind, count]) => ({kind, count})) : session.operation.target.summary.types;
   const mixed = types.length > 1, noBulkKind = types.length === 1 && !selectionKindHasBulkFields(types[0].kind);
   const flight = useRef(false), operation = useRef(session.operation);
-  const load = async () => {
+  const load = useCallback(async () => {
     if (mixed || noBulkKind || flight.current || !session.current()) return;
     flight.current = true; setBusy(true); setError(false);
     try {
@@ -29,8 +29,8 @@ export function SelectionEditorSurface({session, options, onKeepOnly, onClose}: 
       if (session.current()) {setTargets(display); setPreview(next);}
     } catch {if (session.current()) setError(true);}
     finally {flight.current = false; if (session.current()) setBusy(false);}
-  };
-  useEffect(() => {void load(); return () => session.lifetime.abort();}, [producer, session]);
+  }, [mixed, noBulkKind, producer, session]);
+  useEffect(() => {void load(); return () => session.lifetime.abort();}, [load, session]);
   const close = () => {session.lifetime.abort(); onClose();};
   const save = async (value: BulkEditorDraft) => {
     if (!preview || flight.current || !session.current()) return;

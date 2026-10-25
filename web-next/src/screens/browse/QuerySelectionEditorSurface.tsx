@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useRef, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import type {BulkMetadataPreview} from '@core/home-selection/index.ts';
 import type {HomeSelectionProgress} from '@core/home-selection/types.ts';
@@ -17,14 +17,14 @@ export function QuerySelectionEditorSurface({session, options, onClose}: {sessio
   const [preview, setPreview] = useState<BulkMetadataPreview>(), [draft, setDraft] = useState<BulkEditorDraft>(() => editorUiDraft({lockEdited: true}));
   const [busy, setBusy] = useState(true), [error, setError] = useState(false), [progress, setProgress] = useState<HomeSelectionProgress>();
   const [result, setResult] = useState<QueryEditorResult>();
-  const load = async () => {
+  const load = useCallback(async () => {
     if (flight.current || !session.current()) return;
     flight.current = true; setBusy(true); setError(false);
     try {const value = await producer.preview(session.operation); if (session.current()) setPreview(value);}
     catch {if (session.current()) setError(true);}
     finally {flight.current = false; if (session.current()) setBusy(false);}
-  };
-  useEffect(() => {void load(); return () => session.lifetime.abort();}, [producer, session]);
+  }, [producer, session]);
+  useEffect(() => {void load(); return () => session.lifetime.abort();}, [load, session]);
   const close = () => {session.lifetime.abort(); onClose();};
   const save = async (value: BulkEditorDraft) => {
     if (!preview || flight.current || !session.current()) return;
