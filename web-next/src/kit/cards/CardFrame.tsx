@@ -126,8 +126,8 @@ export function CardCaption({model, titleLines = 1, extraCaption, textPresentati
   return <span className={styles.caption}><span className={cx(styles.title, titleLines === 2 && styles.twoLines)}><CardText text={model.title} runs={textPresentation?.title} /></span><Facts parts={model.caption} className={styles.subtitle} presentation={textPresentation?.caption} />{extraCaption?.map((parts, index) => <Facts key={index} parts={parts} className={parts.some(part => part.role === 'reason') ? styles.reason : styles.subtitle} presentation={textPresentation?.extraCaption?.[index]} />)}</span>;
 }
 
-export function CardBadges({watched, completionLabel, isNew, progress}: {watched?: boolean; completionLabel?: string; isNew?: boolean; progress?: number}) {
-  return <>{isNew && <span className={styles.newBadge}>{defaultI18n.t('next.cards.new')}</span>}{watched && <span className={cx(styles.watched, !!completionLabel && styles.finished)} aria-label={completionLabel ?? defaultI18n.t('next.cards.watched')}><Icon name="i-check" size={16} />{completionLabel}</span>}<Progress value={progress} edge /></>;
+export function CardBadges({watched, completionLabel, watchedLabel, isNew, progress}: {watched?: boolean; completionLabel?: string; /** The accessible name for a bare check; video keeps "Watched". */ watchedLabel?: string; isNew?: boolean; progress?: number}) {
+  return <>{isNew && <span className={styles.newBadge}>{defaultI18n.t('next.cards.new')}</span>}{watched && <span className={cx(styles.watched, !!completionLabel && styles.finished)} aria-label={completionLabel ?? watchedLabel ?? defaultI18n.t('next.cards.watched')}><Icon name="i-check" size={16} />{completionLabel}</span>}<Progress value={progress} edge /></>;
 }
 
 export const tintStyle = (tint?: string): CSSProperties => tint ? {'--cards-tint': tint} as CSSProperties : {};
