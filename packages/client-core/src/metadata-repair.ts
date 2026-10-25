@@ -96,12 +96,12 @@ export class MetadataRepairService {
  private publish(state:RepairView){if(this.disposed)return;this.state=Object.freeze(state);for(const fn of this.listeners)fn();}
  cancel(){this.epoch++;this.controller?.abort();this.target=undefined;this.fence=undefined;this.publish({phase:'idle',data:null,error:null,preview:null});}
  dispose(){this.cancel();this.disposed=true;this.listeners.clear();}
- private async request(target:RepairTarget,method:string,body?:unknown,suffix='',upload=false):Promise<unknown>{
+ private async request(target:RepairTarget,method:string,body?:unknown,suffix='',upload=false,explicitPath?:string):Promise<unknown>{
   const c=new AbortController();this.controller?.abort();this.controller=c;
   let rejectAbort!:(reason:Error)=>void;const cancelled=new Promise<never>((_,reject)=>{rejectAbort=reject;});
   const abort=()=>rejectAbort(new Error('Repair request interrupted.'));c.signal.addEventListener('abort',abort,{once:true});
   const timer=setTimeout(()=>c.abort(),this.options.timeoutMs??15000);
-  try{return await Promise.race([upload ? this.options.api.requestMetadataUpload!(suffix,body as FormData,c.signal) : this.options.api.request<RouteResponse<"get_metadata_kind_id"> | RouteResponse<"get_metadata_kind_id_preview">>((suffix.startsWith('/preview')?encodedRoutePath('get_metadata_kind_id_preview',{kind:encodeURIComponent(target.kind),id:encodeURIComponent(target.id)})+suffix.slice(8):encodedRoutePath(method==='GET'?'get_metadata_kind_id':'post_metadata_kind_id',{kind:encodeURIComponent(target.kind),id:encodeURIComponent(target.id)})+suffix),method,body,c.signal),cancelled]);}
+  try{return await Promise.race([upload ? this.options.api.requestMetadataUpload!(suffix,body as FormData,c.signal) : this.options.api.request<RouteResponse<"get_metadata_kind_id"> | RouteResponse<"get_metadata_kind_id_preview">>(explicitPath??(suffix.startsWith('/preview')?encodedRoutePath('get_metadata_kind_id_preview',{kind:encodeURIComponent(target.kind),id:encodeURIComponent(target.id)})+suffix.slice(8):encodedRoutePath(method==='GET'?'get_metadata_kind_id':'post_metadata_kind_id',{kind:encodeURIComponent(target.kind),id:encodeURIComponent(target.id)})+suffix),method,body,c.signal),cancelled]);}
   finally{clearTimeout(timer);c.signal.removeEventListener('abort',abort);}
  }
  async load(target:RepairTarget){
@@ -129,6 +129,17 @@ export class MetadataRepairService {
   const attempt=this.getSnapshot();
   if(this.disposed||epoch!==this.epoch||this.target!==target||attempt.phase!=='saving'||attempt.data!==data)return false;
   try{const raw=await this.request(target,'POST',body,path,true);if(epoch!==this.epoch||this.disposed)return false;this.accept(raw,target);return true;}
+  catch(error){if(epoch===this.epoch&&!this.disposed)this.failure(error,true);return false;}
+ }
+ async removeUploadedArtwork(role:string,candidateId:string):Promise<boolean>{
+  const data=this.state.data,target=this.target;
+  if(this.state.phase!=='ready'||!data||!target)throw Error('Load current metadata before removing artwork.');
+  if(!data.artwork.candidates.some(candidate=>candidate.id===candidateId&&candidate.role===role&&candidate.provider==='upload'))throw Error('Select an uploaded image.');
+  const path=encodedRoutePath('delete_metadata_kind_id_art_role_upload_candidateId',{kind:encodeURIComponent(target.kind),id:encodeURIComponent(target.id),role:encodeURIComponent(role),candidateId:encodeURIComponent(candidateId)})+'?expectedRevision='+encodeURIComponent(data.revision);
+  const epoch=++this.epoch;this.publish({...this.state,phase:'saving',error:null});
+  const attempt=this.getSnapshot();
+  if(this.disposed||epoch!==this.epoch||this.target!==target||attempt.phase!=='saving'||attempt.data!==data)return false;
+  try{const raw=await this.request(target,'DELETE',undefined,'',false,path);if(epoch!==this.epoch||this.disposed)return false;this.accept(raw,target);return true;}
   catch(error){if(epoch===this.epoch&&!this.disposed)this.failure(error,true);return false;}
  }
  async preview(mergeId?:string):Promise<void>{
