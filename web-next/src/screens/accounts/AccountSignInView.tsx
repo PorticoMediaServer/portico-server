@@ -1,5 +1,6 @@
 import {useEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
+import {ApiError} from '@core/index.ts';
 import type {TakeAccountMove} from '../../route-registry-arrival';
 import type {TakeAccountReturn} from '../../route-registry-return';
 import {router} from '../../router';
@@ -16,6 +17,7 @@ import {canOpenShortInvitation} from './short-invitation-join';
 import {initializeAccountSignIn} from './sign-in-start';
 import {RequiredFactorDialogs} from './RequiredSetup';
 import {LocalPasswordRecoveryFlow} from './LocalPasswordRecoveryFlow';
+import {MemberMoveForm} from './MemberMoveForm';
 
 type RecoveryTarget = Readonly<{entry: BrowserAccountEntry; origin: string; serverId: string; pin: NonNullable<ReturnType<BrowserAccountEntry['getSnapshot']>['pin']>}>;
 
@@ -23,6 +25,7 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
   const state = useSyncExternalStore(entry.subscribe, entry.getSnapshot), input = useSyncExternalStore(form.subscribe, form.getSnapshot);
   const [error, setError] = useState<unknown>(), [initializing, setInitializing] = useState(initialize), [joining, setJoining] = useState(false), started = useRef(false), alive = useRef(true), joinOrigin = useRef<string | undefined>(undefined);
   const [recovery, setRecovery] = useState<RecoveryTarget>();
+  const [memberView, setMemberView] = useState<Readonly<{mode: 'old-password' | 'code'; target: RecoveryTarget}>>();
   const pageOrigin = initialOrigin ?? import.meta.env.VITE_SERVER_URL ?? location.origin;
   useEffect(() => {
     alive.current = true;
@@ -58,11 +61,13 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
     void entry.inspect(origin);
   };
   const reauthenticate = () => {
+    if (!alive.current || entry.getSnapshot() !== state || form.getSnapshot() !== input) return;
     setRecovery(undefined);
+    setMemberView(undefined);
     const origin = entry.getSnapshot().origin ?? pageOrigin;
     form.clear(); setError(undefined); void entry.inspect(origin);
   };
-  const cancel = () => {form.clear(); entry.cancel(); if (onCancel) onCancel(); else void router.navigate({to: '/servers'});};
+  const cancel = () => {if (!alive.current || entry.getSnapshot() !== state || form.getSnapshot() !== input) return;form.clear(); entry.cancel(); if (onCancel) onCancel(); else void router.navigate({to: '/servers'});};
   const busy = state.busy || input.busy, failure = state.error ?? error;
   const openRecovery = () => {
     if (!alive.current || busy || joining || initializing || entry.getSnapshot() !== state || form.getSnapshot() !== input
@@ -72,24 +77,51 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
   };
   const recoveryCurrent = recovery?.entry === entry && recovery.origin === state.origin && recovery.serverId === state.server?.id
     && recovery.pin === state.pin && state.server?.signIn === 'local' && !state.invitation;
+  const currentMember = memberView?.target.entry === entry && memberView.target.origin === state.origin && memberView.target.serverId === state.server?.id
+    && memberView.target.pin === state.pin && !state.invitation;
+  const openMember = (mode: 'old-password' | 'code') => {
+    if (!alive.current || busy || initializing || joining || entry.getSnapshot() !== state || form.getSnapshot() !== input || !state.origin || !state.pin || !state.server || state.invitation) return;
+    if (mode === 'old-password' ? state.phase !== 'portico' || state.server.move !== 'to_portico' : state.phase !== 'password' || state.server.move !== 'to_local') return;
+    form.clear(); setRecovery(undefined); setError(undefined);
+    setMemberView({mode, target: {entry, origin: state.origin, serverId: state.server.id, pin: state.pin}});
+  };
+  const runMove = (command: () => Promise<unknown>) => {
+    if (!alive.current || busy || entry.getSnapshot() !== state || form.getSnapshot() !== input || state.invitation) return;
+    void command().catch(failure => {if (alive.current && entry.getSnapshot().origin === state.origin && entry.getSnapshot().pin === state.pin) setError(failure);});
+  };
+  const continuePortico = () => {
+    const epoch = input.inputEpoch, serverId = state.server?.id, origin = state.origin, pin = state.pin, phase = state.phase;
+    if (!serverId || busy || !alive.current || entry.getSnapshot() !== state || form.getSnapshot() !== input || phase !== 'portico' && phase !== 'move-portico') return;
+    void entry.preparePorticoSignIn(browserAccountOrigin(import.meta.env, location)).then(url => {
+      const current = entry.getSnapshot();
+      if (url && alive.current && form.getSnapshot().inputEpoch === epoch && current.phase === phase && current.server?.id === serverId && current.origin === origin && current.pin === pin) location.assign(url);
+    }).catch(failure => {if (alive.current && form.getSnapshot().inputEpoch === epoch && entry.getSnapshot().origin === origin && entry.getSnapshot().pin === pin) setError(failure);});
+  };
   if (joining) return <ShortInvitationEntry onBack={leaveJoin} onJoined={destination => location.assign(destination.origin)} />;
   if (input.factor) return <RequiredFactorDialogs form={input.factor} error={failure} onCancel={cancel} onDone={() => {form.clear(); void router.navigate({to: '/profiles', replace: true});}} />;
   if (state.phase === 'password-change') return <RequiredPasswordDialog key={input.inputEpoch} busy={busy} error={failure}
     onChange={(current, next) => {form.clear(); void entry.changePassword(current, next);}} onCancel={cancel} />;
   if (state.phase === 'challenge') return <ServerChallenge key={input.inputEpoch} busy={busy} error={failure} onCode={code => void form.completeChallenge(code)} onBack={reauthenticate} />;
+  if (failure instanceof ApiError && failure.code === 'move_collision' && failure.current) return <AuthStage>
+    <h1>{defaultI18n.t('accounts.move.collision')}</h1>
+    <p>{defaultI18n.t('accounts.move.collisionBody', {server: failure.current.serverName, username: failure.current.existingUsername})}</p>
+    <Button variant="primary" disabled={busy} onClick={reauthenticate}>{defaultI18n.t('accounts.move.differentAccount')}</Button>
+    <Button variant="ghost" disabled={busy} onClick={cancel}>{defaultI18n.t('action.back')}</Button>
+  </AuthStage>;
+  const moveMode = state.phase === 'move-local' ? 'local' : state.phase === 'move-portico' ? 'portico' : state.phase === 'move-code' ? 'code'
+    : memberView && currentMember && (memberView.mode === 'old-password' ? state.phase === 'portico' : state.phase === 'password') ? memberView.mode : undefined;
+  if (moveMode && state.server && !state.invitation) return <MemberMoveForm key={`${moveMode}:${input.inputEpoch}`} mode={moveMode} serverName={state.server.name}
+    initialUsername={state.movePreview?.username ?? input.username} busy={busy} error={failure} onBack={reauthenticate}
+    onCode={code => runMove(() => entry.previewMoveCode(code))} onOldPassword={(username, password) => runMove(() => entry.proveLocalMovePassword(username, password))}
+    onLocal={(username, password) => runMove(() => form.redeemLocalMove(username, password))} onPortico={continuePortico}/>;
   if (recoveryCurrent && (state.phase === 'password' || state.phase === 'owner-reset-password')) return <LocalPasswordRecoveryFlow entry={entry} form={form}
     onBack={() => {setRecovery(undefined); setError(undefined); form.clear();}} />;
   if (state.phase === 'password' && state.server?.signIn === 'local') return <LocalServerSignIn key={input.inputEpoch} serverName={state.server.name} initialUsername={input.username}
     busy={busy} error={failure} onSignIn={(username, password) => {setError(undefined); void form.signIn(username, password);}} onJoin={join}
-    onForgotPassword={state.invitation ? undefined : openRecovery} />;
-  if (state.phase === 'portico' && state.server?.signIn === 'portico') return <PorticoServerSignIn serverName={state.server.name} busy={busy} error={failure} onContinue={() => {
-    const epoch = input.inputEpoch, serverId = state.server?.id, origin = state.origin;
-    if (!serverId) return;
-    void entry.preparePorticoSignIn(browserAccountOrigin(import.meta.env, location)).then(url => {
-      const current = entry.getSnapshot();
-      if (url && alive.current && form.getSnapshot().inputEpoch === epoch && current.phase === 'portico' && current.server?.id === serverId && current.origin === origin) location.assign(url);
-    }).catch(failure => {if (alive.current) setError(failure);});
-  }} />;
+    onForgotPassword={state.invitation ? undefined : openRecovery}
+    onMoveCode={state.server.move === 'to_local' && !state.invitation ? () => openMember('code') : undefined} />;
+  if (state.phase === 'portico' && state.server?.signIn === 'portico') return <PorticoServerSignIn serverName={state.server.name} busy={busy} error={failure} onContinue={continuePortico}
+    moving={state.server.move === 'to_portico' && !state.invitation} onOldPassword={() => openMember('old-password')}/>;
   return <AuthStage legal={false}><AuthError error={failure} />{Boolean(failure) && <>
     <Button onClick={reauthenticate}>{defaultI18n.t('action.tryAgain')}</Button>
     <Button onClick={cancel}>{defaultI18n.t('settings.switchServer')}</Button>
