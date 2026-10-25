@@ -183,6 +183,9 @@ func (d Dependencies) savedContent(w http.ResponseWriter, r *http.Request) {
 			}
 		} else {
 			out, composeErr = cat.Saved(request, libraries)
+			if composeErr == nil {
+				composeErr = d.projectSavedActions(cat.Context(), p, viewer, cat, savedContentEntries(&out))
+			}
 		}
 		return composeErr
 	})
@@ -190,7 +193,7 @@ func (d Dependencies) savedContent(w http.ResponseWriter, r *http.Request) {
 		failure(w, e)
 		return
 	}
-	after, e := d.homeFenceAfter(r, p)
+	after, e := d.homeActionFenceAfter(r, p)
 	if e != nil {
 		failure(w, e)
 		return

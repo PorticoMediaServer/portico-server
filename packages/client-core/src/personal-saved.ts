@@ -1,3 +1,4 @@
+import {validateHomeEntry} from './home.ts';
 import type {RouteResponse} from "../../contracts/src/routes.ts";
 import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
 import {wireDurations} from './wire-units.ts';
@@ -237,8 +238,14 @@ export class PersonalSavedService{
      // the page it returns rather than re-deriving membership from the query.
      const page=parseBrowseResult(raw.browse);
      if(page.pivot!==r.definition!.pivot)bad();
-     patch.browse=page;patch.entries=page.entries.map(media=>({id:media.id,hidden:false,media}));patch.nextCursor=page.pageInfo.nextCursor;
-    }else{patch.entries=distinct(keepReadable('personal-saved','entries',rows(raw.entries),e=>{if(!obj(e)||!id(e.id)||typeof e.hidden!=='boolean')bad();return {id:e.id,hidden:e.hidden,...(!e.hidden?{media:validateContentEntry(e.media)}:{})};}),'entries');}
+     if(!obj(raw.browse)||!Array.isArray(raw.browse.entries))bad();
+     const offered=raw.browse.entries;
+     patch.browse=page;patch.entries=page.entries.map(media=>{
+      const original=offered.find(value=>obj(value)&&value.id===media.id&&value.kind===media.kind&&value.libraryId===media.libraryId);
+      if(!obj(original))bad();
+      return {id:media.id,hidden:false,media:validateHomeEntry({...media,homeActions:original.homeActions})};
+     });patch.nextCursor=page.pageInfo.nextCursor;
+    }else{patch.entries=distinct(keepReadable('personal-saved','entries',rows(raw.entries),e=>{if(!obj(e)||!id(e.id)||typeof e.hidden!=='boolean')bad();return {id:e.id,hidden:e.hidden,...(!e.hidden?{media:validateHomeEntry(e.media)}:{})};}),'entries');}
    }else{
     if(raw.serverId!==this.scope.serverId||!id(raw.viewerFence)||!num(raw.revision))bad();patch.viewerFence=raw.viewerFence;patch.revision=raw.revision;
     if(route.view==='history')patch.entries=distinct(keepReadable('personal-saved','history',rows(raw.entries),e=>{e=wireDurations(e,{positionSeconds:'positionMs'});if(!obj(e)||!id(e.id)||!str(e.updatedAt,128)||typeof e.positionSeconds!=='number'||!Number.isFinite(e.positionSeconds)||e.positionSeconds<0||typeof e.completed!=='boolean')bad();return {id:e.id,hidden:false,media:validateContentEntry(e.media),updatedAt:e.updatedAt,positionSeconds:e.positionSeconds,completed:e.completed};}),'history');

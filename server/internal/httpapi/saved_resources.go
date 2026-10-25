@@ -184,9 +184,37 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		out, e := d.Catalog.WithContext(r.Context()).SavedResourceContent(viewer, d.Identity.ID(), fence, r.PathValue("id"), resourceActor(p), r.URL.Query().Get("cursor"), limit)
+		var out catalog.SavedResourceContent
+		e = d.compose(r, viewer.Restrictions, func(cat *catalog.Service) error {
+			var readErr error
+			out, readErr = cat.SavedResourceContent(viewer, d.Identity.ID(), fence, r.PathValue("id"), resourceActor(p), r.URL.Query().Get("cursor"), limit)
+			if readErr != nil {
+				return readErr
+			}
+			entries := make([]*catalog.ContentEntry, 0, len(out.Entries))
+			for i := range out.Entries {
+				if !out.Entries[i].Hidden {
+					entries = append(entries, out.Entries[i].Media)
+				}
+			}
+			if out.Browse != nil {
+				for i := range out.Browse.Entries {
+					entries = append(entries, &out.Browse.Entries[i])
+				}
+			}
+			return d.projectSavedActions(cat.Context(), p, viewer, cat, entries)
+		})
 		if e != nil {
 			failure(w, e)
+			return
+		}
+		after, e := d.homeActionFenceAfter(r, p)
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		if after != fence {
+			failure(w, catalog.ErrStaleContinuation)
 			return
 		}
 		d.savedResponse(w, r, fence, out)

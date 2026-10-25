@@ -74,12 +74,20 @@ func (d Dependencies) playlistRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		out, e := d.Catalog.WithContext(r.Context()).PlaylistContent(catalog.ContentRequest{Viewer: viewer, ServerID: d.Identity.ID(), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, View: "playlist", EntityID: r.PathValue("id"), Limit: limit, Cursor: q.Get("cursor")}, resourceActor(p), libraries)
+		var out catalog.ContentEnvelope
+		e = d.compose(r, viewer.Restrictions, func(cat *catalog.Service) error {
+			var readErr error
+			out, readErr = cat.PlaylistContent(catalog.ContentRequest{Viewer: viewer, ServerID: d.Identity.ID(), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, View: "playlist", EntityID: r.PathValue("id"), Limit: limit, Cursor: q.Get("cursor")}, resourceActor(p), libraries)
+			if readErr != nil {
+				return readErr
+			}
+			return d.projectSavedActions(cat.Context(), p, viewer, cat, savedContentEntries(&out))
+		})
 		if e != nil {
 			failure(w, e)
 			return
 		}
-		_, _, after, e := d.homeScope(r)
+		after, e := d.homeActionFenceAfter(r, p)
 		if e != nil {
 			failure(w, e)
 			return
