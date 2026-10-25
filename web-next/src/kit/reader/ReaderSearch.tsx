@@ -6,7 +6,8 @@ export type ReaderSearchHit = Readonly<{
   id: string; chapter?: string; page?: string;
   /** Literal renderer result text, split into matching spans; never HTML from a book. */
   context: readonly Readonly<{text: string; match?: boolean}>[];
-  onNavigate: () => void;
+  /** Absent when the exact excerpt has no verified navigation location. */
+  onNavigate?: () => void;
 }>;
 export type ReaderSearchProps = Readonly<{
   query: string; onQuery: (value: string) => void; hits: readonly ReaderSearchHit[];
@@ -27,7 +28,7 @@ export function ReaderSearch({query, onQuery, hits, current, loading, resultSumm
     </div>
     <div className={styles.summary} id={`${id}-summary`} role="status">{resultSummary}{onStep && hits.length > 0 && <span className={styles.keys} aria-hidden="true"><kbd>↑</kbd><kbd>↓</kbd>{copy.move}</span>}</div>
     <div className={styles.results} aria-busy={loading}>{hits.map(hit => <button key={hit.id} type="button" className={styles.hit} data-current={hit.id === current || undefined}
-      aria-current={hit.id === current ? 'location' : undefined} onClick={hit.onNavigate}>
+      aria-current={hit.id === current ? 'location' : undefined} disabled={!hit.onNavigate} onClick={hit.onNavigate}>
       {(hit.chapter || hit.page) && <span className={styles.where}>{hit.chapter && <span>{hit.chapter}</span>}{hit.page && <span>{hit.page}</span>}</span>}
       <p>{hit.context.map((span, index) => span.match ? <mark key={index}>{span.text}</mark> : span.text)}</p>
     </button>)}</div>

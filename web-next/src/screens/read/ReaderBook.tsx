@@ -87,7 +87,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, o
   const listSignal=annotationPanel.current.signal;
   if(!active)annotationPanel.current.abort();
   useLayoutEffect(()=>{const original=annotationPanel.current;return()=>original.abort();},[]);
-  const [hits, setHits] = useState<readonly ReaderSearchResult[]>([]), [searching, setSearching] = useState(false), [searchComplete, setSearchComplete] = useState(false), [currentHit, setCurrentHit] = useState<string>();
+  const [hits, setHits] = useState<readonly ReaderSearchResult[]>([]), [searching, setSearching] = useState(false), [currentHit, setCurrentHit] = useState<string>();
   // phone-read 14: taught once per browser, never re-shown after Got it.
   const hintKey = 'portico.reader.tapZonesHint.v1';
   const [hint, setHint] = useState(() => {try {return !globalThis.localStorage?.getItem(hintKey);} catch {return true;}});
@@ -143,7 +143,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, o
   };
   useEffect(() => {
     const scope = searchScope;
-    setCurrentHit(undefined); setSearchComplete(false); setHitsQuery(query); setHitsScope(scope);
+    setCurrentHit(undefined); setHitsQuery(query); setHitsScope(scope);
     if (!scope || searchScopeRef.current !== scope || scope.query !== query || !scope.active || scope.abort.signal.aborted || !active || !query.trim()) {setHits([]); setSearching(false); return;}
     const life = new AbortController(), signal = AbortSignal.any([life.signal, scope.abort.signal]); let queryCurrent = true;
     setSearching(true); setHits([]);
@@ -153,16 +153,15 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, o
         if (!queryCurrent || searchScopeRef.current !== scope || signal.aborted || queryRef.current !== query || !authority.isCurrent()) return;
         found.push(hit); setHits([...found]);
       }
-      // A rejected or retired iterator never establishes a complete result count.
-      // At the core's limit, exhaustion is bounded rather than a book-wide total.
-      if (queryCurrent && searchScopeRef.current === scope && queryRef.current === query && authority.isCurrent() && !signal.aborted && found.length < 100) setSearchComplete(true);
+      // Iterator exhaustion can be a bounded indexed-search stop. It does not
+      // establish a complete book-wide count or a no-matches claim.
     })().catch(error => {if (queryCurrent && searchScopeRef.current === scope && !signal.aborted && authority.isCurrent()) reportError(error);})
       .finally(() => {if (queryCurrent && searchScopeRef.current === scope) setSearching(false);});
     return () => {queryCurrent = false; life.abort();};
   }, [searchScope, controller, authority, active, query, reportError]);
   const openSearchHit = (hit: ReaderSearchResult) => {
     const scope = searchScope, current = controller.getSnapshot();
-    if (!scope || searchScopeRef.current !== scope || scope.abort.signal.aborted || !activeRef.current || searchMove.current || queryRef.current !== query || !visibleHits.includes(hit) || !active || !authority.isCurrent()
+    if (!hit.location || !scope || searchScopeRef.current !== scope || scope.abort.signal.aborted || !activeRef.current || searchMove.current || queryRef.current !== query || !visibleHits.includes(hit) || !active || !authority.isCurrent()
       || publication.signal.aborted || current.status !== 'ready' || current.sourceId !== publication.source.id
       || current.sourceRevision !== publication.source.revision) return;
     const operation = {}; searchMove.current = operation;
@@ -177,8 +176,11 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, o
   };
   const stepSearch = (direction: 'previous' | 'next') => {
     if (queryRef.current !== query) return;
-    const index = readingSearchStepIndex(visibleHits.length, visibleHits.findIndex(hit => hit.id === currentHit), direction);
-    const next = index === undefined ? undefined : visibleHits[index];
+    // Display-only indexed excerpts stay visible, but stepping can only choose
+    // hits whose exact source/quote mapping produced a real location.
+    const navigable = visibleHits.filter(hit => hit.location !== undefined);
+    const index = readingSearchStepIndex(navigable.length, navigable.findIndex(hit => hit.id === currentHit), direction);
+    const next = index === undefined ? undefined : navigable[index];
     if (next) openSearchHit(next);
   };
   const currentContentsId = snapshot.status === 'ready' && snapshot.sourceId === publication.source.id && snapshot.sourceRevision === publication.source.revision
@@ -191,7 +193,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, o
     const match = hit.match;
     const context = !match ? [{text: hit.excerpt}] : [{text: hit.excerpt.slice(0, match.start)},
       {text: hit.excerpt.slice(match.start, match.start + match.length), match: true}, {text: hit.excerpt.slice(match.start + match.length)}];
-    return {id: hit.id, chapter: hit.chapter, page: hit.location.pageLabel, context, onNavigate: () => openSearchHit(hit)};
+    return {id: hit.id, chapter: hit.chapter, page: hit.location?.pageLabel, context, ...(hit.location ? {onNavigate: () => openSearchHit(hit)} : {})};
   });
   const annotationPane = notes.service && (fixedPane === 'bookmarks' || fixedPane === 'highlights') ? fixedPane : undefined;
   const panelContent = !active ? undefined : panel === 'contents' ? <ReaderPanel label={t('next.reader.contents')}
@@ -205,17 +207,15 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, o
   </ReaderPanel>
     : panel === 'search' ? <ReaderPanel label={t('next.reader.search')} tabs={[{id: 'search', label: t('next.reader.search')}]}
       selected="search" onSelect={() => {}} onClose={() => setPanel(undefined)}><ReaderSearch query={query} onQuery={changeQuery} hits={searchHits} current={currentHit} loading={searching}
-        resultSummary={hitsQuery === query && query.trim() && !searching
-          ? searchComplete ? t('next.reader.matches', {count: visibleHits.length})
-            : visibleHits.length > 0 ? t('next.reader.matchesShown', {count: visibleHits.length}) : undefined
-          : undefined}
+        resultSummary={hitsQuery === query && query.trim() && !searching && visibleHits.length > 0
+          ? t('next.reader.matchesShown', {count: visibleHits.length}) : undefined}
         onSearchAll={onSearchAll && query.trim() ? () => {
           const current = controller.getSnapshot(), value = query.trim();
           if (!value || !active || !authority.isCurrent() || publication.signal.aborted || current.status !== 'ready'
             || current.sourceId !== publication.source.id || current.sourceRevision !== publication.source.revision) return;
           onSearchAll(value);
         } : undefined}
-        onStep={stepSearch}
+        onStep={visibleHits.some(hit => hit.location !== undefined) ? stepSearch : undefined}
         copy={{search: t('next.reader.search'), clear: t('next.reader.clear'), move: t('next.reader.move'), wholeWords: t('next.reader.wholeWords'), searchAll: t('next.reader.searchAll')}}/></ReaderPanel>
       : panel === 'display' ? <ReadingDisplay controller={controller} authority={authority} copy={readingDisplayCopy(defaultI18n, presentation, 7)}
         scale={{min: 1, max: 7, step: 1, ticks: [1, 2, 3, 4, 5, 6, 7]}} presentation={presentation} popover={layout.displayPopover} label={t('next.reader.display')}
