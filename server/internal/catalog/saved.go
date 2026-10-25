@@ -29,7 +29,7 @@ var savedNumericSorts = map[string]bool{"year": true, "duration": true, "progres
 var savedFilters = map[string]string{
 	"all":        ``,
 	"unwatched":  ` AND ` + personalstate.CompactSQL("p.profile_id", "i.id") + `=0`,
-	"inProgress": ` AND ` + personalstate.CompactSQL("p.profile_id", "i.id") + `=0 AND COALESCE((SELECT g.position FROM progress g WHERE g.profile_id=p.profile_id AND g.item_id=i.id),0)>0`,
+	"inProgress": ` AND ` + personalstate.CompactSQL("p.profile_id", "i.id") + `=0 AND ((i.kind NOT IN(20,21) AND COALESCE((SELECT g.position FROM progress g WHERE g.profile_id=p.profile_id AND g.item_id=i.id),0)>0) OR (i.kind IN(20,21) AND ` + savedReadingInProgressSQL() + `))`,
 	"watched":    ` AND ` + personalstate.CompactSQL("p.profile_id", "i.id") + `=1`,
 	"favorites":  ` AND p.favorite=1`,
 }
@@ -94,6 +94,10 @@ func (s *Service) Saved(r ContentRequest, libraries []string) (ContentEnvelope, 
 		heading = "Favorites"
 		flag = "favorite"
 	}
+	readingScope, e := s.savedReading(r, libraries, flag)
+	if e != nil {
+		return out, e
+	}
 	out.Heading = ContentHeading{Key: "saved." + r.View, Fallback: heading}
 	// The published query echoes the selected filter alone. The cursor scope below
 	// keeps filter:shape composite so a page cannot cross shape boundaries.
@@ -104,23 +108,25 @@ func (s *Service) Saved(r ContentRequest, libraries []string) (ContentEnvelope, 
 	}
 	out.Revision = rev
 	scope := cursorScope{Profile: r.Profile, View: r.View, Section: r.View, Viewer: r.ViewerFence, Sort: r.Sort, Direction: r.Direction, Category: r.Filter + ":" + r.Shape, Limit: r.Limit}
+	scope.Search = readingScope.fence
 	raw, _ := json.Marshal(libraries)
-	// A saved title is a playable item (movie, episode, song, book file) or a title that holds
+	// A saved title is a playable item, an admitted Reading leaf, or a title that holds
 	// them (show, artist, album, book): the flag sits in the same personal_items row either way.
 	// An item is visible by its own rule; a container when it has a visible member.
 	base := ` FROM personal_items p CROSS JOIN catalog_entities i ON i.id=p.item_id LEFT JOIN catalog_item_details detail ON detail.entity_id=i.id WHERE p.profile_id=? AND p.` + flag + `=1 AND i.retired=0 AND i.library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(SELECT value FROM json_each(?)) AND retired=0)`
 	baseArgs := []any{r.Profile, string(raw)}
 	visibility, visibleArgs := r.Viewer.itemVisibilitySQL("i.id")
 	containers, containerArgs := r.Viewer.entityVisibilitySQL("i.id", "(SELECT library_id FROM catalog_libraries WHERE id=i.library_id)")
-	base += ` AND ((i.kind IN(1,4,7,9) AND ` + visibility + `) OR (i.kind IN(2,5,6,8) AND ` + containers + `))`
-	baseArgs = append(append(baseArgs, visibleArgs...), containerArgs...)
+	base += ` AND ((i.kind IN(1,4,7,9) AND ` + visibility + `) OR (i.kind IN(2,5,6,8) AND ` + containers + `) OR (i.kind IN(20,21) AND ` + visibility + ` AND ` + readingScope.predicate + `))`
+	baseArgs = append(append(append(baseArgs, visibleArgs...), containerArgs...), visibleArgs...)
+	baseArgs = append(baseArgs, readingScope.args...)
 	shapeCounts := &SavedShapeCounts{}
-	if e = s.read().QueryRow(`SELECT COALESCE(sum(i.kind IN(1,2,3,4)),0),COALESCE(sum(i.kind IN(5,6,7,8,9,13)),0)`+base, baseArgs...).Scan(&shapeCounts.Posters, &shapeCounts.Squares); e != nil {
+	if e = s.read().QueryRow(`SELECT COALESCE(sum(i.kind IN(1,2,3,4,20,21)),0),COALESCE(sum(i.kind IN(5,6,7,8,9,13)),0)`+base, baseArgs...).Scan(&shapeCounts.Posters, &shapeCounts.Squares); e != nil {
 		return out, e
 	}
 	out.ShapeCounts = shapeCounts
 	if r.Shape == "posters" {
-		base += ` AND i.kind IN(1,2,3,4)`
+		base += ` AND i.kind IN(1,2,3,4,20,21)`
 	}
 	if r.Shape == "squares" {
 		base += ` AND i.kind IN(5,6,7,8,9,13)`
@@ -218,7 +224,7 @@ func (s *Service) Saved(r ContentRequest, libraries []string) (ContentEnvelope, 
 	}
 	// The same entries a recommendation row gives these ids: items with their state, containers
 	// with their own art (or a member's).
-	entries, e := s.WithRecommendationRestrictions(r.Viewer.EffectiveRestrictions()).homeEngineEntries(r.Profile, ids)
+	entries, e := s.WithRecommendationRestrictions(r.Viewer.EffectiveRestrictions()).savedEntries(r.Profile, ids, readingScope)
 	if e != nil {
 		return out, e
 	}

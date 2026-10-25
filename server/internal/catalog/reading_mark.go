@@ -15,7 +15,7 @@ type ReadingMark struct {
 	Revision int64  `json:"revision"`
 }
 
-func readingMarkTarget(tx *sql.Tx, entity int64) error {
+func readingPersonalTarget(tx *sql.Tx, entity int64) error {
 	var found int
 	return tx.QueryRow(`SELECT 1 FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind
  JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries l ON l.id=cl.library_id
@@ -25,8 +25,8 @@ func readingMarkTarget(tx *sql.Tx, entity int64) error {
 
 // The caller must re-admit the original principal and exact target inside the
 // same snapshot. A nil guard never grants access to personal Reading state.
-func (s *Service) ReadingMark(profile, item string, authorize func(*sql.Tx) error) (ReadingMark, error) {
-	var out ReadingMark
+func (s *Service) readingPersonal(profile, item string, authorize func(*sql.Tx) error) (PersonalState, error) {
+	var out PersonalState
 	if authorize == nil {
 		return out, sql.ErrNoRows
 	}
@@ -39,16 +39,20 @@ func (s *Service) ReadingMark(profile, item string, authorize func(*sql.Tx) erro
 		if err != nil {
 			return err
 		}
-		if err = readingMarkTarget(tx, entity); err != nil {
+		if err = readingPersonalTarget(tx, entity); err != nil {
 			return err
 		}
-		state, err := readPersonalByID(tx, profile, entity, personalstate.SQL("?", "?"))
-		if err == nil {
-			out = ReadingMark{ItemID: item, Read: state.Watched, Revision: state.Revision}
-		}
+		out, err = readPersonalByID(tx, profile, entity, personalstate.SQL("?", "?"))
 		return err
 	})
 	return out, err
+}
+func (s *Service) ReadingMark(profile, item string, authorize func(*sql.Tx) error) (ReadingMark, error) {
+	state, err := s.readingPersonal(profile, item, authorize)
+	if err != nil {
+		return ReadingMark{}, err
+	}
+	return ReadingMark{ItemID: item, Read: state.Watched, Revision: state.Revision}, nil
 }
 
 // Reuse the original CAS, immutable-operation receipts and explicit watched
