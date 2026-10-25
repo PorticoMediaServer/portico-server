@@ -515,55 +515,82 @@ const logoUploadEnvelope = 1 << 20
 
 func readLogoUpload(w http.ResponseWriter, r *http.Request) ([]byte, *int64, string, error) {
 	r.Body = http.MaxBytesReader(w, r.Body, administration.LogoUploadBytes+logoUploadEnvelope)
-	if err := r.ParseMultipartForm(logoUploadEnvelope); err != nil {
-		return nil, nil, "", administration.ErrImage
-	}
-	defer func() {
-		if r.MultipartForm != nil {
-			_ = r.MultipartForm.RemoveAll()
-		}
-	}()
-	file, header, err := r.FormFile("file")
+	reader, err := r.MultipartReader()
 	if err != nil {
 		return nil, nil, "", administration.ErrImage
 	}
-	defer file.Close()
-	raw, err := io.ReadAll(io.LimitReader(file, administration.LogoUploadBytes+1))
-	if err != nil || len(raw) > administration.LogoUploadBytes {
-		return nil, nil, "", administration.ErrImage
-	}
-	// Native pickers return bounded JPEG bytes as base64. Decode only this
-	// explicit file-part encoding; the same image proof and digest below still
-	// operate on the original image bytes. The outer encoded body limit remains.
-	encodings := header.Header.Values("Content-Transfer-Encoding")
-	if len(encodings) > 1 {
-		return nil, nil, "", administration.ErrImage
-	}
-	switch strings.ToLower(strings.TrimSpace(header.Header.Get("Content-Transfer-Encoding"))) {
-	case "", "binary", "8bit":
-	case "base64":
-		if strings.ContainsAny(string(raw), "\r\n") {
-			return nil, nil, "", administration.ErrImage
-		}
-		raw, err = base64.StdEncoding.Strict().DecodeString(string(raw))
-		if err != nil || len(raw) == 0 || len(raw) > administration.LogoUploadBytes {
-			return nil, nil, "", administration.ErrImage
-		}
-	default:
-		return nil, nil, "", administration.ErrImage
-	}
+	var raw []byte
 	var revision *int64
-	if values, present := r.MultipartForm.Value["expectedRevision"]; present {
-		if len(values) != 1 {
+	var operationID string
+	seen := make(map[string]bool)
+	controlBytes := int64(0)
+	for {
+		// NextRawPart preserves the original transfer-encoding header, including
+		// quoted-printable and duplicate values. Never decode before admission.
+		part, err := reader.NextRawPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, nil, "", administration.ErrImage
+		}
+		name := part.FormName()
+		if (name != "file" && name != "expectedRevision" && name != "operationId") || seen[name] || len(part.Header.Values("Content-Disposition")) != 1 {
 			return nil, nil, "", administration.ErrInput
 		}
-		value, err := strconv.ParseInt(values[0], 10, 64)
-		if err != nil || value < 0 {
+		seen[name] = true
+		encodings := part.Header.Values("Content-Transfer-Encoding")
+		if len(encodings) > 1 {
+			return nil, nil, "", administration.ErrImage
+		}
+		encoding := strings.ToLower(strings.TrimSpace(part.Header.Get("Content-Transfer-Encoding")))
+		if encoding != "" && encoding != "binary" && encoding != "8bit" && (encoding != "base64" || name != "file") {
+			return nil, nil, "", administration.ErrImage
+		}
+		limit := int64(logoUploadEnvelope) - controlBytes
+		if name == "file" {
+			if part.FileName() == "" {
+				return nil, nil, "", administration.ErrImage
+			}
+			limit = administration.LogoUploadBytes
+		} else if part.FileName() != "" {
 			return nil, nil, "", administration.ErrInput
 		}
-		revision = &value
+		value, err := io.ReadAll(io.LimitReader(part, limit+1))
+		if err != nil || int64(len(value)) > limit {
+			return nil, nil, "", administration.ErrImage
+		}
+		if err := part.Close(); err != nil {
+			return nil, nil, "", administration.ErrImage
+		}
+		if name == "file" {
+			raw = value
+			if encoding == "base64" {
+				if strings.ContainsAny(string(raw), "\r\n") {
+					return nil, nil, "", administration.ErrImage
+				}
+				raw, err = base64.StdEncoding.Strict().DecodeString(string(raw))
+				if err != nil || len(raw) == 0 || len(raw) > administration.LogoUploadBytes {
+					return nil, nil, "", administration.ErrImage
+				}
+			}
+		} else {
+			controlBytes += int64(len(value))
+			if name == "operationId" {
+				operationID = string(value)
+			} else {
+				number, err := strconv.ParseInt(string(value), 10, 64)
+				if err != nil || number < 0 {
+					return nil, nil, "", administration.ErrInput
+				}
+				revision = &number
+			}
+		}
 	}
-	return raw, revision, r.FormValue("operationId"), nil
+	if !seen["file"] {
+		return nil, nil, "", administration.ErrImage
+	}
+	return raw, revision, operationID, nil
 }
 
 // ---------------------------------------------------------------- maintenance
