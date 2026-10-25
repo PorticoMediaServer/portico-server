@@ -8,6 +8,8 @@ import {installationIdentity} from '@core/installation.ts';
 import {castDisplayName} from '../../platform/cast';
 import {routeBody, routePath} from '../../../../packages/contracts/src/routes.ts';
 
+const DIRECTORY_PATH = '/v1/receivers';
+const ROLLBACK = /\/v1\/handoffs\/[^/]+\/rollback$/;
 const PLATFORMS: Readonly<Record<string, string>> = {appletv: 'Apple TV', tvos: 'Apple TV', ios: 'iPhone', ipados: 'iPad', androidtv: 'Android TV', firetv: 'Fire TV', android: 'Android', web: 'Web', windows: 'Windows', macos: 'Mac', linux: 'Linux'};
 
 export type WatchReceiverApi = Readonly<{request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>}>;
@@ -30,13 +32,32 @@ export class WatchReceivers implements PlayOnReceiversPort {
     // the rows stay hidden from a send rather than inventing a device identity.
     this.deviceId = identity?.installationId ?? '';
     this.handoff = new HandoffController({
-      api: {request: (path, method, body, signal) => {
+      api: {request: async (path, method, body, signal) => {
+        const run = (): void => {
+          const flight = this.flight;
+          if (!flight || !this.options.isCurrent()) throw new DOMException('Playback run retired', 'AbortError');
+          const live = this.options.runtime.getSnapshot();
+          if (live.disposed || live.authority !== flight.guard.authority || !live.fence || !sameFence(live.fence, flight.guard.fence)) throw new DOMException('Playback run retired', 'AbortError');
+        };
+        // The directory populates before any send, and an issued handoff may still be
+        // rolled back after its flight retired. Neither grants, creates or commits.
+        if (path === DIRECTORY_PATH) {
+          if (!this.options.isCurrent()) throw new DOMException('Playback run retired', 'AbortError');
+          return options.api.request(path, method, body, signal);
+        }
+        if (ROLLBACK.test(path)) {
+          if (!this.options.isCurrent()) throw new DOMException('Playback run retired', 'AbortError');
+          return options.api.request(path, method, body, signal);
+        }
+        // Grant, create, poll and commit belong to one captured flight only.
+        run();
         const flight = this.flight;
-        // A handoff request exists only inside its captured flight; anything else is refused.
-        if (!flight || !this.options.isCurrent()) throw new DOMException('Playback run retired', 'AbortError');
-        const live = this.options.runtime.getSnapshot();
-        if (live.disposed || live.authority !== flight.guard.authority || !live.fence || !sameFence(live.fence, flight.guard.fence)) throw new DOMException('Playback run retired', 'AbortError');
-        return options.api.request(path, method, body, signal);
+        const value = await options.api.request(path, method, body, signal);
+        // The same flight and the same run must still be current before any result is
+        // published or committed downstream.
+        if (!flight || this.flight !== flight) throw new DOMException('Playback run retired', 'AbortError');
+        run();
+        return value;
       }},
       device: {deviceId: this.deviceId, displayName: castDisplayName() || identity?.name || 'Web browser'},
       requestId: () => crypto.randomUUID(),
