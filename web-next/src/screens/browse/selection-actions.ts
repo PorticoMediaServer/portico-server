@@ -1,8 +1,8 @@
-import type {JobArgs} from '@core/bulk-jobs.ts';
+import type {JobArgs, JobRequest} from '@core/bulk-jobs.ts';
 import type {HomeApi} from '@core/home.ts';
 import type {EventsClient} from '@core/playback-v1/events.ts';
-import type {BrowseSelectionContext, SelectionContext, SelectionOperation, SelectionTarget} from '@core/selection-model/index.ts';
-import {runSelectionJobs, selectionJobTasks} from '@core/home-selection/execution.ts';
+import {selectionQuerySelector, type BrowseSelectionContext, type SelectionContext, type SelectionOperation, type SelectionTarget} from '@core/selection-model/index.ts';
+import {runSelectionJobs, selectionJobTasks, type HomeJobTask} from '@core/home-selection/execution.ts';
 
 /** The one place a library selection becomes real work. It hands the model's own
  * target to the existing job planner and runner, so explicit picks stay explicit
@@ -51,6 +51,26 @@ export function createSelectionActions({api, events, requestId, isCurrent, repor
     const target = operation.target as SelectionTarget;
     if (!isCurrent() || signal.aborted) throw new SelectionActionError('cancelled');
     if (!personalTargetIsLeaf(target)) throw new SelectionActionError('container-personal-state-unsupported');
+    const grant = args.watched !== undefined ? 'watched' : args.favorite !== undefined ? 'favorite' : args.watchlist !== undefined ? 'myList' : undefined;
+    const offered = grant !== undefined && (target.mode === 'query'
+      ? target.summary.every[grant] === true
+      : target.items.length > 0 && target.items.every(pick => pick.item.capabilities[grant] === true));
+    if (!grant || !offered) throw new SelectionActionError('selection-grant-unavailable');
+    if (target.mode === 'query') {
+      // A whole view dispatches only its unrefined, checked selector with the
+      // exact catalog revision. Exclusions or a kind refinement cannot be dropped
+      // silently, so they are refused before any operation id or request.
+      const checked = selectionQuerySelector(target);
+      if (!checked.ok) throw new SelectionActionError(checked.reason);
+      const request: JobRequest = Object.freeze({operationId: (await requestId()).replaceAll('-', ''), command: 'personal-state',
+        selector: checked.selector, args, expected: checked.expected});
+      if (!isCurrent() || signal.aborted) throw new SelectionActionError('cancelled');
+      const task: HomeJobTask = {request, failures: [], observed: false};
+      await runSelectionJobs(api, [task], signal, isCurrent, () => {}, undefined, events);
+      const job = task.job;
+      if (!job) throw new SelectionActionError('job-receipt-required');
+      return Object.freeze({updated: job.done, failed: job.failed, jobs: Object.freeze([job.jobId])});
+    }
     const tasks = await selectionJobTasks(target, 'personal-state', args, requestId);
     if (!tasks.length) throw new SelectionActionError('empty-selection');
     await runSelectionJobs(api, tasks, signal, isCurrent, () => {}, undefined, events);

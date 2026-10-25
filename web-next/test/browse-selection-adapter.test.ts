@@ -38,6 +38,8 @@ const fake = (over: Record<string, unknown> = {}, host: Record<string, unknown> 
     clear: () => { calls.push('clear'); },
     play: async () => { calls.push('play'); return {} as never; },
     registerWindow: async () => { calls.push('registerWindow'); return [row]; },
+    captureOperation: () => ({target: snapshot.selection.target}),
+    isOperationCurrent: () => true,
     start: () => () => {},
     dispose: () => {},
     ...host,
@@ -226,4 +228,80 @@ test('clearing a captured selection while preparing a personal job prevents subm
   const adapter = createLibrarySelection({playSelection: fake({}, host).selection, actions: actions as never, reportError: () => {}});
   await assert.rejects(adapter.personal({watched: true}), /cancelled/);
   assert.equal(requested, 0);
+});
+
+const queryTarget = (over: Record<string, unknown> = {}) => ({mode: 'query' as const, context: {}, queryId: 'q', selector: {query: {libraryId: 'a', pivot: 'movies'}},
+  total: 48000, sourceTotal: 48000, refinement: {kind: null, excludedItems: []}, expected: {catalogRevision: 'r1'},
+  summary: {count: 48000, types: [{kind: 'movie', count: 48000}], library: {kind: 'single', libraryId: 'a'}, every: capabilities}, ...over});
+const wholeSnapshot = (target: unknown, over: Record<string, unknown> = {}) => ({selection: {active: true, summary: {count: 48000, types: [{kind: 'movie', count: 48000}],
+  library: {kind: 'single', libraryId: 'a'}, every: capabilities}, selectedKeys: [], version: 2, registeredWindowCount: 1, registeredItemCount: 1, lastSectionId: 'library', target}, ...over});
+
+test('an unrefined whole view sends its exact selector and catalog revision as one personal job', async () => {
+  const requests: {path: string; body: {selector?: unknown; expected?: unknown; operationId?: string; args?: unknown}}[] = [];
+  const actions = {
+    api: {request: async (path: string, _method?: string, body?: unknown) => {
+      requests.push({path, body: body as typeof requests[number]['body']});
+      return {jobId: 'job-q', command: 'personal-state', state: 'complete', total: 48000, totalKnown: true, done: 48000, failed: 0};
+    }},
+    events: {on: () => () => {}}, requestId: async () => 'operation-1', isCurrent: () => true, reportError: () => {},
+  };
+  const target = queryTarget();
+  const {selection} = fake(wholeSnapshot(target));
+  const adapter = createLibrarySelection({playSelection: selection, actions: actions as never, reportError: () => {}});
+  const html = renderToStaticMarkup(createElement('div', null, adapter.toolbar));
+  assert.match(html, />Watched</);
+  await adapter.personal({watched: true});
+  assert.equal(requests.length, 1);
+  assert.deepEqual(requests[0]?.body.selector, target.selector);
+  assert.deepEqual(requests[0]?.body.expected, {catalogRevision: 'r1'});
+  assert.equal(requests[0]?.body.operationId, 'operation1');
+  assert.deepEqual(requests[0]?.body.args, {watched: true});
+});
+
+test('a refined whole view withholds the action and submits nothing', async () => {
+  let requests = 0;
+  const actions = {api: {request: async () => { requests++; return {}; }}, events: {on: () => () => {}},
+    requestId: async () => 'operation-1', isCurrent: () => true, reportError: () => {}};
+  for (const over of [{refinement: {kind: 'movie', excludedItems: []}}, {total: 47999, sourceTotal: 48000}]) {
+    const target = queryTarget(over);
+    const {selection} = fake(wholeSnapshot(target));
+    const adapter = createLibrarySelection({playSelection: selection, actions: actions as never, reportError: () => {}});
+    assert.doesNotMatch(renderToStaticMarkup(createElement('div', null, adapter.toolbar)), />Watched</);
+    await assert.rejects(adapter.personal({watched: true}), /query-refinement-required/);
+  }
+  // A snapshot whose every-watched grant is false is refused by the producer too.
+  const denied = fake({...wholeSnapshot(queryTarget()), selection: {...(wholeSnapshot(queryTarget()).selection as object), summary: {count: 48000, types: [{kind: 'movie', count: 48000}],
+    library: {kind: 'single', libraryId: 'a'}, every: {...capabilities, watched: false}}}});
+  const deniedAdapter = createLibrarySelection({playSelection: denied.selection, actions: actions as never, reportError: () => {}});
+  assert.doesNotMatch(renderToStaticMarkup(createElement('div', null, deniedAdapter.toolbar)), />Watched</);
+  await assert.rejects(deniedAdapter.personal({watched: true}), /selection-grant-unavailable/);
+  assert.equal(requests, 0);
+});
+
+test('a selection change while the operation id is pending submits no personal job', async () => {
+  let current = true, requests = 0, release!: () => void;
+  let requested!: () => void;
+  const requestedPromise = new Promise<void>(resolve => {requested = resolve;});
+  const actions = {api: {request: async () => { requests++; return {}; }}, events: {on: () => () => {}},
+    requestId: async () => { requested(); await new Promise<void>(resolve => {release = resolve;}); return 'operation-1'; },
+    isCurrent: () => true, reportError: () => {}};
+  const target = queryTarget();
+  const {selection} = fake(wholeSnapshot(target), {isOperationCurrent: () => current});
+  const adapter = createLibrarySelection({playSelection: selection, actions: actions as never, reportError: () => {}});
+  const pending = adapter.personal({watched: true});
+  await requestedPromise;
+  current = false;
+  release();
+  await assert.rejects(pending, /cancelled/);
+  assert.equal(requests, 0);
+});
+
+test('a retired route reports cancellation before any personal request', async () => {
+  let requests = 0;
+  const actions = {api: {request: async () => { requests++; return {}; }}, events: {on: () => () => {}},
+    requestId: async () => 'operation-1', isCurrent: () => false, reportError: () => {}};
+  const {selection} = fake(wholeSnapshot(queryTarget()));
+  const adapter = createLibrarySelection({playSelection: selection, actions: actions as never, reportError: () => {}});
+  await assert.rejects(adapter.personal({watched: true}), /cancelled/);
+  assert.equal(requests, 0);
 });
