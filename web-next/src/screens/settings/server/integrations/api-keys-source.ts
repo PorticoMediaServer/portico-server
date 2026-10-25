@@ -33,6 +33,7 @@ export class SettingsApiKeysSource {
     if (!this.current() || this.state.busy) return;
     this.read?.abort();const read = new AbortController();this.read = read;
     this.publish({phase: 'loading', error: undefined});
+    if (!this.current() || this.read !== read || read.signal.aborted) return;
     try {
       const [page, options] = await Promise.all([listApiKeys(this.api, cursor, read.signal), getApiAccessOptions(this.api, read.signal)]);
       if (!this.current() || this.read !== read || read.signal.aborted) return;
@@ -57,6 +58,7 @@ export class SettingsApiKeysSource {
   private async performCreate(): Promise<IssuedApiCredential|undefined> {
     const intent = this.intent;if (!intent || !this.current()) return;
     this.read?.abort();this.read = undefined;this.publish({busy: true, error: undefined});
+    if (!this.current()) return;
     let issued: IssuedApiCredential|undefined;
     try {
       issued = await createApiKey(this.api, intent, this.lifetime.signal);
@@ -72,6 +74,7 @@ export class SettingsApiKeysSource {
   revoke = async (credential: ApiCredential): Promise<void> => {
     if (!this.current() || this.state.busy || this.state.phase !== 'ready' || !this.state.page?.items.includes(credential) || credential.kind !== 'key' || !['active','awaiting_approval'].includes(credential.state)) return;
     this.read?.abort();this.read = undefined;this.publish({busy: true, error: undefined});
+    if (!this.current()) return;
     try {
       await revokeApiKey(this.api, credential.id, this.lifetime.signal);
       if (this.current()) this.publish({page: undefined});
