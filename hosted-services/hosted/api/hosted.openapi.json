@@ -3586,6 +3586,13 @@
           },
           "status": {
             "type": "string"
+          },
+          "transitionMode": {
+            "enum": [
+              "switch",
+              "start-over"
+            ],
+            "type": "string"
           }
         },
         "required": [
@@ -12334,6 +12341,13 @@
                       "type": "string"
                     },
                     "status": {
+                      "type": "string"
+                    },
+                    "transitionMode": {
+                      "enum": [
+                        "switch",
+                        "start-over"
+                      ],
                       "type": "string"
                     }
                   },
