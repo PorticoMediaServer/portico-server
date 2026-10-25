@@ -1,4 +1,5 @@
-import {ConsoleClient, type FeedbackReport, type FeedbackStatus} from '@core/console.ts';
+import {encodedRoutePath} from '../../../../../../packages/contracts/src/routes.ts';
+import {ConsoleClient, type FeedbackReport, type FeedbackStatus, type ConsoleAPI} from '@core/console.ts';
 import type {ReportTransport} from '@core/client-reports.ts';
 
 export type FeedbackSnapshot = Readonly<{
@@ -20,9 +21,30 @@ export class SettingsFeedbackSource {
   private readonly lifetime = new AbortController();
   private reading?: Promise<void>;
   private readonly console: ConsoleClient;
-  constructor(transport: ReportTransport, serverId: string, viewerId: string, private readonly isCurrent: () => boolean) {
-    this.console = new ConsoleClient(transport, {serverId, viewerId});
+  private readonly reportIO = new Map<string, {signal: AbortSignal; admit: () => boolean}>();
+  private mutation?: object;
+  constructor(transport: ReportTransport, serverId: string, viewerId: string, private readonly isCurrent: () => boolean, private readonly reportError: (error: unknown) => void = () => {}) {
+    const api = transport as ConsoleAPI;
+    this.console = new ConsoleClient({request: async <T>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal): Promise<T> => {
+      const held = this.reportIO.get(path.split('?')[0]);
+      const valid = () => this.current() && !signal?.aborted && (!held || !held.signal.aborted && held.admit());
+      if (!valid()) throw new DOMException('The feedback request ended.', 'AbortError');
+      const request = new AbortController(), abort = () => request.abort();
+      signal?.addEventListener('abort', abort, {once: true});held?.signal.addEventListener('abort', abort, {once: true});this.lifetime.signal.addEventListener('abort', abort, {once: true});
+      try {
+        if (!valid()) throw new DOMException('The feedback request ended.', 'AbortError');
+        const value = await (api.requestConsole ? api.requestConsole<T>(path, method, body, request.signal) : api.request<T>(path, method, body, request.signal));
+        if (!valid()) throw new DOMException('The feedback request ended.', 'AbortError');
+        return value;
+      } catch (error) {
+        const failure = error && typeof error === 'object' ? error as {status?: number; code?: string} : {};
+        if (this.current() && (failure.status === 401 || failure.status === 403 || ['unauthorized','forbidden','not_permitted'].includes(failure.code ?? ''))) this.retire();
+        throw error;
+      } finally {signal?.removeEventListener('abort', abort);held?.signal.removeEventListener('abort', abort);this.lifetime.signal.removeEventListener('abort', abort);}
+    }}, {serverId, viewerId});
+    this.console.onDenied(() => this.retire());
   }
+  private retire() {if (this.current()) {this.dispose();this.reportError(new Error('feedback_authority_ended'));}}
   private current() {return !this.lifetime.signal.aborted && this.isCurrent();}
   getSnapshot = (): FeedbackSnapshot => this.current() ? this.state : empty;
   subscribe = (listener: () => void): (() => void) => {this.listeners.add(listener);return () => {this.listeners.delete(listener);};};
@@ -41,21 +63,39 @@ export class SettingsFeedbackSource {
     this.reading = task;return task;
   };
   /** The next page the server named, appended in its order. */
-  more = async (): Promise<void> => {
+  more = (): Promise<void> => {
     const cursor = this.state.next;
-    if (!this.current() || this.reading || !cursor) return;
-    this.publish({...this.state, phase: 'loading'});
-    try {
-      const page = await this.console.reports(true, cursor);
+    if (!this.current() || this.reading || !cursor) return this.reading ?? Promise.resolve();
+    const task = Promise.resolve().then(async () => {
       if (!this.current()) return;
-      const known = new Set(this.state.reports.map(report => report.id));
-      this.publish({...this.state, phase: 'ready', reports: [...this.state.reports, ...page.items.filter(report => !known.has(report.id))], ...(page.nextCursor ? {next: page.nextCursor} : {next: undefined})});
-    } catch {if (this.current() && !this.lifetime.signal.aborted) this.publish({...this.state, phase: 'error'});}
+      this.publish({...this.state, phase: 'loading'});
+      try {
+        const page = await this.console.reports(true, cursor);
+        if (!this.current()) return;
+        const known = new Set(this.state.reports.map(report => report.id));
+        this.publish({...this.state, phase: 'ready', reports: [...this.state.reports, ...page.items.filter(report => !known.has(report.id))], ...(page.nextCursor ? {next: page.nextCursor} : {next: undefined})});
+      } catch {if (this.current()) this.publish({...this.state, phase: 'error'});}
+      finally {this.reading = undefined;}
+    });
+    this.reading = task;return task;
   };
   /** One report exactly as the server keeps it, for the dialog that is open now. */
+  private async withReportIO<T>(id: string, signal: AbortSignal, admit: () => boolean, action: () => Promise<T>): Promise<T> {
+    const path = encodedRoutePath('get_admin_feedback_id', {id: encodeURIComponent(id)});
+    if (!this.current() || signal.aborted || !admit() || this.reportIO.has(path)) throw new DOMException('The feedback request ended.', 'AbortError');
+    const held = {signal, admit};this.reportIO.set(path, held);
+    try {return await action();} finally {if (this.reportIO.get(path) === held) this.reportIO.delete(path);}
+  }
   async read(id: string, signal: AbortSignal): Promise<FeedbackReport> {
-    if (!this.current() || !this.state.reports.some(report => report.id === id)) throw new Error('The selected report is no longer listed.');
-    return this.console.report(id, true);
+    const selected = this.state.reports.find(report => report.id === id);
+    if (!selected) throw new Error('The selected report is no longer listed.');
+    const admit = () => this.current() && !signal.aborted && this.state.reports.includes(selected);
+    return this.withReportIO(id, signal, admit, async () => {
+      const report = await this.console.report(id, true);
+      if (!admit() || report.id !== id) throw new DOMException('The feedback request ended.', 'AbortError');
+      this.publish({...this.state, reports: this.state.reports.map(row => row === selected ? report : row)});
+      return report;
+    });
   }
   /**
    * Save status and reply on the report the dialog captured. If the report moved while the
@@ -63,28 +103,34 @@ export class SettingsFeedbackSource {
    * change is silent), and the answer is the row the list then shows.
    */
   async triage(report: FeedbackReport, status: FeedbackStatus, reply: string, signal: AbortSignal): Promise<FeedbackReport> {
-    if (!this.current()) throw new DOMException('The feedback scope ended.', 'AbortError');
-    let current = report;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const saved = await this.console.triage(current.id, current.revision, status, reply);
-        if (!this.current()) throw new DOMException('The feedback scope ended.', 'AbortError');
-        this.publish({...this.state, reports: this.state.reports.map(row => row.id === saved.id ? saved : row)});
-        return saved;
-      } catch (error) {
-        const code = (error as {code?: string}).code;
-        if (attempt === 0 && (code === 'console_conflict' || code === 'revision_mismatch')) {
-          signal.throwIfAborted();
-          current = await this.console.report(current.id, true);
-          signal.throwIfAborted();
-          if (!this.current()) throw new DOMException('The feedback scope ended.', 'AbortError');
-          continue;
+    if (!this.current() || signal.aborted || this.mutation || !this.state.reports.includes(report) || !['open','in-progress','resolved','closed'].includes(status) || reply.length > 2000) throw new DOMException('The feedback scope ended.', 'AbortError');
+    const flight = {};this.mutation = flight;
+    const admit = () => this.current() && !signal.aborted && this.mutation === flight && this.state.reports.includes(report);
+    try {
+      return await this.withReportIO(report.id, signal, admit, async () => {
+        let current = report;
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            if (!admit()) throw new DOMException('The feedback scope ended.', 'AbortError');
+            const saved = await this.console.triage(current.id, current.revision, status, reply);
+            if (!admit() || saved.id !== report.id) throw new DOMException('The feedback scope ended.', 'AbortError');
+            this.publish({...this.state, reports: this.state.reports.map(row => row === report ? saved : row)});
+            return saved;
+          } catch (error) {
+            if (!admit()) throw new DOMException('The feedback scope ended.', 'AbortError');
+            const code = (error as {code?: string}).code;
+            if (attempt === 0 && (code === 'console_conflict' || code === 'revision_mismatch')) {
+              current = await this.console.report(report.id, true);
+              if (!admit() || current.id !== report.id) throw new DOMException('The feedback scope ended.', 'AbortError');
+              continue;
+            }
+            throw error;
+          }
         }
-        throw error;
-      }
-    }
-    throw new Error('feedback_conflict');
+        throw new Error('feedback_conflict');
+      });
+    } finally {if (this.mutation === flight) this.mutation = undefined;}
   }
   retry = (): Promise<void> => {this.state = empty;return this.load();};
-  dispose(): void {if (!this.lifetime.signal.aborted) {this.lifetime.abort();this.listeners.clear();this.console.dispose();this.state = empty;}}
+  dispose(): void {if (!this.lifetime.signal.aborted) {this.lifetime.abort();this.listeners.clear();this.reportIO.clear();this.mutation = undefined;this.console.dispose();this.state = empty;}}
 }
