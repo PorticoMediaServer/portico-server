@@ -1,7 +1,8 @@
-import {useEffect, useMemo, useState, useSyncExternalStore} from 'react';
-import {useParams} from '@tanstack/react-router';
+import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import {useParams, useSearch} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
 import {fetchHomeRow, type HomeRow} from '@core/home.ts';
+import type {BrowseSortSelection} from '@core/browse.ts';
 import {acrossCondition, acrossPivot, groupOrderSort} from '@core/presentation/browse-groups.ts';
 import {defineWebScreen} from '../../route-registry';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
@@ -16,13 +17,23 @@ import type {LibraryBrowseBindings} from './Library';
 import {HomeRowScreen} from './HomeRow';
 import {useScreenAppearance} from './screen-preferences';
 import {useLibraryScreenContext, type ProtectedLibraryScreen} from './screen-context';
+import {browseConjunction, parseHomeRowScreenSearch, type HomeRowScreenSearch} from './route-search';
 
 function LoadedHomeRow({captured, context, row}: {captured: ProtectedLibraryScreen; context: ScreenContext; row: HomeRow}) {
   const appearance = useScreenAppearance(captured.context)!, width = useShellWidth();
+  // Frame 47's toolbar changes are this page's real state, so its own address carries
+  // them: a reload, a share and Back from a title land on the same filtered grid. The
+  // row's membership and the viewer's grant stay server-owned; only the toolbar's
+  // scoped filters and order are read back from the route.
+  const rawSearch = useSearch({from: '/home/rows/$rowId'});
+  const search = useMemo(() => parseHomeRowScreenSearch(rawSearch), [rawSearch]);
+  const arrival = useRef<HomeRowScreenSearch>(search).current;
   const owner = useMemo(() => {
     const life = screenLifetime(context);
+    const predicates = arrival.query ? browseConjunction(arrival.query) : [];
     const controller = new BrowseController(life.api, {libraryId: '*', pivot: acrossPivot('homeRow'),
-      homeRowId: row.id, base: [acrossCondition('homeRow', row.id)], sort: {field: groupOrderSort, direction: 'asc'}}, life.current);
+      homeRowId: row.id, base: [acrossCondition('homeRow', row.id)], ...(predicates.length ? {predicates} : {}),
+      ...(arrival.sort?.length ? {sorts: arrival.sort} : {sort: {field: groupOrderSort, direction: 'asc'}})}, life.current);
     return {life, controller};
   }, [context, row.id]);
   useEffect(() => () => {owner.life.dispose();owner.controller.dispose();}, [owner]);
@@ -44,6 +55,22 @@ function LoadedHomeRow({captured, context, row}: {captured: ProtectedLibraryScre
     }
     return sources;
   }, [owner, context.artwork, appearance.showBackdrops, page]);
+  // The toolbar writes the page's own address, so Back from a title and a reload restore
+  // the same scoped filters and order. Replace keeps the Home entry that opened See all,
+  // which is what the drawn "‹ Home" control returns to.
+  useEffect(() => {
+    if (state.phase !== 'ready' || !owner.life.current()) return;
+    let applied: readonly BrowseSortSelection[];
+    try {applied = owner.controller.query().sort ?? [];} catch {return;}
+    const sorts = applied.map(({field, direction, seed}) => ({field, direction, ...(seed === undefined ? {} : {seed})}));
+    const bestMatch = sorts.length === 1 && sorts[0]?.field === groupOrderSort && sorts[0].direction === 'asc';
+    const predicates = state.predicates;
+    const next = {...(predicates.length ? {query: predicates.length === 1 ? predicates[0] : {all: [...predicates]}} : {}),
+      ...(!bestMatch && sorts.length ? {sort: sorts} : {})};
+    const routed = {...(search.query ? {query: search.query} : {}), ...(search.sort?.length ? {sort: search.sort} : {})};
+    if (JSON.stringify(next) === JSON.stringify(routed)) return;
+    void router.navigate({to: '/home/rows/$rowId', params: {rowId: row.id}, search: next, replace: true, resetScroll: false}).catch(context.effects.reportError);
+  }, [state.phase, state.predicates, state.queryRevision, search.query, search.sort, owner, row.id, context.effects.reportError]);
   const [choice, setChoice] = useState<Readonly<{defaultView: 'grid' | 'list'; view: 'grid' | 'list'}>>();
   const [size, setSize] = useState<'small' | 'medium' | 'large'>('medium');
   const library = context.identity?.libraries.find(library => library.id === row.libraryId);
@@ -75,7 +102,14 @@ function LoadedHomeRow({captured, context, row}: {captured: ProtectedLibraryScre
       {signal: owner.life.signal(command.signal), isCurrent: current}, {shuffle})
       .catch(context.effects.reportError).finally(off);
   } : undefined;
-  return <HomeRowScreen row={row} browse={browse} ambient={ambient} onBack={() => {void router.navigate({to: '/'}).catch(context.effects.reportError);}}
+  const backHome = () => {
+    if (!owner.life.current()) return;
+    // The drawn "‹ Home" leaves the way the viewer came; a tab that opened See all
+    // first gets an explicit Home instead of walking out of the app.
+    if (router.history.canGoBack()) router.history.back();
+    else void router.navigate({to: '/'}).catch(context.effects.reportError);
+  };
+  return <HomeRowScreen row={row} browse={browse} ambient={ambient} onBack={backHome}
     onPlay={play ? () => play(false) : undefined} onShuffle={play ? () => play(true) : undefined}/>;
 }
 function BoundHomeRow({captured, rowId}: {captured: ProtectedLibraryScreen; rowId: string}) {
@@ -95,4 +129,4 @@ function HomeRowRouteScreen() {
   const captured = useProtectedWebScreenContext(), {rowId} = useParams({from: '/home/rows/$rowId'});
   return captured ? <BoundHomeRow key={rowId} captured={captured} rowId={rowId}/> : null;
 }
-export default defineWebScreen({id: 'homeRow', component: HomeRowRouteScreen});
+export default defineWebScreen({id: 'homeRow', component: HomeRowRouteScreen, validateSearch: parseHomeRowScreenSearch});

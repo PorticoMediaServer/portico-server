@@ -9,17 +9,20 @@ function text(value: unknown, max = 256): string | undefined {
   return value;
 }
 export type LibraryScreenSearch = Readonly<{view?: ContentView; entityId?: string; category?: string; pivot?: string; unmatched?: boolean; query?: BrowseNode; sort?: readonly BrowseSortSelection[]; q?: string}>;
+export type HomeRowScreenSearch = Readonly<{query?: BrowseNode; sort?: readonly BrowseSortSelection[]}>;
+/** A See all page owns only the toolbar's scoped filters and order; its row and
+ * vocabulary come from the route's own row, never from the address. */
+export function parseHomeRowScreenSearch(raw: Record<string, unknown>): HomeRowScreenSearch {
+  return queryAndSort(raw);
+}
 /** A saved or shared view may arrive as one top-level conjunction. The toolbar chips and the
  * empty state name each condition, so the controller keeps those leaves apart; `{all: [...]}`
  * and the same conditions in the implicit conjunction build the identical query. */
 export function browseConjunction(node: BrowseNode): readonly BrowseNode[] {
   return 'all' in node && node.all.length > 0 ? node.all : [node];
 }
-/** A malformed owned predicate must not silently broaden the destination. */
-export function parseLibraryScreenSearch(raw: Record<string, unknown>): LibraryScreenSearch {
-  const view = raw.view === undefined ? undefined : views.find(view => view === raw.view);
-  if (raw.view !== undefined && !view) invalid();
-  const entityId = text(raw.entityId), category = text(raw.category), pivot = text(raw.pivot, 64), q = text(raw.q, 512);
+/** Both a library page and a Home row's See all own the toolbar's scoped filters and order. */
+function queryAndSort(raw: Record<string, unknown>): {query?: BrowseNode; sort?: BrowseSortSelection[]} {
   const query = raw.query === undefined ? undefined : parseBrowseNode(raw.query);
   let sort: BrowseSortSelection[] | undefined;
   if (raw.sort !== undefined) {
@@ -31,6 +34,14 @@ export function parseLibraryScreenSearch(raw: Record<string, unknown>): LibraryS
       return {field, direction: row.direction, ...(row.seed === undefined ? {} : {seed: row.seed})};
     });
   }
+  return {...(query ? {query} : {}), ...(sort ? {sort} : {})};
+}
+/** A malformed owned predicate must not silently broaden the destination. */
+export function parseLibraryScreenSearch(raw: Record<string, unknown>): LibraryScreenSearch {
+  const view = raw.view === undefined ? undefined : views.find(view => view === raw.view);
+  if (raw.view !== undefined && !view) invalid();
+  const entityId = text(raw.entityId), category = text(raw.category), pivot = text(raw.pivot, 64), q = text(raw.q, 512);
+  const {query, sort} = queryAndSort(raw);
   const unmatched = raw.unmatched === true || undefined;
   return {...(view ? {view} : {}), ...(entityId ? {entityId} : {}), ...(category ? {category} : {}), ...(pivot ? {pivot} : {}), ...(unmatched ? {unmatched: true} : {}),
     ...(query ? {query} : {}), ...(sort ? {sort} : {}), ...(q ? {q} : {})};
