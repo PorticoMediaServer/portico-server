@@ -107,6 +107,9 @@ test('administrative device pages describe real activity and refuse retired trus
  const page=parseAccessDevicePage({limit:25,items:[row]});
  assert.equal(page.items[0].liveState,'watching');assert.equal(page.items[0].profileName,'Evening');
  assert.equal('approvalRequired' in page,false);assert.equal('trust' in page.items[0],false);
+ assert.equal(Object.hasOwn(page.items[0],'sessionCount'),false);
+ for(const sessionCount of [0,2,Number.MAX_SAFE_INTEGER]) assert.equal(parseAccessDevicePage({limit:25,items:[{...row,sessionCount}]}).items[0].sessionCount,sessionCount);
+ for(const sessionCount of [-1,0.5,'2',null,Number.MAX_SAFE_INTEGER+1]) assert.throws(()=>parseAccessDevicePage({limit:25,items:[{...row,sessionCount}]}));
  assert.throws(()=>parseAccessDevicePage({limit:25,approvalRequired:false,items:[row]}));
  assert.throws(()=>parseAccessDevicePage({limit:25,items:[{...row,trust:'approved'}]}));
  assert.throws(()=>parseAccessDevicePage({limit:25,items:[{...row,liveState:'approved'}]}));

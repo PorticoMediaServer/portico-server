@@ -1343,3 +1343,53 @@ func TestRoleReceiptCannotBorrowAnActorsOldTier(t *testing.T) {
 		t.Fatalf("replayed privileged receipt: %v", e)
 	}
 }
+
+func TestPeopleDeviceSessionCountsUseActiveAuthorizationFamilies(t *testing.T) {
+	store, db, _ := fixture(t)
+	now := time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
+	store.Now = func() time.Time { return now }
+	if _, err := db.Exec(`INSERT INTO identity_devices(id,account_id,installation_id,name,platform,app,app_version,first_seen,last_seen,last_profile_id,ip) VALUES
+ ('count-device','member','count-install','Count','web','portico','test','2026-10-25T00:00:00Z','2026-10-25T00:00:00Z','member-profile',''),
+ ('other-device','member','other-install','Other','web','portico','test','2026-10-25T00:00:00Z','2026-10-25T00:00:00Z','member-profile','')`); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []struct {
+		id, device string
+		horizon    time.Time
+		revoked    int
+	}{
+		{"active-one", "count-device", now.Add(time.Hour), 0},
+		{"active-two", "count-device", now.Add(time.Minute), 0},
+		{"revoked", "count-device", now.Add(time.Hour), 1},
+		{"expired", "count-device", now.Add(-time.Second), 0},
+		{"boundary", "count-device", now, 0},
+		{"other", "other-device", now.Add(time.Hour), 0},
+	} {
+		if _, err := db.Exec(`INSERT INTO authorization_session_families(id,server_id,account_id,profile_id,authority,role,epoch,authorization_horizon,current_generation,revoked) VALUES(?,'server','member','member-profile','local','member',1,?,1,?)`, f.id, f.horizon.Format(time.RFC3339), f.revoked); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO identity_device_families(family_id,device_id) VALUES(?,?)`, f.id, f.device); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err := store.PeopleDevices(context.Background(), nil, owner(), PeopleDeviceQuery{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range page.Items {
+		want := 2
+		if row.ID == "other-device" {
+			want = 1
+		}
+		if row.SessionCount == nil || *row.SessionCount != want {
+			t.Fatalf("list count for %s: %+v", row.ID, row.SessionCount)
+		}
+		detail, err := store.PeopleDevice(context.Background(), nil, owner(), row.ID, nil)
+		if err != nil || detail.SessionCount == nil || *detail.SessionCount != want {
+			t.Fatalf("detail count for %s: %+v %v", row.ID, detail.SessionCount, err)
+		}
+	}
+	if len(page.Items) != 2 {
+		t.Fatalf("expected both real device rows, got %d", len(page.Items))
+	}
+}

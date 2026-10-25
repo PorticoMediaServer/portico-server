@@ -65,7 +65,7 @@ export type Invitation=Readonly<{id:string;email?:never;notes?:string;serverId?:
  * to. `username`, `app` and `appVersion` say whose it is and what it runs.
  */
 export type AccessDevice=Readonly<{id:string;accountId:string;username:string;profileId:string;profileName?:string;name:string;platform:string;app:string;appVersion:string;lastNetwork:string;liveState:'idle'|'watching'|'listening';
- firstSeenAt:string;lastSeenAt:string;revision:number}>;
+ firstSeenAt:string;lastSeenAt:string;revision:number;sessionCount?:number}>;
 export type LogRecord=Readonly<{sequence:string;at:string;level:LogLevel;category:LogCategory;message:string}>;
 export type LogRetention=Readonly<{category:LogCategory;days:number}>;
 export type LogSettings=Readonly<{revision:number;logLevel:LogLevel;effectiveLevel:LogLevel;debugWindowUntil?:string;
@@ -203,7 +203,8 @@ export function parseAccessDevice(raw:unknown):AccessDevice{
  return Object.freeze({id:str(raw.id),accountId:str(raw.accountId),profileId:str(raw.profileId??'',128,true),
   username:str(raw.username??'',64,true),name:str(raw.name??'',120,true),platform:str(raw.platform??'',64,true),
   app:str(raw.app??'',64,true),appVersion:str(raw.appVersion??'',64,true),lastNetwork:str(raw.lastNetwork,256,true),liveState:oneOf(raw.liveState,['idle','watching','listening'] as const),...(raw.profileName!==undefined?{profileName:str(raw.profileName,120,true)}:{}),
-  firstSeenAt:when(raw.firstSeenAt),lastSeenAt:when(raw.lastSeenAt),revision:num(raw.revision,1)});
+  firstSeenAt:when(raw.firstSeenAt),lastSeenAt:when(raw.lastSeenAt),revision:num(raw.revision,1),
+  ...(raw.sessionCount!==undefined?{sessionCount:num(raw.sessionCount)}:{})});
 }
 export function parseAccessDevicePage(raw:unknown):AdministrationPage<AccessDevice>{
  if(!obj(raw)||Object.hasOwn(raw,'approvalRequired'))return invalid();
