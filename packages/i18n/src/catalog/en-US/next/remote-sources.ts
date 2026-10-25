@@ -3,6 +3,20 @@
  * from a pasted configuration section; per-kind forms, cloud-drive sign-in and live counts
  * have no route yet, so those frames stay hidden and the page invents nothing. */
 export const remoteSourcesMessages = {
+  'next.remoteStatus.reachability': 'Remote access',
+  'next.remoteStatus.addresses': 'Public addresses',
+  'next.remoteStatus.secure': 'Secure connection',
+  'next.remoteStatus.trusted': 'Publicly trusted certificate',
+  'next.remoteStatus.localOnly': 'Local certificate only',
+  'next.remoteStatus.off': 'Off',
+  'next.remoteStatus.expires': 'expires {when}',
+  'next.remoteStatus.ownCertificate': 'Own certificate',
+  'next.remoteStatus.none': 'Not set',
+  'next.remoteStatus.connection': 'Your connection',
+  'next.remoteStatus.home': 'home network',
+  'next.remoteStatus.away': 'from outside',
+  'next.remoteStatus.reading': 'Reading…',
+  'next.remoteStatus.failed': 'The server did not answer.',
   'next.remoteSources.add': 'Add remote source',
   'next.remoteSources.manage': 'Manage',
   'next.remoteSources.refresh': 'Refresh',
