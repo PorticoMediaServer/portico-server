@@ -1955,6 +1955,7 @@ export const webMessages = {
   'web.metadata.removeUploadFailed': 'The result could not be confirmed. Close this dialog and reload the saved artwork before trying again.',
   'web.metadata.removeUploadTitle': 'Remove this uploaded image?',
   'web.metadata.removeUploadBody': 'The uploaded image will be removed from this title. If it is in use, Portico will choose another available image.',
+  'web.metadata.localArtworkHelp': 'This library uses local artwork. Choose a picture from its files or upload an image.',
   'web.metadata.makeFromVideo': 'Make from the video',
   'web.metadata.makeFromVideoHelp': 'Make a new episode picture from its video. This replaces the current episode picture for everyone.',
   'web.metadata.uploadImage': 'Upload an image',
