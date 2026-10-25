@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useState, useSyncExternalStore} from 'react';
+import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import type {ContentScope, LibraryContentApi} from '@core/library-content.ts';
 import {LibraryInventoryService, type InventorySource} from '@core/library-inventory.ts';
@@ -24,17 +24,35 @@ export function LibraryFolders({libraryId, api, scope, isCurrent, onError}: Read
   const [menu, setMenu] = useState<string>(), [editing, setEditing] = useState<InventorySource>(), [removing, setRemoving] = useState<InventorySource>(), [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState(false), [adding, setAdding] = useState<string>();
   useEffect(() => { void service.refresh().catch(onError); return () => service.dispose(); }, [service, onError]);
-  const run = async (command: () => Promise<boolean>) => {
-    if (!isCurrent()) return;
+  const lifetime = useRef<{running: boolean} | undefined>(undefined);
+  useEffect(() => {
+    const capture = {running: false}; lifetime.current = capture; setBusy(false);
+    return () => {if (lifetime.current === capture) lifetime.current = undefined;};
+  }, [service]);
+  const run = async (command: () => Promise<boolean>, complete?: () => void) => {
+    const capture = lifetime.current;
+    if (!capture || capture.running || !isCurrent()) return;
+    capture.running = true;
+    const current = () => lifetime.current === capture && isCurrent();
     setBusy(true);
-    try { await command(); } catch (error) { onError(error); } finally { setBusy(false); }
+    try {
+      const succeeded = await command();
+      if (!current()) return;
+      if (succeeded) complete?.();
+      else onError(new Error('library_folder_failed'));
+    } catch (error) { if (current()) onError(error); }
+    finally { if (current()) {capture.running = false; setBusy(false);} }
   };
-  if (!snapshot.config) return <p role="status" className={styles.formNote}>{t(snapshot.loading ? 'next.settings.loading' : 'next.settings.folderFailed')}</p>;
+  if (!snapshot.config) return <div className={styles.formNote}>
+    <p role={snapshot.loading ? 'status' : 'alert'}>{t(snapshot.loading ? 'next.settings.loading' : 'next.settings.folderFailed')}</p>
+    {!snapshot.loading && <Button onClick={() => { if (isCurrent()) void service.refresh().catch(onError); }}>{t('next.states.tryAgain')}</Button>}
+  </div>;
   const config = snapshot.config, rows = folderRows(config.sources);
   const source = (id: string) => config.sources.find(value => value.id === id);
   return <>
+    {snapshot.error && <p role="alert" className={styles.formNote}>{t('next.settings.folderFailed')}</p>}
     <div className={styles.listHeader}>
-      <Button variant="primary" size="small" icon="i-plus" onClick={() => setPicking(true)}>{t('next.settingsSpec.server.libraries.panels.library.tabs.1.groups.0.rows.0.control.addLabel')}</Button>
+      <Button variant="primary" size="small" icon="i-plus" disabled={busy} onClick={() => { if (!lifetime.current?.running) setPicking(true); }}>{t('next.settingsSpec.server.libraries.panels.library.tabs.1.groups.0.rows.0.control.addLabel')}</Button>
     </div>
     {rows.length ? <ul className={styles.folders} aria-label={t('next.settingsSpec.server.libraries.panels.library.tabs.1.title')}>
       {rows.map(row => <li key={row.id} className={styles.folder} data-folder-row={row.id}>
@@ -43,7 +61,7 @@ export function LibraryFolders({libraryId, api, scope, isCurrent, onError}: Read
         <span className={styles.folderFacts}>
           <span>{t(row.network ? 'next.settingsSpec.server.libraries.panels.library.tabs.1.groups.1.rows.2.control.options.1.label'
             : 'next.settingsSpec.server.libraries.panels.library.tabs.1.groups.1.rows.2.control.options.0.label')}</span>
-          {(!row.enabled || !/^healthy|available|ok$/i.test(row.health)) && <span className={styles.folderUnavailable}>{t('next.settings.libraries.folderUnavailable')}</span>}
+          {(!row.enabled || !/^(healthy|available|ok)$/i.test(row.health)) && <span className={styles.folderUnavailable}>{t('next.settings.libraries.folderUnavailable')}</span>}
         </span>
         <span className={styles.folderActions}>
           <Menu open={menu === row.id} onOpenChange={open => setMenu(open ? row.id : undefined)} title={row.name} items={[
@@ -56,15 +74,15 @@ export function LibraryFolders({libraryId, api, scope, isCurrent, onError}: Read
       </li>)}
     </ul> : <p className={styles.formNote}>{t('next.settings.libraries.noFolders')}</p>}
     <FolderPicker open={picking} onOpenChange={setPicking} api={api} onChoose={path => { setPicking(false); setAdding(path); }} />
-    <FolderEditor open={!!adding} onOpenChange={open => { if (!open) setAdding(undefined); }} initialPath={adding}
-      busy={busy} onSave={edit => { void run(() => service.saveSource(undefined, {...edit, expectedRevision: config.revision, acceptReplacement: false})); setAdding(undefined); }} />
-    <FolderEditor open={!!editing} onOpenChange={open => { if (!open) setEditing(undefined); }} source={editing}
+    <FolderEditor open={!!adding} onOpenChange={open => { if (!open && !lifetime.current?.running) setAdding(undefined); }} initialPath={adding}
+      busy={busy} onSave={edit => { void run(() => service.saveSource(undefined, {...edit, expectedRevision: config.revision, acceptReplacement: false}), () => setAdding(undefined)); }} />
+    <FolderEditor open={!!editing} onOpenChange={open => { if (!open && !lifetime.current?.running) setEditing(undefined); }} source={editing}
       busy={busy} onSave={edit => { if (!editing) return;
-        void run(() => service.saveSource(editing.id, {...edit, expectedRevision: config.revision, acceptReplacement: false})); setEditing(undefined); }} />
-    <Dialog open={!!removing} onOpenChange={open => { if (!open) setRemoving(undefined); }} size="sm" role="alertdialog"
+        void run(() => service.saveSource(editing.id, {...edit, expectedRevision: config.revision, acceptReplacement: false}), () => setEditing(undefined)); }} />
+    <Dialog open={!!removing} onOpenChange={open => { if (!open && !lifetime.current?.running) setRemoving(undefined); }} size="sm" role="alertdialog"
       title={t('next.settings.libraries.removeFolderTitle')} description={t('next.settingsSpec.server.libraries.panels.library.tabs.1.groups.0.rows.0.control.itemActions.1.confirm')}
-      footer={<><Button onClick={() => setRemoving(undefined)}>{t('next.settings.cancel')}</Button>
-        <Button variant="primary" loading={busy} onClick={() => { if (!removing) return; void run(() => service.removeSource(removing.id, config.revision)); setRemoving(undefined); }}>
+      footer={<><Button disabled={busy} onClick={() => { if (!lifetime.current?.running) setRemoving(undefined); }}>{t('next.settings.cancel')}</Button>
+        <Button variant="primary" loading={busy} disabled={busy} onClick={() => { if (!removing) return; void run(() => service.removeSource(removing.id, config.revision), () => setRemoving(undefined)); }}>
           {t('next.settings.libraries.removeFolderTitle')}</Button></>}>
       <p className={styles.formNote}>{removing?.path}</p>
     </Dialog>
@@ -80,11 +98,11 @@ function FolderEditor({open, onOpenChange, source, initialPath, busy, onSave}: R
   const [name, setName] = useState(''), [path, setPath] = useState(''), [interval, setInterval] = useState('0');
   useEffect(() => {
     if (source) { setName(source.name); setPath(source.path); setInterval(String(source.intervalSeconds)); return; }
-    if (initialPath) { const parts = initialPath.split('/').filter(Boolean); setName(parts[parts.length - 1] ?? ''); setPath(initialPath); setInterval('0'); }
+    if (initialPath) { const parts = initialPath.split(/[\\/]/).filter(Boolean); setName(parts[parts.length - 1] ?? ''); setPath(initialPath); setInterval('0'); }
   }, [source, initialPath]);
-  return <Dialog open={open} onOpenChange={onOpenChange} size="md" title={t(source ? 'next.settings.libraries.editFolder' : 'next.settingsSpec.server.libraries.panels.library.tabs.1.groups.0.rows.0.control.addLabel')}
-    footer={<><Button onClick={() => onOpenChange(false)}>{t('next.settings.cancel')}</Button>
-      <Button variant="primary" loading={busy} disabled={!name.trim() || !path.trim()} onClick={() => {
+  return <Dialog open={open} onOpenChange={next => { if (!busy) onOpenChange(next); }} size="md" title={t(source ? 'next.settings.libraries.editFolder' : 'next.settingsSpec.server.libraries.panels.library.tabs.1.groups.0.rows.0.control.addLabel')}
+    footer={<><Button disabled={busy} onClick={() => { if (!busy) onOpenChange(false); }}>{t('next.settings.cancel')}</Button>
+      <Button variant="primary" loading={busy} disabled={busy || !name.trim() || !path.trim()} onClick={() => {
         onSave({name: name.trim(), path: path.trim(), classification: source?.classification ?? 'local',
           followSymlinks: source?.followSymlinks ?? false, intervalSeconds: Number(interval) || 0});
       }}>{t('next.settings.libraries.saveFolder')}</Button></>}>
