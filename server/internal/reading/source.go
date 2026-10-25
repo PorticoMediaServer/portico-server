@@ -105,7 +105,7 @@ func selectionColumns(v *Selection) []any {
 }
 
 func (v Selection) fence() string {
-	b, _ := json.Marshal([]any{v.Entity, v.Asset, v.Format, v.token, v.Size, v.ModifiedNS, v.rootID, v.generation, v.incarnation, v.rootIdentity, v.relative, v.object, v.inventory, v.evidence, v.inventoryRow})
+	b, _ := json.Marshal([]any{v.Entity, v.Asset, v.Format, v.token, v.Size, v.ModifiedNS, v.rootID, v.generation, v.incarnation, v.rootIdentity, v.relative, v.object, v.inventory, v.evidence})
 	h := sha256.Sum256(append([]byte("portico.reading.observation.v1\x00"), b...))
 	return hex.EncodeToString(h[:])
 }
