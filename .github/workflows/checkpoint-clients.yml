@@ -73,10 +73,10 @@ jobs:
       - id: legacy-checks
         name: legacy-checks
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
-        run: bash "$RUNNER_TEMP/checkpoint-command" legacy-checks npm run check --workspace portico-web
+        run: bash "$RUNNER_TEMP/checkpoint-command" legacy-checks bash -c 'cd web; status=0; npm run tokens || status=1; npm run lint:design -- --strict || status=1; npm run lint:hooks || status=1; node ../packages/client-core/scripts/check-preference-consumers.mjs || status=1; npm run lint:strings || status=1; npx --no-install tsc --noEmit || status=1; exit $status'
       - id: legacy-units
         name: legacy-units
-        if: ${{ !cancelled() && steps.deps.outcome == 'success' && steps.legacy-checks.outcome != 'success' }}
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: bash "$RUNNER_TEMP/checkpoint-command" legacy-units npm test --workspace portico-web
       - id: legacy-build
         name: legacy-build
@@ -85,30 +85,30 @@ jobs:
       - id: player-checks
         name: player-checks
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
-        run: bash "$RUNNER_TEMP/checkpoint-command" player-checks npm run check:player
+        run: bash "$RUNNER_TEMP/checkpoint-command" player-checks bash -c 'cd packages/player-core; node scripts/check-boundary.mjs && npx --no-install tsc -p tsconfig.json'
       - id: player-units
         name: player-units
-        if: ${{ !cancelled() && steps.deps.outcome == 'success' && steps.player-checks.outcome != 'success' }}
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: bash "$RUNNER_TEMP/checkpoint-command" player-units npm run test:player
       - id: reader-checks
         name: reader-checks
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
-        run: bash "$RUNNER_TEMP/checkpoint-command" reader-checks npm run check:reader
+        run: bash "$RUNNER_TEMP/checkpoint-command" reader-checks npx --no-install tsc -p packages/reader-core/tsconfig.json
       - id: reader-units
         name: reader-units
-        if: ${{ !cancelled() && steps.deps.outcome == 'success' && steps.reader-checks.outcome != 'success' }}
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: bash "$RUNNER_TEMP/checkpoint-command" reader-units npm run test:reader
       - id: next-checks
         name: next-checks
         if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
-        run: bash "$RUNNER_TEMP/checkpoint-command" next-checks npm run check --workspace portico-web-next
+        run: bash "$RUNNER_TEMP/checkpoint-command" next-checks bash -c 'cd web-next; status=0; npm run tokens || status=1; npm run lint:design || status=1; npm run lint:hooks || status=1; npm run lint:strings || status=1; npm run lint:boundary || status=1; exit $status'
       - id: next-types
         name: next-types
-        if: ${{ !cancelled() && steps.deps.outcome == 'success' && steps.next-checks.outcome != 'success' }}
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: bash "$RUNNER_TEMP/checkpoint-command" next-types npx --no-install tsc --noEmit -p web-next/tsconfig.json
       - id: next-units
         name: next-units
-        if: ${{ !cancelled() && steps.deps.outcome == 'success' && steps.next-checks.outcome != 'success' }}
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
         run: bash "$RUNNER_TEMP/checkpoint-command" next-units npm test --workspace portico-web-next
       - id: next-build
         name: next-build
