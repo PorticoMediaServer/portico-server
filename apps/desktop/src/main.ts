@@ -45,18 +45,26 @@ async function startDesktop(){
   // validated scope; no server call, no player and no second downloads owner.
   const selected=await browserViewerStorage.read().catch(()=>null);lifetime.assertCurrent();
   const offlineScope=offlineDownloadScope(selected?.session,Date.now());
+  const horizon=selected?Date.parse(selected.session.authorizationHorizon||selected.session.expiresAt):NaN;
+  // The persisted authority, not the launch, decides for how long the list may be shown.
+  const alive=()=>!lifetime.signal.aborted&&Number.isFinite(horizon)&&horizon>Date.now();
   if(offlineScope){
     const port=await downloads.bindOfflineDownloads(offlineScope,lifetime.signal).catch(()=>undefined);
     if(port){
       lifetime.retain(()=>port.dispose());
       const listeners=new Set<()=>void>();
-      let snapshot:{phase:'loading'|'ready'|'unavailable';items:readonly {id:string;itemId:string;quality:string;bytes:number;title:string;artist:string;kind:string;onServer:boolean}[]}={phase:'loading',items:[]};
+      let snapshot:{phase:'loading'|'ready'|'unavailable';items:readonly {id:string;itemId:string;revision:number;quality:string;bytes:number;title:string;artist:string;kind:string;onServer:boolean}[]}={phase:'loading',items:[]};
       const publish=(next:typeof snapshot)=>{snapshot=next;for(const listener of [...listeners])listener();};
-      void port.list(new AbortController().signal).then(items=>publish(items.length?{phase:'ready',items}:{phase:'unavailable',items:[]})).catch(()=>publish({phase:'unavailable',items:[]}));
+      const retire=()=>{snapshot={phase:'unavailable',items:[]};for(const listener of [...listeners])listener();port.dispose();};
+      const refresh=()=>alive()
+        ?port.list(new AbortController().signal).then(items=>{if(alive())publish(items.length?{phase:'ready',items}:{phase:'unavailable',items:[]});}).catch(()=>{if(alive())publish({phase:'unavailable',items:[]});})
+        :Promise.resolve(retire());
+      void refresh();
       lifetime.retain(installOfflineDownloads({
         subscribe:listener=>{listeners.add(listener);return()=>{listeners.delete(listener);};},
-        snapshot:()=>snapshot,
-        openFolder:()=>port.openFolder(new AbortController().signal),
+        snapshot:()=>{if(!alive())retire();return snapshot;},
+        openFolder:async()=>{if(!alive()){retire();throw new DOMException('Aborted','AbortError');}await port.openFolder(new AbortController().signal);void refresh();},
+        retire,
       }));
     }
   }

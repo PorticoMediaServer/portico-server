@@ -2,6 +2,7 @@ import {parseSelectedViewerRecord,selectedViewerRecord,type SelectedViewerRecord
 import {BrowserProtectedStore,browserAppSessions} from './server-connections';
 import type {AppSessionStore} from '@core/app-sessions.ts';
 import {forgetAllShells, forgetShell} from '../shell/last-known';
+import {clearOfflineDownloads} from '../shell/offline-downloads';
 
 
 /** Signing in lasts: the selected viewer is kept for this browser, not for one tab, so closing
@@ -30,12 +31,14 @@ return {
    if(JSON.stringify(await store.read())!==json)throw new Error('Server credentials could not be read back from this browser.');
   }else{
    forgetAllShells();
+   clearOfflineDownloads();
    await store.change(()=>undefined);
    if((await store.read())!==undefined)throw new Error('The old server credential could not be removed from this browser.');
   }
  },
  async clearIfFamily(sessionFamilyId){
   forgetShell(sessionFamilyId);
+  clearOfflineDownloads();
   // One step in the store, so a record another tab saves in the meantime is never the one removed.
   await store.change(current=>{
    if(!current)return undefined;

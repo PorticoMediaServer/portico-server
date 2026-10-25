@@ -24,6 +24,8 @@ export type OfflineDownloadsPort = Readonly<{
   openFolder: () => Promise<void>;
   /** Absent until the host's offline player surface is installed; the row then offers Play. */
   play?: (id: string) => Promise<void>;
+  /** Retires the installed port and clears its snapshot (selection, family or horizon end). */
+  retire?: () => void;
 }>;
 
 let installed: OfflineDownloadsPort | undefined;
@@ -43,3 +45,10 @@ export function useOfflineDownloads(): OfflineDownloadsPort | undefined {
 }
 
 export const emptyOfflineDownloads = Object.freeze({phase: 'loading' as const, items: Object.freeze([]) as readonly OfflineDownloadRow[]});
+
+/** Clear the installed port now; a sign-out or family end calls this synchronously. */
+export function clearOfflineDownloads(): void {
+  const port = installed;
+  installed = undefined;
+  try { port?.retire?.(); } catch { /* nothing left to retire */ }
+}
