@@ -6,6 +6,7 @@ import type {ScreenContext} from '../detail/context';
 import {screenEntryDestination} from './navigation';
 import {openWatchVersionChooser} from '../watch/version-presentation';
 import {createScreenPlayEffect, createScreenSeasonPlayEffect} from './playback-effect';
+import {addToDestinationEffect, deleteTitleEffect, entryActions, type EntryActionPorts} from '../../shell/entry-actions';
 
 export type ProtectedLibraryScreen = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
 
@@ -28,6 +29,8 @@ export function useLibraryScreenContext(captured: ProtectedLibraryScreen): Scree
     const assert = () => {if (!current()) throw new DOMException('Screen authority changed', 'AbortError');};
     const reportError = (error: unknown) => {if (current()) binding.current.home.effects.reportError(error);};
     const navigate = (action: Promise<void>) => {void action.catch(reportError);};
+    const entryPorts: EntryActionPorts = {api: context.api, serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId]), isCurrent: current, requestId: async () => crypto.randomUUID()};
+    const entryEffects = {addToPlaylist: addToDestinationEffect(entryPorts, 'playlist'), addToCollection: addToDestinationEffect(entryPorts, 'collection', viewer.role === 'owner'), ...(viewer.role === 'owner' ? {deleteTitle: deleteTitleEffect(entryPorts)} : {})};
     const value: ScreenContext = {
       api: context.api, events: context.events, artwork: context.artwork, identity: context.facts.identity,
       scope: {serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId])}, isCurrent: current,
@@ -47,13 +50,14 @@ export function useLibraryScreenContext(captured: ProtectedLibraryScreen): Scree
           search: {pivot: selector.pivot, query: selector.query, sort: selector.sort}}));},
         playSeason: createScreenSeasonPlayEffect({isCurrent: current, runtime: () => binding.current.playback?.runtime}),
         play: createScreenPlayEffect({isCurrent: current, runtime: () => binding.current.playback?.runtime}),
+        ...entryEffects,
         async chooseVersion(request) {
           assert();request.signal.throwIfAborted();
           await openWatchVersionChooser(context, {...request, isCurrent: () => current() && request.isCurrent()});
         },
       },
     };
-    return {value, dispose: () => {active = false;}};
+    return {value, dispose: () => {active = false; entryActions.retire(entryPorts);}};
   }, [context, scopeKey]);
   useEffect(() => () => owner.dispose(), [owner]);
   return owner.value;
