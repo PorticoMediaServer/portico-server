@@ -4,7 +4,7 @@ import {accountReturnPath} from './route-registry-return';
 
 /** Stable destinations. Screen owners supply their own component in *.route.tsx. */
 export const webScreenPaths = Object.freeze({
-  home: '/', search: '/search', libraries: '/libraries', library: '/library/$libraryId',
+  home: '/', search: '/search', readingSearch: '/search/reading', libraries: '/libraries', library: '/library/$libraryId',
   live: '/live', saved: '/saved', item: '/item/$itemId', homeRow: '/home/rows/$rowId',
   player: '/player', settings: '/settings', dashboard: '/dashboard', notifications: '/notifications',
   setup: '/setup', profiles: '/profiles', servers: '/servers', account: '/account', signIn: '/sign-in',

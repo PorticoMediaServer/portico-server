@@ -126,7 +126,7 @@ function ShellFrame({identity, OwnerActivity, dockVisible, serverAway, onSignOut
         <Link className={styles.brand} to="/" data-window-no-drag aria-label={t('next.platform.appName')}><img src={wordmark} alt="" /></Link>
         <DesktopNavigation libraries={identity.libraries} liveAvailable={identity.liveAvailable} activeLibraryId={activeLibrary} moreOpen={moreOpen} onMoreOpenChange={setMoreOpen} />
         <div className={styles.tools} data-window-no-drag>
-          <Link className={styles.icon} to="/search" search={{q: lastSearch.current}} aria-label={t('next.home.shell.search')} activeProps={{'aria-current': 'page'}}><Icon name="i-search" size={22} /></Link>
+          <Link className={styles.icon} to="/search" search={{q: lastSearch.current}} aria-label={t('next.home.shell.search')} activeOptions={{includeSearch: false}} activeProps={{'aria-current': 'page'}}><Icon name="i-search" size={22} /></Link>
           <Link className={styles.icon} to="/saved" aria-label={t('next.home.shell.saved')} activeProps={{'aria-current': 'page'}}><Icon name="i-bookmark" size={22} /></Link>
           <Link className={styles.icon} to="/notifications" aria-label={identity.unread > 0 ? t('next.home.shell.unread', {count: identity.unread}) : t('next.home.shell.notifications')} activeProps={{'aria-current': 'page'}}><Icon name="i-bell" size={22} />{identity.showNotificationDot && identity.unread > 0 && <span className={styles.dot} />}</Link>
           {identity.capabilities?.manageServer === true && showOwnerActivity(viewer.role, desktop) && !awayShown && <OwnerActivity />}
@@ -139,7 +139,7 @@ function ShellFrame({identity, OwnerActivity, dockVisible, serverAway, onSignOut
           <button type="button" className={styles.collapse} aria-label={t(sidebarCollapsed ? 'web.shell.expand' : 'web.shell.collapse')} aria-expanded={!sidebarCollapsed} onClick={toggleSidebar}><Icon name="i-panels" size={22} /></button>
         </div>}
         <div className={styles.railPrimary} data-window-no-drag>
-          <Link className={styles.railItem} to="/search" search={{q: lastSearch.current}} activeProps={{'aria-current': 'page'}}><Icon name="i-search" size={22} /><span data-nav-label>{t('next.home.shell.search')}</span></Link>
+          <Link className={styles.railItem} to="/search" search={{q: lastSearch.current}} activeOptions={{includeSearch: false}} activeProps={{'aria-current': 'page'}}><Icon name="i-search" size={22} /><span data-nav-label>{t('next.home.shell.search')}</span></Link>
           <Link className={styles.railItem} to="/" activeOptions={{exact: true}} activeProps={{'aria-current': 'page'}}><Icon name="i-home" size={22} /><span data-nav-label>{t('next.home.shell.home')}</span></Link>
         </div>
         <LibraryNavigation libraries={identity.libraries} sidebar={navigation === 'sidebar'} activeLibraryId={activeLibrary} />
@@ -160,7 +160,7 @@ function ShellFrame({identity, OwnerActivity, dockVisible, serverAway, onSignOut
         </div></header>}
         {phoneSelection ?? (screenSelectionPresent ? <PhoneSelectionSlot/> : <nav className={styles.tabbar} aria-label={t('next.home.shell.main')}>
           <Link to="/" activeOptions={{exact: true}} activeProps={{'aria-current': 'page'}}><Icon name="i-home" size={22} /><span>{t('next.home.shell.home')}</span></Link>
-          <Link to="/search" search={{q: lastSearch.current}} activeProps={{'aria-current': 'page'}}><Icon name="i-search" size={22} /><span>{t('next.home.shell.search')}</span></Link>
+          <Link to="/search" search={{q: lastSearch.current}} activeOptions={{includeSearch: false}} activeProps={{'aria-current': 'page'}}><Icon name="i-search" size={22} /><span>{t('next.home.shell.search')}</span></Link>
           <button type="button" aria-current={isLibraryLocation(pathname) || activeLibrary ? 'page' : undefined} onClick={openLibraries}><Icon name="i-grid" size={22} /><span>{t('next.home.shell.libraries')}</span></button>
           {identity.liveAvailable && <Link to="/live" activeProps={{'aria-current': 'page'}}><Icon name="i-tv" size={22} /><span>{t('next.home.shell.live')}</span></Link>}
           <Link to="/saved" activeProps={{'aria-current': 'page'}}><Icon name="i-bookmark" size={22} /><span>{t('next.home.shell.saved')}</span></Link>

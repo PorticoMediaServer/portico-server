@@ -1,6 +1,7 @@
-import {useEffect, useRef, useState} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
+import {useLocation} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
-import type {ReadingSession} from '@portico/client-core';
+import {ReadingError, type ReadingSession} from '@portico/client-core';
 import {createComicAdapter, createEpubAdapter, createPdfAdapter, createReadingPublication,
   type ReadingController, type ReadingPublication, type ReaderLocation, type ReaderContentsTarget} from '@portico/reader-core';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
@@ -16,21 +17,86 @@ import type {ReaderMountAuthority} from './mount';
 import styles from './entry.module.css';
 import {takeContentsTarget, retireContentsTarget} from './contents-handoff';
 import {ReaderBook} from './ReaderBook';
+import {readSearch} from './route-search';
+import {indexedReadingOpeningMarker, indexedReadingOpeningVersion, receiveIndexedReadingTarget, retireIndexedReadingOpening, subscribeIndexedReadingOpenings, type IndexedReadingReceiver} from '../search/reading-open-handoff';
 
 const {t} = defaultI18n;
 type Captured = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
 type OpenBook = Readonly<{session: ReadingSession; publication: ReadingPublication; controller: ReadingController;
   authority: ReaderMountAuthority; location?: ReaderLocation; contentsTarget?: ReaderContentsTarget; annotations?: ReadingSession}>;
+type ReadEntryProps = {captured: Captured; itemId: string; sourceId?: string; active?: boolean; onClose?: () => void};
+type ReceiverOpening = {context: Captured['context']; itemId: string; sourceId?: string; location: typeof router.state.location;
+  carriedLocation?: typeof router.state.location; settingsLocation?: typeof router.state.location;
+  key: number; live: boolean; received: IndexedReadingReceiver; current: () => boolean; retire: () => void; reportError: (error: unknown) => void};
+const sameHistoryEntry = (left: typeof router.state.location, right: typeof router.state.location) => typeof left.state.__TSR_key === 'string'
+  && left.state.__TSR_key === right.state.__TSR_key && left.state.__TSR_index === right.state.__TSR_index && left.href === right.href
+  && indexedReadingOpeningMarker(left) === indexedReadingOpeningMarker(right);
 
 /** Real publication session; services start only inside the captured route lifetime. */
-export function ReadEntry({captured, itemId, sourceId, active = true, onClose}: {captured: Captured; itemId: string; sourceId?: string; active?: boolean; onClose?: () => void}) {
+export function ReadEntry(props: ReadEntryProps) {
+  const {captured, itemId, sourceId, active = true, onClose} = props, location = useLocation({select: value => value});
+  const version = useSyncExternalStore(subscribeIndexedReadingOpenings, indexedReadingOpeningVersion, indexedReadingOpeningVersion);
+  const [published, publish] = useState<ReceiverOpening>();
+  const [navigationRevision, invalidateNavigation] = useState(0);
+  const owned = useRef<ReceiverOpening | undefined>(undefined), generation = useRef(0);
+  const context = captured.context;
+  useLayoutEffect(() => {
+    const held = owned.current, same = held?.context === context && held.itemId === itemId && held.sourceId === sourceId;
+    if (!active || location.pathname !== '/read/' + encodeURIComponent(itemId) || readSearch(location.search).sourceId !== sourceId) {
+      if (held && (!same || location.pathname !== '/settings' || !held.current())) held.retire();
+      return;
+    }
+    if (same && held.live && (held.location === location || held.carriedLocation === location
+      || held.carriedLocation && sameHistoryEntry(held.carriedLocation, location))) {held.carriedLocation = location;return;}
+    held?.retire();
+    const received = receiveIndexedReadingTarget(context, itemId, sourceId, location);
+    if (received.kind === 'pending') return;
+    const session = context.session(), viewer = {...session.viewer}, report = captured.binding.home.effects.reportError;
+    let off = () => {};
+    const authority = () => {
+      if (!context.isCurrent()) return false;
+      const now = context.session();
+      return now.sessionFamilyId === session.sessionFamilyId && (['serverId', 'authority', 'accountId', 'profileId', 'role'] as const).every(key => now.viewer[key] === viewer[key]);
+    };
+    const opening: ReceiverOpening = {context, itemId, sourceId, location, key: ++generation.current, live: true, received,
+      retire: () => {opening.live = false;off();}, reportError: error => {if (opening.current()) report(error);}, current: () => {
+      if (!opening.live || !context.isCurrent() || received.kind === 'accepted' && !received.current()) return false;
+      const actual = router.state.location;
+      return authority() && (actual === opening.location || actual === opening.carriedLocation
+        || !!opening.carriedLocation && sameHistoryEntry(actual, opening.carriedLocation)
+        || !!opening.settingsLocation && sameHistoryEntry(actual, opening.settingsLocation));
+    }};
+    off = router.subscribe('onBeforeNavigate', event => {
+      const from = event.fromLocation;
+      const fromReader = from === opening.location || from === opening.carriedLocation
+        || !!from && !!opening.carriedLocation && sameHistoryEntry(from, opening.carriedLocation);
+      const fromSettings = !!from && !!opening.settingsLocation && sameHistoryEntry(from, opening.settingsLocation);
+      if (authority() && (fromReader || fromSettings) && event.toLocation.pathname === '/settings') {opening.settingsLocation = event.toLocation;return;}
+      if (authority() && fromSettings && sameHistoryEntry(event.toLocation, opening.location)) {opening.carriedLocation = event.toLocation;return;}
+      // A marked Back/Forward or unrelated opening cannot reuse this receiver.
+      if (received.kind !== 'ordinary') {
+        retireIndexedReadingOpening(context, opening.location);opening.retire();
+        queueMicrotask(() => {if (owned.current === opening) invalidateNavigation(value => value + 1);});
+      }
+    });
+    owned.current = opening;publish(opening);
+  }, [context, itemId, sourceId, active, location, version, navigationRevision]);
+  useLayoutEffect(() => () => {owned.current?.retire();}, []);
+  const receiver = published?.live && published.context === context && published.itemId === itemId && published.sourceId === sourceId && published.current()
+    && (active ? published.location === location || published.carriedLocation === location || !!published.carriedLocation && sameHistoryEntry(published.carriedLocation, location)
+      : location.pathname === '/settings') ? published : undefined;
+  const leave = onClose ?? (() => router.history.back());
+  return receiver ? <ReadEntryBody key={receiver.key} {...props} receiver={receiver}/>
+    : <div className={styles.loading}><span className={styles.escape}><Button variant="glass" icon="i-left" iconOnly aria-label={t('next.reader.back')} onClick={leave}/></span><Skeleton height="100dvh"/></div>;
+}
+function ReadEntryBody({captured, itemId, sourceId, active = true, onClose, receiver}: ReadEntryProps & {receiver: ReceiverOpening}) {
   const [state, setState] = useState<Readonly<{book?: OpenBook; failed?: boolean}>>({});
-  const [contentsTarget] = useState(() => takeContentsTarget(captured.context, itemId, sourceId));
+  const [stagedContents] = useState(() => takeContentsTarget(captured.context, itemId, sourceId));
+  const contentsTarget = receiver.received.kind === 'ordinary' ? stagedContents : undefined;
   const [retry, setRetry] = useState(0);
-  const reportRef = useRef(captured.binding.home.effects.reportError); reportRef.current = captured.binding.home.effects.reportError;
-  const reportError = useRef((error: unknown) => {if (captured.context.isCurrent()) reportRef.current(error);}).current;
+  const reportError = receiver.reportError;
   useEffect(() => {
-    retireContentsTarget(captured.context, contentsTarget);
+    retireContentsTarget(captured.context, stagedContents);
     const life = new AbortController(), bindings = createReadBindings(captured.context);
     let alive = true, fonts: ReadFonts | undefined, publication: ReadingPublication | undefined;
     let reader: ReturnType<typeof bindReadPreferences> | undefined, progress: ReturnType<typeof bindReadingProgress> | undefined;
@@ -53,8 +119,10 @@ export function ReadEntry({captured, itemId, sourceId, active = true, onClose}: 
     };
     setState({});
     void (async () => {
+      if (!receiver.current()) throw new ReadingError('cancelled');
+      if (receiver.received.kind === 'refused' || receiver.received.kind === 'pending') throw new ReadingError('source_changed');
       const versions = (await bindings.client.versions(itemId, life.signal)).versions.filter(version => version.inventoryAvailable);
-      if (!alive) return;
+      if (!alive || !receiver.current()) return;
       const selected = sourceId ? versions.find(version => version.sourceId === sourceId) : versions.length === 1 ? versions[0] : undefined;
       if (!selected) {
         if (versions.length > 1 && !sourceId) await router.navigate({to: '/item/$itemId', params: {itemId}, replace: true});
@@ -62,14 +130,22 @@ export function ReadEntry({captured, itemId, sourceId, active = true, onClose}: 
         return;
       }
       const session = await bindings.open({itemId, sourceId: selected.sourceId});
+      if (!alive || !receiver.current()) throw new ReadingError('cancelled');
+      if (receiver.received.kind === 'accepted') {
+        const expected = receiver.received.target, manifest = session.manifest;
+        if (manifest.itemId !== expected.itemId || manifest.sourceId !== expected.sourceId || manifest.revision !== expected.sourceRevision)
+          throw new ReadingError('source_changed');
+      }
       publication = await createReadingPublication(session, life.signal);
+      if (!alive || !receiver.current()) throw new ReadingError('cancelled');
       if (contentsTarget) {
         const current = publication.contentsTarget(contentsTarget.index);
         if (current.sourceId !== contentsTarget.sourceId || current.sourceRevision !== contentsTarget.sourceRevision) throw new Error('source_changed');
       }
       const saved = await session.progress(life.signal), location = publication.resumeLocation(saved) ?? undefined;
+      if (!alive || !receiver.current()) throw new ReadingError('cancelled');
       if (publication.format === 'epub') fonts = await loadReadFonts({document, signal: life.signal});
-      if (!alive) return;
+      if (!alive || !receiver.current()) return;
       const adapters = publication.format === 'epub' ? [createEpubAdapter({fonts: fonts!.fonts})]
         : publication.format === 'pdf' ? [createPdfAdapter(readerPdfAdapterOptions)] : [createComicAdapter({pages: publication.comicPages!})];
       reader = bindReadPreferences({adapters, preferences: bindings.preferences, authority: bindings.authority, reportError: code => reportError({code})});
@@ -79,12 +155,12 @@ export function ReadEntry({captured, itemId, sourceId, active = true, onClose}: 
       // A rejected bootstrap must never leave the reader on its loading skeleton. This attempt is
       // still the live one unless it was retired, so show the failure state; report only while the
       // captured authority still holds, since a retired capture owns no error surface.
-      if (alive && !life.signal.aborted) {if (bindings.authority.isCurrent()) reportError(error); setState({failed: true});}
+      if (alive && !life.signal.aborted && receiver.current()) {if (bindings.authority.isCurrent()) reportError(error); setState({failed: true});}
       void dispose().catch(() => {});
     });
     return () => {void dispose().catch(() => {});};
-  }, [captured.context, itemId, sourceId, contentsTarget, reportError, retry]);
-  if (state.book) return <ReaderBook key={state.book.session.manifest.sessionId} book={state.book} active={active} reportError={reportError} onSearchAll={query => {if (!captured.context.isCurrent()) return; void router.navigate({to: '/search', search: {q: query}}).catch(reportError);}} onOpenSettings={() => {void router.navigate({to: '/settings', search: {scope: 'account', section: 'reading'}}).catch(reportError);}} onBack={onClose ?? (() => router.history.back())}/>;
+  }, [captured.context, itemId, sourceId, stagedContents, contentsTarget, reportError, retry, receiver]);
+  if (state.book) return <ReaderBook key={state.book.session.manifest.sessionId} book={state.book} active={active} reportError={reportError} onSearchAll={query => {if (!active || !receiver.current()) return; void router.navigate({to: '/search/reading', search: {q: query}}).catch(error => {if (receiver.current()) reportError(error);});}} onOpenSettings={() => {void router.navigate({to: '/settings', search: {scope: 'account', section: 'reading'}}).catch(reportError);}} onBack={onClose ?? (() => router.history.back())}/>;
   /** The drawn way back stays available while a book is opening and when it cannot open. */
   const leave = onClose ?? (() => router.history.back());
   if (state.failed) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}

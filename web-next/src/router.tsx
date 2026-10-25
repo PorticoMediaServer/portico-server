@@ -18,6 +18,7 @@ const screenSearch = (id: WebScreenId, fallback?: WebScreenSearchValidator) => (
 const screen = (id: WebScreenId) => function RegisteredScreen() {return <WebScreenOutlet id={id} />;};
 export const homeRoute = createRoute({getParentRoute: () => rootRoute, path: '/', component: () => <WebScreenOutlet id="home" fallback={<BoundHome />} />, validateSearch: screenSearch('home')});
 export const searchRoute = createRoute({getParentRoute: () => rootRoute, component: screen('search'), path: '/search', validateSearch: screenSearch('search', searchQuery)});
+export const readingSearchRoute = createRoute({getParentRoute: () => rootRoute, component: screen('readingSearch'), path: '/search/reading', validateSearch: screenSearch('readingSearch')});
 export const librariesRoute = createRoute({getParentRoute: () => rootRoute, component: screen('libraries'), path: '/libraries', validateSearch: screenSearch('libraries')});
 export const libraryRoute = createRoute({getParentRoute: () => rootRoute, component: screen('library'), path: '/library/$libraryId', validateSearch: screenSearch('library', librarySearch)});
 export const liveRoute = createRoute({getParentRoute: () => rootRoute, component: screen('live'), path: '/live', validateSearch: screenSearch('live', (raw: Record<string, unknown>): {sourceId?: string; group?: string} => ({...(typeof raw.sourceId === 'string' && raw.sourceId.length <= 256 ? {sourceId: raw.sourceId} : {}), ...(typeof raw.group === 'string' && raw.group.length <= 128 ? {group: raw.group} : {})}))});
@@ -44,7 +45,7 @@ export const profileSettingsAliasRoute = createRoute({getParentRoute: () => root
   browserEntryDestination.rememberProfileSettings();
   throw redirect({...profileSettingsDestination, replace: true});
 }});
-const destinations = [homeRoute, searchRoute, librariesRoute, libraryRoute, liveRoute, savedRoute, itemRoute, homeRowRoute, playerRoute, settingsRoute, dashboardRoute, notificationsRoute, profilesRoute, serversRoute, accountRoute, setupRoute, signInRoute, accountReturnRoute, togetherRoute, helpRoute, aboutRoute, personRoute, readRoute, profileSettingsAliasRoute];
+const destinations = [homeRoute, searchRoute, readingSearchRoute, librariesRoute, libraryRoute, liveRoute, savedRoute, itemRoute, homeRowRoute, playerRoute, settingsRoute, dashboardRoute, notificationsRoute, profilesRoute, serversRoute, accountRoute, setupRoute, signInRoute, accountReturnRoute, togetherRoute, helpRoute, aboutRoute, personRoute, readRoute, profileSettingsAliasRoute];
 const devRoutes = import.meta.env.DEV ? [createRoute({
   getParentRoute: () => rootRoute, path: '/dev/kit', validateSearch: gallerySearch,
   component: lazyRouteComponent(() => import('./dev/KitGallery'), 'KitGallery'),
