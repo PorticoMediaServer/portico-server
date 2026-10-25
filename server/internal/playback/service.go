@@ -62,7 +62,7 @@ type Service struct {
 	// AuthorityTx is wired by HTTP composition, never a remote policy lookup.
 	AuthorityTx         ControlAuthorityTx
 	ContinueAuthorityTx ControlAuthorityTx
-	PersonalProgress    func(*sql.Tx, identity.Viewer, string, string, int64, float64, float64, string, bool) error
+	PersonalProgress    func(*sql.Tx, identity.Viewer, string, string, int64, float64, float64, string, bool, float64) error
 	Subtitles           *subtitles.Service
 	Prepared            *preparedmedia.Service
 	// Delivery seams. Owner administration, viewer preferences and hardware
@@ -657,8 +657,19 @@ func (s *Service) Progress(p identity.Principal, id string, generation int, sequ
 }
 
 // ProgressContext abandons report work when its request or playback timeline
-// deadline expires, without stopping the live presentation.
+// deadline expires, without stopping the live presentation. A caller that does
+// not know the player's rate reports none, so the interval cannot be proven.
 func (s *Service) ProgressContext(ctx context.Context, p identity.Principal, id string, generation int, sequence int64, position float64, state string) error {
+	return s.ProgressReportedContext(ctx, p, id, generation, sequence, position, state, 0)
+}
+
+// ProgressReportedContext is ProgressContext with the player's own reported
+// rate. It is the same accepted evidence path; the rate only lets a reader tell
+// a played interval from a jump.
+func (s *Service) ProgressReportedContext(ctx context.Context, p identity.Principal, id string, generation int, sequence int64, position float64, state string, rate float64) error {
+	if math.IsNaN(rate) || math.IsInf(rate, 0) || rate < 0 {
+		return requestinput.New("invalid playback rate")
+	}
 	if math.IsNaN(position) || math.IsInf(position, 0) || position < 0 || sequence < 0 {
 		return requestinput.New("invalid progress")
 	}
@@ -671,12 +682,12 @@ func (s *Service) ProgressContext(ctx context.Context, p identity.Principal, id 
 	}
 	tx := gated3.Tx()
 	defer gated3.Rollback()
-	if e = s.progressTx(gated3.Context(), tx, p, id, generation, sequence, position, state); e != nil {
+	if e = s.progressTx(gated3.Context(), tx, p, id, generation, sequence, position, state, rate); e != nil {
 		return e
 	}
 	return gated3.Commit()
 }
-func (s *Service) progressTx(ctx context.Context, tx *sql.Tx, p identity.Principal, id string, generation int, sequence int64, position float64, state string) error {
+func (s *Service) progressTx(ctx context.Context, tx *sql.Tx, p identity.Principal, id string, generation int, sequence int64, position float64, state string, rate float64) error {
 	var e error
 	if e = checkSessionOccurrenceTx(ctx, tx, id); e != nil {
 		return e
@@ -715,7 +726,7 @@ func (s *Service) progressTx(ctx context.Context, tx *sql.Tx, p identity.Princip
 		return e
 	}
 	if s.PersonalProgress != nil {
-		if e = s.PersonalProgress(tx, p.Viewer, id, item, sequence, position, duration, state, canonical); e != nil {
+		if e = s.PersonalProgress(tx, p.Viewer, id, item, sequence, position, duration, state, canonical, rate); e != nil {
 			return e
 		}
 	} else {

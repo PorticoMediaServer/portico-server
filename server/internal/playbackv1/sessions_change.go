@@ -516,7 +516,7 @@ func (s *Service) Timeline(ctx context.Context, c Caller, id string, report Repo
 	if r.media != "" {
 		// Resume, played threshold, watch history (respecting pause-history) and
 		// Continue Watching are written by the existing evidence path.
-		if err = s.Playback.ProgressContext(ctx, c.Principal, r.media, r.mediaGeneration, report.Seq, float64(report.PositionMs)/1000, legacy); err != nil && !errors.Is(err, identity.ErrUnauthorized) {
+		if err = s.Playback.ProgressReportedContext(ctx, c.Principal, r.media, r.mediaGeneration, report.Seq, float64(report.PositionMs)/1000, legacy, report.Rate); err != nil && !errors.Is(err, identity.ErrUnauthorized) {
 			return 0, err
 		}
 	}
