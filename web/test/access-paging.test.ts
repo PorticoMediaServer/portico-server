@@ -33,9 +33,9 @@ test('CD-07: 101+ devices stay reachable across pages without limit=200', async 
   const {accessListPath} = await loadAccess();
   const {nextCursorOf} = await loadCursors();
   const {parseAccessDevicePage} = await loadAdmin();
-  const device = (n: number) => ({id: `d${n}`, accountId: 'a1', trust: 'approved', firstSeenAt: '2026-09-01T00:00:00Z', lastSeenAt: '2026-09-02T00:00:00Z', revision: 1});
+  const device = (n: number) => ({id: `d${n}`, accountId: 'a1', username: 'fixture_user', profileId: 'p1', name: `Device ${n}`, platform: 'android', app: 'Portico', appVersion: '1.0', lastNetwork: 'home', liveState: 'idle', firstSeenAt: '2026-09-01T00:00:00Z', lastSeenAt: '2026-09-02T00:00:00Z', revision: 1});
   // First page: 100 devices and a cursor onward.
-  const raw1 = {limit: 100, items: Array.from({length: 100}, (_, n) => device(n)), nextCursor: 'c:100', approvalRequired: false};
+  const raw1 = {limit: 100, items: Array.from({length: 100}, (_, n) => device(n)), nextCursor: 'c:100'};
   assert.match(accessListPath('devices'), /limit=100/);
   const page1 = parseAccessDevicePage(raw1);
   assert.equal(page1.items.length, 100);
@@ -43,9 +43,11 @@ test('CD-07: 101+ devices stay reachable across pages without limit=200', async 
   assert.equal(cursor, 'c:100');
   // Second page reached through that cursor: the last device.
   assert.match(accessListPath('devices', cursor), /cursor=c%3A100/);
-  const raw2 = {limit: 100, items: [device(100)], nextCursor: '', approvalRequired: false};
+  const raw2 = {limit: 100, items: [device(100)], nextCursor: ''};
   const page2 = parseAccessDevicePage(raw2);
   assert.equal(page2.items.length, 1);
   assert.equal(nextCursorOf(raw2), '');
   assert.equal(page1.items.length + page2.items.length, 101);
+  assert.throws(() => parseAccessDevicePage({...raw1, approvalRequired: false}));
+  assert.throws(() => parseAccessDevicePage({...raw2, items: [{...device(100), trust: 'approved'}]}));
 });
