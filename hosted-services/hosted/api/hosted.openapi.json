@@ -10647,7 +10647,9 @@
         "x-access": "public",
         "x-admission": "",
         "x-cost": "constant",
-        "x-error-codes": [],
+        "x-error-codes": [
+          "username_unavailable"
+        ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
         "x-scope": "session"
