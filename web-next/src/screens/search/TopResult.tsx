@@ -45,8 +45,12 @@ export function TopResult({binding, result, fallbackArtwork, compact, onOpen}: {
   // circle when it has one, its real facts, and a Play only where a title really plays.
   if (compact) {
     const movieAction = movie?.actions.find(value => value.enabled && value.playback && value.id !== 'start_over');
+    // The frame's artist card has its own Play. The binding's own captured authority decides
+    // whether this exact answer can play the artist; the command re-checks it on the gesture.
+    const artistPlay = entry.kind === 'artist' && binding.canPlayArtist(entry)
+      ? () => runScreenCommand(binding.context, () => binding.playArtist(entry)) : undefined;
     const play = movie && movieAction ? () => runScreenCommand(binding.context, () => { if (movie && movieAction) { title.current(movie); return title.play(movie, movieAction.id); } })
-      : series && action ? showPlay : undefined;
+      : series && action ? showPlay : artistPlay;
     const phoneTitle = media?.displayTitle ?? entry.title, artist = entry.kind === 'artist';
     const initials = entry.title.split(/\s+/).filter(Boolean).slice(0, 2).map(word => Array.from(word)[0]).join('');
     const background = source ? binding.context.artwork.foreground(source, 640, 3 / 2) : undefined;
