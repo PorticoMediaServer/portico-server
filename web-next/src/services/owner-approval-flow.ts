@@ -8,7 +8,7 @@ export type OwnerApprovalDisplay = Readonly<{
   name: string; address: string; accountName: string; requestedAt: string; expiresAt: string;
   /** The signed claim's own reason; a plain switch carries no previous-owner role.
    * start-over is the distinct signed transition mode the server binds to the move. */
-  reason: 'switch' | 'change-owner' | 'start-over'; previousOwnerRole?: 'admin' | 'member' | 'remove';
+  reason: 'switch' | 'change-owner' | 'start-over'; currentOwnerUsername?: string; previousOwnerRole?: 'admin' | 'member' | 'remove';
   /** Signed other-people count when the producer supplied one; absent otherwise. */
   otherPeopleCount?: number;
 }>;
@@ -68,6 +68,7 @@ export class OwnerApprovalFlow {
         accountName: session.account.displayName || session.account.username,
         requestedAt: review.requestedAt, expiresAt: review.expiresAt, reason: review.reason,
         ...(review.previousOwnerRole === undefined ? {} : {previousOwnerRole: review.previousOwnerRole}),
+        ...(review.currentOwnerUsername === undefined ? {} : {currentOwnerUsername: review.currentOwnerUsername}),
         ...(review.otherPeopleCount === undefined ? {} : {otherPeopleCount: review.otherPeopleCount})});
       this.publish({phase: review.status === 'approved' ? 'approved' : 'review', busy: false, display});
     });

@@ -27,9 +27,16 @@ export function OwnerApprovalReview({display, requested, approved = false, busy 
   onApprove: () => void; onDeny: () => void; onReturn: () => void;
 }) {
   const {t} = servicesI18n(), copy = claimApprovalCopy(display.reason);
-  const previous = display.previousOwnerRole === 'admin' ? 'services.claim.previousAdmin'
-    : display.previousOwnerRole === 'member' ? 'services.claim.previousMember'
-      : display.previousOwnerRole === 'remove' ? 'services.claim.previousRemoved' : undefined;
+  const previous = display.previousOwnerRole === 'admin' ? display.currentOwnerUsername ? 'services.claim.namedPreviousAdmin' : 'services.claim.previousAdmin'
+    : display.previousOwnerRole === 'member' ? display.currentOwnerUsername ? 'services.claim.namedPreviousMember' : 'services.claim.previousMember'
+      : display.previousOwnerRole === 'remove' ? display.currentOwnerUsername ? 'services.claim.namedPreviousRemoved' : 'services.claim.previousRemoved' : undefined;
+  // Frame 24i: one notice carries "becomes the owner" and that reason's own
+  // consequence. A switch keeps the other people's sign-ins; Start over removes
+  // them, so it never borrows the switch sentence; Change owner leaves everyone
+  // else alone and names what the previous owner becomes.
+  const consequence = display.reason === 'change-owner' ? (previous ? t(previous, {username: display.currentOwnerUsername ?? ''}) : undefined)
+    : display.otherPeopleCount === undefined ? display.reason === 'start-over' ? t('services.claim.peopleRemoved') : undefined
+      : t(display.reason === 'start-over' ? 'services.claim.otherPeopleRemoved' : 'services.claim.otherPeople', {count: display.otherPeopleCount});
   return <ServicesAuthStage variant="ownerReview">
     <ServicesHeading>{t(copy.title, {server: display.name})}</ServicesHeading>
     <ServicesLead>{t(copy.lead, {server: display.name, account: display.accountName})}</ServicesLead>
@@ -37,12 +44,12 @@ export function OwnerApprovalReview({display, requested, approved = false, busy 
       {id: 'server', label: t('web.claim.server'), value: display.name},
       {id: 'address', label: t('web.claim.address'), value: new URL(display.address).host},
       {id: 'account', label: t('web.claim.account'), value: display.accountName},
-      {id: 'requested', label: t('web.claim.requested'), value: requested},
+      ...(display.currentOwnerUsername === undefined ? [{id: 'requested', label: t('web.claim.requested'), value: requested}]
+        : [{id: 'current-owner', label: t('services.claim.currentOwner'), value: display.currentOwnerUsername}]),
     ]} />
-    {previous ? <ServicesNotice tone="info">{t(previous)}</ServicesNotice> : null}
-    {display.otherPeopleCount === undefined ? null : <ServicesNotice tone="info">
-      <b>{t('services.claim.becomesOwner', {account: display.accountName})}</b>{' '}{t('services.claim.otherPeople', {count: display.otherPeopleCount})}
-    </ServicesNotice>}
+    <ServicesNotice tone="info">
+      <b>{t('services.claim.becomesOwner', {account: display.accountName})}</b>{consequence ? <>{' '}{consequence}</> : null}
+    </ServicesNotice>
     {notice}
     <ServicesActions>{approved
       ? <Button variant="primary" autoFocus loading={busy} disabled={busy} onClick={onReturn}>{t('web.claim.returnTo', {server: display.name})}</Button>
