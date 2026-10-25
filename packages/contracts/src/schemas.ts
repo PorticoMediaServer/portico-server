@@ -114946,6 +114946,66 @@ export const schemas = {
       "includeAdult": {
         "type": "boolean"
       },
+      "libraries": {
+        "items": {
+          "properties": {
+            "agent": {
+              "type": "string"
+            },
+            "agentOptions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "canScrub": {
+              "type": "boolean"
+            },
+            "episodeThumbnailMode": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "lyricsSource": {
+              "type": "string"
+            },
+            "managed": {
+              "type": "boolean"
+            },
+            "name": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "string"
+            },
+            "scrubPreviews": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "kind",
+            "revision",
+            "agent",
+            "agentOptions",
+            "lyricsSource",
+            "episodeThumbnailMode",
+            "scrubPreviews",
+            "canScrub",
+            "managed"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "librariesComplete": {
+        "type": "boolean"
+      },
       "localArtworkLimitBytes": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -195150,6 +195210,36 @@ export const schemas = {
       "includeAdult": {
         "type": "boolean"
       },
+      "libraries": {
+        "items": {
+          "properties": {
+            "agent": {
+              "type": "string"
+            },
+            "episodeThumbnailMode": {
+              "type": "string"
+            },
+            "expectedRevision": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "lyricsSource": {
+              "type": "string"
+            },
+            "scrubPreviews": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "expectedRevision"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
       "localArtworkLimitBytes": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -195191,6 +195281,66 @@ export const schemas = {
         "type": "integer"
       },
       "includeAdult": {
+        "type": "boolean"
+      },
+      "libraries": {
+        "items": {
+          "properties": {
+            "agent": {
+              "type": "string"
+            },
+            "agentOptions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "canScrub": {
+              "type": "boolean"
+            },
+            "episodeThumbnailMode": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "lyricsSource": {
+              "type": "string"
+            },
+            "managed": {
+              "type": "boolean"
+            },
+            "name": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "string"
+            },
+            "scrubPreviews": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "kind",
+            "revision",
+            "agent",
+            "agentOptions",
+            "lyricsSource",
+            "episodeThumbnailMode",
+            "scrubPreviews",
+            "canScrub",
+            "managed"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "librariesComplete": {
         "type": "boolean"
       },
       "localArtworkLimitBytes": {

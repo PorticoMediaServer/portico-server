@@ -388,6 +388,13 @@ func (s *Service) publish(ctx context.Context, b binding, stage, id, evidence, t
 	if !p.Allows(stage) {
 		return context.Canceled
 	}
+	// Publication is the last boundary: a source page change during a long
+	// decode must not publish a stage it has since switched off.
+	if allowed, e := sourceStageAllowedTx(ctx, tx, current.Source.ID, stage); e != nil {
+		return e
+	} else if !allowed {
+		return context.Canceled
+	}
 	if len(out.Markers) > 0 {
 		var n int
 		if e = tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM analysis_markers WHERE object_id=? AND source_revision=? AND source_binding=? AND deleted=0`, b.ObjectID, b.SourceRevision, b.SourceBinding).Scan(&n); e != nil {

@@ -28,6 +28,20 @@ func (s *Service) ContinueAdmission(ctx context.Context, job, object string) (bo
 	if err != nil {
 		return false, err
 	}
+	// A stage switched off on the source's page while this decode runs stops
+	// here, through the same cancellation path the policy watcher uses.
+	var librarySource string
+	if err = tx.QueryRowContext(ctx, `SELECT source_id FROM inventory_objects WHERE id=?`, object).Scan(&librarySource); err == nil {
+		allowed, e := sourceStageAllowedTx(ctx, tx, librarySource, stage)
+		if e != nil {
+			return false, e
+		}
+		if !allowed {
+			return false, nil
+		}
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return false, err
+	}
 	task := "analysis"
 	if stage == "trickplay" {
 		task = "trickplay"

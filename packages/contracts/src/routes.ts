@@ -6616,7 +6616,7 @@ export const routes = [
     "access": "owner",
     "requires": "admin",
     "lane": "default",
-    "cost": "constant",
+    "cost": "page_sized",
     "bodyLimit": 0,
     "errors": [
       "unauthorized",
@@ -15167,8 +15167,8 @@ export const routes = [
     "access": "owner",
     "requires": "admin",
     "lane": "default",
-    "cost": "constant",
-    "bodyLimit": 32768,
+    "cost": "page_sized",
+    "bodyLimit": 262144,
     "errors": [
       "unauthorized",
       "not_permitted",
