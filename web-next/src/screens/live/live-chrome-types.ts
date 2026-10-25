@@ -51,6 +51,10 @@ export type LiveChromeGuideChannel = Readonly<{
 
 export type LiveChromeGuideTarget = Readonly<{sourceId: string; channelId: string; generation: string; kind: 'live-source' | 'library-channel'}>;
 
+/** What one rail drag is bound to: the full fence and the exact media window captured at
+ * pointer-down. A rerender under a different fence never reuses this origin. */
+export type LiveChromeDrag = Readonly<{fence: ChannelPlaybackFence; window: LiveChromeWindow}>;
+
 export type LiveChromePort = Readonly<{
   /** The exact channel fence this chrome belongs to. */
   fence: ChannelPlaybackFence;

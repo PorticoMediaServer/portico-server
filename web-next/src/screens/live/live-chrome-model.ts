@@ -2,7 +2,7 @@ import {defaultI18n} from '@i18n';
 import {formatBehindSec} from '@core/presentation/index.ts';
 import {sameFence, type ChannelPlaybackFence} from '../../../../packages/player-core/src/index.ts';
 import type {WebPlaybackAuthority, WebPlaybackRuntimeSnapshot} from '../../platform/playback';
-import type {LiveChromePort, LiveChromeWindow} from './live-chrome-types';
+import type {LiveChromeDrag, LiveChromePort, LiveChromeWindow} from './live-chrome-types';
 
 const t = defaultI18n.t;
 const clamp = (value: number) => Math.min(100, Math.max(0, value));
@@ -67,6 +67,19 @@ export function liveNextLine(port: LiveChromePort): string | undefined {
  * measured from the exact media origin captured with this window. */
 export function liveSeekSeconds(window: LiveChromeWindow, wallClockMs: number): number {
   return (wallClockMs - window.mediaOriginMs) / 1000;
+}
+
+/** A pointer drag belongs to the fence it started on. A full-fence replacement during the
+ * drag (pointer-down A, rerender B) leaves the captured drag unheld, so pointer-up discards
+ * it instead of seeking the channel it never started on. */
+export function liveRailDragHeld(drag: LiveChromeDrag | undefined, fence: ChannelPlaybackFence): boolean {
+  return !!drag && sameFence(drag.fence, fence);
+}
+
+/** The one seek command a held drag may send: the finger's wall-clock value measured from the
+ * media origin captured at pointer-down, never from a later render. */
+export function liveRailDragSeek(drag: LiveChromeDrag | undefined, fence: ChannelPlaybackFence, wallClockMs: number | undefined): number | undefined {
+  return drag && wallClockMs !== undefined && liveRailDragHeld(drag, fence) ? liveSeekSeconds(drag.window, wallClockMs) : undefined;
 }
 
 /** Both the retained screen authority and this exact channel fence must still be live. */

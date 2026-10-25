@@ -3,8 +3,8 @@ import {defaultI18n} from '@i18n';
 import {ChannelMark} from '../../kit/artwork';
 import {Button} from '../../kit/controls';
 import {Icon, type IconName} from '../../kit/Icon';
-import {liveBehindLabel, liveNextLine, liveRail, liveRecordLabel, liveSeekSeconds, liveTimeRange} from './live-chrome-model';
-import type {LiveChromePort} from './live-chrome-types';
+import {liveRailDragHeld, liveRailDragSeek, liveBehindLabel, liveNextLine, liveRail, liveRecordLabel, liveSeekSeconds, liveTimeRange} from './live-chrome-model';
+import type {LiveChromeDrag, LiveChromePort} from './live-chrome-types';
 import styles from './live-chrome.module.css';
 
 const t = defaultI18n.t;
@@ -41,9 +41,9 @@ export type LiveChromeProps = Readonly<{
  * and every action rechecks that port's exact channel fence before it runs. */
 export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSkip, onSeek, onMore, right, onMiniGuideOpenChange, initialMiniGuideOpen = false, canPlayPause = true, canSeek = true, reportError}: LiveChromeProps) {
   const [miniGuide, setMiniGuide] = useState(initialMiniGuideOpen), [recordingBusy, setRecordingBusy] = useState(false), [scrub, setScrub] = useState<number>();
-  const guide = useRef<HTMLElement>(null), rail = useRef<HTMLDivElement>(null), drag = useRef(false), scrubRef = useRef<number | undefined>(undefined);
+  const guide = useRef<HTMLElement>(null), rail = useRef<HTMLDivElement>(null), drag = useRef<LiveChromeDrag | undefined>(undefined), scrubRef = useRef<number | undefined>(undefined);
   const window = port.window, channel = port.channel, programme = port.programme;
-  const displayWindow = scrub === undefined ? window : {...window, positionMs: scrub};
+  const displayWindow = scrub === undefined || !liveRailDragHeld(drag.current, port.fence) ? window : {...window, positionMs: scrub};
   const railFacts = liveRail(displayWindow), behindSeconds = Math.max(0, (window.liveEdgeMs - displayWindow.positionMs) / 1000);
   const behind = liveBehindLabel(behindSeconds), next = liveNextLine(port), range = programme ? liveTimeRange(programme.startMs, programme.endMs, time) : undefined;
   const recordLabel = liveRecordLabel(programme);
@@ -67,6 +67,7 @@ export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSk
     const value = Math.min(window.liveEdgeMs, Math.max(window.seekStartMs, at));
     scrubRef.current = value;setScrub(value);
   };
+  const endDrag = () => {drag.current = undefined;scrubRef.current = undefined;setScrub(undefined);};
   const railKeys = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!port.isCurrent()) return;
     const bounds = [window.seekStartMs, window.liveEdgeMs];
@@ -126,10 +127,10 @@ export function LiveChrome({port, playing, onCollapse, onStop, onPlayPause, onSk
         <div ref={rail} className={styles.rail} role="slider" aria-label={t('player.position')}
           aria-valuemin={Math.round(liveSeekSeconds(window, window.seekStartMs))} aria-valuemax={Math.round(liveSeekSeconds(window, window.liveEdgeMs))} aria-valuenow={Math.round(liveSeekSeconds(window, displayWindow.positionMs))}
           aria-disabled={!canSeek || undefined} tabIndex={canSeek ? 0 : -1} aria-valuetext={`${time(displayWindow.positionMs)}${behind ? `, ${behind}` : ''}`} onKeyDown={railKeys}
-          onPointerDown={event => {if (!canSeek || !port.isCurrent()) return;drag.current = true;event.currentTarget.setPointerCapture(event.pointerId);seekAt(event.clientX);}}
-          onPointerMove={event => {if (drag.current) seekAt(event.clientX);}}
-          onPointerUp={event => {if (!drag.current) return;drag.current = false;if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);if (scrubRef.current !== undefined && port.isCurrent()) onSeek(liveSeekSeconds(window, scrubRef.current));scrubRef.current = undefined;setScrub(undefined);}}
-          onPointerCancel={() => {drag.current = false;scrubRef.current = undefined;setScrub(undefined);}}>
+          onPointerDown={event => {if (!canSeek || !port.isCurrent()) return;drag.current = {fence: port.fence, window};event.currentTarget.setPointerCapture(event.pointerId);seekAt(event.clientX);}}
+          onPointerMove={event => {if (!drag.current) return;if (!liveRailDragHeld(drag.current, port.fence)) {endDrag();return;}seekAt(event.clientX);}}
+          onPointerUp={event => {const captured = drag.current;const value = scrubRef.current;endDrag();if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);const seconds = liveRailDragSeek(captured, port.fence, value);if (seconds !== undefined && port.isCurrent()) onSeek(seconds);}}
+          onPointerCancel={endDrag}>
           <i className={styles.gone} style={{width: `${railFacts.gone}%`}}/>
           <i className={styles.buffer} style={{left: `${railFacts.gone}%`, width: `${railFacts.buffer}%`}}/>
           <i className={styles.played} style={{left: `${railFacts.gone}%`, width: `${railFacts.played}%`}}/>
