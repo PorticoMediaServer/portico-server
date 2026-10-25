@@ -64,3 +64,14 @@ test('known job resumes with GET and a retired operation performs zero retry I/O
   await actions.personal(operation, {favorite: true}, undefined, () => current);
   assert.deepEqual(calls, ['POST', 'GET', 'GET']);
 });
+
+
+test('a new caller guard cannot revive a retired retained attempt', async () => {
+  let originalCurrent = true, requests = 0;
+  const actions = createSelectionActions({...ports, requestId: async () => 'op', api: {request: async () => {requests++; throw new Error('lost');}}});
+  const operation = {target: explicit(['movie'])} as never;
+  await assert.rejects(actions.personal(operation, {watched: true}, undefined, () => originalCurrent), /lost/);
+  originalCurrent = false;
+  await assert.rejects(actions.personal(operation, {watched: true}, undefined, () => true), /cancelled/);
+  assert.equal(requests, 1);
+});
