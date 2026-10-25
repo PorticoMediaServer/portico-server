@@ -196,6 +196,8 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
       if (!current() || !model || !handle || handle.window !== window || !source.contains(row.entry)) throw cancelled();
       return model.toggle(handle.run, row.key, range);
     },
+    captureOperation() {return current() ? model?.captureOperation() ?? null : null;},
+    isOperationCurrent(operation: SelectionOperation<BrowseSelectionContext>) {return current() && !!model?.isOperationCurrent(operation);},
     selectLoaded() {if (!current() || !model) throw cancelled();return model.selectLoaded('library');},
     clear() {if (!current() || !model) throw cancelled();model.clear();},
     async play(callerSignal: AbortSignal = signal) {

@@ -30,6 +30,8 @@ const fake = (over: Record<string, unknown> = {}, host: Record<string, unknown> 
   };
   const selection = {
     getSnapshot: () => snapshot,
+    captureOperation: () => snapshot.selection.target ? {target: snapshot.selection.target} : null,
+    isOperationCurrent: () => true,
     subscribe: () => () => {},
     toggle: (expected: unknown, range: boolean) => { calls.push(`toggle:${(expected as typeof row).key}:${range}`); return {ok: true}; },
     selectLoaded: () => { calls.push('selectLoaded'); return {ok: true}; },
@@ -202,4 +204,26 @@ test('a whole-view member paints checked from the model, not the explicit keys',
     {selected: (row: {key: string}) => row.key === 'key-0'});
   const adapter = createLibrarySelection({playSelection: selection, reportError: () => {}});
   assert.equal(adapter.entry({membershipId: 'm1', entry} as never, 0)?.checked, true);
+});
+
+
+test('personal actions require a model operation lease', async () => {
+  const actions = {api: {request: async () => { throw new Error('must not dispatch'); }}, events: {on: () => () => {}},
+    requestId: async () => 'op', isCurrent: () => true, reportError: () => {}};
+  for (const host of [{captureOperation: undefined}, {isOperationCurrent: undefined}]) {
+    const adapter = createLibrarySelection({playSelection: fake({}, host).selection, actions: actions as never, reportError: () => {}});
+    assert.doesNotMatch(renderToStaticMarkup(createElement('div', null, adapter.toolbar)), />Watched</);
+    await assert.rejects(adapter.personal({watched: true}), /selection-actions-unavailable/);
+  }
+});
+
+test('clearing a captured selection while preparing a personal job prevents submission', async () => {
+  let current = true, requested = 0;
+  const operation = {target};
+  const host = {captureOperation: () => operation, isOperationCurrent: (captured: unknown) => captured === operation && current};
+  const actions = {api: {request: async () => { requested++; throw new Error('must not dispatch'); }}, events: {on: () => () => {}},
+    requestId: async () => { current = false; return 'op'; }, isCurrent: () => true, reportError: () => {}};
+  const adapter = createLibrarySelection({playSelection: fake({}, host).selection, actions: actions as never, reportError: () => {}});
+  await assert.rejects(adapter.personal({watched: true}), /cancelled/);
+  assert.equal(requested, 0);
 });
