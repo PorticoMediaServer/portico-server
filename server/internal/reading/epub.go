@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/xml"
 	"io"
+	"net/url"
 	"path"
 	"sort"
 	"strings"
@@ -501,6 +502,17 @@ func validateXHTML(base string, b []byte, assets map[string]string) error {
 						return err
 					}
 				}
+				// An <a href> may carry the publication's own ordinary absolute
+				// HTTP(S) address as inert data. It is never resolved as an
+				// archive asset, fetched, rewritten or turned into a link by the
+				// server. Only an unprefixed anchor in the XHTML namespace gets
+				// this exemption: src, poster, srcset, link/import and every
+				// other resource-bearing attribute keep their existing rule,
+				// and the shared web sanitizer plus each native renderer must
+				// deactivate the attribute before it enters a document.
+				if name == "href" && t.Name.Local == "a" && t.Name.Space == "http://www.w3.org/1999/xhtml" && a.Name.Space == "" && inertHTTPAnchor(a.Value) {
+					continue
+				}
 				if name == "href" || name == "src" || name == "poster" {
 					target, err := resolveReference(base, value)
 					if err != nil {
@@ -524,6 +536,18 @@ func validateXHTML(base string, b []byte, assets map[string]string) error {
 		case xml.CharData:
 			if inStyle {
 				style = append(style, t...)
+				// A style element is raw text in HTML. Its CDATA or
+				// entity-decoded content must never carry a raw-text closing
+				// or comment sequence that could become markup payload when
+				// the document is serialized. A lone '<' inside CSS comments
+				// stays the CSS validator's decision.
+				start := len(style) - len(t) - styleBreakoutWindow
+				if start < 0 {
+					start = 0
+				}
+				if styleBreakout(style[start:]) {
+					return ErrInvalid
+				}
 			}
 		case xml.Directive:
 			if strings.TrimSpace(strings.ToLower(string(t))) != "doctype html" {
@@ -538,3 +562,68 @@ func validateXHTML(base string, b []byte, assets map[string]string) error {
 }
 
 func extension(name string) string { return strings.ToLower(path.Ext(name)) }
+
+// styleBreakoutWindow overlaps consecutive character data so a closing or
+// comment sequence split across decoder tokens is still seen.
+const styleBreakoutWindow = 16
+
+// styleBreakout reports a raw-text closing or HTML comment sequence in the
+// aggregated style text. The caller has already rejected real markup; this
+// catches sequences that arrive through CDATA or character references and
+// would become markup if a consumer serialized the style as HTML.
+func styleBreakout(b []byte) bool {
+	return asciiFoldContains(b, "</style") || asciiFoldContains(b, "<!--") || asciiFoldContains(b, "-->")
+}
+
+// asciiFoldContains is a bounded ASCII case-insensitive search over a small
+// window; lower is ASCII lowercase.
+func asciiFoldContains(b []byte, lower string) bool {
+	if len(lower) == 0 || len(b) < len(lower) {
+		return false
+	}
+	for i := 0; i+len(lower) <= len(b); i++ {
+		match := true
+		for j := 0; j < len(lower); j++ {
+			c := b[i+j]
+			if c >= 'A' && c <= 'Z' {
+				c += 'a' - 'A'
+			}
+			if c != lower[j] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
+}
+
+// maxInertAnchorLink bounds the address an XHTML anchor may carry as inert
+// publication data. The bytes are validated only; the served asset keeps its
+// exact original bytes, length and revision.
+const maxInertAnchorLink = 2048
+
+// inertHTTPAnchor reports whether an <a href> is a plain absolute HTTP(S)
+// address. It accepts no credentials, empty/opaque authority, control or
+// non-ASCII bytes, backslashes, quotes or angle brackets, and no relative or
+// protocol-relative form; every other scheme fails. The server never fetches,
+// resolves or rewrites the address, so this is a lexical admission, not a
+// network capability.
+func inertHTTPAnchor(raw string) bool {
+	if raw == "" || len(raw) > maxInertAnchorLink {
+		return false
+	}
+	for i := 0; i < len(raw); i++ {
+		c := raw[i]
+		if c < 0x21 || c > 0x7e || c == '\\' || c == '"' || c == '\'' || c == '<' || c == '>' {
+			return false
+		}
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Opaque != "" || u.User != nil || u.Host == "" || u.Hostname() == "" {
+		return false
+	}
+	return strings.EqualFold(u.Scheme, "http") || strings.EqualFold(u.Scheme, "https")
+}
