@@ -31,10 +31,10 @@ export function SeasonMenu({open, onOpenChange, label, seasons, selectedId, tota
     if (await onJump(number)) onOpenChange(false);
   };
   return <Popover open={open} onOpenChange={value => onOpenChange(value)} title={t('title.seasonMenu')} trigger={<Chip variant="toolbar" trailingIcon="i-down">{label}</Chip>}
-    placement="bottom-start" width={440} className={styles.seasonPopover} initialFocusRef={totalCount > 30 ? jump : firstRow}>
+    placement="bottom-start" width={380} className={styles.seasonPopover} initialFocusRef={totalCount > 30 ? jump : firstRow}>
     <header className={styles.seasonHeader}><b>{t('next.detail.seasons', {count: totalCount})}</b>
       {totalCount > 30 && <form className={styles.seasonJump} onSubmit={event => { event.preventDefault(); void submit(); }}>
-        <TextField ref={jump} variant="compact" inputMode="numeric" aria-label={t('next.detail.jumpSeason')} placeholder={t('next.detail.jumpSeason')}
+        <TextField ref={jump} variant="compact" leadingIcon="i-search" inputMode="numeric" aria-label={t('next.detail.jumpSeason')} placeholder={t('next.detail.jumpSeason')}
           value={query} onChange={event => setQuery(event.currentTarget.value.replace(/[^0-9]/g, '').slice(0, 4))}
           trailing={<span>{t('next.detail.seasonNumberRange', {first: 1, last: totalCount})}</span>} />
       </form>}
