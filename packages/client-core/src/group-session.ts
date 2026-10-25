@@ -273,8 +273,8 @@ export class GroupSessionService{
  /** Puts a title in front of the group: queued, then selected. Selecting never starts it; the
   * group prepares, and whoever may control presses Play once people are ready. */
  async watch(itemId:string):Promise<boolean>{
-  const room=this.room;if(!room||!await this.queueAdd([itemId]))return false;
-  await this.readQueue(room);await this.reread(room);
+  const room=this.room;if(!room||!await this.queueAdd([itemId])||this.room!==room)return false;
+  await this.readQueue(room);if(this.room!==room)return false;await this.reread(room);if(this.room!==room)return false;
   const entry=[...(this.state.queue?.entries??[])].reverse().find(e=>e.itemId===itemId);
   return entry?this.transport('load',{entryId:entry.entryId}):false;
  }
@@ -309,7 +309,7 @@ export class GroupSessionService{
  }
  async end():Promise<boolean>{
   const done=await this.act(async group=>{await this.api.request<unknown>(path(group.id,'/end'),'POST',{protocolVersion:SOCIAL_PROTOCOL,expectedRevision:group.governanceRevision});return true;},'together.error.end');
-  if(done){this.publish({phase:'ended'});this.close('ended');void this.refreshDirectory();}
+  if(done){this.publish({phase:'ended',...(this.state.group?{group:Object.freeze({...this.state.group,state:'ended' as const,endedReason:'host-ended'})}:{})});this.close('ended');void this.refreshDirectory();}
   return !!done;
  }
  /** Says something in the room's own voice, e.g. why a button did nothing. */
