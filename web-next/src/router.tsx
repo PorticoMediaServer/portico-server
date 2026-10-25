@@ -35,6 +35,7 @@ export const setupRoute = createRoute({getParentRoute: () => rootRoute, componen
 export const signInRoute = createRoute({getParentRoute: () => rootRoute, component: screen('signIn'), path: '/sign-in', validateSearch: screenSearch('signIn')});
 export const accountReturnRoute = createRoute({getParentRoute: () => rootRoute, component: screen('signIn'), path: accountReturnPath, validateSearch: screenSearch('signIn')});
 export const togetherRoute = createRoute({getParentRoute: () => rootRoute, component: screen('together'), path: '/watch-together', validateSearch: screenSearch('together')});
+export const aboutRoute = createRoute({getParentRoute: () => rootRoute, component: screen('about'), path: '/about', validateSearch: screenSearch('about')});
 export const helpRoute = createRoute({getParentRoute: () => rootRoute, component: screen('help'), path: '/help', validateSearch: screenSearch('help')});
 export const personRoute = createRoute({getParentRoute: () => rootRoute, component: screen('person'), path: '/person/$personId', validateSearch: screenSearch('person')});
 export const readRoute = createRoute({getParentRoute: () => rootRoute, component: screen('read'), path: '/read/$itemId', validateSearch: screenSearch('read')});
@@ -43,7 +44,7 @@ export const profileSettingsAliasRoute = createRoute({getParentRoute: () => root
   browserEntryDestination.rememberProfileSettings();
   throw redirect({...profileSettingsDestination, replace: true});
 }});
-const destinations = [homeRoute, searchRoute, librariesRoute, libraryRoute, liveRoute, savedRoute, itemRoute, homeRowRoute, playerRoute, settingsRoute, dashboardRoute, notificationsRoute, profilesRoute, serversRoute, accountRoute, setupRoute, signInRoute, accountReturnRoute, togetherRoute, helpRoute, personRoute, readRoute, profileSettingsAliasRoute];
+const destinations = [homeRoute, searchRoute, librariesRoute, libraryRoute, liveRoute, savedRoute, itemRoute, homeRowRoute, playerRoute, settingsRoute, dashboardRoute, notificationsRoute, profilesRoute, serversRoute, accountRoute, setupRoute, signInRoute, accountReturnRoute, togetherRoute, helpRoute, aboutRoute, personRoute, readRoute, profileSettingsAliasRoute];
 const devRoutes = import.meta.env.DEV ? [createRoute({
   getParentRoute: () => rootRoute, path: '/dev/kit', validateSearch: gallerySearch,
   component: lazyRouteComponent(() => import('./dev/KitGallery'), 'KitGallery'),

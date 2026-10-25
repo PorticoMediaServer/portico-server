@@ -8,7 +8,7 @@ export const webScreenPaths = Object.freeze({
   live: '/live', saved: '/saved', item: '/item/$itemId', homeRow: '/home/rows/$rowId',
   player: '/player', settings: '/settings', dashboard: '/dashboard', notifications: '/notifications',
   setup: '/setup', profiles: '/profiles', servers: '/servers', account: '/account', signIn: '/sign-in',
-  together: '/watch-together', help: '/help',
+  together: '/watch-together', help: '/help', about: '/about',
   person: '/person/$personId', read: '/read/$itemId',
 } as const);
 export type WebScreenId = keyof typeof webScreenPaths;
