@@ -855,6 +855,9 @@ func New(d Dependencies) http.Handler {
 	if d.Reading == nil {
 		d.Reading = d.readingService()
 	}
+	if d.Downloads != nil {
+		d.Downloads.SetReading(d.Reading)
+	}
 	if d.v1 != nil {
 		d.v1.Traffic = d.streamTraffic
 	}

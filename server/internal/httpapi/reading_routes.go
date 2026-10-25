@@ -44,6 +44,7 @@ func (d Dependencies) readingRoutes(mux *http.ServeMux) {
 	register("GET /v1/libraries/{libraryId}/reading/periodicals/{seriesId}/issues", []string{"publicationType", "issueDate", "year", "month", "cursor", "limit"}, d.readingPeriodicalIssues)
 	register("GET /v1/reading/continue", []string{"libraryId", "cursor", "limit"}, d.readingContinue)
 	register("GET /v1/items/{itemId}/reading/versions", nil, d.readingVersions)
+	register("POST /v1/reading/offline/progress", nil, d.readingOfflineProgress)
 	register("POST /v1/reading/sessions", nil, d.prepareReadingSession)
 	register("GET /v1/reading/sessions/{sessionId}/progress", nil, d.readingSessionProgress)
 	register("PUT /v1/reading/sessions/{sessionId}/progress", nil, d.readingSaveSessionProgress)

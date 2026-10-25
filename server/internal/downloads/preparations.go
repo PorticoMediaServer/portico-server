@@ -32,6 +32,10 @@ type LibraryGuard func(tx *sql.Tx, library string) error
 // rather than admitting the work twice.
 func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, guard LibraryGuard) (Batch, error) {
 	out := Batch{Items: []Preparation{}, Rejected: []Rejection{}}
+	publication, publicationError := s.publicationForRequest(ctx, p, r)
+	if publicationError != nil {
+		return out, publicationError
+	}
 	if !validID.MatchString(r.OperationID) || (r.VersionID != "" && (!validID.MatchString(r.VersionID) || r.MediaID == "" || len(r.MediaIDs) > 0 || r.NextAfterMediaID != "")) {
 		return out, ErrInput
 	}
@@ -183,6 +187,9 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, g
 			out.Rejected = append(out.Rejected, Rejection{item, reason})
 			continue
 		}
+		if err = s.checkPublicationTx(ctx, tx, p, found, publication); err != nil {
+			return out, err
+		}
 		requested, err := requestedDownloadQuality(ctx, tx, p, string(r.Quality), found)
 		if err != nil {
 			return out, err
@@ -237,8 +244,8 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, g
 		if err != nil {
 			return out, err
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO download_preparations(id,profile_key,authority,account_id,profile_id,item_id,item_public,library_id,title_json,source_asset_id,quality,recipe,origin,batch_id,state,bytes_total,estimated,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?,?,?)`,
-			id, key, p.Authority, p.AccountID, p.ProfileID, entity, item, library, titleSnapshot(title), found.Asset, quality, recipe, origin, batch, estimate, flag, now, now); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO download_preparations(publication_json,id,profile_key,authority,account_id,profile_id,item_id,item_public,library_id,title_json,source_asset_id,quality,recipe,origin,batch_id,state,bytes_total,estimated,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?,?,?)`,
+			publicationJSON(publication), id, key, p.Authority, p.AccountID, p.ProfileID, entity, item, library, titleSnapshot(title), found.Asset, quality, recipe, origin, batch, estimate, flag, now, now); err != nil {
 			return out, err
 		}
 		fresh, err := readPreparation(tx.QueryRowContext(ctx, `SELECT `+preparationColumns+` FROM download_preparations WHERE id=?`, id))

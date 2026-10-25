@@ -36,7 +36,7 @@ func (s *Service) cappedQualities(choices []QualityChoice) []QualityChoice {
 }
 
 func (s *Service) withinCeiling(quality string, source source) bool {
-	if audioKind(source.Kind) {
+	if audioKind(source.Kind) || readingKind(source.Kind) {
 		return true
 	}
 	cfg := s.deliveryConfig()

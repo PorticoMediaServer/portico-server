@@ -3013,6 +3013,7 @@ CREATE TABLE download_receipt_keys(
  created_ms INTEGER NOT NULL, retired_ms INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE TABLE download_preparations(
  id TEXT PRIMARY KEY,
+ publication_json TEXT NOT NULL DEFAULT '',
  profile_key TEXT NOT NULL, authority TEXT NOT NULL, account_id TEXT NOT NULL, profile_id TEXT NOT NULL,
  item_id INTEGER NOT NULL, item_public TEXT NOT NULL DEFAULT '', library_id TEXT NOT NULL,
  title_json TEXT NOT NULL DEFAULT '',

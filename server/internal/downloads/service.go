@@ -15,6 +15,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
 	"portico.local/server/internal/playback"
+	"portico.local/server/internal/reading"
 )
 
 // SourceOpener reads an original catalog file. The server never opens a library
@@ -56,6 +57,7 @@ type Options struct {
 }
 
 type Service struct {
+	reading               *reading.Service
 	deliveryConfiguration func() playback.DeliveryConfiguration
 	libraryAccess         LibraryAccess
 	access                RequestAccess

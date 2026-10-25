@@ -426,6 +426,16 @@ func (s *Service) prepare(ctx context.Context, id string) (plan, error) {
 		}
 		return out, terminal(ctx, gated2, id, StateUnavailable, reason, now)
 	}
+	doc, docError := publicationTx(ctx, tx, id)
+	if docError != nil {
+		return out, docError
+	}
+	if err := s.checkPublicationTx(ctx, tx, principal, found, doc); err != nil {
+		return out, terminal(ctx, gated2, id, StateUnavailable, ReasonSourceChanged, now)
+	}
+	if doc != nil {
+		found.Container = doc.Format
+	}
 	if reason := s.conversionPolicyReason(ctx, tx, quality, recipeID, found); reason != "" {
 		return out, terminal(ctx, gated2, id, StateUnavailable, reason, now)
 	}

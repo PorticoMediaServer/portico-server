@@ -42,19 +42,38 @@ type ReceiptArtifact struct {
 }
 
 // ReceiptClaims is the signed document itself.
+type ReceiptPublication struct {
+	SourceID       string `json:"sourceId"`
+	Revision       string `json:"revision"`
+	Format         string `json:"format"`
+	DocumentSHA256 string `json:"documentSha256"`
+}
+
+func (ReceiptPublication) JSONSchema() map[string]any {
+	return map[string]any{
+		"type": "object", "additionalProperties": false, "required": []string{"sourceId", "revision", "format", "documentSha256"},
+		"properties": map[string]any{
+			"sourceId":       map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_-]+$"},
+			"revision":       map[string]any{"type": "string", "pattern": "^[0-9a-f]{64}$"},
+			"documentSha256": map[string]any{"type": "string", "pattern": "^[0-9a-f]{64}$"},
+			"format":         map[string]any{"type": "string", "enum": []string{"epub", "pdf", "cbz"}},
+		}}
+}
+
 type ReceiptClaims struct {
-	Kind          string          `json:"kind"`
-	Version       string          `json:"version"`
-	ReceiptID     string          `json:"receiptId"`
-	KeyID         string          `json:"keyId"`
-	Viewer        ReceiptViewer   `json:"viewer"`
-	ItemID        string          `json:"itemId"`
-	PreparationID string          `json:"preparationId"`
-	Quality       string          `json:"quality"`
-	QualityLabel  string          `json:"qualityLabel"`
-	Artifact      ReceiptArtifact `json:"artifact"`
-	IssuedAt      string          `json:"issuedAt"`
-	ExpiresAt     string          `json:"expiresAt"`
+	Publication   *ReceiptPublication `json:"publication,omitempty"`
+	Kind          string              `json:"kind"`
+	Version       string              `json:"version"`
+	ReceiptID     string              `json:"receiptId"`
+	KeyID         string              `json:"keyId"`
+	Viewer        ReceiptViewer       `json:"viewer"`
+	ItemID        string              `json:"itemId"`
+	PreparationID string              `json:"preparationId"`
+	Quality       string              `json:"quality"`
+	QualityLabel  string              `json:"qualityLabel"`
+	Artifact      ReceiptArtifact     `json:"artifact"`
+	IssuedAt      string              `json:"issuedAt"`
+	ExpiresAt     string              `json:"expiresAt"`
 }
 
 // Receipt is what a client stores. payload carries the exact signed bytes, so a
@@ -364,6 +383,13 @@ func (s *Service) storeReceipt(ctx context.Context, tx *sql.Tx, p identity.Princ
 		Artifact:      ReceiptArtifact{SHA256: artifactDigest, Bytes: size},
 		IssuedAt:      stamp(now), ExpiresAt: stamp(expires),
 	}
+	doc, e := publicationTx(ctx, tx, preparation)
+	if e != nil {
+		return "", nil, e
+	}
+	if doc != nil {
+		claims.Publication = &ReceiptPublication{doc.SourceID, doc.Revision, doc.Format, doc.Digest()}
+	}
 	receipt, e := sign(keyID, secret, claims, 1)
 	if e != nil {
 		return "", nil, e
@@ -515,6 +541,13 @@ func (s *Service) Revalidate(ctx context.Context, p identity.Principal, serverID
 			QualityLabel:  qualityLabel(quality),
 			Artifact:      ReceiptArtifact{SHA256: artifactDigest, Bytes: size},
 			IssuedAt:      stamp(now), ExpiresAt: stamp(expires),
+		}
+		doc, err := publicationTx(ctx, tx, preparation)
+		if err != nil {
+			return nil, err
+		}
+		if doc != nil {
+			claims.Publication = &ReceiptPublication{doc.SourceID, doc.Revision, doc.Format, doc.Digest()}
 		}
 		renewed, err := sign(keyID, secret, claims, revision+1)
 		if err != nil {

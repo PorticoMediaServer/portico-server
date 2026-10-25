@@ -73,6 +73,7 @@ export type DownloadBundleAudio = Readonly<{index: number; language: string; tit
 /** Everything a download needs besides its media file, so the title can be listed, shown and
  * played properly with no server in reach. */
 export type DownloadBundle = Readonly<{
+  publication?: string;
   preparationId: string; itemId: string; quality: string; qualityLabel: string; title: DownloadTitle; overview: string;
   media: Readonly<{container: string; videoCodec: string; audioCodec: string; width: number; height: number}>;
   artwork: readonly Readonly<{role: string; path: string; contentType: string}>[];
@@ -92,7 +93,9 @@ export type DownloadOptionsView = Readonly<{
   itemId: string; kind: string; source: DownloadSource; options: readonly DownloadQualityOption[];
   policy: Readonly<{allowDownloads: boolean; reason: string}>; storage: DownloadStorage;
 }>;
+export type DownloadPublicationReceipt = Readonly<{sourceId: string; revision: string; format: 'epub' | 'pdf' | 'cbz'; documentSha256: string}>;
 export type ReceiptClaims = Readonly<{
+  publication?: DownloadPublicationReceipt;
   kind: 'portico.download-receipt'; version: '1'; receiptId: string; keyId: string;
   viewer: Readonly<{authority: string; accountId: string; profileId: string; serverId: string}>;
   itemId: string; preparationId: string; quality: string; qualityLabel: string;
@@ -261,6 +264,7 @@ function chapterImage(v: unknown): {image?: DownloadBundleFile} {
 }
 
 export function parseDownloadBundle(raw: unknown, preparationId: string): DownloadBundle {
+  if (object(raw) && raw.publication !== undefined && !text(raw.publication, 2 << 20)) invalid();
   if (!object(raw) || raw.preparationId !== preparationId || !id(raw.itemId) || !id(raw.quality) || !text(raw.qualityLabel ?? '', 128) || !text(raw.overview ?? '', 65536)) invalid();
   const media = raw.media;
   if (!object(media) || !text(media.container ?? '', 64) || !text(media.videoCodec ?? '', 64) || !text(media.audioCodec ?? '', 64)) invalid();
@@ -340,7 +344,7 @@ function storage(raw: unknown): DownloadStorage {
   const remaining = nullableCount(raw.remainingBytes);
   // 0 means unlimited, and an unlimited ceiling has no remaining figure.
   if (raw.maxPreparedBytes === 0 ? remaining !== null : remaining === null) invalid();
-  return Object.freeze({maxPreparedBytes: raw.maxPreparedBytes, committedBytes: raw.committedBytes, remainingBytes: remaining, retentionDays: raw.retentionDays});
+  return Object.freeze({...(typeof raw.publication === 'string' ? {publication: raw.publication} : {}),maxPreparedBytes: raw.maxPreparedBytes, committedBytes: raw.committedBytes, remainingBytes: remaining, retentionDays: raw.retentionDays});
 }
 
 export function parseDownloadOptions(raw: unknown, itemId: string): DownloadOptionsView {
@@ -395,10 +399,13 @@ export function parseReceiptClaims(raw: unknown): ReceiptClaims {
   if (!instant(raw.issuedAt) || !instant(raw.expiresAt) || Date.parse(raw.expiresAt) <= Date.parse(raw.issuedAt)) invalid();
   const viewer = raw.viewer;
   if (!object(viewer) || !['local','hosted'].includes(String(viewer.authority)) || !id(viewer.accountId) || !id(viewer.profileId) || !id(viewer.serverId)) invalid();
+  const publication = raw.publication;
+  if (publication !== undefined && (!object(publication) || !id(publication.sourceId) || !digest(publication.revision) || !digest(publication.documentSha256) || !['epub', 'pdf', 'cbz'].includes(String(publication.format)))) invalid();
   const bytes = raw.artifact;
   if (!object(bytes) || !digest(bytes.sha256) || !count(bytes.bytes) || bytes.bytes < 1) invalid();
   return Object.freeze({
     kind: 'portico.download-receipt', version: '1', receiptId: raw.receiptId, keyId: raw.keyId,
+    ...(object(publication) ? {publication: Object.freeze({sourceId: String(publication.sourceId), revision: String(publication.revision), format: publication.format as DownloadPublicationReceipt['format'], documentSha256: String(publication.documentSha256)})} : {}),
     viewer: Object.freeze({authority: String(viewer.authority), accountId: viewer.accountId, profileId: viewer.profileId, serverId: viewer.serverId}),
     itemId: raw.itemId, preparationId: raw.preparationId, quality: String(raw.quality), qualityLabel: String(raw.qualityLabel ?? ''),
     artifact: Object.freeze({sha256: bytes.sha256, bytes: bytes.bytes}), issuedAt: raw.issuedAt, expiresAt: raw.expiresAt,

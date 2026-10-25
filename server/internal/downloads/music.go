@@ -29,6 +29,7 @@ func canonicalMusicQuality(q string) bool {
 	}
 	return false
 }
+
 // videoDownloadQuality is the profile's saved Download quality for a title, one
 // value per device class. A value the ladder no longer makes falls back to the
 // untouched file rather than asking for a quality the server cannot prepare.
@@ -47,6 +48,12 @@ func videoDownloadQuality(ctx context.Context, tx *sql.Tx, p identity.Principal)
 }
 
 func requestedDownloadQuality(ctx context.Context, tx *sql.Tx, p identity.Principal, q string, s source) (string, error) {
+	if readingKind(s.Kind) {
+		if q != "" && q != QualityOriginal {
+			return "", ErrInput
+		}
+		return QualityOriginal, nil
+	}
 	if q != "" {
 		return q, nil
 	}

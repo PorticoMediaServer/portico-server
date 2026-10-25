@@ -146,6 +146,8 @@ type BundleMedia struct {
 }
 
 type Bundle struct {
+	// Exact stored UTF-8 descriptor; its digest is bound by the signed receipt.
+	Publication   string           `json:"publication,omitempty"`
 	PreparationID string           `json:"preparationId"`
 	ItemID        string           `json:"itemId"`
 	Quality       string           `json:"quality"`
@@ -230,6 +232,11 @@ func (s *Service) Bundle(ctx context.Context, p identity.Principal, id string) (
 		return out, e
 	}
 	out.ItemID, out.Quality, out.QualityLabel = current.ItemID, current.Quality, qualityLabel(current.Quality)
+	if doc, err := publicationTx(ctx, tx, id); err != nil {
+		return out, err
+	} else if doc != nil {
+		out.Publication = publicationJSON(doc)
+	}
 	if out.Title, e = readTitle(ctx, tx, entity); e != nil {
 		return out, e
 	}

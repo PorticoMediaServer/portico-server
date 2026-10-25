@@ -53,6 +53,12 @@ func registerReadingHTTPContracts(registry *apikit.Registry) error {
 	if err := apikit.RegisterHTTP[ReadingProgressRequest, ReadingProgressSavedResponse](registry, m); err != nil {
 		return err
 	}
+	m = metadata("post_reading_offline_progress", "POST", "/v1/reading/offline/progress", "Reconcile an observed location from this viewer's signed offline publication", apikit.ScopePlayback)
+	m.Lane, m.Admission = apikit.Media, laneMediaBody
+	m.BodyLimit = 32768
+	if err := apikit.RegisterHTTP[ReadingOfflineProgressRequest, ReadingOfflineProgressResponse](registry, m); err != nil {
+		return err
+	}
 	m = metadata("delete_reading_sessions_sessionId", "DELETE", "/v1/reading/sessions/{sessionId}", "Close this caller's reading session", apikit.ScopePlayback)
 	m.Status, m.NoResponseBody = 204, true
 	if err := apikit.RegisterHTTP[struct{}, struct{}](registry, m); err != nil {
