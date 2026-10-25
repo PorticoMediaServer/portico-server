@@ -41,7 +41,8 @@ export async function prepareOwnerClaimHandoff(api: Api, expected: ClaimExpected
   ports: OwnerClaimStartPorts, options: Readonly<{signal?: AbortSignal; now?: () => number; crypto?: RouteCrypto}> = {}): Promise<string> {
   expected = Object.freeze({operationId: expected.operationId, localGeneration: expected.localGeneration, revision: expected.revision});
   binding = Object.freeze({pin: Object.freeze({...binding.pin}), origin: binding.origin, hostedOrigin: binding.hostedOrigin,
-    operationId: binding.operationId, localGeneration: binding.localGeneration, state: binding.state, codeChallenge: binding.codeChallenge, installationId: binding.installationId});
+    operationId: binding.operationId, localGeneration: binding.localGeneration, state: binding.state, codeChallenge: binding.codeChallenge, installationId: binding.installationId,
+    ...(binding.purpose === undefined ? {} : {purpose: binding.purpose, currentOwnerAccountId: binding.currentOwnerAccountId, previousOwnerRole: binding.previousOwnerRole})});
   const now = options.now ?? Date.now;
   if (!identifier(expected.operationId) || !counter(expected.localGeneration) || !counter(expected.revision) || expected.revision === '0' ||
       expected.operationId !== binding.operationId || expected.localGeneration !== binding.localGeneration || !validInstallationId(binding.installationId) ||

@@ -151,6 +151,18 @@ export class SettingsOwnerSwitch {
       return await this.prepare(operation);
     } finally {operation.finish();}
   }
+  /** Begin the distinct change-owner claim on a Portico-account server. The
+   * current owner approves a new Portico Account on Hosted; this controller
+   * prepares only the existing owner claim handoff, never a move. */
+  async prepareChangeOwner(): Promise<string> {
+    const operation = this.operation();
+    try {
+      operation.check();
+      const url = await this.claim!.prepare(this.api, this.options.hostedOrigin, 'change-owner');
+      try {operation.check();} catch (error) {await this.claim!.cancel();throw error;}
+      this.delivered = true;return url;
+    } finally {operation.finish();}
+  }
   async retryPreparation(): Promise<string> {
     if (!this.state.confirmed) throw new Error('The owner move has not been confirmed.');
     const operation = this.operation();

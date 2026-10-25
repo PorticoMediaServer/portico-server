@@ -56,6 +56,7 @@ import {StorageDataFolder} from './server/StorageUsage';
 import {SettingsOwnerSwitch} from './owner-switch';
 import {OwnerSignInSwitch} from './OwnerSignInSwitch';
 import {LocalMoveSwitch} from './LocalMoveSwitch';
+import {ChangeOwner} from './ChangeOwner';
 import {DeviceRowControl} from './device-rows';
 import {RemoteNowPlaying} from './RemoteNowPlaying';
 import {deviceRowState, isDeviceSyntheticRow} from './device-rows-model';
@@ -272,6 +273,7 @@ export function SettingsEntry() {
         if (row.id === 'signin.dataFolder' && signinStorage) return <StorageDataFolder source={signinStorage} label={defaultI18n.t(row.label)} />;
         if (['signin.switchToPortico', 'signin.startOverPortico'].includes(row.id) && signIn?.ownerSwitch) return <OwnerSignInSwitch source={signIn.ownerSwitch} startOver={row.id === 'signin.startOverPortico'} isCurrent={current} onError={reportError}/>;
         if (['signin.switchToLocal', 'signin.startOverLocal'].includes(row.id) && signIn?.ownerSwitch) return <LocalMoveSwitch source={signIn.ownerSwitch} startOver={row.id === 'signin.startOverLocal'} isCurrent={current} onError={reportError}/>;
+        if (row.id === 'signin.changeOwner' && signIn?.ownerSwitch) return <ChangeOwner source={signIn.ownerSwitch} isCurrent={current} onError={reportError}/>;
         if (row.id === 'profile.pinForget' && profiles) return <ProfileForgetDevices source={profiles} isCurrent={current} onFailure={reportError} />;
         if (row.id === 'profile.pinChange' && profiles) return <Button size="small" variant="glass" disabled={state.disabled} onClick={() => openProfilePIN(false)}>{defaultI18n.t(row.control.label ?? row.label)}</Button>;
         if (row.id === 'profile.list' && profiles) return <ProfileList source={profiles} isCurrent={current} onFailure={reportError} onSelect={() => {

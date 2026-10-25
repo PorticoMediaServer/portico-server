@@ -11,6 +11,11 @@ export type OwnerStartFacts = Readonly<Record<typeof startFields[number], string
 export type OwnerStartExpectation = Readonly<{
   pin: ServerPin; origin: string; hostedOrigin: string; operationId: string; localGeneration: string;
   state: string; codeChallenge: string; installationId: string;
+  /** Absent means the original Local -> Portico switch. A change-owner handoff
+   * binds the current owner's Hosted account and the role they keep. */
+  purpose?: 'switch' | 'change-owner';
+  currentOwnerAccountId?: string;
+  previousOwnerRole?: 'admin' | 'member' | 'remove';
 }>;
 function invalid(): never {throw new CodedError('invalid_return', 'This owner continuation no longer matches its captured operation.');}
 const readProof = <T extends readonly string[]>(value: unknown, fields: T) => readCanonicalClaimProof(value, fields, invalid);
@@ -31,9 +36,18 @@ export async function verifyOwnerClaimStart(original: unknown, signedStart: unkn
   const address = new URL(expected.origin);
   if (address.protocol !== 'https:' && !(address.protocol === 'http:' && address.hostname === 'localhost')) invalid();
   routeBytes(expected.state, 32); routeBytes(expected.codeChallenge, 32);
+  const purpose = expected.purpose ?? 'switch';
+  if (purpose === 'switch'
+    ? expected.currentOwnerAccountId !== undefined || expected.previousOwnerRole !== undefined
+    : !expected.currentOwnerAccountId || !/^[A-Za-z0-9_-]{1,128}$/.test(expected.currentOwnerAccountId) ||
+      !['admin', 'member', 'remove'].includes(expected.previousOwnerRole ?? '')) invalid();
   const c = readProof(original, claimFields), s = readProof(signedStart, startFields), claim = c.facts, start = s.facts;
-  if (claim.kind !== 'portico.claim.web.v2' || start.kind !== 'portico.owner-start.v1' || claim.purpose !== 'switch' || start.purpose !== 'switch' ||
-    claim.accountId !== '' || claim.currentOwnerAccountId !== '' || claim.previousOwnerRole !== '' || claim.returnRegistrationId !== '' ||
+  const purposeBound = purpose === 'switch'
+    ? claim.purpose === 'switch' && start.purpose === 'switch' && claim.currentOwnerAccountId === '' && claim.previousOwnerRole === ''
+    : claim.purpose === 'change-owner' && start.purpose === 'change-owner' &&
+      claim.currentOwnerAccountId === expected.currentOwnerAccountId && claim.previousOwnerRole === expected.previousOwnerRole;
+  if (claim.kind !== 'portico.claim.web.v2' || start.kind !== 'portico.owner-start.v1' || !purposeBound ||
+    claim.accountId !== '' || claim.returnRegistrationId !== '' ||
     claim.audience !== expected.hostedOrigin || start.audience !== claim.audience || claim.address !== expected.origin || start.address !== claim.address ||
     claim.operationId !== expected.operationId || start.operationId !== claim.operationId || claim.localGeneration !== expected.localGeneration || start.localGeneration !== claim.localGeneration ||
     claim.serverId !== expected.pin.serverId || start.serverId !== claim.serverId || claim.publicKey !== expected.pin.publicKey || start.publicKey !== claim.publicKey ||

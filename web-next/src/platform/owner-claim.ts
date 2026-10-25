@@ -17,6 +17,8 @@ type Pending = Readonly<{
   version: 1; kind: 'owner'; attemptId: string; origin: string; hostedOrigin: string; pin: ServerPin;
   expectedRevision: number; familyId: string; tokenGeneration: string; accountId: string; profileId: string;
   installationId: string; state: string; verifier: string; codeChallenge: string; createdAt: number; expiresAt: string;
+  /** Absent on old switch records; its presence is the purpose the Server approved. */
+  purpose?: 'switch' | 'change-owner'; currentOwnerAccountId?: string; previousOwnerRole?: 'admin' | 'member' | 'remove';
   expected?: ClaimExpected; handoff?: OwnerClaimHandoff;
 }>;
 type Journal = Readonly<{assertAvailable: () => void; read: () => Promise<Pending | undefined>;
@@ -50,9 +52,12 @@ export class BrowserOwnerClaim {
     this.controller?.abort(); const epoch = ++this.epoch, controller = this.controller = new AbortController();
     return {signal: controller.signal, current: () => epoch === this.epoch && !controller.signal.aborted};
   }
-  private selected(state: AppSessionRecord, pin: ServerPin) {
+  private selected(state: AppSessionRecord, pin: ServerPin, purpose: 'switch' | 'change-owner' = 'switch') {
     const selected = state.servers.find(entry => entry.connection.pin.serverId === state.selectedServerId);
-    if (!selected || selected.signIn !== 'local' || selected.connection.hosted || !sameServerPin(selected.connection.pin, pin) ||
+    const direction = !!selected && (purpose === 'switch'
+      ? selected.signIn === 'local' && !selected.connection.hosted
+      : selected.signIn === 'portico' && !!selected.connection.hosted);
+    if (!selected || !direction || !sameServerPin(selected.connection.pin, pin) ||
       selected.connection.session.viewer.authority !== 'local' || selected.connection.session.viewer.role !== 'owner') throw invalid();
     return selected.connection;
   }
@@ -64,7 +69,7 @@ export class BrowserOwnerClaim {
     return this.captured(record, state);
   }
   private captured(record: Pending, state: AppSessionRecord) {
-    const selected = this.selected(state, record.pin), session = selected.session;
+    const selected = this.selected(state, record.pin, record.purpose ?? 'switch'), session = selected.session;
     if (record.version !== 1 || record.kind !== 'owner' || record.origin !== this.ports.pageOrigin() ||
       record.installationId !== this.ports.installationId() || state.revision !== record.expectedRevision || session.sessionFamilyId !== record.familyId ||
       session.tokenGeneration !== record.tokenGeneration || session.viewer.accountId !== record.accountId || session.viewer.profileId !== record.profileId ||
@@ -102,14 +107,14 @@ export class BrowserOwnerClaim {
   }
   /** Same-origin private preparation only, after the actual move confirmation.
    * Ambiguous network failures retain the exact verifier/proofs for that attempt. */
-  async prepare(api: HttpLocalApi, hostedOrigin: string): Promise<string> {
+  async prepare(api: HttpLocalApi, hostedOrigin: string, purpose: 'switch' | 'change-owner' = 'switch'): Promise<string> {
     this.ports.journal.assertAvailable();
     const origin = this.ports.pageOrigin(), route = api.getRouteConnection();
     if (api.baseUrl !== origin || routeOrigin(origin) !== origin || !route || route.getSnapshot().phase !== 'ready' ||
       routeOrigin(hostedOrigin) !== hostedOrigin || !hostedOrigin.startsWith('https://')) throw invalid();
     const operation = this.operation();
     try {
-      const state = await this.ports.sessions.read(), selected = this.selected(state, route.pin);
+      const state = await this.ports.sessions.read(), selected = this.selected(state, route.pin, purpose);
       if (!operation.current()) throw cancelled();
       assertFirstContactIdentity(origin, route.pin, {knownRoutes: knownServerRoutes(state)});
       // Capture exactly the durable selected family, without inheriting a
@@ -122,28 +127,43 @@ export class BrowserOwnerClaim {
         pending = {version: 1, kind: 'owner', attemptId: routeBase64(crypto.getRandomValues(new Uint8Array(32))), origin, hostedOrigin, pin: {...route.pin},
           expectedRevision: state.revision, familyId: selected.session.sessionFamilyId, tokenGeneration: selected.session.tokenGeneration,
           accountId: selected.session.viewer.accountId, profileId: selected.session.viewer.profileId, installationId: this.ports.installationId(),
-          state: routeBase64(crypto.getRandomValues(new Uint8Array(32))), verifier, codeChallenge, createdAt, expiresAt: new Date(createdAt + 300_000).toISOString()};
+          purpose, state: routeBase64(crypto.getRandomValues(new Uint8Array(32))), verifier, codeChallenge, createdAt, expiresAt: new Date(createdAt + 300_000).toISOString()};
         const fresh = pending;
         await this.ports.journal.change(old => {if (!operation.current() || old) throw cancelled(); return fresh;});
       }
-      if (pending.origin !== origin || pending.hostedOrigin !== hostedOrigin || !sameServerPin(pending.pin, route.pin)) throw invalid();
+      if (pending.origin !== origin || pending.hostedOrigin !== hostedOrigin || !sameServerPin(pending.pin, route.pin) ||
+        (pending.purpose ?? 'switch') !== purpose) throw invalid();
       this.attemptId = pending.attemptId;
       await this.current(pending, operation);
       if (!pending.expected) {
         let status = parseClaimStatus(await captured.request(routePath('get_networking_claim'), 'GET', undefined, operation.signal), pending.pin);
         await this.current(pending, operation);
-        if (status.actions.includes('prepare')) {
-          status = parseClaimStatus(await captured.request(routePath('post_networking_claim_prepare'), 'POST', {purpose: 'switch', expected: status.identity}, operation.signal), pending.pin);
+        // A portico-account server already has an installed claim, so its snapshot
+        // has no 'prepare' action; the explicit change-owner purpose still posts.
+        const already = status.state === 'prepared' && status.approvalRequest?.purpose === purpose;
+        if (!already && (purpose === 'change-owner' || status.actions.includes('prepare'))) {
+          status = parseClaimStatus(await captured.request(routePath('post_networking_claim_prepare'), 'POST',
+            {purpose, ...(purpose === 'change-owner' ? {previousOwnerRole: 'admin'} : {}), expected: status.identity}, operation.signal), pending.pin);
           await this.current(pending, operation);
         }
-        if (status.state !== 'prepared' || !status.operation || status.approvalRequest?.purpose !== 'switch' || status.approvalRequest.currentOwnerAccountId !== '' ||
-          status.approvalRequest.previousOwnerRole !== '' || status.approvalRequest.returnRegistrationId !== '') throw invalid();
-        const old = pending, updated = {...pending, expected: {...status.operation}};
+        const request = status.approvalRequest;
+        const role = request?.previousOwnerRole === 'admin' || request?.previousOwnerRole === 'member' || request?.previousOwnerRole === 'remove'
+          ? request.previousOwnerRole : undefined;
+        const prepared = purpose === 'switch'
+          ? request?.purpose === 'switch' && request.currentOwnerAccountId === '' && request.previousOwnerRole === '' && request.returnRegistrationId === ''
+          : request?.purpose === 'change-owner' && !!request.currentOwnerAccountId && request.currentOwnerAccountId === selected.hosted?.accountId &&
+            role !== undefined && request.returnRegistrationId === '';
+        if (status.state !== 'prepared' || !status.operation || !prepared) throw invalid();
+        const old = pending, updated = {...pending, purpose,
+          ...(purpose === 'change-owner' ? {currentOwnerAccountId: request!.currentOwnerAccountId, previousOwnerRole: role} : {}),
+          expected: {...status.operation}};
         await this.ports.journal.change(current => {if (!operation.current() || !same(current, old)) throw cancelled(); return updated;});
         pending = updated;
       }
       const binding = {pin: pending.pin, origin, hostedOrigin, operationId: pending.expected!.operationId, localGeneration: pending.expected!.localGeneration,
-        state: pending.state, codeChallenge: pending.codeChallenge, installationId: pending.installationId};
+        state: pending.state, codeChallenge: pending.codeChallenge, installationId: pending.installationId,
+        purpose: pending.purpose ?? 'switch',
+        ...(pending.purpose === 'change-owner' ? {currentOwnerAccountId: pending.currentOwnerAccountId, previousOwnerRole: pending.previousOwnerRole} : {})};
       return await (this.ports.prepare ?? prepareOwnerClaimHandoff)(captured, pending.expected!, binding, {
         assertPendingCurrent: async () => {await this.current(pending!, operation);},
         bindPending: async handoff => {
@@ -185,7 +205,7 @@ export class BrowserOwnerClaim {
     try {
       const record = await this.ports.journal.read();
       if (record?.version !== 1 || record.kind !== 'owner' || !record.handoff || !record.expected) throw invalid();
-      const handoff = record.handoff, pending = record;
+      const handoff = record.handoff, pending = record, purpose = record.purpose ?? 'switch';
       const callback = dispatchPorticoReturn(captured, {kind: 'owner', transactionId: handoff.transactionId});
       if (new URL(callback.href).origin !== record.origin || record.origin !== this.ports.pageOrigin()) throw invalid();
       // A valid owner-only callback consumes this attempt before any proof,
@@ -198,7 +218,9 @@ export class BrowserOwnerClaim {
       const expected = handoff.binding;
       if (expected.origin !== record.origin || expected.hostedOrigin !== record.hostedOrigin || !sameServerPin(expected.pin, record.pin) || expected.state !== record.state ||
         expected.installationId !== record.installationId || expected.codeChallenge !== record.codeChallenge || expected.operationId !== record.expected.operationId ||
-        expected.localGeneration !== record.expected.localGeneration || JSON.stringify(handoff.expected) !== JSON.stringify(record.expected) || Date.parse(record.expiresAt) > Date.parse(handoff.expiresAt)) throw invalid();
+        expected.localGeneration !== record.expected.localGeneration || JSON.stringify(handoff.expected) !== JSON.stringify(record.expected) || Date.parse(record.expiresAt) > Date.parse(handoff.expiresAt) ||
+        (expected.purpose ?? 'switch') !== purpose || expected.currentOwnerAccountId !== record.currentOwnerAccountId ||
+        expected.previousOwnerRole !== record.previousOwnerRole) throw invalid();
       const proof = await verifyOwnerClaimStart(handoff.claim, handoff.start, expected, this.now());
       const digest = routeBase64(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(record.verifier))));
       routeBytes(record.verifier, 32);
@@ -217,12 +239,17 @@ export class BrowserOwnerClaim {
         !/^ret_[A-Za-z0-9_-]{43}$/.test(owner.returnRegistration.id) || typeof owner.returnRegistration.origin !== 'string' ||
         !owner.returnRegistration.origin.startsWith('https://') || routeOrigin(owner.returnRegistration.origin) !== owner.returnRegistration.origin) throw invalid();
       grant = parseDirectSignIn(await connected.api.request(routePath('post_auth_portico_return_exchange'), 'POST', {transactionId: handoff.transactionId, state: record.state,
-        verifier: record.verifier, registrationId: owner.returnRegistration.id, installationId: record.installationId, serverChallenge: proof.start.serverChallenge, purpose: 'switch'}, operation.signal));
+        verifier: record.verifier, registrationId: owner.returnRegistration.id, installationId: record.installationId, serverChallenge: proof.start.serverChallenge, purpose}, operation.signal));
       await current();
-      if (grant.kind !== 'signed-in' || grant.snapshot.serverId !== record.pin.serverId || grant.snapshot.account.id !== record.accountId || grant.snapshot.account.primaryProfileId !== record.profileId ||
-        grant.snapshot.account.role !== 'owner' || grant.snapshot.account.disabled || !grant.snapshot.account.hostedAccountId || grant.resetFileOwnerSession || grant.passwordChangeRequired ||
-        grant.snapshot.twoStepSetupRequired || grant.session.sessionFamilyId === record.familyId) throw invalid();
-      const accountId = grant.snapshot.account.hostedAccountId;
+      if (grant.kind !== 'signed-in' || grant.snapshot.serverId !== record.pin.serverId || grant.snapshot.account.role !== 'owner' ||
+        grant.snapshot.account.disabled || grant.resetFileOwnerSession || grant.passwordChangeRequired || grant.snapshot.twoStepSetupRequired ||
+        grant.session.sessionFamilyId === record.familyId) throw invalid();
+      const accountId = grant.snapshot.account.hostedAccountId, sameOwner = purpose === 'switch';
+      // A switch keeps the same local account/profile; change-owner creates the new
+      // owner's account and links the different Hosted account that approved.
+      if (!accountId || (sameOwner
+        ? grant.snapshot.account.id !== record.accountId || grant.snapshot.account.primaryProfileId !== record.profileId
+        : grant.snapshot.account.id === record.accountId || grant.snapshot.account.primaryProfileId === record.profileId || accountId === record.currentOwnerAccountId)) throw invalid();
       bound = await (this.ports.connectPortico ?? connectPairedPorticoServer)(record.origin, record.pin,
         {origin: record.hostedOrigin, accountId, request: async () => {throw invalid();}}, environment, operation.signal);
       await current(); bound.api.setAccessToken(grant.session.accessToken);
@@ -232,7 +259,8 @@ export class BrowserOwnerClaim {
         {...environment, storage: this.ports.sessions.connectionStorage(record.pin.serverId, {signIn: 'portico', hostedAccount: bound.hosted, expectedRevision: record.expectedRevision})}, bound.hosted, admissionCurrent);
       const stored = await this.ports.sessions.read(), entry = stored.servers.find(value => value.connection.pin.serverId === stored.selectedServerId);
       if (!admissionCurrent() || !entry || entry.signIn !== 'portico' || !sameServerPin(entry.connection.pin, record.pin) || entry.connection.session.sessionFamilyId !== grant.session.sessionFamilyId ||
-        entry.connection.session.viewer.accountId !== record.accountId || entry.connection.hosted?.origin !== record.hostedOrigin || entry.connection.hosted.accountId !== accountId) throw cancelled();
+        entry.connection.session.viewer.accountId !== grant.snapshot.account.id || entry.connection.session.viewer.profileId !== grant.snapshot.account.primaryProfileId ||
+        entry.connection.hosted?.origin !== record.hostedOrigin || entry.connection.hosted.accountId !== accountId) throw cancelled();
       adopted = true; return {api: bound.api, result: grant};
     } finally {
       this.busy = false;

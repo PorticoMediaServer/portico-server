@@ -20,8 +20,15 @@ export type SettingsSections = Readonly<{
 export function createSettingsBindings(controller: SettingsController, options: SettingsControllerOptions, identity: ShellIdentity, sections: SettingsSections): SettingsBindings {
   /** A switch row belongs to the direction its server is not already in. Both
    * drawn directions have their own surface; without the captured owner switch
-   * they stay out rather than becoming dead controls. */
+   * they stay out rather than becoming dead controls. The local change-owner
+   * row stays out because there is no justified local-only transfer authority. */
   const signInSwitch = (rowId: string): {present: boolean; disabled?: boolean} | undefined => {
+    if (rowId === 'signin.changeOwnerLocal') return {present: false};
+    if (rowId === 'signin.changeOwner') {
+      if (!sections.signIn?.ownerSwitch) return {present: false};
+      const snapshot = sections.signIn.getSnapshot();
+      return {present: !!snapshot.document && snapshot.document.signIn === 'portico', disabled: snapshot.loading};
+    }
     // The Change group offers the opposite direction from the one in use.
     const want = rowId === 'signin.switchToPortico' || rowId === 'signin.startOverPortico' ? 'local'
       : rowId === 'signin.switchToLocal' || rowId === 'signin.startOverLocal' ? 'portico' : undefined;
