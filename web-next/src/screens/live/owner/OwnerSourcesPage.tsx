@@ -21,6 +21,8 @@ import {ChannelMapController} from '../../settings/server-livetv/channel-map-con
 import {SourceSettingsDialog} from '../../settings/server-livetv/SourceSettingsDialog';
 import {ChannelMapDialog} from '../../settings/server-livetv/ChannelMapDialog';
 import {terminal} from './lifetime';
+import {RecordingStorageController} from '../../settings/server-livetv/recording/storage-controller';
+import {RecordingStorage} from '../../settings/server-livetv/recording/RecordingStorage';
 import {RecordingDefaults} from '../../settings/server-livetv/recording/RecordingDefaults';
 import styles from './owner.module.css';
 const t = defaultI18n.t;
@@ -34,7 +36,7 @@ export function createOwnerSources(options: OwnerSourcesOptions) {
   let active = true;const listeners = new Set<() => void>(), children = new Set<{dispose: () => void}>();
   const current = () => active && options.isCurrent();
   const dispose = () => {if (!active) return;active = false;for (const child of children) child.dispose();children.clear();for (const listener of listeners) listener();listeners.clear();};
-  const reportError = (error: unknown) => {if (terminal(error)) dispose();options.reportError(error);};
+  const reportError = (error: unknown) => {if (terminal(error)) {dispose();options.reportError(error);}};
   const api: LibraryContentApi = {async request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) {
     if (!current() || signal?.aborted) throw {code: 'cancelled'};
     try {const result = await options.api.request<T>(path, method, body, signal);if (!current() || signal?.aborted) throw {code: 'cancelled'};return result;}
@@ -43,8 +45,9 @@ export function createOwnerSources(options: OwnerSourcesOptions) {
   const sources = new LiveSourceController(api, options.serverId, current, reportError);
   const defaults = liveDefaultsForm({api, serverId: options.serverId, console: new ConsoleClient(api, {serverId: options.serverId, viewerId: options.viewerId}), operationId: channelRequestID});
   const recording = recordingForm({api, serverId: options.serverId, console: new ConsoleClient(api, {serverId: options.serverId, viewerId: options.viewerId}), operationId: channelRequestID});
-  children.add(sources);children.add(defaults);children.add(recording);
-  return {sources, defaults, recording, api, current, reportError, serverId: options.serverId,
+  const storage = new RecordingStorageController(api, options.serverId, current, reportError);
+  children.add(sources);children.add(defaults);children.add(recording);children.add(storage);
+  return {sources, defaults, recording, storage, api, current, reportError, serverId: options.serverId,
     track<T extends {dispose: () => void}>(child: T): T {if (!current()) child.dispose();else children.add(child);return child;},
     release(child: {dispose: () => void}) {children.delete(child);child.dispose();},
     subscribe: (listener: () => void) => {listeners.add(listener);return () => {listeners.delete(listener);};}, dispose};
@@ -70,7 +73,7 @@ export function OwnerSourcesPage({source}: {source: OwnerSources}) {
     <Tabs value={tab} onValueChange={value => {if (source.current()) {setModal(undefined);setTab(value);}}} aria-label={t('next.settingsSpec.server.live.title')} items={[
       {value: 'sources', label: t('web.liveTv.sources')}, {value: 'recording', label: t('settings.server.recording')},
     ]}/>
-    {tab === 'recording' ? <RecordingDefaults form={source.recording} current={source.current} reportError={source.reportError}/> : <>
+    {tab === 'recording' ? <><RecordingDefaults form={source.recording} current={source.current} reportError={source.reportError}/><RecordingStorage controller={source.storage}/></> : <>
     {!!snapshot.error && <p role="alert" className={styles.error}>{errorMessage(snapshot.error)}</p>}
     <SourceList snapshot={snapshot} refresh={() => void source.sources.load()} add={kind => {
       if (!source.current()) return;
