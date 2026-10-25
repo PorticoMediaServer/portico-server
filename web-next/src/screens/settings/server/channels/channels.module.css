@@ -41,3 +41,17 @@
 .preview h4 { font-size: var(--type-caption-size); font-weight: var(--type-body-strong-weight); color: var(--color-text-tertiary); }
 .danger { color: var(--color-record); border-color: color-mix(in srgb, var(--color-record) 36%, transparent); }
 @media (max-width: 720px) { .editorGrid { grid-template-columns: minmax(0, 1fr); } .preview { position: static; } .control { align-items: flex-start; flex-direction: column; gap: 8px; } .control > :last-child { max-width: 100%; width: 100%; } }
+
+.pinResults { display: grid; gap: 4px; justify-items: start; }
+
+.condition, .conditionGroup { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--color-line); border-radius: 10px; min-width: 0; }
+.conditionGroup { background: var(--color-raised); }
+.predicate { display: grid; gap: 8px; min-width: 0; }
+
+.weekGrid { display: grid; gap: 5px; font-size: var(--type-caption-size); color: var(--color-text-secondary); }
+.weekGrid > div { display: grid; grid-template-columns: 3em minmax(0,1fr); gap: 8px; align-items: center; }
+.dayTrack { display: flex; flex-wrap: wrap; gap: 4px; min-height: 24px; background: var(--color-raised); border-radius: 5px; }
+.dayTrack button { border: 1px solid var(--color-line); background: color-mix(in srgb,var(--color-accent-strong) 18%,transparent); border-radius: 5px; color: var(--color-text); font: inherit; cursor: pointer; }
+
+.presetGrid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 24px; align-items: start; }
+@media (max-width:720px) { .presetGrid { grid-template-columns: minmax(0,1fr); } }
