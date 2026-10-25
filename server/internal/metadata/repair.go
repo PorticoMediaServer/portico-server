@@ -271,9 +271,10 @@ func readRepairSnapshot(ctx context.Context, tx *sql.Tx, t RepairTarget) (Repair
 	if err != nil {
 		return out, ent, err
 	}
-	if readingRepairKind(ent.itemKind) {
-		return out, ent, nil
-	}
+	// A reading item's cover lives in the same artwork store as every other
+	// item's: the publication's own page is adopted there as the automatic
+	// choice, and an owner upload replaces it. The selected choices are read the
+	// same way for every kind.
 	out.Artwork, err = readArtworkChoices(ctx, tx, t)
 	return out, ent, err
 }
@@ -421,13 +422,17 @@ func readRepairState(ctx context.Context, tx *sql.Tx, t RepairTarget) (RepairSta
 			}
 		}
 	}
-	if readingRepairKind(ent.itemKind) {
-		out.Artwork = ArtworkState{Candidates: []ArtworkCandidate{}, Jobs: []ArtworkJob{}}
-		return out, nil
-	}
 	out.Artwork, err = readArtworkState(ctx, tx, t)
 	if err != nil {
 		return out, err
+	}
+	if readingRepairKind(ent.itemKind) {
+		// A reading item has no provider hierarchy to cascade into and no
+		// automatic acquisition work: its cover is the publication's own page or
+		// the owner's upload. The editor therefore shows the selected cover and
+		// the candidates it can choose between, and no pending work.
+		out.Artwork.Jobs = []ArtworkJob{}
+		return out, nil
 	}
 	out.Cascades, err = readRepairCascades(ctx, tx, t)
 	return out, err
