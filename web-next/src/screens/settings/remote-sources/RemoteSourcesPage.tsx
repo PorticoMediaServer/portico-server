@@ -1303,7 +1303,8 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, openSecti
           <div><dt>{t('next.remoteSources.scanAnalyzed')}</dt><dd>{status.scan.analyzed}</dd></div>
           {status.scan.warnings > 0 && <div><dt>{t('next.remoteSources.scanWarnings')}</dt><dd>{status.scan.warnings}</dd></div>}
           {status.scan.queuedAt && <div><dt>{t('next.remoteSources.scanQueuedAt')}</dt><dd>{checkedWhen(status.scan.queuedAt)}</dd></div>}
-          {(status.scan.finishedAt ?? status.scan.completedAt) && <div><dt>{t('next.remoteSources.scanFinished')}</dt><dd>{checkedWhen((status.scan.finishedAt ?? status.scan.completedAt)!)}</dd></div>}
+          {status.scan.completedAt && <div><dt>{t('next.remoteSources.scanListed')}</dt><dd>{checkedWhen(status.scan.completedAt)}</dd></div>}
+          {status.scan.finishedAt && <div><dt>{t('next.remoteSources.scanFinished')}</dt><dd>{checkedWhen(status.scan.finishedAt)}</dd></div>}
         </>}
       </dl>
     </section>
