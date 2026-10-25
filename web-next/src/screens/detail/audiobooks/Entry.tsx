@@ -1,5 +1,6 @@
 import {useEffect, useMemo, useState, useSyncExternalStore} from 'react';
 import {serviceI18n} from '@core/presentation/service-text.ts';
+import {formatClock} from '@core/presentation/content.ts';
 import type {ContentEntry, ContentProjection} from '@core/library-content.ts';
 import {Artwork, AmbientArt} from '../../../kit/artwork';
 import {Button} from '../../../kit/controls';
@@ -87,7 +88,7 @@ function Chapter({entry, index, page, binding}: {entry: ContentEntry; index: num
   const current = !!resume && entry.playback?.itemId === resume.itemId && resume.positionSeconds >= (entry.playback.startSeconds ?? 0) && entry.duration !== undefined && resume.positionSeconds < (entry.playback.startSeconds ?? 0) + entry.duration;
   const fraction = current && resume && entry.duration ? (resume.positionSeconds - (entry.playback?.startSeconds ?? 0)) / entry.duration : undefined;
   return <button className={styles.chapter} data-current={current || undefined} disabled={!entry.playback || entry.available === false || entry.missing} onClick={() => runScreenCommand(binding.context, () => binding.play(page, entry))}>
-    <span className={styles.number}>{index + 1}</span><span className={styles.chapterTitle}>{entry.title}</span><span className={styles.duration}>{duration(entry.duration)}</span>
+    <span className={styles.number}>{index + 1}</span><span className={styles.chapterTitle}>{entry.title}</span><span className={styles.duration}>{entry.duration === undefined ? undefined : formatClock(entry.duration)}</span>
     {fraction !== undefined && <span className={styles.chapterProgress}><i style={{width: `${Math.min(1, Math.max(0, fraction)) * 100}%`}}/></span>}
   </button>;
 }
