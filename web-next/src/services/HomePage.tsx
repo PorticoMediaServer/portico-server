@@ -38,10 +38,10 @@ function Start({account, session}: {account: ServicesAccount; session: Omit<Host
   const [invitation, setInvitation] = useState(''), [join, setJoin] = useState<JoinLink>(), [shortJoin, setShortJoin] = useState<string>();
   const [error, setError] = useState<unknown>(), [invalid, setInvalid] = useState(false);
   const inspect = (input = invitation) => {
-    const value = input.trim(), parsed = parseJoinLink(value), short = parseShortInvitationCode(value);
+    const parsed = parseJoinLink(input.trim()), short = parseShortInvitationCode(input);
     setInvalid(!parsed && !short); setError(undefined);
-    if (short) setShortJoin(value);
-    if (parsed) setJoin(parsed);
+    setShortJoin(short ? input : undefined);
+    setJoin(parsed ?? undefined);
   };
   const run = (work: () => Promise<void>) => { void Promise.resolve().then(work).catch(setError); };
   const download = () => location.assign(distributionPage);
