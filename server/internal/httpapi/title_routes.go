@@ -21,6 +21,8 @@ import (
 // and removing a library.
 
 type emptyMissingRequest struct {
+	// Before narrows this explicit removal to absences strictly older than a server list observation.
+	Before *string `json:"before,omitempty"`
 	// LibraryID limits the emptying to one library; empty means every library.
 	LibraryID string `json:"libraryId,omitempty"`
 }
@@ -164,6 +166,15 @@ func registerIdentityRoutes(r *apikit.Registry, d Dependencies) {
 			// caller repeats while there is more.
 			deadline := time.Now().Add(8 * time.Second)
 			cutoff := time.Now()
+			if in.Before != nil {
+				before, err := time.Parse(time.RFC3339Nano, *in.Before)
+				if err != nil || before.UnixMilli() <= 0 || before.After(cutoff) {
+					return total, &apierror.Error{Code: "invalid_request"}
+				}
+				// Missing timestamps have millisecond precision. Exclude the observed
+				// millisecond too; a scan may publish another absence during that tick.
+				cutoff = time.UnixMilli(before.UnixMilli() - 1)
+			}
 			for {
 				step, err := d.Catalog.EmptyMissingAuthorized(ctx, in.LibraryID, cutoff, d.missingLibraryAuthority(p, in.LibraryID))
 				if err != nil {
