@@ -131,6 +131,10 @@ func (s *Service) authorized(ctx context.Context, gated *dbwork.Write, p identit
 		gated.Rollback()
 		return nil, p, e
 	}
+	if e = checkPlaybackSourcePublicationTx(ctx, tx); e != nil {
+		gated.Rollback()
+		return nil, p, e
+	}
 	return gated, p, nil
 }
 
