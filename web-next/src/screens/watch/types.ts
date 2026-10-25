@@ -1,6 +1,6 @@
 import type {ReactNode, Ref, RefObject} from 'react';
 import type {TextEnvironment} from '@core/presentation/kit-model/index.ts';
-import type {WebPlaybackRuntimeSnapshot, WebShellPlaybackRuntime} from '../../platform/playback';
+import type {WebPlaybackRuntimeSnapshot, WebQueueListPort, WebShellPlaybackRuntime} from '../../platform/playback';
 import type {ShellArtwork} from '../../shell/artwork';
 import type {PlaybackFence} from '../../../../packages/player-core/src/index.ts';
 import type {QueuePlaybackFence} from '../../../../packages/player-core/src/index.ts';
@@ -18,7 +18,7 @@ export type WatchBindings = Readonly<{
   skips: Readonly<{back: number; forward: number}>;
   reportError: (error: unknown) => void;
 }>;
-export type WatchPanel = 'options' | 'subtitles-audio' | 'subtitles' | 'audio' | 'quality' | 'speed' | 'episodes' | 'play-on' | 'info' | 'file-info' | 'versions' | 'equalizer';
+export type WatchPanel = 'options' | 'subtitles-audio' | 'subtitles' | 'audio' | 'quality' | 'speed' | 'episodes' | 'queue' | 'play-on' | 'info' | 'file-info' | 'versions' | 'equalizer';
 export type WatchPanelContext = Readonly<{
   panel: WatchPanel | null;
   snapshot: WebPlaybackRuntimeSnapshot;
@@ -58,6 +58,8 @@ export type WatchSurfaces = Readonly<{
   /** Actual title/authority identity; layout and source generation never enter this key. */
   bodyIdentity?: string;
   myList?: Readonly<{selected: boolean; pending?: boolean; toggle: () => void | Promise<void>}>;
+  /** f1q: the live queue's own captured run and rows, only while this fence is current. */
+  queue?: WebQueueListPort;
   /** desktop-player f4b: a real film-end card from the retained title read. */
   end?: WatchEndCard;
   more?: readonly Readonly<{id: string; label: string; action: () => void | Promise<void>}>[];

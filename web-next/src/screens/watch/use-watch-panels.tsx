@@ -1,9 +1,10 @@
-import {useEffect,useMemo,useState,useSyncExternalStore} from 'react';
+import {useEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
 import {router} from '../../router';
 import {defaultI18n} from '@i18n';
 import {shellLanguage} from '../../shell/settings';
 import type {ShellAssemblyContext} from '../../shell/bootstrap';
-import type {WebPlaybackRuntimeSnapshot} from '../../platform/playback';
+import type {WebPlaybackRuntimeSnapshot,WebQueueListPort} from '../../platform/playback';
+import {fenceKey} from '../../shell/playback-model';
 import type {WatchBindings,WatchSurfaces,WatchPanel} from './types';
 import {watchPanelModel} from './panel-model';
 import {WatchOptions} from './WatchOptions';
@@ -24,6 +25,11 @@ export function useWatchPanels(binding:WatchBindings|undefined,snapshot:WebPlayb
  const deviceDocument=settingsPlatform()?.device?.getSnapshot().document;
  const together=useTogetherBindings(context),model=useMemo(()=>binding&&snapshot?watchPanelModel(binding.runtime,snapshot,i18n):null,[binding,snapshot,i18n]);
  const [startRoom,setStartRoom]=useState(false),room=together?.getSnapshot().room;
+ // f1q: one port per captured queue run, so a replacement fence never inherits an old list.
+ const ports=useRef<{key?:string;port?:WebQueueListPort}>({});
+ const fence=snapshot?.fence,key=fence?fenceKey(fence):undefined;
+ if(!key||key!==ports.current.key||!ports.current.port?.isCurrent())ports.current={key,port:fence&&binding&&typeof binding.runtime.queueList==='function'?binding.runtime.queueList(fence):undefined};
+ const queue=ports.current.port?.isCurrent()?ports.current.port:undefined;
  // desktop-player f1: Watch Together is listed only when this playback has no room yet.
  const canStartRoom=!!together&&!!snapshot&&!snapshot.disposed&&snapshot.fence?.kind==='queue'&&snapshot.presentation?.kind==='video'
   &&!(room?.group&&(room.phase==='live'||room.phase==='reconnecting'));
@@ -33,7 +39,11 @@ export function useWatchPanels(binding:WatchBindings|undefined,snapshot:WebPlayb
  if(model?.audio.length||model?.subtitles.length||model?.subtitleAdditions.length)available.push('subtitles-audio');
  if(model?.audio.length)available.push('audio');if(model?.subtitles.length||model?.subtitleAdditions.length)available.push('subtitles');
  if(model?.quality.some(row=>row.enabled))available.push('quality');if(model?.speed.length)available.push('speed');
- if(available.length)available.push('options');
+ // The drawn options panel holds the media controls; the queue list is its own surface, and it
+ // appears only when something really follows this entry (an unknown count never claims empty).
+ const controls=available.length>0,remaining=snapshot.queueView?.remainingCount;
+ if(queue&&(remaining===undefined||remaining>0))available.push('queue');
+ if(controls)available.push('options');
  // Playback info f1: offered only when the server committed its own comparison for
  // this presentation; the panel draws those facts and this browser's observations.
  const infoReady=!!snapshot&&!snapshot.disposed&&snapshot.fence?.kind==='queue'&&!!snapshot.session?.playbackInfo&&!!snapshot.subject;
@@ -51,6 +61,7 @@ export function useWatchPanels(binding:WatchBindings|undefined,snapshot:WebPlayb
   },
   quality:model?.qualityLabel&&model.qualityAccessibleLabel&&available.includes('quality')?{fence:model.fence,automatic:model.automatic,label:model.qualityLabel,accessibleLabel:model.qualityAccessibleLabel}:undefined,
   tracks:model?{fence:model.fence,audio:model.audioLabel,subtitles:model.subtitleLabel}:undefined,
+  ...(queue?{queue}:{}),
   ...(loss?{loss:{notice:loss,enabled:deviceDocument?.values['lossNotices']!==false}}:{}),
   together:<WatchRoomPill binding={together} runtime={binding.runtime} snapshot={snapshot} reportError={binding.reportError}/>,
   more:canStartRoom&&together?[{id:'watch-together',label:i18n.t('web.settings.together'),action:()=>setStartRoom(true)}]:[],

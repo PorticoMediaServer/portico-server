@@ -13,6 +13,7 @@ import {useLiveChromePort} from '../live/use-live-chrome';
 import {watchEndCard} from './end-card';
 import {readCollectionNext, type WatchCollectionNext} from './collection-next';
 import {WatchEpisodesDrawer} from './EpisodesDrawer';
+import {WatchQueueList} from './QueueList';
 import {watchEpisodes, type WatchEpisodeRow} from './episodes';
 import {router} from '../../router';
 
@@ -76,7 +77,10 @@ function RegisteredWatchPlayback({binding}: {binding: WatchBindings | undefined}
     if (!showBinding || !showData) return Promise.reject(new DOMException('Title changed', 'AbortError'));
     return showBinding.select({libraryId: showData.scope.libraryId, showId: showData.show.id, ...(seasonId ? {selectedSeasonId: seasonId} : {})});
   };
-  const renderPanel = (context: WatchPanelContext) => context.panel === 'episodes' && episodes && binding
+  // f1q: the queue list keeps the captured run's own port; shows keep the authored Episodes drawer.
+  const renderPanel = (context: WatchPanelContext) => context.panel === 'queue' && panels?.queue
+    ? <WatchQueueList port={panels.queue} context={context} />
+    : context.panel === 'episodes' && episodes && binding
     ? <WatchEpisodesDrawer episodes={episodes} context={context} locale={binding.environment.locale}
       artwork={url => binding.artwork.foreground(url, 632, 16 / 9, {group: 'playback'})}
       onPlay={row => playEpisode(row).then(() => context.close())} onSeason={selectSeason} reportError={binding.reportError} />
