@@ -108,11 +108,24 @@ test('(b)(i) a committed edge promotes at the boundary; the engine keeps a const
   assert.equal(t.calls.filter(c => c[0] === 'ready').length, 1, 'no restart at any edge');
 });
 
-test('(h) an unavailable plan plays ordinarily and says why, quietly', async () => {
-  const {renderable, renderNotice} = await import('../../packages/client-core/src/index.ts');
-  const s = {audio: {version: 2 as const, mode: 'unavailable' as const, id: 'm', reason: 'The owner doesn’t allow converting audio, and this device can’t decode ALAC.'}};
-  assert.equal(renderable(s), false, 'no effects engine: the ordinary player plays presentation.url');
-  assert.equal(renderNotice(s), s.audio.reason);
+test('(h) an unavailable plan keeps the ordinary source and exposes availability without diagnostic text', bounded, async ctx => {
+  const {PlaybackService, renderable} = await import('../../packages/client-core/src/index.ts');
+  const {audioEffectsAvailability} = await import('../../packages/client-core/src/music-preferences.ts');
+  const {DecodeAudioRender} = await import('../src/bridge/DecodeAudioRender.ts');
+  const t = setup();
+  const audio = {version: 2 as const, mode: 'unavailable' as const, id: 'm', reason: 'The owner doesn’t allow converting audio, and this device can’t decode ALAC.'};
+  const session = {id: 'ordinary', generation: 1, streamUrl: '/ordinary', mode: 'direct' as const, duration: 120, resumeSeconds: 0, audio};
+  const service = new PlaybackService({createPlayback: async () => session, stopPlayback: async () => {}, progressPlayback: async () => {}}, () => 'request-unavailable');
+  const render = new DecodeAudioRender(service, path => path, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
+  ctx.after(async () => {render.dispose();await service.stop();});
+  await service.play('item', 0);
+  const snapshot = service.getSnapshot();
+  assert.equal(renderable(snapshot.session), false);
+  assert.equal(snapshot.audioEffects.rendering, false, 'the real service leaves decoding with the ordinary player');
+  render.apply(snapshot);await settle();
+  assert.equal(service.getSnapshot().session?.streamUrl, '/ordinary');
+  assert.deepEqual(t.requests, [], 'the effects renderer never requests or decodes unavailable-plan bytes');
+  assert.deepEqual(audioEffectsAvailability(snapshot.session), {available: false}, 'transport diagnostic reasons stay out of display state');
 });
 
 test('the position is what is heard: the output path’s latency is taken off the sample clock (A-17.26)', bounded, async ctx => {
