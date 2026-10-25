@@ -1,6 +1,6 @@
 import {useSyncExternalStore, type ReactNode} from 'react';
 import type {BrowseWholeSelection} from '@core/browse.ts';
-import type {BrowseSelectionContext, SelectionQuery, SelectionSnapshot} from '@core/selection-model/index.ts';
+import type {BrowseSelectionContext, SelectionOperation, SelectionQuery, SelectionSnapshot} from '@core/selection-model/index.ts';
 import {SelectionBar} from '../../kit/selection';
 import type {CardSelection} from '../../kit/cards';
 import type {BrowseMember} from './controller';
@@ -16,6 +16,8 @@ import {wholeViewQuery} from './selection-query';
 /** The play adapter's own model owns the whole-view registration and the range
  * preview; these become available when the route supplies them. */
 export type LibrarySelectionHost = LibraryPlaySelection & Readonly<{
+  captureOperation?: () => SelectionOperation<BrowseSelectionContext> | null;
+  isOperationCurrent?: (operation: SelectionOperation<BrowseSelectionContext>) => boolean;
   selectWhole?: (query: SelectionQuery) => unknown;
   preview?: (row: LibraryPlayRow) => boolean;
   /** The model's own membership: explicit picks and whole-view query members. */
@@ -75,8 +77,8 @@ type BrowseSelection = SelectionSnapshot<BrowseSelectionContext>;
 
 /** A personal action is offered only when the model says every selected title has
  * it and the target can carry a personal job at all (leaf picks or a leaf view). */
-function personalOffers(selection: BrowseSelection | undefined, actions: SelectionActionsOptions | undefined) {
-  if (!actions || !selection?.target) return {watched: false, myList: false, favorite: false};
+function personalOffers(selection: BrowseSelection | undefined, actions: SelectionActionsOptions | undefined, host: LibrarySelectionHost) {
+  if (!actions || !host.captureOperation || !host.isOperationCurrent || !selection?.target) return {watched: false, myList: false, favorite: false};
   const usable = personalTargetIsLeaf(selection.target);
   return {watched: usable && selection.summary.every.watched, myList: usable && selection.summary.every.myList, favorite: usable && selection.summary.every.favorite};
 }
@@ -92,7 +94,7 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {personal: (ac
   // Whole-view Select all N is offered only with the server's exact descriptor and
   // a model that can hold it; never as a local guess from the loaded window.
   const selectAll = whole && selectWhole ? {kind: 'view' as const, total: whole.total} : undefined;
-  const offers = personalOffers(current.selection, actions), leafItems = explicitLeafItems(current.selection);
+  const offers = personalOffers(current.selection, actions, playSelection), leafItems = explicitLeafItems(current.selection);
   const canQueue = !!leafItems && !!enqueue && summary.every.queue, canPlaylist = !!leafItems && !!destinations?.playlist && summary.every.playlist,
     canCollection = !!leafItems && !!destinations?.collection && summary.every.collection;
   return <SelectionBar
@@ -132,11 +134,12 @@ export function createLibrarySelection({playSelection, descriptor, actions, enqu
     await destinations.collection(leafItems(), anchor);
   };
   const personal = async (action: PersonalSelectionAction) => {
-    const target = playSelection.getSnapshot().selection?.target;
-    if (!actions) throw new Error('selection-actions-unavailable');
-    if (!target) throw new Error('selection-target-required');
-    const runner = createSelectionActions({...actions, reportError});
-    await runner.personal({target} as never, action, actions.signal ?? new AbortController().signal);
+    if (!actions || !playSelection.captureOperation || !playSelection.isOperationCurrent) throw new Error('selection-actions-unavailable');
+    const operation = playSelection.captureOperation();
+    if (!operation) throw new Error('selection-target-required');
+    const isCurrent = () => actions.isCurrent() && playSelection.isOperationCurrent!(operation);
+    const runner = createSelectionActions({...actions, isCurrent, reportError});
+    await runner.personal(operation, action, actions.signal ?? new AbortController().signal);
   };
   const snapshot = () => playSelection.getSnapshot(), rowFor = (member: BrowseMember, index: number) => {
     const rows = snapshot().rows;
