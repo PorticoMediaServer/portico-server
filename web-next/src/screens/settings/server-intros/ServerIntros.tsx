@@ -41,6 +41,10 @@ type EditOpening = Readonly<{opening: number; entryId: string; marker: SegmentRe
  * opened. A replacement row or context retires it. */
 type CreateOpening = Readonly<{opening: number; entry: SegmentReviewEntry; libraryId: string}>;
 type CreateOp = Readonly<{opening: CreateOpening; source: SegmentIntrosSource}>;
+type DetectOpening = Readonly<{title: SegmentTitleReview; source: SegmentIntrosSource}>;
+/** The exact review the Detect opener belongs to. A retained opener from another
+ * source, title, library or season refuses before creating a successor. */
+type ReviewAdmission = Readonly<{source: SegmentIntrosSource; title: SegmentTitleReview; libraryId: string; titleId: string; season: number | undefined}>;
 
 export function ServerIntros({source, modeRows, onPreview}: {source: SegmentIntrosSource; modeRows: ReactNode; onPreview: (libraryId: string, itemId: string, start: number) => void}) {
   const snapshot = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
@@ -52,7 +56,21 @@ export function ServerIntros({source, modeRows, onPreview}: {source: SegmentIntr
   const createOp = useRef<CreateOp | undefined>(undefined);
   useLayoutEffect(() => () => {createOp.current = undefined;}, []);
   const createOpening = useRef(0);
-  const [confirmingDetect, setConfirmingDetect] = useState(false);
+  const [confirmingDetect, setConfirmingDetect] = useState<DetectOpening>();
+  const admittedReview = useRef<ReviewAdmission | undefined>(undefined);
+  const [review, setReview] = useState<ReviewAdmission | undefined>(undefined);
+  useLayoutEffect(() => {
+    const title = snapshot.title;
+    if (!title || !snapshot.titleId || !snapshot.libraryId) {admittedReview.current = undefined;setReview(undefined);return;}
+    const next: ReviewAdmission = {source, title, libraryId: snapshot.libraryId, titleId: snapshot.titleId, season: snapshot.season};
+    admittedReview.current = next;setReview(next);
+    return () => {if (admittedReview.current === next) admittedReview.current = undefined;};
+  }, [source, snapshot.libraryId, snapshot.titleId, snapshot.season, snapshot.title]);
+  const detectCommitted = useRef<DetectOpening | undefined>(undefined);
+  useLayoutEffect(() => {
+    detectCommitted.current = confirmingDetect;
+    return () => {if (detectCommitted.current === confirmingDetect) detectCommitted.current = undefined;};
+  }, [confirmingDetect]);
   useLayoutEffect(() => {
     createCommitted.current = creating;
     return () => {if (createCommitted.current === creating) createCommitted.current = undefined;};
@@ -67,7 +85,7 @@ export function ServerIntros({source, modeRows, onPreview}: {source: SegmentIntr
     const first = snapshot.status?.libraries[0];
     if (first && !snapshot.libraryId) void source.openLibrary(first.libraryId);
   }, [source, snapshot.status, snapshot.libraryId]);
-  useLayoutEffect(() => {committed.current = undefined;setEdit(undefined);createCommitted.current = undefined;createOp.current = undefined;setCreating(undefined);}, [source, snapshot.libraryId, snapshot.titleId, snapshot.season]);
+  useLayoutEffect(() => {committed.current = undefined;setEdit(undefined);createCommitted.current = undefined;createOp.current = undefined;setCreating(undefined);detectCommitted.current = undefined;setConfirmingDetect(undefined);}, [source, snapshot.libraryId, snapshot.titleId, snapshot.season]);
   useLayoutEffect(() => {
     const open = createCommitted.current;
     if (!open) return;
@@ -75,6 +93,10 @@ export function ServerIntros({source, modeRows, onPreview}: {source: SegmentIntr
     if (title && title.id === snapshot.titleId && title.seasons.some(season => season.entries.some(value => value === open.entry))) return;
     createCommitted.current = undefined;setCreating(undefined);
   }, [snapshot.title, snapshot.titleId, creating]);
+  useLayoutEffect(() => {
+    const open = detectCommitted.current;
+    if (open && snapshot.title !== open.title) {detectCommitted.current = undefined;setConfirmingDetect(undefined);}
+  }, [snapshot.title, confirmingDetect]);
   const status = snapshot.status;
   const stateText = !status ? '' : status.mode === 'off' ? t('web.segments.stateOff') : status.files.pending || status.showsWaiting || !status.catchUpComplete ? t('web.segments.stateWorking') : t('web.segments.stateDone');
   const busy = !!snapshot.busy;
@@ -124,7 +146,13 @@ export function ServerIntros({source, modeRows, onPreview}: {source: SegmentIntr
 
         <div className={styles.pane}>
           {!title ? snapshot.titleLoading ? <p className={styles.loading} role="status">{t('web.segments.loading')}</p> : snapshot.titleError ? <ReviewNotice tone="bad" onRetry={() => {if (snapshot.titleId) void source.openTitle(snapshot.titleId);}}>{t('web.segments.error')}</ReviewNotice> : <p className={styles.empty}>{t('web.segments.chooseTitle')}</p> : <Review title={title} season={snapshot.season} entries={entries} snapshot={snapshot} edit={edit}
-            onSeason={value => source.selectSeason(value)} onApproveAll={() => {void source.approve();}} onDetect={() => setConfirmingDetect(true)}
+            onSeason={value => source.selectSeason(value)} onApproveAll={() => {void source.approve();}} onDetect={() => {
+              const admission = review;
+              if (!admission || admittedReview.current !== admission || detectCommitted.current) return;
+              const title = snapshot.title;
+              if (!title || title !== admission.title || snapshot.titleId !== admission.titleId || snapshot.season !== admission.season) return;
+              setConfirmingDetect({title, source: admission.source});
+            }}
             onRetryTitle={() => {if (snapshot.titleId) void source.openTitle(snapshot.titleId);}}
             onEdit={(entry, marker) => {const next: EditOpening = {opening: ++opening.current, entryId: entry.itemId, marker, start: seconds(marker.startUS), end: seconds(marker.endUS), kind: marker.kind};committed.current = next;setEdit(next);}}
             onChange={(entry, value) => {const open = committed.current;if (!open || open.opening !== value.opening || open.marker.id !== value.id || open.entryId !== entry.itemId) return;setEdit(current => current && current.opening === value.opening ? {...current, start: value.start, end: value.end, kind: value.kind} : current);}}
@@ -137,9 +165,9 @@ export function ServerIntros({source, modeRows, onPreview}: {source: SegmentIntr
         </div>
       </div>}
     </section>
-    <Dialog open={confirmingDetect} onOpenChange={setConfirmingDetect} size="sm" role="alertdialog" title={t('web.segments.detectAgain')} description={t('web.segments.detectAgainHelp')}
-      footer={<><Button variant="glass" size="compact" disabled={busy} onClick={() => setConfirmingDetect(false)}>{t('next.shell.cancel')}</Button>
-        <Button variant="primary" size="compact" disabled={busy} onClick={() => {setConfirmingDetect(false);void source.detectAgain();}}>{t('web.segments.detectAgain')}</Button></>}>{null}</Dialog>
+    <Dialog open={!!confirmingDetect} onOpenChange={next => {if (!next) {const open = detectCommitted.current;if (open && open === confirmingDetect) {detectCommitted.current = undefined;setConfirmingDetect(undefined);}}}} size="sm" role="alertdialog" title={t('web.segments.detectAgain')} description={t('web.segments.detectAgainHelp')}
+      footer={<><Button variant="glass" size="compact" disabled={busy} onClick={() => {const open = detectCommitted.current;if (!open || open !== confirmingDetect) return;detectCommitted.current = undefined;setConfirmingDetect(undefined);}}>{t('next.shell.cancel')}</Button>
+        <Button variant="primary" size="compact" disabled={busy} onClick={() => {const open = detectCommitted.current;if (!open || open !== confirmingDetect) return;detectCommitted.current = undefined;setConfirmingDetect(undefined);void open.source.detectAgain(open.title);}}>{t('web.segments.detectAgain')}</Button></>}>{null}</Dialog>
     {creating ? <CreateMarkerSheet key={creating.opening} duration={seconds(creating.entry.durationUS)} busy={busy}
       onCancel={() => {const open = createCommitted.current;if (!open || open.opening !== creating.opening) return;createCommitted.current = undefined;setCreating(undefined);}}
       onSave={draft => {

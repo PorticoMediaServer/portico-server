@@ -236,9 +236,9 @@ export class SegmentIntrosSource {
     }
   };
   /** Measure this title's files again; approvals and edits are kept by the server. */
-  detectAgain = async (): Promise<void> => {
+  detectAgain = async (expectedTitle: SegmentTitleReview): Promise<void> => {
     const {title} = this.state;
-    if (!this.current() || !title || this.state.busy) return;
+    if (!this.current() || !title || title !== expectedTitle || this.state.busy) return;
     const generation = this.titleGeneration;
     this.publish({busy: 'redetect', note: undefined, actionError: undefined});
     try {
