@@ -4,19 +4,27 @@ import {defaultI18n} from '@i18n';
 import type {ReadingPreferences} from '@portico/client-core';
 import type {ReadingController, ReadingPublication, ReaderErrorCode, ReaderLocation, ReaderContentsTarget, ReaderSearchResult, ReaderTocItem} from '@portico/reader-core';
 import {useShellWidth} from '../../shell/viewport';
+import {router} from '../../router';
 import {Skeleton, StateView} from '../../kit/states';
 import {ReaderContents, ReaderPanel, type ReaderContentsEntry} from '../../kit/reader/ReaderPanel';
 import {ReaderDisplayMark} from '../../kit/reader/ReaderDisplayMark';
 import {ReaderSearch, type ReaderSearchHit} from '../../kit/reader/ReaderSearch';
 import {ReadReader} from './ReadReader';
 import {ReadingDisplay} from './ReadingDisplay';
-import {FixedPageMenus, FixedPageStrip, fixedPageZoomLabel} from './fixed-page';
+import {FixedPageMenus, FixedPageStrip, FixedPagesPanel, fixedPageZoomLabel} from './fixed-page';
 import {readingDisplayCopy} from './display-copy';
 import {readerBookPresentation, type ReaderEnvironment} from './native/tablet-presentation';
 import type {ReaderMountAuthority} from './mount';
+import type {ReaderChapterMark} from './ReaderChrome';
 import fixedStyles from './fixed-page.module.css';
 const {t} = defaultI18n;
 const directionIcon = (rtl: boolean): 'i-rtl' | 'i-ltr' => rtl ? 'i-rtl' : 'i-ltr';
+/** A chapter mark is the file's own contents entry; its end is the next entry, never a guess. */
+export function readerChapterMarks(items: readonly ReaderTocItem[], location?: ReaderLocation): readonly ReaderChapterMark[] {
+  const starts = items.map(item => item.location.progression);
+  return items.map((item, index) => ({id: item.id, start: item.location.progression, end: starts[index + 1] ?? 1,
+    current: location ? location.progression >= item.location.progression && (starts[index + 1] === undefined || location.progression < starts[index + 1]) : undefined}));
+}
 export type ReaderBookState = Readonly<{publication: ReadingPublication; controller: ReadingController; authority: ReaderMountAuthority; location?: ReaderLocation; contentsTarget?: ReaderContentsTarget}>;
 
 export function ReaderBook({book, active, reportError, onBack, onOpenSettings, environment = 'web'}: {environment?: ReaderEnvironment; book: ReaderBookState; active: boolean; reportError: (error: unknown) => void; onBack: () => void; onOpenSettings: () => void}) {
@@ -24,6 +32,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot), width = useShellWidth();
   const [panel, setPanel] = useState<'display' | 'contents' | 'search'>(), [query, setQuery] = useState('');
   const [fixedMenu, setFixedMenu] = useState<'zoom' | 'direction'>();
+  const [fixedPane, setFixedPane] = useState<'contents' | 'pages'>('contents');
   const zoomAnchor = useRef<HTMLButtonElement>(null), directionAnchor = useRef<HTMLButtonElement>(null);
   const fixed = publication.format !== 'epub';
   const [hits, setHits] = useState<readonly ReaderSearchResult[]>([]), [searching, setSearching] = useState(false), [currentHit, setCurrentHit] = useState<string>();
@@ -76,11 +85,18 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
     const context = start < 0 ? [{text: hit.excerpt}] : [{text: hit.excerpt.slice(0, start)}, {text: hit.excerpt.slice(start, start + query.length), match: true}, {text: hit.excerpt.slice(start + query.length)}];
     return {id: hit.id, chapter: hit.chapter, page: hit.location.pageLabel, context, onNavigate: () => {setCurrentHit(hit.id); navigate(hit.location);}};
   });
-  const panelContent = !active ? undefined : panel === 'contents' ? <ReaderPanel label={t('next.reader.contents')} tabs={[{id: 'contents', label: t('next.reader.contents')}]}
-    selected="contents" onSelect={() => {}} onClose={() => setPanel(undefined)}><ReaderContents entries={contents(snapshot.toc)}/></ReaderPanel>
+  const panelContent = !active ? undefined : panel === 'contents' ? (fixed
+    ? <ReaderPanel label={t('next.reader.pagesStrip')} tabs={[...(snapshot.toc.length > 0 ? [{id: 'contents', label: t('next.reader.contents')}] : []), {id: 'pages', label: t('next.reader.pagesStrip')}]}
+      selected={snapshot.toc.length > 0 ? fixedPane : 'pages'} onSelect={selected => setFixedPane(selected === 'pages' ? 'pages' : 'contents')} onClose={() => setPanel(undefined)}>
+      {snapshot.toc.length > 0 && fixedPane === 'contents' ? <ReaderContents entries={contents(snapshot.toc)}/>
+        : <FixedPagesPanel controller={controller} authority={authority} format={publication.format} reportError={code => reportError({code})}/>}
+    </ReaderPanel>
+    : <ReaderPanel label={t('next.reader.contents')} tabs={[{id: 'contents', label: t('next.reader.contents')}]}
+      selected="contents" onSelect={() => {}} onClose={() => setPanel(undefined)}><ReaderContents entries={contents(snapshot.toc)}/></ReaderPanel>)
     : panel === 'search' ? <ReaderPanel label={t('next.reader.search')} tabs={[{id: 'search', label: t('next.reader.search')}]}
       selected="search" onSelect={() => {}} onClose={() => setPanel(undefined)}><ReaderSearch query={query} onQuery={setQuery} hits={searchHits} current={currentHit} loading={searching}
         resultSummary={!searching && query.trim() && hits.length < 100 ? t('next.reader.matches', {count: hits.length}) : undefined}
+        onSearchAll={query.trim() ? () => {if (!authority.isCurrent() || !query.trim()) return; void router.navigate({to: '/search', search: {q: query.trim()}}).catch(reportError);} : undefined}
         onStep={direction => {const index = readingSearchStepIndex(hits.length, hits.findIndex(hit => hit.id === currentHit), direction), next = index === undefined ? undefined : hits[index]; if (next) {setCurrentHit(next.id); navigate(next.location);}}}
         copy={{search: t('next.reader.search'), clear: t('next.reader.clear'), move: t('next.reader.move'), wholeWords: t('next.reader.wholeWords'), searchAll: t('next.reader.searchAll')}}/></ReaderPanel>
       : panel === 'display' ? <ReadingDisplay controller={controller} authority={authority} copy={readingDisplayCopy(defaultI18n, presentation, 7)}
@@ -93,6 +109,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
     presentation={value => ({copy: {back: t('next.reader.back'), previous: t('next.reader.previous'), next: t('next.reader.next'), progress: t('next.reader.position')},
       direction: publication.format === 'cbz' && value.preferences.comicDirection !== 'file' ? value.preferences.comicDirection === 'rtl' ? 'rtl' : 'ltr'
         : value.metadata?.direction === 'rtl' ? 'rtl' : 'ltr', tapTurnEnabled: value.preferences.tapToTurn, showPageArrows: layout.showPageArrows,
+      chapters: readerChapterMarks(value.toc, value.location ?? undefined),
       chapter: value.location?.chapter, pages: value.location?.pageLabel ? t('next.reader.pageLabel', {page: value.location.pageLabel}) : undefined,
       remainingInSection: value.location?.pagesLeftInSection === undefined ? undefined : t('next.reader.sectionRemaining', {count: value.location.pagesLeftInSection}),
       percent: value.location ? defaultI18n.percent(value.location.progression) : undefined, panel: panelContent, panelReflows: layout.panelReflows(panel),

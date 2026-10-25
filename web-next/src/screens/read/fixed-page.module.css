@@ -9,4 +9,9 @@
 .number { position: absolute; inset: auto 0 0; padding: 2px 0; font-size: 11px; font-weight: 700; text-align: center; color: var(--color-text);
   background: rgba(7,16,24,.72); font-variant-numeric: tabular-nums; }
 .zoomLabel { font-size: 13px; font-weight: 700; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.panel { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.panelCount { margin: 0; font-size: 13px; font-weight: 600; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+.panelGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 12px; overflow-y: auto; min-height: 0; padding-bottom: 4px; }
+.page.large { width: auto; }
+@media (max-width: 599px) { .page.large { width: auto; } }
 @media (max-width: 599px) { .page { width: 46px; } }

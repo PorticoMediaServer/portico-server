@@ -44,26 +44,47 @@ export function FixedPageStrip({controller, authority, reportError, format}: Fix
   </div>;
 }
 
-function PageThumb({controller, authority, reportError, format, index, count, current, pageLabel, onSelect}: Fixed & Readonly<{
-  index: number; count: number; current: boolean; pageLabel: string; onSelect: () => void;
+function PageThumb({controller, authority, reportError, format, index, count, current, pageLabel, large = false, onSelect}: Fixed & Readonly<{
+  index: number; count: number; current: boolean; pageLabel: string; large?: boolean; onSelect: () => void;
 }>) {
   const [preview, setPreview] = useState<ReadPagePreview>();
   useEffect(() => {
     const life = new AbortController();
     let loaded: ReadPagePreview | undefined, alive = true;
-    void loadReadPagePreview({controller, index, width: 96, authority, signal: life.signal}).then(value => {
+    void loadReadPagePreview({controller, index, width: large ? 180 : 96, authority, signal: life.signal}).then(value => {
       if (!alive) {value.dispose(); return;}
       loaded = value; setPreview(value);
     }).catch(error => {if (alive && authority.isCurrent() && !life.signal.aborted) reportError(readerErrorCode(error));});
     return () => {alive = false; life.abort(); loaded?.dispose();};
     // A preview belongs to one page of one authorized document.
-  }, [controller, index, authority, reportError]);
-  return <button type="button" className={styles.page} aria-current={current ? 'page' : undefined}
+  }, [controller, index, authority, reportError, large]);
+  return <button type="button" className={large ? `${styles.page} ${styles.large}` : styles.page} aria-current={current ? 'page' : undefined}
     aria-label={count > 0 ? t('next.reader.pageOf', {page: defaultI18n.number(index + 1), count: defaultI18n.number(count)}) : pageLabel}
     data-current={current || undefined} onClick={onSelect}>
     {preview ? <img src={preview.url} alt="" width={preview.width} height={preview.height} loading="lazy" decoding="async"/> : <span className={styles.blank} aria-hidden="true">{format.toUpperCase()}</span>}
     <span className={styles.number} aria-hidden="true">{defaultI18n.number(index + 1)}</span>
   </button>;
+}
+
+/** The same bounded page window as a panel, for fixed pages whose only contents are pages. */
+export function FixedPagesPanel({controller, authority, reportError, format}: Fixed) {
+  const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
+  const count = snapshot.metadata?.pageCount, location = snapshot.location;
+  const current = location && location.format !== 'epub' ? location.page : undefined;
+  if (format === 'epub' || !count || count < 2 || current === undefined || snapshot.status !== 'ready') return null;
+  const first = Math.max(0, Math.min(current - 6, count - 13)), last = Math.min(count, first + 13);
+  const navigate = (index: number) => {
+    const target: ReaderLocation = {format: format === 'pdf' ? 'pdf' : 'cbz', page: index, progression: index / (count - 1)};
+    void controller.navigate({kind: 'location', location: target}).catch(error => {
+      if (authority.isCurrent()) reportError(readerErrorCode(error));
+    });
+  };
+  return <div className={styles.panel}>
+    <p className={styles.panelCount}>{t('next.reader.pageOf', {page: defaultI18n.number(current + 1), count: defaultI18n.number(count)})}</p>
+    <div className={styles.panelGrid}>{Array.from({length: last - first}, (_, offset) => first + offset).map(index =>
+      <PageThumb key={index} controller={controller} authority={authority} reportError={reportError} format={format} index={index} count={count}
+        current={index === current} large pageLabel={t('next.reader.pageLabel', {page: defaultI18n.number(index + 1)})} onSelect={() => navigate(index)}/>)}</div>
+  </div>;
 }
 
 /**
