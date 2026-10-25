@@ -7,7 +7,7 @@ async function harness(fixture={}){
  const manager={setMediaUrlResolver:fn=>urlResolver=fn,getMediaInformation:()=>loads.at(-1)?.media,setMediaInformation:(media,broadcast)=>metadataUpdates.push({media,broadcast}),getQueueManager:()=>({insertItems:items=>{for(const item of items)queueItems.push({...item,itemId:queueItems.length+1});},getItems:()=>queueItems,getCurrentItem:()=>queueItems[0],removeItems:ids=>{for(let i=queueItems.length-1;i>=0;i--)if(ids.includes(queueItems[i].itemId))queueItems.splice(i,1);}}),getCurrentTimeSec:()=>at,getPlayerState:()=>state,load:async x=>{if(fixture.loadFails||(fixture.nextLoadFails&&loads.length))throw new Error('decode_error');if(fixture.localInterceptors&&interceptors.LOAD){x=await interceptors.LOAD(x);if(!x)return;}loads.push(x);if(x.queueData){queueItems.length=0;for(const item of x.queueData.items)queueItems.push({...item,itemId:queueItems.length+1});}state=x.autoplay?'PLAYING':'PAUSED'},sendLocalMediaRequest:x=>{assert(Number.isSafeInteger(x.requestId)&&x.requestId>0);const handle=()=>{if(x.type==='PLAY')state='PLAYING';if(x.type==='PAUSE')state='PAUSED';if(x.type==='STOP')state='IDLE';if(x.type==='SEEK')at=x.currentTime;};if(fixture.localInterceptors&&interceptors[x.type])Promise.resolve(interceptors[x.type](x)).then(y=>{if(y)handle();});else handle();},pause:()=>state='PAUSED',play:()=>state='PLAYING',seek:x=>at=x,stop:()=>state='IDLE',setMessageInterceptor:(k,v)=>{assert(supportedInterceptors.has(k),'unsupported CAF interceptor '+k);interceptors[k]=v;},addEventListener:(k,v)=>events[k]=v,getAudioTracksManager:()=>({getTracks:()=>[],setActiveById:()=>{}}),getTextTracksManager:()=>({getTracks:()=>[],setActiveByIds:()=>{}})};
  const castContext={getDeviceCapabilities:()=>fixture.caps||{},getDeviceInformation:()=>fixture.info||{},canDisplayType:(mime,codecs,width,height,fps)=>{assert(!mime.includes(';'));return !!fixture.supports?.(mime,codecs,width,height,fps)},getPlayerManager:()=>manager,addCustomMessageListener:(ns,fn)=>listener=fn,sendCustomMessage:(ns,id,body)=>sent.push({id,body}),addEventListener:(k,v)=>ctxEvents[k]=v,getSenders:()=>senders,start:()=>{}};
  const nodes={};const document={getElementById:id=>nodes[id]??=( {textContent:'',attrs:{},setAttribute(k,v){this.attrs[k]=v},removeAttribute(k){delete this.attrs[k]},addEventListener:()=>{}} )};
- const cast={framework:{CastReceiverContext:{getInstance:()=>castContext},messages:{MessageType:Object.fromEntries(['LOAD','PLAY','PAUSE','SEEK','STOP','PRELOAD','QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE','QUEUE_REORDER','QUEUE_NEXT','QUEUE_PREV','GET_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS'].map(x=>[x,x]))},events:{EndedReason:{END_OF_STREAM:'END_OF_STREAM'},EventType:Object.fromEntries(['ERROR','BUFFERING','MEDIA_FINISHED','PLAYER_LOAD_COMPLETE','PLAYER_LOADING','LOADED_DATA','TIME_UPDATE','DURATION_CHANGE','MEDIA_STATUS','PAUSE','PLAYING','SEEKED'].map(x=>[x,x]))},system:{EventType:{SENDER_DISCONNECTED:'disconnect',SHUTDOWN:'shutdown'},MessageType:{JSON:'json'}}}};
+ const cast={framework:{CastReceiverContext:{getInstance:()=>castContext},messages:{MessageType:Object.fromEntries(['LOAD','PLAY','PAUSE','SEEK','STOP','PRELOAD','QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE','QUEUE_REORDER','QUEUE_NEXT','QUEUE_PREV','GET_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS'].map(x=>[x,x]))},events:{EndedReason:{END_OF_STREAM:'END_OF_STREAM'},EventType:Object.fromEntries(['ERROR','BUFFERING','MEDIA_FINISHED','PLAYER_LOAD_COMPLETE','PLAYER_LOADING','LOADED_DATA','TIME_UPDATE','DURATION_CHANGE','MEDIA_STATUS','PAUSE','PLAYING','SEEKED'].map(x=>[x,x]))},system:{EventType:{SENDER_CONNECTED:'connect',SENDER_DISCONNECTED:'disconnect',SHUTDOWN:'shutdown'},MessageType:{JSON:'json'}}}};
  let failed=false,expired=false,preparing=!!fixture.preparing,generation=1;
  const presentation=(start,mediaUrl)=>{
   const url=mediaUrl===undefined?(fixture.direct?'/v1/media/grant':'/v1/media/grant/master.m3u8'):mediaUrl;
@@ -20,7 +20,13 @@ async function harness(fixture={}){
   const path=url.replace(/^https?:\/\/[^/]+/,'');
   if(path.startsWith('/v2/'))throw new Error('removed v2 route '+path);
   if(path.endsWith('/reconnect')&&fixture.revoked)return reply({error:{code:'cast_device_revoked',message:'That receiver pairing was revoked.',retryable:false}},403);
-  if(path.endsWith('/redeem')||path.endsWith('/reconnect'))return reply({device:{id:'cdv_'+(body?.code||'renewed'),generation:'1'},session:{accessToken:'bearer-'+(body?.code||'renewed')},deviceToken:'device-'+(body?.code||'renewed'),scope:{accountId:String(body?.code||'').startsWith('OTHER')?'other':'account',profileId:'profile',authority:'hosted'}});
+  if(path.endsWith('/redeem')||path.endsWith('/reconnect'))return reply({controllerBootstrapId:'cbs_'+(body?.code||'renewed'),device:{id:'cdv_'+(body?.code||'renewed'),generation:'1'},session:{accessToken:'bearer-'+(body?.code||'renewed')},deviceToken:'device-'+(body?.code||'renewed'),scope:{accountId:String(body?.code||'').startsWith('OTHER')?'other':'account',profileId:'profile',authority:'hosted'}});
+  if(path==='/v1/cast/controllers/register')return reply({binding:{id:'cct_current',bootstrapId:body.bootstrapId,receiverId:'sdk-tv',targetId:'cdv_target',targetFamilyId:'target-family',targetGeneration:'1',scope:{serverId:'server',authority:'local',accountId:'account',profileId:'profile',senderDeviceId:'phone',senderFamilyId:'source-family'}}});
+  if(path==='/v1/cast/controllers/check'){
+    if(fixture.controllerCheck)await fixture.controllerCheck(body);
+    return reply({binding:{id:body.bindingId}});
+  }
+  if(path==='/v1/playback/sessions/ps_1'&&options.method==='GET')return reply(sessionFor({},0));
   if(fixture.queue&&path==='/v1/queues/q-1'&&options.method==='GET')return reply({id:'q-1',revision:'1',next:{available:!fixture.queueEnd,entryId:'entry-2',reason:'ready'}});
   if(fixture.queue&&path==='/v1/queues/q-1:advance'){
    if(fixture.rejectAdvance)return reply({error:{code:'queue_changed'}},409);
@@ -30,6 +36,7 @@ async function harness(fixture={}){
   if(path.startsWith('/v1/items/')){if(fixture.catalogWait)await fixture.catalogWait;const item=fixture.catalog?.[decodeURIComponent(path.slice('/v1/items/'.length))];return item?reply(item):reply({error:{code:'not_found'}},fixture.catalogStatus||404);}
   if(path==='/v1/me/devices/current/capabilities')return reply({},204);
   if(path==='/v1/playback/sessions'&&options.method==='POST'){
+   if(fixture.startWait)await fixture.startWait;
    if(fixture.ambiguous&&!failed){failed=true;throw new Error('lost response')}
    if(preparing){preparing=false;return reply({retryAfterMs:500},202);}
    return reply(sessionFor(body,body.startPositionMs),201);
@@ -228,7 +235,7 @@ test('a receiver whose pairing was revoked stops playing; one that only lost the
 test('a returning controller can recover the same playing session and an unpaired sender cannot load through CAF',async()=>{
  const h=await harness();h.senders.push('phone');
  await h.message('phone',{type:'pair',code:'ABCD',origin:''});
- const proof=h.sent.find(x=>x.body.type==='paired').body.controlToken;
+ const accepted=h.sent.find(x=>x.body.type==='paired').body,proof=accepted.controlToken;
  await h.message('phone',{type:'load',itemId:'movie'});
  const before=h.loads.length;h.senders.length=0;h.ctxEvents.disconnect({senderId:'phone'});await settle();
  assert.equal(await h.interceptors.LOAD({senderId:'stranger',media:{customData:{itemId:'other'}}}),null);
@@ -236,7 +243,7 @@ test('a returning controller can recover the same playing session and an unpaire
  assert.equal(await h.interceptors.SEEK({senderId:'stranger',currentTime:30}),null);
  h.sent.length=0;await h.message('new-phone-id',{type:'status',controlToken:'0'.repeat(48)});
  assert(!h.sent.some(x=>x.body.type==='status'));
- await h.message('new-phone-id',{type:'status',controlToken:proof});
+ await h.message('new-phone-id',{type:'adopt',bindingId:accepted.binding.id,controlToken:proof,attemptId:'returning',ticket:'a'.repeat(43)});
  assert(h.sent.some(x=>x.id==='new-phone-id'&&x.body.type==='status'&&x.body.itemId==='movie'));
  assert.equal(h.loads.length,before);assert(!h.calls.some(x=>x.method==='DELETE'));
  await h.message('new-phone-id',{type:'pause'});assert.equal(h.manager.getPlayerState(),'PAUSED');
@@ -566,4 +573,44 @@ test('CAF local media requests retain private object authority through intercept
  await h.message('phone',{type:'play'});assert.equal(h.manager.getPlayerState(),'PLAYING');
  await h.message('phone',{type:'seek',positionSeconds:5});assert.equal(h.manager.getCurrentTimeSec(),5);
  await h.message('phone',{type:'stop'});assert.equal(h.manager.getPlayerState(),'IDLE');assert.equal(h.receiver.state().playbackId,null);
+});
+
+// Root50 regressions: held authority/queue boundaries exercise the actual
+// receiver closure. These sources are for Release's normal checkpoint.
+const held=()=>{let resolve;const promise=new Promise(done=>{resolve=done;});return {promise,resolve};};
+test('disconnect during current-controller validation never rearms or dispatches the old sender',async()=>{
+ const gate=held(),entered=held();let hold=false;
+ const h=await harness({controllerCheck:async()=>{if(hold){entered.resolve();await gate.promise;}}});
+ await h.message('phone',{type:'pair',code:'ABC123',origin:'https://server.test'});
+ await h.message('phone',{type:'load',itemId:'movie',startSeconds:0,title:'Film'});
+ hold=true;const before=h.calls.length;
+ const command=h.message('phone',{type:'load',itemId:'stale',startSeconds:0,title:'Old'});await entered.promise;
+ h.ctxEvents.disconnect({senderId:'phone'});gate.resolve();await command;await h.message('observer',{type:'status'});
+ assert.equal(h.calls.slice(before).some(x=>x.url.endsWith('/v1/playback/sessions')&&x.body?.itemId==='stale'),false);
+ const count=h.sent.length;await h.message('phone',{type:'status'});
+ assert.equal(h.sent.slice(count).some(x=>x.body.type==='status'),false);
+});
+test('a later adoption attempt wins even when the earlier validation resolves last',async()=>{
+ const gate=held(),entered=held();
+ const h=await harness({controllerCheck:async body=>{if(body.attemptId==='older'){entered.resolve();await gate.promise;}}});
+ await h.message('phone',{type:'pair',code:'ABC123',origin:'https://server.test'});
+ await h.message('phone',{type:'load',itemId:'movie',startSeconds:0,title:'Film'});
+ const paired=h.sent.find(x=>x.body.type==='paired').body;
+ const older=h.message('first-return',{type:'adopt',bindingId:paired.binding.id,controlToken:paired.controlToken,attemptId:'older',ticket:'a'.repeat(43)});await entered.promise;
+ await h.message('latest-return',{type:'adopt',bindingId:paired.binding.id,controlToken:paired.controlToken,attemptId:'newer',ticket:'b'.repeat(43)});
+ gate.resolve();await older;await h.message('observer',{type:'status'});assert.equal(h.receiver.state().controller,'latest-return');
+ assert.equal(h.sent.some(x=>x.id==='first-return'&&x.body.type==='status'),false);
+});
+test('takeover queued ahead of an old authenticated load cannot lend it the successor credential',async()=>{
+ const check=held(),entered=held();let hold=false;
+ const fixture={controllerCheck:async()=>{if(hold){entered.resolve();await check.promise;}}};
+ const h=await harness(fixture);
+ await h.message('phone',{type:'pair',code:'ABC123',origin:'https://server.test'});
+ await h.message('phone',{type:'load',itemId:'movie',startSeconds:0,title:'Film'});
+ hold=true;const stale=h.message('phone',{type:'load',itemId:'stale',startSeconds:0,title:'Old'});await entered.promise;
+ // This explicit same-viewer pair advances controller/session generations.
+ await h.message('successor',{type:'pair',code:'NEW123',origin:'https://server.test'});
+ check.resolve();await stale;await h.message('observer',{type:'status'});
+ assert.equal(h.calls.some(x=>x.url.endsWith('/v1/playback/sessions')&&x.body?.itemId==='stale'),false);
+ assert.equal(h.receiver.state().controller,'successor');
 });
