@@ -100,7 +100,7 @@ export class SettingsLibrarySource {
       const document = await readLibrarySettings(this.api, libraryId, request.signal);
       if (this.owns(request, libraryId)) {this.publish({...this.state, document, saving: false}); return true;}
     } catch (error) {
-      if (this.owns(request, libraryId)) {this.publish({libraryId, loading: false, saving: false, error}); throw error;}
+      if (this.owns(request, libraryId)) {this.publish({...this.state, loading: false, saving: false, error}); throw error;}
     } finally {if (this.request === request) this.request = undefined;}
     return false;
   }
