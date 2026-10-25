@@ -12,7 +12,7 @@ final class Checkpoint: XCTestCase {
         #endif
         app.launch()
         defer { app.terminate() }
-        let signIn = app.buttons.matching(NSPredicate(format: "label == %@", "Sign in")).firstMatch
+        let signIn = app.buttons.matching(NSPredicate(format: "label == %@", "Sign in with Portico Account")).firstMatch
         guard signIn.waitForExistence(timeout: 20) else {
             throw XCTSkip("Retained app is not at Welcome; no reset or credential action.")
         }
@@ -22,9 +22,12 @@ final class Checkpoint: XCTestCase {
         #if os(tvOS)
         // Exercise the supported headless remote, then return to the same
         // original Welcome control. No address, code, username or password.
-        XCUIRemote.shared.press(.down)
-        XCUIRemote.shared.press(.up)
-        XCTAssertTrue(signIn.hasFocus, "Welcome Sign in focus remains reachable")
+        let local = app.buttons.matching(NSPredicate(format: "label == %@", "Use a local server")).firstMatch
+        XCTAssertTrue(local.waitForExistence(timeout: 5), "Original Welcome local-server control exists")
+        XCUIRemote.shared.press(.right)
+        XCTAssertTrue(local.hasFocus, "Right moves actual focus to the local-server control")
+        XCUIRemote.shared.press(.left)
+        XCTAssertTrue(signIn.hasFocus, "Left returns actual focus to the account control")
         #else
         XCTAssertTrue(signIn.isHittable, "Welcome Sign in remains reachable")
         #endif

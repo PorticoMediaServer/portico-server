@@ -3,7 +3,7 @@
 This standalone UI-test target uses the existing Xcode SDK and test runner. It
 requires no idb, agent-device, Simulator.app GUI, package installation, admin
 change or PATH change on the Mac. The first test only launches the retained
-Portico app, checks Welcome, sends tvOS Down/Up through XCUIRemote, and captures
+Portico app, checks Welcome, sends tvOS Right/Left through XCUIRemote, and captures
 a screenshot after confirming no editable fields. It never enters credentials,
 resets/reinstalls the product, or claims sign-in/Home/playback acceptance.
 
