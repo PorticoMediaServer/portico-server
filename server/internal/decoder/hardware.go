@@ -350,6 +350,26 @@ func (d *HardwareDetector) run(ctx context.Context, executable string, args []st
 	return d.runInput(ctx, executable, args, nil)
 }
 
+// runObserved is the same bounded probe as run, plus the tail of what the tool
+// wrote. The verdict still comes from the exit status alone; the words are only
+// kept for the message log and the owner's hardware facts (HW-5b), because
+// FFmpeg states a refusal on its last line and then the process is gone.
+func (d *HardwareDetector) runObserved(ctx context.Context, executable string, args, readPaths []string) (string, error) {
+	cmd, err := probeCommand(ctx, executable, args, d.Libraries, readPaths)
+	if err != nil {
+		return "", err
+	}
+	cmd.WaitDelay = 2 * time.Second
+	tail := &probeTail{}
+	cmd.Stdout, cmd.Stderr = tail, tail
+	if d.Run != nil {
+		err = d.Run(ctx, cmd)
+	} else {
+		err = cmd.Run()
+	}
+	return tail.String(), err
+}
+
 func (d *HardwareDetector) runInput(ctx context.Context, executable string, args, readPaths []string) error {
 	cmd, err := probeCommand(ctx, executable, args, d.Libraries, readPaths)
 	if err != nil {
@@ -459,7 +479,7 @@ func (d *HardwareDetector) probe(ctx context.Context, executable string, backend
 	}
 	started := time.Now()
 	bounded, cancel := context.WithTimeout(ctx, timeout)
-	err = d.run(bounded, executable, probeArgs(spec, device, ""))
+	detail, err := d.runObserved(bounded, executable, probeArgs(spec, device, ""), nil)
 	cancel()
 	out.DurationMS = time.Since(started).Milliseconds()
 	switch {
@@ -472,6 +492,9 @@ func (d *HardwareDetector) probe(ctx context.Context, executable string, backend
 	default:
 		out.Reason = ProbeEncodeFailed
 	}
+	// One observed answer per cell, whatever later filter or codec probing
+	// decides: HW-5b keeps what the tool said for the log and Server › Streaming.
+	defer func() { noteProbeObservation(out, detail) }()
 	// A backend whose encoder works may still lack its own filters in this
 	// build. Confirm them with the real production chain rather than assume.
 	if out.Available && spec.toneMap != nil && spec.scale != nil {
