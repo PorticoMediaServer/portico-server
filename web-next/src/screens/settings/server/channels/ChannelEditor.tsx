@@ -5,6 +5,7 @@ import type {ChannelApi} from '@core/channel-guide.ts';
 import {ChannelPins} from './ChannelPins';
 import {ChannelConditions} from './ChannelConditions';
 import {ChannelHours} from './ChannelHours';
+import type {BlockPresetsSource} from './block-presets-source';
 import {applyChannelConditions} from '@core/server-admin/channel-conditions.ts';
 import {librarySampleLabel, type LibraryChannelConfig, type LibraryChannelRule} from '@core/library-channels.ts';
 import {Button, RichSelect, Switch, TextField} from '../../../../kit/controls';
@@ -20,7 +21,7 @@ const orders = ['title', 'recent', 'oldest', 'year', 'episode', 'release', 'rati
 const episodes = ['none', 'in-order', 'marathon', 'randomized', 'rotate'] as const;
 const episodeWords: readonly MessageId[] = ['builder.episodes.none', 'builder.episodes.inOrder', 'builder.episodes.marathon', 'builder.episodes.randomized', 'builder.episodes.rotate'];
 
-export function ChannelEditor({source, api, reportError, libraries, isCurrent, close}: Readonly<{source: SettingsChannelEditorSource; api: ChannelApi; reportError: (error: unknown) => void; libraries: readonly Library[]; isCurrent: () => boolean; close: () => void}>) {
+export function ChannelEditor({source, api, reportError, openPresets, presets, libraries, isCurrent, close}: Readonly<{source: SettingsChannelEditorSource; openPresets: () => void; presets: BlockPresetsSource; api: ChannelApi; reportError: (error: unknown) => void; libraries: readonly Library[]; isCurrent: () => boolean; close: () => void}>) {
   const state = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
   const [advanced, setAdvanced] = useState(false), [tried, setTried] = useState(false);
   const [validation] = useState(() => ({conditions: true, hours: true})), [conditionsValid, setConditionsValid] = useState(true), [hoursEditing, setHoursEditing] = useState(false);
@@ -71,7 +72,7 @@ export function ChannelEditor({source, api, reportError, libraries, isCurrent, c
         <label className={styles.control}><span>{t('builder.episodes')}</span><RichSelect aria-label={t('builder.episodes')} value={rule.episodeMode} disabled={locked} options={episodes.map((mode, index) => ({value: mode, label: t(episodeWords[index]!)}))} onValueChange={value => changeRule({episodeMode: value as LibraryChannelRule['episodeMode']})}/></label>
         <TextField label={t('builder.recent')} type="number" min={0} max={36500} value={rule.query.recentDays} disabled={locked} onChange={event => query({recentDays: Number(event.target.value)})}/>
         <label className={styles.control}><span>{t('builder.on')}</span><Switch aria-label={t('builder.on')} checked={config.enabled} disabled={locked} onCheckedChange={enabled => change(value => ({...value, enabled}))}/></label>
-        <ChannelHours config={config} locked={locked} isCurrent={isCurrent} onChange={change} onEditing={editing => {if (isCurrent()) {validation.hours = !editing;setHoursEditing(editing);}}}/>
+        <ChannelHours presets={presets} openPresets={openPresets} config={config} locked={locked} isCurrent={isCurrent} onChange={change} onEditing={editing => {if (isCurrent()) {validation.hours = !editing;setHoursEditing(editing);}}}/>
         <p className={styles.help}>{t('builder.audience')}</p>
         <Button size="small" variant="text" onClick={() => setAdvanced(value => !value)}>{t(advanced ? 'builder.hideAdvanced' : 'builder.advanced')}</Button>
         {advanced && <section className={styles.editorSection}>

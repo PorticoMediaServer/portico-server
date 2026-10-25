@@ -4,13 +4,14 @@ import type {LibraryChannelBlock, LibraryChannelConfig} from '@core/library-chan
 import {channelRequestID} from '@core/live-source-draft.ts';
 import {Button, RichSelect, TextField} from '../../../../kit/controls';
 import {Dialog} from '../../../../kit/overlays';
+import type {BlockPresetsSource} from './block-presets-source';
 import styles from './channels.module.css';
 const t = defaultI18n.t;
 const minuteText = (minute: number) => `${String(Math.floor(minute / 60)).padStart(2,'0')}:${String(minute % 60).padStart(2,'0')}`;
 const minuteValue = (text: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(text) ? Number(text.slice(0,2))*60+Number(text.slice(3)) : undefined;
 const dayLabel = (day: number) => new Intl.DateTimeFormat(undefined,{weekday:'short',timeZone:'UTC'}).format(Date.UTC(2023,0,1+day));
 type Draft = {original?: LibraryChannelBlock; block: LibraryChannelBlock; from: string; to: string};
-export function ChannelHours({config, locked, isCurrent, onChange, onEditing}: Readonly<{config: LibraryChannelConfig; locked: boolean; isCurrent: () => boolean; onChange: (change: (value: LibraryChannelConfig) => LibraryChannelConfig) => boolean; onEditing: (editing: boolean) => void}>) {
+export function ChannelHours({config, locked, openPresets, presets, isCurrent, onChange, onEditing}: Readonly<{config: LibraryChannelConfig; presets: BlockPresetsSource; openPresets: () => void; locked: boolean; isCurrent: () => boolean; onChange: (change: (value: LibraryChannelConfig) => LibraryChannelConfig) => boolean; onEditing: (editing: boolean) => void}>) {
   const [draft, setDraft] = useState<Draft>(), [attempt] = useState(() => ({draft: undefined as Draft | undefined})), [error, setError] = useState(false);
   const current = () => isCurrent() && !locked;
   const open = (original?: LibraryChannelBlock) => {
@@ -36,6 +37,7 @@ export function ChannelHours({config, locked, isCurrent, onChange, onEditing}: R
     <div className={styles.weekGrid}>{[1,2,3,4,5,6,0].map(day => <div key={day}><span>{dayLabel(day)}</span><div className={styles.dayTrack}>{config.blocks.filter(block => block.weekdays.includes(day)).map(block => <button type="button" key={block.id} disabled={locked} onClick={() => open(block)} title={`${ruleLabel(block.ruleId)} · ${minuteText(block.startMinute)} – ${minuteText(block.endMinute)}`}>{minuteText(block.startMinute)} – {minuteText(block.endMinute)}</button>)}</div></div>)}</div>
     {config.blocks.map(block => <Button key={block.id} size="small" variant="glass" disabled={locked || !!draft} onClick={() => open(block)}>{ruleLabel(block.ruleId)} · {block.weekdays.map(dayLabel).join(', ')} · {minuteText(block.startMinute)} – {minuteText(block.endMinute)}</Button>)}
     <p className={styles.help}>{t('builder.schedule.otherwise')}</p><Button size="small" variant="glass" disabled={locked || !!draft || config.blocks.length >= 64} onClick={() => open()}>{t('builder.schedule.add')}</Button>
+    <Button size="small" variant="text" disabled={locked} onClick={() => {if (current() && !presets.getSnapshot().busy) openPresets();}}>{t('builder.schedule.presets')}</Button>
     <Dialog open={!!draft && isCurrent()} title={t('builder.block.edit')} onOpenChange={value => {if (!value) close();}} width={540} footer={<><Button size="compact" variant="glass" onClick={close}>{t('builder.cancel')}</Button><Button size="compact" variant="primary" onClick={() => apply()}>{t('action.done')}</Button></>}>
       {draft && <div className={styles.editorFields}><div className={styles.choices}>{[1,2,3,4,5,6,0].map(day => <label key={day}><input type="checkbox" checked={draft.block.weekdays.includes(day)} onChange={event => update({...draft,block:{...draft.block,weekdays:event.target.checked ? [...draft.block.weekdays,day] : draft.block.weekdays.filter(value => value !== day)}})}/>{dayLabel(day)}</label>)}</div>
         <div className={styles.choices}><TextField aria-label={t('builder.preset.starts')} type="time" value={draft.from} onChange={event => update({...draft,from:event.target.value})}/><span>{t('next.kit.filter.between')}</span><TextField aria-label={t('next.kit.filter.between')} type="time" value={draft.to} onChange={event => update({...draft,to:event.target.value})}/></div>
