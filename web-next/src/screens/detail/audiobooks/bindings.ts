@@ -1,5 +1,6 @@
 import {LibraryContentService, type ContentEntry, type ContentProjection} from '@core/library-content.ts';
 import {getContainerState, setContainerFlag, setContainerState} from '@core/container-state.ts';
+import {browseCapabilitiesPath, parseBrowseCapabilities, validateBrowseQuery, type BrowseCapabilities} from '@core/browse.ts';
 import {screenLifetime, type ScreenContext} from '../context';
 
 export type AudiobookTarget = Readonly<{libraryId: string; view: 'book' | 'author' | 'book_series'; entityId: string}>;
@@ -15,6 +16,8 @@ export function createAudiobookBindings(context: ScreenContext, input: Audiobook
       || page.entity?.id !== target.entityId || page.entity.kind !== target.view) throw new DOMException('Audiobook page changed', 'AbortError');
   };
   const entries = () => service.getSnapshot().appended.flatMap(section => section.entries);
+  // The exact page whose checked capabilities the narrator link may act on.
+  let narratorFact: Readonly<{page: ContentProjection; capabilities: BrowseCapabilities}> | undefined;
   const play = async (page: ContentProjection, entry: ContentEntry, startSeconds = entry.playback?.startSeconds ?? 0) => {
     current(page);
     if (!entries().includes(entry) || !entry.playback || entry.available === false || entry.missing) throw new DOMException('Audiobook target unavailable', 'AbortError');
@@ -34,6 +37,31 @@ export function createAudiobookBindings(context: ScreenContext, input: Audiobook
       current(page);return result;
     },
     play,
+    /** Reads and retains this exact page's own checked Books capabilities. */
+    async narratorSupported(page: ContentProjection) {
+      current(page);
+      if (target.view !== 'book' || !context.effects.openBrowse) return false;
+      const capabilities = parseBrowseCapabilities(await life.api.request<unknown>(browseCapabilitiesPath(target.libraryId, 'books')));
+      current(page);
+      if (capabilities.library.id !== target.libraryId || capabilities.library.kind !== page.scope.libraryKind) return false;
+      const pivot = capabilities.resolvedPivot;
+      if (!pivot || pivot.id !== 'books' || !pivot.browsable) return false;
+      const field = capabilities.fields.find(value => value.id === 'narrator');
+      if (!field || !field.applicableKinds.includes('book') || !field.operators.includes('equals')) return false;
+      narratorFact = Object.freeze({page, capabilities});
+      return true;
+    },
+    /** Opens this library's Books filtered by the exact narrator the page drew. */
+    async openNarrator(page: ContentProjection, name: string) {
+      current(page);
+      if (target.view !== 'book' || !narratorFact || narratorFact.page !== page || !page.entity?.narrators?.includes(name)) throw new DOMException('Narrator filter unavailable', 'AbortError');
+      const open = context.effects.openBrowse;
+      if (!open) throw new DOMException('Browse unavailable', 'AbortError');
+      const query = Object.freeze({field: 'narrator' as const, operator: 'equals' as const, value: name});
+      validateBrowseQuery(narratorFact.capabilities, query);
+      open({libraryId: target.libraryId, pivot: 'books', query});
+      current(page);
+    },
     /** The book's own Watchlist flag, read from the container state the server already keeps. */
     async watchlisted(page: ContentProjection) {
       current(page);

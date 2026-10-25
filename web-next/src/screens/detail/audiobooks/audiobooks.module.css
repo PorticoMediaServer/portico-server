@@ -56,3 +56,5 @@
 .page[data-layout='desktop'][data-audiobook-view='book_series'] > section { grid-column: 1 / -1; }
 /* desktop-listen's book page: the real total names the next chapters page. */
 .showAll { margin-top: 14px; }
+/* desktop-listen's book page: the narrator opens Books filtered by that narrator. */
+.narratorLink { padding: 0; border: 0; background: none; font: inherit; color: inherit; text-decoration: underline; cursor: pointer; }

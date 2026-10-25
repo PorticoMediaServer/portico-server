@@ -1,4 +1,4 @@
-import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
+import {Fragment, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {serviceI18n} from '@core/presentation/service-text.ts';
 import {formatClock} from '@core/presentation/content.ts';
 import {ApiError} from '@core/index.ts';
@@ -48,10 +48,21 @@ function AudiobookBound({binding, onMore}: {binding: AudiobookBindings; onMore?:
 
 const CHAPTER_PREVIEW = 11;
 const duration = (value: number | undefined) => value === undefined ? undefined : serviceI18n().duration(value);
+/** The drawn "Read by …" line, with the current locale's own list punctuation; each name is a real
+ * destination when this library's checked Books capabilities offer the narrator filter. */
+function Narrators({names, linked, onOpen, locale}: {names: readonly string[]; linked: boolean; onOpen(name: string): void; locale: string | undefined}) {
+  const [before, after] = t('next.kit.readBy', {name: '\uFFF0'}).split('\uFFF0');
+  const parts = new Intl.ListFormat(locale, {type: 'conjunction', style: 'long'}).formatToParts(names.map((_, index) => `\u0000${index}`));
+  let next = 0;
+  return <>{before}{parts.map((part, position) => part.type === 'literal'
+    ? <Fragment key={`literal:${position}`}>{part.value}</Fragment>
+    : (() => { const name = names[next++]; return <Fragment key={`name:${position}`}>{linked && name !== undefined
+      ? <button type="button" className={styles.narratorLink} onClick={() => { if (name !== undefined) onOpen(name); }}>{name}</button> : name}</Fragment>; })())}{after}</>;
+}
 function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: Props['onMore']}) {
   const phone = useShellWidth() < 1024;
   const state = useSyncExternalStore(binding.service.subscribe, binding.service.getSnapshot, binding.service.getSnapshot);
-  const [expanded, setExpanded] = useState(false), [chaptersExpanded, setChaptersExpanded] = useState(false), [finished, setFinished] = useState<boolean>(), [watchlisted, setWatchlisted] = useState<boolean>();
+  const [expanded, setExpanded] = useState(false), [chaptersExpanded, setChaptersExpanded] = useState(false), [finished, setFinished] = useState<boolean>(), [watchlisted, setWatchlisted] = useState<boolean>(), [narratorFilter, setNarratorFilter] = useState(false);
   // One captured page operation at a time, claimed synchronously before any I/O.
   const operation = useRef<Operation | undefined>(undefined), [busy, setBusy] = useState<Operation['kind'] | undefined>(undefined);
   const owns = (op: Operation) => {
@@ -90,11 +101,17 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
     };
     reads.current = {token};
     operation.current = undefined; setBusy(undefined);
-    setExpanded(false); setChaptersExpanded(false); setFinished(undefined); setWatchlisted(undefined); setMore(undefined);
+    setExpanded(false); setChaptersExpanded(false); setFinished(undefined); setWatchlisted(undefined); setNarratorFilter(false); setMore(undefined);
     if (pageAtRender?.scope.view === 'book') {
       void binding.finished(pageAtRender).then(value => {if (live()) setFinished(value.watched);}, error => {if (live()) binding.context.effects.reportError(error);});
       // A server that does not offer the container flag withholds the button; a real failure reports.
       void binding.watchlisted(pageAtRender).then(value => {if (live()) setWatchlisted(value);}, error => {
+        if (!live()) return;
+        if (error instanceof ApiError && [403, 404, 405, 501].includes(error.status)) return;
+        binding.context.effects.reportError(error);
+      });
+      // The narrator link appears only when this library's Books pivot publishes that filter.
+      void binding.narratorSupported(pageAtRender).then(value => {if (live()) setNarratorFilter(value);}, error => {
         if (!live()) return;
         if (error instanceof ApiError && [403, 404, 405, 501].includes(error.status)) return;
         binding.context.effects.reportError(error);
@@ -146,7 +163,8 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
       <h1>{entity.displayTitle ?? entity.title}</h1>
       {entity.author && (authorEntry ? <button className={styles.author} onClick={() => open(authorEntry)}>{entity.author}</button> : <div className={styles.author}>{entity.author}</div>)}
       <div className={styles.meta}>
-        {book && !!entity.narrators?.length && <span>{t('next.kit.readBy', {name: serviceI18n().list(entity.narrators)})}</span>}
+        {book && !!entity.narrators?.length && <span><Narrators names={entity.narrators} linked={narratorFilter} locale={serviceI18n().locale}
+          onOpen={name => run(() => binding.openNarrator(page, name))}/></span>}
         {!book && entity.count !== undefined && <strong>{t('next.kit.books', {count: entity.count})}</strong>}
         {entity.duration !== undefined && <span>{duration(entity.duration)}</span>}
         {book && entity.count !== undefined && <span>{t('title.chapterCount', {count: entity.count})}</span>}
