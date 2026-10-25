@@ -2,8 +2,8 @@ import {useEffect, useMemo, useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import type {BulkMetadataPreview} from '@core/home-selection/index.ts';
 import type {BulkReceipt} from '@core/metadata-bulk.ts';
-import type {BrowseSelectionContext, SelectionOperation} from '@core/selection-model/index.ts';
-import {BulkEditor, type BulkEditorDraft, type SelectionItemDisplay} from '../../kit/selection';
+import type {BrowseSelectionContext, SelectionOperation, SelectionKind} from '@core/selection-model/index.ts';
+import {BulkEditor, MixedEditExplainer, type BulkEditorDraft, type SelectionItemDisplay} from '../../kit/selection';
 import {Dialog} from '../../kit/overlays';
 import {Button} from '../../kit/controls';
 import {OwnerTag} from '../../kit/shell';
@@ -11,15 +11,17 @@ import {editorResultView, editorUiDraft, editorValues} from '../../shell/selecti
 import {createSelectionEditor, type SelectionEditorOptions} from './selection-editor';
 
 export type LibraryEditorSession = Readonly<{operation: SelectionOperation<BrowseSelectionContext>; anchor: HTMLElement; lifetime: AbortController; current: () => boolean}>;
-export function SelectionEditorSurface({session, options, onClose}: {session: LibraryEditorSession; options: SelectionEditorOptions; onClose: () => void}) {
+export function SelectionEditorSurface({session, options, onKeepOnly, onClose}: {session: LibraryEditorSession; options: SelectionEditorOptions; onKeepOnly: (kind: SelectionKind) => void; onClose: () => void}) {
   const anchor = useRef<HTMLElement | null>(session.anchor);
   const producer = useMemo(() => createSelectionEditor({...options, signal: session.lifetime.signal, isCurrent: session.current}), [options, session]);
   const [preview, setPreview] = useState<BulkMetadataPreview>(), [targets, setTargets] = useState<readonly SelectionItemDisplay[]>([]);
   const [draft, setDraft] = useState<BulkEditorDraft>(() => editorUiDraft({lockEdited: true}));
   const [receipts, setReceipts] = useState<readonly BulkReceipt[]>([]), [busy, setBusy] = useState(true), [error, setError] = useState(false);
+  const types = session.operation.target.mode === 'explicit' ? [...session.operation.target.items.reduce((counts, pick) => counts.set(pick.item.kind, (counts.get(pick.item.kind) ?? 0) + 1), new Map<SelectionKind, number>())].map(([kind, count]) => ({kind, count})) : [];
+  const mixed = types.length > 1;
   const flight = useRef(false), operation = useRef(session.operation);
   const load = async () => {
-    if (flight.current || !session.current()) return;
+    if (mixed || flight.current || !session.current()) return;
     flight.current = true; setBusy(true); setError(false);
     try {
       const next = await producer.preview(operation.current), display = await producer.display(operation.current);
@@ -36,10 +38,14 @@ export function SelectionEditorSurface({session, options, onClose}: {session: Li
     catch {if (session.current()) setError(true);}
     finally {flight.current = false; if (session.current()) setBusy(false);}
   };
+  if (mixed) return <MixedEditExplainer open onOpenChange={open => {if (!open) close();}} anchorRef={anchor} returnFocusRef={anchor}
+    types={types} onKeepOnly={kind => {if (session.current()) onKeepOnly(kind);}}/>;
   if (!preview) return <Dialog open onOpenChange={open => {if (!open) close();}} title={defaultI18n.t('next.selection.edit')} returnFocusRef={anchor}>
     <p role={error ? 'alert' : 'status'}>{defaultI18n.t(error ? 'next.states.crashed' : 'next.states.loading')}</p>
     {error && <Button onClick={() => {void load();}}>{defaultI18n.t('next.states.tryAgain')}</Button>}
   </Dialog>;
+  if (!preview.schema.some(field => field.bulk)) return <MixedEditExplainer open reason="no-bulk-fields" onOpenChange={open => {if (!open) close();}}
+    anchorRef={anchor} returnFocusRef={anchor} types={types} onKeepOnly={() => {}}/>;
   const retry = async (ids: readonly string[]) => {
     if (flight.current || !session.current() || operation.current.target.mode !== 'explicit') return;
     const failed = new Set(receipts.flatMap(receipt => receipt.results.filter(row => !row.ok).map(row => row.id)));
