@@ -44,7 +44,7 @@ func (s *Service) albumMusicBadges(r ContentRequest, album string) (MusicFormatB
  SELECT 0 priority,'lossless' kind,codec,bit_depth,sample_rate,'' layout FROM formats WHERE atmos=0 AND codec NOT GLOB 'dsd*' AND lossless=1 AND bit_depth>16 AND sample_rate>0
  UNION SELECT 1,'atmos','',0,0,'' FROM formats WHERE atmos=1
  UNION SELECT 2,'dsd','',0,0,'' FROM formats WHERE atmos=0 AND (codec='dsd' OR codec GLOB 'dsd_*')
- UNION SELECT 3,'surround','',0,0,layout FROM formats WHERE atmos=0 AND layout IN('5.1','7.1')
+ UNION SELECT 3,'surround','',0,0,CASE WHEN layout IN('5.1','5.1(side)') THEN '5.1' ELSE '7.1' END FROM formats WHERE atmos=0 AND layout IN('5.1','5.1(side)','7.1','7.1(wide)','7.1(wide-side)')
 ) SELECT kind,codec,bit_depth,sample_rate,layout FROM badges ORDER BY priority,codec,bit_depth DESC,sample_rate DESC,layout LIMIT 2`, bind...)
 	if err != nil {
 		return nil, err
