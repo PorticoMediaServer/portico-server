@@ -1,4 +1,6 @@
 import {
+  decodeGetReadingPeriodicalGroupsResponse, decodeGetReadingPeriodicalIssuesResponse,
+  type GetReadingPeriodicalGroupsResponse, type GetReadingPeriodicalIssuesResponse,
   routePath, errors, decodeGetReadingSeriesItemsResponse, decodeGetReadingDiscoverResponse, decodeGetReadingContinueResponse, decodeGetReadingItemsResponse, decodeGetItemsItemIdReadingVersionsResponse,
   decodePostReadingSessionsResponse, decodeGetReadingSessionsSessionIdProgressResponse,
   decodePutReadingSessionsSessionIdProgressResponse,
@@ -17,6 +19,11 @@ export type ReadingItem = GetReadingItemsResponse['items'][number];
 export type ReadingContinueItem = GetReadingContinueResponse['items'][number];
 export type ReadingDiscover = GetReadingDiscoverResponse;
 export type ReadingSeriesPage = GetReadingSeriesItemsResponse;
+export type ReadingPeriodicalGroupsPage = GetReadingPeriodicalGroupsResponse;
+export type ReadingPeriodicalIssuesPage = GetReadingPeriodicalIssuesResponse;
+export type ReadingPeriodicalType = ReadingPeriodicalGroupsPage['publicationType'];
+export type ReadingPeriodicalGroup = ReadingPeriodicalGroupsPage['groups'][number];
+export type ReadingPeriodicalIssue = ReadingPeriodicalIssuesPage['items'][number];
 export type ReadingAuthor = NonNullable<ReadingItem['author']>;
 export type ReadingSeries = NonNullable<ReadingItem['series']>;
 export type ReadingAttributionSource = ReadingAuthor['source'];
@@ -43,6 +50,18 @@ const cancellation = (signal: AbortSignal) => signal.reason instanceof ReadingEr
 const integer = (n: number, low: number, high: number) => Number.isSafeInteger(n) && n >= low && n <= high;
 const id = (s: string) => typeof s === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(s);
 const revision = (s: string) => typeof s === 'string' && /^[0-9a-f]{64}$/.test(s);
+const periodicalType = (s: string) => s === 'magazine' || s === 'newspaper';
+const seriesID = (s: string) => /^[A-Za-z0-9_-]{43}$/.test(s);
+const seriesCursor = (s: string) => /^[A-Za-z0-9_-]{171}\.[A-Za-z0-9_-]{43}$/.test(s);
+function issueDate(value: string, kind: ReadingPeriodicalType): boolean {
+  if (typeof value !== 'string' || !/^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$/.test(value) || value.startsWith('0000') || kind === 'newspaper' && value.length !== 10) return false;
+  const parsed = new Date((value.length === 7 ? value + '-01' : value) + 'T12:00:00Z');
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, value.length) === value;
+}
+function validateIssue(value: ReadingPeriodicalIssue, library: string, kind: ReadingPeriodicalType, group: string) {
+  const item = value.item;
+  if (!id(item.id) || item.libraryId !== library || !id(item.sourceId) || item.format !== 'epub' && item.format !== 'pdf' || item.publicationType?.value !== kind || item.series?.id !== group || !issueDate(value.issueDate, kind)) fail('invalid_document');
+}
 const format = (s: string) => s === 'epub' || s === 'pdf' || s === 'cbz';
 const mime = (s: string | null) => s?.split(';', 1)[0].trim().toLowerCase();
 const member = (s: string) => typeof s === 'string' && s.length > 0 && s.length <= 1024 && !/[\\\x00-\x1f\x7f?#]/.test(s) && !/^[a-z][a-z0-9+.-]*:/i.test(s) && s.split('/').every(p => p !== '' && p !== '.' && p !== '..');
@@ -306,6 +325,32 @@ export class ReadingClient {
           previews.add(item.id);
         }
       }
+    }
+    return out;
+  }
+  async periodicalGroups(libraryId: string, publicationType: ReadingPeriodicalType, options: Readonly<{cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<ReadingPeriodicalGroupsPage> {
+    const limit = options.limit ?? 24;
+    if (!id(libraryId) || !periodicalType(publicationType) || !integer(limit, 1, 100) || options.cursor !== undefined && !seriesCursor(options.cursor)) fail('invalid_request');
+    const out = await this.json(query(routePath('get_reading_periodical_groups', {libraryId}), {...options, publicationType}), 'GET', undefined, signal, decodeGetReadingPeriodicalGroupsResponse, 2 << 20);
+    if (out.libraryId !== libraryId || out.publicationType !== publicationType || out.groups.length > limit || out.nextCursor !== undefined && (!seriesCursor(out.nextCursor) || out.groups.length !== limit)) fail('invalid_document');
+    const groups = new Set<string>(), latest = new Set<string>();
+    for (const group of out.groups) {
+      if (!seriesID(group.id) || groups.has(group.id) || typeof group.name !== 'string' || !group.name.trim() || group.name.length > 4096 || !integer(group.issueCount, 1, Number.MAX_SAFE_INTEGER) || latest.has(group.latest.item.id)) fail('invalid_document');
+      validateIssue(group.latest, libraryId, publicationType, group.id);
+      groups.add(group.id); latest.add(group.latest.item.id);
+    }
+    return out;
+  }
+  async periodicalIssues(libraryId: string, seriesId: string, publicationType: ReadingPeriodicalType, options: Readonly<{cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<ReadingPeriodicalIssuesPage> {
+    const limit = options.limit ?? 50;
+    if (!id(libraryId) || !seriesID(seriesId) || !periodicalType(publicationType) || !integer(limit, 1, 100) || options.cursor !== undefined && !seriesCursor(options.cursor)) fail('invalid_request');
+    const out = await this.json(query(routePath('get_reading_periodical_issues', {libraryId, seriesId}), {...options, publicationType}), 'GET', undefined, signal, decodeGetReadingPeriodicalIssuesResponse, 2 << 20);
+    if (out.libraryId !== libraryId || out.seriesId !== seriesId || out.publicationType !== publicationType || out.items.length > limit || out.nextCursor !== undefined && (!seriesCursor(out.nextCursor) || out.items.length !== limit)) fail('invalid_document');
+    const seen = new Set<string>(); let previous: string | undefined;
+    for (const entry of out.items) {
+      validateIssue(entry, libraryId, publicationType, seriesId);
+      if (seen.has(entry.item.id) || previous !== undefined && previous < entry.issueDate) fail('invalid_document');
+      seen.add(entry.item.id); previous = entry.issueDate;
     }
     return out;
   }
