@@ -2576,6 +2576,11 @@ CREATE TABLE metadata_runtime_settings(
  default_language TEXT NOT NULL DEFAULT 'en' CHECK(default_language IN('en','ja','fr','de','es','it','pt','nl','sv','no','da','fi','pl','cs','sk','hu','ro','el','tr','ru','uk','ar','he','hi','th','vi','ko','zh')),
  default_region TEXT NOT NULL DEFAULT 'US' CHECK(length(default_region)=2 AND default_region GLOB '[A-Z][A-Z]'),
  singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL DEFAULT 1,
+ -- The default language and region are what every new screen library is seeded
+ -- with and what its page offers for Reset, so the pair carries its own revision:
+ -- a page can then fence the defaults it publishes without treating an unrelated
+ -- metadata save (artwork, credentials, adult matching) as a change to them.
+ locale_revision INTEGER NOT NULL DEFAULT 1 CHECK(locale_revision>0),
  artwork_max_edge INTEGER NOT NULL DEFAULT 1920 CHECK(artwork_max_edge IN(1280,1920,2560)),
  local_artwork_limit_bytes INTEGER NOT NULL DEFAULT 2147483648 CHECK(local_artwork_limit_bytes>0),
  include_adult INTEGER NOT NULL DEFAULT 0 CHECK(include_adult IN(0,1)),
@@ -4807,6 +4812,9 @@ CREATE TRIGGER admin_revision_jobs_DELETE AFTER DELETE ON jobs BEGIN UPDATE admi
 CREATE TRIGGER metadata_publication_library_create AFTER INSERT ON libraries BEGIN
  INSERT INTO metadata_provider_policies(library_id,provider,language,region) SELECT NEW.id,'tmdb',default_language,default_region FROM metadata_runtime_settings WHERE singleton=1;
 END;
+CREATE TRIGGER metadata_runtime_locale_changed AFTER UPDATE OF default_language,default_region ON metadata_runtime_settings
+ WHEN OLD.default_language IS NOT NEW.default_language OR OLD.default_region IS NOT NEW.default_region
+ BEGIN UPDATE metadata_runtime_settings SET locale_revision=locale_revision+1 WHERE singleton=NEW.singleton;END;
 CREATE TRIGGER metadata_policy_changed AFTER UPDATE OF enabled,language,region,refresh_mode,algorithm ON metadata_provider_policies
  WHEN OLD.enabled IS NOT NEW.enabled OR OLD.language IS NOT NEW.language OR OLD.region IS NOT NEW.region OR OLD.refresh_mode IS NOT NEW.refresh_mode OR OLD.algorithm IS NOT NEW.algorithm
  BEGIN UPDATE metadata_provider_policies SET revision=revision+1 WHERE library_id=NEW.library_id AND provider=NEW.provider;END;

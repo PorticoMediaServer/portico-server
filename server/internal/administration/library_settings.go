@@ -1073,7 +1073,8 @@ func (s *Service) LibraryIndex(ctx context.Context, auth Authorize, token string
 			s.tier, s.revision, s.operations_json,
 			a.revision, m.revision,
 			sc.revision,
-			(SELECT revision FROM screen_metadata_consent WHERE singleton=1)
+			(SELECT revision FROM screen_metadata_consent WHERE singleton=1),
+			COALESCE((SELECT locale_revision FROM metadata_runtime_settings WHERE singleton=1),1)
 			FROM libraries l
 			LEFT JOIN admin_documents d ON d.scope='library:'||l.id
 			LEFT JOIN library_preferences p ON p.library_id=l.id
@@ -1091,7 +1092,8 @@ func (s *Service) LibraryIndex(ctx context.Context, auth Authorize, token string
 			var id string
 			var body, tier, operations sql.NullString
 			var preferences, scan, audio, musicBrainz, screen, consent, documentRevision sql.NullInt64
-			if err = policyRows.Scan(&id, &body, &documentRevision, &preferences, &tier, &scan, &operations, &audio, &musicBrainz, &screen, &consent); err != nil {
+			var localeRevision int64
+			if err = policyRows.Scan(&id, &body, &documentRevision, &preferences, &tier, &scan, &operations, &audio, &musicBrainz, &screen, &consent, &localeRevision); err != nil {
 				return err
 			}
 			// A library whose page cannot produce a fence must not have one made
@@ -1120,13 +1122,19 @@ func (s *Service) LibraryIndex(ctx context.Context, auth Authorize, token string
 			if catalog.AppliesLoudness(kind[id], policy) && !policy.Allows("loudness") {
 				policy.Operations = append(policy.Operations, "loudness")
 			}
-			provider := int64(0)
+			provider, defaults := int64(0), int64(0)
 			switch kind[id] {
 			case "movie", "tv", "anime":
 				if !screen.Valid || !consent.Valid {
 					return ErrUnavailable
 				}
 				provider = screen.Int64 + consent.Int64 - 2
+				// A screen page offers the server's metadata language and region as
+				// its Reset pair, so the defaults revision the page folds into its
+				// fence is folded in here too.
+				if localeRevision > 1 {
+					defaults = localeRevision - 1
+				}
 			case "music", "audiobook":
 				if !audio.Valid {
 					return ErrUnavailable
@@ -1136,7 +1144,7 @@ func (s *Service) LibraryIndex(ctx context.Context, auth Authorize, token string
 				}
 			}
 			read[id] = LibraryIndexEntry{
-				Revision:           libraryRevision(revision, policy.Revision, provider, preferencesRevision),
+				Revision:           libraryRevision(revision, policy.Revision, provider, preferencesRevision, defaults),
 				AllowMediaDeletion: settings.AllowMediaDeletion,
 				AnalysisCount:      len(analysisOperations(policy)),
 			}

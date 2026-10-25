@@ -3,6 +3,7 @@ package administration
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/metadata"
 	"sort"
@@ -38,9 +39,21 @@ func effectiveLibraryPolicy(ctx context.Context, tx *sql.Tx, id, kind string, v 
 			return 0, err
 		}
 	}
+	defaultsRevision := int64(0)
 	if kind == "movie" || kind == "tv" || kind == "anime" {
 		if err = tx.QueryRowContext(ctx, `SELECT refresh_mode FROM screen_metadata_policies WHERE library_id=?`, id).Scan(&v.RefreshMode); err != nil {
 			return 0, err
+		}
+		// The defaults this page offers for Reset are the server's metadata
+		// language and region, so their own revision joins the fence: a change to
+		// either must stale a page that would otherwise reset to the old pair.
+		var localeRevision int64
+		err = tx.QueryRowContext(ctx, `SELECT locale_revision FROM metadata_runtime_settings WHERE singleton=1`).Scan(&localeRevision)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return 0, err
+		}
+		if localeRevision > 1 {
+			defaultsRevision = localeRevision - 1
 		}
 	}
 	p, err := catalog.ScanPolicyTx(ctx, tx, id)
@@ -71,15 +84,16 @@ func effectiveLibraryPolicy(ctx context.Context, tx *sql.Tx, id, kind string, v 
 	}
 	// Every contributing revision only increases, so all administration and
 	// domain writers invalidate this single optimistic revision without hashes.
-	return libraryRevision(revision, p.Revision, provider.Revision, prefs.Revision), nil
+	return libraryRevision(revision, p.Revision, provider.Revision, prefs.Revision, defaultsRevision), nil
 }
 
 // libraryRevision is the one composite fence a library's page publishes and its
 // next write must present: the stored document, its scan policy, its provider
-// policy and its preferences, each contribution counted once. A listing that
-// publishes this value can be saved from exactly as the page itself can.
-func libraryRevision(document, scan, provider, preferences int64) int64 {
-	return document + scan - 1 + provider + preferences - 1
+// policy, its preferences and, where the page offers them, the metadata defaults
+// its Reset uses, each contribution counted once. A listing that publishes this
+// value can be saved from exactly as the page itself can.
+func libraryRevision(document, scan, provider, preferences, defaults int64) int64 {
+	return document + scan - 1 + provider + preferences - 1 + defaults
 }
 
 // analysisOperations lists the drawn analysis steps a stored scan policy
