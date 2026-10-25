@@ -133,7 +133,6 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
     </section>}
   </div>;
   return <div className={styles.search} style={{'--search-card-scale': size, '--search-columns': Math.max(1, Math.round(7 / size))} as React.CSSProperties}>
-    {selection?.toolbar}
     <div className={styles.wash} aria-hidden="true" />
     <form className={styles.field} role="search" onSubmit={event => { event.preventDefault(); submit(true); }}>
       <TextField ref={input} variant="large-search" type="search" autoComplete="off" spellCheck={false} value={text}
@@ -143,7 +142,7 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
         trailing={text ? <Button variant="icon" icon="i-x" iconOnly aria-label={t('web.search.clear')} onClick={() => { setText(''); setChip('all'); input.current?.focus(); }} />
           : <span className={styles.hint}><kbd>{t('next.controls.searchShortcut')}</kbd>{t('next.controls.searchFromAnywhere')}</span>} />
     </form>
-    {text.trim() && !(empty && !group) && <div className={styles.chips} role="group" aria-label={t('web.search.title')}>{SEARCH_CHIPS.map(value => {
+    {selection?.isActive() ? selection.toolbar : text.trim() && !(empty && !group) && <div className={styles.chips} role="group" aria-label={t('web.search.title')}>{SEARCH_CHIPS.map(value => {
       const capability = showing?.capabilities.groups.find(item => item.id === value.id), result = groups.find(item => item.id === value.id) ?? binding.summary().find(item => item.id === value.id);
       if (value.id !== 'all' && capability?.available === false) return null;
       const off = value.id !== 'all' && result?.status === 'success' && result.totalCountExact && result.totalCount === 0;
@@ -165,10 +164,14 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
         : orderedSearchGroups(groups).map((result, groupIndex) => {
           const entries = result.items.filter(entry => entry !== top?.entry), cap = result.id === 'episodes' || result.id === 'songs' ? 4 : result.id === 'movies' || result.id === 'shows' ? 7 : 4;
           if (!entries.length) return null;
+          const shown = entries.slice(0, cap);
           return <section key={result.id} className={styles.section} data-group={result.id}>
             <header><h2>{t(searchGroupLabel(result.id))}</h2>{result.totalCountExact && <span>{result.totalCount > cap ? t('web.search.someOf', {shown: Math.min(cap, entries.length), total: result.totalCount}) : result.totalCount}</span>}
-              {(result.hasMore || entries.length > cap) && <Button variant="text" size="small" onClick={() => setChip(result.id)}><span className={styles.seeAll}>{t('web.search.seeAll')}<Icon name="i-right" size={18} /></span></Button>}</header>
-            <div className={styles.cards}>{entries.slice(0, cap).map((entry, position) => <SearchResult key={keyOf(entry)} entry={entry} binding={binding} selection={selection} position={groupIndex * 1000 + position} onCommit={commit} />)}</div>
+              <div className={styles.sectionActions}>
+                {selection?.canSelectGroup(result, shown) && <Button variant="text" size="small" className={styles.selectGroup} onClick={() => {try {selection.selectGroup(result, shown);} catch (error) {context.effects.reportError(error);}}}>{t('next.selection.selectAll', {count: shown.length})}</Button>}
+                {(result.hasMore || entries.length > cap) && <Button variant="text" size="small" onClick={() => setChip(result.id)}><span className={styles.seeAll}>{t('web.search.seeAll')}<Icon name="i-right" size={18} /></span></Button>}
+              </div></header>
+            <div className={styles.cards}>{shown.map((entry, position) => <SearchResult key={keyOf(entry)} entry={entry} binding={binding} selection={selection} position={groupIndex * 1000 + position} onCommit={commit} />)}</div>
           </section>;
         })}
     </div>
