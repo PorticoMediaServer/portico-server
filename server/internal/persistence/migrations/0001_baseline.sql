@@ -243,6 +243,7 @@ CREATE TABLE reading_annotation_sets(
  revision INTEGER NOT NULL CHECK(revision BETWEEN 1 AND 9007199254740991),
  PRIMARY KEY(owner_key,item_id,asset_id,source_revision),
  FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
+CREATE INDEX reading_annotation_sets_publication ON reading_annotation_sets(item_id,asset_id);
 CREATE TABLE reading_annotations(
  owner_key TEXT NOT NULL,
  item_id INTEGER NOT NULL,
@@ -262,7 +263,6 @@ CREATE TABLE reading_annotations(
  updated_at INTEGER NOT NULL CHECK(updated_at BETWEEN created_at AND 9007199254740991),
  PRIMARY KEY(owner_key,item_id,asset_id,source_revision,id),
  FOREIGN KEY(owner_key,item_id,asset_id,source_revision) REFERENCES reading_annotation_sets(owner_key,item_id,asset_id,source_revision) ON DELETE CASCADE,
- FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE,
  CHECK((kind='bookmark' AND quote='' AND colour='') OR (kind='highlight' AND length(quote)>0 AND colour IN('yellow','green','blue','pink'))),
  CHECK((format='epub' AND cfi IS NOT NULL AND page_index IS NULL) OR (format IN('pdf','cbz') AND cfi IS NULL AND section IS NULL AND page_index IS NOT NULL AND page_index BETWEEN 0 AND 1000000))) WITHOUT ROWID, STRICT;
 CREATE TABLE reading_progress(
