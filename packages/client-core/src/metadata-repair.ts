@@ -11,6 +11,7 @@ export type RepairFieldSpec = Readonly<{field:string;label:string;group:'general
 export type RepairRelationship = Readonly<{recordId?:string;provider?:string;department?:string;kind:string;targetKind:string;targetId:string;label:string;role?:string;ordinal:number;source:string;locked:boolean;observedAt?:string}>;
 export type RepairChoice = Readonly<{role:string;subject:string;candidateId:string;digest:string;thumbnailDigest:string;locked:boolean;revision:number;attribution:string;url:string}>;
 export type RepairData = Readonly<{
+ onlineLookups?:boolean;
  artworkFallbackUrl?:string;
  canMakeEpisodeThumbnail?:boolean;
  target:{kind:RepairTarget['kind'];id:string};libraryId:string;serverId:string;viewerFence:string;revision:string;
@@ -86,6 +87,7 @@ export function validateRepair(raw:unknown,scope:RepairScope,target:RepairTarget
  const rows=(value:unknown,keys:readonly string[])=>Object.freeze((value as unknown[]).map(v=>pick(v,keys)));
  return Object.freeze({target:Object.freeze({kind:target.kind,id:target.id}),libraryId:target.libraryId,serverId:scope.serverId,viewerFence:raw.viewerFence,revision:raw.revision,
  ...(Array.isArray(raw.tabs)?{tabs:Object.freeze(raw.tabs.filter((tab):tab is string=>typeof tab==='string'&&['general','numbers','text','identity'].includes(tab)))}:{}),schema:rows(raw.schema,['field','label','group','type','maxLength','min','max','allowed','bulk']),artworkRoles:Object.freeze(artworkRoles),
+ ...(typeof raw.onlineLookups==='boolean'?{onlineLookups:raw.onlineLookups}:{}),
  ...(raw.canMakeEpisodeThumbnail===true?{canMakeEpisodeThumbnail:true}:{}),
  ...(target.kind==='item'&&validFallbackUrl(raw.artworkFallbackUrl)?{artworkFallbackUrl:raw.artworkFallbackUrl}:{}),
  snapshot:Object.freeze({fields:Object.freeze(Object.fromEntries(Object.entries(raw.snapshot.fields).map(([k,v])=>[k,pick(v,['value','automaticValue','locked','source','observedAt','values'])]))),relationshipLocks:Object.freeze({...raw.snapshot.relationshipLocks}),...(ident===undefined?{}:{identity:pick(ident,['engine','type','provider','id','order','revision','status','locked'])}),relationships:rows(relationships,['recordId','provider','department','kind','targetKind','targetId','label','role','ordinal','source','locked','observedAt']),artwork:rows(chosenArtwork,['role','subject','candidateId','digest','thumbnailDigest','locked','revision','attribution','url'])}),
