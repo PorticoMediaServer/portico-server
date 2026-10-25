@@ -1,18 +1,20 @@
 import {useEffect, useRef, useState, type ReactNode} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
-import {artworkLimitBytes, artworkLimitText, metadataSettingsService, openSubtitlesSummary, type ArtworkMaxEdge, type MetadataSettings, type MetadataSettingsChange} from '@core/metadata-settings.ts';
+import {artworkLimitBytes, artworkLimitText, metadataSettingsService, openSubtitlesSummary, type ArtworkMaxEdge, type MetadataSettings, type MetadataSettingsChange, type MetadataLibraryChange, type MetadataLibrarySettings} from '@core/metadata-settings.ts';
 import type {LibraryContentApi} from '@core/library-content.ts';
 import {presentError} from '@core/presentation/errors.ts';
 import {Button, Select, Switch, TextField} from '../../../kit/controls';
 import {SettingsGroup} from '../../../kit/settings';
 import {Skeleton} from '../../../kit/states';
+import {MetadataLibraries} from './MetadataLibraries';
+import styles from './metadata-settings.module.css';
 import {SettingsRow} from '../../../kit/shell/SettingsSurfaces';
 
 const t = defaultI18n.t;
 type SecretDraft = Readonly<{value: string; remove: boolean}>;
 const emptySecret = (): SecretDraft => ({value: '', remove: false});
-type Draft = {limit: string; adult: boolean; edge: ArtworkMaxEdge; tmdb: SecretDraft; tvdb: SecretDraft; subtitleKey: SecretDraft; subtitleUser: string; subtitlePassword: string};
-const draftFor = (document: MetadataSettings): Draft => ({limit: artworkLimitText(document.localArtworkLimitBytes), adult: document.includeAdult, edge: document.artworkMaxEdge,
+type Draft = {libraries: Record<string, MetadataLibraryChange>; limit: string; adult: boolean; edge: ArtworkMaxEdge; tmdb: SecretDraft; tvdb: SecretDraft; subtitleKey: SecretDraft; subtitleUser: string; subtitlePassword: string};
+const draftFor = (document: MetadataSettings): Draft => ({libraries: {}, limit: artworkLimitText(document.localArtworkLimitBytes), adult: document.includeAdult, edge: document.artworkMaxEdge,
   tmdb: emptySecret(), tvdb: emptySecret(), subtitleKey: emptySecret(), subtitleUser: document.openSubtitlesUsername, subtitlePassword: ''});
 const secretValue = (draft: SecretDraft): string | undefined => draft.remove ? '' : draft.value.trim() || undefined;
 const terminal = (error: unknown): boolean => {
@@ -54,17 +56,30 @@ export function MetadataSettingsPage({api, isCurrent, onLibraries}: {api: Librar
   if (!document || !draft || !owned || !owned.current()) return busy ? <div aria-busy="true"><Skeleton height={72}/><Skeleton height={96}/><Skeleton height={96}/></div>
     : <>{problem}<Button size="small" onClick={() => setReload(value => value + 1)}>{t('action.tryAgain')}</Button></>;
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => {if (!flight.current && current()) {setDraft({...draft, [key]: value}); setError(undefined);}};
+  const setLibrary = (row: MetadataLibrarySettings, patch: Partial<Omit<MetadataLibraryChange, 'id' | 'expectedRevision'>>) => {
+    if (flight.current || !current()) return;
+    setDraft(previous => {
+      if (!previous) return previous;
+      const value: {-readonly [K in keyof MetadataLibraryChange]: MetadataLibraryChange[K]} = {...previous.libraries[row.id], id: row.id, expectedRevision: row.revision, ...patch};
+      if (value.agent === 'local') delete value.lyricsSource;
+      for (const key of ['agent', 'lyricsSource', 'episodeThumbnailMode', 'scrubPreviews'] as const) if (value[key] === row[key]) delete value[key];
+      const libraries = {...previous.libraries};
+      if (Object.keys(value).length > 2) libraries[row.id] = value; else delete libraries[row.id];
+      return {...previous, libraries};
+    });
+    setError(undefined);
+  };
   const bytes = artworkLimitBytes(draft.limit);
   const subtitleChanges = {
     ...(secretValue(draft.subtitleKey) !== undefined ? {openSubtitlesApiKey: secretValue(draft.subtitleKey)} : {}),
     ...(draft.subtitleUser !== document.openSubtitlesUsername ? {openSubtitlesUsername: draft.subtitleUser.trim()} : {}),
     ...(draft.subtitlePassword ? {openSubtitlesPassword: draft.subtitlePassword} : {}),
   };
-  const dirty = bytes !== document.localArtworkLimitBytes || draft.adult !== document.includeAdult || draft.edge !== document.artworkMaxEdge || secretValue(draft.tmdb) !== undefined || secretValue(draft.tvdb) !== undefined || Object.keys(subtitleChanges).length > 0;
+  const dirty = bytes !== document.localArtworkLimitBytes || draft.adult !== document.includeAdult || draft.edge !== document.artworkMaxEdge || secretValue(draft.tmdb) !== undefined || secretValue(draft.tvdb) !== undefined || Object.keys(subtitleChanges).length > 0 || Object.keys(draft.libraries).length > 0;
   const save = async () => {
     if (flight.current || !current() || bytes === undefined || !dirty) return;
     flight.current = true; setBusy(true); setError(undefined);
-    const change: MetadataSettingsChange = {expectedRevision: document.revision, localArtworkLimitBytes: bytes, includeAdult: draft.adult, artworkMaxEdge: draft.edge,
+    const change: MetadataSettingsChange = {libraries: Object.values(draft.libraries), expectedRevision: document.revision, localArtworkLimitBytes: bytes, includeAdult: draft.adult, artworkMaxEdge: draft.edge,
       ...(secretValue(draft.tmdb) !== undefined ? {tmdbReadToken: secretValue(draft.tmdb)} : {}), ...(secretValue(draft.tvdb) !== undefined ? {tvdbProjectKey: secretValue(draft.tvdb)} : {}), ...subtitleChanges};
     // The explicit request owns these values from here. No retry draft retains a secret.
     setDraft({...draft, tmdb: emptySecret(), tvdb: emptySecret(), subtitleKey: emptySecret(), subtitlePassword: ''});
@@ -92,8 +107,9 @@ export function MetadataSettingsPage({api, isCurrent, onLibraries}: {api: Librar
   const summary = openSubtitlesSummary(document.openSubtitles, defaultI18n);
   return <div data-testid="server-metadata-settings">
     {problem}
+    {!!document.libraries?.length && <MetadataLibraries libraries={document.libraries} changes={draft.libraries} busy={busy} onChange={setLibrary}/>}
     <SettingsGroup title={t('server.metadata.lookups')}>
-      <SettingsRow label={t('server.metadata.perLibrary')} help={t('server.metadata.perLibraryHelp')}><Button size="small" onClick={() => {if (current()) onLibraries();}}>{t('settings.server.libraries')}</Button></SettingsRow>
+      {!document.libraries?.length && <SettingsRow label={t('server.metadata.perLibrary')} help={t('server.metadata.perLibraryHelp')}><Button size="small" onClick={() => {if (current()) onLibraries();}}>{t('settings.server.libraries')}</Button></SettingsRow>}
       <SettingsRow label={t('metadata.settings.includeAdult')} help={t('server.metadata.adultHelp')}><Switch aria-label={t('metadata.settings.includeAdult')} checked={draft.adult} disabled={busy} onCheckedChange={value => set('adult', value)}/></SettingsRow>
     </SettingsGroup>
     <SettingsGroup title={t('next.settingsSpec.server.metadata.groups.2.title')}>
@@ -104,6 +120,7 @@ export function MetadataSettingsPage({api, isCurrent, onLibraries}: {api: Librar
       <SettingsRow label={t('metadata.settings.artworkLimit')} help={t('server.metadata.artworkUsed', {used: defaultI18n.bytes(document.localArtworkUsedBytes), limit: defaultI18n.bytes(document.localArtworkLimitBytes)})}>
         <TextField aria-label={t('metadata.settings.artworkLimit')} inputMode="decimal" value={draft.limit} disabled={busy} onChange={event => set('limit', event.currentTarget.value)} trailing={t('settings.unit.gb')} error={bytes === undefined ? t('server.metadata.limitProblem') : undefined}/>
       </SettingsRow>
+      <progress className={styles.usage} max={document.localArtworkLimitBytes} value={Math.min(document.localArtworkUsedBytes, document.localArtworkLimitBytes)} aria-label={t('metadata.settings.artworkUsage')}/>
       <SettingsRow label={t('next.settingsSpec.server.metadata.advanced.groups.2.rows.1.label')}><Select aria-label={t('next.settingsSpec.server.metadata.advanced.groups.2.rows.1.label')} value={String(draft.edge)} disabled={busy}
         options={[{value: '1280', label: t('next.settingsSpec.server.metadata.advanced.groups.2.rows.1.control.options.0.label')}, {value: '1920', label: t('next.settingsSpec.server.metadata.advanced.groups.2.rows.1.control.options.1.label')}, {value: '2560', label: t('next.settingsSpec.server.metadata.advanced.groups.2.rows.1.control.options.2.label')}]} onValueChange={value => {if (value === '1280' || value === '1920' || value === '2560') set('edge', Number(value) as ArtworkMaxEdge);}}/></SettingsRow>
     </SettingsGroup>
@@ -118,8 +135,8 @@ export function MetadataSettingsPage({api, isCurrent, onLibraries}: {api: Librar
         <div><p>{summary.text}</p><Button size="small" disabled={busy || !!Object.keys(subtitleChanges).length || document.openSubtitles.keySource === 'none'} onClick={() => {void check();}}>{t(busy ? 'server.metadata.openSubtitlesTesting' : 'server.metadata.openSubtitlesTest')}</Button></div>
       </SettingsRow>
     </SettingsGroup>
-    <div><Button size="small" variant="primary" disabled={busy || !dirty || bytes === undefined} onClick={() => {void save();}}>{t('action.save')}</Button>
-      <Button size="small" variant="text" disabled={busy} onClick={() => {if (current()) {setDraft(draftFor(document)); setError(undefined);}}}>{t('action.cancel')}</Button>
-      <Button size="small" variant="text" disabled={busy} onClick={() => {if (current()) setReload(value => value + 1);}}>{t('action.refresh')}</Button></div>
+    {dirty ? <div className={styles.saveBar}><Button size="small" variant="text" disabled={busy} onClick={() => {if (current()) {setDraft(draftFor(document)); setError(undefined);}}}>{t('metadata.settings.discard')}</Button>
+      <Button size="small" variant="primary" disabled={busy || bytes === undefined} onClick={() => {void save();}}>{t('web.metadata.saveChanges')}</Button></div> : null}
+    {error ? <Button size="small" variant="text" disabled={busy} onClick={() => {if (current()) setReload(value => value + 1);}}>{t('action.refresh')}</Button> : null}
   </div>;
 }

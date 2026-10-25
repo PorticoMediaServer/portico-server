@@ -20,7 +20,7 @@ function parseLibraries(raw:unknown):readonly MetadataLibrarySettings[]{
   return Object.freeze({id:v.id,name:v.name,kind:v.kind,revision:v.revision,agent:v.agent,agentOptions:Object.freeze([...v.agentOptions]),lyricsSource:v.lyricsSource,episodeThumbnailMode:v.episodeThumbnailMode,scrubPreviews:v.scrubPreviews,canScrub:v.canScrub,managed:v.managed}) as MetadataLibrarySettings;
  }));
 }
-export type MetadataSettings=Readonly<{libraries:readonly MetadataLibrarySettings[];revision:number;localArtworkLimitBytes:number;localArtworkUsedBytes:number;includeAdult:boolean;artworkMaxEdge:ArtworkMaxEdge;tmdbCredentialConfigured:boolean;tvdbCredentialConfigured:boolean;openSubtitlesKeyConfigured:boolean;openSubtitlesUsername:string;openSubtitlesPasswordConfigured:boolean;openSubtitles:OpenSubtitlesStatus}>;
+export type MetadataSettings=Readonly<{libraries?:readonly MetadataLibrarySettings[];revision:number;localArtworkLimitBytes:number;localArtworkUsedBytes:number;includeAdult:boolean;artworkMaxEdge:ArtworkMaxEdge;tmdbCredentialConfigured:boolean;tvdbCredentialConfigured:boolean;openSubtitlesKeyConfigured:boolean;openSubtitlesUsername:string;openSubtitlesPasswordConfigured:boolean;openSubtitles:OpenSubtitlesStatus}>;
 /** A credential left out is unchanged; an empty one goes back to the server's own (for the username: no account). */
 export type MetadataSettingsChange=Readonly<{libraries?:readonly MetadataLibraryChange[];expectedRevision:number;localArtworkLimitBytes:number;includeAdult:boolean;artworkMaxEdge?:ArtworkMaxEdge;tmdbReadToken?:string;tvdbProjectKey?:string;openSubtitlesApiKey?:string;openSubtitlesUsername?:string;openSubtitlesPassword?:string}>;
 export function parseMetadataSettings(raw:unknown):MetadataSettings{
