@@ -8342,6 +8342,7 @@ CREATE TABLE reading_attribution_state(
  phase TEXT NOT NULL DEFAULT 'scan' CHECK(phase IN('scan','cleanup','ready')),
  served_ms INTEGER NOT NULL DEFAULT 0,
  CHECK(phase<>'ready' OR (ready_generation=input_generation AND build_generation=input_generation))) STRICT;
+CREATE INDEX reading_attribution_pending ON reading_attribution_state((input_generation<>ready_generation),served_ms,namespace);
 CREATE TABLE reading_attribution_members(
  library_id INTEGER NOT NULL REFERENCES reading_attribution_state(library_id) ON DELETE CASCADE,
  generation INTEGER NOT NULL CHECK(generation>0),
