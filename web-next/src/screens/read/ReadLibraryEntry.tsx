@@ -8,7 +8,7 @@ import {router} from '../../router';
 import {useShellWidth} from '../../shell/viewport';
 import {useReducedMotion} from '../../kit/overlays/shared';
 import {Row, WindowedGrid} from '../../kit/layout';
-import {CoverCard, ReadResumeCard} from '../../kit/cards';
+import {CollectionBanner, CoverCard} from '../../kit/cards';
 import {GeneratedCover} from '../../kit/artwork';
 import {Skeleton, StateView} from '../../kit/states';
 import {Menu, MenuItem} from '../../kit/overlays';
@@ -93,6 +93,8 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
     return () => operation.abort();
   }, [resources, libraryId, comic]);
   const cardWidth = width < 600 ? 108 : 190;
+  /** The viewer's own calendar day, so an archive edition dated today reads as today's paper. */
+  const now = new Date(), today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   /** The same rows at phone width take the handheld scale and gutters (phone-read 1). */
   const platform = width < 600 ? 'phone-web' as const : 'desktop' as const;
   if (state.status === 'error') return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
@@ -146,9 +148,17 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
   return <div className={styles.library}>
     <ReadDiscovery rows={view === 'books' ? [] : rows} platform={platform} reducedMotion={reducedMotion}
       newspaper={view !== 'books' && newspaper ? <Row heading={t('library.tab.newspapers')} subtitle={t('next.reader.yourArchive')} platform={platform}>
-        <ReadResumeCard kind="newspaper" visible model={{title: newspaper.name, caption: [{id: 'date', text: calendarDate(defaultI18n, newspaper.latest.issueDate), role: 'identity'}, {id: 'issues', text: t('next.reader.issueCount', {count: newspaper.issueCount}), role: 'identity'}]}}
+        {/* desktop-read 1b/phone-read 1b: the approved collection banner, drawn from the archive's
+            own latest issue: its front page, its date and the archive's issue count. The drawn
+            edition strip and prose are not published, so neither is invented. */}
+        <CollectionBanner kindLabel={newspaper.latest.issueDate === today || newspaper.latest.issueDate === today.slice(0, 7) ? t('next.reader.todaysPaper') : t('next.reader.onThisDay')}
+          model={{title: newspaper.name, caption: [], detail: []}}
+          description={t('next.reader.archiveIssues', {date: calendarDate(defaultI18n, newspaper.latest.issueDate), count: newspaper.issueCount})}
+          covers={[resources.artwork.foreground(newspaper.latest.item.coverUrl, 1000, 3 / 4)].flatMap(cover => cover ? [cover] : [])}
           artwork={resources.artwork.foreground(newspaper.latest.item.coverUrl, 1000, 3 / 4)} fallback={generated(newspaper.latest.item)}
-          playLabel={t('next.reader.read')} onPlay={newspaper.latest.item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(newspaper.latest.item.id, newspaper.latest.item.sourceId)).catch(resources.reportError);} : undefined}
+          actionLabel={t('next.reader.readThisEdition')} actionVariant="primary"
+          onAction={newspaper.latest.item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(newspaper.latest.item.id, newspaper.latest.item.sourceId)).catch(resources.reportError);} : undefined}
+          visible disabled={!newspaper.latest.item.inventoryAvailable}
           onNavigate={() => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId}, search: {view: 'series', pivot: 'newspapers', entityId: newspaper.id}}).catch(resources.reportError);}}/>
       </Row> : undefined}
       onVisibleRange={(row, range) => {if (row.kind === 'resume') resources.resume.collection.ensureRange(Math.max(0, range.first), Math.max(0, range.last));}}>
