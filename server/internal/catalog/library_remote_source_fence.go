@@ -3,10 +3,13 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"portico.local/server/internal/wirejson"
 )
 
 // ExpectedRemoteSource binds an explicit folder selection to the remote
@@ -16,11 +19,70 @@ type ExpectedRemoteSource struct {
 	Generation int64  `json:"generation"`
 }
 
+// ExpectedRemoteSourceInput is a non-pointer, empty-omitted input. Only omission
+// has the zero value: JSON null cannot collapse into the legacy nil fence.
+// The small inner object has its own exact-name/duplicate checks; parent body
+// parsing retains the API registry's strict decoding unchanged.
+type ExpectedRemoteSourceInput json.RawMessage
+
+func (ExpectedRemoteSourceInput) JSONSchema() map[string]any {
+	return map[string]any{
+		"type": "object", "additionalProperties": false,
+		"required": []string{"sourceId", "generation"},
+		"properties": map[string]any{
+			"sourceId":   map[string]any{"type": "string", "minLength": 1, "maxLength": 256},
+			"generation": map[string]any{"type": "integer", "minimum": 1, "maximum": 9007199254740991},
+		},
+	}
+}
+
+func parseExpectedRemoteSource(raw []byte) (*ExpectedRemoteSource, error) {
+	fields, err := wirejson.Object(raw, "sourceId", "generation")
+	if err != nil || len(fields) != 2 {
+		return nil, ErrAdminQuery
+	}
+	var selected ExpectedRemoteSource
+	if json.Unmarshal(raw, &selected) != nil || !validExpectedRemoteSource(&selected) {
+		return nil, ErrAdminQuery
+	}
+	return &selected, nil
+}
+
+func (input *ExpectedRemoteSourceInput) UnmarshalJSON(raw []byte) error {
+	if _, err := parseExpectedRemoteSource(raw); err != nil {
+		return err
+	}
+	*input = append((*input)[:0], raw...)
+	return nil
+}
+
+func (input ExpectedRemoteSourceInput) MarshalJSON() ([]byte, error) {
+	if len(input) == 0 {
+		return []byte("null"), nil
+	}
+	if _, err := parseExpectedRemoteSource(input); err != nil {
+		return nil, err
+	}
+	return input, nil
+}
+
+func (input ExpectedRemoteSourceInput) Selection() (*ExpectedRemoteSource, error) {
+	if len(input) == 0 {
+		return nil, nil
+	}
+	return parseExpectedRemoteSource(input)
+}
+
+func validExpectedRemoteSource(expected *ExpectedRemoteSource) bool {
+	return expected != nil && expected.SourceID != "" && len(expected.SourceID) <= 256 && utf8.ValidString(expected.SourceID) &&
+		strings.IndexFunc(expected.SourceID, unicode.IsControl) < 0 && expected.Generation >= 1 && expected.Generation <= 9007199254740991
+}
+
 func checkExpectedRemoteSource(ctx context.Context, tx *sql.Tx, path string, expected *ExpectedRemoteSource) error {
 	if expected == nil {
 		return nil
 	}
-	if expected.SourceID == "" || len(expected.SourceID) > 256 || !utf8.ValidString(expected.SourceID) || strings.IndexFunc(expected.SourceID, unicode.IsControl) >= 0 || expected.Generation < 1 {
+	if !validExpectedRemoteSource(expected) {
 		return ErrAdminQuery
 	}
 	var id string
