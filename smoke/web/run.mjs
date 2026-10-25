@@ -295,6 +295,29 @@ async function main() {
       });
     }
 
+    if (signedIn && want('home-see-all')) {
+      await check('home-see-all', async () => {
+        await page.goto(origin + '/', {waitUntil: 'domcontentloaded'});
+        await settle(page, {quiet: 2000});
+        const rows = await page.locator('h2, [role=heading]').count();
+        assert(rows >= 2, `Home drew ${rows} row headings`);
+        const seeAll = page.locator('a[href], button').filter({hasText: /^See all$/i}).first();
+        assert(await seeAll.count(), 'no row draws a See all control');
+        const before = page.url();
+        await seeAll.click({timeout: 8000});
+        await settle(page, {quiet: 2000});
+        const state = await page.evaluate(() => ({
+          path: location.pathname, textLength: (document.body.innerText || '').trim().length,
+          cards: document.querySelectorAll('article[data-card-kind]').length,
+          missing: /That page isn't here|ran into a problem/i.test(document.body.innerText || ''),
+        }));
+        assert(state.path !== new URL(before).pathname, `See all did not navigate (still ${state.path})`);
+        assert(!state.missing, `See all opened a broken page: ${state.path}`);
+        assert(state.cards >= 3 || state.textLength > 200, `See all opened ${state.path} with ${state.cards} cards and ${state.textLength} chars`);
+        return {detail: `See all -> ${state.path}: ${state.cards} cards, ${state.textLength} chars`, evidence: {screenshot: await evidence.shot(page, 'home-see-all'), state}};
+      });
+    }
+
     if (signedIn && want('library')) {
       await check('library', async () => {
         const nav = await page.evaluate(() => [...document.querySelectorAll('nav a[href]')]
