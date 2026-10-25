@@ -43,7 +43,14 @@ export function ServerRemotePage({api, isCurrent, groups, advanced}: Readonly<{
       <div><dt>{t('next.remoteStatus.ownCertificate')}</dt><dd>{custom?.domain ?? connectivity?.policy.customCertificateDomain ?? t('next.remoteStatus.none')}
         {custom?.state ? ` · ${custom.state}` : ''}</dd></div>
       <div><dt>{t('next.remoteStatus.connection')}</dt><dd>{connectivity ? `${connectivity.connection.clientAddress || '—'} · ${connectivity.connection.remote ? t('next.remoteStatus.away') : t('next.remoteStatus.home')}` : t('next.remoteStatus.reading')}</dd></div>
+      {connectivity?.policy.customCertificatePath && <div><dt>{t('next.remoteStatus.certificateFiles')}</dt>
+        <dd className={styles.mono}>{connectivity.policy.customCertificatePath}{connectivity.policy.customCertificateKeyPath ? ` · ${connectivity.policy.customCertificateKeyPath}` : ''}</dd></div>}
     </dl>
+    {!!connectivity?.addresses.length && <section className={styles.addresses}>
+      <h3 className={styles.subtitle}>{t('next.remoteStatus.addressesTitle')}</h3>
+      <ul className={styles.addressList}>{connectivity.addresses.map(entry => <li key={`${entry.address}-${entry.source}`}>
+        <span className={styles.mono}>{entry.address}</span><small>{entry.class}{entry.family ? ` · ${entry.family}` : ''}</small></li>)}</ul>
+    </section>}
     {formState.draft && <section className={styles.controls}>
       <label className={styles.switchRow}><span>{t('web.network.remoteTitle')}<small className={styles.note}>{t('web.network.remoteHelp')}</small></span>
         <Switch aria-label={t('web.network.remoteTitle')} checked={formState.draft.enabled} disabled={formState.saving} onCheckedChange={value => form.set({enabled: value})}/></label>

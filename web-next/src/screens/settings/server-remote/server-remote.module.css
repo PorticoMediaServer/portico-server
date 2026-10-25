@@ -12,3 +12,8 @@
 .note { display: block; margin-top: 2px; font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
 .error { margin: 0; color: var(--color-danger-text); font-size: var(--type-caption-size); }
 @media (max-width: 720px) { .numberRow { grid-template-columns: 1fr; } }
+.subtitle { margin: 0 0 6px; font-size: var(--type-caption-size); font-weight: var(--type-body-strong-weight); color: var(--color-text-tertiary); }
+.addresses { display: grid; gap: 4px; }
+.addressList { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.addressList li { display: flex; justify-content: space-between; gap: 12px; padding: 6px 10px; border-radius: 8px; background: var(--color-raised); font-size: var(--type-caption-size); color: var(--color-text-secondary); }
+.addressList small { color: var(--color-text-tertiary); }
