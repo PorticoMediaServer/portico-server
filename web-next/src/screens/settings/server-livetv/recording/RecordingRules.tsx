@@ -2,6 +2,7 @@ import {useEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {recordingAllowed, recordingOwnerKey, recordingOwnerLabel} from '@core/server-admin/recording-policy.ts';
 import {errorMessage} from '@core/presentation/errors.ts';
+import {GeneratedArt} from '../../../../kit/artwork';
 import {Button, Select, Switch, TextField} from '../../../../kit/controls';
 import {Dialog, Menu} from '../../../../kit/overlays';
 import {SettingsRow} from '../../../../kit/shell/SettingsSurfaces';
@@ -9,6 +10,7 @@ import {needsRuleOwner, type RecordingRulesController, type OwnerRule} from './r
 import type {RecordingPermissionsController} from './permissions-controller';
 import styles from '../../../live/owner/owner.module.css';
 import fields from '../source-settings.module.css';
+import ruleStyles from './recording-rules.module.css';
 const t = defaultI18n.t;
 export function RecordingRules({controller, permissions, sources}: {controller: RecordingRulesController; permissions: RecordingPermissionsController; sources: readonly {id: string; name: string}[]}) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
@@ -33,8 +35,12 @@ export function RecordingRules({controller, permissions, sources}: {controller: 
     {!!state.error && <p role="alert" className={styles.error}>{errorMessage(state.error)}</p>}
     {state.loading && <p role="status">{t('status.loading')}</p>}
     {!state.loading && !state.rules.length && <p>{t('web.recordingRules.noRules')}</p>}
-    {state.rules.map(rule => <SettingsRow key={rule.id} label={rule.name} help={[
-      needsRuleOwner(rule) ? t('web.recordingRules.chooseOwner') : !rule.enabled ? t('web.recordingRules.pausedRule') : t(rule.kind === 'title' ? 'web.recordingRules.titleMatch' : 'web.recordingRules.seriesKind'),
+    {state.rules.map(rule => <SettingsRow key={rule.id} label={<span className={ruleStyles.label}>
+      <span className={ruleStyles.art}><GeneratedArt glyph={Array.from(rule.name.trim())[0]?.toLocaleUpperCase() ?? ''}/></span>
+      <span>{rule.name}</span>
+    </span>} help={[
+      needsRuleOwner(rule) ? t('web.recordingRules.chooseOwner') : t(rule.enabled ? 'web.recordingRules.onRule' : 'web.recordingRules.pausedRule'),
+      !needsRuleOwner(rule) ? t(rule.kind === 'title' ? 'web.recordingRules.titleMatch' : 'web.recordingRules.seriesKind') : undefined,
       sources.find(source => source.id === rule.sourceId)?.name,
       ...policy.owners.filter(row => recordingOwnerKey(row.owner) === recordingOwnerKey(rule.owner)).map(recordingOwnerLabel),
       rule.options.newEpisodesOnly ? t('guide.newOnly') : undefined,

@@ -1932,6 +1932,7 @@ export const webMessages = {
   'web.recordingRules.newOnly': 'new episodes only',
   'web.recordingRules.anySource': 'any source',
   'web.recordingRules.chooseOwner': 'Choose owner and guide',
+  'web.recordingRules.onRule': 'On',
   'web.recordingRules.pausedRule': 'Paused',
   'web.recordingRules.noRules': 'No rules yet',
   'web.recordingRules.noRulesHelp': 'Choose a profile and a series from the guide to add a recording rule.',
