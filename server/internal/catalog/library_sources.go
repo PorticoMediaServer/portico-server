@@ -182,18 +182,30 @@ func ValidateScanPolicy(p ScanPolicy) (ScanPolicy, error) {
 const scanPolicyColumns = `tier,revision,operations_json,trickplay_interval_seconds,trickplay_tile_width,trickplay_max_tiles`
 
 func scanScanPolicy(row interface{ Scan(...any) error }) (ScanPolicy, error) {
-	var p ScanPolicy
-	var raw string
-	err := row.Scan(&p.Tier, &p.Revision, &raw, &p.Trickplay.IntervalSeconds, &p.Trickplay.TileWidth, &p.Trickplay.MaxTiles)
-	if err == nil {
-		err = json.Unmarshal([]byte(raw), &p.Operations)
+	var tier, raw string
+	var revision int64
+	var trickplay TrickplaySettings
+	if err := row.Scan(&tier, &revision, &raw, &trickplay.IntervalSeconds, &trickplay.TileWidth, &trickplay.MaxTiles); err != nil {
+		return ScanPolicy{}, err
 	}
-	if err == nil && p.Tier == "complete" {
-		p, err = ValidateScanPolicy(p)
+	return ScanPolicyFromStored(tier, revision, raw, trickplay)
+}
+
+// ScanPolicyFromStored builds the effective policy from its stored columns, the
+// way every reader does: Complete stands for the operation set it names, and
+// Custom drops an operation this build no longer runs as a scan stage (the
+// retired segment_detection) so it cannot stay wanted forever. It is exported
+// for a reader that batches the columns for several libraries: such a reader has
+// to answer exactly what one single read answers.
+func ScanPolicyFromStored(tier string, revision int64, operationsJSON string, trickplay TrickplaySettings) (ScanPolicy, error) {
+	p := ScanPolicy{Tier: tier, Revision: revision, Trickplay: trickplay, Operations: []string{}}
+	if err := json.Unmarshal([]byte(operationsJSON), &p.Operations); err != nil {
+		return p, err
 	}
-	if err == nil && p.Tier == "custom" {
-		// A stored operation this build no longer runs as a scan stage (the
-		// retired segment_detection) would otherwise stay wanted forever.
+	if p.Tier == "complete" {
+		return ValidateScanPolicy(p)
+	}
+	if p.Tier == "custom" {
 		known := append(append([]string{}, BasicScanOperations...), DeepScanOperations...)
 		kept := p.Operations[:0]
 		for _, op := range p.Operations {
@@ -206,7 +218,7 @@ func scanScanPolicy(row interface{ Scan(...any) error }) (ScanPolicy, error) {
 		}
 		p.Operations = kept
 	}
-	return p, err
+	return p, nil
 }
 func (s *Service) ScanPolicy(ctx context.Context, library string) (ScanPolicy, error) {
 	p, e := scanScanPolicy(s.read().QueryRowContext(ctx, `SELECT `+scanPolicyColumns+` FROM library_scan_policies WHERE library_id=?`, library))
@@ -611,6 +623,13 @@ func (s *Service) createFolders(ctx context.Context, name, kind string, folders 
 	})
 }
 
+// AppliesLoudness reports whether this library measures source loudness whether
+// or not its stored stage list names it: every music library does, outside a
+// file-list-only scan, so gain does not depend on the selected tier.
+func AppliesLoudness(kind string, p ScanPolicy) bool {
+	return kind == "music" && p.Tier != "file_list_only"
+}
+
 // A file-list-only scan never opens media; every other music scan measures
 // source loudness so gain does not depend on the selected enrichment tier.
 func musicLoudnessPolicy(ctx context.Context, q interface {
@@ -620,7 +639,7 @@ func musicLoudnessPolicy(ctx context.Context, q interface {
 	if e := q.QueryRowContext(ctx, `SELECT kind FROM libraries WHERE id=?`, library).Scan(&kind); e != nil {
 		return p, e
 	}
-	if kind == "music" && p.Tier != "file_list_only" && !p.Allows("loudness") {
+	if AppliesLoudness(kind, p) && !p.Allows("loudness") {
 		p.Operations = append(append([]string{}, p.Operations...), "loudness")
 	}
 	if kind == "music" && p.Tier != "file_list_only" {

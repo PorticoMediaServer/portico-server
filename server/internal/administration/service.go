@@ -297,21 +297,29 @@ func (s *Service) runTransaction(ctx context.Context, auth Authorize, readOnly b
 // at revision 1 when nothing has been written yet. Unknown fields in a stored
 // body are ignored so a pre-release document never blocks a newer server.
 func readDocument[T any](ctx context.Context, tx *sql.Tx, scope string, defaults T) (T, int64, error) {
-	value, revision := defaults, int64(1)
 	var body string
+	revision := int64(1)
 	err := tx.QueryRowContext(ctx, `SELECT revision,body FROM admin_documents WHERE scope=?`, scope).Scan(&revision, &body)
 	if errors.Is(err, sql.ErrNoRows) {
-		return value, 1, nil
+		return defaults, 1, nil
 	}
 	if err != nil {
-		return value, 0, err
+		return defaults, 0, err
 	}
+	return decodeDocument(body, defaults), revision, nil
+}
+
+// decodeDocument is the stored-document rule without a query, for a reader that
+// batches the bodies. A body this build cannot read is treated as absent rather
+// than fatal: the owner sees the whole defaults document and the next write
+// replaces it. A stored field of the wrong type makes the whole body unreadable,
+// so a reader must never infer one field from the raw JSON instead.
+func decodeDocument[T any](body string, defaults T) T {
+	value := defaults
 	if json.Unmarshal([]byte(body), &value) != nil {
-		// A body this build cannot read is treated as absent rather than fatal:
-		// the owner sees defaults and the next write replaces it.
-		return defaults, revision, nil
+		return defaults
 	}
-	return value, revision, nil
+	return value
 }
 
 func writeDocument[T any](ctx context.Context, tx *sql.Tx, scope string, revision int64, value T, at int64) error {

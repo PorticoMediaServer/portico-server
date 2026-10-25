@@ -51,13 +51,7 @@ func effectiveLibraryPolicy(ctx context.Context, tx *sql.Tx, id, kind string, v 
 	if err != nil {
 		return 0, err
 	}
-	v.Analysis = []string{}
-	for ui, op := range analysisRuntime {
-		if containsOperation(p.Operations, op) {
-			v.Analysis = append(v.Analysis, ui)
-		}
-	}
-	sort.Strings(v.Analysis)
+	v.Analysis = analysisOperations(p)
 	v.ScanDepth = scanDepthFor(p)
 	geometry := p.Trickplay.Normalized()
 	v.Navigation = GeneratedNavigation{TrickplayIntervalMs: geometry.IntervalSeconds * 1000, TrickplayTileWidth: geometry.TileWidth, TrickplayMaxTiles: geometry.MaxTiles, ChapterThumbnailMode: "embedded", VideoPreviewMs: 30000}
@@ -73,7 +67,29 @@ func effectiveLibraryPolicy(ctx context.Context, tx *sql.Tx, id, kind string, v 
 	}
 	// Every contributing revision only increases, so all administration and
 	// domain writers invalidate this single optimistic revision without hashes.
-	return revision + p.Revision - 1 + provider.Revision + prefs.Revision - 1, nil
+	return libraryRevision(revision, p.Revision, provider.Revision, prefs.Revision), nil
+}
+
+// libraryRevision is the one composite fence a library's page publishes and its
+// next write must present: the stored document, its scan policy, its provider
+// policy and its preferences, each contribution counted once. A listing that
+// publishes this value can be saved from exactly as the page itself can.
+func libraryRevision(document, scan, provider, preferences int64) int64 {
+	return document + scan - 1 + provider + preferences - 1
+}
+
+// analysisOperations lists the drawn analysis steps a stored scan policy
+// enables, in the matrix the page renders. A count of them is the number of
+// steps the library will actually run.
+func analysisOperations(p catalog.ScanPolicy) []string {
+	out := []string{}
+	for ui, op := range analysisRuntime {
+		if containsOperation(p.Operations, op) {
+			out = append(out, ui)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 func applyLibraryPolicy(ctx context.Context, tx *sql.Tx, id, kind string, v LibrarySettings) error {
 	if kind != "movie" && (!v.GroupCollections) {

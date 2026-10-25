@@ -717,6 +717,14 @@ func readLibraryDocument(ctx context.Context, tx *sql.Tx, scope string, defaults
 	return LibrarySettings(value), revision, err
 }
 
+// decodeLibraryDocument is the same stored-document rule for a body a listing
+// already read: the shared decoder, the library's stored shape and the library's
+// own defaults. It is the only way a batched reader may turn a stored body into
+// a library document.
+func decodeLibraryDocument(body string) LibrarySettings {
+	return LibrarySettings(decodeDocument(body, storedLibrarySettings(DefaultLibrarySettings())))
+}
+
 func (s *Service) libraryDocument(ctx context.Context, tx *sql.Tx, id string) (LibraryDocument, error) {
 	out := LibraryDocument{LibraryID: id, Matrix: Matrix(), Modes: map[string][]string{"chapterThumbnailMode": ChapterThumbnailModes, "videoCompletion": {"earliest", "threshold", "credits"}, "segmentDetection": mediaanalysis.SegmentLibraryChoices}}
 	name, kind, managed, err := librarySettingsIdentity(ctx, tx, id)
@@ -1007,18 +1015,109 @@ func (s *Service) LibraryIndex(ctx context.Context, auth Authorize, token string
 			out.Items = out.Items[:size]
 			out.NextCursor = encodeCursor("library-index", 0, out.Items[size-1].ID)
 		}
-		defaults, err := libraryDefaults(ctx, tx)
+		if len(out.Items) == 0 {
+			return nil
+		}
+		// One bounded read for the whole page: each row publishes the same
+		// composite fence and the same enabled-step count its own page publishes,
+		// from one statement for the page instead of a read per library, in this
+		// same snapshot. The stored body is decoded here with the shared rule, so
+		// a body whose typed field is wrong falls back exactly as the page's own
+		// read falls back, and no field is inferred from raw JSON.
+		page := make([]string, len(out.Items))
+		kind := make(map[string]string, len(out.Items))
+		for i := range out.Items {
+			page[i], kind[out.Items[i].ID] = out.Items[i].ID, out.Items[i].Kind
+		}
+		ids, err := json.Marshal(page)
 		if err != nil {
 			return err
 		}
-		for i := range out.Items {
-			settings, revision, err := readLibraryDocument(ctx, tx, libraryScope(out.Items[i].ID), defaults)
-			if err != nil {
+		policyRows, err := tx.QueryContext(ctx, `SELECT l.id,
+			d.body, d.revision,
+			p.revision,
+			s.tier, s.revision, s.operations_json,
+			a.revision, m.revision,
+			sc.revision,
+			(SELECT revision FROM screen_metadata_consent WHERE singleton=1)
+			FROM libraries l
+			LEFT JOIN admin_documents d ON d.scope='library:'||l.id
+			LEFT JOIN library_preferences p ON p.library_id=l.id
+			LEFT JOIN library_scan_policies s ON s.library_id=l.id
+			LEFT JOIN audio_metadata_policies a ON a.library_id=l.id
+			LEFT JOIN mb_provider_policies m ON m.library_id=l.id
+			LEFT JOIN screen_metadata_policies sc ON sc.library_id=l.id
+			WHERE l.id IN (SELECT value FROM json_each(?))`, string(ids))
+		if err != nil {
+			return err
+		}
+		defer policyRows.Close()
+		read := map[string]LibraryIndexEntry{}
+		for policyRows.Next() {
+			var id string
+			var body, tier, operations sql.NullString
+			var preferences, scan, audio, musicBrainz, screen, consent, documentRevision sql.NullInt64
+			if err = policyRows.Scan(&id, &body, &documentRevision, &preferences, &tier, &scan, &operations, &audio, &musicBrainz, &screen, &consent); err != nil {
 				return err
 			}
-			out.Items[i].Revision = revision
-			out.Items[i].AllowMediaDeletion = settings.AllowMediaDeletion
-			out.Items[i].AnalysisCount = len(settings.Analysis)
+			// A library whose page cannot produce a fence must not have one made
+			// up here: its scan policy is required for every kind, its audio policy
+			// for music and audiobooks, and its screen policy and the consent it
+			// joins for video. Preferences and the MusicBrainz row are the two the
+			// page read itself treats as optional.
+			if !scan.Valid || tier.String == "" || operations.String == "" {
+				return ErrUnavailable
+			}
+			revision := int64(1)
+			if documentRevision.Valid {
+				revision = documentRevision.Int64
+			}
+			settings := decodeLibraryDocument(body.String)
+			preferencesRevision := int64(1)
+			if preferences.Valid {
+				preferencesRevision = preferences.Int64
+			}
+			policy, err := catalog.ScanPolicyFromStored(tier.String, scan.Int64, operations.String, catalog.TrickplaySettings{})
+			if err != nil {
+				return ErrUnavailable
+			}
+			// The runtime measures loudness for every music library outside a
+			// file-list-only scan, so the steps its page reports include it.
+			if catalog.AppliesLoudness(kind[id], policy) && !policy.Allows("loudness") {
+				policy.Operations = append(policy.Operations, "loudness")
+			}
+			provider := int64(0)
+			switch kind[id] {
+			case "movie", "tv", "anime":
+				if !screen.Valid || !consent.Valid {
+					return ErrUnavailable
+				}
+				provider = screen.Int64 + consent.Int64 - 2
+			case "music", "audiobook":
+				if !audio.Valid {
+					return ErrUnavailable
+				}
+				if musicBrainz.Valid {
+					provider = audio.Int64 + musicBrainz.Int64 - 2
+				}
+			}
+			read[id] = LibraryIndexEntry{
+				Revision:           libraryRevision(revision, policy.Revision, provider, preferencesRevision),
+				AllowMediaDeletion: settings.AllowMediaDeletion,
+				AnalysisCount:      len(analysisOperations(policy)),
+			}
+		}
+		if err = policyRows.Err(); err != nil {
+			return err
+		}
+		for i := range out.Items {
+			entry, ok := read[out.Items[i].ID]
+			if !ok {
+				return ErrUnavailable
+			}
+			out.Items[i].Revision = entry.Revision
+			out.Items[i].AllowMediaDeletion = entry.AllowMediaDeletion
+			out.Items[i].AnalysisCount = entry.AnalysisCount
 		}
 		return nil
 	})
