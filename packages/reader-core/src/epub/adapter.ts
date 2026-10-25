@@ -13,6 +13,7 @@ import {epubDisplay, type EpubDisplayPreferences} from './display.ts';
 import {validateEpubRaster} from './media.ts';
 import {epubFontKey} from './font-obfuscation.ts';
 import {metadataLanguage, metadataText} from './metadata.ts';
+import {isWholeWordPhrase} from '../search-boundary.ts';
 
 type Section = {id: string; size: number; cfi: string; linear?: string; createDocument(): Promise<Document>; resolveHref(href:string):string};
 type Navigation = {index: number; anchor?: number | ((doc: Document) => Node | Range | number | null)};
@@ -219,15 +220,21 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
             // search compares slices to avoid length-changing case mappings.
             const folded=text.toLowerCase(),foldedQuery=query.toLowerCase(),useFolded=folded.length===text.length&&foldedQuery.length===query.length;
             const haystack=useFolded?folded:text,needle=useFolded?foldedQuery:query;
-            for(let at=haystack.indexOf(needle);at>=0;at=haystack.indexOf(needle,at+Math.max(1,query.length))) {
+            for(let at=haystack.indexOf(needle);at>=0;at=haystack.indexOf(needle,at+Math.max(1,needle.length))) {
               throwIfAborted(searchSignal);unchanged();
+              // Whole-word/phrase filtering happens before the result cap: the
+              // limit counts real matches, never a capped substring list. The
+              // span is in original-text UTF-16 offsets, so case folding that
+              // changes length is never mapped through a guessed offset.
+              const matchEnd=at+needle.length;
+              if(!isWholeWordPhrase(text,at,matchEnd))continue;
               let start=offsets.length-1,end=start;
               while(start>0&&offsets[start]>at)start--;end=start;
-              while(end+1<offsets.length&&offsets[end+1]<at+query.length)end++;
-              const range=doc.createRange();range.setStart(nodes[start],at-offsets[start]);range.setEnd(nodes[end],at+query.length-offsets[end]);
+              while(end+1<offsets.length&&offsets[end+1]<matchEnd)end++;
+              const range=doc.createRange();range.setStart(nodes[start],at-offsets[start]);range.setEnd(nodes[end],matchEnd-offsets[end]);
               const cfi=cfiAt(b,index,range),chapter=chapterAt(b,index,range,tocBySection);
               const excerptStart=Math.max(0,at-60);
-              yield {id:cfi,excerpt:text.slice(excerptStart,Math.min(text.length,at+query.length+60)),match:{start:at-excerptStart,length:query.length},
+              yield {id:cfi,excerpt:text.slice(excerptStart,Math.min(text.length,matchEnd+60)),match:{start:at-excerptStart,length:needle.length},
                 location:{format:'epub',cfi,section:b.sections[index].id,progression:progression(b,index,text.length?at/text.length:0),chapter},chapter};
               if(++count>=search.limit)return;
             }
