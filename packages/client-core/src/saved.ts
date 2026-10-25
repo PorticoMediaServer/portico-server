@@ -1,10 +1,11 @@
+import {validateHomeEntry} from './home.ts';
 import type {RouteResponse} from "../../contracts/src/routes.ts";
 import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
 import {wireDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {firstOfEach, keepReadable, noteSkipped, oneOfOr} from './tolerant.ts';
 /** Server-owned Saved projections and playlist commands. No ranking, navigation or queue owner. */
-import {validateContentEntry, type ContentEntry, type ContentHeading, type ContentProjection} from './library-content.ts';
+import type {ContentEntry, ContentHeading, ContentProjection} from './library-content.ts';
 export type SavedScope = Readonly<{ serverId: string; viewerId: string }>;
 export interface SavedApi { request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> }
 export type SavedShape = 'posters' | 'squares';
@@ -126,7 +127,7 @@ function media(v: unknown): ContentEntry {
  if (!record(v) || !id(v.id) || !id(v.libraryId) || !['movie','show','season','episode','artist','album','song','book','audiobook_file','chapter','collection','category','extra','author','book_series','disc'].includes(v.kind as string) || !text(v.title, 2048)) invalid();
  // All shared catalogue facts use the canonical ContentEntry reader. Saved keeps
  // its existing destination/play-action policy below, including hidden occurrences.
- const out: Record<string, unknown> = {...validateContentEntry({...wire as Record<string, unknown>, navigation: undefined, playback: undefined})};
+ const out: Record<string, unknown> = {...validateHomeEntry({...wire as Record<string, unknown>, navigation: undefined, playback: undefined})};
  for (const key of ['subtitle','posterUrl','backdropUrl','overview']) if (v[key] !== undefined) { if (key === 'overview' ? !prose(v[key], 16384, true) : !text(v[key], 4096)) invalid(); out[key] = v[key]; }
  for (const key of ['duration','progressSeconds']) if (v[key] !== undefined) { if (!number(v[key])) invalid(); out[key] = v[key]; }
  if (v.available !== undefined) { if (typeof v.available !== 'boolean') invalid(); out.available = v.available; }
