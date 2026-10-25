@@ -126,7 +126,7 @@ func aacRate(c AudioDecodeCap, source int) int {
 			return source
 		}
 	}
-	rates := []int{48000, 24000, 12000, 8000}
+	rates := []int{48000, 32000, 24000, 16000, 12000, 8000}
 	if source%11025 == 0 {
 		rates = []int{44100, 22050, 11025}
 	}
