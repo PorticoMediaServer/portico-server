@@ -299,6 +299,14 @@ const accountPages: readonly AuthoredPage[] = [
           ...[5, 15, 30].map(count => ({value: count * 1000, label: 'pref.value.audiobooks.resumeRewindMs.earlier' as MessageId, labelValues: {count}})),
         ]}, {scope: 'profile'}),
       ]},
+      {id: 'quality', title: 'next.settingsSpec.account.music.groups.3.title', rows: [
+        pref('music.qualityAway', 'pref.label.music.qualityAway', {type: 'choice', choices: [
+          {value: 'original', label: 'next.settingsSpec.account.music.groups.3.rows.0.control.options.0.label'},
+          {value: 'cd-quality', label: 'next.settingsSpec.account.music.groups.3.rows.0.control.options.1.label'},
+          {value: '320', label: 'next.settingsSpec.account.music.groups.3.rows.0.control.options.2.label'},
+          {value: '96', label: 'next.settingsSpec.account.music.groups.3.rows.0.control.options.3.label'},
+        ]}, {scope: 'deviceClass'}),
+      ]},
     ],
   },
   {
