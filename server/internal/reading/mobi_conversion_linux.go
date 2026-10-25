@@ -77,7 +77,7 @@ func (c *MobiConverter) run(ctx context.Context, input *os.File) ([]byte, error)
 	defer worker.Close()
 	// Exact inherited descriptors prevent path replacement from substituting
 	// converter/input between verification and namespace mount setup.
-	args := []string{"--unshare-all", "--die-with-parent", "--new-session", "--disable-userns", "--assert-userns-disabled", "--clearenv", "--cap-drop", "ALL", "--dir", "/input", "--ro-bind", "/proc/self/fd/4", "/worker", "--ro-bind", "/proc/self/fd/5", "/input/book.mobi", "--size", strconv.Itoa(maxMobiOutput), "--tmpfs", "/output", "--dev", "/dev", "--chdir", "/output", "/worker"}
+	args := []string{"--unshare-all", "--die-with-parent", "--new-session", "--disable-userns", "--assert-userns-disabled", "--clearenv", "--cap-drop", "ALL", "--dir", "/input", "--ro-bind", "/proc/self/fd/4", "/worker", "--ro-bind", "/proc/self/fd/5", "/input/book.mobi", "--dir", "/output", "--dev", "/dev", "--remount-ro", "/dev", "--remount-ro", "/", "--size", strconv.Itoa(maxMobiOutput), "--tmpfs", "/output", "--chdir", "/output", "/worker"}
 	command := exec.CommandContext(ctx, "/proc/self/fd/3", args...)
 	command.ExtraFiles = []*os.File{sandbox, worker, input}
 	command.Env = []string{}
