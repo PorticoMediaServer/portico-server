@@ -214,6 +214,7 @@ export function decodeGetGuideOnNowResponse(input: unknown): types.GetGuideOnNow
 export function decodeGetGuideProgrammeImageResponse(input: unknown): types.GetGuideProgrammeImageResponse { return decode("GetGuideProgrammeImageResponse", input) as types.GetGuideProgrammeImageResponse; }
 export function decodeGetGuideRemindersResponse(input: unknown): types.GetGuideRemindersResponse { return decode("GetGuideRemindersResponse", input) as types.GetGuideRemindersResponse; }
 export function decodeGetGuideSourcesResponse(input: unknown): types.GetGuideSourcesResponse { return decode("GetGuideSourcesResponse", input) as types.GetGuideSourcesResponse; }
+export function decodeGetHardwareFactsResponse(input: unknown): types.GetHardwareFactsResponse { return decode("GetHardwareFactsResponse", input) as types.GetHardwareFactsResponse; }
 export function decodeGetHealthLiveResponse(input: unknown): types.GetHealthLiveResponse { return decode("GetHealthLiveResponse", input) as types.GetHealthLiveResponse; }
 export function decodeGetHealthReadyResponse(input: unknown): types.GetHealthReadyResponse { return decode("GetHealthReadyResponse", input) as types.GetHealthReadyResponse; }
 export function decodeGetHomeResponse(input: unknown): types.GetHomeResponse { return decode("GetHomeResponse", input) as types.GetHomeResponse; }
@@ -727,6 +728,7 @@ export function decodeStopAccountPlaybackResponse(input: unknown): types.StopAcc
 export function decodeStopPlaybackSessionResponse(input: unknown): types.StopPlaybackSessionResponse { return decode("StopPlaybackSessionResponse", input) as types.StopPlaybackSessionResponse; }
 export function decodeSyncDownloadProgressResponse(input: unknown): types.SyncDownloadProgressResponse { return decode("SyncDownloadProgressResponse", input) as types.SyncDownloadProgressResponse; }
 export function decodeTerminateAdminSessionResponse(input: unknown): types.TerminateAdminSessionResponse { return decode("TerminateAdminSessionResponse", input) as types.TerminateAdminSessionResponse; }
+export function decodeTestAdminTranscodeHardwareResponse(input: unknown): types.TestAdminTranscodeHardwareResponse { return decode("TestAdminTranscodeHardwareResponse", input) as types.TestAdminTranscodeHardwareResponse; }
 export function decodeTestStorageSourceRcloneResponse(input: unknown): types.TestStorageSourceRcloneResponse { return decode("TestStorageSourceRcloneResponse", input) as types.TestStorageSourceRcloneResponse; }
 export function decodeTestStorageSourceWebdavResponse(input: unknown): types.TestStorageSourceWebdavResponse { return decode("TestStorageSourceWebdavResponse", input) as types.TestStorageSourceWebdavResponse; }
 export function decodeTestWebhookResponse(input: unknown): types.TestWebhookResponse { return decode("TestWebhookResponse", input) as types.TestWebhookResponse; }

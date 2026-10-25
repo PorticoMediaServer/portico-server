@@ -45,6 +45,10 @@ type HardwareProbe struct {
 	Backend   string `json:"backend"`
 	Supported bool   `json:"supported"`
 	Detail    string `json:"detail"`
+	// Device is the adapter this probe ran on, so a device row and a probe row
+	// can be matched without guessing.
+	Device  string `json:"device,omitempty"`
+	Encoder string `json:"encoder,omitempty"`
 }
 
 // HardwareProbeSource is implemented by the delivery service. Device is the
@@ -119,6 +123,21 @@ type HardwareStatus struct {
 	Effective  string          `json:"effective"`
 	Device     string          `json:"device"`
 	Probes     []HardwareProbe `json:"probes"`
+	// Devices are the adapters this host exposes, the measured per-format grid,
+	// the one failure worth reporting and when the newest probe ran. They answer
+	// Server › Streaming › Hardware from probes that ran here; Empty when the
+	// delivery service publishes no inventory.
+	Devices   []decoder.HardwareFactDevice `json:"devices"`
+	Formats   []decoder.HardwareFactFormat `json:"formats"`
+	LastError *decoder.HardwareFactFault   `json:"lastError"`
+	LastTest  int64                        `json:"lastTest"`
+}
+
+// HardwareFactSource is the optional half of the probe seam: the adapters that
+// exist and the measured grid beside them. A source that only probes backends
+// leaves the device rows empty rather than inventing them.
+type HardwareFactSource interface {
+	Facts(ctx context.Context, device, effective string) decoder.HardwareFacts
 }
 
 type ToneMappingStatus struct {
@@ -201,10 +220,22 @@ func (c *Capacity) Report(ctx context.Context, s TranscodeSettings, sessions Ses
 	} else {
 		directory = resolveTemporaryDirectory(s.TemporaryDirectory, c.State)
 	}
+	hardware := HardwareStatus{Configured: s.HardwareBackend, Effective: effective, Device: s.HardwareDevice, Probes: probes,
+		Devices: []decoder.HardwareFactDevice{}, Formats: []decoder.HardwareFactFormat{}}
+	if facts, ok := c.Probes.(HardwareFactSource); ok && facts != nil {
+		measured := facts.Facts(ctx, s.HardwareDevice, effective)
+		if measured.Devices != nil {
+			hardware.Devices = measured.Devices
+		}
+		if measured.Formats != nil {
+			hardware.Formats = measured.Formats
+		}
+		hardware.LastError, hardware.LastTest = measured.Fault, measured.LastTest
+	}
 	out := Report{
 		Toolchain:          decoder.CurrentToolchain(),
 		Enabled:            s.Enabled,
-		Hardware:           HardwareStatus{Configured: s.HardwareBackend, Effective: effective, Device: s.HardwareDevice, Probes: probes},
+		Hardware:           hardware,
 		Sessions:           sessions,
 		HDRToneMapping:     toneMapping(s, effective, dependencies["ffmpeg"].OK),
 		DirectStreamRemux:  s.DirectStreamRemux,
@@ -265,6 +296,15 @@ func (c *Capacity) observe(ctx context.Context, device string, now int64) ([]Har
 	}
 	c.cachedAt, c.cachedProbes, c.cachedDeps = now, probes, dependencies
 	return probes, dependencies
+}
+
+// Invalidate forgets the cached probe and dependency results so the next read
+// observes this host again. Test hardware calls it after its own probes; ordinary
+// reads never do, because a settings page must not start child processes.
+func (c *Capacity) Invalidate() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.cachedAt, c.cachedProbes, c.cachedDeps = 0, nil, nil
 }
 
 func (c *Capacity) dependency(ctx context.Context, configured, fallback string) Dependency {

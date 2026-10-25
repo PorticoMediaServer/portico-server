@@ -46,6 +46,7 @@ func (d Dependencies) telemetryRoutes(mux *http.ServeMux) {
 	service.register(mux, "GET /v1/admin/transcode/capacity", nil, func(r *http.Request, a operations.Authorize) (any, error) {
 		return service.capacityReport(r.Context(), a)
 	})
+	service.registerHardwareTest(mux)
 	service.register(mux, "GET /v1/admin/telemetry", []string{"window", "timeZone", "until"}, func(r *http.Request, a operations.Authorize) (any, error) {
 		if e := validateReportContext(r.URL.Query().Get("timeZone"), r.URL.Query().Get("until")); e != nil {
 			return nil, e
@@ -333,6 +334,57 @@ func (s *telemetryService) register(mux *http.ServeMux, pattern string, query []
 			return
 		}
 		consoleWrite(w, 200, map[string]any{"scope": telemetryScope(d, p), "data": out})
+	})
+}
+
+// hardwareTestSlots allows one deliberate hardware test at a time: it starts a
+// probe child process per adapter and backend, and a second owner tapping the
+// button must wait rather than stack encoders.
+var hardwareTestSlots = make(chan struct{}, 1)
+
+// registerHardwareTest probes every adapter and backend again now and answers
+// with the same capacity document the read route serves, so Server › Streaming ›
+// Hardware redraws from one write. It is the only route that starts probes
+// synchronously, so it has its own bound instead of the seven-second read.
+func (s *telemetryService) registerHardwareTest(mux *http.ServeMux) {
+	d := s.d
+	d.projectedHandle(mux, "POST /v1/admin/transcode/capacity/test", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+		defer cancel()
+		r = r.WithContext(ctx)
+		p, e := d.owner(r)
+		if e != nil {
+			consoleError(w, e)
+			return
+		}
+		if e = consoleQuery(r); e != nil {
+			consoleError(w, e)
+			return
+		}
+		select {
+		case hardwareTestSlots <- struct{}{}:
+			defer func() { <-hardwareTestSlots }()
+		default:
+			w.Header().Set("Retry-After", "1")
+			consoleError(w, operations.ErrCapacity)
+			return
+		}
+		auth := d.consoleAuthority(p, true)
+		if d.Playback != nil {
+			d.Playback.HardwareTest(ctx)
+		}
+		s.capacity.Invalidate()
+		report, e := s.capacityReport(ctx, auth)
+		if e != nil {
+			consoleError(w, e)
+			return
+		}
+		if e = d.ConsoleCheck(ctx, auth); e != nil {
+			consoleError(w, e)
+			return
+		}
+		consoleWrite(w, 200, map[string]any{"scope": telemetryScope(d, p), "data": report})
 	})
 }
 

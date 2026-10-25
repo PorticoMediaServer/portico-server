@@ -4832,6 +4832,23 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "get_hardware_facts",
+    "method": "GET",
+    "path": "/v1/admin/playback/hardware",
+    "summary": "Read this server's hardware platform, its one remedy when no GPU is usable, and the V1 hardware target matrix",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted"
+    ],
+    "status": 200,
+    "admission": "admin"
+  },
+  {
     "id": "get_health_live",
     "method": "GET",
     "path": "/health/live",
@@ -18399,6 +18416,27 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "id": "test_admin_transcode_hardware",
+    "method": "POST",
+    "path": "/v1/admin/transcode/capacity/test",
+    "summary": "Probe every graphics adapter and backend again now",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin-heavy"
+  },
+  {
     "id": "test_storage_source_rclone",
     "method": "POST",
     "path": "/v1/storage/sources/rclone/test",
@@ -18773,6 +18811,7 @@ export const routePaths = {
   "get_guide_programme_image": "/v1/guide/programme-images/{generation}/{programme}",
   "get_guide_reminders": "/v1/guide/reminders",
   "get_guide_sources": "/v1/guide/sources",
+  "get_hardware_facts": "/v1/admin/playback/hardware",
   "get_health_live": "/health/live",
   "get_health_ready": "/health/ready",
   "get_home": "/v1/home",
@@ -19286,6 +19325,7 @@ export const routePaths = {
   "stop_playback_session": "/v1/playback/sessions/{id}",
   "sync_download_progress": "/v1/downloads/progress",
   "terminate_admin_session": "/v1/admin/sessions/{id}:terminate",
+  "test_admin_transcode_hardware": "/v1/admin/transcode/capacity/test",
   "test_storage_source_rclone": "/v1/storage/sources/rclone/test",
   "test_storage_source_webdav": "/v1/storage/sources/webdav/test",
   "test_webhook": "/v1/admin/webhooks/{id}/test",

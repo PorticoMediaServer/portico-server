@@ -337,6 +337,10 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/telemetry_routes.go:42
+	if err := apikit.RegisterHTTP[struct{}, projectedConsoleEnvelope[telemetry.Report]](registry, apikit.Metadata{ID: "test_admin_transcode_hardware", Method: "POST", Path: "/v1/admin/transcode/capacity/test", Summary: "Probe every graphics adapter and backend again now", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminHeavy, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+		return err
+	}
+	// internal/httpapi/telemetry_routes.go:42
 	if err := apikit.RegisterHTTP[struct{}, projectedConsoleEnvelope[telemetry.Report]](registry, apikit.Metadata{ID: "get_admin_transcode_capacity", Method: "GET", Path: "/v1/admin/transcode/capacity", Summary: "Read server transcode capacity", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}

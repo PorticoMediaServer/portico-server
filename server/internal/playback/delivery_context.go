@@ -81,6 +81,49 @@ func (s *Service) HardwareReport(ctx context.Context) []decoder.HardwareProbe {
 	return s.hardware.Report(ctx, s.hardwareFFmpeg, cfg.HardwareDevice)
 }
 
+// HardwareDevices names the adapters this host exposes, by the name their
+// drivers give them. Discovery only: an adapter is not a capability until a
+// probe has run on it.
+func (s *Service) HardwareDevices(ctx context.Context) []decoder.HardwareDevice {
+	if s.hardware == nil {
+		return nil
+	}
+	discover := s.hardware.Devices
+	if discover == nil {
+		discover = decoder.DiscoverHardwareDevices
+	}
+	return discover(ctx)
+}
+
+// HardwareTest probes every backend on every adapter again now, for the owner's
+// Test hardware button. It is the one deliberate re-probe: ordinary reads use
+// compiled results so a settings page never starts a child process. A server
+// without a detector has nothing to test.
+func (s *Service) HardwareTest(ctx context.Context) {
+	if s.hardware == nil || s.hardwareFFmpeg == "" {
+		return
+	}
+	cfg := s.DeliveryConfiguration()
+	devices := s.HardwareDevices(ctx)
+	if len(devices) == 0 {
+		for _, backend := range decoder.HardwareBackends {
+			if ctx.Err() != nil {
+				return
+			}
+			s.hardware.Reprobe(ctx, s.hardwareFFmpeg, backend, cfg.HardwareDevice)
+		}
+		return
+	}
+	for _, device := range devices {
+		for _, backend := range device.Backends {
+			if ctx.Err() != nil {
+				return
+			}
+			s.hardware.Reprobe(ctx, s.hardwareFFmpeg, backend, device.Path)
+		}
+	}
+}
+
 // selectHardware resolves the backend for one session. Selection is cached by
 // the detector, so this is a map read after the first probe on a host.
 func (s *Service) selectHardware(ctx context.Context, cfg DeliveryConfiguration) decoder.HardwareProbe {

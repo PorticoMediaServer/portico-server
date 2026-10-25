@@ -20,8 +20,18 @@ export type TelemetrySample={at:number;metrics:Record<MetricName,Metric>;memoryU
 export type TelemetryPoint={t:number;v:number};
 export type TelemetryReading=ReportInterval & {window:TelemetryWindow;series:Record<MetricName,TelemetryPoint[]>;status:Record<MetricName,Metric>;observedAt:number};
 
-export type HardwareProbe={backend:string;supported:boolean;detail:string};
-export type HardwareStatus={configured:string;effective:string;device:string;probes:HardwareProbe[]};
+export type HardwareProbe={backend:string;supported:boolean;detail:string;device?:string;encoder?:string};
+/** One adapter the server found, named as its driver names it. `method` is a stable token. */
+export type HardwareDeviceFact={id:string;name:string;method?:string;inUse:boolean};
+/** Who does one format's job on this server right now, from the last probe. */
+export type HardwareFormatFact={format:string;decode:boolean;encode:boolean};
+/** The one failure worth reporting: shown only when no hardware backend works. */
+export type HardwareFault={backend?:string;device?:string;reason:string;detail?:string};
+export type HardwareStatus={configured:string;effective:string;device:string;probes:HardwareProbe[];
+ /** Adapters and the measured grid; empty when the server publishes no inventory. */
+ devices:HardwareDeviceFact[];formats:HardwareFormatFact[];lastError?:HardwareFault;
+ /** When the newest probe finished, in Unix seconds; zero means nothing has been probed yet. */
+ lastTest:number};
 export type SessionLimits={concurrent:number;hardware:number;software:number;background:number};
 /** A null count means the server publishes no figure, never "no sessions". */
 export type SessionCounts={active:number|null;hardware:number|null;software:number|null;background:number|null;limits:SessionLimits};
@@ -94,6 +104,23 @@ export function parseTranscodeCapacity(value:unknown):TranscodeCapacity{
  const hardware=base(c.hardware);
  if(!text(hardware.configured,40)||!text(hardware.effective,40)||!text(hardware.device,200)||!Array.isArray(hardware.probes)||hardware.probes.length>20)invalid();
  const probes=keepReadable('transcode-capacity','hardware.probes',hardware.probes,probe=>{const p=base(probe);if(!text(p.backend,40)||typeof p.supported!=='boolean'||!text(p.detail,512))invalid();return p as HardwareProbe;});
+ // A device, a format row or a fault this app cannot read is left out; the rest of the page stays.
+ const devices=Array.isArray(hardware.devices)?keepReadable('transcode-capacity','hardware.devices',hardware.devices.slice(0,32),device=>{
+  const d=base(device);if(!text(d.id,128)||!d.id||!text(d.name,200)||!d.name||typeof d.inUse!=='boolean'||d.method!==undefined&&!text(d.method,40))return undefined;
+  return {id:d.id as string,name:d.name as string,...(d.method===undefined?{}:{method:d.method as string}),inUse:d.inUse as boolean};
+ }):[];
+ const formats=Array.isArray(hardware.formats)?keepReadable('transcode-capacity','hardware.formats',hardware.formats.slice(0,16),row=>{
+  const f=base(row);if(!text(f.format,32)||!f.format||typeof f.decode!=='boolean'||typeof f.encode!=='boolean')return undefined;
+  return {format:f.format as string,decode:f.decode as boolean,encode:f.encode as boolean};
+ }):[];
+ let lastError:HardwareFault|undefined;
+ if(obj(hardware.lastError)){
+  const f=hardware.lastError;
+  if(text(f.reason,64)&&f.reason&&(f.backend===undefined||text(f.backend,40))&&(f.device===undefined||text(f.device,200))&&(f.detail===undefined||text(f.detail,512)))
+   lastError={reason:f.reason as string,...(f.backend===undefined?{}:{backend:f.backend as string}),...(f.device===undefined?{}:{device:f.device as string}),...(f.detail===undefined?{}:{detail:f.detail as string})};
+  else noteSkipped('transcode-capacity','hardware.lastError');
+ }
+ const lastTest=integer(hardware.lastTest)?hardware.lastTest:0;
  const sessions=base(c.sessions);
  for(const key of ['active','hardware','software','background'])if(sessions[key]!==null&&!integer(sessions[key]))invalid();
  const limits=base(sessions.limits);
@@ -112,5 +139,5 @@ export function parseTranscodeCapacity(value:unknown):TranscodeCapacity{
  for(const [name,dependency] of Object.entries(published)){if(obj(dependency)&&text(dependency.path,1024)&&text(dependency.version,512)&&typeof dependency.ok==='boolean')dependencies[name]=dependency as RuntimeDependency;else noteSkipped('transcode-capacity','dependencies');}
  if(!Array.isArray(c.warnings)||c.warnings.length>20)invalid();
  const warnings=keepReadable('transcode-capacity','warnings',c.warnings,(w:unknown)=>text(w,512)?w:undefined);
- return {...c,hardware:{...hardware,probes},hdrToneMapping:{...tone,status:toneStatus},presets,dependencies,warnings} as TranscodeCapacity;
+ return {...c,hardware:{...hardware,probes,devices,formats,...(lastError?{lastError}:{}),lastTest},hdrToneMapping:{...tone,status:toneStatus},presets,dependencies,warnings} as TranscodeCapacity;
 }
