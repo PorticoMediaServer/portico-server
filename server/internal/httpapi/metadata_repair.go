@@ -67,7 +67,7 @@ func (d Dependencies) metadataRepairRoutes(mux *http.ServeMux) {
 					return
 				}
 				var body metadata.RepairCommand
-				if err = decode(w, r, &body); err == nil {
+				if err = decodeMetadataRepair(w, r, &body); err == nil {
 					if body.Action == "make_episode_thumbnail" {
 						out, err = d.Metadata.MakeEpisodeThumbnail(ctx, target, body, p, authorize)
 						if err != nil && !errors.Is(err, metadata.ErrRepairInput) && !errors.Is(err, metadata.ErrRepairConflict) && !errors.Is(err, sql.ErrNoRows) && !errors.Is(err, identity.ErrUnauthorized) && !errors.Is(err, identity.ErrForbidden) {

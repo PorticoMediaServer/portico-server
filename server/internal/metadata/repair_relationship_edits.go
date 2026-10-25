@@ -120,7 +120,7 @@ func repairIdentityLocked(ctx context.Context, tx *sql.Tx, t RepairTarget) (bool
 // Provider families stay as published: only the owner's manual family is
 // replaced, through the catalogue write API.
 func applyRelationshipSet(ctx context.Context, tx *sql.Tx, t RepairTarget, class string, values []RepairRelationship, locked bool, actor, now string, restore bool) error {
-	if t.Kind != "item" || (class != "credit" && class != "genre") || len(values) > 100 || class == "genre" && len(values) > 64 {
+	if t.Kind != "item" || (class != "credit" && class != "genre") || len(values) > 512 || class == "genre" && len(values) > 64 {
 		return ErrRepairInput
 	}
 	entity, err := resolveEntity(ctx, tx, t.ID)
