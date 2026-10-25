@@ -10,7 +10,7 @@
 .page { display: flex; flex-direction: column; gap: 20px; }
 .heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .heading p { margin: 0; color: var(--color-text-tertiary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
-.list { list-style: none; padding: 0; margin: 0; border-radius: 14px; overflow: hidden; background: var(--color-surface); }
+.list { list-style: none; padding: 0; margin: 0; border-radius: 14px; overflow: hidden; background: var(--color-raised); }
 .row { display: grid; grid-template-columns: 44px minmax(0,1fr) auto auto; gap: 16px; align-items: center; padding: 16px 20px; border-top: 1px solid var(--color-line-soft); }
 .row:first-child { border-top: 0; }
 .channelText { min-width: 0; }
