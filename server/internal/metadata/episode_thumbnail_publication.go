@@ -154,7 +154,7 @@ func (s *Service) publishEpisodeThumbnail(ctx context.Context, captured episodeT
 		return RepairState{}, ErrRepairConflict
 	}
 	if !manual && current.Held {
-		return readRepairState(ctx, tx, current.Target)
+		return s.readRepairState(ctx, tx, current.Target)
 	}
 	before, _, err := readRepairSnapshot(ctx, tx, current.Target)
 	if err != nil {
@@ -199,7 +199,7 @@ func (s *Service) publishEpisodeThumbnail(ctx context.Context, captured episodeT
 	if err = recordRepair(ctx, tx, current.Target, before, current.RepairRevision, "make_episode_thumbnail", who); err != nil {
 		return RepairState{}, err
 	}
-	out, err := readRepairState(ctx, tx, current.Target)
+	out, err := s.readRepairState(ctx, tx, current.Target)
 	if err != nil {
 		return out, err
 	}

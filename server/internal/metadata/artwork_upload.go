@@ -146,7 +146,7 @@ func (s *Service) UploadArtwork(ctx context.Context, t RepairTarget, role, subje
 	if err = recordRepair(ctx, tx, t, before, base, "upload_artwork", who); err != nil {
 		return RepairState{}, err
 	}
-	out, err := readRepairState(ctx, tx, t)
+	out, err := s.readRepairState(ctx, tx, t)
 	if err != nil {
 		return out, err
 	}
@@ -236,7 +236,7 @@ func (s *Service) DeleteUploadedArtwork(ctx context.Context, t RepairTarget, rol
 	if err = recordRepair(ctx, tx, t, before, base, "delete_uploaded_artwork", who); err != nil {
 		return RepairState{}, err
 	}
-	out, err := readRepairState(ctx, tx, t)
+	out, err := s.readRepairState(ctx, tx, t)
 	if err != nil {
 		return out, err
 	}

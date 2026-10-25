@@ -30,6 +30,7 @@ response carries, in one read:
   `locked`, and its `source` (`manual`, `provider:<name>`, `scanner`, or
   `automatic` when the field is empty). A `list` field also carries `values`,
   the parsed array; `value` is the same array as canonical JSON text.
+- `canMakeEpisodeThumbnail` — optional, true only when the current runtime and the exact episode video source support explicit picture generation. Absence is unavailable; this fact grants no authority and the command still checks owner, source and revision.
 - `artworkRoles` — the roles this kind publishes, for the artwork tab and for
   uploads.
 - `artwork.candidates` / `snapshot.artwork` — the images on offer and the ones
