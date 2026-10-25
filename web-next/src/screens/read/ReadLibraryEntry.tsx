@@ -109,7 +109,7 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
   const showGrid = view === 'books' || rows.length === 0;
   return <div className={styles.library}>
     <ReadDiscovery rows={view === 'books' ? [] : rows} platform={platform} reducedMotion={reducedMotion}
-      onVisibleRange={(_row, range) => resources.resume.collection.ensureRange(0, Math.max(0, range.last))}>
+      onVisibleRange={(row, range) => {if (row.kind === 'resume') resources.resume.collection.ensureRange(Math.max(0, range.first), Math.max(0, range.last));}}>
       {state.total === 0 || !showGrid ? null : <div ref={grid} className={styles.books} data-view="grid">
         <WindowedGrid collection={resources.books.collection} label={name}
           height={height} cardWidth={cardWidth} rowHeight={cardWidth * 1.5 + 58} gap={20} rowGap={30} renderPlaceholder={() => <Skeleton width={cardWidth} height={cardWidth * 1.5}/>}
