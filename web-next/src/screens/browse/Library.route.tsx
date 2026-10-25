@@ -129,14 +129,15 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
       // executors, and each title's own Detail actions still decide its grants.
       editor: context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local',
       personal: {myList: true, favorite: true, watched: true},
+      queue: runtime?.catalogueQueue(),
       playback: runtime?.cataloguePlayback()});
   }, [captured.context, context, resources, runtime, href, state.queryRevision]);
   useEffect(() => {playSelection.start();return () => playSelection.dispose();}, [playSelection]);
-  // The same captured route lifetime supplies the bar's real job ports. Queue and the
-  // saved-list pickers stay absent until their own producers are wired, so the bar
-  // cannot draw a control this screen cannot perform.
+  // Queue dispatch retains both the original route and exact model operation.
+  // Saved-list pickers remain absent until their checked producers are wired.
   const selection = useMemo(() => createLibrarySelection({
     playSelection,
+    ...(runtime ? {enqueue: playSelection.enqueue} : {}),
     owner: context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local',
     descriptor: () => resources.controller.wholeSelection(),
     ...(context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local' ? {editor: {
@@ -146,7 +147,7 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
     actions: {api: resources.life.api, events: context.events, requestId: async () => randomId(),
       signal: resources.life.signal(), isCurrent: () => resources.life.current(), reportError: context.effects.reportError},
     reportError: context.effects.reportError,
-  }), [context, playSelection, resources]);
+  }), [context, playSelection, resources, runtime]);
   const [choice, setChoice] = useState<Readonly<{defaultView: 'grid' | 'list'; view: 'grid' | 'list'}>>();
   const [size, setSize] = useState<'small' | 'medium' | 'large'>('medium'), [saving, setSaving] = useState<SavedDefinition>();
   const navigate = (value: LibraryScreenSearch, id = library.id) => {if (context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId: id}, search: value}).catch(context.effects.reportError);};
