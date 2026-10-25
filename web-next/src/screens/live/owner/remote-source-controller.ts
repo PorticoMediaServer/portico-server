@@ -43,7 +43,7 @@ export class RemoteSourceController extends OwnerStore<RemoteSourceSnapshot> {
   async save() {
     const preview = this.snapshot.preview;
     if (!this.isActive() || this.snapshot.busy || !preview) return false;
-    if (Date.parse(preview.expiresAt) <= Date.now()) {this.publish({...this.snapshot, preview: undefined, error: {code: 'source_preview_expired'}});return false;}
+    if (Date.parse(preview.expiresAt) <= Date.now()) {this.publish({...this.snapshot, preview: undefined, error: {code: 'channel_revision_conflict'}});return false;}
     const attempt = this.begin(), sourceId = this.snapshot.draft.id;this.saving = true;
     this.publish({...this.snapshot, busy: true, error: undefined});
     try {
