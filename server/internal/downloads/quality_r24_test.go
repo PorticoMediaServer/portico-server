@@ -75,6 +75,12 @@ func TestQualityR24OptionsDescribeRetainedSurroundBudget(t *testing.T) {
 	if _, err := h.db.Exec(`INSERT INTO asset_streams(asset_id,stream_index,type,codec,language,title,channels,channel_layout,is_default,is_forced,detail_json) VALUES(?,0,'video','hevc','','',0,'',1,0,?)`, h.asset, `{"width":3840,"height":2160,"bitDepth":10,"frameRate":24,"dynamicRange":"hdr10","bitRate":30000000}`); err != nil {
 		t.Fatal(err)
 	}
+	// The source's own 5.1 audio is the fact that makes the rich recipe keep it.
+	// The device's six-channel ceiling is not a source fact and cannot stand in
+	// for one: without observed channels the recipe must assume 7.1 (FLAC).
+	if _, err := h.db.Exec(`INSERT INTO asset_streams(asset_id,stream_index,type,codec,language,title,channels,channel_layout,is_default,is_forced,detail_json) VALUES(?,1,'audio','aac','eng','',6,'5.1',0,0,'{}')`, h.asset); err != nil {
+		t.Fatal(err)
+	}
 	device := playback.BaselineCapabilityDocument()
 	device.Client.Family = "apple"
 	device.Display.DynamicRanges = []string{"sdr", "hdr10"}
