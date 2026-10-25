@@ -1399,6 +1399,7 @@ export const webMessages = {
   'web.connectivity.customCertPath': 'Certificate file',
   'web.connectivity.customCertKey': 'Key file',
   'web.connectivity.customCertReady': 'In use, valid until {date}.',
+  'web.connectivity.customCertNotInUse': 'Not in use yet',
   'web.connectivity.customCertUnreadable': 'The certificate or key file can’t be read. Check the paths and that the server can read them.',
   'web.connectivity.customCertInvalid': 'The files aren’t a matching PEM certificate and key.',
   'web.connectivity.customCertMismatch': 'The certificate doesn’t cover this domain.',
