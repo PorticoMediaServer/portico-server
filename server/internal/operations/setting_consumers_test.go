@@ -20,10 +20,24 @@ import (
 
 type settingConsumer struct{ file, witness, effect string }
 
+// This executable trigger, rather than settings readback, consumes the region
+// default for new screen libraries. Keep its admission and complete INSERT in
+// the witness so a column declaration or unrelated SQL cannot satisfy it.
+const newLibraryScreenPolicy = `CREATE TRIGGER screen_policy_create AFTER INSERT ON libraries WHEN NEW.kind IN('movie','tv','anime') BEGIN
+ INSERT INTO screen_metadata_policies(library_id,providers,language,region) SELECT NEW.id,'["tmdb"]',default_language,default_region FROM metadata_runtime_settings WHERE singleton=1;
+END;`
+
 // Every entry names a reviewed runtime boundary, not a settings form or registry.
 // Semantic tests beside those consumers verify behavior; this guard catches new
 // unowned fields and consumer removal. It is not a substitute for runtime tests.
 var settingConsumers = map[string]settingConsumer{
+	"metadata.MetadataSettingsUpdate.artworkLanguage":                        {"internal/metadata/artwork_preference.go", "literal:artwork_language", "Rank automatic artwork by the saved language without replacing owner choices"},
+	"metadata.MetadataSettingsUpdate.artworkPreference":                      {"internal/metadata/artwork_preference.go", "literal:artwork_preference", "Choose online versus folder automatic artwork while preserving owner selections"},
+	"metadata.MetadataSettingsUpdate.onlineLookups":                          {"internal/localonly/localonly.go", "literal:online_lookups", "Admit online acquisition and fence publication with the current policy epoch"},
+	"metadata.MetadataSettingsUpdate.defaultLanguage":                        {"internal/metadata/library_agent.go", "literal:default_language", "Seed the supported language choice when creating a new library"},
+	"metadata.MetadataSettingsUpdate.defaultRegion":                          {"internal/persistence/migrations/0001_baseline.sql", "sql:" + newLibraryScreenPolicy, "Seed a new screen library's regional metadata policy without changing existing libraries"},
+	"metadata.MetadataSettingsUpdate.libraries.id":                           {"internal/metadata/runtime_libraries.go", "function:readMetadataLibrary", "Bind each metadata update to the exact existing library and its revision"},
+	"metadata.MetadataSettingsUpdate.libraries.agent":                        {"internal/localonly/localonly.go", "literal:a.agent='local'", "Enforce each library's local-only acquisition policy"},
 	"operations.Settings.segments.filmCreditsWindow":                         {"internal/mediaanalysis/segment_planning.go", "literal:segments.filmCreditsWindow", "Bound the region read by the existing detector"},
 	"operations.Settings.segments.creditsWindow":                             {"internal/mediaanalysis/segment_planning.go", "literal:segments.creditsWindow", "Bound the region read by the existing detector"},
 	"operations.Settings.segments.introWindow":                               {"internal/mediaanalysis/segment_planning.go", "literal:segments.introWindow", "Bound the region read by the existing detector"},
@@ -252,6 +266,14 @@ func TestStoredSettingsHaveRuntimeConsumers(t *testing.T) {
 				t.Errorf("%s has no stated effect", key)
 			}
 			path := filepath.Join("../..", consumer.file)
+			if strings.HasPrefix(consumer.witness, "sql:") {
+				body, err := os.ReadFile(path)
+				statement := strings.TrimPrefix(consumer.witness, "sql:")
+				if err != nil || !strings.HasSuffix(path, ".sql") || statement == "" || !strings.Contains(string(body), statement) {
+					t.Errorf("%s lost its executable SQL consumer in %s: %v", key, consumer.file, err)
+				}
+				return
+			}
 			file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
 			if err != nil {
 				t.Error(key, err)
@@ -295,6 +317,7 @@ var preferenceRuntimeSources = map[string][2]string{
 	"music.neverBoost":        {"packages/client-core/src/music-preferences.ts", "music.neverBoost"},
 	"music.smoothTransitions": {"packages/client-core/src/music-preferences.ts", "music.smoothTransitions"},
 	"music.dsdGainDb":         {"server/internal/playback/audio_plan_v2.go", "music.dsdGainDb"},
+	"quality.downloads":       {"server/internal/downloads/music.go", "quality.downloads"},
 	// The network lane builds the key dynamically. Witness the actual runtime
 	// invocation that feeds QualityMode, not the key prefix in a local assignment.
 	"quality.home":                        {"server/internal/playback/delivery_policy.go", "function:SavedQualityPreference"},
