@@ -308,6 +308,9 @@
       return attempt();
     }
   }
+  // Progressive decoder probes use their real media type, not an MP4 wrapper
+  // for FLAC/Ogg/WAV. These are capabilities, never observed output formats.
+  var progressiveAudioProbes = {aac:'audio/mp4; codecs="mp4a.40.2"',mp3:'audio/mpeg',opus:'audio/ogg; codecs="opus"',vorbis:'audio/ogg; codecs="vorbis"',flac:'audio/flac',pcm:'audio/wav; codecs="1"'};
   function buildProfile(context) {
     var caps = {};
     try { caps = context ? context.getDeviceCapabilities() || {} : {}; } catch (_) { /* no output facts */ }
@@ -337,7 +340,11 @@
     var audio = [];
     [['aac','audio/mp4; codecs="mp4a.40.2"'],['mp3','audio/mpeg'],['opus','audio/ogg; codecs="opus"'],['vorbis','audio/ogg; codecs="vorbis"'],['flac','audio/flac'],['pcm','audio/wav; codecs="1"']].forEach(function(pair) {
       var probed = supports(pair[1]);
-      if (probed || pair[0] === 'aac' || pair[0] === 'mp3') audio.push({codec:pair[0],maxChannels:2,evidence:probed?'probed':'declared'});
+      // Keep a conservative declared operating point when this platform has no
+      // exact rate query. Google's published FLAC ceiling is 96 kHz/24 bit;
+      // the other defaults are app limits, not a claim about the output sink.
+      if (probed || pair[0] === 'aac' || pair[0] === 'mp3') audio.push({codec:pair[0],maxChannels:2,maxSampleRate:pair[0]==='flac'?96000:48000,
+        ...(pair[0]==='flac'?{maxBitDepth:24}:pair[0]==='pcm'?{maxBitDepth:16}:{}),evidence:probed?'mixed':'declared'});
     });
     var passthrough = [];
     [['ac3','ac-3',6],['eac3','ec-3',8]].forEach(function (pair) {
@@ -351,7 +358,18 @@
     var fmp4Audio=audio.filter(function(a){return ({aac:'mp4a.40.2',mp3:'mp4a.69',flac:'fLaC',opus:'Opus'})[a.codec]&&supports('audio/mp4; codecs="'+({aac:'mp4a.40.2',mp3:'mp4a.69',flac:'fLaC',opus:'Opus'})[a.codec]+'"');}).map(function(a){return a.codec;}).concat(passthrough.map(function(a){return a.codec;}));
     var hlsAudio=audio.filter(function(a){return ['aac','mp3'].indexOf(a.codec)>=0;}).map(function(a){return a.codec;}).concat(passthrough.map(function(a){return a.codec;}));
     var names=video.map(function (v) {return v.codec;});
-    var transports=[{transport:'direct',containers:['mp4','m4v'],video:names.filter(function (c) {return c!=='vp9'&&c!=='vp8';}),audio:hlsAudio},{transport:'direct',containers:['webm'],video:names.filter(function(c){return c==='vp8'||c==='vp9'||c==='av1';}),audio:audio.filter(function(a){return ['opus','vorbis'].indexOf(a.codec)>=0;}).map(function(a){return a.codec;})},{transport:'direct',containers:audio.reduce(function(all,a){return all.concat(({aac:['m4a','aac'],mp3:['mp3'],flac:['flac'],opus:['ogg','opus'],vorbis:['ogg'],pcm:['wav']})[a.codec]||[]);},[]),video:[],audio:audio.map(function(a){return a.codec;})},{transport:'hls_ts',containers:['mpegts'],video:['h264'],audio:hlsAudio},{transport:'hls_fmp4',containers:['fmp4'],video:names.filter(function (c) {return c!=='vp9'&&c!=='vp8';}),audio:fmp4Audio}];
+    var transports=[{transport:'direct',containers:['mp4','m4v','mov'],video:names.filter(function (c) {return c!=='vp9'&&c!=='vp8';}),audio:fmp4Audio},{transport:'hls_ts',containers:['mpegts'],video:['h264'],audio:hlsAudio},{transport:'hls_fmp4',containers:['fmp4'],video:names.filter(function (c) {return c!=='vp9'&&c!=='vp8';}),audio:fmp4Audio}];
+    var webmAudio=audio.filter(function(a){return ['opus','vorbis'].indexOf(a.codec)>=0&&supports('audio/webm; codecs="'+a.codec+'"');}).map(function(a){return a.codec;});
+    transports.push({transport:'direct',containers:['webm'],video:names.filter(function(c){return c==='vp8'||c==='vp9'||c==='av1';}),audio:webmAudio});
+    // Each container tuple belongs only to the decoder that was admitted for it.
+    // The previous Cartesian list wrongly declared, for example, PCM in Ogg and
+    // FLAC in an unprobed MP4 container.
+    audio.forEach(function(a){
+      var containers=({aac:['aac','adts'],mp3:['mp3'],flac:['flac'],opus:['ogg','opus'],vorbis:['ogg'],pcm:['wav']})[a.codec];
+      if(containers&&(supports(progressiveAudioProbes[a.codec])||a.codec==='aac'||a.codec==='mp3'))transports.push({transport:'direct',containers:containers,video:[],audio:[a.codec]});
+      var mp4Codec=({aac:'mp4a.40.2',mp3:'mp4a.69',flac:'fLaC',opus:'Opus'})[a.codec];
+      if(mp4Codec&&supports('audio/mp4; codecs="'+mp4Codec+'"'))transports.push({transport:'direct',containers:['m4a','m4b','mp4'],video:[],audio:[a.codec]});
+    });
     // The capability document (version 2): the device, and what its one player engine can do.
     // Display presence and codec acceptance do not identify the active audio route.
     return {version:2,client:client,engineSetting:'automatic',display:{dynamicRanges:ranges},audioOutput:{maxChannels:surround?Math.max.apply(null,passthrough.map(function(a){return a.maxChannels;})):2},engines:{native:{name:'caf-shaka',evidence:'mixed',video:video,audio:audio,audioPassthrough:passthrough,transports:transports,subtitleRendering:['text']}}};
@@ -362,15 +380,21 @@
     var capabilities = typeof navigator !== 'undefined' && navigator.mediaCapabilities;
     if (!capabilities || typeof capabilities.decodingInfo !== 'function') return profile;
     await Promise.all(profile.engines.native.audio.map(async function(codec) {
-      var sample = {aac:'mp4a.40.2',flac:'fLaC',opus:'Opus',pcm:'lpcm'}[codec.codec];
-      if (!sample) return;
+      var mime = progressiveAudioProbes[codec.codec];
+      if (!mime) return;
       async function accepts(channels, rate) {
         var timer;
-        try { return (await Promise.race([capabilities.decodingInfo({type:'media-source',audio:{contentType:'audio/mp4; codecs="'+sample+'"',channels:String(channels),samplerate:rate,bitrate:8000000}}),new Promise(function(resolve){timer=setTimeout(function(){resolve(null);},1500);})]))?.supported === true; }
+        try { return (await Promise.race([capabilities.decodingInfo({type:'file',audio:{contentType:mime,channels:String(channels),samplerate:rate,bitrate:({mp3:320000,aac:256000,opus:192000,vorbis:192000})[codec.codec]||Math.min(8000000,rate*channels*(codec.maxBitDepth||16))}}),new Promise(function(resolve){timer=setTimeout(function(){resolve(null);},1500);})]))?.supported === true; }
         catch (_) { return false; } finally { clearTimeout(timer); }
       }
-      for (var channels of [8,6,2]) { if (await accepts(channels,48000)) { codec.maxChannels=channels;codec.evidence='probed';break; } }
-      for (var rate of [192000,96000,48000,44100]) { if (await accepts(codec.maxChannels,rate)) { codec.maxSampleRate=rate;break; } }
+      // A bounded set of actual configurations; a positive 192 kHz answer does
+      // not stand in for an untested 176.4 kHz operating point.
+      for (var channels of [8,6,2]) { if (await accepts(channels,48000)) { codec.maxChannels=channels;break; } }
+      var rates=[8000,11025,12000,16000,22050,24000,32000,44100,48000,88200,96000,176400,192000];
+      var ceiling=({flac:96000,opus:48000,mp3:48000,aac:96000})[codec.codec]||192000;
+      var accepted=await Promise.all(rates.filter(function(rate){return rate<=ceiling;}).map(async function(rate){return await accepts(codec.maxChannels,rate)?rate:0;}));
+      accepted=accepted.filter(function(rate){return rate>0;});
+      if(accepted.length){codec.sampleRates=accepted;codec.maxSampleRate=Math.max.apply(null,accepted);codec.evidence='mixed';}
     }));
     profile.audioOutput.maxChannels=Math.max(profile.audioOutput.maxChannels,...profile.engines.native.audio.map(function(a){return a.maxChannels;}));
     return profile;
@@ -574,7 +598,7 @@
   // observation in one POST), and end it. Play and pause are the player's own and are reported;
   // a seek goes through the server only when it must produce the stream again. Media URLs are
   // accepted only from the server's answer. Commands share one serialized lane.
-  var directTypes = {mp3:'audio/mpeg',flac:'audio/flac',m4a:'audio/mp4',m4b:'audio/mp4',aac:'audio/aac',ogg:'audio/ogg',opus:'audio/ogg',wav:'audio/wav',webm:'video/webm',mp4:'video/mp4',m4v:'video/mp4',mov:'video/mp4'};
+  var directTypes = {mp3:'audio/mpeg',flac:'audio/flac',m4a:'audio/mp4',m4b:'audio/mp4',aac:'audio/aac',adts:'audio/aac',ogg:'audio/ogg',opus:'audio/ogg',wav:'audio/wav',webm:'video/webm',mp4:'video/mp4',m4v:'video/mp4',mov:'video/mp4'};
   /** Whether a seek must go through the server: only when something is transcoded or burned in. */
   function serverSeek(session) {
     var d = session.presentation.decision || {};
@@ -971,9 +995,18 @@
       serial(async function(){
         // Duplicate/stale completion queued before a new occurrence cannot end it.
         if(playback!==owner)return;
-        if(await advanceQueue())return;
-        try{await report('ended');}finally{notice('');await stopPlayback(true);}
-      }).catch(function(){serial(function(){if(playback===owner)return stopPlayback(true);}).catch(function(){});});
+        try {
+          if(await advanceQueue())return;
+          try{await report('ended');}finally{notice('');await stopPlayback(true);}
+        } catch(error) {
+          // A terminal queue fetch/admission/load failure is actionable. Do not
+          // leave it as a swallowed completion or advance an unrelated occurrence.
+          if(playback===owner)await stopPlayback(true).catch(function(){});
+          showError(error&&(error.code||error.message));
+          if(controllerSender)send(controllerSender,{type:'load-failed',code:'playback_failed'});
+          broadcast();
+        }
+      }).catch(function(error){showError(error&&(error.code||error.message));});
     });
     if(events.PLAYER_LOADING)manager.addEventListener(events.PLAYER_LOADING,function(){
       pictureReady=false;viewBuffering=false;activeTrackKey=null;
