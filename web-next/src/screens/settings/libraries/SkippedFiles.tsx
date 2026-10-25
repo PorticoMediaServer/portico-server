@@ -44,7 +44,17 @@ export function SkippedFiles({libraryId, api, service, isCurrent, label}: Readon
     const capture = lifetime.current;
     if (!capture || !current(capture) || running.current) return;
     running.current = true;setBusy(true);setFailed(false);
-    try {await service.selectLibrary(libraryId);if (current(capture)) await service.scan();}
+    try {
+      await service.selectLibrary(libraryId);
+      if (!current(capture)) return;
+      const selected = service.getSnapshot().selected;
+      if (selected.phase !== 'ready' || selected.data?.library.id !== libraryId) throw new Error('library_changed');
+      await service.scan();
+      if (current(capture)) {
+        const mutation = service.getSnapshot().mutation;
+        if (mutation.phase === 'error' || mutation.phase === 'ambiguous') setFailed(true);
+      }
+    }
     catch {if (current(capture)) setFailed(true);}
     finally {if (current(capture)) {running.current = false;setBusy(false);}}
   };
