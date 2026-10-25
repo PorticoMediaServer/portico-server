@@ -14,6 +14,9 @@ import {nativeInstallation} from './installation';
 import {createDesktopDownloadsHost} from './downloads-host.ts';
 import {createDesktopAppLifetime} from './app-lifetime.ts';
 import {installDesktopCloseHost} from './close-host.ts';
+import {browserViewerStorage} from '../../../web-next/src/platform/viewer-selection-storage.ts';
+import {installOfflineDownloads} from '../../../web-next/src/shell/offline-downloads.ts';
+import {offlineDownloadScope} from './offline-scope.ts';
 
 const lifetime=createDesktopAppLifetime();
 const close=()=>{void lifetime.dispose().catch(()=>console.warn('desktop_shutdown_failed'));};
@@ -38,6 +41,25 @@ async function startDesktop(){
     createRender:null,subtitleSurface:false,equalizerPort:desktopEqualizerPort,
   }));
   lifetime.retain(()=>downloads.dispose());
+  // The launch page offers this device's completed downloads from the persisted,
+  // validated scope; no server call, no player and no second downloads owner.
+  const selected=await browserViewerStorage.read().catch(()=>null);lifetime.assertCurrent();
+  const offlineScope=offlineDownloadScope(selected?.session,Date.now());
+  if(offlineScope){
+    const port=await downloads.bindOfflineDownloads(offlineScope,lifetime.signal).catch(()=>undefined);
+    if(port){
+      lifetime.retain(()=>port.dispose());
+      const listeners=new Set<()=>void>();
+      let snapshot:{phase:'loading'|'ready'|'unavailable';items:readonly {id:string;itemId:string;quality:string;bytes:number;title:string;artist:string;kind:string;onServer:boolean}[]}={phase:'loading',items:[]};
+      const publish=(next:typeof snapshot)=>{snapshot=next;for(const listener of [...listeners])listener();};
+      void port.list(new AbortController().signal).then(items=>publish(items.length?{phase:'ready',items}:{phase:'unavailable',items:[]})).catch(()=>publish({phase:'unavailable',items:[]}));
+      lifetime.retain(installOfflineDownloads({
+        subscribe:listener=>{listeners.add(listener);return()=>{listeners.delete(listener);};},
+        snapshot:()=>snapshot,
+        openFolder:()=>port.openFolder(new AbortController().signal),
+      }));
+    }
+  }
   // The original app owns all screen/router/React assembly and captured viewers.
   await lifetime.importWebApp(()=>import('../../../web-next/src/main.tsx'));
   if(import.meta.env.DEV)void import('./dev-measurement.ts').then(module=>module.installDesktopMeasurement(lifetime.signal)).catch(()=>console.warn('desktop_measurement_unavailable'));

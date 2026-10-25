@@ -57,8 +57,8 @@ export type LaunchUnreachable = Readonly<{
   startedAt: number;
   nextRetryAt: number;
   retrying: boolean;
-  /** The libraries from the last successful launch, for the top bar only. */
-  libraries?: readonly {id: string; name: string; kind: string}[];
+  /** The library names from the last successful launch for this family, for the top bar only. */
+  libraries?: readonly string[];
 }>;
 export type ShellBootstrapSnapshot = Readonly<{phase: 'restoring' | 'signed-out' | 'ready' | 'error' | 'unreachable'; binding?: ShellBindings; context?: ShellAssemblyContext; entry?: boolean; error?: unknown; unreachable?: LaunchUnreachable}>;
 
@@ -116,7 +116,7 @@ async function readFacts(api: HttpLocalApi, session: LocalSession, preferences: 
     }),
   ]);
   if (system.id !== session.viewer.serverId) throw new Error('The server identity changed.');
-  rememberShell(session.viewer.serverId, system.name, libraries.items.map(({id, name, kind}) => ({id, name, kind})));
+  rememberShell(session.sessionFamilyId, system.name, libraries.items.map(library => library.name));
   await inbox.load();
   signal.throwIfAborted();
   return {identity: {viewer: session.viewer, libraries: libraries.items, serverName: system.name, serverVersion: system.version, signIn:system.signIn, ...profile,
@@ -136,7 +136,7 @@ export class ShellBootstrap {
   private retryTimer?: ReturnType<typeof setTimeout>;
   private waitWakers?: () => void;
   private failure?: {attempt: number; firstFailureAt: number; startedAt: number; nextRetryAt: number};
-  private launch?: {address: string; owner: boolean; serverId: string};
+  private launch?: {address: string; owner: boolean; serverId: string; family?: string};
   /** Exactly the error the restore call raised; a later bug must never read as "server away". */
   private transportError?: unknown;
   constructor(private readonly assemble: ShellAssembler, private readonly environment: {
@@ -223,7 +223,7 @@ export class ShellBootstrap {
 
   private unreachable(wait: {attempt: number; firstFailureAt: number; startedAt: number; nextRetryAt: number}, category: 'unreachable' | 'offline' | 'timeout', error?: unknown): LaunchUnreachable {
     const saved = this.launch, code = displayableTransportCode((error as {code?: unknown} | null)?.code);
-    const known = saved?.serverId ? lastKnownShell(saved.serverId) : undefined;
+    const known = saved?.family ? lastKnownShell(saved.family) : undefined;
     return Object.freeze({
       ...(saved ? {serverName: saved.serverId ? browserServerDisplay().name(saved.serverId) : undefined, address: saved.address, owner: saved.owner} : {address: '', owner: false}),
       ...(known ? {serverName: known.serverName, libraries: known.libraries} : {}),
@@ -252,7 +252,7 @@ export class ShellBootstrap {
     if (!selected) { this.publish({phase: 'signed-out'}); return; }
     // Only what this saved launch already holds: the address used and the saved role.
     const viewer = selected.session?.viewer;
-    this.launch = {address: savedHost(selected.serverUrl), owner: viewer?.role === 'owner', serverId: viewer?.serverId ?? ''};
+    this.launch = {address: savedHost(selected.serverUrl), owner: viewer?.role === 'owner', serverId: viewer?.serverId ?? '', family: selected.session.sessionFamilyId};
     let restored: Awaited<ReturnType<typeof restoreBrowserConnection>>;
     try { restored = await this.environment.restore(selected.session); }
     catch (error) { this.transportError = error; throw error; }

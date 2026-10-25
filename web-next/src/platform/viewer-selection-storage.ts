@@ -1,6 +1,8 @@
 import {parseSelectedViewerRecord,selectedViewerRecord,type SelectedViewerRecord,type SelectedViewerStorage} from '@core/viewer-selection';
 import {BrowserProtectedStore,browserAppSessions} from './server-connections';
 import type {AppSessionStore} from '@core/app-sessions.ts';
+import {forgetAllShells, forgetShell} from '../shell/last-known';
+
 
 /** Signing in lasts: the selected viewer is kept for this browser, not for one tab, so closing
  * the window or restarting the computer does not sign anyone out. The server decides how long a
@@ -27,11 +29,13 @@ return {
    await store.change(()=>JSON.parse(json) as SelectedViewerRecord);
    if(JSON.stringify(await store.read())!==json)throw new Error('Server credentials could not be read back from this browser.');
   }else{
+   forgetAllShells();
    await store.change(()=>undefined);
    if((await store.read())!==undefined)throw new Error('The old server credential could not be removed from this browser.');
   }
  },
  async clearIfFamily(sessionFamilyId){
+  forgetShell(sessionFamilyId);
   // One step in the store, so a record another tab saves in the meantime is never the one removed.
   await store.change(current=>{
    if(!current)return undefined;

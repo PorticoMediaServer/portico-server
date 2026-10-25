@@ -5,6 +5,11 @@
    control here can do anything while the server is away. */
 .lastKnownBar { position: fixed; z-index: var(--layer-sticky); top: 0; inset-inline: 0; display: flex; align-items: center; gap: 12px; padding: 14px var(--shell-gutter, var(--gutter-desktop)); color: var(--color-text-secondary); background: color-mix(in srgb, var(--color-ink) 86%, transparent); backdrop-filter: blur(22px); }
 .lastKnownLibraries { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.offlineDownloads { position: fixed; z-index: var(--layer-sticky); top: 56px; left: var(--shell-gutter, var(--gutter-desktop)); right: var(--shell-gutter, var(--gutter-desktop)); max-width: 520px; padding: 16px 18px; border-radius: 16px; background: color-mix(in srgb, var(--color-ink) 88%, transparent); backdrop-filter: blur(22px); }
+.offlineDownloads h2 { margin: 0 0 8px; }
+.offlineDownloads ul { display: grid; gap: 6px; margin: 0 0 12px; padding: 0; list-style: none; overflow: hidden; }
+.offlineDownloads li { display: flex; gap: 10px; align-items: baseline; min-width: 0; }
+.offlineDownloads li b, .offlineDownloads li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .detailsHeading { margin: 26px 0 -14px; font-size: var(--type-activity-detail-size); font-weight: var(--type-row-heading-weight); color: var(--color-text-tertiary); }
 .toastWrap { position: fixed; z-index: var(--layer-notice); left: 64px; bottom: 28px; max-width: min(520px,calc(100vw - 32px)); }
 @media (max-width: 1023px) {

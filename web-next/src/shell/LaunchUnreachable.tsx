@@ -6,6 +6,7 @@ import {DetailsPanel, StateLayout, type DetailsFact} from '../kit/states';
 import type {LaunchUnreachable} from './bootstrap';
 import {retryProgress, retrySeconds} from './connection-retry';
 import {useShellWidth} from './viewport';
+import {useOfflineDownloads} from './offline-downloads';
 import styles from './states.module.css';
 
 const t = defaultI18n.t;
@@ -23,6 +24,12 @@ export function LaunchUnreachableScreen({facts, onRetry, onSwitchServer, now: fi
   initialDetailsOpen?: boolean;
 }) {
   const width = useShellWidth(), [tick, setTick] = useState(() => Date.now()), [detailsOpen, setDetailsOpen] = useState(initialDetailsOpen), [copied, setCopied] = useState(false);
+  const offlinePort = useOfflineDownloads(), [offline, setOffline] = useState(() => offlinePort?.snapshot());
+  useEffect(() => {
+    if (!offlinePort) { setOffline(undefined); return; }
+    setOffline(offlinePort.snapshot());
+    return offlinePort.subscribe(() => setOffline(offlinePort.snapshot()));
+  }, [offlinePort]);
   const now = fixedNow ?? tick, waiting = !facts.retrying;
   const computerOffline = facts.category === 'offline' || globalThis.navigator?.onLine === false;
   useEffect(() => {
@@ -50,8 +57,13 @@ export function LaunchUnreachableScreen({facts, onRetry, onSwitchServer, now: fi
     {facts.libraries && facts.libraries.length > 0 && <div className={styles.lastKnownBar} data-last-known-bar role="status">
       <ServerMark size={20} />
       <b>{facts.serverName ?? ''}</b>
-      <span className={styles.lastKnownLibraries}>{facts.libraries.map(library => library.name).join(' · ')}</span>
+      <span className={styles.lastKnownLibraries}>{facts.libraries.join(' · ')}</span>
     </div>}
+    {offline && offline.items.length > 0 && <section className={styles.offlineDownloads} data-offline-downloads aria-label={t('next.shell.downloads')}>
+      <h2>{t('next.shell.downloads')}</h2>
+      <ul>{offline.items.map(row => <li key={row.id}><b>{row.title}</b>{row.artist ? <span>{row.artist}</span> : null}</li>)}</ul>
+      <button type="button" onClick={() => { void offlinePort?.openFolder().catch(() => {}); }}>{t('next.saved.folder')}</button>
+    </section>}
     <StateLayout className={styles.page} backdrop={{kind: 'colour', shape: 'side'}} tone="warning" icon="i-srvoff"
       contentStyle={{top: width >= 1024 ? 500 : 250}}
       title={computerOffline ? t('next.states.thisComputerOffline') : facts.serverName ? t('next.states.cantReach', {server: facts.serverName}) : t('next.states.cantReachServer')}
