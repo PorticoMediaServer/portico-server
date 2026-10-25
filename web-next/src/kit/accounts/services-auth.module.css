@@ -185,6 +185,3 @@
   .stateIcon { width: 76px; height: 76px; margin-bottom: 22px; box-shadow: 0 0 0 10px rgba(134,207,179,.05); }
 }
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
-
-/* auth.html:137 .prov.google — Google's own dark variant (its guidelines allow both). */
-.provider[data-provider="google"] { background: #131314; color: #e3e3e3; box-shadow: inset 0 0 0 1px #5f6368; }
