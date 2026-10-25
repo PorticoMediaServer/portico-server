@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState, useSyncExternalStore} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {Button} from '../../kit/controls';
 import {useRouterState} from '@tanstack/react-router';
@@ -40,6 +40,8 @@ import {SettingsApiKeysSource} from './server/integrations/api-keys-source';
 import {SettingsWebhooksSource} from './server/integrations/webhooks-source';
 import {MissingTitles} from './server/MissingTitles';
 import {SettingsMissingSource} from './server/missing-source';
+import {SettingsUpdatesSource} from './server/updates-source';
+import {UpdatesCheckNow, UpdatesCurrent} from './server/GeneralUpdates';
 import {SettingsHardwareSource} from './hardware/hardware-source';
 import {HardwareDevices, TestHardware, TranscodeFolder} from './hardware/HardwareRows';
 import {hardwareEligible, hardwareRowIds, hardwareRowState} from './hardware/hardware-rows';
@@ -118,6 +120,19 @@ export function SettingsEntry() {
   const reportTimeZone = preferences && shellLanguage(preferences).region.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const raw = Object.fromEntries(new URLSearchParams(location.searchStr));
   const route = settingsRoute(location.pathname === '/dashboard' ? {scope: 'server', section: 'dashboard'} : raw, () => true);
+  // The owner's update reader is retired in a layout pass the moment any
+  // captured identity, scope or route changes, before the next paint: the
+  // passive cleanup alone could let the old reader write while the page
+  // already shows the next one.
+  const updatesLife = useRef<SettingsUpdatesSource>();
+  useLayoutEffect(() => () => {
+    const held = updatesLife.current;
+    updatesLife.current = undefined;
+    held?.dispose();
+  }, [context, retry, route.scope, route.section, !!preferences, reportTimeZone, context?.facts.identity.primaryProfile,
+    context?.facts.identity.capabilities?.manageServer, context?.facts.identity.capabilities?.managePeople,
+    context?.facts.identity.capabilities?.manageSignIn, context?.facts.identity.signIn,
+    context?.session().viewer.role, context?.session().viewer.serverId, context?.session().viewer.authority, context?.session().viewer.accountId, context?.session().viewer.profileId]);
   useEffect(() => {
     const reader = context?.preferences, snapshot = reader?.getSnapshot('web');
     if (!context || !reader || !snapshot || !context.isCurrent()) return;
@@ -220,6 +235,12 @@ export function SettingsEntry() {
     const hardware = route.section === 'streaming' && role === 'owner' && identity.primaryProfile === true && identity.capabilities?.manageServer === true
       ? new SettingsHardwareSource(context.api, () => current(), reportError) : undefined;
     if (hardware) void hardware.load();
+    // Server › General › Updates: the cached report the page reads, and one
+    // explicit feed check only when the owner presses Check now.
+    const updates = route.section === 'general' && role === 'owner' && identity.primaryProfile === true && identity.capabilities?.manageServer === true
+      ? new SettingsUpdatesSource(context.api, () => current(), reportError) : undefined;
+    updatesLife.current = updates;
+    if (updates) void updates.load();
     // The conversion folder the server stores, read from the runtime form the
     // controller owns, so the drawn location choice follows the save at once.
     const storedDirectory = (): string | undefined => {
@@ -272,6 +293,8 @@ export function SettingsEntry() {
         if (row.id === 'signin.people') return <Button size="small" variant="glass" disabled={state.disabled} onClick={() => {if (current()) openSettingsRow({scope: 'server', section: 'people'});}}>{defaultI18n.t(row.control.label ?? row.label)}</Button>;
         if (row.id === 'signin.outside') return <Button size="small" variant="glass" disabled={state.disabled} onClick={() => {if (current()) openSettingsRow({scope: 'server', section: 'remote'});}}>{defaultI18n.t(row.control.label ?? row.label)}</Button>;
         if (row.id === 'signin.dataFolder' && signinStorage) return <StorageDataFolder source={signinStorage} label={defaultI18n.t(row.label)} />;
+        if (row.id === 'general.version' && updates) return <UpdatesCurrent source={updates} />;
+        if (row.id === 'general.checkNow' && updates) return <UpdatesCheckNow source={updates} label={defaultI18n.t(row.control.label ?? row.label)} disabled={state.disabled === true} />;
         if (['signin.switchToPortico', 'signin.startOverPortico'].includes(row.id) && signIn?.ownerSwitch) return <OwnerSignInSwitch source={signIn.ownerSwitch} startOver={row.id === 'signin.startOverPortico'} isCurrent={current} onError={reportError}/>;
         if (['signin.switchToLocal', 'signin.startOverLocal'].includes(row.id) && signIn?.ownerSwitch) return <LocalMoveSwitch source={signIn.ownerSwitch} startOver={row.id === 'signin.startOverLocal'} isCurrent={current} onError={reportError}/>;
         if (row.id === 'signin.changeOwner' && signIn?.ownerSwitch) return <ChangeOwner source={signIn.ownerSwitch} isCurrent={current} onError={reportError}/>;
@@ -403,7 +426,7 @@ export function SettingsEntry() {
       },
     };
     setFailure(false);setOwned({context, settings, dashboard, profiles});
-    return () => {active = false;profileDevices?.dispose();otherDeviceSignOut?.dispose();offRestrictions?.();restrictions?.dispose();offProfileFailures?.();profiles?.dispose();previewLife.abort();signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();intros?.dispose();server?.dispose();troubleshooting?.dispose();playbackProblems?.dispose();live?.dispose();integrationKeys?.dispose();webhooks?.dispose();missing?.dispose();hardware?.dispose();controller.dispose();};
+    return () => {active = false;profileDevices?.dispose();otherDeviceSignOut?.dispose();offRestrictions?.();restrictions?.dispose();offProfileFailures?.();profiles?.dispose();previewLife.abort();signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();intros?.dispose();server?.dispose();troubleshooting?.dispose();playbackProblems?.dispose();live?.dispose();integrationKeys?.dispose();webhooks?.dispose();updates?.dispose();missing?.dispose();hardware?.dispose();controller.dispose();};
   // The captured identity decides which sections exist (main profile, manageServer,
   // role). It can be replaced without the assembly context object changing, so
   // every fact the gate reads is a dependency: a newer identity must rebuild the

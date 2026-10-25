@@ -36,3 +36,7 @@
   .backupFolder .storagePath { flex-basis: 100%; white-space: normal; overflow-wrap: anywhere; }
   .backupNow .backupProgress { flex-basis: 100%; max-width: none; }
 }
+
+/* General › Updates: the build this server runs and the pressed check. */
+.updatesValue { font-size: var(--type-row-subtitle-size); color: var(--color-text-secondary); }
+.updatesAction { display: inline-flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
