@@ -90,8 +90,10 @@ export function WatchOptions({model,context,i18n,reportError,openSettings,info}:
     items={model.speed.map(row=>({value:row.id,label:row.label,disabled:!row.enabled}))}
     onValueChange={id=>{try{model.selectSpeed(id);}catch(error){reportError(error);}}}/>
    </div>:<><RadioRows rows={sectionRows(section)} select={id=>sectionSelect(section,id)} reportError={reportError} label={sectionTitle(section)}/>{section==='quality'&&model.qualityNotes.length>0&&<div className={styles.optionFoot}>{model.qualityNotes.map(note=><span key={note}>{note}</span>)}</div>}{section==='audio'&&model.audioNotes.length>0&&<div className={styles.optionFoot}>{model.audioNotes.map(note=><span key={note}>{note}</span>)}</div>}</>}</div>:null;
- const titleActions:readonly Readonly<{id:string;label:string;icon:IconName;action:()=>void|Promise<void>}>[]=[
-  ...(context.available?.includes('episodes')?[{id:'episodes',label:t('next.music.upNext'),icon:'i-stack' as const,action:()=>context.show('episodes')}]:[]),
+ // desktop-player f7: the sheet's own "Up next" row carries the queue's real remaining count.
+ const remaining=context.snapshot.queueView?.remainingCount,upNext=typeof remaining==='number'&&Number.isInteger(remaining)&&remaining>0?i18n.number(remaining):undefined;
+ const titleActions:readonly Readonly<{id:string;label:string;icon:IconName;action:()=>void|Promise<void>;value?:string}>[]=[
+  ...(context.available?.includes('episodes')?[{id:'episodes',label:t('next.dock.queue'),icon:'i-queue' as const,...(upNext?{value:upNext}:{}),action:()=>context.show('episodes')}]:[]),
   ...(info?[{id:'info',label:t('next.info.title'),icon:'i-info' as const,action:()=>context.show('info')}]:[]),
   ...(context.reportProblem?[{id:'report',label:context.reportProblem.label,icon:'i-flag' as const,action:context.reportProblem.action}]:[]),
  ];
@@ -116,7 +118,7 @@ export function WatchOptions({model,context,i18n,reportError,openSettings,info}:
    {titleActions.map(action=><button key={action.id} type="button" className={styles.phoneRow} onClick={()=>{
     if(!model.isCurrent())return;
     try{if(action.id==='report')context.close();void Promise.resolve(action.action()).catch(reportError);}catch(error){reportError(error);}
-   }}><span className={styles.phoneIcon}><Icon name={action.icon} size={18}/></span><span className={styles.phoneLabel}>{action.label}</span><Icon name="i-right" size={18}/></button>)}
+   }}><span className={styles.phoneIcon}><Icon name={action.icon} size={18}/></span><span className={styles.phoneLabel}>{action.label}</span>{action.value&&<span className={styles.phoneValue}>{action.value}</span>}<Icon name="i-right" size={18}/></button>)}
   </section>}
 
  </div>;
