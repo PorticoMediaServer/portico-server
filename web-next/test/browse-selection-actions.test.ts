@@ -25,3 +25,42 @@ test('one job command carries exactly one personal fact', async () => {
   await assert.rejects(actions.personal({target: explicit(['movie'])} as never, {watched: true, favorite: true}, signal), (error: unknown) => error instanceof SelectionActionError && error.code === 'mixed-personal-command');
   await assert.rejects(actions.personal({target: explicit(['movie'])} as never, {watched: true}, AbortSignal.abort()), (error: unknown) => error instanceof SelectionActionError && error.code === 'cancelled');
 });
+
+const completeJob = {jobId: 'job-1', command: 'personal-state', state: 'complete', total: 1, totalKnown: true, done: 1, failed: 0};
+const ports = {events: {on: () => () => {}}, isCurrent: () => true, reportError: () => {}};
+
+test('concurrent planning shares one submission and uncertain retry preserves its body', async () => {
+  const bodies: unknown[] = [];
+  let ids = 0;
+  const actions = createSelectionActions({...ports, requestId: async () => `op-${++ids}`, api: {request: async (_path, _method, body) => {
+    bodies.push(body);
+    if (bodies.length === 1) throw new Error('lost response');
+    return completeJob;
+  }}});
+  const operation = {target: explicit(['movie'])} as never;
+  const first = await Promise.allSettled([actions.personal(operation, {watched: true}), actions.personal(operation, {watched: true})]);
+  assert.deepEqual(first.map(result => result.status), ['rejected', 'rejected']);
+  assert.equal(bodies.length, 1);
+  assert.equal((await actions.personal(operation, {watched: true})).updated, 1);
+  assert.deepEqual(bodies[1], bodies[0]);
+  assert.equal(ids, 1);
+});
+
+test('known job resumes with GET and a retired operation performs zero retry I/O', async () => {
+  const calls: string[] = [];
+  let current = true;
+  const actions = createSelectionActions({...ports, requestId: async () => 'op', api: {request: async (_path, method = 'GET') => {
+    calls.push(method);
+    if (calls.length === 1) return {...completeJob, state: 'running', done: 0};
+    if (calls.length === 2) throw new Error('poll lost');
+    return completeJob;
+  }}});
+  const operation = {target: explicit(['movie'])} as never;
+  await assert.rejects(actions.personal(operation, {favorite: true}, undefined, () => current), /poll lost/);
+  current = false;
+  await assert.rejects(actions.personal(operation, {favorite: true}, undefined, () => current), /cancelled/);
+  assert.deepEqual(calls, ['POST', 'GET']);
+  current = true;
+  await actions.personal(operation, {favorite: true}, undefined, () => current);
+  assert.deepEqual(calls, ['POST', 'GET', 'GET']);
+});
