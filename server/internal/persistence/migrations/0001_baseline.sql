@@ -8440,13 +8440,13 @@ END;
 CREATE TRIGGER reading_attribution_reading_source_values_update BEFORE UPDATE ON reading_source_values BEGIN
  UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=OLD.item_id)) OR (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.item_id));
 END;
-CREATE TRIGGER reading_attribution_reading_publication_types_insert BEFORE INSERT ON reading_publication_types BEGIN
+CREATE TRIGGER reading_attribution_reading_publication_types_insert AFTER INSERT ON reading_publication_types BEGIN
  UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.item_id));
 END;
-CREATE TRIGGER reading_attribution_reading_publication_types_delete BEFORE DELETE ON reading_publication_types BEGIN
+CREATE TRIGGER reading_attribution_reading_publication_types_delete AFTER DELETE ON reading_publication_types BEGIN
  UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=OLD.item_id));
 END;
-CREATE TRIGGER reading_attribution_reading_publication_types_update BEFORE UPDATE ON reading_publication_types BEGIN
+CREATE TRIGGER reading_attribution_reading_publication_types_update AFTER UPDATE ON reading_publication_types BEGIN
  UPDATE reading_attribution_state SET input_generation=input_generation+1,phase='scan' WHERE (library_id IN(SELECT library_id FROM catalog_entities WHERE id=OLD.item_id)) OR (library_id IN(SELECT library_id FROM catalog_entities WHERE id=NEW.item_id));
 END;
 CREATE TRIGGER reading_attribution_catalog_asset_links_insert BEFORE INSERT ON catalog_asset_links BEGIN
