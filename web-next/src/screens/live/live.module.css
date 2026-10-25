@@ -124,7 +124,7 @@
 @media (max-width: 599px) {
   .guideHeader, .guideChips, .guideTime { padding-inline: 18px; }
   .guideHeader { gap: 12px; flex-wrap: wrap; }
-  .guideHeader h1 { font-size: 26px; }
+  .guideHeader h1 { font-size: var(--type-title-size); }
   .guideHeader .guideSwitcher { flex-basis: 100%; }
   .guideChips { flex-wrap: nowrap; }
   .guideStepper { display: none; }
