@@ -157,6 +157,8 @@ export type ServerSettingRow = Readonly<{
   control: ServerControl;
   /** Shown only while another value of the same form matches. */
   when?: Readonly<{key: string; equals?: unknown; not?: unknown}>;
+  /** Visible but editable only while another key of the same form's draft holds one of these values; otherwise dimmed. */
+  enableWhen?: Readonly<{key: string; in: readonly unknown[]}>;
 }>;
 
 export type SettingsSection = Readonly<{id: string; title?: MessageId; /** A sentence under the title. */ description?: MessageId; /** A quiet group below the rest ("Advanced"), collapsed until asked for. */ advanced?: boolean; /** The sub-page this section belongs to, on a page that has them. */ tab?: string; rows: readonly SettingsRow[]}>;
@@ -417,7 +419,7 @@ const accountPages: readonly AuthoredPage[] = [
 
 const TV_SERVER_PAGES = new Set(['dashboard']);
 const panel = (id: string, panelId: SettingsCustomId, title?: MessageId, more: Only & {tab?: string; description?: MessageId; administrators?: boolean} = {}): AuthoredSection => ({id, ...(title ? {title} : {}), rows: [custom(panelId, title)], ...more});
-const setting = (form: ServerFormId, key: string, label: MessageId, control: ServerControl, more: {help?: MessageId; when?: ServerSettingRow['when']} = {}): Authored<SettingsRow> => ({kind: 'server-setting', form, key, label, control, ...more});
+const setting = (form: ServerFormId, key: string, label: MessageId, control: ServerControl, more: {help?: MessageId; when?: ServerSettingRow['when']; enableWhen?: ServerSettingRow['enableWhen']} = {}): Authored<SettingsRow> => ({kind: 'server-setting', form, key, label, control, ...more});
 const on = (form: ServerFormId, key: string, label: MessageId, help?: MessageId, when?: ServerSettingRow['when']) => setting(form, key, label, {type: 'switch'}, {...(help ? {help} : {}), ...(when ? {when} : {})});
 const choices = (prefix: string, values: readonly string[]): SettingsChoice[] => values.map(value => ({value, label: `${prefix}.${value}` as MessageId}));
 const unlimited = {stores: null, placeholder: 'settings.server.unlimited'} as const;
@@ -561,9 +563,9 @@ const serverPages: readonly AuthoredPage[] = [
     // has it, whatever its sign-in; on a Portico Account server it is an extra route.
     {id: 'ownCertificate', title: 'next.settingsSpec.server.remote.groups.1.title', rows: [
       setting('connectivity', 'ownAddressEnabled', 'next.settingsSpec.server.remote.groups.1.rows.0.label', {type: 'switch'}, {help: 'next.settingsSpec.server.remote.groups.1.rows.0.help'}),
-      setting('connectivity', 'customCertificateDomain', 'next.settingsSpec.server.remote.groups.1.rows.0.children.0.label', {type: 'text', mono: true, example: 'https://media.example.com'}, {help: 'next.settingsSpec.server.remote.groups.1.rows.0.children.0.help'}),
-      setting('connectivity', 'customCertificatePath', 'next.settingsSpec.server.remote.groups.1.rows.0.children.1.label', {type: 'text', mono: true, example: '/config/certs/fullchain.pem'}, {help: 'next.settingsSpec.server.remote.groups.1.rows.0.children.1.help'}),
-      setting('connectivity', 'customCertificateKeyPath', 'next.settingsSpec.server.remote.groups.1.rows.0.children.2.label', {type: 'text', mono: true, example: '/config/certs/privkey.pem'}, {help: 'next.settingsSpec.server.remote.groups.1.rows.0.children.2.help'}),
+      setting('connectivity', 'customCertificateDomain', 'next.settingsSpec.server.remote.groups.1.rows.0.children.0.label', {type: 'text', mono: true, example: 'https://media.example.com'}, {help: 'next.settingsSpec.server.remote.groups.1.rows.0.children.0.help', enableWhen: {key: 'ownAddressEnabled', in: [true]}}),
+      setting('connectivity', 'customCertificatePath', 'next.settingsSpec.server.remote.groups.1.rows.0.children.1.label', {type: 'text', mono: true, example: '/config/certs/fullchain.pem'}, {help: 'next.settingsSpec.server.remote.groups.1.rows.0.children.1.help', enableWhen: {key: 'ownAddressEnabled', in: [true]}}),
+      setting('connectivity', 'customCertificateKeyPath', 'next.settingsSpec.server.remote.groups.1.rows.0.children.2.label', {type: 'text', mono: true, example: '/config/certs/privkey.pem'}, {help: 'next.settingsSpec.server.remote.groups.1.rows.0.children.2.help', enableWhen: {key: 'ownAddressEnabled', in: [true]}}),
       custom('server.ownCertificateStatus', 'next.settingsSpec.server.remote.groups.1.rows.0.children.3.label'),
     ]},
     panel('account', 'server.accountConnection', 'web.general.accountConnection'),
@@ -776,6 +778,15 @@ export function serverRowShown(row: ServerSettingRow, value: (key: string) => un
   if (!row.when) return true;
   const other = value(row.when.key);
   return 'equals' in row.when ? other === row.when.equals : other !== row.when.not;
+}
+
+/**
+ * Whether a server-setting row is editable against this draft. Absent `enableWhen`, always;
+ * otherwise while its key holds one of the listed values. This never hides the row.
+ */
+export function serverRowEnabled(row: ServerSettingRow, value: (key: string) => unknown): boolean {
+  if (!row.enableWhen) return true;
+  return row.enableWhen.in.includes(value(row.enableWhen.key));
 }
 
 export type SettingsMatch = Readonly<{address: string; pageTitle: string; rowId: string; label: string}>;
