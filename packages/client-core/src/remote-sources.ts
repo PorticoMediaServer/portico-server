@@ -84,6 +84,36 @@ export function s3SourceDraft(fields:S3SourceFields):S3SourceDraft|undefined{
  return Object.freeze({remote:`portico:${bucket}${folder?`/${folder}`:''}`,config});
 }
 
+/** The drawn Google Drive form: the owner's own service-account key and where
+ * the files are. Portico writes the rclone section; the key is never shown back. */
+export type DriveKeyFields=Readonly<{name:string;keyJson:string;location:'folder'|'drive';locationId:string}>;
+export type DriveKeyDraft=Readonly<{remote:string;config:string;email:string}>;
+export type DriveKeyResult=Readonly<{ok:true;draft:DriveKeyDraft}|{ok:false;reason:'json'|'oauth'|'type'|'email'|'key'|'location'}>;
+const driveLocationId=/^[A-Za-z0-9_-]{1,200}$/;
+/**
+ * One Google Drive source signed in with the owner's own service-account key.
+ * The key is parsed, never authored: it must be a `service_account` JSON object
+ * with a real address and private key, and the section carries it compactly so
+ * it is one INI value. OAuth client files are told apart, not accepted here.
+ */
+export function driveServiceAccountDraft(fields:DriveKeyFields):DriveKeyResult{
+ let parsed:unknown;
+ try{parsed=JSON.parse(fields.keyJson);}catch{return Object.freeze({ok:false,reason:'json'});}
+ if(!record(parsed))return Object.freeze({ok:false,reason:'json'});
+ if(parsed.type!=='service_account')return Object.freeze({ok:false,reason:record(parsed.installed)||record(parsed.web)?'oauth':'type'});
+ const email=parsed.client_email;
+ if(!text(email,320)||!/^[^@\s]+@[^@\s]+$/.test(email))return Object.freeze({ok:false,reason:'email'});
+ const key=parsed.private_key;
+ if(typeof key!=='string'||key.length<64||key.length>16_384||!key.includes('BEGIN PRIVATE KEY'))return Object.freeze({ok:false,reason:'key'});
+ const locationId=fields.locationId.trim();
+ if(!driveLocationId.test(locationId))return Object.freeze({ok:false,reason:'location'});
+ const credentials=JSON.stringify(parsed);
+ if(credentials.length>60_000||/[\r\n]/.test(credentials))return Object.freeze({ok:false,reason:'key'});
+ const target=fields.location==='drive'?`team_drive = ${locationId}`:`root_folder_id = ${locationId}`;
+ const config=['[portico]','type = drive','scope = drive.readonly',`service_account_credentials = ${credentials}`,target].join('\n')+'\n';
+ return Object.freeze({ok:true,draft:Object.freeze({remote:'portico:',config,email})});
+}
+
 /** The four drawn choices, exactly the server's own SourceReadPreset values. */
 export function sourceReadPreset(name:SourceReadPreset):SourceReadValues{return Object.freeze({...sourceReadPresets[name]});}
 export function sourceReadPresetName(values:SourceReadValues):SourceReadPreset|undefined{

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {RemoteSourceService,readSourceAvailability,s3SourceDraft,sourceAvailabilityMessage} from '../src/remote-sources.ts';
+import {RemoteSourceService,driveServiceAccountDraft,readSourceAvailability,s3SourceDraft,sourceAvailabilityMessage} from '../src/remote-sources.ts';
 import type {LibraryContentApi} from '../src/library-content.ts';
 const scope={serverId:'server',viewerId:'owner'},wire={serverId:'server',viewerFence:'fence'};
 const op='1788580000000-12345678-1234-1234-1234-123456789012';
@@ -567,4 +567,29 @@ test('the drawn S3 fields build the section and remote the server validates',()=
  ]){
   assert.equal(s3SourceDraft({...fields,...patch}),undefined,JSON.stringify(patch));
  }
+});
+
+test('the drawn Google service-account key is parsed, never authored',()=>{
+ const key={type:'service_account',project_id:'portico-media-4821',private_key_id:'abc',
+  private_key:'-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7\n-----END PRIVATE KEY-----\n',
+  client_email:'portico-reader@portico-media-4821.iam.gserviceaccount.com',client_id:'1234567890',token_uri:'https://oauth2.googleapis.com/token'};
+ const fields={name:'Drive archive',keyJson:JSON.stringify(key,undefined,2),location:'folder' as const,locationId:'1xYz9aBcDeFgHiJkLmNoPqRsTuVwXyZ0a'};
+ const result=driveServiceAccountDraft(fields);
+ assert(result.ok,'a real key builds');
+ assert.equal(result.draft.email,'portico-reader@portico-media-4821.iam.gserviceaccount.com');
+ assert.equal(result.draft.remote,'portico:');
+ assert.match(result.draft.config,/^\[portico\]\ntype = drive\nscope = drive\.readonly\nservice_account_credentials = \{/);
+ assert.match(result.draft.config,/\nroot_folder_id = 1xYz9aBcDeFgHiJkLmNoPqRsTuVwXyZ0a\n$/);
+ assert.equal(result.draft.config.split('\n').filter(line=>line.startsWith('service_account_credentials')).length,1);
+ const sharedDrive=driveServiceAccountDraft({...fields,location:'drive',locationId:'0AJexample_sharedDrive'});
+ assert(sharedDrive.ok);
+ assert.match(sharedDrive.draft.config,/\nteam_drive = 0AJexample_sharedDrive\n$/);
+ assert(!sharedDrive.draft.config.includes('root_folder_id'));
+ const reason=(value:ReturnType<typeof driveServiceAccountDraft>)=>value.ok?'':value.reason;
+ assert.equal(reason(driveServiceAccountDraft({...fields,keyJson:'not json'})),'json');
+ assert.equal(reason(driveServiceAccountDraft({...fields,keyJson:JSON.stringify({...key,type:'authorized_user'})})),'type');
+ assert.equal(reason(driveServiceAccountDraft({...fields,keyJson:JSON.stringify({installed:{client_id:'x'}})})),'oauth');
+ assert.equal(reason(driveServiceAccountDraft({...fields,keyJson:JSON.stringify({...key,client_email:'not-an-email'})})),'email');
+ assert.equal(reason(driveServiceAccountDraft({...fields,keyJson:JSON.stringify({...key,private_key:'short'})})),'key');
+ assert.equal(reason(driveServiceAccountDraft({...fields,locationId:'has space'})),'location');
 });

@@ -110,3 +110,12 @@ test('the S3 kind has its drawn fields and its own refusal words', () => {
   assert.match(defaultI18n.t('next.remoteSources.s3Checks'), /nothing is typed in rclone/);
   assert.match(defaultI18n.t('next.remoteSources.s3Invalid'), /Check the endpoint/);
 });
+
+test('the Google Drive service-account kind has its drawn words', () => {
+  assert.equal(defaultI18n.t('next.remoteSources.connectDrive'), 'Google Drive');
+  assert.equal(defaultI18n.t('next.remoteSources.driveServiceAccount'), 'Service account key');
+  assert.match(defaultI18n.t('next.remoteSources.driveKeyHelp'), /never shows it again/);
+  assert.match(defaultI18n.t('next.remoteSources.driveKeyOAuth'), /OAuth client, not a service account key/);
+  assert.match(defaultI18n.t('next.remoteSources.driveCannotSee'), /shared with the address above/);
+  assert.match(defaultI18n.t('next.remoteSources.driveOAuthUnavailable'), /not available on this server yet/);
+});
