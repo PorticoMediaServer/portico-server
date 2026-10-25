@@ -31,6 +31,9 @@ END;`
 // Semantic tests beside those consumers verify behavior; this guard catches new
 // unowned fields and consumer removal. It is not a substitute for runtime tests.
 var settingConsumers = map[string]settingConsumer{
+	"metadata.MetadataSettingsUpdate.libraries.lyricsSource":                 {"internal/lyrics/bulk.go", "literal:lyrics_source", "Fence lyric acquisition with the selected library source"},
+	"metadata.MetadataSettingsUpdate.libraries.episodeThumbnailMode":         {"internal/metadata/runtime_libraries.go", "ApplyEpisodeThumbnailModeTx", "Apply the library's canonical episode-thumbnail publication policy"},
+	"metadata.MetadataSettingsUpdate.libraries.scrubPreviews":                {"internal/metadata/runtime_libraries.go", "ApplyScanPolicyTx", "Add or remove trickplay from the library's admitted scan operations"},
 	"metadata.MetadataSettingsUpdate.artworkLanguage":                        {"internal/metadata/artwork_preference.go", "literal:artwork_language", "Rank automatic artwork by the saved language without replacing owner choices"},
 	"metadata.MetadataSettingsUpdate.artworkPreference":                      {"internal/metadata/artwork_preference.go", "literal:artwork_preference", "Choose online versus folder automatic artwork while preserving owner selections"},
 	"metadata.MetadataSettingsUpdate.onlineLookups":                          {"internal/localonly/localonly.go", "literal:online_lookups", "Admit online acquisition and fence publication with the current policy epoch"},
