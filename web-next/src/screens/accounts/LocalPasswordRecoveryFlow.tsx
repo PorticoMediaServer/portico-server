@@ -1,4 +1,4 @@
-import {useEffect, useId, useRef, useState, useSyncExternalStore} from 'react';
+import {useCallback, useEffect, useId, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {passwordStrength} from '@core/password-strength.ts';
 import type {ResetFileLocation} from '@core/account-reset.ts';
@@ -23,18 +23,18 @@ export function LocalPasswordRecoveryFlow({entry, form, onBack}: LocalPasswordRe
   const captured = useRef({entry, origin: state.origin, serverId: state.server?.id, pin: state.pin}).current;
   const [file, setFile] = useState<ResetFileLocation>(), [owner, setOwner] = useState(input.username), [error, setError] = useState<unknown>();
   const alive = useRef(true), pending = useRef(false), ownerPending = useRef(false);
-  const sameEntry = () => {
+  const sameEntry = useCallback(() => {
     const current = entry.getSnapshot();
     return captured.entry === entry && captured.origin === current.origin && captured.serverId === current.server?.id
       && Boolean(captured.pin) && captured.pin === current.pin && current.server?.signIn === 'local' && !current.invitation;
-  };
+  }, [captured, entry]);
   useEffect(() => {
     alive.current = true;
     return () => {
       alive.current = false;
       if (sameEntry() && (ownerPending.current || entry.getSnapshot().phase === 'owner-reset-password')) entry.cancelLocalOwnerReset();
     };
-  }, [entry]);
+  }, [entry, sameEntry]);
   const available = () => alive.current && sameEntry() && !pending.current && !entry.getSnapshot().busy && !form.getSnapshot().busy;
   const back = () => {
     if (!alive.current || !sameEntry()) return;
