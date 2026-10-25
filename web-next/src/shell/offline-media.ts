@@ -3,9 +3,9 @@
  * It draws into one visible element through the same `PlaybackMediaOwner` the player
  * screen uses, and runs the local-only runtime (`LocalPlaybackRuntime`) beside the online
  * stack. There is no second player, queue or store: the desktop host supplies its own
- * `createPlayer` factory and the app-owned download broker as the local port. The runtime
- * is terminal once it retires, and the host reports the actual retirement so the next
- * native owner can await it before commanding the device.
+ * `createPlayer` factory and the app-owned download broker as the local port. This owner is
+ * the exclusive device owner, so it adopts without the app retirement gate; the online
+ * owner's adoption awaits this host's actual retirement first.
  */
 import {localPlaybackScope, type LocalPlaybackScope} from '../../../packages/player-core/src/index.ts';
 import {LocalPlaybackRuntime, type LocalRuntimeEnvironment} from '../platform/playback/local-runtime.ts';
@@ -22,12 +22,14 @@ export type OfflineMediaLifetime = Readonly<{signal: AbortSignal; isCurrent(): b
 const idle: OfflineMediaSnapshot = Object.freeze({phase: 'idle'});
 
 export class OfflineMediaHost {
-  private readonly owner = new PlaybackMediaOwner<HTMLVideoElement>();
+  // `null`: this is the device's exclusive owner, so it must not await its own retirement.
+  private readonly owner = new PlaybackMediaOwner<HTMLVideoElement>(null);
   private readonly scope: LocalPlaybackScope;
   private readonly listeners = new Set<() => void>();
   private runtime?: LocalPlaybackRuntime;
-  private element?: HTMLVideoElement;
+  private surface?: HTMLVideoElement;
   private attachment?: () => void;
+  private attachSerial = 0;
   private live = true;
   private retirement?: Promise<void>;
 
@@ -37,39 +39,48 @@ export class OfflineMediaHost {
     environment: LocalRuntimeEnvironment;
     isCurrent: () => boolean;
     reportError: (error: unknown) => void;
-    /** The actual retirement task, handed to the next native owner as its barrier. */
-    onRetire?: (task: Promise<void>) => void;
   }>) {
     this.scope = localPlaybackScope(options.scope);
   }
 
   /** The one element this host draws into, while it is attached. */
-  element(): HTMLVideoElement | undefined { return this.element; }
+  get element(): HTMLVideoElement | undefined { return this.surface; }
 
-  get mounted(): boolean { return !!this.element && !!this.runtime?.mounted; }
+  get mounted(): boolean { return !!this.surface && !!this.attachment && !!this.runtime?.mounted; }
+
+  /** False once this owner has started leaving the device. */
+  get active(): boolean { return this.live; }
 
   /** Attach (or release) the page's visible element. A release starts the terminal
-   * retirement, so nothing here may draw into a later element in this window. */
+   * retirement; a rerender with the same element is a no-op. */
   attach(element: HTMLVideoElement | null): void {
-    if (element === this.element) return;
+    if (element === this.surface) return;
     if (!element) { this.detach(); void this.retire().catch(error => this.options.reportError(error)); return; }
-    if (!this.live || this.retirement) { this.options.reportError(new Error('offline_media_retiring')); return; }
+    if (!this.live) { this.options.reportError(new Error('offline_media_retiring')); return; }
     this.detach();
-    const runtime = this.runtime ?? this.create();
-    this.element = element;
-    try { this.attachment = this.owner.adopt(runtime, element); }
-    catch (error) { this.element = undefined; this.options.reportError(error); }
-    this.notify();
+    const runtime = this.runtime ?? (this.runtime = this.create());
+    const token = ++this.attachSerial;
+    this.surface = element;
+    void this.owner.adopt(runtime, element).then(release => {
+      // A stale attachment must not draw into a newer element; release it exactly once.
+      if (token !== this.attachSerial || this.surface !== element) { release?.(); return; }
+      this.attachment = release;
+      this.notify();
+    }, error => {
+      if (token !== this.attachSerial) return;
+      this.surface = undefined;
+      this.options.reportError(error);
+    });
   }
 
-  /** Play one already-prepared local resource through the local-only runtime. */
-  async play(resource: WebLocalQueueResource, admission: OfflineMediaLifetime): Promise<void> {
+  /** Hand one prepared resource to the approved runtime, which takes custody on entry and
+   * owns every cleanup path. False means no runtime exists, so custody stays with the caller
+   * (the launch host tracks and retries that release); this host never releases it. */
+  async play(resource: WebLocalQueueResource, admission: OfflineMediaLifetime): Promise<boolean> {
     const runtime = this.runtime;
-    if (!this.live || !this.element || !runtime?.mounted || admission.signal.aborted || !admission.isCurrent()) {
-      await resource.release().catch(error => this.options.reportError(error));
-      throw new DOMException('Offline playback is not available.', 'AbortError');
-    }
-    await runtime.play(resource, {signal: admission.signal, isCurrent: () => this.live && !!this.element && admission.isCurrent()});
+    if (!runtime) return false;
+    await runtime.play(resource, {signal: admission.signal, isCurrent: () => this.live && !!this.surface && admission.isCurrent()});
+    return true;
   }
 
   snapshot(): OfflineMediaSnapshot {
@@ -87,6 +98,14 @@ export class OfflineMediaHost {
     return () => { this.listeners.delete(listener); };
   }
 
+  /** The device's actual retirement, awaited by the next owner's adoption. It retires a
+   * still-live player first; a player that never attached is already free. */
+  adoptionRetirement(): Promise<void> {
+    if (this.retirement) return this.retirement;
+    if (!this.runtime) return Promise.resolve();
+    return this.retire();
+  }
+
   /** Terminal. Repeated calls share one task; a failed cleanup keeps the runtime's custody
    * and is retried here instead of being reported as finished. */
   retire(): Promise<void> {
@@ -100,7 +119,6 @@ export class OfflineMediaHost {
     })();
     const tracked = task.finally(() => { if (this.retirement === tracked) this.retirement = undefined; });
     this.retirement = tracked;
-    this.options.onRetire?.(tracked);
     this.notify();
     return tracked;
   }
@@ -109,7 +127,7 @@ export class OfflineMediaHost {
     const runtime = new LocalPlaybackRuntime({
       scope: this.scope,
       environment: this.options.environment,
-      isCurrent: () => this.live && !!this.element && this.options.isCurrent(),
+      isCurrent: () => this.live && !!this.surface && this.options.isCurrent(),
       // Every resource carries its own release; the runtime needs no fallback owner.
       release: () => Promise.resolve(),
       reportError: error => this.options.reportError(error),
@@ -119,9 +137,10 @@ export class OfflineMediaHost {
   }
 
   private detach(): void {
+    ++this.attachSerial;
     const release = this.attachment;
     this.attachment = undefined;
-    this.element = undefined;
+    this.surface = undefined;
     try { release?.(); } catch (error) { this.options.reportError(error); }
   }
 

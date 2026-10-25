@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react';
+import {useCallback, useEffect, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import {Toast} from '../kit/overlays';
 import {OwnerTag, ServerMark} from '../kit/shell';
@@ -25,6 +25,9 @@ export function LaunchUnreachableScreen({facts, onRetry, onSwitchServer, now: fi
 }) {
   const width = useShellWidth(), [tick, setTick] = useState(() => Date.now()), [detailsOpen, setDetailsOpen] = useState(initialDetailsOpen), [copied, setCopied] = useState(false);
   const offlinePort = useOfflineDownloads(), [offline, setOffline] = useState(() => offlinePort?.snapshot()), [playing, setPlaying] = useState(() => offlinePort?.playback?.());
+  // One stable callback: an inline ref would release and retire the host on every render.
+  const attachSurface = offlinePort?.attachSurface;
+  const surfaceRef = useCallback((element: HTMLVideoElement | null) => { attachSurface?.(element); }, [attachSurface]);
   useEffect(() => {
     if (!offlinePort) { setOffline(undefined); setPlaying(undefined); return; }
     const sync = () => { setOffline(offlinePort.snapshot()); setPlaying(offlinePort.playback?.()); };
@@ -67,7 +70,7 @@ export function LaunchUnreachableScreen({facts, onRetry, onSwitchServer, now: fi
       <button type="button" onClick={() => { void offlinePort?.openFolder().catch(() => {}); }}>{t('next.saved.folder')}</button>
     </section>}
     {offlinePort?.attachSurface && <div className={styles.offlinePlayer} data-offline-playback data-offline-playing={playing?.phase === 'playing' || undefined} data-media-surface data-native-video-active="true">
-      <video ref={element => offlinePort.attachSurface?.(element)} playsInline preload="none" aria-label={t('next.dock.nowPlaying')} />
+      <video ref={surfaceRef} playsInline preload="none" aria-label={t('next.dock.nowPlaying')} />
     </div>}
     <StateLayout className={styles.page} backdrop={{kind: 'colour', shape: 'side'}} tone="warning" icon="i-srvoff"
       contentStyle={{top: width >= 1024 ? 500 : 250}}

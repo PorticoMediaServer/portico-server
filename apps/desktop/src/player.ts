@@ -36,7 +36,7 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
   private readonly options: WebMediaPlayerOptions;
   private readonly bridge: Bridge;
 
-  constructor(video: VideoLike, options: WebMediaPlayerOptions, bridge: Bridge, poll = true,private readonly local?:DesktopLocalPlayback,private readonly exclusive?:Readonly<{wait():Promise<void>}>) {
+  constructor(video: VideoLike, options: WebMediaPlayerOptions, bridge: Bridge, poll = true,private readonly local?:DesktopLocalPlayback) {
     this.video = video; this.options = options; this.bridge = bridge;
     video.addEventListener('volumechange', this.volumeChanged);
     // The factory receives the shell's fresh geometry/volume element. Native playback never
@@ -59,9 +59,7 @@ export class DesktopMediaPlayer implements PlaybackMediaPort {
     this.emit({type: 'error', observation: this.reading, code: 'engine_unavailable'});
   }
   private enqueue(command: NativeCommand, epoch: number) {
-    // A previous local owner of the device must have actually retired before this command.
-    const gate = this.exclusive?.wait() ?? Promise.resolve();
-    this.serial = this.serial.then(() => gate).then(() => this.bridge.command(command)).catch(() => this.fail(epoch));
+    this.serial = this.serial.then(() => this.bridge.command(command)).catch(() => this.fail(epoch));
   }
   private send(command: NativeCommand) {
     if (!this.source || this.disposed) return;

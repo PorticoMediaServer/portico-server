@@ -17,8 +17,8 @@ import {installDesktopCloseHost} from './close-host.ts';
 import {browserViewerStorage} from '../../../web-next/src/platform/viewer-selection-storage.ts';
 import {installOfflineDownloads, watchSelectionReplaced} from '../../../web-next/src/shell/offline-downloads.ts';
 import {OfflineMediaHost} from '../../../web-next/src/shell/offline-media.ts';
-import type {VideoLike, WebMediaPlayerOptions} from '../../../web-next/src/platform/playback/index.ts';
-import {DesktopMediaExclusivity} from './media-exclusivity.ts';
+import {installPlaybackAdoptionRetirement} from '../../../web-next/src/shell/playback-media-owner.ts';
+import type {VideoLike, WebMediaPlayerOptions, WebLocalQueueResource} from '../../../web-next/src/platform/playback/index.ts';
 import {offlineDownloadScope} from './offline-scope.ts';
 
 const lifetime=createDesktopAppLifetime();
@@ -37,12 +37,10 @@ async function startDesktop(){
   lifetime.retain(()=>{windowChrome?.dispose();return windowHost.dispose();});
   const downloads=createDesktopDownloadsHost({reportFailure:()=>console.warn('downloads_unavailable')});
   lifetime.retain(installSavedDownloadsBinder(downloads.bindSaved));
-  // One native media engine. The launch page's local-only player owns it while visible;
-  // the online adapter's first command waits for that owner's actual retirement.
-  const exclusivity=new DesktopMediaExclusivity();
+  // The one native media engine. The launch page's local-only player is its exclusive
+  // owner; adoption of the online one awaits that owner's actual retirement first.
   let offlineMedia:OfflineMediaHost|undefined;
-  const createPlayer=(video:VideoLike,options:WebMediaPlayerOptions)=>new DesktopMediaPlayer(video,options,nativeBridge,true,downloads.broker,
-    offlineMedia&&video===offlineMedia.element()?undefined:exclusivity);
+  const createPlayer=(video:VideoLike,options:WebMediaPlayerOptions)=>new DesktopMediaPlayer(video,options,nativeBridge,true,downloads.broker);
   lifetime.retain(installPlaybackEnvironment({
     capabilities:()=>facts?.appVersion?nativeCapabilities(native.os,facts.appVersion):Promise.reject(new Error('engine_unavailable')),
     createPlayer,
@@ -69,32 +67,60 @@ async function startDesktop(){
       const publish=(next:typeof snapshot)=>{if(stopped)return;snapshot=next;for(const listener of [...listeners])listener();};
       const same=(record:Awaited<ReturnType<typeof browserViewerStorage.read>>)=>{const next=record&&offlineDownloadScope(record.session,Date.now());return !!next&&JSON.stringify([next.authority,next.serverId,next.accountId,next.profileId,record!.session.sessionFamilyId,record!.session.tokenGeneration])===lease;};
       const live=()=>!stopped&&!lifetime.signal.aborted&&Number.isFinite(deadline)&&deadline>Date.now();
-      // The page's one visible surface. The local-only runtime is its only player and its
-      // retirement is what the online adapter awaits before its first native command.
+      // The page's one visible surface. The local-only runtime is its only player; a new
+      // owner of the native device awaits this host's actual retirement before mounting.
       const mediaLife=new AbortController();
-      const media=new OfflineMediaHost({
-        scope:offlineScope,
-        environment:{createPlayer},
-        isCurrent:live,
-        reportError:error=>console.warn('offline_playback_unavailable',error),
-        onRetire:task=>{mediaLife.abort();exclusivity.hold(task);},
-      });
-      offlineMedia=media;
-      lifetime.retain(async()=>{await media.retire();});
-      lifetime.retain(media.subscribe(()=>{for(const listener of [...listeners])listener();}));
+      let media:OfflineMediaHost|undefined,surfaceToken=0;
+      // Preparations this launch page owns until the approved runtime takes them. A late
+      // preparation or a failed no-runtime release stays here and is retried by retirement.
+      const preparations=new Map<WebLocalQueueResource,()=>Promise<void>>();
+      const once=(run:()=>Promise<void>)=>{let task:Promise<void>|undefined;return()=>task??=run().catch(error=>{task=undefined;throw error;});};
+      const retain=(resource:WebLocalQueueResource)=>{let release=preparations.get(resource);if(!release){release=once(()=>resource.release());preparations.set(resource,release);}return release;};
+      const settlePreparation=async(resource:WebLocalQueueResource)=>{const release=preparations.get(resource);if(!release)return;await release();preparations.delete(resource);};
+      let preparing=0,idle:Array<()=>void>=[];
+      const quiescent=()=>preparing?new Promise<void>(resolve=>{idle.push(resolve);}):Promise.resolve();
+      const finishPreparing=()=>{preparing--;if(!preparing){for(const resolve of idle.splice(0))resolve();}};
+      const drainPreparations=async()=>{
+        for(const resource of [...preparations.keys()])try{await settlePreparation(resource);}catch(error){console.warn('offline_playback_unavailable',error);}
+        if(preparations.size>0)throw new Error('offline_release_pending');
+      };
+      const createMedia=()=>{
+        const next=new OfflineMediaHost({
+          scope:offlineScope,
+          environment:{createPlayer},
+          isCurrent:live,
+          reportError:error=>console.warn('offline_playback_unavailable',error),
+        });
+        next.subscribe(()=>{for(const listener of [...listeners])listener();});
+        media=next;
+        offlineMedia=next;
+        return next;
+      };
       /** Stop offering rows at once, then retire the local player before releasing the
        * native store it uses. A failed retirement keeps that custody for a later retry. */
       const retire=():Promise<void>|undefined=>{
         if(disposing)return disposing;
-        if(!stopped){stopped=true;if(timer){clearTimeout(timer);timer=undefined;}snapshot=unavailable;for(const listener of [...listeners])listener();}
+        if(!stopped){stopped=true;mediaLife.abort();if(timer){clearTimeout(timer);timer=undefined;}snapshot=unavailable;for(const listener of [...listeners])listener();}
         disposing=(async()=>{
-          try{await media.retire();}
+          try{
+            // No preparation or handoff may be in flight while the device and store retire;
+            // anything that never reached the runtime is released here before the store goes.
+            await quiescent();
+            await media?.adoptionRetirement();
+            await drainPreparations();
+          }
           catch(error){disposing=undefined;throw error;}
           port.dispose();
         })();
-        void disposing.catch(()=>{});
+        void disposing.catch(error=>console.warn('offline_playback_unavailable',error));
         return disposing;
       };
+      // Shutdown retires through the same barrier, so tracked preparations are drained
+      // before the native store is released.
+      lifetime.retain(()=>retire());
+      // A new device owner adopts only after the FULL barrier: no preparation or handoff
+      // in flight, the local player retired, every tracked resource drained, store released.
+      lifetime.retain(installPlaybackAdoptionRetirement(async()=>{await retire();}));
       // One captured deadline clears the visible list even if nothing else renders or reads.
       if(Number.isFinite(deadline))timer=setTimeout(retire,Math.max(0,deadline-Date.now()));
       const leased=async()=>live()&&same(await browserViewerStorage.read().catch(()=>null));
@@ -113,23 +139,40 @@ async function startDesktop(){
         subscribe:listener=>{listeners.add(listener);return()=>{listeners.delete(listener);};},
         snapshot:()=>{if(!live()){void Promise.resolve().then(retire);return unavailable;}return snapshot;},
         // The page hands its one visible element here; releasing it retires the local engine.
+        // The same element is a no-op; only a real attach starts or replaces an owner.
         attachSurface:element=>{
-          media.attach(element);
-          if(element&&media.mounted)exclusivity.claim();
+          const token=++surfaceToken,current=media;
+          if(!element){current?.attach(null);return;}
+          if(current?.active){current.attach(element);return;}
+          // The previous owner is still leaving; this element binds once it has.
+          void (current?current.adoptionRetirement():Promise.resolve()).then(()=>{
+            if(token!==surfaceToken||!live())return;
+            createMedia().attach(element);
+          },error=>console.warn('offline_playback_unavailable',error));
         },
-        playback:()=>media.snapshot(),
-        /** Prepare the offered row and play it in the local-only runtime. The runtime owns
-         * the preparation from a successful start; a failed start releases it here. */
+        playback:()=>media?.snapshot()??Object.freeze({phase:'idle' as const}),
+        /** Prepare the offered row and hand it to the local-only runtime, which takes
+         * custody on entry and owns every cleanup path; this host adds none. */
         play:async id=>{
-          if(!media.mounted||!await leased()){retire();throw new DOMException('Aborted','AbortError');}
+          const current=media;
+          // Enter the retirement barrier before the first await: once retirement has started
+          // no new preparation may begin, and one already begun is counted there.
+          if(!current?.mounted||stopped){retire();throw new DOMException('Aborted','AbortError');}
+          ++preparing;
           const action=new AbortController(),abort=()=>action.abort();
           mediaLife.signal.addEventListener('abort',abort,{once:true});
           try{
+            if(!await leased()){retire();throw new DOMException('Aborted','AbortError');}
             const resource=await port.prepare(id,action.signal,()=>live());
-            try{await media.play(resource,{signal:action.signal,isCurrent:()=>live()&&!mediaLife.signal.aborted});}
-            catch(error){await resource.release().catch(()=>{});throw error;}
+            // Own it before retirement can drain, even if it arrived after retirement started.
+            retain(resource);
+            if(stopped){void retire();throw new DOMException('Aborted','AbortError');}
+            let handed=false;
+            try{handed=await current.play(resource,{signal:action.signal,isCurrent:()=>live()&&!mediaLife.signal.aborted});}
+            catch(error){preparations.delete(resource);throw error;}
+            if(handed)preparations.delete(resource);else try{await settlePreparation(resource);}catch(error){console.warn('offline_playback_unavailable',error);throw error;}
             if(!await leased())retire();
-          }finally{mediaLife.signal.removeEventListener('abort',abort);}
+          }finally{finishPreparing();mediaLife.signal.removeEventListener('abort',abort);}
         },
         openFolder:async()=>{
           if(!await leased()){retire();throw new DOMException('Aborted','AbortError');}

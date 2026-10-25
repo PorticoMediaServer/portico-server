@@ -114,25 +114,25 @@ test('no absent, disposed or mismatched local source can expose the persistent p
   dock.start({...video, fence: fence('replacement')});
   assert.equal(localVideoSurfaceActive({...shown, dock: dock.getSnapshot()}), false);
 });
-test('one media element survives scope gaps and old runtime disposal precedes every new adoption', () => {
+test('one media element survives scope gaps and old runtime disposal precedes every new adoption', async () => {
   const media = {}, owner = new PlaybackMediaOwner<object>(), calls: unknown[] = [];
   const runtime = (id: string) => ({mount(element: object) { calls.push(['mount', id, element]); return () => { calls.push(['dispose', id]); }; }});
   const first = runtime('first'), second = runtime('second');
-  assert.equal(owner.adopt(undefined, media), undefined);
-  const oldCleanup = owner.adopt(first, media)!;
-  owner.adopt(first, media);
+  assert.equal(await owner.adopt(undefined, media), undefined);
+  const oldCleanup = (await owner.adopt(first, media))!;
+  await owner.adopt(first, media);
   assert.deepEqual(calls, [['mount', 'first', media]]);
-  owner.adopt(undefined, media);
-  const cleanup = owner.adopt(second, media)!;
+  await owner.adopt(undefined, media);
+  const cleanup = (await owner.adopt(second, media))!;
   oldCleanup();
   assert.deepEqual(calls, [['mount', 'first', media], ['dispose', 'first'], ['mount', 'second', media]]);
   cleanup(); cleanup();
   assert.deepEqual(calls.at(-1), ['dispose', 'second']);
-  assert.throws(() => owner.adopt(runtime('replacement'), {}), /element-replaced/);
+  await assert.rejects(() => owner.adopt(runtime('replacement'), {}), /element-replaced/);
 });
-test('direct authority handover retires the previous runtime before attaching the same media element', () => {
+test('direct authority handover retires the previous runtime before attaching the same media element', async () => {
   const element = {}, owner = new PlaybackMediaOwner<object>(), events: string[] = [];
-  owner.adopt({mount: () => { events.push('first-mounted'); return () => { events.push('first-disposed'); }; }}, element);
-  owner.adopt({mount: actual => { assert.equal(actual, element); events.push('second-mounted'); return () => { events.push('second-disposed'); }; }}, element)!();
+  await owner.adopt({mount: () => { events.push('first-mounted'); return () => { events.push('first-disposed'); }; }}, element);
+  (await owner.adopt({mount: actual => { assert.equal(actual, element); events.push('second-mounted'); return () => { events.push('second-disposed'); }; }}, element))!();
   assert.deepEqual(events, ['first-mounted', 'first-disposed', 'second-mounted', 'second-disposed']);
 });
