@@ -22,6 +22,7 @@ const (
 	maxHeaderBytes = 16 << 20
 	MaxMember      = 32 << 20
 	MaxMembers     = 4096
+	MaxExpanded    = 2 << 30
 	maxNameLength  = 1024
 	// Mode is the hidden first argument that dispatches the server executable
 	// into this worker before normal startup.
@@ -147,10 +148,22 @@ func list(stdin io.Reader, stdout io.Writer) error {
 	defer os.RemoveAll(directory)
 	defer reader.Close()
 	names := []Member{}
+	seen := map[string]bool{}
+	var expanded uint64
 	for _, file := range reader.File {
 		if !plainMember(file.Name, file.FileInfo().IsDir(), file.UncompressedSize64) {
 			continue
 		}
+		if seen[file.Name] {
+			// Two entries with one exact name are not two pages: the first would
+			// be served twice. Refuse the archive instead of guessing identity.
+			return errors.New("duplicate member name")
+		}
+		seen[file.Name] = true
+		if file.UncompressedSize64 > uint64(MaxMember) || uint64(MaxExpanded)-expanded < file.UncompressedSize64 {
+			return errors.New("member bytes out of bounds")
+		}
+		expanded += file.UncompressedSize64
 		names = append(names, Member{Name: file.Name, Size: int64(file.UncompressedSize64)})
 	}
 	return json.NewEncoder(stdout).Encode(reply{Members: names})
@@ -166,8 +179,16 @@ func page(stdin io.Reader, stdout io.Writer, name string) error {
 	}
 	defer os.RemoveAll(directory)
 	defer reader.Close()
+	seen := map[string]bool{}
 	for _, file := range reader.File {
-		if file.Name != name || !plainMember(file.Name, file.FileInfo().IsDir(), file.UncompressedSize64) {
+		if !plainMember(file.Name, file.FileInfo().IsDir(), file.UncompressedSize64) {
+			continue
+		}
+		if seen[file.Name] {
+			return errors.New("duplicate member name")
+		}
+		seen[file.Name] = true
+		if file.Name != name {
 			continue
 		}
 		body, err := file.Open()

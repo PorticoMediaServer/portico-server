@@ -127,10 +127,20 @@ func cb7Members(ctx context.Context, ra io.ReaderAt, size int64) ([]archiveMembe
 		return nil, ErrArchiveFormat
 	}
 	out := make([]archiveMember, 0, len(reply.Members))
+	seen := map[string]bool{}
+	var expanded int64
 	for _, member := range reply.Members {
 		if !safePath(member.Name) || !isImageMember(member.Name) || member.Size <= 0 || member.Size > MaxMember {
 			return nil, ErrArchiveFormat
 		}
+		// The parent repeats the identity and whole-publication budget checks:
+		// a duplicate name is not two pages, and admitted members must fit
+		// MaxExpanded together.
+		if seen[member.Name] || int64(MaxExpanded)-expanded < member.Size {
+			return nil, ErrArchiveFormat
+		}
+		seen[member.Name] = true
+		expanded += member.Size
 		name, memberSize := member.Name, member.Size
 		out = append(out, archiveMember{Name: name, Size: memberSize, Open: func() (io.ReadCloser, error) {
 			body, err := cb7MemberBytes(ctx, ra, size, name)
