@@ -310,6 +310,7 @@ export function parseDownloadBundle(raw: unknown, preparationId: string): Downlo
     return Object.freeze({id: v.id, revision: v.revision, language: String(v.language ?? ''), title: String(v.title ?? ''), default: v.default, forced: v.forced, files: Object.freeze(files), ...(lines ? {lines} : {})});
   });
   return Object.freeze({
+    ...(typeof raw.publication === 'string' ? {publication: raw.publication} : {}),
     preparationId, itemId: raw.itemId, quality: raw.quality, qualityLabel: String(raw.qualityLabel ?? ''), title: parseDownloadTitle(raw.title), overview: String(raw.overview ?? ''),
     media: Object.freeze({container: String(media.container ?? ''), videoCodec: String(media.videoCodec ?? ''), audioCodec: String(media.audioCodec ?? ''), width: Number(media.width ?? 0), height: Number(media.height ?? 0)}),
     artwork: Object.freeze(artwork), chapters: Object.freeze(chapters), markers: Object.freeze(markers), audio: Object.freeze(audio), subtitles: Object.freeze(subtitles),
@@ -344,7 +345,7 @@ function storage(raw: unknown): DownloadStorage {
   const remaining = nullableCount(raw.remainingBytes);
   // 0 means unlimited, and an unlimited ceiling has no remaining figure.
   if (raw.maxPreparedBytes === 0 ? remaining !== null : remaining === null) invalid();
-  return Object.freeze({...(typeof raw.publication === 'string' ? {publication: raw.publication} : {}),maxPreparedBytes: raw.maxPreparedBytes, committedBytes: raw.committedBytes, remainingBytes: remaining, retentionDays: raw.retentionDays});
+  return Object.freeze({maxPreparedBytes: raw.maxPreparedBytes, committedBytes: raw.committedBytes, remainingBytes: remaining, retentionDays: raw.retentionDays});
 }
 
 export function parseDownloadOptions(raw: unknown, itemId: string): DownloadOptionsView {

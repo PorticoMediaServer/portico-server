@@ -138,16 +138,18 @@ func (s *Service) SaveProgress(ctx context.Context, p identity.Principal, item, 
 
 // SaveProgress retains the same observed source through format validation and
 // the location writer. This also avoids nested source leases on cap-1 remotes.
+type OfflineValidator func(context.Context, *sql.Tx, identity.Principal) error
 type OfflineObservation struct {
+	Validate              OfflineValidator
 	ObservedAt, StartedAt int64
 	Outcome               string
 }
 
-func (f *Source) SaveOfflineProgress(expected int64, location Location, observed, started int64) (*Progress, bool, string, error) {
-	if observed <= 0 || started <= 0 || observed < started || observed > time.Now().Add(time.Minute).UnixMilli() {
+func (f *Source) SaveOfflineProgress(expected int64, location Location, observed, started int64, validate OfflineValidator) (*Progress, bool, string, error) {
+	if validate == nil || observed <= 0 || started <= 0 || observed < started || observed > time.Now().Add(time.Minute).UnixMilli() {
 		return nil, false, "", ErrInvalid
 	}
-	observation := &OfflineObservation{ObservedAt: observed, StartedAt: started}
+	observation := &OfflineObservation{ObservedAt: observed, StartedAt: started, Validate: validate}
 	progress, saved, err := f.saveProgress(expected, location, observation)
 	return progress, saved, observation.Outcome, err
 }
@@ -215,6 +217,11 @@ func (f *Source) saveProgress(expected int64, location Location, offline *Offlin
 	}
 	if f.remoteSession != nil {
 		if err = f.remoteSession.remote.CheckTx(ctx, tx); err != nil {
+			return nil, false, err
+		}
+	}
+	if offline != nil {
+		if err = offline.Validate(ctx, tx, p); err != nil {
 			return nil, false, err
 		}
 	}

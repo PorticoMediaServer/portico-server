@@ -9,7 +9,7 @@ import (
 
 type ReadingOfflineProgressRequest struct {
 	Receipt          downloads.Receipt `json:"receipt"`
-	ExpectedRevision int64             `json:"expectedRevision"`
+	ExpectedRevision *int64            `json:"expectedRevision"`
 	ObservedAt       int64             `json:"observedAt"`
 	StartedAt        int64             `json:"startedAt"`
 	Location         ReadingLocation   `json:"location"`
@@ -41,7 +41,11 @@ func (d Dependencies) readingOfflineProgress(w http.ResponseWriter, r *http.Requ
 		readingFailure(w, reading.ErrInvalid)
 		return
 	}
-	claims, err := d.Downloads.ValidatePublicationReceipt(r.Context(), p, d.Identity.ID(), body.Receipt)
+	if body.ExpectedRevision == nil {
+		readingFailure(w, reading.ErrInvalid)
+		return
+	}
+	claims, validate, err := d.Downloads.PublicationReceiptValidator(r.Context(), p, d.Identity.ID(), body.Receipt)
 	if err != nil {
 		readingFailure(w, err)
 		return
@@ -63,7 +67,7 @@ func (d Dependencies) readingOfflineProgress(w http.ResponseWriter, r *http.Requ
 	}
 	defer f.Close()
 	l := body.Location
-	progress, saved, outcome, err := f.SaveOfflineProgress(body.ExpectedRevision, reading.Location{Format: string(l.Format), CFI: l.CFI, Section: l.Section, PageIndex: l.PageIndex, Progression: l.Progression}, body.ObservedAt, body.StartedAt)
+	progress, saved, outcome, err := f.SaveOfflineProgress(*body.ExpectedRevision, reading.Location{Format: string(l.Format), CFI: l.CFI, Section: l.Section, PageIndex: l.PageIndex, Progression: l.Progression}, body.ObservedAt, body.StartedAt, validate)
 	if err != nil {
 		readingFailure(w, err)
 		return

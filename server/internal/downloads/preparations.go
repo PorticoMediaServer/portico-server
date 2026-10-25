@@ -9,6 +9,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/playback"
+	"portico.local/server/internal/reading"
 
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
@@ -31,11 +32,10 @@ type LibraryGuard func(tx *sql.Tx, library string) error
 // replayed request returns the batch the first one produced, byte for byte,
 // rather than admitting the work twice.
 func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, guard LibraryGuard) (Batch, error) {
+	return s.submit(ctx, p, r, guard, nil, false)
+}
+func (s *Service) submit(ctx context.Context, p identity.Principal, r Request, guard LibraryGuard, publication *reading.OfflineDocument, preflight bool) (Batch, error) {
 	out := Batch{Items: []Preparation{}, Rejected: []Rejection{}}
-	publication, publicationError := s.publicationForRequest(ctx, p, r)
-	if publicationError != nil {
-		return out, publicationError
-	}
 	if !validID.MatchString(r.OperationID) || (r.VersionID != "" && (!validID.MatchString(r.VersionID) || r.MediaID == "" || len(r.MediaIDs) > 0 || r.NextAfterMediaID != "")) {
 		return out, ErrInput
 	}
@@ -113,6 +113,24 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, g
 	}
 	if !allowed {
 		return out, ErrPolicy
+	}
+	// Only a genuinely new, syntactically valid and currently entitled intent
+	// may acquire publication bytes. Replay returned above without re-inspection.
+	if !preflight && r.MediaID != "" {
+		var publicationTarget bool
+		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entities WHERE public_id=pid_blob(?) AND kind IN(20,21))`, r.MediaID).Scan(&publicationTarget); e != nil {
+			return out, e
+		}
+		if publicationTarget {
+			gated.Rollback()
+			doc, err := s.publicationForRequest(ctx, p, r)
+			if err != nil {
+				return out, err
+			}
+			// Re-enter the accepting transaction: operation replay, policy, source and
+			// descriptor revision are all rechecked after the outside-writer preflight.
+			return s.submit(ctx, p, r, guard, doc, true)
+		}
 	}
 	targets, origin, e := expandTargets(ctx, tx, r)
 	if e != nil {

@@ -1,6 +1,7 @@
 package reading
 
 import (
+	"archive/zip"
 	"context"
 	"crypto/sha256"
 	"database/sql"
@@ -13,10 +14,13 @@ import (
 // publication. Resource digests describe the original archive members, never URLs.
 // It contains no annotation capability, credentials, filesystem paths or session.
 type OfflineResource struct {
-	Path   string `json:"path"`
-	MIME   string `json:"mime"`
-	Size   int64  `json:"size"`
-	SHA256 string `json:"sha256"`
+	Offset         int64  `json:"offset"`
+	CompressedSize int64  `json:"compressedSize"`
+	Compression    uint16 `json:"compression"`
+	Path           string `json:"path"`
+	MIME           string `json:"mime"`
+	Size           int64  `json:"size"`
+	SHA256         string `json:"sha256"`
 }
 type OfflineMetadata struct {
 	Title     string `json:"title"`
@@ -106,13 +110,28 @@ func (s *Service) OfflineDocument(ctx context.Context, p identity.Principal, ite
 		out.Contents = append(out.Contents, OfflineContents{Title: entry.Title, Section: entry.Section, Fragment: entry.Fragment, Depth: entry.Depth})
 	}
 	var total int64
-	add := func(path, mime string, data []byte) error {
+	add := func(archive *archive, path, mime string, data []byte) error {
+		entry := archive.files[path]
+		if entry == nil || entry.zipped == nil {
+			return ErrUnavailable
+		}
+		zipped := entry.zipped
+		if zipped.Method != zip.Store && zipped.Method != zip.Deflate {
+			return ErrUnavailable
+		}
+		offset, err := zipped.DataOffset()
+		if err != nil {
+			return err
+		}
+		if offset < 0 || zipped.CompressedSize64 > uint64(f.Size) || uint64(offset) > uint64(f.Size)-zipped.CompressedSize64 {
+			return ErrInvalid
+		}
 		total += int64(len(data))
 		if total > 512<<20 {
 			return ErrLimit
 		}
 		sum := sha256.Sum256(data)
-		out.Resources = append(out.Resources, OfflineResource{path, mime, int64(len(data)), hex.EncodeToString(sum[:])})
+		out.Resources = append(out.Resources, OfflineResource{Offset: offset, CompressedSize: int64(zipped.CompressedSize64), Compression: zipped.Method, Path: path, MIME: mime, Size: int64(len(data)), SHA256: hex.EncodeToString(sum[:])})
 		return ctx.Err()
 	}
 	switch f.Format {
@@ -126,7 +145,7 @@ func (s *Service) OfflineDocument(ctx context.Context, p identity.Principal, ite
 			if e != nil {
 				return out, e
 			}
-			if e = add(r.Path, mime, data); e != nil {
+			if e = add(book.archive, r.Path, mime, data); e != nil {
 				return out, e
 			}
 		}
@@ -140,7 +159,7 @@ func (s *Service) OfflineDocument(ctx context.Context, p identity.Principal, ite
 			if e != nil {
 				return out, e
 			}
-			if e = add(page.Name, page.Image.MIME, page.Bytes); e != nil {
+			if e = add(book.archive, page.Name, page.Image.MIME, page.Bytes); e != nil {
 				return out, e
 			}
 		}
