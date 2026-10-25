@@ -238,6 +238,22 @@ func (d Dependencies) applyHomeLayout(w http.ResponseWriter, r *http.Request, re
 		failure(w, e)
 		return
 	}
+	var suppliedRevision *int64
+	if len(body.ExpectedRevision) != 0 {
+		if err := json.Unmarshal(body.ExpectedRevision, &suppliedRevision); err != nil {
+			failure(w, errStrictJSON)
+			return
+		}
+		if suppliedRevision == nil {
+			failure(w, errRevisionRequired)
+			return
+		}
+	} else if !reset {
+		// RawMessage is not covered by the generic int64 presence decoder.
+		// Keep PUT's existing missing-revision refusal explicitly.
+		failure(w, errRevisionRequired)
+		return
+	}
 	p, request, e := d.homeRequest(r)
 	if e != nil {
 		homeFailure(w, e)
@@ -253,13 +269,8 @@ func (d Dependencies) applyHomeLayout(w http.ResponseWriter, r *http.Request, re
 		body.IdempotencyKey = identity.Token()
 	}
 	expectedRevision := int64(0)
-	if len(body.ExpectedRevision) != 0 {
-		var supplied *int64
-		if err := json.Unmarshal(body.ExpectedRevision, &supplied); err != nil || supplied == nil {
-			failure(w, errStrictJSON)
-			return
-		}
-		expectedRevision = *supplied
+	if suppliedRevision != nil {
+		expectedRevision = *suppliedRevision
 	} else if reset {
 		// Older clients sent only the reset key. An explicitly supplied revision
 		// remains the editor's original revision, including a genuine zero.
