@@ -30,8 +30,8 @@ export function useWatchPanels(binding:WatchBindings|undefined,snapshot:WebPlayb
  useEffect(()=>{if(!canStartRoom)setStartRoom(false);},[canStartRoom]);
  if(!binding||!snapshot||!context?.isCurrent())return undefined;
  const available:WatchPanel[]=[];
- if(model?.audio.length||model?.subtitles.length)available.push('subtitles-audio');
- if(model?.audio.length)available.push('audio');if(model?.subtitles.length)available.push('subtitles');
+ if(model?.audio.length||model?.subtitles.length||model?.subtitleAdditions.length)available.push('subtitles-audio');
+ if(model?.audio.length)available.push('audio');if(model?.subtitles.length||model?.subtitleAdditions.length)available.push('subtitles');
  if(model?.quality.some(row=>row.enabled))available.push('quality');if(model?.speed.length)available.push('speed');
  if(available.length)available.push('options');
  // Playback info f1: offered only when the server committed its own comparison for

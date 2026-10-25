@@ -9,7 +9,7 @@ import styles from './media.module.css';
  * remains an opaque identity at the adapter; this view never splits or rewrites it. */
 export type TrackChoice = Readonly<{
   id: string; primary: string; secondary?: string; fullName: string;
-  selected: boolean; unavailable?: boolean; addable?: boolean;
+  selected: boolean; unavailable?: boolean; addable?: boolean; /** The source's own reason a row cannot be used or added. */ reason?: string;
 }>;
 export type TrackChoicesProps = Readonly<{
   title: string; choices: readonly TrackChoice[]; layout?: MediaLayout;
@@ -37,7 +37,7 @@ export function TrackChoices({title, choices, layout = 'desktop', onSelect, onAd
           const target = choices[next]; if (target && !target.unavailable && !target.addable) invoke(() => onSelect(target.id));
         }}>
         <span className={styles.trackText}>{choice.primary}{choice.secondary && <small>{choice.secondary}</small>}</span>
-        {choice.unavailable ? <span className={styles.unavailable}>{t('player.opt.unavailable')}</span> : <Icon name="i-check" size={layout === 'tv' ? 28 : 20} className={styles.trackCheck} />}
+        {choice.unavailable ? <span className={styles.unavailable}>{choice.reason ?? t('player.opt.unavailable')}</span> : <Icon name="i-check" size={layout === 'tv' ? 28 : 20} className={styles.trackCheck} />}
       </button>
       {choice.addable && onAdd && <button type="button" className={styles.trackAdd} onClick={() => invoke(() => onAdd(choice.id))}>{t('player.opt.add')}</button>}
     </div>)}</div>

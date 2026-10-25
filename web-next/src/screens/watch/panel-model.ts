@@ -10,7 +10,7 @@ import {lossSentences} from './loss-copy';
 
 export type WatchRadioChoice=Readonly<{id:string;label:string;detail?:string;selected:boolean;enabled:boolean}>;
 export type WatchPanelModel=Readonly<{
- fence:QueuePlaybackFence;audio:readonly TrackChoice[];subtitles:readonly TrackChoice[];
+ fence:QueuePlaybackFence;audio:readonly TrackChoice[];subtitles:readonly TrackChoice[];subtitleAdditions:readonly TrackChoice[];
  quality:readonly WatchRadioChoice[];speed:readonly WatchRadioChoice[];
  qualityLabel?:string;qualityAccessibleLabel?:string;qualityNotes:readonly string[];audioNotes:readonly string[];automatic:boolean;audioLabel?:string;subtitleLabel?:string;
  subtitleTiming?:Readonly<{offsetSeconds:number;shift(deltaMs:number):Promise<void>}>;
@@ -44,7 +44,7 @@ export function watchPanelModel(runtime:WebShellPlaybackRuntime,snapshot:WebPlay
   return Object.freeze({id:track.id,primary:name.first,secondary:name.rest||undefined,fullName:name.label,selected:session.presentation.audioTrackId===track.id,unavailable:!enabled});
  }));
  const plan=offers.subtitlePlan,matched=!!plan&&plan.sessionId===fence.sessionId&&plan.generation===fence.generation&&plan.sourceId===fence.sourceId;
- const subtitleIds=new Map<string,string|null>();const subtitleRows:TrackChoice[]=[];
+ const subtitleIds=new Map<string,string|null>();const subtitleRows:TrackChoice[]=[],subtitleAdditions:TrackChoice[]=[];
  if(matched){
   subtitleIds.set('off',null);subtitleRows.push({id:'off',primary:t('player.opt.off'),fullName:t('player.opt.off'),selected:plan.mode==='off',unavailable:!plan.offAvailable});
   for(const resource of plan.resources.filter(r=>r.sourceId===fence.sourceId&&!r.retired)){
@@ -54,8 +54,11 @@ export function watchPanelModel(runtime:WebShellPlaybackRuntime,snapshot:WebPlay
    const origin=resource.origin==='provider'||resource.origin==='upload'?t('player.opt.origin',{origin:resource.origin}):undefined;
    const secondary=[name.rest,origin].filter(Boolean).join(', ')||undefined;
    const id='resource:'+resource.id;subtitleIds.set(id,resource.id);
-   subtitleRows.push({id,primary:name.first,secondary,fullName:name.label,selected:plan.mode==='track'&&plan.selected?.id===resource.id,
-    unavailable:!resource.enabled||!Number.isSafeInteger(Number(resource.offsetUs)/1000)});
+   const selected=plan.mode==='track'&&plan.selected?.id===resource.id, unavailable=!resource.enabled||!Number.isSafeInteger(Number(resource.offsetUs)/1000);
+   // f3b: a track the file carries but the session has not taken stays under the list with Add.
+   if(resource.discoveryId!==undefined&&!selected)subtitleAdditions.push({id,primary:name.first,secondary,fullName:name.label,selected:false,
+    addable:!unavailable,unavailable,...(unavailable?{reason:subtitleReason(resource.reason,t)}:{})});
+   else subtitleRows.push({id,primary:name.first,secondary,fullName:name.label,selected,unavailable});
   }
  }
  const selected=qualityChoiceOf(session.presentation.quality),qualityRows:WatchRadioChoice[]=[],qualityIds=new Map<string,QualityChoice>();
@@ -99,11 +102,11 @@ export function watchPanelModel(runtime:WebShellPlaybackRuntime,snapshot:WebPlay
  const subtitleSearch=provider&&!provider.enabled?Object.freeze({reason:subtitleReason(provider.reason,t)}):undefined;
  let speeds:readonly number[]=[];try{speeds=runtime.speedChoices(fence);}catch{/* source changed */}
  const speed=Object.freeze(speeds.map(rate=>Object.freeze({id:String(rate),label:rate===1?t('player.opt.normalSpeed'):t('next.dock.rate',{rate}),selected:snapshot.presentation?.rate===rate,enabled:true})));
- return Object.freeze({fence,audio,subtitles:Object.freeze(subtitleRows),quality:Object.freeze(qualityRows),speed,automatic:selected==='automatic',qualityLabel,qualityNotes,audioNotes,...(subtitleTiming?{subtitleTiming}:{}),...(subtitleSearch?{subtitleSearch}:{}),
+ return Object.freeze({fence,audio,subtitles:Object.freeze(subtitleRows),subtitleAdditions:Object.freeze(subtitleAdditions),quality:Object.freeze(qualityRows),speed,automatic:selected==='automatic',qualityLabel,qualityNotes,audioNotes,...(subtitleTiming?{subtitleTiming}:{}),...(subtitleSearch?{subtitleSearch}:{}),
   qualityAccessibleLabel:qualityLabel?(selected==='automatic'?t('player.quality.automaticNow',{quality:qualityLabel}):qualityLabel):undefined,
   audioLabel:audio.find(r=>r.selected)?.primary,subtitleLabel:subtitleRows.find(r=>r.selected)?.primary,isCurrent,
   selectAudio:async id=>{check();if(!audio.some(r=>r.id===id&&!r.unavailable))throw new Error('playback_audio_unavailable');await runtime.selectAudio(fence,id);},
-  selectSubtitle:async id=>{check();if(!subtitleRows.some(r=>r.id===id&&!r.unavailable)||!subtitleIds.has(id))throw new Error('playback_subtitle_unavailable');await runtime.selectSubtitle(fence,subtitleIds.get(id)!);},
+  selectSubtitle:async id=>{check();if(![...subtitleRows,...subtitleAdditions].some(r=>r.id===id&&!r.unavailable)||!subtitleIds.has(id))throw new Error('playback_subtitle_unavailable');await runtime.selectSubtitle(fence,subtitleIds.get(id)!);},
   selectQuality:async id=>{check();const choice=qualityIds.get(id);if(!choice||!qualityRows.some(r=>r.id===id&&r.enabled))throw new Error('playback_quality_unavailable');await runtime.setQuality(fence,choice);},
   selectSpeed:id=>{check();const row=speed.find(r=>r.id===id);if(!row)throw new Error('playback_speed_unavailable');runtime.setSpeed(fence,Number(row.id));},
  });
