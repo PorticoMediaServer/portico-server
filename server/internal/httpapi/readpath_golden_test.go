@@ -403,7 +403,9 @@ func TestReadPathGoldenEquivalence(t *testing.T) {
 		status, body := call(cases[index].Method, cases[index].Path, cases[index].Body, cases[index].Viewer)
 		if status == 200 && strings.HasPrefix(cases[index].Name, "browse:") {
 			var doc map[string]any
-			if err := json.Unmarshal([]byte(body), &doc); err != nil { t.Fatal(err) }
+			if err := json.Unmarshal([]byte(body), &doc); err != nil {
+				t.Fatal(err)
+			}
 			if aggregate, ok := doc["wholeSelection"].(map[string]any); ok {
 				page, pageOK := doc["pageInfo"].(map[string]any)
 				revision, revisionOK := page["revision"].(string)
