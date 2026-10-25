@@ -51,6 +51,7 @@ func onlineLookupPolicyTx(ctx context.Context, tx *sql.Tx) (bool, int64, error) 
 }
 func invalidateLookupWorkTx(ctx context.Context, tx *sql.Tx) error {
 	for _, statement := range []string{
+		`DELETE FROM subtitle_provider_candidates`,
 		`UPDATE screen_metadata_work SET status=CASE WHEN status='provider_disabled' THEN 'pending' ELSE status END,generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''`,
 		`UPDATE mb_jobs SET generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''`,
 		`UPDATE tvdb_jobs SET generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''`,
