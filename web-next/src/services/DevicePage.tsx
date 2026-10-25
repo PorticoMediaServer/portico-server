@@ -13,6 +13,7 @@ export function DevicePage({account, initialCode = ''}: {account: ServicesAccoun
   const [authenticating, setAuthenticating] = useState(() => !session);
   useEffect(() => { if (!session) setAuthenticating(true); }, [session]);
   const [code, setCode] = useState(initialCode), [review, setReview] = useState<DeviceReview>();
+  const [fromQR, setFromQR] = useState(Boolean(initialCode));
   const [busy, setBusy] = useState(false), [error, setError] = useState<unknown>();
   const [done, setDone] = useState<{decision: 'approve' | 'deny'; identity: AccountIdentity}>();
   const binding = review?.identity ?? done?.identity;
@@ -42,10 +43,13 @@ export function DevicePage({account, initialCode = ''}: {account: ServicesAccoun
   };
   const inspect = () => run(async signal => { const value = await reviewHostedDevice(account, code, signal); if (!signal.aborted) setReview(value); });
   const decide = (decision: 'approve' | 'deny') => run(async signal => { if (!review) return; await decideHostedDevice(account, review, decision, signal); if (!signal.aborted) { setDone({decision, identity: review.identity}); setReview(undefined); } });
-  const another = () => { setReview(undefined); setDone(undefined); setError(undefined); };
+  const another = () => {
+    if (operation.current) return;
+    setCode(''); setFromQR(false); setReview(undefined); setDone(undefined); setError(undefined);
+  };
   if (!session || authenticating) return <ServicesAuthStage variant="deviceSignIn"><ServicesAuthForm account={account} onSignedIn={() => setAuthenticating(false)} embedded heading={t('web.device.title')} lead={t('web.device.lede')}
     before={<>{initialCode && <ServicesCodeChip label={t('services.device.codeFromTV')} code={initialCode} />}<ServicesQuiet>{t('services.device.signedOut')}</ServicesQuiet></>} /></ServicesAuthStage>;
   if (done && !stale) return <DeviceDecision decision={done.decision} onAnother={another} />;
-  return <DeviceView name={session.account.displayName || session.account.username} code={code} fromQR={Boolean(initialCode)} preview={review && !stale ? review.preview : undefined}
+  return <DeviceView name={session.account.displayName || session.account.username} code={code} fromQR={fromQR} preview={review && !stale ? review.preview : undefined}
     busy={busy} error={error} onCodeChange={setCode} onInspect={() => void inspect()} onDecision={decision => void decide(decision)} onAnother={another} onSignOut={() => void account.service.logout().catch(setError)} />;
 }
