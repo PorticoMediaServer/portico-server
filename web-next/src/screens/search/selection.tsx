@@ -1,4 +1,4 @@
-import type {SearchService, SearchGroupResult} from '@core/search.ts';
+import type {SearchService, SearchGroupResult, SearchEntry} from '@core/search.ts';
 import type {BrowseSelectionScope} from '@core/selection-model/index.ts';
 import type {WebShellPlaybackRuntime} from '../../platform/playback/runtime';
 import type {ScreenContext} from '../detail/context';
@@ -16,14 +16,14 @@ export function createSearchSelection(context: ScreenContext, service: SearchSer
       revision: JSON.stringify([data.scope.viewerFence, data.revision]), entries: snapshot.groups.flatMap(group => group.items.flatMap(entry => 'libraryId' in entry && searchableSelectionKinds.has(entry.kind) ? [entry] : []))};
   }};
   const selection = createCatalogueDocumentSelection(context, source, principal, metadataFence, runtime);
-  const members = (group: SearchGroupResult) => {
-    if (!service.getSnapshot().groups.includes(group) || !group.totalCountExact || group.hasMore || group.totalCount !== group.items.length) return;
-    const entries = group.items.flatMap(entry => 'libraryId' in entry && searchableSelectionKinds.has(entry.kind) ? [entry] : []);
-    return entries.length === group.items.length && selection.canSelectEntries(entries) ? entries : undefined;
+  const members = (group: SearchGroupResult, shown: readonly SearchEntry[]) => {
+    if (!service.getSnapshot().groups.includes(group) || !shown.length || shown.some(entry => !group.items.includes(entry))) return;
+    const entries = shown.flatMap(entry => 'libraryId' in entry && searchableSelectionKinds.has(entry.kind) ? [entry] : []);
+    return entries.length === shown.length && selection.canSelectEntries(entries) ? entries : undefined;
   };
   return Object.assign(selection, {
-    canSelectGroup: (group: SearchGroupResult) => !!members(group),
-    selectGroup: (group: SearchGroupResult) => {const entries = members(group);if (!entries) throw new DOMException('Search group changed', 'AbortError');selection.selectEntries(entries);},
+    canSelectGroup: (group: SearchGroupResult, shown: readonly SearchEntry[]) => !!members(group, shown),
+    selectGroup: (group: SearchGroupResult, shown: readonly SearchEntry[]) => {const entries = members(group, shown);if (!entries) throw new DOMException('Search group changed', 'AbortError');selection.selectEntries(entries);},
   });
 }
 export type SearchSelection = ReturnType<typeof createSearchSelection>;

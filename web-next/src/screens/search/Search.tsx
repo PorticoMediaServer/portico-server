@@ -164,13 +164,14 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
         : orderedSearchGroups(groups).map((result, groupIndex) => {
           const entries = result.items.filter(entry => entry !== top?.entry), cap = result.id === 'episodes' || result.id === 'songs' ? 4 : result.id === 'movies' || result.id === 'shows' ? 7 : 4;
           if (!entries.length) return null;
+          const shown = entries.slice(0, cap);
           return <section key={result.id} className={styles.section} data-group={result.id}>
             <header><h2>{t(searchGroupLabel(result.id))}</h2>{result.totalCountExact && <span>{result.totalCount > cap ? t('web.search.someOf', {shown: Math.min(cap, entries.length), total: result.totalCount}) : result.totalCount}</span>}
               <div className={styles.sectionActions}>
-                {selection?.canSelectGroup(result) && <Button variant="text" size="small" className={styles.selectGroup} onClick={() => {try {selection.selectGroup(result);} catch (error) {context.effects.reportError(error);}}}>{t('next.selection.selectAll', {count: result.totalCount})}</Button>}
+                {selection?.canSelectGroup(result, shown) && <Button variant="text" size="small" className={styles.selectGroup} onClick={() => {try {selection.selectGroup(result, shown);} catch (error) {context.effects.reportError(error);}}}>{t('next.selection.selectAll', {count: shown.length})}</Button>}
                 {(result.hasMore || entries.length > cap) && <Button variant="text" size="small" onClick={() => setChip(result.id)}><span className={styles.seeAll}>{t('web.search.seeAll')}<Icon name="i-right" size={18} /></span></Button>}
               </div></header>
-            <div className={styles.cards}>{entries.slice(0, cap).map((entry, position) => <SearchResult key={keyOf(entry)} entry={entry} binding={binding} selection={selection} position={groupIndex * 1000 + position} onCommit={commit} />)}</div>
+            <div className={styles.cards}>{shown.map((entry, position) => <SearchResult key={keyOf(entry)} entry={entry} binding={binding} selection={selection} position={groupIndex * 1000 + position} onCommit={commit} />)}</div>
           </section>;
         })}
     </div>
