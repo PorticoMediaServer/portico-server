@@ -24,6 +24,8 @@ export type ReaderChromeProps = Readonly<{
   onBack: () => void; onTurn: (turn: ReadTurn) => void; onSeek?: (progression: number) => void;
   actions: readonly ReaderChromeAction[]; children: ReactNode; panel?: ReactNode;
   panelReflows?: boolean; showPageArrows: boolean;
+  /** Optional localized assembly content for fixed pages; prose always keeps the generic footer. */
+  fixedPageFooter?: ReactNode;
   /** The same page tap closes a docked panel without also navigating the book. */
   onPanelDismiss?: (reason: 'outside' | 'escape') => void;
   /** A panel/menu or a live text selection pins chrome until it closes. */
@@ -33,7 +35,7 @@ export type ReaderChromeProps = Readonly<{
 }>;
 
 export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingInSection, percent, remainingInBook, progression, chapters = [], direction, tapTurnEnabled, pageTurnsEnabled,
-  onBack, onTurn, onSeek, actions, children, panel, panelReflows = false, onPanelDismiss, showPageArrows, holdOpen = false, textSelectionActive = false, initiallyVisible = true, reducedMotion = false, fixedPage = false, subscribeSurfaceInput}: ReaderChromeProps) {
+  onBack, onTurn, onSeek, actions, children, panel, panelReflows = false, onPanelDismiss, showPageArrows, holdOpen = false, textSelectionActive = false, initiallyVisible = true, reducedMotion = false, fixedPage = false, fixedPageFooter, subscribeSurfaceInput}: ReaderChromeProps) {
   const root = useRef<HTMLDivElement>(null), timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [visible, setVisible] = useState(initiallyVisible), [focusWithin, setFocusWithin] = useState(false);
   const held = holdOpen || textSelectionActive || Boolean(panel) || focusWithin;
@@ -70,6 +72,7 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
     else key(input);
   }), [subscribeSurfaceInput, tap, wake, key]);
   const shown = visible || held, progress = observedProgress(progression);
+  const customFixedFooter = fixedPage && fixedPageFooter != null;
   return <div ref={root} tabIndex={-1} className={styles.reader} data-reader-root data-fixed={fixedPage || undefined} data-reduced-motion={reducedMotion || undefined}
     data-chrome={shown ? 'shown' : 'hidden'} data-panel={panelReflows || undefined} dir={direction === 'rtl' ? 'rtl' : 'ltr'}
     onPointerMove={event => { if (event.pointerType === 'mouse') wake(); }}
@@ -95,7 +98,8 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
       </header>
       {showPageArrows && <><button type="button" disabled={!pageTurnsEnabled} className={`${styles.turn} ${styles.left}`} aria-label={direction === 'rtl' ? copy.next : copy.previous} onClick={() => onTurn(direction === 'rtl' ? 'next' : 'previous')}><Icon name="i-left" size={26} /></button>
       <button type="button" disabled={!pageTurnsEnabled} className={`${styles.turn} ${styles.right}`} aria-label={direction === 'rtl' ? copy.previous : copy.next} onClick={() => onTurn(direction === 'rtl' ? 'previous' : 'next')}><Icon name="i-right" size={26} /></button></>}
-      <footer className={styles.bottom} dir="ltr">
+      <footer className={`${styles.bottom}${customFixedFooter ? ` ${styles.fixedPageFooter}` : ''}`} dir="ltr">
+        {customFixedFooter ? fixedPageFooter : <>
         <div className={styles.position}>{chapter && <b>{chapter}</b>}{pages && <small>{pages}</small>}</div>
         <div className={styles.progressGroup}>
           {progress !== undefined && <div className={styles.progress} dir={direction === 'rtl' ? 'rtl' : 'ltr'}>
@@ -109,6 +113,7 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
           </div>}
         </div>
         <div className={styles.remaining}>{remainingInSection && <b>{remainingInSection}</b>}{(percent || remainingInBook) && <small>{percent && <span>{percent}</span>}{remainingInBook && <span>{remainingInBook}</span>}</small>}</div>
+        </>}
       </footer>
     </div>
     {panel}

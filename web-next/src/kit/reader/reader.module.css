@@ -50,3 +50,6 @@
 @media (max-width: 599px) { .reader[data-panel] .surface { inset-inline-end: 0; } .top { height: 68px; gap: 4px; padding: 0 12px; } .title b { font-size: 14px; } .title small { font-size: 11px; } .reader .tool { width: 40px; height: 44px; } .tools { gap: 0; } .bottom { padding-inline: 20px; } .position b, .remaining b { font-size: 13px; } .position small, .remaining small { font-size: 11px; } .runningTitle { top: 24px; } .runningFooter { inset-inline: 28px; bottom: 28px; font-size: 11px; } }
 .reader[data-reduced-motion] :is(.top,.bottom,.turn,.runningTitle,.runningFooter) { transform: none; transition-property: opacity; transition-duration: 160ms; }
 @media (prefers-reduced-motion: reduce) { .reader :is(.top,.bottom,.turn,.runningTitle,.runningFooter) { transform: none !important; transition-property: opacity; transition-duration: 160ms; } }
+
+/* Fixed-page assembly supplies its own drawn rows, inside the existing chrome lifecycle/backdrop. */
+.bottom.fixedPageFooter { display: block; }
