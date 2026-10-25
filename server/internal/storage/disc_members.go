@@ -123,14 +123,22 @@ func discMemberManifest(r InventoryRequest, required, optional, directories []st
 		if len(member) > 4096 || !filepath.IsLocal(member) || member == "." {
 			return nil, errors.New("invalid disc directory path")
 		}
-		info, e := root.Stat(filepath.Join(relative, member))
+		joined := filepath.Join(relative, member)
+		info, e := root.Stat(joined)
 		if e != nil {
 			return nil, e
 		}
 		if !info.IsDir() {
 			return nil, errors.New("disc structure is not a directory: " + member)
 		}
-		entry := snapshot(member, info)
+		// Bind the directory to the descriptor the rooted stat observed. The
+		// identity observation must open the real directory, not the
+		// manifest-relative name, and a failed binding is refused rather than
+		// recorded as an empty witness.
+		entry, e := observedSnapshot(filepath.Join(r.Root, joined), info)
+		if e != nil {
+			return nil, e
+		}
 		out = append(out, DiscMember{Path: member, ObjectIdentity: entry.ObjectIdentity, Size: entry.Size, ModifiedNS: entry.ModifiedNS, Required: true, Directory: true})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
