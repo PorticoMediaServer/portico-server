@@ -4,11 +4,13 @@ import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
 import {validateRepair, type RepairTarget} from '@core/metadata-repair.ts';
 import {Dialog} from '../../kit/overlays';
 import {Skeleton, StateView} from '../../kit/states';
+import type {ReadBindingContext} from './bindings';
+import {ReadCoverPages} from './ReadCoverPages';
 import {MetadataEditor} from '../metadata/MetadataEditor';
 import {screenLifetime, type ScreenContext} from '../detail/context';
 
 /** Reading items are nonplayable: resolve their library through the existing owner metadata response. */
-export function ReadMetadata({context, itemId, libraryId: expectedLibraryId, onClose, anchor}: {context: ScreenContext; itemId: string; libraryId?: string; onClose: () => void; anchor: RefObject<HTMLElement | null>}) {
+export function ReadMetadata({context, itemId, libraryId: expectedLibraryId, onClose, anchor, reading, sourceId, format}: {context: ScreenContext; itemId: string; libraryId?: string; reading?: ReadBindingContext; sourceId?: string; format?: string; onClose: () => void; anchor: RefObject<HTMLElement | null>}) {
   const [ready, setReady] = useState<Readonly<{target: RepairTarget; life: ReturnType<typeof screenLifetime>; api: Parameters<typeof MetadataEditor>[0]['api']}>>(), [failed, setFailed] = useState(false), [retry, setRetry] = useState(0);
   useEffect(() => {
     let active = true; const life = screenLifetime(context);
@@ -35,7 +37,7 @@ export function ReadMetadata({context, itemId, libraryId: expectedLibraryId, onC
   const owner = context.identity?.viewer;
   if (!context.isCurrent() || owner?.authority !== 'local' || owner.role !== 'owner') return null;
   return <Dialog open placement="right" width={520} title={defaultI18n.t('entry.editMetadata')} onOpenChange={open => {if (!open) onClose();}} returnFocusRef={anchor}>
-    {ready ? <MetadataEditor api={ready.api} scope={context.scope} target={ready.target} onClose={onClose}/>
+    {ready ? <MetadataEditor localArtworkOnly renderCoverPages={reading && sourceId && format === 'cbz' ? (upload, busy) => <ReadCoverPages reading={reading} context={context} itemId={itemId} sourceId={sourceId} upload={upload} busy={busy}/> : undefined} api={ready.api} scope={context.scope} target={ready.target} onClose={onClose}/>
       : failed ? <StateView title={defaultI18n.t('next.states.pageFailed')} body={defaultI18n.t('next.states.pageFailedBody')}
         primary={{id: 'retry', label: defaultI18n.t('next.states.tryAgain'), onPress: () => setRetry(value => value + 1)}}/> : <Skeleton height={480}/>}
   </Dialog>;

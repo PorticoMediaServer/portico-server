@@ -1,3 +1,4 @@
+import type {ReactNode} from 'react';
 import {useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {MetadataRepairService, type RepairCommand, type RepairData, type RepairFieldSpec, type RepairTarget} from '@core/metadata-repair.ts';
@@ -30,8 +31,9 @@ function tabsFor(data: RepairData | null | undefined): readonly Tab[] {
 /** owner-metadata frames 6-8: one editor for a title, an episode, a show, an album or a book.
  * Every field and every choice comes from the server's schema and current snapshot; a change is
  * exactly one edit command carrying only the fields the owner touched. */
-export function MetadataEditor({api, scope, target, onClose, initialTab = 'general'}: {
-  api: Api; scope: Readonly<{serverId: string; viewerId: string}>; target: RepairTarget; onClose: () => void; initialTab?: 'general' | 'matching';
+export function MetadataEditor({api, scope, target, onClose, initialTab = 'general', localArtworkOnly = false, renderCoverPages}: {
+  api: Api; scope: Readonly<{serverId: string; viewerId: string}>; target: RepairTarget; onClose: () => void;
+  localArtworkOnly?: boolean; renderCoverPages?: (upload: (file: Blob) => Promise<boolean>, busy: boolean) => ReactNode; initialTab?: 'general' | 'matching';
 }) {
   const service = useMemo(() => new MetadataRepairService({api, scope}), [api, scope]);
   const state = useSyncExternalStore(service.subscribe, service.getSnapshot);
@@ -77,7 +79,7 @@ export function MetadataEditor({api, scope, target, onClose, initialTab = 'gener
     void edit(fields);
   };
   const heading = data ? (data.snapshot.fields.title?.value || target.id) : '';
-  const kind = target.kind === 'item' ? data?.schema.some(field => field.field === 'episodeNumber') ? 'episode' : 'film' : target.kind;
+  const kind = localArtworkOnly ? 'reading' : target.kind === 'item' ? data?.schema.some(field => field.field === 'episodeNumber') ? 'episode' : 'film' : target.kind;
   return <aside className={styles.editor} aria-label={t('web.metadata.sections')}>
     <EditorHeader audience={{authority: 'owner'}} title={heading ? t('web.metadata.editTitle', {title: heading}) : t('web.metadata.editFallbackTitle')} description={t('web.metadata.editorLede', {kind})} onClose={onClose} className={styles.editorHead}/>
     <nav className={styles.editorTabs} aria-label={t('web.metadata.sections')}>
@@ -98,11 +100,12 @@ export function MetadataEditor({api, scope, target, onClose, initialTab = 'gener
       {shown === 'matching' ? <Matching data={data} target={target} busy={state.phase !== 'ready'} onSearch={query => void run({action: 'search', query})}
         onRetry={() => void run({action: 'retry'})} onLock={locked => void run({action: 'relationship_lock', role: 'identity', locked})}
         onUse={(provider, candidateId, order) => void run({action: 'identify', provider, candidateId, ...(order ? {order} : {})})} /> : null}
-      {shown === 'artwork' ? <Artwork data={data} busy={state.phase !== 'ready'} onUse={(role, candidateId) => void run({action: 'select_artwork', role, candidateId})}
+      {shown === 'artwork' && data.artworkRoles.includes('cover') && api.requestMetadataUpload ? renderCoverPages?.(file => service.uploadArtwork('cover', file), state.phase !== 'ready') : null}
+      {shown === 'artwork' ? <Artwork portraitCover={localArtworkOnly} data={data} busy={state.phase !== 'ready'} onUse={(role, candidateId) => void run({action: 'select_artwork', role, candidateId})}
         onRemove={removeUpload} isDataCurrent={currentRepairData}
         onUpload={api.requestMetadataUpload ? (role, file) => service.uploadArtwork(role, file) : undefined}
         onLock={(role, subject, locked) => void run({action: 'artwork_lock', role, subject, locked})}
-        onFindMore={role => void run({action: 'discover_artwork', role})} onRefetch={role => void run({action: 'repair_assets', role})} /> : null}
+        onFindMore={localArtworkOnly ? undefined : role => void run({action: 'discover_artwork', role})} onRefetch={localArtworkOnly ? undefined : role => void run({action: 'repair_assets', role})} /> : null}
       {shown === 'history' ? <History data={data} busy={state.phase !== 'ready'} onUndo={historyId => void run({action: 'undo', historyId})}
         onAll={locked => void run({action: locked ? 'lock_all' : 'unlock_all'})} /> : null}
       {shown === 'general' || shown === 'tags' ? <footer className={styles.editorFooter}>
@@ -206,12 +209,12 @@ function TagList({spec, values, locked, onValues, onLock, busy}: {spec: RepairFi
   </section>;
 }
 
-function Artwork({data, busy, onUse, onLock, onFindMore, onRefetch, onUpload, onRemove, isDataCurrent}: {
+function Artwork({data, busy, portraitCover, onUse, onLock, onFindMore, onRefetch, onUpload, onRemove, isDataCurrent}: {
   isDataCurrent: (data: RepairData) => boolean;
   onRemove: (role: string, candidateId: string, expectedData: RepairData) => Promise<boolean>;
   onUpload?: (role: string, file: File) => Promise<boolean>;
-  data: RepairData; busy: boolean; onUse: (role: string, candidateId: string) => void;
-  onLock: (role: string, subject: string, locked: boolean) => void; onFindMore: (role: string) => void; onRefetch: (role: string) => void;
+  data: RepairData; busy: boolean; portraitCover?: boolean; onUse: (role: string, candidateId: string) => void;
+  onLock: (role: string, subject: string, locked: boolean) => void; onFindMore?: (role: string) => void; onRefetch?: (role: string) => void;
 }) {
   const rolesId = useId();
   const [selected, setSelected] = useState(''), [uploadError, setUploadError] = useState('');
@@ -255,10 +258,10 @@ function Artwork({data, busy, onUse, onLock, onFindMore, onRefetch, onUpload, on
     {role ? <section className={styles.role} id={rolesId + '-panel'} role="tabpanel" aria-labelledby={rolesId + '-' + role}>
       <header><b>{t('web.metadata.candidateCount', {count: candidates.length})}</b>
         {chosen ? <Button size="small" disabled={busy} aria-pressed={chosen.locked} onClick={() => onLock(role, chosen.subject, !chosen.locked)}>{t(chosen.locked ? 'web.metadata.unlock' : 'web.metadata.lock')}</Button> : null}
-        <Button size="small" onClick={() => onFindMore(role)} disabled={busy}>{t('web.metadata.findMore')}</Button>
-        <Button size="small" onClick={() => onRefetch(role)} disabled={busy || !chosen}>{t('web.metadata.refetchChosen')}</Button>
+        {onFindMore && <Button size="small" onClick={() => onFindMore(role)} disabled={busy}>{t('web.metadata.findMore')}</Button>}
+        {onRefetch && <Button size="small" onClick={() => onRefetch(role)} disabled={busy || !chosen}>{t('web.metadata.refetchChosen')}</Button>}
       </header>
-      {candidates.length ? <div className={styles.choices} data-shape={role === 'cover' || role === 'square' ? 'square' : role === 'backdrop' || role === 'still' || role === 'thumbnail' || role === 'logo' ? 'landscape' : role === 'banner' ? 'banner' : 'poster'}>{candidates.map(candidate => <figure key={candidate.id} data-current={candidate.current || undefined}>
+      {candidates.length ? <div className={styles.choices} data-shape={portraitCover && role === 'cover' ? 'poster' : role === 'cover' || role === 'square' ? 'square' : role === 'backdrop' || role === 'still' || role === 'thumbnail' || role === 'logo' ? 'landscape' : role === 'banner' ? 'banner' : 'poster'}>{candidates.map(candidate => <figure key={candidate.id} data-current={candidate.current || undefined}>
         {candidate.previewUrl ? <img src={candidate.previewUrl} alt={t('web.metadata.artAlt', {role: t('web.metadata.artRole', {role}), provider: providerName(candidate.provider)})} loading="lazy" /> : <div className={styles.placeholder} />}
         <figcaption><small>{providerName(candidate.provider)}{candidate.locale ? ` · ${candidate.locale}` : ''}{candidate.votes != null ? ` · ${t('web.metadata.votes', {count: candidate.votes})}` : ''}</small></figcaption>
         {candidate.current ? <span className={styles.badge}>{t('web.metadata.inUse')}</span>
