@@ -102,7 +102,7 @@ export const settingsMessages = {
   'next.settings.people.create': 'Create invitation',
   'next.settings.people.createFailed': 'The invitation could not be created.',
   'next.settings.people.unsureCreate': 'We could not confirm whether this invitation was created. Retry this same invitation, or dismiss and check the list.',
-  'next.settings.people.retryCreate': 'Retry',
+  'next.settings.people.retryCreate': 'Try again',
   'next.settings.people.dismiss': 'Dismiss',
   'next.settings.peopleCount': '{matched} of {total, plural, one {# person} other {# people}}',
   'next.settings.turnOn': 'Turn on',
