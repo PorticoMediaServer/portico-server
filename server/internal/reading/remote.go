@@ -166,6 +166,9 @@ func (s *readingSequential) Read(p []byte) (int, error) {
 func (s *readingSequential) Close() error { return s.stream.Close() }
 
 func (f *Source) epub() (*EPUB, error) {
+	if f.derived != nil {
+		return f.derived.EPUB()
+	}
 	if f.Sequential() {
 		return OpenSequentialEPUB(f.ctx, SequentialSource{Size: f.Size, Open: func(ctx context.Context) (io.ReadCloser, error) {
 			if err := ctx.Err(); err != nil {

@@ -35,6 +35,7 @@ type Service struct {
 	Authorize   Authorization
 	Visible     Visibility
 	SeriesScope SeriesScopeResolver
+	Mobi        *MobiConverter
 	// Changed queues metadata inventory for the actual captured folder source.
 	// It runs only outside source/DB locks, never as content-read authority.
 	Changed        func(library, folderSource string)
@@ -141,6 +142,8 @@ func (s *Service) validate(ctx context.Context, p identity.Principal, selected S
 // actor/association authority, and the helper checks observed identity before
 // and after each bounded extent. No immutable/no-splice claim is made from it.
 type Source struct {
+	derived         *DerivedMobi
+	derivedRetained bool
 	Selection
 	ctx      context.Context
 	p        identity.Principal
@@ -307,6 +310,9 @@ func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 }
 func (f *Source) Close() error {
 	f.closeOnce.Do(func() {
+		if f.derived != nil && !f.derivedRetained {
+			f.derived.Close()
+		}
 		if f.remoteCancel != nil {
 			f.remoteCancel()
 		}
@@ -340,6 +346,9 @@ func (f *Source) Validate() (failure error) {
 			f.Close()
 		}
 	}()
+	if f.derived != nil && (f.derived.cache.size() == 0 || f.service.Mobi == nil || f.service.Mobi.bundle.WorkerSHA256 != f.derived.cache.provenance.WorkerSHA256) {
+		return ErrChanged
+	}
 	if err := f.ctx.Err(); err != nil {
 		return err
 	}

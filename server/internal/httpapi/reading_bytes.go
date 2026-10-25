@@ -126,12 +126,12 @@ func (d Dependencies) openReadingBytes(w http.ResponseWriter, r *http.Request) (
 	}
 	// Public routes identify the captured session. The earlier private handler
 	// seam also names an item and source, which must agree when supplied.
-	if (r.PathValue("id") != "" && f.ItemID != r.PathValue("id")) || (r.URL.Query().Has("sourceId") && f.SourceID != r.URL.Query().Get("sourceId")) || f.Revision != match[1:len(match)-1] {
+	if (r.PathValue("id") != "" && f.ItemID != r.PathValue("id")) || (r.URL.Query().Has("sourceId") && f.SourceID != r.URL.Query().Get("sourceId")) || f.PublicationSelection().Revision != match[1:len(match)-1] {
 		f.Close()
 		policyError(w, "revision_mismatch")
 		return nil, false
 	}
-	readingHeaders(w, f.Revision)
+	readingHeaders(w, f.PublicationSelection().Revision)
 	return f, true
 }
 
@@ -284,7 +284,7 @@ func (d Dependencies) serveReadingAsset(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	defer f.Close()
-	if f.Format != "epub" {
+	if f.PublicationSelection().Format != "epub" {
 		policyError(w, "not_found")
 		return
 	}
@@ -365,7 +365,7 @@ func serveReadingBlob(w http.ResponseWriter, r *http.Request, f *reading.Source,
 		readingFailure(w, err)
 		return
 	}
-	revision := f.Revision
+	revision := f.PublicationSelection().Revision
 	readingHeaders(w, revision)
 	w.Header().Set("Content-Type", mime)
 	w.Header().Set("Content-Length", strconv.Itoa(len(b)))
