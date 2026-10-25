@@ -74,7 +74,13 @@ export function ReadEntry({captured, itemId, sourceId, active = true, onClose}: 
       reader = bindReadPreferences({adapters, preferences: bindings.preferences, authority: bindings.authority, reportError: code => reportError({code})});
       progress = bindReadingProgress({controller: reader.controller, session, initial: saved, authority: bindings.authority, reportError});
       setState({book: {session, publication, controller: reader.controller, authority: bindings.authority, location, contentsTarget, ...(session.manifest.canAnnotate === true ? {annotations:session} : {})}});
-    })().catch(error => {if (alive && bindings.authority.isCurrent()) {reportError(error); setState({failed: true});} void dispose().catch(() => {});});
+    })().catch(error => {
+      // A rejected bootstrap must never leave the reader on its loading skeleton. This attempt is
+      // still the live one unless it was retired, so show the failure state; report only while the
+      // captured authority still holds, since a retired capture owns no error surface.
+      if (alive && !life.signal.aborted) {if (bindings.authority.isCurrent()) reportError(error); setState({failed: true});}
+      void dispose().catch(() => {});
+    });
     return () => {void dispose().catch(() => {});};
   }, [captured.context, itemId, sourceId, contentsTarget, reportError, retry]);
   if (state.book) return <ReaderBook key={state.book.session.manifest.sessionId} book={state.book} active={active} reportError={reportError} onSearchAll={query => {if (!captured.context.isCurrent()) return; void router.navigate({to: '/search', search: {q: query}}).catch(reportError);}} onOpenSettings={() => {void router.navigate({to: '/settings', search: {scope: 'account', section: 'reading'}}).catch(reportError);}} onBack={onClose ?? (() => router.history.back())}/>;
