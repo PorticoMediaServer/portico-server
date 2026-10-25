@@ -74,7 +74,7 @@ func (d Dependencies) readingFileSave(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		if !allowed {
-			return identity.ErrUnauthorized
+			return identity.ErrForbidden
 		}
 		return f.Context().Err()
 	}
