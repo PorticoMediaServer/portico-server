@@ -36,7 +36,10 @@ func StepReadingAttribution(ctx context.Context, tx *sql.Tx, limit int) (int, er
 	// Rule changes retire readiness before any reader can consume a stale type.
 	// Invalidate one indexed library per step, then use the normal bounded rebuild.
 	var stale int64
-	ruleErr := tx.QueryRowContext(ctx, `SELECT library_id FROM reading_attribution_state WHERE publication_rule_version<>? ORDER BY publication_rule_version,namespace LIMIT 1`, ReadingPublicationTypeRuleVersion).Scan(&stale)
+	ruleErr := tx.QueryRowContext(ctx, `SELECT library_id FROM reading_attribution_state WHERE publication_rule_version<? ORDER BY publication_rule_version,namespace LIMIT 1`, ReadingPublicationTypeRuleVersion).Scan(&stale)
+	if errors.Is(ruleErr, sql.ErrNoRows) {
+		ruleErr = tx.QueryRowContext(ctx, `SELECT library_id FROM reading_attribution_state WHERE publication_rule_version>? ORDER BY publication_rule_version,namespace LIMIT 1`, ReadingPublicationTypeRuleVersion).Scan(&stale)
+	}
 	if ruleErr == nil {
 		_, err := tx.ExecContext(ctx, `UPDATE reading_attribution_state SET publication_rule_version=?,input_generation=input_generation+1,phase='scan' WHERE library_id=?`, ReadingPublicationTypeRuleVersion, stale)
 		return 1, err
