@@ -385,7 +385,11 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
       if (!guard() || oauthTicket.current !== ticket) {void service.driveOAuthCancel(started.state);return;}
       oauthLease.current = {state: started.state};setOauthState(started.state);setOauthPhase('waiting');
       window.open(started.authorizationUrl, '_blank', 'noopener,noreferrer');
-      void pollOAuth(started.state, ticket, guard, revision, ++oauthGeneration.current);
+      // One status owner at a time: wait for a retiring poll to finish, then this ticket's.
+      void (async () => {
+        for (let wait = 0; wait < 25 && oauthPolling.current; wait++) await new Promise(resolve => setTimeout(resolve, 200));
+        if (guard() && oauthTicket.current === ticket) void pollOAuth(started.state, ticket, guard, revision, ++oauthGeneration.current);
+      })();
     } catch (value) {
       if (!guard() || oauthTicket.current !== ticket) return;
       if (authFailure(value)) {refuse(value);return;}
