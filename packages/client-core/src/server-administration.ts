@@ -77,6 +77,8 @@ export type ClientLogUpload=Readonly<{id:string;accountId:string;profileId:strin
 export type ConnectivityPolicy=Readonly<{revision:number;remoteSignInPolicy:RemoteSignInPolicy;remoteBitrateLimitKbps:number;
  connectionLimit:number;advertiseUrl:string;lanNetworks:readonly string[];accessUrls:readonly string[];lanDiscoveryEnabled:boolean;dlnaEnabled:boolean;
  trustedProxies:readonly string[];uploadCapacityKbps:number;pausedSessionTimeoutMinutes:number;advertisedInterface:string;
+ /** The owner's own address switch: the drawn "Use your own address" row edits this row of the same policy. Optional for typed consumers that predate it; the parser always supplies it. */
+ ownAddressEnabled?:boolean;
  customCertificatePath:string;customCertificateKeyPath:string;customCertificateDomain:string}>;
 export type ConnectivityAddress=Readonly<{address:string;family:'ipv4'|'ipv6'|'hostname';class:'public'|'lan'|'loopback';source:'interface'|'accessUrl'}>;
 export type ConnectivityInterface=Readonly<{name:string;up:boolean;loopback:boolean;virtual:boolean;addresses:readonly string[]}>;
@@ -307,7 +309,7 @@ export function parseConnectivityPolicy(raw:unknown):ConnectivityPolicy{
   // Rows added 25 Sep; an older server omits them, so each has its shipped default.
   trustedProxies:list(raw.trustedProxies??[],32,x=>str(x,64)),
   uploadCapacityKbps:num(raw.uploadCapacityKbps??0,0,10000000),pausedSessionTimeoutMinutes:num(raw.pausedSessionTimeoutMinutes??0,0,1440),
-  advertisedInterface:str(raw.advertisedInterface??'',64,true),customCertificatePath:str(raw.customCertificatePath??'',1024,true),
+  advertisedInterface:str(raw.advertisedInterface??'',64,true),ownAddressEnabled:raw.ownAddressEnabled===undefined?false:bool(raw.ownAddressEnabled),customCertificatePath:str(raw.customCertificatePath??'',1024,true),
   customCertificateKeyPath:str(raw.customCertificateKeyPath??'',1024,true),customCertificateDomain:str(raw.customCertificateDomain??'',253,true)});
 }
 
