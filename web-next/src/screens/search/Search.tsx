@@ -1,3 +1,5 @@
+import type {SearchSelection} from './selection';
+import {SelectionCircle} from '../../kit/selection';
 import {t, locale} from '../detail/text';
 import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {preferenceValue} from '@core/preferences.ts';
@@ -41,9 +43,11 @@ function onNowProgramme(card: SearchOnNowCard, now: number) {
   facts.push({id: 'ends', role: 'context', text: t('guide.ends', {time: onNowTime(programme.end)})});
   return {title: programme.title, facts, progress: current.progress, live: programme.flags?.live === true};
 }
-export type SearchScreenProps = {binding: SearchBindings; linkedQuery?: string; onConsumeLinkedQuery?: () => void; onOpenLive?: (sourceId?: string) => void};
+export type SearchScreenProps = {binding: SearchBindings; selection?: SearchSelection; linkedQuery?: string; onConsumeLinkedQuery?: () => void; onOpenLive?: (sourceId?: string) => void};
 
-export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery, onOpenLive}: SearchScreenProps) {
+export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQuery, onOpenLive}: SearchScreenProps) {
+  useSyncExternalStore(selection?.subscribe ?? noSelectionSubscription, selection?.getSnapshot ?? noSelectionSnapshot, selection?.getSnapshot ?? noSelectionSnapshot);
+  const selectionEpoch = selection?.epoch();
   const compact = useShellWidth() < 600;
   const {service, context} = binding, initial = binding.session();
   const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
@@ -91,7 +95,8 @@ export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery, onOpen
   }, [text]);
   const commit = () => { if (remember && text.trim() && !problem && committed.current !== text.trim()) { committed.current = text.trim(); submit(true); } };
   const showing = snapshot.data?.query.q === text.trim() && snapshot.data.query.group === (group ?? '') ? snapshot.data : null;
-  const groups = showing ? snapshot.groups : [], top = !group ? topSearchResult(text, groups) : undefined;
+  const groups = showing ? snapshot.groups : [], top = !group && !selection?.isActive() ? topSearchResult(text, groups) : undefined;
+  useEffect(() => {if (selection && top?.entry && 'libraryId' in top.entry) return selection.register(top.entry, -1);}, [selection, top?.entry, selectionEpoch]);
   const failed = groups.filter(value => value.status === 'error');
   const size = preferenceValue<number>(preferences, 'appearance.cardSizePercent') / 100;
   const empty = showing && groups.every(value => value.status === 'success' && !value.items.length);
@@ -128,6 +133,7 @@ export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery, onOpen
     </section>}
   </div>;
   return <div className={styles.search} style={{'--search-card-scale': size, '--search-columns': Math.max(1, Math.round(7 / size))} as React.CSSProperties}>
+    {selection?.toolbar}
     <div className={styles.wash} aria-hidden="true" />
     <form className={styles.field} role="search" onSubmit={event => { event.preventDefault(); submit(true); }}>
       <TextField ref={input} variant="large-search" type="search" autoComplete="off" spellCheck={false} value={text}
@@ -155,14 +161,14 @@ export function SearchScreen({binding, linkedQuery, onConsumeLinkedQuery, onOpen
         action={group ? <Button variant="primary" size="compact" onClick={() => setChip('all')}>{t('web.search.everything')}</Button> : undefined} />}
       {empty && !group && recentBlock}
       {top && <TopResult binding={binding} result={top} />}
-      {group && !empty ? <SearchGroupWindow binding={binding} group={group} result={groups.find(value => value.id === group)} onCommit={commit} />
-        : orderedSearchGroups(groups).map(result => {
+      {group && !empty ? <SearchGroupWindow binding={binding} group={group} result={groups.find(value => value.id === group)} selection={selection} onCommit={commit} />
+        : orderedSearchGroups(groups).map((result, groupIndex) => {
           const entries = result.items.filter(entry => entry !== top?.entry), cap = result.id === 'episodes' || result.id === 'songs' ? 4 : result.id === 'movies' || result.id === 'shows' ? 7 : 4;
           if (!entries.length) return null;
           return <section key={result.id} className={styles.section} data-group={result.id}>
             <header><h2>{t(searchGroupLabel(result.id))}</h2>{result.totalCountExact && <span>{result.totalCount > cap ? t('web.search.someOf', {shown: Math.min(cap, entries.length), total: result.totalCount}) : result.totalCount}</span>}
               {(result.hasMore || entries.length > cap) && <Button variant="text" size="small" onClick={() => setChip(result.id)}><span className={styles.seeAll}>{t('web.search.seeAll')}<Icon name="i-right" size={18} /></span></Button>}</header>
-            <div className={styles.cards}>{entries.slice(0, cap).map(entry => <SearchResult key={keyOf(entry)} entry={entry} binding={binding} onCommit={commit} />)}</div>
+            <div className={styles.cards}>{entries.slice(0, cap).map((entry, position) => <SearchResult key={keyOf(entry)} entry={entry} binding={binding} selection={selection} position={groupIndex * 1000 + position} onCommit={commit} />)}</div>
           </section>;
         })}
     </div>
@@ -174,7 +180,13 @@ function SearchLoading() {
   return <div className={styles.skeleton} role="status" aria-label={t('next.states.loading')}>{elapsed >= 300 && Array.from({length: 7}, (_, index) => <Skeleton className={styles.skeletonBlock} sheen={index === 2} key={index} />)}{elapsed >= 8000 && <Banner variant="quiet">{t('next.states.stillLoading')}</Banner>}</div>;
 }
 
-export function SearchResult({entry, binding, onCommit}: {entry: SearchEntry; binding: SearchBindings; onCommit: () => void}) {
+const noSelectionSubscription = () => () => {};
+const noSelectionSnapshot = () => 0;
+export function SearchResult({entry, binding, selection, position = 0, onCommit}: {entry: SearchEntry; binding: SearchBindings; selection?: SearchSelection; position?: number; onCommit: () => void}) {
+  useSyncExternalStore(selection?.subscribe ?? noSelectionSubscription, selection?.getSnapshot ?? noSelectionSnapshot, selection?.getSnapshot ?? noSelectionSnapshot);
+  const epoch = selection?.epoch();
+  useEffect(() => {if (selection && 'libraryId' in entry) return selection.register(entry, position);}, [selection, entry, position, epoch]);
+  const picked = 'libraryId' in entry ? selection?.card(entry) : undefined;
   const {context} = binding, open = () => runScreenCommand(context, () => { binding.open(entry); onCommit(); });
   const liveCards = useSyncExternalStore(binding.live.subscribe, binding.live.getSnapshot, binding.live.getSnapshot);
   const art = context.artwork.foreground(entry.posterUrl, 380, 2 / 3);
@@ -187,16 +199,16 @@ export function SearchResult({entry, binding, onCommit}: {entry: SearchEntry; bi
   if (!('libraryId' in entry)) return <CircleCard context="search" model={{title: entry.title, caption: entry.subtitle ? [{id: 'caption', text: entry.subtitle, role: 'context'}] : []}} covers={art ? [art] : []}
     initials={entry.title.split(/\s+/).filter(Boolean).slice(0, 2).map(word => Array.from(word)[0]).join('')} onNavigate={open} />;
   const model = entryCard(entry, {t, locale: locale()}, 'search'), playable = entry.available === true && !!entry.playback;
-  const props = {model, context: 'search' as const, watched: entry.watched, isNew: entry.new, onNavigate: open,
+  const props = {model, selection: picked, context: 'search' as const, watched: entry.watched, isNew: entry.new, onNavigate: open,
     onPlay: playable ? () => { void binding.play(entry).then(onCommit).catch(context.effects.reportError); } : undefined};
-  if (entry.kind === 'song') return <button className={styles.song} type="button" onClick={playable ? () => { void binding.play(entry).then(onCommit).catch(context.effects.reportError); } : open}><Artwork source={context.artwork.foreground(entry.posterUrl, 88, 1)} alt="" /><span><b>{entry.displayTitle ?? entry.title}</b><small>{entry.artist?.name}{entry.album?.name && <span>{entry.album.name}</span>}</small></span><span>{clockText(entry.duration)}</span></button>;
+  if (entry.kind === 'song') return <div className={styles.songSelection}>{picked && <SelectionCircle variant="row" selected={picked.checked} selecting={picked.active} accessibilityLabel={t('next.selection.select')} onClick={event => {event.preventDefault(); picked.onToggle({range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});}}/>}<button className={styles.song} type="button" onClick={event => {if (picked?.active) picked.onToggle({range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'}); else if (playable) void binding.play(entry).then(onCommit).catch(context.effects.reportError); else open();}}><Artwork source={context.artwork.foreground(entry.posterUrl, 88, 1)} alt="" /><span><b>{entry.displayTitle ?? entry.title}</b><small>{entry.artist?.name}{entry.album?.name && <span>{entry.album.name}</span>}</small></span><span>{clockText(entry.duration)}</span></button></div>;
   if (entry.kind === 'episode') return <EpisodeTile {...props} length={durationText(entry.duration, t)} artwork={context.artwork.foreground(entry.stillUrl ?? entry.backdropUrl, 632, 16 / 9)} artworkKind={entry.stillUrl ? 'still' : 'backdrop'} description={entry.overview} />;
   if (entry.kind === 'artist') return <CircleCard {...props} covers={art ? [art] : []} variant="artist" />;
   if (['album', 'book', 'audiobook_file'].includes(entry.kind)) return <SquareCard {...props} artwork={context.artwork.foreground(entry.posterUrl, 300, 1)} />;
   return <PosterCard {...props} artwork={art} progressPlacement="inset" />;
 }
 
-function SearchGroupWindow({binding, group, result, onCommit}: {binding: SearchBindings; group: SearchGroup; result?: SearchGroupResult; onCommit: () => void}) {
+function SearchGroupWindow({binding, group, result, selection, onCommit}: {binding: SearchBindings; selection?: SearchSelection; group: SearchGroup; result?: SearchGroupResult; onCommit: () => void}) {
   const window = useMemo(() => appendedWindow<SearchEntry>(keyOf), []);
   const entries = useRef<readonly SearchEntry[]>([]), key = useRef(''), [, redraw] = useState(0);
   const snapshot = binding.service.getSnapshot(), queryKey = JSON.stringify([snapshot.query?.q, group, snapshot.data?.scope.viewerFence, snapshot.data?.revision]);
@@ -211,6 +223,6 @@ function SearchGroupWindow({binding, group, result, onCommit}: {binding: SearchB
   useEffect(() => () => window.dispose(), [window]);
   return <section className={styles.single}><h2>{t(searchGroupLabel(group))}</h2><WindowedGrid collection={window.collection} label={t(searchGroupLabel(group))}
     cardWidth={group === 'songs' ? 10000 : group === 'episodes' ? 316 : 174} rowHeight={group === 'songs' ? 58 : group === 'episodes' ? 285 : 320} height="calc(100vh - 270px)" gap={16}
-    renderItem={entry => <SearchResult entry={entry} binding={binding} onCommit={onCommit} />} renderPlaceholder={index => <span className={styles.placeholder} key={index} />}
+    renderItem={(entry, item) => <SearchResult entry={entry} binding={binding} selection={selection} position={item.index} onCommit={onCommit} />} renderPlaceholder={index => <span className={styles.placeholder} key={index} />}
     onVisibleRange={(_, last) => { if (last >= entries.current.length - 20 && result?.nextCursor && binding.service.getSnapshot().phase === 'ready') void binding.service.next(group); }} /></section>;
 }
