@@ -480,6 +480,7 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/storage/sources":                            exempt(reasonAdmin),
 		"GET /v1/storage/operations/{id}":                    exempt(reasonAdmin),
 		"GET /v1/storage/source-operations/{id}":             exempt(reasonAdmin),
+		"GET /v1/storage/sources/rclone/operations/{id}":     exempt(reasonAdmin),
 		"GET /v1/storage/sources/{id}/settings/read-profile": exempt(reasonAdmin),
 		"GET /v1/saved-pins/order":                           exempt("pin order: resource ids only, each read through the saved-resource routes probed below"),
 
