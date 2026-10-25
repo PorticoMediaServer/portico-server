@@ -21,6 +21,17 @@
 /* collections.html 1 and 14a: the Playlists Show groups, one scrolling row of chips. */
 .playlistFilters { display: flex; align-items: center; gap: 8px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
 .playlistFilters::-webkit-scrollbar { display: none; }
+/* collections.html 14a: a playlist row at phone width, 64px mosaic and a chevron. */
+.playlistRow { position: relative; display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; align-items: center; gap: 14px; width: 100%; padding: 8px 0; text-align: left; color: var(--color-text); }
+.playlistRow::before { content: ''; position: absolute; top: 0; left: 78px; right: 0; height: 1px; background: color-mix(in srgb, var(--color-line) 70%, transparent); }
+.playlistRow[data-first]::before { content: none; }
+.playlistRow:where(:hover) { background: color-mix(in srgb, var(--color-text) 5%, transparent); }
+.playlistRowArt { width: 64px; height: 64px; border-radius: 10px; overflow: hidden; background: var(--color-ink); box-shadow: 0 6px 14px -6px var(--color-shadow); }
+.playlistRowArt > * { width: 100%; height: 100%; }
+.playlistRowCopy { min-width: 0; }
+.playlistRowCopy > b { display: block; font-size: var(--type-subheading-size); font-weight: var(--type-row-heading-weight); letter-spacing: var(--type-subheading-tracking); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.playlistRowCopy > small { display: block; margin-top: 3px; font-size: calc(var(--type-caption-size) * 27 / 26); color: var(--color-text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.playlistRowChevron { color: var(--color-line-strong); flex: none; }
 .resultCount { font-size: calc(var(--type-caption-size) * 14 / 13); color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
 .toolbarEnd { margin-left: auto; display: flex; align-items: center; gap: 10px; color: var(--color-text-tertiary); font-size: calc(var(--type-caption-size) * 14 / 13); }
 .directoryCount { color: var(--color-text-secondary); font-size: calc(var(--type-caption-size) * 29 / 26); font-weight: var(--type-caption-strong-weight); }

@@ -1,7 +1,7 @@
 import {ReadingGroupCard} from './ReadingGroupCard';
 import type {SavedReadingGroupCard} from '@core/reading-saved-group.ts';
 import type {SavedCatalogueSelection} from './catalogue-selection';
-import {CatalogueSelectionEntry} from '../browse/document-selection';
+import {CatalogueSelectionEntry, useCatalogueSelectionActive} from '../browse/document-selection';
 import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import type {ContentEntry} from '@core/library-content.ts';
@@ -15,7 +15,8 @@ import {Button, Chip, Tabs, Switch} from '../../kit/controls';
 import {FiltersButton, SortMenu, ViewToggle} from '../../kit/browse';
 import {MenuRow, Popover} from '../../kit/overlays';
 import {PlaylistMosaic, PosterCard, SquareCard, NewPlaylistCard, type CardSelection} from '../../kit/cards';
-import {AmbientArt, type AmbientArtSource, type ArtworkSource} from '../../kit/artwork';
+import {AmbientArt, CoverMosaic, type AmbientArtSource, type ArtworkSource} from '../../kit/artwork';
+import {Icon} from '../../kit/Icon';
 import {WindowedGrid} from '../../kit/layout';
 import {Skeleton, StateView} from '../../kit/states';
 import type {ShellArtwork} from '../../shell/artwork';
@@ -233,19 +234,26 @@ export function SavedSection(bindings: SavedViewBindings & {service: SavedServic
   useEffect(() => () => { cleanup.current?.(); cleanup.current = undefined; }, [collection]);
   const onVisibleRange = useCallback((first: number, last: number) => { cleanup.current?.(); cleanup.current = selection?.registerWindow(service, section.id, first, last); }, [selection, service, section.id]);
   const first = section.entries[0], media = first && mediaEntry(first), square = first?.kind === 'playlist' || media && shapeFor(media.kind) === 'square';
-  const ratio = square ? 1 : 2 / 3, rowHeight = presentation.view === 'list' ? 90 : presentation.cardWidth / ratio + 48;
-  const columns = presentation.view === 'list' ? 1 : Math.max(1, Math.floor((width + 16) / (presentation.cardWidth + 16)));
+  // collections.html 14a: at phone width the playlist directory is the frame's
+  // list of rows, not the tile grid. The selection's own live mode decides: while
+  // it is active the tiles stay, because its circles and range previews live there.
+  const selecting = useCatalogueSelectionActive(bindings.catalogueSelection);
+  const phoneRows = width > 0 && width < 600 && !selecting && section.entries.length > 0 && section.entries.every(entry => entry.kind === 'playlist');
+  const oneColumn = presentation.view === 'list' || phoneRows;
+  const ratio = square ? 1 : 2 / 3, rowHeight = phoneRows ? 80 : presentation.view === 'list' ? 90 : presentation.cardWidth / ratio + 48;
+  const columns = oneColumn ? 1 : Math.max(1, Math.floor((width + 16) / (presentation.cardWidth + 16)));
   const rows = Math.ceil(section.entries.length / columns);
   const height = Math.max(rowHeight, Math.min(window.innerHeight, rows * rowHeight + Math.max(0, rows - 1) * 16));
   return <section className={styles.savedSection} ref={root}>
     {bindings.heading && <div className={styles.sectionHeading}><h2>{bindings.heading.label}</h2>{bindings.heading.count !== undefined && <span>{defaultI18n.number(bindings.heading.count)}</span>}</div>}
-    <WindowedGrid collection={collection} label={bindings.heading?.label ?? serverTextLabel(defaultI18n, section.heading)} height={height} cardWidth={presentation.view === 'list' ? Math.max(1, width) : presentation.cardWidth} rowHeight={rowHeight} rowGap={presentation.view === 'list' ? 0 : 16} gap={16} reducedMotion={presentation.reducedMotion} onVisibleRange={onVisibleRange}
-      renderPlaceholder={() => <Skeleton width={presentation.cardWidth} height={presentation.cardWidth / ratio} />}
+    <WindowedGrid collection={collection} label={bindings.heading?.label ?? serverTextLabel(defaultI18n, section.heading)} height={height} cardWidth={oneColumn ? Math.max(1, width) : presentation.cardWidth} rowHeight={rowHeight} rowGap={oneColumn ? 0 : 16} gap={phoneRows ? 0 : 16} reducedMotion={presentation.reducedMotion} onVisibleRange={onVisibleRange}
+      renderPlaceholder={() => phoneRows ? <Skeleton width={Math.max(1, width)} height={72} /> : <Skeleton width={presentation.cardWidth} height={presentation.cardWidth / ratio} />}
       renderItem={(entry, context) => {
         if (entry.kind === 'reading_group') return <ReadingGroupCard card={entry} service={service} runtime={bindings.runtime} operations={bindings.operations} artwork={artwork} width={presentation.cardWidth} open={effects.openReadingGroup} reportError={effects.reportError}/>;
         const cardSelection = selection?.card(service, section.id, entry), media = mediaEntry(entry);
         if (entry.kind === 'playlist') {
-          const covers = (entry.artworkPaths ?? []).map(path => artwork.foreground(path, presentation.cardWidth, 1)).filter((source): source is ArtworkSource => !!source);
+          const covers = (entry.artworkPaths ?? []).map(path => artwork.foreground(path, phoneRows ? 64 : presentation.cardWidth, 1)).filter((source): source is ArtworkSource => !!source);
+          if (phoneRows) return <PlaylistRow first={context.index === 0} title={entry.title} count={entry.count} covers={covers} open={() => effects.selectRoute({view: 'playlist', playlistId: entry.id})} />;
           return <PlaylistMosaic model={{title: entry.title, caption: entry.count !== undefined ? [{id: 'count', role: 'value', text: t('web.saved.items', {count: entry.count})}] : []}} covers={covers} context="grid" selection={cardSelection} onNavigate={() => effects.selectRoute({view: 'playlist', playlistId: entry.id})} onMore={effects.openMore ? anchor => effects.openMore!(service, section.id, entry, anchor) : undefined} />;
         }
         if (!media) return <StateView title={t('card.unavailable')} />;
@@ -263,6 +271,17 @@ export function SavedSection(bindings: SavedViewBindings & {service: SavedServic
       }} />
     {section.nextCursor && <Button className={styles.showMore} size="small" loading={service.getSnapshot().phase === 'loading'} onClick={() => { void service.next(section.id); }}>{t('action.showMore')}</Button>}
   </section>;
+}
+/** collections.html 14a: a playlist at phone width is one row, its 2 by 2 mosaic
+ * on the left, the name and count beside it and the chevron on the right. The
+ * rows sit in individual virtual cells, so each draws its own inset divider and
+ * the first one leaves it out. */
+function PlaylistRow({first, title, count, covers, open}: {first: boolean; title: string; count: number | undefined; covers: readonly ArtworkSource[]; open: () => void}) {
+  return <button type="button" className={styles.playlistRow} data-first={first || undefined} onClick={open}>
+    <span className={styles.playlistRowArt}><CoverMosaic covers={covers} shape="square" alt="" /></span>
+    <span className={styles.playlistRowCopy}><b>{title}</b>{count !== undefined && <small>{t('web.saved.items', {count})}</small>}</span>
+    <Icon name="i-right" size={18} className={styles.playlistRowChevron} />
+  </button>;
 }
 function mediaEntry(entry: SavedEntry): ContentEntry | undefined {
   return entry.kind === 'playlist' || entry.kind === 'reading_group' ? undefined : entry.kind === 'playlist_entry' ? entry.hidden ? undefined : entry.media : entry;
