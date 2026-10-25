@@ -2,11 +2,11 @@ import {LibraryMetadataMenu} from '../metadata/LibraryMetadataMenu';
 import {ReadSeriesEntry} from '../read/ReadSeriesEntry';
 import {ReadPeriodicalEntry} from '../read/ReadPeriodicalEntry';
 import type {ReadingPeriodicalType} from '@portico/client-core';
-import {useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import {useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore} from 'react';
 import {useLocation, useParams, useSearch} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
 import type {Library} from '@core/index.ts';
-import {LibraryContentService, type ContentEntry, type ContentRoute, type ContentSection, type ContentView} from '@core/library-content.ts';
+import type {ContentEntry, ContentRoute, ContentSection, ContentView} from '@core/library-content.ts';
 import {LibraryManagementService} from '@core/library-management.ts';
 import {libraryTabs, readingTabModel, type LibraryTab} from '@core/presentation/library-tabs.ts';
 import {browseCapabilitiesPath, parseBrowseCapabilities, type BrowseCapabilities} from '@core/browse.ts';
@@ -28,7 +28,7 @@ import {createShowBindings} from '../detail/show-bindings';
 import type {ScreenContext} from '../detail/context';
 import {screenLifetime} from '../detail/context';
 import type {WebPlaybackRuntimeSnapshot} from '../../platform/playback/types';
-import {BrowseController} from './controller';
+import {useBrowseLease, type BrowseLease} from './useBrowseLease';
 import {createLibraryPlaySelection} from './play-selection';
 import {createLibrarySelection} from './selection';
 import {useMusicMixes} from './music-mixes-hook';
@@ -38,7 +38,8 @@ import {LibraryMenu} from '../../kit/browse';
 import {NeedsAttention} from '../metadata/NeedsAttention';
 import type {AttentionEntry} from '@core/metadata-attention.ts';
 import {LibraryDiscoveryScreen} from './Discovery';
-import {useLibraryScreenContext, type ProtectedLibraryScreen} from './screen-context';
+import {discoverySections} from './discovery-selection';
+import {useCommittedLibraryScreenContext, useLibraryScreenContext, type ProtectedLibraryScreen} from './screen-context';
 import {useScreenAppearance} from './screen-preferences';
 import {browseConjunction, parseLibraryScreenSearch, type LibraryScreenSearch} from './route-search';
 import {SaveView} from './SaveView';
@@ -141,8 +142,9 @@ function readingLibraryMenu(resources: {life: {current: () => boolean}; controll
   return <LibraryMenu owner={!!owner} read {...(markAll ? {onMarkAll: markAll} : {})} {...(canSave ? {onSaveView: save} : {})} {...(unmatched ? {onUnmatched: unmatched} : {})}
     {...(settings ? {onLibrarySettings: settings} : {})} {...(scan ? {onScan: scan} : {})}/>;
 }
-function BoundLibrary({captured, library, search, tabs: offered, musicLookup, readingMarkAll}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch; tabs?: readonly ReadingTab[]; musicLookup?: ReturnType<typeof useMusicLibrarySummary>; readingMarkAll?: () => void}) {
-  const context = useLibraryScreenContext(captured), appearance = useScreenAppearance(captured.context)!, width = useShellWidth();
+type BoundLibraryProps = {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch; tabs?: readonly ReadingTab[]; musicLookup?: ReturnType<typeof useMusicLibrarySummary>; readingMarkAll?: () => void};
+function useBoundLibraryFrame({captured, library, search, tabs: offered, musicLookup}: BoundLibraryProps, context: ScreenContext, presentation: BoundPresentation) {
+  const appearance = useScreenAppearance(captured.context)!, width = useShellWidth();
   // The offer needs this exact library's own online metadata agent. The fact is keyed to the
   // library and screen scope that produced it, so a stale read can never enable another library
   // or survive a scope change; unknown, reset and failed reads all withhold the tab.
@@ -163,16 +165,23 @@ function BoundLibrary({captured, library, search, tabs: offered, musicLookup, re
   const browse = !!pivot && !search.entityId && !search.category && !search.q && view !== 'discover';
   const sourceKey = JSON.stringify({libraryId: library.id, pivot: pivot ?? '', predicates: search.query ? browseConjunction(search.query) : undefined,
     sorts: search.sort ?? (requested?.defaultSort ? [requested.defaultSort] : undefined)});
-  const resources = useMemo(() => {
-    const life = screenLifetime(context), source: ConstructorParameters<typeof BrowseController>[1] = JSON.parse(sourceKey);
-    const controller = new BrowseController(life.api, source, life.current);
-    const service = new LibraryContentService({api: life.api, scope: context.scope});
-    return {life, controller, service};
-  }, [context, sourceKey]);
-  useEffect(() => () => {resources.life.dispose();resources.controller.dispose();resources.service.dispose();}, [resources]);
-  const state = useSyncExternalStore(resources.controller.subscribe, resources.controller.getSnapshot, resources.controller.getSnapshot);
+  return {context, appearance, width, ...presentation, onlineAttention, agentKey, setAgentFact, tabs, requested, view, musicMixes, musicSummary, musicLibraries, browse, sourceKey};
+}
+type BoundPresentation = Readonly<{choice?: Readonly<{defaultView: 'grid' | 'list'; view: 'grid' | 'list'}>; setChoice: (choice: Readonly<{defaultView: 'grid' | 'list'; view: 'grid' | 'list'}>) => void; size: 'small' | 'medium' | 'large'; setSize: (size: 'small' | 'medium' | 'large') => void}>;
+function BoundLibrary(props: BoundLibraryProps) {
+  const [choice, setChoice] = useState<Readonly<{defaultView: 'grid' | 'list'; view: 'grid' | 'list'}>>();
+  const [size, setSize] = useState<'small' | 'medium' | 'large'>('medium');
+
+  const href = useLocation({select: location => location.href});
+  const context = useCommittedLibraryScreenContext(props.captured, href, () => router.state.location.href === href);
+  return context ? <ContextLibrary {...props} context={context} presentation={{choice, setChoice, size, setSize}}/> : <Skeleton height={320}/>;
+}
+function ContextLibrary(props: BoundLibraryProps & {context: ScreenContext; presentation: BoundPresentation}) {
+  const frame = useBoundLibraryFrame(props, props.context, props.presentation), {context, agentKey, setAgentFact} = frame, {library} = props;
+  const href = useLocation({select: location => location.href}), runtime = props.captured.binding.playback?.runtime;
+  const resources = useBrowseLease(context, frame.sourceKey, href, () => router.state.location.href === href, runtime);
   useEffect(() => {
-    if (!resources.life.current()) return;
+    if (!resources?.life.current()) return;
     let live = true;
     const withhold = () => {if (live && resources.life.current()) setAgentFact({key: agentKey, context, online: false});};
     void resources.life.api.request(metadataAgentPath(library.id), 'GET').then(raw => {
@@ -185,7 +194,13 @@ function BoundLibrary({captured, library, search, tabs: offered, musicLookup, re
     }, withhold).catch(withhold);
     return () => {live = false;};
   }, [resources, library.id, library.kind, agentKey, context]);
-  const href = useLocation({select: location => location.href}), runtime = captured.binding.playback?.runtime;
+  return resources ? <CommittedLibrary key={resources.id} {...props} frame={frame} resources={resources} href={href}/> : <Skeleton height={320}/>;
+}
+function CommittedLibrary({captured, library, search, readingMarkAll, frame, resources, href}: BoundLibraryProps & {frame: ReturnType<typeof useBoundLibraryFrame>; resources: BrowseLease; href: string}) {
+  const {context, appearance, width, choice, setChoice, size, setSize, onlineAttention, agentKey, tabs, requested, view, musicMixes, musicSummary, musicLibraries, browse} = frame;
+  const state = useSyncExternalStore(resources.controller.subscribe, resources.controller.getSnapshot, resources.controller.getSnapshot);
+  const runtime = captured.binding.playback?.runtime;
+  const metadataFence = useMemo(() => () => captured.context.viewerFence, [captured.context]);
   // Frame 7's Recently played mark belongs to the queue session this snapshot actually
   // describes: the current entry is the queue's own currentEntryId, and the published
   // presentation must be that same session and generation, still playing and not
@@ -206,15 +221,22 @@ function BoundLibrary({captured, library, search, tabs: offered, musicLookup, re
     if (!entryId || presentation.fence.entryId !== entryId) return undefined;
     return view.items.find(item => item.entryId === entryId)?.albumId;
   }, [playbackSnapshot, context]);
-  const runtimeRef = useRef(runtime);runtimeRef.current = runtime;
-  const playSelection = useMemo(() => {
-    const viewer = captured.context.session().viewer, queryRevision = state.queryRevision;
+  type SelectionLease = Readonly<{resources: BrowseLease; runtime: typeof runtime; queryRevision: number; current: () => boolean; playSelection: ReturnType<typeof createLibraryPlaySelection>; selection: ReturnType<typeof createLibrarySelection>}>;
+  const [selectionLease, publishSelection] = useState<SelectionLease>();
+  useLayoutEffect(() => {
+    const command = new AbortController(), signal = resources.life.signal(command.signal), queryRevision = state.queryRevision;
+    const current = () => !signal.aborted && resources.life.current() && resources.controller.getSnapshot().queryRevision === queryRevision;
+    const api = {async request<T>(path: string, method?: string, body?: unknown, input?: AbortSignal): Promise<T> {
+      if (!current()) throw new DOMException('Browse selection retired', 'AbortError');
+      const value = await resources.life.api.request<T>(path, method, body, input ? AbortSignal.any([signal, input]) : signal);
+      if (!current()) throw new DOMException('Browse selection retired', 'AbortError');return value;
+    }};
+    const viewer = captured.context.session().viewer, viewerFence = captured.context.viewerFence;
     if (viewer.authority !== 'local' && viewer.authority !== 'hosted') throw new DOMException('Screen authority unavailable', 'AbortError');
-    return createLibraryPlaySelection({source: resources.controller, api: resources.life.api, scope: context.scope,
+    const playSelection = createLibraryPlaySelection({source: resources.controller, api, scope: context.scope,
       principal: {serverId: viewer.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId},
-      requestId: async () => randomId(), signal: resources.life.signal(),
-      isCurrent: () => resources.life.current() && resources.controller.getSnapshot().queryRevision === queryRevision
-        && router.state.location.href === href && runtimeRef.current === runtime,
+      requestId: async () => randomId(), signal,
+      isCurrent: current,
       // The bar's job executor is the same captured route lifetime; these are real
       // executors, and each title's own Detail actions still decide its grants.
       deletion: context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local',
@@ -223,46 +245,47 @@ function BoundLibrary({captured, library, search, tabs: offered, musicLookup, re
       personal: {myList: true, favorite: true, watched: true},
       queue: runtime?.catalogueQueue(),
       playback: runtime?.cataloguePlayback()});
-  }, [captured.context, context, resources, runtime, href, state.queryRevision]);
-  useEffect(() => {playSelection.start();return () => playSelection.dispose();}, [playSelection]);
-  // Queue dispatch retains both the original route and exact model operation.
-  // Destination pickers capture their own checked leaves under that same lease.
-  const selection = useMemo(() => {
-    const viewer = captured.context.session().viewer;
-    if (viewer.authority !== 'local' && viewer.authority !== 'hosted') throw new DOMException('Screen authority unavailable', 'AbortError');
-    return createLibrarySelection({
-    playSelection,
-    pickers: {api: resources.life.api, serverId: context.scope.serverId, viewerId: context.scope.viewerId, requestId: async () => randomId(),
-      signal: resources.life.signal(), isCurrent: resources.life.current,
-      canCreateCollection: context.identity?.viewer.role === 'owner',
-      pickerIdentity: {authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId, events: context.events}},
-    ...(runtime ? {enqueue: playSelection.enqueue, enqueueQuery: playSelection.enqueueQuery} : {}),
-    owner: context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local',
-    descriptor: () => resources.controller.wholeSelection(),
-    ...(context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local' ? {deletion: {api: resources.life.api, serverId: context.scope.serverId, viewerId: context.scope.viewerId,
-      requestId: async () => randomId(), signal: resources.life.signal(), isCurrent: resources.life.current}, editor: {
-      api: resources.life.api, events: context.events, requestId: async () => randomId(), serverId: context.scope.serverId, viewerId: context.scope.viewerId,
-      artwork: context.artwork, viewerFence: () => captured.context.viewerFence, signal: resources.life.signal(), isCurrent: () => resources.life.current(),
-    }} : {}),
-    actions: {api: resources.life.api, events: context.events, requestId: async () => randomId(),
-      signal: resources.life.signal(), isCurrent: () => resources.life.current(), reportError: context.effects.reportError},
-    reportError: context.effects.reportError,
-  });}, [captured.context, context, playSelection, resources, runtime]);
-  const [choice, setChoice] = useState<Readonly<{defaultView: 'grid' | 'list'; view: 'grid' | 'list'}>>();
-  const [size, setSize] = useState<'small' | 'medium' | 'large'>('medium'), [saving, setSaving] = useState<SavedDefinition>();
-  const navigate = (value: LibraryScreenSearch, id = library.id) => {if (context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId: id}, search: value}).catch(context.effects.reportError);};
-  const actions = (entry: ContentEntry) => ({onOpen: () => {if (!browse || resources.controller.contains(entry)) context.effects.openEntry(entry);},
-    onPlay: entry.playback && entry.libraryId && entry.available !== false && !entry.missing ? () => {
-      if (browse && !resources.controller.contains(entry)) return;
-      void context.effects.play({libraryId: entry.libraryId!, itemId: entry.playback!.itemId, startSeconds: entry.playback!.startSeconds ?? 0}, resources.life.signal(),
-        () => resources.life.current() && (!browse || resources.controller.contains(entry))).catch(context.effects.reportError);
-    } : undefined});
+    const selection = createLibrarySelection({
+      playSelection,
+      pickers: {api, serverId: context.scope.serverId, viewerId: context.scope.viewerId, requestId: async () => randomId(),
+        signal, isCurrent: current,
+        canCreateCollection: context.identity?.viewer.role === 'owner',
+        pickerIdentity: {authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId, events: context.events}},
+      ...(runtime ? {enqueue: playSelection.enqueue, enqueueQuery: playSelection.enqueueQuery} : {}),
+      owner: context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local',
+      descriptor: () => resources.controller.wholeSelection(),
+      ...(context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local' ? {deletion: {api, serverId: context.scope.serverId, viewerId: context.scope.viewerId,
+        requestId: async () => randomId(), signal, isCurrent: current}, editor: {
+        api, events: context.events, requestId: async () => randomId(), serverId: context.scope.serverId, viewerId: context.scope.viewerId,
+        artwork: context.artwork, viewerFence: () => viewerFence, signal, isCurrent: current,
+      }} : {}),
+      actions: {api, events: context.events, requestId: async () => randomId(),
+        signal, isCurrent: current, reportError: context.effects.reportError},
+      reportError: context.effects.reportError,
+    });
+    publishSelection({resources, runtime, queryRevision, current, playSelection, selection});
+    playSelection.start();
+    return () => {command.abort();playSelection.dispose();};
+  }, [captured.context, context, resources, runtime, state.queryRevision]);
+  const selectedLease = selectionLease?.resources === resources && selectionLease.runtime === runtime
+    && selectionLease.queryRevision === state.queryRevision && selectionLease.current() ? selectionLease : undefined;
+  const playSelection = selectedLease?.playSelection, selection = selectedLease?.selection;
+  const [saving, setSaving] = useState<SavedDefinition>();
+  const navigate = (value: LibraryScreenSearch, id = library.id) => {if (resources.life.current() && context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId: id}, search: value}).catch(context.effects.reportError);};
+  const actions = (entry: ContentEntry, witness = () => !browse || resources.controller.contains(entry)) => {
+    const current = () => resources.life.current() && witness();
+    return {onOpen: () => {if (current()) context.effects.openEntry(entry);},
+      onPlay: entry.playback && entry.libraryId && entry.available !== false && !entry.missing ? () => {
+        if (!current()) return;
+        void context.effects.play({libraryId: entry.libraryId!, itemId: entry.playback!.itemId, startSeconds: entry.playback!.startSeconds ?? 0}, resources.life.signal(), current).catch(context.effects.reportError);
+      } : undefined};
+  };
   const discoveryActions = (section: ContentSection, entry: ContentEntry) => {
-    if (entry.kind !== 'radio') return actions(entry);
     const projection = resources.service.getSnapshot().projection, seed = entry.radioSeed, playRadio = context.effects.playRadio;
-    const current = () => resources.life.current() && context.isCurrent() && router.state.location.href === href && runtimeRef.current === runtime
-      && resources.service.getSnapshot().projection === projection
-      && resources.service.getSnapshot().appended.some(row => row === section && row.entries.includes(entry));
+    const current = () => resources.life.current() && context.isCurrent() && router.state.location.href === href && resources.playbackOwner === runtime
+      && resources.service.getSnapshot().phase === 'ready' && resources.service.getSnapshot().projection === projection
+      && discoverySections(resources.service.getSnapshot()).some(row => row === section && row.entries.includes(entry));
+    if (entry.kind !== 'radio') return actions(entry, current);
     const play = () => {
       if (!seed || !runtime || !playRadio || !current()) return;
       void playRadio(seed.id, resources.life.signal(), current).catch(context.effects.reportError);
@@ -312,7 +335,8 @@ function BoundLibrary({captured, library, search, tabs: offered, musicLookup, re
   const shownView = choice?.defaultView === appearance.libraryView ? choice.view : appearance.libraryView;
   const save = () => {
     // A retained menu callback can outlive its route: check the original lifetime first.
-    if (!resources.life.current() || !context.isCurrent() || !resources.controller.canSaveView()) return;
+    if (!resources.life.current() || !context.isCurrent() || resources.controller.getSnapshot().queryRevision !== state.queryRevision
+      || resources.controller.getSnapshot().revision !== state.revision || !resources.controller.canSaveView()) return;
     const query = resources.controller.query();
     setSaving({libraryId: library.id, pivot: resources.controller.source.pivot, query: query.query ?? null,
       sort: query.sort ?? [], presentation: shownView});
@@ -329,8 +353,8 @@ function BoundLibrary({captured, library, search, tabs: offered, musicLookup, re
     // from its own lease, plus the ready original-profile Mark all read action.
     libraryMenu: isReadingLibrary(library.kind) ? readingLibraryMenu(resources, context, library, onlineAttention, save, scan, readingMarkAll)
       : context.effects.editMetadata && onlineAttention ? <LibraryMetadataMenu key={agentKey} onUnmatched={() => {if (resources.life.current()) navigate({unmatched: true});}}/> : undefined,
-    onLibrary: (id: string) => navigate({}, id), onLibraries: () => {void router.navigate({to: '/libraries'}).catch(context.effects.reportError);},
-    onPivot: (id: string) => {const tab = tabs.find(tab => tab.id === id);if (!tab) return;
+    onLibrary: (id: string) => navigate({}, id), onLibraries: () => {if (resources.life.current()) void router.navigate({to: '/libraries'}).catch(context.effects.reportError);},
+    onPivot: (id: string) => {if (!resources.life.current()) return;const tab = tabs.find(tab => tab.id === id);if (!tab) return;
       if (tab.shows === 'periodicals') {navigate({view: 'series', pivot: tab.id});return;}
       if (tab.shows === 'unmatched') {navigate({unmatched: true});return;}
       if (tab.shows === 'playlists') {void router.navigate({to: '/saved', search: {view: 'playlists'}}).catch(context.effects.reportError);return;}
@@ -341,8 +365,8 @@ function BoundLibrary({captured, library, search, tabs: offered, musicLookup, re
     unmatchedHelp: context.effects.editMetadata ? t('metadata.attention.browseHelp') : undefined,
     env: {t, locale: defaultI18n.region.formatLocale}, reducedMotion: appearance.reducedMotion, owner: context.identity?.viewer.role === 'owner',
     reportError: context.effects.reportError, empty, canSaveView: resources.controller.canSaveView(), onSaveView: save,
-    selection: {toolbar: selection.toolbar, actions: (member, index) => ({...actions(member.entry), selection: selection.entry(member, index)}),
-      registerWindow: selection.registerWindow, playSelection},
+    selection: {toolbar: selection?.toolbar, actions: (member, index) => ({...actions(member.entry), selection: selection?.entry(member, index)}),
+      registerWindow: selection?.registerWindow, playSelection},
     onAppearanceChange: change => {if (!resources.life.current()) return;if (change.view) setChoice({defaultView: appearance.libraryView, view: change.view});if (change.cardSize) setSize(change.cardSize);}};
   const contentRoute: ContentRoute = {libraryId: library.id, view, ...(search.entityId ? {entityId: search.entityId} : {}), ...(search.category ? {category: search.category} : {}), ...(search.q ? {q: search.q} : {})};
   const unmatched = requested?.shows === 'unmatched';
@@ -380,8 +404,8 @@ function BoundLibrary({captured, library, search, tabs: offered, musicLookup, re
       onBack={() => {const back = context.effects.back; if (back) {back(); return;} void router.navigate({to: '/library/$libraryId', params: {libraryId: library.id}, search: {}}).catch(context.effects.reportError);}} />
     : browse ? <LibraryScreen {...bindings}/> : <LibraryDiscoveryScreen service={resources.service} route={contentRoute} musicMixes={musicMixes} mixesTarget={search.section === 'mixes'} reportError={context.effects.reportError} header={<LibraryIdentity {...header}/>} empty={empty}
       appearance={appearanceBase} preferences={appearance} reducedMotion={appearance.reducedMotion} artwork={context.artwork} env={bindings.env}
-      actions={discoveryActions} nowPlayingAlbumId={nowPlayingAlbumId} onSeeAll={section => {const target = section.seeAll;if (target) navigate({pivot: target.pivot, query: target.query, sort: target.sort});}}
-      selectionInput={context.identity && (context.identity.viewer.authority === 'local' || context.identity.viewer.authority === 'hosted') ? {context, playback: runtime, metadataFence: () => captured.context.viewerFence,
+      actions={discoveryActions} nowPlayingAlbumId={nowPlayingAlbumId} onSeeAll={section => {if (!resources.life.current() || resources.service.getSnapshot().phase !== 'ready' || !discoverySections(resources.service.getSnapshot()).includes(section)) return;const target = section.seeAll;if (target) navigate({pivot: target.pivot, query: target.query, sort: target.sort});}}
+      selectionInput={context.identity && (context.identity.viewer.authority === 'local' || context.identity.viewer.authority === 'hosted') ? {context: resources.screen, playback: runtime, metadataFence,
         principal: {serverId: context.identity.viewer.serverId, authority: context.identity.viewer.authority, accountId: context.identity.viewer.accountId, profileId: context.identity.viewer.profileId}} : undefined}/>}
     {saving && <SaveView context={context} definition={saving} onClose={() => setSaving(undefined)}/>}</>;
 }
