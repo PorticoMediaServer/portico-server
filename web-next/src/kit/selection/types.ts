@@ -114,7 +114,7 @@ export type SelectionPickerProps = SelectionSurface & Pick<OverlaySurfaceProps, 
   onNameChange: (name: string) => void;
   onAdd: (destinationId: string) => void;
   onCreateAndAdd: (name: string) => void;
-  onRetry: (missingIds: readonly string[]) => void;
+  onRetry?: (missingIds: readonly string[]) => void;
   /** Present only for a genuine uncertain original operation, not a failed-target retry. */
   onRetryOperation?: () => void;
   /** Present only for a genuine read or confirmed command error on the retained picker. */
