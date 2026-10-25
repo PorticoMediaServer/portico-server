@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {castProofKey,type CastControllerContext} from '../src/cast/controller-proof.ts';
 import assert from 'node:assert/strict';
 import {CastController, castChoiceFields, parseCastEvent, type CastCommand, type CastTransport} from '../src/cast/index.ts';
 
@@ -158,96 +159,37 @@ test('receiver messages are validated; HTTP origins are refused', () => {
   assert.throws(() => new CastController({api: {request: async () => ({}) as never}, origin: 'http://192.168.1.2:32500', displayName: 'x'}));
 });
 
-test('CAST-05: a resumed session is adopted when the TV answers a status request', async () => {
-  const {controller} = harness();
-  const tv = receiver();
-  const adopted = controller.adopt(tv.transport, async id => (id === 'item-1' ? 'Jurassic Park' : undefined));
-  assert.deepEqual(tv.sent, [{type: 'status'}]);
-  tv.reply({type: 'status', itemId: 'item-1', positionSeconds: 1834, durationSeconds: 7620, paused: false, audioTracks: [], textTracks: []});
-  assert.equal(await adopted, true);
-  await settle();
-  const s = controller.getSnapshot();
-  assert.equal(s.phase, 'casting');
-  assert.equal(s.itemId, 'item-1');
-  assert.equal(s.title, 'Jurassic Park');
-  assert.equal(s.deviceName, 'Living Room TV');
-  assert.equal(s.positionSeconds, 1834);
-  // Later status keeps flowing through the normal path.
-  tv.reply({type: 'status', itemId: 'item-1', positionSeconds: 1840, durationSeconds: 7620, paused: true, audioTracks: [], textTracks: []});
-  assert.equal(controller.getSnapshot().paused, true);
+const scope={serverId:'server',authority:'local',accountId:'account',profileId:'profile',senderDeviceId:'device',senderFamilyId:'family'};
+const context:CastControllerContext={...scope,origin:'https://server.test',publicKey:'a'.repeat(43)};
+const binding={id:'cct_test',bootstrapId:'cbs_test',receiverId:'tv-a',targetId:'cdv_target',targetFamilyId:'target-family',targetGeneration:'1',scope};
+function returning(options:{context?:CastControllerContext;legacy?:boolean;validate?:()=>Promise<void>;describe?:()=>Promise<string|undefined>}={}){
+ const saved=new Map([[castProofKey(context,'tv-a'),options.legacy?'a'.repeat(48):JSON.stringify({version:2,context,binding,controlToken:'a'.repeat(48)})]]);
+ let current=true,first=true;const requests:string[]=[];
+ const controller=new CastController({origin:context.origin,displayName:'Phone',controllerContext:options.context??context,isCurrent:()=>current,
+ controllerStorage:{get:k=>saved.get(k),set:(k,v)=>{saved.set(k,v);}},describe:options.describe??(async()=> 'Film'),
+ api:{request:async<T,>(path:string,_method?:string,body?:unknown)=>{requests.push(path);if(first){first=false;await options.validate?.();}return {binding,attemptId:(body as {attemptId:string}).attemptId,ticket:'b'.repeat(43)} as T;}}});
+ return {controller,requests,retire:()=>{current=false;controller.dispose();}};
+}
+test('Root50: legacy/mismatched original scope and unstable receivers disclose no proof/status and leave the receiver alone',async()=>{
+ for(const opts of [{legacy:true},{context:{...context,profileId:'other'}},{context:{...context,senderFamilyId:'new-family'}},{context:{...context,publicKey:'b'.repeat(43)}}]){
+  const h=returning(opts),tv=receiver('TV','tv-a');assert.equal(await h.controller.adopt(tv.transport),false);assert.deepEqual(tv.sent,[]);assert.equal(tv.ended,undefined);assert.equal(h.requests.length,0);h.controller.dispose();
+ }
+ const h=returning(),tv=receiver('TV');assert.equal(await h.controller.adopt(tv.transport),false);assert.deepEqual(tv.sent,[]);h.controller.dispose();
 });
-
-test('CAST-05: a resumed session that does not answer, or needs pairing, is left alone', async () => {
-  const {controller, fire} = harness();
-  const quiet = receiver();
-  const first = controller.adopt(quiet.transport);
-  fire(5000);
-  assert.equal(await first, false);
-  assert.equal(quiet.ended, undefined);
-  assert.equal(quiet.listeners, 0);
-  assert.equal(controller.getSnapshot().phase, 'off');
-  const other = receiver();
-  const second = controller.adopt(other.transport);
-  other.reply({type: 'pair-required'});
-  assert.equal(await second, false);
-  assert.equal(other.ended, undefined);
-  assert.equal(controller.getSnapshot().phase, 'off');
+test('Root50: fresh sender validation precedes proof disclosure, correlated receiver admission and content read precede publication',async()=>{
+ let release!:()=>void,describe!:()=>void;
+ const h=returning({validate:()=>new Promise<void>(r=>{release=r;}),describe:()=>new Promise<string>(r=>{describe=()=>r('Film');})}),tv=receiver('TV','tv-a');
+ const adopted=h.controller.adopt(tv.transport);assert.equal(h.requests.length,1);assert.deepEqual(tv.sent,[]);release();await settle();
+ const command=tv.sent[0];assert.equal(command.type,'adopt');if(command.type!=='adopt')throw new Error('no adoption');
+ const status={type:'status',itemId:'movie',positionSeconds:80,durationSeconds:600,paused:false,audioTracks:[],textTracks:[]};
+ tv.reply({...status,attemptId:'other-attempt'});assert.equal(h.controller.getSnapshot().phase,'off');
+ tv.reply({...status,attemptId:command.attemptId});assert.equal(h.controller.getSnapshot().itemId,undefined);describe();assert.equal(await adopted,true);
+ assert.equal(h.controller.getSnapshot().title,'Film');assert.equal(h.controller.getSnapshot().acceptedSource,undefined);assert.equal(tv.sent.some(m=>m.type==='load'||m.type==='pair'),false);h.controller.dispose();
 });
-
-test('CAST-05: a resumed session is adopted on the TV status; a silent one is left alone; dispose settles a pending adoption', async () => {
-  const {controller} = harness();
-  const tv = receiver();
-  const adopted = controller.adopt(tv.transport, async id => (id === 'item-1' ? 'Pilot' : undefined));
-  assert.deepEqual(tv.sent.map(m => m.type), ['status']);
-  tv.reply({type: 'status', itemId: 'item-1', positionSeconds: 12, durationSeconds: 100, paused: false});
-  assert.equal(await adopted, true);
-  await settle();
-  assert.equal(controller.getSnapshot().phase, 'casting');
-  assert.equal(controller.getSnapshot().title, 'Pilot');
-  assert.equal(tv.ended, undefined);
-
-  const silent = harness();
-  const quiet = receiver();
-  const pending = silent.controller.adopt(quiet.transport);
-  silent.fire(5000);
-  assert.equal(await pending, false);
-  assert.equal(quiet.ended, undefined, 'a session this page did not start is never ended');
-
-  const disposed = harness();
-  const other = receiver();
-  const waiting = disposed.controller.adopt(other.transport);
-  disposed.controller.dispose();
-  assert.equal(await waiting, false);
-});
-
-test('a stored controller token resumes the existing TV session without pairing or loading again',async()=>{
- const saved=new Map<string,string>();let codes=0;
- const options={api:{request:async<T,>()=>{codes++;return {bootstrap:{code:'ABC123'}} as T;}},origin:'https://server.test',displayName:'Phone',controllerStorage:{get:(k:string)=>saved.get(k),set:(k:string,v:string)=>{saved.set(k,v);}}};
- const first=new CastController(options),initial=receiver();const started=first.start(initial.transport,'movie',{title:'Film'},12);
- await settle();initial.reply({type:'paired',controlToken:'a'.repeat(48)});assert.equal(await started,true);first.dispose();
- const returning=new CastController(options),transport=receiver();const adopting=returning.adopt(transport.transport);
- assert.deepEqual(transport.sent[0],{type:'status',controlToken:'a'.repeat(48)});
- transport.reply({type:'status',itemId:'movie',positionSeconds:80,durationSeconds:600,paused:false,audioTracks:[],textTracks:[]});assert.equal(await adopting,true);
- assert.equal(codes,1);assert.equal(transport.sent.filter(x=>x.type==='load').length,0);
- returning.pause();assert.equal(transport.sent.at(-1)?.type,'pause');returning.dispose();
-});
-
-test('two televisions with one name keep their own pairing proofs when the platform names each device', async () => {
-  const saved = new Map<string, string>();
-  const options = {api: {request: async <T,>() => ({bootstrap: {code: 'ABC123'}}) as T}, origin: 'https://server.test', displayName: 'Phone', controllerStorage: {get: (k: string) => saved.get(k), set: (k: string, v: string) => { saved.set(k, v); }}};
-  const first = new CastController(options), lounge = receiver('TV', 'device-a');
-  const started = first.start(lounge.transport, 'movie', {title: 'Film'}, 0);
-  await settle(); lounge.reply({type: 'paired', controlToken: 'a'.repeat(48)}); assert.equal(await started, true); first.dispose();
-  // The other "TV" never paired with this phone: it is asked without the first one's proof.
-  const returning = new CastController(options), bedroom = receiver('TV', 'device-b');
-  void returning.adopt(bedroom.transport);
-  assert.deepEqual(bedroom.sent[0], {type: 'status'});
-  returning.dispose();
-  // The first one, by its own id, gets its proof back.
-  const again = new CastController(options), loungeAgain = receiver('TV', 'device-a');
-  void again.adopt(loungeAgain.transport);
-  assert.deepEqual(loungeAgain.sent[0], {type: 'status', controlToken: 'a'.repeat(48)});
-  again.dispose();
+test('Root50: validation refusal, caller replacement and late redacted descriptions never stop or populate another caller',async()=>{
+ const refused=returning({validate:async()=>{throw new Error('revoked');}}),tv=receiver('TV','tv-a');assert.equal(await refused.controller.adopt(tv.transport),false);assert.deepEqual(tv.sent,[]);assert.equal(tv.ended,undefined);
+ let release!:()=>void;const h=returning({validate:()=>new Promise<void>(r=>{release=r;})}),other=receiver('TV','tv-a');const pending=h.controller.adopt(other.transport);h.retire();release();assert.equal(await pending,false);await settle();assert.deepEqual(other.sent,[]);assert.equal(other.ended,undefined);
+ const hidden=returning({describe:async()=>undefined}),target=receiver('TV','tv-a'),adopting=hidden.controller.adopt(target.transport);await settle();const command=target.sent[0];if(command.type!=='adopt')throw new Error('no adoption');target.reply({type:'status',attemptId:command.attemptId,itemId:'hidden',positionSeconds:9});assert.equal(await adopting,false);assert.equal(hidden.controller.getSnapshot().itemId,undefined);assert.equal(target.ended,undefined);
 });
 
 test('load acknowledgement is correlated and a missing/rejected load never claims playback', async () => {

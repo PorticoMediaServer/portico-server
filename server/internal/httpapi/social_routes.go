@@ -841,6 +841,57 @@ func (d Dependencies) receiverRoutes(handle socialHandle, viewer socialViewer, s
 }
 
 func (d Dependencies) castRoutes(handle socialHandle, viewer socialViewer, store *social.Store) {
+	handle("POST /v1/cast/controllers/register", func(w http.ResponseWriter, r *http.Request) {
+		p, ok := viewer(w, r)
+		if !ok {
+			return
+		}
+		var body social.CastControllerRegister
+		if !socialBody(w, r, &body) {
+			return
+		}
+		out, e := store.CastControllerRegister(r.Context(), p, body)
+		if e != nil {
+			socialFailure(w, e)
+			return
+		}
+		write(w, 200, out)
+	})
+
+	handle("POST /v1/cast/controllers/validate", func(w http.ResponseWriter, r *http.Request) {
+		p, ok := viewer(w, r)
+		if !ok {
+			return
+		}
+		var body social.CastControllerValidation
+		if !socialBody(w, r, &body) {
+			return
+		}
+		out, e := store.CastControllerValidate(r.Context(), p, body)
+		if e != nil {
+			socialFailure(w, e)
+			return
+		}
+		write(w, 200, out)
+	})
+
+	handle("POST /v1/cast/controllers/check", func(w http.ResponseWriter, r *http.Request) {
+		p, ok := viewer(w, r)
+		if !ok {
+			return
+		}
+		var body social.CastControllerCheck
+		if !socialBody(w, r, &body) {
+			return
+		}
+		out, e := store.CastControllerCheck(r.Context(), p, body)
+		if e != nil {
+			socialFailure(w, e)
+			return
+		}
+		write(w, 200, out)
+	})
+
 	handle("POST /v1/cast/bootstrap", func(w http.ResponseWriter, r *http.Request) {
 		p, ok := viewer(w, r)
 		if !ok {

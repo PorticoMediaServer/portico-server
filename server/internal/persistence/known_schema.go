@@ -1385,6 +1385,7 @@ table server_settings
 table setup_rate_limits_v1
 table show_people_credits
 table social_cast_bootstraps
+table social_cast_controllers
 table social_cast_devices
 table social_group_events
 table social_group_invites

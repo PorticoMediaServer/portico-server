@@ -37,6 +37,7 @@ import (
 var castCapabilities = map[string]bool{"load": true, "control": true, "stop": true, "progress": true, "renew": true, "reconnect": true, "advance": true, "segment-skip": true}
 
 type CastBootstrapRequest struct {
+	ReceiverID      string                    `json:"receiverId,omitempty"`
 	Source          *identity.CastQueueSource `json:"source,omitempty"`
 	ProtocolVersion string                    `json:"protocolVersion"`
 	DisplayName     string                    `json:"displayName,omitempty"`
@@ -110,14 +111,15 @@ type CastDevice struct {
 // `initial` on first redemption and `rotation` on every reconnect, so a receiver
 // can tell a fresh pairing from a renewed one.
 type CastReceiverSession struct {
-	ProtocolVersion string      `json:"protocolVersion"`
-	ServerTime      string      `json:"serverTime"`
-	GrantSemantics  string      `json:"grantSemantics"`
-	DeviceToken     string      `json:"deviceToken"`
-	Device          CastDevice  `json:"device"`
-	Scope           CastScope   `json:"scope"`
-	Session         CastSession `json:"session"`
-	ApplicationID   string      `json:"applicationId"`
+	ControllerBootstrapID string      `json:"controllerBootstrapId,omitempty"`
+	ProtocolVersion       string      `json:"protocolVersion"`
+	ServerTime            string      `json:"serverTime"`
+	GrantSemantics        string      `json:"grantSemantics"`
+	DeviceToken           string      `json:"deviceToken"`
+	Device                CastDevice  `json:"device"`
+	Scope                 CastScope   `json:"scope"`
+	Session               CastSession `json:"session"`
+	ApplicationID         string      `json:"applicationId"`
 }
 
 func normalizeCastCapabilities(in []string) ([]string, bool) {
@@ -160,6 +162,9 @@ func (s *Store) CastBootstrapStart(ctx context.Context, p identity.Principal, re
 	if !text(req.DisplayName, 64) {
 		return out, errInvalid
 	}
+	if req.ReceiverID != "" && (!text(req.ReceiverID, 256) || p.DeviceID == "") {
+		return out, errInvalid
+	}
 	capabilities, ok := normalizeCastCapabilities(req.Capabilities)
 	if !ok {
 		return out, errInvalid
@@ -195,10 +200,10 @@ func (s *Store) CastBootstrapStart(ctx context.Context, p identity.Principal, re
 	expires := now + CastCodeTTLSeconds*1000
 	id := token("cbs_")
 	// The pairing session is remembered so the target's session can be tied to
-	// it. The pairing person's tier is recorded and never used: a paired screen
-	// is always issued a member's playback-only session.
-	if _, e = tx.ExecContext(ctx, `INSERT INTO social_cast_bootstraps(id,code_digest,authority,account_id,profile_id,role,account_epoch,display_name,capabilities,state,created_at_ms,expires_at_ms,pairing_family_id) VALUES(?,?,?,?,?,?,?,?,?,'pending',?,?,?)`,
-		id, digest(code), p.Authority, p.AccountID, p.ProfileID, p.Role, p.Epoch, req.DisplayName, string(raw), now, expires, identity.FamilyOfTokenTx(ctx, tx, p.Hash)); e != nil {
+	// it. The tier records the original controller for current validation; a
+	// paired screen is always issued a member's playback-only session.
+	if _, e = tx.ExecContext(ctx, `INSERT INTO social_cast_bootstraps(id,code_digest,authority,account_id,profile_id,role,account_epoch,display_name,capabilities,state,created_at_ms,expires_at_ms,pairing_family_id,sdk_receiver_id,pairing_device_id) VALUES(?,?,?,?,?,?,?,?,?,'pending',?,?,?,?,?)`,
+		id, digest(code), p.Authority, p.AccountID, p.ProfileID, p.Role, p.Epoch, req.DisplayName, string(raw), now, expires, identity.FamilyOfTokenTx(ctx, tx, p.Hash), req.ReceiverID, p.DeviceID); e != nil {
 		return out, e
 	}
 	if req.Source != nil {
@@ -391,7 +396,7 @@ func (s *Store) issueCast(ctx context.Context, tx *sql.Tx, id castIdentity, devi
 	var list []string
 	_ = json.Unmarshal([]byte(r.capabilities), &list)
 	return CastReceiverSession{
-		ProtocolVersion: Protocol, ServerTime: stamp(s.ms()), GrantSemantics: semantics,
+		ProtocolVersion: Protocol, ServerTime: stamp(s.ms()), GrantSemantics: semantics, ControllerBootstrapID: r.bootstrapID,
 		DeviceToken: value, Device: device,
 		Scope:         CastScope{AccountID: id.account, ProfileID: id.profile, Authority: id.authority, Capabilities: list},
 		Session:       session,

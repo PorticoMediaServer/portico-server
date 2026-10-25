@@ -36,6 +36,9 @@ func castTargetRoute(method, path string) bool {
 	case path == "/v1/me/devices/current/capabilities":
 		// What this screen can play: the playback API needs it before a start.
 		return true
+	case path == "/v1/cast/controllers/register" || path == "/v1/cast/controllers/check":
+		// Exact receiver family/generation and original controller checks in store.
+		return method == "POST"
 	case path == "/v1/me":
 		return read
 	case path == "/v1/sessions/current":

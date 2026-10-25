@@ -1,3 +1,4 @@
+import {castBinding,type CastControllerBinding} from './controller-proof.ts';
 import {apiRoot} from "../../../contracts/src/routes.ts";
 /**
  * The Portico Cast channel (`urn:x-cast:tv.getportico.cast`), shared by every sender. The receiver
@@ -43,6 +44,7 @@ export function castChoiceFields(choices: CastChoices | undefined): Record<strin
 export type CastCommand =
   | {type: 'pair'; code: string; origin: string; displayName: string}
   | ({type: 'load'; itemId: string; startSeconds: number} & Record<string, string | number | CastQueueRef>)
+  | {type:'adopt';bindingId:string;attemptId:string;ticket:string;controlToken:string}
   | {type: 'play'} | {type: 'pause'} | {type: 'stop'} | {type: 'status';controlToken?:string}
   | {type: 'seek'; positionSeconds: number}
   | {type: 'audio'; trackId: number}
@@ -51,7 +53,7 @@ export type CastCommand =
 
 /** Receiver → sender, validated. Unknown or malformed messages are dropped. */
 export type CastEvent =
-  | {type: 'paired';controlToken?:string}
+  | {type: 'paired';controlToken?:string;binding?:CastControllerBinding}
   | {type: 'pair-pending'}
   | {type: 'pair-failed'; code: string}
   | {type: 'busy'}
@@ -60,7 +62,7 @@ export type CastEvent =
   | {type: 'loaded'; requestId: string; itemId: string}
   | {type: 'takeover-requested'; requester: string}
   | {type: 'replaced'}
-  | {type: 'status'; itemId: string; positionSeconds: number; durationSeconds: number; paused: boolean; audioTracks: readonly CastTrack[]; textTracks: readonly CastTrack[]};
+  | {type: 'status'; clockKnown?:true;attemptId?:string;itemId: string; positionSeconds: number; durationSeconds: number; paused: boolean; audioTracks: readonly CastTrack[]; textTracks: readonly CastTrack[]};
 
 const finite = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0);
 const short = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
@@ -76,14 +78,14 @@ export function parseCastEvent(raw: unknown): CastEvent | undefined {
   if (!m || typeof m !== 'object') return undefined;
   const o = m as Record<string, unknown>;
   switch (o.type) {
-    case 'paired': return {type:'paired',...(typeof o.controlToken==='string'&&/^[a-f0-9]{48}$/.test(o.controlToken)?{controlToken:o.controlToken}:{})};
+    case 'paired': return {type:'paired',...(castBinding(o.binding)?{binding:castBinding(o.binding)}:{}),...(typeof o.controlToken==='string'&&/^[a-f0-9]{48}$/.test(o.controlToken)?{controlToken:o.controlToken}:{})};
     case 'load-failed': return {type: 'load-failed', ...(typeof o.requestId === 'string' && trackIdPattern.test(o.requestId) ? {requestId: o.requestId} : {})};
     case 'loaded': return typeof o.requestId === 'string' && trackIdPattern.test(o.requestId) && typeof o.itemId === 'string' && trackIdPattern.test(o.itemId) ? {type: 'loaded', requestId: o.requestId, itemId: o.itemId} : undefined;
     case 'pair-pending': case 'busy': case 'pair-required': case 'replaced':
       return {type: o.type};
     case 'pair-failed': return {type: 'pair-failed', code: short(o.code, 64) || 'pair_failed'};
     case 'takeover-requested': return {type: 'takeover-requested', requester: short(o.requester, 64)};
-    case 'status': return {type: 'status', itemId: short(o.itemId, 128), positionSeconds: finite(o.positionSeconds), durationSeconds: finite(o.durationSeconds), paused: o.paused === true, audioTracks: tracks(o.audioTracks), textTracks: tracks(o.textTracks)};
+    case 'status': return {type: 'status',...(typeof o.positionSeconds==='number'&&Number.isFinite(o.positionSeconds)&&o.positionSeconds>=0&&typeof o.durationSeconds==='number'&&Number.isFinite(o.durationSeconds)&&o.durationSeconds>=0?{clockKnown:true as const}:{}),...(typeof o.attemptId==='string'&&trackIdPattern.test(o.attemptId)?{attemptId:o.attemptId}:{}), itemId: short(o.itemId, 128), positionSeconds: finite(o.positionSeconds), durationSeconds: finite(o.durationSeconds), paused: o.paused === true, audioTracks: tracks(o.audioTracks), textTracks: tracks(o.textTracks)};
     default: return undefined;
   }
 }

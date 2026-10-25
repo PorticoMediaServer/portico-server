@@ -1,4 +1,4 @@
-import {CastController, type CastApi, type CastChoices, type CastMetadata, type CastSnapshot} from '@core/cast/index.ts';
+import {type CastControllerContext, CastController, type CastApi, type CastChoices, type CastMetadata, type CastSnapshot} from '@core/cast/index.ts';
 import {castDisplayName, currentCastBrowser, isCastBrowser, loadCastSdk, type CastBrowser, type CastContext, type CastFramework, type CastSession, type CastSessionEvent} from './sdk';
 import {castTransportFor, confirmedCastDevice, type ConfirmedCastDevice} from './transport';
 
@@ -11,6 +11,8 @@ export type WebCastSnapshot = CastSnapshot & Readonly<{
 }>;
 export type WebCastSenderOptions = Readonly<{
   api: CastApi;
+  controllerContext?:CastControllerContext;
+  isCurrent?:()=>boolean;
   serverOrigin: string;
   castApplicationId?: string;
   displayName?: string;
@@ -55,7 +57,7 @@ export class WebCastSender {
     this.applicationId = options.castApplicationId?.trim() ?? '';
     const origin = secureOrigin(options.serverOrigin);
     if (!origin || !/^[A-Za-z0-9_-]{1,128}$/.test(this.applicationId) || !isCastBrowser(this.browser)) return;
-    this.controller = new CastController({api: options.api, origin, displayName: options.displayName ?? castDisplayName(this.browser.navigator.userAgent)});
+    this.controller = new CastController({api: options.api, origin, controllerContext:options.controllerContext,isCurrent:options.isCurrent,describe:options.describe,displayName: options.displayName ?? castDisplayName(this.browser.navigator.userAgent)});
     this.offController = this.controller.subscribe(() => this.changed());
   }
 
@@ -68,6 +70,9 @@ export class WebCastSender {
   private changed(): void {
     if (this.disposed) return;
     const state = this.controller?.getSnapshot() ?? unavailable;
+    if(state.disclosureRefused){this.receiver=undefined;this.device=undefined;}
+    else if(state.reported)this.receiver=state.reported;
+    else if(state.phase!=='off'&&state.phase!=='replaced')this.receiver=undefined;
     const receiver = this.receiver;
     const samePlayback = receiver && (state.phase === 'off' || state.phase === 'replaced' || state.itemId === receiver.itemId);
     this.snapshot = Object.freeze({
@@ -177,11 +182,9 @@ export class WebCastSender {
   }
 
   private transport(session: CastSession, context: CastContext, framework: CastFramework) {
-    const operation = this.operation;
-    return castTransportFor(session, context, framework, status => {
-      if (this.disposed || operation !== this.operation || !status.itemId) return;
-      this.receiver = Object.freeze({itemId: status.itemId, positionSeconds: status.positionSeconds, durationSeconds: status.durationSeconds, paused: status.paused});
-    });
+    // Raw SDK status is untrusted until the shared controller has completed
+    // Root50 authority + content validation for this exact transport lifetime.
+    return castTransportFor(session, context, framework);
   }
 
   /** Invalidates pending SDK selection and pairing; a late picker cannot send a new load. */

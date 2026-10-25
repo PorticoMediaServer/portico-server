@@ -1,3 +1,4 @@
+import {castBinding,castContext,castScopeEqual,castProofKey,readCastProof,type CastControllerContext,type CastControllerBinding,type CastControllerProof} from './controller-proof.ts';
 import {encodedRoutePath,routeBody} from "../../../contracts/src/routes.ts";
 import {routePath} from "../../../contracts/src/routes.ts";
 /**
@@ -38,6 +39,9 @@ export type CastSnapshot = Readonly<{
   /** Retain the original source until cancellation or commit is authoritative. */
   transferPending?:boolean;
   phase: CastPhase;
+  disclosureRefused?:boolean;
+  /** Published only after current authority and content checks. */
+  reported?:Readonly<{itemId:string;positionSeconds:number;durationSeconds:number;paused:boolean}>;
   deviceName?: string;
   itemId?: string;
   title?: string;
@@ -55,6 +59,9 @@ export type CastSnapshot = Readonly<{
 
 export type CastControllerOptions = Readonly<{
   api: CastApi;
+  controllerContext?:CastControllerContext;
+  isCurrent?:()=>boolean;
+  describe?:(itemId:string)=>Promise<string|undefined>;
   /** The server origin the TV should redeem its code against. Must be HTTPS: a Cast device loads nothing else. */
   origin: string;
   /** How this sender introduces itself on the TV ("Chrome on Mac", "Sam’s iPhone"). No account details. */
@@ -95,13 +102,32 @@ export class CastController {
   private clearTimer: (timer: unknown) => void;
   private disposed = false;
   private controllerStorage?:CastControllerOptions['controllerStorage'];
-  private controllerKey(){const t=this.transport;return 'portico.cast.controller:'+this.origin+':'+(t?.deviceId?'id:'+t.deviceId:(t?.deviceName??''));}
-  private controllerToken(){try{return this.controllerStorage?.get(this.controllerKey());}catch{return undefined;}}
+  private readonly proofContext?:CastControllerContext;
+  private readonly callerCurrent:()=>boolean;
+  private readonly describe?:(itemId:string)=>Promise<string|undefined>;
+  private statusRevision=0;
+  private current(){return !this.disposed&&this.callerCurrent();}
+  private proof(transport:CastTransport){
+    const context=this.proofContext;if(!context||!transport.deviceId||!this.current())return;
+    try{return readCastProof(this.controllerStorage?.get(castProofKey(context,transport.deviceId)),context,transport.deviceId);}catch{return;}
+  }
+  private async validate(binding:CastControllerBinding,attemptId:string){
+    if(!this.proofContext||!this.current()||!castScopeEqual(binding.scope,this.proofContext)||binding.receiverId!==this.transport?.deviceId)throw new Error('cast_scope_changed');
+    // Source route registration is canonical; official catalogue generation is
+    // Release's normal cohort. No generated route/type workaround is emitted.
+    const result=await this.api.request<{binding?:unknown;attemptId?:unknown;ticket?:unknown}>('/v1/cast/controllers/validate','POST',{binding,attemptId});
+    const accepted=castBinding(result.binding);
+    if(!this.current()||!accepted||JSON.stringify(accepted)!==JSON.stringify(binding)||result.attemptId!==attemptId||typeof result.ticket!=='string'||!/^[A-Za-z0-9_-]{43,256}$/.test(result.ticket))throw new Error('cast_validation_refused');
+    return result.ticket;
+  }
 
   constructor(options: CastControllerOptions) {
     if (!/^https:\/\//.test(options.origin)) throw new Error('Cast needs an HTTPS server origin.');
+    this.proofContext=options.controllerContext?.origin===new URL(options.origin).origin?castContext(options.controllerContext):undefined;this.callerCurrent=options.isCurrent??(()=>true);this.describe=options.describe;
     this.controllerStorage=options.controllerStorage;
-    if(!this.controllerStorage){try{const storage=globalThis.localStorage;if(storage)this.controllerStorage={get:k=>storage.getItem(k)??undefined,set:(k,v)=>storage.setItem(k,v)};}catch{}}
+    if(!this.controllerStorage){try{const storage=globalThis.localStorage;if(storage)this.controllerStorage={get:k=>storage.getItem(k)??undefined,set:(k,v)=>{
+      storage.setItem(k,v);const keys:string[]=[];for(let n=0;n<storage.length;n++){const key=storage.key(n);if(key?.startsWith('portico.cast.controller:v2:'))keys.push(key);}for(const key of keys.filter(key=>key!==k).slice(0,Math.max(0,keys.length-16)))storage.removeItem(key);
+    }};}catch{}}
     this.api = options.api;
     this.origin = new URL(options.origin).origin;
     this.displayName = options.displayName.slice(0, 64);
@@ -112,7 +138,7 @@ export class CastController {
   getSnapshot = (): CastSnapshot => this.state;
   subscribe = (fn: () => void) => { this.listeners.add(fn); return () => { this.listeners.delete(fn); }; };
   private publish(patch: Partial<CastSnapshot>) {
-    if (this.disposed) return;
+    if (!this.current()) return;
     this.state = Object.freeze({...this.state, ...patch});
     for (const fn of [...this.listeners]) fn();
   }
@@ -126,6 +152,7 @@ export class CastController {
 
   /** Pair with the TV on `transport` and start `itemId` there. True once the TV has the title. */
   async start(transport: CastTransport, itemId: string, meta: CastMetadata, startSeconds: number, choices?: CastChoices): Promise<boolean> {
+    if(!this.current())return false;
     if(this.recoveryTransfer || this.transferFlight?.id){
       const previous=this.recoveryTransfer ?? this.transferFlight!;
       try{const receipt=await this.cancelTransfer(previous);this.recoveryTransfer=undefined;if(this.transferFlight===previous)this.transferFlight=undefined;
@@ -143,10 +170,10 @@ export class CastController {
     this.detach.push(transport.onMessage(raw => { const e = parseCastEvent(raw); if (e) this.receive(e); }));
     this.detach.push(transport.onSessionEnd(() => this.sessionEnded()));
     let loading = false;
-    this.publish({phase: 'pairing', acceptedSource:undefined,transferPending:!!flight,deviceName: transport.deviceName, title: meta.title, itemId: undefined, error: undefined, errorId: undefined, takeover: undefined, audioTracks: [], textTracks: []});
+    this.publish({phase: 'pairing', disclosureRefused:false,reported:undefined,acceptedSource:undefined,transferPending:!!flight,deviceName: transport.deviceName, title: meta.title, itemId: undefined, error: undefined, errorId: undefined, takeover: undefined, audioTracks: [], textTracks: []});
     try {
       const displayName = transport.deviceName.trim().slice(0, 64);
-      const bootstrapBody={protocolVersion:CAST_PROTOCOL_VERSION,...(displayName?{displayName}:{}),...(choices?.source?{source:choices.source}:{})};
+      const bootstrapBody={protocolVersion:CAST_PROTOCOL_VERSION,...(transport.deviceId?{receiverId:transport.deviceId}:{}),...(displayName?{displayName}:{}),...(choices?.source?{source:choices.source}:{})};
       const issued = await this.api.request<{bootstrap?: {id?:unknown;code?: unknown}}>(routePath("social_post_v1_cast_bootstrap"), 'POST', routeBody("social_post_v1_cast_bootstrap", bootstrapBody));
       if(flight){
         const id=issued?.bootstrap?.id;
@@ -216,27 +243,38 @@ export class CastController {
    * casting and can control and stop it. Otherwise it is left alone (never ended, never paired
    * again). `describe` names the title from its item id. Resolves true once adopted.
    */
-  adopt(transport: CastTransport, describe?: (itemId: string) => Promise<string | undefined>, waitMs = 5000): Promise<boolean> {
-    if (this.transport || this.disposed || this.state.transferPending || this.recoveryTransfer) return Promise.resolve(false);
-    this.transport = transport;
-    return new Promise<boolean>(resolve => {
-      const give = (ok: boolean) => { if (!this.adopting) return; this.clearTimer(this.adoptTimer); this.adopting = false; this.settleAdoption = undefined; resolve(ok); };
-      this.adopting = true;
-      this.settleAdoption = give;
-      this.detach.push(transport.onMessage(raw => {
-        const e = parseCastEvent(raw);
-        if (!e) return;
-        if (!this.adopting) { this.receive(e); return; }
-        if (e.type === 'status' && e.itemId) {
-          this.publish({phase: 'casting', deviceName: transport.deviceName, itemId: e.itemId, title: undefined, error: undefined, errorId: undefined, takeover: undefined, positionSeconds: e.positionSeconds, durationSeconds: e.durationSeconds, paused: e.paused, audioTracks: e.audioTracks, textTracks: e.textTracks});
-          give(true);
-          void describe?.(e.itemId).then(title => { if (title && this.state.phase === 'casting' && this.state.itemId === e.itemId) this.publish({title}); }, () => {});
-        } else if (e.type === 'pair-required' || e.type === 'replaced' || e.type === 'busy') { this.release(false, false); give(false); }
+  async adopt(transport: CastTransport, describe = this.describe, waitMs = 5000): Promise<boolean> {
+    if (this.transport || !this.current() || this.state.transferPending || this.recoveryTransfer || !describe) return false;
+    const proof=this.proof(transport);if(!proof)return false;
+    this.transport=transport;this.adopting=true;
+    const generation=this.startGeneration,attemptId='adopt-'+(++this.requestSequence)+'-'+Date.now().toString(36);
+    const active=()=>this.adopting&&this.transport===transport&&generation===this.startGeneration;
+    const current=()=>this.current()&&active();
+    return new Promise<boolean>(resolve=>{
+      const give=(ok:boolean)=>{if(!this.adopting)return;this.clearTimer(this.adoptTimer);this.adopting=false;this.settleAdoption=undefined;resolve(ok);};
+      const refuse=()=>{if(!active())return;give(false);this.release(false,false);};
+      this.settleAdoption=give;
+      this.detach.push(transport.onMessage(raw=>{
+        const e=parseCastEvent(raw);if(!e)return;
+        if(!this.adopting){if(this.current())this.receive(e);return;}
+        if(e.type==='status'&&e.attemptId===attemptId&&e.itemId){
+          const revision=++this.statusRevision;
+          void describe(e.itemId).then(async title=>{
+            if(!current()){refuse();return;}if(revision!==this.statusRevision)return;
+            if(!title){refuse();return;}
+            try{await this.validate(proof.binding,attemptId);}catch{refuse();return;}
+            if(!current()||revision!==this.statusRevision)return;
+            this.publish({phase:'casting',disclosureRefused:false,acceptedSource:undefined,deviceName:transport.deviceName,itemId:e.itemId,title,error:undefined,errorId:undefined,takeover:undefined,
+              positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused,audioTracks:e.audioTracks,textTracks:e.textTracks,reported:e.clockKnown?Object.freeze({itemId:e.itemId,positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused}):undefined});
+            give(true);
+          },refuse);
+        }else if(['pair-required','replaced','busy'].includes(e.type))refuse();
       }));
-      this.detach.push(transport.onSessionEnd(() => { if (this.adopting) { this.release(false, false); give(false); } else this.sessionEnded(); }));
-      this.adoptTimer = this.setTimer(() => { if (this.transport === transport && this.state.phase !== 'casting') this.release(false, false); give(false); }, waitMs);
-      const controlToken=this.controllerToken();
-      this.send({type:'status',...(controlToken?{controlToken}:{})});
+      this.detach.push(transport.onSessionEnd(()=>{if(this.adopting)refuse();else this.sessionEnded();}));
+      this.adoptTimer=this.setTimer(refuse,waitMs);
+      void this.validate(proof.binding,attemptId).then(ticket=>{
+        if(!current()){refuse();return;}return transport.send({type:'adopt',bindingId:proof.binding.id,attemptId,ticket,controlToken:proof.controlToken});
+      }).catch(refuse);
     });
   }
 
@@ -290,13 +328,24 @@ export class CastController {
   }
 
   private receive(e: CastEvent) {
+    if(!this.current())return;
     switch (e.type) {
-      case 'paired': if(e.controlToken){try{this.controllerStorage?.set(this.controllerKey(),e.controlToken);}catch{}} this.waiting?.resolve(); this.waiting = undefined; return;
+      case 'paired': {
+        const transport=this.transport,generation=this.startGeneration,context=this.proofContext;
+        if(!e.binding||!e.controlToken||!context||!transport?.deviceId){this.waiting?.resolve();this.waiting=undefined;return;}
+        const binding=e.binding,controlToken=e.controlToken;
+        void this.validate(binding,'pair-'+(++this.requestSequence)+'-'+Date.now().toString(36)).then(()=>{
+          if(!this.current()||generation!==this.startGeneration||this.transport!==transport)return;
+          const proof:CastControllerProof=Object.freeze({version:2,context,binding,controlToken});
+          try{this.controllerStorage?.set(castProofKey(context,transport.deviceId!),JSON.stringify(proof));}catch{}
+          this.waiting?.resolve();this.waiting=undefined;
+        },()=>{if(generation===this.startGeneration){this.waiting?.reject(new CastFailure('cast.error.refused'));this.waiting=undefined;}});return;
+      }
       // The TV is asking the person watching; keep waiting (the pairing timeout allows for it).
       case 'pair-pending': if (this.state.phase === 'pairing') this.publish({phase: 'waiting'}); return;
       case 'pair-failed': this.waiting?.reject(new CastFailure(e.code === 'tv_busy' ? 'cast.error.tvBusy' : 'cast.error.refused')); this.waiting = undefined; return;
       case 'busy': this.fail('cast.error.busy'); return;
-      case 'pair-required': this.fail('cast.error.lostPairing'); return;
+      case 'pair-required': this.release(false,false);this.publish({phase:'off',disclosureRefused:true,itemId:undefined,title:undefined,reported:undefined,audioTracks:[],textTracks:[],positionSeconds:0,durationSeconds:0});return;
       case 'loaded': this.loads.get(e.requestId)?.resolve(e.itemId); return;
       case 'load-failed': if (e.requestId) this.loads.get(e.requestId)?.reject(new CastFailure('cast.error.loadFailed')); else this.fail('cast.error.loadFailed'); return;
       case 'takeover-requested': {
@@ -311,12 +360,22 @@ export class CastController {
         this.release(false);
         this.publish({phase: 'replaced', takeover: undefined});
         return;
-      case 'status':
-        if (this.state.phase === 'casting') this.publish({...(!e.itemId?{phase:'off' as const}:{}),itemId: e.itemId || undefined, positionSeconds: e.positionSeconds, durationSeconds: e.durationSeconds, paused: e.paused, audioTracks: e.audioTracks, textTracks: e.textTracks});
+      case 'status': {
+        if(this.state.phase!=='casting'||!this.current())return;
+        const transport=this.transport,generation=this.startGeneration,revision=++this.statusRevision;
+        const publish=(title?:string)=>{if(this.current()&&this.transport===transport&&this.startGeneration===generation&&this.statusRevision===revision&&this.state.phase==='casting')this.publish({phase:e.itemId?'casting':'off',itemId:e.itemId||undefined,title,positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused,audioTracks:e.audioTracks,textTracks:e.textTracks,reported:e.itemId&&e.clockKnown?Object.freeze({itemId:e.itemId,positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused}):undefined});};
+        if(!e.itemId){publish();return;}
+        if(this.describe)void this.describe(e.itemId).then(title=>{if(title)publish(title);else this.redacted(transport,generation,revision);},()=>this.redacted(transport,generation,revision));
+        else publish(this.state.itemId===e.itemId?this.state.title:undefined);
+      }
         return;
     }
   }
 
+  private redacted(transport:CastTransport|undefined,generation:number,revision:number){
+    if(!this.current()||this.transport!==transport||generation!==this.startGeneration||revision!==this.statusRevision)return;
+    this.release(false,false);this.publish({phase:'off',disclosureRefused:true,itemId:undefined,title:undefined,reported:undefined,audioTracks:[],textTracks:[],positionSeconds:0,durationSeconds:0});
+  }
   private fail(id: MessageId) { this.publish({phase: 'error', errorId: id, error: serviceText(id)}); }
 
   private sessionEnded() {
@@ -326,7 +385,8 @@ export class CastController {
 
   /** Detach from the transport; `stopReceiver` closes Portico on the TV. */
   private release(stopReceiver: boolean, end = true) {
-    this.startGeneration++;
+    this.startGeneration++;this.statusRevision++;
+    this.clearTimer(this.adoptTimer);this.settleAdoption?.(false);
     const flight=this.transferFlight;this.transferFlight=undefined;const released=this.startGeneration;
     if(flight?.id)this.recoveryTransfer=flight;
     if(flight)void this.cancelTransfer(flight).then(receipt=>{
@@ -343,22 +403,24 @@ export class CastController {
     if (t && end) t.end(stopReceiver);
   }
 
-  private send(message: CastCommand) { void this.transport?.send(message).catch(() => {}); }
+  private send(message: CastCommand) { if(this.current())void this.transport?.send(message).catch(() => {}); }
 
   /** The controller's answer to `takeover-requested`. */
   answerTakeover(allow: boolean) {
+    if(!this.state.takeover)return;
     this.clearTimer(this.takeoverTimer);
     this.send({type: 'takeover', allow});
     this.publish({takeover: undefined});
   }
-  play() { this.send({type: 'play'}); this.publish({paused: false}); }
-  pause() { this.send({type: 'pause'}); this.publish({paused: true}); }
+  play() { if(this.state.phase!=='casting')return;this.send({type: 'play'}); this.publish({paused: false}); }
+  pause() { if(this.state.phase!=='casting')return;this.send({type: 'pause'}); this.publish({paused: true}); }
   toggle() { if (this.state.paused) this.play(); else this.pause(); }
-  seek(positionSeconds: number) { const p = Math.max(0, positionSeconds); this.send({type: 'seek', positionSeconds: p}); this.publish({positionSeconds: p}); }
-  setAudioTrack(trackId: number) { if (Number.isSafeInteger(trackId)) this.send({type: 'audio', trackId}); }
+  seek(positionSeconds: number) { if(this.state.phase!=='casting')return;const p = Math.max(0, positionSeconds); this.send({type: 'seek', positionSeconds: p}); this.publish({positionSeconds: p}); }
+  setAudioTrack(trackId: number) { if (this.state.phase==='casting'&&Number.isSafeInteger(trackId)) this.send({type: 'audio', trackId}); }
   /** `null` turns subtitles off. */
-  setSubtitleTrack(trackId: number | null) { this.send({type: 'subtitles', trackIds: trackId === null ? [] : [trackId]}); }
+  setSubtitleTrack(trackId: number | null) { if(this.state.phase!=='casting')return;this.send({type: 'subtitles', trackIds: trackId === null ? [] : [trackId]}); }
   stop() {
+    if(this.adopting){this.release(false,false);return;}
     this.clearTimer(this.takeoverTimer);
     const flight=this.transferFlight??this.recoveryTransfer;
     if(flight?.id){
@@ -376,5 +438,5 @@ export class CastController {
     this.publish({phase: 'off', transferPending:false,itemId: undefined, title: undefined, deviceName: undefined, error: undefined, errorId: undefined, takeover: undefined});
   }
   dismiss() { if(this.state.transferPending){this.stop();return;}this.publish({phase: 'off', error: undefined, errorId: undefined}); }
-  dispose() { this.clearTimer(this.takeoverTimer); this.settleAdoption?.(false); this.release(false); this.disposed = true; this.listeners.clear(); }
+  dispose() { const adopting=this.adopting;this.clearTimer(this.takeoverTimer); this.settleAdoption?.(false); this.release(false,!adopting); this.disposed = true; this.listeners.clear(); }
 }

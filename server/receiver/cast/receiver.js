@@ -874,13 +874,35 @@
       send(p.senderId, {type: 'pair-failed', code: error.code || '', message: pairingMessage(error)});
     });
   }
+  var controllerBinding=null,controllerAttempt=null;
+  async function controllerAuthority(senderId, adoption) {
+    var binding=controllerBinding,proof=controllerToken,credential=session,owner=controllerSender;
+    if(!binding||!proof||!credential||(!adoption&&(!controllerPresent||senderId!==owner)))throw new Error('controller_required');
+    var body={bindingId:binding.id,controlToken:proof};
+    if(adoption){body.attemptId=adoption.attemptId;body.ticket=adoption.ticket;}
+    var checked=await api('/v1/cast/controllers/check',{body:body});
+    if(binding!==controllerBinding||proof!==controllerToken||credential!==session||(!adoption&&owner!==controllerSender)||!checked.body||checked.body.binding.id!==binding.id)throw new Error('controller_replaced');
+    return checked.body;
+  }
+  async function controllerStatus(senderId, attemptId) {
+    var binding=controllerBinding,owner=playback;
+    await controllerAuthority(senderId);
+    // Relationship validation does not replace fresh content admission/redaction.
+    if(owner)await api(sessionPath(owner.id),{method:'GET'});
+    if(binding!==controllerBinding||owner!==playback||!isController(senderId))return;
+    send(senderId,Object.assign(statusBody(),attemptId?{attemptId:attemptId}:{}));
+  }
   async function takeControl(senderId, origin, result) {
     var previous = controllerSender;
     await switchTo(result, origin);
     controllerSender = senderId; controllerPresent = true;
     if (previous && previous !== senderId) send(previous, {type: 'replaced'});
-    controllerToken=token(24);
-    send(senderId, {type: 'paired', controlToken:controllerToken});
+    controllerToken=token(24);controllerBinding=null;controllerAttempt=null;
+    if(result.controllerBootstrapId){
+      var registered=await api('/v1/cast/controllers/register',{body:{bootstrapId:result.controllerBootstrapId,controlToken:controllerToken}});
+      controllerBinding=registered.body.binding;
+    }
+    send(senderId, {type: 'paired', controlToken:controllerToken,binding:controllerBinding});
   }
   /** A pair request: redeem first (keeping the current pairing), then decide whether to switch now or ask. */
   function handlePair(senderId, message) {
@@ -918,7 +940,7 @@
     if (event.key === 'Enter' || event.key === ' ') allowPending();
     else if (event.key === 'Escape' || event.key === 'Backspace' || event.key === 'GoBack' || event.key === 'BrowserBack') denyPending('tv_busy');
   });
-  function isController(senderId) { return !!controllerSender && senderId === controllerSender; }
+  function isController(senderId) { return !!controllerSender && controllerPresent && senderId === controllerSender; }
   function statusBody() {
     var status = {
       type: 'status', paired: !!session, itemId: playback ? playback.itemId || '' : '',
@@ -945,10 +967,11 @@
     // A LOAD carries only a Portico item id in customData. It never carries a
     // media URL, a bearer or a media grant: the receiver resolves everything
     // itself with its own credential.
-    manager.setMessageInterceptor(types.LOAD, function (request) {
+    manager.setMessageInterceptor(types.LOAD, async function (request) {
       if(request&&localRequests.has(request))return request;
       var custom = (request && request.media && request.media.customData) || {};
       if (!custom.itemId || fromOther(request)) { return null; }
+      try{await controllerAuthority(request.senderId);}catch(e){return null;}
       var identity = displayMeta(custom) || (request.media.metadata ? displayMeta({title: request.media.metadata.title, subtitle: request.media.metadata.subtitle || request.media.metadata.seriesTitle}) : null);
       return serial(function(){recoveries=0;return resolvePlayback(custom.itemId,custom.startSeconds,identity);}).then(function(load){showPlaying();scheduleReport(0);return load;}).catch(function(e){showError(e&&(e.code||e.message));return null;});
     });
@@ -958,15 +981,16 @@
     // or server preparation is produced; ordinary completion owns the transition.
     if (types.PRELOAD) manager.setMessageInterceptor(types.PRELOAD, function(){return null;});
     // Standard queue mutation commands must pass the same controller gate as LOAD.
-    ['GET_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS'].forEach(function(name){if(types[name])manager.setMessageInterceptor(types[name],function(request){return fromOther(request)?null:request;});});
+    ['GET_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS'].forEach(function(name){if(types[name])manager.setMessageInterceptor(types[name],async function(request){if(fromOther(request))return null;try{await controllerAuthority(request.senderId);if(playback)await api(sessionPath(playback.id),{method:'GET'});return request;}catch(e){return null;}});});
     // CAF maps QUEUE_NEXT/PREV to QUEUE_UPDATE (jump +/-1); those enum values
     // are not accepted by setMessageInterceptor, even though the SDK exposes them.
     ['QUEUE_INSERT','QUEUE_UPDATE','QUEUE_REMOVE','QUEUE_REORDER','QUEUE_LOAD'].forEach(function(name){if(types[name])manager.setMessageInterceptor(types[name],function(){return null;});});
     manager.setMessageInterceptor(types.PAUSE,function(request){return request;});
-    manager.setMessageInterceptor(types.PLAY,function(request){return request&&localRequests.has(request)||!fromOther(request)?request:null;});
-    manager.setMessageInterceptor(types.SEEK,function(request){
+    manager.setMessageInterceptor(types.PLAY,async function(request){if(request&&localRequests.has(request))return request;if(fromOther(request))return null;try{await controllerAuthority(request.senderId);return request;}catch(e){return null;}});
+    manager.setMessageInterceptor(types.SEEK,async function(request){
       if(request&&localRequests.has(request))return request;
       if (fromOther(request) || !playback || !Number.isFinite(request.currentTime)) return null;
+      try{await controllerAuthority(request.senderId);}catch(e){return null;}
       if (!playback.serverSeek) return request;
       seekTo(request.currentTime).catch(function(){notice(copy('notice.seekFailed'), 5000);});
       return null;
@@ -975,17 +999,27 @@
     // A Cast device has no keyboard, so the sender delivers the pairing code it was issued
     // and then drives playback over this channel. What plays is always the library of the
     // person who paired, and only they drive it.
-    context.addCustomMessageListener(NAMESPACE, function (event) {
+    context.addCustomMessageListener(NAMESPACE, async function (event) {
       var message = event.data || {};
       if (typeof message === 'string') { try { message = JSON.parse(message); } catch (e) { message = {}; } }
       var senderId = event.senderId;
       var reply = function (body) { send(senderId, body); };
-      if(message.type==='status'&&session&&controllerToken&&typeof message.controlToken==='string'&&message.controlToken.length===48&&message.controlToken===controllerToken){
-        controllerSender=senderId;controllerPresent=true;
-        if(pendingPair){clearTimeout(pendingPair.timer);askTakeover(pendingPair.requester,true);pendingPair.timer=setTimeout(function(){denyPending('tv_busy');},TAKEOVER_ASK_MS);}
+      if(message.type==='adopt'){
+        // No retained proof is sufficient on its own, including one sent by an
+        // old SDK sender id. The server validates both live families first.
+        var originalBinding=controllerBinding,originalSession=session;
+        if(!originalBinding||message.bindingId!==originalBinding.id||message.controlToken!==controllerToken||typeof message.attemptId!=='string'||typeof message.ticket!=='string'){reply({type:'pair-required'});return;}
+        try{
+          await controllerAuthority(senderId,message);
+          if(originalBinding!==controllerBinding||originalSession!==session)return;
+          controllerSender=senderId;controllerPresent=true;controllerAttempt=message.attemptId;
+          await controllerStatus(senderId,message.attemptId);
+        }catch(e){reply({type:'pair-required'});}
+        return;
       }
       if (message.type === 'pair') { handlePair(senderId, message); return; }
       if (message.type === 'takeover') {
+        try{await controllerAuthority(senderId);}catch(e){reply({type:'pair-required'});return;}
         if (isController(senderId) && pendingPair) { if (message.allow === true) allowPending(); else denyPending('tv_busy'); }
         return;
       }
@@ -996,6 +1030,7 @@
         reply(controllerSender ? {type: 'busy'} : {type: 'pair-required'});
         return;
       }
+      try{await controllerAuthority(senderId);}catch(e){reply({type:'pair-required'});return;}
       controllerPresent=true;
       switch (message.type) {
         case 'load':
@@ -1013,13 +1048,13 @@
         case 'audio': if(Number.isSafeInteger(message.trackId)) manager.getAudioTracksManager().setActiveById(message.trackId); break;
         case 'subtitles': if(Array.isArray(message.trackIds)&&message.trackIds.length<=1&&message.trackIds.every(Number.isSafeInteger)) manager.getTextTracksManager().setActiveByIds(message.trackIds); break;
         case 'stop': serial(stopPlayback).catch(function(){notice(copy('notice.stopFailed'), 5000);}); break;
-        case 'status': break;
+        case 'status': controllerStatus(senderId,controllerAttempt).catch(function(){reply({type:'pair-required'});});return;
         default: return;
       }
       broadcast();
     });
     // Status goes only to the controller (SEC-14).
-    broadcast = function () { if (controllerSender && controllerPresent) send(controllerSender, statusBody()); };
+    broadcast = function () { if (controllerSender && controllerPresent) {var sender=controllerSender;controllerStatus(sender,controllerAttempt).catch(function(){if(sender===controllerSender)send(sender,{type:'pair-required'});});} };
     var events=cast.framework.events.EventType;
     manager.addEventListener(events.ERROR,function(e){var code=Number(e.detailedErrorCode);if(code>=300&&code<500)recover('decode_error');});
     manager.addEventListener(events.BUFFERING,function(e){viewBuffering=e.isBuffering===true;playingView();clearTimeout(bufferingTimer);if(e.isBuffering)bufferingTimer=setTimeout(function(){recover('stalled_without_data');},20000);});
@@ -1056,6 +1091,7 @@
     // A state change or a completed seek is reported at once.
     [events.PAUSE,events.SEEKED].filter(Boolean).forEach(function(name){manager.addEventListener(name,function(){playingView(true);scheduleReport(0);broadcast();});});
     [events.TIME_UPDATE,events.DURATION_CHANGE,events.MEDIA_STATUS].filter(Boolean).forEach(function(name){manager.addEventListener(name,function(){playingView();});});
+    context.addEventListener(cast.framework.system.EventType.SENDER_CONNECTED,function(e){if(e&&e.senderId===controllerSender)controllerPresent=false;});
     context.addEventListener(cast.framework.system.EventType.SENDER_DISCONNECTED,function(e){
       if (e && e.senderId && e.senderId === controllerSender) {
         controllerPresent = false;

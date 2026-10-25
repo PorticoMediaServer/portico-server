@@ -34,10 +34,11 @@ export type WatchPlaybackContext = Pick<ShellAssemblyContext, 'api' | 'session' 
 /** Created only by the mounted persistent host. The same real video owns AirPlay. */
 export function createWatchPlayOn(context: WatchPlaybackContext, binding: WatchBindings, video: HTMLVideoElement, applicationId?: string) {
   const life = new AbortController(), authority = binding.runtime.getSnapshot().authority;
+  const originalSession={...context.session(),viewer:{...context.session().viewer}},pin=context.api.getRouteConnection()?.pin,originalOrigin=new URL(context.api.baseUrl).origin;
   const items = new Map<string, GetItemsIdResponse>();
   const isCurrent = () => {
     const viewer = context.session().viewer;
-    return !life.signal.aborted && context.isCurrent() && !binding.runtime.getSnapshot().disposed && context.epoch === authority.epoch
+    return !life.signal.aborted && new URL(context.api.baseUrl).origin===originalOrigin && context.session().sessionFamilyId===originalSession.sessionFamilyId && context.session().deviceId===originalSession.deviceId && context.api.getRouteConnection()?.pin.publicKey===pin?.publicKey && context.isCurrent() && !binding.runtime.getSnapshot().disposed && context.epoch === authority.epoch
       && viewer.serverId === authority.serverId && viewer.authority === authority.authority && viewer.accountId === authority.accountId && viewer.profileId === authority.profileId;
   };
   const assertCurrent = () => {if (!isCurrent()) throw new DOMException('Playback authority retired', 'AbortError');};
@@ -58,7 +59,10 @@ export function createWatchPlayOn(context: WatchPlaybackContext, binding: WatchB
   const language = preferences ? shellLanguage(preferences) : defaultI18n;
   const receivers = new WatchReceivers({api: {request: (path, method, body, signal) => api.request(path, method, body, signal)}, runtime: binding.runtime, t: language.t, isCurrent, reportError: binding.reportError});
   const linkTv = watchLinkTv(api);
-  const sender = new WebCastSender({api, serverOrigin: context.api.baseUrl, castApplicationId: applicationId,
+  const sender = new WebCastSender({api,isCurrent,
+    ...(pin&&pin.serverId===originalSession.viewer.serverId&&originalSession.deviceId?{controllerContext:{origin:new URL(context.api.baseUrl).origin,publicKey:pin.publicKey,
+      serverId:originalSession.viewer.serverId,authority:originalSession.viewer.authority,accountId:originalSession.viewer.accountId,profileId:originalSession.viewer.profileId,
+      senderDeviceId:originalSession.deviceId,senderFamilyId:originalSession.sessionFamilyId}}:{}), serverOrigin: context.api.baseUrl, castApplicationId: applicationId,
     describe: async itemId => (await describeItem(itemId)).title});
   const controller = new PlayOnController({sender, receivers, runtime: binding.runtime, airPlay: mediaAirPlayPort(video, undefined, {
     isCurrent: () => {const shown = binding.runtime.getSnapshot();return isCurrent() && !!shown.fence && remotePictureKeepsCaptions(shown) && binding.runtime.browserMediaReady(shown.fence);},

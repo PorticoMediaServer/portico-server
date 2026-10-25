@@ -3086,7 +3086,9 @@ CREATE TABLE social_cast_bootstraps(
   created_at_ms INTEGER NOT NULL,
   expires_at_ms INTEGER NOT NULL,
   redeemed_at_ms INTEGER,
-  pairing_family_id TEXT NOT NULL DEFAULT '') STRICT;
+  pairing_family_id TEXT NOT NULL DEFAULT '',
+ sdk_receiver_id TEXT NOT NULL DEFAULT '',
+ pairing_device_id TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE social_cast_devices(
   id TEXT PRIMARY KEY,
   token_digest TEXT NOT NULL UNIQUE,
@@ -9173,3 +9175,13 @@ CREATE TABLE social_cast_queue_transfers(
  expires_ms INTEGER NOT NULL,created_ms INTEGER NOT NULL
 ) STRICT;
 CREATE INDEX social_cast_queue_transfers_expiry ON social_cast_queue_transfers(expires_ms,id);
+
+-- Root50 controller authority is normalized and independent of media custody.
+CREATE TABLE social_cast_controllers(
+ id TEXT PRIMARY KEY, bootstrap_id TEXT NOT NULL UNIQUE REFERENCES social_cast_bootstraps(id) ON DELETE CASCADE,
+ receiver_id TEXT NOT NULL, target_id TEXT NOT NULL REFERENCES social_cast_devices(id) ON DELETE CASCADE,
+ target_family_id TEXT NOT NULL, target_generation TEXT NOT NULL, server_id TEXT NOT NULL,
+ authority TEXT NOT NULL, account_id TEXT NOT NULL, profile_id TEXT NOT NULL,
+ sender_device_id TEXT NOT NULL, sender_family_id TEXT NOT NULL, sender_role TEXT NOT NULL, sender_epoch INTEGER NOT NULL,
+ proof_digest TEXT NOT NULL, ticket_digest TEXT NOT NULL DEFAULT '', ticket_attempt TEXT NOT NULL DEFAULT '', ticket_expires_ms INTEGER NOT NULL DEFAULT 0
+) STRICT;

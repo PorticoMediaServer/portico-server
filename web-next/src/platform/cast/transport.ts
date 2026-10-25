@@ -30,12 +30,14 @@ export function confirmedCastDevice(session: CastSession): ConfirmedCastDevice |
 /** Portico's custom channel only. No CAF media load or media/grant URL is accepted here. */
 export function castTransportFor(session: CastSession, context: CastContext, framework: CastFramework, observeStatus?: (status: CastReceiverStatus) => void): CastTransport {
   const device = session.getCastDevice();
+  const current=()=>context.getCurrentSession()===session;
   return {
     deviceName: typeof device.friendlyName === 'string' ? device.friendlyName.trim().slice(0, 64) : '',
     ...(typeof device.label === 'string' && device.label ? {deviceId: device.label} : {}),
-    send: command => session.sendMessage(CAST_NAMESPACE, command).then(() => undefined),
+    send: command => current()?session.sendMessage(CAST_NAMESPACE, command).then(() => undefined):Promise.reject(new Error('cast_session_replaced')),
     onMessage: receive => {
       const listener: CastMessageListener = (_namespace, raw) => {
+        if(!current())return;
         const status = reportedStatus(raw);
         if (status) observeStatus?.(status);
         receive(raw);
@@ -45,6 +47,7 @@ export function castTransportFor(session: CastSession, context: CastContext, fra
     },
     onSessionEnd: ended => {
       const listener = (event: CastSessionEvent) => {
+        if(context.getCurrentSession()&&context.getCurrentSession()!==session){ended();return;}
         if (event.sessionState !== framework.SessionState.SESSION_ENDED && event.sessionState !== framework.SessionState.SESSION_START_FAILED) return;
         const current = context.getCurrentSession();
         if (!current || current === session) ended();
@@ -54,7 +57,7 @@ export function castTransportFor(session: CastSession, context: CastContext, fra
       return () => context.removeEventListener(type, listener);
     },
     end: stopReceiver => {
-      try { void Promise.resolve(session.endSession(stopReceiver)).catch(() => {}); } catch { /* The SDK may have already ended it. */ }
+      try { if(!current())return;void Promise.resolve(session.endSession(stopReceiver)).catch(() => {}); } catch { /* The SDK may have already ended it. */ }
     },
   };
 }
