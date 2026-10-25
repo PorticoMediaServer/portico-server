@@ -48,6 +48,8 @@ export const ownerLibrariesMessages = {
   'next.ownerLibraries.filesSkippedTitle': 'Files skipped',
   'next.ownerLibraries.filesSkippedLede': 'Portico can’t play these files, so they aren’t in the library. Each says why. Repair or replace a file, then scan again.',
   'next.ownerLibraries.skippedEmpty': 'No files were skipped.',
+  'next.ownerLibraries.skippedEmptyTitle': 'No files skipped',
+  'next.ownerLibraries.skippedEmptyBody': 'Every file in {library} can be played. Titles Portico couldn’t match are in the library under their file names.',
   'next.ownerLibraries.scanningNote': 'Scanning now. Follow it in the Dashboard. You can leave this page; the scan keeps going.',
   'next.ownerLibraries.openDashboard': 'Open Dashboard',
   'next.ownerLibraries.tab.general': 'General',

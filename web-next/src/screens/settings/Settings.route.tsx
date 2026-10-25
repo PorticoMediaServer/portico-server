@@ -28,6 +28,7 @@ import {createServerSettingsSurfaces} from './server';
 import {createTroubleshootingSurfaces} from './server/troubleshooting';
 import {presetEnginesAvailable} from './server/engines';
 import {LibraryFolders} from './libraries/LibraryFolders';
+import {SkippedFiles} from './libraries/SkippedFiles';
 import {readingSettingsAdapter} from './reading-adapter';
 import {hasWebPreferenceEffect} from './effects';
 import {createPrivacySettingsSurfaces} from './privacy-controls';
@@ -159,6 +160,8 @@ export function SettingsEntry() {
         if (row.id === 'appearance.customizeHome') return <CustomizeHomeRow api={context.api} home={context.home} serverId={viewer.serverId} viewerId={options.viewerId} isCurrent={current}/>;
         if (row.id === 'libraries.list' && libraries) return <LibrariesPanel api={context.api} service={libraries}
           onEdit={libraryId => { if (current()) openPanel('library', libraryId); }} onError={reportError} />;
+        if (row.id === 'libraries.skipped' && isLibraryPanelContext(rowContext) && rowContext.recordId && libraries)
+          return <SkippedFiles libraryId={rowContext.recordId} api={options.api} service={libraries} isCurrent={current} label={defaultI18n.t(row.control.label ?? row.label)} />;
         if (row.id === 'libraries.folders' && isLibraryPanelContext(rowContext) && rowContext.recordId) {
           return <LibraryFolders libraryId={rowContext.recordId} api={options.api}
             scope={{serverId: viewer.serverId, viewerId: options.viewerId}} isCurrent={current} onError={reportError} />;
@@ -175,11 +178,11 @@ export function SettingsEntry() {
       // server-section configuration read would replace that page with a failure.
       getSnapshot: section => section.scope === 'server' && section.id === 'remote-sources' ? remoteSourcesPageSnapshot : source.getSnapshot(section),
       load: section => section.scope === 'server' && section.id === 'remote-sources' ? Promise.resolve() : source.load(section),
-      eligible: (row, selected) => server?.eligible(row) ?? (row.id === 'libraries.folders' ? current() && isLibraryPanelContext(selected) && controller.sectionVisible(selected.section) : libraryScanAction(row.id) ? current() && !!libraries && selected.panelId === 'library' && !!selected.recordId && controller.sectionVisible(selected.section) : isSubtitlePreview(row.id) ? current() && controller.sectionVisible(selected.section) : isDeviceSyntheticRow(row.id) ? current() && controller.sectionVisible(selected.section) && deviceRowState(row, deviceFacts) !== undefined : row.id === 'music.eq' ? current() && controller.sectionVisible(selected.section) && musicEqualizerAvailable(platform) : row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected)),
+      eligible: (row, selected) => server?.eligible(row) ?? ((row.id === 'libraries.folders' || row.id === 'libraries.skipped' && !!libraries) ? current() && isLibraryPanelContext(selected) && controller.sectionVisible(selected.section) : libraryScanAction(row.id) ? current() && !!libraries && selected.panelId === 'library' && !!selected.recordId && controller.sectionVisible(selected.section) : isSubtitlePreview(row.id) ? current() && controller.sectionVisible(selected.section) : isDeviceSyntheticRow(row.id) ? current() && controller.sectionVisible(selected.section) && deviceRowState(row, deviceFacts) !== undefined : row.id === 'music.eq' ? current() && controller.sectionVisible(selected.section) && musicEqualizerAvailable(platform) : row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected)),
       rowState: (row, selected) => {
         const privacyState = privacy.rowState(row);
         if (privacyState !== undefined) return privacyState;
-        if (row.id === 'libraries.folders') return {present: current() && isLibraryPanelContext(selected) && controller.sectionVisible(selected.section)};
+        if (row.id === 'libraries.folders' || row.id === 'libraries.skipped' && !!libraries) return {present: current() && isLibraryPanelContext(selected) && controller.sectionVisible(selected.section)};
         if (libraryScanAction(row.id)) return {present: current() && !!libraries && selected.panelId === 'library' && !!selected.recordId && controller.sectionVisible(selected.section)};
         if (isSubtitlePreview(row.id)) return {present: current() && controller.sectionVisible(selected.section)};
         const device = isDeviceSyntheticRow(row.id) ? deviceRowState(row, deviceFacts) : undefined;
