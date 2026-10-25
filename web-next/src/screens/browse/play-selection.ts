@@ -1,10 +1,12 @@
 import {BrowseSelectionModel, browseSelectionKey, readCatalogueSelectionItem, playCatalogueSelection, selectionCapabilities,
-  type BrowseSelectionScope, type BrowseSelectionContext, type SelectionItem, type SelectionOperation, type SelectionSnapshot} from '@core/selection-model/index.ts';
+  type BrowseSelectionScope, type BrowseSelectionContext, type SelectionItem, type SelectionOperation, type SelectionQuery,
+  type SelectionSnapshot} from '@core/selection-model/index.ts';
 import {selectionItem} from '@core/media-selection.ts';
 import type {ContentEntry} from '@core/library-content.ts';
 import type {DetailApi, DetailScope} from '@core/detail.ts';
 import type {V1QueuePlayer} from '@core/playback-v1/v1-queue-player.ts';
 import type {BrowseController} from './controller';
+import {wholeViewQuery} from './selection-query';
 
 export type LibraryPlayRow = Readonly<{entry: ContentEntry; position: number; key: string; capabilities: SelectionItem['capabilities']}>;
 export type LibraryPlaySelectionSnapshot = Readonly<{
@@ -26,6 +28,9 @@ export type LibraryPlaySelectionOptions = Readonly<{
   signal: AbortSignal;
   isCurrent: () => boolean;
   playback?: Pick<V1QueuePlayer, 'playSegments'>;
+  /** The caller's real personal-state executors. Each port is checked against
+   * the title's own Detail actions; absent means the capability is not offered. */
+  personal?: Readonly<{myList?: boolean; favorite?: boolean; watched?: boolean}>;
 }>;
 type Grant = {entry: ContentEntry; pending: boolean; controller: AbortController; promise: Promise<SelectionItem>; resolve: (item: SelectionItem) => void; reject: (error: unknown) => void};
 type Window = {first: number; last: number; entries: readonly Readonly<{entry: ContentEntry; position: number}>[]; controller: AbortController; promise?: Promise<readonly LibraryPlayRow[]>; registrations: (() => void)[]};
@@ -45,10 +50,16 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
   const scope = Object.freeze({serverId: input.scope.serverId, viewerId: input.scope.viewerId});
   if (scope.serverId !== principal.serverId) throw unavailable();
   const playback = input.playback && Object.freeze({playSegments: input.playback.playSegments.bind(input.playback)});
+  const personal = Object.freeze({...(input.personal ?? {})});
+  const ports = Object.freeze({...(playback ? {play: true as const} : {}),
+    ...(personal.myList ? {myList: true as const} : {}), ...(personal.favorite ? {favorite: true as const} : {}),
+    ...(personal.watched ? {watched: true as const} : {})});
+  const executable = !!(playback || personal.myList || personal.favorite || personal.watched);
   const life = new AbortController(), listeners = new Set<() => void>(), grants = new Map<ContentEntry, Grant>(), queued: Grant[] = [];
   let active = 0, closed = false, started = false, model: BrowseSelectionModel | undefined, modelOff: (() => void) | undefined;
   let sourceOff = () => {}, collectionOff = () => {}, expected: Readonly<{queryRevision: number; revision: string}> | undefined;
   let window: Window | undefined, handles = new WeakMap<LibraryPlayRow, Readonly<{window: Window; run: string}>>();
+  let whole: Readonly<{query: SelectionQuery; unregister: () => void}> | undefined;
   let playing: Readonly<{operation: SelectionOperation<BrowseSelectionContext>; controller: AbortController}> | undefined;
   let error: unknown;
   let state: LibraryPlaySelectionSnapshot = Object.freeze({phase: 'waiting', rows: Object.freeze([]), resolving: false, playing: false, canPlay: false});
@@ -68,7 +79,8 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
   const retire = (reason?: unknown, silent = false) => {
     if (closed) return;
     closed = true;sourceOff();collectionOff();modelOff?.();signal.removeEventListener('abort', dispose);
-    life.abort();playing?.controller.abort();playing = undefined;clearWindow();model?.dispose();
+    life.abort();playing?.controller.abort();playing = undefined;clearWindow();
+    whole?.unregister();whole = undefined;model?.dispose();
     for (const grant of grants.values()) {grant.controller.abort();grant.reject(cancelled());}
     grants.clear();queued.length = 0;
     state = Object.freeze({phase: reason === undefined ? 'retired' : 'error', rows: Object.freeze([]), resolving: false, playing: false, canPlay: false,
@@ -94,7 +106,7 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
       active++;
       const lifetime = AbortSignal.any([signal, life.signal, grant.controller.signal]);
       void readCatalogueSelectionItem({api, scope, requestId, signal: lifetime,
-        isCurrent: () => current() && source.contains(grant.entry)}, grant.entry, {play: true}).then(item => {grant.pending = false;grant.resolve(item);}, failure => {
+        isCurrent: () => current() && source.contains(grant.entry)}, grant.entry, ports).then(item => {grant.pending = false;grant.resolve(item);}, failure => {
           if (grants.get(grant.entry) === grant) grants.delete(grant.entry);
           if (terminal(failure)) retire(failure);grant.reject(failure);
         }).finally(() => {active--;pump();});
@@ -103,7 +115,9 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
   const read = (entry: ContentEntry): Promise<SelectionItem> => {
     if (!entry.libraryId) return Promise.reject(unavailable());
     const leaf = selectionItem(entry);
-    if (!playback || !leaf || leaf.itemId !== entry.id) return Promise.resolve(Object.freeze({kind: entry.kind, id: entry.id,
+    // A missing executor is not a grant: personal Detail reads do not depend on
+    // holding a playback port, and every reported capability comes from Detail.
+    if (!executable || !leaf || leaf.itemId !== entry.id) return Promise.resolve(Object.freeze({kind: entry.kind, id: entry.id,
       libraryId: entry.libraryId, capabilities: selectionCapabilities(entry.kind, {})}));
     const cached = grants.get(entry);if (cached) return cached.promise;
     let resolve!: Grant['resolve'], reject!: Grant['reject'];
@@ -142,6 +156,73 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
     signal.addEventListener('abort', dispose, {once: true});
     sourceOff = source.subscribe(sync);collectionOff = source.collection.subscribe(prune);sync();
   };
+  const registerWindow = (first: number, last: number): Promise<readonly LibraryPlayRow[]> => {
+    start();
+    if (!current()) return Promise.reject(cancelled());
+    if (!model || !expected) return Promise.reject(unavailable());
+    if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last) || first < 0 || last < first || last - first >= 60) return Promise.reject(unavailable());
+    prune();
+    const entries = Array.from({length: last - first + 1}, (_, offset) => ({position: first + offset, entry: source.collection.itemAt(first + offset)?.entry}))
+      .flatMap(({entry, position}) => entry?.libraryId && source.contains(entry) ? [Object.freeze({entry, position})] : []);
+    if (window?.first === first && window.last === last && window.entries.length === entries.length && window.entries.every((value, index) => value.entry === entries[index].entry)) return window.promise!;
+    clearWindow();error = undefined;
+    const visible = new Set(entries.map(value => value.entry));
+    for (const [entry, grant] of grants) if (grant.pending && !visible.has(entry)) {
+      grants.delete(entry);grant.controller.abort();grant.reject(cancelled());
+    }
+    const captured: Window = {first, last, entries, controller: new AbortController(), registrations: []};window = captured;
+    captured.promise = Promise.resolve().then(async () => {
+      if (!current() || window !== captured) throw cancelled();
+      const stop = AbortSignal.any([signal, life.signal, captured.controller.signal]);
+      let onAbort!: () => void;
+      const aborted = new Promise<never>((_, reject) => {onAbort = () => reject(cancelled());if (stop.aborted) onAbort();else stop.addEventListener('abort', onAbort, {once: true});});
+      try {
+        const items = await Promise.race([Promise.all(entries.map(({entry}) => read(entry))), aborted]);
+        if (!current() || window !== captured || stop.aborted || entries.some(({entry}) => !source.contains(entry))) throw cancelled();
+        const ticket = model!.captureContext(), rows: LibraryPlayRow[] = [];
+        for (let begin = 0; begin < entries.length;) {
+          let end = begin + 1;while (end < entries.length && entries[end].position === entries[end - 1].position + 1) end++;
+          const run = 'visible:' + entries[begin].position;
+          const registration = model!.registerWindow(ticket, {id: run, sectionId: 'library', sectionOrder: 0, start: entries[begin].position,
+            ...(whole ? {queryId: whole.query.id} : {}), items: items.slice(begin, end)});
+          if (!registration.ok) throw cancelled();captured.registrations.push(registration.unregister);
+          for (let index = begin; index < end; index++) {
+            const row = Object.freeze({...entries[index], key: browseSelectionKey(model!.getSnapshot().context.scope, items[index]), capabilities: items[index].capabilities});
+            rows.push(row);handles.set(row, {window: captured, run});
+          }
+          begin = end;
+        }
+        const result = Object.freeze(rows);publish({rows: result, resolving: false});return result;
+      } catch (failure) {
+        if (!closed && window === captured) {clearWindow();error = failure;publish({rows: Object.freeze([]), resolving: false});}
+        throw failure;
+      } finally {stop.removeEventListener('abort', onAbort);}
+    });publish({rows: Object.freeze([]), resolving: true, error: undefined});return captured.promise;
+  };
+  /** Register the server's exact whole-view descriptor and select it. The model's
+   * own checked query contract refuses any descriptor that does not name this
+   * page's revision; the expected query is rebuilt from the controller's own
+   * source-bound descriptor, so a same-revision selector from elsewhere is not
+   * accepted. The mounted window is rebound to that same query so its rows can
+   * be previewed and excluded; nothing here enumerates the view. */
+  const selectWhole = (query: SelectionQuery) => {
+    if (!current() || !model) throw cancelled();
+    const descriptor = source.wholeSelection();
+    if (!descriptor) throw unavailable();
+    const exact = wholeViewQuery(descriptor);
+    if (JSON.stringify(exact) !== JSON.stringify(query)) throw unavailable();
+    const ticket = model.captureContext();
+    const registration = model.registerQuery(ticket, exact);
+    if (!registration.ok) throw unavailable();
+    const change = model.selectWholeQuery(exact.id);
+    if (!change.ok) {registration.unregister();throw unavailable();}
+    const previous = whole;whole = Object.freeze({query: exact, unregister: registration.unregister});
+    if (previous && previous.query.id !== exact.id) previous.unregister();
+    // The already mounted window predates the query registration; rebind it from
+    // the same resident entries so a loaded card stays a member of the open view.
+    if (window) {const {first, last} = window;clearWindow();void registerWindow(first, last).catch(() => {});}
+    return change;
+  };
   return {
     start,
     getSnapshot(): LibraryPlaySelectionSnapshot {
@@ -149,53 +230,38 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
       return state;
     },
     subscribe(listener: () => void) {if (closed) return () => {};listeners.add(listener);return () => {listeners.delete(listener);};},
-    registerWindow(first: number, last: number): Promise<readonly LibraryPlayRow[]> {
-      start();
-      if (!current()) return Promise.reject(cancelled());
-      if (!model || !expected) return Promise.reject(unavailable());
-      if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last) || first < 0 || last < first || last - first >= 60) return Promise.reject(unavailable());
-      prune();
-      const entries = Array.from({length: last - first + 1}, (_, offset) => ({position: first + offset, entry: source.collection.itemAt(first + offset)?.entry}))
-        .flatMap(({entry, position}) => entry?.libraryId && source.contains(entry) ? [Object.freeze({entry, position})] : []);
-      if (window?.first === first && window.last === last && window.entries.length === entries.length && window.entries.every((value, index) => value.entry === entries[index].entry)) return window.promise!;
-      clearWindow();error = undefined;
-      const visible = new Set(entries.map(value => value.entry));
-      for (const [entry, grant] of grants) if (grant.pending && !visible.has(entry)) {
-        grants.delete(entry);grant.controller.abort();grant.reject(cancelled());
-      }
-      const captured: Window = {first, last, entries, controller: new AbortController(), registrations: []};window = captured;
-      captured.promise = Promise.resolve().then(async () => {
-        if (!current() || window !== captured) throw cancelled();
-        const stop = AbortSignal.any([signal, life.signal, captured.controller.signal]);
-        let onAbort!: () => void;
-        const aborted = new Promise<never>((_, reject) => {onAbort = () => reject(cancelled());if (stop.aborted) onAbort();else stop.addEventListener('abort', onAbort, {once: true});});
-        try {
-          const items = await Promise.race([Promise.all(entries.map(({entry}) => read(entry))), aborted]);
-          if (!current() || window !== captured || stop.aborted || entries.some(({entry}) => !source.contains(entry))) throw cancelled();
-          const ticket = model!.captureContext(), rows: LibraryPlayRow[] = [];
-          for (let begin = 0; begin < entries.length;) {
-            let end = begin + 1;while (end < entries.length && entries[end].position === entries[end - 1].position + 1) end++;
-            const run = 'visible:' + entries[begin].position;
-            const registration = model!.registerWindow(ticket, {id: run, sectionId: 'library', sectionOrder: 0, start: entries[begin].position, items: items.slice(begin, end)});
-            if (!registration.ok) throw cancelled();captured.registrations.push(registration.unregister);
-            for (let index = begin; index < end; index++) {
-              const row = Object.freeze({...entries[index], key: browseSelectionKey(model!.getSnapshot().context.scope, items[index]), capabilities: items[index].capabilities});
-              rows.push(row);handles.set(row, {window: captured, run});
-            }
-            begin = end;
-          }
-          const result = Object.freeze(rows);publish({rows: result, resolving: false});return result;
-        } catch (failure) {
-          if (!closed && window === captured) {clearWindow();error = failure;publish({rows: Object.freeze([]), resolving: false});}
-          throw failure;
-        } finally {stop.removeEventListener('abort', onAbort);}
-      });publish({rows: Object.freeze([]), resolving: true, error: undefined});return captured.promise;
-    },
+    registerWindow,
     toggle(row: LibraryPlayRow, range = false) {
       const handle = handles.get(row);
       if (!current() || !model || !handle || handle.window !== window || !source.contains(row.entry)) throw cancelled();
       return model.toggle(handle.run, row.key, range);
     },
+    /** A hovered card is a range preview only when the model would include it. */
+    preview(row: LibraryPlayRow): boolean {
+      if (!current() || !model) return false;
+      const handle = handles.get(row);
+      if (!handle || handle.window !== window || !source.contains(row.entry)) return false;
+      return model.previewRange(handle.run, row.key).ok;
+    },
+    /** The model's own membership for this current registered row: explicit picks
+     * and whole-view members alike, with the same window/handle currency guards. */
+    selected(row: LibraryPlayRow): boolean {
+      if (!current() || !model) return false;
+      const handle = handles.get(row);
+      if (!handle || handle.window !== window || !source.contains(row.entry)) return false;
+      return model.isSelected(row.key);
+    },
+    /** Capture the model's exact target before awaited work. Null when no
+     * selection target exists or the adapter lifetime has retired. */
+    captureOperation(): SelectionOperation<BrowseSelectionContext> | null {
+      if (!current() || !model) return null;
+      return model.captureOperation();
+    },
+    /** True only while the captured operation is still this model's own target. */
+    isOperationCurrent(operation: SelectionOperation<BrowseSelectionContext>): boolean {
+      return current() && !!model?.isOperationCurrent(operation);
+    },
+    selectWhole,
     selectLoaded() {if (!current() || !model) throw cancelled();return model.selectLoaded('library');},
     clear() {if (!current() || !model) throw cancelled();model.clear();},
     async play(callerSignal: AbortSignal = signal) {

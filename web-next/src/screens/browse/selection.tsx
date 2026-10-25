@@ -1,6 +1,7 @@
 import {useSyncExternalStore, type ReactNode} from 'react';
 import type {BrowseWholeSelection} from '@core/browse.ts';
-import type {BrowseSelectionContext, SelectionQuery, SelectionSnapshot} from '@core/selection-model/index.ts';
+import type {BrowseSelectionContext, SelectionOperation, SelectionQuery, SelectionSnapshot} from '@core/selection-model/index.ts';
+import {selectionQuerySelector} from '@core/selection-model/index.ts';
 import {SelectionBar} from '../../kit/selection';
 import type {CardSelection} from '../../kit/cards';
 import type {BrowseMember} from './controller';
@@ -14,12 +15,15 @@ import {wholeViewQuery} from './selection-query';
  * circles the cards position, and it never offers an action the adapter cannot
  * perform. */
 /** The play adapter's own model owns the whole-view registration and the range
- * preview; these become available when the route supplies them. */
-export type LibrarySelectionHost = LibraryPlaySelection & Readonly<{
+ * preview; these become available when the route supplies them. The operation
+ * pair lets the bar capture the exact target before an awaited job. */
+export type LibrarySelectionHost = Omit<LibraryPlaySelection, 'selectWhole' | 'preview' | 'selected'> & Readonly<{
   selectWhole?: (query: SelectionQuery) => unknown;
   preview?: (row: LibraryPlayRow) => boolean;
   /** The model's own membership: explicit picks and whole-view query members. */
   selected?: (row: LibraryPlayRow) => boolean;
+  captureOperation?: () => SelectionOperation<BrowseSelectionContext> | null;
+  isOperationCurrent?: (operation: SelectionOperation<BrowseSelectionContext>) => boolean;
 }>;
 
 /** A browse-safe queue add. Items are the explicit display ids in order. */
@@ -51,7 +55,7 @@ export type LibrarySelection = Readonly<{
   queue: (placement: 'next' | 'end') => Promise<void>;
   addToPlaylist: (anchor: HTMLElement) => Promise<void>;
   addToCollection: (anchor: HTMLElement) => Promise<void>;
-  playSelection: LibraryPlaySelection;
+  playSelection: LibrarySelectionHost;
 }>;
 
 /** Leaf explicit picks are the only target every add path can act on correctly:
@@ -74,11 +78,14 @@ function explicitLeafItems(selection: BrowseSelection | undefined): readonly str
 type BrowseSelection = SelectionSnapshot<BrowseSelectionContext>;
 
 /** A personal action is offered only when the model says every selected title has
- * it and the target can carry a personal job at all (leaf picks or a leaf view). */
+ * it, the target can carry a personal job at all (leaf picks or a leaf view), and
+ * a whole-view job is dispatchable without dropping a kind or exclusion refinement. */
 function personalOffers(selection: BrowseSelection | undefined, actions: SelectionActionsOptions | undefined) {
   if (!actions || !selection?.target) return {watched: false, myList: false, favorite: false};
   const usable = personalTargetIsLeaf(selection.target);
-  return {watched: usable && selection.summary.every.watched, myList: usable && selection.summary.every.myList, favorite: usable && selection.summary.every.favorite};
+  const dispatchable = selection.target.mode !== 'query' || selectionQuerySelector(selection.target).ok;
+  return {watched: usable && dispatchable && selection.summary.every.watched, myList: usable && dispatchable && selection.summary.every.myList,
+    favorite: usable && dispatchable && selection.summary.every.favorite};
 }
 
 function LibrarySelectionToolbar(props: LibrarySelectionOptions & {personal: (action: PersonalSelectionAction) => Promise<void>; queue: (placement: 'next' | 'end') => Promise<void>; addToPlaylist: (anchor: HTMLElement) => Promise<void>; addToCollection: (anchor: HTMLElement) => Promise<void>}) {
@@ -131,12 +138,29 @@ export function createLibrarySelection({playSelection, descriptor, actions, enqu
     if (!destinations?.collection) throw new Error('selection-collection-unavailable');
     await destinations.collection(leafItems(), anchor);
   };
+  let personalFlight: Readonly<{key: string; promise: Promise<void>}> | undefined;
   const personal = async (action: PersonalSelectionAction) => {
-    const target = playSelection.getSnapshot().selection?.target;
     if (!actions) throw new Error('selection-actions-unavailable');
+    const selection = playSelection.getSnapshot().selection, target = selection?.target;
     if (!target) throw new Error('selection-target-required');
-    const runner = createSelectionActions({...actions, reportError});
-    await runner.personal({target} as never, action, actions.signal ?? new AbortController().signal);
+    const chosen = [action.watched, action.favorite, action.watchlist].filter(value => value !== undefined).length;
+    const fact = action.watched !== undefined ? 'watched' : action.favorite !== undefined ? 'favorite' : action.watchlist !== undefined ? 'myList' : undefined;
+    if (chosen !== 1 || !fact) throw new Error('mixed-personal-command');
+    // The producer rechecks the chosen action's own grant on the exact target,
+    // not just the toolbar's earlier visibility decision.
+    if (selection!.summary.every[fact] !== true) throw new Error('selection-grant-unavailable');
+    const operation = playSelection.captureOperation?.() ?? null;
+    if (!operation || operation.target !== target) throw new Error('selection-operation-required');
+    const key = JSON.stringify([target.mode, target.mode === 'query' ? target.queryId : target.items.map(pick => pick.key),
+      target.mode === 'query' ? target.total : null, action]);
+    if (personalFlight?.key === key) return personalFlight.promise;
+    const promise = (async () => {
+      const runner = createSelectionActions({...actions, reportError,
+        isCurrent: () => actions.isCurrent() && playSelection.isOperationCurrent?.(operation) === true});
+      await runner.personal(operation, action, actions.signal ?? new AbortController().signal);
+    })();
+    personalFlight = Object.freeze({key, promise});
+    try {await promise;} finally {if (personalFlight?.promise === promise) personalFlight = undefined;}
   };
   const snapshot = () => playSelection.getSnapshot(), rowFor = (member: BrowseMember, index: number) => {
     const rows = snapshot().rows;

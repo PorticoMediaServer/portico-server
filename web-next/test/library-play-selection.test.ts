@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {setImmediate} from 'node:timers/promises';
 import {BrowseController} from '../src/screens/browse/controller.ts';
 import {createLibraryPlaySelection} from '../src/screens/browse/play-selection.ts';
+import {wholeViewQuery} from '../src/screens/browse/selection-query.ts';
 import type {DetailApi} from '@core/detail.ts';
 import type {V1QueuePlayer} from '@core/playback-v1/v1-queue-player.ts';
 import type {QueueHeader} from '@core/playback-v1/types.ts';
@@ -21,13 +22,21 @@ function detail(id: string) {return {scope: {...scope, libraryId: 'library', ite
 const queue: QueueHeader = {id: 'actual-port-receipt', revision: '1', total: 1, repeat: 'off', segments: []};
 function deferred<T>() {let resolve!: (value: T) => void;const promise = new Promise<T>(done => {resolve = done;});return {promise, resolve};}
 async function settle() {for (let index = 0; index < 8; index++) await setImmediate();}
-function setup(playback?: Pick<V1QueuePlayer, 'playSegments'>, readDetail: (id: string, signal?: AbortSignal) => Promise<unknown> = async id => detail(id)) {
+function setup(playback?: Pick<V1QueuePlayer, 'playSegments'>, readDetail: (id: string, signal?: AbortSignal) => Promise<unknown> = async id => detail(id),
+  personal?: Readonly<{myList?: boolean; favorite?: boolean; watched?: boolean}>,
+  whole?: (start: number, request: {query?: unknown; sort: unknown}) => unknown) {
   const navigation = new AbortController();let authority = true, detailReads = 0;
   const api: DetailApi = {async request<T>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal): Promise<T> {
     if (path.includes('browse-capabilities')) return caps as T;
     if (method === 'POST') {
       const request = body as {range: {start: number}; query?: unknown; sort: unknown}, start = request.range.start;
+      // The approved descriptor is first-page only, exactly like the server.
+      const wholeSelection = whole ? whole(start, request) : start === 0 ? {selector: {query: {libraryId: 'library', pivot: 'movies',
+        ...(request.query ? {filter: request.query} : {}), sort: request.sort}}, catalogRevision: 'browse:opaque/actual', total: 1200,
+        types: [{kind: 'movie', count: 1200, capabilityCounts: {play: 1200, queue: 0, playlist: 0, myList: 0, watched: 0, collection: 0,
+          favorite: 0, download: 0, edit: 0, refresh: 0, delete: 0}, libraries: [{libraryId: 'library', count: 1200}]}]} : undefined;
       return {pivot: 'movies', applied: {query: request.query ?? null, sort: request.sort, seek: null},
+        ...(wholeSelection ? {wholeSelection} : {}),
         entries: Array.from({length: Math.min(60, 1200 - start)}, (_, index) => ({id: 'movie-' + (start + index), libraryId: 'library', kind: 'movie', title: 'Movie ' + (start + index), available: true, playback: {itemId: 'movie-' + (start + index), startMs: 0}, navigation: {view: 'item', entityId: 'movie-' + (start + index)}})),
         pageInfo: {start, total: 1200, totalIsLowerBound: false, revision: 'browse:opaque/actual', hasMore: start + 60 < 1200, nextCursor: ''}, positionIndex: []} as T;
     }
@@ -37,7 +46,8 @@ function setup(playback?: Pick<V1QueuePlayer, 'playSegments'>, readDetail: (id: 
   }};
   const source = new BrowseController(api, {libraryId: 'library', pivot: 'movies'}, () => authority);
   const selection = createLibraryPlaySelection({source, api, scope, principal: {serverId: 'server', authority: 'local', accountId: 'account', profileId: 'profile'},
-    requestId: async () => {throw new Error('No mutation operation may be issued by a grant read');}, signal: navigation.signal, isCurrent: () => authority, playback});
+    requestId: async () => {throw new Error('No mutation operation may be issued by a grant read');}, signal: navigation.signal, isCurrent: () => authority,
+    ...(personal ? {personal} : {}), playback});
   return {source, selection, navigation, detailReads: () => detailReads, authority: (value: boolean) => {authority = value;},
     async load() {selection.start();await source.load();await settle();}, dispose() {selection.dispose();source.dispose();}};
 }
@@ -166,4 +176,130 @@ test('the original navigation signal cancels all queued grant reads and admits n
     for (const value of pending) value.result.resolve(detail(value.id));await settle();
     assert.equal(owner.detailReads(), 4);assert.deepEqual(owner.selection.getSnapshot().rows, []);
   } finally {for (const value of pending) value.result.resolve(detail(value.id));owner.dispose();}
+});
+
+test('the controller keeps the first page descriptor for its own revision and drops it on invalidate', async () => {
+  const owner = setup({playSegments: async () => queue});
+  try {
+    await owner.load();
+    const descriptor = owner.source.wholeSelection();
+    assert.equal(descriptor?.total, 1200);
+    assert.equal(descriptor?.catalogRevision, 'browse:opaque/actual');
+    owner.source.collection.ensureRange(60, 60);await settle();
+    // Page two carries no descriptor and must not erase the first page's exact one.
+    assert.equal(owner.source.wholeSelection(), descriptor);
+    owner.source.setQuery([], {field: 'title', direction: 'desc'});
+    assert.equal(owner.source.wholeSelection(), undefined);
+    await settle();
+    assert.deepEqual(owner.source.wholeSelection()?.sort, [{field: 'title', direction: 'desc'}]);
+  } finally {owner.dispose();}
+});
+
+test('Select all registers the server descriptor and keeps the mounted window a member of that exact view', async () => {
+  const owner = setup({playSegments: async () => queue});
+  try {
+    await owner.load();
+    const descriptor = owner.source.wholeSelection()!, stale = await owner.selection.registerWindow(0, 2);
+    assert.equal(owner.selection.selectWhole(wholeViewQuery(descriptor)).ok, true);
+    const selected = owner.selection.getSnapshot().selection!;
+    assert.equal(selected.summary.count, 1200);
+    assert.equal(selected.target?.mode, 'query');
+    assert.equal(selected.target?.mode === 'query' ? selected.target.expected.catalogRevision : '', 'browse:opaque/actual');
+    await settle();
+    const rows = owner.selection.getSnapshot().rows;
+    assert.equal(rows.length, 3);
+    // The pre-query window handles are retired; the same resident rows come back bound to the query.
+    assert.throws(() => owner.selection.toggle(stale[0]!), {name: 'AbortError'});
+    assert.equal(owner.selection.preview(rows[0]!), false);
+    assert.equal(owner.selection.toggle(rows[0]!).ok, true);
+    assert.equal(owner.selection.getSnapshot().selection!.summary.count, 1199);
+    assert.equal(owner.selection.preview(rows[1]!), true);
+    assert.equal(owner.selection.selected(rows[0]!), false);
+    assert.equal(owner.selection.selected(rows[1]!), true);
+    assert.equal(owner.selection.toggle(rows[1]!).ok, true);
+    assert.equal(owner.selection.getSnapshot().selection!.summary.count, 1198);
+    assert.equal(owner.selection.selected(rows[1]!), false);
+  } finally {owner.dispose();}
+});
+
+test('a whole-view descriptor from another page revision cannot become this page selection', async () => {
+  const owner = setup({playSegments: async () => queue});
+  try {
+    await owner.load();
+    const query = wholeViewQuery(owner.source.wholeSelection()!);
+    assert.throws(() => owner.selection.selectWhole({...query, catalogRevision: 'browse:other', id: 'whole:other'}), {code: 'library-play-selection-unavailable'});
+    assert.equal(owner.selection.getSnapshot().selection?.active, false);
+  } finally {owner.dispose();}
+});
+
+test('personal capabilities come from the title’s own Detail actions, with or without a playback port', async () => {
+  const withPorts = setup(undefined, undefined, {myList: true, favorite: true, watched: true});
+  try {
+    await withPorts.load();const rows = await withPorts.selection.registerWindow(0, 1);
+    assert.equal(rows[0]?.capabilities.play, false);
+    assert.equal(rows[0]?.capabilities.myList, true);
+    assert.equal(rows[0]?.capabilities.favorite, true);
+    assert.equal(rows[0]?.capabilities.watched, true);
+    assert.equal(withPorts.detailReads(), 2);
+  } finally {withPorts.dispose();}
+  const without = setup();
+  try {
+    await without.load();const rows = await without.selection.registerWindow(0, 1);
+    assert.equal(rows[0]?.capabilities.myList, false);
+    assert.equal(rows[0]?.capabilities.favorite, false);
+    assert.equal(rows[0]?.capabilities.watched, false);
+    assert.equal(without.detailReads(), 0);
+  } finally {without.dispose();}
+});
+
+test('a personal port grants nothing when Detail does not enable that exact action', async () => {
+  const owner = setup(undefined, async id => {const value = detail(id);value.actions = value.actions.filter(action => action.id !== 'watchlist');return value;},
+    {myList: true, favorite: true, watched: true});
+  try {
+    await owner.load();const rows = await owner.selection.registerWindow(0, 1);
+    assert.equal(rows[0]?.capabilities.myList, false);
+    assert.equal(rows[0]?.capabilities.favorite, true);
+    assert.equal(rows[0]?.capabilities.watched, true);
+  } finally {owner.dispose();}
+});
+
+test('a descriptor for another library or a later page never becomes this view', async () => {
+  const foreign = setup(undefined, undefined, undefined, (start, request) => start === 0 ? {selector: {query: {libraryId: 'other', pivot: 'movies', sort: request.sort}},
+    catalogRevision: 'browse:opaque/actual', total: 3, types: [{kind: 'movie', count: 3, capabilityCounts: {play: 3, queue: 0, playlist: 0, myList: 0,
+      watched: 0, collection: 0, favorite: 0, download: 0, edit: 0, refresh: 0, delete: 0}, libraries: [{libraryId: 'other', count: 3}]}]} : undefined);
+  try {
+    await foreign.load();
+    assert.equal(foreign.source.wholeSelection(), undefined);
+  } finally {foreign.dispose();}
+  const page = (total: number) => ({selector: {query: {libraryId: 'library', pivot: 'movies', sort: [{field: 'title', direction: 'asc' as const}]}},
+    catalogRevision: 'browse:opaque/actual', total, types: [{kind: 'movie', count: total, capabilityCounts: {play: total, queue: 0, playlist: 0, myList: 0,
+      watched: 0, collection: 0, favorite: 0, download: 0, edit: 0, refresh: 0, delete: 0}, libraries: [{libraryId: 'library', count: total}]}]});
+  const later = setup(undefined, undefined, undefined, start => page(start === 0 ? 1200 : 3));
+  try {
+    await later.load();
+    assert.equal(later.source.wholeSelection()?.total, 1200);
+    later.source.collection.ensureRange(60, 60);await settle();
+    assert.equal(later.source.wholeSelection()?.total, 1200);
+  } finally {later.dispose();}
+});
+
+test('retry drops the held descriptor before any re-read', async () => {
+  const owner = setup({playSegments: async () => queue});
+  try {
+    await owner.load();
+    assert.notEqual(owner.source.wholeSelection(), undefined);
+    owner.source.retry();
+    assert.equal(owner.source.wholeSelection(), undefined);
+  } finally {owner.dispose();}
+});
+
+test('Select all refuses a same-revision selector that is not this source descriptor', async () => {
+  const owner = setup({playSegments: async () => queue});
+  try {
+    await owner.load();
+    const query = wholeViewQuery(owner.source.wholeSelection()!);
+    const forged = {...query, selector: {query: {...query.selector.query, filter: {field: 'year', operator: 'at-least', value: 2000}}}};
+    assert.throws(() => owner.selection.selectWhole(forged), {code: 'library-play-selection-unavailable'});
+    assert.equal(owner.selection.getSnapshot().selection?.active, false);
+  } finally {owner.dispose();}
 });
