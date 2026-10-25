@@ -34,9 +34,13 @@ jobs:
           cache-dependency-path: server/go.sum
       - name: Official API generation
         working-directory: server
-        run: go run ./cmd/apigen -root .. 2>&1 | tee "$RUNNER_TEMP/checkpoint-generation/apigen.log"
+        run: |
+          set -euo pipefail
+          go run ./cmd/apigen -root .. 2>&1 | tee "$RUNNER_TEMP/checkpoint-generation/apigen.log"
       - name: Official schema metadata generation
-        run: python3 scripts/schema-sync.py 2>&1 | tee "$RUNNER_TEMP/checkpoint-generation/schema-sync.log"
+        run: |
+          set -euo pipefail
+          python3 scripts/schema-sync.py 2>&1 | tee "$RUNNER_TEMP/checkpoint-generation/schema-sync.log"
       - name: Preserve exact generated changes
         if: ${{ always() }}
         run: |
