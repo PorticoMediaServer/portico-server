@@ -30,6 +30,8 @@ func sourceTestFailure(err error) error {
 		return nil
 	case errors.Is(err, sql.ErrNoRows):
 		return &apierror.Error{Code: "not_found"}
+	case errors.Is(err, remotesources.ErrSavedSourceTestLocal):
+		return &apierror.Error{Code: "administration_unavailable"}
 	case errors.Is(err, storage.ErrRemoteConfig):
 		return &apierror.Error{Code: "invalid_request"}
 	case errors.Is(err, storage.ErrRemoteOffline):

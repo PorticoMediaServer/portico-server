@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"os/exec"
 	"strconv"
 	"sync"
@@ -253,10 +254,11 @@ type candidateMetadata struct {
 
 type candidateObserver func(context.Context, *rcloneprogram.ServeProcess, *remotemedia.ExclusiveTest, map[string]candidateMetadata) (func(context.Context) error, func(), error)
 
-// providerTestFailure marks a failure observed after the temporary candidate
-// serve actually reached the provider. Setup, program, custody and local
-// database/file errors are never marked, so a saved-source test cannot report a
-// provider outcome it did not observe.
+// providerTestFailure marks a failure at a direct provider-I/O boundary, such
+// as the post-stop DAV diagnosis. It never marks a private RC call: a local
+// rclone control response, local connect failure or RC status cannot supply a
+// provider fact. Setup, program, custody and local database/file errors are
+// never marked either.
 type providerTestFailure struct{ err error }
 
 func (e *providerTestFailure) Error() string { return e.err.Error() }
@@ -268,6 +270,11 @@ func providerTest(err error) error {
 	}
 	return &providerTestFailure{err: err}
 }
+
+// ErrSavedSourceTestLocal marks a candidate test failure at the authenticated
+// private RC boundary. It is a local control failure, never a provider fact, and
+// never contact evidence.
+var ErrSavedSourceTestLocal = errors.New("saved source test could not observe the provider")
 
 // runCandidateServe holds source I/O exclusively through both phases. The
 // observer's second phase runs only after physical Wait, under the SAME hold.
@@ -349,13 +356,18 @@ func (s *Service) runCandidateServe(ctx context.Context, source, generation stri
 	}
 	rootMetadata, err := checkRoot(metadataClient, remote)
 	if err != nil {
+		// The root/leaf checks use the authenticated private RC. Local connect,
+		// RC auth or RC status failures are not provider facts and stay local.
 		if life.Err() != nil {
 			return life.Err()
+		}
+		if processErr := process.CheckLocal(life); processErr != nil {
+			return processErr
 		}
 		if checkErr := check(life); checkErr != nil {
 			return checkErr
 		}
-		return providerTest(mapError(err))
+		return fmt.Errorf("%w: %w", ErrSavedSourceTestLocal, mapError(err))
 	}
 	checked := map[string]bool{remote: true}
 	leafMetadata := map[string]candidateMetadata{remote: rootMetadata}
@@ -371,13 +383,18 @@ func (s *Service) runCandidateServe(ctx context.Context, source, generation stri
 		defer client.Close()
 		metadata, err := checkRoot(client, leaf.Remote)
 		if err != nil {
+			// Same private-RC boundary: keep the failure local, never a provider
+			// offline/credential fact.
 			if life.Err() != nil {
 				return life.Err()
+			}
+			if processErr := process.CheckLocal(life); processErr != nil {
+				return processErr
 			}
 			if checkErr := check(life); checkErr != nil {
 				return checkErr
 			}
-			return providerTest(mapError(err))
+			return fmt.Errorf("%w: %w", ErrSavedSourceTestLocal, mapError(err))
 		}
 		leafMetadata[leaf.Remote] = metadata
 	}
@@ -400,6 +417,9 @@ func (s *Service) runCandidateServe(ctx context.Context, source, generation stri
 	}
 	if afterStop != nil {
 		if err = afterStop(life); err != nil {
+			if life.Err() != nil {
+				return life.Err()
+			}
 			if checkErr := check(life); checkErr != nil {
 				return checkErr
 			}
