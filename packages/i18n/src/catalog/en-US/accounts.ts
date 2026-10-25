@@ -1,6 +1,10 @@
 /** Canonical account/session language from design 14a9a19: auth, connect,
  * account and Settings spec. Names and counts always come from the live authority. */
 export const accountMessages = {
+  'accounts.setup.approveTitle': 'Approve {server}?',
+  'accounts.setup.ownerBody': '{account}, your Portico Account, becomes the owner of this server, with a main profile there named {account}.',
+  'accounts.setup.approveSafety': 'Approve only if this is your own server. It then gets its secure connection by itself.',
+  'accounts.setup.notNow': 'Not now',
   'accounts.setup.title': 'Set up your server',
   'accounts.setup.at': 'New Portico server at {address}. It takes about a minute.',
   'accounts.setup.waiting': 'Approve this server in your browser, then return here to continue.',
