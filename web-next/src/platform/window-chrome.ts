@@ -1,3 +1,4 @@
+import type {ReactNode} from 'react';
 export type WindowChromeSurface = 'pages' | 'video' | 'music';
 export type WindowChromeState = Readonly<{
   surface: WindowChromeSurface;
@@ -11,6 +12,8 @@ export type WindowChromeEnvironment = Readonly<{
   fullscreen: boolean;
 }>;
 export type WindowChromeHost = Readonly<{
+  /** Optional native caption presenter; ordinary web supplies none. */
+  render?: ReactNode;
   update: (state: WindowChromeState) => void;
   dispose?: () => void;
 }>;
@@ -29,6 +32,7 @@ const pages: WindowChromeState = Object.freeze({surface: 'pages', controlsVisibl
 const publications = new Set<Publication>(), environmentListeners = new Set<() => void>();
 let active: Installation | undefined, order = 0;
 
+export function getWindowChromeRenderer(): ReactNode | undefined { return active?.host.render; }
 export function getWindowChromeEnvironment(): WindowChromeEnvironment | undefined { return active?.environment; }
 export function subscribeWindowChromeEnvironment(listener: () => void): () => void {
   environmentListeners.add(listener);
@@ -65,6 +69,7 @@ export function installWindowChromeHost(host: WindowChromeHost): WindowChromeIns
   if (active) retire(active);
   const installation: Installation = {host, disposed: false};
   active = installation;
+  environmentChanged();
   publish();
   return Object.freeze({
     updateEnvironment(environment: WindowChromeEnvironment) {
