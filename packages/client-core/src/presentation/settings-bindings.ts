@@ -212,6 +212,11 @@ const musicPreferenceBindings:Readonly<Record<string,SettingsBinding>>={
  'music.qualityAway':{form:'preferences',key:'music.qualityAway',scope:'profile-device-class',codec:'music-quality-choice'},
  'music.qualityMobile':{form:'preferences',key:'music.qualityMobile',scope:'profile-device-class',codec:'music-quality-choice'},
  'music.downloadQuality':{form:'preferences',key:'music.qualityDownloads',scope:'profile-device-class',codec:'music-quality-choice'},
+ // The generated Music page's Audiobooks group. Their row ids are the profile
+ // preference keys themselves, so the generic row-id map had no entry for them.
+ 'audiobooks.skipBackMs':{form:'preferences',key:'audiobooks.skipBackMs',scope:'profile-server'},
+ 'audiobooks.skipForwardMs':{form:'preferences',key:'audiobooks.skipForwardMs',scope:'profile-server'},
+ 'audiobooks.resumeRewindMs':{form:'preferences',key:'audiobooks.resumeRewindMs',scope:'profile-server'},
 };
 export function settingsBinding(rowId:string):SettingsBinding|undefined{
  for(const table of [bindings,libraryScalarBindings,source69PreferenceBindings,musicPreferenceBindings])if(Object.hasOwn(table,rowId))return table[rowId];
