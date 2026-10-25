@@ -6,6 +6,7 @@ import {selectionItem} from '@core/media-selection.ts';
 import type {ContentEntry} from '@core/library-content.ts';
 import type {DetailApi, DetailScope} from '@core/detail.ts';
 import type {V1QueuePlayer} from '@core/playback-v1/v1-queue-player.ts';
+import type {BrowseWholeSelection} from '@core/browse.ts';
 import type {BrowseController} from './controller';
 import {wholeViewQuery} from './selection-query';
 
@@ -19,8 +20,17 @@ export type LibraryPlaySelectionSnapshot = Readonly<{
   canPlay: boolean;
   error?: unknown;
 }>;
+/** Explicit catalogue consumers retain their own opaque source continuity. They
+ * never register a Browse whole-query descriptor or reuse a Search fence as one. */
+export type ExplicitCatalogueSelectionSource = Readonly<{
+  viewIdentity(): string;
+  getSnapshot(): Readonly<{phase: string; revision?: string; queryRevision: number}>;
+  subscribe(listener: () => void): () => void;
+  contains(entry: ContentEntry): boolean;
+  collection: Readonly<{subscribe(listener: () => void): () => void; itemAt(index: number): Readonly<{entry: ContentEntry}> | undefined}>;
+}>;
 export type LibraryPlaySelectionOptions = Readonly<{
-  source: BrowseController;
+  source: BrowseController | ExplicitCatalogueSelectionSource;
   api: DetailApi;
   scope: DetailScope;
   principal: Omit<BrowseSelectionScope, 'viewId'>;
@@ -141,8 +151,8 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
     const snapshot = source.getSnapshot();
     if (!model && snapshot.phase === 'ready' && snapshot.revision) {
       try {
-        const query = source.query();
-        const viewId = JSON.stringify({libraryId: source.source.libraryId, pivot: source.source.pivot, query: query.query ?? null, sort: query.sort ?? []});
+        const viewId = 'viewIdentity' in source ? source.viewIdentity() : (() => {const query = source.query();
+          return JSON.stringify({libraryId: source.source.libraryId, pivot: source.source.pivot, query: query.query ?? null, sort: query.sort ?? []});})();
         model = new BrowseSelectionModel({scope: {...principal, viewId}, revision: {pageRevision: snapshot.revision}});
         expected = Object.freeze({queryRevision: snapshot.queryRevision, revision: snapshot.revision});
         modelOff = model.subscribe(() => {
@@ -213,7 +223,7 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
    * be previewed and excluded; nothing here enumerates the view. */
   const selectWhole = (query: SelectionQuery) => {
     if (!current() || !model) throw cancelled();
-    const descriptor = source.wholeSelection();
+    const descriptor: BrowseWholeSelection | undefined = 'wholeSelection' in source ? source.wholeSelection() : undefined;
     if (!descriptor) throw unavailable();
     const exact = wholeViewQuery(descriptor);
     if (JSON.stringify(exact) !== JSON.stringify(query)) throw unavailable();
