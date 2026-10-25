@@ -111,7 +111,7 @@ func runCB7Helper(ctx context.Context, ra io.ReaderAt, size int64, args ...strin
 		}
 		return nil, ErrArchiveFormat
 	}
-	command.Cancel = killHelper
+	command.Cancel = func() error { return killHelper(command) }
 	command.WaitDelay = 5 * time.Second
 	if err = startHelper(command); err != nil {
 		_ = input.Close()
