@@ -21,6 +21,7 @@ export const receiverMessages = {
   "cast.receiver.error.generic.body": "Try again from your phone or computer.",
   "cast.receiver.takeover.title": "{requester} wants to play on this TV",
   "cast.receiver.someone": "Someone",
+  "cast.receiver.iPhoneOrIPad": "An iPhone or iPad",
   "cast.receiver.takeover.present": "Waiting for the person watching now to allow it.",
   "cast.receiver.takeover.absent": "Switching in a few seconds.",
   "cast.receiver.key.ok": "OK",
