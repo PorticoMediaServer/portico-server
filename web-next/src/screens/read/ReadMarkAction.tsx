@@ -37,13 +37,21 @@ export function ReadMarkAction({client, itemId, isCurrent, reportError}: {client
     if (held.needsRead || !mark) {await load(held); return;}
     const command = held.command ?? Object.freeze({operationId: crypto.randomUUID(), expectedRevision: mark.revision, read: !mark.read});
     held.command = command; held.busy = true; setView({opening: held, mark, busy: true});
+    let committed = false;
     try {
       const updated = await held.client.setReadMark(held.itemId, command, held.controller.signal);
       if (!current(held) || held.command !== command) return;
       if (updated.viewerFence !== mark.viewerFence || updated.revision < mark.revision) throw new ReadingError('source_changed');
-      held.command = undefined; setView({opening: held, mark: updated});
+      // A receipt is the original operation's result, not necessarily the
+      // latest state after another device's later choice. Read current state
+      // separately; failure here retries only the read, never a new write.
+      held.command = undefined; held.needsRead = true; committed = true;
+      const fresh = await held.client.readMark(held.itemId, held.controller.signal);
+      if (!current(held)) return;
+      if (fresh.viewerFence !== mark.viewerFence || fresh.revision < updated.revision) throw new ReadingError('source_changed');
+      held.needsRead = false; setView({opening: held, mark: fresh});
     } catch (error) {
-      if (current(held) && held.command === command) {
+      if (current(held) && (held.command === command || committed)) {
         if (error instanceof ReadingError && definite.has(error.code)) {held.command = undefined; held.needsRead = true;}
         setView({opening: held, mark, failed: true}); inputs.current.reportError(error);
       }
