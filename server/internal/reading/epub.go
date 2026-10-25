@@ -15,7 +15,12 @@ type Resource struct {
 	MIME string
 	Size int64
 }
-type Metadata struct{ Title, Author, Language, Direction, CoverURL string }
+type Metadata struct {
+	Title, Author, Language, Direction, CoverURL, ExplicitPublicationType string
+	PublicationTypeField                                                  string
+	PublicationTypeRaw                                                    []string
+	PublicationTypeComplete                                               bool
+}
 type EPUB struct {
 	archive    *archive
 	Resources  []Resource
@@ -33,10 +38,16 @@ type containerXML struct {
 	} `xml:"rootfiles>rootfile"`
 }
 type packageXML struct {
+	XMLName  xml.Name
 	Metadata struct {
+		XMLName  xml.Name
 		Title    string `xml:"title"`
 		Author   string `xml:"creator"`
 		Language string `xml:"language"`
+		Types    []struct {
+			Value string `xml:",chardata"`
+			Inner string `xml:",innerxml"`
+		} `xml:"http://purl.org/dc/elements/1.1/ type"`
 	} `xml:"metadata"`
 	Manifest []struct {
 		ID         string `xml:"id,attr"`
@@ -119,7 +130,20 @@ func openEPUBArchive(ctx context.Context, a *archive) (*EPUB, error) {
 	if len(p.Manifest) > MaxEntries || len(p.Spine.Items) > MaxEntries {
 		return nil, ErrLimit
 	}
-	e := &EPUB{archive: a, Package: pkg, Metadata: Metadata{Title: p.Metadata.Title, Author: p.Metadata.Author, Language: p.Metadata.Language}, allowed: map[string]string{"mimetype": "text/plain", "META-INF/container.xml": "application/xml", pkg: "application/oebps-package+xml"}}
+	e := &EPUB{archive: a, Package: pkg, Metadata: Metadata{Title: p.Metadata.Title, Author: p.Metadata.Author, Language: p.Metadata.Language, PublicationTypeField: "{http://purl.org/dc/elements/1.1/}type"}, allowed: map[string]string{"mimetype": "text/plain", "META-INF/container.xml": "application/xml", pkg: "application/oebps-package+xml"}}
+	if p.XMLName.Local == "package" && p.XMLName.Space == "http://www.idpf.org/2007/opf" && p.Metadata.XMLName.Local == "metadata" && p.Metadata.XMLName.Space == p.XMLName.Space {
+		values := make([]string, 0, len(p.Metadata.Types))
+		scalar := true
+		for _, field := range p.Metadata.Types {
+			values = append(values, field.Value)
+			scalar = scalar && !strings.Contains(field.Inner, "<")
+		}
+		e.Metadata.PublicationTypeRaw, e.Metadata.PublicationTypeComplete = boundedTypeEvidence(values)
+		e.Metadata.PublicationTypeComplete = e.Metadata.PublicationTypeComplete && scalar
+		if e.Metadata.PublicationTypeComplete {
+			e.Metadata.ExplicitPublicationType = explicitPublicationType(values)
+		}
+	}
 	if len(e.Metadata.Title) > 4096 || len(e.Metadata.Author) > 4096 || len(e.Metadata.Language) > 64 {
 		return nil, ErrLimit
 	}

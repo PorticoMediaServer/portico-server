@@ -14,12 +14,31 @@ func (ReadingDirection) JSONSchema() map[string]any {
 	return map[string]any{"type": "string", "enum": []string{"ltr", "rtl", "vertical"}}
 }
 
+// Publication classification is optional descriptive metadata, separate from ebook/comic identity.
+type ReadingPublicationType string
+
+func (ReadingPublicationType) JSONSchema() map[string]any {
+	return map[string]any{"type": "string", "enum": []string{"book", "magazine", "newspaper"}}
+}
+
+type ReadingPublicationTypeSource string
+
+func (ReadingPublicationTypeSource) JSONSchema() map[string]any {
+	return map[string]any{"type": "string", "enum": []string{"owner", "file-metadata"}}
+}
+
+type ReadingPublicationTypeValue struct {
+	Value  ReadingPublicationType       `json:"value"`
+	Source ReadingPublicationTypeSource `json:"source"`
+}
+
 type ReadingMetadata struct {
-	CoverURL  string           `json:"coverUrl,omitempty"`
-	Title     string           `json:"title,omitempty"`
-	Author    string           `json:"author,omitempty"`
-	Language  string           `json:"language,omitempty"`
-	Direction ReadingDirection `json:"direction,omitempty"`
+	PublicationType *ReadingPublicationTypeValue `json:"publicationType,omitempty"`
+	CoverURL        string                       `json:"coverUrl,omitempty"`
+	Title           string                       `json:"title,omitempty"`
+	Author          string                       `json:"author,omitempty"`
+	Language        string                       `json:"language,omitempty"`
+	Direction       ReadingDirection             `json:"direction,omitempty"`
 }
 type ReadingResource struct {
 	Path string `json:"path"`
@@ -27,15 +46,16 @@ type ReadingResource struct {
 	Size int64  `json:"size"`
 }
 type ReadingItem struct {
-	CoverURL           string         `json:"coverUrl,omitempty"`
-	ID                 string         `json:"id"`
-	LibraryID          string         `json:"libraryId"`
-	Title              string         `json:"title"`
-	Format             ReadingFormat  `json:"format"`
-	SourceID           string         `json:"sourceId"`
-	InventoryAvailable bool           `json:"inventoryAvailable"`
-	Author             *ReadingAuthor `json:"author,omitempty"`
-	Series             *ReadingSeries `json:"series,omitempty"`
+	PublicationType    *ReadingPublicationTypeValue `json:"publicationType,omitempty"`
+	CoverURL           string                       `json:"coverUrl,omitempty"`
+	ID                 string                       `json:"id"`
+	LibraryID          string                       `json:"libraryId"`
+	Title              string                       `json:"title"`
+	Format             ReadingFormat                `json:"format"`
+	SourceID           string                       `json:"sourceId"`
+	InventoryAvailable bool                         `json:"inventoryAvailable"`
+	Author             *ReadingAuthor               `json:"author,omitempty"`
+	Series             *ReadingSeries               `json:"series,omitempty"`
 }
 type ReadingItemsResponse struct {
 	Items      []ReadingItem `json:"items"`

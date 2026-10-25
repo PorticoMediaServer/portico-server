@@ -39,9 +39,10 @@ type ReadingNumber struct {
 }
 
 type ReadingValues struct {
-	Title          string
-	Author, Series *ReadingValue
-	SeriesNumber   *ReadingNumber
+	Title           string
+	Author, Series  *ReadingValue
+	PublicationType *ReadingValue
+	SeriesNumber    *ReadingNumber
 }
 
 type ReadingRuleInput struct {
@@ -375,6 +376,13 @@ func ReadingAutomaticValues(pathValues, fileMetadata ReadingValues) (ReadingValu
 		copy := *v
 		*fields.target = &copy
 	}
+	if v := fileMetadata.PublicationType; v != nil {
+		if v.Source != ReadingFileMetadata || !ValidReadingPublicationType(v.Value) {
+			return ReadingValues{}, ErrReadingValue
+		}
+		copy := *v
+		out.PublicationType = &copy
+	}
 	if v := fileMetadata.SeriesNumber; v != nil {
 		if v.Source != ReadingFileMetadata || math.IsInf(v.Value, 0) || math.IsNaN(v.Value) || v.Value < 0 {
 			return ReadingValues{}, ErrReadingValue
@@ -389,12 +397,15 @@ func ReadingAutomaticValues(pathValues, fileMetadata ReadingValues) (ReadingValu
 // Empty or unlocked owner fields restore the genuine producer value/absence.
 func ReadingEffectiveValues(automatic ReadingValues, owner map[string]ReadingOwnerValue) (ReadingValues, error) {
 	out := automatic
-	for field, target := range map[string]**ReadingValue{"author": &out.Author, "series": &out.Series} {
+	for field, target := range map[string]**ReadingValue{"author": &out.Author, "series": &out.Series, "publicationType": &out.PublicationType} {
 		value := owner[field]
 		if !value.Locked || strings.TrimSpace(value.Value) == "" {
 			continue
 		}
 		if len(value.Value) > 4096 || !utf8.ValidString(value.Value) || strings.ContainsAny(value.Value, "\x00\r\n") {
+			return ReadingValues{}, ErrReadingValue
+		}
+		if field == "publicationType" && !ValidReadingPublicationType(value.Value) {
 			return ReadingValues{}, ErrReadingValue
 		}
 		*target = &ReadingValue{value.Value, ReadingOwner}
@@ -517,3 +528,11 @@ func ReadingSeriesItems(library, id string, items []ReadingFacetItem) ([]Reading
 	})
 	return out, len(out) != 0
 }
+
+// A publication type is descriptive metadata, never an ebook/comic or library identity.
+func ValidReadingPublicationType(value string) bool {
+	return value == "book" || value == "magazine" || value == "newspaper"
+}
+
+// Bump when recognized mappings change; older automatic facts become unavailable immediately.
+const ReadingPublicationTypeRuleVersion = 1
