@@ -4,7 +4,7 @@ import {RouteError, routeOrigin, type KnownServerRoute} from './route-identity.t
 
 export type SignInKind = 'portico' | 'local';
 export type PorticoAccountScope = Readonly<{origin: string; accountId: string}>;
-export type AppServerSession = Readonly<{signIn: SignInKind; connection: RememberedServer}>;
+export type AppServerSession = Readonly<{signIn: SignInKind; connection: RememberedServer; resetFileOwner?: true}>;
 export type AppSessionRecord = Readonly<{
   version: 1; revision: number; selectedServerId?: string; servers: readonly AppServerSession[];
 }>;
@@ -17,7 +17,7 @@ export interface AppSessionStorage {
   change(update: (current: AppSessionRecord | undefined) => AppSessionRecord | undefined, beforeCommit?: () => void): Promise<void>;
 }
 export type NewServerConnection = Readonly<{
-  signIn: SignInKind; hostedAccount?: PorticoAccountScope;
+  signIn: SignInKind; hostedAccount?: PorticoAccountScope; resetFileOwner?: true;
   /** Captured before sign-in begins. A later selection/sign-out invalidates this admission. */
   expectedRevision: number;
 }>;
@@ -32,6 +32,13 @@ function scope(raw: PorticoAccountScope): PorticoAccountScope {
   if (origin !== raw.origin || url.protocol !== 'https:' && !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) invalid();
   return {origin, accountId: raw.accountId};
 }
+/** The reset-file owner grant is server-local, access-only and tied to its
+ * proved issuer. It supplies no Hosted account or directory route authority. */
+function resetOwner(connection: RememberedServer): boolean {
+  const session = connection.session;
+  return !connection.hosted && session.viewer.authority === 'local' && session.viewer.role === 'owner' && !session.refreshToken
+    && session.serverIdentity?.publicKey === connection.pin.publicKey && session.serverIdentity.fingerprint === connection.pin.fingerprint;
+}
 export function parseAppSessionRecord(raw: unknown): AppSessionRecord {
   if (raw === undefined || raw === null) return empty();
   if (!object(raw) || raw.version !== 1 || !Number.isSafeInteger(raw.revision) || Number(raw.revision) < 0 || !Array.isArray(raw.servers) || raw.servers.length > 1000) invalid();
@@ -39,10 +46,11 @@ export function parseAppSessionRecord(raw: unknown): AppSessionRecord {
     if (!object(value) || !['portico', 'local'].includes(String(value.signIn))) invalid();
     const connection = parseRememberedServer(value.connection);
     if (!connection || connection.session.viewer.authority !== 'local') invalid();
-    // Both kinds have server-local profiles. Only Portico sign-ins carry a directory binding.
-    if (value.signIn === 'portico' ? !connection.hosted : !!connection.hosted) invalid();
+    if (value.resetFileOwner !== undefined && value.resetFileOwner !== true) invalid();
+    if (value.resetFileOwner === true) {if (value.signIn !== 'portico' || !resetOwner(connection)) invalid();}
+    else if (value.signIn === 'portico' ? !connection.hosted : !!connection.hosted) invalid();
     if (connection.hosted) scope(connection.hosted);
-    return {signIn: value.signIn as SignInKind, connection};
+    return {signIn: value.signIn as SignInKind, connection, ...(value.resetFileOwner === true ? {resetFileOwner: true as const} : {})};
   });
   const ids = servers.map(v => v.connection.pin.serverId);
   if (new Set(ids).size !== ids.length || raw.selectedServerId !== undefined && (!id(raw.selectedServerId) || !ids.includes(raw.selectedServerId))) invalid();
@@ -87,7 +95,7 @@ export class AppSessionStore {
   }
   connectionStorage(serverId: string, admission?: NewServerConnection): ServerConnectionStorage {
     if (!id(serverId)) invalid();
-    if (admission && (!Number.isSafeInteger(admission.expectedRevision) || admission.expectedRevision < 0 || !['portico', 'local'].includes(admission.signIn) || (admission.signIn === 'portico') !== !!admission.hostedAccount)) invalid();
+    if (admission && (!Number.isSafeInteger(admission.expectedRevision) || admission.expectedRevision < 0 || !['portico', 'local'].includes(admission.signIn) || admission.resetFileOwner !== undefined && admission.resetFileOwner !== true || (admission.resetFileOwner ? admission.signIn !== 'portico' || !!admission.hostedAccount : (admission.signIn === 'portico') !== !!admission.hostedAccount))) invalid();
     const account = admission?.hostedAccount ? scope(admission.hostedAccount) : undefined;
     let admitted = false;
     let previous: AppServerSession | undefined, accepted: RememberedServer | undefined;
@@ -105,9 +113,10 @@ export class AppSessionStore {
           const rollback = admitted && !!previous && connection === previous.connection && entry?.connection.selectionId === accepted?.selectionId && entry?.connection.session.sessionFamilyId === accepted?.session.sessionFamilyId;
           if (replacement && !rollback && (!admission || admitted || old.revision !== admission.expectedRevision)) cancelled();
           const signIn = rollback ? previous!.signIn : replacement ? admission!.signIn : entry!.signIn;
-          if (signIn === 'portico' && (!checked.hosted || account && (checked.hosted.origin !== account.origin || checked.hosted.accountId !== account.accountId)) || signIn === 'local' && checked.hosted) invalid();
+          const resetFileOwner = rollback ? previous!.resetFileOwner : replacement ? admission!.resetFileOwner : entry!.resetFileOwner;
+          if (resetFileOwner ? signIn !== 'portico' || !resetOwner(checked) : signIn === 'portico' && (!checked.hosted || account && (checked.hosted.origin !== account.origin || checked.hosted.accountId !== account.accountId)) || signIn === 'local' && checked.hosted) invalid();
           if (replacement && !rollback) { previous = entry; accepted = checked; }
-          const result = next(old, [...old.servers.filter(v => v !== entry), {signIn, connection: checked}], replacement ? serverId : old.selectedServerId);
+          const result = next(old, [...old.servers.filter(v => v !== entry), {signIn, connection: checked, ...(resetFileOwner ? {resetFileOwner: true as const} : {})}], replacement ? serverId : old.selectedServerId);
           return result;
         }, beforeCommit);
         // An admission is single use. Rotation, route updates and cleanup need no admission.
