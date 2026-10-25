@@ -1,4 +1,5 @@
-import {useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import {createSavedCatalogueSelection} from './catalogue-selection';
+import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {useSearch} from '@tanstack/react-router';
 import type {ContentEntry} from '@core/library-content.ts';
 import {defineWebScreen} from '../../route-registry';
@@ -26,6 +27,14 @@ function BoundSaved({captured, owner}: {captured: ProtectedLibraryScreen; owner:
   const online = useSyncExternalStore(networkSubscribe, networkSnapshot, () => true), width = useShellWidth();
   const [choice, setChoice] = useState<Readonly<{defaultView: 'grid' | 'list'; view: 'grid' | 'list'}>>();
   const runtime = owner.runtime, native = useSyncExternalStore(owner.subscribe, owner.getSnapshot, owner.getSnapshot);
+  const routeKey = savedRouteKey(route);
+  const selection = useMemo(() => {
+    const viewer = captured.context.session().viewer;
+    if (viewer.authority !== 'local' && viewer.authority !== 'hosted') throw new DOMException('Saved authority unavailable', 'AbortError');
+    return createSavedCatalogueSelection(context, runtime, route, {serverId: viewer.serverId, authority: viewer.authority,
+      accountId: viewer.accountId, profileId: viewer.profileId}, () => captured.context.viewerFence, () => savedRouteKey(selectedRoute.current) === routeKey, captured.binding.playback?.runtime);
+  }, [context, runtime, routeKey, captured.context, captured.binding.playback?.runtime]);
+  useEffect(() => {selection.start();return () => selection.dispose();}, [selection]);
   const effects: SavedEffects = useMemo(() => ({
     openEntry: context.effects.openEntry,
     async playEntry(entry: ContentEntry, signal: AbortSignal) {
@@ -55,7 +64,7 @@ function BoundSaved({captured, owner}: {captured: ProtectedLibraryScreen; owner:
         {signal, isCurrent: current}, {shuffle: target.shuffle});
     }} : {}),
   }), [context, runtime, hasPlayback, native.saveReadyPreparation]);
-  return <SavedScreen runtime={runtime} localDownloads={native.localDownloads} route={route} online={online} downloadsOffered artwork={context.artwork}
+  return <SavedScreen catalogueSelection={selection} runtime={runtime} localDownloads={native.localDownloads} route={route} online={online} downloadsOffered artwork={context.artwork}
     preparationArtwork={preparation => {
       // Only already-authorized bounded Home facts are reused. There is no
       // guessed item image URL or per-row catalogue scan for missing artwork.
