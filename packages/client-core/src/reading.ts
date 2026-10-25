@@ -212,7 +212,7 @@ function validReadingCover(itemId: string, value: unknown): boolean {
   return value.startsWith(prefix) && /^[a-f0-9]{64}$/.test(value.slice(prefix.length));
 }
 
-function validateManifest(m: PostReadingSessionsResponse, request: PostReadingSessionsRequest) {
+function validateManifest(m: ReadingManifest, request: PostReadingSessionsRequest) {
   if (!id(m.sessionId) || m.itemId !== request.itemId || m.sourceId !== request.sourceId || !revision(m.revision) || !format(m.format) || !integer(m.size, 1, 2 ** 31)) fail('invalid_manifest');
   if (!validReadingCover(m.itemId, m.metadata.coverUrl)) fail('invalid_manifest');
   if (m.sequential === true && m.format !== 'pdf') fail('invalid_manifest');
