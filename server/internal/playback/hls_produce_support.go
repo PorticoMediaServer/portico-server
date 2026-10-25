@@ -139,8 +139,9 @@ func hardwareEncodeStage(stages []decoder.HardwareStage) bool {
 }
 
 // errHardwarePermitUnavailable says this adapter has no session slot left right
-// now. It is an ordinary hardware failure to the caller, so the window falls back
-// to another adapter and then to software exactly as a refused encoder does.
+// now. It is capacity, not a failing encoder: the window runs in software without
+// recording a device failure, tripping the adapter's circuit or rewriting the
+// stored plan, and no other adapter is tried in this version.
 var errHardwarePermitUnavailable = errors.New("hardware_permit_unavailable")
 
 // failedWith fails a session and records why, for the people who can read it.
