@@ -1,0 +1,10 @@
+/* owner-people.html frame14: 420px dialog, 16px stack, 34px colors, 10px gap. */
+.fields { display: flex; flex-direction: column; gap: 16px; }
+.colors { border: 0; padding: 0; margin: 0; min-width: 0; }
+.colors legend { padding: 0; margin-bottom: 8px; color: var(--color-text-secondary); font-size: var(--type-synopsis-size); font-weight: var(--type-row-heading-weight); }
+.colors > div { display: flex; gap: 10px; flex-wrap: wrap; padding: 5px; }
+.colors button { width: 34px; height: 34px; padding: 0; border: 0; border-radius: 50%; background: var(--profile-color); cursor: pointer; }
+.colors button[aria-checked="true"] { box-shadow: 0 0 0 3px var(--color-raised-high), 0 0 0 5px var(--color-text); }
+.colors button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 6px; }
+.colors button:disabled { cursor: default; }
+.limit { margin: 0; color: var(--color-text-secondary); font-size: var(--type-caption-size); line-height: normal; }
