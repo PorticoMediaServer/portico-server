@@ -2,6 +2,8 @@ export {SelectionCircle, type SelectionCircleProps, type SelectionCircleState} f
 export {SelectionHoldFeedback, type SelectionHoldFeedbackProps} from './SelectionHoldFeedback';
 export type {SelectionIntent} from './interaction';
 export {SelectionBar, PhoneActionBar, type PhoneActionBarProps} from './SelectionBar';
+export {SelectionBars, PhoneSelectionSlot} from './SelectionBars';
+export {PhoneSelectionProvider, usePhoneSelectionPresent, usePhoneSelectionContent, usePublishPhoneSelection, type PhoneSelectionContent} from './phone-slot';
 export {BulkEditor} from './BulkEditor';
 export {PlaylistPicker, CollectionPicker, PickerAddedToast, type PickerAddedToastProps} from './SelectionPicker';
 export {DeleteMediaDialog} from './DeleteMediaDialog';

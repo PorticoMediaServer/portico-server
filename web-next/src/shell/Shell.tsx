@@ -6,6 +6,7 @@ import type {Library, Viewer} from '@core/index.ts';
 import {AccountMenu, ProfileAvatar, ProfileAvatarFace, type ProfileIdentity, type ProfileTone} from '../kit/shell';
 import type {FactPart} from '@core/presentation/kit-model/index.ts';
 import {Icon} from '../kit/Icon';
+import {PhoneSelectionProvider, PhoneSelectionSlot, usePhoneSelectionPresent} from '../kit/selection';
 import {MenuItem,Dialog} from '../kit/overlays';
 import {TextField,Button} from '../kit/controls';
 import {activeLibraryId, isLibraryLocation, rememberLibrary, rememberedLibrary, showOwnerActivity} from './model';
@@ -44,9 +45,16 @@ const t = defaultI18n.t;
 function libraryMemory() { try { return window.localStorage; } catch { return undefined; } }
 const collapseMemoryKey = 'portico.next.sidebar-collapsed';
 
-export function Shell({identity, OwnerActivity, dockVisible, serverAway, onSignOut, onSignOutPorticoAccount,onSwitchProfile,onSwitchServer,savedServers,onFeedback, phoneSelection, overlays, windowChrome, children}: ShellProps) {
+/** One shell, one phone-selection store. Screens inside it publish their live
+ * selection to this shell's store and never to another shell's. */
+export function Shell(props: ShellProps) {
+  return <PhoneSelectionProvider><ShellFrame {...props}/></PhoneSelectionProvider>;
+}
+function ShellFrame({identity, OwnerActivity, dockVisible, serverAway, onSignOut, onSignOutPorticoAccount,onSwitchProfile,onSwitchServer,savedServers,onFeedback, phoneSelection, overlays, windowChrome, children}: ShellProps) {
   useWindowScrollAnchor();
   const sizeClass = useSizeClass(), coarsePointer = useCoarsePointer();
+  // A live screen selection draws its own action bar here, in place of the tab bar.
+  const screenSelectionPresent = usePhoneSelectionPresent();
   const desktop = sizeClass === 'expanded' && !coarsePointer, compact = sizeClass === 'compact', scrolled = useShellScrolled();
   const chrome = usePageWindowChrome(scrolled);
   // Only the native desktop host, whose window chrome reports an OS, draws the away line.
@@ -150,13 +158,13 @@ export function Shell({identity, OwnerActivity, dockVisible, serverAway, onSignO
         {home && <header className={styles.phoneHeader}><Link className={styles.brand} to="/" aria-label={t('next.platform.appName')}><img src={wordmark} alt="" /></Link><div className={styles.phoneTools}>
           {account}
         </div></header>}
-        {phoneSelection ?? <nav className={styles.tabbar} aria-label={t('next.home.shell.main')}>
+        {phoneSelection ?? (screenSelectionPresent ? <PhoneSelectionSlot/> : <nav className={styles.tabbar} aria-label={t('next.home.shell.main')}>
           <Link to="/" activeOptions={{exact: true}} activeProps={{'aria-current': 'page'}}><Icon name="i-home" size={22} /><span>{t('next.home.shell.home')}</span></Link>
           <Link to="/search" search={{q: lastSearch.current}} activeProps={{'aria-current': 'page'}}><Icon name="i-search" size={22} /><span>{t('next.home.shell.search')}</span></Link>
           <button type="button" aria-current={isLibraryLocation(pathname) || activeLibrary ? 'page' : undefined} onClick={openLibraries}><Icon name="i-grid" size={22} /><span>{t('next.home.shell.libraries')}</span></button>
           {identity.liveAvailable && <Link to="/live" activeProps={{'aria-current': 'page'}}><Icon name="i-tv" size={22} /><span>{t('next.home.shell.live')}</span></Link>}
           <Link to="/saved" activeProps={{'aria-current': 'page'}}><Icon name="i-bookmark" size={22} /><span>{t('next.home.shell.saved')}</span></Link>
-        </nav>}
+        </nav>)}
       </>}
     </div>
     {awayShown && <ConnectionAway serverName={identity.serverName} />}

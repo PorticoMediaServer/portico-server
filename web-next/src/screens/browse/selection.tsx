@@ -14,7 +14,7 @@ import {useEffect, useSyncExternalStore, type ReactNode} from 'react';
 import type {BrowseWholeSelection} from '@core/browse.ts';
 import type {BrowseSelectionContext, SelectionOperation, SelectionQuery, SelectionSnapshot} from '@core/selection-model/index.ts';
 import {selectionQuerySelector} from '@core/selection-model/index.ts';
-import {SelectionBar} from '../../kit/selection';
+import {SelectionBars} from '../../kit/selection';
 import type {CardSelection} from '../../kit/cards';
 import type {BrowseMember} from './controller';
 import type {LibraryPlayRow, LibraryPlaySelection} from './play-selection';
@@ -185,7 +185,7 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {visible: Visi
   const canQueue = queueLease && summary.every.queue && (!!explicitQueueItems(current.selection) && !!enqueue || !!props.enqueueQuery && current.canQueue === true && queryCan('queue')),
     canPlaylist = queueLease && summary.every.playlist && (!!pickerItems && (!!destinations?.playlist || !!props.pickers) || !!props.pickers && queryDestination(current.selection, 'playlist')),
     canCollection = queueLease && summary.every.collection && (!!pickerItems && (!!destinations?.collection || !!props.pickers) || !!props.pickers && queryDestination(current.selection, 'collection'));
-  return <SelectionBar
+  return <SelectionBars
     selection={{count: summary.count, kind: summary.types.length === 1 ? summary.types[0].kind : undefined}}
     actions={{
       ...(props.deletion && summary.library.kind === 'single' && summary.count <= 200 && summary.every.delete && (current.selection.target?.mode === 'explicit' || current.selection.target?.mode === 'query' && queryDeleteTarget(current.selection.target)) && queueLease ? {onDelete: () => {try {props.openDelete();} catch (error) {reportError(error);}}} : {}),
