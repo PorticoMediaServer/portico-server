@@ -74,25 +74,31 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
     let book: Book | undefined, mounted=false, disposed=false, view: ReaderView<P>|undefined;
     const byPath=new Map(assets.entries.map(e=>[e.path,e]));
     const decoder=new TextDecoder('utf-8',{fatal:true});
+    // Both loader entry points see the same inert publication text. In
+    // particular, an ordinary remote anchor must be removed before Foliate
+    // parses or rewrites the resource, rather than only at the final Blob.
+    function secureText(path:string,mime:string,raw:string):string {
+      if(mime==='text/html'||mime==='application/xhtml+xml'||/\.x?html?$/i.test(path)||/<(?:\w+:)?html[\s>]/i.test(raw))
+        return secureMarkup(raw,'application/xhtml+xml');
+      if(mime==='image/svg+xml'||/\.svg$/i.test(path))return secureMarkup(raw,'image/svg+xml');
+      if(mime==='text/css'||/\.css$/i.test(path))return secureCss(raw);
+      return rejectXmlEntities(raw);
+    }
     async function loadText(path:string,callerSignal:AbortSignal=signal):Promise<string|null> {
       const task=abortScope([signal,callerSignal]),active=task.signal;
       try {throwIfAborted(active);unchanged();
       const entry=byPath.get(safeArchivePath(path));if(!entry)return null;
-      let text=decoder.decode(await assets.read(path,active));throwIfAborted(active);unchanged();
+      const text=decoder.decode(await assets.read(path,active));throwIfAborted(active);unchanged();
       const mime='mime' in entry ? entry.mime : '';
-      if(mime==='text/html'||mime==='application/xhtml+xml'||/\.x?html?$/i.test(path)||/<(?:\w+:)?html[\s>]/i.test(text))
-        text=secureMarkup(text,'application/xhtml+xml');
-      else if(mime==='image/svg+xml'||/\.svg$/i.test(path)) text=secureMarkup(text,'image/svg+xml');
-      else if(mime==='text/css'||/\.css$/i.test(path))text=secureCss(text);
-      else rejectXmlEntities(text);
-      return text;
+      return secureText(path,mime??'',text);
       }finally{task.dispose();}
     }
     async function loadBlob(path:string):Promise<Blob|null> {
       throwIfAborted(signal);unchanged();const entry=byPath.get(safeArchivePath(path));if(!entry)return null;
       let bytes=await assets.read(path,signal);throwIfAborted(signal);unchanged();
       const mime='mime' in entry && typeof entry.mime==='string'?entry.mime:'';
-      if(mime==='image/svg+xml'||/\.svg$/i.test(path))bytes=new TextEncoder().encode(secureMarkup(decoder.decode(bytes),'image/svg+xml'));
+      if(['text/html','application/xhtml+xml','image/svg+xml','text/css'].includes(mime)||/\.(?:x?html?|svg|css)$/i.test(path))
+        bytes=new TextEncoder().encode(secureText(path,mime,decoder.decode(bytes)));
       return new Blob([bytes as Uint8Array<ArrayBuffer>],{type:mime});
     }
     const close=async()=>{if(disposed)return;disposed=true;lifetime.abort();scope.dispose();try{await view?.dispose();}finally{book?.destroy();await assets.dispose();}};
