@@ -16,6 +16,7 @@ import {router} from '../../router';
 import {StateView} from '../../kit/states';
 import {LibraryEmpty} from '../../kit/states/LibraryEmpty';
 import {useShellWidth} from '../../shell/viewport';
+import {createEpisodeSelection} from '../detail/episode-selection';
 import {ShowScreen} from '../detail/Show';
 import {AudiobookEntry} from '../detail/audiobooks/Entry';
 import {createShowBindings} from '../detail/show-bindings';
@@ -72,10 +73,17 @@ function ReadingLibrary({captured, library, search}: {captured: ProtectedLibrary
   if (search.view === 'browse' || search.query) return <BoundLibrary captured={captured} library={library} search={search} tabs={tabs}/>;
   return <ReadLibraryEntry libraryId={library.id} header={header} view="discover"/>;
 }
-function LibraryShow({context, libraryId, search}: {context: ScreenContext; libraryId: string; search: LibraryScreenSearch}) {
+function LibraryShow({context, captured, libraryId, search}: {context: ScreenContext; captured: ProtectedLibraryScreen; libraryId: string; search: LibraryScreenSearch}) {
   const binding = useMemo(() => createShowBindings(context), [context]);
   useEffect(() => () => binding.dispose(), [binding]);
-  return <ShowScreen binding={binding} target={{libraryId, ...(search.view === 'season' ? {seasonId: search.entityId} : {showId: search.entityId})}}/>;
+  const runtime = captured.binding.playback?.runtime;
+  const selection = useMemo(() => {
+    const viewer = captured.context.session().viewer;
+    if (viewer.authority !== 'local' && viewer.authority !== 'hosted') throw new DOMException('Screen authority unavailable', 'AbortError');
+    return createEpisodeSelection(context, binding, {serverId: viewer.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId}, () => captured.context.viewerFence, runtime);
+  }, [captured.context, context, binding, runtime]);
+  useEffect(() => {selection.start(); return () => selection.dispose();}, [selection]);
+  return <ShowScreen binding={binding} selection={selection} target={{libraryId, ...(search.view === 'season' ? {seasonId: search.entityId} : {showId: search.entityId})}}/>;
 }
 function BoundLibrary({captured, library, search, tabs: offered}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch; tabs?: readonly LibraryTab[]}) {
   const context = useLibraryScreenContext(captured), appearance = useScreenAppearance(captured.context)!, width = useShellWidth();
@@ -223,7 +231,7 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
   if (library.kind === 'audiobook' && width < 1024 && (view === 'book' || view === 'author' || view === 'book_series') && search.entityId)
     return <AudiobookEntry context={context} target={{libraryId: library.id, view, entityId: search.entityId}}/>;
   return <>{unmatched ? <><LibraryIdentity {...header}/><NeedsAttention artwork={context.artwork} libraryId={library.id} libraryName={library.name} api={resources.life.api} onOpen={openAttention} onEdit={context.effects.editMetadata ? editAttention : undefined}/></>
-    : view === 'show' || view === 'season' ? <LibraryShow context={context} libraryId={library.id} search={search}/>
+    : view === 'show' || view === 'season' ? <LibraryShow context={context} captured={captured} libraryId={library.id} search={search}/>
     : browse ? <LibraryScreen {...bindings}/> : <LibraryDiscoveryScreen service={resources.service} route={contentRoute} musicMixes={musicMixes} header={<LibraryIdentity {...header}/>} empty={empty}
       appearance={appearanceBase} preferences={appearance} reducedMotion={appearance.reducedMotion} artwork={context.artwork} env={bindings.env}
       actions={(_section, entry) => actions(entry)} onSeeAll={section => {const target = section.seeAll;if (target) navigate({pivot: target.pivot, query: target.query, sort: target.sort});}}/>}
