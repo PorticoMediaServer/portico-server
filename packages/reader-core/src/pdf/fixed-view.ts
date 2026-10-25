@@ -67,22 +67,25 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
       location={format,page,progression:pageCount===1?0:page/(pageCount-1)};options.onLocation(location);
     }catch(error){for(const release of releases.reverse())release();for(const surface of created.values())surface.dispose();throw error;}finally{rendering--;task.dispose();}
   }
-  const pointers=new Map<number,{x:number;y:number}>();let pinch:number|undefined,drag:{x:number;y:number;left:number;top:number}|undefined,tap:{id:number;x:number;y:number;multiple:boolean}|undefined;
+  const pointers=new Map<number,{x:number;y:number}>();let pinch:number|undefined,drag:{x:number;y:number;left:number;top:number}|undefined,tap:{id:number;x:number;y:number;multiple:boolean;moved:boolean}|undefined;
   let pendingTap:{timer:ReturnType<typeof setTimeout>;x:number;y:number;time:number}|undefined;
   const clearTap=()=>{if(pendingTap){clearTimeout(pendingTap.timer);pendingTap=undefined;}};
   const gestureZoom=(next:Zoom)=>{void view.setZoom!(next,signal).then(()=>{if(!closed)options.onSurfaceInput?.({kind:'activity'});}).catch(()=>{});};
   const distance=()=>{const a=[...pointers.values()];return a.length===2?Math.hypot(a[1].x-a[0].x,a[1].y-a[0].y):undefined;};
   const onDown=(event:PointerEvent)=>{
-    options.onSurfaceInput?.({kind:'activity'});
-    if(!tap)tap={id:event.pointerId,x:event.clientX,y:event.clientY,multiple:false};else{tap.multiple=true;clearTap();}
+    // A completed centre tap owns the chrome toggle. Do not wake it on
+    // contact first, which would invert the user's hidden/shown intention.
+    if(!tap)tap={id:event.pointerId,x:event.clientX,y:event.clientY,multiple:false,moved:false};else{tap.multiple=true;clearTap();options.onSurfaceInput?.({kind:'activity'});}
     // PDF text selection must retain browser handles and native selection semantics.
     if(event.pointerType!=='touch'&&(event.target as Element)?.closest?.('[data-reader-text] span'))return;
     pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});host.setPointerCapture?.(event.pointerId);
     if(pointers.size===1)drag={x:event.clientX,y:event.clientY,left:host.scrollLeft,top:host.scrollTop};else{pinch=distance();drag=undefined;}
   };
   const onMove=(event:PointerEvent)=>{
-    options.onSurfaceInput?.({kind:'activity'});
-    if(!pointers.has(event.pointerId))return;pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});const nextDistance=distance();
+    if(!pointers.has(event.pointerId))return;
+    if(tap?.id===event.pointerId&&Math.hypot(event.clientX-tap.x,event.clientY-tap.y)>=8)tap.moved=true;
+    if(pointers.size>1||tap?.moved)options.onSurfaceInput?.({kind:'activity'});
+    pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});const nextDistance=distance();
     if(pinch&&nextDistance){const next=Math.max(.05,Math.min(8,scale*nextDistance/pinch));pinch=nextDistance;gestureZoom({kind:'scale',value:next});}
     else if(drag){host.scrollLeft=drag.left+drag.x-event.clientX;host.scrollTop=drag.top+drag.y-event.clientY;}
   };
@@ -90,7 +93,7 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
     pointers.delete(event.pointerId);pinch=undefined;drag=undefined;
     if(tap?.id===event.pointerId){
       const candidate=tap;tap=undefined;
-      if(!candidate.multiple&&event.type==='pointerup'&&Math.hypot(event.clientX-candidate.x,event.clientY-candidate.y)<8&&document.getSelection()?.isCollapsed!==false){
+      if(!candidate.multiple&&!candidate.moved&&event.type==='pointerup'&&Math.hypot(event.clientX-candidate.x,event.clientY-candidate.y)<8&&document.getSelection()?.isCollapsed!==false){
         const rect=host.getBoundingClientRect();if(rect.width<=0)return;
         if(pendingTap&&event.timeStamp-pendingTap.time<=300&&Math.hypot(event.clientX-pendingTap.x,event.clientY-pendingTap.y)<24){clearTap();onDouble();}
         else{

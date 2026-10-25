@@ -84,6 +84,9 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
     }}>
     <div className={styles.surface} data-reader-surface onClick={event => {
       if (event.defaultPrevented || readerInteractiveTarget(event.target) || window.getSelection()?.toString()) return;
+      // The fixed renderer owns delayed single/double taps and selection. Its
+      // DOM click must not toggle chrome or turn a page a second time.
+      if (event.target instanceof Element && event.target.closest('[data-reader-fixed]')) return;
       const bounds = event.currentTarget.getBoundingClientRect();
       if (bounds.width > 0) tap((event.clientX - bounds.left) / bounds.width);
     }}>{children}</div>
