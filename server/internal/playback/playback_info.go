@@ -49,6 +49,10 @@ type PlaybackSoundFacts struct {
 	Layout      string `json:"layout,omitempty"`
 	SampleRate  int    `json:"sampleRate,omitempty"`
 	BitDepth    int    `json:"bitDepth,omitempty"`
+	// Delivery is how the sink receives the delivered track: handed over
+	// undecoded ("passthrough") or decoded to PCM ("decoded"). It is never
+	// stated for the source, which is a file, not an output.
+	Delivery string `json:"delivery,omitempty"`
 }
 
 // Subtitle facts come from the actual selected resource, not a rendition label
@@ -240,6 +244,10 @@ func PlaybackInfoForPlan(p DeliveryPlan, subtitle *PlaybackSubtitleFacts) *Playb
 			dst.Codec = p.OutputAudioCodec
 		}
 		out.Routes.Sound = playbackRoute(p.AudioAction, repackaged)
+		dst.Delivery = "decoded"
+		if p.AudioPassthrough {
+			dst.Delivery = "passthrough"
+		}
 		if p.AudioAction == "convert" {
 			dst.Profile, dst.Variant, dst.ObjectAudio = "", "", ""
 			dst.Channels, dst.SampleRate, dst.BitDepth, dst.Layout = p.AudioChannels, p.AudioSampleRate, 0, ""

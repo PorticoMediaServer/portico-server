@@ -111,3 +111,22 @@ func TestPlaybackComparisonOmitsPartialOrUnappliedRoutesAndRates(t *testing.T) {
 		t.Fatal("audio-only rate misreported as aggregate", info)
 	}
 }
+
+// VIDEO.md VS-10 asks for the sound's format and whether it is passed through
+// or decoded. The committed recipe knows which: a passthrough route hands the
+// bitstream to the sink, everything else is decoded to PCM first.
+func TestPlaybackInfoReportsTheSoundDelivery(t *testing.T) {
+	plan := DeliveryPlan{Strategy: DeliveryOriginal, VideoAction: "original", AudioAction: "original", OutputAudioCodec: "eac3", AudioPassthrough: true,
+		Trace: &DecisionTrace{Audio: &TraceAudio{Codec: "eac3", ObjectAudio: "atmos", Channels: 8, Layout: "7.1"}}}
+	info := PlaybackInfoForPlan(plan, nil)
+	if info == nil || info.Source.Audio == nil || info.Source.Audio.Delivery != "" || info.Delivered.Audio == nil || info.Delivered.Audio.Delivery != "passthrough" {
+		t.Fatalf("a passed-through track was not reported as one: %+v", info)
+	}
+	plan.AudioPassthrough = false
+	plan.AudioAction = "convert"
+	plan.OutputAudioCodec = "aac"
+	info = PlaybackInfoForPlan(plan, nil)
+	if info == nil || info.Delivered.Audio == nil || info.Delivered.Audio.Delivery != "decoded" || info.Delivered.Audio.Channels != 0 {
+		t.Fatalf("a decoded track was not reported as one: %+v", info)
+	}
+}
