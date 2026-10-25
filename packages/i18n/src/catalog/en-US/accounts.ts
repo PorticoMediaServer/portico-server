@@ -1,6 +1,14 @@
 /** Canonical account/session language from design 14a9a19: auth, connect,
  * account and Settings spec. Names and counts always come from the live authority. */
 export const accountMessages = {
+  'accounts.move.sheetTitle': 'Codes for everyone waiting',
+  'accounts.move.sheetHeading': 'Sign-in codes',
+  'accounts.move.sheetHelp': 'Open {address}, choose I have a code, then type yours. Each code works once.',
+  'accounts.move.sheetUsername': 'Username',
+  'accounts.move.validUntil': 'Valid until',
+  'accounts.move.copyList': 'Copy list',
+  'accounts.move.print': 'Print',
+  'accounts.move.done': 'Done',
   'accounts.signIn.recoveryCode': 'Recovery code',
   'accounts.brand': 'Portico',
   'accounts.provider.google': 'Google',
