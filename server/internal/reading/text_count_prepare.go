@@ -49,11 +49,12 @@ const textCountWorkerDomain = `e.kind=20 AND lib.kind='book' AND p.format IN('ep
 // exclude unknown or stale facts. The cache join carries the whole current
 // rule, including the opening-text rule, so a row with an older opening rule is
 // pending rather than excluded forever.
-const textCountPendingSQL = `SELECT e.id,pid(e.public_id),cl.library_id,a.token
+func textCountPendingSQL(primary string) string {
+	return `SELECT e.id,pid(e.public_id),cl.library_id,a.token
  FROM catalog_entities e
  CROSS JOIN catalog_libraries cl ON cl.id=e.library_id
  CROSS JOIN libraries lib ON lib.id=cl.library_id
- CROSS JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=` + primaryPublicationSQL + `
+ CROSS JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=` + primary + `
  CROSS JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id
  CROSS JOIN catalog_assets a ON a.id=link.asset_id
  CROSS JOIN inventory_objects o ON o.asset_id=a.token
@@ -63,6 +64,7 @@ const textCountPendingSQL = `SELECT e.id,pid(e.public_id),cl.library_id,a.token
  WHERE e.retired=0 AND cl.retired=0 AND ` + textCountWorkerDomain + ` AND ` + publicationEligible + `
  AND ` + textCountCanonicalObject + `
  AND c.item_id IS NULL AND e.id>? ORDER BY e.id LIMIT ?`
+}
 
 // TextCountPreparation is one worker.Run step over the pending canonical EPUBs.
 // It is woken by catalog/source writes and rests after a complete pass, so an
@@ -70,6 +72,9 @@ const textCountPendingSQL = `SELECT e.id,pid(e.public_id),cl.library_id,a.token
 type TextCountPreparation struct {
 	DB      *sql.DB
 	Prepare func(context.Context, string, string, string) error
+	// PrimaryPublicationSQL is the canonical availability-first primary
+	// version rule, supplied by the live Service (it depends on MOBI support).
+	PrimaryPublicationSQL func() string
 	// Admission is the existing background policy (pause and maintenance
 	// windows). Preparation is descriptive metadata work, so it uses the
 	// metadata-refresh task rather than adding a policy name.
@@ -122,7 +127,14 @@ func (p *TextCountPreparation) Step(ctx context.Context) time.Duration {
 		}
 		p.passing, p.cursor, p.logged = true, 0, 0
 	}
-	rows, err := p.DB.QueryContext(ctx, textCountPendingSQL, readingTextRuleVersion, p.cursor, window)
+	primary := ""
+	if p.PrimaryPublicationSQL != nil {
+		primary = p.PrimaryPublicationSQL()
+	}
+	if primary == "" {
+		return time.Minute
+	}
+	rows, err := p.DB.QueryContext(ctx, textCountPendingSQL(primary), readingTextRuleVersion, p.cursor, window)
 	if err != nil {
 		log.Printf("Reading text counts: %v", err)
 		return time.Minute
@@ -191,7 +203,7 @@ func (s *Service) resolveBackgroundTx(ctx context.Context, tx *sql.Tx, library, 
 	var v Selection
 	v.ItemID = item
 	err := tx.QueryRowContext(ctx, `SELECT `+publicationFields+` FROM catalog_entities e`+publicationJoins+`
- WHERE e.public_id=pid_blob(?) AND a.token=? AND cl.library_id=? AND p.asset_id=`+primaryPublicationSQL+` AND `+textCountWorkerDomain+` AND `+publicationEligible+` ORDER BY a.id,o.id LIMIT 1`, item, asset, library).Scan(selectionColumns(&v)...)
+ WHERE e.public_id=pid_blob(?) AND a.token=? AND cl.library_id=? AND p.asset_id=`+s.primaryPublicationSQL()+` AND `+textCountWorkerDomain+` AND `+publicationEligible+` ORDER BY a.id,o.id LIMIT 1`, item, asset, library).Scan(selectionColumns(&v)...)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Selection{}, ErrUnavailable
 	}
