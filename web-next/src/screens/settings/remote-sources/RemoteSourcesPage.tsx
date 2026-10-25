@@ -259,6 +259,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   const initialAdvanced: SourceAdvanced = {scanIntervalSeconds: 21600, watchForChanges: false, scanOnStart: false, fullRecheckDays: 0, cacheBytes: 0, cacheFloorBytes: 0, seekPreviews: true, chapterImages: true, waveforms: true, loudness: true, checksums: true, introsMode: 'inherit', doubleCheckFolders: false, dirCacheSeconds: 0, readBufferBytes: 0, connectTimeoutSeconds: 0, idleTimeoutSeconds: 0, retries: 0, lowLevelRetries: 0};
   const [advancedValues, setAdvancedValues] = useState<SourceAdvanced>(initialAdvanced);
   const [advancedTouched, setAdvancedTouched] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [leaving, setLeaving] = useState<'' | 'saved' | 'unsaved'>('');
   const [leaveChoice, setLeaveChoice] = useState<'keep' | 'remove'>('keep');
   const [leaveRemove, setLeaveRemove] = useState(false);
@@ -276,7 +277,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     setChosen([]); setPicking(false); setAttachMode('new'); setLibraryName(''); setKind('movie'); setExistingId('');
     setFinishBusy(false); setFinishError(''); setSummary({folders: 0}); setLeaving(''); setLeaveRemove(false); setLeaveError(''); setLeaveChoice('keep');
     setAdvancedValues(initialAdvanced);
-    setAdvancedTouched(false);
+    setAdvancedTouched(false); setAdvancedOpen(false);
     testAttempt.current++; lifetime.current++; setFormToken(lifetime.current); pending.current = false;
   };
   const updateDraft = (patch: Partial<WebDavDraft>) => {testAttempt.current++;setResult(undefined);setError('');setDraft(current => ({...current, ...patch}));};
@@ -929,11 +930,12 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
         <SettingNumber label={t('next.remoteSources.downloadSpeed')} value={values.bytesPerSecond ? values.bytesPerSecond / 1_000_000 : null} min={1} max={1000} optional unit={t('next.remoteSources.megabytesPerSecond')} disabled={busy} onCommit={value => setValues({...values, bytesPerSecond: value === null ? 0 : Math.round(value) * 1_000_000})}/>
       </div>
       <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.label')}<small className={styles.note}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.help')}</small></span><Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.label')} checked={values.wholeFileReads} disabled={busy} onCheckedChange={value => setValues({...values, wholeFileReads: value})}/></label>
-      <details className={styles.advDisclosure}>
-        <summary>{t('next.remoteSources.advanced')}</summary>
-        <SourceAdvancedRows values={advancedValues} cacheSupported transportSupported={!!sourceNow?.mountId} cacheApplied cacheError={undefined} cacheUsedBytes={0} observedInterval={0} disabled={busy}
-          onChange={next => {setAdvancedTouched(true);setAdvancedValues(next);}}/>
-      </details>
+      <button type="button" className={styles.advRow} aria-expanded={advancedOpen} onClick={() => setAdvancedOpen(value => !value)}>
+        <span><b>{t('next.remoteSources.advanced')}</b><small>{t('next.remoteSources.advancedHelp')}</small></span>
+        <Icon name="i-down" size={18}/>
+      </button>
+      {advancedOpen && <SourceAdvancedRows values={advancedValues} cacheSupported transportSupported={!!sourceNow?.mountId} cacheApplied cacheError={undefined} cacheUsedBytes={0} observedInterval={0} disabled={busy}
+        onChange={next => {setAdvancedTouched(true);setAdvancedValues(next);}}/>}
     </>}
     {step === 'folders' && <>
       <p className={styles.note}>{t('next.remoteSources.foldersOnlyHint')}</p>

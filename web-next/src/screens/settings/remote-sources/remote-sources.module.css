@@ -148,11 +148,14 @@
 
 /* Advanced groups (remote-sources.html#4b, #4c, #7b). */
 .advTitle { margin: 6px 0 0; font-size: var(--type-caption-size); font-weight: var(--type-body-strong-weight); color: var(--color-text-tertiary); }
-.advDisclosure { border-radius: 10px; }
-.advDisclosure > summary { cursor: pointer; padding: 8px 2px; font-size: var(--type-row-subtitle-size); font-weight: var(--type-body-strong-weight); color: var(--color-text-secondary); list-style: none; }
-.advDisclosure > summary::before { content: '▸ '; color: var(--color-text-tertiary); }
-.advDisclosure[open] > summary::before { content: '▾ '; }
-.advDisclosure[open] { display: grid; gap: 10px; }
+/* The drawn Advanced row: one raised row with its reason and a chevron (4, 14b). */
+.advRow { display: flex; align-items: center; gap: 10px; width: 100%; padding: 12px 14px; border: 0; border-radius: 10px; background: var(--color-raised); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.advRow > span { display: grid; gap: 3px; flex: 1; min-width: 0; }
+.advRow b { font-size: var(--type-row-subtitle-size); font-weight: var(--type-body-strong-weight); color: var(--color-text); }
+.advRow small { font-size: var(--type-caption-size); font-weight: normal; color: var(--color-text-tertiary); line-height: var(--type-troubleshooting-log-line); }
+.advRow svg { flex: none; color: var(--color-text-tertiary); }
+.advRow[aria-expanded="true"] svg { transform: rotate(180deg); }
+.advRow:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 
 /* The whole-page announcement for a source that stopped working (7d2). */
 .pageNotice { display: flex; gap: 10px; padding: 12px 14px; border-radius: 10px; color: var(--color-danger-text); background: color-mix(in srgb, var(--color-danger) 10%, transparent); font-size: var(--type-caption-size); line-height: var(--type-troubleshooting-log-line); }
