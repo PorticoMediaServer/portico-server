@@ -44,6 +44,13 @@ func verifiedMobiExecutable(path, digest string, static bool) (*os.File, error) 
 		return nil, ErrUnavailable
 	}
 	if static {
+		if binary.Type != elf.ET_EXEC || binary.Machine != elf.EM_X86_64 || binary.Class != elf.ELFCLASS64 {
+			return nil, ErrUnavailable
+		}
+		needed, err := binary.DynString(elf.DT_NEEDED)
+		if err != nil || len(needed) != 0 {
+			return nil, ErrUnavailable
+		}
 		for _, program := range binary.Progs {
 			if program.Type == elf.PT_INTERP {
 				return nil, ErrUnavailable
