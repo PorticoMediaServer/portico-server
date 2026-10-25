@@ -40,8 +40,16 @@ function Specimen() {
   useEffect(() => {
     if (!dialog) return;
     const label = dialog === 'search' ? 'Search by hand' : 'Enter a provider ID';
-    const button = [...document.querySelectorAll('button')].find(item => (item.textContent || '').trim() === label);
-    button?.click();
+    const open = () => {
+      const button = [...document.querySelectorAll('button')].find(item => (item.textContent || '').trim() === label);
+      if (!button) return false;
+      button.click();
+      return true;
+    };
+    if (open()) return;
+    const observer = new MutationObserver(() => {if (open()) observer.disconnect();});
+    observer.observe(document.getElementById('root')!, {childList: true, subtree: true});
+    return () => observer.disconnect();
   }, [dialog]);
   useEffect(() => {
     if (!dialog || !number) return;
