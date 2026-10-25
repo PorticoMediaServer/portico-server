@@ -29,13 +29,19 @@ const emptyRclone: RcloneDraft = {name: '', remote: '', config: ''};
 const emptyS3: S3SourceFields = {endpoint: '', region: '', accessKey: '', secretKey: '', bucket: '', folder: ''};
 const emptyDrive: DriveKeyFields = {keyJson: '', location: 'folder', locationId: ''};
 const emptyCloud: CloudTokenFields = {provider: 'onedrive', token: '', folder: ''};
-const kindOptions = [
-  {value: 'webdav', label: t('next.remoteSources.connectWebdav')},
-  {value: 'rclone', label: t('next.remoteSources.connectRclone')},
-  {value: 'config', label: t('next.remoteSources.connectFromConfig')},
-  {value: 's3', label: t('next.remoteSources.connectS3')},
-  {value: 'drive', label: t('next.remoteSources.connectDrive')},
-  {value: 'cloud', label: t('next.remoteSources.connectCloud')},
+/** Step 1 draws three choices: WebDAV, a new rclone remote, or one already in
+ * the account's own configuration (remote-sources.html#1, #8a, #14a). */
+const whatOptions: readonly {family: SourceFamily; label: MessageId; hint: MessageId; tag?: MessageId}[] = [
+  {family: 'webdav', label: 'next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.0.label', hint: 'next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.0.hint', tag: 'next.remoteSources.kindCommon'},
+  {family: 'rclone', label: 'next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.1.label', hint: 'next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.1.hint', tag: 'next.remoteSources.kindIncluded'},
+  {family: 'config', label: 'next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.2.label', hint: 'next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.2.hint', tag: 'next.remoteSources.kindIncluded'},
+];
+/** Step 2's kinds, grouped by how each is filled in, and only the kinds
+ * Portico can build a form for, plus pasting (remote-sources.html#3d). */
+const rcloneKindGroups: readonly {title: MessageId; kinds: readonly {value: SourceKind; label: MessageId; icon: IconName}[]}[] = [
+  {title: 'next.remoteSources.groupDetails', kinds: [{value: 's3', label: 'next.remoteSources.connectS3', icon: 'i-storage'}]},
+  {title: 'next.remoteSources.groupCloud', kinds: [{value: 'drive', label: 'next.remoteSources.connectDrive', icon: 'i-google'}, {value: 'cloud', label: 'next.remoteSources.connectCloud', icon: 'i-storage'}]},
+  {title: 'next.remoteSources.groupAnything', kinds: [{value: 'rclone', label: 'next.remoteSources.connectRclone', icon: 'i-storage'}]},
 ];
 const presetLabels: Readonly<Record<SourceReadPreset, MessageId>> = {
   list: 'next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.0.label',
@@ -174,7 +180,8 @@ export function RemoteSourcesPage({api, serverId, viewerId, isCurrent, reportErr
   </div>;
 }
 
-type WizardStep = 'connection' | 'reading' | 'folders' | 'done';
+type WizardStep = 'what' | 'remote' | 'reading' | 'folders' | 'done';
+type SourceFamily = 'webdav' | 'rclone' | 'config';
 type ReadingOpening = Readonly<{guard: () => boolean; sourceId: string; sourceGeneration: number; profileGeneration: string; profileRevision: number}>;
 type AttachMode = 'new' | 'existing';
 type LibraryKind = ManagedLibrary['kind'];
@@ -195,7 +202,8 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   service: RemoteSourceService; api: LibraryContentApi; serverId: string; viewerId: string; open: boolean;
   isCurrent: () => boolean; reportError: (error: unknown) => void; onClose: () => void; onCreated: (source: RemoteSource) => void;
 }>) {
-  const [step, setStep] = useState<WizardStep>('connection');
+  const [step, setStep] = useState<WizardStep>('what');
+  const [family, setFamily] = useState<SourceFamily>('webdav');
   const [sourceKind, setSourceKind] = useState<SourceKind>('webdav');
   const [draft, setDraft] = useState<WebDavDraft>(emptyDraft);
   const [rclone, setRclone] = useState<RcloneDraft>(emptyRclone);
@@ -253,7 +261,9 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   // retired opening cannot confirm, edit or close the one that replaced it.
   const [readingOpening, setReadingOpening] = useState<ReadingOpening | null>(null);
   const readingOpeningRef = useRef<ReadingOpening | null>(null);
-  const readingLive = useRef<{step: WizardStep; source?: RemoteSource; profile?: SourceReadSettings}>({step: 'connection'});
+  const readingLive = useRef<{step: WizardStep; source?: RemoteSource; profile?: SourceReadSettings}>({step: 'what'});
+  // The committed step and form token of this wizard opening.
+  const wizardLive = useRef<{step: WizardStep; token: number}>({step: 'what', token: -1});
   const [busy, setBusy] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(false);
   // The folders step: chosen folders, the library they join, and what the done step reports.
@@ -281,10 +291,13 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   const [formToken, setFormToken] = useState(0);
   // A saved handler belongs to its rendered form, even if invoked after reopen.
   const attemptGuard = () => () => active.current && lifetime.current === formToken && isCurrent();
+  // This render's own guard. A retained handler carries the guard of the
+  // render that drew it, never one acquired later.
+  const renderGuard = attemptGuard();
   /** A refused owner retires this form before Settings hears about it. */
   const refuse = (error: unknown) => {active.current=false;pending.current=false;lifetime.current++;reportError(error);};
   const reset = () => {
-    setStep('connection'); setSourceKind('webdav'); setDraft(emptyDraft); setRclone(emptyRclone); setProgram(undefined); setProviders([]); setConfigView(undefined); setConfigRemote(''); setConfigName(''); setS3(emptyS3); setDrive(emptyDrive); setS3Name(''); setDriveName(''); setS3Tested(undefined); setDriveTested(undefined); setCloud(emptyCloud); setCloudName(''); setCloudTested(undefined); setDriveMode('service'); setOauthClientId(''); setOauthClientSecret(''); setOauthToken(''); setOauthState(''); setOauthPhase('idle'); setOauthAddress(''); setOauthError(''); oauthLease.current = null; oauthGeneration.current++; invalidateS3(); invalidateDrive(); invalidateCloud();
+    setStep('what'); setFamily('webdav'); setSourceKind('webdav'); setDraft(emptyDraft); setRclone(emptyRclone); setProgram(undefined); setProviders([]); setConfigView(undefined); setConfigRemote(''); setConfigName(''); setS3(emptyS3); setDrive(emptyDrive); setS3Name(''); setDriveName(''); setS3Tested(undefined); setDriveTested(undefined); setCloud(emptyCloud); setCloudName(''); setCloudTested(undefined); setDriveMode('service'); setOauthClientId(''); setOauthClientSecret(''); setOauthToken(''); setOauthState(''); setOauthPhase('idle'); setOauthAddress(''); setOauthError(''); oauthLease.current = null; oauthGeneration.current++; invalidateS3(); invalidateDrive(); invalidateCloud();
     setResult(undefined); setRcloneResult(undefined); setError(''); setCreated(undefined);
     setProfile(undefined); setValues(sourceReadPreset('once')); setBusy(false); setLoadingProfile(false);
     setReadingOpening(null); setPendingReading(sourceReadPreset('once')); readingOpeningRef.current = null;
@@ -343,6 +356,27 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     testAttempt.current++;retireOAuth(oauthRenderTicket);setResult(undefined);setRcloneResult(undefined);setS3Tested(undefined);setDriveTested(undefined);setCloudTested(undefined);invalidateS3();invalidateDrive();invalidateCloud();setError('');setSourceKind(next);
     if (next === 'rclone' && !program) void loadProgram();
     if (next === 'config' && !configView) void loadConfig();
+  };
+  /** A step move belongs to the render that drew the control, in the opening it
+   * was drawn for: a retained Continue cannot move a successor wizard. */
+  const wizardAction = (guard: () => boolean, expected: WizardStep, token: number) =>
+    guard() && wizardLive.current.step === expected && wizardLive.current.token === token;
+  const continueFromWhat = (guard: () => boolean, token: number) => {
+    if (!wizardAction(guard, 'what', token)) return;
+    setStep('remote');
+  };
+  const goBack = (from: WizardStep, to: WizardStep, guard: () => boolean, token: number) => {
+    if (!wizardAction(guard, from, token)) return;
+    setStep(to);
+  };
+  const chooseFamily = (next: SourceFamily, guard: () => boolean, token: number) => {
+    if (!wizardAction(guard, 'what', token) || next === family) return;
+    setFamily(next);
+    chooseSourceKind(next === 'webdav' ? 'webdav' : next === 'config' ? 'config' : 's3');
+  };
+  const chooseRemoteKind = (next: SourceKind, guard: () => boolean, token: number) => {
+    if (!wizardAction(guard, 'remote', token)) return;
+    chooseSourceKind(next);
   };
   const driveReason = (reason: 'json'|'oauth'|'type'|'email'|'key'|'location'|'client'|'token'): MessageId => reason === 'client' || reason === 'token' ? 'next.remoteSources.driveOAuthInvalid'
     : reason === 'json' ? 'next.remoteSources.driveKeyNotJson'
@@ -738,8 +772,9 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     if (!force && step !== 'done') {
       const saved = created ?? service.getSnapshot().sources.find(source => source.id === nextSourceId.current);
       if (saved) {setLeaving('saved');setLeaveRemove(false);setLeaveError('');setLeaveChoice('keep');return;}
-      if (step !== 'connection') {setLeaving('unsaved');setLeaveError('');return;}
-      if (!draft.name.trim() && !draft.root.trim() && !draft.username && !draft.password) {force = true;}
+      if (step === 'what') force = true;
+      else if (step !== 'remote') {setLeaving('unsaved');setLeaveError('');return;}
+      else if (!draft.name.trim() && !draft.root.trim() && !draft.username && !draft.password) force = true;
       else {setLeaving('unsaved');setLeaveError('');return;}
     }
     if (busy || pending.current) return;
@@ -757,7 +792,15 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   useEffect(() => {if (attachMode === 'existing' && !existingId && librarySnapshot.directory.data?.items.length) setExistingId(librarySnapshot.directory.data.items[0].id);}, [attachMode, existingId, librarySnapshot.directory.data]);
   const sourceNow = created ?? (step === 'folders' || step === 'done' ? service.getSnapshot().sources.find(source => source.id === nextSourceId.current) : undefined);
   const presetName = sourceReadPresetName(values);
-  const stepLabel = step === 'done' ? undefined : t('next.remoteSources.stepOf', {step: step === 'connection' ? 1 : step === 'reading' ? 2 : 3});
+  // The drawn wizard has five steps: what, the remote, how Portico treats it,
+  // folders, done (remote-sources.html#1, #8 to #12).
+  const stepNumber = step === 'what' ? 1 : step === 'remote' ? 2 : step === 'reading' ? 3 : step === 'folders' ? 4 : 5;
+  const stepLabel = step === 'done' ? undefined : t('next.remoteSources.stepOf', {step: stepNumber});
+  const familyLabel = family === 'webdav' ? 'next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.0.label'
+    : family === 'rclone' ? 'next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.1.label'
+      : 'next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.2.label';
+  const stepTitle = step === 'what' ? t('next.remoteSources.whatToConnect') : step === 'remote' ? t(familyLabel)
+    : step === 'reading' ? t('next.remoteSources.howTreated') : step === 'folders' ? t('next.remoteSources.foldersSection') : '';
   const foldersFooter = <>
     <Button size="compact" variant="glass" disabled={finishBusy} onClick={() => {setFinishError('');setStep('reading');}}>{t('next.remoteSources.back')}</Button>
     <Button size="compact" variant="primary" loading={finishBusy} disabled={finishBusy || (!!chosen.length && attachMode === 'new' && !libraryName.trim())} onClick={() => void finish()}>{t('next.remoteSources.finish')}</Button>
@@ -772,7 +815,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
         : sourceKind === 'drive' ? !!driveTested && driveTested.revision === driveRevision && !!driveName.trim() && (driveMode === 'oauth' ? oauthPhase === 'ready' && !!oauthToken : driveResult.ok)
           : sourceKind === 'cloud' ? !!cloudTested && cloudTested.revision === cloudRevision && !!cloudName.trim() && cloudResult.ok
           : !!configRemote && !!configView?.remotes.some(remote => remote.name === configRemote && remote.supported);
-  useLayoutEffect(() => {readingOpeningRef.current = readingOpening; readingLive.current = {step, source: sourceNow, profile};});
+  useLayoutEffect(() => {wizardLive.current = {step, token: formToken}; readingOpeningRef.current = readingOpening; readingLive.current = {step, source: sourceNow, profile};});
   // The dialog cannot outlive a phone layout: a wider window retires its opening.
   useLayoutEffect(() => {if (phone || !readingOpening) return; readingOpeningRef.current = null; setReadingOpening(null);}, [phone, readingOpening]);
   // Retire the opening as soon as the wizard closes, and on unmount, in a layout
@@ -810,21 +853,41 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     <ReadingChoices values={pendingReading} origin={result?.origin ?? sourceNow?.origin} rangeSupport={result?.rangeSupport ?? sourceNow?.rangeSupport ?? 'unknown'} disabled={false}
       onChange={next => {if (readingOpeningRef.current === readingOpening) setPendingReading(next);}}/>
   </Dialog> : null;
-  const footer = step === 'connection'
-    ? <><Button size="compact" variant="glass" disabled={busy} onClick={() => close()}>{t('next.remoteSources.cancel')}</Button><Button size="compact" variant="primary" disabled={busy || !canContinue} onClick={() => void (sourceKind === 'webdav' ? create() : sourceKind === 'rclone' ? createRclone() : sourceKind === 's3' ? createS3() : sourceKind === 'drive' ? createDrive() : sourceKind === 'cloud' ? createCloud() : createFromConfig())}>{t('next.remoteSources.saveAndContinue')}</Button></>
-    : step === 'reading'
-      ? <><Button size="compact" variant="glass" disabled={busy} onClick={() => setStep('connection')}>{t('next.remoteSources.back')}</Button><Button size="compact" variant="primary" disabled={busy || loadingProfile || !profile} onClick={saveReading}>{t('next.remoteSources.save')}</Button></>
-      : step === 'folders' ? foldersFooter : doneFooter;
+  const footer = step === 'what'
+    ? <><Button size="compact" variant="glass" onClick={() => close()}>{t('next.remoteSources.cancel')}</Button><Button size="compact" variant="primary" onClick={() => continueFromWhat(renderGuard, formToken)}>{t('next.remoteSources.continue')}</Button></>
+    : step === 'remote'
+      ? <><Button size="compact" variant="glass" disabled={busy} onClick={() => goBack('remote', 'what', renderGuard, formToken)}>{t('next.remoteSources.back')}</Button><Button size="compact" variant="primary" disabled={busy || !canContinue} onClick={() => void (sourceKind === 'webdav' ? create() : sourceKind === 'rclone' ? createRclone() : sourceKind === 's3' ? createS3() : sourceKind === 'drive' ? createDrive() : sourceKind === 'cloud' ? createCloud() : createFromConfig())}>{t('next.remoteSources.saveAndContinue')}</Button></>
+      : step === 'reading'
+        ? <><Button size="compact" variant="glass" disabled={busy} onClick={() => goBack('reading', 'remote', renderGuard, formToken)}>{t('next.remoteSources.back')}</Button><Button size="compact" variant="primary" disabled={busy || loadingProfile || !profile} onClick={saveReading}>{t('next.remoteSources.save')}</Button></>
+        : step === 'folders' ? foldersFooter : doneFooter;
   return <Dialog open={open} onOpenChange={value => {if (!value) close();}} title={t('next.settingsSpec.server.remote-sources.panels.newSource.newTitle')} width={760}
-    description={stepLabel} footer={footer}>
+    description={step === 'done' ? undefined : stepTitle} footer={footer}>
     {error && <p className={styles.error} role="alert">{error}</p>}
     {finishError && <p className={styles.error} role="alert">{finishError}</p>}
-    {step === 'connection' && <>
-      <div className={styles.kindTiles} role="radiogroup" aria-label={t('next.remoteSources.whatToConnect')}>
-        {kindOptions.map(option => <button key={option.value} type="button" role="radio" aria-checked={sourceKind === option.value} className={styles.kindTile}
-          data-picked={sourceKind === option.value || undefined} disabled={busy} onClick={() => chooseSourceKind(option.value as SourceKind)}>
-          <Icon name={option.value === 'webdav' ? 'i-globe' : option.value === 'drive' ? 'i-google' : 'i-storage'} size={22}/>{option.label}</button>)}
-      </div>
+    {step !== 'done' && <div className={styles.wizardHead}>
+      <div className={styles.wizardSteps} aria-hidden="true">{[1, 2, 3, 4, 5].map(value => <i key={value} data-on={value <= stepNumber || undefined}/>)}</div>
+      <div className={styles.wizardStep}><span>{stepLabel}</span><b>{stepTitle}</b></div>
+    </div>}
+    {step === 'what' && <div className={styles.whatCards} role="radiogroup" aria-label={t('next.remoteSources.whatToConnect')}>
+      {whatOptions.map(option => <button key={option.family} type="button" role="radio" aria-checked={family === option.family} className={styles.whatCard}
+        data-picked={family === option.family || undefined} disabled={busy} onClick={() => chooseFamily(option.family, renderGuard, formToken)}>
+        <span className={styles.choiceRadio} aria-hidden="true"/>
+        <span className={styles.whatBody}><b>{t(option.label)}{option.tag && <span className={styles.choiceTag} data-tone={option.tag === 'next.remoteSources.kindCommon' ? 'good' : undefined}>{t(option.tag)}</span>}</b>
+          <span className={styles.choiceHint}>{t(option.hint)}</span></span>
+      </button>)}
+    </div>}
+    {step === 'remote' && <>
+      {family === 'rclone' && <div className={styles.remoteKinds}>
+        {rcloneKindGroups.map(group => <div key={group.title} className={styles.remoteGroup}>
+          <p className={styles.advTitle}>{t(group.title)}</p>
+          <div className={styles.remoteKindList} role="radiogroup" aria-label={t('next.remoteSources.remoteKind')}>
+            {group.kinds.map(kind => <button key={kind.value} type="button" role="radio" aria-checked={sourceKind === kind.value} className={styles.remoteKind}
+              data-picked={sourceKind === kind.value || undefined} disabled={busy} onClick={() => chooseRemoteKind(kind.value, renderGuard, formToken)}>
+              <span className={styles.choiceRadio} aria-hidden="true"/><Icon name={kind.icon} size={20}/>{t(kind.label)}
+            </button>)}
+          </div>
+        </div>)}
+      </div>}
       {sourceKind === 'webdav' ? <>
         <div className={styles.kind}><Icon name="i-globe" size={22} /><span><b>{t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.0.label')}</b><small>{t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.0.hint')}</small></span></div>
         <TextField label={t('next.remoteSources.name')} value={draft.name} maxLength={100} disabled={busy} onChange={event => updateDraft({name: event.target.value})}/>
