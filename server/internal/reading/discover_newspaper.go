@@ -28,7 +28,7 @@ func (s *Service) discoverNewspaperTx(ctx context.Context, tx *sql.Tx, p identit
 	if err != nil {
 		return nil, err
 	}
-	query := periodicalGroupsCTE(visible) + `SELECT series_id,series_value,issue_count,entity,public_id,library_id,title,format,token,available,issue_date FROM groups_page ORDER BY series_key COLLATE BINARY,series_id LIMIT 1`
+	query := s.periodicalGroupsCTE(visible) + `SELECT series_id,series_value,issue_count,entity,public_id,library_id,title,format,token,available,issue_date FROM groups_page ORDER BY series_key COLLATE BINARY,series_id LIMIT 1`
 	args := append([]any{handle, generation.Ready, "newspaper", "newspaper"}, visibleArgs...)
 	var group PeriodicalGroup
 	item := &group.Latest
