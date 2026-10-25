@@ -149,31 +149,6 @@ export function cloudTokenDraft(fields:CloudTokenFields):CloudTokenResult{
  return Object.freeze({ok:true,draft:Object.freeze({remote:`portico:${folder}`,config})});
 }
 
-/** The drawn OAuth-client Drive form: the owner's own client and the token the
- * server-run sign-in answered. */
-export type DriveOAuthFields=Readonly<{clientId:string;clientSecret:string;token:string;location:'folder'|'drive';locationId:string}>;
-export type DriveOAuthDraft=Readonly<{remote:string;config:string}>;
-export type DriveOAuthDraftResult=Readonly<{ok:true;draft:DriveOAuthDraft}|{ok:false;reason:'client'|'token'|'location'}>;
-/**
- * One Drive source signed in as the owner with their own OAuth client. The token
- * must be the rclone token the server's sign-in answered; nothing is guessed.
- */
-export function driveOAuthDraft(fields:DriveOAuthFields):DriveOAuthDraftResult{
- const clientId=fields.clientId.trim();
- if(!text(clientId,512)||clientId.length<8)return Object.freeze({ok:false,reason:'client'});
- if(!text(fields.clientSecret,2048)||fields.clientSecret.length<8)return Object.freeze({ok:false,reason:'client'});
- let parsed:unknown;
- try{parsed=JSON.parse(fields.token);}catch{return Object.freeze({ok:false,reason:'token'});}
- if(!record(parsed)||!text(parsed.access_token,8192)||!parsed.access_token||!text(parsed.refresh_token,8192)||!parsed.refresh_token)return Object.freeze({ok:false,reason:'token'});
- const compact=JSON.stringify(parsed);
- if(compact.length>16_384||/[\r\n]/.test(compact))return Object.freeze({ok:false,reason:'token'});
- const locationId=fields.locationId.trim();
- if(!driveLocationId.test(locationId))return Object.freeze({ok:false,reason:'location'});
- const target=fields.location==='drive'?`team_drive = ${locationId}`:`root_folder_id = ${locationId}`;
- const config=['[portico]','type = drive','scope = drive.readonly',`client_id = ${clientId}`,`client_secret = ${fields.clientSecret}`,`token = ${compact}`,target].join('\n')+'\n';
- return Object.freeze({ok:true,draft:Object.freeze({remote:'portico:',config})});
-}
-
 /** The four drawn choices, exactly the server's own SourceReadPreset values. */
 export function sourceReadPreset(name:SourceReadPreset):SourceReadValues{return Object.freeze({...sourceReadPresets[name]});}
 export function sourceReadPresetName(values:SourceReadValues):SourceReadPreset|undefined{
