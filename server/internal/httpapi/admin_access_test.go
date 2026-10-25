@@ -409,8 +409,23 @@ func TestLogSettingsWriteIsOwnerOnlyAndTakesEffectWithoutARestart(t *testing.T) 
 	if page := f.call("GET", "/v1/admin/logs?level=debug", f.admin, ""); strings.Contains(page.Body.String(), "should be dropped") {
 		t.Fatalf("a record below the new level was kept: %s", page.Body)
 	}
-	if w = f.call("PATCH", "/v1/admin/logs/settings", f.owner, body); w.Code != 409 {
-		t.Fatalf("a stale settings write was accepted: %d %s", w.Code, w.Body)
+	// The same typed request and operation is an authorized receipt replay,
+	// not a new stale write. It must preserve the original saved result.
+	accepted := append([]byte(nil), w.Body.Bytes()...)
+	if w = f.call("PATCH", "/v1/admin/logs/settings", f.owner, body); w.Code != 200 || !bytes.Equal(w.Body.Bytes(), accepted) {
+		t.Fatalf("the original settings receipt was not replayed: %d %s", w.Code, w.Body)
+	}
+	// Receipt existence never admits an administrator to the owner-only writer.
+	if w = f.call("PATCH", "/v1/admin/logs/settings", f.admin, body); w.Code != 403 {
+		t.Fatalf("an admin replayed the owner's settings receipt: %d %s", w.Code, w.Body)
+	}
+	changed := strings.Replace(body, `"logLevel":"error"`, `"logLevel":"warn"`, 1)
+	if w = f.call("PATCH", "/v1/admin/logs/settings", f.owner, changed); w.Code != 409 || !strings.Contains(w.Body.String(), `"code":"idempotency_key_reused"`) {
+		t.Fatalf("changed input reused a settings receipt: %d %s", w.Code, w.Body)
+	}
+	stale := strings.Replace(body, `"operationId":"log-settings-1"`, `"operationId":"log-settings-2"`, 1)
+	if w = f.call("PATCH", "/v1/admin/logs/settings", f.owner, stale); w.Code != 409 || !strings.Contains(w.Body.String(), `"currentRevision":`) {
+		t.Fatalf("a new stale settings write was accepted: %d %s", w.Code, w.Body)
 	}
 }
 

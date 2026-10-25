@@ -138,7 +138,7 @@ export function RetentionRows() {
       )) : null}
       {logs.state.draft?.retention.map(r => (
         <SettingsRow key={r.category} label={t('settings.server.retention.logs', {category: t(`server.logCategory.${r.category}` as MessageId)})}
-          control={<span className={page.numberField}><Input hideLabel label={t('settings.server.retention.logs', {category: r.category})} type="number" min={1} max={365} value={r.days} onChange={e => logs.form.set(d => ({retention: d.retention.map(x => (x.category === r.category ? {...x, days: Math.min(365, Math.max(1, Number(e.target.value) || 1))} : x))}))} /><span className={page.unit}>{days}</span></span>} />
+          control={<span className={page.numberField}><Input hideLabel label={t('settings.server.retention.logs', {category: r.category})} type="number" min={1} max={365} value={r.days} onChange={e => logs.form.set(d => ({...d, retention: d.retention.map(x => (x.category === r.category ? {...x, days: Math.min(365, Math.max(1, Number(e.target.value) || 1))} : x))}))} /><span className={page.unit}>{days}</span></span>} />
       ))}
     </>
   );
