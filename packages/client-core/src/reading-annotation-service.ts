@@ -1,5 +1,6 @@
 import type {ReadingAnnotation, ReadingAnnotationContent, ReadingAnnotationPort, ReadingAnnotationsPage} from './reading-annotations.ts';
 
+export type ReadingAnnotationIntent = Readonly<{revision: number | undefined; signal: AbortSignal; isCurrent: () => boolean}>;
 export type ReadingAnnotationState = Readonly<{entries: readonly ReadingAnnotation[]; revision?: number; nextCursor: string; loading: boolean; saving: boolean; error?: unknown}>;
 const empty: ReadingAnnotationState = Object.freeze({entries: Object.freeze([]), nextCursor: '', loading: false, saving: false});
 /** One captured profile/source session. No background loops, offline replay or re-anchoring. */
@@ -32,27 +33,38 @@ export class ReadingAnnotationService {
     } catch (error) {if (this.owns(request)) this.publish({...this.state, revision: undefined, loading: false, saving: false, error});}
     finally {if (this.request === request) this.request = undefined;}
   };
-  write = async (content: ReadingAnnotationContent | Readonly<{id: string; remove: true}>): Promise<boolean> => {
-    if (!this.current() || this.request || this.state.revision === undefined) return false;
-    const expectedRevision = this.state.revision;
-    const captured = structuredClone(content);
+  write = async (content: ReadingAnnotationContent | Readonly<{id: string; remove: true}>, intent: ReadingAnnotationIntent): Promise<boolean> => {
+    const admitted = () => this.current() && !intent.signal.aborted && intent.isCurrent();
+    if (!admitted() || this.request || intent.revision === undefined || this.state.revision !== intent.revision) return false;
+    const expectedRevision = intent.revision, captured = structuredClone(content);
     const mutation = 'remove' in captured ? {operation: 'delete' as const, expectedRevision, id: captured.id}
       : {...captured, operation: 'upsert' as const, expectedRevision};
     const request = new AbortController();this.request = request;
+    const abort = () => request.abort();intent.signal.addEventListener('abort', abort, {once:true});
+    const owns = () => this.owns(request) && admitted();
+    let attempted = false, accepted = false;
     this.publish({...this.state, saving: true, error: undefined});
     try {
-      if (!this.owns(request)) return false;
+      if (!owns() || this.state.revision !== expectedRevision) return false;
+      attempted = true;
       const saved = await this.port.mutateAnnotation(mutation, request.signal);
-      if (!this.owns(request)) return false;
+      if (!owns()) return false;
       const page = await this.port.annotations('', undefined, request.signal);
-      if (!this.owns(request)) return false;
+      if (!owns()) return false;
       if (page.revision !== saved.revision) throw new Error('annotation_revision_changed');
-      this.accept(page, false);return true;
+      this.accept(page, false);accepted = true;return true;
     } catch (error) {
-      // A lost response is never replayed. A genuine explicit reload is required.
-      if (this.owns(request)) this.publish({...this.state, revision: undefined, loading: false, saving: false, error});
+      if (owns()) this.publish({...this.state, revision: undefined, loading: false, saving: false, error});
       return false;
-    } finally {if (this.request === request) this.request = undefined;}
+    } finally {
+      intent.signal.removeEventListener('abort', abort);
+      if (this.request === request) {
+        this.request = undefined;
+        // Cancellation after admission may have committed remotely. Never reuse its CAS.
+        if (!accepted && this.current()) this.publish({...this.state, saving:false,
+          ...(attempted ? {revision:undefined,error:new Error('annotation_reload_required')} : {})});
+      }
+    }
   };
   dispose() {this.disposed = true;this.request?.abort();this.request = undefined;this.listeners.clear();this.state = empty;}
 }

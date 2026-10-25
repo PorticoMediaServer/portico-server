@@ -1,4 +1,4 @@
-import {useEffect, useLayoutEffect, useState, useSyncExternalStore} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {randomId} from '@core/random-id.ts';
 import {ReadingAnnotationService, type ReadingAnnotationState} from '@core/reading-annotation-service.ts';
@@ -38,57 +38,96 @@ function selectedContent(selection: ReaderSelection, colour: typeof colours[numb
   return Object.freeze({id: randomId(), kind:'highlight', location:readingLocationFromReader(selection.location), text:selection.text, note:'', colour,
     ...(selection.location.format === 'pdf' ? {rects:selection.pageRects} : {})});
 }
+type AnnotationLease = {owner: object; life: AbortController; retired: boolean};
+function retire(lease: AnnotationLease | undefined) {if (lease) {lease.retired=true;lease.life.abort();}}
+export function useAnnotationLease(owner: object | undefined) {
+  const [lease,setLease]=useState<AnnotationLease>();
+  if (lease && lease.owner!==owner) retire(lease);
+  useLayoutEffect(()=>{
+    if (!owner) return;
+    const next={owner,life:new AbortController(),retired:false};setLease(next);
+    return ()=>retire(next);
+  },[owner]);
+  return lease?.owner===owner&&!lease.retired?lease:undefined;
+}
+const live = (lease: AnnotationLease | undefined) => !!lease&&!lease.retired&&!lease.life.signal.aborted;
+type NoteOpening = Readonly<{id:string; owner:ReadingAnnotationService; life:AbortController; content:ReadingAnnotationContent; revision:number; member?:ReadingAnnotation}>;
+function useNoteOpening() {
+  const [opening,setOpening]=useState<NoteOpening>();
+  const current=useRef<NoteOpening>();
+  const open=(next:NoteOpening)=>{current.current?.life.abort();current.current=next;setOpening(next);};
+  const close=(original:NoteOpening)=>{original.life.abort();if(current.current===original){current.current=undefined;setOpening(undefined);}};
+  return {opening,open,close};
+}
+function AnnotationNoteEditor({opening,service,state,signal,onClose}: {opening:NoteOpening;service:ReadingAnnotationService;state:ReadingAnnotationState;signal:AbortSignal;onClose:()=>void}) {
+  const lease=useAnnotationLease(opening);
+  type Draft={note:string;life:AbortController;retired:boolean;claimed:boolean};
+  const [draft,setDraft]=useState<Draft>(()=>({note:opening.content.note,life:new AbortController(),retired:false,claimed:false}));
+  const offered=useRef(draft);
+  const owns=()=>live(lease)&&!opening.life.signal.aborted&&!signal.aborted&&!draft.retired&&offered.current===draft&&service.current()
+    &&(!opening.member||service.getSnapshot().entries.includes(opening.member));
+  const close=()=>{if (!live(lease)||offered.current!==draft) return;draft.retired=true;draft.life.abort();retire(lease);onClose();};
+  
+  return <Dialog open={live(lease)&&!opening.life.signal.aborted&&!signal.aborted} onOpenChange={open=>{if(!open)close();}} title={t('next.reader.annotationEdit')} size="sm"
+    footer={<><Button onClick={close}>{t('action.cancel')}</Button><Button disabled={state.loading||state.saving||state.revision!==opening.revision||draft.claimed} onClick={()=>{
+      if(!lease||!owns()||draft.claimed)return;
+      draft.claimed=true;
+      const callerSignal=AbortSignal.any([signal,opening.life.signal,lease.life.signal,draft.life.signal]);
+      void service.write({...opening.content,note:draft.note},{revision:opening.revision,signal:callerSignal,isCurrent:owns}).then(saved=>{if(saved&&live(lease)&&offered.current===draft)close();});
+    }}>{t('next.reader.annotationSave')}</Button></>}>
+    <blockquote>{opening.content.text}</blockquote><label>{t('next.reader.note')}<textarea value={draft.note} maxLength={4096} disabled={state.saving} onChange={event=>{
+      if(!owns()||draft.claimed)return;
+      draft.retired=true;draft.life.abort();
+      const next={note:event.currentTarget.value,life:new AbortController(),retired:false,claimed:false};offered.current=next;setDraft(next);
+    }}/></label>
+    {state.error&&<><p role="alert">{t('next.reader.annotationFailed')}</p><p>{t('next.reader.annotationReopen')}</p><Button disabled={state.loading||state.saving} onClick={()=>{if(live(lease)&&!signal.aborted&&!opening.life.signal.aborted)void service.load();}}>{t('next.reader.annotationReload')}</Button></>}
+  </Dialog>;
+}
 export function ReaderAnnotationActions({service, snapshot, controller, onSearch, reportError}: {
   service?: ReadingAnnotationService; snapshot: ReaderSnapshot<ReadingPreferences>; controller: ReadingController; onSearch?: (text: string) => void; reportError: (error: unknown) => void;
 }) {
-  const [draft, setDraft] = useState<Readonly<{owner: ReadingAnnotationService; content: ReadingAnnotationContent}>>(), [note, setNote] = useState('');
-  const [colour, setColour] = useState<typeof colours[number]>('yellow');
-  const state = useSyncExternalStore(service?.subscribe ?? noSubscribe, service?.getSnapshot ?? noSnapshot, noSnapshot);
-  const selection = snapshot.selection;
-  const shownDraft = draft?.owner === service ? draft : undefined;
-  const current = () => !!service?.current() && controller.getSnapshot().sourceId === snapshot.sourceId && controller.getSnapshot().sourceRevision === snapshot.sourceRevision;
-  if (!service?.current()) return null;
-  const busy = state.loading || state.saving || state.revision === undefined;
-  const selectionSupported = !!selection?.text.trim() && new TextEncoder().encode(selection.text).length <= 8192 && selection.location.format !== 'cbz' && (selection.location.format !== 'pdf' || !!selection.pageRects?.length && selection.rects.length <= 128);
-  const capture = () => current() && controller.getSnapshot().selection === selection && selection ? selectedContent(selection, colour) : undefined;
+  const lease=useAnnotationLease(service);
+  const {opening,open,close}=useNoteOpening();
+  const [colour,setColour]=useState<typeof colours[number]>('yellow');
+  const state=useSyncExternalStore(service?.subscribe??noSubscribe,service?.getSnapshot??noSnapshot,noSnapshot);
+  const selection=snapshot.selection;
+  const current=()=>live(lease)&&!!service?.current()&&controller.getSnapshot().sourceId===snapshot.sourceId&&controller.getSnapshot().sourceRevision===snapshot.sourceRevision;
+  if(!service?.current())return null;
+  const busy=state.loading||state.saving||state.revision===undefined;
+  const selectionSupported=!!selection?.text.trim()&&new TextEncoder().encode(selection.text).length<=8192&&selection.location.format!=='cbz'&&(selection.location.format!=='pdf'||!!selection.pageRects?.length&&selection.rects.length<=128);
+  const capture=()=>current()&&controller.getSnapshot().selection===selection&&selection?selectedContent(selection,colour):undefined;
+  const ownsSelection=()=>current()&&controller.getSnapshot().selection===selection;
   return <>
-    {selection && <div className={styles.selection} role="toolbar" aria-label={t('next.reader.selectionActions')}>
-      {!selectionSupported && <span role="status">{t('next.reader.annotationUnsupportedSelection')}</span>}
-      {colours.map(value => <button key={value} type="button" data-colour={value} aria-label={t(colourLabels[value])} aria-pressed={value === colour} onPointerDown={event => event.preventDefault()} onMouseDown={event => event.preventDefault()} onClick={() => setColour(value)}/>)}
-      <Button disabled={busy || !selectionSupported} onPointerDown={event => event.preventDefault()} onMouseDown={event => event.preventDefault()} onClick={() => {const content = capture();if (content) void service.write(content);}}>{t('next.reader.addHighlight')}</Button>
-      <Button disabled={busy || !selectionSupported} onPointerDown={event => event.preventDefault()} onMouseDown={event => event.preventDefault()} onClick={() => {const content = capture();if (content) {setDraft({owner:service,content});setNote('');}}}>{t('next.reader.addNote')}</Button>
-      {navigator.clipboard && <Button onPointerDown={event => event.preventDefault()} onMouseDown={event => event.preventDefault()} onClick={() => {if (current() && controller.getSnapshot().selection === selection) void navigator.clipboard.writeText(selection.text).catch(reportError);}}>{t('next.reader.copySelection')}</Button>}
-      {onSearch && selection.text.length <= 1024 && <Button onPointerDown={event => event.preventDefault()} onMouseDown={event => event.preventDefault()} onClick={() => {if (current() && controller.getSnapshot().selection === selection) onSearch(selection.text);}}>{t('next.reader.searchSelection')}</Button>}
+    {selection&&<div className={styles.selection} role="toolbar" aria-label={t('next.reader.selectionActions')}>
+      {!selectionSupported&&<span role="status">{t('next.reader.annotationUnsupportedSelection')}</span>}
+      {colours.map(value=><button key={value} type="button" data-colour={value} aria-label={t(colourLabels[value])} aria-pressed={value===colour} onPointerDown={event=>event.preventDefault()} onMouseDown={event=>event.preventDefault()} onClick={()=>{if(current())setColour(value);}}/>)}
+      <Button disabled={busy||!selectionSupported} onPointerDown={event=>event.preventDefault()} onMouseDown={event=>event.preventDefault()} onClick={()=>{const content=capture();if(content&&lease)void service.write(content,{revision:state.revision,signal:lease.life.signal,isCurrent:ownsSelection});}}>{t('next.reader.addHighlight')}</Button>
+      <Button disabled={busy||!selectionSupported} onPointerDown={event=>event.preventDefault()} onMouseDown={event=>event.preventDefault()} onClick={()=>{const content=capture();if(content&&state.revision!==undefined)open({id:randomId(),owner:service,life:new AbortController(),content,revision:state.revision});}}>{t('next.reader.addNote')}</Button>
+      {navigator.clipboard&&<Button onPointerDown={event=>event.preventDefault()} onMouseDown={event=>event.preventDefault()} onClick={()=>{if(ownsSelection())void navigator.clipboard.writeText(selection.text).catch(reportError);}}>{t('next.reader.copySelection')}</Button>}
+      {onSearch&&selection.text.length<=1024&&<Button onPointerDown={event=>event.preventDefault()} onMouseDown={event=>event.preventDefault()} onClick={()=>{if(ownsSelection())onSearch(selection.text);}}>{t('next.reader.searchSelection')}</Button>}
     </div>}
-    <Dialog open={!!shownDraft && current()} onOpenChange={open => {if (!open && !state.saving) setDraft(undefined);}} title={t('next.reader.addNote')} size="sm"
-      footer={<><Button disabled={state.saving} onClick={() => setDraft(undefined)}>{t('action.cancel')}</Button><Button disabled={busy || !shownDraft} onClick={() => {const captured = shownDraft;if (captured && current()) void service.write({...captured.content,note}).then(saved => {if (saved && current()) setDraft(value => value === captured ? undefined : value);});}}>{t('next.reader.annotationSave')}</Button></>}>
-      <blockquote>{shownDraft?.content.text}</blockquote><label>{t('next.reader.note')}<textarea value={note} maxLength={4096} disabled={state.saving} onChange={event => setNote(event.currentTarget.value)}/></label>
-      {state.error && <><p role="alert">{t('next.reader.annotationFailed')}</p><Button disabled={state.loading || state.saving} onClick={() => {void service.load();}}>{t('next.reader.annotationReload')}</Button></>}
-    </Dialog>
+    {opening?.owner===service&&lease&&<AnnotationNoteEditor key={opening.id} opening={opening} service={service} state={state} signal={lease.life.signal} onClose={()=>close(opening)}/>}
   </>;
 }
-export function ReaderAnnotationList({kind, service, state, controller, reportError}: {kind: 'bookmark' | 'highlight'; service: ReadingAnnotationService; state: ReadingAnnotationState; controller: ReadingController; reportError: (error: unknown) => void}) {
-  const [editing, setEditing] = useState<ReadingAnnotation>(), [note, setNote] = useState('');
-  const entries = state.entries.filter(entry => entry.kind === kind), busy = state.loading || state.saving || state.revision === undefined;
-  const owns = (entry: ReadingAnnotation) => service.current() && service.getSnapshot().entries.includes(entry);
+export function ReaderAnnotationList({kind,service,state,controller,reportError,signal}: {kind:'bookmark'|'highlight';service:ReadingAnnotationService;state:ReadingAnnotationState;controller:ReadingController;reportError:(error:unknown)=>void;signal:AbortSignal}) {
+  const lease=useAnnotationLease(signal);
+  const {opening,open,close}=useNoteOpening();
+  const entries=state.entries.filter(entry=>entry.kind===kind),busy=state.loading||state.saving||state.revision===undefined;
+  const owns=(entry:ReadingAnnotation)=>live(lease)&&!signal.aborted&&service.current()&&service.getSnapshot().entries.includes(entry);
   return <div className={styles.list}>
-    {state.error && <p role="alert">{t('next.reader.annotationFailed')}</p>}
-    {state.error && <Button disabled={state.loading || state.saving} onClick={() => {void service.load();}}>{t('next.reader.annotationReload')}</Button>}
-    {state.loading && <p role="status">{t('status.loading')}</p>}
-    {!state.loading && !state.error && state.revision !== undefined && !entries.length && <p>{t('next.reader.annotationEmpty')}</p>}
-    {entries.map(entry => <article key={entry.id} data-colour={entry.colour}>
-      <button type="button" className={styles.anchor} onClick={() => {if (owns(entry)) void controller.navigate({kind:'location',location:readerLocationFromReading(entry.location)}).catch(reportError);}}>
-        {entry.text || (entry.location.format === 'epub' ? entry.location.section || t('next.reader.bookmarks') : typeof entry.location.pageIndex === 'number' ? t('next.reader.pageLabel',{page:defaultI18n.number(entry.location.pageIndex + 1)}) : t('next.reader.bookmarks'))}
+    {state.error&&<p role="alert">{t('next.reader.annotationFailed')}</p>}
+    {state.error&&<Button disabled={state.loading||state.saving} onClick={()=>{if(live(lease)&&!signal.aborted)void service.load();}}>{t('next.reader.annotationReload')}</Button>}
+    {state.loading&&<p role="status">{t('status.loading')}</p>}
+    {!state.loading&&!state.error&&state.revision!==undefined&&!entries.length&&<p>{t('next.reader.annotationEmpty')}</p>}
+    {entries.map(entry=><article key={entry.id} data-colour={entry.colour}>
+      <button type="button" className={styles.anchor} onClick={()=>{if(owns(entry)&&lease)void controller.navigate({kind:'location',location:readerLocationFromReading(entry.location)},AbortSignal.any([signal,lease.life.signal])).catch(error=>{if(owns(entry))reportError(error);});}}>
+        {entry.text||(entry.location.format==='epub'?entry.location.section||t('next.reader.bookmarks'):typeof entry.location.pageIndex==='number'?t('next.reader.pageLabel',{page:defaultI18n.number(entry.location.pageIndex+1)}):t('next.reader.bookmarks'))}
       </button>
-      {entry.note && <p>{entry.note}</p>}<time dateTime={new Date(entry.updatedAt).toISOString()}>{defaultI18n.dateTime(entry.updatedAt)}</time>
-      <Button disabled={busy} onClick={() => {if (owns(entry)) {setEditing(entry);setNote(entry.note);}}}>{t('next.reader.annotationEdit')}</Button>
-      <Button disabled={busy} onClick={() => {if (owns(entry)) void service.write({id:entry.id,remove:true});}}>{t('next.reader.annotationDelete')}</Button>
+      {entry.note&&<p>{entry.note}</p>}<time dateTime={new Date(entry.updatedAt).toISOString()}>{defaultI18n.dateTime(entry.updatedAt)}</time>
+      <Button disabled={busy} onClick={()=>{if(owns(entry)&&state.revision!==undefined)open({id:randomId(),owner:service,life:new AbortController(),content:entry,member:entry,revision:state.revision});}}>{t('next.reader.annotationEdit')}</Button>
+      <Button disabled={busy} onClick={()=>{if(owns(entry)&&lease)void service.write({id:entry.id,remove:true},{revision:state.revision,signal:AbortSignal.any([signal,lease.life.signal]),isCurrent:()=>owns(entry)});}}>{t('next.reader.annotationDelete')}</Button>
     </article>)}
-    {state.nextCursor && <Button disabled={busy} onClick={() => {void service.load(true);}}>{t('next.reader.annotationMore')}</Button>}
-    <Dialog open={!!editing && owns(editing)} onOpenChange={open => {if (!open && !state.saving) setEditing(undefined);}} title={t('next.reader.annotationEdit')} size="sm"
-      footer={<><Button disabled={state.saving} onClick={() => setEditing(undefined)}>{t('action.cancel')}</Button><Button disabled={busy} onClick={() => {const entry=editing;if (entry && owns(entry)) void service.write({...entry,note}).then(saved => {if (saved) setEditing(value => value === entry ? undefined : value);});}}>{t('next.reader.annotationSave')}</Button></>}>
-      {state.error && <><p role="alert">{t('next.reader.annotationFailed')}</p><Button disabled={state.loading || state.saving} onClick={() => {void service.load();}}>{t('next.reader.annotationReload')}</Button></>}
-      <blockquote>{editing?.text}</blockquote><label>{t('next.reader.note')}<textarea value={note} maxLength={4096} onChange={event => setNote(event.currentTarget.value)}/></label>
-    </Dialog>
+    {state.nextCursor&&<Button disabled={busy} onClick={()=>{if(live(lease)&&!signal.aborted)void service.load(true);}}>{t('next.reader.annotationMore')}</Button>}
+    {opening?.owner===service&&lease&&<AnnotationNoteEditor key={opening.id} opening={opening} service={service} state={state} signal={AbortSignal.any([signal,lease.life.signal])} onClose={()=>close(opening)}/>}
   </div>;
 }
