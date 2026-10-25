@@ -94,7 +94,7 @@ func registerMetadataAttention(registry *apikit.Registry, d Dependencies) {
 
 func registerMetadataSettings(registry *apikit.Registry, d Dependencies) {
 	failures := []string{"unauthorized", "not_permitted", "invalid_request", "revision_mismatch", "internal"}
-	v1Route(registry, apikit.Metadata{Admission: laneAdmin, ID: "get_metadata_settings", Method: "GET", Path: "/v1/admin/metadata/settings", Summary: "Read provider credentials status and artwork storage limit", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.MetadataSettings, error) {
+	v1Route(registry, apikit.Metadata{Admission: laneAdmin, ID: "get_metadata_settings", Method: "GET", Path: "/v1/admin/metadata/settings", Summary: "Read provider credentials status and artwork storage limit", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.MetadataSettings, error) {
 		if _, e := d.owner(r); e != nil {
 			return metadata.MetadataSettings{}, e
 		}
@@ -108,7 +108,7 @@ func registerMetadataSettings(registry *apikit.Registry, d Dependencies) {
 		_, e = d.owner(r)
 		return out, e
 	})
-	v1Route(registry, apikit.Metadata{Admission: laneAdmin, ID: "put_metadata_settings", Method: "PUT", Path: "/v1/admin/metadata/settings", Summary: "Save provider credential overrides and artwork storage limit", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, BodyLimit: 32768, Errors: failures}, func(ctx context.Context, r *http.Request, in metadata.MetadataSettingsUpdate) (metadata.MetadataSettings, error) {
+	v1Route(registry, apikit.Metadata{Admission: laneAdmin, ID: "put_metadata_settings", Method: "PUT", Path: "/v1/admin/metadata/settings", Summary: "Save provider credential overrides and artwork storage limit", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, BodyLimit: 262144, Errors: failures}, func(ctx context.Context, r *http.Request, in metadata.MetadataSettingsUpdate) (metadata.MetadataSettings, error) {
 		p, e := d.owner(r)
 		if e != nil {
 			return metadata.MetadataSettings{}, e

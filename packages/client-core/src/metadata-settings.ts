@@ -6,16 +6,30 @@ export type OpenSubtitlesStatus=Readonly<{keySource:'owner'|'environment'|'none'
 /** The OpenSubtitles fields say whether the owner saved their own key and password (never sent back) and the account name. */
 export type ArtworkMaxEdge=1280|1920|2560;
 const isArtworkMaxEdge=(value:unknown):value is ArtworkMaxEdge=>value===1280||value===1920||value===2560;
-export type MetadataSettings=Readonly<{revision:number;localArtworkLimitBytes:number;localArtworkUsedBytes:number;includeAdult:boolean;artworkMaxEdge:ArtworkMaxEdge;tmdbCredentialConfigured:boolean;tvdbCredentialConfigured:boolean;openSubtitlesKeyConfigured:boolean;openSubtitlesUsername:string;openSubtitlesPasswordConfigured:boolean;openSubtitles:OpenSubtitlesStatus}>;
+export type MetadataLibrarySettings=Readonly<{id:string;name:string;kind:string;revision:string;agent:'online'|'local';agentOptions:readonly ('online'|'local')[];lyricsSource:'files'|'lrclib';episodeThumbnailMode:'provider_then_made'|'provider'|'off';scrubPreviews:boolean;canScrub:boolean;managed:boolean}>;
+export type MetadataLibraryChange=Readonly<{id:string;expectedRevision:string;agent?:MetadataLibrarySettings['agent'];lyricsSource?:MetadataLibrarySettings['lyricsSource'];episodeThumbnailMode?:MetadataLibrarySettings['episodeThumbnailMode'];scrubPreviews?:boolean}>;
+function parseLibraries(raw:unknown):readonly MetadataLibrarySettings[]{
+ if(raw===undefined)return Object.freeze([]);
+ if(!Array.isArray(raw)||raw.length>512)throw new Error(unreadableServerResponse);
+ const seen=new Set<string>();
+ return Object.freeze(raw.map(value=>{
+  if(!value||typeof value!=='object'||Array.isArray(value))throw new Error(unreadableServerResponse);
+  const v=value as Record<string,unknown>;
+  if(typeof v.id!=='string'||!v.id||v.id.length>128||seen.has(v.id)||typeof v.name!=='string'||v.name.length>100||typeof v.kind!=='string'||v.kind.length>32||typeof v.revision!=='string'||!/^[a-f0-9]{64}$/.test(v.revision)||!['local','online'].includes(String(v.agent))||!Array.isArray(v.agentOptions)||v.agentOptions.length<1||v.agentOptions.length>2||!v.agentOptions.every(a=>a==='local'||a==='online')||!v.agentOptions.includes(v.agent)||!['files','lrclib'].includes(String(v.lyricsSource))||!['provider_then_made','provider','off'].includes(String(v.episodeThumbnailMode))||typeof v.scrubPreviews!=='boolean'||typeof v.canScrub!=='boolean'||typeof v.managed!=='boolean')throw new Error(unreadableServerResponse);
+  seen.add(v.id);
+  return Object.freeze({id:v.id,name:v.name,kind:v.kind,revision:v.revision,agent:v.agent,agentOptions:Object.freeze([...v.agentOptions]),lyricsSource:v.lyricsSource,episodeThumbnailMode:v.episodeThumbnailMode,scrubPreviews:v.scrubPreviews,canScrub:v.canScrub,managed:v.managed}) as MetadataLibrarySettings;
+ }));
+}
+export type MetadataSettings=Readonly<{libraries:readonly MetadataLibrarySettings[];revision:number;localArtworkLimitBytes:number;localArtworkUsedBytes:number;includeAdult:boolean;artworkMaxEdge:ArtworkMaxEdge;tmdbCredentialConfigured:boolean;tvdbCredentialConfigured:boolean;openSubtitlesKeyConfigured:boolean;openSubtitlesUsername:string;openSubtitlesPasswordConfigured:boolean;openSubtitles:OpenSubtitlesStatus}>;
 /** A credential left out is unchanged; an empty one goes back to the server's own (for the username: no account). */
-export type MetadataSettingsChange=Readonly<{expectedRevision:number;localArtworkLimitBytes:number;includeAdult:boolean;artworkMaxEdge?:ArtworkMaxEdge;tmdbReadToken?:string;tvdbProjectKey?:string;openSubtitlesApiKey?:string;openSubtitlesUsername?:string;openSubtitlesPassword?:string}>;
+export type MetadataSettingsChange=Readonly<{libraries?:readonly MetadataLibraryChange[];expectedRevision:number;localArtworkLimitBytes:number;includeAdult:boolean;artworkMaxEdge?:ArtworkMaxEdge;tmdbReadToken?:string;tvdbProjectKey?:string;openSubtitlesApiKey?:string;openSubtitlesUsername?:string;openSubtitlesPassword?:string}>;
 export function parseMetadataSettings(raw:unknown):MetadataSettings{
  if(typeof raw!=='object'||raw===null||Array.isArray(raw))throw new Error(unreadableServerResponse);
  const v=raw as Record<string,unknown>;
  if(!isArtworkMaxEdge(v.artworkMaxEdge))throw new Error(unreadableServerResponse);
  if(typeof v.revision!=='number'||!Number.isSafeInteger(v.revision)||v.revision<1||typeof v.localArtworkLimitBytes!=='number'||!Number.isSafeInteger(v.localArtworkLimitBytes)||v.localArtworkLimitBytes<1||typeof v.includeAdult!=='boolean'||typeof v.tmdbCredentialConfigured!=='boolean'||typeof v.tvdbCredentialConfigured!=='boolean')throw new Error(unreadableServerResponse);
  if(typeof v.localArtworkUsedBytes!=="number"||!Number.isSafeInteger(v.localArtworkUsedBytes)||v.localArtworkUsedBytes<0)throw new Error(unreadableServerResponse);
- return Object.freeze({localArtworkUsedBytes:v.localArtworkUsedBytes,revision:v.revision,localArtworkLimitBytes:v.localArtworkLimitBytes,includeAdult:v.includeAdult,artworkMaxEdge:v.artworkMaxEdge,tmdbCredentialConfigured:v.tmdbCredentialConfigured,tvdbCredentialConfigured:v.tvdbCredentialConfigured,
+ return Object.freeze({libraries:parseLibraries(v.libraries),localArtworkUsedBytes:v.localArtworkUsedBytes,revision:v.revision,localArtworkLimitBytes:v.localArtworkLimitBytes,includeAdult:v.includeAdult,artworkMaxEdge:v.artworkMaxEdge,tmdbCredentialConfigured:v.tmdbCredentialConfigured,tvdbCredentialConfigured:v.tvdbCredentialConfigured,
   openSubtitlesKeyConfigured:v.openSubtitlesKeyConfigured===true,openSubtitlesUsername:typeof v.openSubtitlesUsername==='string'&&v.openSubtitlesUsername.length<=512?v.openSubtitlesUsername:'',openSubtitlesPasswordConfigured:v.openSubtitlesPasswordConfigured===true,openSubtitles:parseOpenSubtitlesStatus(v.openSubtitles)});
 }
 const word=<T extends string>(v:unknown,allowed:readonly T[],fallback:T):T=>allowed.includes(v as T)?v as T:fallback;
