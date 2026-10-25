@@ -490,6 +490,7 @@ index personal_jobs_active
 index personal_jobs_age
 index personal_jobs_state
 index personal_last_played
+index personal_music_radios_recent
 index personal_play_counts_item
 index personal_play_state
 index personal_playback_runs_item_id_fk
@@ -547,6 +548,7 @@ index progress_item_state
 index progress_recent
 index queue_v1_create_receipts_age
 index queue_v1_saves_state
+index queue_v1_segments_entry
 index queue_v1_snapshots_building
 index queue_v1_snapshots_queue
 index queues_v1_idle
@@ -1003,7 +1005,12 @@ table inventory_directory_cache
 table inventory_disc_chapters
 table inventory_disc_clips
 table inventory_disc_facts
+table inventory_disc_media_members
 table inventory_disc_streams
+table inventory_disc_title_media
+table inventory_disc_title_media_members
+table inventory_disc_title_media_streams
+table inventory_disc_title_requests
 table inventory_disc_titles
 table inventory_objects
 table inventory_operation_jobs
@@ -1204,6 +1211,7 @@ table personal_job_failures
 table personal_job_items
 table personal_job_membership_outcomes
 table personal_jobs
+table personal_music_radios
 table personal_play_counts
 table personal_playback_runs
 table personal_receipts
@@ -1222,6 +1230,7 @@ table playback_conversion_targets
 table playback_copy_timelines
 table playback_delivery_plans
 table playback_device_capabilities
+table playback_disc_pins
 table playback_hls_demand
 table playback_hls_reservations
 table playback_hls_stages
@@ -2350,12 +2359,17 @@ trigger personal_history_recommendations_list_insert
 trigger personal_history_revision_DELETE
 trigger personal_history_revision_INSERT
 trigger personal_history_revision_UPDATE
+trigger personal_music_radios_revision_DELETE
+trigger personal_music_radios_revision_INSERT
+trigger personal_music_radios_revision_UPDATE
 trigger personal_revision_insert
 trigger personal_revision_update
 trigger playback_legacy_replacement_requests_retention_delete
 trigger playback_legacy_replacement_requests_retention_insert
 trigger playback_marker_skips_retention_delete
 trigger playback_marker_skips_retention_insert
+trigger playback_media_capacity_delete
+trigger playback_media_capacity_release
 trigger playback_observation_create
 trigger playback_origin_albums_changed
 trigger playback_origin_albums_create
@@ -2412,6 +2426,8 @@ trigger playback_route_failures_playback_problems_list_insert
 trigger playback_route_failures_playback_problems_list_update
 trigger playback_v1_buffering_insert
 trigger playback_v1_buffering_transition
+trigger playback_v1_capacity_delete
+trigger playback_v1_capacity_release
 trigger playlist_directory_insert
 trigger playlist_directory_revisions_bound_check
 trigger playlist_directory_revisions_bound_delete

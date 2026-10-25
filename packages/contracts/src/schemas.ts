@@ -670,6 +670,21 @@ export const schemas = {
           "channelId": {
             "type": "string"
           },
+          "discTitle": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "revision"
+            ],
+            "type": "object"
+          },
           "end": {
             "properties": {
               "message": {
@@ -2186,6 +2201,21 @@ export const schemas = {
         "properties": {
           "channelId": {
             "type": "string"
+          },
+          "discTitle": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "revision"
+            ],
+            "type": "object"
           },
           "end": {
             "properties": {
@@ -3954,6 +3984,21 @@ export const schemas = {
         "properties": {
           "channelId": {
             "type": "string"
+          },
+          "discTitle": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "revision"
+            ],
+            "type": "object"
           },
           "end": {
             "properties": {
@@ -6761,6 +6806,47 @@ export const schemas = {
                 },
                 "navigation": {
                   "properties": {
+                    "browse": {
+                      "properties": {
+                        "pivot": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "query": {
+                          "additionalProperties": {},
+                          "type": "object"
+                        },
+                        "sort": {
+                          "items": {
+                            "properties": {
+                              "direction": {
+                                "enum": [
+                                  "asc",
+                                  "desc"
+                                ],
+                                "type": "string"
+                              },
+                              "field": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "direction"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "pivot",
+                        "sort"
+                      ],
+                      "type": "object"
+                    },
                     "category": {
                       "type": "string"
                     },
@@ -6852,6 +6938,21 @@ export const schemas = {
                 },
                 "publisher": {
                   "type": "string"
+                },
+                "radioSeed": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind"
+                  ],
+                  "type": "object"
                 },
                 "rating": {
                   "type": "number"
@@ -7014,6 +7115,47 @@ export const schemas = {
             },
             "navigation": {
               "properties": {
+                "browse": {
+                  "properties": {
+                    "pivot": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "query": {
+                      "additionalProperties": {},
+                      "type": "object"
+                    },
+                    "sort": {
+                      "items": {
+                        "properties": {
+                          "direction": {
+                            "enum": [
+                              "asc",
+                              "desc"
+                            ],
+                            "type": "string"
+                          },
+                          "field": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "direction"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 1,
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "pivot",
+                    "sort"
+                  ],
+                  "type": "object"
+                },
                 "category": {
                   "type": "string"
                 },
@@ -7105,6 +7247,21 @@ export const schemas = {
             },
             "publisher": {
               "type": "string"
+            },
+            "radioSeed": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "kind"
+              ],
+              "type": "object"
             },
             "rating": {
               "type": "number"
@@ -8989,6 +9146,47 @@ export const schemas = {
                 },
                 "navigation": {
                   "properties": {
+                    "browse": {
+                      "properties": {
+                        "pivot": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "query": {
+                          "additionalProperties": {},
+                          "type": "object"
+                        },
+                        "sort": {
+                          "items": {
+                            "properties": {
+                              "direction": {
+                                "enum": [
+                                  "asc",
+                                  "desc"
+                                ],
+                                "type": "string"
+                              },
+                              "field": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "direction"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "pivot",
+                        "sort"
+                      ],
+                      "type": "object"
+                    },
                     "category": {
                       "type": "string"
                     },
@@ -9080,6 +9278,21 @@ export const schemas = {
                 },
                 "publisher": {
                   "type": "string"
+                },
+                "radioSeed": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind"
+                  ],
+                  "type": "object"
                 },
                 "rating": {
                   "type": "number"
@@ -9242,6 +9455,47 @@ export const schemas = {
             },
             "navigation": {
               "properties": {
+                "browse": {
+                  "properties": {
+                    "pivot": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "query": {
+                      "additionalProperties": {},
+                      "type": "object"
+                    },
+                    "sort": {
+                      "items": {
+                        "properties": {
+                          "direction": {
+                            "enum": [
+                              "asc",
+                              "desc"
+                            ],
+                            "type": "string"
+                          },
+                          "field": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "direction"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 1,
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "pivot",
+                    "sort"
+                  ],
+                  "type": "object"
+                },
                 "category": {
                   "type": "string"
                 },
@@ -9333,6 +9587,21 @@ export const schemas = {
             },
             "publisher": {
               "type": "string"
+            },
+            "radioSeed": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "kind"
+              ],
+              "type": "object"
             },
             "rating": {
               "type": "number"
@@ -11545,6 +11814,21 @@ export const schemas = {
       "channelId": {
         "type": "string"
       },
+      "discTitle": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "revision"
+        ],
+        "type": "object"
+      },
       "end": {
         "properties": {
           "message": {
@@ -13009,6 +13293,21 @@ export const schemas = {
         "properties": {
           "channelId": {
             "type": "string"
+          },
+          "discTitle": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "revision"
+            ],
+            "type": "object"
           },
           "end": {
             "properties": {
@@ -16741,6 +17040,21 @@ export const schemas = {
           "channelId": {
             "type": "string"
           },
+          "discTitle": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "revision"
+            ],
+            "type": "object"
+          },
           "end": {
             "properties": {
               "message": {
@@ -18283,6 +18597,9 @@ export const schemas = {
           },
           "name": {
             "type": "string"
+          },
+          "requiresOwnerReview": {
+            "type": "boolean"
           },
           "revision": {
             "maximum": 9007199254740991,
@@ -40247,6 +40564,14 @@ export const schemas = {
                           },
                           "type": "array"
                         },
+                        "sampleRates": {
+                          "items": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "type": "array"
+                        },
                         "variants": {
                           "items": {
                             "type": "string"
@@ -40553,6 +40878,14 @@ export const schemas = {
                         "objectAudio": {
                           "items": {
                             "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "sampleRates": {
+                          "items": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           },
                           "type": "array"
                         },
@@ -41529,6 +41862,90 @@ export const schemas = {
       "enabled",
       "pendingEnrolment",
       "recoveryCodesRemaining"
+    ],
+    "type": "object"
+  },
+  "GetDiscTitlesRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetDiscTitlesResponse": {
+    "properties": {
+      "kind": {
+        "enum": [
+          "bluray",
+          "dvd"
+        ],
+        "type": "string"
+      },
+      "packaging": {
+        "enum": [
+          "iso",
+          "folder"
+        ],
+        "type": "string"
+      },
+      "ready": {
+        "type": "boolean"
+      },
+      "revision": {
+        "type": "string"
+      },
+      "titles": {
+        "items": {
+          "properties": {
+            "chapterCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "durationMs": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            },
+            "main": {
+              "type": "boolean"
+            },
+            "number": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "ready": {
+              "type": "boolean"
+            },
+            "revision": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "ready",
+            "id",
+            "number",
+            "durationMs",
+            "chapterCount",
+            "main"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "versionId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "versionId",
+      "revision",
+      "kind",
+      "packaging",
+      "ready",
+      "titles"
     ],
     "type": "object"
   },
@@ -45196,44 +45613,72 @@ export const schemas = {
     "properties": {
       "events": {
         "items": {
-          "properties": {
-            "at": {
-              "type": "string"
-            },
-            "data": {},
-            "id": {
-              "type": "string"
-            },
-            "resource": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
               "properties": {
-                "id": {
+                "at": {
                   "type": "string"
                 },
-                "kind": {
+                "id": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": {
+                  "const": "capacity.changed",
                   "type": "string"
                 }
               },
               "required": [
-                "kind",
-                "id"
+                "id",
+                "type",
+                "at"
               ],
               "type": "object"
             },
-            "revision": {
-              "type": "string"
-            },
-            "type": {
-              "type": "string"
+            {
+              "properties": {
+                "at": {
+                  "type": "string"
+                },
+                "data": {},
+                "id": {
+                  "type": "string"
+                },
+                "resource": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id"
+                  ],
+                  "type": "object"
+                },
+                "revision": {
+                  "type": "string"
+                },
+                "type": {
+                  "pattern": "^(?!capacity\\.changed$)[\\s\\S]*$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "type",
+                "at",
+                "resource",
+                "revision"
+              ],
+              "type": "object"
             }
-          },
-          "required": [
-            "id",
-            "type",
-            "at",
-            "resource",
-            "revision"
-          ],
-          "type": "object"
+          ]
         },
         "type": "array"
       },
@@ -50010,6 +50455,47 @@ export const schemas = {
                                 },
                                 "navigation": {
                                   "properties": {
+                                    "browse": {
+                                      "properties": {
+                                        "pivot": {
+                                          "maxLength": 256,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        "query": {
+                                          "additionalProperties": {},
+                                          "type": "object"
+                                        },
+                                        "sort": {
+                                          "items": {
+                                            "properties": {
+                                              "direction": {
+                                                "enum": [
+                                                  "asc",
+                                                  "desc"
+                                                ],
+                                                "type": "string"
+                                              },
+                                              "field": {
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": [
+                                              "field",
+                                              "direction"
+                                            ],
+                                            "type": "object"
+                                          },
+                                          "maxItems": 1,
+                                          "type": "array"
+                                        }
+                                      },
+                                      "required": [
+                                        "pivot",
+                                        "sort"
+                                      ],
+                                      "type": "object"
+                                    },
                                     "category": {
                                       "type": "string"
                                     },
@@ -50101,6 +50587,21 @@ export const schemas = {
                                 },
                                 "publisher": {
                                   "type": "string"
+                                },
+                                "radioSeed": {
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "kind"
+                                  ],
+                                  "type": "object"
                                 },
                                 "rating": {
                                   "type": "number"
@@ -50263,6 +50764,47 @@ export const schemas = {
                             },
                             "navigation": {
                               "properties": {
+                                "browse": {
+                                  "properties": {
+                                    "pivot": {
+                                      "maxLength": 256,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "query": {
+                                      "additionalProperties": {},
+                                      "type": "object"
+                                    },
+                                    "sort": {
+                                      "items": {
+                                        "properties": {
+                                          "direction": {
+                                            "enum": [
+                                              "asc",
+                                              "desc"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "field": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "field",
+                                          "direction"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "maxItems": 1,
+                                      "type": "array"
+                                    }
+                                  },
+                                  "required": [
+                                    "pivot",
+                                    "sort"
+                                  ],
+                                  "type": "object"
+                                },
                                 "category": {
                                   "type": "string"
                                 },
@@ -50354,6 +50896,21 @@ export const schemas = {
                             },
                             "publisher": {
                               "type": "string"
+                            },
+                            "radioSeed": {
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "kind"
+                              ],
+                              "type": "object"
                             },
                             "rating": {
                               "type": "number"
@@ -51620,6 +52177,47 @@ export const schemas = {
                             },
                             "navigation": {
                               "properties": {
+                                "browse": {
+                                  "properties": {
+                                    "pivot": {
+                                      "maxLength": 256,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "query": {
+                                      "additionalProperties": {},
+                                      "type": "object"
+                                    },
+                                    "sort": {
+                                      "items": {
+                                        "properties": {
+                                          "direction": {
+                                            "enum": [
+                                              "asc",
+                                              "desc"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "field": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "field",
+                                          "direction"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "maxItems": 1,
+                                      "type": "array"
+                                    }
+                                  },
+                                  "required": [
+                                    "pivot",
+                                    "sort"
+                                  ],
+                                  "type": "object"
+                                },
                                 "category": {
                                   "type": "string"
                                 },
@@ -51711,6 +52309,21 @@ export const schemas = {
                             },
                             "publisher": {
                               "type": "string"
+                            },
+                            "radioSeed": {
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "kind"
+                              ],
+                              "type": "object"
                             },
                             "rating": {
                               "type": "number"
@@ -51873,6 +52486,47 @@ export const schemas = {
                         },
                         "navigation": {
                           "properties": {
+                            "browse": {
+                              "properties": {
+                                "pivot": {
+                                  "maxLength": 256,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "query": {
+                                  "additionalProperties": {},
+                                  "type": "object"
+                                },
+                                "sort": {
+                                  "items": {
+                                    "properties": {
+                                      "direction": {
+                                        "enum": [
+                                          "asc",
+                                          "desc"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "field": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "field",
+                                      "direction"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "maxItems": 1,
+                                  "type": "array"
+                                }
+                              },
+                              "required": [
+                                "pivot",
+                                "sort"
+                              ],
+                              "type": "object"
+                            },
                             "category": {
                               "type": "string"
                             },
@@ -51964,6 +52618,21 @@ export const schemas = {
                         },
                         "publisher": {
                           "type": "string"
+                        },
+                        "radioSeed": {
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "kind"
+                          ],
+                          "type": "object"
                         },
                         "rating": {
                           "type": "number"
@@ -53688,6 +54357,47 @@ export const schemas = {
                                 },
                                 "navigation": {
                                   "properties": {
+                                    "browse": {
+                                      "properties": {
+                                        "pivot": {
+                                          "maxLength": 256,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        "query": {
+                                          "additionalProperties": {},
+                                          "type": "object"
+                                        },
+                                        "sort": {
+                                          "items": {
+                                            "properties": {
+                                              "direction": {
+                                                "enum": [
+                                                  "asc",
+                                                  "desc"
+                                                ],
+                                                "type": "string"
+                                              },
+                                              "field": {
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": [
+                                              "field",
+                                              "direction"
+                                            ],
+                                            "type": "object"
+                                          },
+                                          "maxItems": 1,
+                                          "type": "array"
+                                        }
+                                      },
+                                      "required": [
+                                        "pivot",
+                                        "sort"
+                                      ],
+                                      "type": "object"
+                                    },
                                     "category": {
                                       "type": "string"
                                     },
@@ -53779,6 +54489,21 @@ export const schemas = {
                                 },
                                 "publisher": {
                                   "type": "string"
+                                },
+                                "radioSeed": {
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "kind"
+                                  ],
+                                  "type": "object"
                                 },
                                 "rating": {
                                   "type": "number"
@@ -53941,6 +54666,47 @@ export const schemas = {
                             },
                             "navigation": {
                               "properties": {
+                                "browse": {
+                                  "properties": {
+                                    "pivot": {
+                                      "maxLength": 256,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "query": {
+                                      "additionalProperties": {},
+                                      "type": "object"
+                                    },
+                                    "sort": {
+                                      "items": {
+                                        "properties": {
+                                          "direction": {
+                                            "enum": [
+                                              "asc",
+                                              "desc"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "field": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "field",
+                                          "direction"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "maxItems": 1,
+                                      "type": "array"
+                                    }
+                                  },
+                                  "required": [
+                                    "pivot",
+                                    "sort"
+                                  ],
+                                  "type": "object"
+                                },
                                 "category": {
                                   "type": "string"
                                 },
@@ -54032,6 +54798,21 @@ export const schemas = {
                             },
                             "publisher": {
                               "type": "string"
+                            },
+                            "radioSeed": {
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "kind"
+                              ],
+                              "type": "object"
                             },
                             "rating": {
                               "type": "number"
@@ -55854,6 +56635,47 @@ export const schemas = {
                           },
                           "navigation": {
                             "properties": {
+                              "browse": {
+                                "properties": {
+                                  "pivot": {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "query": {
+                                    "additionalProperties": {},
+                                    "type": "object"
+                                  },
+                                  "sort": {
+                                    "items": {
+                                      "properties": {
+                                        "direction": {
+                                          "enum": [
+                                            "asc",
+                                            "desc"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "field": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "field",
+                                        "direction"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "maxItems": 1,
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "pivot",
+                                  "sort"
+                                ],
+                                "type": "object"
+                              },
                               "category": {
                                 "type": "string"
                               },
@@ -55945,6 +56767,21 @@ export const schemas = {
                           },
                           "publisher": {
                             "type": "string"
+                          },
+                          "radioSeed": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "kind"
+                            ],
+                            "type": "object"
                           },
                           "rating": {
                             "type": "number"
@@ -56107,6 +56944,47 @@ export const schemas = {
                       },
                       "navigation": {
                         "properties": {
+                          "browse": {
+                            "properties": {
+                              "pivot": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "query": {
+                                "additionalProperties": {},
+                                "type": "object"
+                              },
+                              "sort": {
+                                "items": {
+                                  "properties": {
+                                    "direction": {
+                                      "enum": [
+                                        "asc",
+                                        "desc"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "field": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "direction"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "pivot",
+                              "sort"
+                            ],
+                            "type": "object"
+                          },
                           "category": {
                             "type": "string"
                           },
@@ -56198,6 +57076,21 @@ export const schemas = {
                       },
                       "publisher": {
                         "type": "string"
+                      },
+                      "radioSeed": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "type": "object"
                       },
                       "rating": {
                         "type": "number"
@@ -57461,6 +58354,47 @@ export const schemas = {
                       },
                       "navigation": {
                         "properties": {
+                          "browse": {
+                            "properties": {
+                              "pivot": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "query": {
+                                "additionalProperties": {},
+                                "type": "object"
+                              },
+                              "sort": {
+                                "items": {
+                                  "properties": {
+                                    "direction": {
+                                      "enum": [
+                                        "asc",
+                                        "desc"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "field": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "direction"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "pivot",
+                              "sort"
+                            ],
+                            "type": "object"
+                          },
                           "category": {
                             "type": "string"
                           },
@@ -57552,6 +58486,21 @@ export const schemas = {
                       },
                       "publisher": {
                         "type": "string"
+                      },
+                      "radioSeed": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "type": "object"
                       },
                       "rating": {
                         "type": "number"
@@ -57714,6 +58663,47 @@ export const schemas = {
                   },
                   "navigation": {
                     "properties": {
+                      "browse": {
+                        "properties": {
+                          "pivot": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "query": {
+                            "additionalProperties": {},
+                            "type": "object"
+                          },
+                          "sort": {
+                            "items": {
+                              "properties": {
+                                "direction": {
+                                  "enum": [
+                                    "asc",
+                                    "desc"
+                                  ],
+                                  "type": "string"
+                                },
+                                "field": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "field",
+                                "direction"
+                              ],
+                              "type": "object"
+                            },
+                            "maxItems": 1,
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "pivot",
+                          "sort"
+                        ],
+                        "type": "object"
+                      },
                       "category": {
                         "type": "string"
                       },
@@ -57805,6 +58795,21 @@ export const schemas = {
                   },
                   "publisher": {
                     "type": "string"
+                  },
+                  "radioSeed": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind"
+                    ],
+                    "type": "object"
                   },
                   "rating": {
                     "type": "number"
@@ -59529,6 +60534,47 @@ export const schemas = {
                           },
                           "navigation": {
                             "properties": {
+                              "browse": {
+                                "properties": {
+                                  "pivot": {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "query": {
+                                    "additionalProperties": {},
+                                    "type": "object"
+                                  },
+                                  "sort": {
+                                    "items": {
+                                      "properties": {
+                                        "direction": {
+                                          "enum": [
+                                            "asc",
+                                            "desc"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "field": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "field",
+                                        "direction"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "maxItems": 1,
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "pivot",
+                                  "sort"
+                                ],
+                                "type": "object"
+                              },
                               "category": {
                                 "type": "string"
                               },
@@ -59620,6 +60666,21 @@ export const schemas = {
                           },
                           "publisher": {
                             "type": "string"
+                          },
+                          "radioSeed": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "kind"
+                            ],
+                            "type": "object"
                           },
                           "rating": {
                             "type": "number"
@@ -59782,6 +60843,47 @@ export const schemas = {
                       },
                       "navigation": {
                         "properties": {
+                          "browse": {
+                            "properties": {
+                              "pivot": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "query": {
+                                "additionalProperties": {},
+                                "type": "object"
+                              },
+                              "sort": {
+                                "items": {
+                                  "properties": {
+                                    "direction": {
+                                      "enum": [
+                                        "asc",
+                                        "desc"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "field": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "direction"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "pivot",
+                              "sort"
+                            ],
+                            "type": "object"
+                          },
                           "category": {
                             "type": "string"
                           },
@@ -59873,6 +60975,21 @@ export const schemas = {
                       },
                       "publisher": {
                         "type": "string"
+                      },
+                      "radioSeed": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "type": "object"
                       },
                       "rating": {
                         "type": "number"
@@ -61491,6 +62608,47 @@ export const schemas = {
                     },
                     "navigation": {
                       "properties": {
+                        "browse": {
+                          "properties": {
+                            "pivot": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "query": {
+                              "additionalProperties": {},
+                              "type": "object"
+                            },
+                            "sort": {
+                              "items": {
+                                "properties": {
+                                  "direction": {
+                                    "enum": [
+                                      "asc",
+                                      "desc"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "field": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "field",
+                                  "direction"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 1,
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "pivot",
+                            "sort"
+                          ],
+                          "type": "object"
+                        },
                         "category": {
                           "type": "string"
                         },
@@ -61582,6 +62740,21 @@ export const schemas = {
                     },
                     "publisher": {
                       "type": "string"
+                    },
+                    "radioSeed": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind"
+                      ],
+                      "type": "object"
                     },
                     "rating": {
                       "type": "number"
@@ -61744,6 +62917,47 @@ export const schemas = {
                 },
                 "navigation": {
                   "properties": {
+                    "browse": {
+                      "properties": {
+                        "pivot": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "query": {
+                          "additionalProperties": {},
+                          "type": "object"
+                        },
+                        "sort": {
+                          "items": {
+                            "properties": {
+                              "direction": {
+                                "enum": [
+                                  "asc",
+                                  "desc"
+                                ],
+                                "type": "string"
+                              },
+                              "field": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "direction"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "pivot",
+                        "sort"
+                      ],
+                      "type": "object"
+                    },
                     "category": {
                       "type": "string"
                     },
@@ -61835,6 +63049,21 @@ export const schemas = {
                 },
                 "publisher": {
                   "type": "string"
+                },
+                "radioSeed": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind"
+                  ],
+                  "type": "object"
                 },
                 "rating": {
                   "type": "number"
@@ -63106,6 +64335,47 @@ export const schemas = {
                     },
                     "navigation": {
                       "properties": {
+                        "browse": {
+                          "properties": {
+                            "pivot": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "query": {
+                              "additionalProperties": {},
+                              "type": "object"
+                            },
+                            "sort": {
+                              "items": {
+                                "properties": {
+                                  "direction": {
+                                    "enum": [
+                                      "asc",
+                                      "desc"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "field": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "field",
+                                  "direction"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 1,
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "pivot",
+                            "sort"
+                          ],
+                          "type": "object"
+                        },
                         "category": {
                           "type": "string"
                         },
@@ -63197,6 +64467,21 @@ export const schemas = {
                     },
                     "publisher": {
                       "type": "string"
+                    },
+                    "radioSeed": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind"
+                      ],
+                      "type": "object"
                     },
                     "rating": {
                       "type": "number"
@@ -63359,6 +64644,47 @@ export const schemas = {
                 },
                 "navigation": {
                   "properties": {
+                    "browse": {
+                      "properties": {
+                        "pivot": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "query": {
+                          "additionalProperties": {},
+                          "type": "object"
+                        },
+                        "sort": {
+                          "items": {
+                            "properties": {
+                              "direction": {
+                                "enum": [
+                                  "asc",
+                                  "desc"
+                                ],
+                                "type": "string"
+                              },
+                              "field": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "direction"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "pivot",
+                        "sort"
+                      ],
+                      "type": "object"
+                    },
                     "category": {
                       "type": "string"
                     },
@@ -63450,6 +64776,21 @@ export const schemas = {
                 },
                 "publisher": {
                   "type": "string"
+                },
+                "radioSeed": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind"
+                  ],
+                  "type": "object"
                 },
                 "rating": {
                   "type": "number"
@@ -64937,6 +66278,47 @@ export const schemas = {
                           },
                           "navigation": {
                             "properties": {
+                              "browse": {
+                                "properties": {
+                                  "pivot": {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "query": {
+                                    "additionalProperties": {},
+                                    "type": "object"
+                                  },
+                                  "sort": {
+                                    "items": {
+                                      "properties": {
+                                        "direction": {
+                                          "enum": [
+                                            "asc",
+                                            "desc"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "field": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "field",
+                                        "direction"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "maxItems": 1,
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "pivot",
+                                  "sort"
+                                ],
+                                "type": "object"
+                              },
                               "category": {
                                 "type": "string"
                               },
@@ -65028,6 +66410,21 @@ export const schemas = {
                           },
                           "publisher": {
                             "type": "string"
+                          },
+                          "radioSeed": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "kind"
+                            ],
+                            "type": "object"
                           },
                           "rating": {
                             "type": "number"
@@ -65190,6 +66587,47 @@ export const schemas = {
                       },
                       "navigation": {
                         "properties": {
+                          "browse": {
+                            "properties": {
+                              "pivot": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "query": {
+                                "additionalProperties": {},
+                                "type": "object"
+                              },
+                              "sort": {
+                                "items": {
+                                  "properties": {
+                                    "direction": {
+                                      "enum": [
+                                        "asc",
+                                        "desc"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "field": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "direction"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "pivot",
+                              "sort"
+                            ],
+                            "type": "object"
+                          },
                           "category": {
                             "type": "string"
                           },
@@ -65281,6 +66719,21 @@ export const schemas = {
                       },
                       "publisher": {
                         "type": "string"
+                      },
+                      "radioSeed": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "type": "object"
                       },
                       "rating": {
                         "type": "number"
@@ -66547,6 +68000,47 @@ export const schemas = {
                       },
                       "navigation": {
                         "properties": {
+                          "browse": {
+                            "properties": {
+                              "pivot": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "query": {
+                                "additionalProperties": {},
+                                "type": "object"
+                              },
+                              "sort": {
+                                "items": {
+                                  "properties": {
+                                    "direction": {
+                                      "enum": [
+                                        "asc",
+                                        "desc"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "field": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "direction"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "pivot",
+                              "sort"
+                            ],
+                            "type": "object"
+                          },
                           "category": {
                             "type": "string"
                           },
@@ -66638,6 +68132,21 @@ export const schemas = {
                       },
                       "publisher": {
                         "type": "string"
+                      },
+                      "radioSeed": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "type": "object"
                       },
                       "rating": {
                         "type": "number"
@@ -66800,6 +68309,47 @@ export const schemas = {
                   },
                   "navigation": {
                     "properties": {
+                      "browse": {
+                        "properties": {
+                          "pivot": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "query": {
+                            "additionalProperties": {},
+                            "type": "object"
+                          },
+                          "sort": {
+                            "items": {
+                              "properties": {
+                                "direction": {
+                                  "enum": [
+                                    "asc",
+                                    "desc"
+                                  ],
+                                  "type": "string"
+                                },
+                                "field": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "field",
+                                "direction"
+                              ],
+                              "type": "object"
+                            },
+                            "maxItems": 1,
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "pivot",
+                          "sort"
+                        ],
+                        "type": "object"
+                      },
                       "category": {
                         "type": "string"
                       },
@@ -66891,6 +68441,21 @@ export const schemas = {
                   },
                   "publisher": {
                     "type": "string"
+                  },
+                  "radioSeed": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind"
+                    ],
+                    "type": "object"
                   },
                   "rating": {
                     "type": "number"
@@ -68615,6 +70180,47 @@ export const schemas = {
                           },
                           "navigation": {
                             "properties": {
+                              "browse": {
+                                "properties": {
+                                  "pivot": {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "query": {
+                                    "additionalProperties": {},
+                                    "type": "object"
+                                  },
+                                  "sort": {
+                                    "items": {
+                                      "properties": {
+                                        "direction": {
+                                          "enum": [
+                                            "asc",
+                                            "desc"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "field": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "field",
+                                        "direction"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "maxItems": 1,
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "pivot",
+                                  "sort"
+                                ],
+                                "type": "object"
+                              },
                               "category": {
                                 "type": "string"
                               },
@@ -68706,6 +70312,21 @@ export const schemas = {
                           },
                           "publisher": {
                             "type": "string"
+                          },
+                          "radioSeed": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "kind"
+                            ],
+                            "type": "object"
                           },
                           "rating": {
                             "type": "number"
@@ -68868,6 +70489,47 @@ export const schemas = {
                       },
                       "navigation": {
                         "properties": {
+                          "browse": {
+                            "properties": {
+                              "pivot": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "query": {
+                                "additionalProperties": {},
+                                "type": "object"
+                              },
+                              "sort": {
+                                "items": {
+                                  "properties": {
+                                    "direction": {
+                                      "enum": [
+                                        "asc",
+                                        "desc"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "field": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "direction"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "pivot",
+                              "sort"
+                            ],
+                            "type": "object"
+                          },
                           "category": {
                             "type": "string"
                           },
@@ -68959,6 +70621,21 @@ export const schemas = {
                       },
                       "publisher": {
                         "type": "string"
+                      },
+                      "radioSeed": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "type": "object"
                       },
                       "rating": {
                         "type": "number"
@@ -70781,6 +72458,47 @@ export const schemas = {
                     },
                     "navigation": {
                       "properties": {
+                        "browse": {
+                          "properties": {
+                            "pivot": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "query": {
+                              "additionalProperties": {},
+                              "type": "object"
+                            },
+                            "sort": {
+                              "items": {
+                                "properties": {
+                                  "direction": {
+                                    "enum": [
+                                      "asc",
+                                      "desc"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "field": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "field",
+                                  "direction"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 1,
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "pivot",
+                            "sort"
+                          ],
+                          "type": "object"
+                        },
                         "category": {
                           "type": "string"
                         },
@@ -70872,6 +72590,21 @@ export const schemas = {
                     },
                     "publisher": {
                       "type": "string"
+                    },
+                    "radioSeed": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind"
+                      ],
+                      "type": "object"
                     },
                     "rating": {
                       "type": "number"
@@ -71034,6 +72767,47 @@ export const schemas = {
                 },
                 "navigation": {
                   "properties": {
+                    "browse": {
+                      "properties": {
+                        "pivot": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "query": {
+                          "additionalProperties": {},
+                          "type": "object"
+                        },
+                        "sort": {
+                          "items": {
+                            "properties": {
+                              "direction": {
+                                "enum": [
+                                  "asc",
+                                  "desc"
+                                ],
+                                "type": "string"
+                              },
+                              "field": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "direction"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "pivot",
+                        "sort"
+                      ],
+                      "type": "object"
+                    },
                     "category": {
                       "type": "string"
                     },
@@ -71125,6 +72899,21 @@ export const schemas = {
                 },
                 "publisher": {
                   "type": "string"
+                },
+                "radioSeed": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind"
+                  ],
+                  "type": "object"
                 },
                 "rating": {
                   "type": "number"
@@ -72388,6 +74177,47 @@ export const schemas = {
                 },
                 "navigation": {
                   "properties": {
+                    "browse": {
+                      "properties": {
+                        "pivot": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "query": {
+                          "additionalProperties": {},
+                          "type": "object"
+                        },
+                        "sort": {
+                          "items": {
+                            "properties": {
+                              "direction": {
+                                "enum": [
+                                  "asc",
+                                  "desc"
+                                ],
+                                "type": "string"
+                              },
+                              "field": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "direction"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "pivot",
+                        "sort"
+                      ],
+                      "type": "object"
+                    },
                     "category": {
                       "type": "string"
                     },
@@ -72479,6 +74309,21 @@ export const schemas = {
                 },
                 "publisher": {
                   "type": "string"
+                },
+                "radioSeed": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind"
+                  ],
+                  "type": "object"
                 },
                 "rating": {
                   "type": "number"
@@ -72641,6 +74486,47 @@ export const schemas = {
             },
             "navigation": {
               "properties": {
+                "browse": {
+                  "properties": {
+                    "pivot": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "query": {
+                      "additionalProperties": {},
+                      "type": "object"
+                    },
+                    "sort": {
+                      "items": {
+                        "properties": {
+                          "direction": {
+                            "enum": [
+                              "asc",
+                              "desc"
+                            ],
+                            "type": "string"
+                          },
+                          "field": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "direction"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 1,
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "pivot",
+                    "sort"
+                  ],
+                  "type": "object"
+                },
                 "category": {
                   "type": "string"
                 },
@@ -72732,6 +74618,21 @@ export const schemas = {
             },
             "publisher": {
               "type": "string"
+            },
+            "radioSeed": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "kind"
+              ],
+              "type": "object"
             },
             "rating": {
               "type": "number"
@@ -74456,6 +76357,47 @@ export const schemas = {
                     },
                     "navigation": {
                       "properties": {
+                        "browse": {
+                          "properties": {
+                            "pivot": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "query": {
+                              "additionalProperties": {},
+                              "type": "object"
+                            },
+                            "sort": {
+                              "items": {
+                                "properties": {
+                                  "direction": {
+                                    "enum": [
+                                      "asc",
+                                      "desc"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "field": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "field",
+                                  "direction"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 1,
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "pivot",
+                            "sort"
+                          ],
+                          "type": "object"
+                        },
                         "category": {
                           "type": "string"
                         },
@@ -74547,6 +76489,21 @@ export const schemas = {
                     },
                     "publisher": {
                       "type": "string"
+                    },
+                    "radioSeed": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind"
+                      ],
+                      "type": "object"
                     },
                     "rating": {
                       "type": "number"
@@ -74709,6 +76666,47 @@ export const schemas = {
                 },
                 "navigation": {
                   "properties": {
+                    "browse": {
+                      "properties": {
+                        "pivot": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "query": {
+                          "additionalProperties": {},
+                          "type": "object"
+                        },
+                        "sort": {
+                          "items": {
+                            "properties": {
+                              "direction": {
+                                "enum": [
+                                  "asc",
+                                  "desc"
+                                ],
+                                "type": "string"
+                              },
+                              "field": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "direction"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "pivot",
+                        "sort"
+                      ],
+                      "type": "object"
+                    },
                     "category": {
                       "type": "string"
                     },
@@ -74800,6 +76798,21 @@ export const schemas = {
                 },
                 "publisher": {
                   "type": "string"
+                },
+                "radioSeed": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind"
+                  ],
+                  "type": "object"
                 },
                 "rating": {
                   "type": "number"
@@ -77155,6 +79168,47 @@ export const schemas = {
                       },
                       "navigation": {
                         "properties": {
+                          "browse": {
+                            "properties": {
+                              "pivot": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "query": {
+                                "additionalProperties": {},
+                                "type": "object"
+                              },
+                              "sort": {
+                                "items": {
+                                  "properties": {
+                                    "direction": {
+                                      "enum": [
+                                        "asc",
+                                        "desc"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "field": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "direction"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "pivot",
+                              "sort"
+                            ],
+                            "type": "object"
+                          },
                           "category": {
                             "type": "string"
                           },
@@ -77246,6 +79300,21 @@ export const schemas = {
                       },
                       "publisher": {
                         "type": "string"
+                      },
+                      "radioSeed": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "type": "object"
                       },
                       "rating": {
                         "type": "number"
@@ -77408,6 +79477,47 @@ export const schemas = {
                   },
                   "navigation": {
                     "properties": {
+                      "browse": {
+                        "properties": {
+                          "pivot": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "query": {
+                            "additionalProperties": {},
+                            "type": "object"
+                          },
+                          "sort": {
+                            "items": {
+                              "properties": {
+                                "direction": {
+                                  "enum": [
+                                    "asc",
+                                    "desc"
+                                  ],
+                                  "type": "string"
+                                },
+                                "field": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "field",
+                                "direction"
+                              ],
+                              "type": "object"
+                            },
+                            "maxItems": 1,
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "pivot",
+                          "sort"
+                        ],
+                        "type": "object"
+                      },
                       "category": {
                         "type": "string"
                       },
@@ -77499,6 +79609,21 @@ export const schemas = {
                   },
                   "publisher": {
                     "type": "string"
+                  },
+                  "radioSeed": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind"
+                    ],
+                    "type": "object"
                   },
                   "rating": {
                     "type": "number"
@@ -79499,6 +81624,47 @@ export const schemas = {
                           },
                           "navigation": {
                             "properties": {
+                              "browse": {
+                                "properties": {
+                                  "pivot": {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "query": {
+                                    "additionalProperties": {},
+                                    "type": "object"
+                                  },
+                                  "sort": {
+                                    "items": {
+                                      "properties": {
+                                        "direction": {
+                                          "enum": [
+                                            "asc",
+                                            "desc"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "field": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "field",
+                                        "direction"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "maxItems": 1,
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "pivot",
+                                  "sort"
+                                ],
+                                "type": "object"
+                              },
                               "category": {
                                 "type": "string"
                               },
@@ -79590,6 +81756,21 @@ export const schemas = {
                           },
                           "publisher": {
                             "type": "string"
+                          },
+                          "radioSeed": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "kind"
+                            ],
+                            "type": "object"
                           },
                           "rating": {
                             "type": "number"
@@ -79752,6 +81933,47 @@ export const schemas = {
                       },
                       "navigation": {
                         "properties": {
+                          "browse": {
+                            "properties": {
+                              "pivot": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "query": {
+                                "additionalProperties": {},
+                                "type": "object"
+                              },
+                              "sort": {
+                                "items": {
+                                  "properties": {
+                                    "direction": {
+                                      "enum": [
+                                        "asc",
+                                        "desc"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "field": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "direction"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "pivot",
+                              "sort"
+                            ],
+                            "type": "object"
+                          },
                           "category": {
                             "type": "string"
                           },
@@ -79843,6 +82065,21 @@ export const schemas = {
                       },
                       "publisher": {
                         "type": "string"
+                      },
+                      "radioSeed": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "type": "object"
                       },
                       "rating": {
                         "type": "number"
@@ -85172,6 +87409,47 @@ export const schemas = {
                                 },
                                 "navigation": {
                                   "properties": {
+                                    "browse": {
+                                      "properties": {
+                                        "pivot": {
+                                          "maxLength": 256,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        "query": {
+                                          "additionalProperties": {},
+                                          "type": "object"
+                                        },
+                                        "sort": {
+                                          "items": {
+                                            "properties": {
+                                              "direction": {
+                                                "enum": [
+                                                  "asc",
+                                                  "desc"
+                                                ],
+                                                "type": "string"
+                                              },
+                                              "field": {
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": [
+                                              "field",
+                                              "direction"
+                                            ],
+                                            "type": "object"
+                                          },
+                                          "maxItems": 1,
+                                          "type": "array"
+                                        }
+                                      },
+                                      "required": [
+                                        "pivot",
+                                        "sort"
+                                      ],
+                                      "type": "object"
+                                    },
                                     "category": {
                                       "type": "string"
                                     },
@@ -85263,6 +87541,21 @@ export const schemas = {
                                 },
                                 "publisher": {
                                   "type": "string"
+                                },
+                                "radioSeed": {
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "kind"
+                                  ],
+                                  "type": "object"
                                 },
                                 "rating": {
                                   "type": "number"
@@ -85425,6 +87718,47 @@ export const schemas = {
                             },
                             "navigation": {
                               "properties": {
+                                "browse": {
+                                  "properties": {
+                                    "pivot": {
+                                      "maxLength": 256,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "query": {
+                                      "additionalProperties": {},
+                                      "type": "object"
+                                    },
+                                    "sort": {
+                                      "items": {
+                                        "properties": {
+                                          "direction": {
+                                            "enum": [
+                                              "asc",
+                                              "desc"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "field": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "field",
+                                          "direction"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "maxItems": 1,
+                                      "type": "array"
+                                    }
+                                  },
+                                  "required": [
+                                    "pivot",
+                                    "sort"
+                                  ],
+                                  "type": "object"
+                                },
                                 "category": {
                                   "type": "string"
                                 },
@@ -85516,6 +87850,21 @@ export const schemas = {
                             },
                             "publisher": {
                               "type": "string"
+                            },
+                            "radioSeed": {
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "kind"
+                              ],
+                              "type": "object"
                             },
                             "rating": {
                               "type": "number"
@@ -86782,6 +89131,47 @@ export const schemas = {
                             },
                             "navigation": {
                               "properties": {
+                                "browse": {
+                                  "properties": {
+                                    "pivot": {
+                                      "maxLength": 256,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "query": {
+                                      "additionalProperties": {},
+                                      "type": "object"
+                                    },
+                                    "sort": {
+                                      "items": {
+                                        "properties": {
+                                          "direction": {
+                                            "enum": [
+                                              "asc",
+                                              "desc"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "field": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "field",
+                                          "direction"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "maxItems": 1,
+                                      "type": "array"
+                                    }
+                                  },
+                                  "required": [
+                                    "pivot",
+                                    "sort"
+                                  ],
+                                  "type": "object"
+                                },
                                 "category": {
                                   "type": "string"
                                 },
@@ -86873,6 +89263,21 @@ export const schemas = {
                             },
                             "publisher": {
                               "type": "string"
+                            },
+                            "radioSeed": {
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "kind"
+                              ],
+                              "type": "object"
                             },
                             "rating": {
                               "type": "number"
@@ -87035,6 +89440,47 @@ export const schemas = {
                         },
                         "navigation": {
                           "properties": {
+                            "browse": {
+                              "properties": {
+                                "pivot": {
+                                  "maxLength": 256,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "query": {
+                                  "additionalProperties": {},
+                                  "type": "object"
+                                },
+                                "sort": {
+                                  "items": {
+                                    "properties": {
+                                      "direction": {
+                                        "enum": [
+                                          "asc",
+                                          "desc"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "field": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "field",
+                                      "direction"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "maxItems": 1,
+                                  "type": "array"
+                                }
+                              },
+                              "required": [
+                                "pivot",
+                                "sort"
+                              ],
+                              "type": "object"
+                            },
                             "category": {
                               "type": "string"
                             },
@@ -87126,6 +89572,21 @@ export const schemas = {
                         },
                         "publisher": {
                           "type": "string"
+                        },
+                        "radioSeed": {
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "kind"
+                          ],
+                          "type": "object"
                         },
                         "rating": {
                           "type": "number"
@@ -88850,6 +91311,47 @@ export const schemas = {
                                 },
                                 "navigation": {
                                   "properties": {
+                                    "browse": {
+                                      "properties": {
+                                        "pivot": {
+                                          "maxLength": 256,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        "query": {
+                                          "additionalProperties": {},
+                                          "type": "object"
+                                        },
+                                        "sort": {
+                                          "items": {
+                                            "properties": {
+                                              "direction": {
+                                                "enum": [
+                                                  "asc",
+                                                  "desc"
+                                                ],
+                                                "type": "string"
+                                              },
+                                              "field": {
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": [
+                                              "field",
+                                              "direction"
+                                            ],
+                                            "type": "object"
+                                          },
+                                          "maxItems": 1,
+                                          "type": "array"
+                                        }
+                                      },
+                                      "required": [
+                                        "pivot",
+                                        "sort"
+                                      ],
+                                      "type": "object"
+                                    },
                                     "category": {
                                       "type": "string"
                                     },
@@ -88941,6 +91443,21 @@ export const schemas = {
                                 },
                                 "publisher": {
                                   "type": "string"
+                                },
+                                "radioSeed": {
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "kind"
+                                  ],
+                                  "type": "object"
                                 },
                                 "rating": {
                                   "type": "number"
@@ -89103,6 +91620,47 @@ export const schemas = {
                             },
                             "navigation": {
                               "properties": {
+                                "browse": {
+                                  "properties": {
+                                    "pivot": {
+                                      "maxLength": 256,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "query": {
+                                      "additionalProperties": {},
+                                      "type": "object"
+                                    },
+                                    "sort": {
+                                      "items": {
+                                        "properties": {
+                                          "direction": {
+                                            "enum": [
+                                              "asc",
+                                              "desc"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "field": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "field",
+                                          "direction"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "maxItems": 1,
+                                      "type": "array"
+                                    }
+                                  },
+                                  "required": [
+                                    "pivot",
+                                    "sort"
+                                  ],
+                                  "type": "object"
+                                },
                                 "category": {
                                   "type": "string"
                                 },
@@ -89194,6 +91752,21 @@ export const schemas = {
                             },
                             "publisher": {
                               "type": "string"
+                            },
+                            "radioSeed": {
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "kind"
+                              ],
+                              "type": "object"
                             },
                             "rating": {
                               "type": "number"
@@ -91016,6 +93589,47 @@ export const schemas = {
                           },
                           "navigation": {
                             "properties": {
+                              "browse": {
+                                "properties": {
+                                  "pivot": {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "query": {
+                                    "additionalProperties": {},
+                                    "type": "object"
+                                  },
+                                  "sort": {
+                                    "items": {
+                                      "properties": {
+                                        "direction": {
+                                          "enum": [
+                                            "asc",
+                                            "desc"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "field": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "field",
+                                        "direction"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "maxItems": 1,
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "pivot",
+                                  "sort"
+                                ],
+                                "type": "object"
+                              },
                               "category": {
                                 "type": "string"
                               },
@@ -91107,6 +93721,21 @@ export const schemas = {
                           },
                           "publisher": {
                             "type": "string"
+                          },
+                          "radioSeed": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "kind"
+                            ],
+                            "type": "object"
                           },
                           "rating": {
                             "type": "number"
@@ -91269,6 +93898,47 @@ export const schemas = {
                       },
                       "navigation": {
                         "properties": {
+                          "browse": {
+                            "properties": {
+                              "pivot": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "query": {
+                                "additionalProperties": {},
+                                "type": "object"
+                              },
+                              "sort": {
+                                "items": {
+                                  "properties": {
+                                    "direction": {
+                                      "enum": [
+                                        "asc",
+                                        "desc"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "field": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "direction"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "pivot",
+                              "sort"
+                            ],
+                            "type": "object"
+                          },
                           "category": {
                             "type": "string"
                           },
@@ -91360,6 +94030,21 @@ export const schemas = {
                       },
                       "publisher": {
                         "type": "string"
+                      },
+                      "radioSeed": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "type": "object"
                       },
                       "rating": {
                         "type": "number"
@@ -92623,6 +95308,47 @@ export const schemas = {
                       },
                       "navigation": {
                         "properties": {
+                          "browse": {
+                            "properties": {
+                              "pivot": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "query": {
+                                "additionalProperties": {},
+                                "type": "object"
+                              },
+                              "sort": {
+                                "items": {
+                                  "properties": {
+                                    "direction": {
+                                      "enum": [
+                                        "asc",
+                                        "desc"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "field": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "direction"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "pivot",
+                              "sort"
+                            ],
+                            "type": "object"
+                          },
                           "category": {
                             "type": "string"
                           },
@@ -92714,6 +95440,21 @@ export const schemas = {
                       },
                       "publisher": {
                         "type": "string"
+                      },
+                      "radioSeed": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "type": "object"
                       },
                       "rating": {
                         "type": "number"
@@ -92876,6 +95617,47 @@ export const schemas = {
                   },
                   "navigation": {
                     "properties": {
+                      "browse": {
+                        "properties": {
+                          "pivot": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "query": {
+                            "additionalProperties": {},
+                            "type": "object"
+                          },
+                          "sort": {
+                            "items": {
+                              "properties": {
+                                "direction": {
+                                  "enum": [
+                                    "asc",
+                                    "desc"
+                                  ],
+                                  "type": "string"
+                                },
+                                "field": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "field",
+                                "direction"
+                              ],
+                              "type": "object"
+                            },
+                            "maxItems": 1,
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "pivot",
+                          "sort"
+                        ],
+                        "type": "object"
+                      },
                       "category": {
                         "type": "string"
                       },
@@ -92967,6 +95749,21 @@ export const schemas = {
                   },
                   "publisher": {
                     "type": "string"
+                  },
+                  "radioSeed": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind"
+                    ],
+                    "type": "object"
                   },
                   "rating": {
                     "type": "number"
@@ -94691,6 +97488,47 @@ export const schemas = {
                           },
                           "navigation": {
                             "properties": {
+                              "browse": {
+                                "properties": {
+                                  "pivot": {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "query": {
+                                    "additionalProperties": {},
+                                    "type": "object"
+                                  },
+                                  "sort": {
+                                    "items": {
+                                      "properties": {
+                                        "direction": {
+                                          "enum": [
+                                            "asc",
+                                            "desc"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "field": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "field",
+                                        "direction"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "maxItems": 1,
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "pivot",
+                                  "sort"
+                                ],
+                                "type": "object"
+                              },
                               "category": {
                                 "type": "string"
                               },
@@ -94782,6 +97620,21 @@ export const schemas = {
                           },
                           "publisher": {
                             "type": "string"
+                          },
+                          "radioSeed": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "kind"
+                            ],
+                            "type": "object"
                           },
                           "rating": {
                             "type": "number"
@@ -94944,6 +97797,47 @@ export const schemas = {
                       },
                       "navigation": {
                         "properties": {
+                          "browse": {
+                            "properties": {
+                              "pivot": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "query": {
+                                "additionalProperties": {},
+                                "type": "object"
+                              },
+                              "sort": {
+                                "items": {
+                                  "properties": {
+                                    "direction": {
+                                      "enum": [
+                                        "asc",
+                                        "desc"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "field": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "direction"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "pivot",
+                              "sort"
+                            ],
+                            "type": "object"
+                          },
                           "category": {
                             "type": "string"
                           },
@@ -95035,6 +97929,21 @@ export const schemas = {
                       },
                       "publisher": {
                         "type": "string"
+                      },
+                      "radioSeed": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "type": "object"
                       },
                       "rating": {
                         "type": "number"
@@ -96896,6 +99805,47 @@ export const schemas = {
                           },
                           "navigation": {
                             "properties": {
+                              "browse": {
+                                "properties": {
+                                  "pivot": {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "query": {
+                                    "additionalProperties": {},
+                                    "type": "object"
+                                  },
+                                  "sort": {
+                                    "items": {
+                                      "properties": {
+                                        "direction": {
+                                          "enum": [
+                                            "asc",
+                                            "desc"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "field": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "field",
+                                        "direction"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "maxItems": 1,
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "pivot",
+                                  "sort"
+                                ],
+                                "type": "object"
+                              },
                               "category": {
                                 "type": "string"
                               },
@@ -96987,6 +99937,21 @@ export const schemas = {
                           },
                           "publisher": {
                             "type": "string"
+                          },
+                          "radioSeed": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "kind"
+                            ],
+                            "type": "object"
                           },
                           "rating": {
                             "type": "number"
@@ -97149,6 +100114,47 @@ export const schemas = {
                       },
                       "navigation": {
                         "properties": {
+                          "browse": {
+                            "properties": {
+                              "pivot": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "query": {
+                                "additionalProperties": {},
+                                "type": "object"
+                              },
+                              "sort": {
+                                "items": {
+                                  "properties": {
+                                    "direction": {
+                                      "enum": [
+                                        "asc",
+                                        "desc"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "field": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "direction"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "pivot",
+                              "sort"
+                            ],
+                            "type": "object"
+                          },
                           "category": {
                             "type": "string"
                           },
@@ -97240,6 +100246,21 @@ export const schemas = {
                       },
                       "publisher": {
                         "type": "string"
+                      },
+                      "radioSeed": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "type": "object"
                       },
                       "rating": {
                         "type": "number"
@@ -98506,6 +101527,47 @@ export const schemas = {
                       },
                       "navigation": {
                         "properties": {
+                          "browse": {
+                            "properties": {
+                              "pivot": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "query": {
+                                "additionalProperties": {},
+                                "type": "object"
+                              },
+                              "sort": {
+                                "items": {
+                                  "properties": {
+                                    "direction": {
+                                      "enum": [
+                                        "asc",
+                                        "desc"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "field": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "direction"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "pivot",
+                              "sort"
+                            ],
+                            "type": "object"
+                          },
                           "category": {
                             "type": "string"
                           },
@@ -98597,6 +101659,21 @@ export const schemas = {
                       },
                       "publisher": {
                         "type": "string"
+                      },
+                      "radioSeed": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "type": "object"
                       },
                       "rating": {
                         "type": "number"
@@ -98759,6 +101836,47 @@ export const schemas = {
                   },
                   "navigation": {
                     "properties": {
+                      "browse": {
+                        "properties": {
+                          "pivot": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "query": {
+                            "additionalProperties": {},
+                            "type": "object"
+                          },
+                          "sort": {
+                            "items": {
+                              "properties": {
+                                "direction": {
+                                  "enum": [
+                                    "asc",
+                                    "desc"
+                                  ],
+                                  "type": "string"
+                                },
+                                "field": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "field",
+                                "direction"
+                              ],
+                              "type": "object"
+                            },
+                            "maxItems": 1,
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "pivot",
+                          "sort"
+                        ],
+                        "type": "object"
+                      },
                       "category": {
                         "type": "string"
                       },
@@ -98850,6 +101968,21 @@ export const schemas = {
                   },
                   "publisher": {
                     "type": "string"
+                  },
+                  "radioSeed": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind"
+                    ],
+                    "type": "object"
                   },
                   "rating": {
                     "type": "number"
@@ -100574,6 +103707,47 @@ export const schemas = {
                           },
                           "navigation": {
                             "properties": {
+                              "browse": {
+                                "properties": {
+                                  "pivot": {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "query": {
+                                    "additionalProperties": {},
+                                    "type": "object"
+                                  },
+                                  "sort": {
+                                    "items": {
+                                      "properties": {
+                                        "direction": {
+                                          "enum": [
+                                            "asc",
+                                            "desc"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "field": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "field",
+                                        "direction"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "maxItems": 1,
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "pivot",
+                                  "sort"
+                                ],
+                                "type": "object"
+                              },
                               "category": {
                                 "type": "string"
                               },
@@ -100665,6 +103839,21 @@ export const schemas = {
                           },
                           "publisher": {
                             "type": "string"
+                          },
+                          "radioSeed": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "kind"
+                            ],
+                            "type": "object"
                           },
                           "rating": {
                             "type": "number"
@@ -100827,6 +104016,47 @@ export const schemas = {
                       },
                       "navigation": {
                         "properties": {
+                          "browse": {
+                            "properties": {
+                              "pivot": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "query": {
+                                "additionalProperties": {},
+                                "type": "object"
+                              },
+                              "sort": {
+                                "items": {
+                                  "properties": {
+                                    "direction": {
+                                      "enum": [
+                                        "asc",
+                                        "desc"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "field": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "direction"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "pivot",
+                              "sort"
+                            ],
+                            "type": "object"
+                          },
                           "category": {
                             "type": "string"
                           },
@@ -100918,6 +104148,21 @@ export const schemas = {
                       },
                       "publisher": {
                         "type": "string"
+                      },
+                      "radioSeed": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "type": "object"
                       },
                       "rating": {
                         "type": "number"
@@ -102740,6 +105985,47 @@ export const schemas = {
                     },
                     "navigation": {
                       "properties": {
+                        "browse": {
+                          "properties": {
+                            "pivot": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "query": {
+                              "additionalProperties": {},
+                              "type": "object"
+                            },
+                            "sort": {
+                              "items": {
+                                "properties": {
+                                  "direction": {
+                                    "enum": [
+                                      "asc",
+                                      "desc"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "field": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "field",
+                                  "direction"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 1,
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "pivot",
+                            "sort"
+                          ],
+                          "type": "object"
+                        },
                         "category": {
                           "type": "string"
                         },
@@ -102831,6 +106117,21 @@ export const schemas = {
                     },
                     "publisher": {
                       "type": "string"
+                    },
+                    "radioSeed": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind"
+                      ],
+                      "type": "object"
                     },
                     "rating": {
                       "type": "number"
@@ -102993,6 +106294,47 @@ export const schemas = {
                 },
                 "navigation": {
                   "properties": {
+                    "browse": {
+                      "properties": {
+                        "pivot": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "query": {
+                          "additionalProperties": {},
+                          "type": "object"
+                        },
+                        "sort": {
+                          "items": {
+                            "properties": {
+                              "direction": {
+                                "enum": [
+                                  "asc",
+                                  "desc"
+                                ],
+                                "type": "string"
+                              },
+                              "field": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "direction"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "pivot",
+                        "sort"
+                      ],
+                      "type": "object"
+                    },
                     "category": {
                       "type": "string"
                     },
@@ -103084,6 +106426,21 @@ export const schemas = {
                 },
                 "publisher": {
                   "type": "string"
+                },
+                "radioSeed": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind"
+                  ],
+                  "type": "object"
                 },
                 "rating": {
                   "type": "number"
@@ -104347,6 +107704,47 @@ export const schemas = {
                 },
                 "navigation": {
                   "properties": {
+                    "browse": {
+                      "properties": {
+                        "pivot": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "query": {
+                          "additionalProperties": {},
+                          "type": "object"
+                        },
+                        "sort": {
+                          "items": {
+                            "properties": {
+                              "direction": {
+                                "enum": [
+                                  "asc",
+                                  "desc"
+                                ],
+                                "type": "string"
+                              },
+                              "field": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "direction"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "pivot",
+                        "sort"
+                      ],
+                      "type": "object"
+                    },
                     "category": {
                       "type": "string"
                     },
@@ -104438,6 +107836,21 @@ export const schemas = {
                 },
                 "publisher": {
                   "type": "string"
+                },
+                "radioSeed": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind"
+                  ],
+                  "type": "object"
                 },
                 "rating": {
                   "type": "number"
@@ -104600,6 +108013,47 @@ export const schemas = {
             },
             "navigation": {
               "properties": {
+                "browse": {
+                  "properties": {
+                    "pivot": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "query": {
+                      "additionalProperties": {},
+                      "type": "object"
+                    },
+                    "sort": {
+                      "items": {
+                        "properties": {
+                          "direction": {
+                            "enum": [
+                              "asc",
+                              "desc"
+                            ],
+                            "type": "string"
+                          },
+                          "field": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "direction"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 1,
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "pivot",
+                    "sort"
+                  ],
+                  "type": "object"
+                },
                 "category": {
                   "type": "string"
                 },
@@ -104691,6 +108145,21 @@ export const schemas = {
             },
             "publisher": {
               "type": "string"
+            },
+            "radioSeed": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "kind"
+              ],
+              "type": "object"
             },
             "rating": {
               "type": "number"
@@ -106415,6 +109884,47 @@ export const schemas = {
                     },
                     "navigation": {
                       "properties": {
+                        "browse": {
+                          "properties": {
+                            "pivot": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "query": {
+                              "additionalProperties": {},
+                              "type": "object"
+                            },
+                            "sort": {
+                              "items": {
+                                "properties": {
+                                  "direction": {
+                                    "enum": [
+                                      "asc",
+                                      "desc"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "field": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "field",
+                                  "direction"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 1,
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "pivot",
+                            "sort"
+                          ],
+                          "type": "object"
+                        },
                         "category": {
                           "type": "string"
                         },
@@ -106506,6 +110016,21 @@ export const schemas = {
                     },
                     "publisher": {
                       "type": "string"
+                    },
+                    "radioSeed": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind"
+                      ],
+                      "type": "object"
                     },
                     "rating": {
                       "type": "number"
@@ -106668,6 +110193,47 @@ export const schemas = {
                 },
                 "navigation": {
                   "properties": {
+                    "browse": {
+                      "properties": {
+                        "pivot": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "query": {
+                          "additionalProperties": {},
+                          "type": "object"
+                        },
+                        "sort": {
+                          "items": {
+                            "properties": {
+                              "direction": {
+                                "enum": [
+                                  "asc",
+                                  "desc"
+                                ],
+                                "type": "string"
+                              },
+                              "field": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "direction"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "pivot",
+                        "sort"
+                      ],
+                      "type": "object"
+                    },
                     "category": {
                       "type": "string"
                     },
@@ -106759,6 +110325,21 @@ export const schemas = {
                 },
                 "publisher": {
                   "type": "string"
+                },
+                "radioSeed": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind"
+                  ],
+                  "type": "object"
                 },
                 "rating": {
                   "type": "number"
@@ -108784,6 +112365,47 @@ export const schemas = {
                     },
                     "navigation": {
                       "properties": {
+                        "browse": {
+                          "properties": {
+                            "pivot": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "query": {
+                              "additionalProperties": {},
+                              "type": "object"
+                            },
+                            "sort": {
+                              "items": {
+                                "properties": {
+                                  "direction": {
+                                    "enum": [
+                                      "asc",
+                                      "desc"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "field": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "field",
+                                  "direction"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 1,
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "pivot",
+                            "sort"
+                          ],
+                          "type": "object"
+                        },
                         "category": {
                           "type": "string"
                         },
@@ -108875,6 +112497,21 @@ export const schemas = {
                     },
                     "publisher": {
                       "type": "string"
+                    },
+                    "radioSeed": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind"
+                      ],
+                      "type": "object"
                     },
                     "rating": {
                       "type": "number"
@@ -109037,6 +112674,47 @@ export const schemas = {
                 },
                 "navigation": {
                   "properties": {
+                    "browse": {
+                      "properties": {
+                        "pivot": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "query": {
+                          "additionalProperties": {},
+                          "type": "object"
+                        },
+                        "sort": {
+                          "items": {
+                            "properties": {
+                              "direction": {
+                                "enum": [
+                                  "asc",
+                                  "desc"
+                                ],
+                                "type": "string"
+                              },
+                              "field": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "direction"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "pivot",
+                        "sort"
+                      ],
+                      "type": "object"
+                    },
                     "category": {
                       "type": "string"
                     },
@@ -109128,6 +112806,21 @@ export const schemas = {
                 },
                 "publisher": {
                   "type": "string"
+                },
+                "radioSeed": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind"
+                  ],
+                  "type": "object"
                 },
                 "rating": {
                   "type": "number"
@@ -113328,6 +117021,47 @@ export const schemas = {
               },
               "navigation": {
                 "properties": {
+                  "browse": {
+                    "properties": {
+                      "pivot": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "query": {
+                        "additionalProperties": {},
+                        "type": "object"
+                      },
+                      "sort": {
+                        "items": {
+                          "properties": {
+                            "direction": {
+                              "enum": [
+                                "asc",
+                                "desc"
+                              ],
+                              "type": "string"
+                            },
+                            "field": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "field",
+                            "direction"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 1,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "pivot",
+                      "sort"
+                    ],
+                    "type": "object"
+                  },
                   "category": {
                     "type": "string"
                   },
@@ -113419,6 +117153,21 @@ export const schemas = {
               },
               "publisher": {
                 "type": "string"
+              },
+              "radioSeed": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind"
+                ],
+                "type": "object"
               },
               "rating": {
                 "type": "number"
@@ -113581,6 +117330,47 @@ export const schemas = {
           },
           "navigation": {
             "properties": {
+              "browse": {
+                "properties": {
+                  "pivot": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "query": {
+                    "additionalProperties": {},
+                    "type": "object"
+                  },
+                  "sort": {
+                    "items": {
+                      "properties": {
+                        "direction": {
+                          "enum": [
+                            "asc",
+                            "desc"
+                          ],
+                          "type": "string"
+                        },
+                        "field": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "direction"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "pivot",
+                  "sort"
+                ],
+                "type": "object"
+              },
               "category": {
                 "type": "string"
               },
@@ -113672,6 +117462,21 @@ export const schemas = {
           },
           "publisher": {
             "type": "string"
+          },
+          "radioSeed": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind"
+            ],
+            "type": "object"
           },
           "rating": {
             "type": "number"
@@ -115125,6 +118930,47 @@ export const schemas = {
                       },
                       "navigation": {
                         "properties": {
+                          "browse": {
+                            "properties": {
+                              "pivot": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "query": {
+                                "additionalProperties": {},
+                                "type": "object"
+                              },
+                              "sort": {
+                                "items": {
+                                  "properties": {
+                                    "direction": {
+                                      "enum": [
+                                        "asc",
+                                        "desc"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "field": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "direction"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "pivot",
+                              "sort"
+                            ],
+                            "type": "object"
+                          },
                           "category": {
                             "type": "string"
                           },
@@ -115216,6 +119062,21 @@ export const schemas = {
                       },
                       "publisher": {
                         "type": "string"
+                      },
+                      "radioSeed": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "type": "object"
                       },
                       "rating": {
                         "type": "number"
@@ -115378,6 +119239,47 @@ export const schemas = {
                   },
                   "navigation": {
                     "properties": {
+                      "browse": {
+                        "properties": {
+                          "pivot": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "query": {
+                            "additionalProperties": {},
+                            "type": "object"
+                          },
+                          "sort": {
+                            "items": {
+                              "properties": {
+                                "direction": {
+                                  "enum": [
+                                    "asc",
+                                    "desc"
+                                  ],
+                                  "type": "string"
+                                },
+                                "field": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "field",
+                                "direction"
+                              ],
+                              "type": "object"
+                            },
+                            "maxItems": 1,
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "pivot",
+                          "sort"
+                        ],
+                        "type": "object"
+                      },
                       "category": {
                         "type": "string"
                       },
@@ -115469,6 +119371,21 @@ export const schemas = {
                   },
                   "publisher": {
                     "type": "string"
+                  },
+                  "radioSeed": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind"
+                    ],
+                    "type": "object"
                   },
                   "rating": {
                     "type": "number"
@@ -116963,6 +120880,47 @@ export const schemas = {
                       },
                       "navigation": {
                         "properties": {
+                          "browse": {
+                            "properties": {
+                              "pivot": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "query": {
+                                "additionalProperties": {},
+                                "type": "object"
+                              },
+                              "sort": {
+                                "items": {
+                                  "properties": {
+                                    "direction": {
+                                      "enum": [
+                                        "asc",
+                                        "desc"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "field": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "direction"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "pivot",
+                              "sort"
+                            ],
+                            "type": "object"
+                          },
                           "category": {
                             "type": "string"
                           },
@@ -117054,6 +121012,21 @@ export const schemas = {
                       },
                       "publisher": {
                         "type": "string"
+                      },
+                      "radioSeed": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "type": "object"
                       },
                       "rating": {
                         "type": "number"
@@ -117216,6 +121189,47 @@ export const schemas = {
                   },
                   "navigation": {
                     "properties": {
+                      "browse": {
+                        "properties": {
+                          "pivot": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "query": {
+                            "additionalProperties": {},
+                            "type": "object"
+                          },
+                          "sort": {
+                            "items": {
+                              "properties": {
+                                "direction": {
+                                  "enum": [
+                                    "asc",
+                                    "desc"
+                                  ],
+                                  "type": "string"
+                                },
+                                "field": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "field",
+                                "direction"
+                              ],
+                              "type": "object"
+                            },
+                            "maxItems": 1,
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "pivot",
+                          "sort"
+                        ],
+                        "type": "object"
+                      },
                       "category": {
                         "type": "string"
                       },
@@ -117307,6 +121321,21 @@ export const schemas = {
                   },
                   "publisher": {
                     "type": "string"
+                  },
+                  "radioSeed": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind"
+                    ],
+                    "type": "object"
                   },
                   "rating": {
                     "type": "number"
@@ -119158,6 +123187,47 @@ export const schemas = {
                   },
                   "navigation": {
                     "properties": {
+                      "browse": {
+                        "properties": {
+                          "pivot": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "query": {
+                            "additionalProperties": {},
+                            "type": "object"
+                          },
+                          "sort": {
+                            "items": {
+                              "properties": {
+                                "direction": {
+                                  "enum": [
+                                    "asc",
+                                    "desc"
+                                  ],
+                                  "type": "string"
+                                },
+                                "field": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "field",
+                                "direction"
+                              ],
+                              "type": "object"
+                            },
+                            "maxItems": 1,
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "pivot",
+                          "sort"
+                        ],
+                        "type": "object"
+                      },
                       "category": {
                         "type": "string"
                       },
@@ -119249,6 +123319,21 @@ export const schemas = {
                   },
                   "publisher": {
                     "type": "string"
+                  },
+                  "radioSeed": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind"
+                    ],
+                    "type": "object"
                   },
                   "rating": {
                     "type": "number"
@@ -119411,6 +123496,47 @@ export const schemas = {
               },
               "navigation": {
                 "properties": {
+                  "browse": {
+                    "properties": {
+                      "pivot": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "query": {
+                        "additionalProperties": {},
+                        "type": "object"
+                      },
+                      "sort": {
+                        "items": {
+                          "properties": {
+                            "direction": {
+                              "enum": [
+                                "asc",
+                                "desc"
+                              ],
+                              "type": "string"
+                            },
+                            "field": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "field",
+                            "direction"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 1,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "pivot",
+                      "sort"
+                    ],
+                    "type": "object"
+                  },
                   "category": {
                     "type": "string"
                   },
@@ -119502,6 +123628,21 @@ export const schemas = {
               },
               "publisher": {
                 "type": "string"
+              },
+              "radioSeed": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind"
+                ],
+                "type": "object"
               },
               "rating": {
                 "type": "number"
@@ -120955,6 +125096,47 @@ export const schemas = {
                           },
                           "navigation": {
                             "properties": {
+                              "browse": {
+                                "properties": {
+                                  "pivot": {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "query": {
+                                    "additionalProperties": {},
+                                    "type": "object"
+                                  },
+                                  "sort": {
+                                    "items": {
+                                      "properties": {
+                                        "direction": {
+                                          "enum": [
+                                            "asc",
+                                            "desc"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "field": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "field",
+                                        "direction"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "maxItems": 1,
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "pivot",
+                                  "sort"
+                                ],
+                                "type": "object"
+                              },
                               "category": {
                                 "type": "string"
                               },
@@ -121046,6 +125228,21 @@ export const schemas = {
                           },
                           "publisher": {
                             "type": "string"
+                          },
+                          "radioSeed": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "kind"
+                            ],
+                            "type": "object"
                           },
                           "rating": {
                             "type": "number"
@@ -121208,6 +125405,47 @@ export const schemas = {
                       },
                       "navigation": {
                         "properties": {
+                          "browse": {
+                            "properties": {
+                              "pivot": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "query": {
+                                "additionalProperties": {},
+                                "type": "object"
+                              },
+                              "sort": {
+                                "items": {
+                                  "properties": {
+                                    "direction": {
+                                      "enum": [
+                                        "asc",
+                                        "desc"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "field": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "direction"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "pivot",
+                              "sort"
+                            ],
+                            "type": "object"
+                          },
                           "category": {
                             "type": "string"
                           },
@@ -121299,6 +125537,21 @@ export const schemas = {
                       },
                       "publisher": {
                         "type": "string"
+                      },
+                      "radioSeed": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "type": "object"
                       },
                       "rating": {
                         "type": "number"
@@ -122700,6 +126953,47 @@ export const schemas = {
               },
               "navigation": {
                 "properties": {
+                  "browse": {
+                    "properties": {
+                      "pivot": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "query": {
+                        "additionalProperties": {},
+                        "type": "object"
+                      },
+                      "sort": {
+                        "items": {
+                          "properties": {
+                            "direction": {
+                              "enum": [
+                                "asc",
+                                "desc"
+                              ],
+                              "type": "string"
+                            },
+                            "field": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "field",
+                            "direction"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 1,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "pivot",
+                      "sort"
+                    ],
+                    "type": "object"
+                  },
                   "category": {
                     "type": "string"
                   },
@@ -122791,6 +127085,21 @@ export const schemas = {
               },
               "publisher": {
                 "type": "string"
+              },
+              "radioSeed": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind"
+                ],
+                "type": "object"
               },
               "rating": {
                 "type": "number"
@@ -122953,6 +127262,47 @@ export const schemas = {
           },
           "navigation": {
             "properties": {
+              "browse": {
+                "properties": {
+                  "pivot": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "query": {
+                    "additionalProperties": {},
+                    "type": "object"
+                  },
+                  "sort": {
+                    "items": {
+                      "properties": {
+                        "direction": {
+                          "enum": [
+                            "asc",
+                            "desc"
+                          ],
+                          "type": "string"
+                        },
+                        "field": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "direction"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "pivot",
+                  "sort"
+                ],
+                "type": "object"
+              },
               "category": {
                 "type": "string"
               },
@@ -123044,6 +127394,21 @@ export const schemas = {
           },
           "publisher": {
             "type": "string"
+          },
+          "radioSeed": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind"
+            ],
+            "type": "object"
           },
           "rating": {
             "type": "number"
@@ -124994,6 +129359,9 @@ export const schemas = {
       },
       "result": {
         "properties": {
+          "acquisition": {
+            "type": "string"
+          },
           "availableKinds": {
             "items": {
               "type": "string"
@@ -125275,7 +129643,8 @@ export const schemas = {
           "settings",
           "effective",
           "availableKinds",
-          "tunerCount"
+          "tunerCount",
+          "acquisition"
         ],
         "type": "object"
       },
@@ -129155,6 +133524,47 @@ export const schemas = {
                     },
                     "navigation": {
                       "properties": {
+                        "browse": {
+                          "properties": {
+                            "pivot": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "query": {
+                              "additionalProperties": {},
+                              "type": "object"
+                            },
+                            "sort": {
+                              "items": {
+                                "properties": {
+                                  "direction": {
+                                    "enum": [
+                                      "asc",
+                                      "desc"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "field": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "field",
+                                  "direction"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 1,
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "pivot",
+                            "sort"
+                          ],
+                          "type": "object"
+                        },
                         "category": {
                           "type": "string"
                         },
@@ -129246,6 +133656,21 @@ export const schemas = {
                     },
                     "publisher": {
                       "type": "string"
+                    },
+                    "radioSeed": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind"
+                      ],
+                      "type": "object"
                     },
                     "rating": {
                       "type": "number"
@@ -129408,6 +133833,47 @@ export const schemas = {
                 },
                 "navigation": {
                   "properties": {
+                    "browse": {
+                      "properties": {
+                        "pivot": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "query": {
+                          "additionalProperties": {},
+                          "type": "object"
+                        },
+                        "sort": {
+                          "items": {
+                            "properties": {
+                              "direction": {
+                                "enum": [
+                                  "asc",
+                                  "desc"
+                                ],
+                                "type": "string"
+                              },
+                              "field": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "direction"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "pivot",
+                        "sort"
+                      ],
+                      "type": "object"
+                    },
                     "category": {
                       "type": "string"
                     },
@@ -129499,6 +133965,21 @@ export const schemas = {
                 },
                 "publisher": {
                   "type": "string"
+                },
+                "radioSeed": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind"
+                  ],
+                  "type": "object"
                 },
                 "rating": {
                   "type": "number"
@@ -130817,6 +135298,47 @@ export const schemas = {
                     },
                     "navigation": {
                       "properties": {
+                        "browse": {
+                          "properties": {
+                            "pivot": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "query": {
+                              "additionalProperties": {},
+                              "type": "object"
+                            },
+                            "sort": {
+                              "items": {
+                                "properties": {
+                                  "direction": {
+                                    "enum": [
+                                      "asc",
+                                      "desc"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "field": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "field",
+                                  "direction"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 1,
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "pivot",
+                            "sort"
+                          ],
+                          "type": "object"
+                        },
                         "category": {
                           "type": "string"
                         },
@@ -130908,6 +135430,21 @@ export const schemas = {
                     },
                     "publisher": {
                       "type": "string"
+                    },
+                    "radioSeed": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind"
+                      ],
+                      "type": "object"
                     },
                     "rating": {
                       "type": "number"
@@ -131070,6 +135607,47 @@ export const schemas = {
                 },
                 "navigation": {
                   "properties": {
+                    "browse": {
+                      "properties": {
+                        "pivot": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "query": {
+                          "additionalProperties": {},
+                          "type": "object"
+                        },
+                        "sort": {
+                          "items": {
+                            "properties": {
+                              "direction": {
+                                "enum": [
+                                  "asc",
+                                  "desc"
+                                ],
+                                "type": "string"
+                              },
+                              "field": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "direction"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "pivot",
+                        "sort"
+                      ],
+                      "type": "object"
+                    },
                     "category": {
                       "type": "string"
                     },
@@ -131161,6 +135739,21 @@ export const schemas = {
                 },
                 "publisher": {
                   "type": "string"
+                },
+                "radioSeed": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind"
+                  ],
+                  "type": "object"
                 },
                 "rating": {
                   "type": "number"
@@ -132561,6 +137154,47 @@ export const schemas = {
                     },
                     "navigation": {
                       "properties": {
+                        "browse": {
+                          "properties": {
+                            "pivot": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "query": {
+                              "additionalProperties": {},
+                              "type": "object"
+                            },
+                            "sort": {
+                              "items": {
+                                "properties": {
+                                  "direction": {
+                                    "enum": [
+                                      "asc",
+                                      "desc"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "field": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "field",
+                                  "direction"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 1,
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "pivot",
+                            "sort"
+                          ],
+                          "type": "object"
+                        },
                         "category": {
                           "type": "string"
                         },
@@ -132652,6 +137286,21 @@ export const schemas = {
                     },
                     "publisher": {
                       "type": "string"
+                    },
+                    "radioSeed": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind"
+                      ],
+                      "type": "object"
                     },
                     "rating": {
                       "type": "number"
@@ -132814,6 +137463,47 @@ export const schemas = {
                 },
                 "navigation": {
                   "properties": {
+                    "browse": {
+                      "properties": {
+                        "pivot": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "query": {
+                          "additionalProperties": {},
+                          "type": "object"
+                        },
+                        "sort": {
+                          "items": {
+                            "properties": {
+                              "direction": {
+                                "enum": [
+                                  "asc",
+                                  "desc"
+                                ],
+                                "type": "string"
+                              },
+                              "field": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "direction"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "pivot",
+                        "sort"
+                      ],
+                      "type": "object"
+                    },
                     "category": {
                       "type": "string"
                     },
@@ -132905,6 +137595,21 @@ export const schemas = {
                 },
                 "publisher": {
                   "type": "string"
+                },
+                "radioSeed": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind"
+                  ],
+                  "type": "object"
                 },
                 "rating": {
                   "type": "number"
@@ -133738,6 +138443,100 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "discTitle": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "revision": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "revision"
+              ],
+              "type": "object"
+            },
+            "discTitles": {
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "bluray",
+                    "dvd"
+                  ],
+                  "type": "string"
+                },
+                "packaging": {
+                  "enum": [
+                    "iso",
+                    "folder"
+                  ],
+                  "type": "string"
+                },
+                "ready": {
+                  "type": "boolean"
+                },
+                "revision": {
+                  "type": "string"
+                },
+                "titles": {
+                  "items": {
+                    "properties": {
+                      "chapterCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "durationMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "main": {
+                        "type": "boolean"
+                      },
+                      "number": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "ready": {
+                        "type": "boolean"
+                      },
+                      "revision": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "ready",
+                      "id",
+                      "number",
+                      "durationMs",
+                      "chapterCount",
+                      "main"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "versionId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "versionId",
+                "revision",
+                "kind",
+                "packaging",
+                "ready",
+                "titles"
+              ],
+              "type": "object"
+            },
             "durationMs": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
@@ -133997,6 +138796,21 @@ export const schemas = {
     "properties": {
       "channelId": {
         "type": "string"
+      },
+      "discTitle": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "revision"
+        ],
+        "type": "object"
       },
       "end": {
         "properties": {
@@ -136505,6 +141319,47 @@ export const schemas = {
               },
               "navigation": {
                 "properties": {
+                  "browse": {
+                    "properties": {
+                      "pivot": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "query": {
+                        "additionalProperties": {},
+                        "type": "object"
+                      },
+                      "sort": {
+                        "items": {
+                          "properties": {
+                            "direction": {
+                              "enum": [
+                                "asc",
+                                "desc"
+                              ],
+                              "type": "string"
+                            },
+                            "field": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "field",
+                            "direction"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 1,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "pivot",
+                      "sort"
+                    ],
+                    "type": "object"
+                  },
                   "category": {
                     "type": "string"
                   },
@@ -136596,6 +141451,21 @@ export const schemas = {
               },
               "publisher": {
                 "type": "string"
+              },
+              "radioSeed": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind"
+                ],
+                "type": "object"
               },
               "rating": {
                 "type": "number"
@@ -136758,6 +141628,47 @@ export const schemas = {
           },
           "navigation": {
             "properties": {
+              "browse": {
+                "properties": {
+                  "pivot": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "query": {
+                    "additionalProperties": {},
+                    "type": "object"
+                  },
+                  "sort": {
+                    "items": {
+                      "properties": {
+                        "direction": {
+                          "enum": [
+                            "asc",
+                            "desc"
+                          ],
+                          "type": "string"
+                        },
+                        "field": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "direction"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "pivot",
+                  "sort"
+                ],
+                "type": "object"
+              },
               "category": {
                 "type": "string"
               },
@@ -136849,6 +141760,21 @@ export const schemas = {
           },
           "publisher": {
             "type": "string"
+          },
+          "radioSeed": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind"
+            ],
+            "type": "object"
           },
           "rating": {
             "type": "number"
@@ -138302,6 +143228,47 @@ export const schemas = {
                       },
                       "navigation": {
                         "properties": {
+                          "browse": {
+                            "properties": {
+                              "pivot": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "query": {
+                                "additionalProperties": {},
+                                "type": "object"
+                              },
+                              "sort": {
+                                "items": {
+                                  "properties": {
+                                    "direction": {
+                                      "enum": [
+                                        "asc",
+                                        "desc"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "field": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "direction"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "pivot",
+                              "sort"
+                            ],
+                            "type": "object"
+                          },
                           "category": {
                             "type": "string"
                           },
@@ -138393,6 +143360,21 @@ export const schemas = {
                       },
                       "publisher": {
                         "type": "string"
+                      },
+                      "radioSeed": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "type": "object"
                       },
                       "rating": {
                         "type": "number"
@@ -138555,6 +143537,47 @@ export const schemas = {
                   },
                   "navigation": {
                     "properties": {
+                      "browse": {
+                        "properties": {
+                          "pivot": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "query": {
+                            "additionalProperties": {},
+                            "type": "object"
+                          },
+                          "sort": {
+                            "items": {
+                              "properties": {
+                                "direction": {
+                                  "enum": [
+                                    "asc",
+                                    "desc"
+                                  ],
+                                  "type": "string"
+                                },
+                                "field": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "field",
+                                "direction"
+                              ],
+                              "type": "object"
+                            },
+                            "maxItems": 1,
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "pivot",
+                          "sort"
+                        ],
+                        "type": "object"
+                      },
                       "category": {
                         "type": "string"
                       },
@@ -138646,6 +143669,21 @@ export const schemas = {
                   },
                   "publisher": {
                     "type": "string"
+                  },
+                  "radioSeed": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind"
+                    ],
+                    "type": "object"
                   },
                   "rating": {
                     "type": "number"
@@ -142284,6 +147322,29 @@ export const schemas = {
       },
       "nextCursor": {
         "type": "string"
+      },
+      "streamLimit": {
+        "properties": {
+          "limit": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "playing": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "scope": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "limit",
+          "playing"
+        ],
+        "type": "object"
       }
     },
     "required": [
@@ -143398,6 +148459,47 @@ export const schemas = {
               },
               "navigation": {
                 "properties": {
+                  "browse": {
+                    "properties": {
+                      "pivot": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "query": {
+                        "additionalProperties": {},
+                        "type": "object"
+                      },
+                      "sort": {
+                        "items": {
+                          "properties": {
+                            "direction": {
+                              "enum": [
+                                "asc",
+                                "desc"
+                              ],
+                              "type": "string"
+                            },
+                            "field": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "field",
+                            "direction"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 1,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "pivot",
+                      "sort"
+                    ],
+                    "type": "object"
+                  },
                   "category": {
                     "type": "string"
                   },
@@ -143489,6 +148591,21 @@ export const schemas = {
               },
               "publisher": {
                 "type": "string"
+              },
+              "radioSeed": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "kind"
+                ],
+                "type": "object"
               },
               "rating": {
                 "type": "number"
@@ -143651,6 +148768,47 @@ export const schemas = {
           },
           "navigation": {
             "properties": {
+              "browse": {
+                "properties": {
+                  "pivot": {
+                    "maxLength": 256,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "query": {
+                    "additionalProperties": {},
+                    "type": "object"
+                  },
+                  "sort": {
+                    "items": {
+                      "properties": {
+                        "direction": {
+                          "enum": [
+                            "asc",
+                            "desc"
+                          ],
+                          "type": "string"
+                        },
+                        "field": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "field",
+                        "direction"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "pivot",
+                  "sort"
+                ],
+                "type": "object"
+              },
               "category": {
                 "type": "string"
               },
@@ -143742,6 +148900,21 @@ export const schemas = {
           },
           "publisher": {
             "type": "string"
+          },
+          "radioSeed": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind"
+            ],
+            "type": "object"
           },
           "rating": {
             "type": "number"
@@ -145223,6 +150396,47 @@ export const schemas = {
                           },
                           "navigation": {
                             "properties": {
+                              "browse": {
+                                "properties": {
+                                  "pivot": {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "query": {
+                                    "additionalProperties": {},
+                                    "type": "object"
+                                  },
+                                  "sort": {
+                                    "items": {
+                                      "properties": {
+                                        "direction": {
+                                          "enum": [
+                                            "asc",
+                                            "desc"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "field": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "field",
+                                        "direction"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "maxItems": 1,
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "pivot",
+                                  "sort"
+                                ],
+                                "type": "object"
+                              },
                               "category": {
                                 "type": "string"
                               },
@@ -145314,6 +150528,21 @@ export const schemas = {
                           },
                           "publisher": {
                             "type": "string"
+                          },
+                          "radioSeed": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "kind"
+                            ],
+                            "type": "object"
                           },
                           "rating": {
                             "type": "number"
@@ -145476,6 +150705,47 @@ export const schemas = {
                       },
                       "navigation": {
                         "properties": {
+                          "browse": {
+                            "properties": {
+                              "pivot": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "query": {
+                                "additionalProperties": {},
+                                "type": "object"
+                              },
+                              "sort": {
+                                "items": {
+                                  "properties": {
+                                    "direction": {
+                                      "enum": [
+                                        "asc",
+                                        "desc"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "field": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "direction"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "pivot",
+                              "sort"
+                            ],
+                            "type": "object"
+                          },
                           "category": {
                             "type": "string"
                           },
@@ -145567,6 +150837,21 @@ export const schemas = {
                       },
                       "publisher": {
                         "type": "string"
+                      },
+                      "radioSeed": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "type": "object"
                       },
                       "rating": {
                         "type": "number"
@@ -147325,6 +152610,47 @@ export const schemas = {
                     },
                     "navigation": {
                       "properties": {
+                        "browse": {
+                          "properties": {
+                            "pivot": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "query": {
+                              "additionalProperties": {},
+                              "type": "object"
+                            },
+                            "sort": {
+                              "items": {
+                                "properties": {
+                                  "direction": {
+                                    "enum": [
+                                      "asc",
+                                      "desc"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "field": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "field",
+                                  "direction"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 1,
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "pivot",
+                            "sort"
+                          ],
+                          "type": "object"
+                        },
                         "category": {
                           "type": "string"
                         },
@@ -147416,6 +152742,21 @@ export const schemas = {
                     },
                     "publisher": {
                       "type": "string"
+                    },
+                    "radioSeed": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind"
+                      ],
+                      "type": "object"
                     },
                     "rating": {
                       "type": "number"
@@ -147578,6 +152919,47 @@ export const schemas = {
                 },
                 "navigation": {
                   "properties": {
+                    "browse": {
+                      "properties": {
+                        "pivot": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "query": {
+                          "additionalProperties": {},
+                          "type": "object"
+                        },
+                        "sort": {
+                          "items": {
+                            "properties": {
+                              "direction": {
+                                "enum": [
+                                  "asc",
+                                  "desc"
+                                ],
+                                "type": "string"
+                              },
+                              "field": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "direction"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "pivot",
+                        "sort"
+                      ],
+                      "type": "object"
+                    },
                     "category": {
                       "type": "string"
                     },
@@ -147669,6 +153051,21 @@ export const schemas = {
                 },
                 "publisher": {
                   "type": "string"
+                },
+                "radioSeed": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind"
+                  ],
+                  "type": "object"
                 },
                 "rating": {
                   "type": "number"
@@ -149159,6 +154556,47 @@ export const schemas = {
                     },
                     "navigation": {
                       "properties": {
+                        "browse": {
+                          "properties": {
+                            "pivot": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "query": {
+                              "additionalProperties": {},
+                              "type": "object"
+                            },
+                            "sort": {
+                              "items": {
+                                "properties": {
+                                  "direction": {
+                                    "enum": [
+                                      "asc",
+                                      "desc"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "field": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "field",
+                                  "direction"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 1,
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "pivot",
+                            "sort"
+                          ],
+                          "type": "object"
+                        },
                         "category": {
                           "type": "string"
                         },
@@ -149250,6 +154688,21 @@ export const schemas = {
                     },
                     "publisher": {
                       "type": "string"
+                    },
+                    "radioSeed": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind"
+                      ],
+                      "type": "object"
                     },
                     "rating": {
                       "type": "number"
@@ -149412,6 +154865,47 @@ export const schemas = {
                 },
                 "navigation": {
                   "properties": {
+                    "browse": {
+                      "properties": {
+                        "pivot": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "query": {
+                          "additionalProperties": {},
+                          "type": "object"
+                        },
+                        "sort": {
+                          "items": {
+                            "properties": {
+                              "direction": {
+                                "enum": [
+                                  "asc",
+                                  "desc"
+                                ],
+                                "type": "string"
+                              },
+                              "field": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "direction"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "pivot",
+                        "sort"
+                      ],
+                      "type": "object"
+                    },
                     "category": {
                       "type": "string"
                     },
@@ -149503,6 +154997,21 @@ export const schemas = {
                 },
                 "publisher": {
                   "type": "string"
+                },
+                "radioSeed": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind"
+                  ],
+                  "type": "object"
                 },
                 "rating": {
                   "type": "number"
@@ -151516,6 +157025,47 @@ export const schemas = {
                       },
                       "navigation": {
                         "properties": {
+                          "browse": {
+                            "properties": {
+                              "pivot": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "query": {
+                                "additionalProperties": {},
+                                "type": "object"
+                              },
+                              "sort": {
+                                "items": {
+                                  "properties": {
+                                    "direction": {
+                                      "enum": [
+                                        "asc",
+                                        "desc"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "field": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "direction"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "pivot",
+                              "sort"
+                            ],
+                            "type": "object"
+                          },
                           "category": {
                             "type": "string"
                           },
@@ -151607,6 +157157,21 @@ export const schemas = {
                       },
                       "publisher": {
                         "type": "string"
+                      },
+                      "radioSeed": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "type": "object"
                       },
                       "rating": {
                         "type": "number"
@@ -151769,6 +157334,47 @@ export const schemas = {
                   },
                   "navigation": {
                     "properties": {
+                      "browse": {
+                        "properties": {
+                          "pivot": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "query": {
+                            "additionalProperties": {},
+                            "type": "object"
+                          },
+                          "sort": {
+                            "items": {
+                              "properties": {
+                                "direction": {
+                                  "enum": [
+                                    "asc",
+                                    "desc"
+                                  ],
+                                  "type": "string"
+                                },
+                                "field": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "field",
+                                "direction"
+                              ],
+                              "type": "object"
+                            },
+                            "maxItems": 1,
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "pivot",
+                          "sort"
+                        ],
+                        "type": "object"
+                      },
                       "category": {
                         "type": "string"
                       },
@@ -151860,6 +157466,21 @@ export const schemas = {
                   },
                   "publisher": {
                     "type": "string"
+                  },
+                  "radioSeed": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind"
+                    ],
+                    "type": "object"
                   },
                   "rating": {
                     "type": "number"
@@ -154975,6 +160596,47 @@ export const schemas = {
                                 },
                                 "navigation": {
                                   "properties": {
+                                    "browse": {
+                                      "properties": {
+                                        "pivot": {
+                                          "maxLength": 256,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        "query": {
+                                          "additionalProperties": {},
+                                          "type": "object"
+                                        },
+                                        "sort": {
+                                          "items": {
+                                            "properties": {
+                                              "direction": {
+                                                "enum": [
+                                                  "asc",
+                                                  "desc"
+                                                ],
+                                                "type": "string"
+                                              },
+                                              "field": {
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": [
+                                              "field",
+                                              "direction"
+                                            ],
+                                            "type": "object"
+                                          },
+                                          "maxItems": 1,
+                                          "type": "array"
+                                        }
+                                      },
+                                      "required": [
+                                        "pivot",
+                                        "sort"
+                                      ],
+                                      "type": "object"
+                                    },
                                     "category": {
                                       "type": "string"
                                     },
@@ -155066,6 +160728,21 @@ export const schemas = {
                                 },
                                 "publisher": {
                                   "type": "string"
+                                },
+                                "radioSeed": {
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "kind"
+                                  ],
+                                  "type": "object"
                                 },
                                 "rating": {
                                   "type": "number"
@@ -155228,6 +160905,47 @@ export const schemas = {
                             },
                             "navigation": {
                               "properties": {
+                                "browse": {
+                                  "properties": {
+                                    "pivot": {
+                                      "maxLength": 256,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "query": {
+                                      "additionalProperties": {},
+                                      "type": "object"
+                                    },
+                                    "sort": {
+                                      "items": {
+                                        "properties": {
+                                          "direction": {
+                                            "enum": [
+                                              "asc",
+                                              "desc"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "field": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "field",
+                                          "direction"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "maxItems": 1,
+                                      "type": "array"
+                                    }
+                                  },
+                                  "required": [
+                                    "pivot",
+                                    "sort"
+                                  ],
+                                  "type": "object"
+                                },
                                 "category": {
                                   "type": "string"
                                 },
@@ -155319,6 +161037,21 @@ export const schemas = {
                             },
                             "publisher": {
                               "type": "string"
+                            },
+                            "radioSeed": {
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "kind"
+                              ],
+                              "type": "object"
                             },
                             "rating": {
                               "type": "number"
@@ -156585,6 +162318,47 @@ export const schemas = {
                             },
                             "navigation": {
                               "properties": {
+                                "browse": {
+                                  "properties": {
+                                    "pivot": {
+                                      "maxLength": 256,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "query": {
+                                      "additionalProperties": {},
+                                      "type": "object"
+                                    },
+                                    "sort": {
+                                      "items": {
+                                        "properties": {
+                                          "direction": {
+                                            "enum": [
+                                              "asc",
+                                              "desc"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "field": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "field",
+                                          "direction"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "maxItems": 1,
+                                      "type": "array"
+                                    }
+                                  },
+                                  "required": [
+                                    "pivot",
+                                    "sort"
+                                  ],
+                                  "type": "object"
+                                },
                                 "category": {
                                   "type": "string"
                                 },
@@ -156676,6 +162450,21 @@ export const schemas = {
                             },
                             "publisher": {
                               "type": "string"
+                            },
+                            "radioSeed": {
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "kind"
+                              ],
+                              "type": "object"
                             },
                             "rating": {
                               "type": "number"
@@ -156838,6 +162627,47 @@ export const schemas = {
                         },
                         "navigation": {
                           "properties": {
+                            "browse": {
+                              "properties": {
+                                "pivot": {
+                                  "maxLength": 256,
+                                  "minLength": 1,
+                                  "type": "string"
+                                },
+                                "query": {
+                                  "additionalProperties": {},
+                                  "type": "object"
+                                },
+                                "sort": {
+                                  "items": {
+                                    "properties": {
+                                      "direction": {
+                                        "enum": [
+                                          "asc",
+                                          "desc"
+                                        ],
+                                        "type": "string"
+                                      },
+                                      "field": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "field",
+                                      "direction"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "maxItems": 1,
+                                  "type": "array"
+                                }
+                              },
+                              "required": [
+                                "pivot",
+                                "sort"
+                              ],
+                              "type": "object"
+                            },
                             "category": {
                               "type": "string"
                             },
@@ -156929,6 +162759,21 @@ export const schemas = {
                         },
                         "publisher": {
                           "type": "string"
+                        },
+                        "radioSeed": {
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "kind"
+                          ],
+                          "type": "object"
                         },
                         "rating": {
                           "type": "number"
@@ -158653,6 +164498,47 @@ export const schemas = {
                                 },
                                 "navigation": {
                                   "properties": {
+                                    "browse": {
+                                      "properties": {
+                                        "pivot": {
+                                          "maxLength": 256,
+                                          "minLength": 1,
+                                          "type": "string"
+                                        },
+                                        "query": {
+                                          "additionalProperties": {},
+                                          "type": "object"
+                                        },
+                                        "sort": {
+                                          "items": {
+                                            "properties": {
+                                              "direction": {
+                                                "enum": [
+                                                  "asc",
+                                                  "desc"
+                                                ],
+                                                "type": "string"
+                                              },
+                                              "field": {
+                                                "type": "string"
+                                              }
+                                            },
+                                            "required": [
+                                              "field",
+                                              "direction"
+                                            ],
+                                            "type": "object"
+                                          },
+                                          "maxItems": 1,
+                                          "type": "array"
+                                        }
+                                      },
+                                      "required": [
+                                        "pivot",
+                                        "sort"
+                                      ],
+                                      "type": "object"
+                                    },
                                     "category": {
                                       "type": "string"
                                     },
@@ -158744,6 +164630,21 @@ export const schemas = {
                                 },
                                 "publisher": {
                                   "type": "string"
+                                },
+                                "radioSeed": {
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "kind": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "id",
+                                    "kind"
+                                  ],
+                                  "type": "object"
                                 },
                                 "rating": {
                                   "type": "number"
@@ -158906,6 +164807,47 @@ export const schemas = {
                             },
                             "navigation": {
                               "properties": {
+                                "browse": {
+                                  "properties": {
+                                    "pivot": {
+                                      "maxLength": 256,
+                                      "minLength": 1,
+                                      "type": "string"
+                                    },
+                                    "query": {
+                                      "additionalProperties": {},
+                                      "type": "object"
+                                    },
+                                    "sort": {
+                                      "items": {
+                                        "properties": {
+                                          "direction": {
+                                            "enum": [
+                                              "asc",
+                                              "desc"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "field": {
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "field",
+                                          "direction"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "maxItems": 1,
+                                      "type": "array"
+                                    }
+                                  },
+                                  "required": [
+                                    "pivot",
+                                    "sort"
+                                  ],
+                                  "type": "object"
+                                },
                                 "category": {
                                   "type": "string"
                                 },
@@ -158997,6 +164939,21 @@ export const schemas = {
                             },
                             "publisher": {
                               "type": "string"
+                            },
+                            "radioSeed": {
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "kind"
+                              ],
+                              "type": "object"
                             },
                             "rating": {
                               "type": "number"
@@ -160819,6 +166776,47 @@ export const schemas = {
                           },
                           "navigation": {
                             "properties": {
+                              "browse": {
+                                "properties": {
+                                  "pivot": {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "query": {
+                                    "additionalProperties": {},
+                                    "type": "object"
+                                  },
+                                  "sort": {
+                                    "items": {
+                                      "properties": {
+                                        "direction": {
+                                          "enum": [
+                                            "asc",
+                                            "desc"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "field": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "field",
+                                        "direction"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "maxItems": 1,
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "pivot",
+                                  "sort"
+                                ],
+                                "type": "object"
+                              },
                               "category": {
                                 "type": "string"
                               },
@@ -160910,6 +166908,21 @@ export const schemas = {
                           },
                           "publisher": {
                             "type": "string"
+                          },
+                          "radioSeed": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "kind"
+                            ],
+                            "type": "object"
                           },
                           "rating": {
                             "type": "number"
@@ -161072,6 +167085,47 @@ export const schemas = {
                       },
                       "navigation": {
                         "properties": {
+                          "browse": {
+                            "properties": {
+                              "pivot": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "query": {
+                                "additionalProperties": {},
+                                "type": "object"
+                              },
+                              "sort": {
+                                "items": {
+                                  "properties": {
+                                    "direction": {
+                                      "enum": [
+                                        "asc",
+                                        "desc"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "field": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "direction"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "pivot",
+                              "sort"
+                            ],
+                            "type": "object"
+                          },
                           "category": {
                             "type": "string"
                           },
@@ -161163,6 +167217,21 @@ export const schemas = {
                       },
                       "publisher": {
                         "type": "string"
+                      },
+                      "radioSeed": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "type": "object"
                       },
                       "rating": {
                         "type": "number"
@@ -162426,6 +168495,47 @@ export const schemas = {
                       },
                       "navigation": {
                         "properties": {
+                          "browse": {
+                            "properties": {
+                              "pivot": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "query": {
+                                "additionalProperties": {},
+                                "type": "object"
+                              },
+                              "sort": {
+                                "items": {
+                                  "properties": {
+                                    "direction": {
+                                      "enum": [
+                                        "asc",
+                                        "desc"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "field": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "direction"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "pivot",
+                              "sort"
+                            ],
+                            "type": "object"
+                          },
                           "category": {
                             "type": "string"
                           },
@@ -162517,6 +168627,21 @@ export const schemas = {
                       },
                       "publisher": {
                         "type": "string"
+                      },
+                      "radioSeed": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "type": "object"
                       },
                       "rating": {
                         "type": "number"
@@ -162679,6 +168804,47 @@ export const schemas = {
                   },
                   "navigation": {
                     "properties": {
+                      "browse": {
+                        "properties": {
+                          "pivot": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "query": {
+                            "additionalProperties": {},
+                            "type": "object"
+                          },
+                          "sort": {
+                            "items": {
+                              "properties": {
+                                "direction": {
+                                  "enum": [
+                                    "asc",
+                                    "desc"
+                                  ],
+                                  "type": "string"
+                                },
+                                "field": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "field",
+                                "direction"
+                              ],
+                              "type": "object"
+                            },
+                            "maxItems": 1,
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "pivot",
+                          "sort"
+                        ],
+                        "type": "object"
+                      },
                       "category": {
                         "type": "string"
                       },
@@ -162770,6 +168936,21 @@ export const schemas = {
                   },
                   "publisher": {
                     "type": "string"
+                  },
+                  "radioSeed": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind"
+                    ],
+                    "type": "object"
                   },
                   "rating": {
                     "type": "number"
@@ -164494,6 +170675,47 @@ export const schemas = {
                           },
                           "navigation": {
                             "properties": {
+                              "browse": {
+                                "properties": {
+                                  "pivot": {
+                                    "maxLength": 256,
+                                    "minLength": 1,
+                                    "type": "string"
+                                  },
+                                  "query": {
+                                    "additionalProperties": {},
+                                    "type": "object"
+                                  },
+                                  "sort": {
+                                    "items": {
+                                      "properties": {
+                                        "direction": {
+                                          "enum": [
+                                            "asc",
+                                            "desc"
+                                          ],
+                                          "type": "string"
+                                        },
+                                        "field": {
+                                          "type": "string"
+                                        }
+                                      },
+                                      "required": [
+                                        "field",
+                                        "direction"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "maxItems": 1,
+                                    "type": "array"
+                                  }
+                                },
+                                "required": [
+                                  "pivot",
+                                  "sort"
+                                ],
+                                "type": "object"
+                              },
                               "category": {
                                 "type": "string"
                               },
@@ -164585,6 +170807,21 @@ export const schemas = {
                           },
                           "publisher": {
                             "type": "string"
+                          },
+                          "radioSeed": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "kind"
+                            ],
+                            "type": "object"
                           },
                           "rating": {
                             "type": "number"
@@ -164747,6 +170984,47 @@ export const schemas = {
                       },
                       "navigation": {
                         "properties": {
+                          "browse": {
+                            "properties": {
+                              "pivot": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "query": {
+                                "additionalProperties": {},
+                                "type": "object"
+                              },
+                              "sort": {
+                                "items": {
+                                  "properties": {
+                                    "direction": {
+                                      "enum": [
+                                        "asc",
+                                        "desc"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "field": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "direction"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "pivot",
+                              "sort"
+                            ],
+                            "type": "object"
+                          },
                           "category": {
                             "type": "string"
                           },
@@ -164838,6 +171116,21 @@ export const schemas = {
                       },
                       "publisher": {
                         "type": "string"
+                      },
+                      "radioSeed": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "type": "object"
                       },
                       "rating": {
                         "type": "number"
@@ -168991,6 +175284,47 @@ export const schemas = {
                     },
                     "navigation": {
                       "properties": {
+                        "browse": {
+                          "properties": {
+                            "pivot": {
+                              "maxLength": 256,
+                              "minLength": 1,
+                              "type": "string"
+                            },
+                            "query": {
+                              "additionalProperties": {},
+                              "type": "object"
+                            },
+                            "sort": {
+                              "items": {
+                                "properties": {
+                                  "direction": {
+                                    "enum": [
+                                      "asc",
+                                      "desc"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "field": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "field",
+                                  "direction"
+                                ],
+                                "type": "object"
+                              },
+                              "maxItems": 1,
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "pivot",
+                            "sort"
+                          ],
+                          "type": "object"
+                        },
                         "category": {
                           "type": "string"
                         },
@@ -169082,6 +175416,21 @@ export const schemas = {
                     },
                     "publisher": {
                       "type": "string"
+                    },
+                    "radioSeed": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "kind"
+                      ],
+                      "type": "object"
                     },
                     "rating": {
                       "type": "number"
@@ -169244,6 +175593,47 @@ export const schemas = {
                 },
                 "navigation": {
                   "properties": {
+                    "browse": {
+                      "properties": {
+                        "pivot": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "query": {
+                          "additionalProperties": {},
+                          "type": "object"
+                        },
+                        "sort": {
+                          "items": {
+                            "properties": {
+                              "direction": {
+                                "enum": [
+                                  "asc",
+                                  "desc"
+                                ],
+                                "type": "string"
+                              },
+                              "field": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "direction"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "pivot",
+                        "sort"
+                      ],
+                      "type": "object"
+                    },
                     "category": {
                       "type": "string"
                     },
@@ -169335,6 +175725,21 @@ export const schemas = {
                 },
                 "publisher": {
                   "type": "string"
+                },
+                "radioSeed": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind"
+                  ],
+                  "type": "object"
                 },
                 "rating": {
                   "type": "number"
@@ -170659,6 +177064,9 @@ export const schemas = {
       },
       "name": {
         "type": "string"
+      },
+      "requiresOwnerReview": {
+        "type": "boolean"
       },
       "revision": {
         "maximum": 9007199254740991,
@@ -172516,6 +178924,9 @@ export const schemas = {
       "sources": {
         "items": {
           "properties": {
+            "acquisition": {
+              "type": "string"
+            },
             "capacityKnown": {
               "type": "boolean"
             },
@@ -172607,6 +179018,7 @@ export const schemas = {
             "name",
             "revision",
             "state",
+            "acquisition",
             "tunerCount",
             "tunerCountMode",
             "generation",
@@ -173037,6 +179449,9 @@ export const schemas = {
             "name": {
               "type": "string"
             },
+            "requiresOwnerReview": {
+              "type": "boolean"
+            },
             "revision": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
@@ -173344,6 +179759,21 @@ export const schemas = {
         "properties": {
           "channelId": {
             "type": "string"
+          },
+          "discTitle": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "revision"
+            ],
+            "type": "object"
           },
           "end": {
             "properties": {
@@ -192595,6 +199025,47 @@ export const schemas = {
                       },
                       "navigation": {
                         "properties": {
+                          "browse": {
+                            "properties": {
+                              "pivot": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "query": {
+                                "additionalProperties": {},
+                                "type": "object"
+                              },
+                              "sort": {
+                                "items": {
+                                  "properties": {
+                                    "direction": {
+                                      "enum": [
+                                        "asc",
+                                        "desc"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "field": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "direction"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "pivot",
+                              "sort"
+                            ],
+                            "type": "object"
+                          },
                           "category": {
                             "type": "string"
                           },
@@ -192686,6 +199157,21 @@ export const schemas = {
                       },
                       "publisher": {
                         "type": "string"
+                      },
+                      "radioSeed": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "type": "object"
                       },
                       "rating": {
                         "type": "number"
@@ -192848,6 +199334,47 @@ export const schemas = {
                   },
                   "navigation": {
                     "properties": {
+                      "browse": {
+                        "properties": {
+                          "pivot": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "query": {
+                            "additionalProperties": {},
+                            "type": "object"
+                          },
+                          "sort": {
+                            "items": {
+                              "properties": {
+                                "direction": {
+                                  "enum": [
+                                    "asc",
+                                    "desc"
+                                  ],
+                                  "type": "string"
+                                },
+                                "field": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "field",
+                                "direction"
+                              ],
+                              "type": "object"
+                            },
+                            "maxItems": 1,
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "pivot",
+                          "sort"
+                        ],
+                        "type": "object"
+                      },
                       "category": {
                         "type": "string"
                       },
@@ -192939,6 +199466,21 @@ export const schemas = {
                   },
                   "publisher": {
                     "type": "string"
+                  },
+                  "radioSeed": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind"
+                    ],
+                    "type": "object"
                   },
                   "rating": {
                     "type": "number"
@@ -194261,6 +200803,47 @@ export const schemas = {
                 },
                 "navigation": {
                   "properties": {
+                    "browse": {
+                      "properties": {
+                        "pivot": {
+                          "maxLength": 256,
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "query": {
+                          "additionalProperties": {},
+                          "type": "object"
+                        },
+                        "sort": {
+                          "items": {
+                            "properties": {
+                              "direction": {
+                                "enum": [
+                                  "asc",
+                                  "desc"
+                                ],
+                                "type": "string"
+                              },
+                              "field": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "field",
+                              "direction"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 1,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "pivot",
+                        "sort"
+                      ],
+                      "type": "object"
+                    },
                     "category": {
                       "type": "string"
                     },
@@ -194352,6 +200935,21 @@ export const schemas = {
                 },
                 "publisher": {
                   "type": "string"
+                },
+                "radioSeed": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "kind"
+                  ],
+                  "type": "object"
                 },
                 "rating": {
                   "type": "number"
@@ -194514,6 +201112,47 @@ export const schemas = {
             },
             "navigation": {
               "properties": {
+                "browse": {
+                  "properties": {
+                    "pivot": {
+                      "maxLength": 256,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "query": {
+                      "additionalProperties": {},
+                      "type": "object"
+                    },
+                    "sort": {
+                      "items": {
+                        "properties": {
+                          "direction": {
+                            "enum": [
+                              "asc",
+                              "desc"
+                            ],
+                            "type": "string"
+                          },
+                          "field": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "direction"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 1,
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "pivot",
+                    "sort"
+                  ],
+                  "type": "object"
+                },
                 "category": {
                   "type": "string"
                 },
@@ -194605,6 +201244,21 @@ export const schemas = {
             },
             "publisher": {
               "type": "string"
+            },
+            "radioSeed": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "kind"
+              ],
+              "type": "object"
             },
             "rating": {
               "type": "number"
@@ -206413,6 +213067,104 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PrepareDiscTitleRequest": {
+    "properties": {
+      "revision": {
+        "type": "string"
+      },
+      "titleId": {
+        "type": "string"
+      },
+      "versionId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "versionId",
+      "revision",
+      "titleId"
+    ],
+    "type": "object"
+  },
+  "PrepareDiscTitleResponse": {
+    "properties": {
+      "kind": {
+        "enum": [
+          "bluray",
+          "dvd"
+        ],
+        "type": "string"
+      },
+      "packaging": {
+        "enum": [
+          "iso",
+          "folder"
+        ],
+        "type": "string"
+      },
+      "ready": {
+        "type": "boolean"
+      },
+      "revision": {
+        "type": "string"
+      },
+      "titles": {
+        "items": {
+          "properties": {
+            "chapterCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "durationMs": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            },
+            "main": {
+              "type": "boolean"
+            },
+            "number": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "ready": {
+              "type": "boolean"
+            },
+            "revision": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "ready",
+            "id",
+            "number",
+            "durationMs",
+            "chapterCount",
+            "main"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "versionId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "versionId",
+      "revision",
+      "kind",
+      "packaging",
+      "ready",
+      "titles"
+    ],
+    "type": "object"
+  },
   "PrepareQueueNextRequest": {
     "properties": {
       "sessionGeneration": {
@@ -207727,6 +214479,9 @@ export const schemas = {
       },
       "source": {
         "properties": {
+          "acquisition": {
+            "type": "string"
+          },
           "capacityKnown": {
             "type": "boolean"
           },
@@ -207818,6 +214573,7 @@ export const schemas = {
           "name",
           "revision",
           "state",
+          "acquisition",
           "tunerCount",
           "tunerCountMode",
           "generation",
@@ -210872,6 +217628,14 @@ export const schemas = {
                       },
                       "type": "array"
                     },
+                    "sampleRates": {
+                      "items": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    },
                     "variants": {
                       "items": {
                         "type": "string"
@@ -211178,6 +217942,14 @@ export const schemas = {
                     "objectAudio": {
                       "items": {
                         "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "sampleRates": {
+                      "items": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "type": "array"
                     },
@@ -211818,6 +218590,104 @@ export const schemas = {
     },
     "required": [
       "selfRegistration"
+    ],
+    "type": "object"
+  },
+  "PutDiscMainTitleRequest": {
+    "properties": {
+      "revision": {
+        "type": "string"
+      },
+      "titleId": {
+        "type": "string"
+      },
+      "versionId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "versionId",
+      "revision",
+      "titleId"
+    ],
+    "type": "object"
+  },
+  "PutDiscMainTitleResponse": {
+    "properties": {
+      "kind": {
+        "enum": [
+          "bluray",
+          "dvd"
+        ],
+        "type": "string"
+      },
+      "packaging": {
+        "enum": [
+          "iso",
+          "folder"
+        ],
+        "type": "string"
+      },
+      "ready": {
+        "type": "boolean"
+      },
+      "revision": {
+        "type": "string"
+      },
+      "titles": {
+        "items": {
+          "properties": {
+            "chapterCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "durationMs": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            },
+            "main": {
+              "type": "boolean"
+            },
+            "number": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "ready": {
+              "type": "boolean"
+            },
+            "revision": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "ready",
+            "id",
+            "number",
+            "durationMs",
+            "chapterCount",
+            "main"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "versionId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "versionId",
+      "revision",
+      "kind",
+      "packaging",
+      "ready",
+      "titles"
     ],
     "type": "object"
   },
@@ -218967,6 +225837,21 @@ export const schemas = {
           "channelId": {
             "type": "string"
           },
+          "discTitle": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "revision"
+            ],
+            "type": "object"
+          },
           "end": {
             "properties": {
               "message": {
@@ -221896,6 +228781,9 @@ export const schemas = {
       },
       "source": {
         "properties": {
+          "acquisition": {
+            "type": "string"
+          },
           "capacityKnown": {
             "type": "boolean"
           },
@@ -221987,6 +228875,7 @@ export const schemas = {
           "name",
           "revision",
           "state",
+          "acquisition",
           "tunerCount",
           "tunerCountMode",
           "generation",
@@ -223241,6 +230130,47 @@ export const schemas = {
                       },
                       "navigation": {
                         "properties": {
+                          "browse": {
+                            "properties": {
+                              "pivot": {
+                                "maxLength": 256,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              "query": {
+                                "additionalProperties": {},
+                                "type": "object"
+                              },
+                              "sort": {
+                                "items": {
+                                  "properties": {
+                                    "direction": {
+                                      "enum": [
+                                        "asc",
+                                        "desc"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "field": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "field",
+                                    "direction"
+                                  ],
+                                  "type": "object"
+                                },
+                                "maxItems": 1,
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "pivot",
+                              "sort"
+                            ],
+                            "type": "object"
+                          },
                           "category": {
                             "type": "string"
                           },
@@ -223332,6 +230262,21 @@ export const schemas = {
                       },
                       "publisher": {
                         "type": "string"
+                      },
+                      "radioSeed": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "kind"
+                        ],
+                        "type": "object"
                       },
                       "rating": {
                         "type": "number"
@@ -223494,6 +230439,47 @@ export const schemas = {
                   },
                   "navigation": {
                     "properties": {
+                      "browse": {
+                        "properties": {
+                          "pivot": {
+                            "maxLength": 256,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "query": {
+                            "additionalProperties": {},
+                            "type": "object"
+                          },
+                          "sort": {
+                            "items": {
+                              "properties": {
+                                "direction": {
+                                  "enum": [
+                                    "asc",
+                                    "desc"
+                                  ],
+                                  "type": "string"
+                                },
+                                "field": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "field",
+                                "direction"
+                              ],
+                              "type": "object"
+                            },
+                            "maxItems": 1,
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "pivot",
+                          "sort"
+                        ],
+                        "type": "object"
+                      },
                       "category": {
                         "type": "string"
                       },
@@ -223585,6 +230571,21 @@ export const schemas = {
                   },
                   "publisher": {
                     "type": "string"
+                  },
+                  "radioSeed": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "kind"
+                    ],
+                    "type": "object"
                   },
                   "rating": {
                     "type": "number"
@@ -224384,6 +231385,9 @@ export const schemas = {
       },
       "result": {
         "properties": {
+          "acquisition": {
+            "type": "string"
+          },
           "availableKinds": {
             "items": {
               "type": "string"
@@ -224665,7 +231669,8 @@ export const schemas = {
           "settings",
           "effective",
           "availableKinds",
-          "tunerCount"
+          "tunerCount",
+          "acquisition"
         ],
         "type": "object"
       },
@@ -231796,6 +238801,21 @@ export const schemas = {
       "channelId": {
         "type": "string"
       },
+      "discTitle": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "revision"
+        ],
+        "type": "object"
+      },
       "itemId": {
         "type": "string"
       },
@@ -231901,6 +238921,21 @@ export const schemas = {
     "properties": {
       "channelId": {
         "type": "string"
+      },
+      "discTitle": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "revision"
+        ],
+        "type": "object"
       },
       "end": {
         "properties": {
@@ -234133,6 +241168,21 @@ export const schemas = {
           "channelId": {
             "type": "string"
           },
+          "discTitle": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "revision": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "revision"
+            ],
+            "type": "object"
+          },
           "end": {
             "properties": {
               "message": {
@@ -235613,6 +242663,9 @@ export const schemas = {
           },
           "name": {
             "type": "string"
+          },
+          "requiresOwnerReview": {
+            "type": "boolean"
           },
           "revision": {
             "maximum": 9007199254740991,

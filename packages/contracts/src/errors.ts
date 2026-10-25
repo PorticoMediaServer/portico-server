@@ -781,6 +781,18 @@ export const errors = [
     "retry": "after_refresh"
   },
   {
+    "code": "storage_executable_invalid",
+    "status": 400,
+    "message": "That isn't rclone. Choose the rclone program.",
+    "retry": "never"
+  },
+  {
+    "code": "storage_executable_too_old",
+    "status": 400,
+    "message": "This rclone is too old. Choose a newer rclone.",
+    "retry": "never"
+  },
+  {
     "code": "storage_full",
     "status": 409,
     "message": "There is not enough storage for this download.",

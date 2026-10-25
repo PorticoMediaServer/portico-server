@@ -185,6 +185,7 @@ export function decodeGetDirectProfilesIdDeletionPreviewResponse(input: unknown)
 export function decodeGetDirectRegistrationPolicyResponse(input: unknown): types.GetDirectRegistrationPolicyResponse { return decode("GetDirectRegistrationPolicyResponse", input) as types.GetDirectRegistrationPolicyResponse; }
 export function decodeGetDirectSessionsResponse(input: unknown): types.GetDirectSessionsResponse { return decode("GetDirectSessionsResponse", input) as types.GetDirectSessionsResponse; }
 export function decodeGetDirectTwoFactorResponse(input: unknown): types.GetDirectTwoFactorResponse { return decode("GetDirectTwoFactorResponse", input) as types.GetDirectTwoFactorResponse; }
+export function decodeGetDiscTitlesResponse(input: unknown): types.GetDiscTitlesResponse { return decode("GetDiscTitlesResponse", input) as types.GetDiscTitlesResponse; }
 export function decodeGetDownloadArtifactResponse(input: unknown): types.GetDownloadArtifactResponse { return decode("GetDownloadArtifactResponse", input) as types.GetDownloadArtifactResponse; }
 export function decodeGetDownloadArtworkResponse(input: unknown): types.GetDownloadArtworkResponse { return decode("GetDownloadArtworkResponse", input) as types.GetDownloadArtworkResponse; }
 export function decodeGetDownloadBundleResponse(input: unknown): types.GetDownloadBundleResponse { return decode("GetDownloadBundleResponse", input) as types.GetDownloadBundleResponse; }
@@ -624,6 +625,7 @@ export function decodePostV1ItemsItemIdSubtitlesImportResponse(input: unknown): 
 export function decodePostV1ItemsItemIdSubtitlesRefreshResponse(input: unknown): types.PostV1ItemsItemIdSubtitlesRefreshResponse { return decode("PostV1ItemsItemIdSubtitlesRefreshResponse", input) as types.PostV1ItemsItemIdSubtitlesRefreshResponse; }
 export function decodePostV1ItemsItemIdSubtitlesRemoteResponse(input: unknown): types.PostV1ItemsItemIdSubtitlesRemoteResponse { return decode("PostV1ItemsItemIdSubtitlesRemoteResponse", input) as types.PostV1ItemsItemIdSubtitlesRemoteResponse; }
 export function decodePostV1ItemsItemIdSubtitlesSearchResponse(input: unknown): types.PostV1ItemsItemIdSubtitlesSearchResponse { return decode("PostV1ItemsItemIdSubtitlesSearchResponse", input) as types.PostV1ItemsItemIdSubtitlesSearchResponse; }
+export function decodePrepareDiscTitleResponse(input: unknown): types.PrepareDiscTitleResponse { return decode("PrepareDiscTitleResponse", input) as types.PrepareDiscTitleResponse; }
 export function decodePrepareQueueNextResponse(input: unknown): types.PrepareQueueNextResponse { return decode("PrepareQueueNextResponse", input) as types.PrepareQueueNextResponse; }
 export function decodePreviewDeleteTitleVersionResponse(input: unknown): types.PreviewDeleteTitleVersionResponse { return decode("PreviewDeleteTitleVersionResponse", input) as types.PreviewDeleteTitleVersionResponse; }
 export function decodePreviewInvitationResponse(input: unknown): types.PreviewInvitationResponse { return decode("PreviewInvitationResponse", input) as types.PreviewInvitationResponse; }
@@ -653,6 +655,7 @@ export function decodePutDeviceCapabilitiesResponse(input: unknown): types.PutDe
 export function decodePutDirectProfileRestrictionsResponse(input: unknown): types.PutDirectProfileRestrictionsResponse { return decode("PutDirectProfileRestrictionsResponse", input) as types.PutDirectProfileRestrictionsResponse; }
 export function decodePutDirectProfilesOrderResponse(input: unknown): types.PutDirectProfilesOrderResponse { return decode("PutDirectProfilesOrderResponse", input) as types.PutDirectProfilesOrderResponse; }
 export function decodePutDirectRegistrationPolicyResponse(input: unknown): types.PutDirectRegistrationPolicyResponse { return decode("PutDirectRegistrationPolicyResponse", input) as types.PutDirectRegistrationPolicyResponse; }
+export function decodePutDiscMainTitleResponse(input: unknown): types.PutDiscMainTitleResponse { return decode("PutDiscMainTitleResponse", input) as types.PutDiscMainTitleResponse; }
 export function decodePutDownloadSettingsResponse(input: unknown): types.PutDownloadSettingsResponse { return decode("PutDownloadSettingsResponse", input) as types.PutDownloadSettingsResponse; }
 export function decodePutDvrRecordingsIdKeepResponse(input: unknown): types.PutDvrRecordingsIdKeepResponse { return decode("PutDvrRecordingsIdKeepResponse", input) as types.PutDvrRecordingsIdKeepResponse; }
 export function decodePutDvrRulesIdResponse(input: unknown): types.PutDvrRulesIdResponse { return decode("PutDvrRulesIdResponse", input) as types.PutDvrRulesIdResponse; }

@@ -4099,6 +4099,28 @@ export const routes = [
     "admission": "security-fence"
   },
   {
+    "id": "get_disc_titles",
+    "method": "GET",
+    "path": "/v1/items/{id}/disc-titles",
+    "summary": "Read current disc title choices",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "versionId"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request"
+    ],
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
     "id": "get_download_artifact",
     "method": "GET",
     "path": "/v1/downloads/artifacts/{grant}",
@@ -7153,6 +7175,8 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 0,
     "query": [
+      "discTitleId",
+      "discTitleRevision",
       "versionId",
       "partId",
       "audioId",
@@ -14691,6 +14715,27 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "prepare_disc_title",
+    "method": "POST",
+    "path": "/v1/items/{id}/disc-titles/prepare",
+    "summary": "Analyze an alternate disc title for playback",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "source_unavailable"
+    ],
+    "status": 202,
+    "admission": "browsing"
+  },
+  {
     "id": "prepare_queue_next",
     "method": "POST",
     "path": "/v1/queues/{id}:prepare-next",
@@ -15334,6 +15379,27 @@ export const routes = [
     ],
     "status": 200,
     "admission": "auth"
+  },
+  {
+    "id": "put_disc_main_title",
+    "method": "PUT",
+    "path": "/v1/items/{id}/main-title",
+    "summary": "Choose and analyze the main disc title",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "source_unavailable"
+    ],
+    "status": 202,
+    "admission": "browsing"
   },
   {
     "id": "put_download_settings",
@@ -16127,6 +16193,8 @@ export const routes = [
       "request_in_progress",
       "administration_unavailable",
       "internal",
+      "storage_executable_invalid",
+      "storage_executable_too_old",
       "revision_required"
     ],
     "status": 200,
@@ -16151,6 +16219,8 @@ export const routes = [
       "idempotency_key_reused",
       "request_in_progress",
       "administration_unavailable",
+      "storage_executable_invalid",
+      "storage_executable_too_old",
       "internal",
       "revision_required"
     ],
@@ -19603,6 +19673,7 @@ export const routePaths = {
   "get_direct_registration_policy": "/v1/direct/registration-policy",
   "get_direct_sessions": "/v1/direct/sessions",
   "get_direct_two_factor": "/v1/direct/two-factor",
+  "get_disc_titles": "/v1/items/{id}/disc-titles",
   "get_download_artifact": "/v1/downloads/artifacts/{grant}",
   "get_download_artwork": "/v1/downloads/artifacts/{grant}/artwork/{role}",
   "get_download_bundle": "/v1/downloads/preparations/{id}/bundle",
@@ -20042,6 +20113,7 @@ export const routePaths = {
   "post_v1_items_itemId_subtitles_refresh": "/v1/items/{itemId}/subtitles/refresh",
   "post_v1_items_itemId_subtitles_remote": "/v1/items/{itemId}/subtitles/remote",
   "post_v1_items_itemId_subtitles_search": "/v1/items/{itemId}/subtitles/search",
+  "prepare_disc_title": "/v1/items/{id}/disc-titles/prepare",
   "prepare_queue_next": "/v1/queues/{id}:prepare-next",
   "preview_delete_title_version": "/v1/admin/items/{id}/files/{fileId}/delete/preview",
   "preview_invitation": "/v1/access/invitations/preview",
@@ -20071,6 +20143,7 @@ export const routePaths = {
   "put_direct_profile_restrictions": "/v1/direct/profiles/{id}/restrictions",
   "put_direct_profiles_order": "/v1/direct/profiles/order",
   "put_direct_registration_policy": "/v1/direct/registration-policy",
+  "put_disc_main_title": "/v1/items/{id}/main-title",
   "put_download_settings": "/v1/downloads/settings",
   "put_dvr_recordings_id_keep": "/v1/dvr/recordings/{id}/keep",
   "put_dvr_rules_id": "/v1/dvr/rules/{id}",
