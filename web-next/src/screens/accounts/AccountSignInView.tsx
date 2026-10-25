@@ -145,7 +145,13 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
     onForgotPassword={state.invitation ? undefined : openRecovery}
     onMoveCode={state.server.move === 'to_local' && !state.invitation ? () => openMember('code') : undefined} />;
   if (state.phase === 'portico' && state.server?.signIn === 'portico') return <PorticoServerSignIn serverName={state.server.name} busy={busy} error={failure} onContinue={continuePortico}
-    moving={state.server.move === 'to_portico' && !state.invitation} onOldPassword={() => openMember('old-password')}/>;
+    moving={state.server.move === 'to_portico' && !state.invitation} onOldPassword={() => openMember('old-password')}
+    onRecovery={state.invitation ? undefined : () => {
+      // A Portico Account resets its own password by email on the Portico
+      // Account page; the server holds no local recovery for it.
+      const origin = browserAccountOrigin(import.meta.env, location);
+      location.assign(origin + (origin.endsWith('/') ? '?mode=forgot' : '/?mode=forgot'));
+    }}/>;
   if (!failure && (initializing || busy || state.phase === 'checking' || state.phase === 'profiles' || state.phase === 'ready')) return <AuthStage legal={false}>
     <p role="status">{defaultI18n.t(state.phase === 'profiles' || state.phase === 'ready' ? 'auth.loadingProfiles' : 'status.loading')}</p>
   </AuthStage>;
