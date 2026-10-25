@@ -10,7 +10,7 @@ const t = defaultI18n.t;
 export function UploadSourceDialog({controller, close, saved}: {controller: UploadSourceController; close: () => void; saved: () => void}) {
   const owner = useRef(controller);owner.current = controller;
   useEffect(() => () => controller.dispose(), [controller]);
-  const closeCurrent = dialogAction(owner, controller, () => {controller.dispose();close();}), savedCurrent = dialogAction(owner, controller, saved);
+  const closeCurrent = dialogAction(owner, controller, () => {controller.dispose();if (owner.current === controller) close();}), savedCurrent = dialogAction(owner, controller, saved);
   const {draft, preview, busy, reading, error} = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   return <Dialog open width={560} title={t('web.liveTv.upload')} description={t('web.liveTv.uploadLede')} onOpenChange={open => {if (!open) closeCurrent();}}
     footer={<><Button size="small" variant="text" onClick={closeCurrent}>{t('action.cancel')}</Button><Button size="small" variant="primary" loading={busy || reading}

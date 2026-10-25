@@ -1,3 +1,4 @@
+import {defaultI18n} from '@i18n';
 import {parseRemoteSourcePreview, type RemoteSourcePreview} from '@core/linear-api.ts';
 import type {OwnerLiveSource, SourceDocument} from './source-controller';
 const bad = (): never => {throw new Error('live_owner_response_invalid');};
@@ -12,7 +13,7 @@ const choice = <T extends string>(v: unknown, choices: readonly T[]): T => typeo
 export function envelope(raw: unknown, serverId: string) {const v = record(raw);if (v.serverId !== serverId || v.protocolVersion !== '1.0') bad();return v;}
 function diagnostics(raw: unknown) {
   const v = record(raw);
-  return Object.freeze({skippedChannels: count(v.skippedChannels, 100000000), skippedProgrammes: count(v.skippedProgrammes, 100000000), adjustedProgrammes: count(v.adjustedProgrammes, 100000000), examples: Object.freeze(list(v.examples ?? [], 10).map(x => text(x)))});
+  return Object.freeze({skippedChannels: count(v.skippedChannels, 100000000), skippedProgrammes: count(v.skippedProgrammes, 100000000), adjustedProgrammes: count(v.adjustedProgrammes, 100000000), examples: Object.freeze(list(v.examples ?? [], 10).map(x => text(x)).filter(key => key.startsWith('live.import.') && defaultI18n.has(key)))});
 }
 export function source(raw: unknown): OwnerLiveSource {
   const v = record(raw), revision = count(v.revision);if (revision < 1) bad();
@@ -23,7 +24,7 @@ export function source(raw: unknown): OwnerLiveSource {
 export function sourceDocument(raw: unknown, serverId: string): SourceDocument {
   const v = envelope(raw, serverId), sources = list(v.sources, 10000).map(source), ids = new Set(sources.map(x => x.id));if (ids.size !== sources.length) bad();
   const refresh = list(v.refresh, 10000).map(raw => {const r = record(raw), sourceId = id(r.sourceId);if (!ids.has(sourceId)) bad();return Object.freeze({sourceId,
-    state: choice(r.state, ['healthy', 'degraded', 'credentials-required', 'refreshing'] as const), errorCode: text(r.errorCode, 128), nextRefresh: instant(r.nextRefresh, true), failures: count(r.failures)});});
+    state: choice(r.state, ['healthy', 'degraded', 'credentials-required', 'refreshing'] as const), errorCode: typeof r.errorCode === 'string' && /^[a-z0-9_]{0,128}$/.test(r.errorCode) ? r.errorCode : bad(), nextRefresh: instant(r.nextRefresh, true), failures: count(r.failures)});});
   return Object.freeze({sources: Object.freeze(sources), refresh: Object.freeze(refresh)});
 }
 export function uploadPreview(raw: unknown, serverId: string) {
@@ -31,7 +32,7 @@ export function uploadPreview(raw: unknown, serverId: string) {
   return Object.freeze({channels: count(v.channels, 100000), programmes: count(v.programmes, 10000000), names: Object.freeze(list(v.names ?? [], 100).map(x => text(x)))});
 }
 export function remotePreview(raw: unknown, serverId: string): RemoteSourcePreview {
-  const v = parseRemoteSourcePreview(raw, serverId);
+  envelope(raw, serverId);const v = parseRemoteSourcePreview(raw, serverId);
   return Object.freeze({previewId: id(v.previewId), expiresAt: instant(v.expiresAt), discoveredCapacity: count(v.discoveredCapacity, 256), capacityMode: v.capacityMode,
     preview: Object.freeze({...uploadPreview({protocolVersion: '1.0', serverId, preview: v.preview}, serverId), availableStart: instant(v.preview.availableStart, true), availableEnd: instant(v.preview.availableEnd, true), diagnostics: diagnostics(v.preview.diagnostics)}),
     mappingKeys: Object.freeze(v.mappingKeys.map(k => Object.freeze({channelKey: text(k.channelKey), name: text(k.name), guideKey: text(k.guideKey)})))}) as RemoteSourcePreview;
