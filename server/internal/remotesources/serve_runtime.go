@@ -417,6 +417,15 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 	}
 	slot.process = process
 	s.serveMu.Unlock()
+	// Publish the custom program's observed version for the source page, fenced
+	// to this exact mount generation. A best-effort projection; it never changes
+	// source identity or read authority.
+	if version := process.ProgramVersion(); version != "" && material.MountID != "" {
+		// Bind the exact mount captured for this start, not whatever mount the
+		// source points at now: a replacement association with the same numeric
+		// generation must not receive the old program's observation.
+		_, _ = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE mount_backend_configs SET version=? WHERE mount_id=? AND generation=? AND EXISTS(SELECT 1 FROM remote_sources r WHERE r.id=? AND r.removed=0 AND r.mount_id=?) AND version<>?`, version, material.MountID, slot.generation, slot.source, material.MountID, version)
+	}
 	return process, nil
 }
 func privateServePort() (int, error) {
@@ -430,6 +439,7 @@ func privateServePort() (int, error) {
 
 type serveMaterial struct {
 	Program                rcloneprogram.Program
+	MountID                string
 	Remote                 string
 	Configuration          []byte
 	ApprovedProgramDigest  string
@@ -451,7 +461,7 @@ func (s *Service) serveMaterial(ctx context.Context, slot *sourceProcessLease) (
 		if err != nil {
 			return out, err
 		}
-		return serveMaterial{Program: captured.Program, ApprovedProgramDigest: captured.ApprovedProgramDigest, Remote: captured.Remote, Configuration: captured.Configuration, CacheBytes: captured.CacheBytes, CacheFloor: captured.CacheFloor}, nil
+		return serveMaterial{Program: captured.Program, MountID: captured.MountID, ApprovedProgramDigest: captured.ApprovedProgramDigest, Remote: captured.Remote, Configuration: captured.Configuration, CacheBytes: captured.CacheBytes, CacheFloor: captured.CacheFloor}, nil
 	}
 	if kind != "webdav" || len(raw) > 64<<10 {
 		return out, storage.ErrRemoteConfig

@@ -77,6 +77,9 @@ type PreparedServe struct {
 	mu      sync.Mutex
 	private string
 	reports *serveReports
+	// programVersion is the custom program's observed version at this start; it
+	// is empty for the bundled program, which is never checked.
+	programVersion string
 }
 
 var serveRemote = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*:[^\x00\r\n\\]*$`)
@@ -183,12 +186,23 @@ func PrepareServe(ctx context.Context, program Program, spec ServeCommandSpec) (
 		if p.Command.Path != program.Path {
 			return nil, ErrServeProgram
 		}
-		if _, err = program.Check(ctx); err != nil {
+		version, checkErr := program.Check(ctx)
+		if checkErr != nil {
 			return nil, ErrServeProgram
 		}
+		p.programVersion = "rclone v" + version.Version
 	}
 	good = true
 	return p, nil
+}
+
+// Version is the custom program version observed by this prepared start, or
+// empty for the included program.
+func (p *PreparedServe) Version() string {
+	if p == nil {
+		return ""
+	}
+	return p.programVersion
 }
 
 // Loaded removes only this command's fresh transient configuration, both on
@@ -231,6 +245,7 @@ type ServeProcess struct {
 	observer         *remotemedia.ServeEndpoint
 	metadata         *remotemedia.RcloneMetadata
 	reports          *serveReports
+	programVersion   string
 	budget           *remotemedia.OperationBudget
 	lease            ServeProcessLease
 	life             context.Context
@@ -305,7 +320,7 @@ func StartServe(ctx context.Context, program Program, spec ServeCommandSpec, lea
 		cancel()
 		return nil, err
 	}
-	s := &ServeProcess{generation: identity.Token(), sourceID: spec.SourceID, sourceGeneration: spec.SourceGeneration, endpoint: endpoint, observer: observer, reports: prepared.reports, budget: budget, lease: lease, life: life, cancel: cancel, done: make(chan struct{})}
+	s := &ServeProcess{generation: identity.Token(), sourceID: spec.SourceID, sourceGeneration: spec.SourceGeneration, endpoint: endpoint, observer: observer, reports: prepared.reports, programVersion: prepared.Version(), budget: budget, lease: lease, life: life, cancel: cancel, done: make(chan struct{})}
 	if spec.MetadataPort != 0 {
 		s.metadata, err = remotemedia.NewRcloneMetadata(spec.MetadataPort, spec.Username, spec.Password, budget, spec.Remote)
 		if err != nil {
@@ -457,6 +472,15 @@ func (s *ServeProcess) Check(ctx context.Context) error {
 }
 
 func (s *ServeProcess) Generation() string { return s.generation }
+
+// ProgramVersion is the custom program version observed at this process start;
+// empty means the included program, which is never checked.
+func (s *ServeProcess) ProgramVersion() string {
+	if s == nil {
+		return ""
+	}
+	return s.programVersion
+}
 
 func (s *ServeProcess) Source() (id, generation string) { return s.sourceID, s.sourceGeneration }
 
