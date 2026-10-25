@@ -55,7 +55,7 @@ func (s *Service) publicationAttributions(ctx context.Context, p identity.Princi
 	if err != nil {
 		return compactcatalog.ReadingValues{}, "", err
 	}
-	rows := []LibraryRow{{ID: selected.ItemID, entity: selected.Entity}}
+	rows := []LibraryRow{{ID: selected.ItemID, Format: selected.Format, SourceID: selected.SourceID, entity: selected.Entity}}
 	if err = readingArtworkProjectionTx(ctx, g.Tx(), rows); err != nil {
 		return compactcatalog.ReadingValues{}, "", err
 	}
@@ -78,6 +78,19 @@ func readingArtworkProjectionTx(ctx context.Context, tx *sql.Tx, items []Library
 	for i := range items {
 		if digest := covers[items[i].entity]; digest != "" {
 			items[i].CoverURL = "/v1/items/" + url.PathEscape(items[i].ID) + "/art/cover?v=" + digest
+		} else if items[i].Format == "image-folder" {
+			var selected Selection
+			err := tx.QueryRowContext(ctx, selectPublication, items[i].ID, items[i].SourceID, items[i].SourceID).Scan(selectionColumns(&selected)...)
+			if err == sql.ErrNoRows {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			if selected.Format != "image-folder" || selected.folderRevision == "" {
+				continue
+			}
+			items[i].CoverURL = "/v1/items/" + url.PathEscape(items[i].ID) + "/reading/cover?sourceId=" + url.QueryEscape(selected.token) + "&sourceRevision=" + selected.fence()
 		}
 	}
 	return nil

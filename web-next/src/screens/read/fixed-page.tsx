@@ -1,3 +1,4 @@
+import {isComicReadingFormat} from '@core/reading-format.ts';
 import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject} from 'react';
 import {defaultI18n} from '@i18n';
 import type {ReadingPreferences} from '@portico/client-core';
@@ -38,7 +39,7 @@ export function FixedPageStrip({controller, authority, reportError, format}: Fix
     {Array.from({length: last - first}, (_, offset) => first + offset).map(index => <PageThumb key={index} controller={controller} authority={authority} reportError={reportError}
       format={format} index={index} count={count} current={index === current} pageLabel={t('next.reader.pageLabel', {page: defaultI18n.number(index + 1)})}
       onSelect={() => {
-        const location: ReaderLocation = {format: format === 'pdf' ? 'pdf' : 'cbz', page: index, progression: count === 1 ? 0 : index / (count - 1)};
+        const location: ReaderLocation = {format: isComicReadingFormat(format) ? format : 'pdf', page: index, progression: count === 1 ? 0 : index / (count - 1)};
         void controller.navigate({kind: 'location', location}).catch(error => {
           if (authority.isCurrent()) reportError(readerErrorCode(error));
         });
@@ -115,7 +116,7 @@ function FixedPagesWindow({controller, authority, reportError, format, count, cu
   }, []);
   const navigate = (index: number) => {
     if (!life || lifeRef.current !== life || life.signal.aborted || !currentSource() || !Number.isSafeInteger(index) || index < 0 || index >= count) return;
-    const target: ReaderLocation = {format: format === 'pdf' ? 'pdf' : 'cbz', page: index, progression: count === 1 ? 0 : index / (count - 1)};
+    const target: ReaderLocation = {format: isComicReadingFormat(format) ? format : 'pdf', page: index, progression: count === 1 ? 0 : index / (count - 1)};
     void controller.navigate({kind: 'location', location: target}, life.signal).then(() => {if (lifeRef.current === life && !life.signal.aborted && currentSource()) onNavigate?.();}).catch(error => {
       if (lifeRef.current === life && !life.signal.aborted && currentSource()) reportError(readerErrorCode(error));
     });
@@ -155,7 +156,7 @@ export function FixedPageMenus({controller, authority, reportError, format, open
       <MenuItem selected={!preferences.twoPages} onSelect={() => override({twoPages: false})}>{t('next.reader.onePage')}</MenuItem>
       <MenuItem selected={preferences.twoPages} onSelect={() => override({twoPages: true})}>{t('next.reader.twoPages')}</MenuItem>
     </Menu>
-    {format === 'cbz' && <Menu open={open === 'direction'} onOpenChange={value => onOpenChange(value ? 'direction' : undefined)} title={t('next.reader.direction')} anchorRef={directionRef}>
+    {isComicReadingFormat(format) && <Menu open={open === 'direction'} onOpenChange={value => onOpenChange(value ? 'direction' : undefined)} title={t('next.reader.direction')} anchorRef={directionRef}>
       {(['file', 'ltr', 'rtl'] as const).map(direction => <MenuItem key={direction} selected={preferences.comicDirection === direction}
         onSelect={() => override({comicDirection: direction})}>{t(direction === 'file' ? 'next.reader.directionFile' : direction === 'ltr' ? 'next.reader.directionLtr' : 'next.reader.directionRtl')}</MenuItem>)}
     </Menu>}

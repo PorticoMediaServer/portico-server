@@ -60,6 +60,10 @@ func (d Dependencies) readingFileSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer f.Close()
+	if f.Format == "image-folder" {
+		readingFailure(w, reading.ErrUnavailable)
+		return
+	}
 	check := func() error {
 		tx, err := d.DB.BeginTx(f.Context(), &sql.TxOptions{ReadOnly: true})
 		if err != nil {

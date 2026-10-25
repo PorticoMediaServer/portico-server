@@ -191,9 +191,36 @@ CREATE INDEX retained_title_identities_state ON retained_title_identities(state_
 CREATE TABLE reading_publications(
  item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  asset_id INTEGER NOT NULL UNIQUE REFERENCES catalog_assets(id) ON DELETE CASCADE,
- format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz','mobi','azw3')),
+ format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz','mobi','azw3','image-folder')),
  PRIMARY KEY(item_id,asset_id),
  FOREIGN KEY(item_id,asset_id) REFERENCES catalog_asset_links(entity_id,asset_id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
+-- One complete accepted LOCAL directory. The anchor is the real first page's
+-- physical asset, never an archive or a generated file. Members retain the
+-- original accepted object/revision tuple and cannot be supplied by a guest.
+CREATE TABLE reading_image_folders(
+ asset_id INTEGER PRIMARY KEY REFERENCES reading_publications(asset_id) ON DELETE CASCADE,
+ source_id TEXT NOT NULL REFERENCES library_sources(id) ON DELETE CASCADE,
+ generation INTEGER NOT NULL CHECK(generation>0),
+ root_incarnation TEXT NOT NULL, root_identity TEXT NOT NULL,
+ directory_path TEXT NOT NULL, directory_identity TEXT NOT NULL, directory_object TEXT NOT NULL,
+ directory_revision TEXT NOT NULL, job_id TEXT NOT NULL,
+ member_revision TEXT NOT NULL CHECK(length(member_revision)=64),
+ member_count INTEGER NOT NULL CHECK(member_count BETWEEN 1 AND 4097),
+ total_size INTEGER NOT NULL CHECK(total_size>0 AND total_size<=2147483648),
+ available INTEGER NOT NULL DEFAULT 0 CHECK(available IN(0,1))
+) STRICT;
+CREATE INDEX reading_image_folders_source ON reading_image_folders(source_id,directory_path);
+CREATE UNIQUE INDEX reading_image_folders_current ON reading_image_folders(source_id,directory_path) WHERE available=1;
+CREATE TABLE reading_image_members(
+ folder_asset_id INTEGER NOT NULL REFERENCES reading_image_folders(asset_id) ON DELETE CASCADE,
+ position INTEGER NOT NULL CHECK(position>=0 AND position<=4096),
+ inventory_object_id TEXT NOT NULL REFERENCES inventory_objects(id) ON DELETE CASCADE,
+ relative_path TEXT NOT NULL, object_identity TEXT NOT NULL, revision TEXT NOT NULL,
+ evidence_json TEXT NOT NULL, size INTEGER NOT NULL CHECK(size>0 AND size<=33554432),
+ modified_ns INTEGER NOT NULL,
+ PRIMARY KEY(folder_asset_id,position), UNIQUE(folder_asset_id,relative_path)
+) WITHOUT ROWID, STRICT;
+CREATE INDEX reading_image_members_object ON reading_image_members(inventory_object_id);
 CREATE TABLE reading_source_values(
  item_id INTEGER NOT NULL,
  asset_id INTEGER NOT NULL,
@@ -213,7 +240,7 @@ CREATE TABLE reading_publication_types(
  item_id INTEGER NOT NULL,
  asset_id INTEGER NOT NULL,
  publication_type TEXT CHECK(publication_type IS NULL OR publication_type IN('book','magazine','newspaper')),
- source_format TEXT NOT NULL CHECK(source_format IN('epub','cbz')),
+ source_format TEXT NOT NULL CHECK(source_format IN('epub','cbz','image-folder')),
  source_field TEXT NOT NULL CHECK(length(source_field) BETWEEN 1 AND 256),
  source_raw_json TEXT NOT NULL CHECK(json_valid(source_raw_json) AND json_type(source_raw_json)='array' AND json_array_length(source_raw_json)<=64 AND length(source_raw_json)<=262144),
  evidence_complete INTEGER NOT NULL CHECK(evidence_complete IN(0,1)),
@@ -255,7 +282,7 @@ CREATE TABLE reading_annotations(
  source_revision TEXT NOT NULL CHECK(length(source_revision) BETWEEN 1 AND 256),
  id TEXT NOT NULL CHECK(length(id) BETWEEN 1 AND 64),
  kind TEXT NOT NULL CHECK(kind IN('bookmark','highlight')),
- format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz')),
+ format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz','image-folder')),
  cfi TEXT CHECK(cfi IS NULL OR length(cfi)<=4096),
  section TEXT CHECK(section IS NULL OR length(section)<=1024),
  page_index INTEGER,
@@ -268,7 +295,7 @@ CREATE TABLE reading_annotations(
  PRIMARY KEY(owner_key,item_id,asset_id,source_revision,id),
  FOREIGN KEY(owner_key,item_id,asset_id,source_revision) REFERENCES reading_annotation_sets(owner_key,item_id,asset_id,source_revision) ON DELETE CASCADE,
  CHECK((kind='bookmark' AND quote='' AND colour='') OR (kind='highlight' AND length(quote)>0 AND colour IN('yellow','green','blue','pink'))),
- CHECK((format='epub' AND cfi IS NOT NULL AND page_index IS NULL) OR (format IN('pdf','cbz') AND cfi IS NULL AND section IS NULL AND page_index IS NOT NULL AND page_index BETWEEN 0 AND 1000000))) WITHOUT ROWID, STRICT;
+ CHECK((format='epub' AND cfi IS NOT NULL AND page_index IS NULL) OR (format IN('pdf','cbz','image-folder') AND cfi IS NULL AND section IS NULL AND page_index IS NOT NULL AND page_index BETWEEN 0 AND 1000000))) WITHOUT ROWID, STRICT;
 CREATE TABLE reading_annotation_rects(
  owner_key TEXT NOT NULL,
  item_id INTEGER NOT NULL,
@@ -288,7 +315,7 @@ CREATE TABLE reading_progress(
  item_id INTEGER NOT NULL,
  asset_id INTEGER NOT NULL,
  source_revision TEXT NOT NULL CHECK(length(source_revision) BETWEEN 1 AND 256),
- format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz')),
+ format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz','image-folder')),
  cfi TEXT CHECK(cfi IS NULL OR length(cfi)<=8192),
  section TEXT CHECK(section IS NULL OR length(section)<=4096),
  page_index INTEGER,
@@ -297,14 +324,14 @@ CREATE TABLE reading_progress(
  observed_at INTEGER NOT NULL CHECK(observed_at BETWEEN 0 AND 9007199254740991),
  PRIMARY KEY(owner_key,item_id,asset_id),
  FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE,
- CHECK((format='epub' AND page_index IS NULL) OR (format IN('pdf','cbz') AND page_index IS NOT NULL AND page_index BETWEEN 0 AND 9007199254740991 AND cfi IS NULL AND section IS NULL))) WITHOUT ROWID, STRICT;
+ CHECK((format='epub' AND page_index IS NULL) OR (format IN('pdf','cbz','image-folder') AND page_index IS NOT NULL AND page_index BETWEEN 0 AND 9007199254740991 AND cfi IS NULL AND section IS NULL))) WITHOUT ROWID, STRICT;
 CREATE INDEX reading_progress_publication ON reading_progress(item_id,asset_id);
 CREATE INDEX reading_progress_recent ON reading_progress(owner_key,observed_at DESC,item_id DESC,asset_id DESC);
 CREATE TABLE retained_reading_progress(
  state_id INTEGER NOT NULL REFERENCES retained_title_state(id) ON DELETE CASCADE,
  source_id TEXT NOT NULL CHECK(length(source_id)>0),
  source_revision TEXT NOT NULL CHECK(length(source_revision) BETWEEN 1 AND 256),
- format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz')),
+ format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz','image-folder')),
  cfi TEXT CHECK(cfi IS NULL OR length(cfi)<=8192),
  section TEXT CHECK(section IS NULL OR length(section)<=4096),
  page_index INTEGER,
@@ -312,7 +339,7 @@ CREATE TABLE retained_reading_progress(
  revision INTEGER NOT NULL CHECK(revision BETWEEN 1 AND 9007199254740991),
  observed_at INTEGER NOT NULL CHECK(observed_at BETWEEN 0 AND 9007199254740991),
  PRIMARY KEY(state_id,source_id),
- CHECK((format='epub' AND page_index IS NULL) OR (format IN('pdf','cbz') AND page_index IS NOT NULL AND page_index BETWEEN 0 AND 9007199254740991 AND cfi IS NULL AND section IS NULL))) WITHOUT ROWID, STRICT;
+ CHECK((format='epub' AND page_index IS NULL) OR (format IN('pdf','cbz','image-folder') AND page_index IS NOT NULL AND page_index BETWEEN 0 AND 9007199254740991 AND cfi IS NULL AND section IS NULL))) WITHOUT ROWID, STRICT;
 CREATE TABLE catalog_shows(
  entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
  local_key TEXT NOT NULL,
@@ -2195,7 +2222,7 @@ CREATE TABLE inventory_source_active (
 CREATE TABLE inventory_directories (
  job_id TEXT NOT NULL REFERENCES jobs(id), relative_path TEXT NOT NULL,
  identity TEXT NOT NULL DEFAULT '', revision TEXT NOT NULL DEFAULT '', cursor TEXT NOT NULL DEFAULT '',
- state TEXT NOT NULL DEFAULT 'pending', pages INTEGER NOT NULL DEFAULT 0, skipped INTEGER NOT NULL DEFAULT 0,
+ state TEXT NOT NULL DEFAULT 'pending', pages INTEGER NOT NULL DEFAULT 0, skipped INTEGER NOT NULL DEFAULT 0, entries INTEGER NOT NULL DEFAULT 0,
  PRIMARY KEY(job_id,relative_path)
 ) STRICT;
 CREATE TABLE inventory_objects (
@@ -5164,9 +5191,26 @@ INSERT INTO catalog_visibility_sort_state(id,turn,class_cursor,generation_cursor
 INSERT INTO catalog_book_evidence_clock(id,turn) VALUES(1,0);
 INSERT INTO catalog_book_group_visible_state(id,turn,file_cursor,backfill_done) VALUES(1,0,0,0);
 INSERT INTO catalog_content_eligible_state(id,after_entity_id,backfill_done,turn) VALUES(1,0,0,0);
+-- Accepted folder versions survive temporary unavailability. Personal progress
+-- and annotations retain their original publication FK while reads are withheld.
+CREATE VIEW reading_image_folder_availability AS
+ SELECT folder.asset_id,CASE WHEN folder.available=1 AND source.kind='local'
+ AND source.enabled=1 AND source.health NOT IN('offline','root_changed','removing')
+ AND folder.generation=source.generation AND folder.root_incarnation=source.incarnation AND folder.root_identity=source.root_identity
+ AND folder.member_count BETWEEN 1 AND 4097
+ AND folder.member_count=(SELECT count(*) FROM reading_image_members m WHERE m.folder_asset_id=folder.asset_id)
+ AND folder.total_size=(SELECT sum(size) FROM reading_image_members m WHERE m.folder_asset_id=folder.asset_id)
+ AND NOT EXISTS(SELECT 1 FROM reading_image_members m LEFT JOIN inventory_objects o ON o.id=m.inventory_object_id
+ WHERE m.folder_asset_id=folder.asset_id AND (o.id IS NULL OR o.source_id<>source.id OR o.root_incarnation<>source.incarnation
+ OR o.retired<>0 OR o.state<>'available' OR o.unsupported_reason<>'' OR o.seen_job<>folder.job_id
+ OR o.relative_path<>m.relative_path OR o.object_identity<>m.object_identity OR o.revision<>m.revision
+ OR o.evidence_json<>m.evidence_json OR o.size<>m.size OR o.modified_ns<>m.modified_ns))
+ THEN 1 ELSE 0 END AS available
+ FROM reading_image_folders folder JOIN library_sources source ON source.id=folder.source_id;
 CREATE VIEW inventory_item_availability AS
  SELECT l.entity_id AS item_id,a.token AS asset_id,
  CASE WHEN EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=l.entity_id) THEN 0
+ WHEN EXISTS(SELECT 1 FROM reading_publications p WHERE p.item_id=l.entity_id AND p.asset_id=a.id AND p.format='image-folder') THEN COALESCE((SELECT available FROM reading_image_folder_availability WHERE asset_id=a.id),0)
  WHEN EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.asset_id=a.token AND s.library_id=cl.library_id)
  THEN EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.asset_id=a.token AND s.library_id=cl.library_id AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND s.enabled=1 AND s.health NOT IN('offline','root_changed','removing') AND o.root_incarnation=s.incarnation)
  ELSE a.available=1 AND CASE

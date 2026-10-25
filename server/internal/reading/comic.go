@@ -67,41 +67,11 @@ func openComicArchive(ctx context.Context, a *archive) (*Comic, error) {
 		if err != nil {
 			return nil, err
 		}
-		var info struct {
-			XMLName                           xml.Name
-			Title, Writer, Manga, LanguageISO string
-			Format                            []struct {
-				XMLName xml.Name
-				Value   string `xml:",chardata"`
-				Inner   string `xml:",innerxml"`
-			} `xml:"Format"`
-		}
-		if err = decodeXML(b, &info); err != nil {
+		metadata, err := comicMetadata(b)
+		if err != nil {
 			return nil, err
 		}
-		c.Metadata.Title, c.Metadata.Author, c.Metadata.Language = info.Title, info.Writer, info.LanguageISO
-		c.Metadata.PublicationTypeField = "ComicInfo/Format"
-		if info.XMLName.Space == "" && info.XMLName.Local == "ComicInfo" {
-			values := []string{}
-			scalar := true
-			for _, field := range info.Format {
-				if field.XMLName.Space == "" && field.XMLName.Local == "Format" {
-					values = append(values, field.Value)
-					scalar = scalar && !strings.Contains(field.Inner, "<")
-				}
-			}
-			c.Metadata.PublicationTypeRaw, c.Metadata.PublicationTypeComplete = boundedTypeEvidence(values)
-			c.Metadata.PublicationTypeComplete = c.Metadata.PublicationTypeComplete && scalar
-			if c.Metadata.PublicationTypeComplete && len(values) == 1 {
-				c.Metadata.ExplicitPublicationType = explicitPublicationType(values)
-			}
-		}
-		if len(c.Metadata.Title) > 4096 || len(c.Metadata.Author) > 4096 || len(c.Metadata.Language) > 64 {
-			return nil, ErrLimit
-		}
-		if info.Manga == "YesAndRightToLeft" {
-			c.Metadata.Direction = "rtl"
-		}
+		c.Metadata = metadata
 	}
 	return c, nil
 }
@@ -233,4 +203,48 @@ func naturalLess(a, b string) bool {
 		return aa < bb
 	}
 	return a < b
+}
+
+// comicMetadata is shared by archives and admitted direct ComicInfo.xml.
+func comicMetadata(b []byte) (Metadata, error) {
+	if len(b) > 256<<10 {
+		return Metadata{}, ErrLimit
+	}
+	var metadata Metadata
+	var info struct {
+		XMLName                           xml.Name
+		Title, Writer, Manga, LanguageISO string
+		Format                            []struct {
+			XMLName xml.Name
+			Value   string `xml:",chardata"`
+			Inner   string `xml:",innerxml"`
+		} `xml:"Format"`
+	}
+	if err := decodeXML(b, &info); err != nil {
+		return Metadata{}, err
+	}
+	metadata.Title, metadata.Author, metadata.Language = info.Title, info.Writer, info.LanguageISO
+	metadata.PublicationTypeField = "ComicInfo/Format"
+	if info.XMLName.Space == "" && info.XMLName.Local == "ComicInfo" {
+		values := []string{}
+		scalar := true
+		for _, field := range info.Format {
+			if field.XMLName.Space == "" && field.XMLName.Local == "Format" {
+				values = append(values, field.Value)
+				scalar = scalar && !strings.Contains(field.Inner, "<")
+			}
+		}
+		metadata.PublicationTypeRaw, metadata.PublicationTypeComplete = boundedTypeEvidence(values)
+		metadata.PublicationTypeComplete = metadata.PublicationTypeComplete && scalar
+		if metadata.PublicationTypeComplete && len(values) == 1 {
+			metadata.ExplicitPublicationType = explicitPublicationType(values)
+		}
+	}
+	if len(metadata.Title) > 4096 || len(metadata.Author) > 4096 || len(metadata.Language) > 64 {
+		return Metadata{}, ErrLimit
+	}
+	if info.Manga == "YesAndRightToLeft" {
+		metadata.Direction = "rtl"
+	}
+	return metadata, nil
 }

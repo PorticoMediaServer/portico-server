@@ -10,9 +10,9 @@ func (s *Service) bookFormatsSQL() string {
 }
 func (s *Service) sourceFormatsSQL() string {
 	if s.Mobi != nil {
-		return "'epub','pdf','cbz','mobi','azw3'"
+		return "'epub','pdf','cbz','mobi','azw3','image-folder'"
 	}
-	return "'epub','pdf','cbz'"
+	return "'epub','pdf','cbz','image-folder'"
 }
 
 // Apply conversion readiness BEFORE choosing a primary version and LIMIT, so an

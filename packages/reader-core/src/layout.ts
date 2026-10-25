@@ -1,3 +1,4 @@
+import type {ComicReadingFormat} from '../../client-core/src/reading-format.ts';
 import {ReaderError} from './errors.ts';
 import type {ReaderFit, ReaderViewport} from './ports.ts';
 export function validateViewport(viewport: ReaderViewport): void {
@@ -38,7 +39,7 @@ export function compactLandscape(viewport: ReaderViewport): boolean {
   return viewport.width < 1024 && viewport.height < 600 && viewport.width > viewport.height;
 }
 export type FixedLayoutInput = Readonly<{
-  format: 'pdf' | 'cbz'; viewport: ReaderViewport; page: number; pageCount: number;
+  format: 'pdf' | ComicReadingFormat; viewport: ReaderViewport; page: number; pageCount: number;
   twoPages: boolean; firstPageAlone: boolean; direction: 'ltr' | 'rtl' | 'vertical'; fit: ReaderFit | 'auto';
 }>;
 /** Logical order never reverses: RTL changes presentation and input direction,

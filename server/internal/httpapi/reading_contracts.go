@@ -5,15 +5,15 @@ package httpapi
 type ReadingFormat string
 
 func (ReadingFormat) JSONSchema() map[string]any {
-	return map[string]any{"type": "string", "enum": []string{"epub", "pdf", "cbz"}}
+	return map[string]any{"type": "string", "enum": []string{"epub", "pdf", "cbz", "image-folder"}}
 }
 
 // ReadingSourceFormat describes the real original file. Conversion never widens
-// ReadingFormat, which remains the EPUB/PDF/CBZ engine/publication coordinate union.
+// ReadingFormat, which remains the engine/publication coordinate union.
 type ReadingSourceFormat string
 
 func (ReadingSourceFormat) JSONSchema() map[string]any {
-	return map[string]any{"type": "string", "enum": []string{"epub", "pdf", "cbz", "mobi", "azw3"}}
+	return map[string]any{"type": "string", "enum": []string{"epub", "pdf", "cbz", "mobi", "azw3", "image-folder"}}
 }
 
 type ReadingDirection string

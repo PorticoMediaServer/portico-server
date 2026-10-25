@@ -54,6 +54,7 @@ func (d Dependencies) readingRoutes(mux *http.ServeMux) {
 	register("GET /v1/libraries/{libraryId}/reading/periodicals/{seriesId}/issues", []string{"publicationType", "issueDate", "year", "month", "cursor", "limit"}, d.readingPeriodicalIssues)
 	register("GET /v1/reading/continue", []string{"libraryId", "cursor", "limit"}, d.readingContinue)
 	register("GET /v1/items/{itemId}/reading/versions", nil, d.readingVersions)
+	register("GET /v1/items/{itemId}/reading/cover", []string{"sourceId", "sourceRevision", "width", "w"}, d.readingImageFolderCover)
 	register("POST /v1/reading/offline/progress", nil, d.readingOfflineProgress)
 	register("POST /v1/reading/sessions", nil, d.prepareReadingSession)
 	register("POST /v1/reading/sessions/{sessionId}/file-save", nil, d.readingFileSave)
@@ -188,7 +189,7 @@ func (d Dependencies) prepareReadingSession(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	v, m := document.Selection, document.Metadata
-	out := ReadingSessionResponse{CanAnnotate: reading.CanAnnotate(p), Sequential: document.Sequential, SessionID: session.ID, ItemID: v.ItemID, SourceID: v.SourceID, Revision: v.Revision, Format: ReadingFormat(v.Format), Size: v.Size, Metadata: ReadingMetadata{Title: m.Title, Author: m.Author, Language: m.Language, Direction: ReadingDirection(m.Direction), CoverURL: m.CoverURL}, Spine: document.Spine, PageNames: document.PageNames}
+	out := ReadingSessionResponse{CanAnnotate: reading.CanAnnotate(p), Sequential: document.Sequential, SessionID: session.ID, ItemID: v.ItemID, SourceID: v.SourceID, Revision: v.Revision, Format: ReadingFormat(v.Format), Size: v.ByteSize(), Metadata: ReadingMetadata{Title: m.Title, Author: m.Author, Language: m.Language, Direction: ReadingDirection(m.Direction), CoverURL: m.CoverURL}, Spine: document.Spine, PageNames: document.PageNames}
 	out.Conversion = readingConversionProjection(document.Conversion)
 	readingManifestFactsProjection(&out.Metadata, m)
 	// This optional offer is descriptive only; the transfer rechecks the exact
@@ -197,7 +198,7 @@ func (d Dependencies) prepareReadingSession(w http.ResponseWriter, r *http.Reque
 	if document.Conversion != nil {
 		saveSize = document.Conversion.OriginalSize
 	}
-	if saveSize > 0 && saveSize <= 64<<20 {
+	if v.Format != "image-folder" && saveSize > 0 && saveSize <= 64<<20 {
 		tx, err := d.DB.BeginTx(r.Context(), nil)
 		if err == nil {
 			out.CanSaveFile, _ = downloads.ProfileAllowsDownloads(tx, p.Viewer)

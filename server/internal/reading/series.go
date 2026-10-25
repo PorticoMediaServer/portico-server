@@ -83,7 +83,7 @@ func (s *Service) Series(ctx context.Context, p identity.Principal, library, ser
  JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=` + s.primaryPublicationSQL() + `
  JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id JOIN catalog_assets a ON a.id=p.asset_id
  WHERE m.library_id=? AND m.generation=? AND m.series_id=? AND e.retired=0 AND cl.retired=0
- AND ((lib.kind='book' AND e.kind=20 AND p.format IN(` + s.bookFormatsSQL() + `)) OR (lib.kind='comic' AND e.kind=21 AND p.format IN('cbz','pdf')))
+ AND ((lib.kind='book' AND e.kind=20 AND p.format IN(` + s.bookFormatsSQL() + `)) OR (lib.kind='comic' AND e.kind=21 AND p.format IN('cbz','pdf','image-folder')))
  AND (` + filter + `)`
 	args := append([]any{handle, generation.Ready, series}, visibleArgs...)
 	var after *seriesTuple

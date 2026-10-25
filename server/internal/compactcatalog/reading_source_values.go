@@ -48,10 +48,10 @@ func readingAutomaticValuesTx(ctx context.Context, tx *sql.Tx, items []int64) (m
  JOIN catalog_asset_links link ON link.entity_id=p.item_id AND link.asset_id=p.asset_id
  JOIN catalog_assets a ON a.id=p.asset_id
  JOIN reading_source_values v ON v.item_id=p.item_id AND v.asset_id=p.asset_id
- JOIN inventory_objects o ON o.id=v.inventory_object_id AND o.asset_id=a.token AND o.revision=v.source_revision AND o.retired=0
+ JOIN inventory_objects o ON o.id=v.inventory_object_id AND o.asset_id=a.token AND (p.format='image-folder' OR o.revision=v.source_revision) AND o.retired=0
  JOIN library_sources s ON s.id=o.source_id AND s.library_id=cl.library_id AND s.incarnation=o.root_incarnation
  WHERE e.id IN (` + strings.Join(marks, ",") + `) AND e.retired=0 AND cl.retired=0
- AND ((e.kind=20 AND lib.kind='book' AND p.format IN('epub','pdf','mobi','azw3')) OR (e.kind=21 AND lib.kind='comic' AND p.format IN('cbz','pdf')))
+ AND ((e.kind=20 AND lib.kind='book' AND p.format IN('epub','pdf','mobi','azw3')) OR (e.kind=21 AND lib.kind='comic' AND p.format IN('cbz','pdf','image-folder')))
  ORDER BY e.id,v.field,CASE v.source WHEN 'file-metadata' THEN 0 WHEN 'file-name' THEN 1 ELSE 2 END`
 	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -117,11 +117,15 @@ func readingAutomaticValuesTx(ctx context.Context, tx *sql.Tx, items []int64) (m
       JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=(SELECT primary_version.asset_id FROM reading_publications primary_version WHERE primary_version.item_id=e.id ORDER BY EXISTS(SELECT 1 FROM inventory_item_availability eligible WHERE eligible.item_id=primary_version.item_id AND eligible.asset_id=(SELECT token FROM catalog_assets WHERE id=primary_version.asset_id) AND eligible.available=1) DESC,primary_version.asset_id LIMIT 1)
       JOIN catalog_asset_links link ON link.entity_id=p.item_id AND link.asset_id=p.asset_id JOIN catalog_assets a ON a.id=p.asset_id
       JOIN reading_publication_types v ON v.item_id=p.item_id AND v.asset_id=p.asset_id
-      JOIN inventory_objects o ON o.id=v.inventory_object_id AND o.asset_id=a.token AND o.revision=v.source_revision AND o.retired=0
+      JOIN inventory_objects o ON o.id=v.inventory_object_id AND o.asset_id=a.token AND (p.format='image-folder' OR o.revision=v.source_revision) AND o.retired=0
       JOIN library_sources s ON s.id=o.source_id AND s.library_id=cl.library_id AND s.incarnation=o.root_incarnation
       WHERE e.id IN (`+strings.Join(marks, ",")+`) AND e.retired=0 AND cl.retired=0
-      AND ((e.kind=20 AND lib.kind='book' AND p.format='epub') OR (e.kind=21 AND lib.kind='comic' AND p.format='cbz'))
+      AND ((e.kind=20 AND lib.kind='book' AND p.format='epub') OR (e.kind=21 AND lib.kind='comic' AND p.format IN('cbz','image-folder')))
       AND v.source_format=p.format
+      AND (p.format<>'image-folder' OR EXISTS(SELECT 1 FROM reading_image_folders folder
+       JOIN reading_image_folder_availability ready ON ready.asset_id=folder.asset_id
+       WHERE folder.asset_id=p.asset_id AND ready.available=1 AND folder.source_id=s.id
+       AND folder.root_incarnation=s.incarnation AND folder.member_revision=v.source_revision))
       AND v.publication_type IS NOT NULL AND v.evidence_complete=1 AND v.classifier_version=?`, append(append([]any(nil), args...), ReadingPublicationTypeRuleVersion)...)
 	if err != nil {
 		return nil, err

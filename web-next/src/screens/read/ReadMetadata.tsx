@@ -1,3 +1,4 @@
+import {isComicReadingFormat} from '@core/reading-format.ts';
 import {useEffect, useState, type RefObject} from 'react';
 import {defaultI18n} from '@i18n';
 import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
@@ -37,7 +38,7 @@ export function ReadMetadata({context, itemId, libraryId: expectedLibraryId, onC
   const owner = context.identity?.viewer;
   if (!context.isCurrent() || owner?.authority !== 'local' || owner.role !== 'owner') return null;
   return <Dialog open placement="right" width={520} title={defaultI18n.t('entry.editMetadata')} onOpenChange={open => {if (!open) onClose();}} returnFocusRef={anchor}>
-    {ready ? <MetadataEditor localArtworkOnly renderCoverPages={reading && sourceId && format === 'cbz' ? (upload, busy) => <ReadCoverPages reading={reading} context={context} itemId={itemId} sourceId={sourceId} upload={upload} busy={busy}/> : undefined} api={ready.api} scope={context.scope} target={ready.target} onClose={onClose}/>
+    {ready ? <MetadataEditor localArtworkOnly renderCoverPages={reading && sourceId && isComicReadingFormat(format) ? (upload, busy) => <ReadCoverPages reading={reading} context={context} itemId={itemId} sourceId={sourceId} upload={upload} busy={busy}/> : undefined} api={ready.api} scope={context.scope} target={ready.target} onClose={onClose}/>
       : failed ? <StateView title={defaultI18n.t('next.states.pageFailed')} body={defaultI18n.t('next.states.pageFailedBody')}
         primary={{id: 'retry', label: defaultI18n.t('next.states.tryAgain'), onPress: () => setRetry(value => value + 1)}}/> : <Skeleton height={480}/>}
   </Dialog>;

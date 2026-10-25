@@ -41,7 +41,7 @@ func Inspect(f *Source) (Publication, error) {
 		if err != nil {
 			return out, err
 		}
-	case "cbz":
+	case "cbz", "image-folder":
 		c, err := f.comic()
 		if err != nil {
 			return out, err
@@ -124,7 +124,7 @@ func (s *Service) List(ctx context.Context, p identity.Principal, library, curso
  JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id
  JOIN catalog_assets a ON a.id=p.asset_id
  WHERE e.retired=0 AND cl.retired=0
- AND ((lib.kind='book' AND e.kind=20 AND p.format IN(` + s.bookFormatsSQL() + `)) OR (lib.kind='comic' AND e.kind=21 AND p.format IN('cbz','pdf')))
+ AND ((lib.kind='book' AND e.kind=20 AND p.format IN(` + s.bookFormatsSQL() + `)) OR (lib.kind='comic' AND e.kind=21 AND p.format IN('cbz','pdf','image-folder')))
  AND e.id>? AND (?='' OR cl.library_id=?) AND (` + filter + `) ORDER BY e.id LIMIT ?`
 	values := append([]any{after, library, library}, args...)
 	values = append(values, limit+1)
@@ -181,7 +181,7 @@ func (s *Service) Versions(ctx context.Context, p identity.Principal, item strin
 	if err = s.Authorize(ctx, tx, p, library, item); err != nil {
 		return nil, err
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT a.token,p.format,a.size,EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=p.item_id AND available.asset_id=a.token AND available.available=1) FROM reading_publications p JOIN catalog_entities e ON e.id=p.item_id JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id JOIN catalog_assets a ON a.id=link.asset_id WHERE e.public_id=pid_blob(?) AND p.format IN(`+s.sourceFormatsSQL()+`) ORDER BY a.id LIMIT 129`, item)
+	rows, err := tx.QueryContext(ctx, `SELECT a.token,p.format,COALESCE((SELECT total_size FROM reading_image_folders WHERE asset_id=p.asset_id),a.size),CASE WHEN p.format='image-folder' THEN EXISTS(SELECT 1 FROM library_sources s JOIN inventory_objects o ON o.source_id=s.id WHERE o.asset_id=a.token AND s.library_id=? AND `+publicationObjectEligible+`) ELSE EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=p.item_id AND available.asset_id=a.token AND available.available=1) END FROM reading_publications p JOIN catalog_entities e ON e.id=p.item_id JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id JOIN catalog_assets a ON a.id=link.asset_id WHERE e.public_id=pid_blob(?) AND p.format IN(`+s.sourceFormatsSQL()+`) ORDER BY a.id LIMIT 129`, library, item)
 	if err != nil {
 		return nil, err
 	}
