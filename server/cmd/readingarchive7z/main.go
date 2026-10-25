@@ -47,7 +47,11 @@ func main() {
 // run keeps every owned resource unwinding through defers before main exits; a
 // fail path returns an error instead of calling os.Exit inside a worker.
 func run() error {
-	limitProcess()
+	// The isolation this helper provides depends on real resource limits: a
+	// platform that cannot set them refuses to parse anything.
+	if err := limitProcess(); err != nil {
+		return err
+	}
 	if len(os.Args) < 2 {
 		return errors.New("mode required")
 	}

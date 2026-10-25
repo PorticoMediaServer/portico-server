@@ -61,9 +61,23 @@ func runCB7Helper(ctx context.Context, ra io.ReaderAt, size int64, args ...strin
 	}
 	deadline, cancel := context.WithTimeout(ctx, cb7HelperTimeout)
 	defer cancel()
+	// The archive is staged into the parent-owned scratch root under the same
+	// deadline first: exec's stdin copy cannot hang on a blocked Source.ReadAt,
+	// because the helper reads a local, fully written file.
+	staged, err := stageCB7Archive(deadline, ra, size, scratch)
+	if err != nil {
+		_ = os.RemoveAll(scratch)
+		return nil, err
+	}
+	input, err := os.Open(staged)
+	if err != nil {
+		_ = os.RemoveAll(scratch)
+		return nil, ErrLimit
+	}
+	defer input.Close()
 	command := exec.CommandContext(deadline, path, args...)
 	command.Env = []string{"TMPDIR=" + scratch, "HOME=" + scratch, "PATH="}
-	command.Stdin = io.NewSectionReader(ra, 0, size)
+	command.Stdin = input
 	stdout, pipeErr := command.StdoutPipe()
 	if pipeErr != nil {
 		_ = os.RemoveAll(scratch)
@@ -136,4 +150,45 @@ func cb7MemberBytes(ctx context.Context, ra io.ReaderAt, size int64, name string
 		return nil, ErrInvalid
 	}
 	return body, nil
+}
+
+// stageCB7Archive copies the leased bytes into the parent-owned scratch root in
+// bounded chunks, checking the request's deadline on every chunk. A source that
+// blocks stops here, before any helper starts; nothing detached is left behind.
+func stageCB7Archive(ctx context.Context, ra io.ReaderAt, size int64, scratch string) (string, error) {
+	path := filepath.Join(scratch, "archive.7z")
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0600)
+	if err != nil {
+		return "", ErrLimit
+	}
+	defer file.Close()
+	const chunk = 1 << 20
+	buffer := make([]byte, chunk)
+	written := int64(0)
+	for written < size {
+		if err := ctx.Err(); err != nil {
+			return "", err
+		}
+		want := int64(chunk)
+		if size-written < want {
+			want = size - written
+		}
+		read, readErr := ra.ReadAt(buffer[:want], written)
+		if read > 0 {
+			if _, writeErr := file.Write(buffer[:read]); writeErr != nil {
+				return "", ErrLimit
+			}
+			written += int64(read)
+		}
+		if readErr != nil && readErr != io.EOF {
+			return "", ErrArchiveFormat
+		}
+		if read == 0 {
+			return "", ErrArchiveFormat
+		}
+	}
+	if err := file.Sync(); err != nil {
+		return "", ErrLimit
+	}
+	return path, nil
 }

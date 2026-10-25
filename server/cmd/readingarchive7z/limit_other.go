@@ -2,6 +2,10 @@
 
 package main
 
-// limitProcess is a no-op where the platform rlimits are unavailable; the
-// parent's process-group kill, deadline and scratch removal remain mandatory.
-func limitProcess() {}
+import "errors"
+
+// limitProcess refuses to run where the resource limits this isolation relies on
+// cannot be set; there is no silent unbounded fallback.
+func limitProcess() error {
+	return errors.New("bounded archive decoding is unavailable on this platform")
+}
