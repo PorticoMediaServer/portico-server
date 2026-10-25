@@ -9,12 +9,14 @@ import {settingsRowIndex, type SettingsRow} from '@core/presentation/settings-sp
  * packages/client-core/src/post-play.ts and up-next.ts. The two watched/started
  * percentages are read by server/internal/catalog/personal_activity.go when it
  * records a play, so they decide the watched and continue-watching state the
- * screens show. resumeRewindMs/stopAtSeasonEnd stay out: they have no engine. */
+ * screens show. The audiobook controls use the current shell steps and the
+ * listening/server resume path; stopAtSeasonEnd still has no engine. */
 const preferenceEffects = new Set([
   'playback.autoplayNext', 'playback.upNextCountdownMs', 'playback.startNextDuringCredits',
   'playback.playedThresholdPercent', 'playback.startedThresholdPercent',
   'playback.defaultSpeed', 'playback.introSkip', 'playback.creditsSkip', 'playback.recapSkip',
   'playback.passoutProtection', 'playback.passoutAfterEpisodes', 'playback.skipBackMs', 'playback.skipForwardMs', 'audiobooks.defaultSpeed',
+  'audiobooks.skipBackMs', 'audiobooks.skipForwardMs', 'audiobooks.resumeRewindMs',
   'accessibility.reducedMotion', 'appearance.motion', 'appearance.showBackdrops', 'appearance.cardSizePercent',
   'appearance.libraryView', 'appearance.episodesLayout', 'notifications.badges',
   // `shellLanguage` builds the shell's one I18n from regionPreferences, so words, clock,

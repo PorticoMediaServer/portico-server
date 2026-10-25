@@ -1,4 +1,3 @@
-import {preferenceValue} from '@core/preferences.ts';
 import {appearancePreferences} from '@core/preference-effects.ts';
 import {homeSelectionContext} from '@core/home-selection/index.ts';
 import type {SelectionContext} from '@core/selection-model/index.ts';
@@ -15,7 +14,7 @@ import {ShellFeedback, ShellFeedbackHost} from './Feedback';
 import {entryDestination, seeAllDestination} from './navigation';
 import {hasDock} from './playback-model';
 import {createShellSelection} from './selection';
-import {shellLanguage, shellPlaybackSettings} from './settings';
+import {shellLanguage, shellPlaybackSettings, shellPlaybackSkips} from './settings';
 import {homePlaybackItem} from '../screens/home/model';
 import type {HomeSelection} from '../screens/home/Home';
 import type {ShellPlaybackBinding} from './Playback';
@@ -60,7 +59,7 @@ export const assembleShellBindings: ShellAssembler = async context => {
       const playback = runtime.selectionPlayback(homeCurrent), selection = createShellSelection(context, playback, feedback.reportError, dockVisible);
       owned.push(selection.dispose, runtime.subscribe(changed), selection.subscribe(changed));
       const binding: ShellPlaybackBinding = {runtime, artwork: context.artwork, environment: time, reportError: feedback.reportError,
-        get skips() {return {back: preferenceValue<number>(currentPreferences(), 'playback.skipBackMs') / 1000, forward: preferenceValue<number>(currentPreferences(), 'playback.skipForwardMs') / 1000};}};
+        get skips() {return shellPlaybackSkips(currentPreferences(), runtime.getSnapshot().dock.local?.kind === 'audiobook');}};
       return {value: {runtime, playback, selection, binding}, dispose: close};
     } catch (error) {close();throw error;}
   }});

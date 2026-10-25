@@ -6,6 +6,15 @@ import {audiobookPreferences} from '@core/audiobook-preferences.ts';
 import type {SkipMode} from '../../../packages/player-core/src/index.ts';
 import type {WebPlaybackSettings} from '../platform/playback';
 
+export function shellPlaybackSkips(preferences: PreferenceSnapshot, audiobook: boolean): Readonly<{back: number; forward: number}> {
+  if (audiobook) {
+    const selected = audiobookPreferences(preferences);
+    return {back: selected.skipBackMs / 1000, forward: selected.skipForwardMs / 1000};
+  }
+  return {back: preferenceValue<number>(preferences, 'playback.skipBackMs') / 1000,
+    forward: preferenceValue<number>(preferences, 'playback.skipForwardMs') / 1000};
+}
+
 export function shellLanguage(preferences: PreferenceSnapshot) {
   return createI18n(resolveRegion(regionPreferences(preferences), deviceRegion()));
 }
