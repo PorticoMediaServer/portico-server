@@ -20,6 +20,7 @@ export const remoteSourcesMessages = {
   'next.remoteStatus.save': 'Save remote access',
   'next.remoteStatus.addressesTitle': 'This server’s addresses',
   'next.remoteStatus.certificateFiles': 'Certificate files',
+  'next.remoteStatus.saveOwnAddress': 'Save own address',
   'next.remoteSources.add': 'Add remote source',
   'next.remoteSources.manage': 'Manage',
   'next.remoteSources.refresh': 'Refresh',
