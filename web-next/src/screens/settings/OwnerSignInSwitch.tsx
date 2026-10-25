@@ -44,7 +44,7 @@ export function OwnerSignInSwitch({source, isCurrent, onError, startOver = false
   const busy = state.busy || pending.current;
   return <>
     <Button variant="glass" size="small" disabled={state.busy || !!state.preview || state.confirmed} onClick={start}>{t(startOver ? 'next.settingsSpec.server.signin.groups.1.rows.3.control.label' : 'next.settingsSpec.server.signin.groups.1.rows.2.control.label')}</Button>
-    <Dialog open={secure} onOpenChange={value => {if (!value) setSecure(false);}} title={t('accounts.ownerSwitch.secureTitle')}
+    <Dialog children={null} open={secure} onOpenChange={value => {if (!value) setSecure(false);}} title={t('accounts.ownerSwitch.secureTitle')}
       description={t('accounts.ownerSwitch.secureBody', {localUrl: 'http://localhost:32500'})}
       footer={<Button variant="glass" onClick={() => setSecure(false)}>{t('action.cancel')}</Button>}/>
     <Dialog open={open && !!preview} onOpenChange={value => {if (!value) close();}} width={600}
