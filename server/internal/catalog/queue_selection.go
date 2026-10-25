@@ -5,13 +5,17 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"reflect"
 	"regexp"
 	"strconv"
 
+	"portico.local/apikit"
 	"portico.local/server/internal/compactcatalog"
 )
 
-var queueSelectionRevisionPattern = regexp.MustCompile(`^browse_[a-f0-9]{64}$`)
+const queueSelectionRevisionExpression = `^browse_[a-f0-9]{64}$`
+
+var queueSelectionRevisionPattern = regexp.MustCompile(queueSelectionRevisionExpression)
 
 // QueueQuery uses the browse expression and ordering vocabulary. Paging belongs
 // to durable queue capture, so cursors, ranges and page sizes are absent.
@@ -21,6 +25,15 @@ type QueueQuery struct {
 	Pivot             string                `json:"pivot,omitempty"`
 	Query             *BrowseNode           `json:"query,omitempty"`
 	Sort              []BrowseSortSelection `json:"sort,omitempty"`
+}
+
+// JSONSchema publishes the same optional-but-nonempty proof the decoder accepts.
+func (QueueQuery) JSONSchema() map[string]any {
+	type wire QueueQuery
+	shape, _ := apikit.Schema(reflect.TypeFor[wire]())
+	proof := shape["properties"].(map[string]any)["selectionRevision"].(map[string]any)
+	proof["pattern"] = queueSelectionRevisionExpression
+	return shape
 }
 
 type QueueSelection struct {
@@ -148,7 +161,7 @@ func (s *Service) QueueKeysTx(ctx context.Context, tx *sql.Tx, viewer Viewer, ac
 
 func (q *QueueQuery) UnmarshalJSON(raw []byte) error {
 	var body struct {
-		SelectionRevision string                `json:"selectionRevision"`
+		SelectionRevision json.RawMessage       `json:"selectionRevision"`
 		LibraryID         string                `json:"libraryId"`
 		Pivot             string                `json:"pivot"`
 		Query             json.RawMessage       `json:"query"`
@@ -166,13 +179,14 @@ func (q *QueueQuery) UnmarshalJSON(raw []byte) error {
 	if err != nil {
 		return err
 	}
-	if body.SelectionRevision != "" && !queueSelectionRevisionPattern.MatchString(body.SelectionRevision) {
+	var selectionRevision string
+	if body.SelectionRevision != nil && (json.Unmarshal(body.SelectionRevision, &selectionRevision) != nil || !queueSelectionRevisionPattern.MatchString(selectionRevision)) {
 		return browseIssue("selectionRevision", "refresh the selected view")
 	}
 	if body.LibraryID == "" || len(body.LibraryID) > 256 || len(body.Pivot) > 64 {
 		return browseIssue("libraryId", "choose a library")
 	}
-	*q = QueueQuery{SelectionRevision: body.SelectionRevision, LibraryID: body.LibraryID, Pivot: body.Pivot, Query: node, Sort: body.Sort}
+	*q = QueueQuery{SelectionRevision: selectionRevision, LibraryID: body.LibraryID, Pivot: body.Pivot, Query: node, Sort: body.Sort}
 	return nil
 }
 
