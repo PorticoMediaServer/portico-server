@@ -2018,6 +2018,14 @@ export const schemas = {
   },
   "AdvanceQueueRequest": {
     "properties": {
+      "completionGeneration": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "completionSessionId": {
+        "type": "string"
+      },
       "entryId": {
         "type": "string"
       },
@@ -128081,6 +128089,65 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetLibrariesLibraryIdReadingMarkAllRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetLibrariesLibraryIdReadingMarkAllResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "count": {
+        "maximum": 9007199254740991,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "libraryId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "revision": {
+        "additionalProperties": false,
+        "properties": {
+          "catalog": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "viewer": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "catalog",
+          "viewer"
+        ],
+        "type": "object"
+      },
+      "serverId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "viewerFence": {
+        "maxLength": 64,
+        "minLength": 64,
+        "pattern": "^[a-f0-9]{64}$",
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "libraryId",
+      "viewerFence",
+      "revision",
+      "count"
+    ],
+    "type": "object"
+  },
   "GetLibrariesRequest": {
     "properties": {},
     "required": [],
@@ -145077,6 +145144,31 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "readingMark": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "itemId": {
+                      "maxLength": 64,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                      "type": "string"
+                    },
+                    "read": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "read",
+                    "revision"
+                  ],
+                  "type": "object"
+                },
                 "series": {
                   "additionalProperties": false,
                   "properties": {
@@ -145293,6 +145385,31 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "readingMark": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "itemId": {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                        "type": "string"
+                      },
+                      "read": {
+                        "type": "boolean"
+                      },
+                      "revision": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "itemId",
+                      "read",
+                      "revision"
+                    ],
+                    "type": "object"
+                  },
                   "series": {
                     "additionalProperties": false,
                     "properties": {
@@ -145428,6 +145545,31 @@ export const schemas = {
                         "required": [
                           "value",
                           "source"
+                        ],
+                        "type": "object"
+                      },
+                      "readingMark": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "itemId": {
+                            "maxLength": 64,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
                         ],
                         "type": "object"
                       },
@@ -145581,6 +145723,31 @@ export const schemas = {
                           "required": [
                             "value",
                             "source"
+                          ],
+                          "type": "object"
+                        },
+                        "readingMark": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "itemId": {
+                              "maxLength": 64,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                              "type": "string"
+                            },
+                            "read": {
+                              "type": "boolean"
+                            },
+                            "revision": {
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "itemId",
+                            "read",
+                            "revision"
                           ],
                           "type": "object"
                         },
@@ -145751,6 +145918,31 @@ export const schemas = {
                           ],
                           "type": "object"
                         },
+                        "readingMark": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "itemId": {
+                              "maxLength": 64,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                              "type": "string"
+                            },
+                            "read": {
+                              "type": "boolean"
+                            },
+                            "revision": {
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "itemId",
+                            "read",
+                            "revision"
+                          ],
+                          "type": "object"
+                        },
                         "series": {
                           "additionalProperties": false,
                           "properties": {
@@ -145902,6 +146094,31 @@ export const schemas = {
                         "required": [
                           "value",
                           "source"
+                        ],
+                        "type": "object"
+                      },
+                      "readingMark": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "itemId": {
+                            "maxLength": 64,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
                         ],
                         "type": "object"
                       },
@@ -146135,6 +146352,31 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "readingMark": {
+              "additionalProperties": false,
+              "properties": {
+                "itemId": {
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                  "type": "string"
+                },
+                "read": {
+                  "type": "boolean"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "itemId",
+                "read",
+                "revision"
+              ],
+              "type": "object"
+            },
             "series": {
               "additionalProperties": false,
               "properties": {
@@ -146296,6 +146538,31 @@ export const schemas = {
                       "required": [
                         "value",
                         "source"
+                      ],
+                      "type": "object"
+                    },
+                    "readingMark": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "itemId": {
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                          "type": "string"
+                        },
+                        "read": {
+                          "type": "boolean"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "itemId",
+                        "read",
+                        "revision"
                       ],
                       "type": "object"
                     },
@@ -146517,6 +146784,31 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "readingMark": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "itemId": {
+                      "maxLength": 64,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                      "type": "string"
+                    },
+                    "read": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "read",
+                    "revision"
+                  ],
+                  "type": "object"
+                },
                 "series": {
                   "additionalProperties": false,
                   "properties": {
@@ -146714,6 +147006,31 @@ export const schemas = {
               "required": [
                 "value",
                 "source"
+              ],
+              "type": "object"
+            },
+            "readingMark": {
+              "additionalProperties": false,
+              "properties": {
+                "itemId": {
+                  "maxLength": 64,
+                  "minLength": 1,
+                  "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                  "type": "string"
+                },
+                "read": {
+                  "type": "boolean"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "itemId",
+                "read",
+                "revision"
               ],
               "type": "object"
             },
@@ -147128,6 +147445,115 @@ export const schemas = {
     },
     "required": [
       "progress"
+    ],
+    "type": "object"
+  },
+  "GetReadingSessionsSessionIdSearchRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetReadingSessionsSessionIdSearchResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "coverage": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "indexed",
+              "pending",
+              "unsupported",
+              "evicted",
+              "excluded"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "hits": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "excerpt": {
+              "maxLength": 8192,
+              "type": "string"
+            },
+            "matchLength": {
+              "minimum": 1,
+              "type": "integer"
+            },
+            "matchStart": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "sectionIndex": {
+              "maximum": 4095,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "sectionPath": {
+              "maxLength": 1024,
+              "minLength": 1,
+              "type": "string"
+            },
+            "utf16Offset": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "sectionPath",
+            "sectionIndex",
+            "utf16Offset",
+            "excerpt",
+            "matchStart",
+            "matchLength"
+          ],
+          "type": "object"
+        },
+        "maxItems": 50,
+        "type": "array"
+      },
+      "indexRevision": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "next": {
+        "maxLength": 512,
+        "type": "string"
+      },
+      "sessionId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "sourceId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "sourceRevision": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      }
+    },
+    "required": [
+      "sessionId",
+      "sourceId",
+      "sourceRevision",
+      "indexRevision",
+      "coverage",
+      "hits"
     ],
     "type": "object"
   },
@@ -173955,7 +174381,41 @@ export const schemas = {
           "generation": {
             "type": "string"
           },
+          "health": {
+            "enum": [
+              "cancelled",
+              "degraded",
+              "healthy",
+              "inventory_running",
+              "offline",
+              "ready",
+              "removing",
+              "root_changed"
+            ],
+            "type": "string"
+          },
           "lastCheckedAt": {
+            "type": "string"
+          },
+          "lastCompleteAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastConnectedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastErrorAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastErrorCode": {
+            "enum": [
+              "credentials_required",
+              "offline",
+              "quota_exceeded",
+              "rate_limited"
+            ],
             "type": "string"
           },
           "libraries": {
@@ -173967,6 +174427,10 @@ export const schemas = {
                   "type": "integer"
                 },
                 "kind": {
+                  "type": "string"
+                },
+                "lastCompleteAt": {
+                  "format": "date-time",
                   "type": "string"
                 },
                 "libraryId": {
@@ -174013,6 +174477,93 @@ export const schemas = {
           },
           "remote": {
             "type": "string"
+          },
+          "scan": {
+            "properties": {
+              "analyzed": {
+                "maximum": 1099511627776,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "completedAt": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "discovered": {
+                "maximum": 1099511627776,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "finishedAt": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "mode": {
+                "enum": [
+                  "first-import",
+                  "full",
+                  "incremental",
+                  "integrity"
+                ],
+                "type": "string"
+              },
+              "phase": {
+                "enum": [
+                  "analysis_enqueue",
+                  "basic_pending",
+                  "basic_running",
+                  "extras",
+                  "inventory",
+                  "legacy_inventory",
+                  "reconciling",
+                  "sidecars",
+                  "verifying"
+                ],
+                "type": "string"
+              },
+              "processed": {
+                "maximum": 1099511627776,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "queuedAt": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "runPolicyRevision": {
+                "maximum": 1099511627776,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "sourceGeneration": {
+                "maximum": 1099511627776,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "state": {
+                "enum": [
+                  "paused",
+                  "queued",
+                  "running"
+                ],
+                "type": "string"
+              },
+              "warnings": {
+                "maximum": 1099511627776,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "state",
+              "sourceGeneration",
+              "runPolicyRevision",
+              "processed",
+              "discovered",
+              "analyzed",
+              "warnings"
+            ],
+            "type": "object"
           },
           "scanIntervalSeconds": {
             "maximum": 9007199254740991,
@@ -202816,6 +203367,57 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PostItemsItemIdReadingRereadRequest": {
+    "properties": {
+      "expectedMetadataRevision": {
+        "type": "string"
+      },
+      "expectedSourceRevision": {
+        "type": "string"
+      },
+      "sourceId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "sourceId",
+      "expectedSourceRevision",
+      "expectedMetadataRevision"
+    ],
+    "type": "object"
+  },
+  "PostItemsItemIdReadingRereadResponse": {
+    "properties": {
+      "metadataRevision": {
+        "type": "string"
+      },
+      "refreshed": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "sourceId": {
+        "type": "string"
+      },
+      "sourceRevision": {
+        "type": "string"
+      },
+      "unknown": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "sourceId",
+      "sourceRevision",
+      "metadataRevision",
+      "refreshed"
+    ],
+    "type": "object"
+  },
   "PostLibrariesIdCollectionsRequest": {
     "properties": {
       "name": {
@@ -203123,6 +203725,136 @@ export const schemas = {
       "processed",
       "analyzed",
       "warnings"
+    ],
+    "type": "object"
+  },
+  "PostLibrariesLibraryIdReadingMarkAllRequest": {
+    "additionalProperties": false,
+    "properties": {
+      "expectedRevision": {
+        "additionalProperties": false,
+        "properties": {
+          "catalog": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "viewer": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "catalog",
+          "viewer"
+        ],
+        "type": "object"
+      },
+      "operationId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "pattern": "^[A-Za-z0-9_-]{1,128}$",
+        "type": "string"
+      },
+      "viewerFence": {
+        "maxLength": 64,
+        "minLength": 64,
+        "pattern": "^[a-f0-9]{64}$",
+        "type": "string"
+      }
+    },
+    "required": [
+      "operationId",
+      "viewerFence",
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "PostLibrariesLibraryIdReadingMarkAllResponse": {
+    "additionalProperties": false,
+    "properties": {
+      "changed": {
+        "maximum": 9007199254740991,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "count": {
+        "maximum": 9007199254740991,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "expectedRevision": {
+        "additionalProperties": false,
+        "properties": {
+          "catalog": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "viewer": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "catalog",
+          "viewer"
+        ],
+        "type": "object"
+      },
+      "libraryId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "operationId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "revision": {
+        "additionalProperties": false,
+        "properties": {
+          "catalog": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "viewer": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "catalog",
+          "viewer"
+        ],
+        "type": "object"
+      },
+      "serverId": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "viewerFence": {
+        "maxLength": 64,
+        "minLength": 64,
+        "pattern": "^[a-f0-9]{64}$",
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "libraryId",
+      "viewerFence",
+      "revision",
+      "count",
+      "operationId",
+      "expectedRevision",
+      "changed"
     ],
     "type": "object"
   },
@@ -231831,6 +232563,90 @@ export const schemas = {
       }
     ]
   },
+  "SocialDeleteV1CastBootstrapIdRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "SocialDeleteV1CastBootstrapIdResponse": {
+    "properties": {
+      "bootstrap": {
+        "properties": {
+          "applicationId": {
+            "type": "string"
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "code": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "receiverUrl": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "transfer": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "itemId": {
+                "type": "string"
+              },
+              "playbackState": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "state"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "state",
+          "displayName",
+          "capabilities",
+          "expiresAt",
+          "applicationId",
+          "receiverUrl"
+        ],
+        "type": "object"
+      },
+      "protocolVersion": {
+        "type": "string"
+      },
+      "serverTime": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverTime",
+      "bootstrap"
+    ],
+    "type": "object"
+  },
   "SocialDeleteV1CastDevicesIdRequest": {
     "properties": {},
     "required": [],
@@ -231896,6 +232712,27 @@ export const schemas = {
           },
           "state": {
             "type": "string"
+          },
+          "transfer": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "itemId": {
+                "type": "string"
+              },
+              "playbackState": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "state"
+            ],
+            "type": "object"
           }
         },
         "required": [
@@ -233652,6 +234489,35 @@ export const schemas = {
       },
       "protocolVersion": {
         "type": "string"
+      },
+      "source": {
+        "properties": {
+          "entryId": {
+            "type": "string"
+          },
+          "generation": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "queueId": {
+            "type": "string"
+          },
+          "queueRevision": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sessionId",
+          "generation",
+          "queueId",
+          "entryId",
+          "queueRevision"
+        ],
+        "type": "object"
       }
     },
     "required": [
@@ -233689,6 +234555,27 @@ export const schemas = {
           },
           "state": {
             "type": "string"
+          },
+          "transfer": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "itemId": {
+                "type": "string"
+              },
+              "playbackState": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "state"
+            ],
+            "type": "object"
           }
         },
         "required": [
@@ -238795,6 +239682,9 @@ export const schemas = {
         ],
         "type": "object"
       },
+      "castTransferId": {
+        "type": "string"
+      },
       "channelGeneration": {
         "type": "string"
       },
@@ -240775,6 +241665,66 @@ export const schemas = {
         },
         "required": [
           "version"
+        ],
+        "type": "object"
+      },
+      "scope": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "scope",
+      "result"
+    ],
+    "type": "object"
+  },
+  "TestStorageSourceRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "TestStorageSourceResponse": {
+    "properties": {
+      "result": {
+        "properties": {
+          "errorCode": {
+            "enum": [
+              "credentials_required",
+              "offline",
+              "quota_exceeded",
+              "rate_limited"
+            ],
+            "type": "string"
+          },
+          "generation": {
+            "type": "string"
+          },
+          "rangeSupport": {
+            "type": "string"
+          },
+          "reachable": {
+            "type": "boolean"
+          },
+          "sourceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceId",
+          "generation",
+          "reachable"
         ],
         "type": "object"
       },

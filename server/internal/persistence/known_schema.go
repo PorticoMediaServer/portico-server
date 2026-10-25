@@ -568,6 +568,8 @@ index reading_publication_types_inventory_object
 index reading_saved_group_receipts_expiry
 index reading_saved_groups_owner_listed
 index reading_text_counts_inventory_object
+index reading_text_index_state_eviction
+index reading_text_index_state_inventory_object
 index rec_profile_signals_positive_recent
 index rec_profile_signals_recent
 index rec_profile_signals_work
@@ -604,6 +606,7 @@ index segment_shows_dirty
 index show_people_credits_order
 index show_people_credits_person
 index social_cast_devices_previous
+index social_cast_queue_transfers_expiry
 index social_group_invites_group
 index social_group_members_group
 index social_group_members_viewer
@@ -612,6 +615,7 @@ index social_group_receipts_age
 index social_groups_owner
 index social_handoffs_open
 index subtitle_candidates_expiry
+index subtitle_disc_resources_title
 index subtitle_inventory_entries_association
 index subtitle_inventory_entries_job
 index subtitle_provider_candidates_item_id_fk
@@ -1321,6 +1325,15 @@ table reading_saved_group_receipts
 table reading_saved_groups
 table reading_source_values
 table reading_text_counts
+table reading_text_fts
+table reading_text_fts_config
+table reading_text_fts_data
+table reading_text_fts_docsize
+table reading_text_fts_idx
+table reading_text_index_budget
+table reading_text_index_epoch
+table reading_text_index_state
+table reading_text_sections
 table rec_data_revision
 table rec_profile_jobs
 table rec_profile_revisions
@@ -1340,6 +1353,7 @@ table remote_scan_generations
 table remote_scan_observation_hashes
 table remote_scan_observations
 table remote_source_cache_entries
+table remote_source_contacts
 table remote_source_operations
 table remote_source_read_profiles
 table remote_source_settings
@@ -1387,6 +1401,7 @@ table show_people_credits
 table social_cast_bootstraps
 table social_cast_controllers
 table social_cast_devices
+table social_cast_queue_transfers
 table social_group_events
 table social_group_invites
 table social_group_members
@@ -1399,6 +1414,7 @@ table social_receiver_grants
 table social_receivers
 table source_strm_analysis
 table subtitle_collections
+table subtitle_disc_resources
 table subtitle_inventory_entries
 table subtitle_inventory_evidence
 table subtitle_operations
@@ -2308,6 +2324,7 @@ trigger metadata_publication_termsource_INSERT
 trigger metadata_publication_termsource_UPDATE
 trigger metadata_relationship_decisions_retention_delete
 trigger metadata_relationship_decisions_retention_insert
+trigger metadata_runtime_locale_changed
 trigger metadata_source_asset_DELETE
 trigger metadata_source_asset_INSERT
 trigger metadata_source_asset_UPDATE
@@ -2495,6 +2512,10 @@ trigger reading_attribution_source_delete
 trigger reading_attribution_source_insert
 trigger reading_attribution_source_update
 trigger reading_saved_group_identity_immutable
+trigger reading_text_index_state_delete
+trigger reading_text_index_state_insert
+trigger reading_text_index_state_update
+trigger reading_text_sections_fts_delete
 trigger rec_data_external_delete
 trigger rec_data_external_insert
 trigger rec_data_similar_delete

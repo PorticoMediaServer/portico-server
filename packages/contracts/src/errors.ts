@@ -451,6 +451,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "metadata_conflict",
+    "status": 409,
+    "message": "Metadata changed. Reload and review your decision.",
+    "retry": "never"
+  },
+  {
     "code": "metadata_unavailable",
     "status": 503,
     "message": "Metadata is temporarily unavailable.",
@@ -683,6 +689,12 @@ export const errors = [
     "status": 428,
     "message": "Refresh before making this change.",
     "retry": "after_refresh"
+  },
+  {
+    "code": "search_busy",
+    "status": 429,
+    "message": "Too many searches are already running. Try again in a moment.",
+    "retry": "same_request"
   },
   {
     "code": "seek_unavailable",

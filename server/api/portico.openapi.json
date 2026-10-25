@@ -2025,6 +2025,14 @@
       },
       "AdvanceQueueRequest": {
         "properties": {
+          "completionGeneration": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "completionSessionId": {
+            "type": "string"
+          },
           "entryId": {
             "type": "string"
           },
@@ -132558,6 +132566,65 @@
         ],
         "type": "object"
       },
+      "GetLibrariesLibraryIdReadingMarkAllRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetLibrariesLibraryIdReadingMarkAllResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "libraryId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "revision": {
+            "additionalProperties": false,
+            "properties": {
+              "catalog": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "viewer": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "catalog",
+              "viewer"
+            ],
+            "type": "object"
+          },
+          "serverId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "viewerFence": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "libraryId",
+          "viewerFence",
+          "revision",
+          "count"
+        ],
+        "type": "object"
+      },
       "GetLibrariesRequest": {
         "properties": {},
         "required": [],
@@ -149834,6 +149901,31 @@
                       ],
                       "type": "object"
                     },
+                    "readingMark": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "itemId": {
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                          "type": "string"
+                        },
+                        "read": {
+                          "type": "boolean"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "itemId",
+                        "read",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
                     "series": {
                       "additionalProperties": false,
                       "properties": {
@@ -150050,6 +150142,31 @@
                         ],
                         "type": "object"
                       },
+                      "readingMark": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "itemId": {
+                            "maxLength": 64,
+                            "minLength": 1,
+                            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                            "type": "string"
+                          },
+                          "read": {
+                            "type": "boolean"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "read",
+                          "revision"
+                        ],
+                        "type": "object"
+                      },
                       "series": {
                         "additionalProperties": false,
                         "properties": {
@@ -150185,6 +150302,31 @@
                             "required": [
                               "value",
                               "source"
+                            ],
+                            "type": "object"
+                          },
+                          "readingMark": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "itemId": {
+                                "maxLength": 64,
+                                "minLength": 1,
+                                "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                "type": "string"
+                              },
+                              "read": {
+                                "type": "boolean"
+                              },
+                              "revision": {
+                                "maximum": 9007199254740991,
+                                "minimum": 0,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "itemId",
+                              "read",
+                              "revision"
                             ],
                             "type": "object"
                           },
@@ -150338,6 +150480,31 @@
                               "required": [
                                 "value",
                                 "source"
+                              ],
+                              "type": "object"
+                            },
+                            "readingMark": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "itemId": {
+                                  "maxLength": 64,
+                                  "minLength": 1,
+                                  "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "read": {
+                                  "type": "boolean"
+                                },
+                                "revision": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "itemId",
+                                "read",
+                                "revision"
                               ],
                               "type": "object"
                             },
@@ -150508,6 +150675,31 @@
                               ],
                               "type": "object"
                             },
+                            "readingMark": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "itemId": {
+                                  "maxLength": 64,
+                                  "minLength": 1,
+                                  "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                  "type": "string"
+                                },
+                                "read": {
+                                  "type": "boolean"
+                                },
+                                "revision": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": 0,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "itemId",
+                                "read",
+                                "revision"
+                              ],
+                              "type": "object"
+                            },
                             "series": {
                               "additionalProperties": false,
                               "properties": {
@@ -150659,6 +150851,31 @@
                             "required": [
                               "value",
                               "source"
+                            ],
+                            "type": "object"
+                          },
+                          "readingMark": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "itemId": {
+                                "maxLength": 64,
+                                "minLength": 1,
+                                "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                "type": "string"
+                              },
+                              "read": {
+                                "type": "boolean"
+                              },
+                              "revision": {
+                                "maximum": 9007199254740991,
+                                "minimum": 0,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "itemId",
+                              "read",
+                              "revision"
                             ],
                             "type": "object"
                           },
@@ -150892,6 +151109,31 @@
                   ],
                   "type": "object"
                 },
+                "readingMark": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "itemId": {
+                      "maxLength": 64,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                      "type": "string"
+                    },
+                    "read": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "read",
+                    "revision"
+                  ],
+                  "type": "object"
+                },
                 "series": {
                   "additionalProperties": false,
                   "properties": {
@@ -151053,6 +151295,31 @@
                           "required": [
                             "value",
                             "source"
+                          ],
+                          "type": "object"
+                        },
+                        "readingMark": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "itemId": {
+                              "maxLength": 64,
+                              "minLength": 1,
+                              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                              "type": "string"
+                            },
+                            "read": {
+                              "type": "boolean"
+                            },
+                            "revision": {
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "itemId",
+                            "read",
+                            "revision"
                           ],
                           "type": "object"
                         },
@@ -151274,6 +151541,31 @@
                       ],
                       "type": "object"
                     },
+                    "readingMark": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "itemId": {
+                          "maxLength": 64,
+                          "minLength": 1,
+                          "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                          "type": "string"
+                        },
+                        "read": {
+                          "type": "boolean"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "itemId",
+                        "read",
+                        "revision"
+                      ],
+                      "type": "object"
+                    },
                     "series": {
                       "additionalProperties": false,
                       "properties": {
@@ -151471,6 +151763,31 @@
                   "required": [
                     "value",
                     "source"
+                  ],
+                  "type": "object"
+                },
+                "readingMark": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "itemId": {
+                      "maxLength": 64,
+                      "minLength": 1,
+                      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                      "type": "string"
+                    },
+                    "read": {
+                      "type": "boolean"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "read",
+                    "revision"
                   ],
                   "type": "object"
                 },
@@ -151891,6 +152208,115 @@
         },
         "required": [
           "progress"
+        ],
+        "type": "object"
+      },
+      "GetReadingSessionsSessionIdSearchRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetReadingSessionsSessionIdSearchResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "coverage": {
+            "additionalProperties": false,
+            "properties": {
+              "reason": {
+                "maxLength": 64,
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "indexed",
+                  "pending",
+                  "unsupported",
+                  "evicted",
+                  "excluded"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "status"
+            ],
+            "type": "object"
+          },
+          "hits": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "excerpt": {
+                  "maxLength": 8192,
+                  "type": "string"
+                },
+                "matchLength": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "matchStart": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "sectionIndex": {
+                  "maximum": 4095,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "sectionPath": {
+                  "maxLength": 1024,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "utf16Offset": {
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "sectionPath",
+                "sectionIndex",
+                "utf16Offset",
+                "excerpt",
+                "matchStart",
+                "matchLength"
+              ],
+              "type": "object"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
+          "indexRevision": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "next": {
+            "maxLength": 512,
+            "type": "string"
+          },
+          "sessionId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "sourceId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "sourceRevision": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "sessionId",
+          "sourceId",
+          "sourceRevision",
+          "indexRevision",
+          "coverage",
+          "hits"
         ],
         "type": "object"
       },
@@ -179264,7 +179690,41 @@
               "generation": {
                 "type": "string"
               },
+              "health": {
+                "enum": [
+                  "cancelled",
+                  "degraded",
+                  "healthy",
+                  "inventory_running",
+                  "offline",
+                  "ready",
+                  "removing",
+                  "root_changed"
+                ],
+                "type": "string"
+              },
               "lastCheckedAt": {
+                "type": "string"
+              },
+              "lastCompleteAt": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "lastConnectedAt": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "lastErrorAt": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "lastErrorCode": {
+                "enum": [
+                  "credentials_required",
+                  "offline",
+                  "quota_exceeded",
+                  "rate_limited"
+                ],
                 "type": "string"
               },
               "libraries": {
@@ -179276,6 +179736,10 @@
                       "type": "integer"
                     },
                     "kind": {
+                      "type": "string"
+                    },
+                    "lastCompleteAt": {
+                      "format": "date-time",
                       "type": "string"
                     },
                     "libraryId": {
@@ -179322,6 +179786,93 @@
               },
               "remote": {
                 "type": "string"
+              },
+              "scan": {
+                "properties": {
+                  "analyzed": {
+                    "maximum": 1099511627776,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "completedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "discovered": {
+                    "maximum": 1099511627776,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "finishedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "mode": {
+                    "enum": [
+                      "first-import",
+                      "full",
+                      "incremental",
+                      "integrity"
+                    ],
+                    "type": "string"
+                  },
+                  "phase": {
+                    "enum": [
+                      "analysis_enqueue",
+                      "basic_pending",
+                      "basic_running",
+                      "extras",
+                      "inventory",
+                      "legacy_inventory",
+                      "reconciling",
+                      "sidecars",
+                      "verifying"
+                    ],
+                    "type": "string"
+                  },
+                  "processed": {
+                    "maximum": 1099511627776,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "queuedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "runPolicyRevision": {
+                    "maximum": 1099511627776,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "sourceGeneration": {
+                    "maximum": 1099511627776,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "state": {
+                    "enum": [
+                      "paused",
+                      "queued",
+                      "running"
+                    ],
+                    "type": "string"
+                  },
+                  "warnings": {
+                    "maximum": 1099511627776,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "state",
+                  "sourceGeneration",
+                  "runPolicyRevision",
+                  "processed",
+                  "discovered",
+                  "analyzed",
+                  "warnings"
+                ],
+                "type": "object"
               },
               "scanIntervalSeconds": {
                 "maximum": 9007199254740991,
@@ -225065,6 +225616,57 @@
         ],
         "type": "object"
       },
+      "PostItemsItemIdReadingRereadRequest": {
+        "properties": {
+          "expectedMetadataRevision": {
+            "type": "string"
+          },
+          "expectedSourceRevision": {
+            "type": "string"
+          },
+          "sourceId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "sourceId",
+          "expectedSourceRevision",
+          "expectedMetadataRevision"
+        ],
+        "type": "object"
+      },
+      "PostItemsItemIdReadingRereadResponse": {
+        "properties": {
+          "metadataRevision": {
+            "type": "string"
+          },
+          "refreshed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "sourceId": {
+            "type": "string"
+          },
+          "sourceRevision": {
+            "type": "string"
+          },
+          "unknown": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sourceId",
+          "sourceRevision",
+          "metadataRevision",
+          "refreshed"
+        ],
+        "type": "object"
+      },
       "PostLibrariesIdCollectionsRequest": {
         "properties": {
           "name": {
@@ -225378,6 +225980,136 @@
           "processed",
           "analyzed",
           "warnings"
+        ],
+        "type": "object"
+      },
+      "PostLibrariesLibraryIdReadingMarkAllRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "expectedRevision": {
+            "additionalProperties": false,
+            "properties": {
+              "catalog": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "viewer": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "catalog",
+              "viewer"
+            ],
+            "type": "object"
+          },
+          "operationId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]{1,128}$",
+            "type": "string"
+          },
+          "viewerFence": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operationId",
+          "viewerFence",
+          "expectedRevision"
+        ],
+        "type": "object"
+      },
+      "PostLibrariesLibraryIdReadingMarkAllResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "changed": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "count": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expectedRevision": {
+            "additionalProperties": false,
+            "properties": {
+              "catalog": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "viewer": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "catalog",
+              "viewer"
+            ],
+            "type": "object"
+          },
+          "libraryId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "operationId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "revision": {
+            "additionalProperties": false,
+            "properties": {
+              "catalog": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "viewer": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "catalog",
+              "viewer"
+            ],
+            "type": "object"
+          },
+          "serverId": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "viewerFence": {
+            "maxLength": 64,
+            "minLength": 64,
+            "pattern": "^[a-f0-9]{64}$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "libraryId",
+          "viewerFence",
+          "revision",
+          "count",
+          "operationId",
+          "expectedRevision",
+          "changed"
         ],
         "type": "object"
       },
@@ -254374,6 +255106,90 @@
           }
         ]
       },
+      "SocialDeleteV1CastBootstrapIdRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "SocialDeleteV1CastBootstrapIdResponse": {
+        "properties": {
+          "bootstrap": {
+            "properties": {
+              "applicationId": {
+                "type": "string"
+              },
+              "capabilities": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "code": {
+                "type": "string"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "receiverUrl": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              },
+              "transfer": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "itemId": {
+                    "type": "string"
+                  },
+                  "playbackState": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "state"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "id",
+              "code",
+              "state",
+              "displayName",
+              "capabilities",
+              "expiresAt",
+              "applicationId",
+              "receiverUrl"
+            ],
+            "type": "object"
+          },
+          "protocolVersion": {
+            "type": "string"
+          },
+          "serverTime": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "protocolVersion",
+          "serverTime",
+          "bootstrap"
+        ],
+        "type": "object"
+      },
       "SocialDeleteV1CastDevicesIdRequest": {
         "properties": {},
         "required": [],
@@ -254439,6 +255255,27 @@
               },
               "state": {
                 "type": "string"
+              },
+              "transfer": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "itemId": {
+                    "type": "string"
+                  },
+                  "playbackState": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "state"
+                ],
+                "type": "object"
               }
             },
             "required": [
@@ -256339,6 +257176,35 @@
           },
           "protocolVersion": {
             "type": "string"
+          },
+          "source": {
+            "properties": {
+              "entryId": {
+                "type": "string"
+              },
+              "generation": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "queueId": {
+                "type": "string"
+              },
+              "queueRevision": {
+                "type": "string"
+              },
+              "sessionId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sessionId",
+              "generation",
+              "queueId",
+              "entryId",
+              "queueRevision"
+            ],
+            "type": "object"
           }
         },
         "required": [
@@ -256376,6 +257242,27 @@
               },
               "state": {
                 "type": "string"
+              },
+              "transfer": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "itemId": {
+                    "type": "string"
+                  },
+                  "playbackState": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "state"
+                ],
+                "type": "object"
               }
             },
             "required": [
@@ -261878,6 +262765,9 @@
             ],
             "type": "object"
           },
+          "castTransferId": {
+            "type": "string"
+          },
           "channelGeneration": {
             "type": "string"
           },
@@ -263894,6 +264784,66 @@
             },
             "required": [
               "version"
+            ],
+            "type": "object"
+          },
+          "scope": {
+            "properties": {
+              "serverId": {
+                "type": "string"
+              },
+              "viewerFence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "serverId",
+              "viewerFence"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "scope",
+          "result"
+        ],
+        "type": "object"
+      },
+      "TestStorageSourceRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "TestStorageSourceResponse": {
+        "properties": {
+          "result": {
+            "properties": {
+              "errorCode": {
+                "enum": [
+                  "credentials_required",
+                  "offline",
+                  "quota_exceeded",
+                  "rate_limited"
+                ],
+                "type": "string"
+              },
+              "generation": {
+                "type": "string"
+              },
+              "rangeSupport": {
+                "type": "string"
+              },
+              "reachable": {
+                "type": "boolean"
+              },
+              "sourceId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sourceId",
+              "generation",
+              "reachable"
             ],
             "type": "object"
           },
@@ -329613,6 +330563,35 @@
                   },
                   "protocolVersion": {
                     "type": "string"
+                  },
+                  "source": {
+                    "properties": {
+                      "entryId": {
+                        "type": "string"
+                      },
+                      "generation": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "queueId": {
+                        "type": "string"
+                      },
+                      "queueRevision": {
+                        "type": "string"
+                      },
+                      "sessionId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "sessionId",
+                      "generation",
+                      "queueId",
+                      "entryId",
+                      "queueRevision"
+                    ],
+                    "type": "object"
                   }
                 },
                 "required": [
@@ -329658,6 +330637,27 @@
                         },
                         "state": {
                           "type": "string"
+                        },
+                        "transfer": {
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "itemId": {
+                              "type": "string"
+                            },
+                            "playbackState": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "state"
+                          ],
+                          "type": "object"
                         }
                       },
                       "required": [
@@ -329778,6 +330778,190 @@
       }
     },
     "/v1/cast/bootstrap/{id}": {
+      "delete": {
+        "operationId": "social_delete_v1_cast_bootstrap_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "bootstrap": {
+                      "properties": {
+                        "applicationId": {
+                          "type": "string"
+                        },
+                        "capabilities": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "code": {
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "expiresAt": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "receiverUrl": {
+                          "type": "string"
+                        },
+                        "state": {
+                          "type": "string"
+                        },
+                        "transfer": {
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "itemId": {
+                              "type": "string"
+                            },
+                            "playbackState": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "state"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "code",
+                        "state",
+                        "displayName",
+                        "capabilities",
+                        "expiresAt",
+                        "applicationId",
+                        "receiverUrl"
+                      ],
+                      "type": "object"
+                    },
+                    "protocolVersion": {
+                      "type": "string"
+                    },
+                    "serverTime": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "protocolVersion",
+                    "serverTime",
+                    "bootstrap"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Manage shared playback for the signed-in profile",
+        "x-access": "device",
+        "x-admission": "default",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "internal",
+          "receiver_required",
+          "capacity_reached",
+          "cast_access_ended",
+          "cast_code_consumed",
+          "cast_code_expired",
+          "cast_code_not_found",
+          "cast_code_revoked",
+          "cast_device_expired",
+          "cast_device_not_found",
+          "cast_device_revoked",
+          "cast_unavailable",
+          "device_required",
+          "entry_not_found",
+          "grant_not_accepted",
+          "grant_not_pending",
+          "group_ended",
+          "group_full",
+          "handoff_expired",
+          "handoff_in_progress",
+          "handoff_not_ready",
+          "handoff_source_conflict",
+          "handoff_source_revision_conflict",
+          "handoff_state_conflict",
+          "host_required",
+          "idempotency_key_reused",
+          "invalid_request",
+          "invite_consumed",
+          "invite_expired",
+          "invite_not_found",
+          "invite_revoked",
+          "invite_wrong_recipient",
+          "media_no_longer_accessible",
+          "member_not_found",
+          "membership_revoked",
+          "not_found",
+          "participant_incompatible",
+          "playback_authority_unavailable",
+          "queue_full",
+          "rate_limited",
+          "receiver_key_mismatch",
+          "revision_conflict",
+          "target_unavailable"
+        ],
+        "x-lane": "default",
+        "x-scope": "session"
+      },
       "get": {
         "operationId": "social_get_v1_cast_bootstrap_id",
         "parameters": [
@@ -329824,6 +331008,27 @@
                         },
                         "state": {
                           "type": "string"
+                        },
+                        "transfer": {
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "itemId": {
+                              "type": "string"
+                            },
+                            "playbackState": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "state"
+                          ],
+                          "type": "object"
                         }
                       },
                       "required": [
@@ -450387,6 +451592,138 @@
         "x-scope": "playback"
       }
     },
+    "/v1/items/{itemId}/reading/reread": {
+      "post": {
+        "operationId": "post_items_itemId_reading_reread",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "itemId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "expectedMetadataRevision": {
+                    "type": "string"
+                  },
+                  "expectedSourceRevision": {
+                    "type": "string"
+                  },
+                  "sourceId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sourceId",
+                  "expectedSourceRevision",
+                  "expectedMetadataRevision"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "metadataRevision": {
+                      "type": "string"
+                    },
+                    "refreshed": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    },
+                    "sourceRevision": {
+                      "type": "string"
+                    },
+                    "unknown": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "sourceId",
+                    "sourceRevision",
+                    "metadataRevision",
+                    "refreshed"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Re-read the exact reading source and refresh file metadata",
+        "x-access": "owner",
+        "x-admission": "media-body",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_required",
+          "revision_mismatch",
+          "request_in_progress",
+          "body_too_large",
+          "internal",
+          "metadata_conflict",
+          "source_unavailable"
+        ],
+        "x-lane": "media",
+        "x-max-body-bytes": 4096,
+        "x-scope": "playback"
+      }
+    },
     "/v1/items/{itemId}/reading/versions": {
       "get": {
         "operationId": "get_items_itemId_reading_versions",
@@ -473714,6 +475051,337 @@
         "x-scope": "playback"
       }
     },
+    "/v1/libraries/{libraryId}/reading/mark-all": {
+      "get": {
+        "operationId": "get_libraries_libraryId_reading_mark_all",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "libraryId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "count": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "libraryId": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "revision": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "catalog": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "viewer": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "catalog",
+                        "viewer"
+                      ],
+                      "type": "object"
+                    },
+                    "serverId": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "viewerFence": {
+                      "maxLength": 64,
+                      "minLength": 64,
+                      "pattern": "^[a-f0-9]{64}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "serverId",
+                    "libraryId",
+                    "viewerFence",
+                    "revision",
+                    "count"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read this profile's ready visible Reading mark-all target",
+        "x-access": "device",
+        "x-admission": "browsing",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "stale_continuation",
+          "internal"
+        ],
+        "x-lane": "browsing",
+        "x-scope": "playback"
+      },
+      "post": {
+        "operationId": "post_libraries_libraryId_reading_mark_all",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "libraryId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "expectedRevision": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "catalog": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "viewer": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "catalog",
+                      "viewer"
+                    ],
+                    "type": "object"
+                  },
+                  "operationId": {
+                    "maxLength": 128,
+                    "minLength": 1,
+                    "pattern": "^[A-Za-z0-9_-]{1,128}$",
+                    "type": "string"
+                  },
+                  "viewerFence": {
+                    "maxLength": 64,
+                    "minLength": 64,
+                    "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "viewerFence",
+                  "expectedRevision"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "changed": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "count": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "expectedRevision": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "catalog": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "viewer": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "catalog",
+                        "viewer"
+                      ],
+                      "type": "object"
+                    },
+                    "libraryId": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "operationId": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "revision": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "catalog": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "viewer": {
+                          "maximum": 9007199254740991,
+                          "minimum": 0,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "catalog",
+                        "viewer"
+                      ],
+                      "type": "object"
+                    },
+                    "serverId": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "viewerFence": {
+                      "maxLength": 64,
+                      "minLength": 64,
+                      "pattern": "^[a-f0-9]{64}$",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "serverId",
+                    "libraryId",
+                    "viewerFence",
+                    "revision",
+                    "count",
+                    "operationId",
+                    "expectedRevision",
+                    "changed"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Atomically mark every ready visible Reading title read for the original profile",
+        "x-access": "device",
+        "x-admission": "default",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "stale_continuation",
+          "internal",
+          "rate_limited",
+          "personal_state_conflict",
+          "personal_needs_resolution",
+          "operation_expired",
+          "idempotency_key_reused"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 4096,
+        "x-scope": "playback"
+      }
+    },
     "/v1/libraries/{libraryId}/reading/periodicals": {
       "get": {
         "operationId": "get_reading_periodical_groups",
@@ -473850,6 +475518,31 @@
                                     "required": [
                                       "value",
                                       "source"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "readingMark": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "itemId": {
+                                        "maxLength": 64,
+                                        "minLength": 1,
+                                        "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                        "type": "string"
+                                      },
+                                      "read": {
+                                        "type": "boolean"
+                                      },
+                                      "revision": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": 0,
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "itemId",
+                                      "read",
+                                      "revision"
                                     ],
                                     "type": "object"
                                   },
@@ -474191,6 +475884,31 @@
                                 ],
                                 "type": "object"
                               },
+                              "readingMark": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "itemId": {
+                                    "maxLength": 64,
+                                    "minLength": 1,
+                                    "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                    "type": "string"
+                                  },
+                                  "read": {
+                                    "type": "boolean"
+                                  },
+                                  "revision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "itemId",
+                                  "read",
+                                  "revision"
+                                ],
+                                "type": "object"
+                              },
                               "series": {
                                 "additionalProperties": false,
                                 "properties": {
@@ -474476,6 +476194,31 @@
                             "required": [
                               "value",
                               "source"
+                            ],
+                            "type": "object"
+                          },
+                          "readingMark": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "itemId": {
+                                "maxLength": 64,
+                                "minLength": 1,
+                                "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                "type": "string"
+                              },
+                              "read": {
+                                "type": "boolean"
+                              },
+                              "revision": {
+                                "maximum": 9007199254740991,
+                                "minimum": 0,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "itemId",
+                              "read",
+                              "revision"
                             ],
                             "type": "object"
                           },
@@ -497782,6 +499525,9 @@
                     ],
                     "type": "object"
                   },
+                  "castTransferId": {
+                    "type": "string"
+                  },
                   "channelGeneration": {
                     "type": "string"
                   },
@@ -520907,6 +522653,14 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "completionGeneration": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "completionSessionId": {
+                    "type": "string"
+                  },
                   "entryId": {
                     "type": "string"
                   },
@@ -525877,6 +527631,31 @@
                                 ],
                                 "type": "object"
                               },
+                              "readingMark": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "itemId": {
+                                    "maxLength": 64,
+                                    "minLength": 1,
+                                    "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                    "type": "string"
+                                  },
+                                  "read": {
+                                    "type": "boolean"
+                                  },
+                                  "revision": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": 0,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "itemId",
+                                  "read",
+                                  "revision"
+                                ],
+                                "type": "object"
+                              },
                               "series": {
                                 "additionalProperties": false,
                                 "properties": {
@@ -526199,6 +527978,31 @@
                                   ],
                                   "type": "object"
                                 },
+                                "readingMark": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "itemId": {
+                                      "maxLength": 64,
+                                      "minLength": 1,
+                                      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                      "type": "string"
+                                    },
+                                    "read": {
+                                      "type": "boolean"
+                                    },
+                                    "revision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "itemId",
+                                    "read",
+                                    "revision"
+                                  ],
+                                  "type": "object"
+                                },
                                 "series": {
                                   "additionalProperties": false,
                                   "properties": {
@@ -526334,6 +528138,31 @@
                                       "required": [
                                         "value",
                                         "source"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "readingMark": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "itemId": {
+                                          "maxLength": 64,
+                                          "minLength": 1,
+                                          "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                          "type": "string"
+                                        },
+                                        "read": {
+                                          "type": "boolean"
+                                        },
+                                        "revision": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        }
+                                      },
+                                      "required": [
+                                        "itemId",
+                                        "read",
+                                        "revision"
                                       ],
                                       "type": "object"
                                     },
@@ -526487,6 +528316,31 @@
                                         "required": [
                                           "value",
                                           "source"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "readingMark": {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "itemId": {
+                                            "maxLength": 64,
+                                            "minLength": 1,
+                                            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                            "type": "string"
+                                          },
+                                          "read": {
+                                            "type": "boolean"
+                                          },
+                                          "revision": {
+                                            "maximum": 9007199254740991,
+                                            "minimum": 0,
+                                            "type": "integer"
+                                          }
+                                        },
+                                        "required": [
+                                          "itemId",
+                                          "read",
+                                          "revision"
                                         ],
                                         "type": "object"
                                       },
@@ -526657,6 +528511,31 @@
                                         ],
                                         "type": "object"
                                       },
+                                      "readingMark": {
+                                        "additionalProperties": false,
+                                        "properties": {
+                                          "itemId": {
+                                            "maxLength": 64,
+                                            "minLength": 1,
+                                            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                            "type": "string"
+                                          },
+                                          "read": {
+                                            "type": "boolean"
+                                          },
+                                          "revision": {
+                                            "maximum": 9007199254740991,
+                                            "minimum": 0,
+                                            "type": "integer"
+                                          }
+                                        },
+                                        "required": [
+                                          "itemId",
+                                          "read",
+                                          "revision"
+                                        ],
+                                        "type": "object"
+                                      },
                                       "series": {
                                         "additionalProperties": false,
                                         "properties": {
@@ -526808,6 +528687,31 @@
                                       "required": [
                                         "value",
                                         "source"
+                                      ],
+                                      "type": "object"
+                                    },
+                                    "readingMark": {
+                                      "additionalProperties": false,
+                                      "properties": {
+                                        "itemId": {
+                                          "maxLength": 64,
+                                          "minLength": 1,
+                                          "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                          "type": "string"
+                                        },
+                                        "read": {
+                                          "type": "boolean"
+                                        },
+                                        "revision": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": 0,
+                                          "type": "integer"
+                                        }
+                                      },
+                                      "required": [
+                                        "itemId",
+                                        "read",
+                                        "revision"
                                       ],
                                       "type": "object"
                                     },
@@ -527051,6 +528955,31 @@
                             "required": [
                               "value",
                               "source"
+                            ],
+                            "type": "object"
+                          },
+                          "readingMark": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "itemId": {
+                                "maxLength": 64,
+                                "minLength": 1,
+                                "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                                "type": "string"
+                              },
+                              "read": {
+                                "type": "boolean"
+                              },
+                              "revision": {
+                                "maximum": 9007199254740991,
+                                "minimum": 0,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "itemId",
+                              "read",
+                              "revision"
                             ],
                             "type": "object"
                           },
@@ -529754,6 +531683,206 @@
         "x-lane": "media",
         "x-max-body-bytes": 8192,
         "x-scope": "playback"
+      }
+    },
+    "/v1/reading/sessions/{sessionId}/search": {
+      "get": {
+        "operationId": "get_reading_sessions_sessionId_search",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "coverage": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "reason": {
+                          "maxLength": 64,
+                          "type": "string"
+                        },
+                        "status": {
+                          "enum": [
+                            "indexed",
+                            "pending",
+                            "unsupported",
+                            "evicted",
+                            "excluded"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "status"
+                      ],
+                      "type": "object"
+                    },
+                    "hits": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "excerpt": {
+                            "maxLength": 8192,
+                            "type": "string"
+                          },
+                          "matchLength": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "matchStart": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "sectionIndex": {
+                            "maximum": 4095,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "sectionPath": {
+                            "maxLength": 1024,
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "utf16Offset": {
+                            "minimum": 0,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "sectionPath",
+                          "sectionIndex",
+                          "utf16Offset",
+                          "excerpt",
+                          "matchStart",
+                          "matchLength"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 50,
+                      "type": "array"
+                    },
+                    "indexRevision": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "next": {
+                      "maxLength": 512,
+                      "type": "string"
+                    },
+                    "sessionId": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "sourceRevision": {
+                      "maxLength": 128,
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "sessionId",
+                    "sourceId",
+                    "sourceRevision",
+                    "indexRevision",
+                    "coverage",
+                    "hits"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Search the selected publication's persisted text index",
+        "x-access": "device",
+        "x-admission": "browsing",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_required",
+          "revision_mismatch",
+          "request_in_progress",
+          "body_too_large",
+          "internal",
+          "search_busy"
+        ],
+        "x-lane": "browsing",
+        "x-scope": "read"
       }
     },
     "/v1/reading/sessions/{sessionId}/source": {
@@ -567123,7 +569252,41 @@
                         "generation": {
                           "type": "string"
                         },
+                        "health": {
+                          "enum": [
+                            "cancelled",
+                            "degraded",
+                            "healthy",
+                            "inventory_running",
+                            "offline",
+                            "ready",
+                            "removing",
+                            "root_changed"
+                          ],
+                          "type": "string"
+                        },
                         "lastCheckedAt": {
+                          "type": "string"
+                        },
+                        "lastCompleteAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "lastConnectedAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "lastErrorAt": {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        "lastErrorCode": {
+                          "enum": [
+                            "credentials_required",
+                            "offline",
+                            "quota_exceeded",
+                            "rate_limited"
+                          ],
                           "type": "string"
                         },
                         "libraries": {
@@ -567135,6 +569298,10 @@
                                 "type": "integer"
                               },
                               "kind": {
+                                "type": "string"
+                              },
+                              "lastCompleteAt": {
+                                "format": "date-time",
                                 "type": "string"
                               },
                               "libraryId": {
@@ -567181,6 +569348,93 @@
                         },
                         "remote": {
                           "type": "string"
+                        },
+                        "scan": {
+                          "properties": {
+                            "analyzed": {
+                              "maximum": 1099511627776,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "completedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "discovered": {
+                              "maximum": 1099511627776,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "finishedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "mode": {
+                              "enum": [
+                                "first-import",
+                                "full",
+                                "incremental",
+                                "integrity"
+                              ],
+                              "type": "string"
+                            },
+                            "phase": {
+                              "enum": [
+                                "analysis_enqueue",
+                                "basic_pending",
+                                "basic_running",
+                                "extras",
+                                "inventory",
+                                "legacy_inventory",
+                                "reconciling",
+                                "sidecars",
+                                "verifying"
+                              ],
+                              "type": "string"
+                            },
+                            "processed": {
+                              "maximum": 1099511627776,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "queuedAt": {
+                              "format": "date-time",
+                              "type": "string"
+                            },
+                            "runPolicyRevision": {
+                              "maximum": 1099511627776,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "sourceGeneration": {
+                              "maximum": 1099511627776,
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "state": {
+                              "enum": [
+                                "paused",
+                                "queued",
+                                "running"
+                              ],
+                              "type": "string"
+                            },
+                            "warnings": {
+                              "maximum": 1099511627776,
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "state",
+                            "sourceGeneration",
+                            "runPolicyRevision",
+                            "processed",
+                            "discovered",
+                            "analyzed",
+                            "warnings"
+                          ],
+                          "type": "object"
                         },
                         "scanIntervalSeconds": {
                           "maximum": 9007199254740991,
@@ -567269,6 +569523,131 @@
           "invalid_request",
           "administration_unavailable",
           "source_folders_unsupported",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-scope": "admin"
+      }
+    },
+    "/v1/storage/sources/{id}/test": {
+      "post": {
+        "operationId": "test_storage_source",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "result": {
+                      "properties": {
+                        "errorCode": {
+                          "enum": [
+                            "credentials_required",
+                            "offline",
+                            "quota_exceeded",
+                            "rate_limited"
+                          ],
+                          "type": "string"
+                        },
+                        "generation": {
+                          "type": "string"
+                        },
+                        "rangeSupport": {
+                          "type": "string"
+                        },
+                        "reachable": {
+                          "type": "boolean"
+                        },
+                        "sourceId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "sourceId",
+                        "generation",
+                        "reachable"
+                      ],
+                      "type": "object"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "result"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Test a saved source's connection without changing it",
+        "x-access": "owner",
+        "x-admission": "admin-long",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "invalid_request",
+          "request_in_progress",
+          "source_credentials_required",
+          "administration_unavailable",
           "internal"
         ],
         "x-lane": "default",
