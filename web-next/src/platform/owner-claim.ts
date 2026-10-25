@@ -21,6 +21,7 @@ type Pending = Readonly<{
   purpose?: 'switch' | 'change-owner'; currentOwnerAccountId?: string; previousOwnerRole?: 'admin' | 'member' | 'remove';
   expected?: ClaimExpected; handoff?: OwnerClaimHandoff;
 }>;
+export type OwnerClaimCaller = Readonly<{isCurrent: () => boolean; signal?: AbortSignal}>;
 type Journal = Readonly<{assertAvailable: () => void; read: () => Promise<Pending | undefined>;
   change: (update: (old: Pending | undefined) => Pending | undefined) => Promise<void>}>;
 type Ports = Readonly<{
@@ -107,15 +108,25 @@ export class BrowserOwnerClaim {
   }
   /** Same-origin private preparation only, after the actual move confirmation.
    * Ambiguous network failures retain the exact verifier/proofs for that attempt. */
-  async prepare(api: HttpLocalApi, hostedOrigin: string, purpose: 'switch' | 'change-owner' = 'switch'): Promise<string> {
+  async prepare(api: HttpLocalApi, hostedOrigin: string, purpose: 'switch' | 'change-owner' = 'switch',
+    previousOwnerRole: 'admin' | 'member' | 'remove' = 'admin', caller?: OwnerClaimCaller): Promise<string> {
     this.ports.journal.assertAvailable();
     const origin = this.ports.pageOrigin(), route = api.getRouteConnection();
     if (api.baseUrl !== origin || routeOrigin(origin) !== origin || !route || route.getSnapshot().phase !== 'ready' ||
       routeOrigin(hostedOrigin) !== hostedOrigin || !hostedOrigin.startsWith('https://')) throw invalid();
+    if (purpose === 'change-owner' && previousOwnerRole !== 'admin' && previousOwnerRole !== 'member' && previousOwnerRole !== 'remove') throw invalid();
     const operation = this.operation();
+    const callerLive = () => !caller || (caller.isCurrent() && caller.signal?.aborted !== true);
+    const signal = caller?.signal ? AbortSignal.any([operation.signal, caller.signal]) : operation.signal;
     try {
+      if (!callerLive()) throw invalid();
       const state = await this.ports.sessions.read(), selected = this.selected(state, route.pin, purpose);
-      if (!operation.current()) throw cancelled();
+      if (!operation.current() || !callerLive()) throw cancelled();
+      // Capture the intended Hosted owner and role before the protected pending
+      // write or any network IO. A returned prepared intent must match exactly.
+      const intendedOwner = purpose === 'change-owner' ? selected.hosted?.accountId : undefined;
+      const intendedRole = purpose === 'change-owner' ? previousOwnerRole : undefined;
+      if (purpose === 'change-owner' && (!intendedOwner || !/^[A-Za-z0-9_-]{1,128}$/.test(intendedOwner))) throw invalid();
       assertFirstContactIdentity(origin, route.pin, {knownRoutes: knownServerRoutes(state)});
       // Capture exactly the durable selected family, without inheriting a
       // caller API's mutable bearer or generic refresh/retry policy.
@@ -127,55 +138,70 @@ export class BrowserOwnerClaim {
         pending = {version: 1, kind: 'owner', attemptId: routeBase64(crypto.getRandomValues(new Uint8Array(32))), origin, hostedOrigin, pin: {...route.pin},
           expectedRevision: state.revision, familyId: selected.session.sessionFamilyId, tokenGeneration: selected.session.tokenGeneration,
           accountId: selected.session.viewer.accountId, profileId: selected.session.viewer.profileId, installationId: this.ports.installationId(),
-          purpose, state: routeBase64(crypto.getRandomValues(new Uint8Array(32))), verifier, codeChallenge, createdAt, expiresAt: new Date(createdAt + 300_000).toISOString()};
+          purpose, ...(purpose === 'change-owner' ? {currentOwnerAccountId: intendedOwner, previousOwnerRole: intendedRole} : {}),
+          state: routeBase64(crypto.getRandomValues(new Uint8Array(32))), verifier, codeChallenge, createdAt, expiresAt: new Date(createdAt + 300_000).toISOString()};
         const fresh = pending;
-        await this.ports.journal.change(old => {if (!operation.current() || old) throw cancelled(); return fresh;});
+        if (!callerLive()) throw invalid();
+        await this.ports.journal.change(old => {if (!operation.current() || !callerLive() || old) throw cancelled(); return fresh;});
       }
       if (pending.origin !== origin || pending.hostedOrigin !== hostedOrigin || !sameServerPin(pending.pin, route.pin) ||
         (pending.purpose ?? 'switch') !== purpose) throw invalid();
+      if (purpose === 'change-owner'
+        ? pending.currentOwnerAccountId !== intendedOwner || pending.previousOwnerRole !== intendedRole
+        : pending.currentOwnerAccountId !== undefined || pending.previousOwnerRole !== undefined) throw invalid();
       this.attemptId = pending.attemptId;
+      if (!callerLive()) throw invalid();
       await this.current(pending, operation);
+      if (!callerLive()) throw invalid();
       if (!pending.expected) {
-        let status = parseClaimStatus(await captured.request(routePath('get_networking_claim'), 'GET', undefined, operation.signal), pending.pin);
+        let status = parseClaimStatus(await captured.request(routePath('get_networking_claim'), 'GET', undefined, signal), pending.pin);
         await this.current(pending, operation);
+        if (!callerLive()) throw invalid();
         // A portico-account server already has an installed claim, so its snapshot
         // has no 'prepare' action; the explicit change-owner purpose still posts.
         const already = status.state === 'prepared' && status.approvalRequest?.purpose === purpose;
         if (!already && (purpose === 'change-owner' || status.actions.includes('prepare'))) {
           status = parseClaimStatus(await captured.request(routePath('post_networking_claim_prepare'), 'POST',
-            {purpose, ...(purpose === 'change-owner' ? {previousOwnerRole: 'admin'} : {}), expected: status.identity}, operation.signal), pending.pin);
+            {purpose, ...(purpose === 'change-owner' ? {previousOwnerRole: intendedRole} : {}), expected: status.identity}, signal), pending.pin);
           await this.current(pending, operation);
+          if (!callerLive()) throw invalid();
         }
         const request = status.approvalRequest;
-        const role = request?.previousOwnerRole === 'admin' || request?.previousOwnerRole === 'member' || request?.previousOwnerRole === 'remove'
-          ? request.previousOwnerRole : undefined;
         const prepared = purpose === 'switch'
           ? request?.purpose === 'switch' && request.currentOwnerAccountId === '' && request.previousOwnerRole === '' && request.returnRegistrationId === ''
-          : request?.purpose === 'change-owner' && !!request.currentOwnerAccountId && request.currentOwnerAccountId === selected.hosted?.accountId &&
-            role !== undefined && request.returnRegistrationId === '';
+          : request?.purpose === 'change-owner' && request.currentOwnerAccountId === intendedOwner &&
+            request.previousOwnerRole === intendedRole && request.returnRegistrationId === '';
         if (status.state !== 'prepared' || !status.operation || !prepared) throw invalid();
-        const old = pending, updated = {...pending, purpose,
-          ...(purpose === 'change-owner' ? {currentOwnerAccountId: request!.currentOwnerAccountId, previousOwnerRole: role} : {}),
-          expected: {...status.operation}};
-        await this.ports.journal.change(current => {if (!operation.current() || !same(current, old)) throw cancelled(); return updated;});
+        const old = pending, updated = {...pending, expected: {...status.operation}};
+        if (!callerLive()) throw invalid();
+        await this.ports.journal.change(current => {if (!operation.current() || !callerLive() || !same(current, old)) throw cancelled(); return updated;});
         pending = updated;
       }
       const binding = {pin: pending.pin, origin, hostedOrigin, operationId: pending.expected!.operationId, localGeneration: pending.expected!.localGeneration,
         state: pending.state, codeChallenge: pending.codeChallenge, installationId: pending.installationId,
         purpose: pending.purpose ?? 'switch',
         ...(pending.purpose === 'change-owner' ? {currentOwnerAccountId: pending.currentOwnerAccountId, previousOwnerRole: pending.previousOwnerRole} : {})};
-      return await (this.ports.prepare ?? prepareOwnerClaimHandoff)(captured, pending.expected!, binding, {
-        assertPendingCurrent: async () => {await this.current(pending!, operation);},
+      const url = await (this.ports.prepare ?? prepareOwnerClaimHandoff)(captured, pending.expected!, binding, {
+        assertPendingCurrent: async () => {if (!callerLive()) throw invalid(); await this.current(pending!, operation); if (!callerLive()) throw invalid();},
         bindPending: async handoff => {
+          if (!callerLive()) throw invalid();
           await this.current(pending!, operation);
+          if (!callerLive()) throw invalid();
           // The Server challenge begins after our private journal was written.
           // Keep the earlier client deadline; never extend it to the later
           // signed expiry or change the producer's exact signed bytes.
           const old = pending!, updated = {...old, handoff, expiresAt: new Date(Math.min(Date.parse(old.expiresAt), Date.parse(handoff.expiresAt))).toISOString()};
-          await this.ports.journal.change(current => {if (!operation.current() || !same(current, old)) throw cancelled(); return updated;});
+          await this.ports.journal.change(current => {if (!operation.current() || !callerLive() || !same(current, old)) throw cancelled(); return updated;});
           pending = updated;
         },
-      }, {signal: operation.signal, now: () => this.now()});
+      }, {signal, now: () => this.now()});
+      if (!callerLive()) throw invalid();
+      return url;
+    } catch (error) {
+      // A retired caller leaves no delivered handoff behind; the local journal
+      // attempt is removed. A successful return is handled by the caller.
+      if (!callerLive()) await this.cancel().catch(() => {});
+      throw error;
     } finally {this.busy = false;}
   }
   /** Only protected KIND selects this consumer. The URL cannot select owner

@@ -154,14 +154,28 @@ export class SettingsOwnerSwitch {
   /** Begin the distinct change-owner claim on a Portico-account server. The
    * current owner approves a new Portico Account on Hosted; this controller
    * prepares only the existing owner claim handoff, never a move. */
-  async prepareChangeOwner(): Promise<string> {
+  async prepareChangeOwner(caller?: OwnerMoveCaller): Promise<string> {
     const operation = this.operation();
     try {
       operation.check();
-      const url = await this.claim!.prepare(this.api, this.options.hostedOrigin, 'change-owner');
+      const url = await this.claim!.prepare(this.api, this.options.hostedOrigin, 'change-owner', 'admin', caller);
+      if (caller && (!caller.isCurrent() || caller.signal?.aborted === true)) {
+        await this.claim!.cancel();
+        throw new DOMException('The change owner opening ended.', 'AbortError');
+      }
       try {operation.check();} catch (error) {await this.claim!.cancel();throw error;}
       this.delivered = true;return url;
     } finally {operation.finish();}
+  }
+  /** Abandon a change-owner attempt that never delivered its approval URL.
+   * Best effort: cancel the Server operation if prepared, otherwise forget the
+   * local journal attempt. A delivered handoff is never abandoned. */
+  async abandonChangeOwner(): Promise<void> {
+    this.delivered = false;
+    const claim = this.claim;
+    if (!claim) return;
+    try {await claim.cancelOperation(this.api);}
+    catch {await claim.cancel();}
   }
   async retryPreparation(): Promise<string> {
     if (!this.state.confirmed) throw new Error('The owner move has not been confirmed.');

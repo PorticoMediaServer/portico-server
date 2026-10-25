@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState} from 'react';
+import {useLayoutEffect, useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import {Button} from '../../kit/controls/Button';
 import {Dialog} from '../../kit/overlays/Dialog';
@@ -9,6 +9,14 @@ const t = defaultI18n.t;
 const LABEL = 'next.settingsSpec.server.signin.groups.0.rows.4.control.label';
 const CONFIRM = 'next.settingsSpec.server.signin.groups.0.rows.4.control.confirm';
 
+/** One drawn confirmation. Its phase is the claim: only the active open opening
+ * can prepare, and a retained Confirm from an older opening can never act. */
+type Opening = {
+  readonly id: number;
+  readonly abort: AbortController;
+  phase: 'open' | 'preparing' | 'handed' | 'closed';
+};
+
 /** The portico-account Change owner row. The current owner confirms here, then
  * approves a new Portico Account on Hosted through the existing owner claim
  * handoff. This surface never prepares a move or a local owner transfer. */
@@ -16,33 +24,74 @@ export function ChangeOwner({source, isCurrent, onError}: {
   source: SettingsOwnerSwitch; isCurrent: () => boolean; onError: (error: unknown) => void;
 }) {
   const [confirming, setConfirming] = useState(false), [secure, setSecure] = useState(false), [busy, setBusy] = useState(false);
-  const opener = useRef<HTMLButtonElement>(null), cancel = useRef<HTMLButtonElement>(null), alive = useRef(true);
-  useEffect(() => {alive.current = true; return () => {alive.current = false;};}, []);
+  const [opening, setOpening] = useState<Opening>();
+  const active = useRef<Opening>(), sourceRef = useRef(source), ticket = useRef<{retired: boolean}>(), sequence = useRef(0);
+  const opener = useRef<HTMLButtonElement>(null), cancel = useRef<HTMLButtonElement>(null);
+  // Layout retirement aborts this exact opening synchronously. A delivered
+  // handoff is left to the Settings lifetime; an undelivered prepare is stopped
+  // and its caller guard clears the protected journal attempt.
+  useLayoutEffect(() => {
+    const owned = {retired: false};
+    ticket.current = owned;sourceRef.current = source;
+    return () => {
+      owned.retired = true;
+      const current = active.current;
+      if (!current) return;
+      active.current = undefined;
+      current.phase = 'closed';current.abort.abort();
+    };
+  }, [source]);
   const label = t(LABEL), verb = label.replace(/…$/, '');
   const open = () => {
-    if (busy || !alive.current || !isCurrent()) return;
+    const owned = ticket.current;
+    if (!owned || owned.retired || source !== sourceRef.current || active.current || busy || !isCurrent()) return;
     // The claim producer requires a secure context and encrypted pending storage.
     if (!ownerSwitchContextAllowed()) {setSecure(true);return;}
-    setConfirming(true);
+    const next: Opening = {id: ++sequence.current, abort: new AbortController(), phase: 'open'};
+    active.current = next;setOpening(next);setConfirming(true);
   };
-  const run = async () => {
-    if (busy || !alive.current || !isCurrent()) return;
-    setBusy(true);
-    try {
-      const url = await source.prepareChangeOwner();
-      if (alive.current && isCurrent()) window.location.assign(url);
-    } catch (error) {if (alive.current && isCurrent()) onError(error);}
-    finally {if (alive.current && isCurrent()) setBusy(false);}
+  const close = (target: Opening) => {
+    if (active.current !== target || target.phase !== 'open') return;
+    target.phase = 'closed';target.abort.abort();active.current = undefined;setOpening(undefined);setConfirming(false);
   };
+  const run = (target: Opening) => {
+    if (active.current !== target || target.phase !== 'open' || busy || !isCurrent()) return;
+    const owned = ticket.current;
+    if (!owned || owned.retired || ticket.current !== owned || source !== sourceRef.current) return;
+    target.phase = 'preparing';setBusy(true);
+    const caller = {
+      isCurrent: () => active.current === target && target.phase === 'preparing' && ticket.current === owned && !owned.retired,
+      signal: target.abort.signal,
+    };
+    void (async () => {
+      try {
+        const url = await source.prepareChangeOwner(caller);
+        if (active.current !== target || target.phase !== 'preparing' || ticket.current !== owned || owned.retired ||
+          sourceRef.current !== source || target.abort.signal.aborted) {
+          target.phase = 'closed';await source.abandonChangeOwner().catch(() => {});return;
+        }
+        target.phase = 'handed';window.location.assign(url);
+      } catch (error) {
+        target.phase = 'closed';target.abort.abort();
+        if (active.current === target) active.current = undefined;
+        await source.abandonChangeOwner().catch(() => {});
+        if (ticket.current === owned && !owned.retired && isCurrent()) onError(error);
+      } finally {
+        if (ticket.current === owned && !owned.retired) setBusy(false);
+      }
+    })();
+  };
+  const current = opening && active.current === opening ? opening : undefined;
   return <>
     <Button ref={opener} variant="glass" size="small" loading={busy} disabled={!isCurrent()} onClick={open}>{label}</Button>
     <Dialog children={null} open={secure} onOpenChange={value => {if (!value) setSecure(false);}} title={t('accounts.ownerSwitch.secureTitle')}
       description={t('accounts.ownerSwitch.secureBody', {localUrl: 'http://localhost:32500'})}
       footer={<Button variant="glass" onClick={() => setSecure(false)}>{t('action.cancel')}</Button>}/>
-    <Dialog open={confirming} onOpenChange={value => {if (!busy) setConfirming(value);}} title={`${verb}?`} description={t(CONFIRM)}
-      initialFocusRef={cancel} returnFocusRef={opener} footer={<>
-        <Button ref={cancel} size="small" disabled={busy} onClick={() => setConfirming(false)}>{t('action.cancel')}</Button>
-        <Button variant="primary" size="small" loading={busy} onClick={() => {void run();}}>{verb}</Button></>}>
+    <Dialog open={confirming && !!current} onOpenChange={value => {if (!busy && !value && current) close(current);}} title={`${verb}?`} description={t(CONFIRM)}
+      initialFocusRef={cancel} returnFocusRef={opener} dismissOnBack={!busy} dismissOnOutsidePress={!busy} showCloseButton={!busy}
+      footer={<>
+        <Button ref={cancel} size="small" disabled={busy} onClick={() => {if (current) close(current);}}>{t('action.cancel')}</Button>
+        <Button variant="primary" size="small" loading={busy} onClick={() => {if (current) run(current);}}>{verb}</Button></>}>
       <span />
     </Dialog>
   </>;
