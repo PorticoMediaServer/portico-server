@@ -126,6 +126,11 @@ func classifyConverterFailure(diagnostic string) string {
 	return FailureConverter
 }
 
+// errHardwarePermitUnavailable says this adapter has no session slot left right
+// now. It is an ordinary hardware failure to the caller, so the window falls back
+// to another adapter and then to software exactly as a refused encoder does.
+var errHardwarePermitUnavailable = errors.New("hardware_permit_unavailable")
+
 // failedWith fails a session and records why, for the people who can read it.
 func (h *HLS) failedWith(ctx context.Context, id, code, diagnostic string) {
 	if !h.failed(ctx, id) {
