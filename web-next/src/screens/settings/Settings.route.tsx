@@ -26,6 +26,8 @@ import {LibraryScanAction} from './libraries/LibraryActions';
 import {isLibraryPanelContext, libraryScanAction} from './libraries/model';
 import {createServerSettingsSurfaces} from './server';
 import {createTroubleshootingSurfaces} from './server/troubleshooting';
+import {IntegrationsPage} from './server/integrations/ApiKeys';
+import {SettingsApiKeysSource} from './server/integrations/api-keys-source';
 import {presetEnginesAvailable} from './server/engines';
 import {LibraryFolders} from './libraries/LibraryFolders';
 import {SkippedFiles} from './libraries/SkippedFiles';
@@ -140,6 +142,8 @@ export function SettingsEntry() {
         if (!current()) return Promise.reject(new DOMException('The settings scope ended.', 'AbortError'));
         return context.api.routeFetch(context.api.baseUrl + '/v1/admin/logs/events', {headers: {...headers, Authorization: 'Bearer ' + context.session().accessToken}, signal});
       }}}) : undefined;
+    const integrationKeys = route.section === 'integrations' && role === 'owner' && identity.primaryProfile === true && identity.capabilities?.manageServer === true
+      ? new SettingsApiKeysSource(context.api, current, reportError) : undefined;
     const source = createSettingsBindings(controller, options, identity, {openHome, signIn,
       special: (row, state, rowContext, openPanel) => {
         const storageControl = server?.special(row, state);
@@ -170,7 +174,9 @@ export function SettingsEntry() {
           return <LibraryScanAction rowId={row.id} label={defaultI18n.t(row.control.label ?? row.label)} libraryId={rowContext.recordId} service={libraries} onError={reportError} />;
         return row.id === 'metadata.perLibrary' ? <Button variant="glass" size="small" onClick={() => openSettings('libraries')}>{defaultI18n.t(row.control.label ?? row.label)}</Button> : null;
       },
-      section: selected => selected.section.id === 'remote-sources' ? <RemoteSourcesPage api={context.api} serverId={viewer.serverId} viewerId={options.viewerId} isCurrent={current} reportError={reportError} /> : selected.section.id === 'people' && people ? <PeopleScreen bindings={people} /> : selected.section.id === 'dashboard' && dashboard ? <DashboardScreen bindings={dashboard} embedded /> : selected.section.id === 'history' && dashboard ? <HistoryScreen bindings={dashboard} embedded /> : selected.section.id === 'troubleshooting' ? troubleshooting?.render() : undefined,
+      section: (selected, _openPanel, renderRows) => selected.section.id === 'integrations' && integrationKeys ? <IntegrationsPage source={integrationKeys} baseUrl={context.api.baseUrl} isCurrent={current} reportError={reportError}
+        otherRows={renderRows({groups: selected.section.groups?.filter(group => !group.rows.some(row => ['integrations.apiKeys', 'integrations.assistantAddress', 'integrations.assistantKey'].includes(row.id)))})}
+        advancedRows={renderRows({advanced: selected.section.advanced})} /> : selected.section.id === 'remote-sources' ? <RemoteSourcesPage api={context.api} serverId={viewer.serverId} viewerId={options.viewerId} isCurrent={current} reportError={reportError} /> : selected.section.id === 'people' && people ? <PeopleScreen bindings={people} /> : selected.section.id === 'dashboard' && dashboard ? <DashboardScreen bindings={dashboard} embedded /> : selected.section.id === 'history' && dashboard ? <HistoryScreen bindings={dashboard} embedded /> : selected.section.id === 'troubleshooting' ? troubleshooting?.render() : undefined,
     });
     const deviceFacts = {serverName: identity.serverName, ...(identity.serverVersion === undefined ? {} : {serverVersion: identity.serverVersion})};
     const settings: SettingsBindings = {...source,
@@ -190,7 +196,7 @@ export function SettingsEntry() {
       },
     };
     setFailure(false);setOwned({context, settings, dashboard});
-    return () => {active = false;signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();server?.dispose();troubleshooting?.dispose();controller.dispose();};
+    return () => {active = false;signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();server?.dispose();troubleshooting?.dispose();integrationKeys?.dispose();controller.dispose();};
   // The captured identity decides which sections exist (main profile, manageServer,
   // role). It can be replaced without the assembly context object changing, so
   // every fact the gate reads is a dependency: a newer identity must rebuild the
