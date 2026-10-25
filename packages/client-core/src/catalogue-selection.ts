@@ -13,7 +13,7 @@ import {selectionCapabilities} from './selection-model/capabilities.ts';
 export type CatalogueSelectionLifetime = Readonly<{signal: AbortSignal; isCurrent(): boolean}>;
 export type CatalogueSelectionOptions = Readonly<{api: DetailApi; scope: DetailScope; requestId(): Promise<string>}> & CatalogueSelectionLifetime;
 /** Actual caller execution ports, never role-derived grants. Missing means unavailable. */
-export type CatalogueSelectionPorts = Readonly<Partial<Pick<SelectionCapabilities, 'play' | 'queue' | 'myList' | 'favorite' | 'watched' | 'edit'>>>;
+export type CatalogueSelectionPorts = Readonly<Partial<Pick<SelectionCapabilities, 'play' | 'queue' | 'myList' | 'favorite' | 'watched' | 'edit' | 'delete'>>>;
 const unavailable = () => Object.assign(new Error('catalogue-selection-unavailable'), {code: 'catalogue-selection-unavailable'});
 function requireCurrent(lifetime: CatalogueSelectionLifetime): void {
   if (lifetime.signal.aborted || !lifetime.isCurrent()) throw Object.assign(new Error('cancelled'), {name: 'AbortError', code: 'cancelled'});
@@ -50,6 +50,7 @@ export async function readCatalogueSelectionItem(options: CatalogueSelectionOpti
       play: availablePorts.play === true && data.item.available === true && play,
       queue: availablePorts.queue === true && data.item.available === true && data.actions.some(action =>
         action.id === 'enqueue' && action.enabled && action.playback?.itemId === entry.id),
+      delete: availablePorts.delete === true && enabled('delete'),
       edit: availablePorts.edit === true && enabled('metadata_edit'),
       myList: availablePorts.myList === true && enabled('watchlist'),
       favorite: availablePorts.favorite === true && enabled('favorite'),
