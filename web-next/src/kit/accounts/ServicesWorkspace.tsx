@@ -82,7 +82,7 @@ export function ServicesWorkspace({header, account, section, onSection, onSignOu
     </aside><main className={styles.pane}>
       <span className={styles.pill}><Icon name="i-person" size={16} />{t('services.workspace.title')}<span>{t('services.workspace.subtitle')}</span></span>
       <div className={styles.heading}><h2>{selected.label}</h2>{actions && <div>{actions}</div>}</div>{description && <p className={styles.lead}>{description}</p>}
-      <nav className={styles.phoneTabs} aria-label={t('services.workspace.sections')}>{sections.map(item => <button key={item.id} type="button" aria-current={item.id === section ? 'page' : undefined} onClick={() => onSection(item.id)}>{item.label}{item.id === 'notifications' && unread > 0 && <span className={styles.tabCount}>{unread}</span>}</button>)}</nav>
+      <nav className={styles.phoneTabs} aria-label={t('services.workspace.sections')}>{sections.map(item => <button key={item.id} type="button" aria-current={item.id === section ? 'page' : undefined} onClick={() => onSection(item.id)}>{item.label}</button>)}</nav>
       {children}
       {phoneActions && <div className={styles.phoneActions}>{phoneActions}</div>}
     </main></div>

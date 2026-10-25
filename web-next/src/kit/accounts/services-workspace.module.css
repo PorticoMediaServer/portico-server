@@ -30,7 +30,6 @@
 .lead { font-size: 16px; line-height: 1.55; color: var(--color-text-secondary); margin: 14px 0 0; max-width: 660px; }
 .phoneTabs { display: none; }
 .phoneActions, .factPhone { display: none; }
-.tabCount { margin-left: 6px; padding: 1px 7px; border-radius: 9px; font-size: 12px; background: var(--color-raised-bright); color: var(--color-text-secondary); }
 .group { margin-top: 40px; }
 .groupHeading { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .groupHeading h3 { font-size: 20px; font-weight: 700; letter-spacing: -.015em; margin: 0; }
