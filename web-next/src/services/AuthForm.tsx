@@ -40,6 +40,11 @@ function MountedAuthForm({account, flow, initialUsername = '', embedded = false,
   const retrySeconds = Math.max(0, Math.ceil((state.retryAt - clock) / 1000));
   const retryLabel = t('services.signin.tryIn', {time: `${Math.floor(retrySeconds / 60)}:${String(retrySeconds % 60).padStart(2, '0')}`});
   const busy = state.busy, blocked = busy || retrySeconds > 0, mode = state.mode;
+  // Closed Hosted codes that name a drawn field or state, so their sentence goes
+  // there instead of the generic notice. Anything else keeps the generic notice.
+  const errorCode = (state.error as {code?: string} | undefined)?.code;
+  const codeRejected = mode === 'verify' && errorCode === 'challenge_invalid';
+  const mailDown = mode === 'create' && errorCode === 'mail_unavailable';
   const back = <button type="button" disabled={busy} onClick={() => flow.go('signin')}>{t('auth.backToSignIn')}</button>;
   // Frame 7 draws the create form's way back with the same left arrow the provider
   // screen's Cancel uses; the code and reset screens draw it as plain text.
@@ -56,7 +61,7 @@ function MountedAuthForm({account, flow, initialUsername = '', embedded = false,
     {!(invitation && mode === 'signin') && <><ServicesHeading singleLine>{title}</ServicesHeading>{mode === 'verify' && state.registration ? <ServicesRegistrationLead address={state.registration.maskedAddress} /> : <ServicesLead>{body}</ServicesLead>}</>}
     {mode === 'signin' && before}
     {(mode === 'signin' || mode === 'create') && providerButtons}
-    {state.error ? state.retryAt > 0 ? <ServicesNotice tone="error">{t('services.signin.tooMany')}</ServicesNotice> : (state.error as {code?: string})?.code === 'invalid_credentials' ? <ServicesNotice tone="error">{t('services.signin.credentials')}</ServicesNotice> : <HostedError error={state.error} /> : null}
+    {state.error && !codeRejected ? state.retryAt > 0 ? <ServicesNotice tone="error">{t('services.signin.tooMany')}</ServicesNotice> : errorCode === 'invalid_credentials' ? <ServicesNotice tone="error">{t('services.signin.credentials')}</ServicesNotice> : mailDown ? <ServicesNotice icon="i-clock">{t('services.signup.mailUnavailable')}</ServicesNotice> : <HostedError error={state.error} /> : null}
     {mode === 'signin' && state.options?.password && <>
       <form className={styles.form} onSubmit={submit(() => flow.signIn(username, password, code))}>
         <TextField variant="auth" label={t('auth.usernameOrEmail')} placeholder={t('auth.usernameOrEmail')} name="username" autoComplete="username" autoCapitalize="off" spellCheck={false} value={username} onChange={event => setUsername(event.currentTarget.value)} disabled={busy} required />
@@ -80,7 +85,7 @@ function MountedAuthForm({account, flow, initialUsername = '', embedded = false,
     </>}
     {mode === 'verify' && state.registration && <>
       <form className={styles.form} onSubmit={submit(() => flow.verify(code))}>
-        <ServicesVerificationCode><AuthCodeBoxes length={6} value={code} onChange={setCode} onComplete={() => {}} label={t('auth.code')} disabled={busy} /></ServicesVerificationCode>
+        <ServicesVerificationCode><AuthCodeBoxes length={6} value={code} onChange={setCode} onComplete={() => {}} label={t('auth.code')} disabled={busy} error={codeRejected ? t('services.signup.codeInvalid') : undefined} /></ServicesVerificationCode>
         <ServicesActions><Button variant="primary" type="submit" loading={busy} disabled={blocked || code.length !== 6}>{retrySeconds ? retryLabel : t('auth.createAccount')}</Button></ServicesActions>
       </form>
       <AuthLinks><button type="button" disabled={blocked || state.resends >= 5} onClick={() => void flow.resend()}>{t('auth.sendCodeAgain')}</button><ServicesQuiet>{t('services.signup.resendLimit')}</ServicesQuiet></AuthLinks>

@@ -31,6 +31,7 @@ export const servicesMessages = {
   'services.signup.startAgain': 'Wrong address? Start again',
   'services.signup.codeHelp': 'The code is good for 10 minutes. It comes from Portico, and we never ask for it any other way.',
   'services.signup.codeInvalid': 'That code didn’t work or has expired. Check it, or send a new one.',
+  'services.signup.mailUnavailable': 'Portico Accounts can’t send email right now. Try again later.',
   'services.signup.details': 'Check the username, email and password: each one needs to be filled in, and the password needs to be at least 8 characters.',
   'services.signup.agreement': 'By continuing, you agree to the {terms} and {privacy}.',
   'services.signup.terms': 'Terms',
