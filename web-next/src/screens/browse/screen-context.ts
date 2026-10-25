@@ -5,7 +5,7 @@ import type {ShellBindings} from '../../shell/bindings';
 import type {ScreenContext} from '../detail/context';
 import {screenEntryDestination} from './navigation';
 import {openWatchVersionChooser} from '../watch/version-presentation';
-import {createScreenPlayEffect} from './playback-effect';
+import {createScreenPlayEffect, createScreenSeasonPlayEffect} from './playback-effect';
 
 export type ProtectedLibraryScreen = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
 
@@ -45,6 +45,7 @@ export function useLibraryScreenContext(captured: ProtectedLibraryScreen): Scree
         back() {assert();router.history.back();},
         openBrowse(selector) {assert();navigate(router.navigate({to: '/library/$libraryId', params: {libraryId: selector.libraryId},
           search: {pivot: selector.pivot, query: selector.query, sort: selector.sort}}));},
+        playSeason: createScreenSeasonPlayEffect({isCurrent: current, runtime: () => binding.current.playback?.runtime}),
         play: createScreenPlayEffect({isCurrent: current, runtime: () => binding.current.playback?.runtime}),
         async chooseVersion(request) {
           assert();request.signal.throwIfAborted();

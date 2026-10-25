@@ -19,3 +19,21 @@ export function createScreenPlayEffect(input: Readonly<{isCurrent: () => boolean
     if (!current()) throw new DOMException('Screen playback changed', 'AbortError');
   };
 }
+
+/** Whole selected season; the server snapshots canonical complete membership.
+ * Workspace filters, viewer ordering and loaded item arrays never enter this effect. */
+export function createScreenSeasonPlayEffect(input: Readonly<{isCurrent: () => boolean; runtime: () => Pick<NonNullable<ShellBindings['playback']>['runtime'], 'playFromQueue'> | undefined}>): NonNullable<ScreenContext['effects']['playSeason']> {
+ const authorityCurrent = input.isCurrent.bind(input), getRuntime = input.runtime.bind(input);
+ return async (seasonId, signal, callerCurrent) => {
+  const capturedSeasonId = seasonId;
+  signal.throwIfAborted();
+  if (!authorityCurrent() || !callerCurrent()) throw new DOMException('Screen playback changed', 'AbortError');
+  const runtime = getRuntime();
+  if (!runtime) throw new DOMException('Playback is still loading', 'AbortError');
+  const current = () => !signal.aborted && authorityCurrent() && callerCurrent() && getRuntime() === runtime;
+  if (!current()) throw new DOMException('Screen playback changed', 'AbortError');
+  await runtime.playFromQueue({container: {kind: 'season', id: capturedSeasonId}}, {signal, isCurrent: current});
+  signal.throwIfAborted();
+  if (!current()) throw new DOMException('Screen playback changed', 'AbortError');
+ };
+}
