@@ -16,7 +16,7 @@ import (
 
 func verifiedMobiExecutable(path, digest string, static bool) (*os.File, error) {
 	before, err := os.Lstat(path)
-	if err != nil || !before.Mode().IsRegular() || before.Size() <= 0 || before.Size() > 32<<20 || before.Mode().Perm()&0022 != 0 {
+	if err != nil || !before.Mode().IsRegular() || before.Size() <= 0 || before.Size() > 32<<20 || before.Mode().Perm()&0022 != 0 || before.Mode().Perm()&0111 == 0 {
 		return nil, ErrUnavailable
 	}
 	file, err := os.Open(path)

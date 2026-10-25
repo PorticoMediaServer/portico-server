@@ -53,13 +53,79 @@ def publish_delivery(parent, stage, final):
     finally:
         os.close(descriptor)
 
-def digest(path):
+def digest(path, limit=1 << 30):
+    result = hashlib.sha256()
     with path.open('rb') as stream:
-        return hashlib.file_digest(stream, 'sha256').hexdigest()
+        remaining = limit
+        while remaining:
+            block = stream.read(min(65536, remaining))
+            if not block:
+                return result.hexdigest()
+            result.update(block); remaining -= len(block)
+        require(not stream.read(1), 'hash input exceeds bound')
+    return result.hexdigest()
+
 
 def require(condition, message):
     if not condition:
         raise SystemExit(message)
+
+def qualified_helper(sandbox, output):
+    # A binary path plus a reference to elsewhere is not a redistribution input.
+    root = Path(sandbox['qualifiedDeliveryDirectory'])
+    require(root.is_absolute() and root.resolve() == root and root.is_dir(), 'qualified helper delivery directory required')
+    require(not overlaps(output, root), 'output overlaps qualified helper delivery')
+    manifest_path = root / 'manifest.json'
+    require(manifest_path.is_file() and not manifest_path.is_symlink() and manifest_path.stat().st_size <= 1 << 20, 'bounded helper manifest required')
+    require(digest(manifest_path, 1 << 20) == sandbox['qualifiedManifestSHA256'], 'qualified helper manifest hash mismatch')
+    raw = manifest_path.read_bytes(); manifest = json.loads(raw)
+    require(set(manifest) == {'schema', 'identity', 'linkage', 'executable', 'files'}, 'closed helper distribution schema required')
+    require(manifest['schema'] == 1 and isinstance(manifest['identity'], str) and 0 < len(manifest['identity']) <= 256, 'actual qualified helper identity required')
+    require(manifest['linkage'] in ('static', 'dynamic'), 'helper linkage declaration required')
+    files = manifest['files']
+    require(isinstance(files, list) and 0 < len(files) <= 4096, 'bounded complete helper file list required')
+    roles = {'executable', 'license', 'notice', 'source', 'build-provenance', 'qualification', 'runtime-dependency'}
+    seen = set(); total = 0
+    for entry in files:
+        require(set(entry) == {'path', 'size', 'sha256', 'role'}, 'closed helper file declaration required')
+        name = entry['path']
+        require(isinstance(name, str) and 0 < len(name) <= 1024 and re.fullmatch(r'[A-Za-z0-9._/-]+', name) and not name.startswith('/') and all(part not in ('', '.', '..') for part in name.split('/')), 'unsafe helper distribution path')
+        require(name not in seen and entry['role'] in roles, 'duplicate/unknown helper artifact')
+        seen.add(name)
+        require(type(entry['size']) is int and 0 < entry['size'] <= 512 << 20, 'helper artifact size refused')
+        require(isinstance(entry['sha256'], str) and re.fullmatch(r'[0-9a-f]{64}', entry['sha256']), 'actual helper artifact hash required')
+        total += entry['size']; require(total <= 512 << 20, 'helper distribution size refused')
+        candidate = root / name
+        require(candidate.resolve() == candidate and candidate.is_file() and candidate.stat().st_size == entry['size'], 'regular exact helper artifact required')
+        require(digest(candidate, entry['size']) == entry['sha256'], 'helper artifact hash mismatch')
+    for role in ('executable', 'build-provenance', 'qualification'):
+        require(sum(entry['role'] == role for entry in files) == 1, 'one exact helper ' + role + ' required')
+    require(any(entry['role'] == 'license' for entry in files) and any(entry['role'] == 'source' for entry in files), 'matching helper license and source delivery required')
+    if manifest['linkage'] == 'dynamic':
+        require(any(entry['role'] == 'runtime-dependency' for entry in files), 'qualified helper dynamic closure absent')
+    executable = next(entry for entry in files if entry['role'] == 'executable')
+    require(manifest['executable'] == {'path': executable['path'], 'sha256': executable['sha256']} and executable['sha256'] == sandbox['sha256'], 'helper executable does not match qualified closure')
+    require((root / executable['path']).stat().st_mode & 0o111, 'qualified helper is not executable')
+    provenance_file = next(entry for entry in files if entry['role'] == 'build-provenance')
+    require(provenance_file['size'] <= 65536, 'helper build provenance exceeds bound')
+    provenance = json.loads((root / provenance_file['path']).read_bytes())
+    require(provenance.get('executableSHA256') == executable['sha256'] and provenance.get('sourceSHA256') == {entry['path']: entry['sha256'] for entry in files if entry['role'] == 'source'}, 'helper source/build provenance does not match executable')
+    require(isinstance(provenance.get('builderIdentity'), str) and re.fullmatch(r'sha256:[0-9a-f]{64}', provenance['builderIdentity']), 'actual qualified helper builder identity required')
+    return root, raw, manifest
+
+def copy_helper_file(source, destination, entry):
+    # Copy exactly the qualified inode's declared extent, never a growing stream.
+    before = source.stat(); total = 0; hashed = hashlib.sha256()
+    descriptor = os.open(source, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(descriptor, 'rb') as original, destination.open('xb') as target:
+        require(os.path.samestat(before, os.fstat(original.fileno())), 'helper input replaced')
+        while total < entry['size']:
+            block = original.read(min(65536, entry['size'] - total))
+            require(block, 'short helper artifact')
+            target.write(block); hashed.update(block); total += len(block)
+        require(not original.read(1) and hashed.hexdigest() == entry['sha256'], 'helper artifact changed during copy')
+    destination.chmod(0o755 if before.st_mode & 0o111 else 0o644)
+
 
 def main():
     require(len(sys.argv) == 5, 'build.py LIBMOBI_CHECKOUT MUSL_ARCHIVE TOOLCHAIN_MANIFEST OUTPUT')
@@ -71,6 +137,7 @@ def main():
         path = HERE / name
         require(path.is_file() and not path.is_symlink() and path.stat().st_size <= 1 << 20, 'reviewed regular recipe input required: ' + name)
     tools_manifest = json.loads(manifest_path.read_text())
+    helper_root, helper_manifest_raw, helper_manifest = qualified_helper(tools_manifest['sandbox'], output)
     require(re.fullmatch(r'sha256:[0-9a-f]{64}', tools_manifest['builderImage']) is not None, 'qualified immutable builder image digest required')
     tools = {}
     for name, version in PIN['toolchain'].items():
@@ -121,7 +188,13 @@ def main():
     # Sandbox is an existing Release-qualified Linux helper, not built/downloaded here.
     sandbox = tools_manifest['sandbox']; sandbox_path = Path(sandbox['path'])
     require(sandbox_path.is_absolute() and not sandbox_path.is_symlink() and digest(sandbox_path) == sandbox['sha256'], 'sandbox hash mismatch')
-    shutil.copy2(sandbox_path, delivery / 'bwrap')
+    helper_delivery = delivery / 'helper-distribution'; helper_delivery.mkdir()
+    for entry in helper_manifest['files']:
+        destination = helper_delivery / entry['path']; destination.parent.mkdir(parents=True, exist_ok=True)
+        copy_helper_file(helper_root / entry['path'], destination, entry)
+    (delivery / 'helper-distribution-manifest.json').write_bytes(helper_manifest_raw)
+    helper_executable = next(entry for entry in helper_manifest['files'] if entry['role'] == 'executable')
+    copy_helper_file(helper_delivery / helper_executable['path'], delivery / 'bwrap', helper_executable)
     bundle = {'schema': 1, 'target': PIN['target'], 'converter': 'libmobi:' + PIN['libmobi']['commit'],
               'options': 'portico-epub-v1;unencrypted-only;no-replica;default-kf8',
               'workerSHA256': digest(delivery / 'worker'), 'sandboxSHA256': digest(delivery / 'bwrap')}
