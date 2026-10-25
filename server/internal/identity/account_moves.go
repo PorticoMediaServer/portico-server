@@ -64,7 +64,9 @@ type MoveCodes struct {
 	Items []MoveCode `json:"items"`
 }
 type MoveCodeRequest struct {
-	AccountIDs []string `json:"accountIds"`
+	AccountIDs       []string `json:"accountIds"`
+	MoveID           string   `json:"moveId,omitempty"`
+	ExpectedRevision int64    `json:"expectedRevision,omitempty"`
 }
 type LocalMoveRedemption struct {
 	Code     string `json:"code"`
@@ -540,7 +542,7 @@ func (s *Service) ConfirmPorticoMove(ctx context.Context, bearer string, q MoveC
 	return out, e
 }
 func (s *Service) MakeMoveCodes(ctx context.Context, bearer string, q MoveCodeRequest) (out MoveCodes, err error) {
-	if len(q.AccountIDs) > 2000 {
+	if len(q.AccountIDs) > 2000 || (q.MoveID == "") != (q.ExpectedRevision == 0) || q.ExpectedRevision < 0 || len(q.MoveID) > 128 {
 		return out, ErrDirectInput
 	}
 	wanted := map[string]bool{}
@@ -555,11 +557,17 @@ func (s *Service) MakeMoveCodes(ctx context.Context, bearer string, q MoveCodeRe
 		if _, e := s.moveWebOwnerTx(ctx, tx, bearer); e != nil {
 			return e
 		}
+		if q.MoveID != "" {
+			move, e := readMoveTx(ctx, tx, q.MoveID)
+			if e != nil || move.Revision != q.ExpectedRevision || (move.Stage != "moving_to_local" && move.Stage != "moving_to_portico") {
+				return ErrConflict
+			}
+		}
 		serverID, e := LocalLinkServerIDTx(ctx, tx)
 		if e != nil {
 			return e
 		}
-		rows, e := tx.QueryContext(ctx, `SELECT a.id,a.username,w.move_id FROM identity_move_waiting w JOIN accounts a ON a.id=w.account_id JOIN identity_moves m ON m.id=w.move_id WHERE w.state='waiting' AND m.stage IN('moving_to_local','moving_to_portico') ORDER BY a.username,a.id`)
+		rows, e := tx.QueryContext(ctx, `SELECT a.id,a.username,w.move_id FROM identity_move_waiting w JOIN accounts a ON a.id=w.account_id JOIN identity_moves m ON m.id=w.move_id WHERE w.state='waiting' AND m.stage IN('moving_to_local','moving_to_portico') AND (?='' OR m.id=?) ORDER BY a.username,a.id`, q.MoveID, q.MoveID)
 		if e != nil {
 			return e
 		}
@@ -573,6 +581,10 @@ func (s *Service) MakeMoveCodes(ctx context.Context, bearer string, q MoveCodeRe
 			}
 			if len(wanted) == 0 || wanted[t.id] {
 				targets = append(targets, t)
+				if len(targets) > 2000 {
+					rows.Close()
+					return ErrDirectInput
+				}
 			}
 		}
 		rows.Close()

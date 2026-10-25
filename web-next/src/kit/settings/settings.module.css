@@ -67,6 +67,9 @@
 .table input[type='checkbox']:indeterminate::after { content: ''; position: absolute; width: 10px; height: 2px; background: var(--color-ink); left: 5px; top: 9px; }
 .checkboxColumn { width: 46px; }
 .actionColumn { width: 96px; }
+/* A row that also carries its own optional control needs room for both. */
+.actionColumnWide { width: 200px; }
+.actionCell { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .cell { display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; }
 .cellText { display: block; min-width: 0; }
 .cellText > span, .cellText small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

@@ -21,6 +21,8 @@ export type SettingsTableProps = Readonly<{
   matchedCount?: number; offset?: number; hasMore?: boolean; onLoadMore?: () => void;
   selected?: ReadonlySet<string>; onSelectionChange?: (selected: ReadonlySet<string>) => void; bulkActions?: readonly SettingsTableAction[];
   rowAction?: Readonly<{label: string; onAction: (row: SettingsTableRow, opener: HTMLElement) => void}>;
+  /** One narrow, optional control for the row itself; drawn beside the row action. */
+  rowActions?: (row: SettingsTableRow) => ReactNode;
   actions?: ReactNode; ref?: Ref<SettingsTableHandle>;
 }>;
 
@@ -35,7 +37,7 @@ function Cell({value, kind}: {value?: SettingsTableCell; kind?: SettingsTableCol
 
 /** Real paged data in, bounded DOM out. It never sorts a partial server page locally. */
 export function SettingsTable({label, rows, columns, query, onQueryChange, filters = [], searchLabel, countLabel, emptyLabel, loading = false, height = 560,
-  matchedCount, offset = 0, hasMore, onLoadMore, selected, onSelectionChange, bulkActions = [], rowAction, actions, ref}: SettingsTableProps) {
+  matchedCount, offset = 0, hasMore, onLoadMore, selected, onSelectionChange, bulkActions = [], rowAction, rowActions, actions, ref}: SettingsTableProps) {
   const id = useId(), root = useRef<HTMLDivElement>(null), search = useRef<HTMLInputElement>(null), all = useRef<HTMLInputElement>(null);
   const [viewport, setViewport] = useState({top: 0, height}), [focused, setFocused] = useState<string | undefined>();
   const pending = useRef<{id: string; slot: number} | undefined>(undefined), before = useRef(rows.map(row => row.id));
@@ -45,7 +47,8 @@ export function SettingsTable({label, rows, columns, query, onQueryChange, filte
   const selectableIds = useMemo(() => rows.filter(row => row.selectable !== false).map(row => row.id), [rows]);
   const allChecked = selectableIds.length > 0 && selectableIds.every(id => selected?.has(id)), anyChecked = selectableIds.some(id => selected?.has(id));
   const filtered = !!query.search || Object.values(query.filters).some(value => value !== 'all');
-  const columnsCount = columns.length + Number(selectable) + Number(!!rowAction);
+  const hasActions = Boolean(rowAction || rowActions);
+  const columnsCount = columns.length + Number(selectable) + Number(hasActions);
   const changeQuery = (value: TableQuery) => {
     onSelectionChange?.(new Set());
     if (root.current) root.current.scrollTop = 0;
@@ -116,17 +119,17 @@ export function SettingsTable({label, rows, columns, query, onQueryChange, filte
         }
       }}>
       <table className={styles.table} aria-label={label} aria-rowcount={matchedCount === undefined ? undefined : matchedCount + 1} aria-colcount={columnsCount}>
-        <colgroup>{selectable && <col className={styles.checkboxColumn} />}{columns.map(column => <col key={column.id} style={{width: column.width}} />)}{rowAction && <col className={styles.actionColumn} />}</colgroup>
+        <colgroup>{selectable && <col className={styles.checkboxColumn} />}{columns.map(column => <col key={column.id} style={{width: column.width}} />)}{hasActions && <col className={rowActions ? `${styles.actionColumn} ${styles.actionColumnWide}` : styles.actionColumn} />}</colgroup>
         <thead><tr>{selectable && <th scope="col"><input ref={all} type="checkbox" checked={allChecked} disabled={!selectableIds.length} aria-label={t('next.settings.selectLoaded')} onChange={event => onSelectionChange?.(selectTableRows(selected ?? new Set(), selectableIds, event.currentTarget.checked))} /></th>}
           {columns.map(column => <th key={column.id} scope="col" aria-sort={query.sort.by === column.id ? query.sort.direction === 'asc' ? 'ascending' : 'descending' : undefined} data-kind={column.kind}>
             {column.sortable ? <button type="button" onClick={() => changeQuery({...query, sort: nextTableSort(query.sort, column.id)})}>{column.label}<Icon name={query.sort.by === column.id && query.sort.direction === 'desc' ? 'i-arrow-down' : 'i-arrow-up'} size={14} className={query.sort.by === column.id ? undefined : styles.sortIdle} /></button> : column.label}
-          </th>)}{rowAction && <th scope="col"><span className={styles.srOnly}>{t('next.settings.actions')}</span></th>}</tr></thead>
+          </th>)}{hasActions && <th scope="col"><span className={styles.srOnly}>{t('next.settings.actions')}</span></th>}</tr></thead>
         <tbody>{range.before > 0 && <tr aria-hidden="true"><td colSpan={columnsCount} style={{height: range.before, padding: 0}} /></tr>}
           {rendered.map((row, index) => <tr key={row.id} data-table-row={row.id} aria-rowindex={offset + range.first + index + 2} data-selected={selected?.has(row.id) || undefined}
             onClick={event => {if (!(event.target as HTMLElement).closest('button,input,a')) rowAction?.onAction(row, event.currentTarget.querySelector<HTMLElement>('[data-table-action]') ?? event.currentTarget);}}>
             {selectable && <td><input type="checkbox" checked={row.selectable !== false && (selected?.has(row.id) ?? false)} disabled={row.selectable === false} aria-label={t('next.settings.selectRow', {name: row.label})} onChange={event => {if (row.selectable !== false) onSelectionChange?.(selectTableRows(selected ?? new Set(), [row.id], event.currentTarget.checked));}} /></td>}
             {columns.map(column => <td key={column.id} data-kind={column.kind}><Cell value={row.cells[column.id]} kind={column.kind} /></td>)}
-            {rowAction && <td><Button size="xs" data-table-action aria-label={t('next.settings.rowAction', {action: rowAction.label, name: row.label})} onClick={event => rowAction.onAction(row, event.currentTarget)}>{rowAction.label}</Button></td>}
+            {hasActions && <td className={styles.actionCell}>{rowActions?.(row)}{rowAction && <Button size="xs" data-table-action aria-label={t('next.settings.rowAction', {action: rowAction.label, name: row.label})} onClick={event => rowAction.onAction(row, event.currentTarget)}>{rowAction.label}</Button>}</td>}
           </tr>)}
           {range.after > 0 && <tr aria-hidden="true"><td colSpan={columnsCount} style={{height: range.after, padding: 0}} /></tr>}
           {!rows.length && !loading && <tr><td className={styles.tableEmpty} colSpan={columnsCount}>{emptyLabel}{filtered && <Button size="xs" variant="text" onClick={() => changeQuery({...query, search: '', filters: Object.fromEntries(filters.map(filter => [filter.id, 'all']))})}>{t('next.settings.clearFilters')}</Button>}</td></tr>}

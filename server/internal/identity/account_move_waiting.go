@@ -2,16 +2,22 @@ package identity
 
 import (
 	"context"
+	"database/sql"
+	"time"
 
 	"portico.local/server/internal/dbwork"
 )
 
 // MoveWaiting is one account that still needs its link or code for the active
-// move: the id the codes route accepts and the username the owner recognises. It
-// never carries a code, hash or password material.
+// move: the id the codes route accepts, the username the owner recognises, and
+// the expiry of a code that already exists and still works. It never carries a
+// code, hash or password material.
 type MoveWaiting struct {
 	AccountID string `json:"accountId"`
 	Username  string `json:"username"`
+	// ExpiresAt is the existing receipt's own expiry; absent when this person has
+	// no working code yet, never a guess or a fresh issue.
+	ExpiresAt string `json:"expiresAt,omitempty"`
 }
 
 // MoveWaitingList is bounded and ordered by username. Truncated says the waiting
@@ -58,7 +64,9 @@ func (s *Service) moveWaitingRows(ctx context.Context, bearer string) (items []M
 	if _, err = s.moveWebOwnerTx(ctx, snapshot.Tx(), bearer); err != nil {
 		return nil, err
 	}
-	rows, err := snapshot.Tx().QueryContext(ctx, `SELECT a.id,a.username FROM identity_move_waiting w JOIN accounts a ON a.id=w.account_id JOIN identity_moves m ON m.id=w.move_id WHERE w.state='waiting' AND m.stage IN('moving_to_local','moving_to_portico') ORDER BY a.username,a.id LIMIT 2001`)
+	// The left join reads each waiting person's existing code expiry from the same
+	// move's real receipt; an expired code is not reported because it no longer works.
+	rows, err := snapshot.Tx().QueryContext(ctx, `SELECT a.id,a.username,c.expires_ms FROM identity_move_waiting w JOIN accounts a ON a.id=w.account_id JOIN identity_moves m ON m.id=w.move_id LEFT JOIN identity_move_codes c ON c.account_id=w.account_id AND c.move_id=w.move_id AND c.expires_ms>? WHERE w.state='waiting' AND m.stage IN('moving_to_local','moving_to_portico') ORDER BY a.username,a.id LIMIT 2001`, time.Now().UnixMilli())
 	if err != nil {
 		return nil, err
 	}
@@ -66,8 +74,12 @@ func (s *Service) moveWaitingRows(ctx context.Context, bearer string) (items []M
 	items = make([]MoveWaiting, 0, 16)
 	for rows.Next() {
 		var item MoveWaiting
-		if err = rows.Scan(&item.AccountID, &item.Username); err != nil {
+		var expires sql.NullInt64
+		if err = rows.Scan(&item.AccountID, &item.Username, &expires); err != nil {
 			return nil, err
+		}
+		if expires.Valid {
+			item.ExpiresAt = time.UnixMilli(expires.Int64).UTC().Format(time.RFC3339)
 		}
 		items = append(items, item)
 	}

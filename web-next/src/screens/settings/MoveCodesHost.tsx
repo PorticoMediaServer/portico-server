@@ -1,54 +1,132 @@
-import {useEffect, useRef, useState} from 'react';
-import type {AccountMoveCode} from '@core/account-move.ts';
+import {useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
+import type {AccountMove, AccountMoveCode, AccountMoveWaiting} from '@core/account-move.ts';
 import {defaultI18n} from '@i18n';
+import {CodedError, unreadableServerResponse} from '@core/server-messages.ts';
 import {Button} from '../../kit/controls/Button';
 import type {SettingsOwnerSwitch} from './owner-switch';
+import {useMoveCodePublisher} from './move-codes-port';
 import {MoveCodesSheet} from './MoveCodesSheet';
 import styles from './owner-signin-switch.module.css';
 
 const t = defaultI18n.t;
+type Waiting = Readonly<{items: readonly AccountMoveWaiting[]; truncated: boolean}>;
+/** One committed flight: this exact source, move revision and lifetime ticket.
+ * Handlers are rendered against one flight and can only ever act on it. */
+type Flight = {
+	readonly id: number; readonly source: SettingsOwnerSwitch; readonly contextId: string;
+	readonly move: AccountMove; readonly controller: AbortController;
+	readonly isCurrent: () => boolean; retired: boolean; pending: boolean;
+};
+type Held<T> = Readonly<{flight: Flight; value: T}>;
+type Receipt = Readonly<{flight: Flight; codes: readonly AccountMoveCode[]; targets: readonly string[]; issuer: string}>;
+
+const retire = (flight: Flight) => {if (!flight.retired) {flight.retired = true; flight.controller.abort();}};
 
 /**
- * Frame 24d's post-move host: the owner makes one sheet of codes for the exact
- * people still waiting. The waiting read and the code receipt are bounded and
- * owner-fenced on the server; this surface holds the receipt in memory, captures
- * the rendered console address, retires on close and drops everything when the
- * view, the authority or the sign-in direction changes. It issues nothing
- * itself and admits nobody.
+ * Frames 24d and 24c2: the owner makes codes for the exact people still waiting,
+ * one person at a time or everyone listed. Each flight is bound to one exact
+ * source, move revision and abort ticket. Layout commits a fresh lifetime, and
+ * the rendered source/move witness refuses a replaced flight before cleanup.
+ * Every handler only acts
+ * through the flight it was drawn with, so a retained button cannot issue a
+ * successor's targets or finish a move it did not draw. The sheet's address is
+ * the issuer origin proved for this server, never the page's own location.
  */
 export function MoveCodesHost({source, serverName, isCurrent, onError}: {
 	source: SettingsOwnerSwitch; serverName: string; isCurrent: () => boolean; onError: (error: unknown) => void;
 }) {
-	const [waiting, setWaiting] = useState<Readonly<{items: readonly {accountId: string; username: string}[]; truncated: boolean}>>();
-	const [codes, setCodes] = useState<readonly AccountMoveCode[]>();
-	const [busy, setBusy] = useState(false), [note, setNote] = useState('');
-	const pending = useRef(false), alive = useRef(true), lease = useRef(0);
-	useEffect(() => {alive.current = true; return () => {alive.current = false; lease.current++; setCodes(undefined);};}, []);
-	const current = (ticket: number) => alive.current && isCurrent() && lease.current === ticket;
-	const make = async () => {
-		const ticket = lease.current;
-		if (pending.current || !current(ticket)) return;
-		pending.current = true; setBusy(true); setNote('');
+	const move = useSyncExternalStore(source.subscribeMove, source.getMove);
+	const [waiting, setWaiting] = useState<Held<Waiting>>();
+	const [receipt, setReceipt] = useState<Receipt>();
+	const [busy, setBusy] = useState<Held<string>>();
+	const [note, setNote] = useState(''), [flight, setFlight] = useState<Flight>();
+	const sequence = useRef(0), flightRef = useRef<Flight | undefined>(undefined);
+	const rendered = useRef({source, move, isCurrent, onError});
+	rendered.current = {source, move, isCurrent, onError};
+	const refreshed = useRef<SettingsOwnerSwitch | undefined>(undefined);
+	const live = useCallback((target: Flight | undefined): target is Flight =>
+		target !== undefined && target === flightRef.current && !target.retired && !target.controller.signal.aborted &&
+		rendered.current.source === target.source && rendered.current.move === target.move && target.source.getMove() === target.move && target.isCurrent(), []);
+	useEffect(() => {
+		if (refreshed.current !== source) {refreshed.current = source; source.refreshMove();}
+	}, [source]);
+	useLayoutEffect(() => {
+		setWaiting(undefined); setReceipt(undefined); setBusy(undefined); setNote('');
+		if (!move) {setFlight(undefined); return;}
+		const opened = rendered.current;
+		const target: Flight = {id: ++sequence.current, source, contextId: source.contextId, move,
+			controller: new AbortController(), isCurrent: opened.isCurrent, retired: false, pending: false};
+		flightRef.current = target; setFlight(target);
+		void target.source.waiting(target.controller.signal).then(list => {
+			if (live(target)) setWaiting({flight: target, value: list});
+		}, error => {if (live(target)) opened.onError(error);});
+		return () => {retire(target); if (flightRef.current === target) flightRef.current = undefined;};
+	}, [source, move, live]);
+	const makeFor = useCallback(async (target: Flight, ids?: readonly string[]) => {
+		const list = waiting && waiting.flight === target ? waiting.value : undefined;
+		if (!live(target) || target.pending || !list) return;
+		const targets = ids ?? list.items.map(row => row.accountId);
+		// Exactly the rendered people: no invented target, and no whole-population
+		// action while the read proves it listed only the first 2000.
+		if (!targets.length || targets.some(id => !list.items.some(row => row.accountId === id))) return;
+		if (!ids && list.truncated) return;
+		const issuer = target.source.issuerOrigin();
+		if (!issuer) {onError(new CodedError('invalid_account_move', unreadableServerResponse)); return;}
+		target.pending = true; setBusy({flight: target, value: ids ? ids[0] ?? '' : 'all'}); setNote('');
 		try {
-			const list = await source.waiting();
-			if (!current(ticket)) return;
-			setWaiting(list);
-			if (!list.items.length) {setNote(t('accounts.move.nobodyWaiting')); return;}
-			const receipt = await source.codes(list.items.map(row => row.accountId));
-			if (!current(ticket)) return;
-			setCodes(receipt);
-		} catch (error) {if (current(ticket)) onError(error);}
-		finally {pending.current = false; if (alive.current) setBusy(false);}
+			const codes = await target.source.codes(targets, target.controller.signal, target.move);
+			if (!live(target)) return;
+			// The receipt must be exactly these targets before anything is shown.
+			if (codes.length !== targets.length || targets.some(id => !codes.some(code => code.accountId === id))) return;
+			setReceipt({flight: target, codes, targets, issuer});
+			setWaiting(current => current?.flight === target ? {flight: target, value: {...current.value,
+				items: current.value.items.map(row => {const code = codes.find(code => code.accountId === row.accountId);
+					return code ? {...row, expiresAt: code.expiresAt} : row;})}} : current);
+		} catch (error) {if (live(target)) onError(error);}
+		finally {
+			target.pending = false;
+			setBusy(current => current && current.flight === target ? undefined : current);
+		}
+	}, [waiting, live, onError]);
+	const finish = async (target: Flight) => {
+		if (!live(target) || target.pending) return;
+		target.pending = true; setBusy({flight: target, value: 'finish'}); setNote('');
+		try {await target.source.finishMove(target.move, {isCurrent: () => live(target), signal: target.controller.signal});}
+		catch (error) {if (live(target)) onError(error);}
+		finally {
+			target.pending = false;
+			setBusy(current => current && current.flight === target ? undefined : current);
+		}
 	};
-	const close = () => {lease.current++; setCodes(undefined);};
+	// A retained sheet may dismiss only the receipt it was drawn for.
+	const close = (target: Receipt) => {setReceipt(current => current === target ? undefined : current);};
+	const current = live(flight) ? flight : undefined, list = waiting && waiting.flight === current ? waiting.value : undefined;
+	const receiptShown = receipt && receipt.flight === current ? receipt : undefined;
+	const held = busy && busy.flight === current ? busy.value : undefined;
+	// Publish this flight's narrow row port while it stands; the People table's row
+	// action then issues through this same receipt owner, never a second one.
+	const publishPort = useMoveCodePublisher();
+	useLayoutEffect(() => {
+		if (!current) {publishPort(undefined); return;}
+		const expires = new Map<string, string>();
+		if (list) for (const row of list.items) if (row.expiresAt) expires.set(row.accountId, row.expiresAt);
+		publishPort({expires, busy: held ?? '', make: accountId => {void makeFor(current, [accountId]);}});
+		return () => publishPort(undefined);
+	}, [current, list, held, publishPort, makeFor]);
 	return <>
 		<div className={styles.codesRow}>
 			<span>{t('accounts.move.sheetTitle')}
-				<small>{waiting ? t(waiting.truncated ? 'accounts.move.waitingTruncated' : 'accounts.move.waitingCount', {count: defaultI18n.number(waiting.items.length)}) : t('accounts.move.waitingHelp')}</small>
+				<small>{move ? t('accounts.settings.waiting', {waiting: move.waiting, total: move.people})
+					: list ? t(list.truncated ? 'accounts.move.waitingTruncated' : 'accounts.move.waitingCount', {count: defaultI18n.number(list.items.length)})
+						: t('accounts.move.waitingHelp')}</small>
 			</span>
-			<Button variant="glass" size="small" loading={busy} disabled={busy} onClick={() => void make()}>{t('accounts.move.makeCodes')}</Button>
+			{current && list ? <Button variant="glass" size="small" loading={held === 'all'} disabled={Boolean(held) || list.truncated}
+				onClick={() => void makeFor(current)}>{t('accounts.move.makeCodes')}</Button> : null}
+			{current ? <Button variant="glass" size="small" loading={held === 'finish'} disabled={Boolean(held)} onClick={() => void finish(current)}>{t('accounts.settings.finishNow')}</Button> : null}
 		</div>
+		{move ? <p className={styles.hostNote}>{t('accounts.settings.finishNowHelp')}</p> : null}
 		{note && <p className={styles.hostNote}>{note}</p>}
-		{codes && <MoveCodesSheet codes={codes} serverName={serverName} address={location.origin} isCurrent={() => alive.current && isCurrent()} onClose={close} onError={onError}/>}
+		{receiptShown ? <MoveCodesSheet codes={receiptShown.codes} serverName={serverName} address={receiptShown.issuer}
+			isCurrent={() => live(receiptShown.flight)} onClose={() => close(receiptShown)} onError={onError}/> : null}
 	</>;
 }

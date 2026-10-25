@@ -38,10 +38,16 @@ export class SettingsOwnerSwitch {
   private epoch = 0;
   private closed = false;
   private deliveredAttemptId?: string;
+  private move: AccountMove | null = null;
+  private moveReading = false;
+  private readonly moveListeners = new Set<() => void>();
   private readonly origin: string;
   private readonly routes: ReturnType<HttpLocalApi['getRouteConnection']>;
+  /** One captured server/sign-in context, stable across rebuilt sources. */
+  readonly contextId: string;
   constructor(private readonly api: HttpLocalApi, private readonly options: OwnerSwitchOptions) {
     this.origin = api.baseUrl;this.routes = api.getRouteConnection();
+    this.contextId = JSON.stringify([options.serverId, this.origin, options.hostedOrigin]);
     this.moves = new AccountMoveClient(api, {serverId: options.serverId, isCurrent: this.current, retireLateGrant: this.retire});
   }
   private retire = async (session: LocalSession) => {
@@ -129,6 +135,7 @@ export class SettingsOwnerSwitch {
       if (!callerLive()) throw ended();
       this.publish({busy: false, confirmed: false});
       operation.check();
+      this.refreshMove();
       return confirmedCustody;
     } catch (error) {
       if (custody) await custody.retire();
@@ -181,10 +188,71 @@ export class SettingsOwnerSwitch {
     this.deliveredAttemptId = attempt.lease?.attemptId;
     return url;
   }
+  /** The move actually in flight, from the same owner-fenced read the rows use. */
+  getMove = (): AccountMove | null => {
+    const move = this.current() ? this.move : null;
+    return move && (move.stage === 'moving_to_local' || move.stage === 'moving_to_portico') ? move : null;
+  };
+  subscribeMove = (listener: () => void) => {this.moveListeners.add(listener);return () => {this.moveListeners.delete(listener);};};
+  private publishMove(move: AccountMove | null) {
+    if (!this.current()) return;
+    this.move = move;
+    for (const listener of this.moveListeners) listener();
+  }
+  /** One read of the current move. A refusal or outage leaves the page without a
+   * claim of its own, so the drawn rows stay exactly as they were. */
+  refreshMove(signal?: AbortSignal) {
+    if (!this.current() || this.moveReading) return;
+    this.moveReading = true;
+    void this.moves.current(signal).then(move => {this.publishMove(move);}, () => undefined)
+      .finally(() => {this.moveReading = false;});
+  }
+  private finishing = false;
+  /** The origin this server was actually proved at, or nothing. A page that cannot
+   * prove it (a hosted shell, for instance) must never mint a link to another one. */
+  issuerOrigin(): string | undefined {
+    if (!this.current()) return undefined;
+    try {
+      const origin = routeOrigin(this.origin);
+      if (origin !== this.origin) return undefined;
+      if (this.routes) return this.routes.logicalOrigin === origin ? origin : undefined;
+      const host = new URL(origin).hostname;
+      return host === '127.0.0.1' || host === '[::1]' || host === 'localhost' ? origin : undefined;
+    } catch { return undefined; }
+  }
+  /** Finish now: exactly the move the caller rendered, with its own opening ticket.
+   * A stale caller or a replaced move never finishes a successor, and the finish
+   * joins this controller's owned lifetime, so cancel/dispose retire it. */
+  async finishMove(rendered: AccountMove, caller?: OwnerMoveCaller) {
+    if (this.finishing) throw new Error('An owner move finish is already running.');
+    const move = this.move, callerLive = () => !caller || (caller.isCurrent() && caller.signal?.aborted !== true);
+    if (!this.current() || this.state.busy || !callerLive() || !move || move.id !== rendered.id || move.revision !== rendered.revision ||
+      (move.stage !== 'moving_to_local' && move.stage !== 'moving_to_portico')) throw new Error('There is no move in progress to finish.');
+    this.finishing = true;
+    // The owned controller is the one cancel()/dispose() abort, not a private stray.
+    this.request?.abort();
+    const own = this.request = new AbortController();
+    const live = () => this.current() && this.request === own && !own.signal.aborted && callerLive();
+    const signal = caller?.signal ? AbortSignal.any([own.signal, caller.signal]) : own.signal;
+    try {
+      await this.moves.finish(move, signal);
+      const now = this.move;
+      // Publication requires the same rendered move, the same caller and this ticket.
+      if (!live() || !now || now.id !== rendered.id || now.revision !== rendered.revision) return;
+      this.publishMove(null);
+      this.refreshMove();
+    } finally {
+      this.finishing = false;
+      if (this.request === own) this.request = undefined;
+    }
+  }
   /** The exact people still waiting, for the codes host; owner-fenced server read. */
   waiting(signal?:AbortSignal){return this.moves.waiting(signal);}
   /** One memory-only receipt for the given exact targets; admits nobody. */
-  codes(accountIds:readonly string[],signal?:AbortSignal){return this.moves.codes(accountIds,signal);}
+  codes(accountIds:readonly string[],signal?:AbortSignal,rendered?:AccountMove){
+    if(rendered&&this.getMove()!==rendered)throw ended();
+    return this.moves.codes(accountIds,signal,rendered);
+  }
   async cancelPreview() {
     const preview = this.state.preview;
     if (!preview || this.state.confirmed) throw new Error('Only an unconfirmed move preview can be canceled.');

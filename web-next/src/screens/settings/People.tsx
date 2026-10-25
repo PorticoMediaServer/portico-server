@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useRef, useState, useSyncExternalStore} from 'react';
+import {useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import {SettingsPeopleClient, type SettingsPeoplePage, type SettingsPeopleQuery, type SettingsPersonRow, type SettingsBulkAccess, type SettingsBulkAction} from '@core/settings-people.ts';
 import {settingsRowIndex, settingsSpec, type SettingsRow, type SettingsValue} from '@core/presentation/settings-spec.ts';
@@ -48,12 +48,12 @@ export type PeopleBindings = Readonly<{
 }>;
 
 /** The table query, detail revision and bulk transaction stay bound to one real session. */
-export function PeopleScreen({bindings}: {bindings: PeopleBindings}) {
+export function PeopleScreen({bindings, initialStatus, rowActions}: {bindings: PeopleBindings; initialStatus?: SettingsPeopleQuery['status']; rowActions?: (person: SettingsPersonRow) => ReactNode}) {
   const scope = bindings.authority.scope;
-  return <PeopleWorkspace key={JSON.stringify([scope.serverId, scope.authority, scope.accountId, scope.profileId, scope.sessionFamilyId, bindings.actor.role])} bindings={bindings} />;
+  return <PeopleWorkspace key={JSON.stringify([scope.serverId, scope.authority, scope.accountId, scope.profileId, scope.sessionFamilyId, bindings.actor.role])} bindings={bindings} initialStatus={initialStatus} rowActions={rowActions} />;
 }
 
-function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
+function PeopleWorkspace({bindings, initialStatus, rowActions}: {bindings: PeopleBindings; initialStatus?: SettingsPeopleQuery['status']; rowActions?: (person: SettingsPersonRow) => ReactNode}) {
   const {client} = bindings;
   const [issued, setIssued] = useState<ServerInvitation>(), [inviteOpen, setInviteOpen] = useState(false);
   const [formOpen, setFormOpen] = useState(false), [choices, setChoices] = useState<InviteChoices>(defaultInviteChoices);
@@ -108,7 +108,17 @@ function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
   };
   const live = useSyncExternalStore(bindings.authority.subscribe, bindings.authority.isCurrent, () => false);
   const [denied, setDenied] = useState(false);
-  const [query, setQuery] = useState<TableQuery>(initialQuery), [page, setPage] = useState<SettingsPeoplePage>(), [error, setError] = useState<unknown>();
+  // Frame 24c: arriving from the move in progress lands on the Waiting list.
+  const [query, setQuery] = useState<TableQuery>(() => initialStatus ? {...initialQuery, filters: {...initialQuery.filters, status: initialStatus}} : initialQuery);
+  const [page, setPage] = useState<SettingsPeoplePage>(), [error, setError] = useState<unknown>();
+  // The move read settles after the first render; apply its filter once, and never
+  // over a status the owner has already chosen.
+  const waitingApplied = useRef(false);
+  useEffect(() => {
+    if (!initialStatus || waitingApplied.current) return;
+    waitingApplied.current = true;
+    setQuery(current => current.filters.status === 'all' ? {...current, filters: {...current.filters, status: initialStatus}} : current);
+  }, [initialStatus]);
   const [loading, setLoading] = useState(false), [selected, setSelected] = useState<ReadonlySet<string>>(new Set()), [refresh, setRefresh] = useState(0);
   const [person, setPerson] = useState<AccessMember>(), [personId, setPersonId] = useState<string>(), [tab, setTab] = useState(personSpec.tabs![0].id);
   const [advanced, setAdvanced] = useState(false), [saving, setSaving] = useState(false), [saved, setSaved] = useState(false);
@@ -238,6 +248,7 @@ function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
         options: [...filter.options.map(option => ({value: option.value, label: t(option.label)})),
           ...(filter.id === 'status' && !filter.options.some(option => option.value === 'waiting') ? [{value: 'waiting', label: t('next.settings.personStatus.waiting')}] : [])]}))}
       searchLabel={t(table.search!)} countLabel={page ? t(filtered ? 'next.settings.peopleCount' : 'next.settings.peopleTotal', {matched: page.matchedCount, total: page.totalCount}) : undefined} emptyLabel={t(table.empty!)} loading={loading}
+      rowActions={rowActions ? row => {const person = page?.items.find(item => item.accountId === row.id); return person ? rowActions(person) ?? null : null;} : undefined}
       matchedCount={page?.matchedCount} hasMore={!!page?.nextCursor} onLoadMore={more} selected={selected} onSelectionChange={setSelected}
       rowAction={{label: t(table.rowAction!.label), onAction: (row, element) => {opener.current = element; setPersonId(row.id); setTab(personSpec.tabs![0].id);}}}
       bulkActions={[

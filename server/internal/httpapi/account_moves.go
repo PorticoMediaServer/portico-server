@@ -266,11 +266,28 @@ func (moveWaitingList) JSONSchema() map[string]any {
 	shape, _ := apikit.Schema(reflect.TypeFor[wire]())
 	items := shape["properties"].(map[string]any)["items"].(map[string]any)
 	items["maxItems"] = 2000
-	item := items["items"].(map[string]any)["properties"].(map[string]any)
+	itemObject := items["items"].(map[string]any)
+	item := itemObject["properties"].(map[string]any)
 	for key, limit := range map[string]int{"accountId": 128, "username": 64} {
 		field := item[key].(map[string]any)
 		field["minLength"] = 1
 		field["maxLength"] = limit
+	}
+	// The existing code's own expiry is optional and never nullable: an absent
+	// field means this person has no working code, not an unknown date. It is the
+	// observed expiry at read time, not a promise the code still redeems.
+	item["expiresAt"] = map[string]any{
+		"type": "string", "format": "date-time", "minLength": 20, "maxLength": 35,
+		"pattern": `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|\+00:00)$`,
+	}
+	if required, ok := itemObject["required"].([]string); ok {
+		kept := make([]string, 0, len(required))
+		for _, name := range required {
+			if name != "expiresAt" {
+				kept = append(kept, name)
+			}
+		}
+		itemObject["required"] = kept
 	}
 	return shape
 }

@@ -65,17 +65,21 @@ export function parseAccountMoveCodes(raw:unknown,now=Date.now()):readonly Accou
   return Object.freeze({accountId:row.accountId,username:row.username,code:row.code,expiresAt:expiry(row.expiresAt,7*86400000,now),...(row.serverId===undefined?{}:{serverId:row.serverId as string})});
  }));
 }
-export type AccountMoveWaiting=Readonly<{accountId:string;username:string}>;
+export type AccountMoveWaiting=Readonly<{accountId:string;username:string;expiresAt?:string}>;
 /** The waiting people for the active move: exact ids the codes route accepts,
  * bounded and unique, with the usernames the owner recognises. No code, hash or
  * password material is part of this read. */
 export function parseAccountMoveWaiting(raw:unknown):Readonly<{items:readonly AccountMoveWaiting[];truncated:boolean}>{
  if(!obj(raw)||!Array.isArray(raw.items)||raw.items.length>2000||typeof raw.truncated!=='boolean')invalid();
  const seen=new Set<string>();
+ const now=Date.now();
  const items=Object.freeze(raw.items.map(row=>{
   if(!obj(row)||!text(row.accountId,128)||seen.has(row.accountId)||!text(row.username,64)||!row.username)invalid();
   seen.add(row.accountId);
-  return Object.freeze({accountId:row.accountId,username:row.username});
+  // The existing code's own expiry, bounded to today's seven-day lifetime; an
+  // absent field means no working code, never a substituted date.
+  const expiresAt=row.expiresAt===undefined?undefined:expiry(row.expiresAt,7*86400000,now);
+  return Object.freeze({accountId:row.accountId,username:row.username,...(expiresAt===undefined?{}:{expiresAt})});
  }));
  return Object.freeze({items,truncated:raw.truncated});
 }
@@ -159,8 +163,18 @@ export class AccountMoveClient extends MoveTransport {
  }
  cancelPreview(move:AccountMove,signal?:AbortSignal){if(move.stage!=='preview')invalid();return this.call(encodedRoutePath('post_sign_in_move_cancel',{id:encodeURIComponent(move.id)}),'POST',routeBody('post_sign_in_move_cancel',{expectedRevision:move.revision}),()=>undefined,signal);}
  finish(move:AccountMove,signal?:AbortSignal){if(!['moving_to_local','moving_to_portico'].includes(move.stage))invalid();return this.call(encodedRoutePath('post_sign_in_move_finish',{id:encodeURIComponent(move.id)}),'POST',routeBody('post_sign_in_move_finish',{expectedRevision:move.revision}),()=>undefined,signal);}
- codes(accountIds:readonly string[],signal?:AbortSignal){if(accountIds.length>2000||accountIds.some(id=>!text(id,128))||new Set(accountIds).size!==accountIds.length)invalid();return this.call(routePath('post_sign_in_move_codes'),'POST',routeBody('post_sign_in_move_codes',{accountIds:[...accountIds]}),parseAccountMoveCodes,signal);}
- /** The exact waiting people, for the codes sheet's targets. The read is now an
-  * official generated route, like every other client path. */
+ /** One receipt for exactly these targets. A receipt must return one code per
+  * requested account and nothing else; a row naming another server is refused. */
+ codes(accountIds:readonly string[],signal?:AbortSignal,move?:Pick<AccountMove,'id'|'revision'>){if(accountIds.length>2000||accountIds.some(id=>!text(id,128))||new Set(accountIds).size!==accountIds.length)invalid();
+  if(move&&(!text(move.id,128)||!count(move.revision)||move.revision<1))invalid();
+  const targets=new Set(accountIds),body={accountIds:[...accountIds],...(move?{moveId:move.id,expectedRevision:move.revision}:{})};
+  return this.call(routePath('post_sign_in_move_codes'),'POST',routeBody('post_sign_in_move_codes',body),raw=>{
+   const rows=parseAccountMoveCodes(raw);
+   if(rows.length!==targets.size)invalid();
+   for(const row of rows){if(!targets.has(row.accountId))invalid();if((move||row.serverId!==undefined)&&row.serverId!==this.options.serverId)invalid();}
+   return rows;
+  },signal);}
+ /** The exact waiting people, read through the official generated route. */
  waiting(signal?:AbortSignal){return this.call(routePath('get_sign_in_move_waiting'),'GET',undefined,parseAccountMoveWaiting,signal);}
+
 }
