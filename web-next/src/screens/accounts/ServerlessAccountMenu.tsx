@@ -24,7 +24,7 @@ export function ServerlessAccountMenu({username, name, t, onAccount, onJoin, onS
     <Menu open={open} onOpenChange={setOpen} title={t('next.shell.account')}
       trigger={<ProfileAvatar initial={initial} name={name} />} width={350}
       sideOffset={17} alignOffset={-24} modal className={accountStyles.accountMenu}>
-      <div className={accountStyles.who}><ProfileAvatarFace initial={initial} size={48} />
+      <div className={`${accountStyles.who} ${styles.who}`}><ProfileAvatarFace initial={initial} size={48} />
         <div><b>{username}</b><small>{t('accounts.session.portico')}</small></div>
       </div>
       {divider}
