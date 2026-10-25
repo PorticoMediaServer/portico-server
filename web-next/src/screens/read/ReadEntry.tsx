@@ -19,7 +19,7 @@ import {ReaderBook} from './ReaderBook';
 const {t} = defaultI18n;
 type Captured = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
 type OpenBook = Readonly<{session: ReadingSession; publication: ReadingPublication; controller: ReadingController;
-  authority: ReaderMountAuthority; location?: ReaderLocation; contentsTarget?: ReaderContentsTarget}>;
+  authority: ReaderMountAuthority; location?: ReaderLocation; contentsTarget?: ReaderContentsTarget; annotations?: ReadingSession}>;
 
 /** Real publication session; services start only inside the captured route lifetime. */
 export function ReadEntry({captured, itemId, sourceId, active = true, onClose}: {captured: Captured; itemId: string; sourceId?: string; active?: boolean; onClose?: () => void}) {
@@ -73,7 +73,7 @@ export function ReadEntry({captured, itemId, sourceId, active = true, onClose}: 
         : publication.format === 'pdf' ? [createPdfAdapter(readerPdfAdapterOptions)] : [createComicAdapter({pages: publication.comicPages!})];
       reader = bindReadPreferences({adapters, preferences: bindings.preferences, authority: bindings.authority, reportError: code => reportError({code})});
       progress = bindReadingProgress({controller: reader.controller, session, initial: saved, authority: bindings.authority, reportError});
-      setState({book: {session, publication, controller: reader.controller, authority: bindings.authority, location, contentsTarget}});
+      setState({book: {session, publication, controller: reader.controller, authority: bindings.authority, location, contentsTarget, ...(session.manifest.canAnnotate === true ? {annotations:session} : {})}});
     })().catch(error => {if (alive && bindings.authority.isCurrent()) {reportError(error); setState({failed: true});} void dispose().catch(() => {});});
     return () => {void dispose().catch(() => {});};
   }, [captured.context, itemId, sourceId, contentsTarget, reportError, retry]);
