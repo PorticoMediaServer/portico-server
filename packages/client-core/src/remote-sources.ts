@@ -20,6 +20,10 @@ export type RcloneProgram=Readonly<{included:boolean;available:boolean;version:s
 /** The durable identity an imported source save returns; the receipt carries no
  * source body, so the list is read again for the row's display facts. */
 export type RcloneReceipt=Readonly<{operationId:string;sourceId:string;generation:number;removed:boolean}>;
+/** One remote of the server account's own rclone configuration. `reason` says why
+ * an unsupported one is unsupported; no value from its section is here. */
+export type RcloneConfigRemote=Readonly<{name:string;kind:string;supported:boolean;reason:'kind'|'encrypted'|''}>;
+export type RcloneConfigView=Readonly<{path:string;remotes:readonly RcloneConfigRemote[]}>;
 export type RemoteReceipt=Readonly<{operationId:string;accepted:true;removed:boolean;source:RemoteSource}>;
 /** What one command was allowed to do, kept beside its operation id so a later
  * receipt (live or recovered) must still match the original target and posture. */
@@ -252,6 +256,28 @@ export class RemoteSourceService{
   this.fence(raw);
   if(!record(raw)||!Array.isArray(raw.providers)||raw.providers.length>64||!raw.providers.every(name=>text(name,100)&&!!name))invalid();
   return Object.freeze([...raw.providers] as string[]);
+ }
+ /** The server account's own rclone configuration, by remote name and type only. */
+ async rcloneConfig():Promise<RcloneConfigView>{
+  const epoch=this.epoch;
+  const raw=await this.request(routePath('get_storage_source_rclone_config'));
+  if(!this.live()||epoch!==this.epoch)throw new Error('Scope changed.');
+  this.fence(raw);
+  if(!record(raw)||!text(raw.path)||!Array.isArray(raw.remotes)||raw.remotes.length>200)invalid();
+  const remotes=raw.remotes.map(value=>{
+   if(!record(value)||!text(value.name,64)||!value.name||!text(value.kind,32)||typeof value.supported!=='boolean'||!['','kind','encrypted'].includes(String(value.reason)))invalid();
+   return Object.freeze({name:value.name,kind:value.kind,supported:value.supported,reason:value.reason as RcloneConfigRemote['reason']});
+  });
+  return Object.freeze({path:raw.path,remotes:Object.freeze(remotes)});
+ }
+ /** Saves a source from one remote of that configuration. The section itself is
+  * read on the server and never sent to, or read back by, this client. */
+ async configureRcloneFromConfig(input:Readonly<{name:string;remote:string}>,guard?:()=>boolean):Promise<RcloneReceipt|undefined>{
+  if(!this.live()||(guard&&!guard())||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');
+  if(!text(input.name,200)||!input.name.trim()||!text(input.remote,64)||!input.remote.trim())throw new Error('Invalid connection fields.');
+  const body=routeBody('create_storage_source_rclone_config',{name:input.name.trim(),remote:input.remote.trim()});
+  const intent:SourceCommandIntent={operationId:'',kind:'rclone',action:'create',sourceId:null};
+  return await this.command(routePath('create_storage_source_rclone_config'),'POST',body,intent,guard) as RcloneReceipt|undefined;
  }
  /** One explicit in-flight configuration test. It saves no source, receipt or approval. */
  async testRclone(input:RcloneTestInput,guard?:()=>boolean):Promise<RcloneTestResult>{

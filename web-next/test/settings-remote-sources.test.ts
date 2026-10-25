@@ -96,3 +96,10 @@ test('the imported rclone kind has its drawn words and its bound program error',
   assert.equal(remoteErrorText(Object.assign(new Error('x'), {code: 'administration_unavailable'})), defaultI18n.t('next.remoteSources.problem.administration_unavailable'));
   assert.equal(remoteErrorText(Object.assign(new Error('x'), {code: 'remote_administration_unavailable'})), defaultI18n.t('next.remoteSources.problem.administration_unavailable'));
 });
+
+test('the account-configuration kind has its drawn words', () => {
+  assert.equal(defaultI18n.t('next.remoteSources.connectFromConfig'), 'From my config');
+  assert.match(defaultI18n.t('next.remoteSources.configPath'), /name and kind/);
+  assert.match(defaultI18n.t('next.remoteSources.configEncrypted'), /encrypted/);
+  assert.match(defaultI18n.t('next.remoteSources.configChecksOnSave'), /tests the remote when you save/);
+});

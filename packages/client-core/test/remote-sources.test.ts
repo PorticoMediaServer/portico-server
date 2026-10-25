@@ -516,3 +516,34 @@ test('a refused imported command keeps its own code and clears the capability sn
  assert.equal(service.getSnapshot().errorCode,'forbidden');
  service.dispose();
 });
+
+test('the account configuration is listed by name and kind, and saved by remote alone',async()=>{
+ const calls:{path:string;method:string;body:unknown}[]=[];
+ const remotes=[{name:'archive',kind:'s3',supported:true,reason:''},{name:'wrapped',kind:'crypt',supported:false,reason:'encrypted'}];
+ const service=new RemoteSourceService(api(async(path,method,body)=>{
+  calls.push({path,method,body});
+  if(path.endsWith('/storage/sources/rclone/config')&&method==='GET')return {scope:wire,path:'/home/portico/.config/rclone/rclone.conf',remotes};
+  if(path.endsWith('/storage/sources/rclone/config')&&method==='POST')return rcloneReceipt();
+  return list([rcloneSource()]);
+ }),scope,async()=>op);
+ const view=await service.rcloneConfig();
+ assert.equal(view.path,'/home/portico/.config/rclone/rclone.conf');
+ assert.deepEqual(view.remotes,remotes);
+ const receipt=await service.configureRcloneFromConfig({name:'Archive',remote:'archive'});
+ assert.equal(receipt?.sourceId,'rclone');
+ const post=calls.find(call=>call.method==='POST');
+ assert.equal(post?.path,'/v1/storage/sources/rclone/config');
+ assert.deepEqual(post?.body,{name:'Archive',remote:'archive',operationId:op});
+ assert(!JSON.stringify(post?.body).includes('secret'));
+ service.dispose();
+});
+
+test('a malformed account configuration read fails closed',async()=>{
+ for(const remotes of [[{name:'archive',kind:'s3',supported:'yes',reason:''}],[{name:'',kind:'s3',supported:true,reason:''}],[{name:'archive',kind:'s3',supported:false,reason:'because'}]]){
+  const service=new RemoteSourceService(api(async()=>({scope:wire,path:'/config',remotes})),scope,async()=>op);
+  await assert.rejects(service.rcloneConfig());service.dispose();
+ }
+ const absent=new RemoteSourceService(api(async()=>({scope:wire,path:'',remotes:[]})),scope,async()=>op);
+ assert.deepEqual(await absent.rcloneConfig(),{path:'',remotes:[]});
+ absent.dispose();
+});
