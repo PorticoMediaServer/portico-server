@@ -35,26 +35,27 @@ export function AddLibrary({open, onOpenChange, api, service, onError, initialKi
 }>) {
   const [kind, setKind] = useState<Kind>(initialKind), [name, setName] = useState(KINDS.find(value => value.id === initialKind)!.label), [touched, setTouched] = useState(false);
   const [paths, setPaths] = useState<readonly string[]>([]);
-  const [path, setPath] = useState(''), [source, setSource] = useState<'online' | 'local'>('online');
+  const [source, setSource] = useState<'online' | 'local'>('online');
   const [picking, setPicking] = useState(false), [busy, setBusy] = useState(false), [failed, setFailed] = useState(false);
   const submitting = useRef(false);
-  const choosePaths = useCallback((next: readonly string[]) => {setPaths(next); setPath('');}, []);
+  const choosePaths = useCallback((next: readonly string[]) => {setPaths(Object.freeze([...next]));}, []);
+  const choosePath = useCallback((path: string) => choosePaths([path]), [choosePaths]);
   const choose = (next: Kind) => { setKind(next); if (!touched) setName(KINDS.find(value => value.id === next)!.label); };
   const create = async () => {
-    if (submitting.current || !open || !name.trim() || !paths.length && !path.trim()) return;
+    if (submitting.current || !open || !name.trim() || !paths.length) return;
     submitting.current = true;
     setBusy(true); setFailed(false);
     try {
-      await service.createLibrary({name: name.trim(), kind, ...(paths.length ? {folders: paths} : {path}), metadataAgent: metadataAgentFor(kind) === 'local' ? 'local' : source});
+      await service.createLibrary({name: name.trim(), kind, folders: paths, metadataAgent: metadataAgentFor(kind) === 'local' ? 'local' : source});
       if (service.getSnapshot().mutation.phase !== 'complete') {setFailed(true);return;}
-      onOpenChange(false); setName(KINDS[0].label); setPath(''); setPaths([]); setKind('movie'); setTouched(false); setSource('online');
+      onOpenChange(false); setName(KINDS[0].label); setPaths([]); setKind('movie'); setTouched(false); setSource('online');
     } catch (error) { setFailed(true); onError(error); }
     finally {submitting.current = false; setBusy(false);}
   };
   return <>
     <Dialog open={open} onOpenChange={value => {if (!submitting.current) onOpenChange(value);}} dismissOnBack={!busy} dismissOnOutsidePress={!busy} showCloseButton={!busy} size="md" title={t('next.settingsSpec.server.libraries.panels.newLibrary.title')}
       footer={<><Button disabled={busy} onClick={() => {if (!submitting.current) onOpenChange(false);}}>{t('next.settings.cancel')}</Button>
-        <Button variant="primary" loading={busy} disabled={busy || !name.trim() || !paths.length && !path.trim()} onClick={() => { void create(); }}>{t('next.settingsSpec.server.libraries.panels.newLibrary.footer.primary')}</Button></>}>
+        <Button variant="primary" loading={busy} disabled={busy || !name.trim() || !paths.length} onClick={() => { void create(); }}>{t('next.settingsSpec.server.libraries.panels.newLibrary.footer.primary')}</Button></>}>
       <div className={styles.form}>
         <RichSelect label={t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.label')}
           value={kind} options={KINDS.map(value => ({value: value.id, label: value.label, description: value.hint}))}
@@ -63,8 +64,8 @@ export function AddLibrary({open, onOpenChange, api, service, onError, initialKi
           placeholder={t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.0.control.placeholder')}
           onChange={event => { setTouched(true); setName(event.currentTarget.value); }} />
         <div className={styles.formFolder}>
-          <TextField label={t('next.settings.folderPath')} value={path} onChange={event => {setPath(event.currentTarget.value); setPaths([]);}} />
-          <Button onClick={() => setPicking(true)}>{t('next.settings.chooseFolder')}</Button>
+          <Button disabled={busy} onClick={() => setPicking(true)}>{t('next.ownerLibraries.explorer.choose')}</Button>
+          {!paths.length ? <p className={styles.formNote}>{t('next.ownerLibraries.addLibrary.foldersHelp')}</p> : null}
         </div>
         {paths.length ? <ChosenServerFolders paths={paths} disabled={busy} onRemove={value => {if (!submitting.current) setPaths(previous => previous.filter(item => item !== value));}}/> : null}
         {localOnlyKind(kind)
@@ -78,6 +79,6 @@ export function AddLibrary({open, onOpenChange, api, service, onError, initialKi
         {failed && <p role="alert">{t('next.settings.libraries.createFailed')}</p>}
       </div>
     </Dialog>
-    <FolderPicker open={picking} onOpenChange={setPicking} api={api} initialPaths={paths} onChoose={setPath} onChooseMany={choosePaths} />
+    <FolderPicker open={picking} onOpenChange={setPicking} api={api} initialPaths={paths} onChoose={choosePath} onChooseMany={choosePaths} />
   </>;
 }
