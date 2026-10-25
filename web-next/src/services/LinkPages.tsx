@@ -35,6 +35,9 @@ export function ResetPage({account, token}: {account: ServicesAccount; token?: s
   // exhausted link answers 410 reset_link_unavailable, a refused password
   // answers password_invalid and a rejected second factor answers mfa_invalid.
   const expired = status === 410 || code === 'reset_link_unavailable';
+  // A present but malformed token is the drawn cut-off link; a dead link is the
+  // separate 410 state above.
+  const cutOff = !token || code === 'invalid_link';
   const factorWrong = code === 'mfa_invalid';
   const passwordWrong = code === 'password_invalid';
   const submit = async () => {
@@ -50,7 +53,7 @@ export function ResetPage({account, token}: {account: ServicesAccount; token?: s
   };
   if (done) return <PasswordChanged />;
   return <ServicesAuthStage variant="reset"><ServicesHeading singleLine>{t('web.reset.title')}</ServicesHeading>
-    {!token || expired ? <><ServicesNotice icon={expired ? 'i-clock' : 'i-warn'}>{t(expired ? 'web.reset.expired' : 'web.link.invalid')}</ServicesNotice><ServicesActions><Button variant={expired ? 'primary' : 'glass'} onClick={() => location.assign(expired ? '/?mode=forgot' : '/')}>{t(expired ? 'services.reset.askNew' : 'web.link.backToPortico')}</Button></ServicesActions></> : <>
+    {cutOff || expired ? <><ServicesNotice icon={expired ? 'i-clock' : 'i-warn'}>{t(expired ? 'web.reset.expired' : 'web.link.invalid')}</ServicesNotice><ServicesActions><Button variant={expired ? 'primary' : 'glass'} onClick={() => location.assign(expired ? '/?mode=forgot' : '/')}>{t(expired ? 'services.reset.askNew' : 'web.link.backToPortico')}</Button></ServicesActions></> : <>
       <ServicesLead>{t('web.reset.lede')}</ServicesLead>
       <form className={styles.form} onSubmit={event => { event.preventDefault(); void submit(); }}>
         <div><AuthPasswordField name="new-password" label={<ServicesLabel detail={t('auth.passwordRule')}>{t('web.reset.password')}</ServicesLabel>}
