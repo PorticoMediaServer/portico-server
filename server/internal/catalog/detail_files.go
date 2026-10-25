@@ -173,11 +173,21 @@ type FileInfo struct {
 	NextCursor string          `json:"nextCursor,omitempty"`
 }
 
-// FileInfoDisc names the disc image's own ordered titles. Positions are the stored
-// stable Title N order; a title's chapters and angles are the probe's own counts.
+// FileInfoDisc names the disc image's own ordered titles for one exact file.
+// FileID is the same TitleFile ID the caller received, so a multi-asset title
+// binds the block to the file that was actually scanned. Positions are the stored
+// stable Title N order; chapters and angles are the probe's own counts.
 type FileInfoDisc struct {
-	Kind   string         `json:"kind"`
+	FileID string             `json:"fileId"`
+	Kind   FileInfoDiscKind   `json:"kind"`
 	Titles []FileInfoDiscTitle `json:"titles"`
+}
+
+// FileInfoDiscKind is the closed wire set the disc protocol publishes.
+type FileInfoDiscKind string
+
+func (FileInfoDiscKind) JSONSchema() map[string]any {
+	return map[string]any{"type": "string", "enum": []any{"bluray", "dvd"}}
 }
 
 type FileInfoDiscTitle struct {
@@ -319,15 +329,15 @@ func (s *Service) discTitles(files []TitleFile) *FileInfoDisc {
 		return nil
 	}
 	for _, file := range files {
-		var object, sourceRevision string
-		if err := tx.QueryRowContext(s.Context(), `SELECT o.id,o.source_revision FROM inventory_objects o JOIN catalog_assets a ON a.token=o.asset_id WHERE a.token=? AND o.retired=0 AND o.state='available'`, file.ID).Scan(&object, &sourceRevision); err != nil {
+		var object, revision string
+		if err := tx.QueryRowContext(s.Context(), `SELECT o.id,o.revision FROM inventory_objects o JOIN catalog_assets a ON a.token=o.asset_id WHERE a.token=? AND o.retired=0 AND o.state='available'`, file.ID).Scan(&object, &revision); err != nil {
 			continue
 		}
-		probe, err := ReadInventoryDiscProbe(s.Context(), tx, object, sourceRevision)
-		if err != nil || len(probe.Titles) == 0 {
+		probe, err := ReadInventoryDiscProbe(s.Context(), tx, object, revision)
+		if err != nil || len(probe.Titles) == 0 || (probe.Kind != "bluray" && probe.Kind != "dvd") {
 			continue
 		}
-		out := &FileInfoDisc{Kind: probe.Kind, Titles: make([]FileInfoDiscTitle, 0, len(probe.Titles))}
+		out := &FileInfoDisc{FileID: file.ID, Kind: FileInfoDiscKind(probe.Kind), Titles: make([]FileInfoDiscTitle, 0, len(probe.Titles))}
 		for position, title := range probe.OrderedTitles() {
 			out.Titles = append(out.Titles, FileInfoDiscTitle{Number: position + 1, DurationMs: title.DurationMs, Chapters: len(title.Chapters), Angles: title.AngleCount})
 		}

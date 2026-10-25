@@ -444,7 +444,7 @@ export function appendDetailRecommendationPage(current:HomeRow,next:HomeRow):Hom
 
 
 export type FileInfoDiscTitle = Readonly<{number: number; durationMs: number; chapters: number; angles: number}>;
-export type FileInfoDisc = Readonly<{kind: 'bluray' | 'dvd'; titles: readonly FileInfoDiscTitle[]}>;
+export type FileInfoDisc = Readonly<{fileId: string; kind: 'bluray' | 'dvd'; titles: readonly FileInfoDiscTitle[]}>;
 export type FileInfoProjection = Readonly<{
  scope: DetailProjection['scope']; revision: DetailProjection['revision']; kind: string;
  files: readonly TitleFile[]; nextCursor?: string;
@@ -463,12 +463,12 @@ export function parseFileInfo(raw: unknown, scope: DetailScope, target: DetailTa
  if(raw.disc!==undefined) {
   const value=raw.disc;
   // A disc block is an owner fact only; a viewer response carrying one is refused.
-  if(!manage || !obj(value) || (value.kind!=='bluray' && value.kind!=='dvd') || !Array.isArray(value.titles) || value.titles.length>4096) invalid();
+  if(!manage || !obj(value) || !id(value.fileId) || !files.some(file=>file.id===value.fileId) || (value.kind!=='bluray' && value.kind!=='dvd') || !Array.isArray(value.titles) || value.titles.length>4096) invalid();
   const titles=value.titles.map((title,index)=>{
    if(!obj(title) || title.number!==index+1 || !integer(title.durationMs) || !integer(title.chapters) || !integer(title.angles) || title.angles<1) invalid();
    return Object.freeze({number:title.number as number,durationMs:title.durationMs as number,chapters:title.chapters as number,angles:title.angles as number});
   });
-  if(titles.length) disc=Object.freeze({kind:value.kind,titles:Object.freeze(titles)});
+  if(titles.length) disc=Object.freeze({fileId:value.fileId as string,kind:value.kind,titles:Object.freeze(titles)});
  }
  return Object.freeze({scope:Object.freeze({...raw.scope}) as FileInfoProjection['scope'],revision:Object.freeze({catalog:raw.revision.catalog,viewer:raw.revision.viewer}),kind:raw.kind,files:Object.freeze(files),...(disc?{disc}:{}),...(raw.nextCursor?{nextCursor:raw.nextCursor as string}:{}),...(manage?{manage}:{})});
 }
