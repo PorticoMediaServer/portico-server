@@ -76,7 +76,9 @@ func readingFailure(w http.ResponseWriter, err error) {
 	case errors.Is(err, reading.ErrChanged), errors.Is(err, reading.ErrConflict), errors.Is(err, storage.ErrObservedSourceLost), errors.Is(err, storage.ErrRemoteChanged):
 		policyError(w, "revision_mismatch")
 	case errors.Is(err, reading.ErrUnavailable):
-		policyError(w, "not_found")
+		// Match the concealed content-restriction response: availability must
+		// not distinguish an absent publication from an inaccessible one.
+		failure(w, sql.ErrNoRows)
 	case errors.Is(err, reading.ErrInvalid):
 		policyError(w, "invalid_request")
 	case errors.Is(err, reading.ErrLimit):
