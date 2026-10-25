@@ -1,0 +1,45 @@
+import {useEffect, useState, type ReactNode} from 'react';
+import {defaultI18n} from '@i18n';
+import type {FactPart} from '@portico/client-core/kit-model';
+import {readLibrarySummaries, type LibraryPublicationCount} from '@core/library-summary.ts';
+import type {ShellArtwork} from '../../shell/artwork';
+import {ReadLibraryWash} from './ReadLibraryWash';
+
+const publicationPivot: Readonly<Record<string, string>> = {book: 'books', magazine: 'magazines', newspaper: 'newspapers'};
+
+export type ReadLibrarySummaryRead = Readonly<{
+  /** Identity of the captured screen; a read for another capture is never reused. */
+  context: unknown; libraryId: string; artwork: ShellArtwork;
+  api: {request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>};
+  signal: (input?: AbortSignal) => AbortSignal; isCurrent: () => boolean; reportError: (error: unknown) => void;
+  /** Only a Reading library draws the wash and the classified counts. */
+  enabled: boolean;
+}>;
+
+/**
+ * desktop-read 1b, 2 and 2c draw three of the library's recent covers behind its header and its
+ * classified publication counts under its name. The bounded library summary is the only place
+ * both are published: a publication type it does not classify is absent, never derived from the
+ * ebook total, and a library with no artwork draws no wash.
+ */
+export function useReadLibrarySummary({context, libraryId, artwork, api, signal, isCurrent, reportError, enabled}: ReadLibrarySummaryRead): Readonly<{wash?: ReactNode; counts: readonly FactPart[]}> {
+  const [snapshot, setSnapshot] = useState<Readonly<{context: unknown; libraryId: string; covers: readonly string[]; publicationCounts: readonly LibraryPublicationCount[]}>>();
+  useEffect(() => {
+    if (!enabled) return;
+    const controller = new AbortController();
+    let active = true;
+    void readLibrarySummaries(api, signal(controller.signal)).then(rows => {
+      if (!active || !isCurrent()) return;
+      const row = rows.find(candidate => candidate.id === libraryId);
+      setSnapshot({context, libraryId, covers: row?.summary.coverUrls ?? [], publicationCounts: row?.summary.publicationCounts ?? []});
+    }).catch(error => {if (active && isCurrent()) reportError(error);});
+    return () => {active = false; controller.abort();};
+  }, [context, libraryId, api, signal, isCurrent, reportError, enabled]);
+  const current = enabled && snapshot?.context === context && snapshot.libraryId === libraryId ? snapshot : undefined;
+  const wash = current && current.covers.length > 0
+    ? <ReadLibraryWash covers={current.covers.flatMap((path, index) => {const cover = artwork.foreground(path, 760, 2 / 3, {group: libraryId, order: index});return cover ? [cover] : [];})}/>
+    : undefined;
+  const counts = (current?.publicationCounts ?? []).filter(row => row.count > 0).map(row => ({id: row.kind, role: 'context' as const,
+    text: defaultI18n.t(row.atLeast ? 'lib.countAtLeast' : 'lib.count', {count: row.count, pivot: publicationPivot[row.kind] ?? row.kind})}));
+  return {wash, counts};
+}
