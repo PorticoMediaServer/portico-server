@@ -119,7 +119,7 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
         {selectedSeason?.episodeCount !== undefined && <span className={styles.progress}>{t('count.episodes', {count: selectedSeason.episodeCount})}</span>}
         {selectedProgress ? <><span className={styles.progressDivider} aria-hidden="true" /><span className={styles.watchedProgress}><span className={styles.watchedMeter} aria-hidden="true"><i style={{width: `${selectedProgress.total > 0 ? 100 * selectedProgress.watched / selectedProgress.total : 0}%`}} /></span>{t('title.seasonProgress', {watched: selectedProgress.watched, total: selectedProgress.total})}</span></>
           : null}
-        <Menu open={orderMenu} onOpenChange={setOrderMenu} title={t('next.detail.episodeOrder')} trigger={<Chip variant="toolbar" icon="i-sort" trailingIcon="i-down">{t('next.detail.episodeOrder')}</Chip>}>
+        <Menu presentation="anchored" open={orderMenu} onOpenChange={setOrderMenu} title={t('next.detail.episodeOrder')} trigger={<Chip variant="toolbar" icon="i-sort" trailingIcon="i-down">{t('next.detail.episodeOrder')}</Chip>}>
           <MenuItem selected={(snapshot.route?.episodeDirection ?? 'asc') === 'asc'} onSelect={() => runScreenCommand(binding.context, () => { binding.current(data); setOrderMenu(false); return binding.service.selectEpisodeDirection('asc'); })}>{t('next.detail.episodeOrder')}</MenuItem>
           <MenuItem selected={snapshot.route?.episodeDirection === 'desc'} onSelect={() => runScreenCommand(binding.context, () => { binding.current(data); setOrderMenu(false); return binding.service.selectEpisodeDirection('desc'); })}>{t('next.detail.reverseEpisodeOrder')}</MenuItem>
         </Menu>
