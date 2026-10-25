@@ -48,13 +48,16 @@ try {
     await page.setViewportSize({width: 1440, height: 900});
     await page.goto(`${origin}/src/dev/entries/${state === '6' ? 'show' : 'detail'}.html?frame=${state}`);
     await page.waitForSelector(state === '6' ? '[data-show-frame6-ready]' : '[data-detail-ready]');
-    if (state === '3') await page.getByRole('tab', {name: 'Details', exact: true}).click();
+    if (state === '3') {
+      const tab = page.getByRole('tab', {name: 'Details', exact: true});
+      if (await tab.getAttribute('aria-selected') !== 'true') await tab.click();
+    }
     if (state === '3' || state === '6') {
       await page.locator('[class*=tabAnchor]').evaluate(anchor => {
         let scroller = anchor.parentElement;
         while (scroller && scroller !== document.documentElement && !(/auto|scroll/.test(getComputedStyle(scroller).overflowY) && scroller.scrollHeight > scroller.clientHeight)) scroller = scroller.parentElement;
         scroller ??= document.scrollingElement;
-        scroller.scrollTop += anchor.getBoundingClientRect().top - 75;
+        scroller.scrollTop += anchor.getBoundingClientRect().top - 74;
       });
       if (state === '6') await page.getByRole('option').filter({hasText: 'Season 4'}).focus();
     }
