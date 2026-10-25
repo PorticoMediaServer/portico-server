@@ -572,8 +572,9 @@ export class WebPlayback implements PlaybackAdapter {
       catch {
         this.renderUnavailableSession = session.id;
         this.slot.hold(false);
+        const deck = service.getSnapshot();
         listeningDiagnostic('audio_processing_unavailable');
-        service.listeningFallback('processing');
+        if (deck.session?.id) service.listeningFallback('processing', {sessionId: deck.session.id, generation: deck.session.presentation.generation, itemId: deck.itemId, intentId: deck.intentId});
         if (!service.fallbackAudioRender()) service.audioRenderFailed('audio_render_failed');
         return;
       }

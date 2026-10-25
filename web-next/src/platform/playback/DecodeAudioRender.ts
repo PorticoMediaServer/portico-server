@@ -384,11 +384,14 @@ export class DecodeAudioRender {
     try { this.equalizer.apply(value); this.equalizerFailed = false; }
     catch (error) {
       this.equalizerFailed = true;
+      // Capture the deck this renderer belongs to before any fallback can re-enter and
+      // move the service to a successor; the write itself re-checks that binding.
+      const deck = this.service.getSnapshot();
       try { this.equalizer.bypass(); }
       catch { this.service.fallbackAudioRender(); }
       // This song continues through the dry path. Saved intent remains on, actual EQ is false.
       listeningDiagnostic('equalizer_filter_unavailable', error);
-      this.service.listeningFallback('eq');
+      if (deck.session?.id) this.service.listeningFallback('eq', {sessionId: deck.session.id, generation: deck.session.presentation.generation, itemId: deck.itemId, intentId: deck.intentId});
     }
     this.reportProcessing();
   }

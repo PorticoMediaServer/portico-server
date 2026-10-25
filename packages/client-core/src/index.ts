@@ -889,9 +889,10 @@ export class PlaybackService {
     };
   }
   private update(patch: Partial<PlaybackSnapshot>) {
-    if(patch.intent==='playing'||patch.phase==='idle'||patch.phase==='error'||patch.error||'intentId' in patch&&patch.intentId!==this.snapshot.intentId)patch={...patch,listeningNotice:undefined,musicFallback:undefined};
-    // A fallback lasts for this song only; the next item starts with the engine again.
-    if(patch.itemId!==undefined&&patch.itemId!==this.snapshot.itemId)patch={...patch,musicFallback:undefined};
+    if(patch.intent==='playing'||patch.phase==='idle'||patch.phase==='error'||patch.error||'intentId' in patch&&patch.intentId!==this.snapshot.intentId)patch={...patch,listeningNotice:undefined};
+    // A fallback lasts for this song only: its own terminal and new-run resets, separate
+    // from the notice, including a real ended fact that keeps the same item and intent.
+    if(patch.phase==='ended'||patch.phase==='idle'||patch.phase==='error'||patch.error||'intentId' in patch&&patch.intentId!==this.snapshot.intentId||patch.itemId!==undefined&&patch.itemId!==this.snapshot.itemId)patch={...patch,musicFallback:undefined};
     const changed='session' in patch&&(patch.session?.id!==this.snapshot.session?.id||patch.session?.generation!==this.snapshot.session?.generation);
     if(changed||patch.phase==='idle'||patch.phase==='error'||patch.phase==='ended'){
       const actual=patch.phase==='idle'||patch.phase==='error'||patch.phase==='ended'?undefined:patch.nativeListening;
@@ -1114,9 +1115,15 @@ export class PlaybackService {
     if(!effects.rendering||effects.effectiveRate===effectiveRate&&effects.waiting===waiting)return;
     this.update({audioEffects:{...effects,effectiveRate,waiting}});
   }
-  /** A lasting engine fallback for this song, read by the signal path; never a notice. */
-  listeningFallback(kind:'processing'|'eq'){
-    if(this.snapshot.musicFallback!==kind)this.update({musicFallback:kind});
+  /** A lasting engine fallback for this song, read by the signal path; never a notice.
+   * The caller passes the deck it observed, and the write is refused unless that exact
+   * session, generation, item and intent is still the current, live one. */
+  listeningFallback(kind:'processing'|'eq',captured:Readonly<{sessionId?:string;generation?:number;itemId?:string;intentId:number}>){
+    const live=this.snapshot;
+    if(!captured.sessionId||live.phase!=='ready'||live.error)return;
+    if(!live.session||live.session.id!==captured.sessionId||live.session.generation!==captured.generation)return;
+    if(live.itemId!==captured.itemId||live.intentId!==captured.intentId)return;
+    if(live.musicFallback!==kind)this.update({musicFallback:kind});
   }
   listeningNotice(code:ListeningNoticeCode){
     if(code!=='audio_autoplay_blocked'&&code!=='listening_policy_failed')return;
