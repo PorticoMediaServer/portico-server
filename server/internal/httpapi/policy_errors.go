@@ -12,6 +12,7 @@ func policyErrorDefinitions() []apierror.Definition {
 		{Code: "invalid_query", Status: 400, Message: publicErrorMessage("invalid_request"), Retry: apierror.Never},
 		{Code: "home_layout_conflict", Status: 409, Message: publicErrorMessage("home_layout_conflict"), Retry: apierror.AfterRefresh},
 		{Code: "stale_continuation", Status: 409, Message: "This list changed. Refresh it to continue.", Retry: apierror.AfterRefresh},
+		{Code: "source_changed", Status: 409, Message: publicErrorMessage("source_changed"), Retry: apierror.AfterRefresh},
 		{Code: "library_configuration_conflict", Status: 409, Message: publicErrorMessage("library_configuration_conflict"), Retry: apierror.AfterRefresh},
 		{Code: "analysis_conflict", Status: 409, Message: publicErrorMessage("analysis_conflict"), Retry: apierror.AfterRefresh},
 		{Code: "analysis_unavailable", Status: 503, Message: publicErrorMessage("analysis_unavailable"), Retry: apierror.SameRequest},
