@@ -59,7 +59,7 @@ export function LaunchUnreachableScreen({facts, onRetry, onSwitchServer, now: fi
   const firstFailure = t('next.states.triesSince', {count: facts.attempt, time: defaultI18n.time(facts.firstFailureAt)});
   return <>
     {facts.libraries && facts.libraries.length > 0 && <div className={styles.lastKnownBar} data-last-known-bar role="status">
-      <ServerMark size={20} />
+      <ServerMark size={22} />
       <b>{facts.serverName ?? ''}</b>
       <span className={styles.lastKnownLibraries}>{facts.libraries.join(' · ')}</span>
     </div>}

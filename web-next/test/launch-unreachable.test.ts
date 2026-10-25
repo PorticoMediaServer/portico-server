@@ -88,6 +88,10 @@ test('a retired wait stops waking on focus, view or network return', async t => 
   assert.equal(restores, 2);
   bootstrap.dispose();
   t.mock.timers.tick(120000);
+  // A retired wait has no wake path left: timer, focus, network or view return.
+  globalThis.dispatchEvent(new Event('focus'));
+  globalThis.dispatchEvent(new Event('online'));
+  globalThis.document.dispatchEvent(new Event('visibilitychange'));
   for (let flush = 0; flush < 4; flush++) await Promise.resolve();
   assert.equal(restores, 2);
 });
