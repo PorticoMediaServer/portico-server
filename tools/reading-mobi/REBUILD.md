@@ -129,3 +129,35 @@ and atomically published as delivery with Linux renameat2(RENAME_NOREPLACE),
 then the parent is fsynced. Existing destinations are never replaced and there
 is no copy/rename fallback. Any earlier failure leaves no runtime manifest at
 the final delivery path. Incomplete private staging is not a deliverable.
+
+## Qualified helper redistribution input
+
+The sandbox input must also supply qualifiedDeliveryDirectory and its actual
+qualifiedManifestSHA256. A standalone binary or a note pointing elsewhere is
+refused. No helper version, build ID or qualification receipt is fabricated by
+this recipe. The immutable qualified distribution manifest has schema1, its
+actual identity, static/dynamic linkage, executable path+SHA256, and a closed
+files list (path, exact size, SHA256, role). File paths are relative regular files
+without symlinks/dot segments; maximum4096 files/512MiB total.
+
+Required roles are one executable, one build-provenance, one actual qualification
+receipt, at least one license and one complete matching source artifact; notices
+and runtime-dependency artifacts are also copied. Dynamic helpers require a
+nonempty runtime-dependency closure. The source provider includes actual LGPL2.1
+COPYING and all additional linked dependency licences/notices, not an assumed
+licence or guessed helper version. Build-provenance JSON names the exact
+executableSHA256, exact sourceSHA256 map and actual builderIdentity digest.
+The qualified helper manifest itself is pinned by the outer builder inputs.
+
+Every declared artifact is verified before output creation and copied by bounded
+exact extent with a second hash check into delivery/helper-distribution. The
+qualified manifest is retained alongside it. Only that distribution's matching
+executable is copied as delivery/bwrap. This precedes the runtime descriptor and
+atomic final publication. The entire resulting delivery directory, including
+helper source/notices/provenance/runtime closure, must ship together.
+
+This is an explicit import contract for an EXISTING Release-qualified helper
+delivery, not new helper build/install authority. Actual helper dynamic loader
+and library identity, supported namespace/mount options, resource posture and
+artifact qualification remain Release checkpoint review; copying those files
+does not assert that the host has qualified them or enable a loader fallback.
