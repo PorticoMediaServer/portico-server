@@ -434,7 +434,7 @@ func (s *Service) Repair(ctx context.Context, t RepairTarget, m RepairCommand, a
 	if base != m.ExpectedRevision {
 		return RepairState{}, ErrRepairConflict
 	}
-	if readingRepairKind(ent.itemKind) && m.Action != "edit" && m.Action != "lock_all" && m.Action != "unlock_all" && m.Action != "undo" {
+	if readingRepairKind(ent.itemKind) && m.Action != "edit" && m.Action != "lock_all" && m.Action != "unlock_all" && m.Action != "undo" && m.Action != "select_artwork" && m.Action != "artwork_lock" {
 		return RepairState{}, ErrRepairInput
 	}
 	who := actor.Authority + ":" + actor.AccountID + ":" + actor.ProfileID
