@@ -29,7 +29,7 @@ export type ScreenContext = Readonly<{
     openBrowse?: (selector: QueueBrowseSelector) => void;
     play: (target: Readonly<{libraryId: string; itemId: string; startSeconds: number; versionId?: string; storedResume?: boolean}>, signal: AbortSignal, isCurrent?: () => boolean) => Promise<void>;
     playSeason?: (seasonId: string, signal: AbortSignal, isCurrent: () => boolean) => Promise<void>;
-    playArtist?: (artistId: string, signal: AbortSignal, isCurrent: () => boolean) => Promise<void>;
+    playArtist?: (artistId: string, signal: AbortSignal, isCurrent: () => boolean, shuffle?: boolean) => Promise<void>;
     playAlbum?: (albumId: string, shuffle: boolean, signal: AbortSignal, isCurrent: () => boolean) => Promise<void>;
     playRadio?: (seedId: string, signal: AbortSignal, isCurrent: () => boolean) => Promise<void>;
     chooseVersion?: (request: WatchVersionRequest) => Promise<void>;
