@@ -94,7 +94,7 @@ func TestReadingProjectionBoundsResumeAndPublishesOnlyAfterCleanup(t *testing.T)
 		t.Fatalf("publication rule adoption visited %d inputs, want 1", n)
 	}
 	var rule, build, scanned int64
-	if err := c.DB.QueryRow(`SELECT publication_rule_version,build_generation,after_item FROM reading_attribution_state WHERE library_id=?`, library).Scan(&rule, &build, &scanned); err != nil || rule != compactcatalog.ReadingPublicationTypeRuleVersion || build != 0 || scanned != 0 {
+	if err := c.DB.QueryRow(`SELECT publication_rule_version,build_generation,after_item FROM reading_attribution_state WHERE library_id=?`, library).Scan(&rule, &build, &scanned); err != nil || rule != compactcatalog.ReadingProjectionRuleVersion || build != 0 || scanned != 0 {
 		t.Fatalf("publication rule adoption: rule=%d build=%d after=%d err=%v", rule, build, scanned, err)
 	}
 	readingProjectionGeneration(t, c, library, false)
