@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useState, useSyncExternalStore} from 'react';
-import {defaultI18n} from '@i18n';
+import {serviceI18n} from '@core/presentation/service-text.ts';
 import type {ContentEntry, ContentProjection} from '@core/library-content.ts';
 import {Artwork, AmbientArt} from '../../../kit/artwork';
 import {Button} from '../../../kit/controls';
@@ -17,11 +17,11 @@ export function AudiobookEntry({context, target, onMore}: Props) {
   const {libraryId, view, entityId} = target;
   const binding = useMemo(() => createAudiobookBindings(context, {libraryId, view, entityId}), [context, libraryId, view, entityId]);
   const [failure, setFailure] = useState<unknown>();
-  useEffect(() => {setFailure(undefined);void binding.load().catch(setFailure);return () => binding.dispose();}, [binding]);
+  useEffect(() => {let active = true;setFailure(undefined);void binding.load().catch(error => {if (active) setFailure(error);});return () => {active = false;binding.dispose();};}, [binding]);
   return failure ? <ScreenProblem context={context} error={failure} retry={() => {setFailure(undefined);void binding.load().catch(setFailure);}}/>
     : <AudiobookBody binding={binding} onMore={onMore}/>;
 }
-const duration = (value: number | undefined) => value === undefined ? undefined : defaultI18n.duration(value);
+const duration = (value: number | undefined) => value === undefined ? undefined : serviceI18n().duration(value);
 function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: Props['onMore']}) {
   const state = useSyncExternalStore(binding.service.subscribe, binding.service.getSnapshot, binding.service.getSnapshot);
   const [expanded, setExpanded] = useState(false), [finished, setFinished] = useState<boolean>(), [busy, setBusy] = useState(false);
@@ -33,6 +33,7 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
   }, [binding, page]);
   if (!page || !entity) return state.phase === 'error' || state.phase === 'refresh-required'
     ? <ScreenProblem context={binding.context} error={state.error} retry={() => {void binding.load().catch(binding.context.effects.reportError);}}/> : <DetailLoading/>;
+  try {binding.current(page);} catch (error) {return state.phase === 'loading' ? <DetailLoading/> : <ScreenProblem context={binding.context} error={state.error ?? error} retry={() => {void binding.load().catch(binding.context.effects.reportError);}}/>;}
   const run = (command: () => unknown) => runScreenCommand(binding.context, command);
   const book = page.scope.view === 'book', author = page.scope.view === 'author';
   const chapters = state.appended.find(section => section.id === 'chapters'), files = state.appended.find(section => section.id === 'files');
@@ -59,7 +60,7 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
       <h1>{entity.displayTitle ?? entity.title}</h1>
       {entity.author && (authorEntry ? <button className={styles.author} onClick={() => open(authorEntry)}>{entity.author}</button> : <div className={styles.author}>{entity.author}</div>)}
       <div className={styles.meta}>
-        {book && !!entity.narrators?.length && <span>{t('next.kit.readBy', {name: defaultI18n.list(entity.narrators)})}</span>}
+        {book && !!entity.narrators?.length && <span>{t('next.kit.readBy', {name: serviceI18n().list(entity.narrators)})}</span>}
         {!book && entity.count !== undefined && <strong>{t('next.kit.books', {count: entity.count})}</strong>}
         {entity.duration !== undefined && <span>{duration(entity.duration)}</span>}
         {book && entity.count !== undefined && <span>{t('title.chapterCount', {count: entity.count})}</span>}
@@ -75,10 +76,10 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
     {state.error && <ScreenProblem context={binding.context} error={state.error} retry={() => {void binding.load().catch(binding.context.effects.reportError);}}/>}
     {rows && <section><div className={styles.sectionHead}><h2>{t(book ? 'next.browse.chapters' : 'library.tab.books')}</h2><span>{rows.totalCount}</span></div>
       {rows.entries.map((entry, index) => book ? <Chapter key={entry.id} entry={entry} index={index} page={page} binding={binding}/>
-        : <div className={styles.bookRow} key={entry.id}><button onClick={() => open(entry)}><span className={styles.thumb}><Artwork source={binding.context.artwork.foreground(entry.posterUrl, 132, 1)} alt=""/></span><span><b>{entry.displayTitle ?? entry.title}</b>{entry.narrators?.length ? <small>{t('next.kit.readBy', {name: defaultI18n.list(entry.narrators)})}</small> : null}{entry.bookProgress?.remainingMs !== undefined && <small>{t('title.resumeRemaining', {remaining: duration(entry.bookProgress.remainingMs / 1000)!})}</small>}</span></button>{onMore && <Button variant="ghost" icon="i-more" iconOnly aria-label={t('card.more', {title: entry.title})} onClick={event => run(() => {binding.current(page);onMore(entry, event.currentTarget);})}/>}</div>)}
+        : <div className={styles.bookRow} key={entry.id}><button onClick={() => open(entry)}><span className={styles.thumb}><Artwork source={binding.context.artwork.foreground(entry.posterUrl, 132, 1)} alt=""/></span><span><b>{entry.displayTitle ?? entry.title}</b>{entry.narrators?.length ? <small>{t('next.kit.readBy', {name: serviceI18n().list(entry.narrators)})}</small> : null}{entry.bookProgress?.remainingMs !== undefined && <small>{t('title.resumeRemaining', {remaining: duration(entry.bookProgress.remainingMs / 1000)!})}</small>}</span></button>{onMore && <Button variant="ghost" icon="i-more" iconOnly aria-label={t('card.more', {title: entry.title})} onClick={event => run(() => {binding.current(page);onMore(entry, event.currentTarget);})}/>}</div>)}
       {rows.nextCursor && <Button size="small" onClick={() => run(() => {binding.current(page);return binding.service.next(rows.id);})}>{t('title.nextPage')}</Button>}
     </section>}
-    {!book && <section><div className={styles.sectionHead}><h2>{t('next.controls.details')}</h2></div><dl className={styles.details}>{entity.narrators?.length ? <><dt>{t('filter.field.narrator')}</dt><dd>{defaultI18n.list(entity.narrators)}</dd></> : null}{entity.duration !== undefined && <><dt>{t('next.kit.length')}</dt><dd>{duration(entity.duration)}</dd></>}</dl></section>}
+    {!book && <section><div className={styles.sectionHead}><h2>{t('next.controls.details')}</h2></div><dl className={styles.details}>{entity.narrators?.length ? <><dt>{t('filter.field.narrator')}</dt><dd>{serviceI18n().list(entity.narrators)}</dd></> : null}{entity.duration !== undefined && <><dt>{t('next.kit.length')}</dt><dd>{duration(entity.duration)}</dd></>}</dl></section>}
   </article>;
 }
 function Chapter({entry, index, page, binding}: {entry: ContentEntry; index: number; page: ContentProjection; binding: AudiobookBindings}) {
