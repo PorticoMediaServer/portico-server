@@ -237,9 +237,23 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
   const [notice, setNotice] = useState<{runtime: WebShellPlaybackRuntime; value: DockNoticeData} | null>(null), [now, setNow] = useState(() => performance.now());
   const previous = useRef<{runtime?: WebShellPlaybackRuntime; audio?: string; video?: string}>({});
   useLayoutEffect(() => { setNotice(null); previous.current = {}; }, [runtime]);
+  // Adoption is awaitable: the previous device owner must actually retire before this
+  // runtime's factory runs, and the element stays unattached while that wait is in progress.
+  const reportAdoption = useRef(binding?.reportError);
+  reportAdoption.current = binding?.reportError;
   useLayoutEffect(() => {
-    const unmount = media.adopt(runtime, video.current!);
-    return () => { unmount?.(); cache.clear(); };
+    const element = video.current;
+    if (!element) return;
+    const life = new AbortController();
+    let unmount: (() => void) | undefined;
+    void media.adopt(runtime, element, {signal: life.signal, isCurrent: () => element.isConnected})
+      .then(release => {
+        if (life.signal.aborted) { release?.(); return; }
+        unmount = release;
+      }, error => { if (!life.signal.aborted) reportAdoption.current?.(error); });
+    // Release synchronously even if the adoption promise has not settled yet; a newer
+    // element's adoption is untouched.
+    return () => { life.abort(); unmount?.(); media.release(element); cache.clear(); };
   }, [runtime, cache, media]);
   useEffect(() => {
     if (!runtime || !snapshot) { previous.current = {}; return; }

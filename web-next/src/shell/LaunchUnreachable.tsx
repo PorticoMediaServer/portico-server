@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react';
+import {useCallback, useEffect, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import {Toast} from '../kit/overlays';
 import {OwnerTag, ServerMark} from '../kit/shell';
@@ -6,6 +6,7 @@ import {DetailsPanel, StateLayout, type DetailsFact} from '../kit/states';
 import type {LaunchUnreachable} from './bootstrap';
 import {retryProgress, retrySeconds} from './connection-retry';
 import {useShellWidth} from './viewport';
+import {useOfflineDownloads} from './offline-downloads';
 import styles from './states.module.css';
 
 const t = defaultI18n.t;
@@ -23,6 +24,16 @@ export function LaunchUnreachableScreen({facts, onRetry, onSwitchServer, now: fi
   initialDetailsOpen?: boolean;
 }) {
   const width = useShellWidth(), [tick, setTick] = useState(() => Date.now()), [detailsOpen, setDetailsOpen] = useState(initialDetailsOpen), [copied, setCopied] = useState(false);
+  const offlinePort = useOfflineDownloads(), [offline, setOffline] = useState(() => offlinePort?.snapshot()), [playing, setPlaying] = useState(() => offlinePort?.playback?.());
+  // One stable callback: an inline ref would release and retire the host on every render.
+  const attachSurface = offlinePort?.attachSurface;
+  const surfaceRef = useCallback((element: HTMLVideoElement | null) => { attachSurface?.(element); }, [attachSurface]);
+  useEffect(() => {
+    if (!offlinePort) { setOffline(undefined); setPlaying(undefined); return; }
+    const sync = () => { setOffline(offlinePort.snapshot()); setPlaying(offlinePort.playback?.()); };
+    sync();
+    return offlinePort.subscribe(sync);
+  }, [offlinePort]);
   const now = fixedNow ?? tick, waiting = !facts.retrying;
   const computerOffline = facts.category === 'offline' || globalThis.navigator?.onLine === false;
   useEffect(() => {
@@ -47,6 +58,20 @@ export function LaunchUnreachableScreen({facts, onRetry, onSwitchServer, now: fi
   };
   const firstFailure = t('next.states.triesSince', {count: facts.attempt, time: defaultI18n.time(facts.firstFailureAt)});
   return <>
+    {facts.libraries && facts.libraries.length > 0 && <div className={styles.lastKnownBar} data-last-known-bar role="status">
+      <ServerMark size={20} />
+      <b>{facts.serverName ?? ''}</b>
+      <span className={styles.lastKnownLibraries}>{facts.libraries.join(' · ')}</span>
+    </div>}
+    {offline && offline.items.length > 0 && <section className={styles.offlineDownloads} data-offline-downloads aria-label={t('next.shell.downloads')}>
+      <h2>{t('next.shell.downloads')}</h2>
+      <ul>{offline.items.map(row => <li key={row.id} data-playing={playing?.phase === 'playing' && playing.itemId === row.itemId || undefined}><b>{row.title}</b>{row.artist ? <span>{row.artist}</span> : null}
+        {offlinePort?.play ? <button type="button" onClick={() => { void offlinePort.play?.(row.id).catch(() => {}); }}>{t('next.controls.play')}</button> : null}</li>)}</ul>
+      <button type="button" onClick={() => { void offlinePort?.openFolder().catch(() => {}); }}>{t('next.saved.folder')}</button>
+    </section>}
+    {offlinePort?.attachSurface && <div className={styles.offlinePlayer} data-offline-playback data-offline-playing={playing?.phase === 'playing' || undefined} data-media-surface data-native-video-active="true">
+      <video ref={surfaceRef} playsInline preload="none" aria-label={t('next.dock.nowPlaying')} />
+    </div>}
     <StateLayout className={styles.page} backdrop={{kind: 'colour', shape: 'side'}} tone="warning" icon="i-srvoff"
       contentStyle={{top: width >= 1024 ? 500 : 250}}
       title={computerOffline ? t('next.states.thisComputerOffline') : facts.serverName ? t('next.states.cantReach', {server: facts.serverName}) : t('next.states.cantReachServer')}

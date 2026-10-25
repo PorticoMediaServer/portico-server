@@ -1,6 +1,9 @@
 import {parseSelectedViewerRecord,selectedViewerRecord,type SelectedViewerRecord,type SelectedViewerStorage} from '@core/viewer-selection';
 import {BrowserProtectedStore,browserAppSessions} from './server-connections';
 import type {AppSessionStore} from '@core/app-sessions.ts';
+import {forgetAllShells, forgetShell} from '../shell/last-known';
+import {announceSelectionReplaced, clearOfflineDownloads} from '../shell/offline-downloads';
+
 
 /** Signing in lasts: the selected viewer is kept for this browser, not for one tab, so closing
  * the window or restarting the computer does not sign anyone out. The server decides how long a
@@ -15,23 +18,39 @@ import type {AppSessionStore} from '@core/app-sessions.ts';
  * of localStorage or IndexedDB yields ciphertext and a key reference that can't be exported.
  * At run time the token is only in memory. No plaintext localStorage record is read. */
 export function createBrowserViewerStorage(store: Pick<BrowserProtectedStore<SelectedViewerRecord>, 'read' | 'change'>): SelectedViewerStorage {
+// The exact retained selection this tab last observed, so any replacement — including one
+// written by another tab — clears the offline download port before it can be shown.
+let observed: string | undefined;
+const leaseOf = (record: SelectedViewerRecord | null | undefined) => record
+  ? JSON.stringify([record.session.viewer.authority, record.session.viewer.serverId, record.session.viewer.accountId, record.session.viewer.profileId, record.session.sessionFamilyId, record.session.tokenGeneration])
+  : '';
+const replaced = (next: string) => { if (observed !== undefined && observed !== next) clearOfflineDownloads(); observed = next; };
 return {
  async read(){
   const value=await store.read();
-  if(!value)return null;
-  try{return parseSelectedViewerRecord(value);}catch{await store.change(()=>undefined);return null;}
+  if(!value){replaced('');return null;}
+  try{const parsed=parseSelectedViewerRecord(value);replaced(leaseOf(parsed));return parsed;}catch{await store.change(()=>undefined);replaced('');return null;}
  },
  async write(record){
+  // A different exact selection replaces the old port before its durable write is published.
+  replaced(leaseOf(record));
   if(record){
    const json=JSON.stringify(record);
    await store.change(()=>JSON.parse(json) as SelectedViewerRecord);
    if(JSON.stringify(await store.read())!==json)throw new Error('Server credentials could not be read back from this browser.');
+   announceSelectionReplaced();
   }else{
+   forgetAllShells();
+   clearOfflineDownloads();
    await store.change(()=>undefined);
    if((await store.read())!==undefined)throw new Error('The old server credential could not be removed from this browser.');
+   announceSelectionReplaced();
   }
  },
  async clearIfFamily(sessionFamilyId){
+  forgetShell(sessionFamilyId);
+  clearOfflineDownloads();
+  observed=undefined;
   // One step in the store, so a record another tab saves in the meantime is never the one removed.
   await store.change(current=>{
    if(!current)return undefined;
@@ -56,8 +75,14 @@ export function createAppViewerStorage(store:AppSessionStore):SelectedViewerStor
   async clearIfFamily(family){const state=await store.read();const entry=state.servers.find(value=>value.connection.pin.serverId===state.selectedServerId&&value.connection.session.sessionFamilyId===family);if(entry)await store.signOutServer(entry.connection.pin.serverId,family);},
  };
 }
+// The selected record this window last observed, including a change written by another tab.
+let observedSelection:string|undefined;
+const selectionLease=(record:SelectedViewerRecord|null)=>record
+ ? JSON.stringify([record.session.viewer.authority,record.session.viewer.serverId,record.session.viewer.accountId,record.session.viewer.profileId,record.session.sessionFamilyId,record.session.tokenGeneration])
+ : '';
+const noteSelection=(record:SelectedViewerRecord|null)=>{const next=selectionLease(record);if(observedSelection!==undefined&&observedSelection!==next)clearOfflineDownloads();observedSelection=next;};
 export const browserViewerStorage:SelectedViewerStorage = {
- read:()=>createAppViewerStorage(browserAppSessions()).read(),
- write:record=>createAppViewerStorage(browserAppSessions()).write(record),
- clearIfFamily:family=>createAppViewerStorage(browserAppSessions()).clearIfFamily!(family),
+ read:async()=>{const record=await createAppViewerStorage(browserAppSessions()).read();noteSelection(record);return record;},
+ write:async record=>{noteSelection(record);await createAppViewerStorage(browserAppSessions()).write(record);announceSelectionReplaced();},
+ clearIfFamily:async family=>{clearOfflineDownloads();observedSelection=undefined;return createAppViewerStorage(browserAppSessions()).clearIfFamily!(family);},
 };
