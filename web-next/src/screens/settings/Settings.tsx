@@ -80,6 +80,7 @@ export function SettingsScreen({bindings, route, navigate, openDetail = false}: 
     setPanel(current => current && location && location.panelId === current.id && selected.scope === scope && selected.section === page ? {...current, tab: location.tabId} : undefined);
     setAdvanced(false); setCompactPage(true);
   };
+  useEffect(() => { if (openDetail) setCompactPage(true); }, [openDetail, route.scope, route.section]);
   useEffect(() => {void bindings.load(section);}, [bindings, section]);
   useEffect(() => {void bindings.loadContext?.({section, panelId: panel?.id, recordId: panel?.recordId});}, [bindings, section, panel?.id, panel?.recordId]);
   useEffect(() => {
@@ -96,7 +97,7 @@ export function SettingsScreen({bindings, route, navigate, openDetail = false}: 
     query={query} foundRowId={selected.row} advancedOpen={advanced} onAdvancedChange={setAdvanced} />;
   const navigation = <SettingsNav accountName={bindings.accountName} serverName={bindings.serverName} viewerRole={bindings.role === 'admin' ? 'administrator' : bindings.role}
     account={settingsSpec.filter(section => section.scope === 'account' && sectionVisible(section)).map(section => ({id: `account/${section.id}`, label: t(section.title), icon: settingsIconName(section.icon), cluster: section.navGroup}))}
-    server={settingsSpec.filter(section => section.scope === 'server' && sectionVisible(section)).map(section => ({id: `server/${section.id}`, label: t(section.title), icon: settingsIconName(section.icon), cluster: section.navGroup}))}
+    server={settingsSpec.filter(section => section.scope === 'server' && (!compact || section.id !== 'dashboard') && sectionVisible(section)).map(section => ({id: `server/${section.id}`, label: t(section.title), icon: settingsIconName(section.icon), cluster: section.navGroup}))}
     selectedId={`${selected.scope}/${selected.section}`} selectedSearchResult={selected.row ? {pageId: `${selected.scope}/${selected.section}`, rowId: selected.row} : undefined}
     actions={feedback ? [{id: 'feedback', icon: 'i-flag', label: t('next.shell.feedback'), onAction: feedback}] : []}
     query={query} onQueryChange={setQuery} onNavigate={go} matches={groups} onSearchResult={go} layout={compact ? 'phone' : 'desktop'} />;
