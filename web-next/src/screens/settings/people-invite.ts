@@ -5,8 +5,23 @@ import type {ServerInvitation} from '@core/direct-account.ts';
  * answer repeats the same command instead of minting a second capability. */
 export type InviteAttempt = Readonly<{
   operationId: string;
-  body: Readonly<{operationId: string; role: string; allowedLibraries: readonly string[]; expiresInHours: number; notes?: string}>;
+  body: Readonly<{operationId: string; role: string; allowedLibraries: readonly string[]; expiresInHours: number; notes?: string; porticoUsername?: string}>;
 }>;
+
+/** The drawn Invite form's choices, before they become one immutable command. */
+export type InviteChoices = Readonly<{role: 'member' | 'admin'; allLibraries: boolean; libraryIds: readonly string[]; expiresInHours: number; notes?: string; porticoUsername?: string}>;
+export const expiryChoices = Object.freeze([24, 72, 168, 720] as const);
+export const defaultInviteChoices: InviteChoices = Object.freeze({role: 'member', allLibraries: true, libraryIds: [], expiresInHours: 168});
+
+/** What the server gets: admin is the existing wire word for Administrator, and
+ * private notes stay a create-only field (never a card or a link). */
+export function inviteBody(choices: InviteChoices) {
+  return Object.freeze({role: choices.role === 'admin' ? 'admin' : 'member',
+    allowedLibraries: Object.freeze([...(choices.allLibraries ? [] : choices.libraryIds)]),
+    expiresInHours: choices.expiresInHours,
+    ...(choices.notes?.trim() ? {notes: choices.notes.trim()} : {}),
+    ...(choices.porticoUsername?.trim() ? {porticoUsername: choices.porticoUsername.trim()} : {})});
+}
 
 /** Definite refusals did not create anything, so the attempt may be replaced. */
 const definite = (status: number | undefined) => status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 429;
@@ -24,13 +39,15 @@ export class InviteAttempts {
   constructor(private readonly createOperationId: () => string) {}
 
   /** The current attempt, or a new one. Undefined means "already running". */
-  begin(input: Readonly<{role: string; allowedLibraries: readonly string[]; expiresInHours: number; notes?: string}>): InviteAttempt | undefined {
+  begin(input: Readonly<{role: string; allowedLibraries: readonly string[]; expiresInHours: number; notes?: string; porticoUsername?: string}>): InviteAttempt | undefined {
     if (this.running || this.retired) return undefined;
-    this.running = true;
+    // Capture the body and the cryptographic id before committing the gate: a
+    // refusing id generator must leave no stuck attempt and no fallback id.
     if (!this.attempt) {
       const operationId = this.createOperationId();
       this.attempt = Object.freeze({operationId, body: Object.freeze({...input, allowedLibraries: Object.freeze([...input.allowedLibraries]), operationId})});
     }
+    this.running = true;
     return this.attempt;
   }
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {InviteAttempts} from '../src/screens/settings/people-invite.ts';
+import {InviteAttempts, defaultInviteChoices, inviteBody} from '../src/screens/settings/people-invite.ts';
 
 const input = {role: 'member', allowedLibraries: ['one', 'two'], expiresInHours: 168, notes: 'private note'};
 let counter = 0;
@@ -60,4 +60,21 @@ test('the chosen values, not defaults, are what the create carries', () => {
   const attempts = new InviteAttempts(ids);
   const chosen = {role: 'administrator', allowedLibraries: ['films'], expiresInHours: 24, notes: 'for the review'};
   assert.deepEqual(attempts.begin(chosen)?.body, {...chosen, operationId: 'op-1'});
+});
+
+test('a refusing operation-id generator creates nothing and leaves no stuck gate', () => {
+  let calls = 0;
+  const attempts = new InviteAttempts(() => { calls++; throw new Error('no entropy'); });
+  assert.throws(() => attempts.begin(input), /no entropy/);
+  assert.equal(attempts.pending, undefined);
+  assert.equal(calls, 1);
+  const recovered = new InviteAttempts(() => 'op-late');
+  assert.equal(recovered.begin(input)?.operationId, 'op-late');
+});
+
+test('the drawn form choices become one body with wire words, all-libraries and private notes', () => {
+  assert.deepEqual(inviteBody({...defaultInviteChoices}), {role: 'member', allowedLibraries: [], expiresInHours: 168});
+  assert.deepEqual(inviteBody({role: 'admin', allLibraries: false, libraryIds: ['films', 'shows'], expiresInHours: 72, notes: ' private '}),
+    {role: 'admin', allowedLibraries: ['films', 'shows'], expiresInHours: 72, notes: 'private'});
+  assert.deepEqual(inviteBody({...defaultInviteChoices, porticoUsername: ' justin '}), {role: 'member', allowedLibraries: [], expiresInHours: 168, porticoUsername: 'justin'});
 });
