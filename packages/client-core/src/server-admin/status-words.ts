@@ -3,7 +3,7 @@
  * reached from outside, what the certificate is doing, what playback can deliver right now.
  * A code never reaches the screen (X-04); it stays in the logs.
  */
-import type {RemoteAccess} from '../remote-access.ts';
+import {remoteAccessSummary, type RemoteAccess} from '../remote-access.ts';
 import type {CertificateStatus} from '../certificates.ts';
 import type {ConnectionDocument, ConnectivityStatus, CustomCertificateStatus} from '../server-administration.ts';
 import type {PlaybackSettingsSnapshot} from '../playback-settings.ts';
@@ -24,6 +24,14 @@ export function remoteStatusLine(t: Translate, input: {unavailable: boolean; rem
     case 'reachable': return {tone: 'healthy', text: [address ? t('settings.server.remote.reachable', {address: address.replace(/^https?:\/\//, '')}) : t('settings.server.remote.reachableNoAddress'), t(https ? 'settings.server.remote.https' : 'settings.server.remote.noHttps')].join(' · ')};
     case 'disabled': return {tone: 'neutral', text: t('settings.server.remote.off')};
     case 'checking': return {tone: 'accent', text: t('settings.server.remote.checking')};
+    // The states the server reports while a route is not proven: the catalogue already says
+    // what each one means, so the line uses that instead of calling every one unreachable.
+    case 'claim_required':
+    case 'lan_only':
+    case 'manual_only': return {tone: 'neutral', text: remoteAccessSummary(st, t)};
+    case 'certificate_pending': return {tone: 'accent', text: remoteAccessSummary(st, t)};
+    case 'hosted_unavailable':
+    case 'remote_unavailable': return {tone: 'warning', text: remoteAccessSummary(st, t)};
     default: return {tone: 'warning', text: t('settings.server.remote.unreachable')};
   }
 }
