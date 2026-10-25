@@ -113,6 +113,19 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {visible: Visi
   const visible = useSyncExternalStore(props.visible.subscribe, props.visible.getSnapshot, props.visible.getSnapshot);
   const progress = useSyncExternalStore(props.progress.subscribe, props.progress.getSnapshot, props.progress.getSnapshot);
   const current = useSyncExternalStore(playSelection.subscribe, playSelection.getSnapshot, playSelection.getSnapshot);
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
+      const target = event.target;
+      if (target instanceof Element && target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="slider"],[role="dialog"],[role="alertdialog"],[role="menu"]')) return;
+      const value = playSelection.getSnapshot();
+      if (value.phase !== 'ready' || !value.selection?.active) return;
+      event.preventDefault();
+      try {playSelection.clear();} catch (error) {reportError(error);}
+    };
+    document.addEventListener('keydown', key);
+    return () => document.removeEventListener('keydown', key);
+  }, [playSelection, reportError]);
   if (current.phase !== 'ready' || !current.selection?.active) return null;
   const summary = current.selection.summary, whole = descriptor?.(), selectWhole = playSelection.selectWhole;
   // Play dispatches explicit picks only; a whole view needs the server queue capture
