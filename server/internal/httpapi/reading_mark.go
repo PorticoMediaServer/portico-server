@@ -7,6 +7,7 @@ import (
 
 	"portico.local/apikit"
 	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/reading"
 )
@@ -56,6 +57,12 @@ func (d Dependencies) readingMarkAuthorize(ctx context.Context, p identity.Princ
 		}
 		if err = live.PermitsRequest(ctx); err != nil {
 			return err
+		}
+		// Reject malformed public IDs before the strict SQL adapter sees them.
+		// This is the same concealed absence as a well-formed missing target;
+		// original-principal eligibility/readmission still precedes this check.
+		if _, valid := entityid.Decode(item); !valid {
+			return sql.ErrNoRows
 		}
 		var library string
 		if err := tx.QueryRowContext(ctx, `SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.public_id=pid_blob(?) AND e.retired=0 AND cl.retired=0`, item).Scan(&library); err != nil {
