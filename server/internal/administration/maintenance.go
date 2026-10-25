@@ -60,11 +60,13 @@ type StorageUsage struct {
 
 // StorageReport is the whole storage care page.
 type StorageReport struct {
-	StateDirectory string         `json:"stateDirectory"`
-	Categories     []StorageUsage `json:"categories"`
-	TotalBytes     int64          `json:"totalBytes"`
-	TotalBytesText string         `json:"totalBytesText"`
-	ObservedAt     string         `json:"observedAt"`
+	// Present only when the resolved state folder is observed on a known shared or network filesystem.
+	StateDirectoryOnNetwork *bool          `json:"stateDirectoryOnNetwork,omitempty"`
+	StateDirectory          string         `json:"stateDirectory"`
+	Categories              []StorageUsage `json:"categories"`
+	TotalBytes              int64          `json:"totalBytes"`
+	TotalBytesText          string         `json:"totalBytesText"`
+	ObservedAt              string         `json:"observedAt"`
 	// Truncated says at least one category held more files than one sweep read.
 	Truncated bool `json:"truncated"`
 }
@@ -116,6 +118,7 @@ func (s *Service) Storage(ctx context.Context, auth Authorize) (StorageReport, e
 	if err := s.snapshot(ctx, auth, func(*sql.Tx) error { return nil }); err != nil {
 		return out, err
 	}
+	out.StateDirectoryOnNetwork = observedNetworkDirectory(out.StateDirectory)
 	now := s.now()
 	for _, category := range StorageCategories() {
 		usage := StorageUsage{StorageCategory: category, Paths: []string{}}
