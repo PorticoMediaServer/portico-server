@@ -529,6 +529,7 @@ index queues_v1_idle
 index queues_v1_owner
 index quick_connect_expiry_v1
 index reading_attribution_author_facet
+index reading_attribution_pending
 index reading_attribution_series_facet
 index reading_attribution_series_seek
 index reading_progress_publication

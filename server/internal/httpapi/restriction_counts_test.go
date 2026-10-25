@@ -147,20 +147,30 @@ func totalsBeyondShown(v any, at string) []string {
 func TestWholeSelectionCountOracleUsesExactPartitionAndVisibleBound(t *testing.T) {
 	decode := func(raw string) any {
 		var value any
-		if err := json.Unmarshal([]byte(raw), &value); err != nil { t.Fatal(err) }
+		if err := json.Unmarshal([]byte(raw), &value); err != nil {
+			t.Fatal(err)
+		}
 		return value
 	}
 	valid := decode(`{"wholeSelection":{"total":13,"types":[{"kind":"movie","count":10},{"kind":"episode","count":3}]}}`)
-	if got := totalsBeyondShown(valid, ""); len(got)!=0 { t.Fatal(got) }
+	if got := totalsBeyondShown(valid, ""); len(got) != 0 {
+		t.Fatal(got)
+	}
 	for _, raw := range []string{
 		`{"wholeSelection":{"total":14,"types":[{"kind":"movie","count":13}]}}`,
 		`{"wholeSelection":{"total":1.5,"types":[{"kind":"movie","count":1.5}]}}`,
 		`{"wholeSelection":{"total":13,"types":[{"kind":"movie"}]}}`,
 	} {
-		if got:=totalsBeyondShown(decode(raw),""); len(got)==0 { t.Fatal("invalid aggregate escaped the oracle",raw) }
+		if got := totalsBeyondShown(decode(raw), ""); len(got) == 0 {
+			t.Fatal("invalid aggregate escaped the oracle", raw)
+		}
 	}
-	if got:=totalsAbove(valid,"",12,0); len(got)==0 { t.Fatal("whole-view total escaped the current-viewer bound") }
-	if got:=totalsBeyondShown(decode(`{"total":13,"entries":[{"id":"one"}]}`),""); len(got)==0 { t.Fatal("ordinary short list escaped its cardinality check") }
+	if got := totalsAbove(valid, "", 12, 0); len(got) == 0 {
+		t.Fatal("whole-view total escaped the current-viewer bound")
+	}
+	if got := totalsBeyondShown(decode(`{"total":13,"entries":[{"id":"one"}]}`), ""); len(got) == 0 {
+		t.Fatal("ordinary short list escaped its cardinality check")
+	}
 }
 
 func itoaTest(n int) string {

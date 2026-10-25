@@ -220,26 +220,32 @@ func goldenBrowseExtension(t *testing.T, f *goldenFixture, c goldenCase, want st
 func goldenWholeSelection(t *testing.T, f *goldenFixture, c goldenCase, doc, page map[string]any) {
 	t.Helper()
 	var request struct {
-		Pivot string `json:"pivot"`
+		Pivot               string `json:"pivot"`
 		Range, Seek, Cursor json.RawMessage
 	}
-	if err := json.Unmarshal([]byte(c.Body), &request); err != nil { t.Fatal(err) }
-	kind := map[string]string{"movies":"movie","episodes":"episode","songs":"song"}[request.Pivot]
-	if kind == "" || len(request.Range)>0 || len(request.Seek)>0 || len(request.Cursor)>0 || page["revision"]==nil || page["revision"]=="" { return }
-	library := strings.Split(strings.TrimPrefix(c.Path,"/v1/libraries/"),"/")[0]
+	if err := json.Unmarshal([]byte(c.Body), &request); err != nil {
+		t.Fatal(err)
+	}
+	kind := map[string]string{"movies": "movie", "episodes": "episode", "songs": "song"}[request.Pivot]
+	if kind == "" || len(request.Range) > 0 || len(request.Seek) > 0 || len(request.Cursor) > 0 || page["revision"] == nil || page["revision"] == "" {
+		return
+	}
+	library := strings.Split(strings.TrimPrefix(c.Path, "/v1/libraries/"), "/")[0]
 	applied := doc["applied"].(map[string]any)
-	query := map[string]any{"libraryId":library,"pivot":request.Pivot,"sort":applied["sort"]}
-	if applied["query"] != nil { query["filter"]=applied["query"] }
-	n := len(goldenBrowsePlayables(t,f,c))
+	query := map[string]any{"libraryId": library, "pivot": request.Pivot, "sort": applied["sort"]}
+	if applied["query"] != nil {
+		query["filter"] = applied["query"]
+	}
+	n := len(goldenBrowsePlayables(t, f, c))
 	types := []any{}
-	if n>0 {
+	if n > 0 {
 		// Both fixed viewers are members; this fixture installs neither a
 		// bulk scheduler, downloads nor owner mutation services. All its
 		// visible files are available, so only Play and Queue are offered.
-		counts := map[string]any{"play":n,"queue":n,"playlist":0,"myList":0,"watched":0,"collection":0,"favorite":0,"download":0,"edit":0,"refresh":0,"delete":0}
-		types=append(types,map[string]any{"kind":kind,"count":n,"capabilityCounts":counts,"libraries":[]any{map[string]any{"libraryId":library,"count":n}}})
+		counts := map[string]any{"play": n, "queue": n, "playlist": 0, "myList": 0, "watched": 0, "collection": 0, "favorite": 0, "download": 0, "edit": 0, "refresh": 0, "delete": 0}
+		types = append(types, map[string]any{"kind": kind, "count": n, "capabilityCounts": counts, "libraries": []any{map[string]any{"libraryId": library, "count": n}}})
 	}
-	doc["wholeSelection"]=map[string]any{"selector":map[string]any{"query":query},"catalogRevision":page["revision"],"total":n,"types":types}
+	doc["wholeSelection"] = map[string]any{"selector": map[string]any{"query": query}, "catalogRevision": page["revision"], "total": n, "types": types}
 }
 
 func goldenNewBrowseFacets(t *testing.T, f *goldenFixture, c goldenCase) (goldenCase, bool) {
