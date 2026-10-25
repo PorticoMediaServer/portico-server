@@ -59,10 +59,12 @@ const scanModeWord = (mode: RemoteScanMode | undefined): MessageId | undefined =
     : mode === 'full' ? 'next.remoteSources.scanModeFull' : undefined;
 /** The drawn words for the all-agree folder health; absent stays absent. */
 const healthWord = (health: RemoteSourceHealth): MessageId => health === 'ready' ? 'next.remoteSources.healthReady'
+  : health === 'healthy' ? 'next.remoteSources.healthHealthy' : health === 'degraded' ? 'next.remoteSources.healthDegraded'
   : health === 'inventory_running' ? 'next.remoteSources.healthInventoryRunning' : health === 'cancelled' ? 'next.remoteSources.healthCancelled'
     : health === 'offline' ? 'next.remoteSources.healthOffline' : health === 'root_changed' ? 'next.remoteSources.healthRootChanged'
       : 'next.remoteSources.healthRemoving';
 const scanPhaseWord = (phase: RemoteScanPhase | undefined): MessageId | undefined => phase === 'inventory' ? 'next.remoteSources.scanPhaseInventory'
+  : phase === 'legacy_inventory' ? 'next.remoteSources.scanPhaseLegacyInventory' : phase === 'sidecars' ? 'next.remoteSources.scanPhaseSidecars'
   : phase === 'basic_pending' ? 'next.remoteSources.scanPhaseBasicPending' : phase === 'basic_running' ? 'next.remoteSources.scanPhaseBasicRunning'
     : phase === 'analysis_enqueue' ? 'next.remoteSources.scanPhaseAnalysis' : phase === 'reconciling' ? 'next.remoteSources.scanPhaseReconciling'
       : phase === 'verifying' ? 'next.remoteSources.scanPhaseVerifying' : phase === 'extras' ? 'next.remoteSources.scanPhaseExtras' : undefined;
@@ -1288,7 +1290,7 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, openSecti
           : t('next.remoteSources.neverChecked')}</dd></div>
         <div><dt>{t('next.remoteSources.usedBy')}</dt><dd>{!status ? '—'
           : status.libraries.length
-            ? status.libraries.map(use => `${use.name} · ${use.folders}`).join(', ') + (status.librariesTruncated ? ' …' : '')
+            ? status.libraries.map(use => `${use.name} · ${use.folders}${use.lastCompleteAt ? ` · ${t('next.remoteSources.libraryComplete', {when: checkedWhen(use.lastCompleteAt)})}` : ''}`).join(', ') + (status.librariesTruncated ? ' …' : '')
             : t('next.remoteSources.noLibraryUses')}</dd></div>
         {!!status?.scanIntervalSeconds && <div><dt>{t('next.remoteSources.scanning')}</dt>
           <dd>{t('next.remoteSources.scansEveryHours', {hours: Math.round(status.scanIntervalSeconds / 3600) || 1})}</dd></div>}
