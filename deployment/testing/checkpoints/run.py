@@ -55,7 +55,13 @@ def job(config,root,server,private,host,surface,stamp,disabled):
 def audit(config,root):
     rows=[]
     for repo in ['portico-server','portico-react-native','portico-internal']:
-        runs=json.loads(subprocess.check_output(['gh','run','list','--repo','PorticoMediaServer/'+repo,'--workflow','ci.yml','--branch','main','--limit','8','--json','databaseId,status,conclusion,headSha,event'],text=True))
+        runs=json.loads(subprocess.check_output(['gh','run','list','--repo','PorticoMediaServer/'+repo,'--workflow','ci.yml','--branch','main','--limit','8','--json','databaseId,status,conclusion,headSha,event,createdAt'],text=True))
+        full=next((r for r in runs if r['event'] in ['schedule','workflow_dispatch']),None)
+        now=datetime.datetime.now(datetime.timezone.utc)
+        if not full or (now-datetime.datetime.fromisoformat(full['createdAt'].replace('Z','+00:00'))).total_seconds()>70*60:
+            # GitHub cron can be delayed or dropped. The machine's hourly audit
+            # supplies one full default-main run only when no recent one exists.
+            subprocess.run(['gh','workflow','run','ci.yml','--repo','PorticoMediaServer/'+repo,'--ref','main'],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=30)
         latest=next((r for r in runs if r['status']=='completed' and r['event'] in ['schedule','workflow_dispatch']),None)
         if not latest or latest['conclusion']!='failure':continue
         jobs=json.loads(subprocess.check_output(['gh','run','view',str(latest['databaseId']),'--repo','PorticoMediaServer/'+repo,'--json','jobs'],text=True))['jobs']
