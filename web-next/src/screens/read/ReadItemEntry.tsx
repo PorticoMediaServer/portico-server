@@ -4,7 +4,8 @@ import {generatedCoverTint} from '@design';
 import {createReadingPublication, type ReaderContentsTarget} from '@portico/reader-core';
 import {stageContentsTarget, retireContentsTarget} from './contents-handoff';
 import {ReaderContents, type ReaderContentsEntry} from '../../kit/reader/ReaderPanel';
-import type {ReadingManifest, ReadingProgress} from '@portico/client-core';
+import type {ReadingManifest, ReadingProgress, ReadingSession} from '@portico/client-core';
+import {saveReadingFile} from './save-file';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
 import {Icon} from '../../kit/Icon';
@@ -19,7 +20,7 @@ import {readDestination, type ReadItemEligibility} from './navigation';
 import styles from './read-item.module.css';
 
 type Captured = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
-type ReadAttempt = {readonly context: Captured['context']; readonly sourceId: string | undefined; readonly retry: number; live: boolean; ready: boolean; target?: (index: number) => ReaderContentsTarget};
+type ReadAttempt = {readonly context: Captured['context']; readonly sourceId: string | undefined; readonly retry: number; readonly fileLife: AbortController; session?: ReadingSession; saving?: boolean; live: boolean; ready: boolean; target?: (index: number) => ReaderContentsTarget};
 const {t} = defaultI18n;
 /** The primary Item registration supplies a genuine Reading resource result. */
 export function ReadItemEntry({itemId, eligibility}: {itemId: string; eligibility: ReadItemEligibility}) {
@@ -33,6 +34,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const errorSink = useRef(captured.binding.home.effects.reportError); errorSink.current = captured.binding.home.effects.reportError;
   const [sourceId, setSourceId] = useState(() => eligibility.versions.find(version => version.inventoryAvailable)?.sourceId);
   const [menu, setMenu] = useState(false), [retry, setRetry] = useState(0);
+  const [saving, setSaving] = useState(false);
   const [attempt, setAttempt] = useState<ReadAttempt>();
   const attemptRef = useRef<ReadAttempt>();
   const renderIdentity = useRef({context: captured.context, sourceId, retry});
@@ -40,11 +42,11 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const [detail, setDetail] = useState<Readonly<{attempt?: ReadAttempt; manifest?: ReadingManifest; progress?: ReadingProgress; targets?: readonly ReaderContentsTarget[]; failed?: boolean}>>({});
   const current = (value: ReadAttempt | undefined): value is ReadAttempt => !!value && value.live && attemptRef.current === value
     && renderIdentity.current.context === value.context && renderIdentity.current.sourceId === value.sourceId && renderIdentity.current.retry === value.retry && value.context.isCurrent();
-  const retire = (value: ReadAttempt) => {value.live = false; value.ready = false; value.target = undefined; if (attemptRef.current === value) attemptRef.current = undefined;};
+  const retire = (value: ReadAttempt) => {value.fileLife.abort(); value.live = false; value.ready = false; value.target = undefined; if (attemptRef.current === value) attemptRef.current = undefined;};
   const refresh = (value: ReadAttempt | undefined) => {if (!current(value)) return; retire(value); setRetry(count => count + 1);};
   useLayoutEffect(() => {
-    const value: ReadAttempt = {context: captured.context, sourceId, retry, live: true, ready: false};
-    attemptRef.current = value; setAttempt(value);
+    const value: ReadAttempt = {context: captured.context, sourceId, retry, fileLife: new AbortController(), live: true, ready: false};
+    attemptRef.current = value; setAttempt(value); setSaving(false);
     return () => retire(value);
   }, [captured.context, sourceId, retry]);
   const anchor = useRef<HTMLButtonElement>(null);
@@ -55,7 +57,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     let active = true;
     const live = () => active && current(original) && bindings.authority.isCurrent();
     let publication: Awaited<ReturnType<typeof createReadingPublication>> | undefined;
-    const off = bindings.authority.subscribe(() => {if (active && attemptRef.current === original) {original.ready = false; original.target = undefined; setDetail({attempt: original, failed: true});}});
+    const off = bindings.authority.subscribe(() => {if (active && attemptRef.current === original) {original.fileLife.abort(); original.ready = false; original.target = undefined; setDetail({attempt: original, failed: true});}});
     const requestedSource = original.sourceId;
     if (!requestedSource) setDetail({attempt: original, failed: true});
     else void (async () => {
@@ -66,6 +68,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
       publication = await createReadingPublication(session);
       if (!live()) {publication.dispose(); return;}
       original.ready = true;
+      original.session = session;
       original.target = index => {if (!live() || !original.ready) throw new Error('source_changed'); return publication!.contentsTarget(index);};
       setDetail({attempt: original, manifest: session.manifest, progress,
         targets: session.manifest.format === 'epub' ? (session.manifest.contents ?? []).map((_, index) => publication!.contentsTarget(index)) : []});
@@ -80,6 +83,17 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const metadata = manifest.metadata, series = metadata.series;
   const original = detail.attempt;
   const factsCurrent = () => current(original) && original === attempt && original.ready && detail.manifest === manifest;
+  const canSaveFile = manifest.canSaveFile === true && manifest.size <= 64 << 20;
+  const saveFile = async () => {
+    const session = original?.session;
+    if (!original || !session || original.saving || original.fileLife.signal.aborted || !factsCurrent()
+      || session.manifest !== manifest || !canSaveFile) return;
+    original.saving = true; setSaving(true);
+    const live = () => factsCurrent() && original.session === session && !original.fileLife.signal.aborted;
+    try {await saveReadingFile(session, original.fileLife.signal, live);}
+    catch (error) {if (live()) errorSink.current(error);}
+    finally {original.saving = false; if (current(original)) setSaving(false);}
+  };
   const seriesPresentation = series ? {label: series.number === undefined ? series.name : t('next.reader.seriesPosition', {series: series.name, number: defaultI18n.number(series.number)}), onOpen: () => {
     if (!factsCurrent()) return;
     const publicationType = metadata.publicationType?.value;
@@ -120,7 +134,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     ambient={<span className={styles.ambient} style={{'--read-tint-first': tint.first, '--read-tint-second': tint.second} as CSSProperties} aria-hidden="true"/>}
     actions={progression !== undefined && progression > 0 ? <ResumeButton icon="i-book" progress={progression} remaining={defaultI18n.percent(progression)} onClick={() => open()}>{t('next.cards.read')}</ResumeButton>
       : <Button variant="primary" icon="i-book" onClick={() => open()}>{t('next.reader.read')}</Button>}
-    under={<>{canEdit && <><Button ref={editorAnchor} size="small" variant="glass" icon="i-more" iconOnly aria-label={t('next.controls.more')} onClick={() => setMore(value => !value)}/><Menu open={more} onOpenChange={setMore} title={title} anchorRef={editorAnchor}><MenuItem onSelect={() => {if (context.isCurrent()) setEditing(true);}}>{t('entry.editMetadata')}</MenuItem></Menu></>}{chooseVersion ? <><Button ref={anchor} size="small" variant="glass" onClick={() => setMenu(value => !value)} aria-label={t('next.reader.version')}>
+    under={<>{(canEdit || canSaveFile) && <><Button ref={editorAnchor} size="small" variant="glass" icon="i-more" iconOnly aria-label={t('next.controls.more')} onClick={() => setMore(value => !value)}/><Menu open={more} onOpenChange={setMore} title={title} anchorRef={editorAnchor}>{canEdit && <MenuItem onSelect={() => {if (context.isCurrent()) setEditing(true);}}>{t('entry.editMetadata')}</MenuItem>}{canSaveFile && <MenuItem disabled={saving} onSelect={() => {void saveFile();}}>{t('next.reader.saveFile')}</MenuItem>}</Menu></>}{chooseVersion ? <><Button ref={anchor} size="small" variant="glass" onClick={() => setMenu(value => !value)} aria-label={t('next.reader.version')}>
       {version.format.toUpperCase()}<Icon name="i-down" size={14}/></Button>
       <Menu open={menu} onOpenChange={setMenu} title={t('next.reader.version')} anchorRef={anchor}>{eligibility.versions.map(candidate => <MenuItem key={candidate.sourceId}
         selected={candidate.sourceId === sourceId} disabled={!candidate.inventoryAvailable} onSelect={() => {if (candidate.sourceId === sourceId || !factsCurrent() || !original) return; retire(original); setSourceId(candidate.sourceId);}} description={defaultI18n.bytes(candidate.size)}>
