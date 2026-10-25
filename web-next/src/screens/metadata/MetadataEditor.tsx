@@ -397,7 +397,12 @@ function People({data, target, busy, onCommit, onLock}: {
   const credits = data.snapshot.relationships.filter(row => row.kind === 'credit');
   const [ownedDraft, setOwnedDraft] = useState<{owner: RepairData; rows: RepairData['snapshot']['relationships']} | null>(null);
   const draft = ownedDraft?.owner === data ? ownedDraft.rows : null;
-  const setDraft = (next: RepairData['snapshot']['relationships'] | null) => setOwnedDraft(next === null ? null : {owner: data, rows: next});
+  const rendered = useRef({data, draft: ownedDraft}); rendered.current = {data, draft: ownedDraft};
+  const currentDraft = () => rendered.current.data === data && rendered.current.draft === ownedDraft;
+  const setDraft = (next: RepairData['snapshot']['relationships'] | null) => {
+    if (!currentDraft()) return;
+    setOwnedDraft(current => current === ownedDraft ? next === null ? null : {owner: data, rows: next} : current);
+  };
   const rows = draft ?? credits;
   const editable = (row: RepairData['snapshot']['relationships'][number]) => data.snapshot.canEditProviderCredits === true || row.provider === 'manual' && (!row.recordId || !row.locked);
   const clean = (value: string) => !/[\u0000-\u001f\u007f]/.test(value);
@@ -417,13 +422,13 @@ function People({data, target, busy, onCommit, onLock}: {
       ordinal: rows.reduce((top, row) => Math.max(top, row.ordinal), 0) + 1, source: 'manual', locked: true}]);
   };
   const save = async () => {
-    if (busy || !draft || !valid) return;
-    if (await onCommit(rows.map(row => editable(row) ? {...row, label: row.label.trim(), role: row.role?.trim(), department: row.department?.trim()} : row))) setDraft(null);
+    if (!currentDraft() || busy || !draft || !valid) return;
+    if (await onCommit(rows.map(row => editable(row) && !credits.includes(row) ? {...row, label: row.label.trim(), role: row.role?.trim(), department: row.department?.trim()} : row))) setDraft(null);
   };
   return <div className={styles.fields}>
     <div className={styles.creditHeader}><h3>{t('web.metadata.tabPeople')}</h3><small>{t('web.metadata.creditCount', {count: rows.length})}</small>
       <button type="button" className={styles.lock} disabled={busy || draft !== null} aria-pressed={data.snapshot.relationshipLocks.credit === true}
-        onClick={() => onLock(data.snapshot.relationshipLocks.credit !== true)}>{t(data.snapshot.relationshipLocks.credit ? 'web.metadata.locked' : 'web.metadata.unlocked')}</button>
+        onClick={() => {if (currentDraft()) onLock(data.snapshot.relationshipLocks.credit !== true);}}>{t(data.snapshot.relationshipLocks.credit ? 'web.metadata.locked' : 'web.metadata.unlocked')}</button>
       {target.kind === 'item' ? <Button size="small" disabled={busy || rows.length >= 100} onClick={add}>{t('web.metadata.addPerson')}</Button> : null}
     </div>
     {rows.map((row, index) => <div key={`${row.recordId ?? 'new'}:${row.targetId}:${index}`} className={styles.creditRow} data-new={!row.recordId || undefined}>
