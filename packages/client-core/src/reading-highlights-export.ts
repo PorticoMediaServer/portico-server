@@ -18,8 +18,8 @@ export async function collectReadingHighlights(options: ReadingHighlightsExport)
   const combined = AbortSignal.any([signal, port.signal, timeout.signal]);
   const check = () => {if (combined.aborted || !isCurrent() || port.manifest.canAnnotate !== true) throw new Error('reading_export_retired');};
   const title = options.title, author = options.author;
-  if (!Number.isSafeInteger(revision) || revision < 0 || title !== undefined && encoder.encode(title).length > 4096 || author !== undefined && encoder.encode(author).length > 4096) throw new Error('invalid_reading_export');
   try {
+    if (!Number.isSafeInteger(revision) || revision < 0 || title !== undefined && encoder.encode(title).length > 4096 || author !== undefined && encoder.encode(author).length > 4096) throw new Error('invalid_reading_export');
     check();
     const entries: ReadingAnnotation[] = [];
     let cursor = '', bytes = 0, complete = false;
