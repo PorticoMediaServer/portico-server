@@ -618,9 +618,12 @@ export class WebShellPlaybackRuntime {
   catalogueQueue(): CatalogueSelectionQueuePort {
     this.assertCurrent();
     return {enqueueSegments: async (segments, placement, lifetime) => {
-      const stack = this.stack;
+      const stack = this.stack, serial = this.operation;
+      let expectedQueueId = stack.queue.getSnapshot().view?.queue.id;
       const check = () => {
         this.assertCurrent();
+        if (stack.mode !== 'server' || stack.local || stack.channel || this.group || this.dock.getSnapshot().remote
+          || serial !== this.operation || stack.queue.getSnapshot().view?.queue.id !== expectedQueueId) problem('queue_control_unavailable');
         if (lifetime.signal.aborted || !lifetime.isCurrent() || !this.current(stack)) problem('stale_selection_context');
       };
       check();
@@ -634,14 +637,15 @@ export class WebShellPlaybackRuntime {
       if (!header) {
         if (stack.queue.getSnapshot().phase === 'preparing' || stack.service.getSnapshot().session) problem('queue_not_ready');
         const created = await client.create(segments, {signal, retainQueueIds: this.retainedQueueIds(stack)});
-        check(); await stack.queue.open(created.queue.id, signal); check(); this.sync(); return created.queue;
+        check(); await stack.queue.open(created.queue.id, signal, () => {check(); return true;});
+        expectedQueueId = created.queue.id; check(); this.sync(); return created.queue;
       }
       let queue = await client.header(header.id, signal); check();
       // Each next insertion is after current; reverse requests preserve pick order.
       for (const segment of placement === 'next' ? [...segments].reverse() : segments) {
         check(); queue = (await client.addSegment(queue.id, queue.revision, placement, segment)).queue; check();
       }
-      await stack.queue.open(queue.id, signal); check(); this.sync(); return queue;
+      await stack.queue.open(queue.id, signal, () => {check(); return true;}); check(); this.sync(); return queue;
     }};
   }
 
