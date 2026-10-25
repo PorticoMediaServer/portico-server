@@ -10,20 +10,20 @@ const T = Date.UTC(2026, 9, 24, 18);
 const MIN = 60_000;
 const t = (key: any, values?: any) => defaultI18n.t(key, values);
 
-async function mount(options: {when?: 'past' | 'future'; noProgram?: boolean; unavailable?: boolean; recordable?: boolean; fail?: () => boolean} = {}) {
+async function mount(options: {when?: 'past' | 'future'; series?: boolean; noProgram?: boolean; unavailable?: boolean; recordable?: boolean; fail?: () => boolean} = {}) {
   const h = createRenderer();
-  const calls = {watch: [] as any[], favorite: [] as any[], remind: [] as any[], schedule: [] as any[], navigate: [] as any[], changed: 0, close: 0};
+  const calls = {watch: [] as any[], favorite: [] as any[], remind: [] as any[], schedule: [] as any[], rules: [] as any[], navigate: [] as any[], changed: 0, close: 0};
   const rawChannel: any = {id: 'c0', sourceId: 's1', provenance: 'live-source', name: 'One', number: '1', group: '', generation: 'g1',
     programmes: [], tuneAvailable: !options.unavailable, recordAvailable: options.recordable !== false,
     tuneUnavailableReason: '', recordUnavailableReason: '', favorite: false, hidden: false, preferenceRevision: 1};
   const start = options.when === 'past' ? T - 120 * MIN : options.when === 'future' ? T + 60 * MIN : T - 15 * MIN;
   const rawProgram: any = {id: 'p0', channelId: 'c0', title: 'Programme', start: new Date(start).toISOString(), end: new Date(start + 60 * MIN).toISOString(),
-    lineage: 'provider-id', seriesId: '', episodeId: '', newEvidence: 'unknown', description: 'Description'};
+    lineage: 'provider-id', seriesId: options.series ? 'series-0' : '', episodeId: '', newEvidence: 'unknown', description: 'Description'};
   const channel = legacyChannelRow(rawChannel), program = legacyProgram(rawProgram);
   const dvr = {schedule: async (...args: any[]) => {
     calls.schedule.push(args);
     if (options.fail?.()) throw new Error('unavailable');
-  }};
+  }, newRuleID: async () => 'rule-0', saveRule: async (...args: any[]) => { calls.rules.push(args); }};
   const nowStore = {get: () => T, getSnapshot: () => T, subscribe: () => () => {}, dispose() {}};
   const app = await componentModule(new URL('../src/screens/channels/Channels.tsx', import.meta.url), {
     react: h.react,
@@ -157,4 +157,49 @@ test('failed scheduling keeps confirmation open, reports failure and allows retr
   assert.equal(f.calls.schedule.length, 2);
   assert.equal(f.calls.changed, 1);
   assert.equal(all(rendered, 'Dialog').length, 1);
+});
+
+test('series confirmation maps episode, channel scope, keep and padding choices into its rule', async context => {
+  freeze(context);
+  const f = await mount({series: true});
+  lastButton(f.render(), t('guide.recordSeries')).props.onClick();
+  let rendered = f.render();
+  assert.equal(f.calls.rules.length, 0, 'opening confirmation does not create a rule');
+  const segments = all(rendered, 'Segmented');
+  segments.find(node => node.props.options.some((option: any) => option.id === 'all')).props.onChange('all');
+  segments.find(node => node.props.options.some((option: any) => option.id === 'any')).props.onChange('any');
+  all(rendered, 'Select').find(node => node.props.label === t('web.dvr.keepLabel')).props.onChange({target: {value: '5'}});
+  all(rendered, 'Select').find(node => node.props.label === t('web.dvr.startEarly')).props.onChange({target: {value: '60'}});
+  all(rendered, 'Select').find(node => node.props.label === t('web.dvr.endLate')).props.onChange({target: {value: '120'}});
+  lastButton(f.render(), t('guide.recordSeriesTitle')).props.onClick();
+  rendered = await f.settle();
+  assert.equal(f.calls.rules.length, 1);
+  const [id, revision, config, anchor] = f.calls.rules[0];
+  assert.equal(id, 'rule-0');
+  assert.equal(revision, 0);
+  assert.equal(config.seriesId, 'series-0');
+  assert.equal(config.episodes, 'all');
+  assert.deepEqual(config.allowedChannels, []);
+  assert.equal(config.options.episodeLimit, 5);
+  assert.equal(config.options.beforeSeconds, 60);
+  assert.equal(config.options.afterSeconds, 120);
+  assert.deepEqual(anchor, {sourceId: 's1', channelId: 'c0', generation: 'g1', programmeId: 'p0'});
+  assert.equal(f.calls.changed, 1);
+  assert.equal(all(rendered, 'Dialog').length, 1);
+  assert.equal(buttons(rendered, t('guide.recordSeries')).length, 0);
+});
+
+test('series Cancel creates no rule, and default scope is this channel with new episodes', async context => {
+  freeze(context);
+  const f = await mount({series: true});
+  lastButton(f.render(), t('guide.recordSeries')).props.onClick();
+  lastButton(f.render(), t('action.cancel')).props.onClick();
+  assert.equal(f.calls.rules.length, 0);
+  assert.equal(all(f.render(), 'Dialog').length, 1);
+  lastButton(f.render(), t('guide.recordSeries')).props.onClick();
+  lastButton(f.render(), t('guide.recordSeriesTitle')).props.onClick();
+  await f.settle();
+  assert.equal(f.calls.rules.length, 1);
+  assert.equal(f.calls.rules[0][2].episodes, 'new');
+  assert.deepEqual(f.calls.rules[0][2].allowedChannels, ['c0']);
 });
