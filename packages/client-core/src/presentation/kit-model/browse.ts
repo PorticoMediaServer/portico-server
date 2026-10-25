@@ -35,7 +35,7 @@ const quickCopy = {
   'in-progress': 'next.kit.browse.inProgress', unwatched: 'next.kit.browse.unwatched', watched: 'next.kit.browse.watched',
   favorites: 'next.kit.browse.favorites', watchlist: 'next.kit.browse.myList', available: 'next.kit.browse.available', missing: 'next.kit.browse.unavailable',
 } as const satisfies Record<string, KitMessageId>;
-const fieldOrder = ['genre', 'year', 'contentRating', 'studio', 'network', 'collection', 'series', 'author', 'narrator', 'artist', 'album', 'actor', 'director', 'writer', 'tag', 'label', 'communityRating', 'criticRating', 'releaseDate',
+const fieldOrder = ['match', 'genre', 'year', 'contentRating', 'studio', 'network', 'collection', 'series', 'author', 'narrator', 'artist', 'album', 'actor', 'director', 'writer', 'tag', 'label', 'communityRating', 'criticRating', 'releaseDate',
   'playState', 'favorite', 'watchlisted', 'personalRating', 'lastPlayedAt',
   'resolution', 'dynamicRange', 'audioLanguage', 'durationMs', 'dateAdded', 'availability'];
 const activity = new Set(['playState', 'favorite', 'watchlisted', 'personalRating', 'lastPlayedAt']);
