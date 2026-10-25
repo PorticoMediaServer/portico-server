@@ -84,7 +84,11 @@ export function createPdfAdapter<P extends FixedPreferences>(options:PdfOptions=
             const page=Number(element.dataset.readerText),text=selection.toString();if(!text||text.length>65536){mountOptions.onSelection(null);return;}
             const rects=Array.from(selection.getRangeAt(0).getClientRects()).slice(0,1024).map(r=>({x:r.x,y:r.y,width:r.width,height:r.height}));
             const bounds=element.getBoundingClientRect();
-            const pageRects=bounds.width>0&&bounds.height>0?rects.map(r=>({x:Math.max(0,(r.x-bounds.x)/bounds.width),y:Math.max(0,(r.y-bounds.y)/bounds.height),width:Math.min(r.width/bounds.width,1-Math.max(0,(r.x-bounds.x)/bounds.width)),height:Math.min(r.height/bounds.height,1-Math.max(0,(r.y-bounds.y)/bounds.height))})).filter(r=>r.width>0&&r.height>0).slice(0,128):[];
+            const pageRects=bounds.width>0&&bounds.height>0?rects.map(r=>{
+              const x=Math.max(0,Math.min(1,(r.x-bounds.x)/bounds.width)),y=Math.max(0,Math.min(1,(r.y-bounds.y)/bounds.height));
+              const right=Math.max(0,Math.min(1,(r.x+r.width-bounds.x)/bounds.width)),bottom=Math.max(0,Math.min(1,(r.y+r.height-bounds.y)/bounds.height));
+              return {x,y,width:right-x,height:bottom-y};
+            }).filter(r=>r.width>0&&r.height>0&&r.x+r.width<=1&&r.y+r.height<=1).slice(0,128):[];
             mountOptions.onSelection?.({text,location:position(page,engine.document.numPages),rects,...pageRects.length?{pageRects}: {}});
           };owner.addEventListener('selectionchange',onSelection,{signal:combined});
           const view={...fixed,dispose(){life.abort();scope.dispose();style.remove();views.delete(view);return fixed.dispose();}};views.add(view);return view;
