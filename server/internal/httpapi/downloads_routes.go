@@ -218,7 +218,7 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 		}
 		return apikit.Metadata{Admission: admission(id), ID: id, Method: method, Path: path, Summary: summary, Access: access, Requires: scope(id), Lane: lane, Cost: cost, Status: status, BodyLimit: bodyLimit, Query: query, Errors: failures}
 	}
-	v1Route(r, route("get_download_options", "GET", "/v1/items/{itemId}/download-options", "List offline qualities this device can play and this server can produce", apikit.ViewerItem, apikit.Browsing, apikit.PageSized, 200, 0, nil), func(ctx context.Context, q *http.Request, _ noBody) (downloads.DownloadOptionsView, error) {
+	v1Route(r, route("get_download_options", "GET", "/v1/items/{itemId}/download-options", "List offline qualities this device can play and this server can produce", apikit.ViewerItem, apikit.Browsing, apikit.PageSized, 200, 0, []string{"versionId"}), func(ctx context.Context, q *http.Request, _ noBody) (downloads.DownloadOptionsView, error) {
 		p, owner, e := d.downloadViewer(q)
 		if e == nil {
 			e = d.itemAccess(ctx, p, q.PathValue("itemId"))
@@ -226,7 +226,7 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 		if e != nil {
 			return downloads.DownloadOptionsView{}, e
 		}
-		out, e := d.Downloads.Options(ctx, p, q.PathValue("itemId"), owner)
+		out, e := d.Downloads.OptionsVersion(ctx, p, q.PathValue("itemId"), q.URL.Query().Get("versionId"), owner)
 		return out, downloadError(e)
 	})
 	v1Route(r, route("create_download_preparations", "POST", "/v1/downloads/preparations", "Claim one title, several titles or the next episode for offline use", apikit.Device, apikit.Default, apikit.PageSized, 201, 32768, nil), func(ctx context.Context, q *http.Request, body downloads.Request) (downloads.Batch, error) {
