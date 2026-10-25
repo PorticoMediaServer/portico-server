@@ -12,7 +12,8 @@ export class MetadataLyricsService {
   private disposed = false;
   private controller?: AbortController;
   private fence?: string;
-  constructor(private readonly options: {api: Api; scope: RepairScope; target: RepairTarget; current: () => boolean}) {
+  private readonly options: {api: Api; scope: RepairScope; target: RepairTarget; current: () => boolean};
+  constructor(options: {api: Api; scope: RepairScope; target: RepairTarget; current: () => boolean}) {
     if (options.target.kind !== 'item') throw Error('Choose a song.');
     this.options = {...options, scope: Object.freeze({...options.scope}), target: Object.freeze({...options.target})};
   }
