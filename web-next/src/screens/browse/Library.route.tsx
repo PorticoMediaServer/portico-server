@@ -169,6 +169,7 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
       sort: query.sort ?? [], presentation: header.libraryViewOverride ?? appearance.libraryView});
   };
   const bindings: LibraryBindings = {...header, controller: resources.controller,
+    unmatchedHelp: context.effects.editMetadata ? t('metadata.attention.browseHelp') : undefined,
     env: {t, locale: defaultI18n.region.formatLocale}, reducedMotion: appearance.reducedMotion, owner: context.identity?.viewer.role === 'owner',
     reportError: context.effects.reportError, empty, canSaveView: resources.controller.canSaveView(), onSaveView: save,
     selection: {toolbar: selection.toolbar, actions: (member, index) => ({...actions(member.entry), selection: selection.entry(member, index)}),

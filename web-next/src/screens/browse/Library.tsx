@@ -56,6 +56,8 @@ export type LibraryBindings = Readonly<{
   owner: boolean;
   reportError: (error: unknown) => void;
   empty: ReactNode;
+  /** Quiet owner guidance for the ordinary unmatched filter, never a badge or warning. */
+  unmatchedHelp?: string;
 }>;
 export type LibraryBrowseBindings = Omit<LibraryBindings, 'libraries' | 'tabs' | 'onLibrary' | 'onLibraries' | 'onPivot' | 'libraryMenu'>;
 const t = defaultI18n.t;
@@ -73,6 +75,7 @@ export function LibraryScreen(bindings: LibraryBindings) {
   return <div className={styles.library}>
     <LibraryIdentity {...bindings}/>
     {state.phase === 'ready' && state.capabilities && state.sort ? <LibraryBrowse {...bindings}/> : <GridSkeleton elapsedMs={300} window={{width, height: window.innerHeight, scrollTop: 0}} itemCount={21}/>}
+    {state.phase === 'ready' && bindings.unmatchedHelp && state.predicates.some(node => 'field' in node && node.field === 'match' && node.operator === 'equals' && node.value === 'unmatched') ? <p className={styles.unmatchedHelp}>{bindings.unmatchedHelp}</p> : null}
   </div>;
 }
 export function LibraryIdentity({library, libraries, pivot, tabs, onPivot, onLibrary, onLibraries, libraryMenu, appearance: base, preferences, libraryViewOverride, artwork}: Pick<LibraryBindings,

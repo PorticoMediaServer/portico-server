@@ -63,3 +63,10 @@
 }
 .shelfHeading { border: 0; padding: 0; background: none; color: inherit; font: inherit; letter-spacing: inherit; display: inline-flex; align-items: center; gap: 1px; cursor: pointer; text-align: left; }
 .shelfHeading svg { flex: none; color: var(--color-text-tertiary); }
+
+.unmatchedHelp {
+  margin: 24px var(--shell-gutter, var(--gutter-desktop));
+  color: var(--color-text-tertiary);
+  font-size: var(--type-caption-size);
+  line-height: 1.5;
+}
