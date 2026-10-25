@@ -1,5 +1,7 @@
 /** Reader controls from desktop-read 6/7, phone-read 6 and tablet-read 6b. */
 export const readerMessages = {
+  'next.reader.year': 'Year',
+  'next.reader.allYears': 'All years',
   'next.reader.goToDate': 'Go to a date',
   'next.reader.issueCount': '{count, plural, one {# issue} other {# issues}}',
   'next.reader.shortReads': 'Short reads',
