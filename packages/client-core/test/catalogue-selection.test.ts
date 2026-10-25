@@ -165,13 +165,12 @@ test('capability read captures identity, transport and available ports before as
   assert.equal(result.capabilities.myList, true);
 });
 
-test('capability read refuses aggregates, redirected leaves and wrong Detail identity or kind', async () => {
+test('unoffered parents stay unoffered and redirected or mismatched leaves are refused', async () => {
   let reads = 0;
   const options = capabilityOptions({request: async<T>(): Promise<T> => {reads++;return detail() as T;}});
-  for (const input of [
-    {id: 'show', libraryId: 'tv', kind: 'show' as const, title: 'Show', playback: {itemId: 'first-episode'}},
-    {...entry, navigation: {view: 'item' as const, entityId: 'other-item'}},
-  ]) await assert.rejects(readCatalogueSelectionItem(options, input, allPorts), {code: 'catalogue-selection-unavailable'});
+  const parent = await readCatalogueSelectionItem(options, {id: 'show', libraryId: 'tv', kind: 'show', title: 'Show', playback: {itemId: 'first-episode'}}, allPorts);
+  assert.deepEqual(parent.capabilities, selectionCapabilities('show', {}));
+  await assert.rejects(readCatalogueSelectionItem(options, {...entry, navigation: {view: 'item', entityId: 'other-item'}}, allPorts), {code: 'catalogue-selection-unavailable'});
   assert.equal(reads, 0);
   for (const item of [{...detail().item, id: 'other-item'}, {...detail().item, kind: 'episode'}]) {
     await assert.rejects(readCatalogueSelectionItem(capabilityOptions({request: async<T>(): Promise<T> => ({...detail(), item}) as T}), entry, allPorts));
