@@ -1,3 +1,4 @@
+import type {EntryActionTarget} from '../../shell/entry-actions';
 import {t, locale, environment as env} from './text';
 import {useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject} from 'react';
 import type {DetailProjection, FileInfoProjection} from '@core/detail.ts';
