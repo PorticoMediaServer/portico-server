@@ -6,13 +6,15 @@
  * reached and their real callbacks invoked. Host elements are inert: only their props matter.
  * This models wiring, not layout or painting; visual capture stays with Visual QA.
  */
-export function createRenderer() {
+export function createRenderer(options = {}) {
   const fibers = new Map();
   const focused = [];
   let pending = [];
   let path = 'root';
   const firstResult = {focus: () => focused.push('first-result')};
-  const fakeElement = () => ({focus: () => focused.push('field'), querySelector: () => firstResult});
+  // A screen that measures its host (a width, a height) can ask for those host facts without
+  // changing the inert element every other screen gets.
+  const fakeElement = () => ({focus: () => focused.push('field'), querySelector: () => firstResult, ...options.element});
   const fiber = key => {
     let found = fibers.get(key);
     if (!found) { found = {slots: [], effects: [], cursor: 0}; fibers.set(key, found); }
