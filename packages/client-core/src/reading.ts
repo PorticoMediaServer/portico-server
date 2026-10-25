@@ -1,3 +1,5 @@
+import {readingSavedPath, parseReadingSavedMembership, validReadingSavedCommand, type ReadingListCommand} from './reading-saved.ts';
+export type {ReadingListMembership, ReadingListCommand} from './reading-saved.ts';
 import {readingMarkPath, parseReadingMark, validReadingMarkCommand, type ReadingReadMarkCommand} from './reading-mark.ts';
 export type {ReadingReadMark, ReadingReadMarkCommand} from './reading-mark.ts';
 import {withReadingManifestFacts, type ReadingManifestFacts} from './reading-manifest-facts.ts';
@@ -341,6 +343,22 @@ export class ReadingClient {
       } catch (error) { check(); /* Never retain an untrusted error body. */ }
     }
     await discard(response); throw new ReadingError(code, response.status);
+  }
+  canUseMyList(itemId: string): boolean {
+    const viewer = this.viewer;
+    return !!viewer.authority && !!viewer.accountId && !!viewer.profileId && ['owner', 'admin', 'member'].includes(viewer.role)
+      && readingSavedPath('GET', itemId) !== undefined && readingSavedPath('PUT', itemId) !== undefined;
+  }
+  async getMyList(itemId: string, signal?: AbortSignal) {
+    const path = readingSavedPath('GET', itemId);
+    if (!path) fail('unsupported');
+    return this.json(path, 'GET', undefined, signal, value => parseReadingSavedMembership(value, this.viewer.serverId, itemId), 4096);
+  }
+  async setMyList(itemId: string, command: ReadingListCommand, signal?: AbortSignal) {
+    const path = readingSavedPath('PUT', itemId);
+    if (!path || !validReadingSavedCommand(command)) fail('invalid_request');
+    const captured = Object.freeze({...command});
+    return this.json(path, 'PUT', captured, signal, value => parseReadingSavedMembership(value, this.viewer.serverId, itemId, captured.operationId), 4096);
   }
   canMarkRead(itemId: string): boolean {
     const viewer = this.viewer;
