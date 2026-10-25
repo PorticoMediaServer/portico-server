@@ -24,7 +24,17 @@ type Attempt = {
   readonly preview: AccountMove;
   readonly startOver: boolean;
   readonly source: SettingsOwnerSwitch;
+  /** Aborted synchronously when this exact opening closes or its layout unmounts. */
+  readonly abort: AbortController;
   phase: 'open' | 'confirming' | 'handed' | 'closed';
+};
+
+type Draft = Readonly<{username: string; password: string; match: string; confirmation: string}>;
+type DraftState = Readonly<{revision: number; value: Draft}>;
+const emptyDraft: Draft = Object.freeze({username: '', password: '', match: '', confirmation: ''});
+const withField = (draft: Draft, field: keyof Draft, value: string): Draft => Object.freeze({...draft, [field]: value});
+const cancelPreview = (attempt: Attempt) => {
+  try {if (attempt.source.getSnapshot().preview === attempt.preview) void attempt.source.cancelPreview().catch(() => {});} catch { /* the controller already ended */ }
 };
 
 /** The drawn Change group's move to local. The settings row opens the existing
@@ -36,13 +46,11 @@ export function LocalMoveSwitch({source, isCurrent, onError, startOver = false}:
   startOver?: boolean; source: SettingsOwnerSwitch; isCurrent: () => boolean; onError: (error: unknown) => void;
 }) {
   const state = useSyncExternalStore(source.subscribe, source.getSnapshot);
-  const [username, setUsername] = useState(''), [password, setPassword] = useState(''), [confirmation, setConfirmation] = useState('');
-  const [match, setMatch] = useState(''), [opening, setOpening] = useState<Attempt>(), [secure, setSecure] = useState(false);
+  const [draft, setDraft] = useState<DraftState>({revision: 0, value: emptyDraft});
+  const draftRef = useRef<DraftState>({revision: 0, value: emptyDraft});
+  const [opening, setOpening] = useState<Attempt>(), [secure, setSecure] = useState(false);
   const active = useRef<Attempt>(), sourceRef = useRef(source), ticket = useRef<{retired: boolean}>();
   const sequence = useRef(0), starting = useRef(0);
-  const cancelPreview = (attempt: Attempt) => {
-    try {if (attempt.source.getSnapshot().preview === attempt.preview) void attempt.source.cancelPreview().catch(() => {});} catch { /* the controller already ended */ }
-  };
   // A new controller replaces the old one; the old opening is retired as its own
   // instance. Layout cleanup also runs synchronously on unmount, before a late
   // continuation can publish for a successor.
@@ -54,11 +62,21 @@ export function LocalMoveSwitch({source, isCurrent, onError, startOver = false}:
       const attempt = active.current;
       if (!attempt) return;
       active.current = undefined;
-      attempt.phase = 'closed';
-      cancelPreview(attempt);
+      const unconfirmed = attempt.phase === 'open';
+      attempt.phase = 'closed';attempt.abort.abort();
+      // A handed custody is not canceled here; its own admission owns it now.
+      if (unconfirmed) cancelPreview(attempt);
     };
   }, [source]);
-  const clearDraft = () => {setUsername('');setPassword('');setMatch('');setConfirmation('');};
+  const resetDraft = () => {
+    const next: DraftState = {revision: draftRef.current.revision + 1, value: emptyDraft};
+    draftRef.current = next;setDraft(next);
+  };
+  const editDraft = (attempt: Attempt, field: keyof Draft, value: string) => {
+    if (active.current !== attempt || attempt.phase !== 'open') return;
+    const next: DraftState = {revision: draftRef.current.revision + 1, value: withField(draftRef.current.value, field, value)};
+    draftRef.current = next;setDraft(next);
+  };
   const start = () => {
     const owned = ticket.current, owner = source;
     if (!owned || owned.retired || owner !== sourceRef.current || starting.current || active.current) return;
@@ -66,14 +84,15 @@ export function LocalMoveSwitch({source, isCurrent, onError, startOver = false}:
     // The captured controller checks this again; refuse before creating a preview.
     if (!ownerSwitchContextAllowed()) {setSecure(true);return;}
     const id = ++sequence.current;starting.current = id;
-    clearDraft();
+    resetDraft();
     void owner.previewDirection('local', startOver).then(preview => {
       if (owned.retired || owner !== sourceRef.current || id !== sequence.current) {
         // This start no longer owns the preview it created; retire exactly that one.
         try {if (owner.getSnapshot().preview === preview) void owner.cancelPreview().catch(() => {});} catch { /* the controller already ended */ }
         return;
       }
-      const attempt: Attempt = {id, preview, startOver, source: owner, phase: 'open'};
+      resetDraft();
+      const attempt: Attempt = {id, preview, startOver, source: owner, abort: new AbortController(), phase: 'open'};
       active.current = attempt;setOpening(attempt);
     }).catch(error => {
       if (!owned.retired && owner === sourceRef.current && id === sequence.current) onError(error);
@@ -81,27 +100,34 @@ export function LocalMoveSwitch({source, isCurrent, onError, startOver = false}:
   };
   const close = (attempt: Attempt) => {
     if (active.current !== attempt || attempt.phase !== 'open') return;
-    attempt.phase = 'closed';active.current = undefined;setOpening(undefined);clearDraft();cancelPreview(attempt);
+    attempt.phase = 'closed';attempt.abort.abort();active.current = undefined;setOpening(undefined);resetDraft();cancelPreview(attempt);
   };
-  const proceed = (attempt: Attempt) => {
+  const proceed = (attempt: Attempt, renderedRevision: number) => {
     if (active.current !== attempt || attempt.phase !== 'open') return;
-    const preview = attempt.preview;
+    // The button is bound to the draft tuple this render drew; any later edit
+    // increments the revision, so a retained Confirm cannot submit older input.
+    if (draftRef.current.revision !== renderedRevision) return;
+    const preview = attempt.preview, values = draftRef.current.value;
     if (preview.to !== 'local' || preview.startOver !== attempt.startOver) return;
-    if (!username.trim() || !password || password !== match || !passwordStrength(password).acceptable) return;
-    if (attempt.startOver && confirmation !== preview.serverName) return;
+    if (!values.username.trim() || !values.password || values.password !== values.match || !passwordStrength(values.password).acceptable) return;
+    if (attempt.startOver && values.confirmation !== preview.serverName) return;
     if (attempt.source.getSnapshot().preview !== preview) return;
     const owned = ticket.current;
-    if (!owned || owned.retired || attempt.source !== sourceRef.current) return;
-    // Claim this exact opening and freeze its draft before any await.
-    const submission = Object.freeze({username: username.trim(), password, confirmation: attempt.startOver ? confirmation : ''});
-    attempt.phase = 'confirming';clearDraft();
+    if (!owned || owned.retired || ticket.current !== owned || attempt.source !== sourceRef.current) return;
+    // Claim this exact opening and freeze only its admitted tuple before any await.
+    const submission = Object.freeze({username: values.username.trim(), password: values.password, confirmation: attempt.startOver ? values.confirmation : ''});
+    attempt.phase = 'confirming';resetDraft();
     void (async () => {
       try {
-        const custody = await attempt.source.confirmLocal({username: submission.username, password: submission.password}, submission.confirmation);
-        // The view, controller or ticket may have been replaced while confirming;
-        // the fresh grant is then retired instead of being handed to a successor.
-        if (active.current !== attempt || attempt.phase !== 'confirming' || !ticket.current || ticket.current.retired || sourceRef.current !== attempt.source) {
-          attempt.phase = 'closed';await custody.retire();return;
+        const custody = await attempt.source.confirmLocal({username: submission.username, password: submission.password}, submission.confirmation, {
+          // Joined caller liveness: the captured opening and its ticket, plus the
+          // synchronously aborted signal, stop credentials before any IO.
+          isCurrent: () => active.current === attempt && attempt.phase === 'confirming' && ticket.current === owned && !owned.retired,
+          signal: attempt.abort.signal,
+        });
+        // Compare the originally captured ticket; a replaced layout cannot revive it.
+        if (active.current !== attempt || attempt.phase !== 'confirming' || ticket.current !== owned || owned.retired || sourceRef.current !== attempt.source) {
+          attempt.phase = 'closed';attempt.abort.abort();await custody.retire();return;
         }
         let handoff: LocalMoveHandoff;
         try {handoff = offerLocalMove(custody);}
@@ -110,17 +136,18 @@ export function LocalMoveSwitch({source, isCurrent, onError, startOver = false}:
         try {await router.navigate({to: '/sign-in'});}
         catch (error) {cancelLocalMoveHandoff(handoff);throw error;}
       } catch (error) {
-        attempt.phase = 'closed';
+        attempt.phase = 'closed';attempt.abort.abort();
         if (active.current === attempt) active.current = undefined;
-        if (!ticket.current?.retired) onError(error);
+        if (ticket.current === owned && !owned.retired) onError(error);
       }
     })();
   };
   const current = opening && active.current === opening ? opening : undefined;
   const preview = current?.preview, busy = state.busy || current?.phase === 'confirming' || current?.phase === 'handed';
-  const mismatch = Boolean(match) && password !== match, keys = panel(startOver);
+  const mismatch = Boolean(draft.value.match) && draft.value.password !== draft.value.match, keys = panel(startOver);
   const ready = Boolean(current && current.phase === 'open' && preview && preview.to === 'local' && preview.startOver === startOver
-    && username.trim() && password && !mismatch && (!startOver || confirmation === preview.serverName) && passwordStrength(password).acceptable);
+    && draft.value.username.trim() && draft.value.password && !mismatch && (!startOver || draft.value.confirmation === preview.serverName)
+    && passwordStrength(draft.value.password).acceptable);
   return <>
     <Button className={startOver ? styles.destructive : undefined} variant="glass" size="small" disabled={state.busy || !!state.preview || state.confirmed || !!active.current}
       onClick={start}>{t(`${startOver ? 'next.settingsSpec.server.signin.groups.1.rows.1' : 'next.settingsSpec.server.signin.groups.1.rows.0'}.control.label`)}</Button>
@@ -130,7 +157,7 @@ export function LocalMoveSwitch({source, isCurrent, onError, startOver = false}:
     <Dialog open={!!current && !!preview && state.preview === preview} onOpenChange={value => {if (!value && current) close(current);}} width={600}
       title={t(`${keys}.title`)} dismissOnBack={!busy} dismissOnOutsidePress={!busy} showCloseButton={!busy}
       footer={<><Button variant="glass" disabled={busy} onClick={() => {if (current) close(current);}}>{t(`${keys}.footer.secondary`)}</Button>
-        <Button className={startOver ? styles.destructive : undefined} disabled={busy || !ready} onClick={() => {if (current) proceed(current);}}>{t(`${keys}.footer.primary`)}</Button></>}>
+        <Button className={startOver ? styles.destructive : undefined} disabled={busy || !ready} onClick={() => {if (current) proceed(current, draft.revision);}}>{t(`${keys}.footer.primary`)}</Button></>}>
       {preview && <div className={styles.preview}>
         <p>{preview.serverName}</p>
         {startOver ? <>
@@ -167,19 +194,19 @@ export function LocalMoveSwitch({source, isCurrent, onError, startOver = false}:
         </>}
         <h3>{t(`${keys}.groups.2.title`)}</h3>
         <TextField label={t(`${keys}.groups.2.rows.0.label`)} description={t(`${keys}.groups.2.rows.0.help`)}
-          placeholder={t(`${keys}.groups.2.rows.0.control.placeholder`)} autoComplete="username" value={username} disabled={busy}
-          onChange={event => setUsername(event.currentTarget.value)}/>
+          placeholder={t(`${keys}.groups.2.rows.0.control.placeholder`)} autoComplete="username" value={draft.value.username} disabled={busy}
+          onChange={event => {if (current) editDraft(current, 'username', event.currentTarget.value);}}/>
         <TextField type="password" label={t(`${keys}.groups.2.rows.1.label`)}
-          placeholder={t(`${keys}.groups.2.rows.1.control.placeholder`)} autoComplete="new-password" value={password} disabled={busy}
-          onChange={event => setPassword(event.currentTarget.value)}/>
+          placeholder={t(`${keys}.groups.2.rows.1.control.placeholder`)} autoComplete="new-password" value={draft.value.password} disabled={busy}
+          onChange={event => {if (current) editDraft(current, 'password', event.currentTarget.value);}}/>
         <TextField type="password" label={t(`${keys}.groups.2.rows.2.label`)} error={mismatch ? t('web.reset.mismatch') : undefined}
-          placeholder={t(`${keys}.groups.2.rows.2.control.placeholder`)} autoComplete="new-password" value={match} disabled={busy}
-          onChange={event => setMatch(event.currentTarget.value)}/>
+          placeholder={t(`${keys}.groups.2.rows.2.control.placeholder`)} autoComplete="new-password" value={draft.value.match} disabled={busy}
+          onChange={event => {if (current) editDraft(current, 'match', event.currentTarget.value);}}/>
         <dl><dt>{t(`${keys}.groups.2.rows.3.label`)}</dt><dd>{t(`${keys}.groups.2.rows.3.help`)}</dd></dl>
         {startOver && <>
           <h3>{t(`${keys}.groups.3.title`)}</h3>
           <TextField label={t(`${keys}.groups.3.rows.0.label`)} placeholder={t(`${keys}.groups.3.rows.0.control.placeholder`)}
-            value={confirmation} disabled={busy} onChange={event => setConfirmation(event.currentTarget.value)}/>
+            value={draft.value.confirmation} disabled={busy} onChange={event => {if (current) editDraft(current, 'confirmation', event.currentTarget.value);}}/>
         </>}
       </div>}
     </Dialog>

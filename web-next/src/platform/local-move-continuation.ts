@@ -25,12 +25,14 @@ let pending: LocalMoveHandoff | undefined;
  * failure retires the fresh custody before rethrowing; a replaced pending pair is
  * closed as itself, never whichever pair happens to be pending later. */
 export function offerLocalMove(custody: LocalMoveCustody): LocalMoveHandoff {
-  let entry: BrowserAccountEntry;
-  try {entry = createBrowserAccountEntry();}
-  catch (error) {void custody.retire();throw error;}
-  let form: AccountSignInForm;
-  try {form = new AccountSignInForm(entry);}
-  catch (error) {entry.dispose();void custody.retire();throw error;}
+  const entry = (() => {
+    try {return createBrowserAccountEntry();}
+    catch (error) {void custody.retire();throw error;}
+  })();
+  const form = (() => {
+    try {return new AccountSignInForm(entry);}
+    catch (error) {entry.dispose();void custody.retire();throw error;}
+  })();
   const handoff = new LocalMoveHandoff(entry, form, custody);
   const previous = pending;pending = handoff;
   previous?.close();

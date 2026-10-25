@@ -12,6 +12,13 @@ import {ownerSwitchContextAllowed} from '../../platform/secure-pending';
 type Claim = Pick<BrowserOwnerClaim, 'prepare' | 'cancel' | 'cancelOperation'>;
 type Snapshot = Readonly<{busy: boolean; preview?: AccountMove; confirmed: boolean}>;
 const empty: Snapshot = Object.freeze({busy: false, confirmed: false});
+/** The calling surface's own liveness. Its exact opening/ticket supplies an abort
+ * signal that is retired synchronously with that surface, so a confirmation can
+ * never send credentials after the dialog that collected them has gone. */
+export type OwnerMoveCaller = Readonly<{
+  isCurrent: () => boolean;
+  signal?: AbortSignal;
+}>;
 export type OwnerSwitchOptions = Readonly<{
   serverId: string; hostedOrigin: string; isCurrent: () => boolean;
   /** The app's saved-selection revision, read for the confirmed local move. */
@@ -81,8 +88,10 @@ export class SettingsOwnerSwitch {
    * them against the canonical policy); none is synthesised here. The returned
    * custody is the single-use grant plus the issuer facts captured at confirmation,
    * and it is retired through that original issuer if any step before admission
-   * fails; this controller never stores or adopts a session. */
-  async confirmLocal(credentials: Readonly<{username: string; password: string}>, confirmation: string): Promise<LocalMoveCustody> {
+   * fails; this controller never stores or adopts a session. An optional caller
+   * liveness/abort is joined before IO so a retired dialog cannot send credentials,
+   * and a caller that retires after the response still has its fresh grant retired. */
+  async confirmLocal(credentials: Readonly<{username: string; password: string}>, confirmation: string, caller?: OwnerMoveCaller): Promise<LocalMoveCustody> {
     const preview = this.state.preview;
     if (!preview || preview.to !== 'local' || this.state.confirmed) throw new Error('A fresh local move preview is required.');
     // Read the caller's draft once, before any await.
@@ -94,11 +103,16 @@ export class SettingsOwnerSwitch {
     if (!pin) throw new Error('The server identity is not current.');
     if (!this.options.selectionRevision) throw new Error('The saved server selection is unavailable.');
     const operation = this.operation();
+    const callerLive = () => !caller || (caller.isCurrent() && caller.signal?.aborted !== true);
     let custody: LocalMoveCustody | undefined;
     try {
+      if (!callerLive()) throw ended();
       const revision = await this.options.selectionRevision();
       operation.check();
-      const result: AccountMoveConfirmation = await this.moves.confirm({moveId: preview.id, expectedRevision: preview.revision, confirmation, username, password}, operation.signal);
+      // The dialog can retire while the first read is in flight; refuse before IO.
+      if (!callerLive()) throw ended();
+      const signal = caller?.signal ? AbortSignal.any([operation.signal, caller.signal]) : operation.signal;
+      const result: AccountMoveConfirmation = await this.moves.confirm({moveId: preview.id, expectedRevision: preview.revision, confirmation, username, password}, signal);
       // Register the returned grant immediately: from here every later guard or
       // publication failure still has custody to retire.
       if (result.kind === 'local' && result.signIn.kind === 'signed-in') {
@@ -107,10 +121,12 @@ export class SettingsOwnerSwitch {
           () => this.retire(grant.session));
       }
       operation.check();
+      if (!callerLive()) throw ended();
       if (!custody) throw new Error('Unexpected owner move continuation.');
       const confirmedCustody = custody;
       if (await this.options.selectionRevision() !== revision) throw new Error('The server selection changed.');
       operation.check();
+      if (!callerLive()) throw ended();
       this.publish({busy: false, confirmed: false});
       operation.check();
       return confirmedCustody;
