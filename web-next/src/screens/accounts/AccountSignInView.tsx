@@ -17,6 +17,7 @@ import {canOpenShortInvitation} from './short-invitation-join';
 import {initializeAccountSignIn} from './sign-in-start';
 import {RequiredFactorDialogs} from './RequiredSetup';
 import {LocalPasswordRecoveryFlow} from './LocalPasswordRecoveryFlow';
+import {PorticoOwnerRecoveryFlow} from './PorticoOwnerRecoveryFlow';
 import {AccountIdentityFailure} from './AccountIdentityFailure';
 import {MemberMoveForm} from './MemberMoveForm';
 
@@ -27,6 +28,7 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
   const [error, setError] = useState<unknown>(), [initializing, setInitializing] = useState(initialize), [joining, setJoining] = useState(false), started = useRef(false), alive = useRef(true), joinOrigin = useRef<string | undefined>(undefined);
   const [recoveryChoice, setRecoveryChoice] = useState(false);
   const [recovery, setRecovery] = useState<RecoveryTarget>();
+  const [porticoRecovery, setPorticoRecovery] = useState<RecoveryTarget>();
   const [acknowledgedMove, setAcknowledgedMove] = useState<ReturnType<BrowserAccountEntry['getSnapshot']>>();
   const [memberView, setMemberView] = useState<Readonly<{mode: 'old-password' | 'code'; target: RecoveryTarget}>>();
   const pageOrigin = initialOrigin ?? import.meta.env.VITE_SERVER_URL ?? location.origin;
@@ -42,7 +44,7 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
   }, [entry, form, takeReturn, takeMove, pageOrigin, initialize]);
   useEffect(() => {
     if (joining || initializing || entry.getSnapshot() !== state || input.factor || input.busy || state.memberMoveCompleted && !state.snapshot?.twoStepSetupRequired && (state.phase === 'profiles' || state.phase === 'ready') && acknowledgedMove !== state) return;
-    if (state.phase === 'ready') void router.navigate({to: state.setupCompleted ? '/setup' : '/', replace: true});
+    if (state.phase === 'ready' && !state.ownerResetSessionReady) void router.navigate({to: state.setupCompleted ? '/setup' : '/', replace: true});
     else if (state.phase === 'profiles' && state.snapshot && !state.snapshot.twoStepSetupRequired) void router.navigate({to: '/profiles', replace: true});
     else if (state.phase === 'two-step-setup' && state.origin) {
       form.setUsername(state.snapshot?.account.username ?? input.username);
@@ -65,7 +67,7 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
   };
   const reauthenticate = () => {
     if (!alive.current || entry.getSnapshot() !== state || form.getSnapshot() !== input) return;
-    setRecovery(undefined);
+    setRecovery(undefined); setPorticoRecovery(undefined);
     setMemberView(undefined);
     const origin = entry.getSnapshot().origin ?? pageOrigin;
     form.clear(); setError(undefined); void entry.inspect(origin);
@@ -85,6 +87,14 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
   };
   const recoveryCurrent = recovery?.entry === entry && recovery.origin === state.origin && recovery.serverId === state.server?.id
     && recovery.pin === state.pin && state.server?.signIn === 'local' && !state.invitation;
+  const porticoRecoveryCurrent = porticoRecovery?.entry === entry && porticoRecovery.origin === state.origin && porticoRecovery.serverId === state.server?.id
+    && porticoRecovery.pin === state.pin && state.server?.signIn === 'portico' && !state.invitation;
+  const openPorticoRecovery = () => {
+    if (!alive.current || busy || joining || initializing || entry.getSnapshot() !== state || form.getSnapshot() !== input
+      || state.phase !== 'portico' || state.server?.signIn !== 'portico' || state.invitation || !state.origin || !state.pin) return;
+    form.clear(); setError(undefined);
+    setPorticoRecovery({entry, origin: state.origin, serverId: state.server.id, pin: state.pin});
+  };
   const currentMember = memberView?.target.entry === entry && memberView.target.origin === state.origin && memberView.target.serverId === state.server?.id
     && memberView.target.pin === state.pin && !state.invitation;
   const openMember = (mode: 'old-password' | 'code') => {
@@ -131,6 +141,8 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
     initialUsername={state.movePreview?.username ?? input.username} busy={busy} error={failure} onBack={reauthenticate}
     onCode={code => runMove(() => entry.previewMoveCode(code))} onOldPassword={(username, password) => runMove(() => entry.proveLocalMovePassword(username, password))}
     onLocal={(username, password) => runMove(() => form.redeemLocalMove(username, password))} onPortico={continuePortico}/>;
+  if (porticoRecoveryCurrent && (state.phase === 'portico' || state.phase === 'ready' && state.ownerResetSessionReady)) return <PorticoOwnerRecoveryFlow entry={entry}
+    onBack={() => {setPorticoRecovery(undefined); setError(undefined); form.clear();}}/>;
   if (recoveryCurrent && (state.phase === 'password' || state.phase === 'owner-reset-password')) return <LocalPasswordRecoveryFlow entry={entry} form={form}
     onBack={() => {setRecovery(undefined); setError(undefined); form.clear();}} />;
   if (recoveryChoice && !state.invitation && state.server?.signIn === 'local' && (state.phase === 'password' || state.phase === 'owner-reset-password')) return <AuthStage legal={false}>
@@ -146,12 +158,7 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
     onMoveCode={state.server.move === 'to_local' && !state.invitation ? () => openMember('code') : undefined} />;
   if (state.phase === 'portico' && state.server?.signIn === 'portico') return <PorticoServerSignIn serverName={state.server.name} busy={busy} error={failure} onContinue={continuePortico}
     moving={state.server.move === 'to_portico' && !state.invitation} onOldPassword={() => openMember('old-password')}
-    onRecovery={state.invitation ? undefined : () => {
-      // A Portico Account resets its own password by email on the Portico
-      // Account page; the server holds no local recovery for it.
-      const origin = browserAccountOrigin(import.meta.env, location);
-      location.assign(origin + (origin.endsWith('/') ? '?mode=forgot' : '/?mode=forgot'));
-    }}/>;
+    onRecovery={state.invitation ? undefined : openPorticoRecovery}/>;
   if (!failure && (initializing || busy || state.phase === 'checking' || state.phase === 'profiles' || state.phase === 'ready')) return <AuthStage legal={false}>
     <p role="status">{defaultI18n.t(state.phase === 'profiles' || state.phase === 'ready' ? 'auth.loadingProfiles' : 'status.loading')}</p>
   </AuthStage>;

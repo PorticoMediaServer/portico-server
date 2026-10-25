@@ -87,7 +87,7 @@ export function LocalPasswordRecoveryFlow({entry, form, onBack}: LocalPasswordRe
     onWriteFile={username => {void requestFile(username);}} onMemberReset={(username, code, password) => {void resetMember(username, code, password);}} onBack={back}/>;
 }
 
-function OwnerFile({serverName, location, busy, error, onVerify, onRewrite, onBack}: {
+export function OwnerFile({serverName, location, busy, error, onVerify, onRewrite, onBack}: {
   serverName: string; location: ResetFileLocation; busy: boolean; error: unknown;
   onVerify: (code: string) => Promise<void>; onRewrite: () => void; onBack: () => void;
 }) {

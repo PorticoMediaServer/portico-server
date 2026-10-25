@@ -46,6 +46,7 @@ const sameRecoveryAdmission=(original:LocalSession,current:LocalSession|undefine
 type OwnerResetCapture=Readonly<{source:HttpLocalApi;api:HttpLocalApi;grant:Extract<DirectSignIn,{kind:'signed-in'}>;pin:ServerPin;revision:number}>;
 
 export type AccountEntryState = Readonly<{
+ ownerResetSessionReady?:true;
  phase:'welcome'|'address'|'checking'|'password'|'portico'|'challenge'|'password-change'|'profiles'|'ready'|'joined'|'move-code'|'move-local'|'move-portico'|'two-step-setup'|'owner-reset-password';
  server?:ServerSignIn; origin?:string; pin?:ServerPin; snapshot?:DirectSnapshot;
  invitation?:PreviewInvitationResponse; joined?:Readonly<{origin:string;signIn:'local'|'portico'}>;
@@ -433,6 +434,67 @@ export class BrowserAccountEntry {
    if(!op.current())return;
    this.publish({...state,busy:false});return location;
   }catch(error){if(op.current())this.publish({...state,busy:false,error});}
+ }
+ /** Portico's emergency file is a separate purpose: no username, local
+  * password/member reset, Hosted lookup or refresh credential is involved. */
+ async requestPorticoOwnerResetFile():Promise<ResetFileLocation|undefined>{
+  const state=this.state,api=this.api;
+  if(state.phase!=='portico'||state.server?.signIn!=='portico'||state.invitation||!state.pin||!state.origin||!api||state.busy)return;
+  const op=this.operation();this.publish({...state,busy:true,error:undefined});
+  try{const location=await requestOwnerResetFile(api,undefined,op.signal);if(!op.current()||this.api!==api)return;this.publish({...state,busy:false});return location;}
+  catch(error){if(op.current())this.publish({...state,busy:false,error});}
+ }
+ cancelPorticoOwnerResetFile(){
+  const state=this.state;
+  if(state.phase!=='portico'||state.server?.signIn!=='portico'||state.invitation)return;
+  this.operation();this.publish({...state,busy:false,error:undefined});
+ }
+ /** The done page grants no new authority. Check the original access-only
+  * owner admission again before its explicit navigation, without Hosted IO. */
+ async completePorticoOwnerReset(isCurrent:()=>boolean):Promise<boolean>{
+  const state=this.state,api=this.api,session=this.session,epoch=this.epoch;
+  const current=()=>!this.disposed&&this.epoch===epoch&&this.state===state&&this.api===api&&this.session===session&&isCurrent();
+  if(!current()||state.phase!=='ready'||!state.ownerResetSessionReady||state.server?.signIn!=='portico'||state.invitation||!state.pin||!session||!api||session.refreshToken||session.viewer.role!=='owner'||Date.parse(session.expiresAt)<=Date.now())return false;
+  const selected=await this.ports.store.selected();
+  return current()&&!!selected&&selected.signIn==='portico'&&selected.resetFileOwner===true&&!selected.connection.hosted&&
+   sameServerPin(selected.connection.pin,state.pin)&&sameRecoveryAdmission(session,selected.connection.session)&&selected.connection.session.accessToken===session.accessToken&&
+   selected.connection.logicalOrigin===state.origin&&selected.connection.session.viewer.profileId===state.snapshot?.account.primaryProfileId;
+ }
+ async verifyPorticoOwnerResetFile(code:string):Promise<boolean>{
+  const state=this.state,source=this.api;
+  if(state.phase!=='portico'||state.server?.signIn!=='portico'||state.invitation||!state.pin||!state.origin||!source||state.busy||!code.trim())return false;
+  const op=this.operation();this.publish({...state,busy:true,error:undefined});
+  let grant:Extract<DirectSignIn,{kind:'signed-in'}>|undefined,privateAPI:HttpLocalApi|undefined,accepted=false;
+  try{
+   const revision=(await this.ports.store.read()).revision;if(!op.current()||this.api!==source)return false;
+   const result=await verifyOwnerResetFile(source,code,false,op.signal);
+   if(result.kind!=='signed-in')throw new CodedError('invalid_response','The reset file did not return an owner session.');
+   grant=result;if(!op.current()||this.api!==source)return false;
+   const pin=source.getRouteConnection()?.pin,native=result.session.serverIdentity;
+   if(!pin||!sameServerPin(pin,state.pin)||result.snapshot.serverId!==state.server.id||result.snapshot.authority!=='local'||
+    !result.resetFileOwnerSession||result.accountScoped||result.passwordChangeRequired||result.session.refreshToken||result.snapshot.twoStepSetupRequired||
+    result.snapshot.account.disabled||result.snapshot.account.role!=='owner'||result.session.viewer.authority!=='local'||result.session.viewer.serverId!==state.server.id||
+    result.session.viewer.role!=='owner'||result.session.viewer.accountId!==result.snapshot.account.id||result.session.viewer.profileId!==result.snapshot.account.primaryProfileId||
+    !result.snapshot.profiles.some(profile=>profile.id===result.snapshot.account.primaryProfileId&&profile.primary)||
+    !native||native.publicKey!==pin.publicKey||native.fingerprint!==pin.fingerprint)throw new CodedError('invalid_response','The reset file did not match this server owner.');
+   privateAPI=this.temporary(source,result.session);
+   const env={...this.ports.environment(state.server.id),storage:this.ports.store.connectionStorage(state.server.id,{signIn:'portico',resetFileOwner:true,expectedRevision:revision})};
+   await this.ports.remember(privateAPI,result.session,env,undefined,op.current);
+   if(!op.current()||this.api!==source)return false;
+   const selected=await this.ports.store.selected();if(!op.current()||this.api!==source)return false;
+   if(!selected||selected.signIn!=='portico'||selected.resetFileOwner!==true||selected.connection.hosted||!sameServerPin(selected.connection.pin,pin)||
+    !sameRecoveryAdmission(result.session,selected.connection.session)||selected.connection.session.accessToken!==result.session.accessToken||selected.connection.session.viewer.accountId!==result.snapshot.account.id||
+    selected.connection.session.viewer.profileId!==result.snapshot.account.primaryProfileId||selected.connection.session.viewer.role!=='owner')throw new CodedError('cancelled','The server selection changed.');
+   this.api=privateAPI;this.session=result.session;this.challenge=undefined;this.challengeRevision=undefined;this.retired();
+   if(!op.current()||this.api!==privateAPI)return false;
+   accepted=true;this.publish({...state,phase:'ready',snapshot:result.snapshot,ownerResetSessionReady:true,busy:false,error:undefined});this.watchAuthority();return true;
+  }catch(error){if(op.current()){if(this.api===privateAPI){this.api=source;this.session=undefined;}this.publish({...state,busy:false,error});}return false;}
+  finally{
+   if(grant&&!accepted){
+    try{await this.ports.store.connectionStorage(state.server.id).change(current=>current&&sameServerPin(current.pin,state.pin!)&&current.session.sessionFamilyId===grant!.session.sessionFamilyId&&current.session.viewer.accountId===grant!.snapshot.account.id?undefined:current);}
+    finally{await this.retire(privateAPI??source,grant.session);}
+   }
+  }
  }
  /** Owner file proof is spent once. Only public security facts leave this
   * controller; the original password-only grant never enters the saved selection. */
