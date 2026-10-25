@@ -71,8 +71,9 @@ export class RecordingRulesController extends OwnerStore<State> {
       const params = new URLSearchParams({kind: route.kind, start: route.start, end: route.end, timezone: route.timezone, search: route.search, sourceId: route.sourceId, limit: '30', cursor});
       const raw = await this.api.request('/v1/guide?' + params, 'GET', undefined, attempt.abort.signal);if (!this.valid(attempt)) return;
       const guide = parseChannelGuide(raw, this.serverId, route);
+      if (cursor && guide.nextCursor === cursor) throw {code: 'invalid_response'};
       this.publish({...this.snapshot, guideLoading: false, series: Object.freeze(recordingSeries(guide, true)), guideCursor: guide.nextCursor});
-    } catch (error) {if (this.valid(attempt)) this.fail(error, {...this.snapshot, guideLoading: false, error: errorFacts(error)});}
+    } catch (error) {if (this.valid(attempt)) this.fail(error, {...this.snapshot, guideLoading: false, guideCursor: cursor, error: errorFacts(error)});}
   }
   private id(key: string) {let id = this.ids.get(key);if (!id) {if (this.ids.size >= 256) throw {code: 'server_busy'};id = channelRequestID();this.ids.set(key, id);}return id;}
   async save(draft: RuleDraft) {
