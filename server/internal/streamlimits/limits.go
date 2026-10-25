@@ -6,6 +6,7 @@ package streamlimits
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"time"
 )
@@ -57,6 +58,31 @@ const AwayQualityServer AwayQuality = "server"
 
 // AwayQualities is the closed set the supplier accepts.
 var AwayQualities = []AwayQuality{AwayQualityServer, "2160p", "1080p-high", "1080p-low", "720p-high", "720p-low", "480p", "240p"}
+
+// JSONSchema publishes the exact closed domain the column and the supplier share,
+// so a generated client sees a sentinel-and-ladder enum rather than any string.
+func (AwayQuality) JSONSchema() map[string]any {
+	offered := make([]string, 0, len(AwayQualities))
+	for _, value := range AwayQualities {
+		offered = append(offered, string(value))
+	}
+	return map[string]any{"type": "string", "enum": offered}
+}
+
+// UnmarshalJSON refuses a supplied value outside the ladder, including an empty
+// string and null. Only an absent field keeps the zero value that means "leave
+// whatever is stored", so a client cannot clear a saved cap by sending "".
+func (m *AwayQuality) UnmarshalJSON(raw []byte) error {
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return errors.New("invalid limits.awayQuality")
+	}
+	if !ValidAwayQuality(AwayQuality(value)) {
+		return errors.New("invalid limits.awayQuality")
+	}
+	*m = AwayQuality(value)
+	return nil
+}
 
 func ValidAwayQuality(value AwayQuality) bool {
 	for _, offered := range AwayQualities {
