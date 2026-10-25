@@ -1,3 +1,4 @@
+import {createEntryMetadataEffect, retireEntryMetadata} from '../../shell/entry-metadata';
 import {createBrowserDownloadPort} from '../../platform/browser-download';
 import {useEffect, useMemo, useRef} from 'react';
 import type {useProtectedWebScreenContext} from '../../route-registry-view';
@@ -32,7 +33,7 @@ export function useLibraryScreenContext(captured: ProtectedLibraryScreen): Scree
     const reportError = (error: unknown) => {if (current()) binding.current.home.effects.reportError(error);};
     const navigate = (action: Promise<void>) => {void action.catch(reportError);};
     const entryPorts: EntryActionPorts = {pickerIdentity: {authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId, events: context.events}, api: context.api, serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId]), isCurrent: current, requestId: async () => crypto.randomUUID()};
-    const entryEffects = {addToPlaylist: addToDestinationEffect(entryPorts, 'playlist'), addToCollection: addToDestinationEffect(entryPorts, 'collection', viewer.role === 'owner'), ...(viewer.role === 'owner' ? {deleteTitle: deleteTitleEffect(entryPorts)} : {})};
+    const entryEffects = {...(viewer.authority === 'local' && viewer.role === 'owner' ? {editMetadata: createEntryMetadataEffect(entryPorts, () => current() && context.session().viewer.role === 'owner' && context.session().viewer.authority === 'local')} : {}), addToPlaylist: addToDestinationEffect(entryPorts, 'playlist'), addToCollection: addToDestinationEffect(entryPorts, 'collection', viewer.role === 'owner'), ...(viewer.role === 'owner' ? {deleteTitle: deleteTitleEffect(entryPorts)} : {})};
     const value: ScreenContext = {
       api: context.api, events: context.events, artwork: context.artwork, identity: context.facts.identity,
       scope: {serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId])}, isCurrent: current,
@@ -60,7 +61,7 @@ export function useLibraryScreenContext(captured: ProtectedLibraryScreen): Scree
         },
       },
     };
-    return {value, dispose: () => {active = false; downloadLifetime.abort(); entryActions.retire(entryPorts);}};
+    return {value, dispose: () => {active = false; downloadLifetime.abort(); entryActions.retire(entryPorts); retireEntryMetadata(entryPorts);}};
   }, [context, scopeKey]);
   useEffect(() => () => owner.dispose(), [owner]);
   return owner.value;
