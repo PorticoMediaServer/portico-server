@@ -30,6 +30,7 @@ export {createReadBindings} from './bindings';
 export type {ReadBindings, ReadBindingContext} from './bindings';
 export {ReadEntry} from './ReadEntry';
 export {ReadLibraryEntry} from './ReadLibraryEntry';
+export {ReadLibraryWash} from './ReadLibraryWash';
 export {ReadItemEntry} from './ReadItemEntry';
 export {createReadingCollection, createReadingContinueCollection} from './library-collection';
 export type {ReadingLibraryItem, ReadingContinueItem} from './library-collection';
