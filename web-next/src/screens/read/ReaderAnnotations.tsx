@@ -34,7 +34,7 @@ const colours = ['yellow','green','blue','pink'] as const;
 const colourLabels = {yellow:'next.reader.annotationYellow',green:'next.reader.annotationGreen',blue:'next.reader.annotationBlue',pink:'next.reader.annotationPink'} as const;
 function selectedContent(selection: ReaderSelection, colour: typeof colours[number]): ReadingAnnotationContent | undefined {
   if (!selection.text.trim() || new TextEncoder().encode(selection.text).length > 8192 || selection.location.format === 'cbz'
-    || selection.location.format === 'pdf' && !selection.pageRects?.length) return;
+    || selection.location.format === 'pdf' && (!selection.pageRects?.length || selection.rects.length > 128)) return;
   return Object.freeze({id: randomId(), kind:'highlight', location:readingLocationFromReader(selection.location), text:selection.text, note:'', colour,
     ...(selection.location.format === 'pdf' ? {rects:selection.pageRects} : {})});
 }
@@ -49,7 +49,7 @@ export function ReaderAnnotationActions({service, snapshot, controller, onSearch
   const current = () => !!service?.current() && controller.getSnapshot().sourceId === snapshot.sourceId && controller.getSnapshot().sourceRevision === snapshot.sourceRevision;
   if (!service?.current()) return null;
   const busy = state.loading || state.saving || state.revision === undefined;
-  const selectionSupported = !!selection?.text.trim() && new TextEncoder().encode(selection.text).length <= 8192 && selection.location.format !== 'cbz' && (selection.location.format !== 'pdf' || !!selection.pageRects?.length);
+  const selectionSupported = !!selection?.text.trim() && new TextEncoder().encode(selection.text).length <= 8192 && selection.location.format !== 'cbz' && (selection.location.format !== 'pdf' || !!selection.pageRects?.length && selection.rects.length <= 128);
   const capture = () => current() && controller.getSnapshot().selection === selection && selection ? selectedContent(selection, colour) : undefined;
   return <>
     {selection && <div className={styles.selection} role="toolbar" aria-label={t('next.reader.selectionActions')}>
@@ -62,7 +62,7 @@ export function ReaderAnnotationActions({service, snapshot, controller, onSearch
     <Dialog open={!!shownDraft && current()} onOpenChange={open => {if (!open && !state.saving) setDraft(undefined);}} title={t('next.reader.addNote')} size="sm"
       footer={<><Button disabled={state.saving} onClick={() => setDraft(undefined)}>{t('action.cancel')}</Button><Button disabled={busy || !shownDraft} onClick={() => {const captured = shownDraft;if (captured && current()) void service.write({...captured.content,note}).then(saved => {if (saved && current()) setDraft(value => value === captured ? undefined : value);});}}>{t('next.reader.annotationSave')}</Button></>}>
       <blockquote>{shownDraft?.content.text}</blockquote><label>{t('next.reader.note')}<textarea value={note} maxLength={4096} disabled={state.saving} onChange={event => setNote(event.currentTarget.value)}/></label>
-      {state.error && <p role="alert">{t('next.reader.annotationFailed')}</p>}
+      {state.error && <><p role="alert">{t('next.reader.annotationFailed')}</p><Button disabled={state.loading || state.saving} onClick={() => {void service.load();}}>{t('next.reader.annotationReload')}</Button></>}
     </Dialog>
   </>;
 }
@@ -86,6 +86,7 @@ export function ReaderAnnotationList({kind, service, state, controller, reportEr
     {state.nextCursor && <Button disabled={busy} onClick={() => {void service.load(true);}}>{t('next.reader.annotationMore')}</Button>}
     <Dialog open={!!editing && owns(editing)} onOpenChange={open => {if (!open && !state.saving) setEditing(undefined);}} title={t('next.reader.annotationEdit')} size="sm"
       footer={<><Button disabled={state.saving} onClick={() => setEditing(undefined)}>{t('action.cancel')}</Button><Button disabled={busy} onClick={() => {const entry=editing;if (entry && owns(entry)) void service.write({...entry,note}).then(saved => {if (saved) setEditing(value => value === entry ? undefined : value);});}}>{t('next.reader.annotationSave')}</Button></>}>
+      {state.error && <><p role="alert">{t('next.reader.annotationFailed')}</p><Button disabled={state.loading || state.saving} onClick={() => {void service.load();}}>{t('next.reader.annotationReload')}</Button></>}
       <blockquote>{editing?.text}</blockquote><label>{t('next.reader.note')}<textarea value={note} maxLength={4096} onChange={event => setNote(event.currentTarget.value)}/></label>
     </Dialog>
   </div>;
