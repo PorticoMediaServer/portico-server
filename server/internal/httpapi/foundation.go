@@ -407,6 +407,28 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Check now, as the owner asks. The read path never performs network I/O;
+	// this one does, inside the feed's own bounded fetch and retry rules, and
+	// stores what it learns where the read reports look.
+	err = apikit.Register(registry, apikit.Route[struct{}, administration.UpdateReport]{Metadata: apikit.Metadata{Admission: laneAdminHeavy,
+		ID: "post_admin_updates_check", Method: "POST", Path: "/v1/admin/updates/check", Summary: "Check the release feed now and answer with what it lists", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, OptionalBody: true, BodyLimit: 4096, Status: 200, Errors: []string{"unauthorized", "invalid_request", "internal"},
+	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (administration.UpdateReport, error) {
+		if d.Administration == nil {
+			return administration.UpdateReport{}, &apierror.Error{Code: "internal"}
+		}
+		p, _ := d.foundationCaller(r)
+		channel, feed := d.updatePolicy(ctx, p)
+		info := buildinfo.Info()
+		current := administration.UpdateBuild{Version: info["version"], BuildID: info["buildId"], SourceDigest: info["sourceDigest"], BuiltAt: info["builtAt"]}
+		result := d.Administration.CheckUpdates(ctx, current, channel, feed)
+		if _, err := d.ownerContext(ctx, r); err != nil {
+			return administration.UpdateReport{}, foundationAuthError(err)
+		}
+		return result, nil
+	}})
+	if err != nil {
+		return nil, err
+	}
 	err = apikit.Register(registry, apikit.Route[struct{}, RatingSystemsDocument]{Metadata: apikit.Metadata{Admission: laneDefault,
 		ID: "get_rating_systems", Method: "GET", Path: "/v1/rating-systems", Summary: "List supported content-rating systems", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "internal"},
 	}, Handler: func(ctx context.Context, _ *http.Request, _ struct{}) (RatingSystemsDocument, error) {
