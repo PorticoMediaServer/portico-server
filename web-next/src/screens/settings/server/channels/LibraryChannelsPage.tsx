@@ -45,9 +45,9 @@ function ChannelPageBody({sources, ports}: Readonly<{sources: Sources; ports: Li
   const action = useSyncExternalStore(sources.actions.subscribe, sources.actions.getSnapshot, sources.actions.getSnapshot);
   const logo = useSyncExternalStore(sources.logos.subscribe, sources.logos.getSnapshot, sources.logos.getSnapshot);
   const [modal, setModal] = useState<Modal>(), [editorToken, setEditorToken] = useState<{id: number}>();
-  const view = useMemo<{active: boolean; modal?: Modal; editor?: object}>(() => ({active: true}), [sources]);
+  const view = useMemo<{active: boolean; source: Sources; modal?: Modal; editor?: object}>(() => ({active: true, source: sources}), [sources]);
   useLayoutEffect(() => {view.active = true;return () => {view.active = false;view.modal = undefined;view.editor = undefined;};}, [view]);
-  const current = useCallback(() => view.active && sources.current(), [view, sources]);
+  const current = useCallback(() => view.active && view.source === sources && sources.current(), [view, sources]);
   const editorCurrent = useCallback(() => current() && editorToken !== undefined && view.editor === editorToken, [current, editorToken, view]);
   const blocked = editor.busy || action.busy || logo.busy || !!editor.pending || !!action.pending || !!logo.pending || editor.phase !== 'closed';
   const create = (template?: LibraryChannelTemplate) => {
