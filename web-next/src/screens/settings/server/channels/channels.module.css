@@ -47,3 +47,8 @@
 .condition, .conditionGroup { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--color-line); border-radius: 10px; min-width: 0; }
 .conditionGroup { background: var(--color-raised); }
 .predicate { display: grid; gap: 8px; min-width: 0; }
+
+.weekGrid { display: grid; gap: 5px; font-size: var(--type-caption-size); color: var(--color-text-secondary); }
+.weekGrid > div { display: grid; grid-template-columns: 3em minmax(0,1fr); gap: 8px; align-items: center; }
+.dayTrack { display: flex; flex-wrap: wrap; gap: 4px; min-height: 24px; background: var(--color-raised); border-radius: 5px; }
+.dayTrack button { border: 1px solid var(--color-line); background: color-mix(in srgb,var(--color-accent-strong) 18%,transparent); border-radius: 5px; color: var(--color-text); font: inherit; cursor: pointer; }
