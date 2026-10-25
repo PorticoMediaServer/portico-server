@@ -81,3 +81,14 @@ test('folder units and create kinds remain canonical and preserve inventory revi
  assert.equal(readLibrarySourceSettingsBinding('libraries.rescan',{...source,intervalSeconds:1234})?.current,'custom');
  assert.throws(()=>patchLibrarySourceSettingsBinding('libraries.rescan','custom',draft));
 });
+
+
+test('chapter labels toggle writes the real runtime boolean',()=>{
+ const binding=settingsBinding('segments.chapters')!;
+ assert.equal(binding.key,'segments.useChapterNames');
+ const sources={forms:{runtime:{'segments.useChapterNames':true}}};
+ assert.equal(readSettingsBinding(binding,sources)?.current,true);
+ const patch=settingsBindingPatch(binding,false,sources);
+ assert.deepEqual(patch,{form:'runtime',values:{'segments.useChapterNames':false}});
+ assert.equal(readSettingsBinding(binding,{forms:{runtime:patch.values}})?.current,false);
+});

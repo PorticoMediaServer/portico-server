@@ -27,6 +27,7 @@ const bindings:Readonly<Record<string,SettingsBinding>>={
  'playback.stillWatching':{form:'preferences',key:'playback.passoutProtection',scope:'profile-server',fields:{enabled:'playback.passoutProtection',episodes:'playback.passoutAfterEpisodes'},codec:'still-watching'},
  'storage.missingRule':{form:'runtime',key:'library.missingTitles',codec:'missing-rule'},
  'storage.missingDaysExact':{form:'runtime',key:'library.missingTitlesDays'},
+ 'segments.chapters':{form:'runtime',key:'segments.useChapterNames',codec:'boolean'},
  'segments.viewerFloor':{form:'runtime',key:'segments.viewerConfidencePercent',codec:'number-choice'},
  'segments.autoFloor':{form:'runtime',key:'segments.automaticConfidencePercent',codec:'number-choice'},
  'segments.mode':{form:'runtime',key:'library.segmentDetection'},
