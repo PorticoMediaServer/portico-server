@@ -95,6 +95,13 @@ func normaliseValue(key string, value any) any {
 			return "<volatile>"
 		}
 	}
+	// Whole-selection carries the page's viewer-bound browse digest under
+	// this key. Its raw equality to pageInfo.revision is asserted first.
+	if key == "catalogRevision" {
+		if text, ok := value.(string); ok && len(text) == 71 && strings.HasPrefix(text, "browse_") && digestValue.MatchString(strings.TrimPrefix(text, "browse_")) {
+			return "<volatile>"
+		}
+	}
 	return normalise(value)
 }
 
@@ -401,6 +408,19 @@ func TestReadPathGoldenEquivalence(t *testing.T) {
 	cases := goldenMatrix(f.library, f.item)
 	for index := range cases {
 		status, body := call(cases[index].Method, cases[index].Path, cases[index].Body, cases[index].Viewer)
+		if status == 200 && strings.HasPrefix(cases[index].Name, "browse:") {
+			var doc map[string]any
+			if err := json.Unmarshal([]byte(body), &doc); err != nil {
+				t.Fatal(err)
+			}
+			if aggregate, ok := doc["wholeSelection"].(map[string]any); ok {
+				page, pageOK := doc["pageInfo"].(map[string]any)
+				revision, revisionOK := page["revision"].(string)
+				if !pageOK || !revisionOK || revision == "" || aggregate["catalogRevision"] != revision {
+					t.Errorf("%s: whole selection is not bound to this page's raw revision", cases[index].Name)
+				}
+			}
+		}
 		cases[index].Status = status
 		cases[index].Response = canonical(body)
 	}
@@ -619,6 +639,7 @@ func TestReadPathGoldenEquivalence(t *testing.T) {
 		if want.Response != actual.Response {
 			differences++
 			if differences <= 8 {
+				t.Logf("%s: changed JSON paths: %s", actual.Name, goldenChangedPaths(actual.Response, want.Response))
 				t.Errorf("%s: the answer changed\n  now:    %s\n  golden: %s", actual.Name, truncate(actual.Response), truncate(want.Response))
 			}
 		}
@@ -626,6 +647,59 @@ func TestReadPathGoldenEquivalence(t *testing.T) {
 	if differences > 8 {
 		t.Errorf("%d cases differ in total", differences)
 	}
+}
+
+// Report the differing fields even when long entry arrays exhaust truncate's
+// preview before the changed field. This does not change the exact comparison.
+func goldenChangedPaths(actual, expected string) string {
+	var a, b any
+	if json.Unmarshal([]byte(actual), &a) != nil || json.Unmarshal([]byte(expected), &b) != nil {
+		return "invalid JSON"
+	}
+	var changes []string
+	var walk func(any, any, string)
+	walk = func(a, b any, path string) {
+		if len(changes) >= 24 || reflect.DeepEqual(a, b) {
+			return
+		}
+		if am, ok := a.(map[string]any); ok {
+			if bm, ok := b.(map[string]any); ok {
+				keys := map[string]bool{}
+				for k := range am {
+					keys[k] = true
+				}
+				for k := range bm {
+					keys[k] = true
+				}
+				order := []string{}
+				for k := range keys {
+					order = append(order, k)
+				}
+				sort.Strings(order)
+				for _, k := range order {
+					av, aok := am[k]
+					bv, bok := bm[k]
+					if !aok || !bok {
+						changes = append(changes, path+"."+k+" presence changed")
+					} else {
+						walk(av, bv, path+"."+k)
+					}
+				}
+				return
+			}
+		}
+		if aa, ok := a.([]any); ok {
+			if ba, ok := b.([]any); ok && len(aa) == len(ba) {
+				for i := range aa {
+					walk(aa[i], ba[i], fmt.Sprintf("%s[%d]", path, i))
+				}
+				return
+			}
+		}
+		changes = append(changes, fmt.Sprintf("%s now=%v golden=%v", path, a, b))
+	}
+	walk(a, b, "$")
+	return strings.Join(changes, "; ")
 }
 
 func truncate(text string) string {

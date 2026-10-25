@@ -87,6 +87,25 @@ func totalsBeyondShown(v any, at string) []string {
 			out = append(out, totalsBeyondShown(e, at+"["+itoaTest(i)+"]")...)
 		}
 	case map[string]any:
+		// Whole-selection counts titles partitioned into kind groups, not the
+		// number of groups. Its total still goes through totalsAbove below.
+		partition := at == "wholeSelection"
+		if partition {
+			groups, ok := x["types"].([]any)
+			total, totalOK := x["total"].(float64)
+			sum := float64(0)
+			for _, raw := range groups {
+				group, groupOK := raw.(map[string]any)
+				count, countOK := group["count"].(float64)
+				if !groupOK || !countOK || count < 0 || count != float64(int(count)) {
+					ok = false
+				}
+				sum += count
+			}
+			if !ok || !totalOK || total != sum {
+				out = append(out, at+".total does not equal its exact type counts")
+			}
+		}
 		var list []any
 		lists := 0
 		for _, value := range x {
@@ -106,7 +125,7 @@ func totalsBeyondShown(v any, at string) []string {
 		if truncated, ok := x["truncated"].(bool); ok && truncated {
 			more = true
 		}
-		if lists == 1 && !more && len(list) < rowLimit {
+		if lists == 1 && !more && len(list) < rowLimit && !partition {
 			for _, key := range totalKeys {
 				if total, ok := x[key].(float64); ok && int(total) > len(list) {
 					out = append(out, at+"."+key+" is "+itoaTest(int(total))+" but "+itoaTest(len(list))+" entries are shown")
@@ -123,6 +142,35 @@ func totalsBeyondShown(v any, at string) []string {
 		}
 	}
 	return out
+}
+
+func TestWholeSelectionCountOracleUsesExactPartitionAndVisibleBound(t *testing.T) {
+	decode := func(raw string) any {
+		var value any
+		if err := json.Unmarshal([]byte(raw), &value); err != nil {
+			t.Fatal(err)
+		}
+		return value
+	}
+	valid := decode(`{"wholeSelection":{"total":13,"types":[{"kind":"movie","count":10},{"kind":"episode","count":3}]}}`)
+	if got := totalsBeyondShown(valid, ""); len(got) != 0 {
+		t.Fatal(got)
+	}
+	for _, raw := range []string{
+		`{"wholeSelection":{"total":14,"types":[{"kind":"movie","count":13}]}}`,
+		`{"wholeSelection":{"total":1.5,"types":[{"kind":"movie","count":1.5}]}}`,
+		`{"wholeSelection":{"total":13,"types":[{"kind":"movie"}]}}`,
+	} {
+		if got := totalsBeyondShown(decode(raw), ""); len(got) == 0 {
+			t.Fatal("invalid aggregate escaped the oracle", raw)
+		}
+	}
+	if got := totalsAbove(valid, "", 12, 0); len(got) == 0 {
+		t.Fatal("whole-view total escaped the current-viewer bound")
+	}
+	if got := totalsBeyondShown(decode(`{"total":13,"entries":[{"id":"one"}]}`), ""); len(got) == 0 {
+		t.Fatal("ordinary short list escaped its cardinality check")
+	}
 }
 
 func itoaTest(n int) string {
