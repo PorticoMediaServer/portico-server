@@ -528,6 +528,17 @@ func (s *Service) Revalidate(ctx context.Context, p identity.Principal, serverID
 			out = append(out, ReceiptOutcome{ReceiptID: id, Outcome: OutcomeRefused, Code: refuse})
 			continue
 		}
+		doc, err := publicationTx(ctx, tx, preparation)
+		if errors.Is(err, ErrUnavailable) {
+			if err = revokeReceipt(tx, id, ReasonRevoked, now); err != nil {
+				return out, err
+			}
+			out = append(out, ReceiptOutcome{ReceiptID: id, Outcome: OutcomeRefused, Code: ReasonRevoked})
+			continue
+		}
+		if err != nil {
+			return out, err
+		}
 		expires := now + int64(ReceiptTTL/time.Millisecond)
 		if _, err = tx.ExecContext(ctx, `UPDATE download_receipts SET issued_ms=?,expires_ms=?,key_id=?,library_id=?,revision=revision+1 WHERE id=?`, now, expires, keyID, library, id); err != nil {
 			return out, err
@@ -541,10 +552,6 @@ func (s *Service) Revalidate(ctx context.Context, p identity.Principal, serverID
 			QualityLabel:  qualityLabel(quality),
 			Artifact:      ReceiptArtifact{SHA256: artifactDigest, Bytes: size},
 			IssuedAt:      stamp(now), ExpiresAt: stamp(expires),
-		}
-		doc, err := publicationTx(ctx, tx, preparation)
-		if err != nil {
-			return nil, err
 		}
 		if doc != nil {
 			claims.Publication = &ReceiptPublication{doc.SourceID, doc.Revision, doc.Format, doc.Digest()}

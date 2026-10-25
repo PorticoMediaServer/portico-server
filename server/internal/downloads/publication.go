@@ -192,11 +192,17 @@ func (d *storedPublication) Digest() string {
 	return hex.EncodeToString(sum[:])
 }
 func publicationTx(ctx context.Context, tx *sql.Tx, id string) (*storedPublication, error) {
-	var raw string
-	if err := tx.QueryRowContext(ctx, `SELECT publication_json FROM download_preparations WHERE id=?`, id).Scan(&raw); err != nil {
+	var raw, title string
+	if err := tx.QueryRowContext(ctx, `SELECT publication_json,title_json FROM download_preparations WHERE id=?`, id).Scan(&raw, &title); err != nil {
 		return nil, err
 	}
 	if raw == "" {
+		// A retired/legacy Reading preparation is not an ordinary media receipt.
+		// Never reconstruct or silently downgrade its absent signed descriptor.
+		var stored Title
+		if json.Unmarshal([]byte(title), &stored) == nil && readingKind(stored.Kind) {
+			return nil, ErrUnavailable
+		}
 		return nil, nil
 	}
 	doc, err := reading.ParseOfflineDocument(raw)
