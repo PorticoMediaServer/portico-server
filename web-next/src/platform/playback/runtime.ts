@@ -1165,6 +1165,17 @@ export class WebShellPlaybackRuntime {
     }
     if (this.current(stack)) this.sync();
   }
+  /** An in-player episode pick (desktop-player f6): jump inside this run's queue and keep its
+   * choices. The queue player resolves an entry beyond the resident window itself; a foreign
+   * queue, a channel or a retired fence is refused rather than replacing the playback. */
+  async selectEpisode(fence: PlaybackFence, episodeId: string): Promise<void> {
+    if (fence.kind !== 'queue') problem('playback_command_unavailable');
+    if (!/^[A-Za-z0-9_.-]{1,128}$/.test(episodeId)) problem('invalid_playback_target');
+    const stack = this.require(fence);
+    if (!stack.queue.getSnapshot().view) problem('playback_command_unavailable');
+    await stack.queue.selectEpisode(episodeId);
+    if (this.current(stack)) this.sync();
+  }
   open(fence: PlaybackFence): void { const stack = this.require(fence); stack.expanded = true; this.dock.expand(fence); this.sync(); }
   collapse(fence: PlaybackFence): void { const stack = this.require(fence); stack.expanded = false; this.dock.collapse(fence); this.surface?.guard(false); this.surface?.clear(); this.sync(); }
   async stop(fence: PlaybackFence): Promise<void> { this.require(fence); this.rememberCurrent(); await this.onTransition(this.dock.close(fence)); }
