@@ -49,7 +49,7 @@ function LoadedHomeRow({captured, context, row}: {captured: ProtectedLibraryScre
   const settled = useRef(routeKey), written = useRef(new Set<string>()), lastRoute = useRef(routeKey);
   // The history action that produced the current address, so a genuine navigation is
   // never mistaken for this page's own replace echo.
-  const arrival = useRef<Readonly<{href: string; type: string}>>();
+  const arrival = useRef<Readonly<{href: string; type: string}> | undefined>(undefined);
   useEffect(() => router.history.subscribe(({location, action}) => {arrival.current = {href: location.href, type: action.type};}), []);
   const owner = useMemo(() => {
     const life = screenLifetime(context);
