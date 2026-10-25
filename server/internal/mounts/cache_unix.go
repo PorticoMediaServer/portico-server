@@ -3,11 +3,32 @@
 package mounts
 
 import (
-	"golang.org/x/sys/unix"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 	"os"
 	"os/exec"
 	"runtime"
+
+	"golang.org/x/sys/unix"
 )
+
+// CacheVolumeKey identifies the filesystem that actually backs a validated
+// private storage directory. It is process-local accounting identity, never
+// source identity, a path or permission to write there.
+func CacheVolumeKey(path string) (string, error) {
+	var stat unix.Statfs_t
+	if err := unix.Statfs(path, &stat); err != nil {
+		return "", err
+	}
+	var fsid [8]byte
+	binary.BigEndian.PutUint32(fsid[:4], uint32(stat.Fsid.Val[0]))
+	binary.BigEndian.PutUint32(fsid[4:], uint32(stat.Fsid.Val[1]))
+	hash := sha256.New()
+	hash.Write([]byte("portico-cache-volume-v1\x00" + runtime.GOOS + "\x00"))
+	hash.Write(fsid[:])
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
 
 func cacheSpaceAvailable(path string, floor int64) bool {
 	var stat unix.Statfs_t

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -173,28 +174,32 @@ func (c *rangeCache) append(ctx context.Context, stream io.Reader, end int64) er
 		return storage.ErrRemoteLimit
 	}
 	growth := end - c.guard.cached
-	if !reserveDiskGrowth(c.service.private, floor, growth) {
+	volume, err := mounts.CacheVolumeKey(c.service.private)
+	if err != nil {
 		return storage.ErrRemoteLimit
 	}
+	disk := reserveVolumeGrowth(volume, floor, growth, func(floor, total int64) bool {
+		return mounts.CacheSpaceFor(c.service.private, floor, total)
+	})
+	if disk == nil {
+		return storage.ErrRemoteLimit
+	}
+	defer disk.settle(growth)
 	budget := c.budget
 	if err := budget.load(ctx, c.service, c.source, configured); err != nil {
-		releaseDiskGrowth(c.service.private, growth)
 		return err
 	}
 	if !budget.reserve(configured, floor, growth) {
 		c.service.evictSourceCache(ctx, c.source, configured, c.key, growth)
 		if !budget.reserve(configured, floor, growth) {
-			releaseDiskGrowth(c.service.private, growth)
 			return storage.ErrRemoteLimit
 		}
 	}
 	if _, err := c.file.Seek(c.guard.cached, io.SeekStart); err != nil {
 		budget.release(growth)
-		releaseDiskGrowth(c.service.private, growth)
 		return err
 	}
 	n, err := io.CopyN(c.file, stream, growth)
-	releaseDiskGrowth(c.service.private, growth)
 	if err == nil {
 		err = ctx.Err()
 	}
@@ -211,33 +216,92 @@ func (c *rangeCache) append(ctx context.Context, stream io.Reader, end int64) er
 	return nil
 }
 
-// Disk growth reservations are fleet-wide for one private directory, so two
-// sources cannot each pass a floor check and then cross it together.
+// Disk growth reservations share the actual filesystem identity, including
+// source caches and captures whose owned storage has a different directory.
 var diskGrowth = struct {
 	sync.Mutex
-	byPath map[string]int64
-}{byPath: map[string]int64{}}
+	byVolume map[string]*volumeGrowth
+}{byVolume: map[string]*volumeGrowth{}}
 
-func reserveDiskGrowth(path string, floor, growth int64) bool {
-	if growth <= 0 {
-		return false
-	}
-	diskGrowth.Lock()
-	defer diskGrowth.Unlock()
-	pending := diskGrowth.byPath[path]
-	if !mounts.CacheSpaceFor(path, floor, growth+pending) {
-		return false
-	}
-	diskGrowth.byPath[path] = pending + growth
-	return true
+type volumeGrowth struct {
+	pending int64
+	floors  map[int64]int
 }
 
-func releaseDiskGrowth(path string, growth int64) {
+// A reservation settles against its original volume and floor. Capture
+// consumers settle only successfully persisted bytes, never bytes just read.
+type diskGrowthReservation struct {
+	volume    string
+	floor     int64
+	remaining int64 // protected by diskGrowth
+}
+
+// available rechecks the original floor and every outstanding growth on the
+// volume under the same gate as admission. It does not renew the reservation.
+func (r *diskGrowthReservation) available(spaceFor func(int64, int64) bool) bool {
+	if r == nil || spaceFor == nil {
+		return false
+	}
 	diskGrowth.Lock()
 	defer diskGrowth.Unlock()
-	diskGrowth.byPath[path] -= growth
-	if diskGrowth.byPath[path] <= 0 {
-		delete(diskGrowth.byPath, path)
+	floor, pending := r.floor, int64(0)
+	if state := diskGrowth.byVolume[r.volume]; state != nil {
+		pending = state.pending
+		for activeFloor := range state.floors {
+			floor = max(floor, activeFloor)
+		}
+	}
+	return spaceFor(floor, pending)
+}
+
+// spaceFor checks the already-validated destination while this shared growth
+// gate is held. The callback supplies no source permission or quota decision.
+func reserveVolumeGrowth(volume string, floor, growth int64, spaceFor func(int64, int64) bool) *diskGrowthReservation {
+	if volume == "" || floor < 0 || growth <= 0 || spaceFor == nil {
+		return nil
+	}
+	diskGrowth.Lock()
+	defer diskGrowth.Unlock()
+	state := diskGrowth.byVolume[volume]
+	if state == nil {
+		state = &volumeGrowth{floors: make(map[int64]int)}
+	}
+	maximumFloor := floor
+	for activeFloor := range state.floors {
+		maximumFloor = max(maximumFloor, activeFloor)
+	}
+	if state.pending < 0 || growth > math.MaxInt64-state.pending || !spaceFor(maximumFloor, growth+state.pending) {
+		return nil
+	}
+	state.pending += growth
+	state.floors[floor]++
+	diskGrowth.byVolume[volume] = state
+	return &diskGrowthReservation{volume: volume, floor: floor, remaining: growth}
+}
+
+// Release always names the originally admitted volume, even if its path has
+// disappeared or subsequently refers to a replacement filesystem.
+func (r *diskGrowthReservation) settle(growth int64) {
+	if r == nil || growth <= 0 {
+		return
+	}
+	diskGrowth.Lock()
+	defer diskGrowth.Unlock()
+	if r.remaining == 0 {
+		return
+	}
+	settled := min(growth, r.remaining)
+	state := diskGrowth.byVolume[r.volume]
+	state.pending -= settled
+	r.remaining -= settled
+	if r.remaining == 0 {
+		state.floors[r.floor]--
+		if state.floors[r.floor] == 0 {
+			delete(state.floors, r.floor)
+		}
+	}
+	if state.pending == 0 {
+		delete(diskGrowth.byVolume, r.volume)
 	}
 }
 
