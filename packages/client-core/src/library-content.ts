@@ -4,7 +4,7 @@ import type {RouteResponse} from "../../contracts/src/routes.ts";
 import {encodedRoutePath} from "../../contracts/src/routes.ts";
 import {wireDurations,wireDisplayDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
-import {listeningData,parseBookProgress,type BookProgress,parseListeningJourney,type ListeningJourney} from './listening.ts';
+import {listeningData,parseBookProgress,type BookProgress,type ListeningViewerScope,parseListeningJourney,type ListeningJourney} from './listening.ts';
 import {parseBrowseNode,type BrowseNode,type BrowseSortSelection} from './browse.ts';
 import {firstOfEach,keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';
 import {mergeRevalidatedList} from './freshness-actions.ts';
@@ -577,8 +577,10 @@ export { entry as validateContentEntry };
 /** A See all destination (`{pivot, query?, sort}`), or undefined when it is absent or cannot be read. Never throws. */
 export { seeAll as parseContentSeeAll };
 
-/** A bounded server ranking, read lazily when its title/artist page asks for it. */
-export async function readListeningSimilar(api:LibraryContentApi,scope:import('./queues.ts').QueueScope,itemId:string,options:{limit?:number;by?:'sound';signal?:AbortSignal}={}){
+/** A bounded server ranking, read lazily when its title/artist page asks for it. This
+ * read-only path needs only the viewer facts a scope carries; a caller's fuller queue
+ * scope is accepted structurally and its controller identity is never read. */
+export async function readListeningSimilar<S extends ListeningViewerScope>(api:LibraryContentApi,scope:S,itemId:string,options:{limit?:number;by?:'sound';signal?:AbortSignal}={}){
  const q=new URLSearchParams();if(options.limit!==undefined)q.set('limit',String(options.limit));if(options.by!==undefined){if(options.by!=='sound')invalid();q.set('by',options.by);}
  const raw=listeningData(await api.request(encodedRoutePath('get_items_id_similar',{id:encodeURIComponent(itemId)})+(q.size?'?'+q:''),'GET',undefined,options.signal),scope);
  if(!record(raw)||raw.itemId!==itemId||!id(raw.libraryId)||!record(raw.revision)||!count(raw.revision.catalog)||!count(raw.revision.viewer)||typeof raw.bySound!=='boolean'||!Array.isArray(raw.entries)||raw.entries.length>24)invalid();

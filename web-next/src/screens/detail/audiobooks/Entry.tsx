@@ -15,6 +15,7 @@ import {ScreenProblem} from '../ScreenProblem';
 import {t} from '../text';
 import styles from './audiobooks.module.css';
 import {AudiobookMore} from './More';
+import {TitleRow} from '../Detail';
 import {useShellWidth} from '../../../shell/viewport';
 
 type Props = {context: ScreenContext; target: AudiobookTarget; onMore?: (target: ContentEntry, anchor: HTMLElement) => void};
@@ -66,7 +67,7 @@ function Narrators({names, linked, onOpen, locale}: {names: readonly string[]; l
 function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: Props['onMore']}) {
   const phone = useShellWidth() < 1024;
   const state = useSyncExternalStore(binding.service.subscribe, binding.service.getSnapshot, binding.service.getSnapshot);
-  const [expanded, setExpanded] = useState(false), [chaptersExpanded, setChaptersExpanded] = useState(false), [finished, setFinished] = useState<boolean>(), [watchlisted, setWatchlisted] = useState<boolean>(), [filters, setFilters] = useState<Readonly<{narrator: boolean; series: boolean}>>({narrator: false, series: false});
+  const [expanded, setExpanded] = useState(false), [chaptersExpanded, setChaptersExpanded] = useState(false), [finished, setFinished] = useState<boolean>(), [watchlisted, setWatchlisted] = useState<boolean>(), [filters, setFilters] = useState<Readonly<{narrator: boolean; series: boolean}>>({narrator: false, series: false}), [moreBooks, setMoreBooks] = useState<Readonly<{token: object; page: ContentProjection; entries: readonly ContentEntry[]}>>();
   // One captured page operation at a time, claimed synchronously before any I/O.
   const operation = useRef<Operation | undefined>(undefined), [busy, setBusy] = useState<Operation['kind'] | undefined>(undefined);
   const owns = (op: Operation) => {
@@ -105,11 +106,17 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
     };
     reads.current = {token};
     operation.current = undefined; setBusy(undefined);
-    setExpanded(false); setChaptersExpanded(false); setFinished(undefined); setWatchlisted(undefined); setFilters({narrator: false, series: false}); setMore(undefined);
+    setExpanded(false); setChaptersExpanded(false); setFinished(undefined); setWatchlisted(undefined); setFilters({narrator: false, series: false}); setMoreBooks(undefined); setMore(undefined);
     if (pageAtRender?.scope.view === 'book') {
       void binding.finished(pageAtRender).then(value => {if (live()) setFinished(value.watched);}, error => {if (live()) binding.context.effects.reportError(error);});
       // A server that does not offer the container flag withholds the button; a real failure reports.
       void binding.watchlisted(pageAtRender).then(value => {if (live()) setWatchlisted(value);}, error => {
+        if (!live()) return;
+        if (error instanceof ApiError && [403, 404, 405, 501].includes(error.status)) return;
+        binding.context.effects.reportError(error);
+      });
+      // The drawn More audiobooks row is the server's own related books, never a guessed list.
+      void binding.moreBooks(pageAtRender).then(value => {if (live() && reads.current?.token === token) setMoreBooks({token, page: pageAtRender, entries: value});}, error => {
         if (!live()) return;
         if (error instanceof ApiError && [403, 404, 405, 501].includes(error.status)) return;
         binding.context.effects.reportError(error);
@@ -221,6 +228,11 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
         })}>{rows.entries.length > CHAPTER_PREVIEW && rows.entries.length >= rows.totalCount ? t('title.showAllChapters', {count: rows.totalCount}) : t('title.showMoreChapters')}</Chip>}
       {rows.nextCursor && (book ? chaptersExpanded : true) && <Button size="small" onClick={() => run(() => {binding.current(page);return binding.service.next(rows.id);})}>{t('title.nextPage')}</Button>}
     </section>}
+    {book && moreBooks && moreBooks.page === page && moreBooks.token === reads.current?.token && moreBooks.entries.length > 0 && <TitleRow heading={t('title.moreAudiobooks')} subtitle={t('title.otherBooksOnServer')} entries={moreBooks.entries} binding={{context: binding.context}} guard={() => {
+      // A retained card belongs to this exact page and read receipt; it may not open after either was replaced.
+      if (!moreBooks || reads.current?.token !== moreBooks.token) throw new DOMException('Book page changed', 'AbortError');
+      binding.current(moreBooks.page);
+    }} />}
     {more?.page === page && <Menu open onOpenChange={value => {if (!value) setMore(undefined);}} title={more.entry.title} anchorRef={{current: more.anchor}}>
       {effects.addToPlaylist && <MenuItem onSelect={() => invoke(effects.addToPlaylist)}>{t('entry.addToPlaylist')}</MenuItem>}
       {effects.addToCollection && <MenuItem onSelect={() => invoke(effects.addToCollection)}>{t('entry.addToCollection')}</MenuItem>}

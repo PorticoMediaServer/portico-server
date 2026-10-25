@@ -1,4 +1,4 @@
-import {LibraryContentService, type ContentEntry, type ContentProjection} from '@core/library-content.ts';
+import {LibraryContentService, readListeningSimilar, type ContentEntry, type ContentProjection} from '@core/library-content.ts';
 import {getContainerState, setContainerFlag, setContainerState} from '@core/container-state.ts';
 import {browseCapabilitiesPath, parseBrowseCapabilities, validateBrowseQuery, type BrowseCapabilities} from '@core/browse.ts';
 import {screenLifetime, type ScreenContext} from '../context';
@@ -51,6 +51,19 @@ export function createAudiobookBindings(context: ScreenContext, input: Audiobook
       current(page);return result;
     },
     play,
+    /** The server's own related books for this page, bounded and same-library; a refused read is
+     * no row rather than a guessed one. */
+    async moreBooks(page: ContentProjection) {
+      current(page);
+      const viewer = context.identity?.viewer;
+      if (target.view !== 'book' || !viewer || (viewer.authority !== 'local' && viewer.authority !== 'hosted')) return Object.freeze([]) as readonly ContentEntry[];
+      const value = await readListeningSimilar(life.api, {serverId: context.scope.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId},
+        target.entityId, {limit: 12, signal: life.signal()});
+      current(page);
+      if (value.itemId !== target.entityId || value.libraryId !== target.libraryId
+        || value.revision.catalog !== page.revision.catalog || value.revision.viewer !== page.revision.viewer) throw new DOMException('Book page changed', 'AbortError');
+      return Object.freeze(value.entries.filter(entry => entry.kind === 'book' && entry.libraryId === target.libraryId && entry.available !== false && !entry.missing));
+    },
     /** Reads once and retains this exact page's own checked Books capabilities: which real
      * filters it offers for book kinds, so only those become destinations. */
     async filterSupport(page: ContentProjection) {

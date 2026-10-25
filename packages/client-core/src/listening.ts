@@ -9,6 +9,9 @@ import type {PlaybackService} from './index.ts';
 import type {ListeningTimerOccurrence,ListeningBookBoundary} from './playback/native-listening.ts';
 import type {QueueScope,QueueItemInput} from './queues.ts';
 import {parseQueueItem} from './queues.ts';
+/** The viewer facts a read-only catalogue read shares with a queue scope. Controller
+ * identity belongs to queue commands and is never invented for a read. */
+export type ListeningViewerScope = Readonly<Pick<QueueScope, 'serverId' | 'authority' | 'accountId' | 'profileId'>>;
 import {PlayerChaptersService} from './player-chapters.ts';
 import {defaultAudiobookPreferences,type AudiobookPreferences} from './audiobook-preferences.ts';
 
@@ -32,7 +35,7 @@ export function parseListeningPreferences(v:unknown):ListeningPreferences {
  if(!object(v)||Object.keys(v).some(key=>!['revision','bookRate','passoutMinutes'].includes(key))||!counter(v.revision)||!audiobookRates.includes(v.bookRate as never)||!passoutChoices.includes(v.passoutMinutes as never))bad();
  return Object.freeze({revision:v.revision,bookRate:v.bookRate as number,passoutMinutes:v.passoutMinutes as number});
 }
-export function listeningData(raw:unknown,scope:QueueScope):unknown {
+export function listeningData(raw:unknown,scope:ListeningViewerScope):unknown {
  if(!object(raw)||!object(raw.scope)||(['serverId','authority','accountId','profileId'] as const).some(k=>(raw.scope as Record<string,unknown>)[k]!==scope[k]))bad();
  return raw.data;
 }

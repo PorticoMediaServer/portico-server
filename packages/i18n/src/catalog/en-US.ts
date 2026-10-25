@@ -1945,6 +1945,8 @@ export const enUS = {
   'title.bookInSeries': ', book {number}',
   'title.published': 'Published',
   'title.publisher': 'Publisher',
+  'title.moreAudiobooks': 'More audiobooks',
+  'title.otherBooksOnServer': 'Other books on your server',
   'title.chapterCount': '{count, plural, one {# chapter} other {# chapters}}',
   'title.showAllChapters': 'Show all {count, plural, one {# chapter} other {# chapters}}',
   'title.showMoreChapters': 'Show more chapters',
