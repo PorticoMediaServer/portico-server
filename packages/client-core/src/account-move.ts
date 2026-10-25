@@ -7,7 +7,7 @@ import type {SignInKind} from './app-sessions.ts';
 import {identityCode,routeOrigin} from './route-identity.ts';
 
 export type MoveDirection='to_portico'|'to_local';
-export type AccountMove=Readonly<{id:string;from:SignInKind;to:SignInKind;startOver:boolean;stage:'preview'|'moving_to_portico'|'moving_to_local'|'complete'|'cancelled';revision:number;people:number;profiles:number;invitations:number;waiting:number;serverName:string;ownAddressRequired:boolean;devices?:number}>;
+export type AccountMove=Readonly<{id:string;from:SignInKind;to:SignInKind;startOver:boolean;stage:'preview'|'moving_to_portico'|'moving_to_local'|'complete'|'cancelled';revision:number;people:number;profiles:number;invitations:number;waiting:number;retainedProfiles?:number;removedProfiles?:number;serverName:string;ownAddressRequired:boolean;devices?:number}>;
 export type MovePasswordTicket=Readonly<{ticket:string;expiresAt:string}>;
 export type MoveCodePreview=Readonly<{username:string;signIn:SignInKind;expiresAt:string}>;
 export type AccountMoveCode=Readonly<{accountId:string;username:string;code:string;expiresAt:string;serverId?:string}>;
