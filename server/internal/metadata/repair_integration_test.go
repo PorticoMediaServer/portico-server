@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"portico.local/server/internal/catalogtest"
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/persistence"
 )
 
@@ -102,6 +103,58 @@ func TestOwnerRepairLocalCreditCannotForgeProviderPerson(t *testing.T) {
 	got := after.Snapshot.Relationships[0]
 	if got.Provider != "manual" || got.TargetKind != "scoped_credit" || got.TargetID == "123" {
 		t.Fatal("name forged canonical person", got)
+	}
+}
+
+func TestManualCreditWriterRefusesUnpublishedProviderChanges(t *testing.T) {
+	for _, change := range []string{"remove", "label", "role", "department", "identity", "ordinal"} {
+		t.Run(change, func(t *testing.T) {
+			s, db, target := repairFixture(t)
+			ctx := context.Background()
+			auth := func(*sql.Tx) error { return nil }
+			actor := MBActor{Authority: "local", AccountID: "owner"}
+			c := catalogtest.New(t, db)
+			c.Write(func(ctx context.Context, tx *sql.Tx) error {
+				entity, err := resolveEntity(ctx, tx, target.ID)
+				if err != nil {
+					return err
+				}
+				return compactcatalog.SetCreditsTx(ctx, tx, entity, "tmdb", []compactcatalog.Credit{{PersonKey: "tmdb:42", PersonName: "Original", CreditID: "provider-credit", ProviderPersonID: "42", CreditedName: "Original", Role: "Performer", Department: "Acting"}})
+			})
+			before, err := s.RepairState(ctx, target, auth)
+			if err != nil {
+				t.Fatal(err)
+			}
+			values := append([]RepairRelationship{}, before.Snapshot.Relationships...)
+			if len(values) != 1 || values[0].Provider != "tmdb" {
+				t.Fatal("expected the published provider credit", values)
+			}
+			switch change {
+			case "remove":
+				values = nil
+			case "label":
+				values[0].Label = "Changed"
+			case "role":
+				values[0].Role = "Director"
+			case "department":
+				values[0].Department = "Directing"
+			case "identity":
+				values[0].TargetID = "different-person"
+			case "ordinal":
+				values[0].Ordinal++
+			}
+			_, err = s.Repair(ctx, target, RepairCommand{ExpectedRevision: before.Revision, Action: "edit_relationships", Role: "credit", Confirm: true, Relationships: values}, actor, auth)
+			if !errors.Is(err, ErrRepairInput) {
+				t.Fatal("unsupported provider mutation was accepted", err)
+			}
+			// Preserving that provider row while adding a scoped manual credit
+			// remains a supported command after the refused mutation.
+			values = append(append([]RepairRelationship{}, before.Snapshot.Relationships...), RepairRelationship{Kind: "credit", Label: "Manual", Role: "Performer"})
+			after, err := s.Repair(ctx, target, RepairCommand{ExpectedRevision: before.Revision, Action: "edit_relationships", Role: "credit", Confirm: true, Relationships: values}, actor, auth)
+			if err != nil || len(after.Snapshot.Relationships) != 2 || after.Snapshot.Relationships[0].Provider != "tmdb" || after.Snapshot.Relationships[0].Label != "Original" || after.Snapshot.Relationships[1].Provider != "manual" {
+				t.Fatal("manual addition did not preserve the provider credit", after.Snapshot.Relationships, err)
+			}
+		})
 	}
 }
 func TestDurableArtworkSelectionFailureAndStaleFence(t *testing.T) {

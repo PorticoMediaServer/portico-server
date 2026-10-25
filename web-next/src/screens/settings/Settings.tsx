@@ -5,8 +5,6 @@ import {SettingsNav, type SettingsSearchGroup} from '../../kit/shell/SettingsSur
 import {SettingsPageFailure, SettingsPageHeading, SettingsPanel, SettingsRows, SettingsWorkspace, searchSettings, settingsRoute, type SettingPresentation, type SettingsRoute, type SettingsPanelProps} from '../../kit/settings';
 import type {FactPart} from '@core/presentation/kit-model/index.ts';
 import {Icon} from '../../kit/Icon';
-import {Button} from '../../kit/controls';
-import {Tabs} from '../../kit/controls/Choices';
 import {settingsIconName} from '../../kit/settings/icons';
 import {ServerHeader, type ServerAudience} from '../../kit/shell/ServerIdentity';
 import {useShellWidth} from '../../shell/viewport';
@@ -106,19 +104,13 @@ export function SettingsScreen({bindings, route, navigate, openDetail = false}: 
   const panelSpec = panel && section.panels?.[panel.id], tab = panelSpec?.tabs?.find(tab => tab.id === panel?.tab);
   const panelContext: SettingsContext = {section, panelId: panel?.id, tabId: tab?.id, recordId: panel?.recordId};
   const panelState = bindings.panel?.(panelContext);
-  const libraryPage = section.id === 'libraries' && section.scope === 'server' && panel?.id === 'library' && !!panel.recordId && !!panelSpec;
-  const nameRow = settingsRowIndex.get('libraries.name')?.row;
-  const libraryName = libraryPage && nameRow ? rowState(nameRow, panelContext).value : undefined;
-  const libraryTitle = typeof libraryName === 'string' && libraryName ? libraryName : panelState?.title ?? (panelSpec?.title ? t(panelSpec.title) : t(section.title));
   const audience = bindings.audience(section);
   const fact = configuration.find(fact => fact.key === configurationKey);
   return <div className={styles.screen}><SettingsWorkspace scope={selected.scope} navigation={navigation} compactPage={compactPage} onBack={() => setCompactPage(false)}>
     {selected.scope === 'server' && bindings.role !== 'member' && (bindings.role === 'owner' ? <ServerHeader serverName={bindings.serverName} viewerRole="owner" audience={audience} health={bindings.serverHealth?.()} facts={bindings.serverFacts()} /> : <ServerHeader serverName={bindings.serverName} viewerRole="administrator" audience="administrators" health={bindings.serverHealth?.()} facts={bindings.serverFacts()} />)}
-    {libraryPage && <Button variant="glass" size="small" icon="i-left" onClick={() => {setPanel(undefined);opener.current?.focus();}}>{t(section.title)}</Button>}
-    <SettingsPageHeading title={libraryPage ? libraryTitle : t(section.title)} saveState={snapshot.saveState} />
-    {libraryPage && panelSpec?.tabs ? <Tabs aria-label={libraryTitle} value={panel?.tab ?? panelSpec.tabs[0]?.id} onValueChange={value => setPanel(current => current && {...current, tab: value})}
-      phone={compact} items={panelSpec.tabs.map(item => ({value: item.id, label: t(item.title), panel: rows(item, {...panelContext, tabId: item.id})}))}/> : fact ? <ConfigurationFact fact={fact} /> : snapshot.error ? <SettingsPageFailure retry={() => {void bindings.load(section);}} home={bindings.openHome} /> : snapshot.loading ? <p role="status">{t('next.settings.loading')}</p> : bindings.section?.(context, openPanel, holder => rows(holder, context)) ?? rows(section, context)}
-    {panel && panelSpec && !libraryPage && <SettingsPanel open onClose={() => setPanel(undefined)} audience={t(audience === 'owner' ? 'next.shell.editorAudience.owner' : 'next.shell.serverVisibility.ownerShared')} title={panelState?.title ?? (panelSpec.title ? t(panelSpec.title) : t(section.title))} description={panelState?.description} create={panelState?.create} returnFocusRef={opener}
+    <SettingsPageHeading title={t(section.title)} saveState={snapshot.saveState} />
+    {fact ? <ConfigurationFact fact={fact} /> : snapshot.error ? <SettingsPageFailure retry={() => {void bindings.load(section);}} home={bindings.openHome} /> : snapshot.loading ? <p role="status">{t('next.settings.loading')}</p> : bindings.section?.(context, openPanel, holder => rows(holder, context)) ?? rows(section, context)}
+    {panel && panelSpec && <SettingsPanel open onClose={() => setPanel(undefined)} audience={t(audience === 'owner' ? 'next.shell.editorAudience.owner' : 'next.shell.serverVisibility.ownerShared')} title={panelState?.title ?? (panelSpec.title ? t(panelSpec.title) : t(section.title))} description={panelState?.description} create={panelState?.create} returnFocusRef={opener}
       saveState={snapshot.saveState} tabs={panelSpec.tabs?.map(tab => ({id: tab.id, title: t(tab.title), content: rows(tab, {...panelContext, tabId: tab.id})}))} selectedTab={panel.tab} onTabChange={value => setPanel(current => current && {...current, tab: value})}>
       {rows(tab ?? panelSpec, panelContext)}
     </SettingsPanel>}
