@@ -114,7 +114,7 @@ export function MetadataEditor({api, scope, target, onClose, initialTab = 'gener
       {shown === 'general' ? <General data={data} draft={draft} set={set} requiredTitle={target.kind !== 'season'} /> : null}
       {shown === 'tags' ? <Tags data={data} draft={draft} set={set} busy={state.phase !== 'ready'} /> : null}
       {shown === 'people' ? <People data={data} target={target} busy={state.phase !== 'ready'}
-        onCommit={rows => run({action: 'edit_relationships', role: 'credit', confirm: true, relationships: rows})}
+        onCommit={rows => run({action: 'edit_relationships', role: 'credit', confirm: true, relationships: rows, ...(data.snapshot.canEditProviderCredits === true ? {effectiveCredits: true as const} : {})})}
         onLock={locked => void run({action: 'relationship_lock', role: 'credit', locked, confirm: true})} /> : null}
       {shown === 'matching' ? <Matching data={data} target={target} busy={state.phase !== 'ready'} onSearch={query => void run({action: 'search', query})}
         onRetry={() => void run({action: 'retry'})} onLock={locked => void run({action: 'relationship_lock', role: 'identity', locked, confirm: true})}

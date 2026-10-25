@@ -107,6 +107,7 @@ type RepairFieldEdit struct {
 	Automatic bool      `json:"useAutomatic,omitempty"`
 }
 type RepairCommand struct {
+	EffectiveCredits bool                       `json:"effectiveCredits,omitempty"`
 	Query            string                     `json:"query,omitempty"`
 	Year             int                        `json:"year,omitempty"`
 	Relationships    []RepairRelationship       `json:"relationships,omitempty"`
@@ -468,6 +469,9 @@ func recordRepair(ctx context.Context, tx *sql.Tx, t RepairTarget, before Repair
 	return err
 }
 func (s *Service) Repair(ctx context.Context, t RepairTarget, m RepairCommand, actor MBActor, authorize func(*sql.Tx) error) (RepairState, error) {
+	if m.EffectiveCredits && (m.Action != "edit_relationships" || m.Role != "credit") {
+		return RepairState{}, ErrRepairInput
+	}
 	if len(m.ExpectedRevision) != 64 || actor.AccountID == "" || authorize == nil {
 		return RepairState{}, ErrRepairInput
 	}
@@ -549,7 +553,7 @@ func (s *Service) Repair(ctx context.Context, t RepairTarget, m RepairCommand, a
 		if !m.Confirm {
 			return RepairState{}, ErrRepairInput
 		}
-		err = applyRelationshipSet(ctx, tx, t, m.Role, m.Relationships, true, who, now, false)
+		err = applyRelationshipSetMode(ctx, tx, t, m.Role, m.Relationships, true, who, now, false, m.EffectiveCredits)
 	case "search", "retry":
 		if before.Identity != nil && before.Identity.Engine == "screen" {
 			err = queueScreenRepair(ctx, tx, t, m)

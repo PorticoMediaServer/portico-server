@@ -30,6 +30,13 @@ func creditOverridesAvailable(ctx context.Context, tx *sql.Tx, entity int64) (bo
 	if unprovenLocked {
 		return false, nil
 	}
+	var ambiguousLegacy bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_credits WHERE entity_id=? AND source_row_id IS NULL AND owner_entry_id IS NULL GROUP BY provider,credit_id,person_id HAVING count(*)>1)`, entity).Scan(&ambiguousLegacy); err != nil {
+		return false, err
+	}
+	if ambiguousLegacy {
+		return false, nil
+	}
 	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT provider FROM catalog_credits WHERE entity_id=? AND source_row_id IS NULL AND owner_entry_id IS NULL`, entity)
 	if err != nil {
 		return false, err
