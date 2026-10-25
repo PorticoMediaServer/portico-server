@@ -12,6 +12,11 @@ type ControlsRecipient struct {
 	family    FamilyState
 }
 
+// MatchesDevice checks private admission evidence without exposing its identity.
+func (r ControlsRecipient) MatchesDevice(expected string) bool {
+	return expected != "" && r.family.DeviceID == expected
+}
+
 func (s *Service) CaptureControlsRecipientTx(ctx context.Context, tx *sql.Tx, p Principal) (ControlsRecipient, error) {
 	if !CanUsePersonalState(p) {
 		return ControlsRecipient{}, ErrForbidden
