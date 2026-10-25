@@ -26,6 +26,7 @@ export class ReadingAnnotationService {
     const cursor = more ? this.state.nextCursor : '', revision = more ? this.state.revision : undefined;
     this.publish({...this.state, loading: true, error: undefined});
     try {
+      if (!this.owns(request)) return;
       const page = await this.port.annotations(cursor, revision, request.signal);
       if (this.owns(request)) this.accept(page, more);
     } catch (error) {if (this.owns(request)) this.publish({...this.state, revision: undefined, loading: false, saving: false, error});}
@@ -40,6 +41,7 @@ export class ReadingAnnotationService {
     const request = new AbortController();this.request = request;
     this.publish({...this.state, saving: true, error: undefined});
     try {
+      if (!this.owns(request)) return false;
       const saved = await this.port.mutateAnnotation(mutation, request.signal);
       if (!this.owns(request)) return false;
       const page = await this.port.annotations('', undefined, request.signal);
