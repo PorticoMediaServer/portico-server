@@ -1,3 +1,4 @@
+import {encodedRoutePath, routePattern} from '../../../packages/contracts/src/routes.ts';
 import {retryAfterSecondsFrom, type AuthRecovery, type HttpLocalApi} from '@core/index.ts';
 import {ambientArtworkSource, artworkWidthBucket, type AmbientArtworkIdentity, type ArtworkFailure, type ArtworkRequestOptions} from '@core/artwork/index.ts';
 import {createArtworkRuntime, type ArtworkLoadRequest} from '../kit/artwork/source';
@@ -10,6 +11,17 @@ export function foregroundArtwork(url: string | undefined, pixels: number, aspec
   params.delete('size'); params.set('w', String(artworkWidthBucket(pixels, {aspect}))); params.sort();
   const selected = path + '?' + params.toString();
   return {url: selected, cacheKey: JSON.stringify([identity.serverId, identity.viewerId, identity.authorityKey, selected])};
+}
+const channelLogoPattern = new RegExp('^' + routePattern('get_library_channels_id_logo').replace('{id}', '[A-Za-z0-9_-]{1,128}') + '$');
+/** A logo is a separate foreground representation. Its revision is the checked
+ * upload receipt's integer, never an ambient digest or a channel config revision. */
+export function channelLogoArtwork(url: string, identity: AmbientArtworkIdentity) {
+  if (url.length > 256 || /[\s\\#\x00-\x1f\x7f]/.test(url) || ![identity.serverId, identity.viewerId, identity.authorityKey].every(value => typeof value === 'string' && value.length > 0 && value.length <= 512 && !/[\x00-\x1f\x7f]/.test(value))) return undefined;
+  const parts = url.split('?');if (parts.length > 2 || !channelLogoPattern.test(parts[0]!)) return undefined;
+  if (parts.length === 2) {
+    const query = parts[1]!;if (!/^v=[1-9]\d{0,15}$/.test(query) || !Number.isSafeInteger(Number(query.slice(2)))) return undefined;
+  }
+  return {url, cacheKey: JSON.stringify([identity.serverId, identity.viewerId, identity.authorityKey, url])};
 }
 export function artworkFailure(error: unknown): ArtworkFailure {
   const failure = error as {status?: number; retryAfterSeconds?: number; name?: string};
@@ -48,7 +60,7 @@ export function authenticatedArtwork(options: {
     scopeKey: JSON.stringify([identity.serverId, identity.viewerId, identity.authorityKey]),
     classify: artworkFailure,
     load: async (request: ArtworkLoadRequest, signal: AbortSignal): Promise<ArtworkImage> => {
-      if (!isCurrent() || !ambientArtworkSource(request.url, identity)) throw Object.assign(new Error('Artwork authority changed.'), {status: 403});
+      if (!isCurrent() || !(ambientArtworkSource(request.url, identity) || request.kind === 'foreground' && channelLogoArtwork(request.url, identity))) throw Object.assign(new Error('Artwork authority changed.'), {status: 403});
       const token = await auth.token(options.currentToken());
       signal.throwIfAborted();
       if (!isCurrent()) throw Object.assign(new Error('Artwork authority changed.'), {status: 403});
@@ -83,6 +95,12 @@ export function authenticatedArtwork(options: {
     foreground(url: string | undefined, pixels: number, aspect: number, request?: Omit<ArtworkRequestOptions, 'signal'>) {
       const selected = foregroundArtwork(url, pixels, aspect, identity);
       return selected ? runtime.source(selected, request) : undefined;
+    },
+    channelLogo(id: string, revision?: number) {
+      if (!isCurrent() || !/^[A-Za-z0-9_-]{1,128}$/.test(id) || revision !== undefined && (!Number.isSafeInteger(revision) || revision < 1)) return undefined;
+      const url = encodedRoutePath('get_library_channels_id_logo', {id: encodeURIComponent(id)}) + (revision === undefined ? '' : '?v=' + revision);
+      const selected = channelLogoArtwork(url, identity);
+      return selected ? runtime.source(selected) : undefined;
     },
     ambient(url: string | undefined, request?: Omit<ArtworkRequestOptions, 'signal'>) {
       const selected = ambientArtworkSource(url, identity);
