@@ -89,6 +89,13 @@ func applyEffectiveCreditSet(ctx context.Context, tx *sql.Tx, t RepairTarget, en
 			entries = append(entries, entry)
 			continue
 		}
+		if restore && v.SourceRowID == "" && v.OwnerEntryID != "" && v.Provider == "manual" && v.TargetKind == "scoped_credit" {
+			if _, exists := byAdd[v.OwnerEntryID]; !exists {
+				entry.Operation = "add"
+				entries = append(entries, entry)
+				continue
+			}
+		}
 		var old RepairRelationship
 		var found bool
 		if v.SourceRowID != "" {
@@ -214,4 +221,70 @@ func attachCreditHistorySources(ctx context.Context, tx *sql.Tx, entity int64, b
 		row.SourceStatus = "current"
 	}
 	return nil
+}
+
+// Include the exact accepted source publications in the existing repair CAS,
+// even if two records happen to render identical credit/person presentation.
+func creditRepairFence(ctx context.Context, tx *sql.Tx, entity int64) ([]any, error) {
+	out := []any{}
+	rows, err := tx.QueryContext(ctx, `SELECT provider,publication_id,revision FROM credit_source_heads WHERE entity_id=? ORDER BY provider COLLATE BINARY LIMIT 65`, entity)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var provider, publication string
+		var revision int64
+		if err = rows.Scan(&provider, &publication, &revision); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if len(out) >= 64 {
+			rows.Close()
+			return nil, ErrRepairInput
+		}
+		out = append(out, []any{provider, publication, revision})
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	var accepted string
+	var selection int64
+	err = tx.QueryRowContext(ctx, `SELECT accepted_publication,selection_revision FROM screen_metadata_work WHERE target_kind='item' AND target_id=?`, entity).Scan(&accepted, &selection)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	out = append(out, []any{accepted, selection})
+	rows, err = tx.QueryContext(ctx, `SELECT provider,provider_id,observed_at FROM provider_evidence WHERE item_id=? ORDER BY provider COLLATE BINARY LIMIT 65`, entity)
+	if err != nil {
+		return nil, err
+	}
+	count := 0
+	for rows.Next() {
+		var provider, observed string
+		var id int64
+		if err = rows.Scan(&provider, &id, &observed); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if count >= 64 {
+			rows.Close()
+			return nil, ErrRepairInput
+		}
+		count++
+		out = append(out, []any{provider, id, observed})
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	var revision int64
+	err = tx.QueryRowContext(ctx, `SELECT revision FROM credit_owner_families WHERE entity_id=?`, entity).Scan(&revision)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, err
+	}
+	out = append(out, revision)
+	return out, nil
 }
