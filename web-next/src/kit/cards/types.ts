@@ -13,7 +13,8 @@ export type CardTextPresentation = Readonly<{
   /** Row indices follow extraCaption; omitted rows retain plain text. */
   extraCaption?: readonly (CardFactPresentation | undefined)[];
 }>;
-export type CardSelectionIntent = Readonly<{range: boolean; source: 'pointer' | 'keyboard' | 'long-press'}>;
+export type CardSelectionIntent = Readonly<{range: boolean; source: 'pointer' | 'keyboard' | 'long-press';
+  /** The card element a long press started on, so its owner can anchor the drawn menu. */ anchor?: HTMLElement}>;
 /** The shared selection family supplies the actual SelectionCircle; cards positions it. */
 export type CardSelection = Readonly<{
   active: boolean;

@@ -99,11 +99,11 @@ export function CardFrame({children, kind, primaryClassName, playIcon = 'i-play'
         held.current = false;
         if (event.pointerType === 'mouse' || !selection || selection.active) return;
         origin.current = {x: event.clientX, y: event.clientY};
-        const bounds = event.currentTarget.parentElement!.getBoundingClientRect();
+        const anchor = event.currentTarget, bounds = anchor.parentElement!.getBoundingClientRect();
         const x = event.clientX - bounds.left, y = event.clientY - bounds.top, started = performance.now();
         const tick = () => { setHold({x, y, progress: Math.min(1, (performance.now() - started) / 500)}); animation.current = requestAnimationFrame(tick); };
         tick();
-        pending.current = setTimeout(() => { cancelHold(); held.current = true; selection.onToggle({range: false, source: 'long-press'}); }, 500);
+        pending.current = setTimeout(() => { cancelHold(); held.current = true; selection.onToggle({range: false, source: 'long-press', anchor}); }, 500);
       }}
       onPointerMove={event => { const start = origin.current; if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 10) cancelHold(); }}
       onPointerUp={cancelHold} onPointerCancel={() => {cancelHold(); held.current = false;}} onPointerLeave={cancelHold} onLostPointerCapture={cancelHold}
