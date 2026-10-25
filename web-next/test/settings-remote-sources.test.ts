@@ -48,3 +48,42 @@ test('a hostile transport message is never shown; only a bounded source error is
   assert.equal(remoteErrorText(Object.assign(new Error('x'), {code: 'remote_credentials_required'})), defaultI18n.t('next.remoteSources.problem.credentials_required'));
   assert.equal(remoteErrorText(Object.assign(new Error('x'), {code: 'refresh_failed'})), defaultI18n.t('next.remoteSources.error.refreshFailed'));
 });
+
+test('saved Add handlers cannot adopt a reopened form lifetime', async () => {
+  const React = await import('react');
+  const {AddSourceDialog} = await import('../src/screens/settings/remote-sources/RemoteSourcesPage.tsx');
+  // Execute the real dialog hooks and effects, retaining callbacks from open A.
+  const internals = (React as any).__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+  const previous = internals.H;
+  const slots: any[] = []; let cursor = 0, effects: (() => void)[] = [], dirty = false;
+  const dispatcher = {
+    useState(initial: any) {const i = cursor++;if (!(i in slots)) slots[i] = typeof initial === 'function' ? initial() : initial;
+      return [slots[i], (value: any) => {slots[i] = typeof value === 'function' ? value(slots[i]) : value;dirty = true;}];},
+    useRef(initial: any) {const i = cursor++;return slots[i] ??= {current: initial};},
+    useEffect(effect: () => void, deps: any[]) {const i = cursor++, old = slots[i];
+      if (!old || deps.some((value, index) => value !== old[index])) {slots[i] = deps;effects.push(effect);}},
+  };
+  let io = 0, completions = 0, open = true;
+  const service = {testConnection: async () => {io++;return {origin: 'https://a.example', rangeSupport: 'unknown'};},
+    configure: async () => {io++;}, getSnapshot: () => ({})} as any;
+  const render = () => {let tree: any;do {dirty = false;cursor = 0;effects = [];internals.H = dispatcher;
+    try {tree = AddSourceDialog({service, open, isCurrent: () => true, reportError: () => completions++, onClose: () => completions++, onCreated: () => completions++});}
+    finally {internals.H = previous;}for (const effect of effects) effect();
+  } while (dirty);return tree;};
+  const elements = (node: any): any[] => Array.isArray(node) ? node.flatMap(elements) : node && typeof node === 'object' && node.props ? [node, ...elements(node.props.children), ...elements(node.props.footer)] : [];
+  const button = (tree: any, label: string) => elements(tree).find(node => node.props.children === defaultI18n.t(label as any));
+  let tree = render();
+  for (const [label, value] of [['name', 'A'], ['address', 'https://a.example'], ['password', 'secret-A']]) {
+    elements(tree).find(node => node.props.label === defaultI18n.t(`next.remoteSources.${label}` as any)).props.onChange({target: {value}});tree = render();
+  }
+  const oldTest = button(tree, 'next.remoteSources.test').props.onClick;
+  oldTest();await new Promise(resolve => setImmediate(resolve));tree = render();
+  const oldCreate = button(tree, 'next.remoteSources.saveAndContinue').props.onClick;
+  assert.equal(button(tree, 'next.remoteSources.saveAndContinue').props.disabled, false);
+  button(tree, 'next.remoteSources.cancel').props.onClick();open = false;render();open = true;tree = render();
+  const before = {io, completions, state: JSON.stringify(slots)};
+  oldTest();await oldCreate();await new Promise(resolve => setImmediate(resolve));
+  assert.equal(io, before.io, 'old form sends no provider test or mutation');
+  assert.equal(completions, before.completions, 'old form cannot close or complete successor');
+  assert.equal(JSON.stringify(slots), before.state, 'successor hook state stays unchanged');
+});

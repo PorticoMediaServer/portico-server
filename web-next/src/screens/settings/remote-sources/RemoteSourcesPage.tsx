@@ -124,7 +124,7 @@ export function RemoteSourcesPage({api, serverId, viewerId, isCurrent, reportErr
   </div>;
 }
 
-function AddSourceDialog({service, open, isCurrent, reportError, onClose, onCreated}: Readonly<{
+export function AddSourceDialog({service, open, isCurrent, reportError, onClose, onCreated}: Readonly<{
   service: RemoteSourceService; open: boolean; isCurrent: () => boolean; reportError: (error: unknown) => void; onClose: () => void; onCreated: (source: RemoteSource) => void;
 }>) {
   const [step, setStep] = useState<'connection'|'reading'>('connection');
@@ -138,8 +138,10 @@ function AddSourceDialog({service, open, isCurrent, reportError, onClose, onCrea
   const [busy, setBusy] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(false);
   const testAttempt = useRef(0), active = useRef(false), pending = useRef(false), lifetime = useRef(0);
-  const attemptGuard = () => { const captured = lifetime.current; return () => active.current && lifetime.current === captured && isCurrent(); };
-  const reset = () => {setStep('connection');setDraft(emptyDraft);setResult(undefined);setError('');setCreated(undefined);setProfile(undefined);setValues(sourceReadPreset('once'));setBusy(false);setLoadingProfile(false);testAttempt.current++;lifetime.current++;pending.current=false;};
+  const [formToken, setFormToken] = useState(0);
+  // A saved handler belongs to its rendered form, even if invoked after reopen.
+  const attemptGuard = () => () => active.current && lifetime.current === formToken && isCurrent();
+  const reset = () => {setStep('connection');setDraft(emptyDraft);setResult(undefined);setError('');setCreated(undefined);setProfile(undefined);setValues(sourceReadPreset('once'));setBusy(false);setLoadingProfile(false);testAttempt.current++;lifetime.current++;setFormToken(lifetime.current);pending.current=false;};
   const updateDraft = (patch: Partial<WebDavDraft>) => {testAttempt.current++;setResult(undefined);setError('');setDraft(current => ({...current, ...patch}));};
   useEffect(() => {active.current=open;if(open)reset();else{lifetime.current++;pending.current=false;setDraft(emptyDraft);setResult(undefined);setError('');}}, [open]);
   useEffect(() => () => {active.current=false;lifetime.current++;}, []);
