@@ -2,7 +2,7 @@ import {useEffect, useRef, useState, type CSSProperties} from 'react';
 import {defaultI18n} from '@i18n';
 import {generatedCoverTint} from '@design';
 import {createReadingPublication, type ReaderContentsTarget} from '@portico/reader-core';
-import {stageContentsTarget} from './contents-handoff';
+import {stageContentsTarget, retireContentsTarget} from './contents-handoff';
 import {ReaderContents, type ReaderContentsEntry} from '../../kit/reader/ReaderPanel';
 import type {ReadingManifest, ReadingProgress} from '@portico/client-core';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
@@ -41,6 +41,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
       const session = await bindings.open({itemId: eligibility.itemId, sourceId});
       const progress = await session.progress();
       publication = await createReadingPublication(session);
+      if (!active || !bindings.authority.isCurrent()) {publication.dispose(); return;}
       if (active && bindings.authority.isCurrent()) {publicationReady.current = true;
         captureTarget.current = index => {if (!active || !bindings.authority.isCurrent()) throw new Error('source_changed'); return publication!.contentsTarget(index);};
         setDetail({manifest: session.manifest, progress,
@@ -63,7 +64,10 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     catch (error) {errorSink.current(error); return;}
     if (index !== undefined && !target) return;
     stageContentsTarget(captured.context, eligibility.itemId, manifest.sourceId, target);
-    void router.navigate(readDestination(eligibility.itemId, manifest.sourceId)).catch(captured.binding.home.effects.reportError);
+    void router.navigate(readDestination(eligibility.itemId, manifest.sourceId)).catch(error => {
+      retireContentsTarget(captured.context, target);
+      if (captured.context.isCurrent()) errorSink.current(error);
+    });
   };
   /** No Version control with one file (notes/read-web.md); the details keep format and size. */
   const chooseVersion = eligibility.versions.length > 1;
