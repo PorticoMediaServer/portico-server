@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -91,19 +90,8 @@ func (s *Service) ListSourceFolders(ctx context.Context, identities *identity.Se
 	if limit < 1 || limit > folderPageMax || !validFolderCursor(after) {
 		return empty, storage.ErrRemoteConfig
 	}
-	snapshot, err := dbwork.BeginSnapshot(ctx, s.db)
+	row, err := s.admitFolderRead(ctx, identities, owner, source)
 	if err != nil {
-		return empty, err
-	}
-	defer snapshot.Rollback()
-	if err = currentLocalOwnerTx(ctx, snapshot.Tx(), identities, owner); err != nil {
-		return empty, err
-	}
-	row, err := sourceRowTx(ctx, snapshot.Tx(), source)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return empty, storage.ErrRemoteOffline
-		}
 		return empty, err
 	}
 	relative, err := folderRelative(directory)
@@ -112,6 +100,7 @@ func (s *Service) ListSourceFolders(ctx context.Context, identities *identity.Se
 	}
 	b := binding{ID: row.ID, Kind: string(row.Kind), Root: row.RootPath}
 	generation := strconv.FormatInt(row.Generation, 10)
+	bindingRow := row
 	var listing folderListing
 	switch row.Kind {
 	case SourceWebDAV:
@@ -126,7 +115,7 @@ func (s *Service) ListSourceFolders(ctx context.Context, identities *identity.Se
 	}
 	// The provider read is the slow part. A source removed, regranted or changed
 	// while it ran must not publish what that read found.
-	if err = s.reconfirmOwnerSource(ctx, identities, owner, source, generation); err != nil {
+	if err = s.reconfirmOwnerSource(ctx, identities, owner, bindingRow); err != nil {
 		return empty, err
 	}
 	sort.Slice(listing.entries, func(i, j int) bool { return listing.entries[i].Name < listing.entries[j].Name })
@@ -154,8 +143,10 @@ func (s *Service) ListSourceFolders(ctx context.Context, identities *identity.Se
 	return out, nil
 }
 
-// listDAVFolders reads one folder through the saved source's DAV client and
-// stops after a bounded number of candidate entries.
+// listDAVFolders reads one folder through the saved source's DAV client. The
+// provider response itself is bounded by the DAV parser (4 MiB of XML); this
+// loop additionally stops after a bounded number of qualifying folders, and
+// reports truncation when it does.
 func (s *Service) listDAVFolders(ctx context.Context, row Source, b binding, generation, relative string, showHidden bool) (folderListing, error) {
 	d, current, err := s.dav(ctx, row.ID)
 	if err != nil {
@@ -200,9 +191,31 @@ func (s *Service) listDAVFolders(ctx context.Context, row Source, b binding, gen
 	return out, nil
 }
 
-// reconfirmOwnerSource is the post-read fence: the same owner and the same
-// source generation that admitted the request must still hold.
-func (s *Service) reconfirmOwnerSource(ctx context.Context, identities *identity.Service, owner identity.Principal, source, generation string) error {
+// admitFolderRead is the short admission read. Its snapshot is released before
+// any provider or mount I/O, so a slow listing never holds a database reader.
+func (s *Service) admitFolderRead(ctx context.Context, identities *identity.Service, owner identity.Principal, source string) (Source, error) {
+	snapshot, err := dbwork.BeginSnapshot(ctx, s.db)
+	if err != nil {
+		return Source{}, err
+	}
+	defer snapshot.Rollback()
+	if err = currentLocalOwnerTx(ctx, snapshot.Tx(), identities, owner); err != nil {
+		return Source{}, err
+	}
+	row, err := sourceRowTx(ctx, snapshot.Tx(), source)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Source{}, storage.ErrRemoteOffline
+		}
+		return Source{}, err
+	}
+	return row, nil
+}
+
+// reconfirmOwnerSource is the post-read fence: in a new transaction, the same
+// owner, source, generation, root and mount must still hold. Anything that
+// drifted while the read ran fails closed.
+func (s *Service) reconfirmOwnerSource(ctx context.Context, identities *identity.Service, owner identity.Principal, admitted Source) error {
 	snapshot, err := dbwork.BeginSnapshot(ctx, s.db)
 	if err != nil {
 		return err
@@ -211,14 +224,14 @@ func (s *Service) reconfirmOwnerSource(ctx context.Context, identities *identity
 	if err = currentLocalOwnerTx(ctx, snapshot.Tx(), identities, owner); err != nil {
 		return err
 	}
-	row, err := sourceRowTx(ctx, snapshot.Tx(), source)
+	row, err := sourceRowTx(ctx, snapshot.Tx(), admitted.ID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return storage.ErrRemoteOffline
 		}
 		return err
 	}
-	if strconv.FormatInt(row.Generation, 10) != generation {
+	if row.Generation != admitted.Generation || row.RootPath != admitted.RootPath || row.MountID != admitted.MountID || row.Kind != admitted.Kind {
 		return storage.ErrRemoteChanged
 	}
 	return nil
@@ -239,37 +252,43 @@ type folderListing struct {
 	truncated bool
 }
 
-// mountedFolders lists the folders of a mounted remote from the mount the
-// scanner itself will read. os.Root confines every step to the source, each
-// path component is refused if it is a symlink, and the directory is read in
-// bounded batches rather than loaded whole.
+// mountedFolders lists the folders of a mounted remote through a directory
+// pinned by descriptor: every step is opened relative to the previous one with
+// no symlink following, and one read examines a bounded number of names.
 func mountedFolders(root, relative string, showHidden bool) (folderListing, error) {
-	handle, err := os.OpenRoot(root)
+	handle, err := storage.OpenRootedDir(root)
 	if err != nil {
 		return folderListing{}, mountedError(err)
 	}
 	defer handle.Close()
-	directory, err := openNoSymlink(handle, relative)
-	if err != nil {
-		return folderListing{}, err
+	directory := handle
+	if relative != "" {
+		for _, part := range strings.Split(relative, "/") {
+			next, err := directory.Child(part)
+			if directory != handle {
+				directory.Close()
+			}
+			if err != nil {
+				return folderListing{}, mountedError(err)
+			}
+			directory = next
+		}
 	}
-	defer directory.Close()
-	names, more, err := boundedNames(directory, folderScanCap)
+	if directory != handle {
+		defer directory.Close()
+	}
+	names, more, err := directory.Names(folderScanCap)
 	if err != nil {
 		return folderListing{}, mountedError(err)
 	}
 	out := folderListing{entries: make([]SourceFolder, 0, 32), truncated: more}
 	for _, name := range names {
-		if !validFolderName(name) || !showHidden && strings.HasPrefix(name, ".") {
+		if !validFolderName(name) || !showHidden && strings.HasPrefix(name, ".") || !directory.IsDirectoryEntry(name) {
 			continue
 		}
 		inner := name
 		if relative != "" {
 			inner = relative + "/" + name
-		}
-		info, err := handle.Lstat(filepath.FromSlash(inner))
-		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			continue
 		}
 		out.entries = append(out.entries, SourceFolder{
 			Name:     name,
@@ -281,66 +300,8 @@ func mountedFolders(root, relative string, showHidden bool) (folderListing, erro
 	return out, nil
 }
 
-// openNoSymlink opens a folder inside the source, refusing a symlink at any
-// component of the path the owner typed or opened.
-func openNoSymlink(handle *os.Root, relative string) (*os.File, error) {
-	if relative == "" {
-		return handle.Open(".")
-	}
-	walked := ""
-	for _, part := range strings.Split(relative, "/") {
-		if !validFolderName(part) {
-			return nil, storage.ErrRemoteConfig
-		}
-		if walked == "" {
-			walked = part
-		} else {
-			walked = walked + "/" + part
-		}
-		info, err := handle.Lstat(walked)
-		if err != nil {
-			return nil, mountedError(err)
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return nil, storage.ErrRemoteOffline
-		}
-		if !info.IsDir() {
-			return nil, storage.ErrRemoteConfig
-		}
-	}
-	return handle.Open(relative)
-}
-
-// boundedNames reads at most limit names, then probes once for another, so a
-// huge folder costs bounded memory and truthful truncation.
-func boundedNames(directory *os.File, limit int) ([]string, bool, error) {
-	out := make([]string, 0, 64)
-	for len(out) < limit {
-		batch := 256
-		if remaining := limit - len(out); remaining < batch {
-			batch = remaining
-		}
-		names, err := directory.Readdirnames(batch)
-		out = append(out, names...)
-		if errors.Is(err, io.EOF) {
-			return out, false, nil
-		}
-		if err != nil {
-			return nil, false, err
-		}
-	}
-	probe, err := directory.Readdirnames(1)
-	if len(probe) > 0 {
-		return out, true, nil
-	}
-	if err == nil || errors.Is(err, io.EOF) {
-		return out, false, nil
-	}
-	return nil, false, err
-}
-
 func mountedError(err error) error {
-	if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) || errors.Is(err, syscall.ELOOP) {
 		return storage.ErrRemoteOffline
 	}
 	return storage.ErrRemoteOffline

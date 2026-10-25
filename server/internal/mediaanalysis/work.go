@@ -100,6 +100,13 @@ func (s *Service) RunOne(ctx context.Context, request Request) (done bool, warni
 		if !p.Allows(op) {
 			return false, false, "", nil
 		}
+		// The source's own page can switch this whole-file stage off for the
+		// files found through it; execution follows that, not only enqueueing.
+		if allowed, e := sourceStageAllowedTx(ctx, tx, b.Source.ID, op); e != nil {
+			return false, false, "", e
+		} else if !allowed {
+			return false, false, "", nil
+		}
 		var complete bool
 		err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM analysis_heads h JOIN analysis_results r ON r.id=h.result_id WHERE h.object_id=? AND h.source_revision=? AND h.stage=? AND r.algorithm=? AND r.root_incarnation=? AND r.configuration_generation=? AND r.retired_ms=0 AND (?='' OR r.evidence=?))`, request.ObjectID, request.SourceRevision, op, s.stageAlgorithm(b, op), b.Source.Incarnation, b.Source.Generation, b.ProbeEvidence, b.ProbeEvidence).Scan(&complete)
 		if err != nil || complete {
@@ -186,6 +193,22 @@ func (s *Service) RunOne(ctx context.Context, request Request) (done bool, warni
 			}
 		}
 	}
+	// The gate is applied again here, in the same snapshot that just selected the
+	// stages, so a stage disabled between selection and capture never runs.
+	kept := stages[:0]
+	for _, op := range stages {
+		allowed, e := sourceStageAllowedTx(ctx, tx, b.Source.ID, op)
+		if e != nil {
+			return false, "", e
+		}
+		if allowed {
+			kept = append(kept, op)
+		}
+	}
+	if len(kept) == 0 || kept[0] != stage {
+		return true, warning, gated.Commit()
+	}
+	stages = kept
 	// Restart-safe output identity is recorded by the durable job + source/policy
 	// stage attempt. A new attempt cannot overwrite a retired result, including
 	// target A → B → A. Acquisition evidence is never inferred from this identity.

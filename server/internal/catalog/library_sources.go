@@ -19,6 +19,11 @@ var ErrSourceBusy = errors.New("source has active playback or scan work")
 var ErrSourceChanged = errors.New("source root changed; explicitly accept the replacement root before scanning")
 
 // Source settings are owner-only. Viewer projections never include these paths.
+// remoteSourceIDExpr names the saved remote source a library folder belongs to,
+// captured once when the folder is attached. Queries then use the indexed
+// association instead of matching path prefixes on every read.
+const remoteSourceIDExpr = `(SELECT r.id FROM remote_sources r WHERE r.removed=0 AND (r.root=? OR substr(?,1,length(r.root)+1)=r.root||'/') ORDER BY length(r.root) DESC LIMIT 1)`
+
 type LibrarySource struct {
 	IdentityConfirmed bool   `json:"identityConfirmed"`
 	ID                string `json:"id"`
@@ -393,7 +398,7 @@ func (s *Service) SaveSource(ctx context.Context, library, id string, input Sour
 			return result, ErrAdminQuery
 		}
 		id = identity.Token()
-		_, err = tx.ExecContext(ctx, `INSERT INTO library_sources(id,library_id,name,configured_root,root,classification,root_identity,follow_symlinks,interval_seconds,next_scan_at,identity_confirmed) VALUES(?,?,?,?,?,?,?,?,?,?,1)`, id, library, input.Name, input.Path, observed.Path, input.Classification, rootID, input.FollowSymlinks, input.IntervalSeconds, next)
+		_, err = tx.ExecContext(ctx, `INSERT INTO library_sources(id,library_id,name,configured_root,root,classification,root_identity,follow_symlinks,interval_seconds,next_scan_at,identity_confirmed,remote_source_id) VALUES(?,?,?,?,?,?,?,?,?,?,1,`+remoteSourceIDExpr+`)`, id, library, input.Name, input.Path, observed.Path, input.Classification, rootID, input.FollowSymlinks, input.IntervalSeconds, next, input.Path, input.Path)
 	} else {
 		old, e := scanLibrarySource(tx.QueryRowContext(ctx, `SELECT `+sourceColumns+` FROM library_sources WHERE id=? AND library_id=?`, id, library))
 		if e != nil {
@@ -423,7 +428,7 @@ func (s *Service) SaveSource(ctx context.Context, library, id string, input Sour
 			incarnation = identity.Token()
 
 		}
-		_, err = tx.ExecContext(ctx, `UPDATE library_sources SET name=?,configured_root=?,root=?,classification=?,generation=generation+1,last_complete_job='',last_complete_at='',incarnation=?,root_identity=?,identity_confirmed=1,health='ready',enabled=1,follow_symlinks=?,interval_seconds=?,next_scan_at=? WHERE id=?`, input.Name, input.Path, observed.Path, input.Classification, incarnation, rootID, input.FollowSymlinks, input.IntervalSeconds, next, id)
+		_, err = tx.ExecContext(ctx, `UPDATE library_sources SET name=?,configured_root=?,root=?,classification=?,generation=generation+1,last_complete_job='',last_complete_at='',incarnation=?,root_identity=?,identity_confirmed=1,health='ready',enabled=1,follow_symlinks=?,interval_seconds=?,next_scan_at=?,remote_source_id=`+remoteSourceIDExpr+` WHERE id=?`, input.Name, input.Path, observed.Path, input.Classification, incarnation, rootID, input.FollowSymlinks, input.IntervalSeconds, next, input.Path, input.Path, id)
 
 		// Keep the original primary root as a compatibility projection. Preparation
 		// selects the exact source below; it never widens to a common ancestor.
@@ -587,7 +592,7 @@ func (s *Service) createFolders(ctx context.Context, name, kind string, folders 
 	}
 	return s.CreateAuthorizedThen(ctx, name, kind, folders[0], authorize, func(tx *sql.Tx, library Library) error {
 		for _, source := range sources[1:] {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO library_sources(id,library_id,name,configured_root,root,classification,root_identity,identity_confirmed,kind) VALUES(?,?,?,?,?,?,?,1,?)`, identity.Token(), library.ID, filepath.Base(source.path), source.configured, source.path, source.classification, source.identity, source.kind); err != nil {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO library_sources(id,library_id,name,configured_root,root,classification,root_identity,identity_confirmed,kind,remote_source_id) VALUES(?,?,?,?,?,?,?,1,?,`+remoteSourceIDExpr+`)`, identity.Token(), library.ID, filepath.Base(source.path), source.configured, source.path, source.classification, source.identity, source.kind, source.configured, source.configured); err != nil {
 				return err
 			}
 		}

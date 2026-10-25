@@ -380,6 +380,7 @@ index libraries_admin_position
 index library_navigation_order
 index library_sources_due
 index library_sources_library
+index library_sources_remote
 index listening_book_series_key
 index listening_group_names
 index listening_metadata_attention_active
@@ -404,6 +405,8 @@ index lyric_candidates_expiry
 index lyric_candidates_item_id_fk
 index lyric_fetch_runs_library
 index lyric_fetch_runs_state
+index lyric_library_selections_asset_id_fk
+index lyric_library_selections_resource_revision_fk
 index lyric_resources_asset_id_fk
 index lyric_resources_item
 index maintenance_retention_age
@@ -533,10 +536,12 @@ index queues_v1_owner
 index quick_connect_expiry_v1
 index reading_attribution_author_facet
 index reading_attribution_pending
+index reading_attribution_rule_version
 index reading_attribution_series_facet
 index reading_attribution_series_seek
 index reading_progress_publication
 index reading_progress_recent
+index reading_publication_types_inventory_object
 index rec_profile_signals_positive_recent
 index rec_profile_signals_recent
 index rec_profile_signals_work
@@ -1043,6 +1048,7 @@ table live_sources
 table local_artwork
 table lyric_candidates
 table lyric_fetch_runs
+table lyric_library_selections
 table lyric_resources
 table lyric_revisions
 table lyric_selections
@@ -1263,6 +1269,7 @@ table quick_connect_v1
 table reading_attribution_members
 table reading_attribution_state
 table reading_progress
+table reading_publication_types
 table reading_publications
 table reading_source_values
 table rec_data_revision
@@ -2409,6 +2416,9 @@ trigger reading_attribution_metadata_owner_fields_update
 trigger reading_attribution_namespace_immutable
 trigger reading_attribution_public_kind
 trigger reading_attribution_public_library
+trigger reading_attribution_reading_publication_types_delete
+trigger reading_attribution_reading_publication_types_insert
+trigger reading_attribution_reading_publication_types_update
 trigger reading_attribution_reading_publications_delete
 trigger reading_attribution_reading_publications_insert
 trigger reading_attribution_reading_publications_update

@@ -75,7 +75,7 @@ func (s *Service) ReadSourceStatus(ctx context.Context, identities *identity.Ser
 	}
 	// Ten drawn libraries are plenty for the page; the count stays bounded so a
 	// constant-cost read never grows with the owner's library list.
-	rows, err := snapshot.Tx().QueryContext(ctx, `SELECT l.id,l.name,l.kind,COUNT(*) FROM library_sources s JOIN libraries l ON l.id=s.library_id WHERE s.configured_root=? OR substr(s.configured_root,1,length(?)+1)=?||'/' GROUP BY l.id,l.name,l.kind ORDER BY l.name,l.id LIMIT 11`, row.RootPath, row.RootPath, row.RootPath)
+	rows, err := snapshot.Tx().QueryContext(ctx, `SELECT l.id,l.name,l.kind,COUNT(*) FROM library_sources s JOIN libraries l ON l.id=s.library_id WHERE s.remote_source_id=? GROUP BY l.id,l.name,l.kind ORDER BY l.name,l.id LIMIT 11`, row.ID)
 	if err != nil {
 		return SourceStatus{}, err
 	}
@@ -98,7 +98,7 @@ func (s *Service) ReadSourceStatus(ctx context.Context, identities *identity.Ser
 		out.Libraries = out.Libraries[:10]
 		out.LibrariesTruncated = true
 	}
-	if err = snapshot.Tx().QueryRowContext(ctx, `SELECT COALESCE(MIN(NULLIF(interval_seconds,0)),0) FROM library_sources WHERE configured_root=? OR substr(configured_root,1,length(?)+1)=?||'/'`, row.RootPath, row.RootPath, row.RootPath).Scan(&out.ScanIntervalSecs); err != nil {
+	if err = snapshot.Tx().QueryRowContext(ctx, `SELECT COALESCE(MIN(NULLIF(interval_seconds,0)),0) FROM library_sources WHERE remote_source_id=?`, row.ID).Scan(&out.ScanIntervalSecs); err != nil {
 		return SourceStatus{}, err
 	}
 	return out, nil

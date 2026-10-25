@@ -9,8 +9,9 @@ const t = defaultI18n.t;
  * server actually applies: the folders' check interval, the start and watch
  * passes, the full re-check, the mount's real read cache, and the whole-file
  * analysis stages. Rows the server cannot honour are not drawn. */
-export function SourceAdvancedRows({values, cacheSupported, disabled, onChange}: Readonly<{
-  values: SourceAdvanced; cacheSupported: boolean; disabled: boolean; onChange: (values: SourceAdvanced) => void;
+export function SourceAdvancedRows({values, cacheSupported, cacheApplied, cacheError, observedInterval, disabled, onChange}: Readonly<{
+  values: SourceAdvanced; cacheSupported: boolean; cacheApplied: boolean; cacheError?: string;
+  observedInterval: number; disabled: boolean; onChange: (values: SourceAdvanced) => void;
 }>) {
   const set = <K extends keyof SourceAdvanced,>(key: K, value: SourceAdvanced[K]) => onChange({...values, [key]: value});
   const intervals = [
@@ -30,12 +31,20 @@ export function SourceAdvancedRows({values, cacheSupported, disabled, onChange}:
   const cacheSizes = ['0', '2', '4', '8', '16', '32', '64'] as const;
   const floors = ['1', '2', '4', '8', '16'] as const;
   const gb = (value: string) => Number(value) * 1024 * 1024 * 1024;
+  const offered = intervals.some(option => option.value === String(values.scanIntervalSeconds));
+  const observedUnknown = observedInterval > 0 && !intervals.some(option => option.value === String(observedInterval));
+  const intervalValue = observedUnknown && !offered ? String(observedInterval) : String(values.scanIntervalSeconds);
+  const intervalOptions = [
+    ...(observedUnknown ? [{value: String(observedInterval), label: t('next.remoteSources.advObserved', {minutes: Math.round(observedInterval / 60)}), disabled: true}] : []),
+    ...intervals.map(option => ({value: option.value, label: t(option.label), description: t('next.remoteSources.advIntervalHint')})),
+  ];
   return <>
     <p className={styles.advTitle}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.title')}</p>
     <RichSelect disabled={disabled} aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.0.label')}
-      value={String(values.scanIntervalSeconds)}
-      options={intervals.map(option => ({value: option.value, label: t(option.label), description: t('next.remoteSources.advIntervalHint')}))}
+      value={intervalValue}
+      options={intervalOptions}
       onValueChange={value => set('scanIntervalSeconds', Number(value))}/>
+    {observedUnknown && <p className={styles.note}>{t('next.remoteSources.advObservedHelp')}</p>}
     <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.1.label')}<small className={styles.note}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.1.help')}</small></span>
       <Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.1.label')} checked={values.watchForChanges} disabled={disabled} onCheckedChange={value => set('watchForChanges', value)}/></label>
     <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.2.label')}<small className={styles.note}>{t('next.remoteSources.advStartHint')}</small></span>
@@ -67,6 +76,8 @@ export function SourceAdvancedRows({values, cacheSupported, disabled, onChange}:
         value={String(values.cacheFloorBytes / (1024 * 1024 * 1024))}
         options={floors.map((size, index) => ({value: size, label: t(`next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.2.rows.0.control.options.${index}.label` as never)}))}
         onValueChange={value => set('cacheFloorBytes', gb(value))}/>
+      {!cacheApplied && <p className={styles.note} role="status">{t('next.remoteSources.advCachePending')}</p>}
+      {cacheError && <p className={styles.error} role="alert">{t('next.remoteSources.advCacheFailed', {reason: cacheError})}</p>}
     </>}
   </>;
 }

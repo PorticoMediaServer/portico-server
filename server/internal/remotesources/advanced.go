@@ -1,12 +1,17 @@
 package remotesources
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strconv"
 	"time"
+
+	"portico.local/apikit"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
@@ -44,18 +49,94 @@ type AnalysisSwitches struct {
 }
 
 type SourceAdvancedSettings struct {
-	SourceID       string         `json:"sourceId"`
-	Generation     string         `json:"generation"`
-	Revision       int64          `json:"revision"`
-	Saved          bool           `json:"saved"`
-	CacheSupported bool           `json:"cacheSupported"`
-	Values         SourceAdvanced `json:"values"`
+	SourceID       string `json:"sourceId"`
+	Generation     string `json:"generation"`
+	Revision       int64  `json:"revision"`
+	Saved          bool   `json:"saved"`
+	CacheSupported bool   `json:"cacheSupported"`
+	// CacheApplied is the durable projection: the mount's applied cache equals
+	// what this page asks for. A saved value whose mount change failed reads false.
+	CacheApplied bool `json:"cacheApplied"`
+	// CacheError names why the mount did not take the saved cache, when it did not.
+	CacheError string `json:"cacheError,omitempty"`
+	// ScanIntervalObserved is the shortest interval the folders really have,
+	// even when it is not one the page offers. It is reported, never relabelled.
+	ScanIntervalObserved int            `json:"scanIntervalObserved"`
+	Values               SourceAdvanced `json:"values"`
 }
 
 type SourceAdvancedChange struct {
 	ExpectedGeneration string         `json:"expectedGeneration"`
 	ExpectedRevision   int64          `json:"expectedRevision"`
 	Values             SourceAdvanced `json:"values"`
+}
+
+var advancedFieldNames = []string{"scanIntervalSeconds", "watchForChanges", "scanOnStart", "fullRecheckDays", "cacheBytes", "cacheFloorBytes", "seekPreviews", "chapterImages", "waveforms", "loudness", "checksums"}
+
+// A settings value is complete by construction: omitted, null or extra fields
+// are refused, so a partial document can never silently switch analysis off.
+func (v *SourceAdvanced) UnmarshalJSON(raw []byte) error {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) != nil || len(fields) != len(advancedFieldNames) {
+		return storage.ErrRemoteConfig
+	}
+	for _, name := range advancedFieldNames {
+		value, ok := fields[name]
+		if !ok || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return storage.ErrRemoteConfig
+		}
+	}
+	type plain SourceAdvanced
+	var decoded plain
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return storage.ErrRemoteConfig
+	}
+	*v = SourceAdvanced(decoded)
+	return nil
+}
+
+func (c *SourceAdvancedChange) UnmarshalJSON(raw []byte) error {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) != nil || len(fields) != 3 {
+		return storage.ErrRemoteConfig
+	}
+	for _, name := range []string{"expectedGeneration", "expectedRevision", "values"} {
+		value, ok := fields[name]
+		if !ok || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return storage.ErrRemoteConfig
+		}
+	}
+	type plain SourceAdvancedChange
+	var decoded plain
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return storage.ErrRemoteConfig
+	}
+	*c = SourceAdvancedChange(decoded)
+	return nil
+}
+
+// JSONSchema publishes the exact domains Release generates from: the offered
+// intervals and re-check days as enums, and the cache sizes as bounded ranges.
+func (SourceAdvanced) JSONSchema() map[string]any {
+	type wire SourceAdvanced
+	shape, _ := apikit.Schema(reflect.TypeFor[wire]())
+	props, _ := shape["properties"].(map[string]any)
+	if props == nil {
+		return shape
+	}
+	if field, ok := props["scanIntervalSeconds"].(map[string]any); ok {
+		field["enum"] = []int{0, 900, 3600, 21600, 86400, 604800}
+	}
+	if field, ok := props["fullRecheckDays"].(map[string]any); ok {
+		field["enum"] = []int{0, 7, 14, 30}
+	}
+	if field, ok := props["cacheBytes"].(map[string]any); ok {
+		field["description"] = "0 disables the read cache; otherwise 64 MiB through 64 GiB."
+	}
+	if field, ok := props["cacheFloorBytes"].(map[string]any); ok {
+		field["description"] = "0 keeps the mount's current free-space floor; otherwise 1 GiB through 1 TiB."
+	}
+	return shape
 }
 
 // SourceScanTask is one due scan the scheduler should enqueue for a source's
@@ -96,35 +177,37 @@ func (v SourceAdvanced) analysis() AnalysisSwitches {
 // readAdvancedTx reads the saved page, or the defaults a new source starts from.
 // A source with folders reports the shortest interval its folders already have,
 // so the page never claims "follow the library" when a real interval is set.
-func readAdvancedTx(ctx context.Context, tx *sql.Tx, source, root string) (SourceAdvanced, bool, error) {
-	var values SourceAdvanced
-	err := tx.QueryRowContext(ctx, `SELECT scan_interval_seconds,watch_for_changes,scan_on_start,full_recheck_days,cache_bytes,cache_floor_bytes,seek_previews,chapter_images,waveforms,loudness,checksums FROM remote_source_settings WHERE source_id=?`, source).
-		Scan(&values.ScanIntervalSeconds, &values.WatchForChanges, &values.ScanOnStart, &values.FullRecheckDays, &values.CacheBytes, &values.CacheFloorBytes, &values.SeekPreviews, &values.ChapterImages, &values.Waveforms, &values.Loudness, &values.Checksums)
-	if err == nil {
-		return values, true, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return SourceAdvanced{}, false, err
-	}
-	values = defaultAdvanced()
-	var shortest int
-	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MIN(NULLIF(interval_seconds,0)),0) FROM library_sources WHERE configured_root=? OR substr(configured_root,1,length(?)+1)=?||'/'`, root, root, root).Scan(&shortest); err != nil {
-		return SourceAdvanced{}, false, err
-	}
-	if !scanIntervals[shortest] {
-		shortest = 21600
-	}
-	values.ScanIntervalSeconds = shortest
-	return values, false, nil
+type advancedRow struct {
+	values                 SourceAdvanced
+	saved                  bool
+	revision               int64
+	appliedBytes           int64
+	appliedFloor           int64
+	observedIntervalSecond int
 }
 
-func advancedRevisionTx(ctx context.Context, tx *sql.Tx, source string) (int64, error) {
-	var revision int64
-	err := tx.QueryRowContext(ctx, `SELECT revision FROM remote_source_settings WHERE source_id=?`, source).Scan(&revision)
-	if errors.Is(err, sql.ErrNoRows) {
-		return 0, nil
+func readAdvancedTx(ctx context.Context, tx *sql.Tx, source string) (advancedRow, error) {
+	var row advancedRow
+	err := tx.QueryRowContext(ctx, `SELECT revision,scan_interval_seconds,watch_for_changes,scan_on_start,full_recheck_days,cache_bytes,cache_floor_bytes,cache_applied_bytes,cache_applied_floor_bytes,seek_previews,chapter_images,waveforms,loudness,checksums FROM remote_source_settings WHERE source_id=?`, source).
+		Scan(&row.revision, &row.values.ScanIntervalSeconds, &row.values.WatchForChanges, &row.values.ScanOnStart, &row.values.FullRecheckDays, &row.values.CacheBytes, &row.values.CacheFloorBytes, &row.appliedBytes, &row.appliedFloor, &row.values.SeekPreviews, &row.values.ChapterImages, &row.values.Waveforms, &row.values.Loudness, &row.values.Checksums)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return advancedRow{}, err
 	}
-	return revision, err
+	row.saved = err == nil
+	if !row.saved {
+		row.values = defaultAdvanced()
+	}
+	// The folders' real interval is always reported as observed, whether or not
+	// it is one this page offers; an unsupported one is never relabelled.
+	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(MIN(NULLIF(interval_seconds,0)),0) FROM library_sources WHERE remote_source_id=?`, source).Scan(&row.observedIntervalSecond); err != nil {
+		return advancedRow{}, err
+	}
+	if !row.saved {
+		if scanIntervals[row.observedIntervalSecond] {
+			row.values.ScanIntervalSeconds = row.observedIntervalSecond
+		}
+	}
+	return row, nil
 }
 
 // ReadSourceAdvanced is the owner's bounded read of one source's Advanced page.
@@ -147,15 +230,28 @@ func (s *Service) ReadSourceAdvanced(ctx context.Context, identities *identity.S
 		}
 		return SourceAdvancedSettings{}, err
 	}
-	values, saved, err := readAdvancedTx(ctx, snapshot.Tx(), source, row.RootPath)
+	settings, err := readAdvancedTx(ctx, snapshot.Tx(), source)
 	if err != nil {
 		return SourceAdvancedSettings{}, err
 	}
-	revision, err := advancedRevisionTx(ctx, snapshot.Tx(), source)
-	if err != nil {
-		return SourceAdvancedSettings{}, err
+	return advancedSettings(row, settings, ""), nil
+}
+
+func advancedSettings(row Source, settings advancedRow, cacheError string) SourceAdvancedSettings {
+	applied := settings.values.CacheBytes == 0 || row.MountID != "" &&
+		settings.appliedBytes == settings.values.CacheBytes &&
+		(settings.values.CacheFloorBytes == 0 || settings.appliedFloor == settings.values.CacheFloorBytes)
+	return SourceAdvancedSettings{
+		SourceID:             row.ID,
+		Generation:           strconv.FormatInt(row.Generation, 10),
+		Revision:             settings.revision,
+		Saved:                settings.saved,
+		CacheSupported:       row.MountID != "",
+		CacheApplied:         applied,
+		CacheError:           cacheError,
+		ScanIntervalObserved: settings.observedIntervalSecond,
+		Values:               settings.values,
 	}
-	return SourceAdvancedSettings{SourceID: source, Generation: strconv.FormatInt(row.Generation, 10), Revision: revision, Saved: saved, CacheSupported: row.MountID != "", Values: values}, nil
 }
 
 // SaveSourceAdvanced stores one CAS write and applies it: the folders' scan
@@ -187,10 +283,11 @@ func (s *Service) SaveSourceAdvanced(ctx context.Context, identities *identity.S
 	if change.ExpectedGeneration != generation {
 		return SourceAdvancedSettings{}, storage.ErrRemoteChanged
 	}
-	revision, err := advancedRevisionTx(ctx, tx, source)
+	current, err := readAdvancedTx(ctx, tx, source)
 	if err != nil {
 		return SourceAdvancedSettings{}, err
 	}
+	revision := current.revision
 	if change.ExpectedRevision != revision {
 		return SourceAdvancedSettings{}, storage.ErrRemoteChanged
 	}
@@ -214,54 +311,75 @@ func (s *Service) SaveSourceAdvanced(ctx context.Context, identities *identity.S
 		// The drawn page owns these folders' check interval; the scanner reads
 		// library_sources, so the same rows are updated here, once.
 		next := time.Now().UTC().Add(time.Duration(v.ScanIntervalSeconds) * time.Second).Format(time.RFC3339Nano)
-		if _, err = tx.ExecContext(ctx, `UPDATE library_sources SET interval_seconds=?,next_scan_at=CASE WHEN next_scan_at='' OR next_scan_at>? THEN ? ELSE next_scan_at END WHERE interval_seconds IS NOT ? AND (configured_root=? OR substr(configured_root,1,length(?)+1)=?||'/')`, v.ScanIntervalSeconds, next, next, v.ScanIntervalSeconds, row.RootPath, row.RootPath, row.RootPath); err != nil {
+		if _, err = tx.ExecContext(ctx, `UPDATE library_sources SET interval_seconds=?,next_scan_at=CASE WHEN next_scan_at='' OR next_scan_at>? THEN ? ELSE next_scan_at END WHERE remote_source_id=? AND interval_seconds IS NOT ?`, v.ScanIntervalSeconds, next, next, source, v.ScanIntervalSeconds); err != nil {
 			return SourceAdvancedSettings{}, err
 		}
 	}
 	if err = gated.Commit(); err != nil {
 		return SourceAdvancedSettings{}, err
 	}
+	settings := advancedRow{values: v, saved: true, revision: revision + 1, appliedBytes: current.appliedBytes, appliedFloor: current.appliedFloor, observedIntervalSecond: current.observedIntervalSecond}
+	cacheError := ""
 	if row.MountID != "" {
-		if err = s.applyCache(row.MountID, v.CacheBytes, v.CacheFloorBytes); err != nil {
-			return SourceAdvancedSettings{}, err
+		var applied bool
+		applied, cacheError = s.applyCache(ctx, identities, owner, row.MountID, v.CacheBytes, v.CacheFloorBytes)
+		if applied {
+			settings.appliedBytes, settings.appliedFloor = v.CacheBytes, effectiveFloor(v.CacheFloorBytes, current.appliedFloor)
+			if _, e := dbwork.ExecWrite(ctx, s.db, dbwork.ClassInteractive, `UPDATE remote_source_settings SET cache_applied_bytes=?,cache_applied_floor_bytes=? WHERE source_id=?`, settings.appliedBytes, settings.appliedFloor, source); e != nil && cacheError == "" {
+				cacheError = e.Error()
+			}
 		}
 	}
-	return SourceAdvancedSettings{SourceID: source, Generation: generation, Revision: revision + 1, Saved: true, CacheSupported: row.MountID != "", Values: v}, nil
+	if v.ScanIntervalSeconds > 0 {
+		settings.observedIntervalSecond = v.ScanIntervalSeconds
+	}
+	return advancedSettings(row, settings, cacheError), nil
 }
 
 // applyCache changes a mounted source's real read cache through the existing
-// mount command: rclone restarts with the new size, and nothing pretends a
-// cache exists for a source the server reads directly.
-func (s *Service) applyCache(mountID string, cacheBytes, floorBytes int64) error {
+// mount command, with the owner's own current authorization. It reports whether
+// the mount took the change and why not, so the page never shows a saved cache
+// as applied when the mount refused it. Zero floor means "keep the mount's
+// current floor"; zero cache removes the read cache.
+func (s *Service) applyCache(ctx context.Context, identities *identity.Service, owner identity.Principal, mountID string, cacheBytes, floorBytes int64) (bool, string) {
 	if s.mounts == nil || mountID == "" {
-		return nil
+		return false, "the source has no mount to apply a cache to"
 	}
 	list, err := s.mounts.List()
 	if err != nil {
-		return err
+		return false, err.Error()
 	}
 	for _, mount := range list {
 		if mount.ID != mountID {
 			continue
 		}
-		currentCache, currentFloor := mount.CacheBytes, mount.CacheFloor
-		if currentCache == cacheBytes && currentFloor == floorBytes {
-			return nil
+		floor := effectiveFloor(floorBytes, mount.CacheFloor)
+		if mount.CacheBytes == cacheBytes && mount.CacheFloor == floor {
+			return true, ""
 		}
-		floor := floorBytes
-		if floor == 0 {
-			floor = currentFloor
+		authorize := func(tx *sql.Tx) error {
+			return currentLocalOwnerTx(ctx, tx, identities, owner)
 		}
-		_, err = s.mounts.Command(context.Background(), "source-advanced", mount.ID, mounts.Command{
+		_, err = s.mounts.Command(ctx, owner.Hash, mount.ID, mounts.Command{
 			OperationID:      scanOperationID(),
 			Action:           "configure",
 			ExpectedRevision: mount.ControlRevision,
 			CacheBytes:       &cacheBytes,
 			CacheFloor:       &floor,
-		}, nil)
-		return err
+		}, authorize)
+		if err != nil {
+			return false, err.Error()
+		}
+		return true, ""
 	}
-	return nil
+	return false, "the source's mount is not present"
+}
+
+func effectiveFloor(requested, current int64) int64 {
+	if requested <= 0 {
+		return current
+	}
+	return requested
 }
 
 func scanOperationID() string {
@@ -307,7 +425,7 @@ func (s *Service) DueSourceScans(ctx context.Context) ([]SourceScanTask, error) 
 		if !watchDue && !fullDue {
 			continue
 		}
-		folders, err := folderSources(ctx, s.db, d.root)
+		folders, err := folderSources(ctx, s.db, d.source)
 		if err != nil {
 			return nil, err
 		}
@@ -324,8 +442,8 @@ func (s *Service) DueSourceScans(ctx context.Context) ([]SourceScanTask, error) 
 
 type folderSource struct{ id, library string }
 
-func folderSources(ctx context.Context, db *sql.DB, root string) ([]folderSource, error) {
-	rows, err := db.QueryContext(ctx, `SELECT id,library_id FROM library_sources WHERE enabled=1 AND (configured_root=? OR substr(configured_root,1,length(?)+1)=?||'/') ORDER BY id`, root, root, root)
+func folderSources(ctx context.Context, db *sql.DB, source string) ([]folderSource, error) {
+	rows, err := db.QueryContext(ctx, `SELECT id,library_id FROM library_sources WHERE enabled=1 AND remote_source_id=? ORDER BY id LIMIT 65`, source)
 	if err != nil {
 		return nil, err
 	}
@@ -368,7 +486,7 @@ func (s *Service) StartupSourceScans(ctx context.Context) ([]SourceScanTask, err
 	}
 	tasks := []SourceScanTask{}
 	for _, one := range all {
-		folders, err := folderSources(ctx, s.db, one.root)
+		folders, err := folderSources(ctx, s.db, one.source)
 		if err != nil {
 			return nil, err
 		}
@@ -408,10 +526,10 @@ func (s *Service) MarkSourceScans(ctx context.Context, tasks []SourceScanTask) e
 
 // AnalysisSwitchesTx reads the analysis switches for the remote source that
 // holds a library source's root. `ok` is false for an ordinary local folder.
-func AnalysisSwitchesTx(ctx context.Context, tx *sql.Tx, root string) (AnalysisSwitches, bool, error) {
+func AnalysisSwitchesTx(ctx context.Context, tx *sql.Tx, librarySource string) (AnalysisSwitches, bool, error) {
 	var s AnalysisSwitches
 	var scanInterval int
-	err := tx.QueryRowContext(ctx, `SELECT st.scan_interval_seconds,st.seek_previews,st.chapter_images,st.waveforms,st.loudness,st.checksums FROM remote_source_settings st JOIN remote_sources r ON r.id=st.source_id WHERE r.removed=0 AND (r.root=? OR substr(?,1,length(r.root)+1)=r.root||'/') LIMIT 1`, root, root).Scan(&scanInterval, &s.SeekPreviews, &s.ChapterImages, &s.Waveforms, &s.Loudness, &s.Checksums)
+	err := tx.QueryRowContext(ctx, `SELECT st.scan_interval_seconds,st.seek_previews,st.chapter_images,st.waveforms,st.loudness,st.checksums FROM remote_source_settings st JOIN library_sources s ON s.remote_source_id=st.source_id WHERE s.id=? LIMIT 1`, librarySource).Scan(&scanInterval, &s.SeekPreviews, &s.ChapterImages, &s.Waveforms, &s.Loudness, &s.Checksums)
 	if errors.Is(err, sql.ErrNoRows) {
 		return AnalysisSwitches{}, false, nil
 	}
@@ -444,7 +562,7 @@ func (s AnalysisSwitches) Filter(operations []string) []string {
 			if !s.Loudness {
 				continue
 			}
-		case "checksum", "fingerprint":
+		case "checksum":
 			if !s.Checksums {
 				continue
 			}

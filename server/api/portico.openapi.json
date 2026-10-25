@@ -131016,6 +131016,30 @@
                     "libraryId": {
                       "type": "string"
                     },
+                    "publicationType": {
+                      "properties": {
+                        "source": {
+                          "enum": [
+                            "owner",
+                            "file-metadata"
+                          ],
+                          "type": "string"
+                        },
+                        "value": {
+                          "enum": [
+                            "book",
+                            "magazine",
+                            "newspaper"
+                          ],
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "value",
+                        "source"
+                      ],
+                      "type": "object"
+                    },
                     "series": {
                       "additionalProperties": false,
                       "properties": {
@@ -131204,6 +131228,30 @@
                       "libraryId": {
                         "type": "string"
                       },
+                      "publicationType": {
+                        "properties": {
+                          "source": {
+                            "enum": [
+                              "owner",
+                              "file-metadata"
+                            ],
+                            "type": "string"
+                          },
+                          "value": {
+                            "enum": [
+                              "book",
+                              "magazine",
+                              "newspaper"
+                            ],
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "value",
+                          "source"
+                        ],
+                        "type": "object"
+                      },
                       "series": {
                         "additionalProperties": false,
                         "properties": {
@@ -131327,6 +131375,30 @@
                             },
                             "libraryId": {
                               "type": "string"
+                            },
+                            "publicationType": {
+                              "properties": {
+                                "source": {
+                                  "enum": [
+                                    "owner",
+                                    "file-metadata"
+                                  ],
+                                  "type": "string"
+                                },
+                                "value": {
+                                  "enum": [
+                                    "book",
+                                    "magazine",
+                                    "newspaper"
+                                  ],
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "value",
+                                "source"
+                              ],
+                              "type": "object"
                             },
                             "series": {
                               "additionalProperties": false,
@@ -131469,6 +131541,30 @@
                 "libraryId": {
                   "type": "string"
                 },
+                "publicationType": {
+                  "properties": {
+                    "source": {
+                      "enum": [
+                        "owner",
+                        "file-metadata"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {
+                      "enum": [
+                        "book",
+                        "magazine",
+                        "newspaper"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "source"
+                  ],
+                  "type": "object"
+                },
                 "series": {
                   "additionalProperties": false,
                   "properties": {
@@ -131583,6 +131679,30 @@
                 },
                 "libraryId": {
                   "type": "string"
+                },
+                "publicationType": {
+                  "properties": {
+                    "source": {
+                      "enum": [
+                        "owner",
+                        "file-metadata"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {
+                      "enum": [
+                        "book",
+                        "magazine",
+                        "newspaper"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "source"
+                  ],
+                  "type": "object"
                 },
                 "series": {
                   "additionalProperties": false,
@@ -153672,6 +153792,12 @@
           },
           "settings": {
             "properties": {
+              "cacheApplied": {
+                "type": "boolean"
+              },
+              "cacheError": {
+                "type": "string"
+              },
               "cacheSupported": {
                 "type": "boolean"
               },
@@ -153686,17 +153812,24 @@
               "saved": {
                 "type": "boolean"
               },
+              "scanIntervalObserved": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "sourceId": {
                 "type": "string"
               },
               "values": {
                 "properties": {
                   "cacheBytes": {
+                    "description": "0 disables the read cache; otherwise 64 MiB through 64 GiB.",
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
                   "cacheFloorBytes": {
+                    "description": "0 keeps the mount's current free-space floor; otherwise 1 GiB through 1 TiB.",
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
@@ -153708,6 +153841,12 @@
                     "type": "boolean"
                   },
                   "fullRecheckDays": {
+                    "enum": [
+                      0,
+                      7,
+                      14,
+                      30
+                    ],
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
@@ -153716,6 +153855,14 @@
                     "type": "boolean"
                   },
                   "scanIntervalSeconds": {
+                    "enum": [
+                      0,
+                      900,
+                      3600,
+                      21600,
+                      86400,
+                      604800
+                    ],
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
@@ -153755,6 +153902,8 @@
               "revision",
               "saved",
               "cacheSupported",
+              "cacheApplied",
+              "scanIntervalObserved",
               "values"
             ],
             "type": "object"
@@ -201491,6 +201640,30 @@
               "language": {
                 "type": "string"
               },
+              "publicationType": {
+                "properties": {
+                  "source": {
+                    "enum": [
+                      "owner",
+                      "file-metadata"
+                    ],
+                    "type": "string"
+                  },
+                  "value": {
+                    "enum": [
+                      "book",
+                      "magazine",
+                      "newspaper"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "value",
+                  "source"
+                ],
+                "type": "object"
+              },
               "title": {
                 "type": "string"
               }
@@ -215100,11 +215273,13 @@
           "values": {
             "properties": {
               "cacheBytes": {
+                "description": "0 disables the read cache; otherwise 64 MiB through 64 GiB.",
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
               "cacheFloorBytes": {
+                "description": "0 keeps the mount's current free-space floor; otherwise 1 GiB through 1 TiB.",
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -215116,6 +215291,12 @@
                 "type": "boolean"
               },
               "fullRecheckDays": {
+                "enum": [
+                  0,
+                  7,
+                  14,
+                  30
+                ],
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -215124,6 +215305,14 @@
                 "type": "boolean"
               },
               "scanIntervalSeconds": {
+                "enum": [
+                  0,
+                  900,
+                  3600,
+                  21600,
+                  86400,
+                  604800
+                ],
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -215183,6 +215372,12 @@
           },
           "settings": {
             "properties": {
+              "cacheApplied": {
+                "type": "boolean"
+              },
+              "cacheError": {
+                "type": "string"
+              },
               "cacheSupported": {
                 "type": "boolean"
               },
@@ -215197,17 +215392,24 @@
               "saved": {
                 "type": "boolean"
               },
+              "scanIntervalObserved": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "sourceId": {
                 "type": "string"
               },
               "values": {
                 "properties": {
                   "cacheBytes": {
+                    "description": "0 disables the read cache; otherwise 64 MiB through 64 GiB.",
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
                   "cacheFloorBytes": {
+                    "description": "0 keeps the mount's current free-space floor; otherwise 1 GiB through 1 TiB.",
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
@@ -215219,6 +215421,12 @@
                     "type": "boolean"
                   },
                   "fullRecheckDays": {
+                    "enum": [
+                      0,
+                      7,
+                      14,
+                      30
+                    ],
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
@@ -215227,6 +215435,14 @@
                     "type": "boolean"
                   },
                   "scanIntervalSeconds": {
+                    "enum": [
+                      0,
+                      900,
+                      3600,
+                      21600,
+                      86400,
+                      604800
+                    ],
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
@@ -215266,6 +215482,8 @@
               "revision",
               "saved",
               "cacheSupported",
+              "cacheApplied",
+              "scanIntervalObserved",
               "values"
             ],
             "type": "object"
@@ -420588,6 +420806,30 @@
                           "libraryId": {
                             "type": "string"
                           },
+                          "publicationType": {
+                            "properties": {
+                              "source": {
+                                "enum": [
+                                  "owner",
+                                  "file-metadata"
+                                ],
+                                "type": "string"
+                              },
+                              "value": {
+                                "enum": [
+                                  "book",
+                                  "magazine",
+                                  "newspaper"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "source"
+                            ],
+                            "type": "object"
+                          },
                           "series": {
                             "additionalProperties": false,
                             "properties": {
@@ -469393,6 +469635,30 @@
                               "libraryId": {
                                 "type": "string"
                               },
+                              "publicationType": {
+                                "properties": {
+                                  "source": {
+                                    "enum": [
+                                      "owner",
+                                      "file-metadata"
+                                    ],
+                                    "type": "string"
+                                  },
+                                  "value": {
+                                    "enum": [
+                                      "book",
+                                      "magazine",
+                                      "newspaper"
+                                    ],
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "value",
+                                  "source"
+                                ],
+                                "type": "object"
+                              },
                               "series": {
                                 "additionalProperties": false,
                                 "properties": {
@@ -469663,6 +469929,30 @@
                                 "libraryId": {
                                   "type": "string"
                                 },
+                                "publicationType": {
+                                  "properties": {
+                                    "source": {
+                                      "enum": [
+                                        "owner",
+                                        "file-metadata"
+                                      ],
+                                      "type": "string"
+                                    },
+                                    "value": {
+                                      "enum": [
+                                        "book",
+                                        "magazine",
+                                        "newspaper"
+                                      ],
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "value",
+                                    "source"
+                                  ],
+                                  "type": "object"
+                                },
                                 "series": {
                                   "additionalProperties": false,
                                   "properties": {
@@ -469786,6 +470076,30 @@
                                       },
                                       "libraryId": {
                                         "type": "string"
+                                      },
+                                      "publicationType": {
+                                        "properties": {
+                                          "source": {
+                                            "enum": [
+                                              "owner",
+                                              "file-metadata"
+                                            ],
+                                            "type": "string"
+                                          },
+                                          "value": {
+                                            "enum": [
+                                              "book",
+                                              "magazine",
+                                              "newspaper"
+                                            ],
+                                            "type": "string"
+                                          }
+                                        },
+                                        "required": [
+                                          "value",
+                                          "source"
+                                        ],
+                                        "type": "object"
                                       },
                                       "series": {
                                         "additionalProperties": false,
@@ -470010,6 +470324,30 @@
                           "libraryId": {
                             "type": "string"
                           },
+                          "publicationType": {
+                            "properties": {
+                              "source": {
+                                "enum": [
+                                  "owner",
+                                  "file-metadata"
+                                ],
+                                "type": "string"
+                              },
+                              "value": {
+                                "enum": [
+                                  "book",
+                                  "magazine",
+                                  "newspaper"
+                                ],
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "source"
+                            ],
+                            "type": "object"
+                          },
                           "series": {
                             "additionalProperties": false,
                             "properties": {
@@ -470219,6 +470557,30 @@
                         },
                         "language": {
                           "type": "string"
+                        },
+                        "publicationType": {
+                          "properties": {
+                            "source": {
+                              "enum": [
+                                "owner",
+                                "file-metadata"
+                              ],
+                              "type": "string"
+                            },
+                            "value": {
+                              "enum": [
+                                "book",
+                                "magazine",
+                                "newspaper"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "value",
+                            "source"
+                          ],
+                          "type": "object"
                         },
                         "title": {
                           "type": "string"
@@ -502276,6 +502638,12 @@
                     },
                     "settings": {
                       "properties": {
+                        "cacheApplied": {
+                          "type": "boolean"
+                        },
+                        "cacheError": {
+                          "type": "string"
+                        },
                         "cacheSupported": {
                           "type": "boolean"
                         },
@@ -502290,17 +502658,24 @@
                         "saved": {
                           "type": "boolean"
                         },
+                        "scanIntervalObserved": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
                         "sourceId": {
                           "type": "string"
                         },
                         "values": {
                           "properties": {
                             "cacheBytes": {
+                              "description": "0 disables the read cache; otherwise 64 MiB through 64 GiB.",
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
                             "cacheFloorBytes": {
+                              "description": "0 keeps the mount's current free-space floor; otherwise 1 GiB through 1 TiB.",
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
@@ -502312,6 +502687,12 @@
                               "type": "boolean"
                             },
                             "fullRecheckDays": {
+                              "enum": [
+                                0,
+                                7,
+                                14,
+                                30
+                              ],
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
@@ -502320,6 +502701,14 @@
                               "type": "boolean"
                             },
                             "scanIntervalSeconds": {
+                              "enum": [
+                                0,
+                                900,
+                                3600,
+                                21600,
+                                86400,
+                                604800
+                              ],
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
@@ -502359,6 +502748,8 @@
                         "revision",
                         "saved",
                         "cacheSupported",
+                        "cacheApplied",
+                        "scanIntervalObserved",
                         "values"
                       ],
                       "type": "object"
@@ -502450,11 +502841,13 @@
                   "values": {
                     "properties": {
                       "cacheBytes": {
+                        "description": "0 disables the read cache; otherwise 64 MiB through 64 GiB.",
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
                       "cacheFloorBytes": {
+                        "description": "0 keeps the mount's current free-space floor; otherwise 1 GiB through 1 TiB.",
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
@@ -502466,6 +502859,12 @@
                         "type": "boolean"
                       },
                       "fullRecheckDays": {
+                        "enum": [
+                          0,
+                          7,
+                          14,
+                          30
+                        ],
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
@@ -502474,6 +502873,14 @@
                         "type": "boolean"
                       },
                       "scanIntervalSeconds": {
+                        "enum": [
+                          0,
+                          900,
+                          3600,
+                          21600,
+                          86400,
+                          604800
+                        ],
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
@@ -502541,6 +502948,12 @@
                     },
                     "settings": {
                       "properties": {
+                        "cacheApplied": {
+                          "type": "boolean"
+                        },
+                        "cacheError": {
+                          "type": "string"
+                        },
                         "cacheSupported": {
                           "type": "boolean"
                         },
@@ -502555,17 +502968,24 @@
                         "saved": {
                           "type": "boolean"
                         },
+                        "scanIntervalObserved": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
                         "sourceId": {
                           "type": "string"
                         },
                         "values": {
                           "properties": {
                             "cacheBytes": {
+                              "description": "0 disables the read cache; otherwise 64 MiB through 64 GiB.",
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
                             "cacheFloorBytes": {
+                              "description": "0 keeps the mount's current free-space floor; otherwise 1 GiB through 1 TiB.",
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
@@ -502577,6 +502997,12 @@
                               "type": "boolean"
                             },
                             "fullRecheckDays": {
+                              "enum": [
+                                0,
+                                7,
+                                14,
+                                30
+                              ],
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
@@ -502585,6 +503011,14 @@
                               "type": "boolean"
                             },
                             "scanIntervalSeconds": {
+                              "enum": [
+                                0,
+                                900,
+                                3600,
+                                21600,
+                                86400,
+                                604800
+                              ],
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
@@ -502624,6 +503058,8 @@
                         "revision",
                         "saved",
                         "cacheSupported",
+                        "cacheApplied",
+                        "scanIntervalObserved",
                         "values"
                       ],
                       "type": "object"

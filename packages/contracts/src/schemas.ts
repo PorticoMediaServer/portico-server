@@ -126662,6 +126662,30 @@ export const schemas = {
                 "libraryId": {
                   "type": "string"
                 },
+                "publicationType": {
+                  "properties": {
+                    "source": {
+                      "enum": [
+                        "owner",
+                        "file-metadata"
+                      ],
+                      "type": "string"
+                    },
+                    "value": {
+                      "enum": [
+                        "book",
+                        "magazine",
+                        "newspaper"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "source"
+                  ],
+                  "type": "object"
+                },
                 "series": {
                   "additionalProperties": false,
                   "properties": {
@@ -126850,6 +126874,30 @@ export const schemas = {
                   "libraryId": {
                     "type": "string"
                   },
+                  "publicationType": {
+                    "properties": {
+                      "source": {
+                        "enum": [
+                          "owner",
+                          "file-metadata"
+                        ],
+                        "type": "string"
+                      },
+                      "value": {
+                        "enum": [
+                          "book",
+                          "magazine",
+                          "newspaper"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "source"
+                    ],
+                    "type": "object"
+                  },
                   "series": {
                     "additionalProperties": false,
                     "properties": {
@@ -126973,6 +127021,30 @@ export const schemas = {
                         },
                         "libraryId": {
                           "type": "string"
+                        },
+                        "publicationType": {
+                          "properties": {
+                            "source": {
+                              "enum": [
+                                "owner",
+                                "file-metadata"
+                              ],
+                              "type": "string"
+                            },
+                            "value": {
+                              "enum": [
+                                "book",
+                                "magazine",
+                                "newspaper"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "value",
+                            "source"
+                          ],
+                          "type": "object"
                         },
                         "series": {
                           "additionalProperties": false,
@@ -127115,6 +127187,30 @@ export const schemas = {
             "libraryId": {
               "type": "string"
             },
+            "publicationType": {
+              "properties": {
+                "source": {
+                  "enum": [
+                    "owner",
+                    "file-metadata"
+                  ],
+                  "type": "string"
+                },
+                "value": {
+                  "enum": [
+                    "book",
+                    "magazine",
+                    "newspaper"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "source"
+              ],
+              "type": "object"
+            },
             "series": {
               "additionalProperties": false,
               "properties": {
@@ -127229,6 +127325,30 @@ export const schemas = {
             },
             "libraryId": {
               "type": "string"
+            },
+            "publicationType": {
+              "properties": {
+                "source": {
+                  "enum": [
+                    "owner",
+                    "file-metadata"
+                  ],
+                  "type": "string"
+                },
+                "value": {
+                  "enum": [
+                    "book",
+                    "magazine",
+                    "newspaper"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "value",
+                "source"
+              ],
+              "type": "object"
             },
             "series": {
               "additionalProperties": false,
@@ -148766,6 +148886,12 @@ export const schemas = {
       },
       "settings": {
         "properties": {
+          "cacheApplied": {
+            "type": "boolean"
+          },
+          "cacheError": {
+            "type": "string"
+          },
           "cacheSupported": {
             "type": "boolean"
           },
@@ -148780,17 +148906,24 @@ export const schemas = {
           "saved": {
             "type": "boolean"
           },
+          "scanIntervalObserved": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "sourceId": {
             "type": "string"
           },
           "values": {
             "properties": {
               "cacheBytes": {
+                "description": "0 disables the read cache; otherwise 64 MiB through 64 GiB.",
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
               "cacheFloorBytes": {
+                "description": "0 keeps the mount's current free-space floor; otherwise 1 GiB through 1 TiB.",
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -148802,6 +148935,12 @@ export const schemas = {
                 "type": "boolean"
               },
               "fullRecheckDays": {
+                "enum": [
+                  0,
+                  7,
+                  14,
+                  30
+                ],
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -148810,6 +148949,14 @@ export const schemas = {
                 "type": "boolean"
               },
               "scanIntervalSeconds": {
+                "enum": [
+                  0,
+                  900,
+                  3600,
+                  21600,
+                  86400,
+                  604800
+                ],
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -148849,6 +148996,8 @@ export const schemas = {
           "revision",
           "saved",
           "cacheSupported",
+          "cacheApplied",
+          "scanIntervalObserved",
           "values"
         ],
         "type": "object"
@@ -182821,6 +182970,30 @@ export const schemas = {
           "language": {
             "type": "string"
           },
+          "publicationType": {
+            "properties": {
+              "source": {
+                "enum": [
+                  "owner",
+                  "file-metadata"
+                ],
+                "type": "string"
+              },
+              "value": {
+                "enum": [
+                  "book",
+                  "magazine",
+                  "newspaper"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "value",
+              "source"
+            ],
+            "type": "object"
+          },
           "title": {
             "type": "string"
           }
@@ -196244,11 +196417,13 @@ export const schemas = {
       "values": {
         "properties": {
           "cacheBytes": {
+            "description": "0 disables the read cache; otherwise 64 MiB through 64 GiB.",
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
           },
           "cacheFloorBytes": {
+            "description": "0 keeps the mount's current free-space floor; otherwise 1 GiB through 1 TiB.",
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -196260,6 +196435,12 @@ export const schemas = {
             "type": "boolean"
           },
           "fullRecheckDays": {
+            "enum": [
+              0,
+              7,
+              14,
+              30
+            ],
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -196268,6 +196449,14 @@ export const schemas = {
             "type": "boolean"
           },
           "scanIntervalSeconds": {
+            "enum": [
+              0,
+              900,
+              3600,
+              21600,
+              86400,
+              604800
+            ],
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -196327,6 +196516,12 @@ export const schemas = {
       },
       "settings": {
         "properties": {
+          "cacheApplied": {
+            "type": "boolean"
+          },
+          "cacheError": {
+            "type": "string"
+          },
           "cacheSupported": {
             "type": "boolean"
           },
@@ -196341,17 +196536,24 @@ export const schemas = {
           "saved": {
             "type": "boolean"
           },
+          "scanIntervalObserved": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "sourceId": {
             "type": "string"
           },
           "values": {
             "properties": {
               "cacheBytes": {
+                "description": "0 disables the read cache; otherwise 64 MiB through 64 GiB.",
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
               "cacheFloorBytes": {
+                "description": "0 keeps the mount's current free-space floor; otherwise 1 GiB through 1 TiB.",
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -196363,6 +196565,12 @@ export const schemas = {
                 "type": "boolean"
               },
               "fullRecheckDays": {
+                "enum": [
+                  0,
+                  7,
+                  14,
+                  30
+                ],
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -196371,6 +196579,14 @@ export const schemas = {
                 "type": "boolean"
               },
               "scanIntervalSeconds": {
+                "enum": [
+                  0,
+                  900,
+                  3600,
+                  21600,
+                  86400,
+                  604800
+                ],
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -196410,6 +196626,8 @@ export const schemas = {
           "revision",
           "saved",
           "cacheSupported",
+          "cacheApplied",
+          "scanIntervalObserved",
           "values"
         ],
         "type": "object"

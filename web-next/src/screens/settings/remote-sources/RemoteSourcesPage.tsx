@@ -460,7 +460,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
       <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.label')}<small className={styles.note}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.help')}</small></span><Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.label')} checked={values.wholeFileReads} disabled={busy} onCheckedChange={value => setValues({...values, wholeFileReads: value})}/></label>
       <details className={styles.advDisclosure}>
         <summary>{t('next.remoteSources.advanced')}</summary>
-        <SourceAdvancedRows values={advancedValues} cacheSupported={!!sourceNow?.mountId} disabled={busy}
+        <SourceAdvancedRows values={advancedValues} cacheSupported={!!sourceNow?.mountId} cacheApplied cacheError={undefined} observedInterval={0} disabled={busy}
           onChange={next => {setAdvancedTouched(true);setAdvancedValues(next);}}/>
       </details>
     </>}
@@ -701,8 +701,9 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, isCurrent
     <section className={styles.group}><h3>{t('next.remoteSources.advanced')}</h3>
       <p className={styles.note}>{t('next.remoteSources.advancedHelp')}</p>
       {advanced
-        ? <><SourceAdvancedRows values={advanced.values} cacheSupported={advanced.settings?.cacheSupported ?? false} disabled={advancedBusy}
-          onChange={values => setAdvanced(current => current && {...current, values})}/>
+        ? <><SourceAdvancedRows values={advanced.values} cacheSupported={advanced.settings?.cacheSupported ?? false}
+          cacheApplied={advanced.settings?.cacheApplied ?? true} cacheError={advanced.settings?.cacheError} observedInterval={advanced.settings?.scanIntervalObserved ?? 0}
+          disabled={advancedBusy} onChange={values => setAdvanced(current => current && {...current, values})}/>
           <Button size="compact" variant="primary" disabled={advancedBusy} onClick={() => void saveAdvanced()}>{t('next.remoteSources.save')}</Button></>
         : <p className={styles.muted} role="status">{t('next.remoteSources.loading')}</p>}
       {advancedNote && <p className={styles.note} role="status">{advancedNote}</p>}

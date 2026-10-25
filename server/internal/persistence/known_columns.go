@@ -2661,6 +2661,7 @@ library_sources.last_progress_at
 library_sources.library_id
 library_sources.name
 library_sources.next_scan_at
+library_sources.remote_source_id
 library_sources.root
 library_sources.root_identity
 listening_book_groups.id
@@ -2885,6 +2886,13 @@ lyric_fetch_runs.published
 lyric_fetch_runs.skipped
 lyric_fetch_runs.state
 lyric_fetch_runs.updated_ms
+lyric_library_selections.actor
+lyric_library_selections.asset_id
+lyric_library_selections.item_id
+lyric_library_selections.lyric_revision
+lyric_library_selections.resource_id
+lyric_library_selections.revision
+lyric_library_selections.source_version
 lyric_resources.account_id
 lyric_resources.asset_id
 lyric_resources.authority
@@ -4574,6 +4582,8 @@ reading_attribution_members.item_id
 reading_attribution_members.library_id
 reading_attribution_members.number_value
 reading_attribution_members.numbered_order
+reading_attribution_members.publication_type
+reading_attribution_members.publication_type_source
 reading_attribution_members.series_id
 reading_attribution_members.series_key
 reading_attribution_members.series_source
@@ -4585,6 +4595,7 @@ reading_attribution_state.input_generation
 reading_attribution_state.library_id
 reading_attribution_state.namespace
 reading_attribution_state.phase
+reading_attribution_state.publication_rule_version
 reading_attribution_state.ready_generation
 reading_attribution_state.served_ms
 reading_progress.asset_id
@@ -4598,6 +4609,16 @@ reading_progress.progression
 reading_progress.revision
 reading_progress.section
 reading_progress.source_revision
+reading_publication_types.asset_id
+reading_publication_types.classifier_version
+reading_publication_types.evidence_complete
+reading_publication_types.inventory_object_id
+reading_publication_types.item_id
+reading_publication_types.publication_type
+reading_publication_types.source_field
+reading_publication_types.source_format
+reading_publication_types.source_raw_json
+reading_publication_types.source_revision
 reading_publications.asset_id
 reading_publications.format
 reading_publications.item_id
@@ -4699,6 +4720,8 @@ remote_source_read_profiles.revision
 remote_source_read_profiles.scan_depth
 remote_source_read_profiles.source_id
 remote_source_read_profiles.whole_file_reads
+remote_source_settings.cache_applied_bytes
+remote_source_settings.cache_applied_floor_bytes
 remote_source_settings.cache_bytes
 remote_source_settings.cache_floor_bytes
 remote_source_settings.chapter_images

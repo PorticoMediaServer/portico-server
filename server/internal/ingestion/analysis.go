@@ -72,7 +72,7 @@ func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source ca
 	}
 	// A remote source's own page can switch whole-file analysis stages off for
 	// the files found through it. Local folders keep the library's policy.
-	if switches, ok, e := remotesources.AnalysisSwitchesTx(ctx, tx, source.ResolvedPath); e != nil {
+	if switches, ok, e := remotesources.AnalysisSwitchesTx(ctx, tx, source.ID); e != nil {
 		return e
 	} else if ok {
 		required = switches.Filter(required)

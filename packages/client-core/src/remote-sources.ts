@@ -42,7 +42,7 @@ export type RemoteSourceStatus=Readonly<{sourceId:string;generation:string;state
 /** The drawn Advanced page: how a source's folders are checked, the disk its
  * read cache may use, and which analysis stages run for files found through it. */
 export type SourceAdvanced=Readonly<{scanIntervalSeconds:number;watchForChanges:boolean;scanOnStart:boolean;fullRecheckDays:number;cacheBytes:number;cacheFloorBytes:number;seekPreviews:boolean;chapterImages:boolean;waveforms:boolean;loudness:boolean;checksums:boolean}>;
-export type SourceAdvancedSettings=Readonly<{sourceId:string;generation:string;revision:number;saved:boolean;cacheSupported:boolean;values:SourceAdvanced}>;
+export type SourceAdvancedSettings=Readonly<{sourceId:string;generation:string;revision:number;saved:boolean;cacheSupported:boolean;cacheApplied:boolean;cacheError?:string;scanIntervalObserved:number;values:SourceAdvanced}>;
 const sourceReadPresets:Readonly<Record<SourceReadPreset,SourceReadValues>>=Object.freeze({
  list:{scanDepth:'file_list_only',wholeFileReads:false,connections:2,requestsPerSecond:2,bytesPerSecond:0},
  once:{scanDepth:'basic',wholeFileReads:false,connections:4,requestsPerSecond:4,bytesPerSecond:0},
@@ -90,8 +90,9 @@ function sourceAdvanced(raw:unknown):SourceAdvanced{
  return Object.freeze({scanIntervalSeconds,watchForChanges,scanOnStart,fullRecheckDays,cacheBytes,cacheFloorBytes,seekPreviews,chapterImages,waveforms,loudness,checksums}) as SourceAdvanced;
 }
 function sourceAdvancedSettings(raw:unknown,id:string):SourceAdvancedSettings{
- if(!record(raw)||raw.sourceId!==id||!text(raw.generation,64)||!raw.generation||!integer(raw.revision)||typeof raw.saved!=='boolean'||typeof raw.cacheSupported!=='boolean')invalid();
- return Object.freeze({sourceId:id,generation:raw.generation,revision:raw.revision,saved:raw.saved,cacheSupported:raw.cacheSupported,values:sourceAdvanced(raw.values)});
+ if(!record(raw)||raw.sourceId!==id||!text(raw.generation,64)||!raw.generation||!integer(raw.revision)||typeof raw.saved!=='boolean'||typeof raw.cacheSupported!=='boolean'||typeof raw.cacheApplied!=='boolean'||!integer(raw.scanIntervalObserved))invalid();
+ if(raw.cacheError!==undefined&&!text(raw.cacheError,2048))invalid();
+ return Object.freeze({sourceId:id,generation:raw.generation,revision:raw.revision,saved:raw.saved,cacheSupported:raw.cacheSupported,cacheApplied:raw.cacheApplied,...(raw.cacheError===undefined?{}:{cacheError:raw.cacheError as string}),scanIntervalObserved:raw.scanIntervalObserved,values:sourceAdvanced(raw.values)});
 }
 function remoteSourceStatus(raw:unknown,id:string):RemoteSourceStatus{
  if(!record(raw)||raw.sourceId!==id||!text(raw.generation,64)||!raw.generation||!text(raw.state,100)||!text(raw.rangeSupport,32)||!text(raw.lastCheckedAt,64)||!integer(raw.connectionsInUse)||!integer(raw.playbackReads)||!integer(raw.analysisReads)||!integer(raw.scanIntervalSeconds)||!Array.isArray(raw.libraries)||raw.libraries.length>10||typeof raw.librariesTruncated!=='boolean')invalid();

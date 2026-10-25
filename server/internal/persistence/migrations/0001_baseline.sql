@@ -2095,6 +2095,7 @@ CREATE TABLE library_sources (
  interval_seconds INTEGER NOT NULL DEFAULT 0 CHECK(interval_seconds=0 OR interval_seconds>=900),
  next_scan_at TEXT NOT NULL DEFAULT '', last_complete_job TEXT NOT NULL DEFAULT '',
  last_complete_at TEXT NOT NULL DEFAULT '', last_integrity_at TEXT NOT NULL DEFAULT '', changes_pruned_sequence INTEGER NOT NULL DEFAULT 0, last_progress_at TEXT NOT NULL DEFAULT '',
+ remote_source_id TEXT NOT NULL DEFAULT '' REFERENCES remote_sources(id),
  UNIQUE(library_id,root)
 ) STRICT;
 CREATE TABLE library_scan_policies (
@@ -3557,8 +3558,10 @@ CREATE TABLE remote_source_settings(
  full_recheck_days INTEGER NOT NULL CHECK(full_recheck_days IN(0,7,14,30)),
  last_full_recheck_ms INTEGER NOT NULL DEFAULT 0 CHECK(last_full_recheck_ms>=0),
  last_watch_ms INTEGER NOT NULL DEFAULT 0 CHECK(last_watch_ms>=0),
- cache_bytes INTEGER NOT NULL DEFAULT 0 CHECK(cache_bytes>=0 AND cache_bytes<=68719476736),
- cache_floor_bytes INTEGER NOT NULL DEFAULT 0 CHECK(cache_floor_bytes>=0 AND cache_floor_bytes<=1099511627776),
+ cache_bytes INTEGER NOT NULL DEFAULT 0 CHECK(cache_bytes=0 OR (cache_bytes BETWEEN 67108864 AND 68719476736)),
+ cache_floor_bytes INTEGER NOT NULL DEFAULT 0 CHECK(cache_floor_bytes=0 OR (cache_floor_bytes BETWEEN 1073741824 AND 1099511627776)),
+ cache_applied_bytes INTEGER NOT NULL DEFAULT 0 CHECK(cache_applied_bytes>=0),
+ cache_applied_floor_bytes INTEGER NOT NULL DEFAULT 0 CHECK(cache_applied_floor_bytes>=0),
  seek_previews INTEGER NOT NULL CHECK(seek_previews IN(0,1)),
  chapter_images INTEGER NOT NULL CHECK(chapter_images IN(0,1)),
  waveforms INTEGER NOT NULL CHECK(waveforms IN(0,1)),
@@ -4291,6 +4294,7 @@ CREATE INDEX authorization_families_account ON authorization_session_families(au
 CREATE INDEX media_analysis_item_candidates ON media_analysis_item_mappings(item_id,asset_id);
 CREATE INDEX library_sources_due ON library_sources(enabled,next_scan_at,id);
 CREATE INDEX library_sources_library ON library_sources(library_id,id);
+CREATE INDEX library_sources_remote ON library_sources(remote_source_id,id);
 CREATE INDEX inventory_runs_source ON inventory_runs(source_id,job_id);
 CREATE INDEX inventory_runs_retention ON inventory_runs(source_id,finished_at,job_id);
 CREATE INDEX inventory_runs_turn ON inventory_runs(last_turn,job_id);

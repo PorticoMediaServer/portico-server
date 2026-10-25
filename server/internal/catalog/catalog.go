@@ -173,7 +173,7 @@ func (s *Service) CreateAuthorizedThen(ctx context.Context, name, kind, path str
 		}
 		return l, e
 	}
-	if _, e = tx.ExecContext(ctx, `UPDATE library_sources SET configured_root=?,root_identity=?,identity_confirmed=1,kind=?,classification=? WHERE id=?`, path, storage.RootIdentity(observed), s.sourceKind(observed.Path), s.sourceClassification(observed.Path), l.ID); e != nil {
+	if _, e = tx.ExecContext(ctx, `UPDATE library_sources SET configured_root=?,root_identity=?,identity_confirmed=1,kind=?,classification=?,remote_source_id=`+remoteSourceIDExpr+` WHERE id=?`, path, storage.RootIdentity(observed), s.sourceKind(observed.Path), s.sourceClassification(observed.Path), path, path, l.ID); e != nil {
 		return l, e
 	}
 	if created != nil {
