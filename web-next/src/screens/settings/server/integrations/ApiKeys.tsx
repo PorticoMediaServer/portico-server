@@ -1,7 +1,9 @@
-import {useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
 import type {ApiCredential, ApiScope, IssuedApiCredential} from '@core/api-access.ts';
 import {EXPIRY_DAYS, chosenScopes, credentialState, credentialWorks, expiryInstant, expiryLabel, scopeTicked, scopesText, type ExpiryDays} from '@core/server-admin/api-words.ts';
+import {useRouterState} from '@tanstack/react-router';
+import {Tabs} from '../../../../kit/controls/Choices';
 import {Button, Select, TextField} from '../../../../kit/controls';
 import {Dialog} from '../../../../kit/overlays/Dialog';
 import {Icon} from '../../../../kit/Icon';
@@ -18,7 +20,13 @@ type Props = Readonly<{source: SettingsApiKeysSource; webhooks: SettingsWebhooks
 
 /** The owner's real integration sources; advanced settings retain their
  * existing controller, while Assistants invokes this same key creator. */
+type IntegrationsTab = 'keys' | 'webhooks' | 'assistants';
+const tabForRow = (row: string | null): IntegrationsTab => row === 'integrations.webhooks' ? 'webhooks' : row?.startsWith('integrations.assistant') ? 'assistants' : 'keys';
+
 export function IntegrationsPage({source, webhooks, baseUrl, isCurrent, reportError, otherRows, advancedRows}: Props) {
+  const requestedRow = useRouterState({select: state => new URLSearchParams(state.location.searchStr).get('row')});
+  const [tab, setTab] = useState<IntegrationsTab>(() => tabForRow(requestedRow));
+  useEffect(() => {setTab(tabForRow(requestedRow));}, [requestedRow]);
   const state = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
   const [creating, setCreating] = useState(false), [name, setName] = useState(''), [ticked, setTicked] = useState<ReadonlySet<ApiScope>>(new Set()), [days, setDays] = useState<ExpiryDays>(0);
   const [issued, setIssued] = useState<IssuedCard>(), [copied, setCopied] = useState(false), [ended, setEnded] = useState(false), [revoking, setRevoking] = useState<ApiCredential>();
@@ -77,7 +85,8 @@ export function IntegrationsPage({source, webhooks, baseUrl, isCurrent, reportEr
     </li>;
   };
   return <div className={styles.page}>
-    <section id="integrations.apiKeys" aria-labelledby="api-keys-title">
+    <Tabs aria-label={t('next.settingsSpec.server.integrations.title')} value={tab} onValueChange={value => {if (value === 'keys' || value === 'webhooks' || value === 'assistants') setTab(value);}} items={[
+      {value: 'keys', label: t('web.access.apiKeys'), panel: <section id="integrations.apiKeys" aria-labelledby="api-keys-title">
       <div className={styles.heading}><h3 id="api-keys-title">{t('web.access.apiKeys')}</h3><Button size="xs" variant="glass" disabled={busy || !state.options} onClick={start}>{t('web.access.createKey')}</Button></div>
       <p className={styles.lede}>{t('server.access.keyLede')}</p>
       {state.error && <div className={styles.failure} role="alert"><span>{t(state.error === 'read' ? 'error.unavailable' : 'error.unconfirmedChange')}</span><Button size="xs" variant="glass" disabled={busy} onClick={() => {if (isCurrent()) void source.load();}}>{t('action.refresh')}</Button></div>}
@@ -88,10 +97,11 @@ export function IntegrationsPage({source, webhooks, baseUrl, isCurrent, reportEr
           <Button size="xs" variant="glass" disabled={busy || !state.page.nextCursor} onClick={() => {const next = state.page?.nextCursor;if (next) void page(next, [...cursors, next]);}}>{t('web.pager.next')}</Button></div>}
       </>}
       <p className={styles.footnote}>{t('api.tokens.lifetime')}</p>
-    </section>
-    <WebhooksPanel source={webhooks} isCurrent={isCurrent} />
+    </section>},
+      {value: 'webhooks', label: t('api.webhooks.title'), panel: <WebhooksPanel source={webhooks} isCurrent={isCurrent} />},
+      {value: 'assistants', label: t('api.mcp.tab'), panel: <div id="integrations.assistantAddress"><div id="integrations.assistantKey"><AssistantsPanel baseUrl={baseUrl} isCurrent={isCurrent} openCreateKey={start} reportError={reportError} /></div></div>},
+    ]} />
     {otherRows}
-    <div id="integrations.assistantAddress"><div id="integrations.assistantKey"><AssistantsPanel baseUrl={baseUrl} isCurrent={isCurrent} openCreateKey={start} reportError={reportError} /></div></div>
     {advancedRows}
     <Dialog open={live && creating} onOpenChange={open => {if (!open && !state.busy) closeForm();}} title={t('web.access.createKeyTitle')} width={500}
       dismissOnOutsidePress={!state.busy} dismissOnBack={!state.busy} showCloseButton={!state.busy}

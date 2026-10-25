@@ -2328,6 +2328,7 @@ export const webMessages = {
   'api.webhooks.event.update.available': 'A new version of Portico is available',
   'api.webhooks.event.server.started': 'The server starts',
   'api.mcp.title': 'Assistants (MCP)',
+  'api.mcp.tab': 'Assistants',
   'api.mcp.lede': 'Let an AI assistant work with this server. Give it this address and an API key or personal access token; it can use only what that key allows.',
   'api.mcp.address': 'Address to give the assistant',
   'api.mcp.addressHelp': 'This is the address you are using now. An assistant running somewhere else needs an address that reaches this server from there.',
