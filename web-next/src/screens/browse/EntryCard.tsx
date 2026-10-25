@@ -50,7 +50,10 @@ export function BrowseEntryCard({entry, actions, artwork, env, width, family, mi
   // desktop-read 2/2c: a Reading title is drawn as a book cover — 2:3, its own left spine, and
   // the typographic generated cover when the file carries no artwork. It never takes a play
   // action: an ebook or comic has no playback, and opening it is the detail page's own action.
-  if (entry.kind === 'ebook' || entry.kind === 'comic') return <CoverCard {...props} onPlay={undefined} kind={entry.kind === 'comic' ? 'comic' : 'book'} artwork={source}
+  // The finished check is this profile's own mark on this exact row, read from the parser's
+  // checked readingMark; the video watched flag and an explicit unread mark never draw it.
+  if (entry.kind === 'ebook' || entry.kind === 'comic') return <CoverCard {...props} onPlay={undefined} watched={entry.readingMark?.read === true}
+    watchedLabel={entry.readingMark?.read === true ? defaultI18n.t('next.cards.finished') : undefined} kind={entry.kind === 'comic' ? 'comic' : 'book'} artwork={source}
     generated={{title, glyph: Array.from(title.trim())[0] ?? '', tint: generatedCoverTint(title)}}/>;
   return shape === 'square' ? <SquareCard {...props} artwork={source} ambient={backdrops ? artwork.ambient(entry.posterUrl, {group, order}) : undefined} variant={entry.kind === 'book' || entry.kind === 'audiobook_file' ? 'audiobook' : 'music'}/> : <PosterCard {...props} artwork={source}/>;
 }

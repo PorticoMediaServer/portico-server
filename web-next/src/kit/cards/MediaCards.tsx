@@ -60,12 +60,14 @@ export type CoverCardProps = MediaCardProps & Readonly<{
   kind?: 'book' | 'comic' | 'magazine' | 'newspaper';
   generated?: Omit<Parameters<typeof GeneratedCover>[0], 'className' | 'style'>;
   titleLines?: 1 | 2;
+  /** The accessible name for the bare finished check; a book says "Finished", video keeps "Watched". */
+  watchedLabel?: string;
 }>;
-export function CoverCard({kind = 'book', generated, titleLines, ...props}: CoverCardProps) {
+export function CoverCard({kind = 'book', generated, titleLines, watchedLabel, ...props}: CoverCardProps) {
   const book = kind === 'book' || kind === 'comic';
   const artworkRef = useRef<HTMLSpanElement>(null);
   return <CardFrame {...props} artworkRef={artworkRef} playIconSize={20} kind="cover" playIcon="i-book" className={cx(book && !generated && styles.spine, !book && styles.periodical, kind === 'newspaper' && styles.newspaper, props.className)}>
-    <span ref={artworkRef} className={styles.art}><CardArtwork {...props} position={kind === 'newspaper' ? 'top' : props.position} fallback={generated ? <GeneratedCover {...generated} selectionClearance={props.selection?.active || props.selection?.checked} /> : props.fallback} /><CardBadges watched={props.watched} isNew={props.isNew} progress={props.model.progress} /></span><CardCaption model={props.model} extraCaption={props.extraCaption} textPresentation={props.textPresentation} titleLines={titleLines} />
+    <span ref={artworkRef} className={styles.art}><CardArtwork {...props} position={kind === 'newspaper' ? 'top' : props.position} fallback={generated ? <GeneratedCover {...generated} selectionClearance={props.selection?.active || props.selection?.checked} /> : props.fallback} /><CardBadges watched={props.watched} watchedLabel={watchedLabel} isNew={props.isNew} progress={props.model.progress} /></span><CardCaption model={props.model} extraCaption={props.extraCaption} textPresentation={props.textPresentation} titleLines={titleLines} />
   </CardFrame>;
 }
 
