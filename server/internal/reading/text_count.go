@@ -31,9 +31,8 @@ func countEPUBText(ctx context.Context, e *EPUB) (*int64, error) {
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
 			}
-			if errors.Is(err, ErrInvalid) || errors.Is(err, ErrLimit) {
-				return nil, nil
-			}
+			// Only complete acquired bytes can establish malformed/unsupported text.
+			// Even a length/format refusal here may wrap a truncated provider read.
 			return nil, err
 		}
 		total += int64(len(data))
