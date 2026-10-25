@@ -17,9 +17,9 @@ let sequence=0;
 export function BlockPresets(props:Props){
   const {source,isCurrent,close}=props,state=useSyncExternalStore(source.subscribe,source.getSnapshot,source.getSnapshot);
   const [form,setForm]=useState<Opening>(),[removing,setRemoving]=useState<BlockPreset>();
-  const scope=useMemo(()=>({active:true,form:undefined as Opening|undefined,removing:undefined as BlockPreset|undefined}),[source]);
+  const scope=useMemo(()=>({active:true,source,form:undefined as Opening|undefined,removing:undefined as BlockPreset|undefined}),[source]);
   useLayoutEffect(()=>{scope.active=true;return()=>{scope.active=false;scope.form=undefined;scope.removing=undefined;};},[scope]);
-  const current=useCallback(()=>scope.active&&isCurrent(),[scope,isCurrent]);
+  const current=useCallback(()=>scope.active&&scope.source===source&&isCurrent(),[scope,source,isCurrent]);
   const formCurrent=useCallback(()=>current()&&!!form&&scope.form===form,[current,form,scope]);
   useEffect(()=>{if(!source.getSnapshot().loaded&&!source.getSnapshot().pending)void source.load();},[source]);
   const open=(original?:BlockPreset)=>{if(!current()||source.getSnapshot().busy||source.getSnapshot().pending||source.getSnapshot().reconcile||original&&!source.getSnapshot().items.includes(original))return;const next={id:++sequence,original};scope.form=next;setForm(next);};
