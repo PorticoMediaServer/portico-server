@@ -15,7 +15,7 @@ export function RecordingStorage({controller, embedded = false}: {embedded?: boo
   const measuredBytes = (value: number) => measured ? defaultI18n.bytes(value) : t('server.usage.notMeasuredYet');
   const dirty = !!storage && !!draft && JSON.stringify(storage.policy) !== JSON.stringify(draft);
   const number = (id: MessageId, help: MessageId, value: number, max: number, set: (value: number) => void, unit?: MessageId) => <SettingsRow label={t(id)} help={t(help)}>
-    <TextField type="number" variant="setting" value={value} min={0} max={max} step={1} required disabled={state.saving} aria-label={t(id)} onChange={event => {const value = event.currentTarget.valueAsNumber;if (controller.isActive() && Number.isSafeInteger(value) && value >= 0 && value <= max) set(value);}}/>{unit && <span className={styles.unit}>{t(unit)}</span>}</SettingsRow>;
+    <TextField type="number" variant="setting" value={value} min={0} max={max} step={1} required disabled={state.loading || state.saving} aria-label={t(id)} onChange={event => {const value = event.currentTarget.valueAsNumber;if (controller.isActive() && Number.isSafeInteger(value) && value >= 0 && value <= max) set(value);}}/>{unit && <span className={styles.unit}>{t(unit)}</span>}</SettingsRow>;
   return <form onSubmit={event => {event.preventDefault();if (!embedded && controller.isActive() && event.currentTarget.reportValidity()) void controller.save();}}>
     <section className={styles.section}><div className={styles.heading}><h3>{t('channels.recordings')}</h3><div className={styles.actions}>
       {storage?.measurement.measuredAt && <span className={styles.fresh}>{t('freshness.measured', {when: defaultI18n.relativeTime(Date.parse(storage.measurement.measuredAt))})}</span>}

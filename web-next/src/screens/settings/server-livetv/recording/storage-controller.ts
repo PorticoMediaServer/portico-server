@@ -20,7 +20,7 @@ export class RecordingStorageController extends OwnerStore<StorageSnapshot> {
     } catch (error) {if (this.valid(attempt)) this.fail(error, {...this.snapshot, loading: false, error: errorFacts(error)});}
   }
   edit(patch: Partial<Omit<StoragePolicy, 'revision'>>) {
-    if (!this.isActive() || this.snapshot.saving || !this.snapshot.draft) return;
+    if (!this.isActive() || this.snapshot.loading || this.snapshot.saving || !this.snapshot.draft) return;
     const draft = {...this.snapshot.draft, ...patch};if (!validStoragePolicy(draft)) return;
     this.publish({...this.snapshot, draft, error: undefined});
   }
