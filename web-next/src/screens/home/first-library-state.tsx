@@ -49,6 +49,6 @@ export function FirstLibraryState({captured}: {captured: ProtectedLibraryScreen}
         </button>)}</div>
       </section>}/>
     {kind && <AddLibrary key={kind} initialKind={kind} open onOpenChange={open => {if (!open) setKind(undefined);}}
-      api={resources.life.api} service={resources.service} onError={context.effects.reportError}/>}
+      api={resources.life.api} service={resources.service} onError={context.effects.reportError} serverName={captured.context.facts.serverName}/>}
   </>;
 }

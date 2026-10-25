@@ -21,8 +21,8 @@ const t = defaultI18n.t;
  * row the owner chose, and the page never shows scan progress or counts.
  *
 */
-export function LibrariesPanel({api, service, onEdit, onError}: {
-  api: LibraryContentApi; service: LibraryManagementService; onEdit: (libraryId: string) => void; onError: (error: unknown) => void;
+export function LibrariesPanel({api, service, onEdit, onError, serverName}: {
+  api: LibraryContentApi; service: LibraryManagementService; onEdit: (libraryId: string) => void; onError: (error: unknown) => void; serverName?: string;
 }) {
   const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
   const [busy, setBusy] = useState<string>(), [menu, setMenu] = useState<string>(), [adding, setAdding] = useState(false), [removing, setRemoving] = useState<string>();
@@ -126,7 +126,7 @@ export function LibrariesPanel({api, service, onEdit, onError}: {
       ]} trigger={<Button variant="icon" icon="i-more" iconOnly aria-label={t('next.settings.actions')} disabled={!!busy} />} />
     </li>)}
     </ol>
-    <AddLibrary open={adding} onOpenChange={setAdding} api={api} service={service} onError={onError} />
+    <AddLibrary open={adding} onOpenChange={setAdding} api={api} service={service} onError={onError} serverName={serverName} />
     <RemoveLibrary open={!!removing} onOpenChange={open => { if (!open) setRemoving(undefined); }} libraryId={removing ?? ''} service={service} api={api}
       onRemoved={() => { setRemoving(undefined); void service.loadLibraries().catch(onError); }} onError={onError} />
   </>;

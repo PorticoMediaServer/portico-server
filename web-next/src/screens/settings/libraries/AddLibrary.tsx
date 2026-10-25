@@ -5,42 +5,36 @@ import type {LibraryManagementService, ManagedLibrary} from '@core/library-manag
 import {Button, RichSelect, TextField} from '../../../kit/controls';
 import {Dialog} from '../../../kit/overlays/Dialog';
 import {FolderPicker, ChosenServerFolders} from './FolderPicker';
-import {localOnlyKind, metadataAgentFor} from './model';
+import {localOnlyKind, metadataAgentFor, libraryKindLabel} from './model';
 import styles from './libraries.module.css';
 
 const t = defaultI18n.t;
 type Kind = ManagedLibrary['kind'];
 
-/** The seven drawn kinds, in the order Portico lists them (owner-libraries.html#8). */
-const KINDS: readonly {id: Kind; label: string; hint: string}[] = [
-  {id: 'movie', label: t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.0.label'),
-    hint: t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.0.hint')},
-  {id: 'tv', label: t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.1.label'),
-    hint: t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.1.hint')},
-  {id: 'anime', label: t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.2.label'),
-    hint: t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.2.hint')},
-  {id: 'music', label: t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.3.label'),
-    hint: t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.3.hint')},
-  {id: 'audiobook', label: t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.4.label'),
-    hint: t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.4.hint')},
-  {id: 'book', label: t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.5.label'),
-    hint: t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.5.hint')},
-  {id: 'comic', label: t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.6.label'),
-    hint: t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.6.hint')},
+/** The seven drawn kinds, in the order Portico lists them (owner-libraries.html#8),
+ * with the frame's own names and each kind's authored description. */
+const KINDS: readonly {id: Kind; hint: string}[] = [
+  {id: 'movie', hint: t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.0.hint')},
+  {id: 'tv', hint: t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.1.hint')},
+  {id: 'anime', hint: t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.2.hint')},
+  {id: 'music', hint: t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.3.hint')},
+  {id: 'audiobook', hint: t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.4.hint')},
+  {id: 'book', hint: t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.5.hint')},
+  {id: 'comic', hint: t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.6.hint')},
 ];
 
 
-export function AddLibrary({open, onOpenChange, api, service, onError, initialKind = 'movie'}: Readonly<{
-  initialKind?: Kind; open: boolean; onOpenChange: (open: boolean) => void; api: LibraryContentApi; service: LibraryManagementService; onError: (error: unknown) => void;
+export function AddLibrary({open, onOpenChange, api, service, onError, initialKind = 'movie', serverName}: Readonly<{
+  initialKind?: Kind; open: boolean; onOpenChange: (open: boolean) => void; api: LibraryContentApi; service: LibraryManagementService; onError: (error: unknown) => void; serverName?: string;
 }>) {
-  const [kind, setKind] = useState<Kind>(initialKind), [name, setName] = useState(KINDS.find(value => value.id === initialKind)!.label), [touched, setTouched] = useState(false);
+  const [kind, setKind] = useState<Kind>(initialKind), [name, setName] = useState(libraryKindLabel(initialKind)), [touched, setTouched] = useState(false);
   const [paths, setPaths] = useState<readonly string[]>([]);
   const [source, setSource] = useState<'online' | 'local'>('online');
   const [picking, setPicking] = useState(false), [busy, setBusy] = useState(false), [failed, setFailed] = useState(false);
   const submitting = useRef(false);
   const choosePaths = useCallback((next: readonly string[]) => {setPaths(Object.freeze([...next]));}, []);
   const choosePath = useCallback((path: string) => choosePaths([path]), [choosePaths]);
-  const choose = (next: Kind) => { setKind(next); if (!touched) setName(KINDS.find(value => value.id === next)!.label); };
+  const choose = (next: Kind) => { setKind(next); if (!touched) setName(libraryKindLabel(next)); };
   const create = async () => {
     if (submitting.current || !open || !name.trim() || !paths.length) return;
     submitting.current = true;
@@ -48,7 +42,7 @@ export function AddLibrary({open, onOpenChange, api, service, onError, initialKi
     try {
       await service.createLibrary({name: name.trim(), kind, folders: paths, metadataAgent: metadataAgentFor(kind) === 'local' ? 'local' : source});
       if (service.getSnapshot().mutation.phase !== 'complete') {setFailed(true);return;}
-      onOpenChange(false); setName(KINDS[0].label); setPaths([]); setKind('movie'); setTouched(false); setSource('online');
+      onOpenChange(false); setName(libraryKindLabel('movie')); setPaths([]); setKind('movie'); setTouched(false); setSource('online');
     } catch (error) { setFailed(true); onError(error); }
     finally {submitting.current = false; setBusy(false);}
   };
@@ -58,7 +52,7 @@ export function AddLibrary({open, onOpenChange, api, service, onError, initialKi
         <Button variant="primary" loading={busy} disabled={busy || !name.trim() || !paths.length} onClick={() => { void create(); }}>{t('next.settingsSpec.server.libraries.panels.newLibrary.footer.primary')}</Button></>}>
       <div className={styles.form}>
         <RichSelect label={t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.label')}
-          value={kind} options={KINDS.map(value => ({value: value.id, label: value.label, description: value.hint}))}
+          value={kind} options={KINDS.map(value => ({value: value.id, label: libraryKindLabel(value.id), description: value.hint}))}
           onValueChange={value => { const next = KINDS.find(item => item.id === value); if (next) choose(next.id); }} />
         <TextField label={t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.0.label')} value={name}
           placeholder={t('next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.0.control.placeholder')}
@@ -79,6 +73,6 @@ export function AddLibrary({open, onOpenChange, api, service, onError, initialKi
         {failed && <p role="alert">{t('next.settings.libraries.createFailed')}</p>}
       </div>
     </Dialog>
-    <FolderPicker open={picking} onOpenChange={setPicking} api={api} initialPaths={paths} onChoose={choosePath} onChooseMany={choosePaths} />
+    <FolderPicker open={picking} onOpenChange={setPicking} api={api} initialPaths={paths} onChoose={choosePath} onChooseMany={choosePaths} serverName={serverName} />
   </>;
 }

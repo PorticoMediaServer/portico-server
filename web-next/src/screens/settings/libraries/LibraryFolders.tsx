@@ -16,8 +16,8 @@ const label = (id: string) => t(('next.settingsSpec.server.libraries.panels.libr
  * kind and health, and the drawn folder menu — scan this folder, check
  * availability, edit and remove. Every command runs through the owner's own
  * inventory service and reconciles from the server's answer. */
-export function LibraryFolders({libraryId, api, scope, isCurrent, onError}: Readonly<{
-  libraryId: string; api: LibraryContentApi; scope: ContentScope; isCurrent: () => boolean; onError: (error: unknown) => void;
+export function LibraryFolders({libraryId, api, scope, isCurrent, onError, serverName}: Readonly<{
+  libraryId: string; api: LibraryContentApi; scope: ContentScope; isCurrent: () => boolean; onError: (error: unknown) => void; serverName?: string;
 }>) {
   const service = useMemo(() => new LibraryInventoryService({api, scope, libraryId}), [api, scope, libraryId]);
   const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
@@ -75,10 +75,10 @@ export function LibraryFolders({libraryId, api, scope, isCurrent, onError}: Read
         </span>
       </li>)}
     </ul> : <p className={styles.formNote}>{t('next.settings.libraries.noFolders')}</p>}
-    <FolderPicker open={picking} onOpenChange={setPicking} api={api} onChoose={path => { setPicking(false); setAdding(path); }} />
-    <FolderEditor api={api} open={!!adding} onOpenChange={open => { if (!open && !lifetime.current?.running) setAdding(undefined); }} initialPath={adding}
+    <FolderPicker open={picking} onOpenChange={setPicking} api={api} onChoose={path => { setPicking(false); setAdding(path); }} serverName={serverName} />
+    <FolderEditor api={api} serverName={serverName} open={!!adding} onOpenChange={open => { if (!open && !lifetime.current?.running) setAdding(undefined); }} initialPath={adding}
       busy={busy} onSave={edit => { void run(() => service.saveSource(undefined, {...edit, expectedRevision: config.revision, acceptReplacement: false}), () => setAdding(undefined)); }} />
-    <FolderEditor api={api} open={!!editing} onOpenChange={open => { if (!open && !lifetime.current?.running) setEditing(undefined); }} source={editing}
+    <FolderEditor api={api} serverName={serverName} open={!!editing} onOpenChange={open => { if (!open && !lifetime.current?.running) setEditing(undefined); }} source={editing}
       busy={busy} onSave={edit => { if (!editing) return;
         void run(() => service.saveSource(editing.id, {...edit, expectedRevision: config.revision, acceptReplacement: false}), () => setEditing(undefined)); }} />
     <Dialog open={!!removing} onOpenChange={open => { if (!open && !lifetime.current?.running) setRemoving(undefined); }} size="sm" role="alertdialog"
@@ -95,8 +95,8 @@ export function LibraryFolders({libraryId, api, scope, isCurrent, onError}: Read
 
 /** One existing folder's editable facts: its name, its path, and how often the
  * server checks it for changes, with the real server folder explorer. */
-function FolderEditor({api, open, onOpenChange, source, initialPath, busy, onSave}: Readonly<{
-  api: LibraryContentApi; open: boolean; onOpenChange: (open: boolean) => void; source?: InventorySource; initialPath?: string; busy: boolean;
+function FolderEditor({api, serverName, open, onOpenChange, source, initialPath, busy, onSave}: Readonly<{
+  api: LibraryContentApi; serverName?: string; open: boolean; onOpenChange: (open: boolean) => void; source?: InventorySource; initialPath?: string; busy: boolean;
   onSave: (edit: Readonly<{name: string; path: string; classification: 'local' | 'network'; followSymlinks: boolean; intervalSeconds: number}>) => void;
 }>) {
   const [choosing, setChoosing] = useState(false);
@@ -127,6 +127,6 @@ function FolderEditor({api, open, onOpenChange, source, initialPath, busy, onSav
         onValueChange={setInterval} />
     </div>
   </Dialog>
-  <FolderPicker open={open && choosing} onOpenChange={setChoosing} api={api} onChoose={chosen => {setPath(chosen);setChoosing(false);}} />
+  <FolderPicker open={open && choosing} onOpenChange={setChoosing} api={api} onChoose={chosen => {setPath(chosen);setChoosing(false);}} serverName={serverName} />
   </>;
 }

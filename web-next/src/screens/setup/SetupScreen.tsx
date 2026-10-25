@@ -114,7 +114,7 @@ function FirstLibrary({flow, state}: {flow: SetupFlow; state: SetupSnapshot}) {
         <Button variant="glass" disabled={state.busy} onClick={() => setPicking(true)}>{t('next.ownerLibraries.explorer.choose')}</Button>
         <small>{t('web.setup.chooseFoldersHelp')}</small>
       </div>
-      <FolderPicker open={picking && !state.busy} onOpenChange={setPicking} api={folderApi} onChoose={flow.setPath} onChooseMany={flow.setFolders} initialPaths={state.folders}/>
+      <FolderPicker open={picking && !state.busy} onOpenChange={setPicking} api={folderApi} onChoose={flow.setPath} onChooseMany={flow.setFolders} initialPaths={state.folders} serverName={state.serverName}/>
     </> : <div className={styles.field}><TextField variant="auth" label={t('web.setup.orTypePath')} value={state.path} required disabled={state.busy}
       autoComplete="off" spellCheck={false} onChange={event => flow.setPath(event.currentTarget.value)}/></div>}
     {state.error && <p className={styles.error} role="alert"><Icon name="i-warn" size={20}/>{state.error}</p>}
