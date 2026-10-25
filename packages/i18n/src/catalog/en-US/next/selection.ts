@@ -14,6 +14,8 @@ export const selectionMessages = {
   'next.selection.close': 'Close',
   'next.selection.esc': 'Esc',
   'next.selection.escHint': 'Esc leaves selection',
+  'next.selection.shift': 'Shift',
+  'next.selection.rangeTitles': 'Select {first} to {last}: {count, number} {count, plural, one {title} other {titles}}',
   'next.selection.selectAll': 'Select all {count, number}',
   'next.selection.selectRow': 'Select row',
   'next.selection.allInView': 'all in this view',

@@ -29,10 +29,14 @@ import {wholeViewQuery} from './selection-query';
 /** The play adapter's own model owns the whole-view registration and the range
  * preview; these become available when the route supplies them. The operation
  * pair lets the bar capture the exact target before an awaited job. */
-export type LibrarySelectionHost = Omit<LibraryPlaySelection, 'selectWhole' | 'preview' | 'selected' | 'keepOnly' | 'enqueue' | 'enqueueQuery'> & Readonly<{
+export type LibrarySelectionHost = Omit<LibraryPlaySelection, 'selectWhole' | 'preview' | 'selected' | 'keepOnly' | 'enqueue' | 'enqueueQuery' | 'setPreview' | 'clearPreview' | 'rangePreviewed' | 'rangeHint'> & Readonly<{
   keepOnly?: (kind: import('@core/selection-model/index.ts').SelectionKind) => unknown;
   selectWhole?: (query: SelectionQuery) => unknown;
   preview?: (row: LibraryPlayRow) => boolean;
+  setPreview?: LibraryPlaySelection['setPreview'];
+  clearPreview?: LibraryPlaySelection['clearPreview'];
+  rangePreviewed?: LibraryPlaySelection['rangePreviewed'];
+  rangeHint?: LibraryPlaySelection['rangeHint'];
   /** The model's own membership: explicit picks and whole-view query members. */
   selected?: (row: LibraryPlayRow) => boolean;
   captureOperation?: () => SelectionOperation<BrowseSelectionContext> | null;
@@ -155,8 +159,10 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {visible: Visi
         event.preventDefault();
       } catch (error) {reportError(error);}
     };
-    document.addEventListener('keydown', key);
-    return () => document.removeEventListener('keydown', key);
+    const release = (event: KeyboardEvent) => {if (event.key === 'Shift') playSelection.clearPreview?.();};
+    const blur = () => playSelection.clearPreview?.();
+    document.addEventListener('keydown', key);document.addEventListener('keyup', release);window.addEventListener('blur', blur);
+    return () => {document.removeEventListener('keydown', key);document.removeEventListener('keyup', release);window.removeEventListener('blur', blur);};
   }, [playSelection, reportError]);
   if (current.phase !== 'ready' || !current.selection?.active) return null;
   const summary = current.selection.summary, whole = descriptor?.(), selectWhole = playSelection.selectWhole;
@@ -333,9 +339,12 @@ export function createLibrarySelection({playSelection, owner, descriptor, action
       const current = snapshot(), row = rowFor(member, index);
       if (!row || current.phase !== 'ready') return undefined;
       const checked = playSelection.selected?.(row) ?? current.selection?.selectedKeys.includes(row.key) === true, active = current.selection?.active === true;
+      const hint = active && !checked ? playSelection.rangeHint?.(row) : undefined;
       return {
         active, checked,
-        ...(active && playSelection.preview?.(row) === true ? {preview: true} : {}),
+        ...(active && playSelection.rangePreviewed?.(row) === true ? {preview: true} : {}),
+        ...(hint ? {hint: {text: defaultI18n.t('next.selection.rangeTitles', hint), shortcut: defaultI18n.t('next.selection.shift')}} : {}),
+        onPreview: enabled => playSelection.setPreview?.(row, active && enabled),
         onToggle: intent => run(() => { playSelection.toggle(row, intent.range); }),
         onExit: () => run(() => { playSelection.clear(); }),
       };

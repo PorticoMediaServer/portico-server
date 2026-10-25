@@ -103,11 +103,18 @@ test('whole-view Select all appears only with the server descriptor and a model 
   assert.doesNotMatch(renderToStaticMarkup(createElement('div', null, noModel.toolbar)), /Select all/);
 });
 
-test('a card previews the range only when the play adapter says it would join it', () => {
-  const previewing = fake({}, {preview: () => true});
+test('range eligibility paints only the actual hovered interval', () => {
+  let hovered = false;
+  const previewing = fake({}, {preview: () => true, rangePreviewed: () => hovered,
+    setPreview: (actual: unknown, enabled: boolean) => {assert.equal(actual, row); hovered = enabled;}});
   const adapter = createLibrarySelection({playSelection: previewing.selection, reportError: () => {}});
+  const card = adapter.entry({membershipId: 'm1', entry} as never, 0);
+  assert.equal(card?.preview, undefined); // An eligible row alone is not a preview.
+  card?.onPreview?.(true);
   assert.equal(adapter.entry({membershipId: 'm1', entry} as never, 0)?.preview, true);
-  const quiet = fake({}, {preview: () => false});
+  card?.onPreview?.(false);
+  assert.equal(adapter.entry({membershipId: 'm1', entry} as never, 0)?.preview, undefined);
+  const quiet = fake({}, {preview: () => false, rangePreviewed: () => false});
   const noPreview = createLibrarySelection({playSelection: quiet.selection, reportError: () => {}});
   assert.equal(noPreview.entry({membershipId: 'm1', entry} as never, 0)?.preview, undefined);
 });
