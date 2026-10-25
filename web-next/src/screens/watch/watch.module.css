@@ -58,6 +58,7 @@
 .scrubPreview[data-phone='true'] .scrubFrame > b { padding-bottom: 5px; }
 .times { font-size: var(--watch-time-size); font-weight: var(--watch-time-weight); display: flex; justify-content: space-between; margin-top: 8px; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
 .times b { color: var(--color-text); font-weight: var(--type-button-weight); }
+.clock { display: inline-flex; align-items: baseline; gap: 5px; }
 .controls { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin-top: 10px; }
 .transport { display: flex; align-items: center; gap: 14px; }
 .leading, .trailing { display: flex; align-items: center; gap: 6px; }

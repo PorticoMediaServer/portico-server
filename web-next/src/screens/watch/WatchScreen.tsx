@@ -356,7 +356,9 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
                 }} />
             </span>
           </div>
-          <div className={styles.times}><b>{watchClock(drawnPosition)}</b><span>{portrait ? watchClock(duration) : <>{!mobile && endsAt && <>{t('guide.ends', {time: endsAt})}<span className={styles.gap} aria-hidden="true" /></>}<b>{duration > 0 ? `−${watchClock(Math.max(0, duration - drawnPosition))}` : ''}</b></>}</span></div>
+          <div className={styles.times}>{portrait
+            ? <span className={styles.clock}><b>{watchClock(drawnPosition)}</b>{duration > 0 && <span>{`/ ${watchClock(duration)}`}</span>}</span>
+            : <><b>{watchClock(drawnPosition)}</b><span>{!mobile && endsAt && <>{t('guide.ends', {time: endsAt})}<span className={styles.gap} aria-hidden="true" /></>}<b>{duration > 0 ? `−${watchClock(Math.max(0, duration - drawnPosition))}` : ''}</b></span></>}</div>
           <div className={styles.controls}>
             <div className={styles.leading}>{surfaces?.available.includes('episodes') && <Button size="small" variant="glass" icon="i-stack" onClick={event => showPanel('episodes', event.currentTarget)}>{t('next.controls.episodes')}</Button>}</div>
             {transport}
