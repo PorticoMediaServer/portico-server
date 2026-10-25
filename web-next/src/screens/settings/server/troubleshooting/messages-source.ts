@@ -74,6 +74,7 @@ export class SettingsMessagesSource {
     const controller = new AbortController();this.tail = controller;let attempt = 0;
     const active = () => this.current() && this.tail === controller && !controller.signal.aborted && this.state.live;
     const connect = async () => {
+      if (!active()) return;
       let retryAfter: string|null = null;
       let response: Response|undefined;
       try {
@@ -120,6 +121,9 @@ export class SettingsMessagesSource {
         this.publish({settings});
         const active = !!settings.debugWindowUntil && Date.parse(settings.debugWindowUntil) > Date.now();
         if (active === (intent.minutes > 0)) {this.detailIntent = undefined;return;}
+        // Reconcile the old command only. An opposite click cannot replay it; the
+        // owner can choose a fresh action once this read has settled the display.
+        if (on !== (intent.minutes > 0)) {this.detailIntent = undefined;return;}
       }
       await this.transport.request(routePath('post_admin_logs_debug_window'), 'POST', intent, this.lifetime.signal);
       if (!this.current()) return;
