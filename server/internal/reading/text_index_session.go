@@ -37,6 +37,9 @@ type SessionSearchResult struct {
 // retargeting the latest version.
 func (s *Service) SearchSession(ctx context.Context, p identity.Principal, sessionID, query, cursor string, limit int) (SessionSearchResult, error) {
 	var out SessionSearchResult
+	if s == nil || s.DB == nil {
+		return out, ErrUnavailable
+	}
 	// Validate every input before any format-specific shortcut.
 	if _, _, err := textIndexValidateQuery(query, limit); err != nil {
 		return out, err

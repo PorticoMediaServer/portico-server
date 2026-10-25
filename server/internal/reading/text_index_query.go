@@ -228,7 +228,7 @@ func (s *Service) SearchTextIndex(ctx context.Context, search TextIndexSearch) (
 	}
 	out.IndexRevision = epoch
 	if search.Observation != nil {
-		if out.Coverage, err = textIndexCoverageTx(ctx, gate.Tx(), *search.Observation); err != nil {
+		if out.Coverage, err = s.textIndexCoverageTx(ctx, gate.Tx(), *search.Observation); err != nil {
 			return out, err
 		}
 	}
@@ -364,20 +364,58 @@ func (s *Service) SearchTextIndex(ctx context.Context, search TextIndexSearch) (
 }
 
 // textIndexCoverageTx reports the exact determined outcome for a captured
-// observation. No row is pending: the document has no index for this exact
-// observation and rule yet.
-func textIndexCoverageTx(ctx context.Context, tx *sql.Tx, observation TextIndexObservation) (TextIndexCoverage, error) {
+// observation. An existing exact state wins even when the observation is now
+// outside the background producer's domain. With no exact state, "pending" is
+// only truthful for a local canonical-primary book EPUB, the one selection
+// PrepareTextIndex is scheduled for, including the background canonical
+// inventory object; a remote source or an out-of-window version is reported as
+// unsupported/source or unsupported/version instead of implying work the worker
+// will never schedule.
+func (s *Service) textIndexCoverageTx(ctx context.Context, tx *sql.Tx, observation TextIndexObservation) (TextIndexCoverage, error) {
 	var outcome, reason string
 	err := tx.QueryRowContext(ctx, `SELECT outcome,reason FROM reading_text_index_state
  WHERE item_id=? AND asset_id=? AND inventory_object_id=? AND source_revision=? AND index_rule_version=?`,
 		observation.ItemID, observation.AssetID, observation.ObjectID, observation.Revision, readingIndexRuleVersion).Scan(&outcome, &reason)
-	if errors.Is(err, sql.ErrNoRows) {
-		return TextIndexCoverage{Status: "pending"}, nil
+	if err == nil {
+		return TextIndexCoverage{Status: outcome, Reason: reason}, nil
 	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return TextIndexCoverage{}, err
+	}
+	var local int
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_objects o
+ JOIN library_sources src ON src.id=o.source_id AND src.incarnation=o.root_incarnation
+ WHERE o.id=? AND o.revision=? AND src.kind='local')`, observation.ObjectID, observation.Revision).Scan(&local)
 	if err != nil {
 		return TextIndexCoverage{}, err
 	}
-	return TextIndexCoverage{Status: outcome, Reason: reason}, nil
+	if local == 0 {
+		return TextIndexCoverage{Status: "unsupported", Reason: "source"}, nil
+	}
+	// The producer window is narrower than "canonical asset": it also requires
+	// the captured inventory object/revision to be the background canonical
+	// object. A retained same-asset observation on another object is not
+	// scheduled, so it is a version determination rather than pending. The
+	// actual window SQL is reused rather than restated.
+	var scheduled int
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entities e
+ CROSS JOIN catalog_libraries cl ON cl.id=e.library_id
+ CROSS JOIN libraries lib ON lib.id=cl.library_id
+ CROSS JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=?
+ CROSS JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id
+ CROSS JOIN catalog_assets a ON a.id=link.asset_id
+ CROSS JOIN inventory_objects o ON o.asset_id=a.token
+ CROSS JOIN library_sources s ON s.id=o.source_id AND s.library_id=cl.library_id
+ WHERE e.id=? AND o.id=? AND o.revision=? AND `+textIndexWorkerDomain+` AND `+backgroundCanonicalObject+`
+ AND p.asset_id=`+s.primaryPublicationSQL()+`)`,
+		observation.AssetID, observation.ItemID, observation.ObjectID, observation.Revision).Scan(&scheduled)
+	if err != nil {
+		return TextIndexCoverage{}, err
+	}
+	if scheduled == 0 {
+		return TextIndexCoverage{Status: "unsupported", Reason: "version"}, nil
+	}
+	return TextIndexCoverage{Status: "pending"}, nil
 }
 
 // textIndexTokens folds the trimmed query per rune. Per-rune lowercasing keeps
