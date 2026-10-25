@@ -522,6 +522,7 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"POST /v1/storage/sources/webdav/test":       {check: TestDAVConnectionHTTPChecksOwnerAndNeverPublishesBlockedTest},
 		"POST /v1/storage/sources/rclone/test":       {check: TestRcloneConnectionRouteKeepsOwnerFirstAndNoSubsystemFacts},
 		"POST /v1/storage/sources/rclone":            {check: TestRcloneSourceRouteKeepsOwnerFirstAndNoSubsystemFacts},
+		"PUT /v1/storage/sources/rclone/{id}":        {check: TestRcloneSourceRouteKeepsOwnerFirstAndNoSubsystemFacts},
 		"POST /v1/storage/sources/webdav":            writeExempt("owner-only storage configuration; no member catalogue mutation (mounts_test and owner checks in router.go)"),
 		"PUT /v1/albums/{id}/metadata/musicbrainz":   writeExempt("owner-only metadata/analysis/preparation mutation; member refused (manual_metadata_test, musicbrainz_test and analysis owner checks)"),
 		"PUT /v1/collections/{id}/items/{itemId}":    perHidden("PUT", "/v1/collections/unknown/items/ID", `{}`, "item"),

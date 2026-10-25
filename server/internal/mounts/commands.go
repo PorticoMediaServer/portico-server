@@ -33,6 +33,9 @@ type Command struct {
 	Executable       string   `json:"executable,omitempty"`
 	Remote           string   `json:"remote,omitempty"`
 	Config           string   `json:"config,omitempty"`
+	// Only the narrow source editor can set this. It is not a wire command or
+	// a replacement for the legacy lifecycle control revision.
+	sourceGeneration int64
 }
 type Receipt struct {
 	OperationID     string `json:"operationId"`
@@ -68,9 +71,11 @@ func freshOperation(id string) error {
 }
 func (s *Service) fingerprint(actor, id string, c Command) string {
 	raw, _ := json.Marshal(struct {
-		Actor, ID string
-		Command   Command
-	}{actor, id, c})
+		Actor, ID        string
+		Command          Command
+		SourceGeneration int64 `json:"sourceGeneration,omitempty"`
+	}{actor, id, c, c.sourceGeneration})
+	defer clear(raw)
 	mac := hmac.New(sha256.New, s.fpKey[:])
 	mac.Write(raw)
 	return hex.EncodeToString(mac.Sum(nil))
@@ -148,6 +153,17 @@ func (s *Service) Command(ctx context.Context, actor, id string, c Command, auth
 	if e = freshOperation(c.OperationID); e != nil {
 		gated2.Rollback()
 		return zero, e
+	}
+	if c.sourceGeneration != 0 {
+		if c.sourceGeneration < 1 || c.Action != "configure" || id == "" || c.ExpectedRevision != 0 || c.Setup != nil || c.CacheBytes != nil || c.CacheFloor != nil {
+			gated2.Rollback()
+			return zero, ErrInvalid
+		}
+		c.ExpectedRevision, e = importedSourceControlTx(ctx, tx, id, c.sourceGeneration)
+		if e != nil {
+			gated2.Rollback()
+			return zero, e
+		}
 	}
 	if _, e = tx.Exec(`DELETE FROM mount_operations WHERE created_at<?`, time.Now().Add(-30*24*time.Hour).Unix()); e != nil {
 		gated2.Rollback()
