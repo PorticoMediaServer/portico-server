@@ -63,7 +63,7 @@ func (c *ConsoleSettingsChange) UnmarshalJSON(raw []byte) error {
 		}
 		known[name] = true
 		value, ok := values[name]
-		if !ok && (name == "segments.shortestFilm" || name == "segments.shortestEpisode" || name == "segments.tvMode" || name == "segments.animeMode" || name == "segments.movieMode" || name == "segments.useChapterNames" || name == "segments.viewerConfidencePercent" || name == "segments.automaticConfidencePercent") {
+		if !ok && (name == "segments.filmCreditsWindow" || name == "segments.creditsWindow" || name == "segments.introWindow" || name == "segments.shortestFilm" || name == "segments.shortestEpisode" || name == "segments.tvMode" || name == "segments.animeMode" || name == "segments.movieMode" || name == "segments.useChapterNames" || name == "segments.viewerConfidencePercent" || name == "segments.automaticConfidencePercent") {
 			continue
 		}
 		if name == "segments.shortestEpisode" {
@@ -75,6 +75,24 @@ func (c *ConsoleSettingsChange) UnmarshalJSON(raw []byte) error {
 		if name == "segments.shortestFilm" {
 			var minutes int
 			if json.Unmarshal(value, &minutes) != nil || minutes < 5 || minutes > 60 || minutes%5 != 0 {
+				return operations.ErrInvalid
+			}
+		}
+		if name == "segments.introWindow" {
+			var window string
+			if json.Unmarshal(value, &window) != nil || (window != "usual" && window != "long") {
+				return operations.ErrInvalid
+			}
+		}
+		if name == "segments.creditsWindow" {
+			var window string
+			if json.Unmarshal(value, &window) != nil || (window != "usual" && window != "long") {
+				return operations.ErrInvalid
+			}
+		}
+		if name == "segments.filmCreditsWindow" {
+			var window string
+			if json.Unmarshal(value, &window) != nil || (window != "usual" && window != "long") {
 				return operations.ErrInvalid
 			}
 		}
