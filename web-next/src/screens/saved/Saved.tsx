@@ -253,9 +253,13 @@ export function SavedSection(bindings: SavedViewBindings & {service: SavedServic
         if (entry.kind === 'reading_group') return <ReadingGroupCard card={entry} service={service} runtime={bindings.runtime} operations={bindings.operations} artwork={artwork} width={presentation.cardWidth} open={effects.openReadingGroup} reportError={effects.reportError}/>;
         const cardSelection = selection?.card(service, section.id, entry), media = mediaEntry(entry);
         if (entry.kind === 'playlist') {
+          // A generic content entry may also name a playlist; the card's own two
+          // optional facts are read only when the entry actually carries them.
+          const pinned = 'pinned' in entry && entry.pinned === true;
+          const lastChanged = 'lastChanged' in entry && typeof entry.lastChanged === 'string' ? entry.lastChanged : undefined;
           const covers = (entry.artworkPaths ?? []).map(path => artwork.foreground(path, phoneRows ? 64 : presentation.cardWidth, 1)).filter((source): source is ArtworkSource => !!source);
-          const changed = playlistChangedLabel(entry.lastChanged);
-          if (phoneRows) return <PlaylistRow first={context.index === 0} title={entry.title} count={entry.count} pinned={entry.pinned === true} lastChanged={entry.lastChanged} covers={covers} open={() => effects.selectRoute({view: 'playlist', playlistId: entry.id})} />;
+          const changed = playlistChangedLabel(lastChanged);
+          if (phoneRows) return <PlaylistRow first={context.index === 0} title={entry.title} count={entry.count} pinned={pinned} lastChanged={lastChanged} covers={covers} open={() => effects.selectRoute({view: 'playlist', playlistId: entry.id})} />;
           const caption = [
             ...(entry.count !== undefined ? [{id: 'count', role: 'value' as const, text: t('web.saved.items', {count: entry.count})}] : []),
             ...(changed ? [{id: 'changed', role: 'context' as const, text: changed}] : []),
