@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"reflect"
 	"strconv"
 
 	"portico.local/apikit"
@@ -52,6 +53,36 @@ func (d Dependencies) readingSeriesScopeTx(ctx context.Context, tx *sql.Tx, capt
 	return out, err
 }
 
+type ReadingSeriesSummary struct {
+	ID        string         `json:"id"`
+	Name      string         `json:"name"`
+	Count     int64          `json:"count"`
+	ReadCount int64          `json:"readCount"`
+	Author    *ReadingAuthor `json:"author,omitempty"`
+}
+
+func (ReadingSeriesSummary) JSONSchema() map[string]any {
+	type wire ReadingSeriesSummary
+	shape, _ := apikit.Schema(reflect.TypeFor[wire]())
+	shape["additionalProperties"] = false
+	props := shape["properties"].(map[string]any)
+	props["id"].(map[string]any)["pattern"] = "^[A-Za-z0-9_-]{43}$"
+	props["name"].(map[string]any)["minLength"] = 1
+	props["name"].(map[string]any)["maxLength"] = 4096
+	for _, name := range []string{"count", "readCount"} {
+		props[name].(map[string]any)["minimum"] = 0
+		props[name].(map[string]any)["maximum"] = 9007199254740991
+	}
+	props["count"].(map[string]any)["minimum"] = 1
+	return shape
+}
+
+type ReadingSeriesItemsResponse struct {
+	Items      []ReadingItem         `json:"items"`
+	NextCursor string                `json:"nextCursor,omitempty"`
+	Summary    *ReadingSeriesSummary `json:"summary,omitempty"`
+}
+
 func (d Dependencies) readingSeries(w http.ResponseWriter, r *http.Request) {
 	p, ok := d.readingPrincipal(w, r)
 	if !ok {
@@ -71,7 +102,13 @@ func (d Dependencies) readingSeries(w http.ResponseWriter, r *http.Request) {
 		readingFailure(w, err)
 		return
 	}
-	out := ReadingItemsResponse{Items: make([]ReadingItem, 0, len(page.Items)), NextCursor: page.NextCursor}
+	out := ReadingSeriesItemsResponse{Items: make([]ReadingItem, 0, len(page.Items)), NextCursor: page.NextCursor}
+	if summary := page.Summary; summary != nil {
+		out.Summary = &ReadingSeriesSummary{ID: summary.ID, Name: summary.Name, Count: summary.Count, ReadCount: summary.ReadCount}
+		if summary.Author != nil {
+			out.Summary.Author = &ReadingAuthor{Value: summary.Author.Value, Source: ReadingAttributionSource(summary.Author.Source)}
+		}
+	}
 	for _, item := range page.Items {
 		out.Items = append(out.Items, readingItemProjection(item))
 	}
@@ -80,5 +117,5 @@ func (d Dependencies) readingSeries(w http.ResponseWriter, r *http.Request) {
 
 func registerReadingSeriesHTTPContract(registry *apikit.Registry) error {
 	m := apikit.Metadata{ID: "get_reading_series_items", Method: "GET", Path: "/v1/libraries/{libraryId}/reading/series/{seriesId}", Summary: "Read one complete authorized Reading series", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "request_in_progress", "internal"}, Query: []string{"cursor", "limit"}}
-	return apikit.RegisterHTTP[struct{}, ReadingItemsResponse](registry, m)
+	return apikit.RegisterHTTP[struct{}, ReadingSeriesItemsResponse](registry, m)
 }

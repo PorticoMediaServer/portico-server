@@ -20,6 +20,7 @@ type SeriesScope struct {
 }
 type SeriesScopeResolver func(context.Context, *sql.Tx, identity.Principal, string) (SeriesScope, error)
 type SeriesPage struct {
+	Summary    *SeriesSummary
 	Items      []LibraryRow
 	NextCursor string
 }
@@ -108,6 +109,10 @@ func (s *Service) Series(ctx context.Context, p identity.Principal, library, ser
 		}
 		after = &anchor
 		current.Expiry = captured.Expiry
+	}
+	out.Summary, err = seriesSummaryTx(ctx, tx, scope.Profile, series, base, args)
+	if err != nil {
+		return out, err
 	}
 	query := `SELECT e.id,pid(e.public_id),cl.library_id,e.title,p.format,a.token,
  EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=e.id AND available.asset_id=a.token AND available.available=1),
