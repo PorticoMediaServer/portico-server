@@ -105,17 +105,27 @@ export class SettingsReportsSource {
     return report;
   }
   /** One explicit listed deletion; a lost response is never automatically replayed. */
-  async remove(id: string, expected?: ClientReport): Promise<boolean> {
+  async remove(id: string, expected?: ClientReport, caller?: Readonly<{signal: AbortSignal; isCurrent: () => boolean}>): Promise<boolean> {
     const selected = this.state.reports.find(report => report.id === id);
-    if (!selected || expected && selected !== expected || !this.current() || this.removing) return false;
+    const callerCurrent = () => !caller || !caller.signal.aborted && caller.isCurrent();
+    if (!selected || expected && selected !== expected || !this.current() || this.removing || !callerCurrent()) return false;
     const attempt = {};this.removing = attempt;
+    const owns = () => this.current() && this.removing === attempt && callerCurrent();
+    const transport: ReportTransport = {request: async <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> => {
+      if (!owns()) throw Object.assign(new Error('The report deletion ended.'), {name: 'AbortError'});
+      // The original caller signal is combined with the source lifetime by this.transport.
+      const value = await this.transport.request<T>(path, method, body, signal);
+      if (!owns()) throw Object.assign(new Error('The report deletion ended.'), {name: 'AbortError'});
+      return value;
+    }};
     this.publish({...this.state, phase: 'loading'});
     try {
-      if (!this.listed(selected) || this.removing !== attempt) return false;
-      await deleteClientReport(this.transport, id, this.signal());
-      if (!this.current() || this.removing !== attempt) return false;
-      const page = await listClientReports(this.transport, this.serverId, '', this.signal());
-      if (!this.current() || this.removing !== attempt) return false;
+      // Publication can synchronously close/retire the original confirmation.
+      if (!this.listed(selected) || !owns()) throw Object.assign(new Error('The report deletion ended.'), {name: 'AbortError'});
+      await deleteClientReport(transport, id, caller?.signal ?? this.signal());
+      if (!owns()) throw Object.assign(new Error('The report deletion ended.'), {name: 'AbortError'});
+      const page = await listClientReports(transport, this.serverId, '', caller?.signal ?? this.signal());
+      if (!owns()) throw Object.assign(new Error('The report deletion ended.'), {name: 'AbortError'});
       this.publish({...this.state, phase: 'ready', reports: page.items, ...(page.nextCursor ? {next: page.nextCursor} : {next: undefined})});
       return true;
     } catch {if (this.current()) this.publish({...this.state, phase: 'error'});return false;}
