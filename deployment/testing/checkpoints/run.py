@@ -27,10 +27,10 @@ def receive(host,remote,destination):
             for member in members:
                 name=member.name.removeprefix('./')
                 if member.isdir() and name in ['', '.']:continue
-                if not member.isfile() or not re.fullmatch(r'[a-z0-9.-]+\.(?:log|jpg)',name):raise ValueError('unsupported evidence member')
-                if member.size>8*1024*1024:raise ValueError('oversized evidence file')
+                if not member.isfile() or not (re.fullmatch(r'[a-z0-9.-]+\.(?:log|jpg)',name) or name=='reader-guest.tar'):raise ValueError('unsupported evidence member')
+                if member.size>(64 if name=='reader-guest.tar' else 8)*1024*1024:raise ValueError('oversized evidence file')
                 total+=member.size
-                if total>48*1024*1024:raise ValueError('evidence budget exceeded')
+                if total>112*1024*1024:raise ValueError('evidence budget exceeded')
                 raw=archive.extractfile(member).read()
                 if name.endswith('.jpg') and not raw.startswith(b'\xff\xd8'):raise ValueError('invalid screenshot')
                 target=destination/name
@@ -41,6 +41,7 @@ def receive(host,remote,destination):
 def job(config,root,server,private,host,surface,stamp,disabled):
     run_id='m0-'+stamp+'-'+host+'-'+surface;folder=Path(config['evidence'])/run_id;folder.mkdir(parents=True,exist_ok=False);alias,chromium=HOSTS[host]
     command=['python3','-c',"import os,runpy;runpy.run_path(os.environ['PORTICO_RUNNER_SECONDARY_SOURCE']+'/deployment/testing/checkpoints/runner.py',run_name='__main__')",'--surface',surface,'--server',server,'--private',private,'--run-id',run_id,'--fixtures','/home/runner/work/fixtures/portico-v3','--chromium',chromium,'--disabled',json.dumps(disabled)]
+    if all(subprocess.run(['git','-C',config['serverRepo'],'merge-base','--is-ancestor',pin,server],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0 for pin in ['153c4a79088a00a15d5673db301d6a6872f2c7fc','7d3d088ac255828347b062598786664a0431d7ca']):command.append('--reader-source-verified')
     args=['python3',str(root/'.worktrees/ui-2026/_program/runner-tools/run-remote.py'),'--host',host,'--browser','--repo',config['serverRepo'],'--commit',server,'--secondary-repo',config['privateRepo'],'--secondary-commit',private,'--lane',run_id,'--output',str(folder/'runner'),'--']+command
     with (folder/'coordinator.log').open('wb') as log:
         try:code=subprocess.run(args,stdout=log,stderr=subprocess.STDOUT,timeout=2100).returncode

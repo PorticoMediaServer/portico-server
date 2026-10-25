@@ -1,6 +1,6 @@
 # Unattended campaign checkpoints
 
-CI runs on the whole `main` tree hourly. These separate M0 checkpoints run every
+CI runs on the whole `main` tree hourly. The machine scheduler is configured for separate M0 checkpoints every
 four hours without an agent driving the applications. They never gate a merge,
 stop an owner's process, or change the public demo/Hosted deployment.
 
@@ -15,8 +15,8 @@ its receipt says that Justin's hands-on must cover it. Product failures do not
 become passes, and one surface never holds another. A busy build/device lock
 produces a resource-unavailable receipt and leaves the owner working.
 
-Android uses the existing qualified APK/Reader packaging and private native
-metadata checks. Apple runs only after the other automated flows are stable.
+Android automation is the next rollout stage, reusing the existing qualified
+APK/Reader packaging and private native metadata checks. Apple runs only after the other automated flows are stable.
 `Portico_CertTest_API36` is never a target. All child processes, emulators and
 scratch started by a run are retired in `finally` paths.
 

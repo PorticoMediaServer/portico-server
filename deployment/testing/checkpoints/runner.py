@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """One isolated, admitted runner job. Main source in; per-flow evidence out."""
 from __future__ import annotations
-import argparse,base64,contextlib,email,hashlib,http.server,importlib.util,json,os,re,secrets,shutil,signal,socket,ssl,subprocess,sys,threading,time,urllib.error,urllib.request,uuid
+import argparse,base64,contextlib,email,hashlib,http.server,importlib.util,json,os,re,secrets,shutil,signal,socket,ssl,subprocess,sys,tarfile,threading,time,urllib.error,urllib.request,uuid
 from pathlib import Path
 
 class StepFailure(Exception):
@@ -29,6 +29,11 @@ class Job:
         if code:raise StepFailure(name)
     def spawn(self,name,argv,cwd=None,env=None):
         f=(self.work/(name+'.private.log')).open('wb');self.logs.append(f);p=subprocess.Popen(argv,cwd=cwd or self.source,env=env or self.process_env,stdout=f,stderr=subprocess.STDOUT,start_new_session=True);self.children.append(p);return p
+    def attempt(self,surface,name,action,kind='build'):
+        try:action()
+        except StepFailure as error:
+            self.report['flows'].append({'surface':surface,'id':name,'status':'fail','kind':kind,'step':error.step});return False
+        self.report['flows'].append({'surface':surface,'id':name,'status':'pass','kind':kind});return True
     def ready(self,url,process):
         for _ in range(160):
             if process.poll() is not None:raise StepFailure('runtime-start')
@@ -83,13 +88,34 @@ class Job:
         try:self.run('browser',[node,str(self.tools/'deployment/testing/checkpoints/browser.mjs')],env=env,timeout=600)
         finally:
             if (self.out/'browser-results.log').exists():self.report['flows']+=json.loads((self.out/'browser-results.log').read_text())['flows']
+    def reader(self,node):
+        guest=self.work/'reader-guest'
+        self.run('reader-guest',[node,str(self.source/'node_modules/vite/bin/vite.js'),'build','--config',str(self.source/'web-next/reader-native/vite.config.ts')],env=dict(self.process_env,PORTICO_READER_OUT_DIR=str(guest)))
+        files={}
+        for file in sorted(guest.rglob('*')):
+            if file.is_symlink():raise StepFailure('reader-guest-symlink')
+            if file.is_file():files[str(file.relative_to(guest))]=hashlib.sha256(file.read_bytes()).hexdigest()
+        if not {'index.html','licences.json'}<=files.keys():raise StepFailure('reader-guest-incomplete')
+        # Retain the complete producer graph, including any newly introduced dependency.
+        source={}
+        for directory in ['packages/reader-core','web-next/reader-native','web-next/src/screens/read/native']:
+            for file in sorted((self.source/directory).rglob('*')):
+                if file.is_file() and 'node_modules' not in file.parts:source[str(file.relative_to(self.source))]=hashlib.sha256(file.read_bytes()).hexdigest()
+        receipt={'serverMain':self.args.server,'files':files,'sourceFiles':source,'treeSHA256':hashlib.sha256(json.dumps(files,sort_keys=True,separators=(',',':')).encode()).hexdigest(),'containsRequiredReaderSource':self.args.reader_source_verified}
+        (self.out/'reader-guest-receipt.log').write_text(json.dumps(receipt,indent=2)+'\n')
+        with tarfile.open(self.out/'reader-guest.tar','w') as archive:
+            for name in files:archive.add(guest/name,arcname=name,recursive=False)
+        self.report['readerGuest']={'treeSHA256':receipt['treeSHA256'],'files':len(files),'containsRequiredReaderSource':receipt['containsRequiredReaderSource']}
     def web_server(self):
-        node=self.node();self.generation()
-        self.run('server',['go','build','-p=2','-tags','release','-trimpath','-buildvcs=false','-ldflags','-X portico.local/server/internal/buildinfo.Version=0.1.0-checkpoint+'+self.args.server[:8]+' -X portico.local/server/internal/buildinfo.BuildID='+self.args.server,'-o',str(self.work/'server'),'./cmd/server'],self.source/'server')
-        self.run('npm',['npm','ci','--no-audit','--no-fund'])
-        web=self.work/'web';self.run('web',['npm','run','build','--workspace','portico-web-next','--','--outDir',str(web),'--emptyOutDir'])
-        self.run('reading-adversarial',['go','test','-count=1','./internal/reading','-run','EPUB|XHTML|CSS|Srcset|Archive'],self.source/'server',timeout=180)
-        self.run('renderer-adversarial',['npm','run','test','--workspace','@portico/reader-core'],timeout=180)
+        node=self.node();generated=self.attempt('server','official-generation',self.generation)
+        server=self.attempt('server','server-build',lambda:self.run('server',['go','build','-p=2','-tags','release','-trimpath','-buildvcs=false','-ldflags','-X portico.local/server/internal/buildinfo.Version=0.1.0-checkpoint+'+self.args.server[:8]+' -X portico.local/server/internal/buildinfo.BuildID='+self.args.server,'-o',str(self.work/'server'),'./cmd/server'],self.source/'server'))
+        npm=self.attempt('web','dependency-install',lambda:self.run('npm',['npm','ci','--no-audit','--no-fund']))
+        web=self.work/'web';built=npm and self.attempt('web','web-build',lambda:self.run('web',['npm','run','build','--workspace','portico-web-next','--','--outDir',str(web),'--emptyOutDir']))
+        if npm:self.attempt('native-reader','immutable-reader-build',lambda:self.reader(node))
+        self.attempt('server','reading-adversarial',lambda:self.run('reading-adversarial',['go','test','-count=1','./internal/reading','-run','EPUB|XHTML|CSS|Srcset|Archive'],self.source/'server',timeout=180),'tests')
+        if npm:self.attempt('web','renderer-adversarial',lambda:self.run('renderer-adversarial',['npm','run','test','--workspace','@portico/reader-core'],timeout=180),'tests')
+        if not (server and generated):
+            self.report['flows'].append({'surface':'web','id':'browser-flows','status':'unavailable','dependency':'server build or official generation failed'});return
         bind=port();base='http://127.0.0.1:'+str(bind);state=self.work/'server-state';state.mkdir(mode=0o700);runtime=self.args.fixtures/'runtime/bundle'
         if not all((runtime/x).is_file() for x in ['toolchain-manifest.json','bin/ffmpeg','bin/ffprobe']):raise StepFailure('qualified-runtime-unavailable')
         self.run('runtime-manifest',['python3',str(self.source/'scripts/verify-ffmpeg-manifest.py'),str(runtime)])
@@ -115,7 +141,7 @@ class Job:
                 time.sleep(2)
             home=self.json_call(base,'GET','/v1/home',token=token,installation=installation);self.report['flows'].append({'surface':'server','id':'real-fixture-ingestion-home','status':'pass' if home.get('rows') else 'fail','rows':len(home.get('rows',[]))})
         finally:self.json_call(base,'DELETE','/v1/devices/'+grant['deviceId'],token=token,installation=installation,expected=(204,))
-        self.browser(node,{'surface':'web','origin':base,'username':username,'password':password,'profileName':username,'reviewProfile':'Review','disabled':self.args.disabled})
+        if built:self.browser(node,{'surface':'web','origin':base,'username':username,'password':password,'profileName':username,'reviewProfile':'Review','disabled':self.args.disabled})
     def hosted(self):
         node=self.node();self.generation();module=self.tools/'hosted-services/hosted';self.run('hosted',['go','build','-tags','devtrust','-p=2','-trimpath','-buildvcs=false','-o',str(self.work/'hosted'),'./cmd/hosted'],module);self.run('hosted-web-host',['go','build','-p=2','-trimpath','-buildvcs=false','-o',str(self.work/'web-host'),'./cmd/web'],module)
         versions=sorted(Path('/usr/lib/postgresql').glob('*/bin/initdb'),reverse=True)
@@ -155,7 +181,7 @@ class Job:
         destination=Path('/home/runner/work/artifacts/portico-v3-checkpoints')/self.args.run_id;destination.mkdir(parents=True,mode=0o700,exist_ok=False)
         for file in self.out.iterdir():
             if not file.is_file() or file.is_symlink():continue
-            if file.name=='report.log' or file.name=='generation.patch.log' or file.name=='browser-results.log' or re.fullmatch(r'flow-[a-z0-9-]+\.(?:jpg|log)',file.name) or file.name.startswith('build-') and file.suffix=='.log':shutil.copyfile(file,destination/file.name)
+            if file.name in ['report.log','generation.patch.log','browser-results.log','reader-guest-receipt.log','reader-guest.tar'] or re.fullmatch(r'flow-[a-z0-9-]+\.(?:jpg|log)',file.name) or file.name.startswith('build-') and file.suffix=='.log':shutil.copyfile(file,destination/file.name)
         shutil.rmtree(self.work)
 
 class Mailbox:
@@ -187,7 +213,7 @@ class Mailbox:
         raise StepFailure('mail-delivery-deadline')
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--surface',choices=['web-server','hosted'],required=True);p.add_argument('--server',required=True);p.add_argument('--private',required=True);p.add_argument('--run-id',required=True);p.add_argument('--fixtures',type=Path,required=True);p.add_argument('--chromium',required=True);p.add_argument('--disabled',type=json.loads,default=[]);a=p.parse_args()
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--surface',choices=['web-server','hosted'],required=True);p.add_argument('--server',required=True);p.add_argument('--private',required=True);p.add_argument('--run-id',required=True);p.add_argument('--fixtures',type=Path,required=True);p.add_argument('--chromium',required=True);p.add_argument('--disabled',type=json.loads,default=[]);p.add_argument('--reader-source-verified',action='store_true');a=p.parse_args()
     if not all(re.fullmatch('[0-9a-f]{40}',x) for x in [a.server,a.private]) or not re.fullmatch('[a-z0-9-]{1,96}',a.run_id):p.error('exact sources and safe run id required')
     if a.fixtures!=Path('/home/runner/work/fixtures/portico-v3'):p.error('fixed owned fixture custody required')
     os.umask(0o077);job=Job(a)
