@@ -1,0 +1,16 @@
+.paper { background: #fff; color: #071018; padding: 32px; }
+.paper h2, .paper h3 { margin: 0 0 12px; }
+.paper p { max-width: 480px; }
+.paper svg { width: 112px; height: 112px; fill: #071018; background: #fff; }
+.paper table { width: 100%; border-collapse: collapse; margin-top: 24px; text-align: left; }
+.paper th, .paper td { padding: 12px 8px; border-bottom: 1px solid #d6dde1; }
+.code { font-family: monospace; overflow-wrap: anywhere; }
+@media print {
+  :global(body) * { visibility: hidden; }
+  .paper, .paper * { visibility: visible; }
+  .sheet { position: absolute; inset: 0; transform: none; width: 100%; max-width: none; max-height: none; overflow: visible; }
+  .sheet > header, .sheet > footer { display: none; }
+  .sheet > div { max-height: none; overflow: visible; }
+  .paper { position: static; overflow: visible; }
+  .paper tr { break-inside: avoid; }
+}
