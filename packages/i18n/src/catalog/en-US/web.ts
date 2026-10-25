@@ -2199,7 +2199,7 @@ export const webMessages = {
   'web.liveTv.space.waitingDelete': 'Waiting for deletion',
   'web.liveTv.space.forecast': 'Forecast',
   'web.liveTv.space.forecastOver': '{size} over {hours, plural, one {# hour} other {# hours}}',
-  'web.libraryKind.plural': '{kind, select, movie {Movies} tv {TV Shows} anime {Anime} music {Music} audiobook {Audiobooks} recordings {Recordings} other {Library}}',
+  'web.libraryKind.plural': '{kind, select, movie {Movies} tv {TV Shows} anime {Anime} music {Music} audiobook {Audiobooks} book {Books} comic {Comics} recordings {Recordings} other {Library}}',
   'web.libraryKind.library': '{kind, select, movie {Movie library} tv {TV show library} anime {Anime library} music {Music library} audiobook {Audiobook library} other {Library}}',
   'web.libraries.scanFinished': 'finished {when}',
   'web.libraries.scanUpdated': 'updated {when}',
