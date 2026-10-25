@@ -96,6 +96,9 @@ func (s *AccountSecurity) Mutate(ctx context.Context, token string, q SecurityAc
 		out.Status = "contact_pending"
 		out.ChallengeID = id
 		out.ExpiresAt = &expires
+		out.MaskedAddress = maskedContact(q.Target)
+		remaining := emailChangeResendLimit
+		out.ResendsRemaining = &remaining
 	case "mfa_enroll":
 		var eligible bool
 		e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM account_contact_emails WHERE account_id=$1 AND is_primary) AND NOT EXISTS(SELECT 1 FROM account_mfa WHERE account_id=$1 AND secret IS NOT NULL)`, expected.AccountID).Scan(&eligible)

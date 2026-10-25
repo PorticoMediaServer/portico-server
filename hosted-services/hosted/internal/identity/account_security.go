@@ -93,16 +93,18 @@ type SecurityState struct {
 	Providers              []SecurityProvider `json:"providers"`
 }
 type SecurityResult struct {
-	AccountID       string           `json:"accountId"`
-	FamilyID        string           `json:"familyId"`
-	Status          string           `json:"status"`
-	SignOut         bool             `json:"signOut,omitempty"`
-	ChallengeID     string           `json:"challengeId,omitempty"`
-	ExpiresAt       *time.Time       `json:"expiresAt,omitempty"`
-	Secret          string           `json:"secret,omitempty"`
-	OTPAuthURI      string           `json:"otpAuthUri,omitempty"`
-	RecoveryCodes   []string         `json:"recoveryCodes,omitempty"`
-	DeletionPreview *DeletionPreview `json:"deletionPreview,omitempty"`
+	AccountID        string           `json:"accountId"`
+	FamilyID         string           `json:"familyId"`
+	Status           string           `json:"status"`
+	SignOut          bool             `json:"signOut,omitempty"`
+	ChallengeID      string           `json:"challengeId,omitempty"`
+	MaskedAddress    string           `json:"maskedAddress,omitempty"`
+	ResendsRemaining *int             `json:"resendsRemaining,omitempty"`
+	ExpiresAt        *time.Time       `json:"expiresAt,omitempty"`
+	Secret           string           `json:"secret,omitempty"`
+	OTPAuthURI       string           `json:"otpAuthUri,omitempty"`
+	RecoveryCodes    []string         `json:"recoveryCodes,omitempty"`
+	DeletionPreview  *DeletionPreview `json:"deletionPreview,omitempty"`
 }
 
 // PasswordCheck performs the same dummy-hash work for absent and wrong users.

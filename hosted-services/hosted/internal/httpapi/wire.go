@@ -174,6 +174,12 @@ type SecurityConfirmRequest struct {
 	OperationID string `json:"operationId"`
 }
 
+// SecurityEmailResendRequest rotates only the initiating family's pending code.
+type SecurityEmailResendRequest struct {
+	ChallengeID string `json:"challengeId"`
+	OperationID string `json:"operationId"`
+}
+
 // RefreshRequest rotates a refresh credential. Browsers omit RefreshToken.
 type RefreshRequest struct {
 	RefreshToken string `json:"refreshToken"`

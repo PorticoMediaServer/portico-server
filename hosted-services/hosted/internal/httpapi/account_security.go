@@ -293,6 +293,25 @@ func (h *Handler) securityRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/account/security/actions", h.securityAction)
 	mux.HandleFunc("POST /v1/account/security/mfa/confirm", func(w http.ResponseWriter, r *http.Request) { h.securityConfirm(w, r, true) })
 	mux.HandleFunc("POST /v1/account/security/email/confirm", func(w http.ResponseWriter, r *http.Request) { h.securityConfirm(w, r, false) })
+	mux.HandleFunc("POST /v1/account/security/email/resend", func(w http.ResponseWriter, r *http.Request) {
+		if !h.securityReady(w) {
+			return
+		}
+		if !h.allowAuth(r) {
+			failure(w, identity.ErrRateLimited)
+			return
+		}
+		var q SecurityEmailResendRequest
+		if !decode(w, r, &q) {
+			return
+		}
+		v, e := h.Security.ResendEmailChange(r.Context(), bearer(r), q.ChallengeID, q.OperationID)
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		write(w, 200, v)
+	})
 }
 func (h *Handler) securityAction(w http.ResponseWriter, r *http.Request) {
 	if !h.securityReady(w) {
