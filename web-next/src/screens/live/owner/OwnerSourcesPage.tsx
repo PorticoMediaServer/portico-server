@@ -25,6 +25,7 @@ import {RecordingRulesController} from '../../settings/server-livetv/recording/r
 import {RecordingPermissionsController} from '../../settings/server-livetv/recording/permissions-controller';
 import {TunerController} from '../../settings/server-livetv/recording/tuner-controller';
 import {RecordingStorageController} from '../../settings/server-livetv/recording/storage-controller';
+import {RecordingRootController} from '../../settings/server-livetv/recording/root-controller';
 import {RecordingPage} from '../../settings/server-livetv/recording/RecordingPage';
 import styles from './owner.module.css';
 const t = defaultI18n.t;
@@ -50,9 +51,10 @@ export function createOwnerSources(options: OwnerSourcesOptions) {
   const permissions = new RecordingPermissionsController(api, options.serverId, current, reportError);
   const rules = new RecordingRulesController(api, options.serverId, permissions, current, reportError);
   const tuners = new TunerController(api, options.serverId, current, reportError);
+  const root = new RecordingRootController(api, current, reportError);
   const storage = new RecordingStorageController(api, options.serverId, current, reportError);
-  children.add(sources);children.add(defaults);children.add(recording);children.add(storage);children.add(tuners);children.add(permissions);children.add(rules);
-  return {sources, defaults, recording, storage, tuners, permissions, rules, api, current, reportError, serverId: options.serverId,
+  children.add(root);children.add(sources);children.add(defaults);children.add(recording);children.add(storage);children.add(tuners);children.add(permissions);children.add(rules);
+  return {sources, defaults, recording, storage, root, tuners, permissions, rules, api, current, reportError, serverId: options.serverId,
     track<T extends {dispose: () => void}>(child: T): T {if (!current()) child.dispose();else children.add(child);return child;},
     release(child: {dispose: () => void}) {children.delete(child);child.dispose();},
     subscribe: (listener: () => void) => {listeners.add(listener);return () => {listeners.delete(listener);};}, dispose};
