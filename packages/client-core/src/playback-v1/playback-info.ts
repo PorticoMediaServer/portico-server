@@ -17,7 +17,7 @@ export type PlaybackInfo = Readonly<{
   route:PlaybackRoute; routes:Readonly<{picture?:PlaybackRoute;sound?:PlaybackRoute;subtitles?:PlaybackRoute}>;
   reason:Readonly<{kind:'compatible'|'container'|'format'|'quality'|'subtitles';videoCodec?:string;audioCodec?:string;container?:string;maxHeight?:number;maxBitrateKbps?:number}>;
   source:PlaybackMediaFacts;delivered:PlaybackMediaFacts;
-  losses:readonly Readonly<{feature:'dolbyVision'|'hdr'|'atmos'|'dtsx';replacement:PlaybackReplacement}>[];
+  losses:readonly Readonly<{feature:'dolbyVision'|'hdr10plus'|'hdr'|'atmos'|'dtsx';replacement:PlaybackReplacement}>[];
   network:'home'|'away'|'unknown';estimatedBitrateKbps?:number;basis:'committed_delivery_plan';
 }>;
 
@@ -51,6 +51,6 @@ export function parsePlaybackInfo(value:unknown):PlaybackInfo|undefined {
   const strongest=known.includes('converted')?'converted':known.includes('repackaged')?'repackaged':known.includes('original')?'original':undefined;
   if(route!==strongest)throw new Error('inconsistent comparison routes');
   if(!Array.isArray(v.losses)||v.losses.length>8)throw new Error('invalid comparison losses');
-  const losses=Object.freeze(v.losses.map(value=>{const loss=record(value),replacement=record(loss.replacement);return Object.freeze({feature:choice(loss.feature,['dolbyVision','hdr','atmos','dtsx']),replacement:Object.freeze({...strings(replacement,['dynamicRange','audioCodec','layout']),...numbers(replacement,{channels:128})})});}));
+  const losses=Object.freeze(v.losses.map(value=>{const loss=record(value),replacement=record(loss.replacement);return Object.freeze({feature:choice(loss.feature,['dolbyVision','hdr10plus','hdr','atmos','dtsx']),replacement:Object.freeze({...strings(replacement,['dynamicRange','audioCodec','layout']),...numbers(replacement,{channels:128})})});}));
   return Object.freeze({route,routes,reason:Object.freeze({kind:choice(reason.kind,['compatible','container','format','quality','subtitles']),...strings(reason,['videoCodec','audioCodec','container']),...numbers(reason,{maxHeight:32768,maxBitrateKbps:1000000})}),source:media(v.source),delivered:media(v.delivered),losses,network:choice(v.network,['home','away','unknown']),...numbers(v,{estimatedBitrateKbps:1000000}),basis:choice(v.basis,['committed_delivery_plan'])});
 }

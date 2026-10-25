@@ -76,7 +76,7 @@ export function playbackInfoProjection(info:PlaybackInfo,observed:ObservedPlayba
   const delivered=picture(info.delivered.video);
   // A screen mode is a separate actual observation, never a source HDR label.
   if(observed?.screen)delivered.screen=words.screen(observed.screen);
-  sections.push(Object.freeze({kind:'picture',route:info.routes.picture,rows:rows(picture(info.source.video),delivered,['container','codec','hdr','bitDepth','resolution','frameRate','screen']),losses:Object.freeze(info.losses.filter(loss=>loss.feature==='dolbyVision'||loss.feature==='hdr').map(loss=>words.loss(loss)))}));
+  sections.push(Object.freeze({kind:'picture',route:info.routes.picture,rows:rows(picture(info.source.video),delivered,['container','codec','hdr','bitDepth','resolution','frameRate','screen']),losses:Object.freeze(info.losses.filter(loss=>loss.feature==='dolbyVision'||loss.feature==='hdr10plus'||loss.feature==='hdr').map(loss=>words.loss(loss)))}));
  }
  if(info.routes.sound){
   const delivered=sound(info.delivered.audio);

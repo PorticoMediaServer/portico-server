@@ -31,8 +31,8 @@ export function playbackInfoWords(i18n: I18n): PlaybackInfoWords {
       const video = !!reason.videoCodec, audio = !!reason.audioCodec;
       return t(video && audio ? 'next.info.reason.both' : video ? 'next.info.reason.video' : audio ? 'next.info.reason.audio' : 'next.info.reason.both');
     },
-    loss: loss => loss.feature === 'dolbyVision' ? t('next.info.loss.dolbyVision') : loss.feature === 'hdr' ? t('next.info.loss.hdr')
-      : loss.feature === 'atmos' ? t('next.info.loss.atmos') : t('next.info.loss.dtsx'),
+    loss: loss => loss.feature === 'dolbyVision' ? t('next.info.loss.dolbyVision') : loss.feature === 'hdr10plus' ? t('next.info.loss.hdr10Plus')
+      : loss.feature === 'hdr' ? t('next.info.loss.hdr') : loss.feature === 'atmos' ? t('next.info.loss.atmos') : t('next.info.loss.dtsx'),
     network: (network, measuredKbps) => {
       const name = network === 'home' ? t('next.info.network.home') : network === 'away' ? t('next.info.network.away') : t('next.info.network.unknown');
       return measuredKbps ? t('next.info.networkRate', {network: name, rate: (measuredKbps / 1000).toFixed(measuredKbps >= 10000 ? 0 : 1)}) : name;
