@@ -275,7 +275,7 @@ func (s *Service) Tuners(ctx context.Context, auth Authorize) (TunerView, error)
 		if !tableExists(ctx, tx, "live_sources") {
 			return nil
 		}
-		rows, err := tx.QueryContext(ctx, `SELECT id,name,tuner_count FROM live_sources ORDER BY name,id`)
+		rows, err := tx.QueryContext(ctx, `SELECT id,name,tuner_count FROM live_sources WHERE NOT EXISTS(SELECT 1 FROM live_source_removals r WHERE r.source_id=live_sources.id) ORDER BY name,id`)
 		if err != nil {
 			return err
 		}
