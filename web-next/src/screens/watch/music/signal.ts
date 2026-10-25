@@ -6,12 +6,13 @@ const LOSSLESS = new Set(['flac', 'alac', 'pcm', 'wavpack', 'truehd', 'dts_hd'])
 
 /** The drawn signal path for this song, from the server's own committed comparison,
  * the renderer's own observation and the device's EQ setting. Nothing is guessed:
- * an unreadable source has no line, and EQ is only "applied" when the engine says so
- * (the web engine does not process the EQ, so it is always reported as not applied). */
+ * an unreadable source has no line, and processing is only "applied" when the
+ * current session's renderer reports it. Requested settings are not observations. */
 export function watchMusicSignal(snapshot: WebPlaybackRuntimeSnapshot, equalizer: EqualizerSettings | null): MusicSignalModel | undefined {
   const session = snapshot.session, info = session?.playbackInfo, observed = session?.observedPlayback?.audio;
   const sourceAudio = info?.source.audio;
   const eqOn = equalizer?.enabled === true;
+  const effects = snapshot.playback.audioEffects;
   const fallback = snapshot.playback.musicFallback === 'eq' ? 'eq' as const : undefined;
   if (!session || !info || !sourceAudio?.codec) {
     // No committed comparison: a real engine fallback still has a drawn line, from the
@@ -31,5 +32,6 @@ export function watchMusicSignal(snapshot: WebPlaybackRuntimeSnapshot, equalizer
     ...(observed?.sampleRate ? {sampleRate: observed.sampleRate} : {}), ...(observed?.bitDepth ? {bitDepth: observed.bitDepth} : {}),
     ...(observed?.handling === 'passthrough' ? {passthrough: true} : observed?.layout ? {decodedLayout: observed.layout} : {}),
     ...(resampled ? {resampledBy: 'browser' as const} : {})};
-  return musicSignal({source, server, output, eqOn, eqApplied: false, normalization: 'off', levelingApplied: false, ...(fallback ? {fallback} : {})});
+  return musicSignal({source, server, output, eqOn, eqApplied: effects.eqApplied,
+    normalization: effects.settings.normalization, levelingApplied: effects.levelingApplied, ...(fallback ? {fallback} : {})});
 }
