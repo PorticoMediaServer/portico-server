@@ -40,3 +40,17 @@ func TestUnsavedRcloneConnectionRejectsCommandConfigurationBeforeCandidate(t *te
 		t.Fatal("invalid command configuration reached candidate", err, prepared)
 	}
 }
+
+func TestPublishedConfigurationTypesCannotWidenImportValidation(t *testing.T) {
+	kinds := SupportedConfigurationKinds()
+	if len(kinds) == 0 {
+		t.Fatal("missing configuration type domain")
+	}
+	kinds[0] = "local"
+	if err := validateConfig("[cloud]\ntype=local\n", "cloud:"); err == nil {
+		t.Fatal("caller list mutation widened configuration access")
+	}
+	if err := validateConfig("[cloud]\ntype=s3\nenv_auth=true\n", "cloud:"); err == nil {
+		t.Fatal("published type replaced field-level configuration guard")
+	}
+}

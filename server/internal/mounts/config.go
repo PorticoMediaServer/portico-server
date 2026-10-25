@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"portico.local/server/internal/requestinput"
 	"regexp"
+	"sort"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -22,6 +23,20 @@ var ErrConfigInvalid = requestinput.New("Check the remote name, supported provid
 var ErrExecutableInvalid = requestinput.New("Choose an available native rclone executable with secure file permissions that passes version validation.")
 var remotePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}:[^\r\n\x00]*$`)
 
+var configurationKinds = map[string]bool{"s3": true, "b2": true, "drive": true, "onedrive": true, "dropbox": true, "webdav": true, "http": true, "smb": true, "sftp": true, "crypt": true, "alias": true, "union": true, "combine": true, "chunker": true, "hasher": true, "compress": true, "cache": true}
+
+// SupportedConfigurationKinds is the actual import validator's type domain.
+// It does not assert that a connection is configured, reachable or approved.
+// Callers receive their own list and cannot widen the validator's allowlist.
+func SupportedConfigurationKinds() []string {
+	kinds := make([]string, 0, len(configurationKinds))
+	for kind := range configurationKinds {
+		kinds = append(kinds, kind)
+	}
+	sort.Strings(kinds)
+	return kinds
+}
+
 func validateConfig(config, remote string) error {
 	if len(config) == 0 || len(config) > 64<<10 || !remotePattern.MatchString(remote) || len(remote) > 2048 || !utf8.ValidString(remote) || strings.IndexFunc(remote, unicode.IsControl) >= 0 {
 		return ErrInvalid
@@ -30,7 +45,6 @@ func validateConfig(config, remote string) error {
 	section := ""
 	found := false
 	typed := false
-	allowed := map[string]bool{"s3": true, "b2": true, "drive": true, "onedrive": true, "dropbox": true, "webdav": true, "http": true, "smb": true, "sftp": true, "crypt": true, "alias": true, "union": true, "combine": true, "chunker": true, "hasher": true, "compress": true, "cache": true}
 	for _, line := range strings.Split(config, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
@@ -54,7 +68,7 @@ func validateConfig(config, remote string) error {
 			return ErrInvalid
 		}
 		if key == "type" {
-			if !allowed[value] {
+			if !configurationKinds[value] {
 				return ErrInvalid
 			}
 			typed = true
