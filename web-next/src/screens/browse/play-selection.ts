@@ -30,6 +30,7 @@ export type LibraryPlaySelectionOptions = Readonly<{
   playback?: Pick<V1QueuePlayer, 'playSegments'>;
   /** The caller's real personal-state executors. Each port is checked against
    * the title's own Detail actions; absent means the capability is not offered. */
+  editor?: boolean;
   personal?: Readonly<{myList?: boolean; favorite?: boolean; watched?: boolean}>;
 }>;
 type Grant = {entry: ContentEntry; pending: boolean; controller: AbortController; promise: Promise<SelectionItem>; resolve: (item: SelectionItem) => void; reject: (error: unknown) => void};
@@ -51,10 +52,10 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
   if (scope.serverId !== principal.serverId) throw unavailable();
   const playback = input.playback && Object.freeze({playSegments: input.playback.playSegments.bind(input.playback)});
   const personal = Object.freeze({...(input.personal ?? {})});
-  const ports = Object.freeze({...(playback ? {play: true as const} : {}),
+  const ports = Object.freeze({...(input.editor ? {edit: true as const} : {}),...(playback ? {play: true as const} : {}),
     ...(personal.myList ? {myList: true as const} : {}), ...(personal.favorite ? {favorite: true as const} : {}),
     ...(personal.watched ? {watched: true as const} : {})});
-  const executable = !!(playback || personal.myList || personal.favorite || personal.watched);
+  const executable = !!(input.editor || playback || personal.myList || personal.favorite || personal.watched);
   const life = new AbortController(), listeners = new Set<() => void>(), grants = new Map<ContentEntry, Grant>(), queued: Grant[] = [];
   let active = 0, closed = false, started = false, model: BrowseSelectionModel | undefined, modelOff: (() => void) | undefined;
   let sourceOff = () => {}, collectionOff = () => {}, expected: Readonly<{queryRevision: number; revision: string}> | undefined;

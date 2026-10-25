@@ -126,6 +126,7 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
         && router.state.location.href === href && runtimeRef.current === runtime,
       // The bar's job executor is the same captured route lifetime; these are real
       // executors, and each title's own Detail actions still decide its grants.
+      editor: context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local',
       personal: {myList: true, favorite: true, watched: true},
       playback: runtime?.cataloguePlayback()});
   }, [captured.context, context, resources, runtime, href, state.queryRevision]);
@@ -137,6 +138,10 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
     playSelection,
     owner: context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local',
     descriptor: () => resources.controller.wholeSelection(),
+    ...(context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local' ? {editor: {
+      api: resources.life.api, events: context.events, requestId: async () => randomId(), serverId: context.scope.serverId,
+      viewerFence: () => captured.context.viewerFence, signal: resources.life.signal(), isCurrent: () => resources.life.current(),
+    }} : {}),
     actions: {api: resources.life.api, events: context.events, requestId: async () => randomId(),
       signal: resources.life.signal(), isCurrent: () => resources.life.current(), reportError: context.effects.reportError},
     reportError: context.effects.reportError,
