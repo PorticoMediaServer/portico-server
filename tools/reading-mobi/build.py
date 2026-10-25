@@ -4,6 +4,7 @@
 Inputs: clean pinned upstream checkout, exact musl source archive, qualified
 builder/tool manifest, private output parent. Must not run per implementation item.
 """
+import ctypes
 import hashlib
 import json
 import os
@@ -18,6 +19,39 @@ import tarfile
 
 HERE = Path(__file__).resolve().parent
 PIN = json.loads((HERE / 'inputs.json').read_text())
+RECIPE_FILES = ('worker.c', 'CMakeLists.txt', 'build-policy.h', 'build.py',
+                'inputs.json', 'DEPENDENCY.md', 'REBUILD.md', 'GPL-3.0.txt', 'LGPL-3.0.txt')
+
+def overlaps(left, right):
+    return left == right or left.is_relative_to(right) or right.is_relative_to(left)
+
+def publish_delivery(parent, stage, final):
+    # Linux RENAME_NOREPLACE is mandatory: ordinary rename can replace an empty
+    # destination directory. No copy/replace fallback may expose a partial tree.
+    libc = ctypes.CDLL(None, use_errno=True)
+    rename = getattr(libc, 'renameat2', None)
+    require(rename is not None, 'atomic no-replace delivery publication unavailable')
+    rename.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+    rename.restype = ctypes.c_int
+    for root, directories, files in os.walk(stage, topdown=False, followlinks=False):
+        require(all(not (Path(root) / name).is_symlink() for name in directories + files), 'delivery symlink refused')
+        for name in files:
+            with (Path(root) / name).open('rb') as stream:
+                os.fsync(stream.fileno())
+        descriptor = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    descriptor = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        result = rename(descriptor, os.fsencode(stage.name), descriptor, os.fsencode(final.name), 1)
+        if result != 0:
+            failure = ctypes.get_errno()
+            raise OSError(failure, os.strerror(failure))
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 def digest(path):
     with path.open('rb') as stream:
@@ -32,6 +66,10 @@ def main():
     source, archive, manifest_path, output = [Path(value).resolve() for value in sys.argv[1:]]
     require(platform.system() == 'Linux' and platform.machine() == 'x86_64', 'unsupported builder target')
     require(not output.exists(), 'output must be new; no overwrite or install')
+    require(not overlaps(output, HERE) and not overlaps(output, source), 'output must not overlap recipe or upstream source trees')
+    for name in RECIPE_FILES:
+        path = HERE / name
+        require(path.is_file() and not path.is_symlink() and path.stat().st_size <= 1 << 20, 'reviewed regular recipe input required: ' + name)
     tools_manifest = json.loads(manifest_path.read_text())
     require(re.fullmatch(r'sha256:[0-9a-f]{64}', tools_manifest['builderImage']) is not None, 'qualified immutable builder image digest required')
     tools = {}
@@ -78,7 +116,7 @@ def main():
     worker = build / 'portico-mobi-worker'
     elf = subprocess.check_output([tools['llvm-readelf'], '--program-headers', '--dynamic-table', str(worker)], text=True)
     require('INTERP' not in elf and '(NEEDED)' not in elf and 'Shared library:' not in elf, 'worker is not a static closure')
-    delivery = output / 'delivery'; delivery.mkdir()
+    delivery = output / '.delivery-incomplete'; delivery.mkdir(mode=0o700)
     shutil.copy2(worker, delivery / 'worker')
     # Sandbox is an existing Release-qualified Linux helper, not built/downloaded here.
     sandbox = tools_manifest['sandbox']; sandbox_path = Path(sandbox['path'])
@@ -87,14 +125,14 @@ def main():
     bundle = {'schema': 1, 'target': PIN['target'], 'converter': 'libmobi:' + PIN['libmobi']['commit'],
               'options': 'portico-epub-v1;unencrypted-only;no-replica;default-kf8',
               'workerSHA256': digest(delivery / 'worker'), 'sandboxSHA256': digest(delivery / 'bwrap')}
-    (delivery / 'manifest.json').write_text(json.dumps(bundle, indent=2) + '\n')
-    (delivery / 'manifest.sha256').write_text(digest(delivery / 'manifest.json') + '\n')
     # Matching source and all application objects allow independent rebuild/relink.
     sources = delivery / 'sources'; sources.mkdir()
     with (sources / 'libmobi.tar').open('wb') as stream:
         subprocess.run([str(git), '-C', str(source), 'archive', PIN['libmobi']['commit']], stdout=stream, check=True)
     shutil.copy2(archive, sources / 'musl-1.2.6.tar.gz')
-    shutil.copytree(HERE, sources / 'portico-mobi')
+    recipe = sources / 'portico-mobi'; recipe.mkdir()
+    for name in RECIPE_FILES:
+        shutil.copy2(HERE / name, recipe / name)
     objects = delivery / 'relink-objects'; objects.mkdir()
     for index, obj in enumerate(sorted(build.rglob('*.o'))):
         shutil.copy2(obj, objects / (str(index) + '-' + obj.name))
@@ -105,6 +143,11 @@ def main():
     shutil.copy2(source / 'COPYING', delivery / 'LIBMOBI-COPYING')
     shutil.copy2(source / 'src/miniz.c', delivery / 'MINIZ-NOTICE-AND-SOURCE.c')
     (delivery / 'static-elf.txt').write_text(elf)
+    # All required sources, notices, relink objects and provenance now exist.
+    # Only now create the runtime descriptor, durably sync, and publish once.
+    (delivery / 'manifest.json').write_text(json.dumps(bundle, indent=2) + '\n')
+    (delivery / 'manifest.sha256').write_text(digest(delivery / 'manifest.json') + '\n')
+    publish_delivery(output, delivery, output / 'delivery')
     # No version/help/parser process is run by qualification in this recipe.
     # Release independently qualifies the sandbox/worker at its checkpoint.
 

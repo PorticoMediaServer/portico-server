@@ -113,3 +113,19 @@ Reading service's conversion-dependent source queries. Missing/mismatched or
 unsupported bundles fail closed with conversion unavailable. Request source
 acquisition still performs full actor/library/title/root/version authorization.
 This source wiring is not permission to set those variables or deploy a bundle.
+
+## Complete-only publication
+
+Before creating output or running a build tool, the recipe rejects output paths
+inside, equal to, or containing the recipe directory or upstream checkout. The
+matching Portico recipe source is copied only from the fixed RECIPE_FILES list;
+untracked files, logs, caches, build output and arbitrary directory contents are
+never recursively copied. Every listed source must be a bounded regular file.
+
+The entire delivery is assembled in a private .delivery-incomplete directory.
+Sources, notices, relink objects, builder inputs and static ELF report are copied
+before manifest.json/manifest.sha256 are created. The completed tree is fsynced
+and atomically published as delivery with Linux renameat2(RENAME_NOREPLACE),
+then the parent is fsynced. Existing destinations are never replaced and there
+is no copy/rename fallback. Any earlier failure leaves no runtime manifest at
+the final delivery path. Incomplete private staging is not a deliverable.
