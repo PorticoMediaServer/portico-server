@@ -181,6 +181,7 @@
   }
   /** A visible error card: the TV always says what went wrong (CAST-01). Never shows raw codes. */
   function showError(code) {
+    var resumePicture = pictureReady && !!playback;
     stopPreparing(); viewGeneration++; pictureReady = false; viewLoading = false;
     if (!viewCall('error', [errorKind(code)])) {
       text('error-title', copy('error.' + errorKind(code) + '.title'));
@@ -188,7 +189,14 @@
       show('error');
     }
     clearTimeout(errorTimer);
-    errorTimer = setTimeout(function () { if (!playback) showIdle(); }, ERROR_VISIBLE_MS);
+    // The card stays 20 seconds, then returns to what was on screen: the picture
+    // when something is still playing, otherwise idle.
+    errorTimer = setTimeout(function () {
+      if (!playback) { showIdle(); return; }
+      var playingState = manager ? manager.getPlayerState() : 'IDLE';
+      if (resumePicture && ['PLAYING','PAUSED','BUFFERING'].indexOf(playingState) >= 0) { pictureReady = true; showPlaying(); return; }
+      showIdle();
+    }, ERROR_VISIBLE_MS);
   }
 
   // --- Credentials and requests --------------------------------------------
@@ -761,6 +769,12 @@
   function requesterName(message, senderId) {
     var name = cleanText(message && message.displayName, 64);
     if (name) return name;
+    // The SDK's own sender fact, not an inferred model: a sender that gave no
+    // description but is an iPhone or iPad is named as one (frame 15).
+    try {
+      var sender = castContext && typeof castContext.getSender === 'function' ? castContext.getSender(senderId) : null;
+      if (sender && /iPhone|iPad/.test(String(sender.userAgent || ''))) return copy('iPhoneOrIPad');
+    } catch (e) { /* the sender left */ }
     return copy('someone');
   }
   function hideTakeover() { if (!viewCall('takeover', [null])) visible('takeover', false); }
