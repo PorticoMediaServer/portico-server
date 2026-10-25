@@ -38,7 +38,7 @@ import {parseEqualizer, type EqualizerSettings} from './audio/equalizer';
 import {saveDeviceEqualizer} from './audio/equalizer-store';
 import type {BrowserAudioFacts} from './audio/output';
 import {listeningDiagnostic, type ListeningEffectsPort} from './listening-effects';
-import type {Session} from '@core/playback-v1/types.ts';
+import type {DiscTitleRef, Session} from '@core/playback-v1/types.ts';
 import type {QueueSessionTransport} from '@core/playback-v1/v1-queue-player.ts';
 import {WebMediaPlayer, type HlsModule, type SubtitleTimeline, type VideoLike, type WebPlayerNotice, type WebPlayerTimers, type WebMediaPlayerOptions} from './web-media-player.ts';
 
@@ -795,17 +795,20 @@ export class WebPlayback implements PlaybackAdapter {
 
   private makeTransport(): WebPlayback['transport'] {
     const self = this;
-    const duration = async (itemId: string, versionId?: string, signal?: AbortSignal): Promise<number> => {
+    const duration = async (itemId: string, versionId?: string, signal?: AbortSignal, discTitle?: DiscTitleRef): Promise<number> => {
       if (!itemId) return 0;
       try {
-        const o = await self.options.options(itemId, {}, signal);
-        const v = o.versions.find(x => x.id === (versionId ?? o.preferred?.versionId)) ?? o.versions[0];
+        const o = await self.options.options(itemId, {versionId, discTitle}, signal);
+        const v = o.versions.find(x => x.id === (versionId ?? o.preferred?.versionId));
         return v ? v.durationMs / 1000 : 0;
       } catch { return 0; } // The engine reports the duration once it has the media.
     };
     const start = async (target: StartTarget, options: StartOptions, key: string = (self.host.key ?? idempotencyKey)(), durationSeconds?: number, signal?: AbortSignal) => {
       const session = self.remember(await self.client.start(target, options, key, {signal}));
-      return {session, playback: toPlaybackSession(session, durationSeconds ?? await duration(session.itemId ?? '', session.versionId, signal))};
+      const seconds = session.discTitle
+        ? await duration(session.itemId ?? '', session.versionId, signal, session.discTitle)
+        : durationSeconds ?? await duration(session.itemId ?? '', session.versionId, signal);
+      return {session, playback: toPlaybackSession(session, seconds)};
     };
     return {
       start,
