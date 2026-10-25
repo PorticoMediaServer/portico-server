@@ -76,20 +76,21 @@ type RepairSnapshot struct {
 	Artwork           []ArtworkChoice        `json:"artwork"`
 }
 type RepairState struct {
-	TargetItemKind string            `json:"-"`
-	Tabs           []string          `json:"tabs"`
-	Target         RepairTarget      `json:"target"`
-	Library        string            `json:"libraryId"`
-	Server         string            `json:"serverId"`
-	ViewerFence    string            `json:"viewerFence"`
-	Revision       string            `json:"revision"`
-	Snapshot       RepairSnapshot    `json:"snapshot"`
-	Candidates     []RepairCandidate `json:"candidates"`
-	History        []RepairHistory   `json:"history"`
-	Artwork        ArtworkState      `json:"artwork"`
-	Cascades       []RepairCascade   `json:"cascades"`
-	Schema         []RepairFieldSpec `json:"schema"`
-	ArtworkRoles   []string          `json:"artworkRoles"`
+	CanMakeEpisodeThumbnail bool              `json:"canMakeEpisodeThumbnail,omitempty"`
+	TargetItemKind          string            `json:"-"`
+	Tabs                    []string          `json:"tabs"`
+	Target                  RepairTarget      `json:"target"`
+	Library                 string            `json:"libraryId"`
+	Server                  string            `json:"serverId"`
+	ViewerFence             string            `json:"viewerFence"`
+	Revision                string            `json:"revision"`
+	Snapshot                RepairSnapshot    `json:"snapshot"`
+	Candidates              []RepairCandidate `json:"candidates"`
+	History                 []RepairHistory   `json:"history"`
+	Artwork                 ArtworkState      `json:"artwork"`
+	Cascades                []RepairCascade   `json:"cascades"`
+	Schema                  []RepairFieldSpec `json:"schema"`
+	ArtworkRoles            []string          `json:"artworkRoles"`
 }
 type RepairFieldEdit struct {
 	Value     *string   `json:"value,omitempty"`
@@ -283,12 +284,24 @@ func (s *Service) RepairState(ctx context.Context, t RepairTarget, authorize fun
 	if err = authorize(tx); err != nil {
 		return RepairState{}, err
 	}
-	out, err := readRepairState(ctx, tx, t)
+	out, err := s.readRepairState(ctx, tx, t)
 	if err != nil {
 		return out, err
 	}
 	return out, gated.Commit()
 }
+
+// readRepairState adds the current explicit thumbnail capability without changing
+// automatic-generation policy or granting authority to invoke the command.
+func (s *Service) readRepairState(ctx context.Context, tx *sql.Tx, t RepairTarget) (RepairState, error) {
+	out, err := readRepairState(ctx, tx, t)
+	if err != nil {
+		return out, err
+	}
+	out.CanMakeEpisodeThumbnail, err = s.CanMakeEpisodeThumbnailTx(ctx, tx, t)
+	return out, err
+}
+
 func readRepairState(ctx context.Context, tx *sql.Tx, t RepairTarget) (RepairState, error) {
 	out := RepairState{Target: t, History: []RepairHistory{}, Candidates: []RepairCandidate{}, Cascades: []RepairCascade{}}
 	snap, ent, err := readRepairSnapshot(ctx, tx, t)
@@ -630,7 +643,7 @@ func (s *Service) Repair(ctx context.Context, t RepairTarget, m RepairCommand, a
 			return RepairState{}, err
 		}
 	}
-	out, err := readRepairState(ctx, tx, t)
+	out, err := s.readRepairState(ctx, tx, t)
 	if err != nil {
 		return out, err
 	}

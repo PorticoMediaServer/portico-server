@@ -18679,6 +18679,9 @@ export const schemas = {
         },
         "type": "array"
       },
+      "canMakeEpisodeThumbnail": {
+        "type": "boolean"
+      },
       "candidates": {
         "items": {
           "properties": {
@@ -114031,6 +114034,9 @@ export const schemas = {
         },
         "type": "array"
       },
+      "canMakeEpisodeThumbnail": {
+        "type": "boolean"
+      },
       "candidates": {
         "items": {
           "properties": {
@@ -177185,6 +177191,9 @@ export const schemas = {
         },
         "type": "array"
       },
+      "canMakeEpisodeThumbnail": {
+        "type": "boolean"
+      },
       "candidates": {
         "items": {
           "properties": {
@@ -177862,6 +177871,9 @@ export const schemas = {
           "type": "string"
         },
         "type": "array"
+      },
+      "canMakeEpisodeThumbnail": {
+        "type": "boolean"
       },
       "candidates": {
         "items": {

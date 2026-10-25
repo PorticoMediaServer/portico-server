@@ -20345,6 +20345,9 @@
             },
             "type": "array"
           },
+          "canMakeEpisodeThumbnail": {
+            "type": "boolean"
+          },
           "candidates": {
             "items": {
               "properties": {
@@ -118117,6 +118120,9 @@
             },
             "type": "array"
           },
+          "canMakeEpisodeThumbnail": {
+            "type": "boolean"
+          },
           "candidates": {
             "items": {
               "properties": {
@@ -195819,6 +195825,9 @@
             },
             "type": "array"
           },
+          "canMakeEpisodeThumbnail": {
+            "type": "boolean"
+          },
           "candidates": {
             "items": {
               "properties": {
@@ -196502,6 +196511,9 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "canMakeEpisodeThumbnail": {
+            "type": "boolean"
           },
           "candidates": {
             "items": {
@@ -425625,6 +425637,9 @@
                       },
                       "type": "array"
                     },
+                    "canMakeEpisodeThumbnail": {
+                      "type": "boolean"
+                    },
                     "candidates": {
                       "items": {
                         "properties": {
@@ -426388,6 +426403,9 @@
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "canMakeEpisodeThumbnail": {
+                      "type": "boolean"
                     },
                     "candidates": {
                       "items": {
@@ -427177,6 +427195,9 @@
                       },
                       "type": "array"
                     },
+                    "canMakeEpisodeThumbnail": {
+                      "type": "boolean"
+                    },
                     "candidates": {
                       "items": {
                         "properties": {
@@ -427826,6 +427847,9 @@
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "canMakeEpisodeThumbnail": {
+                      "type": "boolean"
                     },
                     "candidates": {
                       "items": {
