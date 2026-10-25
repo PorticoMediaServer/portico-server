@@ -55,12 +55,12 @@ export function LocalInvitationForm({serverName, inviter, libraries, busy, error
 
 /** A kind-specific glyph is supplied only from an actual library kind. A name
  * alone never becomes a movie/TV/category claim. */
-export function PorticoInvitation({serverName, libraries, member, account, signedOutContent, busy, error, errorContent, onJoin, onDifferentAccount}: {
+export function PorticoInvitation({serverName, libraries, member, account, signedOutContent, busy, error, errorContent, onJoin, onDifferentAccount, bare = false}: {
   serverName: string; libraries: readonly Readonly<{name: string; icon?: IconName}>[]; member: boolean;
   account?: Readonly<{username: string}>; signedOutContent: ReactNode; busy?: boolean; error?: unknown; errorContent?: ReactNode;
-  onJoin: () => void; onDifferentAccount: () => void;
+  onJoin: () => void; onDifferentAccount: () => void; bare?: boolean;
 }) {
-  return <AuthStage shape="top" legal={false} className={styles.porticoInvitationStage} contentClassName={styles.porticoInvitationContent}
+  return <AuthStage shape="top" legal={false} bare={bare} className={styles.porticoInvitationStage} contentClassName={styles.porticoInvitationContent}
     topRight={account && <span className={styles.invitationHeaderAvatar} aria-hidden="true">{Array.from(account.username)[0]?.toUpperCase()}</span>}>
     <p className={styles.eyebrow}>{t('accounts.invitation.to')}</p><h1>{serverName}</h1>
     <p className={styles.lede}>{t('accounts.invitation.porticoBody', {server: serverName})}</p>
