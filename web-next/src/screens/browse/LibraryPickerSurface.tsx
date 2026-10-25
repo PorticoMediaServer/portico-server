@@ -5,14 +5,17 @@ import type {EntryActionPorts, EntryDestination} from '../../shell/entry-actions
 import {pickerResultView} from '../../shell/selection-presentation';
 import type {ShellArtwork} from '../../shell/artwork';
 import {CoverMosaic} from '../../kit/artwork';
-import {CollectionPicker, PlaylistPicker, type PickerEntry} from '../../kit/selection';
+import {CollectionPicker, PickerAddedToast, PlaylistPicker, pickerResultSucceeded, type PickerEntry} from '../../kit/selection';
 import {LibraryPickerProducer, type LibraryPickerTarget} from './selection-picker';
 export type LibraryPickerOptions = EntryActionPorts & Readonly<{signal: AbortSignal; canCreateCollection: boolean;
   /** The screen's own artwork, for the picker's 2 by 2 mosaics (select.html 18). */
-  artwork?: ShellArtwork}>;
+  artwork?: ShellArtwork;
+  /** The destination page this surface can really open; absent leaves the toast without View. */
+  onView?: (destination: EntryDestination, id: string) => void}>;
 const t = defaultI18n.t;
-export function LibraryPickerSurface({destination, target, ports, artwork, anchor, canCreate, onClose}: {
-  destination: EntryDestination; target: LibraryPickerTarget; ports: EntryActionPorts; artwork?: ShellArtwork; anchor: HTMLElement | null; canCreate: boolean; onClose: () => void;
+export function LibraryPickerSurface({destination, target, ports, artwork, onView, anchor, canCreate, onClose}: {
+  destination: EntryDestination; target: LibraryPickerTarget; ports: EntryActionPorts; artwork?: ShellArtwork; onView?: (destination: EntryDestination, id: string) => void;
+  anchor: HTMLElement | null; canCreate: boolean; onClose: () => void;
 }) {
   const producer = useRef<LibraryPickerProducer | null>(null), anchorRef = useRef<HTMLElement | null>(anchor);
   const [picker, setPicker] = useState<HomeSelectionPicker>(), [error, setError] = useState<string>();
@@ -43,8 +46,12 @@ export function LibraryPickerSurface({destination, target, ports, artwork, ancho
   const entries: readonly PickerEntry[] = picker?.rows.map(row => ({id: row.id, name: row.name, size: row.count, canAdd: row.canAdd, alreadyIn: row.alreadyIn, artwork: mosaic(row.artwork)})) ?? [];
   const resultView = picker && pickerResultView(picker, () => t('next.selection.pickerFailed'));
   const result = resultView && picker ? {...resultView, destination: {...resultView.destination, artwork: mosaic(picker.destination?.artwork)}} : undefined;
+  // select.html 18: a fully successful add closes the sheet, ends the selection and
+  // leaves one toast with View; a partial result keeps the sheet open (frame 19).
+  const succeeded = picker?.phase === 'added' && !!result && pickerResultSucceeded(result);
+  const selectionCount = {count: 'mode' in target ? target.total : target.length};
   const Picker = destination === 'playlist' ? PlaylistPicker : CollectionPicker;
-  return <Picker open onOpenChange={value => {if (!value) close();}} selection={{count: 'mode' in target ? target.total : target.length}} anchorRef={anchorRef} returnFocusRef={anchorRef}
+  return <><Picker open={!succeeded} onOpenChange={value => {if (!value) close();}} selection={selectionCount} anchorRef={anchorRef} returnFocusRef={anchorRef}
     entries={entries} query={picker?.query ?? ''} onQueryChange={value => run(owned => owned.search(value))}
     loading={!picker || picker.phase === 'loading'} busy={picker?.phase === 'adding'}
     hasNext={picker?.next} hasPrevious={picker?.previous} onNext={picker?.next ? () => run(owned => owned.page()) : undefined}
@@ -54,6 +61,9 @@ export function LibraryPickerSurface({destination, target, ports, artwork, ancho
     onRetry={'mode' in target ? undefined : ids => {const failures = picker?.receipt?.failures.map(row => row.itemId) ?? []; if (picker?.phase !== 'partial' || ids.length !== failures.length || ids.some((id, index) => id !== failures[index])) return; run(owned => owned.retry());}}
     onRetryOperation={picker?.phase === 'uncertain' ? () => run(owned => owned.retry()) : undefined}
     onRetryError={picker?.phase === 'error' || error ? () => run(owned => owned.retry()) : undefined}
-    result={result} error={error ?? (picker?.error ? t('next.selection.pickerFailed') : undefined)} />;
+    result={result} error={error ?? (picker?.error ? t('next.selection.pickerFailed') : undefined)} />
+    {result && <PickerAddedToast open={succeeded} onOpenChange={value => {if (!value && succeeded) close();}} selection={selectionCount} destination={destination} result={result}
+      {...(onView ? {onView: (id: string) => onView(destination, id)} : {})} />}
+  </>;
 }
 

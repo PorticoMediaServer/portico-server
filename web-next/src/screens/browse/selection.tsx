@@ -392,5 +392,5 @@ function LibraryPickerHost({playSelection, store, options, close}: {playSelectio
   const valid = !!session?.current();
   useEffect(() => {if (session && !valid) close();}, [session, valid, close]);
   useEffect(() => {const abort = () => close(); options.signal.addEventListener('abort', abort, {once: true}); return () => {options.signal.removeEventListener('abort', abort); close();};}, [options, close]);
-  return session && valid ? <LibraryPickerSurface destination={session.kind} target={session.items} ports={session.ports} artwork={options.artwork} anchor={session.anchor} canCreate={options.canCreateCollection} onClose={close}/> : null;
+  return session && valid ? <LibraryPickerSurface destination={session.kind} target={session.items} ports={session.ports} artwork={options.artwork} onView={options.onView} anchor={session.anchor} canCreate={options.canCreateCollection} onClose={close}/> : null;
 }

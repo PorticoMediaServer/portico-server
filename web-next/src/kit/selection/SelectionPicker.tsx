@@ -91,7 +91,9 @@ function SelectionPicker({destination, ...props}: SelectionPickerProps & {destin
 export function PlaylistPicker(props: SelectionPickerProps) { return <SelectionPicker {...props} destination="playlist" />; }
 export function CollectionPicker(props: SelectionPickerProps) { return <SelectionPicker {...props} destination="collection" />; }
 
-export type PickerAddedToastProps = Readonly<{open: boolean; onOpenChange: OverlayChange; selection: SelectionCount; destination: Destination; result: PickerResult; onView: (id: string) => void; bottomInset?: number}>;
+export type PickerAddedToastProps = Readonly<{open: boolean; onOpenChange: OverlayChange; selection: SelectionCount; destination: Destination; result: PickerResult;
+  /** Absent where the surface has no real destination page to open. */
+  onView?: (id: string) => void; bottomInset?: number}>;
 function PickerToastViewLabel({destination}: {destination: Destination}) {
   const phone = usePhone();
   return phone ? defaultI18n.t('action.view') : text(destination === 'playlist' ? 'next.selection.viewPlaylist' : 'next.selection.viewCollection');
@@ -101,7 +103,7 @@ export function PickerAddedToast({open, onOpenChange, selection, destination, re
   const toast: ToastData | null = open && pickerResultSucceeded(result) ? {
     id: `picker-${destination}-${result.destination.id}`,
     message: <>{text('next.selection.addedToast', {items: selectionCountText({count: result.inserted!, kind: selection.kind}), name: result.destination.name})}{result.alreadyIn !== undefined && result.alreadyIn > 0 && <> {text('next.selection.duplicatesToast', {count: result.alreadyIn})}</>}</>,
-    action: {variant: 'text', label: <PickerToastViewLabel destination={destination} />, accessibilityLabel: text(destination === 'playlist' ? 'next.selection.viewPlaylist' : 'next.selection.viewCollection'), onAction: () => onView(result.destination.id)},
+    ...(onView ? {action: {variant: 'text' as const, label: <PickerToastViewLabel destination={destination} />, accessibilityLabel: text(destination === 'playlist' ? 'next.selection.viewPlaylist' : 'next.selection.viewCollection'), onAction: () => onView(result.destination.id)}} : {}),
   } : null;
   return <ToastHost toast={toast} bottomInset={bottomInset} className={styles.pickerToastHost} toastClassName={styles.pickerToast} onDismiss={(_id, reason) => onOpenChange(false, reason)} />;
 }

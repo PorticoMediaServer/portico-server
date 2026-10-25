@@ -1,6 +1,7 @@
 import type {CardSelection} from '../../kit/cards';
 import {useEffect, useSyncExternalStore, type ReactNode} from 'react';
 import type {ContentEntry} from '@core/library-content.ts';
+import {router} from '../../router';
 
 import type {BrowseSelectionScope} from '@core/selection-model/index.ts';
 import {randomId} from '@core/random-id.ts';
@@ -64,7 +65,9 @@ export function createCatalogueDocumentSelection(context: ScreenContext, sourceD
     const selection = createLibrarySelection({playSelection: play, owner,
       ...(runtime ? {enqueue: play.enqueue} : {}),
       pickers: {api: life.api, serverId: context.scope.serverId, viewerId: context.scope.viewerId, requestId: async () => randomId(), signal: life.signal(), isCurrent: current,
-        canCreateCollection: context.identity?.viewer.role === 'owner', pickerIdentity: {...principal, events: context.events}, artwork: context.artwork},
+        canCreateCollection: context.identity?.viewer.role === 'owner', pickerIdentity: {...principal, events: context.events}, artwork: context.artwork,
+        onView: (destination, id) => {if (!current()) return;
+          void router.navigate({to: '/saved', search: destination === 'playlist' ? {view: 'playlist', playlistId: id} : {view: 'resource', resourceId: id}}).catch(context.effects.reportError);}},
       ...(owner ? {editor: {api: life.api, events: context.events, requestId: async () => randomId(), serverId: context.scope.serverId, viewerId: context.scope.viewerId,
         artwork: context.artwork, viewerFence: metadataFence, signal: life.signal(), isCurrent: current},
         deletion: {api: life.api, serverId: context.scope.serverId, viewerId: context.scope.viewerId, requestId: async () => randomId(), signal: life.signal(), isCurrent: current}} : {}),
