@@ -67,7 +67,7 @@ func (c *ConsoleSettingsChange) UnmarshalJSON(raw []byte) error {
 		}
 		known[name] = true
 		value, ok := values[name]
-		if !ok && (name == "logDetailMinutes" || name == "segments.filmCreditsWindow" || name == "segments.creditsWindow" || name == "segments.introWindow" || name == "segments.shortestFilm" || name == "segments.shortestEpisode" || name == "segments.tvMode" || name == "segments.animeMode" || name == "segments.movieMode" || name == "segments.useChapterNames" || name == "segments.viewerConfidencePercent" || name == "segments.automaticConfidencePercent") {
+		if !ok && (name == "people.invitation_days" || name == "logDetailMinutes" || name == "segments.filmCreditsWindow" || name == "segments.creditsWindow" || name == "segments.introWindow" || name == "segments.shortestFilm" || name == "segments.shortestEpisode" || name == "segments.tvMode" || name == "segments.animeMode" || name == "segments.movieMode" || name == "segments.useChapterNames" || name == "segments.viewerConfidencePercent" || name == "segments.automaticConfidencePercent") {
 			continue
 		}
 		if name == "segments.shortestEpisode" {
