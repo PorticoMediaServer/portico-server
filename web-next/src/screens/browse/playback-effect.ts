@@ -37,3 +37,21 @@ export function createScreenSeasonPlayEffect(input: Readonly<{isCurrent: () => b
   if (!current()) throw new DOMException('Screen playback changed', 'AbortError');
  };
 }
+
+/** The server's artist selector snapshots discography order and admits every
+ * song. A search's loaded albums and text predicates are never membership. */
+export function createScreenArtistPlayEffect(input: Readonly<{isCurrent: () => boolean; runtime: () => Pick<NonNullable<ShellBindings['playback']>['runtime'], 'playFromQueue'> | undefined}>): NonNullable<ScreenContext['effects']['playArtist']> {
+  const authorityCurrent = input.isCurrent.bind(input), getRuntime = input.runtime.bind(input);
+  return async (artistId, signal, callerCurrent) => {
+    const capturedArtistId = artistId;
+    signal.throwIfAborted();
+    if (!authorityCurrent() || !callerCurrent()) throw new DOMException('Search playback changed', 'AbortError');
+    const runtime = getRuntime();
+    if (!runtime) throw new DOMException('Playback is still loading', 'AbortError');
+    const current = () => !signal.aborted && authorityCurrent() && callerCurrent() && getRuntime() === runtime;
+    if (!current()) throw new DOMException('Search playback changed', 'AbortError');
+    await runtime.playFromQueue({container: {kind: 'artist', id: capturedArtistId}}, {signal, isCurrent: current});
+    signal.throwIfAborted();
+    if (!current()) throw new DOMException('Search playback changed', 'AbortError');
+  };
+}

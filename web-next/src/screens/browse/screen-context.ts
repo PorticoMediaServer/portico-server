@@ -7,7 +7,7 @@ import type {ShellBindings} from '../../shell/bindings';
 import type {ScreenContext} from '../detail/context';
 import {screenEntryDestination} from './navigation';
 import {openWatchVersionChooser} from '../watch/version-presentation';
-import {createScreenPlayEffect, createScreenSeasonPlayEffect} from './playback-effect';
+import {createScreenPlayEffect, createScreenSeasonPlayEffect, createScreenArtistPlayEffect} from './playback-effect';
 import {addToDestinationEffect, deleteTitleEffect, entryActions} from '../../shell/entry-actions';
 
 export type ProtectedLibraryScreen = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
@@ -53,6 +53,7 @@ export function useLibraryScreenContext(captured: ProtectedLibraryScreen): Scree
         openBrowse(selector) {assert();navigate(router.navigate({to: '/library/$libraryId', params: {libraryId: selector.libraryId},
           search: {pivot: selector.pivot, query: selector.query, sort: selector.sort}}));},
         playSeason: createScreenSeasonPlayEffect({isCurrent: current, runtime: () => binding.current.playback?.runtime}),
+        playArtist: createScreenArtistPlayEffect({isCurrent: current, runtime: () => binding.current.playback?.runtime}),
         play: createScreenPlayEffect({isCurrent: current, runtime: () => binding.current.playback?.runtime}),
         ...entryEffects,
         async chooseVersion(request) {

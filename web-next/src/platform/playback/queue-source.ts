@@ -4,7 +4,7 @@ import type {QueueBrowseSelector} from '@core/playback-v1/types.ts';
 /** Whole server resources only. Visible-page item arrays are deliberately a different action. */
 export type WebPlaybackQueueSource = Readonly<
   {query: QueueBrowseSelector} |
-  {container: Readonly<{kind: 'playlist' | 'collection' | 'season'; id: string}>} |
+  {container: Readonly<{kind: 'playlist' | 'collection' | 'season' | 'artist'; id: string}>} |
   {saved: Readonly<{id: string}>}
 >;
 
@@ -26,9 +26,9 @@ export function captureQueueSource(input: WebPlaybackQueueSource): WebPlaybackQu
   if (new TextEncoder().encode(serialized).length > 64 * 1024) invalid();
   if ('container' in input) {
     const value = input.container;
-    if (!object(value) || !['playlist', 'collection', 'season'].includes(value.kind as string) || !id(value.id)) invalid();
+    if (!object(value) || !['playlist', 'collection', 'season', 'artist'].includes(value.kind as string) || !id(value.id)) invalid();
     keys(value, ['kind', 'id']);
-    return freeze({container: {kind: value.kind as 'playlist' | 'collection' | 'season', id: value.id}});
+    return freeze({container: {kind: value.kind as 'playlist' | 'collection' | 'season' | 'artist', id: value.id}});
   }
   if ('saved' in input) {
     if (!object(input.saved) || !id(input.saved.id)) invalid();keys(input.saved, ['id']);

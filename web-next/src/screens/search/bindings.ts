@@ -177,6 +177,23 @@ export function createSearchBindings(context: ScreenContext) {
       if (service.getSnapshot().phase !== 'ready' || !visible.has(entry) || !('libraryId' in entry) || !entry.libraryId || !entry.playback || entry.available !== true) throw new DOMException('Search playback changed', 'AbortError');
       await commandContext.effects.play({libraryId: entry.libraryId, itemId: entry.playback.itemId, startSeconds: entry.playback.startSeconds ?? 0}, life.signal(), () => visible.has(entry));
     },
+    canPlayArtist(entry: SearchEntry) {
+      return life.current() && service.getSnapshot().phase === 'ready' && visible.has(entry)
+        && entry.kind === 'artist' && !!context.effects.playArtist;
+    },
+    async playArtist(entry: SearchEntry) {
+      life.assert();
+      const effect = context.effects.playArtist, captured = service.getSnapshot();
+      const query = requestKey(captured.query), source = resultKey;
+      const current = () => {
+        const state = service.getSnapshot();
+        return life.current() && state.phase === 'ready' && state.generation === captured.generation
+          && requestKey(state.query) === query && resultKey === source && visible.has(entry);
+      };
+      if (!effect || entry.kind !== 'artist' || !query || !source || !current()) throw new DOMException('Search artist changed', 'AbortError');
+      await effect(entry.id, life.signal(), current);
+      if (!current()) throw new DOMException('Search artist changed', 'AbortError');
+    },
     dispose() { text = ''; group = undefined; summary = undefined; visible.clear(); off(); retireLive(); cards = NO_LIVE_CARDS; liveListeners.clear(); genres.dispose(); onNow.dispose(); life.dispose(); topTitle.dispose(); topShow.dispose(); service.cancel(); service.dispose(); },
   };
 }
