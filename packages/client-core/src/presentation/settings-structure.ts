@@ -458,7 +458,7 @@ const accountPages: readonly AuthoredPage[] = [
       // What pausing and clearing do not change, said before the switches that might suggest otherwise.
       {id: 'note', rows: [custom('privacyNote')]},
       {id: 'history', rows: [
-        toggle('privacy.pauseWatchHistory', 'pref.label.privacy.pauseWatchHistory', {help: 'pref.help.privacy.pauseWatchHistory'}),
+        toggle('privacy.pauseWatchHistory', 'next.settingsSpec.account.privacy.advanced.groups.1.rows.0.label', {help: 'pref.help.privacy.pauseWatchHistory'}),
         toggle('privacy.showActivityToMembers', 'settings.row.showActivity', {help: 'settings.help.showActivity'}),
         // Off: in a Watch Together room this profile's activity is shown without its name.
         toggle('privacy.includeInWatchTogether', 'pref.label.privacy.includeInWatchTogether'),
