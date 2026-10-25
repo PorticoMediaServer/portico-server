@@ -326,12 +326,19 @@ export function parseQueue(v: unknown): QueueHeader {
 /** An artwork address on this server's API, as the queue window gives it. */
 const artworkPath = (v: unknown): boolean => typeof v === 'string' && v.length <= 512 && v.startsWith(apiRoot) && !/[\s\\]/.test(v);
 
+/** Non-wire observations retain whether the server actually supplied a fact.
+ * Legacy QueueEntry defaults remain compatible but confer no editing authority. */
+export type QueueEntryFacts = Readonly<{position?: number; available?: boolean}>;
+const entryFacts = new WeakMap<QueueEntry, QueueEntryFacts>();
+const unknownEntryFacts: QueueEntryFacts = Object.freeze({});
+export function queueEntryFacts(entry: QueueEntry): QueueEntryFacts {return entryFacts.get(entry) ?? unknownEntryFacts;}
+
 export function parseEntry(v: unknown): QueueEntry {
   if (!obj(v)) throw new ContractError('queue entry');
   const available = v.available !== false;
   // A placeholder carries no item: one that became unavailable, or (kind "pending") one still
   // being snapshotted in a large queue that fills in shortly (P16).
-  return Object.freeze({entryId: id(v.entryId, 'entry id'), position: num(v.position), itemId: available ? id(v.itemId, 'item id') : typeof v.itemId === 'string' ? v.itemId : '', kind: str(v.kind, 'other'), title: str(v.title), durationMs: optNum(v.durationMs), available,
+  const entry: QueueEntry = Object.freeze({entryId: id(v.entryId, 'entry id'), position: num(v.position), itemId: available ? id(v.itemId, 'item id') : typeof v.itemId === 'string' ? v.itemId : '', kind: str(v.kind, 'other'), title: str(v.title), durationMs: optNum(v.durationMs), available,
     ...(typeof v.segmentId === 'string' ? {segmentId: id(v.segmentId, 'segment id')} : {}),
     ...(typeof v.album === 'string' ? {album: v.album} : {}), ...(typeof v.artist === 'string' ? {artist: v.artist} : {}),
     ...(typeof v.artistId === 'string' && v.artistId ? {artistId: id(v.artistId, 'artist id')} : {}),
@@ -341,6 +348,11 @@ export function parseEntry(v: unknown): QueueEntry {
     ...(artworkPath(v.backdropUrl) ? {backdropUrl: v.backdropUrl as string} : {}),
     ...(artworkPath(v.posterUrl) ? {posterUrl: v.posterUrl as string} : {}), ...(artworkPath(v.stillUrl) ? {stillUrl: v.stillUrl as string} : {}),
     ...(typeof v.albumId === 'string' && v.albumId ? {albumId: v.albumId} : {}), ...(optNum(v.disc) ? {disc: v.disc as number} : {}), ...(optNum(v.track) ? {track: v.track as number} : {})});
+  entryFacts.set(entry, Object.freeze({
+    ...(typeof v.position === 'number' && Number.isSafeInteger(v.position) && v.position >= 0 ? {position: v.position} : {}),
+    ...(typeof v.available === 'boolean' ? {available: v.available} : {}),
+  }));
+  return entry;
 }
 
 /** The style guide's collection envelope (§4.5). */

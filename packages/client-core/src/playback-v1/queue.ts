@@ -38,6 +38,14 @@ function retainedQueueIds(value: readonly string[] | undefined): readonly string
   return Object.freeze([...value]);
 }
 
+/** Array identity keeps the actual response revision without adding wire fields. */
+const windowScopes = new WeakMap<readonly QueueEntry[], Readonly<{queueId: string; revision: string}>>();
+export function queueWindowScope(window: readonly QueueEntry[]): Readonly<{queueId: string; revision: string}> | undefined {return windowScopes.get(window);}
+function bindWindow(queueId: string, observedRevision: string | undefined, window: readonly QueueEntry[]): readonly QueueEntry[] {
+  if (observedRevision && observedRevision.length <= 256 && window.length <= QUEUE_WINDOW_MAX) windowScopes.set(window, Object.freeze({queueId, revision: observedRevision}));
+  return window;
+}
+
 export class QueueClient {
   private http: V1Http;
   private key: () => string;
@@ -53,7 +61,9 @@ export class QueueClient {
   async batch(id: string, revision: string, source: Selector, placement: 'next' | 'end', signal?: AbortSignal): Promise<CreateResult> {
     const r=await call(this.http,{method:'POST',path:encodedRoutePath("batch_queue",{id:enc(id)}),headers:{'If-Match':revision},body:{placement,source},signal});
     if(!obj(r.body))throw new ContractError('batch queue');
-    return Object.freeze({queue:parseQueue(r.body.queue),window:Object.freeze(Array.isArray(r.body.window)?r.body.window.map(parseEntry):[]),...(r.body.session?{session:parseSession(r.body.session)}:{})});
+    const queue = parseQueue(r.body.queue);
+    const window = bindWindow(queue.id, queue.revision, Object.freeze(Array.isArray(r.body.window) ? r.body.window.map(parseEntry) : []));
+    return Object.freeze({queue, window, ...(r.body.session ? {session: parseSession(r.body.session)} : {})});
   }
 
   /** Play (or Shuffle, or Resume a show): replaces this device's current queue. */
@@ -61,7 +71,9 @@ export class QueueClient {
     const retainQueueIds = retainedQueueIds(options.retainQueueIds);
     const r = await call(this.http, {method: 'POST', path: routePath("create_queue"), headers: {'Idempotency-Key': this.key()}, body: {owner: 'device', segments, ...(options.startPlayback ? {startPlayback: options.startPlayback} : {}), ...(retainQueueIds !== undefined ? {retainQueueIds} : {})}, signal: options.signal});
     const b = r.body as {queue?: unknown; window?: unknown; session?: unknown};
-    return Object.freeze({queue: parseQueue(b.queue), window: Object.freeze(Array.isArray(b.window) ? b.window.map(parseEntry) : []), session: b.session !== undefined ? parseSession(b.session) : undefined});
+    const queue = parseQueue(b.queue);
+    const window = bindWindow(queue.id, queue.revision, Object.freeze(Array.isArray(b.window) ? b.window.map(parseEntry) : []));
+    return Object.freeze({queue, window, session: b.session !== undefined ? parseSession(b.session) : undefined});
   }
 
   /** Capture every match on the server; the first batch can start playback. */
@@ -107,7 +119,8 @@ export class QueueClient {
   /** Entries around the current one (the Up Next panel). */
   async window(id: string, before = 20, after = 50, signal?: AbortSignal): Promise<readonly QueueEntry[]> {
     const b = Math.max(0, Math.min(before, QUEUE_WINDOW_MAX)), a = Math.max(0, Math.min(after, QUEUE_WINDOW_MAX - b));
-    return parsePage((await call(this.http, {method: 'GET', path: encodedRoutePath("get_queue_window", {"id": enc(id)}) + "?around=current&before=" + (b) + "&after=" + (a), signal})).body, parseEntry).items;
+    const page = parsePage((await call(this.http, {method: 'GET', path: encodedRoutePath("get_queue_window", {"id": enc(id)}) + "?around=current&before=" + (b) + "&after=" + (a), signal})).body, parseEntry);
+    return bindWindow(id, page.revision, page.items);
   }
 
   /** A page of entries from a position (never more than 200). */

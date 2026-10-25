@@ -40,7 +40,7 @@ import {playbackUserMessage} from '../playback-messages.ts';
 import {ListeningService, loadListeningSelection, type ListeningTarget} from '../listening.ts';
 import type {QueueAdvanceMode, QueuePostPlay} from '../post-play.ts';
 import type {PreparedChoice} from '../prepared-media.ts';
-import type {CompletionPolicy, HeldCompletion, QueueController, QueuePlaybackView, QueuePlayerState, QueueWorkspaceService} from '../queue-controller.ts';
+import type {CompletionPolicy, HeldCompletion, QueueController, QueuePlaybackView, QueuePlaybackWindow, QueuePlayerState, QueueWorkspaceService} from '../queue-controller.ts';
 import type {QueueEntry as LegacyEntry, QueueIntent, QueueItemInput, QueueScope, QueueSnapshot, QueueState} from '../queues.ts';
 import {PlaybackApiError, call, idempotencyKey, type V1Http} from './http.ts';
 import {toPlaybackSession} from './session-shape.ts';
@@ -49,11 +49,11 @@ import {requestInForce, type QualityRequest} from './quality.ts';
 import type {SessionChange, StartOptions, StartTarget} from './sessions.ts';
 import {requireSessionChangeCurrent, sessionChangeCurrent, type SessionChangeContext} from './change-context.ts';
 export type {SessionChangeContext} from './change-context.ts';
-import {QUEUE_WINDOW_MAX, QueueClient, saveQueueAsPlaylist, type CreateResult, type QueueAnchor, type QueuePlaylistSave, type SegmentInput} from './queue.ts';
+import {QUEUE_WINDOW_MAX, QueueClient, saveQueueAsPlaylist, queueWindowScope, type CreateResult, type QueueAnchor, type QueuePlaylistSave, type SegmentInput} from './queue.ts';
 import {audioTransitionsEnabled} from '../audio-effects.ts';
 import type {NativeListeningV1Control, NativeListeningV1Event} from '../playback/native-listening.ts';
 import {playableAudio} from './audio-render.ts';
-import {ContractError, consecutiveOnAlbum, id, parseDiscTitleRef, type DiscTitleRef, type QueueEntry, type QueueHeader, type Selector, type ServerEvent, type Session} from './types.ts';
+import {ContractError, consecutiveOnAlbum, id, parseDiscTitleRef, queueEntryFacts, type DiscTitleRef, type QueueEntry, type QueueHeader, type Selector, type ServerEvent, type Session} from './types.ts';
 
 /** Items per `items` selector segment, and segments per create (spec §8). */
 const SEGMENT_ITEMS = 500, MAX_SEGMENTS = 16;
@@ -334,7 +334,9 @@ export class V1QueuePlayer implements QueueController {
       id: header.id, scope: this.scope, revision: header.revision, highestSeenSequence: '0', replayWindow: Object.freeze({results: 256, bodies: 32}),
       repeat: header.repeat, shuffled: !!header.shuffle, currentEntryId: current?.entryId ?? null, currentPlaybackId: this.session?.id ?? null, entries: Object.freeze(entries),
     });
+    const projection = queueWindowProjection(header, this.window);
     const view: QueuePlaybackView = Object.freeze({
+      ...(projection ? {window: projection} : {}),
       queue, highestSequence: '0', total:header.total, remainingCount:header.remainingCount, totalDurationMs:header.totalDurationMs, durationKnown:header.durationKnown,
       current: this.session ? Object.freeze({id: this.session.id, generation: this.session.presentation.generation, state: this.session.state}) : null,
       next,
@@ -865,10 +867,12 @@ export class V1QueuePlayer implements QueueController {
     if (!opening || this.session?.kind !== 'vod' || this.session.role !== 'local' || openingPlayback.nativeListening
       || !['starting', 'ready'].includes(openingPlayback.phase) || command.body.entryId === target.entryId) throw new ContractError('queue selection output');
     const selected = queueEditWindow(opening, this.window, target).get(command.body.entryId);
-    if (!selected?.available || !selected.itemId || !queueVideoKind(selected.kind)) throw new ContractError('queue selection entry');
-    const selectedCurrent = () => {
+    if (!selected || queueEntryFacts(selected).available !== true || !selected.itemId || !queueVideoKind(selected.kind)) throw new ContractError('queue selection entry');
+    const selectedCurrent = (acceptedRevision?: string) => {
       const matches = this.window.filter(entry => entry.entryId === command.body.entryId);
-      return matches.length === 1 && matches[0]!.available && matches[0]!.itemId === selected.itemId
+      const scope = queueWindowScope(this.window);
+      return scope?.queueId === command.queueId && (scope.revision === command.revision || acceptedRevision !== undefined && scope.revision === acceptedRevision)
+        && matches.length === 1 && queueEntryFacts(matches[0]!).available === true && matches[0]!.itemId === selected.itemId
         && matches[0]!.position === selected.position && queueVideoKind(matches[0]!.kind);
     };
     const run = async () => {
@@ -881,7 +885,7 @@ export class V1QueuePlayer implements QueueController {
         && (this.header.revision === command.revision && this.header.current?.entryId === target.entryId && this.header.current.position === opening.current?.position
           || acceptedRevision !== undefined && this.header.revision === acceptedRevision && this.header.current?.entryId === command.body.entryId && this.header.current.position === selected.position);
       let handedOff = false, replacing = false;
-      const oldCurrent = () => current() && ownsOpeningOutput() && headerCurrent() && selectedCurrent()
+      const oldCurrent = () => current() && ownsOpeningOutput() && headerCurrent() && selectedCurrent(acceptedRevision)
         && this.playback.getSnapshot().intent === (replacing ? 'playing' : openingPlayback.intent);
       const checkOld = () => {if (!oldCurrent()) throw retired();};
       try {
@@ -1091,8 +1095,9 @@ export class V1QueuePlayer implements QueueController {
     check();
     if (!opening?.current || opening.revision !== expectedRevision) throw new ContractError('queue edit revision');
     const rows = queueEditWindow(opening, drawn, target);
-    const currentIndex = drawn.findIndex(entry => entry.entryId === target.entryId);
-    const upcoming = (entry: QueueEntry | undefined): entry is QueueEntry => !!entry && entry.available && !!entry.itemId && entry.position > opening.current!.position;
+    const before = opening.current.position - drawn[0]!.position, after = drawn[drawn.length - 1]!.position - opening.current.position;
+    if (before < 0 || after < 0 || before + after + 1 > QUEUE_WINDOW_MAX) throw new ContractError('queue edit span');
+    const upcoming = (entry: QueueEntry | undefined): entry is QueueEntry => !!entry && queueEntryFacts(entry).available === true && !!entry.itemId && entry.position > opening.current!.position;
     let moved: ReturnType<typeof movedEntry>, block: readonly QueueEntry[] = [];
     if (edit.action === 'remove') {
       if (!upcoming(rows.get(edit.entryId))) throw new ContractError('queue edit entry');
@@ -1113,7 +1118,7 @@ export class V1QueuePlayer implements QueueController {
       && header.current?.entryId === target.entryId && header.current.position === opening.current!.position && header.total === total;
     if (result.session || acceptedRevision === expectedRevision || !accepted(result.queue)) throw new ContractError('queue edit result');
     // Read exactly this loaded span, then prove the window belonged to the accepted revision.
-    const window = await this.client.window(target.queueId, currentIndex, drawn.length - currentIndex - 1, lifetime.signal); check();
+    const window = await this.client.window(target.queueId, before, after, lifetime.signal); check();
     const header = await this.client.header(target.queueId, lifetime.signal); check();
     if (!accepted(header)) throw new DOMException('Queue edit changed', 'AbortError');
     const finalRows = queueEditWindow(header, window, target);
@@ -1126,7 +1131,7 @@ export class V1QueuePlayer implements QueueController {
         const wanted = order[index]!;
         if (wanted !== moved!.entryId) return entry.entryId !== wanted;
         // A source-order move remints this occurrence; adopt only its actual readback ID.
-        return !entry.available || entry.itemId !== rows.get(wanted)!.itemId || (entry.entryId !== wanted && rows.has(entry.entryId));
+        return queueEntryFacts(entry).available !== true || entry.itemId !== rows.get(wanted)!.itemId || (entry.entryId !== wanted && rows.has(entry.entryId));
       })) throw new ContractError('queue edit order');
     }
     check(); this.invalidateAudioPreparation();
@@ -1401,19 +1406,41 @@ export function queueVideoKind(kind: string): boolean {
   return ['movie', 'episode', 'video', 'musicVideo', 'extra', 'recording'].includes(kind);
 }
 
-/** The raw window must retain placeholders and positions: filtering hidden rows
- * first would let a drag jump an unavailable or unloaded occurrence. */
+/** Publish only the same accepted header/window scope. Header-only changes
+ * deliberately leave this offer absent until an actual matching window arrives. */
+function queueWindowProjection(header: QueueHeader, window: readonly QueueEntry[]): QueuePlaybackWindow | undefined {
+  const scope = queueWindowScope(window);
+  if (!scope || scope.queueId !== header.id || scope.revision !== header.revision || window.length > QUEUE_WINDOW_MAX
+    || new Set(window.map(entry => entry.entryId)).size !== window.length) return;
+  const segments = header.segments.slice(0, QUEUE_WINDOW_MAX);
+  if (new Set(segments.map(segment => segment.id)).size !== segments.length) return;
+  return Object.freeze({queueId: scope.queueId, revision: scope.revision,
+    segments: Object.freeze(segments.map(segment => Object.freeze({id: segment.id, ...(segment.label ? {label: segment.label} : {})}))),
+    entries: Object.freeze(window.map(entry => {
+      const facts = queueEntryFacts(entry);
+      return Object.freeze({entryId: entry.entryId,
+        ...(facts.position !== undefined && facts.position < header.total ? {position: facts.position} : {}),
+        ...(facts.available !== undefined ? {available: facts.available} : {}),
+        ...(facts.available === true && entry.segmentId ? {segmentId: entry.segmentId} : {}),
+      });
+    })),
+  });
+}
+
+/** Keep observed positions and placeholders, including gaps. A selected move
+ * block must prove its own consecutive positions before it can cross no gaps. */
 function queueEditWindow(header: QueueHeader, window: readonly QueueEntry[], target: V1PlaybackTarget): ReadonlyMap<string, QueueEntry> {
-  if (!window.length || window.length > QUEUE_WINDOW_MAX || !header.current) throw new ContractError('queue edit window');
+  const scope = queueWindowScope(window);
+  if (!scope || scope.queueId !== header.id || scope.revision !== header.revision || !window.length || window.length > QUEUE_WINDOW_MAX || !header.current) throw new ContractError('queue edit window');
   const rows = new Map<string, QueueEntry>();
   let previous: number | undefined;
   for (const entry of window) {
-    if (rows.has(entry.entryId) || !Number.isSafeInteger(entry.position) || entry.position < 0 || entry.position >= header.total
-      || previous !== undefined && entry.position !== previous + 1) throw new ContractError('queue edit window');
+    if (queueEntryFacts(entry).position !== entry.position || rows.has(entry.entryId) || !Number.isSafeInteger(entry.position) || entry.position < 0 || entry.position >= header.total
+      || previous !== undefined && entry.position <= previous) throw new ContractError('queue edit window');
     rows.set(entry.entryId, entry); previous = entry.position;
   }
   const current = rows.get(target.entryId);
-  if (!current?.available || current.itemId !== target.itemId || current.position !== header.current.position) throw new ContractError('queue edit current');
+  if (!current || queueEntryFacts(current).available !== true || current.itemId !== target.itemId || current.position !== header.current.position) throw new ContractError('queue edit current');
   return rows;
 }
 
