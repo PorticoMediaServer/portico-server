@@ -367,14 +367,15 @@ export class ReadingClient {
     }
     return out;
   }
-  async periodicalIssues(libraryId: string, seriesId: string, publicationType: ReadingPeriodicalType, options: Readonly<{cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<ReadingPeriodicalIssuesPage> {
+  async periodicalIssues(libraryId: string, seriesId: string, publicationType: ReadingPeriodicalType, options: Readonly<{cursor?: string; limit?: number; issueDate?: string}> = {}, signal?: AbortSignal): Promise<ReadingPeriodicalIssuesPage> {
     const limit = options.limit ?? 50;
-    if (!id(libraryId) || !seriesID(seriesId) || !periodicalType(publicationType) || !integer(limit, 1, 100) || options.cursor !== undefined && !seriesCursor(options.cursor)) fail('invalid_request');
+    if (options.issueDate !== undefined && !issueDate(options.issueDate, publicationType) || !id(libraryId) || !seriesID(seriesId) || !periodicalType(publicationType) || !integer(limit, 1, 100) || options.cursor !== undefined && !seriesCursor(options.cursor)) fail('invalid_request');
     const out = await this.json(query(routePath('get_reading_periodical_issues', {libraryId, seriesId}), {...options, publicationType}), 'GET', undefined, signal, decodeGetReadingPeriodicalIssuesResponse, 2 << 20);
-    if (out.libraryId !== libraryId || out.seriesId !== seriesId || out.publicationType !== publicationType || out.items.length > limit || out.nextCursor !== undefined && (!seriesCursor(out.nextCursor) || out.items.length !== limit)) fail('invalid_document');
+    if ((options.issueDate === undefined ? 'issueDate' in out : !('issueDate' in out) || out.issueDate !== options.issueDate) || out.libraryId !== libraryId || out.seriesId !== seriesId || out.publicationType !== publicationType || out.items.length > limit || out.nextCursor !== undefined && (!seriesCursor(out.nextCursor) || out.items.length !== limit)) fail('invalid_document');
     const seen = new Set<string>(); let previous: string | undefined;
     for (const entry of out.items) {
       validateIssue(entry, libraryId, publicationType, seriesId);
+      if (options.issueDate !== undefined && entry.issueDate !== options.issueDate) fail('invalid_document');
       if (seen.has(entry.item.id) || previous !== undefined && previous < entry.issueDate) fail('invalid_document');
       seen.add(entry.item.id); previous = entry.issueDate;
     }
