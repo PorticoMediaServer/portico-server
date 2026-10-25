@@ -258,7 +258,7 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
       {downloadAvailable && <MenuItem icon="i-download" onSelect={() => runScreenCommand(binding.context, openDownload)}>{t('next.detail.downloadAction')}</MenuItem>}
       {leaf && offered('add_to_playlist') && binding.context.effects.addToPlaylist && <MenuItem icon="i-listadd" onSelect={() => destination(binding.context.effects.addToPlaylist)}>{t('next.selection.addToPlaylist')}</MenuItem>}
       {leaf && offered('add_to_collection') && binding.context.effects.addToCollection && <MenuItem icon="i-layers" onSelect={() => destination(binding.context.effects.addToCollection)}>{t('next.selection.addToCollection')}</MenuItem>}
-      {leaf && owner && detailActions(data, {platform: 'web'}).more.some(group => group.actions.some(action => action.id === 'delete')) && binding.context.effects.deleteTitle && <MenuItem icon="i-trash" onSelect={() => destination(binding.context.effects.deleteTitle)}>{t('next.selection.deleteMenu')}</MenuItem>}
+      {leaf && owner && offered('delete') && binding.context.effects.deleteTitle && <MenuItem icon="i-trash" onSelect={() => destination(binding.context.effects.deleteTitle)}>{t('next.selection.deleteMenu')}</MenuItem>}
       <MenuItem icon="i-info" onSelect={loadFiles}>{t('next.overlays.fileInfo')}</MenuItem>
       {(refreshPath || canEditMetadata) && <><MenuSeparator /><MenuGroup label={t('next.overlays.owner')} ownerOnly>{canEditMetadata && <MenuItem onSelect={() => destination(binding.context.effects.editMetadata)}>{t('entry.editMetadata')}</MenuItem>}{refreshPath && <MenuItem icon="i-refresh" onSelect={refresh}>{t('entry.refreshMetadata')}</MenuItem>}</MenuGroup></>}
     </Menu>
