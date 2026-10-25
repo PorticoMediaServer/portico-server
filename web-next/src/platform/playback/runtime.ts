@@ -1359,14 +1359,24 @@ export class WebShellPlaybackRuntime {
   queueList(fence: PlaybackFence): WebQueueListPort | undefined {
     if (fence.kind !== 'queue' || !this.matches(fence) || this.stack.mode !== 'server' || this.group?.matches(fence)) return;
     const stack = this.stack, view = stack.queue.getSnapshot().view, queueId = view?.queue.id;
-    if (!view || !queueId || view.queue.currentEntryId !== fence.entryId) return;
-    const current = () => this.current(stack) && this.matches(fence) && !this.group?.matches(fence) && stack.queue.getSnapshot().view?.queue.id === queueId;
+    const session = stack.queue.currentSession(), playback = stack.service.getSnapshot();
+    if (!view || !queueId || view.queue.currentEntryId !== fence.entryId || !session?.versionId
+      || session.id !== fence.sessionId || session.itemId !== fence.itemId || session.presentation.generation !== fence.generation
+      || session.queue?.queueId !== queueId || session.queue.entryId !== fence.entryId) return;
+    const target = Object.freeze({sessionId: session.id, generation: fence.generation, playbackRun: playback.playbackRun,
+      itemId: session.itemId, versionId: session.versionId, queueId, entryId: fence.entryId});
+    const current = () => this.current(stack) && this.matches(fence) && !this.group?.matches(fence)
+      && stack.queue.currentSession()?.versionId === target.versionId && stack.queue.getSnapshot().view?.queue.id === queueId;
     return createWebQueueListPort({fence, queueId, isCurrent: current,
       read: () => ({view: stack.queue.getSnapshot().view, workspace: stack.queue.workspace.service.getSnapshot()}),
       subscribe: listener => {const off = this.subscribe(listener), offQueue = stack.queue.subscribe(listener), offWorkspace = stack.queue.workspace.service.subscribe(listener);return () => {off();offQueue();offWorkspace();};},
       play: (entryId, revision) => {if (!current()) problem('stale_playback_command');return stack.queue.playEntry(queueId, entryId, revision);},
-      mutate: intent => {if (!current()) problem('stale_playback_command');return stack.queue.workspace.service.mutate(intent);},
-      refresh: () => {if (!current()) problem('stale_playback_command');return stack.queue.refresh(stack.life.signal);},
+      edit: (revision, intent, lifetime) => {
+        const isCurrent = () => current() && !lifetime.signal.aborted && lifetime.isCurrent();
+        if (!isCurrent()) problem('stale_playback_command');
+        return stack.queue.editQueue(target, revision, intent,
+          {signal: AbortSignal.any([stack.life.signal, this.life.signal, lifetime.signal]), isCurrent});
+      },
     });
   }
 

@@ -1,5 +1,6 @@
 import type {QueuePlaybackView} from '@core/queue-controller.ts';
-import type {QueueIntent, QueueState} from '@core/queues.ts';
+import type {QueueState} from '@core/queues.ts';
+import type {V1QueueEditIntent} from '@core/playback-v1/v1-queue-player.ts';
 import type {QueuePlaybackFence} from '../../../../packages/player-core/src/index.ts';
 
 export type WebQueueListEntry = Readonly<{
@@ -14,16 +15,16 @@ export type WebQueueListSnapshot = Readonly<{
 export type WebQueueListPort = Readonly<{
   getSnapshot(): WebQueueListSnapshot; subscribe(listener: () => void): () => void; isCurrent(): boolean;
   play(snapshot: WebQueueListSnapshot, entryId: string): Promise<void>;
-  move(snapshot: WebQueueListSnapshot, entryId: string, direction: -1 | 1): Promise<void>;
-  remove(snapshot: WebQueueListSnapshot, entryId: string): Promise<void>;
+  move(snapshot: WebQueueListSnapshot, entryId: string, direction: -1 | 1, lifetime: WebQueueListLifetime): Promise<void>;
+  remove(snapshot: WebQueueListSnapshot, entryId: string, lifetime: WebQueueListLifetime): Promise<void>;
 }>;
+export type WebQueueListLifetime = Readonly<{signal: AbortSignal; isCurrent(): boolean}>;
 type QueueListSource = Readonly<{
   fence: QueuePlaybackFence; queueId: string; isCurrent(): boolean;
   read(): Readonly<{view: QueuePlaybackView | null; workspace: QueueState}>;
   subscribe(listener: () => void): () => void;
   play(entryId: string, revision: string): Promise<void>;
-  mutate(intent: QueueIntent): Promise<void>;
-  refresh(): Promise<void>;
+  edit(revision: string, intent: V1QueueEditIntent, lifetime: WebQueueListLifetime): Promise<void>;
 }>;
 const empty: WebQueueListSnapshot = Object.freeze({current: false, entries: Object.freeze([]), more: null, change: 'idle'});
 const changed = () => Object.assign(new Error('queue_changed'), {code: 'queue_changed'});
@@ -44,14 +45,16 @@ export function createWebQueueListPort(source: QueueListSource): WebQueueListPor
     const all = queue.entries.filter(entry => !entry.removed), at = all.findIndex(entry => entry.id === queue.currentEntryId);
     if (at < 0) return empty;
     const shown = all.slice(at, at + 50), items = new Map(view.items.map(item => [item.entryId, item]));
+    const readable = (entry: typeof shown[number] | undefined) => !!entry && !entry.hidden && items.get(entry.id)?.itemId === entry.itemId;
     const busy = sending || workspace.phase === 'sending';
     const entries = Object.freeze(shown.map((entry, index): WebQueueListEntry => {
-      const item = items.get(entry.id), readable = !entry.hidden && item !== undefined && item.itemId === entry.itemId;
+      const item = items.get(entry.id), known = readable(entry);
       const playing = entry.id === queue.currentEntryId;
-      const allowed = readable && !playing && !busy && workspace.phase === 'ready';
-      return Object.freeze({entryId: entry.id, ...(readable ? {title: item.title} : {}), hidden: !readable,
+      const allowed = known && !playing && !busy && workspace.phase === 'ready';
+      return Object.freeze({entryId: entry.id, ...(known && item ? {title: item.title} : {}), hidden: !known,
         pending: entry.hidden && entry.pending === true, playing,
-        canPlay: allowed, canMoveUp: allowed && index > 1, canMoveDown: allowed && index < shown.length - 1, canRemove: allowed});
+        canPlay: allowed, canMoveUp: allowed && index > 1 && readable(shown[index - 1]),
+        canMoveDown: allowed && readable(shown[index + 1]), canRemove: allowed});
     }));
     const remaining = view.remainingCount;
     const more = remaining !== undefined && Number.isSafeInteger(remaining) && remaining >= 0 ? Math.max(0, remaining - (shown.length - 1)) : null;
@@ -61,45 +64,44 @@ export function createWebQueueListPort(source: QueueListSource): WebQueueListPor
     cache = {view, workspace, sending, error, snapshot};
     return snapshot;
   };
-  const execute = async (snapshot: WebQueueListSnapshot, entryId: string, action: 'play' | 'remove' | -1 | 1) => {
-    if (sending || !source.isCurrent() || snapshot !== getSnapshot() || !snapshot.current || !snapshot.revision || snapshot.queueId !== source.queueId) throw changed();
+  const execute = async (snapshot: WebQueueListSnapshot, entryId: string, action: 'play' | 'remove' | -1 | 1, lifetime?: WebQueueListLifetime) => {
+    const current = () => source.isCurrent() && (!lifetime || !lifetime.signal.aborted && lifetime.isCurrent());
+    if ((action !== 'play' && !lifetime) || sending || !current() || snapshot !== getSnapshot() || !snapshot.current || !snapshot.revision || snapshot.queueId !== source.queueId) throw changed();
     const entry = snapshot.entries.find(row => row.entryId === entryId);
     if (!entry || (action === 'play' ? !entry.canPlay : action === 'remove' ? !entry.canRemove : action === -1 ? !entry.canMoveUp : !entry.canMoveDown)) throw changed();
     const {view} = source.read();
     if (!view || view.queue.revision !== snapshot.revision) throw changed();
-    // Reordering is the existing service's single-entry move, anchored among
-    // this real loaded window. It never replaces or drops the unseen remainder.
-    const order = view.queue.entries.filter(row => !row.removed).map(row => row.id), index = order.indexOf(entryId);
+    const index = snapshot.entries.findIndex(row => row.entryId === entryId);
     if (index < 0) throw changed();
     sending = true;error = undefined;notify();
     try {
-      if (!source.isCurrent()) throw changed();
+      if (!current()) throw changed();
       const accepted = source.read();
       // Subscribers may run synchronously while the sending state publishes.
       // Their newer queue can never replace the command's captured witness.
       if (accepted.view !== view || accepted.workspace.queue?.id !== snapshot.queueId || accepted.workspace.queue.revision !== snapshot.revision) throw changed();
       if (action === 'play') await source.play(entryId, snapshot.revision);
-      else if (action === 'remove') await source.mutate({action: 'remove', entryId});
+      else if (action === 'remove' && lifetime) await source.edit(snapshot.revision, {action: 'remove', entryId}, lifetime);
       else {
+        if (action === 'remove' || !lifetime) throw changed();
         const to = index + action;
-        if (to < 0 || to >= order.length) throw changed();
-        [order[index], order[to]] = [order[to]!, order[index]!];
-        await source.mutate({action: 'reorder', entryIds: order});
+        const neighbor = snapshot.entries[to];
+        if (!neighbor || neighbor.playing || neighbor.hidden) throw changed();
+        // Only the actual adjacent loaded upcoming pair is submitted. The
+        // canonical player validates contiguity and adopts returned occurrence IDs.
+        const order = action === -1 ? [entryId, neighbor.entryId] : [neighbor.entryId, entryId];
+        await source.edit(snapshot.revision, {action: 'reorder', entryIds: order}, lifetime);
       }
     } catch (failure) {
-      if (source.isCurrent()) {
-        error = 'queue_edit_failed';
-        // Reconcile the authoritative queue after an uncertain response. Never
-        // automatically repeat the mutation or claim a local-only success.
-        try {await source.refresh();} catch { /* Keep the failure visible. */ }
-      }
+      if (current()) error = 'queue_edit_failed';
+      // An uncertain edit never force-refreshes or adopts a replacement output.
       throw failure;
-    } finally {sending = false;if (source.isCurrent()) notify();}
+    } finally {sending = false;if (current()) notify();}
   };
   return Object.freeze({getSnapshot, isCurrent: () => getSnapshot().current,
     subscribe(listener: () => void) {listeners.add(listener);const off = source.subscribe(listener);return () => {listeners.delete(listener);off();};},
     play: (snapshot: WebQueueListSnapshot, entryId: string) => execute(snapshot, entryId, 'play'),
-    remove: (snapshot: WebQueueListSnapshot, entryId: string) => execute(snapshot, entryId, 'remove'),
-    move: (snapshot: WebQueueListSnapshot, entryId: string, direction: -1 | 1) => direction === -1 || direction === 1 ? execute(snapshot, entryId, direction) : Promise.reject(changed()),
+    remove: (snapshot: WebQueueListSnapshot, entryId: string, lifetime: WebQueueListLifetime) => execute(snapshot, entryId, 'remove', lifetime),
+    move: (snapshot: WebQueueListSnapshot, entryId: string, direction: -1 | 1, lifetime: WebQueueListLifetime) => direction === -1 || direction === 1 ? execute(snapshot, entryId, direction, lifetime) : Promise.reject(changed()),
   });
 }
