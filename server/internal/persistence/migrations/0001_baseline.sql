@@ -239,6 +239,81 @@ CREATE TABLE reading_text_counts(
  PRIMARY KEY(item_id,asset_id),
  FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
 CREATE INDEX reading_text_counts_inventory_object ON reading_text_counts(inventory_object_id);
+
+-- One global, monotonically moving revision for the persisted Reading text
+-- index. Every accepting index transaction bumps it through the state triggers
+-- below, so a cursor minted against an older index is refused instead of
+-- continuing over changed hits.
+CREATE TABLE reading_text_index_epoch(
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+ revision INTEGER NOT NULL CHECK(revision>0)) STRICT;
+-- The one logical payload budget. It is derived text bytes, not measured
+-- SQLite/FTS physical size, and every state insert, update or delete adjusts it
+-- in the same transaction. The CHECK is the accounting guard.
+CREATE TABLE reading_text_index_budget(
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+ payload_bytes INTEGER NOT NULL CHECK(payload_bytes BETWEEN 0 AND 1073741824)) STRICT;
+INSERT INTO reading_text_index_budget(singleton,payload_bytes) VALUES(1,0);
+-- One determined outcome for an exact publication observation. Publication and
+-- inventory-object deletion cascade here, and foreign-key actions fire the
+-- state delete trigger just like an ordinary DELETE (the recursive_triggers
+-- pragma governs recursive trigger programs, not foreign-key actions). That
+-- trigger removes the sections, returns the payload and bumps the revision, so
+-- a cascade cannot orphan private derived text or a posting.
+CREATE TABLE reading_text_index_state(
+ item_id INTEGER NOT NULL,
+ asset_id INTEGER NOT NULL,
+ inventory_object_id TEXT NOT NULL REFERENCES inventory_objects(id) ON DELETE CASCADE,
+ source_revision TEXT NOT NULL CHECK(length(source_revision)>0),
+ index_rule_version INTEGER NOT NULL CHECK(index_rule_version>0),
+ outcome TEXT NOT NULL CHECK(outcome IN('indexed','evicted','excluded','unsupported')),
+ reason TEXT NOT NULL CHECK(length(reason)<=64),
+ text_bytes INTEGER NOT NULL CHECK(text_bytes BETWEEN 0 AND 8388608),
+ section_count INTEGER NOT NULL CHECK(section_count BETWEEN 0 AND 4096),
+ indexed_at INTEGER NOT NULL CHECK(indexed_at>0),
+ PRIMARY KEY(item_id,asset_id),
+ FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
+CREATE INDEX reading_text_index_state_eviction ON reading_text_index_state(outcome,indexed_at,item_id,asset_id);
+CREATE INDEX reading_text_index_state_inventory_object ON reading_text_index_state(inventory_object_id);
+-- Private derived spine text. id is the FTS external-content rowid and is never
+-- reused, so a stale FTS entry can never collide with a later section. The
+-- state foreign key is only a safety net: the state delete trigger removes the
+-- sections first, so its cascade never removes a posting behind the trigger's
+-- back.
+CREATE TABLE reading_text_sections(
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ item_id INTEGER NOT NULL,
+ asset_id INTEGER NOT NULL,
+ section_index INTEGER NOT NULL CHECK(section_index BETWEEN 0 AND 4095),
+ section_path TEXT NOT NULL CHECK(length(section_path) BETWEEN 1 AND 1024),
+ text TEXT NOT NULL CHECK(length(CAST(text AS BLOB)) BETWEEN 1 AND 8388608),
+ utf16_length INTEGER NOT NULL CHECK(utf16_length BETWEEN 1 AND 8388608),
+ UNIQUE(item_id,asset_id,section_index),
+ FOREIGN KEY(item_id,asset_id) REFERENCES reading_text_index_state(item_id,asset_id) ON DELETE CASCADE) STRICT;
+CREATE VIRTUAL TABLE reading_text_fts USING fts5(text,content='reading_text_sections',content_rowid='id',tokenize='unicode61 remove_diacritics 2');
+-- Every section deletion, whatever statement caused it, removes its exact
+-- external-content posting. This is the only posting-deletion path.
+CREATE TRIGGER reading_text_sections_fts_delete AFTER DELETE ON reading_text_sections BEGIN
+ INSERT INTO reading_text_fts(reading_text_fts,rowid,text) VALUES('delete',OLD.id,OLD.text);
+END;
+-- One state insertion or update moves the logical payload by its exact delta
+-- and bumps the global index revision. A negative or overflowing budget aborts
+-- the transaction through the budget CHECK rather than caching a wrong number.
+CREATE TRIGGER reading_text_index_state_insert AFTER INSERT ON reading_text_index_state BEGIN
+ UPDATE reading_text_index_budget SET payload_bytes=payload_bytes+NEW.text_bytes WHERE singleton=1;
+ INSERT INTO reading_text_index_epoch(singleton,revision) VALUES(1,1) ON CONFLICT(singleton) DO UPDATE SET revision=revision+1;
+END;
+CREATE TRIGGER reading_text_index_state_update AFTER UPDATE ON reading_text_index_state BEGIN
+ UPDATE reading_text_index_budget SET payload_bytes=payload_bytes+NEW.text_bytes-OLD.text_bytes WHERE singleton=1;
+ INSERT INTO reading_text_index_epoch(singleton,revision) VALUES(1,1) ON CONFLICT(singleton) DO UPDATE SET revision=revision+1;
+END;
+-- An explicit state deletion removes its sections first (their trigger deletes
+-- the postings), then returns the payload and bumps the revision.
+CREATE TRIGGER reading_text_index_state_delete BEFORE DELETE ON reading_text_index_state BEGIN
+ DELETE FROM reading_text_sections WHERE item_id=OLD.item_id AND asset_id=OLD.asset_id;
+ UPDATE reading_text_index_budget SET payload_bytes=payload_bytes-OLD.text_bytes WHERE singleton=1;
+ INSERT INTO reading_text_index_epoch(singleton,revision) VALUES(1,1) ON CONFLICT(singleton) DO UPDATE SET revision=revision+1;
+END;
 -- One determined scan-time cover outcome for an exact publication observation.
 -- adopted: the automatic cover was written; absent: the package declares no
 -- explicit cover; invalid: declared bytes are not adoptable. Transient failures

@@ -70,12 +70,45 @@ func textCountPendingSQL(primary string) string {
  AND c.item_id IS NULL AND e.id>? ORDER BY e.id LIMIT ?`
 }
 
+// The text-index worker's domain is EPUB-first: only a local book EPUB has this
+// producer. PDF and comic facts keep their existing preparation.
+const textIndexWorkerDomain = `e.kind=20 AND lib.kind='book' AND p.format='epub' AND s.kind='local'`
+
+// The text-index candidate window is bounded before determination is known.
+// It selects at most one window of canonical primary publications in indexed
+// item order and returns whether each already has a determined index state for
+// this exact observation and rule as a column. A library of determined
+// indexed/evicted/excluded/unsupported rows is therefore examined in bounded
+// windows, never walked in one statement to find zero pending rows. The cursor
+// advances over every examined candidate; extraction runs only for the ones the
+// flag leaves undetermined.
+func textIndexPendingSQL(primary string) string {
+	return `SELECT e.id,pid(e.public_id),cl.library_id,a.token,
+ EXISTS(SELECT 1 FROM reading_text_index_state x WHERE x.item_id=p.item_id AND x.asset_id=p.asset_id AND x.inventory_object_id=o.id AND x.source_revision=o.revision AND x.index_rule_version=?)
+ FROM catalog_entities e
+ CROSS JOIN catalog_libraries cl ON cl.id=e.library_id
+ CROSS JOIN libraries lib ON lib.id=cl.library_id
+ CROSS JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=` + primary + `
+ CROSS JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id
+ CROSS JOIN catalog_assets a ON a.id=link.asset_id
+ CROSS JOIN inventory_objects o ON o.asset_id=a.token
+ CROSS JOIN library_sources s ON s.id=o.source_id AND s.library_id=cl.library_id
+ CROSS JOIN inventory_item_availability available ON available.item_id=e.id AND available.asset_id=a.token
+ WHERE e.retired=0 AND cl.retired=0 AND ` + textIndexWorkerDomain + ` AND ` + publicationEligible + `
+ AND ` + backgroundCanonicalObject + `
+ AND e.id>? ORDER BY e.id LIMIT ?`
+}
+
 // TextCountPreparation is one worker.Run step over the pending canonical EPUBs.
 // It is woken by catalog/source writes and rests after a complete pass, so an
 // unreadable book cannot spin the worker or block another library's queue.
 type TextCountPreparation struct {
 	DB      *sql.DB
 	Prepare func(context.Context, string, string, string) error
+	// Index prepares one pending EPUB text-index document. It runs in this same
+	// worker step under the same admission, rest and cursors: there is no second
+	// scheduler or queue table.
+	Index func(context.Context, string, string, string) error
 	// PrimaryPublicationSQL is the canonical availability-first primary
 	// version rule supplied by the live Service (it depends on MOBI support).
 	PrimaryPublicationSQL func() string
@@ -90,6 +123,12 @@ type TextCountPreparation struct {
 	passing  bool
 	finished time.Time
 	logged   int
+
+	indexCursor   int64
+	indexPassing  bool
+	indexFinished time.Time
+	indexLogged   int
+	indexRetry    bool
 }
 
 type textCountCandidate struct {
@@ -98,20 +137,29 @@ type textCountCandidate struct {
 	asset              string
 }
 
-// Step processes at most one indexed window and reports the delay before the
-// next step. Every item is attempted once per pass. Acquisition/refusal/
-// cancellation/timeout failures are not cached and are retried after the pass
-// rest. A complete but unsupported/partial publication keeps the existing
-// determined NULL (unknown) fact, never zero.
+type textIndexCandidate struct {
+	id                 int64
+	item, libraryToken string
+	asset              string
+	determined         bool
+}
+
+// Step processes at most one indexed window for counts and one for the text
+// index, and reports the delay before the next step. Both share this worker, its
+// admission and its rest, so no second scheduler or queue table exists. Every
+// item is attempted once per pass. Acquisition/refusal/cancellation/timeout
+// failures are not cached and are retried after the pass rest. A complete but
+// unsupported/partial publication keeps its determined fact, never a partial
+// value.
 func (p *TextCountPreparation) Step(ctx context.Context) time.Duration {
-	if p == nil || p.DB == nil || p.Prepare == nil {
+	if p == nil || p.DB == nil || (p.Prepare == nil && p.Index == nil) {
 		return 0
 	}
 	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
 	if p.Admission != nil {
 		allowed, err := p.Admission(ctx, nil, "metadata-refresh")
 		if err != nil {
-			log.Printf("Reading text counts: admission: %v", err)
+			log.Printf("Reading preparation: admission: %v", err)
 			return time.Minute
 		}
 		if !allowed {
@@ -125,6 +173,19 @@ func (p *TextCountPreparation) Step(ctx context.Context) time.Duration {
 	if rest <= 0 {
 		rest = defaultTextCountRest
 	}
+	var wait time.Duration
+	if p.Prepare != nil {
+		wait = p.stepCounts(ctx, window, rest)
+	}
+	if p.Index != nil {
+		if indexWait := p.stepIndex(ctx, window, rest); indexWait > 0 && (wait == 0 || indexWait < wait) {
+			wait = indexWait
+		}
+	}
+	return wait
+}
+
+func (p *TextCountPreparation) stepCounts(ctx context.Context, window int, rest time.Duration) time.Duration {
 	if !p.passing {
 		if !p.finished.IsZero() && time.Since(p.finished) < rest {
 			return rest - time.Since(p.finished)
@@ -182,6 +243,82 @@ func (p *TextCountPreparation) Step(ctx context.Context) time.Duration {
 	}
 	if len(todo) < window {
 		p.passing, p.finished = false, time.Now()
+		return 0
+	}
+	return time.Millisecond
+}
+
+func (p *TextCountPreparation) stepIndex(ctx context.Context, window int, rest time.Duration) time.Duration {
+	primary := ""
+	if p.PrimaryPublicationSQL != nil {
+		primary = p.PrimaryPublicationSQL()
+	}
+	if primary == "" {
+		return time.Minute
+	}
+	if !p.indexPassing {
+		if !p.indexFinished.IsZero() && time.Since(p.indexFinished) < rest {
+			return rest - time.Since(p.indexFinished)
+		}
+		p.indexPassing, p.indexCursor, p.indexLogged, p.indexRetry = true, 0, 0, false
+	}
+	rows, err := p.DB.QueryContext(ctx, textIndexPendingSQL(primary), readingIndexRuleVersion, p.indexCursor, window)
+	if err != nil {
+		log.Printf("Reading text index: %v", err)
+		return time.Minute
+	}
+	todo := []textIndexCandidate{}
+	for rows.Next() {
+		var candidate textIndexCandidate
+		if err = rows.Scan(&candidate.id, &candidate.item, &candidate.libraryToken, &candidate.asset, &candidate.determined); err != nil {
+			break
+		}
+		todo = append(todo, candidate)
+	}
+	if err == nil {
+		err = rows.Err()
+	}
+	rows.Close()
+	if err != nil {
+		log.Printf("Reading text index: %v", err)
+		return time.Minute
+	}
+	for _, candidate := range todo {
+		if ctx.Err() != nil {
+			return 0
+		}
+		if !dbwork.WaitBackground(ctx) {
+			return 0
+		}
+		// The cursor advances over every examined candidate, including the ones
+		// this pass had no work for, so the next window never repeats them.
+		p.indexCursor = candidate.id
+		if candidate.determined {
+			continue
+		}
+		bounded, cancel := context.WithTimeout(ctx, textCountBudget)
+		err = p.Index(bounded, candidate.libraryToken, candidate.item, candidate.asset)
+		cancel()
+		if err != nil {
+			if ctx.Err() != nil {
+				return 0
+			}
+			p.indexRetry = true
+			if p.indexLogged < 5 {
+				p.indexLogged++
+				log.Printf("Reading text index: %s/%s not prepared: %v", candidate.libraryToken, candidate.item, err)
+			}
+		}
+	}
+	if len(todo) < window {
+		p.indexPassing = false
+		if p.indexRetry {
+			// A transient failure is retried after the pass rest.
+			p.indexFinished = time.Now()
+			return rest
+		}
+		// A fully determined pass waits for the next catalog/source wake.
+		p.indexFinished = time.Time{}
 		return 0
 	}
 	return time.Millisecond
