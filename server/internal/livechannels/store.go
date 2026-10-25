@@ -26,7 +26,8 @@ type Store struct {
 	db *sql.DB
 	// cursorKey signs continuation cursors. It is stable per state folder
 	// (configuration live_cursor_key), never a file key.
-	cursorKey []byte
+	cursorKey    []byte
+	guideFetches guideFetchRegistry
 }
 
 // cursorKeyName keeps the cursor HMAC key in the configuration table. Hashing
@@ -165,9 +166,14 @@ func sourceProjection(v Source) Source {
 }
 func operationSource(ctx context.Context, tx *sql.Tx, requestID string) (Source, error) {
 	var v Source
-	e := tx.QueryRowContext(ctx, `SELECT o.source_id,g.name,o.result_revision,o.result_state,g.tuner_count,o.generation_id,o.published_at,g.channel_count,g.programme_count FROM live_operations o JOIN live_generations g ON g.id=o.generation_id WHERE o.request_id=? AND o.status='published'`, requestID).Scan(&v.ID, &v.Name, &v.Revision, &v.State, &v.TunerCount, &v.Generation, &v.PublishedAt, &v.Channels, &v.Programmes)
+	var remote bool
+	e := tx.QueryRowContext(ctx, `SELECT o.source_id,g.name,o.result_revision,o.result_state,g.tuner_count,o.generation_id,o.published_at,g.channel_count,g.programme_count,EXISTS(SELECT 1 FROM live_remote_configs c WHERE c.source_id=o.source_id) FROM live_operations o JOIN live_generations g ON g.id=o.generation_id WHERE o.request_id=? AND o.status='published'`, requestID).Scan(&v.ID, &v.Name, &v.Revision, &v.State, &v.TunerCount, &v.Generation, &v.PublishedAt, &v.Channels, &v.Programmes, &remote)
 	if e != nil {
 		return v, ErrUnavailable
+	}
+	v.Acquisition = "upload"
+	if remote {
+		v.Acquisition = "remote"
 	}
 	if e := readDiagnosticsTx(ctx, tx, &v); e != nil {
 		return v, e
@@ -417,6 +423,21 @@ func (s *Store) save(ctx context.Context, a Authority, in SourceInput, refresh b
 			}
 			resultRevision = rev
 		}
+		if in.remote && in.guideSourceID != "" {
+			var guideRevision int64
+			var guideState string
+			guideOK := false
+			if e := tx.QueryRowContext(ctx, `SELECT revision,state FROM live_sources WHERE id=?`, in.guideSourceID).Scan(&guideRevision, &guideState); e == nil {
+				guideOK = guideState == "active" && guideRevision == in.guideSourceRevision
+			}
+			if !guideOK {
+				if _, e = tx.ExecContext(ctx, `UPDATE live_operations SET status='superseded' WHERE request_id=?`, in.RequestID); e != nil {
+					return ErrUnavailable
+				}
+				conflict = true
+				return nil
+			}
+		}
 		if publish != nil {
 			if e = publish(tx); e != nil {
 				return e
@@ -461,7 +482,7 @@ func staging(ctx context.Context, tx *sql.Tx, requestID string) error {
 func (s *Store) Sources(ctx context.Context, a Authority) ([]Source, error) {
 	out := []Source{}
 	e := s.snapshot(ctx, a, true, func(tx *sql.Tx) error {
-		rows, e := tx.QueryContext(ctx, `SELECT s.id,s.name,s.revision,s.state,s.tuner_count,s.active_generation,s.published_at,g.channel_count,g.programme_count,COALESCE(x.physical_count,0),COALESCE(x.owner_limit,0) FROM live_sources s JOIN live_generations g ON g.id=s.active_generation LEFT JOIN live_source_settings x ON x.source_id=s.id WHERE NOT EXISTS(SELECT 1 FROM live_source_removals r WHERE r.source_id=s.id) ORDER BY s.name,s.id`)
+		rows, e := tx.QueryContext(ctx, `SELECT s.id,s.name,s.revision,s.state,s.tuner_count,s.active_generation,s.published_at,g.channel_count,g.programme_count,COALESCE(x.physical_count,0),COALESCE(x.owner_limit,0),EXISTS(SELECT 1 FROM live_remote_configs c WHERE c.source_id=s.id) FROM live_sources s JOIN live_generations g ON g.id=s.active_generation LEFT JOIN live_source_settings x ON x.source_id=s.id WHERE NOT EXISTS(SELECT 1 FROM live_source_removals r WHERE r.source_id=s.id) ORDER BY s.name,s.id`)
 		if e != nil {
 			return ErrUnavailable
 		}
@@ -469,8 +490,13 @@ func (s *Store) Sources(ctx context.Context, a Authority) ([]Source, error) {
 		for rows.Next() {
 			var v Source
 			var physical, limit int
-			if e = rows.Scan(&v.ID, &v.Name, &v.Revision, &v.State, &v.TunerCount, &v.Generation, &v.PublishedAt, &v.Channels, &v.Programmes, &physical, &limit); e != nil {
+			var remote bool
+			if e = rows.Scan(&v.ID, &v.Name, &v.Revision, &v.State, &v.TunerCount, &v.Generation, &v.PublishedAt, &v.Channels, &v.Programmes, &physical, &limit, &remote); e != nil {
 				return ErrUnavailable
+			}
+			v.Acquisition = "upload"
+			if remote {
+				v.Acquisition = "remote"
 			}
 			v = sourceProjection(v)
 			if physical > 0 && limit == 0 {
@@ -525,6 +551,14 @@ func (s *Store) SetEnabled(ctx context.Context, a Authority, sourceID string, re
 		}
 		if _, e = tx.ExecContext(ctx, `INSERT INTO live_enable_receipts VALUES(?,?,?,?)`, requestID, hash, sourceID, revision+1); e != nil {
 			return ErrUnavailable
+		}
+		if !enabled {
+			// Committed pause only: the callback is discarded on rollback and
+			// runs before the writer gate is released. Cancelling contexts is
+			// bounded in-memory work; publication still rechecks state/revision.
+			if e = dbwork.AfterCommit(tx, func() { s.guideFetches.cancel(sourceID) }); e != nil {
+				return ErrUnavailable
+			}
 		}
 		return nil
 	})

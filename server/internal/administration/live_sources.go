@@ -235,6 +235,9 @@ type LiveSourceDocument struct {
 	Effective  LiveDefaults       `json:"effective"`
 	Kinds      []string           `json:"availableKinds"`
 	TunerCount int                `json:"tunerCount"`
+	// Acquisition is "upload" for a saved manual import with no refresh loop,
+	// "remote" for a URL/tuner source with a real refresh path.
+	Acquisition string `json:"acquisition"`
 }
 
 func liveSourceExists(ctx context.Context, tx *sql.Tx, id string) (string, int, error) {
@@ -259,6 +262,14 @@ func (s *Service) liveSourceDocument(ctx context.Context, tx *sql.Tx, id string)
 		return out, err
 	}
 	out.SourceName, out.TunerCount = name, tuners
+	var remote bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM live_remote_configs WHERE source_id=?)`, id).Scan(&remote); err != nil {
+		return out, err
+	}
+	out.Acquisition = "upload"
+	if remote {
+		out.Acquisition = "remote"
+	}
 	defaults, _, err := readDocument(ctx, tx, liveScope, DefaultLiveDefaults())
 	if err != nil {
 		return out, err

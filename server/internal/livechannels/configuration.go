@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"portico.local/server/internal/dbwork"
 	"sort"
 	"strings"
 	"time"
@@ -290,7 +291,13 @@ func applyConfiguration(data *parsedSource, v *LiveSourceSettings, days int) {
 	data.programmes = programmes
 }
 
-func (s *Store) fetchSource(ctx context.Context, f SourceFetcher, c remoteConfig) (SourceInput, int, error) {
+type refreshClaim struct {
+	sourceID string
+	revision int64
+	active   bool
+}
+
+func (s *Store) fetchSource(ctx context.Context, f SourceFetcher, c remoteConfig, claim refreshClaim) (SourceInput, int, error) {
 	tx, e := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if e != nil {
 		return SourceInput{}, 0, e
@@ -300,9 +307,73 @@ func (s *Store) fetchSource(ctx context.Context, f SourceFetcher, c remoteConfig
 	if e != nil {
 		return SourceInput{}, 0, e
 	}
+	var guideRevision int64
+	fetchCtx, cancel := context.WithCancel(ctx)
+	unregister := []func(){}
+	defer func() {
+		cancel()
+		for _, stop := range unregister {
+			stop()
+		}
+	}()
+	if claim.active && (claim.sourceID == "" || claim.revision <= 0) {
+		return SourceInput{}, 0, ErrSourceUnavailable
+	}
+	registrySource := c.Draft.ID
+	if claim.active {
+		registrySource = claim.sourceID
+	}
+	if registrySource != "" || v.GuideSourceID != "" || claim.active {
+		// The final source/guide check and registration share the writer gate
+		// with pause. An actual refresh proves its explicit claimed revision; a
+		// preview is a different purpose and only checks an external guide.
+		gated, gateErr := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
+		if gateErr != nil {
+			return SourceInput{}, 0, gateErr
+		}
+		tx := gated.Tx()
+		if claim.active {
+			var sourceRevision int64
+			var sourceState string
+			if e = tx.QueryRowContext(ctx, `SELECT revision,state FROM live_sources WHERE id=?`, claim.sourceID).Scan(&sourceRevision, &sourceState); e != nil || sourceState != "active" || sourceRevision != claim.revision {
+				gated.Rollback()
+				return SourceInput{}, 0, ErrSourceUnavailable
+			}
+		}
+		if v.GuideSourceID != "" {
+			var guideState string
+			if e = tx.QueryRowContext(ctx, `SELECT revision,state FROM live_sources WHERE id=?`, v.GuideSourceID).Scan(&guideRevision, &guideState); e != nil {
+				gated.Rollback()
+				return SourceInput{}, 0, ErrSourceUnavailable
+			}
+			if guideState != "active" {
+				gated.Rollback()
+				return SourceInput{}, 0, ErrSourceUnavailable
+			}
+		}
+		if registrySource != "" {
+			stop, registerErr := s.guideFetches.register(registrySource, cancel)
+			if registerErr != nil {
+				gated.Rollback()
+				return SourceInput{}, 0, registerErr
+			}
+			unregister = append(unregister, stop)
+		}
+		if v.GuideSourceID != "" && v.GuideSourceID != registrySource {
+			stop, registerErr := s.guideFetches.register(v.GuideSourceID, cancel)
+			if registerErr != nil {
+				gated.Rollback()
+				return SourceInput{}, 0, registerErr
+			}
+			unregister = append(unregister, stop)
+		}
+		if e = gated.Commit(); e != nil {
+			return SourceInput{}, 0, e
+		}
+	}
 	if v.GuideSourceID != "" {
 		var raw []byte
-		e = s.db.QueryRowContext(ctx, `SELECT sealed FROM live_remote_configs WHERE source_id=?`, v.GuideSourceID).Scan(&raw)
+		e = s.db.QueryRowContext(fetchCtx, `SELECT sealed FROM live_remote_configs WHERE source_id=?`, v.GuideSourceID).Scan(&raw)
 		if e != nil {
 			return SourceInput{}, 0, e
 		}
@@ -321,13 +392,14 @@ func (s *Store) fetchSource(ctx context.Context, f SourceFetcher, c remoteConfig
 		c.Approvals = append(c.Approvals, guide.Approvals...)
 	}
 	f.defaults = d
-	in, count, e := f.fetch(ctx, c)
+	in, count, e := f.fetch(fetchCtx, c)
 	if e != nil {
 		return in, count, e
 	}
 	in.parseContext = ctx
 	in.guideDays = d.GuideDays
 	in.remote = true
+	in.guideSourceID, in.guideSourceRevision = v.GuideSourceID, guideRevision
 	if e = s.configureInput(ctx, &in); e != nil {
 		return in, count, e
 	}

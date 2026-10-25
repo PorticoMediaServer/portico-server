@@ -157,7 +157,7 @@ func (s *Store) PreviewRemote(ctx context.Context, a Authority, f SourceFetcher,
 	if e != nil {
 		return out, e
 	}
-	input, physical, e := s.fetchSource(ctx, f, c)
+	input, physical, e := s.fetchSource(ctx, f, c, refreshClaim{})
 	if e != nil {
 		return out, e
 	}
@@ -497,7 +497,7 @@ func (s *Store) RefreshOne(ctx context.Context, f SourceFetcher) (bool, error) {
 		var in SourceInput
 		var physical int
 		fetchCtx, cancel := context.WithCancel(ctx)
-		in, physical, e = s.fetchSource(fetchCtx, f, c)
+		in, physical, e = s.fetchSource(fetchCtx, f, c, refreshClaim{sourceID: sid, revision: rev, active: true})
 		in.parseContext = ctx
 		defer in.removeGuide()
 		cancel()
