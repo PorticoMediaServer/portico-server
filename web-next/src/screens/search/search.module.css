@@ -187,6 +187,10 @@
 .songTitleCell { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
 .songTitleCell > :first-child { flex: none; width: 44px; height: 44px; border-radius: 6px; overflow: hidden; }
 .songTitleCell b { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--type-body-size); font-weight: var(--type-button-weight); }
+/* music-plus f8: the song's own notable formats, outlined, never filled; the title shrinks first. */
+.songTitleText { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.songTitleText > b { min-width: 0; }
+.songBadge { flex: none; display: inline-flex; align-items: center; height: 20px; padding: 0 6px; margin-left: 2px; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--color-text) 30%, transparent); font-size: 11.5px; font-weight: 700; letter-spacing: .01em; line-height: normal; color: var(--color-text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .songArtist,.songAlbum,.songPlays,.songLength { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
 .songPlays,.songLength { text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 599px) {

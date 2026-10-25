@@ -32,6 +32,7 @@ import {nowNext} from '@core/guide/index.ts';
 import {channelTint, type FactPart} from '@portico/client-core/kit-model';
 import {clockText, durationText} from '@core/presentation/kit-model/text.ts';
 import {defaultI18n} from '@i18n';
+import {formatSignalText, musicFormatBadges} from '@core/music-signal.ts';
 
 type ChipId = SearchGroup | 'all';
 const keyOf = (entry: SearchEntry) => JSON.stringify(['libraryId' in entry ? entry.libraryId : '', entry.kind, entry.id]);
@@ -259,7 +260,12 @@ export function SongTableRow({entry, binding, selection, position = 0, onCommit}
   return <div className={styles.songTableRow} data-selected={picked?.checked || undefined} data-preview={picked?.preview || undefined} {...range}>
     <span className={styles.songIndex}>{picked ? <SelectionCircle variant="row" selected={picked.checked} selecting={picked.active} accessibilityLabel={t('next.selection.select')} onClick={event => {event.preventDefault(); picked.onToggle({range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});}}/>
       : <button type="button" className={styles.songIndexPlay} onClick={activate} aria-label={t('next.browse.play', {title})}><span>{defaultI18n.number(position + 1)}</span><Icon name="i-play" size={16}/></button>}</span>
-    <button type="button" className={styles.songTitleCell} onClick={activate} aria-label={title}><Artwork source={context.artwork.foreground(song.posterUrl, 88, 1)} alt="" /><b>{title}</b></button>
+    <button type="button" className={styles.songTitleCell} onClick={activate} aria-label={title}><Artwork source={context.artwork.foreground(song.posterUrl, 88, 1)} alt="" />
+      <span className={styles.songTitleText}><b>{title}</b>
+        {/* music-plus f8: a list that mixes albums carries the song's own notable formats after
+            its title, at most two; the title shortens first and a badge never does. */}
+        {song.audioFacts && musicFormatBadges(song.audioFacts).map(badge => <span key={typeof badge === 'string' ? badge : formatSignalText(badge, t)} className={styles.songBadge}>{typeof badge === 'string' ? badge : formatSignalText(badge, t)}</span>)}
+      </span></button>
     <span className={styles.songArtist}>{song.artist?.name}</span>
     <span className={styles.songAlbum}>{song.album?.name}</span>
     <span className={styles.songPlays}>{song.plays === undefined ? undefined : defaultI18n.number(song.plays)}</span>
