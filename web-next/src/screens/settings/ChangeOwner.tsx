@@ -25,8 +25,8 @@ export function ChangeOwner({source, isCurrent, onError}: {
   source: SettingsOwnerSwitch; isCurrent: () => boolean; onError: (error: unknown) => void;
 }) {
   const [confirming, setConfirming] = useState(false), [secure, setSecure] = useState(false), [busy, setBusy] = useState(false);
-  const [opening, setOpening] = useState<Opening>();
-  const active = useRef<Opening>(), sourceRef = useRef(source), ticket = useRef<{retired: boolean}>(), sequence = useRef(0);
+  const [opening, setOpening] = useState<Opening | undefined>(undefined);
+  const active = useRef<Opening | undefined>(undefined), sourceRef = useRef(source), ticket = useRef<{retired: boolean} | undefined>(undefined), sequence = useRef(0);
   const opener = useRef<HTMLButtonElement>(null), cancel = useRef<HTMLButtonElement>(null);
   // Layout retirement aborts this exact opening synchronously. A delivered
   // handoff is left to the Settings lifetime; an undelivered prepare is stopped

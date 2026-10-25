@@ -48,8 +48,8 @@ export function LocalMoveSwitch({source, isCurrent, onError, startOver = false}:
   const state = useSyncExternalStore(source.subscribe, source.getSnapshot);
   const [draft, setDraft] = useState<DraftState>({revision: 0, value: emptyDraft});
   const draftRef = useRef<DraftState>({revision: 0, value: emptyDraft});
-  const [opening, setOpening] = useState<Attempt>(), [secure, setSecure] = useState(false);
-  const active = useRef<Attempt>(), sourceRef = useRef(source), ticket = useRef<{retired: boolean}>();
+  const [opening, setOpening] = useState<Attempt | undefined>(undefined), [secure, setSecure] = useState(false);
+  const active = useRef<Attempt | undefined>(undefined), sourceRef = useRef(source), ticket = useRef<{retired: boolean} | undefined>(undefined);
   const sequence = useRef(0), starting = useRef(0);
   // A new controller replaces the old one; the old opening is retired as its own
   // instance. Layout cleanup also runs synchronously on unmount, before a late
@@ -164,7 +164,7 @@ export function LocalMoveSwitch({source, isCurrent, onError, startOver = false}:
           <h3>{t(`${keys}.groups.0.title`)}</h3>
           <dl>
             <dt>{t(`${keys}.groups.0.rows.0.label`)}</dt><dd>{t(`${keys}.groups.0.rows.0.help`)}</dd>
-            <dt>{t(`${keys}.groups.0.rows.1.label`)}</dt><dd>{t(`${keys}.groups.0.rows.1.help`)}</dd>
+            <dt>{t(`${keys}.groups.0.rows.1.label`)}</dt><dd>{t('next.settingsSpec.server.signin.panels.startOverLocal.groups.0.rows.1.help')}</dd>
             <dt>{t(`${keys}.groups.0.rows.2.label`)}</dt><dd>{t(`${keys}.groups.0.rows.2.help`)}</dd>
             <dt>{t(`${keys}.groups.0.rows.3.label`)}</dt><dd/>
             <dt>{t(`${keys}.groups.0.rows.4.label`)}</dt><dd>{t(`${keys}.groups.0.rows.4.help`)}</dd>
@@ -172,7 +172,7 @@ export function LocalMoveSwitch({source, isCurrent, onError, startOver = false}:
           </dl>
           <h3>{t(`${keys}.groups.1.title`)}</h3>
           <dl>
-            <dt>{t(`${keys}.groups.1.rows.0.label`)}</dt><dd>{t(`${keys}.groups.1.rows.0.help`)}</dd>
+            <dt>{t(`${keys}.groups.1.rows.0.label`)}</dt><dd>{t('next.settingsSpec.server.signin.panels.startOverLocal.groups.1.rows.0.help')}</dd>
             <dt>{t(`${keys}.groups.1.rows.1.label`)}</dt><dd>{t(`${keys}.groups.1.rows.1.help`)}</dd>
           </dl>
         </> : <>
@@ -181,10 +181,10 @@ export function LocalMoveSwitch({source, isCurrent, onError, startOver = false}:
             <dt>{t(`${keys}.groups.0.rows.0.label`)}</dt><dd>{defaultI18n.number(preview.people)}<p>{t(`${keys}.groups.0.rows.0.help`)}</p></dd>
             <dt>{t(`${keys}.groups.0.rows.1.label`)}</dt><dd>{preview.devices !== undefined && defaultI18n.number(preview.devices)}</dd>
             <dt>{t(`${keys}.groups.0.rows.2.label`)}</dt><dd>{t(`${keys}.groups.0.rows.2.help`)}</dd>
-            <dt>{t(`${keys}.groups.0.rows.3.label`)}</dt><dd>{t(`${keys}.groups.0.rows.3.help`)}</dd>
+            <dt>{t(`${keys}.groups.0.rows.3.label`)}</dt><dd>{t('next.settingsSpec.server.signin.panels.switchToLocal.groups.0.rows.3.help')}</dd>
             <dt>{t(`${keys}.groups.0.rows.4.label`)}</dt><dd>{t(`${keys}.groups.0.rows.4.help`)}</dd>
             <dt>{t(`${keys}.groups.0.rows.5.label`)}</dt><dd>{defaultI18n.number(preview.invitations)}<p>{t(`${keys}.groups.0.rows.5.help`)}</p></dd>
-            <dt>{t(`${keys}.groups.0.rows.6.label`)}</dt><dd>{t(`${keys}.groups.0.rows.6.help`)}</dd>
+            <dt>{t('next.settingsSpec.server.signin.panels.switchToLocal.groups.0.rows.6.label')}</dt><dd>{t('next.settingsSpec.server.signin.panels.switchToLocal.groups.0.rows.6.help')}</dd>
           </dl>
           <h3>{t(`${keys}.groups.1.title`)}</h3>
           <dl>
@@ -204,8 +204,8 @@ export function LocalMoveSwitch({source, isCurrent, onError, startOver = false}:
           onChange={event => {if (current) editDraft(current, 'match', event.currentTarget.value);}}/>
         <dl><dt>{t(`${keys}.groups.2.rows.3.label`)}</dt><dd>{t(`${keys}.groups.2.rows.3.help`)}</dd></dl>
         {startOver && <>
-          <h3>{t(`${keys}.groups.3.title`)}</h3>
-          <TextField label={t(`${keys}.groups.3.rows.0.label`)} placeholder={t(`${keys}.groups.3.rows.0.control.placeholder`)}
+          <h3>{t('next.settingsSpec.server.signin.panels.startOverLocal.groups.3.title')}</h3>
+          <TextField label={t('next.settingsSpec.server.signin.panels.startOverLocal.groups.3.rows.0.label')} placeholder={t('next.settingsSpec.server.signin.panels.startOverLocal.groups.3.rows.0.control.placeholder')}
             value={draft.value.confirmation} disabled={busy} onChange={event => {if (current) editDraft(current, 'confirmation', event.currentTarget.value);}}/>
         </>}
       </div>}

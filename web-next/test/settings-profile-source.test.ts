@@ -74,7 +74,7 @@ test('row projection uses the selected real profile and account, never spec exam
   assert.equal(profileSettingState(f.source, 'profile.name')?.value, 'Child');
   assert.equal(profileSettingState(f.source, 'profile.color')?.value, 'mint');
   assert.equal(profileSettingState(f.source, 'profile.username')?.displayValue, 'actual');
-  assert.equal(profileSettingState(f.source, 'profile.picture'), undefined);
+  assert.deepEqual(profileSettingState(f.source, 'profile.picture'), {present: true, disabled: false});
   assert.equal(changeProfileSetting(f.source, 'profile.color', 'invented'), undefined);
   assert.equal(f.calls.length, 1);f.retire();assert.deepEqual(profileSettingState(f.source, 'profile.username'), {present: false});f.source.dispose();
 });

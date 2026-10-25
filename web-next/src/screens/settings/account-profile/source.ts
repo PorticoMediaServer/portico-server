@@ -51,10 +51,10 @@ export class ProfileSettingsSource {
   load = (): Promise<void> => {
     if (!this.current() || this.snapshot.document) return Promise.resolve();
     if (this.pending) return this.pending;
-    this.publish({loading: true, busy: false});
+    this.publish({loading: true, busy: false, inUseId: this.scope.profileId});
     const task = this.read().then(document => {
-      this.publish({loading: false, busy: false, document, selectedId: this.scope.profileId});
-    }, error => {this.publish({loading: false, busy: false, error});}).finally(() => {
+      this.publish({loading: false, busy: false, inUseId: this.scope.profileId, document, selectedId: this.scope.profileId});
+    }, error => {this.publish({loading: false, busy: false, inUseId: this.scope.profileId, error});}).finally(() => {
       if (this.pending === task) this.pending = undefined;
     });
     this.pending = task;return task;
@@ -88,10 +88,10 @@ export class ProfileSettingsSource {
       if (!this.current()) return;
       const refreshed = await this.read();
       const selectedId = refreshed.profiles.some(profile => profile.id === this.snapshot.selectedId) ? this.snapshot.selectedId : this.scope.profileId;
-      this.publish({loading: false, busy: false, document: refreshed, selectedId});
+      this.publish({loading: false, busy: false, inUseId: this.scope.profileId, document: refreshed, selectedId});
     } catch (error) {
       // A failed write/readback must not leave old revisions available for retry.
-      this.publish({loading: false, busy: false, error});
+      this.publish({loading: false, busy: false, inUseId: this.scope.profileId, error});
       throw error;
     }
   }
@@ -102,7 +102,7 @@ export class ProfileSettingsSource {
     try {
       const avatars = await this.identity.avatars(this.lifetime.signal);
       if (this.current() && this.snapshot.document) this.publish({...this.snapshot, avatars});
-    } catch (error) {if (this.current()) this.publish({loading: false, busy: false, error});}
+    } catch (error) {if (this.current()) this.publish({loading: false, busy: false, inUseId: this.scope.profileId, error});}
   };
   picture = (target: Pick<ManagedProfile, 'id' | 'revision'>, file?: File): Promise<void> => this.mutate(async document => {
     const profile = document.profiles.find(candidate => candidate.id === target.id && candidate.revision === target.revision);

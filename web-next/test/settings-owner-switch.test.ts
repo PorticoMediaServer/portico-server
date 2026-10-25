@@ -25,8 +25,10 @@ function fixture() {
     createClaim: () => {
       factories++;order.push('factory');if (blockedStorage) throw new RouteError('secure_context_required', 'Secure pending unavailable');
       return {
-        prepare: async (captured, hostedOrigin) => {
+        prepare: async (captured: HttpLocalApi, hostedOrigin: string, _purpose?: string, _role?: string, _caller?: unknown, attempt?: {lease?: {attemptId: string; origin: string; cancel: () => Promise<void>}}) => {
           preparations++;order.push('prepare');assert.equal(captured, api);assert.equal(hostedOrigin, 'https://web.example');
+          const lease = {attemptId: 'attempt', origin: 'https://server.example', cancel: async () => {cancellations++;}};
+          if (attempt) attempt.lease = lease;
           await prepareGate;if (failPreparation) throw new Error('preparation offline');return 'https://web.example/owner-claim#one-use-proof';
         },
         cancel: async () => {cancellations++;}, cancelOperation: async captured => {assert.equal(captured, api);serverCancellations++;},
