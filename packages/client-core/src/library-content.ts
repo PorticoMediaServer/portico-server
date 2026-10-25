@@ -121,6 +121,8 @@ const entityViews = new Set(['show','season','artist','album','book','collection
 const entryKinds: readonly string[] = ['ebook','comic','movie','show','season','episode','artist','album','song','book','audiobook_file','chapter','collection','category','author','book_series','disc','extra','playlist','radio'];
 /** Unknown string kinds are future server cards; only their entries are omitted. */
 export const unknownContentEntryKind = (v: unknown): boolean => record(v) && typeof v.kind === 'string' && !entryKinds.includes(v.kind);
+/** The closed set, as a guard: a validated kind is never narrowed by a cast. */
+export const contentEntryKind = (v: unknown): v is ContentEntryKind => typeof v === 'string' && entryKinds.includes(v);
 const optional = <K extends string, V>(key: K, value: V | undefined): Partial<Record<K, V>> => (value === undefined ? {} : { [key]: value } as Record<K, V>);
 const record = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const string = (v: unknown, max = 512): v is string => typeof v === 'string' && v.length <= max && !/[\x00-\x1f\x7f]/.test(v);

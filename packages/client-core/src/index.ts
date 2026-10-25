@@ -2184,6 +2184,7 @@ export * from './people.ts';
 export {savedListPath,personalHistoryPath,savedListFilters,savedListSorts,historyPeriods,type SavedListFilter,type SavedListSort,type HistoryPeriod,type SavedApi,type SavedScope,type SavedRoute,type SavedActor} from './saved.ts';
 export * from './browse.ts';
 export * from './browse-buckets.ts';
+export * from './browse-whole-selection.ts';
 export * from './social-playback.ts';
 export * from './group-session.ts';
 export * from './remote-playback.ts';
