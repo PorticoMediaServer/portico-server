@@ -759,7 +759,18 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 	args = append(args, pageSize+1)
 	// MATERIALIZED fixes the limit boundary before the detail joins and asset
 	// subqueries. Those reads now run for at most pageSize+1 selected identities.
-	query := page + ` SELECT pid(e.public_id),l.library_id,COALESCE(e.year,0),d.title,` + subtitle + ` subtitle,COALESCE(detail.poster_url,'') poster_url,COALESCE(detail.overview,'') overview,COALESCE(detail.added_text,'') added_at,COALESCE((SELECT max(a.duration) FROM catalog_asset_links link JOIN catalog_assets a ON a.id=link.asset_id WHERE link.entity_id=e.id),0) duration,EXISTS(SELECT 1 FROM catalog_asset_links link JOIN catalog_assets a ON a.id=link.asset_id WHERE link.entity_id=e.id AND link.available=1) available,page.ord,e.kind,e.id FROM page JOIN catalog_entities e ON e.id=page.entity_id JOIN catalog_libraries l ON l.id=e.library_id JOIN catalog_search_documents d ON d.entity_id=e.id LEFT JOIN catalog_item_details detail ON detail.entity_id=e.id ` + contextJoin + ` ORDER BY page.ord ` + r.Direction + `,page.` + tie + ` ` + r.Direction
+	// Personal resume state is read only for the admitted leaf identities, in
+	// this same viewer snapshot. Missing progress stays absent, rather than
+	// turning a container or an unseen item into a synthetic resume target.
+	progress, episodeFacts := "NULL", "NULL,NULL,''"
+	if g.view == "item" && !readingGroup {
+		progress = `(SELECT p.position/1000.0 FROM progress p WHERE p.profile_id=? AND p.item_id=e.id)`
+		args = append(args, r.Profile)
+	}
+	if g.kind == "episode" {
+		episodeFacts = `context_season.number,context_episode.number,COALESCE(context_episode.numbering,'')`
+	}
+	query := page + ` SELECT pid(e.public_id),l.library_id,COALESCE(e.year,0),d.title,` + subtitle + ` subtitle,COALESCE(detail.poster_url,'') poster_url,COALESCE(detail.overview,'') overview,COALESCE(detail.added_text,'') added_at,COALESCE((SELECT max(a.duration) FROM catalog_asset_links link JOIN catalog_assets a ON a.id=link.asset_id WHERE link.entity_id=e.id),0) duration,EXISTS(SELECT 1 FROM catalog_asset_links link JOIN catalog_assets a ON a.id=link.asset_id WHERE link.entity_id=e.id AND link.available=1) available,page.ord,e.kind,e.id,` + progress + `,` + episodeFacts + ` FROM page JOIN catalog_entities e ON e.id=page.entity_id JOIN catalog_libraries l ON l.id=e.library_id JOIN catalog_search_documents d ON d.entity_id=e.id LEFT JOIN catalog_item_details detail ON detail.entity_id=e.id ` + contextJoin + ` ORDER BY page.ord ` + r.Direction + `,page.` + tie + ` ` + r.Direction
 	rows, e := s.read().QueryContext(ctx, query, args...)
 	if e != nil {
 		return e
@@ -771,12 +782,15 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 		var entry ContentEntry
 		var added string
 		var duration float64
+		var resume sql.NullFloat64
+		var season, episode sql.NullInt64
+		var numbering string
 		var available bool
 		var ord any
 		var year int
 		var entryKind compactcatalog.Kind
 		var internalID int64
-		if e = rows.Scan(&entry.ID, &entry.LibraryID, &year, &entry.Title, &entry.Subtitle, &entry.PosterURL, &entry.Overview, &added, &duration, &available, &ord, &entryKind, &internalID); e != nil {
+		if e = rows.Scan(&entry.ID, &entry.LibraryID, &year, &entry.Title, &entry.Subtitle, &entry.PosterURL, &entry.Overview, &added, &duration, &available, &ord, &entryKind, &internalID, &resume, &season, &episode, &numbering); e != nil {
 			rows.Close()
 			return e
 		}
@@ -808,9 +822,27 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 		if g.view == "item" && !readingGroup {
 			entry.Duration = &duration
 			entry.Available = &available
+			if resume.Valid {
+				entry.ProgressSeconds = &resume.Float64
+			}
 			if available {
 				entry.Playback = &ContentPlayback{ItemID: entry.ID}
 			}
+		}
+		if g.kind == "episode" {
+			if season.Valid {
+				number := int(season.Int64)
+				entry.SeasonNumber = &number
+				entry.Special = number == 0
+			}
+			if episode.Valid {
+				number := int(episode.Int64)
+				entry.EpisodeNumber = &number
+				if numbering == "absolute" {
+					entry.AbsoluteNumber = &number
+				}
+			}
+			entry.DateBased = numbering == "date"
 		}
 		entries = append(entries, entry)
 		orders = append(orders, formatOrderValue(ord))
