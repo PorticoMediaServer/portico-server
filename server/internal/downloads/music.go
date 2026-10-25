@@ -29,6 +29,23 @@ func canonicalMusicQuality(q string) bool {
 	}
 	return false
 }
+// videoDownloadQuality is the profile's saved Download quality for a title, one
+// value per device class. A value the ladder no longer makes falls back to the
+// untouched file rather than asking for a quality the server cannot prepare.
+func videoDownloadQuality(ctx context.Context, tx *sql.Tx, p identity.Principal) (string, error) {
+	values, _, _, e := operations.EffectivePreferences(tx, p.Viewer, playback.DeliveryContextFrom(ctx).DeviceClass)
+	if e != nil {
+		return "", e
+	}
+	q := values.Text("quality.downloads")
+	for _, id := range qualityladder.IDs() {
+		if q == id {
+			return q, nil
+		}
+	}
+	return QualityOriginal, nil
+}
+
 func requestedDownloadQuality(ctx context.Context, tx *sql.Tx, p identity.Principal, q string, s source) (string, error) {
 	if q != "" {
 		return q, nil
@@ -36,7 +53,12 @@ func requestedDownloadQuality(ctx context.Context, tx *sql.Tx, p identity.Princi
 	if s.Kind == "song" {
 		return musicDownloadQuality(ctx, tx, p)
 	}
-	return QualityOriginal, nil
+	// An audiobook file keeps the untouched file: the video ladder says nothing
+	// about audio, and it has no approved audio-default consumer of its own.
+	if audioKind(s.Kind) {
+		return QualityOriginal, nil
+	}
+	return videoDownloadQuality(ctx, tx, p)
 }
 
 func musicSourceEquivalent(q string, s source) bool {

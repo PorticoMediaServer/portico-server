@@ -31,6 +31,8 @@ const preferenceEffects = new Set([
   // The server selects home/remote by reach and mobile by actual cellular transport.
   // These are saved defaults; a plain start supplies no client quality authority.
   'quality.home', 'quality.remote', 'quality.mobile',
+  // The saved download default: the server reads it when a download asks for no
+  // quality of its own (downloads/options.go -> requestedDownloadQuality).
   /* Account Privacy: the server applies all four in the profile's own session. personal_activity.go
      pauses watch history and decides what counts in Popular; recommendation_engine.go and
      rec_title.go gate activity sharing; social/privacy.go hides Watch Together membership; and
@@ -42,6 +44,7 @@ const preferenceEffects = new Set([
      away network class, and music.dsdGainDb is the server's audio-conversion gain. */
   'music.audioNormalization', 'music.crossfadeMs', 'music.gapless',
   'music.smoothTransitions', 'music.neverBoost', 'music.qualityAway', 'music.dsdGainDb',
+  'quality.downloads',
 ]);
 function preferenceEffect(binding: SettingsBinding): boolean {
   if (preferenceEffects.has(binding.key) || binding.key.startsWith('subtitles.')) return true;

@@ -9,6 +9,7 @@ var preferenceConsumers = func() map[string]string {
 		"music.qualityAway":                   "server.playback.delivery_policy",
 		"music.qualityMobile":                 "server.playback.delivery_policy",
 		"music.qualityDownloads":              "server.downloads.quality",
+		"quality.downloads":                   "server.downloads.quality",
 		"music.neverBoost":                    "client.audio_effects",
 		"music.smoothTransitions":             "client.audio_effects",
 		"music.dsdGainDb":                     "server.playback.audio_conversion",

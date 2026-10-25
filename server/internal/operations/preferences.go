@@ -136,6 +136,8 @@ func qualityFields() []PreferenceField {
 		prefEnum("quality.home", "original", SavedQualities, ScopeDeviceClass),
 		prefEnum("quality.remote", "original", SavedQualities, ScopeDeviceClass),
 		prefEnum("quality.mobile", "720p-high", SavedQualities, ScopeDeviceClass),
+		// The saved default for a download; the server's own download ceiling still applies.
+		prefEnum("quality.downloads", "original", SavedQualities, ScopeDeviceClass),
 	}
 }
 
