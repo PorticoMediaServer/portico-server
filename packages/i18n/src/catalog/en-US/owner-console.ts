@@ -59,6 +59,7 @@ export const ownerConsoleMessages = {
   'server.backups.restoreWhich': 'Backup from {when}',
   'server.cleanup.body': '{canRecreate, select, yes {These files are rebuilt when next needed, which costs the server some work.} other {These files cannot be recreated.}}',
   'server.cleanup.done': 'Cleaned up.',
+  'server.missing.confirmCount': 'Type the number {count} to confirm',
   'server.missing.removeBody': 'This removes {count, plural, one {# title} other {# titles}} from the library. Nothing on disk is touched, and watch history is kept in case they come back.',
   // ── Live TV sources and recording ──
   'server.live.kind.m3u': 'M3U playlist',
