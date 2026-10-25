@@ -23,6 +23,25 @@
   .header > .back { position: absolute; top: 0; left: 16px; height: 58px; padding-inline: 0; }
   .title { margin: 0 0 8px; font-size: var(--type-display-size); line-height: calc(var(--type-display-size) * 1.05); letter-spacing: var(--type-banner-title-tracking); }
   .why { margin: 0; font-size: var(--type-banner-body-size); line-height: 1.5; }
-  .actions { margin: 0; padding: 14px 0 4px; gap: 10px; }
+  .actions { margin: 0; padding: 14px 0 0; gap: 10px; }
   .actions > * { flex: 1 1 0; height: 46px; border-radius: 10px; font-size: var(--type-body-strong-size); }
+}
+
+/* Frame 47's toolbar sits directly on the page wash. These overrides belong to
+   See all; the library's opaque sticky toolbar and other phone pages keep theirs. */
+@media (max-width: 599px) {
+  .homeRow > [data-platform='phone'][data-sticky] {
+    background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none;
+    box-shadow: none; padding-block: 0;
+  }
+  .homeRow > [data-platform='phone'][data-sticky]::after { display: none; }
+  .homeRow > [data-platform='phone'][data-sticky] > div:first-child { padding: 14px 20px 0; }
+  .homeRow > [data-platform='phone'][data-sticky] > div:nth-child(2) { padding: 14px 20px 0; }
+  .homeRow > [data-platform='phone'] [role='radiogroup'] > [role='radio'] {
+    height: 34px; padding: 0 13px; border-radius: 9px; font-size: 13.5px; gap: 6px;
+  }
+  .homeRow > [data-platform='phone'] [role='radio'] > span:last-child { font-size: 12px; font-weight: 700; }
+  .homeRow > [data-platform='phone'] > div:first-child > button[data-variant='glass'] {
+    background: transparent; box-shadow: inset 0 0 0 1px var(--color-line-strong);
+  }
 }
