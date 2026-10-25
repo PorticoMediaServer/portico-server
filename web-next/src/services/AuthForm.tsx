@@ -54,7 +54,7 @@ function MountedAuthForm({account, flow, initialUsername = '', embedded = false,
   // screen's Cancel uses; the code and reset screens draw it as plain text.
   const backAction = <button type="button" disabled={busy} onClick={() => flow.go('signin')}><ServicesBackAction>{t('auth.backToSignIn')}</ServicesBackAction></button>;
   const title = mode === 'create' ? t('auth.createYourAccount') : mode === 'verify' || mode === 'sent' ? t('auth.checkEmail') : mode === 'forgot' ? t('auth.forgotPasswordTitle') : mode === 'factor' ? t('auth.enterVerificationCode') : mode === 'recovery' ? t('services.signin.recovery') : mode === 'provider' ? t('auth.chooseUsername') : mode === 'ready' ? t('services.provider.ready') : heading ?? t('auth.welcomeHome');
-  const body = mode === 'create' ? t('auth.oneAccount') : mode === 'verify' && state.registration ? t('auth.codeSentTo', {address: state.registration.maskedAddress}) : mode === 'sent' ? t('auth.resetLinkSent') : mode === 'forgot' ? t('auth.resetLinkLedeEmail') : mode === 'factor' ? t('services.signin.twoStep') : mode === 'recovery' ? t('services.signin.recoveryBody') : mode === 'provider' ? t('services.provider.lastThing') : mode === 'ready' ? t('services.provider.readyBody') : lead ?? t('auth.accountLead');
+  const body = mode === 'create' ? t('auth.oneAccount') : mode === 'verify' && state.registration ? t('auth.codeSentTo', {address: state.registration.maskedAddress}) : mode === 'sent' ? t('auth.resetLinkSent') : mode === 'forgot' ? t('auth.resetLinkLede') : mode === 'factor' ? t('services.signin.twoStep') : mode === 'recovery' ? t('services.signin.recoveryBody') : mode === 'provider' ? t('services.provider.lastThing') : mode === 'ready' ? t('services.provider.readyBody') : lead ?? t('auth.accountLead');
   const providers = state.options?.providers.filter(item => item.enabled).sort((a, b) => a.id.localeCompare(b.id)) ?? [];
   const providerButtons = <>{providers.map(item => <ServicesProviderButton key={item.id} provider={item.id} disabled={busy} onClick={() => void flow.provider(item.id)}>{t(item.id === 'apple' ? 'services.provider.apple' : 'services.provider.google')}</ServicesProviderButton>)}{providers.length > 0 && state.options?.password && <div className={mode === 'signin' ? signInStyles.divider : undefined}><ServicesDivider>{t(mode === 'create' ? 'services.provider.createDivider' : 'auth.orWithEmail')}</ServicesDivider></div>}</>;
   const content = <>
@@ -101,9 +101,10 @@ function MountedAuthForm({account, flow, initialUsername = '', embedded = false,
       <AuthLinks><button type="button" disabled={busy} onClick={() => flow.startAgain()}>{t('services.signup.startAgain')}</button>{back}</AuthLinks><ServicesQuiet>{t('services.signup.codeHelp')}</ServicesQuiet>
     </>}
     {mode === 'forgot' && state.options?.recovery && <>
-      <form className={styles.form} onSubmit={submit(() => flow.recover(email))}>
+      <form className={styles.form} onSubmit={submit(() => flow.getSnapshot() === state ? flow.recover(username, email) : Promise.resolve())}>
+        <TextField variant="auth" name="username" autoComplete="username" autoCapitalize="off" spellCheck={false} label={t('auth.username')} value={username} onChange={event => setUsername(event.currentTarget.value)} maxLength={64} required disabled={busy} />
         <TextField variant="auth" type="email" name="email" autoComplete="email" label={t('auth.email')} value={email} onChange={event => setEmail(event.currentTarget.value)} required disabled={busy} />
-        <ServicesActions><Button variant="primary" type="submit" loading={busy} disabled={blocked || !/^\S+@\S+\.\S+$/.test(email.trim())}>{retrySeconds ? retryLabel : t('auth.resetLinkAction')}</Button></ServicesActions>
+        <ServicesActions><Button variant="primary" type="submit" loading={busy} disabled={blocked || !username.trim() || !/^\S+@\S+\.\S+$/.test(email.trim())}>{retrySeconds ? retryLabel : t('auth.resetLinkAction')}</Button></ServicesActions>
       </form><ServicesQuiet>{t('auth.privacySameAnswer')}</ServicesQuiet><ServicesQuiet>{t('services.recovery.provider')}</ServicesQuiet><AuthLinks>{back}</AuthLinks>
     </>}
     {mode === 'sent' && <><ServicesQuiet>{t('services.recovery.expiry')}</ServicesQuiet><AuthLinks>{back}</AuthLinks></>}

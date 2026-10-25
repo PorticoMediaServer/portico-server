@@ -117,10 +117,14 @@ export class ServicesAuthFlow {
       if (!signal.aborted) this.publish({registration: value, resends: this.state.resends + 1});
     });
   }
-  recover(email: string) {
+  recover(username: string, email: string) {
+    const account = username.trim().toLowerCase(), address = email.trim();
+    if (this.state.mode !== 'forgot' || !account || !address) return Promise.resolve();
     return this.run(async signal => {
-      await this.account.client.request(routePath('account_recovery_request'), 'POST', routeBody('account_recovery_request', {username: '', contactAddress: email.trim(), requestId: await this.ids.for('recover', {email})}), signal);
-      if (!signal.aborted) this.publish({mode: 'sent'});
+      const requestId = await this.ids.for('recover', {username: account, contactAddress: address});
+      if (signal.aborted) return;
+      await this.account.client.request(routePath('account_recovery_request'), 'POST', routeBody('account_recovery_request', {username: account, contactAddress: address, requestId}), signal);
+      if (!signal.aborted) { this.ids.clear('recover'); this.publish({mode: 'sent'}); }
     });
   }
   /** Only a confirmed failed username insert rotates onboarding proof. Read
