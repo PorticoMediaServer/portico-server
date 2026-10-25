@@ -8587,6 +8587,7 @@ CREATE TABLE credit_source_publications(
  sealed INTEGER NOT NULL DEFAULT 0 CHECK(sealed IN(0,1)),
  UNIQUE(publication_id,entity_id,provider)
 ) STRICT;
+CREATE INDEX credit_source_publications_entity ON credit_source_publications(entity_id);
 CREATE TABLE credit_source_rows(
  source_row_id TEXT PRIMARY KEY CHECK(length(source_row_id)=32 AND source_row_id NOT GLOB '*[^0-9a-f]*'),
  entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
