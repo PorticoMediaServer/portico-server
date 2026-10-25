@@ -200,3 +200,10 @@
 .songIndexPlay:hover > span,.songIndexPlay:focus-visible > span { display: none; }
 .songIndexPlay:hover > svg,.songIndexPlay:focus-visible > svg { display: block; }
 .songIndexPlay:hover,.songIndexPlay:focus-visible { background: var(--color-raised-high); color: var(--color-text); }
+
+/* Frame 4: the phone field's query is the app's 600 weight, and its song rows keep
+   the artist only, never the album line the desktop row adds. */
+@media (max-width: 599px) {
+  .sbar .field input { font-weight: var(--type-body-strong-weight); }
+  .song small > span { display: none; }
+}
