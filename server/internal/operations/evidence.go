@@ -228,29 +228,36 @@ func (s *Store) Capture(ctx context.Context, p identity.Principal, auth Authoriz
 }
 
 type ExportRequest struct {
-	IdempotencyKey string          `json:"idempotencyKey"`
-	From           apiwire.Instant `json:"from"`
-	To             apiwire.Instant `json:"to"`
-	Components     []string        `json:"components"`
+	IncludePaths   ExportIncludePaths `json:"includePaths,omitempty"`
+	IdempotencyKey string             `json:"idempotencyKey"`
+	From           apiwire.Instant    `json:"from"`
+	To             apiwire.Instant    `json:"to"`
+	Components     []string           `json:"components"`
 }
 type Export struct {
-	ID          string              `json:"id"`
-	ExpiresAt   apiwire.Instant     `json:"expiresAt"`
-	Manifest    ExportManifest      `json:"manifest"`
-	Snapshot    *diagnostics.Report `json:"snapshot,omitempty"`
-	Runtime     *Page[Record]       `json:"runtime,omitempty"`
-	Client      *Page[Record]       `json:"client,omitempty"`
-	Audit       *Page[AuditRecord]  `json:"audit,omitempty"`
-	AuditAnchor *AuditAnchor        `json:"auditAnchor,omitempty"`
+	SnapshotPaths *ExportPathFacts    `json:"snapshotPaths,omitempty"`
+	ID            string              `json:"id"`
+	ExpiresAt     apiwire.Instant     `json:"expiresAt"`
+	Manifest      ExportManifest      `json:"manifest"`
+	Snapshot      *diagnostics.Report `json:"snapshot,omitempty"`
+	Runtime       *Page[Record]       `json:"runtime,omitempty"`
+	Client        *Page[Record]       `json:"client,omitempty"`
+	Audit         *Page[AuditRecord]  `json:"audit,omitempty"`
+	AuditAnchor   *AuditAnchor        `json:"auditAnchor,omitempty"`
 }
 type ExportManifest struct {
-	Version   string          `json:"version"`
-	From      apiwire.Instant `json:"from"`
-	To        apiwire.Instant `json:"to"`
-	Included  []string        `json:"included"`
-	Excluded  []string        `json:"excluded"`
-	Redaction string          `json:"redaction"`
-	MaxBytes  int             `json:"maxBytes"`
+	IncludePaths              bool                 `json:"includePaths,omitempty"`
+	PathCategories            []ExportPathCategory `json:"pathCategories,omitempty"`
+	PathsTruncated            bool                 `json:"pathsTruncated,omitempty"`
+	PathsInvalidAmongExamined int                  `json:"pathsInvalidAmongExamined,omitempty"`
+	PathsScanTruncated        bool                 `json:"pathsScanTruncated,omitempty"`
+	Version                   string               `json:"version"`
+	From                      apiwire.Instant      `json:"from"`
+	To                        apiwire.Instant      `json:"to"`
+	Included                  []string             `json:"included"`
+	Excluded                  []string             `json:"excluded"`
+	Redaction                 string               `json:"redaction"`
+	MaxBytes                  int                  `json:"maxBytes"`
 }
 
 func (s *Store) CreateExport(ctx context.Context, p identity.Principal, auth Authorize, hosted bool, c ExportRequest) (out Export, e error) {
@@ -299,7 +306,27 @@ func (s *Store) CreateExport(ctx context.Context, p identity.Principal, auth Aut
 		if n >= 4 {
 			return ErrCapacity
 		}
-		out = Export{ID: identity.Token(), ExpiresAt: apiwire.Instant(s.now() + int64(time.Hour/time.Millisecond)), Manifest: ExportManifest{RegistryRevision, c.From, c.To, c.Components, []string{"secrets", "raw logs", "media", "databases", "feedback text", "routes and paths"}, "Typed allowlist before persistence and projection; no automatic upload", 1 << 20}, Snapshot: snapshot}
+		out = Export{ID: identity.Token(), ExpiresAt: apiwire.Instant(s.now() + int64(time.Hour/time.Millisecond)), Manifest: ExportManifest{Version: RegistryRevision, From: c.From, To: c.To, Included: c.Components, Excluded: []string{"secrets", "raw logs", "media", "databases", "feedback text", "routes and paths"}, Redaction: "Typed allowlist before persistence and projection; no automatic upload", MaxBytes: 1 << 20, IncludePaths: bool(c.IncludePaths)}, Snapshot: snapshot}
+		if c.IncludePaths && seen["snapshot"] {
+			facts, err := readExportPathFacts(ctx, tx)
+			if err != nil {
+				return err
+			}
+			out.SnapshotPaths = facts
+			out.Manifest.PathsTruncated = facts.HasMore
+			out.Manifest.PathsInvalidAmongExamined = facts.InvalidAmongExamined
+			out.Manifest.PathsScanTruncated = facts.ScanTruncated
+			categories := map[ExportPathCategory]bool{}
+			for _, fact := range facts.Items {
+				if !categories[fact.Category] {
+					categories[fact.Category] = true
+					out.Manifest.PathCategories = append(out.Manifest.PathCategories, fact.Category)
+				}
+			}
+			out.Manifest.Excluded = []string{"secrets", "raw logs", "media", "databases", "feedback text", "routes", "all paths outside the three-field filesystem allowlist"}
+			out.Manifest.Redaction = "Typed operational allowlist plus bounded recorded filesystem roots and mount points; no automatic upload"
+		}
+
 		if seen["runtime"] {
 			v, err := readRecords(tx, "runtime", 9223372036854775807, int64(c.From), int64(c.To), 1000)
 			if err != nil {
