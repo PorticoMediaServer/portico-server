@@ -114,7 +114,19 @@ type DerivedMobi struct {
 func (d *DerivedMobi) Provenance() MobiProvenance { return d.cache.provenance }
 func (d *DerivedMobi) Close()                     { d.cache.close() }
 func (d *DerivedMobi) ReadAt(p []byte, offset int64) (int, error) {
-	if err := d.source.Validate(); err != nil {
+	return d.readAt(d.source.Context(), p, offset)
+}
+
+type mobiContextReader struct {
+	derived *DerivedMobi
+	ctx     context.Context
+}
+
+func (r mobiContextReader) ReadAt(p []byte, offset int64) (int, error) {
+	return r.derived.readAt(r.ctx, p, offset)
+}
+func (d *DerivedMobi) readAt(ctx context.Context, p []byte, offset int64) (int, error) {
+	if err := d.source.ValidateContext(ctx); err != nil {
 		return 0, err
 	}
 	d.cache.mu.RLock()
@@ -124,7 +136,7 @@ func (d *DerivedMobi) ReadAt(p []byte, offset int64) (int, error) {
 	}
 	n, err := bytes.NewReader(d.cache.raw).ReadAt(p, offset)
 	d.cache.mu.RUnlock()
-	if check := d.source.Validate(); check != nil {
+	if check := d.source.ValidateContext(ctx); check != nil {
 		clear(p[:n])
 		return 0, check
 	}
@@ -198,7 +210,7 @@ func (c *MobiConverter) Convert(source *Source) (*DerivedMobi, error) {
 	}()
 	ctx, cancel := context.WithTimeout(source.Context(), 45*time.Second)
 	defer cancel()
-	if err := source.Validate(); err != nil {
+	if err := source.ValidateContext(ctx); err != nil {
 		return nil, err
 	}
 	directory, err := os.MkdirTemp(c.bundle.Scratch, "reading-mobi-")
@@ -218,7 +230,7 @@ func (c *MobiConverter) Convert(source *Source) (*DerivedMobi, error) {
 			return nil, err
 		}
 		count := int(min(int64(len(buffer)), source.Size-offset))
-		n, readErr := source.ReadAt(buffer[:count], offset)
+		n, readErr := source.ReadAtContext(ctx, buffer[:count], offset)
 		if n != count || (readErr != nil && readErr != io.EOF) {
 			if readErr == nil {
 				readErr = io.ErrUnexpectedEOF
@@ -230,7 +242,7 @@ func (c *MobiConverter) Convert(source *Source) (*DerivedMobi, error) {
 		}
 		offset += int64(n)
 	}
-	if err = source.Validate(); err != nil {
+	if err = source.ValidateContext(ctx); err != nil {
 		return nil, err
 	}
 	if _, err = input.Seek(0, io.SeekStart); err != nil {
@@ -240,7 +252,7 @@ func (c *MobiConverter) Convert(source *Source) (*DerivedMobi, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = source.Validate(); err != nil {
+	if err = source.ValidateContext(ctx); err != nil {
 		return nil, err
 	}
 	outputHash := sha256.Sum256(raw)
@@ -252,7 +264,7 @@ func (c *MobiConverter) Convert(source *Source) (*DerivedMobi, error) {
 	derived := &DerivedMobi{source: source, cache: cache}
 	// The genuine output must pass the ordinary bounded EPUB package parser.
 	// Assets are subsequently served through EPUB.Asset's existing sanitizer.
-	if _, err = OpenEPUB(ctx, derived, int64(len(raw))); err != nil {
+	if _, err = OpenEPUB(ctx, mobiContextReader{derived: derived, ctx: ctx}, int64(len(raw))); err != nil {
 		clear(raw)
 		return nil, err
 	}

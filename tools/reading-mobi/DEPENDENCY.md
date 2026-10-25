@@ -22,7 +22,7 @@ platform implementation exists. This does not add a native guest binary.
 
 The sandbox has no network, library root, credentials, home or persistent output.
 It sees only the exact staged input inode, static worker and private 128MiB
-output tmpfs. Worker sets address-space768MiB, CPU30s, output-file128MiB,
+output tmpfs. Root and device mounts are explicitly remounted read-only; only the bounded output tmpfs is writable. Worker sets address-space768MiB, CPU30s, output-file128MiB,
 no-core/no-child and fd32 limits before parsing. Server wall deadline45s,
 input64MiB, output128MiB and one active conversion bound are independent.
 Only complete stdout EPUB bytes return. Conversion failure never publishes a

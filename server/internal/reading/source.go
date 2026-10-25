@@ -231,7 +231,20 @@ func (f *Source) checkObservation(o storage.ObservedFileObservation) error {
 	}
 	return nil
 }
-func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
+func (f *Source) ReadAt(b []byte, offset int64) (int, error) {
+	return f.ReadAtContext(f.ctx, b, offset)
+}
+
+// ReadAtContext retains this exact physical reader/lease, composing an operation
+// deadline with source retirement all the way into acquisition and extent IO.
+func (f *Source) ReadAtContext(caller context.Context, b []byte, offset int64) (result int, failure error) {
+	ctx, cancel := context.WithCancel(caller)
+	stop := context.AfterFunc(f.ctx, cancel)
+	defer stop()
+	defer cancel()
+	if err := f.ctx.Err(); err != nil {
+		return 0, err
+	}
 	defer func() {
 		if failure != nil && failure != io.EOF && !errors.Is(failure, storage.ErrBusy) && !errors.Is(failure, context.Canceled) && !errors.Is(failure, context.DeadlineExceeded) && f.onFailure != nil {
 			f.onFailure()
@@ -240,7 +253,7 @@ func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 	}()
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if err := f.ctx.Err(); err != nil {
+	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
 	if offset < 0 || offset > f.Size {
@@ -249,7 +262,7 @@ func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 	if len(b) == 0 {
 		return 0, nil
 	}
-	if err := f.service.validate(f.ctx, f.p, f.Selection); err != nil {
+	if err := f.service.validate(ctx, f.p, f.Selection); err != nil {
 		return 0, err
 	}
 	if f.remoteSession != nil {
@@ -258,12 +271,16 @@ func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 		}
 		if f.remoteRange == nil {
 			var err error
-			f.remoteRange, err = f.remoteSession.remote.OpenRange(f.ctx)
+			f.remoteRange, err = f.remoteSession.remote.OpenRange(ctx)
 			if err != nil {
 				return 0, fmt.Errorf("reading range acquisition: %w", err)
 			}
 		}
-		n, err := f.remoteRange.ReadAt(f.ctx, b, offset)
+		n, err := f.remoteRange.ReadAt(ctx, b, offset)
+		if canceled := ctx.Err(); canceled != nil {
+			clear(b[:n])
+			return 0, canceled
+		}
 		if err != nil && err != io.EOF {
 			return n, fmt.Errorf("reading range extent: %w", err)
 		}
@@ -273,19 +290,19 @@ func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 	done := 0
 	for int64(done) < wanted {
 		n := int(min(wanted-int64(done), storage.ObservedReadLimit))
-		data, err := f.reader.ReadExtent(f.ctx, offset+int64(done), n)
+		data, err := f.reader.ReadExtent(ctx, offset+int64(done), n)
 		if err != nil {
 			return done, err
 		}
-		o, err := f.reader.Observe(f.ctx)
+		o, err := f.reader.Observe(ctx)
 		if err == nil {
 			err = f.checkObservation(o)
 		}
 		if err == nil {
-			err = f.service.validate(f.ctx, f.p, f.Selection)
+			err = f.service.validate(ctx, f.p, f.Selection)
 		}
 		if err == nil {
-			err = f.ctx.Err()
+			err = ctx.Err()
 		}
 		if err != nil {
 			return done, err
@@ -329,7 +346,15 @@ func (f *Source) Close() error {
 
 // Validate is also called after buffered parsing/rendering and immediately
 // before publication; CPU work must not turn a revoked read into a response.
-func (f *Source) Validate() (failure error) {
+func (f *Source) Validate() error { return f.ValidateContext(f.ctx) }
+func (f *Source) ValidateContext(caller context.Context) (failure error) {
+	ctx, cancel := context.WithCancel(caller)
+	stop := context.AfterFunc(f.ctx, cancel)
+	defer stop()
+	defer cancel()
+	if err := f.ctx.Err(); err != nil {
+		return err
+	}
 	defer func() {
 		if failure != nil && !errors.Is(failure, storage.ErrBusy) && !errors.Is(failure, context.Canceled) && !errors.Is(failure, context.DeadlineExceeded) && f.onFailure != nil {
 			f.onFailure()
@@ -339,10 +364,10 @@ func (f *Source) Validate() (failure error) {
 	if f.derived != nil && (f.derived.cache.size() == 0 || f.service.Mobi == nil || f.service.Mobi.bundle.WorkerSHA256 != f.derived.cache.provenance.WorkerSHA256) {
 		return ErrChanged
 	}
-	if err := f.ctx.Err(); err != nil {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := f.service.validate(f.ctx, f.p, f.Selection); err != nil {
+	if err := f.service.validate(ctx, f.p, f.Selection); err != nil {
 		return err
 	}
 	if f.remoteSession != nil {
@@ -350,18 +375,18 @@ func (f *Source) Validate() (failure error) {
 		reader := f.remoteRange
 		f.mu.Unlock()
 		if reader != nil {
-			return reader.Check(f.ctx)
+			return reader.Check(ctx)
 		}
-		return f.remoteSession.remote.Check(f.ctx)
+		return f.remoteSession.remote.Check(ctx)
 	}
-	o, err := f.reader.Observe(f.ctx)
+	o, err := f.reader.Observe(ctx)
 	if err != nil {
 		return err
 	}
 	if err := f.checkObservation(o); err != nil {
 		return err
 	}
-	return f.ctx.Err()
+	return ctx.Err()
 }
 
 // CheckSelectionTx proves this already-acquired source's captured Reading
