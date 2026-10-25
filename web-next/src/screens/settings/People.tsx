@@ -82,7 +82,7 @@ function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
         {signal: inviteLife.current.signal, isCurrent: currentForm});
       if (!currentForm()) return;
       if (!invitationState(created.state)) throw new Error('invitation_state_unknown');
-      owner.created(); formActive.current = false;
+      owner.created(); setFormBusy(false); formActive.current = false;
       setRetained(undefined); setFormOpen(false); setIssued(created); setInviteOpen(true);
     } catch (error) {
       if (!currentForm()) return;
@@ -240,10 +240,10 @@ function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
         change={(row, value) => setBulk(before => {if (row.id === 'bulk.maxStreams') return bindings.streamLimits?.patchBulk(before, value) ?? before; const next = {...before}; if (row.id === 'bulk.awayAccess') {if (value === 'keep') delete next.allowRemote; else next.allowRemote = value === 'allowed';} else {if (value === 'keep') delete next.maxContentRating; else next.maxContentRating = value === 'none' ? '' : String(value);} return next;})} renderSpecial={() => null} /> : <p>{t(command.action === 'remove' ? table.select!.bulk[2].confirm! : table.select!.bulk[1].confirm!)}</p>}
     </Dialog>}
     <PeopleInviteForm open={formOpen} onOpenChange={open => { if (formSession.current !== formToken || !formActive.current || attempts.current?.busy) return; if (!open) { formActive.current = false; ++formSession.current; setFormError(undefined); } setFormOpen(open); }}
-      choices={choices} onChoices={setChoices} libraries={bindings.libraries} signIn={bindings.signIn}
+      choices={choices} onChoices={next => { if (formActive.current && formSession.current === formToken && !attempts.current?.busy) setChoices(next); }} libraries={bindings.libraries} signIn={bindings.signIn}
       busy={formBusy} error={formError} retained={retained}
       onCreate={() => { void submitInvite(choices); }}
-      onRetry={() => { if (retained) { setChoices(choicesOf(retained)); void submitInvite(choicesOf(retained)); } }} />
+      onRetry={() => { if (retained && formActive.current && formSession.current === formToken) { void submitInvite(choicesOf(retained)); } }} />
     {issued && <InvitationShortCodeDialog open={inviteOpen} onOpenChange={setInviteOpen}
       invitation={{id: issued.id, revision: issued.revision, state: invitationState(issued.state)!}}
       request={(operationId, signal, isCurrent) => bindings.invitations!.shortCode(issued, operationId, {signal, isCurrent})}
