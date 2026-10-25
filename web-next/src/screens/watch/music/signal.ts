@@ -7,10 +7,18 @@ import type {WebPlaybackRuntimeSnapshot} from '../../../platform/playback';
  * an unreadable source has no line, and processing is only "applied" when the
  * current session's renderer reports it. Requested settings are not observations. */
 export function watchMusicSignal(snapshot: WebPlaybackRuntimeSnapshot, equalizer: EqualizerSettings | null): MusicSignalModel | undefined {
-  const session = snapshot.session, info = session?.playbackInfo, observed = session?.observedPlayback?.audio;
+  const session = snapshot.session, observed = session?.observedPlayback?.audio;
+  const effects = snapshot.playback.audioEffects;
+  const pinned = session?.presentation.audio, current = snapshot.playback.session?.audio;
+  // An audio comparison describes this accepted render recipe. A browser fallback
+  // outside it cannot present the old recipe as the bytes it is now playing.
+  const outsidePlan = session?.kind === 'audio' && (!effects.rendering || !pinned || !current
+    || snapshot.playback.session?.id !== session.id || pinned.id !== current.id || pinned.mode !== current.mode
+    || pinned.codec !== current.codec || pinned.sampleRate !== current.sampleRate
+    || pinned.channels !== current.channels || pinned.bitDepth !== current.bitDepth);
+  const info = outsidePlan ? undefined : session?.playbackInfo;
   const sourceAudio = info?.source.audio;
   const eqOn = equalizer?.enabled === true;
-  const effects = snapshot.playback.audioEffects;
   const fallback = snapshot.playback.musicFallback === 'eq' ? 'eq' as const : undefined;
   if (!session || !info || !sourceAudio?.codec) {
     // No committed comparison: a real engine fallback still has a drawn line, from the

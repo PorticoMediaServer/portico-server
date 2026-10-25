@@ -207,11 +207,12 @@ function decision(v: unknown): Decision | undefined {
 
 export function parseSession(v: unknown): Session {
   if (!obj(v) || !obj(v.presentation)) throw new ContractError('session');
+  const presentation = parsePresentation(v.presentation);
   let observed: ObservedPlayback | undefined;
   let playbackInfo: PlaybackInfo | undefined;
   if (v.state !== 'ended') {
     try { observed = parseObservedPlayback(v.observedPlayback); } catch { /* Invalid optional facts never become output, or end valid playback. */ }
-    if (v.kind === 'vod') { try { playbackInfo = parsePlaybackInfo(v.playbackInfo); } catch { /* Invalid comparison never replaces a valid session or renderer observation. */ } }
+    if (v.kind === 'vod' || v.kind === 'audio' && playableAudio(presentation.audio)) { try { playbackInfo = parsePlaybackInfo(v.playbackInfo); } catch { /* Invalid comparison never replaces a valid session or renderer observation. */ } }
   }
   return Object.freeze({
     ...(observed !== undefined ? {observedPlayback: observed} : {}),
@@ -221,7 +222,7 @@ export function parseSession(v: unknown): Session {
     itemId: optId(v.itemId, 'item id'), versionId: optId(v.versionId, 'version id'),
     queue: obj(v.queue) ? Object.freeze({queueId: id(v.queue.queueId, 'queue id'), entryId: id(v.queue.entryId, 'entry id')}) : undefined,
     lease: Object.freeze({expiresAt: obj(v.lease) && typeof v.lease.expiresAt === 'string' ? v.lease.expiresAt : undefined, reportEveryMs: obj(v.lease) ? num(v.lease.reportEveryMs, 10_000) : 10_000}),
-    presentation: parsePresentation(v.presentation),
+    presentation,
     end: parseSessionEnd(v.end),
   });
 }
