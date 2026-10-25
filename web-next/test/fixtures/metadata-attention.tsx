@@ -15,17 +15,17 @@ const candidate = (seed: number, title: string, year: number, reasons: string[],
   reasons, orders});
 const entries = [
   {libraryId: 'library', entityId: 'one-piece', kind: 'show' as const, itemKind: 'show', parentId: '', actions: ['accept', 'search', 'id', 'retry', 'dismiss'],
-    title: 'One Piece', revision: 1, reason: 'ambiguous', confidence: 0.6, candidates: [
+    title: 'One Piece', revision: 1, reason: 'needs_order', confidence: 0.6, candidates: [
       candidate(1, 'One Piece', 1999, ['exact_title_or_alias', 'release_year_agrees'], [{id: 'official', name: 'Official'}, {id: 'seasonal', name: 'Seasonal'}]),
       candidate(2, 'One Piece', 2023, ['exact_title_or_alias', 'release_year_conflicts'], [{id: 'official', name: 'Official'}])]},
   {libraryId: 'library', entityId: 'hunter', kind: 'show' as const, itemKind: 'show', parentId: '', actions: ['accept', 'search', 'id', 'retry', 'dismiss'],
-    title: 'Hunter x Hunter', revision: 1, reason: 'low_confidence', confidence: 0.4, candidates: [
+    title: 'Hunter x Hunter', revision: 1, reason: 'needs_selection', confidence: 0.4, candidates: [
       candidate(3, 'Hunter x Hunter', 1999, ['exact_title_or_alias', 'release_year_unknown'], [{id: 'official', name: 'Official'}]),
       candidate(4, 'Hunter x Hunter', 2011, ['exact_title_or_alias', 'release_year_unknown'], [{id: 'official', name: 'Official'}])]},
   {libraryId: 'library', entityId: 'naruto', kind: 'show' as const, itemKind: 'show', parentId: '', actions: ['search', 'id', 'retry', 'dismiss'],
-    title: 'Naruto Shippūden', revision: 1, reason: 'no_match', confidence: 0, candidates: []},
+    title: 'Naruto Shippūden', revision: 1, reason: 'unmatched', confidence: 0, candidates: []},
   {libraryId: 'library', entityId: 'episode', kind: 'item' as const, itemKind: 'episode', parentId: 'parent-show', parentTitle: 'A show with no match yet',
-    actions: ['parent', 'retry', 'dismiss'], title: 'The episode', revision: 1, reason: 'pending_children', confidence: 0, candidates: []},
+    actions: ['parent', 'dismiss'], title: 'The episode', revision: 1, reason: 'needs_parent_match', confidence: 0, candidates: []},
 ];
 const total = entries.length;
 // A read-only attention page; every command is inert so the specimen cannot pretend to work.
