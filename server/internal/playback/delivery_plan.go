@@ -384,6 +384,11 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 			if p.VideoAction == "convert" || p.AudioAction == "convert" || p.VideoAction == "copy" && videoOf(source) != nil && videoOf(source).DynamicRange == assets.RangeDolbyVision && p.Trace.Video.OutputRange != assets.RangeDolbyVision {
 				err = finishConversionTarget(&p, videoOf(source), sourceAudioAt(source.Audio, p.AudioStream), client, in.Hardware, in.Server)
 			}
+			// A copied picture is delivered at the source's own depth and
+			// range, which is what the manifest and the panel report.
+			if err == nil && p.VideoAction != "convert" && p.Trace != nil && p.Trace.Video != nil && p.OutputRange == "" {
+				p.OutputRange, p.OutputBitDepth = p.Trace.Video.OutputRange, p.Trace.Video.BitDepth
+			}
 			if err == nil {
 				p.Renditions = planAudioRenditions(p, source, client, in.Target, cfg.AudioConversionAllowed(in.TranscodingEnabled) && in.Policy.Transcode != "never")
 			}
