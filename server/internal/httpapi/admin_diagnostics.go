@@ -20,7 +20,7 @@ import (
 // level, the level actually in force, any open debug window, and per-category
 // retention.
 type LogSettings struct {
-	DetailMinutes  operations.LogDetailMinutes `json:"logDetailMinutes"`
+	DetailMinutes  operations.LogDetailMinutes `json:"logDetailMinutes,omitempty"`
 	Revision       int64                       `json:"revision"`
 	Level          string                      `json:"logLevel"`
 	EffectiveLevel string                      `json:"effectiveLevel"`
@@ -243,12 +243,18 @@ func (d Dependencies) applySettingsInput(r *http.Request, p identity.Principal, 
 	if err != nil {
 		return current, err
 	}
-	if current.Revision != expected {
+	if len(input) == 0 && current.Revision != expected {
 		return current, &operations.ConflictError{CurrentRevision: current.Revision}
 	}
 	values := current.Requested
 	overlay(&values)
-	document, err := d.Console.ApplySettings(r.Context(), p, d.consoleAuthority(p, true), operations.SettingsChange{ExpectedRevision: expected, IdempotencyKey: operation, Values: values, ReceiptInput: input})
+	change := operations.SettingsChange{ExpectedRevision: expected, IdempotencyKey: operation, Values: values}
+	var document operations.SettingsDocument
+	if len(input) == 0 {
+		document, err = d.Console.ApplySettings(r.Context(), p, d.consoleAuthority(p, true), change)
+	} else {
+		document, err = d.Console.ApplyLogSettingsInput(r.Context(), p, d.consoleAuthority(p, true), change, input)
+	}
 	if err == nil && !d.configurationOwnsLiveSettings {
 		err = d.applyLiveSettings(r.Context())
 	}

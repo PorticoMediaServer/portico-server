@@ -277,6 +277,10 @@ func DefaultSettings() Settings {
 // Its zero value represents an omitted field in older settings requests only.
 type LogDetailMinutes int
 
+func (LogDetailMinutes) JSONSchema() map[string]any {
+	return map[string]any{"type": "integer", "enum": []int{15, 30, 60, 120, 240}}
+}
+
 func (m *LogDetailMinutes) UnmarshalJSON(raw []byte) error {
 	var value int
 	if err := json.Unmarshal(raw, &value); err != nil {
@@ -303,11 +307,9 @@ type SettingsDocument struct {
 	RegistryRevision string        `json:"registryRevision"`
 }
 type SettingsChange struct {
-	// ReceiptInput is captured wire intent for narrow settings adapters, never a stored setting.
-	ReceiptInput     json.RawMessage `json:"-"`
-	ExpectedRevision int64           `json:"expectedRevision"`
-	IdempotencyKey   string          `json:"idempotencyKey"`
-	Values           Settings        `json:"values"`
+	ExpectedRevision int64    `json:"expectedRevision"`
+	IdempotencyKey   string   `json:"idempotencyKey"`
+	Values           Settings `json:"values"`
 }
 
 func readSettings(tx *sql.Tx) (SettingsDocument, error) {
@@ -603,7 +605,17 @@ func validateSettings(v *Settings) error {
 	}
 	return nil
 }
-func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Authorize, c SettingsChange) (out SettingsDocument, e error) {
+func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Authorize, c SettingsChange) (SettingsDocument, error) {
+	return s.applySettings(ctx, p, auth, c, nil)
+}
+
+// ApplyLogSettingsInput keeps the captured typed logs request as receipt identity.
+// Authorization and receipt lookup share the write transaction; a receipt can
+// replay before the current revision fence, but a new stale write still fails.
+func (s *Store) ApplyLogSettingsInput(ctx context.Context, p identity.Principal, auth Authorize, c SettingsChange, input json.RawMessage) (SettingsDocument, error) {
+	return s.applySettings(ctx, p, auth, c, append(json.RawMessage(nil), input...))
+}
+func (s *Store) applySettings(ctx context.Context, p identity.Principal, auth Authorize, c SettingsChange, input json.RawMessage) (out SettingsDocument, e error) {
 	omittedLogDetailMinutes := c.Values.LogDetailMinutes == 0
 	omittedSegmentShortestEpisode := c.Values.SegmentShortestEpisode == 0
 	omittedSegmentShortestFilm := c.Values.SegmentShortestFilm == 0
@@ -617,17 +629,19 @@ func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Au
 	omittedViewer := c.Values.SegmentViewerConfidencePercent == 0
 	omittedAutomatic := c.Values.SegmentAutomaticConfidencePercent == 0
 	normalized := c.Values
-	if e = validateSettings(&normalized); e != nil {
-		return out, e
+	if len(input) == 0 {
+		if e = validateSettings(&normalized); e != nil {
+			return out, e
+		}
 	}
 	e = s.transaction(ctx, auth, "", func(tx *sql.Tx) error {
 		scope := "settings:" + AccountKey(p)
 		var receiptInput any = c
-		if len(c.ReceiptInput) != 0 {
+		if len(input) != 0 {
 			receiptInput = struct {
-				Change SettingsChange
+				Domain string
 				Input  json.RawMessage
-			}{c, c.ReceiptInput}
+			}{"logs-settings-v1", input}
 		}
 		raw, digest, err := Receipt(tx, scope, c.IdempotencyKey, receiptInput, s.now())
 		if err != nil {
@@ -635,6 +649,11 @@ func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Au
 		}
 		if raw != "" {
 			return decodeDocument(raw, &out)
+		}
+		if len(input) != 0 {
+			if err = validateSettings(&normalized); err != nil {
+				return err
+			}
 		}
 		current, err := readSettings(tx)
 		if err != nil {
