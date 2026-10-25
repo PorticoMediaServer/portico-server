@@ -117,7 +117,7 @@ class Job:
         finally:self.json_call(base,'DELETE','/v1/devices/'+grant['deviceId'],token=token,installation=installation,expected=(204,))
         self.browser(node,{'surface':'web','origin':base,'username':username,'password':password,'profileName':username,'reviewProfile':'Review','disabled':self.args.disabled})
     def hosted(self):
-        node=self.node();self.generation();module=self.tools/'hosted-services/hosted';self.run('hosted',['go','build','-p=2','-trimpath','-buildvcs=false','-o',str(self.work/'hosted'),'./cmd/hosted'],module);self.run('hosted-web-host',['go','build','-p=2','-trimpath','-buildvcs=false','-o',str(self.work/'web-host'),'./cmd/web'],module)
+        node=self.node();self.generation();module=self.tools/'hosted-services/hosted';self.run('hosted',['go','build','-tags','devtrust','-p=2','-trimpath','-buildvcs=false','-o',str(self.work/'hosted'),'./cmd/hosted'],module);self.run('hosted-web-host',['go','build','-p=2','-trimpath','-buildvcs=false','-o',str(self.work/'web-host'),'./cmd/web'],module)
         versions=sorted(Path('/usr/lib/postgresql').glob('*/bin/initdb'),reverse=True)
         if not versions:raise StepFailure('postgres-tools-unavailable')
         pg=versions[0].parent;pgroot=self.work/'postgres';pwfile=self.work/'postgres-password';password=secrets.token_urlsafe(32);pwfile.write_text(password);pwfile.chmod(0o600)
@@ -129,7 +129,7 @@ class Job:
         pg_env=dict(self.process_env,PGPASSWORD=password);self.run('database',[str(pg/'createdb'),'-h','127.0.0.1','-p',str(pgport),'-U','checkpoint','checkpoint'],env=pg_env)
         dsn=self.work/'database-url';dsn.write_text('postgres://checkpoint:'+password+'@127.0.0.1:'+str(pgport)+'/checkpoint?sslmode=disable');dsn.chmod(0o600)
         keys=self.work/'keys';self.run('signing-custody',[str(self.work/'hosted'),'keys','setup','--private-out',str(self.work/'root-private.pem'),'--public-out',str(self.work/'root-public.pem'),'--staging',str(keys)])
-        mail=Mailbox(self);api='http://127.0.0.1:'+str(port());web='http://127.0.0.1:'+str(port());oidc=self.work/'oidc.json';private_json(oidc,{'webOrigin':web,'providers':[]})
+        mail=Mailbox(self);api='http://127.0.0.1:'+str(port());web='http://127.0.0.1:'+str(port());oidc=self.work/'oidc.json';private_json(oidc,{'webOrigin':web})
         args=[str(self.work/'hosted'),'--listen',api.removeprefix('http://'),'--database-url-file',str(dsn),'--root-public-key-file',str(self.work/'root-public.pem'),'--key-file',str(keys/'signing.json'),'--origins',web,'--claim-audience','https://checkpoint.m0.getportico.invalid','--tv-issuer','https://checkpoint.m0.getportico.invalid','--device-verification-uri','https://checkpoint.m0.getportico.invalid/device','--oidc-config-file',str(oidc),'--http-mail-config-file',str(mail.config),'--metrics-listen','127.0.0.1:'+str(port())]
         app=self.spawn('hosted-runtime',args,env=dict(self.process_env,SSL_CERT_FILE=str(mail.cert)));self.ready(api+'/ready',app)
         env=dict(self.process_env,VITE_HOSTED_WEB='true',VITE_ACCOUNT_WORKSPACE='true',VITE_HOSTED_URL=api);self.run('npm',['npm','ci','--ignore-scripts','--no-audit','--no-fund']);webroot=self.work/'services-web';self.run('services-web',[node,'--input-type=module','-e',"import {build} from 'vite'; await build({build:{outDir:"+json.dumps(str(webroot))+",emptyOutDir:true,sourcemap:false}});"],self.source/'web-next',env)
