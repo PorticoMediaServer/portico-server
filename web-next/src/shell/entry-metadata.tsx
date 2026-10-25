@@ -1,5 +1,6 @@
 import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {DetailService, type DetailProjection} from '@core/detail.ts';
+import {MetadataRepairService, type RepairData} from '@core/metadata-repair.ts';
 import {defaultI18n} from '@i18n';
 import {Dialog} from '../kit/overlays';
 import {MetadataEditor} from '../screens/metadata/MetadataEditor';
@@ -7,8 +8,9 @@ import styles from '../screens/metadata/metadata.module.css';
 import type {EntryActionPorts, EntryActionTarget} from './entry-actions';
 
 export type EntryMetadataPorts = Omit<EntryActionPorts, 'api'> & Readonly<{api: EntryActionPorts['api'] & Readonly<{requestMetadataUpload?: <T>(path: string, body: FormData, signal?: AbortSignal) => Promise<T>}>}>;
-export type EntryMetadataEffect = (target: EntryActionTarget, anchor: HTMLElement) => Promise<void>;
-type Open = Readonly<{id: number; target: EntryActionTarget; anchor: HTMLElement; ports: EntryMetadataPorts; lifetime: AbortController; ownerCurrent: () => boolean}>;
+type AggregateMetadataTarget = Readonly<{entityKind: 'show' | 'album' | 'book'; entityId: string; libraryId: string; title: string; initialTab?: 'general' | 'matching'}>;
+export type EntryMetadataEffect = (target: EntryActionTarget | AggregateMetadataTarget, anchor: HTMLElement) => Promise<void>;
+type Open = Readonly<{id: number; target: EntryActionTarget | AggregateMetadataTarget; anchor: HTMLElement; ports: EntryMetadataPorts; lifetime: AbortController; ownerCurrent: () => boolean}>;
 let opened: Open | null = null;
 let serial = 0;
 const listeners = new Set<() => void>();
@@ -27,7 +29,7 @@ export function createEntryMetadataEffect(ports: EntryMetadataPorts, ownerCurren
 }
 export function retireEntryMetadata(ports: EntryActionPorts) {if (opened?.ports === ports) close();}
 
-function CheckedMetadata({value}: {value: Open}) {
+function CheckedMetadata({value}: {value: Open & {target: EntryActionTarget}}) {
   const anchor = useRef<HTMLElement | null>(value.anchor);
   const [data, setData] = useState<DetailProjection>();
   const [failed, setFailed] = useState(false);
@@ -71,7 +73,54 @@ function CheckedMetadata({value}: {value: Open}) {
   </Dialog>;
 }
 
+function CheckedAggregateMetadata({value}: {value: Open & {target: AggregateMetadataTarget}}) {
+  const anchor = useRef<HTMLElement | null>(value.anchor);
+  const [grant, setGrant] = useState<RepairData>();
+  const [failed, setFailed] = useState(false);
+  const scope = useMemo(() => ({serverId: value.ports.serverId, viewerId: value.ports.viewerId}), [value]);
+  const target = useMemo(() => ({kind: value.target.entityKind, id: value.target.entityId, libraryId: value.target.libraryId}), [value]);
+  const api = useMemo(() => ({async request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+    if (!current(value)) throw new DOMException('Metadata authority changed', 'AbortError');
+    const result = await value.ports.api.request<T>(path, method, body, signal ? AbortSignal.any([signal, value.lifetime.signal]) : value.lifetime.signal);
+    if (!current(value)) throw new DOMException('Metadata authority changed', 'AbortError');
+    return result;
+  }}), [value]);
+  useEffect(() => {
+    // The owner-only repair endpoint validates the exact aggregate and library before editing.
+    const service = new MetadataRepairService({api, scope});
+    void service.load(target).then(() => {
+      if (!current(value)) return;
+      const snapshot = service.getSnapshot();
+      if (snapshot.phase !== 'ready' || !snapshot.data) {setFailed(true); return;}
+      setGrant(snapshot.data);
+    });
+    return () => {service.dispose(); value.lifetime.abort();};
+  }, [api, scope, target, value]);
+  const metadataApi = useMemo(() => {
+    const check = () => {if (!grant || !current(value)) throw new DOMException('Metadata grant retired', 'AbortError');};
+    const checked = <T,>(result: T) => {
+      if (!grant || !current(value)) throw new DOMException('Metadata grant retired', 'AbortError');
+      if (result && typeof result === 'object' && 'viewerFence' in result && result.viewerFence !== grant.viewerFence) throw new Error('metadata-fence-mismatch');
+      return result;
+    };
+    return {async request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+      check(); return checked(await api.request<T>(path, method, body, signal));
+    }, ...(value.ports.api.requestMetadataUpload ? {async requestMetadataUpload<T>(path: string, body: FormData, signal?: AbortSignal): Promise<T> {
+      check();
+      return checked(await value.ports.api.requestMetadataUpload!<T>(path, body, signal ? AbortSignal.any([signal, value.lifetime.signal]) : value.lifetime.signal));
+    }} : {})};
+  }, [api, grant, value]);
+  const dismiss = () => {if (opened === value) close();};
+  return <Dialog open onOpenChange={open => {if (!open) dismiss();}} title={defaultI18n.t('next.home.editSelection')}
+    returnFocusRef={anchor} placement="right" width={720} showCloseButton={!grant} headerClassName={grant ? styles.hostTitle : undefined} bodyClassName={grant ? styles.hostBody : undefined}>
+    {grant ? <MetadataEditor api={metadataApi} scope={scope} target={target} initialTab={value.target.initialTab} onClose={dismiss}/>
+      : <p role={failed ? 'alert' : 'status'}>{defaultI18n.t(failed ? 'next.states.crashed' : 'next.states.loading')}</p>}
+  </Dialog>;
+}
+
 export function EntryMetadataHost() {
   const value = useSyncExternalStore(listener => {listeners.add(listener); return () => {listeners.delete(listener);};}, () => opened, () => null);
-  return value && current(value) ? <CheckedMetadata key={value.id} value={value}/> : null;
+  if (!value || !current(value)) return null;
+  return 'entityKind' in value.target ? <CheckedAggregateMetadata key={value.id} value={{...value, target: value.target}}/>
+    : <CheckedMetadata key={value.id} value={{...value, target: value.target}}/>;
 }

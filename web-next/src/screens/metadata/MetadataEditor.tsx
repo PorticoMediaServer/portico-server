@@ -30,12 +30,12 @@ function tabsFor(data: RepairData | null | undefined): readonly Tab[] {
 /** owner-metadata frames 6-8: one editor for a title, an episode, a show, an album or a book.
  * Every field and every choice comes from the server's schema and current snapshot; a change is
  * exactly one edit command carrying only the fields the owner touched. */
-export function MetadataEditor({api, scope, target, onClose}: {
-  api: Api; scope: Readonly<{serverId: string; viewerId: string}>; target: RepairTarget; onClose: () => void;
+export function MetadataEditor({api, scope, target, onClose, initialTab = 'general'}: {
+  api: Api; scope: Readonly<{serverId: string; viewerId: string}>; target: RepairTarget; onClose: () => void; initialTab?: 'general' | 'matching';
 }) {
   const service = useMemo(() => new MetadataRepairService({api, scope}), [api, scope]);
   const state = useSyncExternalStore(service.subscribe, service.getSnapshot);
-  const [tab, setTab] = useState<Tab>('general'), [draft, setDraft] = useState<Draft>({}), [error, setError] = useState<unknown>();
+  const [tab, setTab] = useState<Tab>(initialTab), [draft, setDraft] = useState<Draft>({}), [error, setError] = useState<unknown>();
   useEffect(() => {void service.load(target); return () => service.dispose();}, [service, target]);
   const data = state.data;
   const offered = tabsFor(data);
