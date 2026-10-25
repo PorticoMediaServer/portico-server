@@ -95,6 +95,13 @@ func normaliseValue(key string, value any) any {
 			return "<volatile>"
 		}
 	}
+	// Whole-selection carries the page's viewer-bound browse digest under
+	// this key. Its raw equality to pageInfo.revision is asserted first.
+	if key == "catalogRevision" {
+		if text, ok := value.(string); ok && len(text) == 71 && strings.HasPrefix(text, "browse_") && digestValue.MatchString(strings.TrimPrefix(text, "browse_")) {
+			return "<volatile>"
+		}
+	}
 	return normalise(value)
 }
 
