@@ -381,17 +381,19 @@ export class DecodeAudioRender {
     const value = parseEqualizer(settings);
     if (this.disposed) throw new Error('equalizer_unavailable');
     ++this.equalizerRevision;
+    // The deck this renderer is actually playing must own the fact: it is captured before
+    // the failing operation, so a re-entrant fallback cannot hand us a successor's frame.
+    const live = this.service.getSnapshot();
+    const owner = this.primary && live.session && this.primary.key === sessionKey(live.session)
+      ? {deck: this.primary, sessionId: live.session.id, generation: live.session.generation, itemId: live.itemId, intentId: live.intentId} : undefined;
     try { this.equalizer.apply(value); this.equalizerFailed = false; }
     catch (error) {
       this.equalizerFailed = true;
-      // Capture the deck this renderer belongs to before any fallback can re-enter and
-      // move the service to a successor; the write itself re-checks that binding.
-      const deck = this.service.getSnapshot();
       try { this.equalizer.bypass(); }
       catch { this.service.fallbackAudioRender(); }
       // This song continues through the dry path. Saved intent remains on, actual EQ is false.
       listeningDiagnostic('equalizer_filter_unavailable', error);
-      if (deck.session?.id) this.service.listeningFallback('eq', {sessionId: deck.session.id, generation: deck.session.presentation.generation, itemId: deck.itemId, intentId: deck.intentId});
+      if (owner && this.primary === owner.deck) this.service.listeningFallback('eq', {sessionId: owner.sessionId, generation: owner.generation, itemId: owner.itemId, intentId: owner.intentId});
     }
     this.reportProcessing();
   }

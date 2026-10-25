@@ -568,13 +568,15 @@ export class WebPlayback implements PlaybackAdapter {
     if (!this.render) {
       if (this.renderCreating) return;
       this.renderCreating = true;
+      // The invocation that asked for this renderer owns the fact, captured before any
+      // slot or renderer side effect can move the service to a successor.
+      const invocation = {sessionId: session.id, generation: session.generation, itemId: next.itemId, intentId: next.intentId};
       try { this.slot.hold(true); this.render = this.host.createRender(service, video); }
       catch {
         this.renderUnavailableSession = session.id;
         this.slot.hold(false);
-        const deck = service.getSnapshot();
         listeningDiagnostic('audio_processing_unavailable');
-        if (deck.session?.id) service.listeningFallback('processing', {sessionId: deck.session.id, generation: deck.session.presentation.generation, itemId: deck.itemId, intentId: deck.intentId});
+        service.listeningFallback('processing', invocation);
         if (!service.fallbackAudioRender()) service.audioRenderFailed('audio_render_failed');
         return;
       }
