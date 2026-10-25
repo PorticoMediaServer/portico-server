@@ -67,12 +67,15 @@ class Job:
             self.run('api-generation',['go','run','./cmd/apigen','-root','..'],self.source/'server')
             self.run('schema-generation',['python3','scripts/schema-sync.py'])
         else:self.run('hosted-generation',['go','run','./cmd/apigen','-root','../..'],self.tools/'hosted-services/hosted')
-        import difflib
         patch=[]
         for (root,name),old in before.items():
             new=(root/name).read_bytes()
             if old!=new:
-                self.report['generated'].append(name);patch.extend(difflib.unified_diff(old.decode().splitlines(True),new.decode().splitlines(True),fromfile='a/'+name,tofile='b/'+name))
+                self.report['generated'].append(name)
+                previous=self.work/'generation-before';previous.write_bytes(old)
+                result=subprocess.run(['diff','-u','--label','a/'+name,'--label','b/'+name,str(previous),str(root/name)],capture_output=True,text=True,timeout=20)
+                if result.returncode not in [0,1]:raise StepFailure('generation-diff')
+                patch.append(result.stdout)
         (self.out/'generation.patch.log').write_text(''.join(patch));self.report['generatedPatchSHA256']=hashlib.sha256(''.join(patch).encode()).hexdigest()
     def node(self):
         version=(self.source/'.node-version').read_text().strip();log=self.work/'node-path.private.log'
