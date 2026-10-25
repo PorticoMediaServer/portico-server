@@ -102,6 +102,7 @@ export const servicesMessages = {
   'services.start.free': 'Both are free.',
   'services.start.join': 'Join with an invitation',
   'services.start.joinBody': 'Someone shared a server with you? Paste the invitation link or code they sent.',
+  'services.start.joinLede': 'Paste the link or code they sent.',
   'services.start.invitation': 'Invitation link or code',
   'services.start.joinAction': 'Join',
   'services.start.paste': 'Paste the invitation link or code they sent.',
