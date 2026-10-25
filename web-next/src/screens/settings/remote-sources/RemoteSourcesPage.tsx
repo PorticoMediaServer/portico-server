@@ -10,12 +10,13 @@ import {davConfiguration, stableStorageOperationId, type WebDavDraft} from '@cor
 import type {LibraryContentApi} from '@core/library-content.ts';
 import {Button, RichSelect, Switch, TextField} from '../../../kit/controls';
 import {Dialog} from '../../../kit/overlays';
+import {usePhone} from '../../../kit/overlays/shared';
 import {SettingsGroup, SettingNumber} from '../../../kit/settings';
 import {SettingsRow} from '../../../kit/shell/SettingsSurfaces';
 import {Icon, type IconName} from '../../../kit/Icon';
 import styles from './remote-sources.module.css';
 import {RemoteFolderPicker} from './RemoteFolderPicker';
-import {ReadingChoices} from './ReadingChoices';
+import {ReadingChoices, presetHint} from './ReadingChoices';
 import {SourceAdvancedRows} from './SourceAdvancedRows';
 import {ProgramPicker} from './ProgramPicker';
 
@@ -174,6 +175,7 @@ export function RemoteSourcesPage({api, serverId, viewerId, isCurrent, reportErr
 }
 
 type WizardStep = 'connection' | 'reading' | 'folders' | 'done';
+type ReadingOpening = Readonly<{guard: () => boolean; sourceId: string; generation: string; revision: number}>;
 type AttachMode = 'new' | 'existing';
 type LibraryKind = ManagedLibrary['kind'];
 
@@ -241,6 +243,17 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   const nextSourceId = useRef('');
   const [profile, setProfile] = useState<SourceReadSettings>();
   const [values, setValues] = useState<SourceReadValues>(sourceReadPreset('once'));
+  // The drawn mobile-web step (remote-sources.html#14b) shows the choice in force
+  // and opens the four choices from Change; the wide layout keeps them inline.
+  // A confirm belongs to the opening it was rendered in: the wizard's token, its
+  // reading step, and the exact source generation and saved profile revision.
+  const phone = usePhone();
+  const [pendingReading, setPendingReading] = useState<SourceReadValues>(sourceReadPreset('once'));
+  // The opening is its own object, never a flag: a handler that belongs to a
+  // retired opening cannot confirm, edit or close the one that replaced it.
+  const [readingOpening, setReadingOpening] = useState<ReadingOpening | null>(null);
+  const readingOpeningRef = useRef<ReadingOpening | null>(null);
+  const readingLive = useRef<{step: WizardStep; source?: RemoteSource; profile?: SourceReadSettings}>({step: 'connection'});
   const [busy, setBusy] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(false);
   // The folders step: chosen folders, the library they join, and what the done step reports.
@@ -274,6 +287,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     setStep('connection'); setSourceKind('webdav'); setDraft(emptyDraft); setRclone(emptyRclone); setProgram(undefined); setProviders([]); setConfigView(undefined); setConfigRemote(''); setConfigName(''); setS3(emptyS3); setDrive(emptyDrive); setS3Name(''); setDriveName(''); setS3Tested(undefined); setDriveTested(undefined); setCloud(emptyCloud); setCloudName(''); setCloudTested(undefined); setDriveMode('service'); setOauthClientId(''); setOauthClientSecret(''); setOauthToken(''); setOauthState(''); setOauthPhase('idle'); setOauthAddress(''); setOauthError(''); oauthLease.current = null; oauthGeneration.current++; invalidateS3(); invalidateDrive(); invalidateCloud();
     setResult(undefined); setRcloneResult(undefined); setError(''); setCreated(undefined);
     setProfile(undefined); setValues(sourceReadPreset('once')); setBusy(false); setLoadingProfile(false);
+    setReadingOpening(null); setPendingReading(sourceReadPreset('once')); readingOpeningRef.current = null;
     setChosen([]); setPicking(false); setAttachMode('new'); setLibraryName(''); setKind('movie'); setExistingId('');
     setFinishBusy(false); setFinishError(''); setSummary({folders: 0}); setLeaving(''); setLeaveRemove(false); setLeaveError(''); setLeaveChoice('keep');
     setAdvancedValues(initialAdvanced);
@@ -282,7 +296,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   };
   const updateDraft = (patch: Partial<WebDavDraft>) => {testAttempt.current++;setResult(undefined);setError('');setDraft(current => ({...current, ...patch}));};
   const updateRclone = (patch: Partial<RcloneDraft>) => {testAttempt.current++;setRcloneResult(undefined);setError('');setRclone(current => ({...current, ...patch}));};
-  useEffect(() => {active.current=open;if(open)reset();else{retireOAuthCurrentRef.current();lifetime.current++;pending.current=false;setDraft(emptyDraft);setRclone(emptyRclone);setResult(undefined);setRcloneResult(undefined);setError('');}}, [open]);
+  useEffect(() => {active.current=open;if(open)reset();else{retireOAuthCurrentRef.current();lifetime.current++;pending.current=false;readingOpeningRef.current=null;setReadingOpening(null);setDraft(emptyDraft);setRclone(emptyRclone);setResult(undefined);setRcloneResult(undefined);setError('');}}, [open]);
   useEffect(() => () => {active.current=false;lifetime.current++;retireOAuthCurrentRef.current();}, []);
   const test = async () => {
     const guard = attemptGuard();
@@ -759,6 +773,44 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
         : sourceKind === 'drive' ? !!driveTested && driveTested.revision === driveRevision && !!driveName.trim() && (driveMode === 'oauth' ? oauthPhase === 'ready' && !!oauthToken : driveResult.ok)
           : sourceKind === 'cloud' ? !!cloudTested && cloudTested.revision === cloudRevision && !!cloudName.trim() && cloudResult.ok
           : !!configRemote && !!configView?.remotes.some(remote => remote.name === configRemote && remote.supported);
+  useLayoutEffect(() => {readingOpeningRef.current = readingOpening; readingLive.current = {step, source: sourceNow, profile};});
+  // The dialog cannot outlive a phone layout: a wider window retires its opening.
+  useLayoutEffect(() => {if (phone || !readingOpening) return; readingOpeningRef.current = null; setReadingOpening(null);}, [phone, readingOpening]);
+  // Retire the opening as soon as the wizard closes, and on unmount, in a layout
+  // pass: a retained choice edit must not write in the passive-cleanup gap.
+  useLayoutEffect(() => {if (open) return; readingOpeningRef.current = null; setReadingOpening(null);}, [open]);
+  useLayoutEffect(() => () => {readingOpeningRef.current = null;}, []);
+  /** Retires the opening only when it is still the one this handler belongs to. */
+  const retireReading = (opening: ReadingOpening) => {
+    if (readingOpeningRef.current !== opening) return;
+    readingOpeningRef.current = null;
+    setReadingOpening(null);
+  };
+  const openReadingChange = () => {
+    if (!profile || !sourceNow || readingOpeningRef.current) return;
+    const opening: ReadingOpening = {guard: attemptGuard(), sourceId: sourceNow.id, generation: profile.generation, revision: profile.revision};
+    readingOpeningRef.current = opening;
+    setPendingReading(values);
+    setReadingOpening(opening);
+  };
+  /** Only the exact opening this handler was rendered with may replace the choice. */
+  const useReadingOpening = (opening: ReadingOpening) => {
+    if (readingOpeningRef.current !== opening) return;
+    const live = readingLive.current;
+    readingOpeningRef.current = null;
+    setReadingOpening(null);
+    if (!opening.guard() || live.step !== 'reading') return;
+    if (!live.source || !live.profile || live.source.id !== opening.sourceId || live.source.generation !== opening.generation) return;
+    if (live.profile.generation !== opening.generation || live.profile.revision !== opening.revision) return;
+    setValues(pendingReading);
+  };
+  const readingChangeDialog = phone && readingOpening ? <Dialog open width={560} title={t('next.remoteSources.changeTitle')} description={t('next.remoteSources.changeBody')}
+    onOpenChange={value => {if (!value) retireReading(readingOpening);}}
+    footer={<><Button size="compact" variant="glass" onClick={() => retireReading(readingOpening)}>{t('next.remoteSources.cancel')}</Button>
+      <Button size="compact" variant="primary" onClick={() => useReadingOpening(readingOpening)}>{t('next.remoteSources.useChoice')}</Button></>}>
+    <ReadingChoices values={pendingReading} origin={result?.origin ?? sourceNow?.origin} rangeSupport={result?.rangeSupport ?? sourceNow?.rangeSupport ?? 'unknown'} disabled={false}
+      onChange={next => {if (readingOpeningRef.current === readingOpening) setPendingReading(next);}}/>
+  </Dialog> : null;
   const footer = step === 'connection'
     ? <><Button size="compact" variant="glass" disabled={busy} onClick={() => close()}>{t('next.remoteSources.cancel')}</Button><Button size="compact" variant="primary" disabled={busy || !canContinue} onClick={() => void (sourceKind === 'webdav' ? create() : sourceKind === 'rclone' ? createRclone() : sourceKind === 's3' ? createS3() : sourceKind === 'drive' ? createDrive() : sourceKind === 'cloud' ? createCloud() : createFromConfig())}>{t('next.remoteSources.saveAndContinue')}</Button></>
     : step === 'reading'
@@ -923,7 +975,13 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     </>}
     {step === 'reading' && <>
       <p className={styles.note}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.label')}</p>
-      <ReadingChoices values={values} origin={result?.origin ?? sourceNow?.origin} rangeSupport={result?.rangeSupport ?? sourceNow?.rangeSupport ?? 'unknown'} disabled={busy} onChange={setValues}/>
+      {phone
+        ? <div className={styles.readingSummary}>
+          <span><b>{t(presetName ? presetLabel(presetName) : 'next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.4.label')}</b>
+            {presetName && <small>{t(presetHint(presetName))}</small>}</span>
+          <Button size="xs" variant="glass" disabled={busy || loadingProfile || !profile || !sourceNow} onClick={openReadingChange}>{t('next.remoteSources.change')}</Button>
+        </div>
+        : <ReadingChoices values={values} origin={result?.origin ?? sourceNow?.origin} rangeSupport={result?.rangeSupport ?? sourceNow?.rangeSupport ?? 'unknown'} disabled={busy} onChange={setValues}/>}
       <div className={styles.limits}>
         <SettingNumber label={t('next.remoteSources.connections')} value={values.connections} min={1} max={32} unit={t('next.remoteSources.atOnce')} disabled={busy} onCommit={value => {if (value !== null) setValues({...values, connections: value});}}/>
         <SettingNumber label={t('next.remoteSources.requestsPerSecond')} value={values.requestsPerSecond} min={1} max={50} unit={t('next.remoteSources.aSecond')} disabled={busy} onCommit={value => {if (value !== null) setValues({...values, requestsPerSecond: value});}}/>
@@ -988,6 +1046,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     </div>}
     {picking && sourceNow && <RemoteFolderPicker service={service} sourceId={sourceNow.id} sourceName={sourceNow.name} open={picking}
       onOpenChange={setPicking} onChoose={folders => setChosen(current => [...current, ...folders.filter(folder => !current.some(value => value.relative === folder.relative))])}/>}
+    {readingChangeDialog}
     <Dialog open={leaving !== ''} role="alertdialog" width={520} title={t('next.remoteSources.leaveTitle')}
       onOpenChange={value => {if (!value && !leaveRemove) setLeaving('');}}
       description={leaving === 'saved' ? t('next.remoteSources.leaveSavedBody', {name: sourceNow?.name ?? ''}) : t('next.remoteSources.leaveUnsavedBody')}

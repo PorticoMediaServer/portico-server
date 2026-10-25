@@ -1,4 +1,4 @@
-import {defaultI18n} from '@i18n';
+import {defaultI18n, type MessageId} from '@i18n';
 import {sourceReadPreset, sourceReadPresetName, type SourceReadPreset, type SourceReadValues} from '@core/remote-sources.ts';
 import {Icon} from '../../../kit/Icon';
 import styles from './remote-sources.module.css';
@@ -17,6 +17,9 @@ const presetHints = {
   everything: 'next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.2.hint',
   ask: 'next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.3.hint',
 } as const;
+
+/** The drawn one-line description of a choice, for the mobile-web summary row. */
+export const presetHint = (name: SourceReadPreset): MessageId => presetHints[name];
 
 /** Whether the address is one the owner's own network answers: the drawn rule
  * for when reading whole files is cheap, with no bandwidth bill. */
