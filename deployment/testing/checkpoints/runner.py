@@ -112,9 +112,18 @@ class Job:
         with tarfile.open(self.out/'reader-guest.tar','w') as archive:
             for name in files:archive.add(guest/name,arcname=name,recursive=False)
         self.report['readerGuest']={'treeSHA256':receipt['treeSHA256'],'files':len(files),'containsRequiredReaderSource':receipt['containsRequiredReaderSource']}
+    def server_build(self):
+        pem=self.source/'trust/hosted-root-public-key.pem';raw=pem.read_bytes();body=''.join(x for x in raw.decode().splitlines() if not x.startswith('---'));der=base64.b64decode(body,validate=True)
+        if der[:12]!=bytes.fromhex('302a300506032b6570032100') or len(der)!=44:raise StepFailure('official-root-format')
+        key=base64.urlsafe_b64encode(der[-32:]).decode().rstrip('=')
+        if key in (self.source/'server/internal/hostedtrust/development_root.go').read_text():raise StepFailure('development-root-refused')
+        self.report['officialRootPEMSHA256']=hashlib.sha256(raw).hexdigest()
+        flags='-X portico.local/server/internal/buildinfo.Version=0.1.0-checkpoint+'+self.args.server[:8]+' -X portico.local/server/internal/buildinfo.BuildID='+self.args.server+' -X portico.local/server/internal/hostedtrust.OfficialRoot='+key
+        self.run('server',['go','build','-p=2','-tags','release','-trimpath','-buildvcs=false','-ldflags',flags,'-o',str(self.work/'server'),'./cmd/server'],self.source/'server')
+        self.run('server-version',[str(self.work/'server'),'--version'],timeout=10)
     def web_server(self):
         node=self.node();generated=self.attempt('server','official-generation',self.generation)
-        server=self.attempt('server','server-build',lambda:self.run('server',['go','build','-p=2','-tags','release','-trimpath','-buildvcs=false','-ldflags','-X portico.local/server/internal/buildinfo.Version=0.1.0-checkpoint+'+self.args.server[:8]+' -X portico.local/server/internal/buildinfo.BuildID='+self.args.server,'-o',str(self.work/'server'),'./cmd/server'],self.source/'server'))
+        server=self.attempt('server','server-build-and-release-guard',self.server_build)
         npm=self.attempt('web','dependency-install',lambda:self.run('npm',['npm','ci','--no-audit','--no-fund']))
         web=self.work/'web';built=npm and self.attempt('web','web-build',lambda:self.run('web',['npm','run','build','--workspace','portico-web-next','--','--outDir',str(web),'--emptyOutDir']))
         if npm:self.attempt('native-reader','immutable-reader-build',lambda:self.reader(node))
@@ -188,6 +197,11 @@ class Job:
         for log in self.logs:log.close()
         self.report['cleanup']='all owned runtime processes stopped';(self.out/'report.log').write_text(json.dumps(self.report,indent=2)+'\n')
         destination=Path('/home/runner/work/artifacts/portico-v3-checkpoints')/self.args.run_id;destination.mkdir(parents=True,mode=0o700,exist_ok=False)
+        # This log exists only for a process that exited before fixture setup,
+        # before credentials or account/session state were created. Keep it in
+        # private evidence for source-level startup diagnosis; never print it.
+        startup=self.work/'server-runtime.private.log'
+        if self.report.get('runtimeExit') and startup.is_file():shutil.copyfile(startup,destination/'startup-private.log')
         for file in self.out.iterdir():
             if not file.is_file() or file.is_symlink():continue
             if file.name in ['report.log','generation.patch.log','browser-results.log','reader-guest-receipt.log','reader-guest.tar'] or re.fullmatch(r'flow-[a-z0-9-]+\.(?:jpg|log)',file.name) or file.name.startswith('build-') and file.suffix=='.log':shutil.copyfile(file,destination/file.name)
