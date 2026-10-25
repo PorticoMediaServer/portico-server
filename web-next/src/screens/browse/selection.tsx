@@ -95,7 +95,9 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {personal: (ac
   // a model that can hold it; never as a local guess from the loaded window.
   const selectAll = whole && selectWhole ? {kind: 'view' as const, total: whole.total} : undefined;
   const offers = personalOffers(current.selection, actions, playSelection), leafItems = explicitLeafItems(current.selection);
-  const canQueue = !!leafItems && !!enqueue && summary.every.queue, canPlaylist = !!leafItems && !!destinations?.playlist && summary.every.playlist,
+  const queueLease = !!playSelection.captureOperation && !!playSelection.isOperationCurrent && !!actions?.signal
+    && !actions.signal.aborted && actions.isCurrent();
+  const canQueue = !!leafItems && !!enqueue && queueLease && summary.every.queue, canPlaylist = !!leafItems && !!destinations?.playlist && summary.every.playlist,
     canCollection = !!leafItems && !!destinations?.collection && summary.every.collection;
   return <SelectionBar
     selection={{count: summary.count, kind: summary.types.length === 1 ? summary.types[0].kind : undefined}}
@@ -121,9 +123,17 @@ export function createLibrarySelection({playSelection, descriptor, actions, enqu
     return items;
   };
   const queue = async (placement: 'next' | 'end') => {
-    if (!enqueue) throw new Error('selection-queue-unavailable');
-    const items = leafItems();
-    await enqueue({items, placement, signal: actions?.signal ?? new AbortController().signal, isCurrent: actions?.isCurrent ?? (() => true)});
+    if (!enqueue || !actions?.signal || !playSelection.captureOperation || !playSelection.isOperationCurrent) throw new Error('selection-queue-unavailable');
+    const signal = actions.signal;
+    const operation = playSelection.captureOperation();
+    const snapshot = playSelection.getSnapshot().selection;
+    if (!operation || operation.target !== snapshot?.target) throw new Error('selection-target-required');
+    const items = explicitLeafItems(snapshot);
+    if (!items) throw new Error('leaf-explicit-selection-required');
+    const isCurrent = () => !signal.aborted && actions.isCurrent() && playSelection.isOperationCurrent!(operation)
+      && playSelection.getSnapshot().selection?.target === operation.target;
+    if (!isCurrent()) throw new DOMException('Library selection retired', 'AbortError');
+    await enqueue({items, placement, signal, isCurrent});
   };
   const addToPlaylist = async (anchor: HTMLElement) => {
     if (!destinations?.playlist) throw new Error('selection-playlist-unavailable');
