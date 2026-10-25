@@ -5,7 +5,7 @@
 .content { width: 560px; padding-top: 104px; justify-content: flex-start; }
 .approvalContent { width: 560px; }
 .approvalContent h1 { font-size: calc(var(--type-lockup-size) * 26 / 23); line-height: calc(var(--type-lockup-size) * 26 / 23 * .98); }
-.contentLibrary { width: 600px; padding-top: 112px; justify-content: flex-start; }
+.contentLibrary { width: 720px; padding-top: 112px; justify-content: flex-start; }
 .one { white-space: nowrap; }
 .lede { font-size: var(--type-subheading-size); line-height: calc(var(--type-subheading-size) * 1.5); color: var(--color-text-secondary); margin: 0 0 28px; }
 .field { margin-bottom: 16px; }
@@ -41,7 +41,7 @@
 .step[data-state="done"] { color: var(--color-text-secondary); }
 .step[data-state="done"] .stepNumber { background: color-mix(in srgb, var(--color-healthy) 16%, transparent); color: var(--color-healthy); box-shadow: none; }
 .okline { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; font-size: var(--type-body-size); font-weight: var(--type-row-heading-weight); color: var(--color-healthy); }
-.kinds { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 22px; }
+.kinds { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; margin-bottom: 22px; }
 .kind { height: 96px; border: 0; border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font: inherit; font-size: calc(var(--type-body-size) * 29 / 30); font-weight: var(--type-row-heading-weight); color: var(--color-text-secondary); background: color-mix(in srgb, var(--color-text) 6%, transparent); cursor: pointer; }
 .kind svg { color: var(--color-text-tertiary); }
 .kind[aria-pressed="true"] { background: color-mix(in srgb, var(--color-accent) 16%, transparent); color: var(--color-text); box-shadow: inset 0 0 0 1.5px var(--color-accent); }
@@ -59,3 +59,8 @@
   .choice { padding: 14px 16px; }
   .kinds { grid-template-columns: repeat(3, 1fr); }
 }
+
+.setupFolders { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.setupFolder { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 12px; border: 1px solid var(--color-line-soft); background: var(--color-raised-soft); }
+.setupFolder > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.setupFolder > svg { flex: none; color: var(--color-text-tertiary); }
