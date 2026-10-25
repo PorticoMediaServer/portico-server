@@ -148,3 +148,8 @@
 .artRoles button[aria-selected='true'] { background: var(--color-raised-high); color: var(--color-text); border-color: var(--color-line-strong); }
 
 .fieldBounds { margin-left: auto; white-space: nowrap; }
+
+.uploadTile { display: flex; flex-direction: column; gap: 12px; padding: 20px; margin-top: 16px; border: 1px dashed var(--color-line-strong); border-radius: 14px; text-align: center; }
+.uploadTile p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--color-text-tertiary); }
+.uploadTile label { display: flex; flex-direction: column; gap: 8px; align-items: center; font-size: 14px; }
+.uploadTile input { max-width: 100%; font: inherit; }

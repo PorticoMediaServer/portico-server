@@ -471,6 +471,22 @@ export class HttpLocalApi {
     if (!path.startsWith(apiRoot) || provesIdentity(path, method)) return;
     try { void this.send(path, method, body, undefined, this.token, undefined, true).then(r => { void r.body?.cancel().catch(() => {}); }, () => {}); } catch { /* the page is going away */ }
   }
+  /** One artwork upload under the captured selected-server session. Never refresh/replay a lost write. */
+  async requestMetadataUpload<T>(path: string, body: FormData, input?: AbortSignal): Promise<T> {
+    if (!/^\/v1\/metadata\/(?:item|show|season|album|artist|book)\/[A-Za-z0-9_-]+\/art\/(?:poster|backdrop|cover|square|thumbnail|banner|logo|still|portrait)\/upload$/.test(path)) throw new Error('Invalid metadata upload path.');
+    const token = this.token, epoch = this.certificateSessionEpoch;
+    const current = () => {if (this.token !== token || this.certificateSessionEpoch !== epoch) throw new Error('The metadata upload belongs to an old session.');};
+    return withinDeadline(30000, input, async signal => {
+      current(); signal.throwIfAborted();
+      const response = await this.fetcher(this.baseUrl + path, {method: 'POST', body, signal, redirect: 'error', credentials: 'omit', referrerPolicy: 'no-referrer',
+        headers: {Accept: 'application/json', ...(token ? {Authorization: `Bearer ${token}`} : {}), ...this.deliveryHeaders()}});
+      current(); signal.throwIfAborted();
+      const value = await response.json();
+      current(); signal.throwIfAborted();
+      if (!response.ok) throw new ApiError(response.status, value?.error?.code ?? value?.code ?? 'request_failed', value?.error?.message ?? 'Artwork upload failed.', false);
+      return value as T;
+    });
+  }
   /**
    * Any status, with headers and the parsed body (playback v1's `V1Http` seam: 202, 412 `current`,
    * `ETag`, `Report-Every-Ms`). Rejects only when there is no response (offline, aborted).

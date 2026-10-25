@@ -37,7 +37,7 @@ export function createShellSelection(context: ShellAssemblyContext, playback: Ho
       openDestination: destination => router.navigate({to: '/saved', search: {resourceId: destination.id}})}, reportError});
   const anchor: {current: HTMLElement | null} = {current: null};
   const source: SelectionRendererSource = {controller,
-    metadata: {api: context.api, scope: {serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId])},
+    metadata: {api: {request: context.api.request.bind(context.api), requestMetadataUpload: context.api.requestMetadataUpload.bind(context.api)}, scope: {serverId: viewer.serverId, viewerId: JSON.stringify([viewer.authority, viewer.accountId, viewer.profileId])},
       current: snapshot => viewer.role === 'owner' && isCurrent(snapshot.context) && snapshot.editor?.preview?.viewerFence === context.viewerFence}, anchor, artwork: context.artwork, reportError, owner: viewer.role === 'owner', editorAudience: selectionEditorAudience(viewer.role), dockVisible};
   let acceptedContext = JSON.stringify(currentContext()), acceptedEnvironment = JSON.stringify(environment());
   const sync = () => {

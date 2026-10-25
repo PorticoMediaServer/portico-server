@@ -28,7 +28,7 @@ export type RepairCommand = Readonly<{
 }>;
 export type RepairPreview = Readonly<{revision:string;descendants:number;lockedFields:number;selectedImages:number;message:string;merge?:{target:{kind:string;id:string};allowed:boolean;blockers:readonly string[];references:Readonly<Record<string,number>>}}>; 
 export type RepairView = Readonly<{phase:'idle'|'loading'|'ready'|'saving'|'conflict'|'uncertain'|'denied'|'error';data:RepairData|null;error:string|null;preview:RepairPreview|null}>;
-type Api = {request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>};
+type Api = {request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>; requestMetadataUpload?<T>(path:string,body:FormData,signal?:AbortSignal):Promise<T>};
 const obj=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const str=(v:unknown,max=2048):v is string=>typeof v==='string'&&v.length<=max&&!/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(v);
 const id=(v:unknown):v is string=>str(v,256)&&v.length>0&&!/[\r\n\t]/.test(v);
@@ -96,12 +96,12 @@ export class MetadataRepairService {
  private publish(state:RepairView){if(this.disposed)return;this.state=Object.freeze(state);for(const fn of this.listeners)fn();}
  cancel(){this.epoch++;this.controller?.abort();this.target=undefined;this.fence=undefined;this.publish({phase:'idle',data:null,error:null,preview:null});}
  dispose(){this.cancel();this.disposed=true;this.listeners.clear();}
- private async request(target:RepairTarget,method:string,body?:unknown,suffix=''):Promise<unknown>{
+ private async request(target:RepairTarget,method:string,body?:unknown,suffix='',upload=false):Promise<unknown>{
   const c=new AbortController();this.controller?.abort();this.controller=c;
   let rejectAbort!:(reason:Error)=>void;const cancelled=new Promise<never>((_,reject)=>{rejectAbort=reject;});
   const abort=()=>rejectAbort(new Error('Repair request interrupted.'));c.signal.addEventListener('abort',abort,{once:true});
   const timer=setTimeout(()=>c.abort(),this.options.timeoutMs??15000);
-  try{return await Promise.race([this.options.api.request<RouteResponse<"get_metadata_kind_id"> | RouteResponse<"get_metadata_kind_id_preview">>((suffix.startsWith('/preview')?encodedRoutePath('get_metadata_kind_id_preview',{kind:encodeURIComponent(target.kind),id:encodeURIComponent(target.id)})+suffix.slice(8):encodedRoutePath(method==='GET'?'get_metadata_kind_id':'post_metadata_kind_id',{kind:encodeURIComponent(target.kind),id:encodeURIComponent(target.id)})+suffix),method,body,c.signal),cancelled]);}
+  try{return await Promise.race([upload ? this.options.api.requestMetadataUpload!(suffix,body as FormData,c.signal) : this.options.api.request<RouteResponse<"get_metadata_kind_id"> | RouteResponse<"get_metadata_kind_id_preview">>((suffix.startsWith('/preview')?encodedRoutePath('get_metadata_kind_id_preview',{kind:encodeURIComponent(target.kind),id:encodeURIComponent(target.id)})+suffix.slice(8):encodedRoutePath(method==='GET'?'get_metadata_kind_id':'post_metadata_kind_id',{kind:encodeURIComponent(target.kind),id:encodeURIComponent(target.id)})+suffix),method,body,c.signal),cancelled]);}
   finally{clearTimeout(timer);c.signal.removeEventListener('abort',abort);}
  }
  async load(target:RepairTarget){
@@ -116,6 +116,16 @@ export class MetadataRepairService {
   const data=this.state.data,target=this.target;if(this.state.phase!=='ready'||!data||!target)throw Error('Load current metadata before making another change.');
   const epoch=++this.epoch;this.publish({...this.state,phase:'saving',error:null});
   try{const raw=await this.request(target,'POST',{...command,expectedRevision:data.revision});if(epoch!==this.epoch||this.disposed)return false;this.accept(raw,target);return true;}
+  catch(error){if(epoch===this.epoch&&!this.disposed)this.failure(error,true);return false;}
+ }
+ async uploadArtwork(role:string,file:Blob,subject=''):Promise<boolean>{
+  const data=this.state.data,target=this.target;
+  if(this.state.phase!=='ready'||!data||!target||!this.options.api.requestMetadataUpload)throw Error('Load current metadata before uploading artwork.');
+  if(!data.artworkRoles.includes(role)||!str(subject,256)||file.size<1||file.size>10*1024*1024||!['image/jpeg','image/png'].includes(file.type))throw Error('Choose a JPG or PNG up to 10 MiB.');
+  const body=new FormData();body.append('file',file,'artwork');body.append('subject',subject);body.append('expectedRevision',data.revision);
+  const path=encodedRoutePath('post_metadata_kind_id_art_role_upload',{kind:encodeURIComponent(target.kind),id:encodeURIComponent(target.id),role:encodeURIComponent(role)});
+  const epoch=++this.epoch;this.publish({...this.state,phase:'saving',error:null});
+  try{const raw=await this.request(target,'POST',body,path,true);if(epoch!==this.epoch||this.disposed)return false;this.accept(raw,target);return true;}
   catch(error){if(epoch===this.epoch&&!this.disposed)this.failure(error,true);return false;}
  }
  async preview(mergeId?:string):Promise<void>{
