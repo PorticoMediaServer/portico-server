@@ -226,6 +226,42 @@ func prepareNext(t *testing.T, f *v1Fixture, q playbackv1.QueueReply, key string
 // commit moves the queue and starts a session that inherits the state; the
 // previous one ends "completed" and its grant is refused; a replay of either
 // command answers the same.
+// Preload: a receiver may ask for the prepared presentation's media address so it can buffer
+// the next entry, but only when it asks; the default answer stays private and the entry is still
+// not current until commit. Sidecars are never published by a preparation.
+func prepareNextPreload(t *testing.T, f *v1Fixture, q playbackv1.QueueReply, key string) playbackv1.PreparedNext {
+	t.Helper()
+	var p playbackv1.PreparedNext
+	f.call("POST", "/v1/queues/"+q.Queue.ID+":prepare-next", map[string]string{"If-Match": q.Queue.Revision, "Idempotency-Key": key},
+		map[string]any{"sessionId": q.Session.ID, "sessionGeneration": q.Session.Presentation.Generation, "preload": true}, 200, &p)
+	return p
+}
+
+func TestPlaybackV1PrepareNextPreloadExposesTheMediaAddressOnly(t *testing.T) {
+	f, _ := renderingFixture(t, 3)
+	q := playingQueue(t, f, "preload-queue-00001")
+	var p playbackv1.PreparedNext
+	f.call("POST", "/v1/queues/"+q.Queue.ID+":prepare-next", map[string]string{"If-Match": q.Queue.Revision, "Idempotency-Key": "preload-prep-000001"},
+		map[string]any{"sessionId": q.Session.ID, "sessionGeneration": q.Session.Presentation.Generation, "preload": true}, 200, &p)
+	if !p.Preload || p.Presentation.URL == "" || p.ItemID != f.items[1] {
+		t.Fatalf("a preloaded preparation carries its address: %+v", p)
+	}
+	replay := prepareNextPreload(t, f, q, "preload-prep-000001")
+	if !replay.Preload || replay.Presentation.URL == "" || replay.Token != p.Token {
+		t.Fatalf("a replayed preload keeps its address: %+v", replay)
+	}
+	if len(p.Presentation.Subtitles) != 0 {
+		t.Fatal("a preparation does not publish sidecars")
+	}
+	if !playable(p.Presentation.AudioRender) || p.Presentation.AudioRender.URL != p.Presentation.URL {
+		t.Fatalf("the preloaded address is the render plan's: %+v", p.Presentation.AudioRender)
+	}
+	private := playingQueue(t, f, "preload-queue-00002")
+	if hidden := prepareNext(t, f, private, "preload-prep-000002"); hidden.Preload || hidden.Presentation.URL != "" {
+		t.Fatalf("the default preparation still hides its address: %+v", hidden)
+	}
+}
+
 func TestPlaybackV1QueueTransitionIsPrivateUntilCommitted(t *testing.T) {
 	f, player := renderingFixture(t, 3)
 	q := playingQueue(t, f, "transition-queue-00001")

@@ -24,15 +24,20 @@ import (
 type PrepareNextRequest struct {
 	SessionID         string `json:"sessionId"`
 	SessionGeneration int    `json:"sessionGeneration"`
+	// Preload asks for the prepared presentation's media address so a receiver can buffer the
+	// next entry before the boundary. The entry is still not current until :commit-next.
+	Preload bool `json:"preload,omitempty"`
 }
 
 // PreparedNext is a private preparation of the next entry's audio: its
 // presentation serves the render window at frame 0 only until commit.
 type PreparedNext struct {
-	Token        string       `json:"token"`
-	ExpiresAt    string       `json:"expiresAt"`
-	EntryID      string       `json:"entryId"`
-	ItemID       string       `json:"itemId"`
+	Token     string `json:"token"`
+	ExpiresAt string `json:"expiresAt"`
+	EntryID   string `json:"entryId"`
+	ItemID    string `json:"itemId"`
+	// Preload reports that Presentation carries its media address for buffering only.
+	Preload      bool         `json:"preload,omitempty"`
 	Presentation Presentation `json:"presentation"`
 }
 
@@ -130,11 +135,13 @@ func (p preparedRow) answer() (PreparedNext, error) {
 	if err := json.Unmarshal([]byte(p.presentation), &view); err != nil {
 		return PreparedNext{}, err
 	}
-	if view.AudioRender.playable() && view.URL != view.AudioRender.URL {
+	var stored storedRequest
+	_ = json.Unmarshal([]byte(p.request), &stored)
+	if !stored.Preload && view.AudioRender.playable() && view.URL != view.AudioRender.URL {
 		view.URL = ""
 	}
 	view.Subtitles = []SubtitleFile{}
-	return PreparedNext{Token: p.token, ExpiresAt: fmtMs(time.UnixMilli(p.expires)), EntryID: p.entry, ItemID: p.item, Presentation: view}, nil
+	return PreparedNext{Token: p.token, ExpiresAt: fmtMs(time.UnixMilli(p.expires)), EntryID: p.entry, ItemID: p.item, Preload: stored.Preload, Presentation: view}, nil
 }
 
 // cancelPreparedTx cancels a queue's (or a session's) outstanding preparations
@@ -251,6 +258,8 @@ func (s *Service) PrepareNext(ctx context.Context, c Caller, id, ifMatch, key st
 	var prior storedRequest
 	_ = json.Unmarshal([]byte(r.request), &prior)
 	stored := storedRequest{Quality: prior.Quality, Network: prior.Network}.normalized()
+	// The preparation's own flag, kept beside the playback request commit consumes.
+	stored.Preload = req.Preload
 	token := newID("pn_")
 	expires := now.Add(preparationLifetime)
 	media, view, err := s.present(ctx, c, presentationTarget{item: item, request: stored, requestID: "v1." + token, subtitleOp: "v1-" + token, privateFor: r.media, privateUntilMs: expires.UnixMilli()})

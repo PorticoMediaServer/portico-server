@@ -211,6 +211,8 @@
   var playback = null;
   var shuttingDown = false, activeRequests = new Set();
   var mediaAddresses = new Map(); // bounded receiver-private addresses; never placed in CAF status
+  // The next entry prepared over the v1 queue contract, held for gapless preload until commit.
+  var preparedNext = null;
   function mediaAddress(request) { return request && request.media ? mediaAddresses.get(request.media.contentId) || '' : ''; }
   function queuePath(id) { return '/v1/queues/' + encodeURIComponent(id); }
   function queueRef(value) { return value && typeof value.queueId === 'string' && typeof value.entryId === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(value.queueId) && /^[A-Za-z0-9._:-]{1,128}$/.test(value.entryId) ? {queueId:value.queueId,entryId:value.entryId} : null; }
@@ -583,10 +585,9 @@
   function track(session) {
     return {id: session.id, revision: session.revision, itemId: session.itemId || '', generation: session.presentation.generation, serverSeek: serverSeek(session), queue: queueRef(session.queue)};
   }
-  /** CAF's load request for a session's presentation. */
-  function loadRequest(session, image, autoplay) {
-    var p = session.presentation;
-    if (typeof p.url !== 'string' || !/^\/v1\/media\/[^\\\s]+$/.test(p.url)) throw new Error('invalid_media_url');
+  /** One presentation's CAF media, with its receiver-private address mapped. */
+  function playableMedia(p) {
+    if (!p || typeof p.url !== 'string' || !/^\/v1\/media\/[^\\\s]+$/.test(p.url)) return null;
     var container = String(p.container || '');
     // The server may deliver an audio conversion through the presentation URL while
     // its general delivery decision still describes the source container. Only the
@@ -604,9 +605,17 @@
       media.contentType = 'application/x-mpegurl';
       media.hlsSegmentFormat = media.hlsVideoSegmentFormat = container === 'fmp4_hls' ? 'FMP4' : 'TS';
     } else {
-      if (!directTypes[container]) throw new Error('unsupported_media_container');
+      if (!directTypes[container]) return null;
       media.contentType = audioOnly && ['mp4','mov','m4v'].indexOf(container)>=0 ? 'audio/mp4' : audioOnly && container==='webm' ? 'audio/webm' : directTypes[container];
     }
+    return media;
+  }
+
+  /** CAF's load request for a session's presentation. */
+  function loadRequest(session, image, autoplay) {
+    var p = session.presentation;
+    var media = playableMedia(p);
+    if (!media) throw new Error('invalid_media_url');
     // Title and artwork for CAF's standard player, the Google TV ambient UI and the Google Home app (CAST-01 §2).
     var metadata = castMetadata(meta, image);
     if (metadata) media.metadata = metadata;
@@ -617,11 +626,52 @@
     return load;
   }
 
+  /**
+   * Ask the server to prepare the next entry and hold its media in CAF's queue behind this one,
+   * so the boundary can be crossed without a load. The entry is not current until :commit-next;
+   * any refusal leaves today's end-of-stream advance in charge.
+   */
+  async function preloadNext(owner, load) {
+    preparedNext = null;
+    if (!owner || !owner.queue || !load) return;
+    var head = (await api(queuePath(owner.queue.queueId), {method: 'GET'})).body;
+    if (playback !== owner || !head.next || !head.next.available) return;
+    var answer = await api(queuePath(owner.queue.queueId) + ':prepare-next', {
+      body: {sessionId: owner.id, sessionGeneration: owner.generation, preload: true},
+      headers: {'If-Match': head.revision, 'Idempotency-Key': token(16)}});
+    var prepared = answer.body;
+    if (playback !== owner || !prepared || !prepared.preload) return;
+    var media = playableMedia(prepared.presentation);
+    if (!media) return;
+    preparedNext = {token: prepared.token, contentId: media.contentId, entryId: prepared.entryId, itemId: prepared.itemId};
+    if (load.queueData && Array.isArray(load.queueData.items) && load.queueData.items.length === 1) {
+      load.queueData.items.push({media: media, autoplay: true, startTime: 0, preloadTime: 10});
+    }
+  }
+
+  /** CAF's current media id, or empty when it cannot say. */
+  function currentContentId() {
+    try { return manager && typeof manager.getMediaInformation === 'function' && manager.getMediaInformation() ? manager.getMediaInformation().contentId || '' : ''; }
+    catch (_) { return ''; }
+  }
+
+  /** Make the prepared entry current once CAF has actually crossed into its media. */
+  async function commitPrepared() {
+    var owner = playback, held = preparedNext;
+    if (!owner || !owner.queue || !held) return;
+    var answer = await api(queuePath(owner.queue.queueId) + ':commit-next', {body: {token: held.token}});
+    if (playback !== owner || preparedNext !== held || !answer.body.session) return;
+    preparedNext = null;
+    playback = track(answer.body.session);
+    reportSeq = 0; reportFailures = 0;
+    showPlaying(); scheduleReport(0); broadcast();
+  }
+
   async function stopPlayback(ended) {
     clearTimeout(reportTimer); clearTimeout(bufferingTimer);
     if (!playback) return;
     var id = playback.id, at = Math.round(position() * 1000);
-    playback = null; meta = null;
+    playback = null; meta = null; preparedNext = null;
     if (manager) mediaCommand('STOP');
     mediaAddresses.clear();
     showIdle();
@@ -669,6 +719,7 @@
     catch (e) { await api(sessionPath(started.id), {method:'DELETE'}).catch(function(){}); throw e; }
     playback = track(started);
     reportSeq = 0; reportFailures = 0;
+    await preloadNext(playback, load).catch(function(){ preparedNext = null; });
     return load;
   }
   function startPlayback(itemId,startSeconds,identity,subtitleTrackId,queue) { recoveries=0; return serial(async function(){try{var load=await resolvePlayback(itemId,startSeconds,identity,subtitleTrackId,queue);await loadMedia(load);showPlaying();scheduleReport(0);refreshCatalogueDisplay({id:playback.id,itemId:playback.itemId,presentation:{generation:playback.generation}},load.media.contentId);return playback;}catch(e){if(playback)await stopPlayback().catch(function(){});showError(e&&(e.code||e.message));throw e;}}); }
@@ -687,7 +738,7 @@
     playback=track(current);meta=null;reportSeq=0;reportFailures=0;recoveries=0;
     showLoading(null); // Never label the new occurrence with the old title or artwork.
     var load;
-    try { load=loadRequest(current,'',true);await loadMedia(load); }
+    try { load=loadRequest(current,'',true);await preloadNext(playback,load).catch(function(){preparedNext=null;});await loadMedia(load); }
     catch(e) { await stopPlayback().catch(function(){});showError(e&&(e.code||e.message));throw e; }
     showPlaying();scheduleReport(0);refreshCatalogueDisplay(current,load.media.contentId);broadcast();return true;
   }
@@ -971,6 +1022,8 @@
       serial(async function(){
         // Duplicate/stale completion queued before a new occurrence cannot end it.
         if(playback!==owner)return;
+        // The queued entry itself finished: commit it if CAF crossed without a status edge.
+        if(preparedNext&&currentContentId()===preparedNext.contentId){try{await commitPrepared();return;}catch(e){preparedNext=null;}}
         if(await advanceQueue())return;
         try{await report('ended');}finally{notice('');await stopPlayback(true);}
       }).catch(function(){serial(function(){if(playback===owner)return stopPlayback(true);}).catch(function(){});});
@@ -984,6 +1037,11 @@
     // A state change or a completed seek is reported at once.
     [events.PAUSE,events.SEEKED].filter(Boolean).forEach(function(name){manager.addEventListener(name,function(){playingView(true);scheduleReport(0);broadcast();});});
     [events.TIME_UPDATE,events.DURATION_CHANGE,events.MEDIA_STATUS].filter(Boolean).forEach(function(name){manager.addEventListener(name,function(){playingView();});});
+    // CAF crosses into the queued entry itself; the server's commit follows the real boundary.
+    manager.addEventListener(events.MEDIA_STATUS,function(){
+      if(!preparedNext||currentContentId()!==preparedNext.contentId)return;
+      serial(commitPrepared).catch(function(){preparedNext=null;});
+    });
     context.addEventListener(cast.framework.system.EventType.SENDER_DISCONNECTED,function(e){
       if (e && e.senderId && e.senderId === controllerSender) {
         controllerPresent = false;

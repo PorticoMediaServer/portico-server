@@ -366,6 +366,9 @@ type storedRequest struct {
 	// Carry is the audio and subtitle choice this playback carries from the
 	// queue entry before (nil: none; the Settings decide).
 	Carry *TrackCarry `json:"carry,omitempty"`
+	// Preload is set only on a prepared row's stored request: it asked for the prepared
+	// presentation's media address. Older rows omit it and keep the private answer.
+	Preload bool `json:"preload,omitempty"`
 }
 
 // normalized is a stored request with a quality mode: one stored before
