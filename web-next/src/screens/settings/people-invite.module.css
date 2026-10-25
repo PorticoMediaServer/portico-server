@@ -15,8 +15,8 @@
 
 .fieldset legend {
   padding: 0 0 6px;
-  font-size: 13px;
-  font-weight: 650;
+  font-size: var(--type-caption-size);
+  font-weight: var(--type-caption-strong-weight);
   color: var(--color-text-secondary);
 }
 
@@ -24,11 +24,11 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 14px;
+  font-size: var(--type-body-size);
 }
 
 .formNote {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--type-caption-size);
   color: var(--color-text-tertiary);
 }
