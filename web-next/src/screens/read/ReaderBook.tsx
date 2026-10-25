@@ -62,6 +62,9 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
   const zoomAnchor = useRef<HTMLButtonElement>(null), directionAnchor = useRef<HTMLButtonElement>(null);
   const fixed = publication.format !== 'epub';
   const [hits, setHits] = useState<readonly ReaderSearchResult[]>([]), [searching, setSearching] = useState(false), [searchComplete, setSearchComplete] = useState(false), [currentHit, setCurrentHit] = useState<string>();
+  const [hitsQuery, setHitsQuery] = useState('');
+  const queryRef = useRef(query); queryRef.current = query;
+  const visibleHits = hitsQuery === query ? hits : [];
   const anchor = useRef<HTMLButtonElement>(null);
   const contentsError = useRef(reportError); contentsError.current = reportError;
   useEffect(() => {
@@ -93,35 +96,36 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
     if (presentation === 'phone') setPanel(undefined);
   };
   useEffect(() => {
-    setCurrentHit(undefined); setSearchComplete(false);
+    setCurrentHit(undefined); setSearchComplete(false); setHitsQuery(query);
     if (!active || !query.trim()) {setHits([]); setSearching(false); return;}
     const life = new AbortController(); let queryCurrent = true;
     setSearching(true); setHits([]);
     void (async () => {
       const found: ReaderSearchResult[] = [];
       for await (const hit of controller.search(query, {signal: life.signal, limit: 100})) {
-        if (!queryCurrent || !authority.isCurrent()) return;
+        if (!queryCurrent || queryRef.current !== query || !authority.isCurrent()) return;
         found.push(hit); setHits([...found]);
       }
       // A rejected or retired iterator never establishes a complete result count.
       // At the core's limit, exhaustion is bounded rather than a book-wide total.
-      if (queryCurrent && authority.isCurrent() && !life.signal.aborted && found.length < 100) setSearchComplete(true);
+      if (queryCurrent && queryRef.current === query && authority.isCurrent() && !life.signal.aborted && found.length < 100) setSearchComplete(true);
     })().catch(error => {if (queryCurrent && authority.isCurrent()) reportError(error);}).finally(() => {if (queryCurrent) setSearching(false);});
     return () => {queryCurrent = false; life.abort();};
   }, [controller, authority, active, query, reportError]);
   const stepSearch = (direction: 'previous' | 'next') => {
-    const index = readingSearchStepIndex(hits.length, hits.findIndex(hit => hit.id === currentHit), direction);
-    const next = index === undefined ? undefined : hits[index];
+    if (queryRef.current !== query) return;
+    const index = readingSearchStepIndex(visibleHits.length, visibleHits.findIndex(hit => hit.id === currentHit), direction);
+    const next = index === undefined ? undefined : visibleHits[index];
     if (next) {setCurrentHit(next.id); navigate(next.location);}
   };
   const currentContentsId = snapshot.status === 'ready' && snapshot.sourceId === publication.source.id && snapshot.sourceRevision === publication.source.revision
     ? readerCurrentContentsId(snapshot.toc, snapshot.location) : undefined;
   const contents = (items: readonly ReaderTocItem[]): readonly ReaderContentsEntry[] => items.map(item => ({id: item.id, label: item.label,
     page: item.location.pageLabel, current: item.id === currentContentsId, onNavigate: () => navigate(item.location), children: item.children ? contents(item.children) : undefined}));
-  const searchHits: ReaderSearchHit[] = hits.map(hit => {
+  const searchHits: ReaderSearchHit[] = visibleHits.map(hit => {
     const start = hit.excerpt.toLocaleLowerCase().indexOf(query.toLocaleLowerCase());
     const context = start < 0 ? [{text: hit.excerpt}] : [{text: hit.excerpt.slice(0, start)}, {text: hit.excerpt.slice(start, start + query.length), match: true}, {text: hit.excerpt.slice(start + query.length)}];
-    return {id: hit.id, chapter: hit.chapter, page: hit.location.pageLabel, context, onNavigate: () => {setCurrentHit(hit.id); navigate(hit.location);}};
+    return {id: hit.id, chapter: hit.chapter, page: hit.location.pageLabel, context, onNavigate: () => {if (queryRef.current !== query) return; setCurrentHit(hit.id); navigate(hit.location);}};
   });
   const panelContent = !active ? undefined : panel === 'contents' ? (fixed
     ? <ReaderPanel label={t('next.reader.pagesStrip')} tabs={[...(snapshot.toc.length > 0 ? [{id: 'contents', label: t('next.reader.contents')}] : []), {id: 'pages', label: t('next.reader.pagesStrip')}]}
@@ -133,7 +137,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
       selected="contents" onSelect={() => {}} onClose={() => setPanel(undefined)}><ReaderContents entries={contents(snapshot.toc)}/></ReaderPanel>)
     : panel === 'search' ? <ReaderPanel label={t('next.reader.search')} tabs={[{id: 'search', label: t('next.reader.search')}]}
       selected="search" onSelect={() => {}} onClose={() => setPanel(undefined)}><ReaderSearch query={query} onQuery={setQuery} hits={searchHits} current={currentHit} loading={searching}
-        resultSummary={searchComplete && query.trim() ? t('next.reader.matches', {count: hits.length}) : undefined}
+        resultSummary={searchComplete && hitsQuery === query && query.trim() ? t('next.reader.matches', {count: visibleHits.length}) : undefined}
         onSearchAll={query.trim() ? () => {if (!authority.isCurrent() || !query.trim()) return; void router.navigate({to: '/search', search: {q: query.trim()}}).catch(reportError);} : undefined}
         onStep={stepSearch}
         copy={{search: t('next.reader.search'), clear: t('next.reader.clear'), move: t('next.reader.move'), wholeWords: t('next.reader.wholeWords'), searchAll: t('next.reader.searchAll')}}/></ReaderPanel>
@@ -152,7 +156,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
       chapter: value.location?.chapter, pages: readerPagePosition(value.location, value.metadata?.pageCount),
       remainingInSection: value.location?.pagesLeftInSection === undefined ? undefined : t('next.reader.sectionRemaining', {count: value.location.pagesLeftInSection}),
       percent: value.location ? defaultI18n.percent(value.location.progression) : undefined,
-      searchNavigation: active && value.status === 'ready' && value.sourceId === publication.source.id && value.sourceRevision === publication.source.revision && presentation === 'phone' && currentHit && hits.some(hit => hit.id === currentHit)
+      searchNavigation: active && value.status === 'ready' && value.sourceId === publication.source.id && value.sourceRevision === publication.source.revision && presentation === 'phone' && currentHit && visibleHits.some(hit => hit.id === currentHit)
         ? <ReaderMatchNavigation query={query} onStep={stepSearch} onClose={() => setQuery('')}/> : undefined, panel: panelContent, panelReflows: layout.panelReflows(panel),
       fixedPageStrip: fixed ? <FixedPageStrip controller={controller} authority={authority} format={publication.format} reportError={code => reportError({code})}/> : undefined,
       onPanelDismiss: () => setPanel(undefined), actions: [
