@@ -17,6 +17,7 @@ import (
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/remotemedia"
 	"portico.local/server/internal/storage"
 )
 
@@ -105,7 +106,15 @@ func (s *Service) ListSourceFolders(ctx context.Context, identities *identity.Se
 	var listing folderListing
 	switch row.Kind {
 	case SourceWebDAV:
-		listing, err = s.listDAVFolders(ctx, row, b, generation, relative, showHidden)
+		// The saved-source folder list is the same direct WebDAV provider path
+		// as a read, so it takes the source's shared operation permit; the
+		// listing also drains or queues behind an existing-source connection
+		// test instead of running beside it.
+		ops, opsErr := s.sourceOperations(ctx, row.ID, generation)
+		if opsErr != nil {
+			return empty, opsErr
+		}
+		listing, err = s.listDAVFolders(ctx, row, b, generation, relative, showHidden, ops)
 	default:
 		// A mounted remote is a normalized mount on this server; its folders are
 		// read through a root that cannot leave the source or follow a symlink.
@@ -149,7 +158,7 @@ func (s *Service) ListSourceFolders(ctx context.Context, identities *identity.Se
 // provider response itself is bounded by the DAV parser (4 MiB of XML); this
 // loop additionally stops after a bounded number of qualifying folders, and
 // reports truncation when it does.
-func (s *Service) listDAVFolders(ctx context.Context, row Source, b binding, generation, relative string, showHidden bool) (folderListing, error) {
+func (s *Service) listDAVFolders(ctx context.Context, row Source, b binding, generation, relative string, showHidden bool, ops *remotemedia.OperationBudget) (folderListing, error) {
 	d, current, err := s.dav(ctx, row.ID)
 	if err != nil {
 		s.health(b, generation, err)
@@ -160,7 +169,12 @@ func (s *Service) listDAVFolders(ctx context.Context, row Source, b binding, gen
 	}
 	deadline, cancel := context.WithTimeout(ctx, 35*time.Second)
 	defer cancel()
-	page, err := d.List(deadline, relative)
+	gated, grelease, gateErr := ops.Enter(deadline)
+	if gateErr != nil {
+		return folderListing{}, sourceOpsError(ctx, gateErr)
+	}
+	page, err := d.List(gated, relative)
+	grelease()
 	if err != nil {
 		s.health(b, generation, err)
 		return folderListing{}, mapError(err)

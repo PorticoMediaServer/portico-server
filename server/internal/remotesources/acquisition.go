@@ -37,6 +37,7 @@ type object struct {
 	cached, ceiling, floor     int64
 	terminal                   error
 	rangeCache                 *rangeCache
+	sourceOps                  *remotemedia.OperationBudget
 }
 
 func (s *Service) Acquire(ctx context.Context, path, lane string) (storage.RemoteObject, error) {
@@ -102,20 +103,39 @@ func (s *Service) Acquire(ctx context.Context, path, lane string) (storage.Remot
 		if err != nil {
 			return nil, err
 		}
-		entry, e := d.Stat(ctx, relative)
+		gate, gateErr := s.sourceOperations(ctx, b.ID, o.generation)
+		if gateErr != nil {
+			return nil, gateErr
+		}
+		o.sourceOps = gate
+		// One permit covers the setup pair: the stat and the version discovery
+		// both reach the provider, and a direct read must count against the
+		// source's saved connection ceiling exactly as a served read does.
+		entry, e := func() (remotemedia.DAVEntry, error) {
+			gated, grelease, gerr := gate.Enter(ctx)
+			if gerr != nil {
+				return remotemedia.DAVEntry{}, sourceOpsError(ctx, gerr)
+			}
+			defer grelease()
+			found, statErr := d.Stat(gated, relative)
+			if statErr != nil {
+				return remotemedia.DAVEntry{}, mapError(statErr)
+			}
+			if found.Directory || found.Size <= 0 {
+				return remotemedia.DAVEntry{}, storage.ErrRemoteRange
+			}
+			o.snapshot = davSnapshot(found, b.Root)
+			o.conditional, statErr = d.OpenVersion(gated, relative, remoteVersionScope(b, o.generation), o.snapshot.ObjectID)
+			if errors.Is(statErr, mediasource.ErrIdentityRequired) || errors.Is(statErr, remotemedia.ErrRepresentationRange) {
+				return remotemedia.DAVEntry{}, storage.ErrRemoteRange
+			}
+			if statErr != nil {
+				return remotemedia.DAVEntry{}, mapError(statErr)
+			}
+			return found, nil
+		}()
 		if e != nil {
-			return nil, mapError(e)
-		}
-		if entry.Directory || entry.Size <= 0 {
-			return nil, storage.ErrRemoteRange
-		}
-		o.snapshot = davSnapshot(entry, b.Root)
-		o.conditional, err = d.OpenVersion(ctx, relative, remoteVersionScope(b, o.generation), o.snapshot.ObjectID)
-		if errors.Is(err, mediasource.ErrIdentityRequired) || errors.Is(err, remotemedia.ErrRepresentationRange) {
-			return nil, storage.ErrRemoteRange
-		}
-		if err != nil {
-			return nil, mapError(err)
+			return nil, e
 		}
 		ev := o.conditional.Version().Evidence()
 		if ev.Size != entry.Size || ev.Revision != entry.ETag {
@@ -226,12 +246,18 @@ func (o *object) Observe(parent context.Context) (storage.Snapshot, error) {
 		return storage.Snapshot{}, err
 	}
 	if o.conditional != nil {
-		response, e := o.conditional.Open(ctx, "GET", "bytes=0-0")
+		gated, grelease, gateErr := o.sourceOps.Enter(ctx)
+		if gateErr != nil {
+			return storage.Snapshot{}, sourceOpsError(ctx, gateErr)
+		}
+		response, e := o.conditional.Open(gated, "GET", "bytes=0-0")
 		if e != nil {
+			grelease()
 			return storage.Snapshot{}, mapError(e)
 		}
 		_, err = io.Copy(io.Discard, response.Body)
 		closeErr := response.Body.Close()
+		grelease()
 		if err == nil {
 			err = closeErr
 		}
@@ -274,12 +300,20 @@ func (o *object) OpenRange(parent context.Context, offset, length int64) (io.Rea
 		} else if cached != nil {
 			return cached, nil
 		}
-		response, e := o.conditional.Open(ctx, http.MethodGet, fmt.Sprintf("bytes=%d-%d", offset, offset+length-1))
+		// A provider range read holds one permit until its body closes; a cache
+		// hit above made no provider request and was not charged.
+		gated, grelease, gateErr := o.sourceOps.Enter(ctx)
+		if gateErr != nil {
+			release()
+			return nil, sourceOpsError(ctx, gateErr)
+		}
+		response, e := o.conditional.Open(gated, http.MethodGet, fmt.Sprintf("bytes=%d-%d", offset, offset+length-1))
 		if e != nil {
+			grelease()
 			release()
 			return nil, mapError(e)
 		}
-		return &readCloser{Reader: response.Body, close: func() error { err := response.Body.Close(); release(); return err }}, nil
+		return &readCloser{Reader: response.Body, close: func() error { err := response.Body.Close(); grelease(); release(); return err }}, nil
 	}
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -361,13 +395,20 @@ func (o *object) fromRangeCache(ctx context.Context, offset, length int64, relea
 		return nil, nil
 	}
 	if end > cache.guard.cached {
-		response, err := o.conditional.Open(ctx, http.MethodGet, fmt.Sprintf("bytes=%d-%d", cache.guard.cached, end-1))
+		gated, grelease, gateErr := o.sourceOps.Enter(ctx)
+		if gateErr != nil {
+			cache.guard.mu.Unlock()
+			return nil, sourceOpsError(ctx, gateErr)
+		}
+		response, err := o.conditional.Open(gated, http.MethodGet, fmt.Sprintf("bytes=%d-%d", cache.guard.cached, end-1))
 		if err != nil {
+			grelease()
 			cache.guard.mu.Unlock()
 			return nil, mapError(err)
 		}
 		appendErr := cache.append(ctx, response.Body, end)
 		closeErr := response.Body.Close()
+		grelease()
 		if appendErr != nil {
 			cache.guard.mu.Unlock()
 			return nil, appendErr
@@ -424,3 +465,19 @@ type readCloser struct {
 }
 
 func (r *readCloser) Close() error { r.once.Do(func() { r.err = r.close() }); return r.err }
+
+// sourceOpsError keeps a retired source gate distinct from the caller's own
+// cancellation: the wait ends with the generation, not with a policy refusal,
+// so a direct read reports the same changed-source error as a served one.
+func sourceOpsError(ctx context.Context, err error) error {
+	if err == nil {
+		return nil
+	}
+	if ctx != nil && ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return storage.ErrRemoteChanged
+	}
+	return err
+}

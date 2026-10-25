@@ -71,6 +71,8 @@ type Service struct {
 	cacheReconcile      struct{ source, key string }
 	nativeListings      map[string]*nativeListing
 	nativeClosed        bool
+	opsMu               sync.Mutex
+	opsGates            map[string]*sourceOpsGate
 	inventory, playback chan struct{}
 	resolver            remotemedia.Resolver
 }
@@ -386,6 +388,7 @@ func (s *Service) PlaybackActive(id string) bool {
 	return false
 }
 func (s *Service) invalidate(id string) {
+	s.retireSourceOperations(id)
 	s.stopServeProcess(id)
 	s.stopReadLeases(id, storage.ErrRemoteChanged, nil)
 	s.mu.Lock()
@@ -393,6 +396,186 @@ func (s *Service) invalidate(id string) {
 	for _, r := range s.active[id] {
 		r.cancel()
 	}
+}
+
+// One source generation owns one operation budget. The rclone serve process,
+// direct WebDAV reads, direct saved-source folder lists and an existing-source
+// connection test all take the same permits, so the saved Connections ceiling
+// is one aggregate bound and a test's exclusive hold drains every path. The
+// budget is rebuilt when the generation or the saved profile revision moves,
+// cancelled on retirement, and never shared across sources. Capacity only:
+// saved TPS/BPS pacing stays with the rclone serve process for now.
+//
+// A gate can also be stopping: a connection test has released its hold but its
+// temporary process has not finished its physical Wait. stopping gates are kept
+// (cancelled, retired) so no caller builds an independent budget until the
+// test's own cleanup closes that barrier.
+type sourceOpsGate struct {
+	generation string
+	revision   int64
+	budget     *remotemedia.OperationBudget
+	cancel     context.CancelFunc
+	stopping   chan struct{}
+	retired    bool
+}
+
+// sourceOperations gives a caller the source's shared operation budget, but
+// only after any registered connection test has finished physically. It reuses
+// the existing test registration and stopping barrier rather than starting a
+// second gate while an exclusive hold is still cleaning up, and re-checks after
+// resolving so a test that registered meanwhile cannot be bypassed.
+func (s *Service) sourceOperations(ctx context.Context, source, generation string) (*remotemedia.OperationBudget, error) {
+	for {
+		if waited, err := s.waitSourceTest(ctx, source); err != nil {
+			return nil, err
+		} else if waited {
+			continue
+		}
+		budget, err := s.sourceOperationsNow(ctx, source, generation)
+		if err != nil {
+			return nil, err
+		}
+		if waited, err := s.waitSourceTest(ctx, source); err != nil {
+			return nil, err
+		} else if waited {
+			continue
+		}
+		return budget, nil
+	}
+}
+
+// sourceOperationsNow resolves or rebuilds the gate, waiting for any stopping
+// test on it to finish its physical stop first. The test that owns the current
+// registration reaches this before marking itself stopping.
+func (s *Service) sourceOperationsNow(ctx context.Context, source, generation string) (*remotemedia.OperationBudget, error) {
+	if s == nil || s.db == nil || source == "" || generation == "" {
+		return nil, storage.ErrRemoteConfig
+	}
+	for {
+		snapshot, err := dbwork.BeginSnapshot(ctx, s.db)
+		if err != nil {
+			return nil, err
+		}
+		current, err := observationGenerationTx(ctx, snapshot.Tx(), source)
+		if err == nil && current != generation {
+			err = storage.ErrRemoteChanged
+		}
+		var profile SourceReadProfile
+		if err == nil {
+			profile, err = SourceReadProfileTx(ctx, snapshot.Tx(), source)
+		}
+		snapshot.Rollback()
+		if err != nil {
+			return nil, err
+		}
+		s.opsMu.Lock()
+		gate := s.opsGates[source]
+		if gate != nil && gate.stopping != nil {
+			stopping := gate.stopping
+			s.opsMu.Unlock()
+			select {
+			case <-stopping:
+				// The test's temporary process has finished; resolve again.
+				continue
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+		if gate != nil && !gate.retired && gate.generation == generation && gate.revision == profile.Revision {
+			budget := gate.budget
+			s.opsMu.Unlock()
+			return budget, nil
+		}
+		life, cancel := context.WithCancel(context.Background())
+		budget := remotemedia.NewOperationBudget(life, profile.Limits.Connections)
+		if budget == nil {
+			cancel()
+			s.opsMu.Unlock()
+			return nil, storage.ErrRemoteConfig
+		}
+		if gate != nil {
+			gate.cancel()
+		}
+		if s.opsGates == nil {
+			s.opsGates = map[string]*sourceOpsGate{}
+		}
+		s.opsGates[source] = &sourceOpsGate{generation: generation, revision: profile.Revision, budget: budget, cancel: cancel}
+		s.opsMu.Unlock()
+		return budget, nil
+	}
+}
+
+// beginSourceTestStopping marks this exact budget as belonging to a test whose
+// physical stop is still pending. New callers wait on the returned barrier and
+// the test cleanup closes it only after the temporary process has been waited
+// for, never on hold cancellation alone.
+func (s *Service) beginSourceTestStopping(source string, budget *remotemedia.OperationBudget) (func(), error) {
+	s.opsMu.Lock()
+	gate := s.opsGates[source]
+	if gate == nil || gate.budget != budget || gate.stopping != nil {
+		s.opsMu.Unlock()
+		return nil, storage.ErrBusy
+	}
+	stopping := make(chan struct{})
+	gate.stopping = stopping
+	s.opsMu.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			s.opsMu.Lock()
+			if current := s.opsGates[source]; current == gate && current.stopping == stopping {
+				close(stopping)
+				current.stopping = nil
+			}
+			s.opsMu.Unlock()
+		})
+	}, nil
+}
+
+// retireSourceOperationsIfStale retires the gate only when its captured
+// profile revision differs from the committed one. A repeated same-revision
+// profile notification (an idempotent recovery or replay) must keep a matching
+// live budget, exactly as the serve lease is kept when lease.profile == profile.
+// Stopping-barrier custody is unchanged: a stale stopping gate is kept retired
+// until its cleanup closes the barrier.
+func (s *Service) retireSourceOperationsIfStale(source string, revision int64) {
+	s.opsMu.Lock()
+	if gate := s.opsGates[source]; gate != nil && gate.revision != revision {
+		gate.cancel()
+		if gate.stopping != nil {
+			gate.retired = true
+			s.opsMu.Unlock()
+			return
+		}
+		delete(s.opsGates, source)
+	}
+	s.opsMu.Unlock()
+}
+
+// retireSourceOperations ends this source's operation gate so waiters stop with
+// the generation. A stopping test's gate is kept, retired, until its cleanup
+// closes the barrier so no caller can build a fresh gate beside it.
+func (s *Service) retireSourceOperations(source string) {
+	s.opsMu.Lock()
+	if gate := s.opsGates[source]; gate != nil {
+		gate.cancel()
+		if gate.stopping != nil {
+			gate.retired = true
+			s.opsMu.Unlock()
+			return
+		}
+		delete(s.opsGates, source)
+	}
+	s.opsMu.Unlock()
+}
+
+func (s *Service) retireAllSourceOperations() {
+	s.opsMu.Lock()
+	for source, gate := range s.opsGates {
+		gate.cancel()
+		delete(s.opsGates, source)
+	}
+	s.opsMu.Unlock()
 }
 
 // Run reconciles mounts and sweeps the listing cache. Both are consequences of
@@ -405,6 +588,7 @@ func (s *Service) Run(ctx context.Context) {
 	}
 	defer s.stopServeProcesses()
 	defer s.stopNativeListings()
+	defer s.retireAllSourceOperations()
 	defer func() {
 		s.mu.Lock()
 		for _, reads := range s.active {

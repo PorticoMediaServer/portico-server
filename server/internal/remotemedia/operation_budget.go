@@ -54,6 +54,15 @@ func (b *OperationBudget) Context() context.Context {
 	return b.life
 }
 
+// Enter admits one provider operation for this budget and returns the permit
+// context plus its release. Release it exactly once, after the operation and
+// any response body it owns end. A nested fence inside the same permit reuses
+// it, exactly as the source process's own callers do; the permit is resource
+// custody only, never actor, target or content authority.
+func (b *OperationBudget) Enter(ctx context.Context) (context.Context, func(), error) {
+	return b.enter(ctx)
+}
+
 func (b *OperationBudget) enter(ctx context.Context) (context.Context, func(), error) {
 	if b == nil || b.life == nil || b.capacity < 1 || ctx == nil {
 		return nil, nil, ErrPolicy

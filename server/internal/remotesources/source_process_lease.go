@@ -268,6 +268,11 @@ func (s *Service) ReadProfileCommitted(ctx context.Context, source string, revis
 }
 
 func (s *Service) retireReadProfile(source string, profile SourceReadProfile) {
+	// The profile revision is part of the shared budget's identity. Retire it
+	// only when the committed revision actually moved, mirroring the serve
+	// lease's own conditional retirement so a same-revision replay keeps a
+	// matching live budget (and its StartServe after-function) intact.
+	s.retireSourceOperationsIfStale(source, profile.Revision)
 	s.serveMu.Lock()
 	if lease := s.serveLeases[source]; lease != nil && lease.profile != profile {
 		lease.cancel()

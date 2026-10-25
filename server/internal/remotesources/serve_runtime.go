@@ -364,7 +364,17 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 	if metadata == endpoint {
 		return nil, storage.ErrBusy
 	}
-	spec := rcloneprogram.ServeCommandSpec{SourceID: slot.source, SourceGeneration: slot.generation, ApprovedProgramDigest: material.ApprovedProgramDigest, PrivateDirectory: s.private, Configuration: material.Configuration, Remote: material.Remote, Port: endpoint, MetadataPort: metadata, Username: identity.Token(), Password: identity.Token(), Connections: slot.profile.Limits.Connections, RequestsPerSecond: slot.profile.Limits.RequestsPerSecond, BytesPerSecond: slot.profile.Limits.BytesPerSecond, SequentialReads: slot.sequential,
+	// The serve process shares this source's one operation budget with direct
+	// reads, folder lists and existing-source tests. StartServe requires the
+	// budget capacity to equal the profile limit it was created from.
+	ops, err := s.sourceOperations(ctx, slot.source, slot.generation)
+	if err != nil {
+		return nil, err
+	}
+	if ops.Counts().Capacity != slot.profile.Limits.Connections {
+		return nil, storage.ErrRemoteChanged
+	}
+	spec := rcloneprogram.ServeCommandSpec{SourceID: slot.source, SourceGeneration: slot.generation, ApprovedProgramDigest: material.ApprovedProgramDigest, PrivateDirectory: s.private, Configuration: material.Configuration, Remote: material.Remote, Port: endpoint, MetadataPort: metadata, Username: identity.Token(), Password: identity.Token(), Connections: slot.profile.Limits.Connections, RequestsPerSecond: slot.profile.Limits.RequestsPerSecond, BytesPerSecond: slot.profile.Limits.BytesPerSecond, SharedOperations: ops, SequentialReads: slot.sequential,
 		DirCacheSeconds: slot.transport.DirCacheSeconds, ReadBufferBytes: slot.transport.ReadBufferBytes,
 		ConnectTimeoutSeconds: slot.transport.ConnectTimeoutSeconds, IdleTimeoutSeconds: slot.transport.IdleTimeoutSeconds,
 		Retries: slot.transport.Retries, LowLevelRetries: slot.transport.LowLevelRetries,

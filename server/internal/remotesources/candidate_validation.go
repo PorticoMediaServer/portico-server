@@ -40,8 +40,14 @@ func (s *Service) waitSourceTest(ctx context.Context, source string) (bool, erro
 	}
 }
 
-func (s *Service) beginCandidateTest(ctx context.Context, source string, limits ReadLimits) (*remotemedia.ExclusiveTest, func(), error) {
-	if source == "" {
+// beginCandidateTestAt takes one saved source's shared operation budget for an
+// existing-source connection test. Its exclusive hold drains and queues every
+// path that touches the source: the serve process, direct WebDAV reads, saved
+// folder lists and the temporary serve. generation is the generation the
+// candidate was authorized against; a moved source fails closed.
+func (s *Service) beginCandidateTestAt(ctx context.Context, source, generation string, limits ReadLimits) (*remotemedia.ExclusiveTest, func(), error) {
+	cold := source == ""
+	if cold {
 		source = identity.Token()
 	}
 	s.serveMu.Lock()
@@ -81,10 +87,10 @@ func (s *Service) beginCandidateTest(ctx context.Context, source string, limits 
 		finish()
 		return nil, nil, storage.ErrBusy
 	}
-	budget := remotemedia.NewOperationBudget(life, limits.Connections)
-	if process != nil {
+	var budget *remotemedia.OperationBudget
+	if !cold {
 		var err error
-		budget, err = process.SharedOperations(ctx)
+		budget, err = s.sourceOperationsNow(ctx, source, generation)
 		if err != nil {
 			finish()
 			return nil, nil, err
@@ -94,18 +100,67 @@ func (s *Service) beginCandidateTest(ctx context.Context, source string, limits 
 			return nil, nil, storage.ErrRemoteChanged
 		}
 	}
+	if process != nil {
+		shared, err := process.SharedOperations(ctx)
+		if err != nil {
+			finish()
+			return nil, nil, err
+		}
+		if budget == nil {
+			budget = shared
+		}
+		if shared != budget || shared.Counts().Capacity != limits.Connections {
+			finish()
+			return nil, nil, storage.ErrRemoteChanged
+		}
+	}
+	if budget == nil {
+		budget = remotemedia.NewOperationBudget(life, limits.Connections)
+	}
+	// Mark the shared budget as a stopping test before taking its exclusive
+	// hold. New callers then wait for this test's physical stop even if the
+	// hold itself expires first; only the cleanup below closes that barrier.
+	stopStopping := func() {}
+	if !cold {
+		var err error
+		stopStopping, err = s.beginSourceTestStopping(source, budget)
+		if err != nil {
+			finish()
+			return nil, nil, err
+		}
+	}
 	hold, err := budget.AcquireTest(life)
 	if err != nil {
+		stopStopping()
 		finish()
 		if errors.Is(err, remotemedia.ErrBusy) {
 			err = storage.ErrBusy
 		}
 		return nil, nil, err
 	}
-	// Queue retirement follows the bounded hold even if a caller is delayed in
-	// cleanup. Cancellation also stops its temporary process independently.
+	// The registration ends with the bounded hold, as before. The stopping
+	// barrier is cleared only by the caller's cleanup, which runs after the
+	// temporary process has been physically waited for.
 	context.AfterFunc(hold.Context(), finish)
-	return hold, func() { hold.Close(); finish() }, nil
+	return hold, func() { hold.Close(); stopStopping(); finish() }, nil
+}
+
+// beginCandidateTest derives the current generation for callers that have no
+// candidate receipt, then uses the same shared path.
+func (s *Service) beginCandidateTest(ctx context.Context, source string, limits ReadLimits) (*remotemedia.ExclusiveTest, func(), error) {
+	generation := ""
+	if source != "" {
+		snapshot, err := dbwork.BeginSnapshot(ctx, s.db)
+		if err != nil {
+			return nil, nil, err
+		}
+		generation, err = observationGenerationTx(ctx, snapshot.Tx(), source)
+		snapshot.Rollback()
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	return s.beginCandidateTestAt(ctx, source, generation, limits)
 }
 
 type candidateServeLease struct {
@@ -195,7 +250,7 @@ type candidateObserver func(context.Context, *rcloneprogram.ServeProcess, *remot
 // runCandidateServe holds source I/O exclusively through both phases. The
 // observer's second phase runs only after physical Wait, under the SAME hold.
 func (s *Service) runCandidateServe(ctx context.Context, source, generation string, profile SourceReadProfile, raw []byte, remote string, program rcloneprogram.Program, digest string, policy remotemedia.Policy, check func(context.Context) error, observe candidateObserver) error {
-	hold, finish, err := s.beginCandidateTest(ctx, source, profile.Limits)
+	hold, finish, err := s.beginCandidateTestAt(ctx, source, generation, profile.Limits)
 	if err != nil {
 		return err
 	}
