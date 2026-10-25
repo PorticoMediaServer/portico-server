@@ -280,6 +280,14 @@ const accountPages: readonly AuthoredPage[] = [
   },
   {
     id: 'music', title: 'settings.page.music', icon: 'music', sections: [
+      {id: 'audiobooks', title: 'settings.row.audiobookSpeed', rows: [
+        pref('audiobooks.skipBackMs', 'pref.label.playback.skipBackMs', {type: 'choice', choices: seconds(10, 15, 30, 60)}, {scope: 'profile'}),
+        pref('audiobooks.skipForwardMs', 'pref.label.playback.skipForwardMs', {type: 'choice', choices: seconds(15, 30, 60, 90)}, {scope: 'profile'}),
+        pref('audiobooks.resumeRewindMs', 'pref.label.audiobooks.resumeRewindMs', {type: 'choice', choices: [
+          {value: 0, label: 'pref.value.audiobooks.resumeRewindMs.0'},
+          ...[5, 15, 30].map(count => ({value: count * 1000, label: 'pref.value.audiobooks.resumeRewindMs.earlier' as MessageId, labelValues: {count}})),
+        ]}, {scope: 'profile'}),
+      ]},
       {id: 'sound', rows: [
         pref('music.audioNormalization', 'settings.row.volumeLeveling', {type: 'choice', choices: (['off', 'track', 'album'] as const).map(value => ({value, label: `pref.value.music.audioNormalization.${value}` as MessageId}))}, {help: 'settings.help.volumeLeveling', needs: c => c.audioEffects !== false}),
         pref('music.crossfadeMs', 'pref.label.music.crossfadeMs', {type: 'choice', choices: [{value: 0, label: 'pref.value.music.crossfadeMs.0'}, ...seconds(2, 4, 6, 8, 10, 12)]}, {help: 'pref.help.music.crossfadeMs', needs: c => c.audioEffects !== false}),

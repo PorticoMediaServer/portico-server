@@ -15,7 +15,7 @@ import (
 // PreferenceRegistryRevision changes whenever a field is added, removed, or its
 // domain moves. Clients render settings from the published registry, so the
 // revision is the only thing they have to compare between releases.
-const PreferenceRegistryRevision = "settings.14a.preferences.music.2"
+const PreferenceRegistryRevision = "settings.14a.preferences.audiobooks.3"
 
 const (
 	HomeLayoutMaxRows        = 64
@@ -152,6 +152,9 @@ var preferenceRegistry = func() []PreferenceField {
 		prefEnum("playback.recapSkip", "ask", skipModes, ScopeProfileServer),
 		prefNumberEnum("playback.defaultSpeed", 1, playbackSpeeds, ScopeProfileServer),
 		prefNumberEnum("audiobooks.defaultSpeed", 1, audiobookSpeeds, ScopeProfileServer),
+		prefIntEnum("audiobooks.skipBackMs", 15000, []int{10000, 15000, 30000, 60000}, ScopeProfileServer),
+		prefIntEnum("audiobooks.skipForwardMs", 30000, []int{15000, 30000, 60000, 90000}, ScopeProfileServer),
+		prefIntEnum("audiobooks.resumeRewindMs", 0, []int{0, 5000, 15000, 30000}, ScopeProfileServer),
 		prefIntEnum("playback.sleepTimerMinutes", 0, []int{0, 30, 60, 90, 120}, ScopeProfileServer),
 		prefInt("playback.startedThresholdPercent", 5, 1, 25, ScopeProfileServer),
 		prefInt("playback.playedThresholdPercent", 95, 75, 100, ScopeProfileServer),
