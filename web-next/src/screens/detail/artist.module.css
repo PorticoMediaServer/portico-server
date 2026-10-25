@@ -14,3 +14,5 @@
   .hero { gap: 16px; }
   .disc { width: 120px; height: 120px; }
 }
+.topSongs { margin: 0 0 32px; }
+.sectionHeading { margin: 0 0 12px; font-size: var(--type-row-heading-size); font-weight: var(--type-row-heading-weight); letter-spacing: var(--type-row-heading-tracking); color: var(--color-text); }

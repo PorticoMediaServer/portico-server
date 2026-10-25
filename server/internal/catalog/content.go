@@ -319,6 +319,16 @@ func (s *Service) contentOnce(request ContentRequest) (ContentEnvelope, error) {
 		if request.View == "collections" && lib.Kind != "movie" {
 			return out, requestinput.New("collections require a movie library")
 		}
+		if request.View == "artist" && (sectionID == "" || sectionID == "top_songs") {
+			rows, next, count, e := s.ArtistTopSongs(request.Profile, request.Library, request.EntityID, inner, request.Limit, request.Restrictions)
+			if e != nil {
+				return out, e
+			}
+			out.Sections = append(out.Sections, contentSection("top_songs", "list", "Top songs", rows, count, next))
+		}
+		if request.View == "artist" && sectionID != "" && sectionID != "items" {
+			return out, nil
+		}
 		entries, next, count, e := s.contentEntities(request, inner, request.Limit)
 		if e != nil {
 			return out, e

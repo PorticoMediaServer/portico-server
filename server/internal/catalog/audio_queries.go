@@ -1,6 +1,9 @@
 package catalog
 
 import (
+	"encoding/json"
+	"io"
+	"portico.local/server/internal/identity"
 	"portico.local/server/internal/requestinput"
 	"strconv"
 	"strings"
@@ -262,4 +265,112 @@ func (s *Service) BookChapters(book, cursor string, limit int) ([]BookChapter, s
 		next = out[len(out)-1].ID
 	}
 	return out, next, rows.Err()
+}
+
+// artistSongsPage is the bounded section cursor a page was issued at. The enclosing content
+// cursor is signed and scoped by the handler, and re-reads the revisions around it, so this value
+// carries only the exact ordering position it stopped at.
+type artistSongsPage struct {
+	Plays    int64  `json:"p"`
+	SortKey  string `json:"k"`
+	EntityID int64  `json:"i"`
+}
+
+func decodeArtistSongsPage(raw string) (artistSongsPage, bool) {
+	var value artistSongsPage
+	if len(raw) > 512 || raw == "" {
+		return value, false
+	}
+	decoder := json.NewDecoder(strings.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&value); err != nil || value.Plays < 0 || value.EntityID <= 0 || len(value.SortKey) > 256 {
+		return artistSongsPage{}, false
+	}
+	// A trailing value (a stray '}' included) is not the end of the cursor.
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		return artistSongsPage{}, false
+	}
+	return value, true
+}
+
+// ArtistTopSongs lists the songs this library admits to this artist, ranked by the profile's own
+// play count with a stable sort-key/entity tie and bounded by pageLimit. Membership, availability
+// and restrictions are the library's existing predicates; the count is that whole scope.
+func (s *Service) ArtistTopSongs(profile, library, artist, cursor string, limit int, restrictions identity.ContentRestrictions) ([]ContentEntry, string, int, error) {
+	limit = pageLimit(limit)
+	restriction, bound := ItemRestrictionSQL("item.id", restrictions)
+	ranked := `WITH ranked AS (
+ SELECT item.id AS entity_id, item.public_id AS public_id, item.sort_key AS sort_key,
+        COALESCE(personal.play_count,0) AS plays
+ FROM catalog_song_artists sa
+ JOIN catalog_entities artist ON artist.id=sa.artist_id
+ JOIN catalog_entities item ON item.id=sa.song_id
+ JOIN catalog_libraries lib ON lib.id=item.library_id AND lib.library_id=? AND lib.retired=0
+ LEFT JOIN catalog_personal_sort_rows personal ON personal.profile_id=? AND personal.entity_id=item.id
+ WHERE artist.public_id=pid_blob(?) AND artist.retired=0
+   AND artist.library_id=item.library_id
+   AND ` + homeVisible("item.id") + ` AND ` + restriction + `
+)`
+	base := append([]any{library, profile, artist}, bound...)
+	var count int
+	if err := s.read().QueryRow(ranked+` SELECT count(*) FROM ranked`, base...).Scan(&count); err != nil {
+		return nil, "", 0, err
+	}
+	page, hasPage := artistSongsPage{Plays: -1}, false
+	if cursor != "" {
+		var ok bool
+		if page, ok = decodeArtistSongsPage(cursor); !ok {
+			return nil, "", 0, requestinput.New("invalid artist songs cursor")
+		}
+		hasPage = true
+	}
+	rows, err := s.read().Query(ranked+`
+ SELECT pid(public_id) FROM ranked
+ WHERE (? = 0 OR plays < ? OR (plays = ? AND (sort_key > ? OR (sort_key = ? AND entity_id > ?))))
+ ORDER BY plays DESC, sort_key, entity_id LIMIT ?`,
+		append(base, boolInt(hasPage), page.Plays, page.Plays, page.SortKey, page.SortKey, page.EntityID, limit+1)...)
+	if err != nil {
+		return nil, "", 0, err
+	}
+	ids := []string{}
+	for rows.Next() {
+		var id string
+		if err = rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, "", 0, err
+		}
+		ids = append(ids, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, "", 0, err
+	}
+	next := ""
+	if len(ids) > limit {
+		ids = ids[:limit]
+		var plays, entityID int64
+		var sortKey string
+		if err = s.read().QueryRow(`SELECT COALESCE((SELECT play_count FROM catalog_personal_sort_rows p WHERE p.profile_id=? AND p.entity_id=e.id),0),e.sort_key,e.id FROM catalog_entities e WHERE e.public_id=pid_blob(?)`, profile, ids[len(ids)-1]).Scan(&plays, &sortKey, &entityID); err != nil {
+			return nil, "", 0, err
+		}
+		encoded, err := json.Marshal(artistSongsPage{Plays: plays, SortKey: sortKey, EntityID: entityID})
+		if err != nil {
+			return nil, "", 0, err
+		}
+		next = string(encoded)
+	}
+	out, err := s.homeEntries(profile, ids)
+	if err != nil {
+		return nil, "", 0, err
+	}
+	return out, next, count, nil
+}
+
+func boolInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
 }
