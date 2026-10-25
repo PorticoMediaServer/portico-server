@@ -25,6 +25,7 @@ type RecoveryTarget = Readonly<{entry: BrowserAccountEntry; origin: string; serv
 export function AccountSignInView({entry, form, takeReturn, takeMove, initialize = true, initialOrigin, onCancel}: {entry: BrowserAccountEntry; form: AccountSignInForm; takeReturn?: TakeAccountReturn; takeMove?: TakeAccountMove; initialize?: boolean; initialOrigin?: string; onCancel?: () => void}) {
   const state = useSyncExternalStore(entry.subscribe, entry.getSnapshot), input = useSyncExternalStore(form.subscribe, form.getSnapshot);
   const [error, setError] = useState<unknown>(), [initializing, setInitializing] = useState(initialize), [joining, setJoining] = useState(false), started = useRef(false), alive = useRef(true), joinOrigin = useRef<string | undefined>(undefined);
+  const [recoveryChoice, setRecoveryChoice] = useState(false);
   const [recovery, setRecovery] = useState<RecoveryTarget>();
   const [memberView, setMemberView] = useState<Readonly<{mode: 'old-password' | 'code'; target: RecoveryTarget}>>();
   const pageOrigin = initialOrigin ?? import.meta.env.VITE_SERVER_URL ?? location.origin;
@@ -73,7 +74,12 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
   const openRecovery = () => {
     if (!alive.current || busy || joining || initializing || entry.getSnapshot() !== state || form.getSnapshot() !== input
       || state.phase !== 'password' || state.server?.signIn !== 'local' || state.invitation || !state.origin || !state.pin) return;
-    form.clear(); setError(undefined);
+    setError(undefined);
+    setRecoveryChoice(true);
+  };
+  const openRecoveryFromFile = () => {
+    if (!alive.current || busy || entry.getSnapshot() !== state || form.getSnapshot() !== input || state.phase !== 'password' || !state.origin || !state.pin) return;
+    form.clear(); setError(undefined); setRecoveryChoice(false);
     setRecovery({entry, origin: state.origin, serverId: state.server.id, pin: state.pin});
   };
   const recoveryCurrent = recovery?.entry === entry && recovery.origin === state.origin && recovery.serverId === state.server?.id
@@ -119,6 +125,13 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
     onLocal={(username, password) => runMove(() => form.redeemLocalMove(username, password))} onPortico={continuePortico}/>;
   if (recoveryCurrent && (state.phase === 'password' || state.phase === 'owner-reset-password')) return <LocalPasswordRecoveryFlow entry={entry} form={form}
     onBack={() => {setRecovery(undefined); setError(undefined); form.clear();}} />;
+  if (recoveryChoice && !state.invitation && state.server?.signIn === 'local' && (state.phase === 'password' || state.phase === 'owner-reset-password')) return <AuthStage legal={false}>
+    <h1>{defaultI18n.t('accounts.recovery.choiceTitle')}</h1>
+    <p>{defaultI18n.t('accounts.recovery.choiceBody')}</p>
+    <Button variant="primary" disabled={busy} onClick={openRecoveryFromFile}>{defaultI18n.t('accounts.recovery.choiceFile')}</Button>
+    <p>{defaultI18n.t('accounts.recovery.choicePorticoHint')}</p>
+    <Button variant="ghost" disabled={busy} onClick={() => setRecoveryChoice(false)}>{defaultI18n.t('action.cancel')}</Button>
+  </AuthStage>;
   if (state.phase === 'password' && state.server?.signIn === 'local') return <LocalServerSignIn key={input.inputEpoch} serverName={state.server.name} initialUsername={input.username}
     busy={busy} error={failure} onSignIn={(username, password) => {setError(undefined); void form.signIn(username, password);}} onJoin={join}
     onForgotPassword={state.invitation ? undefined : openRecovery}
