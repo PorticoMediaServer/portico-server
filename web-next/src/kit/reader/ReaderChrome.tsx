@@ -28,6 +28,8 @@ export type ReaderChromeProps = Readonly<{
   fixedPageFooter?: ReactNode;
   /** Optional drawn strip (page thumbnails) that sits above the footer on fixed pages. */
   fixedPageStrip?: ReactNode;
+  /** Optional one-time coach mark (phone-read 14) drawn above the page and chrome. */
+  hint?: ReactNode;
   /** The same page tap closes a docked panel without also navigating the book. */
   onPanelDismiss?: (reason: 'outside' | 'escape') => void;
   /** A panel/menu or a live text selection pins chrome until it closes. */
@@ -37,7 +39,7 @@ export type ReaderChromeProps = Readonly<{
 }>;
 
 export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingInSection, percent, remainingInBook, progression, chapters = [], direction, tapTurnEnabled, pageTurnsEnabled,
-  onBack, onTurn, onSeek, actions, children, panel, panelReflows = false, onPanelDismiss, showPageArrows, holdOpen = false, textSelectionActive = false, initiallyVisible = true, reducedMotion = false, fixedPage = false, fixedPageFooter, fixedPageStrip, subscribeSurfaceInput}: ReaderChromeProps) {
+  onBack, onTurn, onSeek, actions, children, panel, panelReflows = false, onPanelDismiss, showPageArrows, holdOpen = false, textSelectionActive = false, initiallyVisible = true, reducedMotion = false, fixedPage = false, fixedPageFooter, fixedPageStrip, hint, subscribeSurfaceInput}: ReaderChromeProps) {
   const root = useRef<HTMLDivElement>(null), timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [visible, setVisible] = useState(initiallyVisible), [focusWithin, setFocusWithin] = useState(false);
   const held = holdOpen || textSelectionActive || Boolean(panel) || focusWithin;
@@ -123,5 +125,6 @@ export function ReaderChrome({title, subtitle, copy, chapter, pages, remainingIn
       {fixedPageStrip && <div className={styles.fixedStrip}>{fixedPageStrip}</div>}
     </div>
     {panel}
+    {hint}
   </div>;
 }
