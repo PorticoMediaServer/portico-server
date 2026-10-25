@@ -21,6 +21,8 @@ type RcloneSourceResponse struct {
 
 func rcloneSourceErrorDefinitions() []apierror.Definition {
 	return []apierror.Definition{
+		{Code: "storage_executable_invalid", Status: 400, Message: publicErrorMessage("storage_executable_invalid"), Retry: apierror.Never},
+		{Code: "storage_executable_too_old", Status: 400, Message: publicErrorMessage("storage_executable_too_old"), Retry: apierror.Never},
 		{Code: "storage_command_conflict", Status: 409, Message: publicErrorMessage("storage_command_conflict"), Retry: apierror.AfterRefresh},
 		{Code: "storage_operation_expired", Status: 410, Message: publicErrorMessage("storage_operation_expired"), Retry: apierror.Never},
 		{Code: "storage_command_capacity", Status: 429, Message: publicErrorMessage("storage_command_capacity"), Retry: apierror.SameRequest},

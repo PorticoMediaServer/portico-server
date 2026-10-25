@@ -24,6 +24,11 @@ func rcloneConnectionFailure(err error) error {
 		return &apierror.Error{Code: "invalid_request"}
 	case errors.Is(err, mounts.ErrExecutableInvalid), errors.Is(err, mounts.ErrCommandCapacity):
 		return &apierror.Error{Code: "administration_unavailable"}
+	case errors.Is(err, mounts.ErrExecutableTooOld):
+		// These routes resolve the bundled program, so too-old is not an
+		// emittable chooser fact here; keep the declared administration code
+		// rather than falling through to internal.
+		return &apierror.Error{Code: "administration_unavailable"}
 	case errors.Is(err, storage.ErrBusy):
 		// The same existing busy retry a saved source's Test uses when its
 		// admitted operations do not drain (§40).

@@ -33,7 +33,7 @@ func storageFailure(w http.ResponseWriter, e error) {
 		status, code = 409, "storage_allocation_recovery_required"
 	case errors.Is(e, mounts.ErrConfigInvalid):
 		status, code = 400, "storage_config_invalid"
-	case errors.Is(e, mounts.ErrExecutableInvalid):
+	case errors.Is(e, mounts.ErrExecutableInvalid), errors.Is(e, mounts.ErrExecutableTooOld):
 		status, code = 400, "storage_executable_invalid"
 	case errors.Is(e, mounts.ErrCommandConflict):
 		status, code = 409, "storage_command_conflict"

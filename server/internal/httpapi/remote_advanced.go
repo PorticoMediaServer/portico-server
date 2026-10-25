@@ -10,6 +10,7 @@ import (
 	"portico.local/apikit/apierror"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/mounts"
+	"portico.local/server/internal/rcloneprogram"
 	"portico.local/server/internal/remotesources"
 	"portico.local/server/internal/storage"
 )
@@ -58,6 +59,15 @@ func advancedError(err error) error {
 		return &apierror.Error{Code: "revision_mismatch", Cause: err}
 	case errors.Is(err, storage.ErrRemoteConfig), errors.Is(err, mounts.ErrInvalid):
 		return &apierror.Error{Code: "invalid_request", Cause: err}
+	case errors.Is(err, mounts.ErrExecutableTooOld):
+		current := map[string]string{"minimumVersion": rcloneprogram.MinimumVersion}
+		var tooOld *mounts.ExecutableTooOldError
+		if errors.As(err, &tooOld) && tooOld.Version != "" {
+			current["version"] = tooOld.Version
+		}
+		return &apierror.Error{Code: "storage_executable_too_old", Current: current, Cause: err}
+	case errors.Is(err, mounts.ErrExecutableInvalid):
+		return &apierror.Error{Code: "storage_executable_invalid", Cause: err}
 	case errors.Is(err, mounts.ErrUnavailable):
 		return &apierror.Error{Code: "administration_unavailable", Cause: err}
 	case errors.Is(err, storage.ErrBusy):
@@ -73,6 +83,7 @@ func advancedError(err error) error {
 // path; none of them is stored without a consumer.
 func registerSourceAdvanced(registry *apikit.Registry, d Dependencies) {
 	failures := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "revision_mismatch", "request_in_progress", "administration_unavailable", "internal"}
+	putFailures := append(append([]string{}, failures...), "storage_executable_invalid", "storage_executable_too_old")
 	v1Route(registry, apikit.Metadata{ID: "get_storage_source_advanced", Method: "GET", Path: "/v1/storage/sources/{id}/settings/advanced", Summary: "Read one remote source's scan, cache and analysis settings", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (SourceAdvancedResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
@@ -90,7 +101,7 @@ func registerSourceAdvanced(registry *apikit.Registry, d Dependencies) {
 		}
 		return SourceAdvancedResponse{Scope: scope, Settings: settings}, nil
 	})
-	v1Route(registry, apikit.Metadata{ID: "put_storage_source_advanced", Method: "PUT", Path: "/v1/storage/sources/{id}/settings/advanced", Summary: "Save one remote source's scan, cache and analysis settings", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 8192, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, in remotesources.SourceAdvancedChange) (SourceAdvancedResponse, error) {
+	v1Route(registry, apikit.Metadata{ID: "put_storage_source_advanced", Method: "PUT", Path: "/v1/storage/sources/{id}/settings/advanced", Summary: "Save one remote source's scan, cache and analysis settings", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 8192, Status: 200, Errors: putFailures}, func(ctx context.Context, r *http.Request, in remotesources.SourceAdvancedChange) (SourceAdvancedResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {
 			return SourceAdvancedResponse{}, folderError(err)
@@ -113,7 +124,7 @@ func registerSourceAdvanced(registry *apikit.Registry, d Dependencies) {
 // mount's own approval runs the chosen binary with version, and the captured
 // source association is re-checked before it is accepted.
 func registerSourceProgram(registry *apikit.Registry, d Dependencies) {
-	failures := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "revision_mismatch", "idempotency_key_reused", "request_in_progress", "administration_unavailable", "internal"}
+	failures := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "revision_mismatch", "idempotency_key_reused", "request_in_progress", "administration_unavailable", "storage_executable_invalid", "storage_executable_too_old", "internal"}
 	v1Route(registry, apikit.Metadata{ID: "put_storage_source_program", Method: "PUT", Path: "/v1/storage/sources/{id}/settings/program", Summary: "Change the rclone program that serves one mounted source", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdminLong, Cost: apikit.Constant, BodyLimit: 8192, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, in SourceProgramRequest) (SourceProgramResponse, error) {
 		p, scope, err := d.storageOwner(r)
 		if err != nil {

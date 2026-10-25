@@ -304,8 +304,12 @@ func checkProgramVersion(ctx context.Context, supervisor *storage.Supervisor, ex
 	}
 	version, err := rcloneprogram.CheckVersionLine(string(line))
 	if err != nil {
-		// Until the chooser gets distinct codes, map every typed version failure
-		// to the existing declared domain error so HTTP never falls to internal.
+		// B-42's two chooser errors are distinct domain facts; map the typed
+		// check reason to them so HTTP never falls to internal.
+		var checkErr *rcloneprogram.CheckError
+		if errors.As(err, &checkErr) && checkErr.Code == "rclone_too_old" {
+			return rcloneprogram.Version{}, &ExecutableTooOldError{Version: checkErr.Version}
+		}
 		return rcloneprogram.Version{}, ErrExecutableInvalid
 	}
 	return version, nil

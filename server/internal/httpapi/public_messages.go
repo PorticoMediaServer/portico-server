@@ -26,7 +26,11 @@ func publicErrorMessage(code string) string {
 		return "There are too many requests. Try again shortly."
 	case "home_layout_conflict":
 		return "Home changed on another device. Reload the layout before saving."
-	case "invalid_administration_input", "invalid_pivot", "invalid_home_layout", "invalid_activity_request", "invalid_library_channel", "invalid_lyrics", "invalid_analysis", "storage_config_invalid", "storage_executable_invalid", "invalid_request", "invalid_download_receipt":
+	case "storage_executable_invalid":
+		return "That isn't rclone. Choose the rclone program."
+	case "storage_executable_too_old":
+		return "This rclone is too old. Choose a newer rclone."
+	case "invalid_administration_input", "invalid_pivot", "invalid_home_layout", "invalid_activity_request", "invalid_library_channel", "invalid_lyrics", "invalid_analysis", "storage_config_invalid", "invalid_request", "invalid_download_receipt":
 		return "Check the request and try again."
 	case "download_not_ready", "administration_busy":
 		return "This request is still being processed."

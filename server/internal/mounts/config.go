@@ -20,7 +20,20 @@ import (
 var ErrUnavailable = errors.New("managed storage is unavailable; start the mount and retry")
 var ErrInvalid = requestinput.New("invalid managed mount configuration")
 var ErrConfigInvalid = requestinput.New("Check the remote name, supported provider type, and rclone configuration format.")
-var ErrExecutableInvalid = requestinput.New("Choose an available native rclone executable with secure file permissions that passes version validation.")
+var ErrExecutableInvalid = requestinput.New("That isn't rclone. Choose the rclone program.")
+
+// ErrExecutableTooOld identifies the drawn "too old" chooser failure. The
+// concrete error carries the version the program reported so the API can keep
+// the real evidence instead of inventing a generic sentence.
+var ErrExecutableTooOld = errors.New("custom rclone program is too old")
+
+type ExecutableTooOldError struct{ Version string }
+
+func (e *ExecutableTooOldError) Error() string {
+	return fmt.Sprintf("This rclone is too old (%s). Choose %s or newer.", e.Version, rcloneprogram.MinimumVersion)
+}
+func (e *ExecutableTooOldError) Unwrap() error { return ErrExecutableTooOld }
+
 var remotePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}:[^\r\n\x00]*$`)
 
 var configurationKinds = map[string]bool{"s3": true, "b2": true, "drive": true, "onedrive": true, "dropbox": true, "webdav": true, "http": true, "smb": true, "sftp": true, "crypt": true, "alias": true, "union": true, "combine": true, "chunker": true, "hasher": true, "compress": true, "cache": true}
