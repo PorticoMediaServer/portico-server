@@ -34,11 +34,57 @@ the final probe is discarded unless the original object still observes the
 same snapshot. The caller retains ownership of the object; all pipes, process
 and broker goroutine belong to this invocation.
 
-This foundation does not enable remote disc inventory or playback. Title byte
-streaming, seek integration, BDMV file-open callbacks and production admission
-are still required. Existing scans continue to report the remote-disc
+This foundation does not enable remote disc inventory or playback. Production
+title-stream/seek integration, DVD streaming, BDMV file-open callbacks and
+production admission are still required. Existing scans continue to report the remote-disc
 unsupported message until the full stream-mode qualification. No fixture,
 binary, source bundle or playback acceptance is established by this source.
+
+### Captured Blu-ray ISO title stream foundation
+
+`seek-image-stream <size> <playlist> <requestedMs>` returns the existing seek
+JSON over the inherited range broker. It uses the same selected-playlist,
+first-angle, minimum-duration, encryption and actual `bd_seek_time` /
+`bd_tell_time` checks as local seeking. There is no requested-time-as-measured
+fallback.
+
+`stream-bluray-image <size> <playlist> <requestedMs> <byteOffset> <titleTimeMs>`
+repeats that positioning and requires the exact original landing result before
+publishing any title bytes. Only libbluray reads the selected title, including
+its playitem/branching order; no loose clips are assembled. The output is the
+actual selected-title byte stream. Source, broker, write and library failures
+produce a nonzero exit; successful EOF requires the reader's real EOF.
+
+The Go `Tool.StreamRemoteBluRay` requires the original structure, exact selected
+title and a non-nil original-admission checker. It owns a copy of the structure,
+compares a fresh probe against that original without adopting changes, and
+obtains the real landing before opening the stream. The checker must retain
+the original actor, source, selected title/facts, plan, session/run and caller
+lifetime. It is called before source reads and again before complete ranges or
+output buffers are published. All bytes continue through the same original
+immutable `RemoteObject`; no latest-source or replacement-object lookup exists.
+
+Stream I/O work is bounded by image size times the selected playitem count plus
+two extents for reader overhead, with checked arithmetic and a finite request
+bound. This is a work limit, not a measured title size or bitrate. The original
+owner context retires the stream; each source read retains its 15-second bound.
+The process, both broker pipes and wait goroutines belong to this invocation.
+Close cancels them and joins them. The caller closes the original source object
+after closing the stream.
+
+The returned reader does not expose a raw descriptor: it buffers a bounded
+read until the original caller is checked again, and never copies retired
+bytes to its consumer. EOF waits for successful helper completion, a final
+same-snapshot source observation and the original admission check. A failed
+producer is an error, never a successful end-of-title. Future FFmpeg composition
+must consume this checked reader and propagate its error/cancellation to the
+original decoder invocation; bypassing it with the underlying pipe is not a
+valid composition.
+
+This is source foundation only. No remote catalogue, plan, session or decoder
+adapter invokes it yet. DVD title timing/streaming, remote BDMV member callbacks,
+normalized source/policy bindings and full playback/seek qualification remain
+unfinished. Existing remote-disc admission stays unsupported.
 
 Each title has `discOrder` (zero-based retained disc order), `durationMs` (integer title-relative milliseconds), `angleCount`, `clips`, `streams` and `chapters`. Blu-ray adds `playlist` (integer 0..99999, zero valid) and `playlistFile` (`NNNNN.mpls`). DVD adds `title` (one-based), `vts` and `pgc`. An array is always present, even when empty. Discs with no titles of at least 60000 ms return an empty array; that is not a playable source.
 

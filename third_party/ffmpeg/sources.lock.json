@@ -595,9 +595,9 @@
     }
   },
   "discHelper": {
-    "sourceCommit": "6758f7f49860cc75b757607da9219bd956afb1ad",
+    "sourceCommit": "23b91e5c854b23b35d068870cd30517a05f07e4d",
     "sourceFiles": {
-      "portico-disc.c": "b67ac5526c43aa8a261011ed882aca5c8cda1c57cd6dfb8fe4d2994e477a4221",
+      "portico-disc.c": "f2f1f61410ce4dd13eb0247811d71372e698f15fd6bf398a130589a3850cfc0c",
       "mpegts_dovi.h": "82da52d0bcdf2ccb39a0a52e641ecdcb8df9ba2affb7f64249bb84256c93bf89"
     },
     "fixtureManifest": "fixtures/discs/manifest.json",
@@ -607,6 +607,6 @@
   },
   "sourceAuthority": {
     "path": "third_party/ffmpeg/source-authority.v1.json",
-    "sha256": "cc4e567853e93bb59312480a920c2691cd942d1624d288b3321994ea9f88b0e9"
+    "sha256": "4ec100aa3d68374e27588131ff579b39053631c30513129d1166f80b0a8e80a2"
   }
 }

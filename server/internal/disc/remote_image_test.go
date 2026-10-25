@@ -60,7 +60,7 @@ func remoteDiscRequest(offset uint64, length uint32) []byte {
 func TestRemoteDiscBrokerPublishesOnlyTheCapturedCompleteRange(t *testing.T) {
 	f := &remoteDiscFixture{data: []byte("original-source")}
 	var out bytes.Buffer
-	serveRemoteDiscRanges(context.Background(), bytes.NewReader(remoteDiscRequest(3, 5)), &out, f, int64(len(f.data)), 1, 5)
+	serveRemoteDiscRanges(context.Background(), bytes.NewReader(remoteDiscRequest(3, 5)), &out, f, int64(len(f.data)), 1, 5, nil)
 	want := append([]byte{'P', 'D', 'A', '1', 0, 0, 0, 5}, []byte("ginal")...)
 	if !bytes.Equal(out.Bytes(), want) || f.calls != 1 || f.lastOffset != 3 {
 		t.Fatalf("range was substituted or framed incorrectly: calls=%d offset=%d", f.calls, f.lastOffset)
@@ -80,7 +80,7 @@ func TestRemoteDiscBrokerRefusesInvalidOrOverBudgetRequestsBeforeOpening(t *test
 		t.Run(name, func(t *testing.T) {
 			f := &remoteDiscFixture{data: []byte("data")}
 			var out bytes.Buffer
-			serveRemoteDiscRanges(context.Background(), bytes.NewReader(request), &out, f, 4, 1, 3)
+			serveRemoteDiscRanges(context.Background(), bytes.NewReader(request), &out, f, 4, 1, 3, nil)
 			if f.calls != 0 || out.Len() != 0 {
 				t.Fatal("invalid request reached the source or published bytes")
 			}
@@ -96,7 +96,7 @@ func TestRemoteDiscBrokerRetirementOrShortBodyPublishesNoSuccessHeader(t *testin
 			f.afterRead = cancel
 		}
 		var out bytes.Buffer
-		serveRemoteDiscRanges(ctx, bytes.NewReader(remoteDiscRequest(0, 4)), &out, f, 4, 1, 4)
+		serveRemoteDiscRanges(ctx, bytes.NewReader(remoteDiscRequest(0, 4)), &out, f, 4, 1, 4, nil)
 		cancel()
 		if out.Len() != 0 {
 			t.Fatal("incomplete or retired read published a successful range")
@@ -109,7 +109,7 @@ func TestRemoteDiscBrokerCannotRenewItsRequestOrByteBudget(t *testing.T) {
 		f := &remoteDiscFixture{data: []byte("data")}
 		var out bytes.Buffer
 		request := append(remoteDiscRequest(0, 2), remoteDiscRequest(2, 2)...)
-		serveRemoteDiscRanges(context.Background(), bytes.NewReader(request), &out, f, 4, limits[0], limits[1])
+		serveRemoteDiscRanges(context.Background(), bytes.NewReader(request), &out, f, 4, limits[0], limits[1], nil)
 		if f.calls != 1 || out.Len() != 10 {
 			t.Fatal("helper renewed an exhausted acquisition budget")
 		}
@@ -127,5 +127,24 @@ func TestRemoteDiscProbeRefusesUnversionedSourceBeforeLaunchingTool(t *testing.T
 	_, err = (Tool{Binary: "/must-not-launch"}).ProbeRemoteImage(ctx, f)
 	if !errors.Is(err, context.Canceled) || f.calls != 0 {
 		t.Fatal("retired invocation was not refused before tool acquisition")
+	}
+}
+
+func TestRemoteDiscBrokerRechecksTheOriginalAdmissionBeforePublishing(t *testing.T) {
+	retired := errors.New("original occurrence retired")
+	for _, beforeRead := range []bool{true, false} {
+		live := !beforeRead
+		f := &remoteDiscFixture{data: []byte("data"), afterRead: func() { live = false }}
+		guard := func(context.Context) error {
+			if !live {
+				return retired
+			}
+			return nil
+		}
+		var out bytes.Buffer
+		serveRemoteDiscRanges(context.Background(), bytes.NewReader(remoteDiscRequest(0, 4)), &out, f, 4, 1, 4, guard)
+		if out.Len() != 0 || beforeRead && f.calls != 0 || !beforeRead && f.calls != 1 {
+			t.Fatal("a retired original admission read or published source bytes")
+		}
 	}
 }

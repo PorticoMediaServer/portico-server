@@ -26,9 +26,14 @@ const remoteDiscRangeBytes = 2 << 20
 //
 // This does not admit remote discs into scanning/playback: those routes remain
 // closed until the complete stream-mode path is qualified.
-func (t Tool) remoteImageCommand(ctx context.Context, object storage.RemoteObject, mode string, arguments []string, maxRequests, maxBytes int64) (*exec.Cmd, func(), error) {
+func (t Tool) remoteImageCommand(ctx context.Context, object storage.RemoteObject, mode string, arguments []string, maxRequests, maxBytes int64, current func(context.Context) error) (*exec.Cmd, func(), error) {
 	if err := ctx.Err(); err != nil {
 		return nil, nil, err
+	}
+	if current != nil {
+		if err := current(ctx); err != nil {
+			return nil, nil, err
+		}
 	}
 	if runtime.GOOS == "windows" || object == nil || object.Version().ID() == "" || object.Access() != "finite_random" {
 		return nil, nil, ErrRemoteUnqualified
@@ -73,7 +78,7 @@ func (t Tool) remoteImageCommand(ctx context.Context, object storage.RemoteObjec
 	supervise.Go("disc.remote-image-ranges", func() {
 		defer close(done)
 		defer closePipes()
-		serveRemoteDiscRanges(ctx, requests, data, object, size, maxRequests, maxBytes)
+		serveRemoteDiscRanges(ctx, requests, data, object, size, maxRequests, maxBytes, current)
 	})
 	return cmd, func() { finish(); <-done }, nil
 }
@@ -81,7 +86,7 @@ func (t Tool) remoteImageCommand(ctx context.Context, object storage.RemoteObjec
 // Each request is PDR1, byte offset (uint64 BE), length (uint32 BE). A reply
 // is PDA1 and the exact length (uint32 BE), then complete bytes. Refusal closes
 // the channel; no partial range is published as a successful response.
-func serveRemoteDiscRanges(ctx context.Context, requests io.Reader, data io.Writer, object storage.RemoteObject, size, maxRequests, maxBytes int64) {
+func serveRemoteDiscRanges(ctx context.Context, requests io.Reader, data io.Writer, object storage.RemoteObject, size, maxRequests, maxBytes int64, current func(context.Context) error) {
 	buffer := make([]byte, remoteDiscRangeBytes)
 	var header [16]byte
 	for count, used := int64(0), int64(0); count < maxRequests; count++ {
@@ -94,6 +99,10 @@ func serveRemoteDiscRanges(ctx context.Context, requests io.Reader, data io.Writ
 		}
 		used += length
 		readCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		if current != nil && current(readCtx) != nil {
+			cancel()
+			return
+		}
 		body, err := object.OpenRange(readCtx, int64(offset), length)
 		if err != nil || body == nil {
 			if body != nil {
@@ -104,9 +113,9 @@ func serveRemoteDiscRanges(ctx context.Context, requests io.Reader, data io.Writ
 		}
 		_, err = io.ReadFull(body, buffer[:length])
 		closeErr := body.Close()
-		current := readCtx.Err() == nil && ctx.Err() == nil
+		live := err == nil && closeErr == nil && readCtx.Err() == nil && ctx.Err() == nil && (current == nil || current(readCtx) == nil)
 		cancel()
-		if err != nil || closeErr != nil || !current {
+		if !live || ctx.Err() != nil {
 			return
 		}
 		var reply [8]byte
@@ -127,9 +136,23 @@ func serveRemoteDiscRanges(ctx context.Context, requests io.Reader, data io.Writ
 func (t Tool) ProbeRemoteImage(ctx context.Context, object storage.RemoteObject) (Probe, error) {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	cmd, finish, err := t.remoteImageCommand(ctx, object, "probe-image-stream", nil, 1024, 16<<20)
+	raw, err := t.remoteImageMetadata(ctx, object, "probe-image-stream", nil, nil)
 	if err != nil {
 		return Probe{}, err
+	}
+	probe, err := DecodeProbe(raw)
+	if ctx.Err() != nil {
+		return Probe{}, ctx.Err()
+	}
+	return probe, err
+}
+
+func (t Tool) remoteImageMetadata(ctx context.Context, object storage.RemoteObject, mode string, args []string, current func(context.Context) error) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	cmd, finish, err := t.remoteImageCommand(ctx, object, mode, args, 1024, 16<<20, current)
+	if err != nil {
+		return nil, err
 	}
 	defer finish()
 	before := object.Snapshot()
@@ -137,20 +160,50 @@ func (t Tool) ProbeRemoteImage(ctx context.Context, object storage.RemoteObject)
 	cmd.Stdout, cmd.Stderr, cmd.WaitDelay = out, io.Discard, time.Second
 	if err = cmd.Run(); err != nil {
 		if ctx.Err() != nil {
-			return Probe{}, ctx.Err()
+			return nil, ctx.Err()
 		}
-		return Probe{}, ErrProtocol
+		return nil, ErrProtocol
 	}
 	if err = ctx.Err(); err != nil {
-		return Probe{}, err
+		return nil, err
 	}
 	after, err := object.Observe(ctx)
-	if err != nil || after != before {
-		return Probe{}, storage.ErrRemoteChanged
-	}
-	probe, err := DecodeProbe(out.data)
 	if ctx.Err() != nil {
-		return Probe{}, ctx.Err()
+		return nil, ctx.Err()
 	}
-	return probe, err
+	if err != nil || after != before {
+		return nil, storage.ErrRemoteChanged
+	}
+	if current != nil {
+		if err = current(ctx); err != nil {
+			return nil, err
+		}
+	}
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+	return out.data, nil
+}
+
+// SeekRemoteImage uses the original captured image and the same libbluray
+// landing facts as local seeking. current must retain the original admitted
+// source/title/plan/occurrence and caller lifetime; this method grants none.
+func (t Tool) SeekRemoteImage(ctx context.Context, object storage.RemoteObject, playlist int, ms int64, current func(context.Context) error) (Seek, error) {
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	if current == nil {
+		return Seek{}, ErrRemoteUnqualified
+	}
+	if playlist < 0 || playlist > 99999 || ms < 0 {
+		return Seek{}, ErrProtocol
+	}
+	raw, err := t.remoteImageMetadata(ctx, object, "seek-image-stream", []string{strconv.Itoa(playlist), strconv.FormatInt(ms, 10)}, current)
+	if err != nil {
+		return Seek{}, err
+	}
+	seek, err := DecodeSeek(raw, playlist, ms)
+	if ctx.Err() != nil {
+		return Seek{}, ctx.Err()
+	}
+	return seek, err
 }
