@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useState, useSyncExternalStore} from 'react';
+import {useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {FolderPicker} from '../settings/libraries/FolderPicker';
 import {Button, TextField} from '../../kit/controls';
@@ -10,12 +10,23 @@ import {libraryKindDescription, localPasswordValid, setupLibraryKinds, setupName
 import styles from './setup.module.css';
 
 const t = defaultI18n.t;
+type SetupFlowLease = Readonly<{ports: SetupPorts; flow: SetupFlow; key: number; current: () => boolean}>;
 
 /** auth1 / auth1c / auth3. The mounted port bundle supplies the verified pairing,
  * the protected draft, shell admission and the guarded hosted continuation. */
 export function SetupScreen({ports}: {ports: SetupPorts}) {
-  const flow = useMemo(() => new SetupFlow(ports), [ports]);
-  useEffect(() => {void flow.start(); return () => flow.dispose();}, [flow]);
+  const [published, publish] = useState<SetupFlowLease>(), generation = useRef(0);
+  useLayoutEffect(() => {
+    let live = true;
+    const flow = new SetupFlow(ports);
+    publish({ports, flow, key: ++generation.current, current: () => live});
+    void flow.start();
+    return () => {live = false;flow.dispose();};
+  }, [ports]);
+  const owned = published?.ports === ports && published.current() ? published : undefined;
+  return owned ? <SetupBody key={owned.key} flow={owned.flow}/> : null;
+}
+function SetupBody({flow}: {flow: SetupFlow}) {
   const state = useSyncExternalStore(flow.subscribe, flow.getSnapshot);
   const local = state.mode === 'local';
   const steps = setupSteps({serverName: state.serverName, mode: state.mode, phase: state.phase === 'library' ? 'library' : 'form', local});
