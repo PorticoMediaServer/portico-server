@@ -598,9 +598,13 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 		// this adapter cannot give right now returns to the existing fallback: the
 		// same path a refused hardware encoder already takes.
 		releasePermit := func() {}
-		if conversionJobHardware(plan, stages) && plan != nil {
+		// Only a hardware ENCODE takes a session slot: a hardware decoder, tone
+		// mapper or filter does not open an encoder session, and counting it would
+		// refuse conversions the card can run.
+		if plan != nil && hardwareEncodeStage(stages) {
+			cell := decoder.PermitCell{Identity: decoder.PermitIdentity(h.binary), Backend: decoder.HardwareBackend(plan.HardwareBackend), Device: plan.HardwareDevice}
 			var reserved bool
-			releasePermit, reserved = decoder.HardwarePermits().Reserve(decoder.ConversionPermitIdentity(), decoder.HardwareBackend(plan.HardwareBackend), plan.HardwareDevice)
+			releasePermit, reserved = decoder.HardwarePermits().Reserve(cell)
 			if !reserved {
 				return errHardwarePermitUnavailable, ""
 			}
@@ -643,6 +647,29 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 	// wedged, a session limit on a consumer GPU. The viewer is not told about
 	// any of that. The same window is run again in software, and the stored plan
 	// is changed so later windows do not repeat the failure.
+	// A quota refusal is not a failing encoder: the adapter is healthy and busy.
+	// The window still runs in software, but nothing here may record a device
+	// failure, trip the adapter's circuit or rewrite the stored plan as if the
+	// hardware had broken.
+	if e != nil && errors.Is(e, errHardwarePermitUnavailable) && !throttled() && ctx.Err() == nil && delivery != nil {
+		// No reason code is added: the adapter did not fail, it was full.
+		software := *delivery
+		software.HardwareBackend, software.HardwareNative, software.HardwareDevice = string(decoder.BackendSoftware), false, ""
+		delivery = &software
+		watchCtx, stopWatch = context.WithCancel(processCtx)
+		watchDone = make(chan struct{})
+		if grid {
+			supervise.Go("playback.hls.watch-quota-window", func() {
+				defer close(watchDone)
+				h.watchWindow(watchCtx, id, dir, staging, from, -1, cancel, delivery, timeline, fragmentClock)
+			})
+		} else {
+			close(watchDone)
+		}
+		e, diagnostic = run(delivery)
+		stopWatch()
+		<-watchDone
+	}
 	if e != nil && !throttled() && ctx.Err() == nil && delivery != nil && delivery.VideoAction == "convert" && delivery.HardwareBackend != "" && delivery.HardwareBackend != string(decoder.BackendSoftware) {
 		failedBackend := delivery.HardwareBackend
 		failedDevice := delivery.HardwareDevice
