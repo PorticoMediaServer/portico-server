@@ -38,6 +38,9 @@ export class SettingsOwnerSwitch {
   private epoch = 0;
   private closed = false;
   private deliveredAttemptId?: string;
+  private move: AccountMove | null = null;
+  private moveReading = false;
+  private readonly moveListeners = new Set<() => void>();
   private readonly origin: string;
   private readonly routes: ReturnType<HttpLocalApi['getRouteConnection']>;
   constructor(private readonly api: HttpLocalApi, private readonly options: OwnerSwitchOptions) {
@@ -129,6 +132,7 @@ export class SettingsOwnerSwitch {
       if (!callerLive()) throw ended();
       this.publish({busy: false, confirmed: false});
       operation.check();
+      this.refreshMove();
       return confirmedCustody;
     } catch (error) {
       if (custody) await custody.retire();
@@ -180,6 +184,34 @@ export class SettingsOwnerSwitch {
     try {operation.check();} catch (error) {await attempt.lease?.cancel().catch(() => {});throw error;}
     this.deliveredAttemptId = attempt.lease?.attemptId;
     return url;
+  }
+  /** The move actually in flight, from the same owner-fenced read the rows use. */
+  getMove = (): AccountMove | null => {
+    const move = this.current() ? this.move : null;
+    return move && (move.stage === 'moving_to_local' || move.stage === 'moving_to_portico') ? move : null;
+  };
+  subscribeMove = (listener: () => void) => {this.moveListeners.add(listener);return () => {this.moveListeners.delete(listener);};};
+  private publishMove(move: AccountMove | null) {
+    if (!this.current()) return;
+    this.move = move;
+    for (const listener of this.moveListeners) listener();
+  }
+  /** One read of the current move. A refusal or outage leaves the page without a
+   * claim of its own, so the drawn rows stay exactly as they were. */
+  refreshMove(signal?: AbortSignal) {
+    if (!this.current() || this.moveReading) return;
+    this.moveReading = true;
+    void this.moves.current(signal).then(move => {this.publishMove(move);}, () => undefined)
+      .finally(() => {this.moveReading = false;});
+  }
+  /** Finish now: the one confirmed move in flight ends here; nobody is admitted. */
+  async finishMove(signal?: AbortSignal) {
+    const move = this.move;
+    if (!this.current()) throw ended();
+    if (!move || (move.stage !== 'moving_to_local' && move.stage !== 'moving_to_portico')) throw new Error('There is no move in progress to finish.');
+    await this.moves.finish(move, signal);
+    this.publishMove(null);
+    this.refreshMove();
   }
   /** The exact people still waiting, for the codes host; owner-fenced server read. */
   waiting(signal?:AbortSignal){return this.moves.waiting(signal);}

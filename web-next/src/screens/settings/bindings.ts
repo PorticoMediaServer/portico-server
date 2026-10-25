@@ -24,6 +24,10 @@ export function createSettingsBindings(controller: SettingsController, options: 
    * row stays out because there is no justified local-only transfer authority. */
   const signInSwitch = (rowId: string): {present: boolean; disabled?: boolean} | undefined => {
     if (rowId === 'signin.changeOwnerLocal') return {present: false};
+    // Only one sign-in change is ever in flight: while a real move is running its
+    // switch, start-over and change-owner rows are gone until it ends.
+    const running = sections.signIn?.ownerSwitch?.getMove();
+    if (running && ['signin.changeOwner', 'signin.switchToPortico', 'signin.startOverPortico', 'signin.switchToLocal', 'signin.startOverLocal'].includes(rowId)) return {present: false};
     if (rowId === 'signin.changeOwner') {
       if (!sections.signIn?.ownerSwitch) return {present: false};
       const snapshot = sections.signIn.getSnapshot();

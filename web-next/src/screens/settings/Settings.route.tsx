@@ -57,6 +57,7 @@ import {SettingsOwnerSwitch} from './owner-switch';
 import {OwnerSignInSwitch} from './OwnerSignInSwitch';
 import {LocalMoveSwitch} from './LocalMoveSwitch';
 import {MoveCodesHost} from './MoveCodesHost';
+import {MoveInProgress, SignInMoveWatch} from './MoveInProgress';
 import {ChangeOwner} from './ChangeOwner';
 import {DeviceRowControl} from './device-rows';
 import {RemoteNowPlaying} from './RemoteNowPlaying';
@@ -331,7 +332,13 @@ export function SettingsEntry() {
           return <LibraryScanAction rowId={row.id} label={defaultI18n.t(row.control.label ?? row.label)} libraryId={rowContext.recordId} service={libraries} onError={reportError} />;
         return row.id === 'metadata.perLibrary' ? <Button variant="glass" size="small" onClick={() => openSettings('libraries')}>{defaultI18n.t(row.control.label ?? row.label)}</Button> : null;
       },
-      section: (selected, _openPanel, renderRows) => selected.section.scope === 'server' && selected.section.id === 'remote'
+      section: (selected, _openPanel, renderRows) => selected.section.scope === 'server' && selected.section.id === 'signin'
+        ? <SignInMoveWatch source={signIn?.ownerSwitch}>{move => <>
+            {move && signIn?.ownerSwitch ? <MoveInProgress move={move} source={signIn.ownerSwitch} isCurrent={current}
+              onPeople={() => {if (current()) openSettingsRow({scope: 'server', section: 'people'});}} onError={reportError} /> : null}
+            {renderRows(selected.section)}
+          </>}</SignInMoveWatch>
+        : selected.section.scope === 'server' && selected.section.id === 'remote'
         ? <ServerRemotePage api={context.api} isCurrent={current} account={{signIn: identity.signIn === 'portico' ? 'portico' : 'local', authority: viewer.authority, serverName: identity.serverName}} openSection={openSettings} groups={renderRows({groups: selected.section.groups})} advanced={selected.section.advanced ? renderRows({advanced: selected.section.advanced}) : null}/>
         : selected.section.scope === 'server' && selected.section.id === 'metadata' && metadataCurrent() ? <MetadataSettingsPage api={context.api} isCurrent={metadataCurrent} onLibraries={() => openSettings('libraries')}/> : selected.section.id === 'integrations' && integrationKeys && webhooks ? <IntegrationsPage source={integrationKeys} webhooks={webhooks} baseUrl={context.api.baseUrl} isCurrent={current} reportError={reportError}
         otherRows={renderRows({groups: selected.section.groups?.filter(group => !group.rows.some(row => ['integrations.apiKeys', 'integrations.webhooks', 'integrations.assistantAddress', 'integrations.assistantKey'].includes(row.id)))})}
