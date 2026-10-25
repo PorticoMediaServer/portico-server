@@ -11,6 +11,7 @@ import {ReaderDisplayMark} from '../../kit/reader/ReaderDisplayMark';
 import {ReaderSearch, type ReaderSearchHit} from '../../kit/reader/ReaderSearch';
 import {ReadReader} from './ReadReader';
 import {ReadingDisplay} from './ReadingDisplay';
+import {ReaderFirstRunHint} from './ReaderFirstRunHint';
 import {FixedPageMenus, FixedPageStrip, FixedPagesPanel, fixedPageZoomLabel} from './fixed-page';
 import {readingDisplayCopy} from './display-copy';
 import {readerBookPresentation, type ReaderEnvironment} from './native/tablet-presentation';
@@ -44,6 +45,10 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
   const zoomAnchor = useRef<HTMLButtonElement>(null), directionAnchor = useRef<HTMLButtonElement>(null);
   const fixed = publication.format !== 'epub';
   const [hits, setHits] = useState<readonly ReaderSearchResult[]>([]), [searching, setSearching] = useState(false), [currentHit, setCurrentHit] = useState<string>();
+  // phone-read 14: taught once per browser, never re-shown after Got it.
+  const hintKey = 'portico.reader.tapZonesHint.v1';
+  const [hint, setHint] = useState(() => {try {return !globalThis.localStorage?.getItem(hintKey);} catch {return true;}});
+  const dismissHint = useCallback(() => {setHint(false); try {globalThis.localStorage?.setItem(hintKey, '1');} catch { /* Disabled storage simply keeps the hint dismissed for this mount. */ }}, []);
   const anchor = useRef<HTMLButtonElement>(null);
   const contentsError = useRef(reportError); contentsError.current = reportError;
   useEffect(() => {
@@ -120,6 +125,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
       chapters: readerChapterMarks(value.toc, value.location ?? undefined),
       chapter: value.location?.chapter, pages: readerPagePosition(value.location, value.metadata?.pageCount),
       remainingInSection: value.location?.pagesLeftInSection === undefined ? undefined : t('next.reader.sectionRemaining', {count: value.location.pagesLeftInSection}),
+      hint: presentation === 'phone' && hint && !panel && value.status === 'ready' && value.preferences.tapToTurn && value.selection === null ? <ReaderFirstRunHint onDone={dismissHint}/> : undefined,
       percent: value.location ? defaultI18n.percent(value.location.progression) : undefined, panel: panelContent, panelReflows: layout.panelReflows(panel),
       fixedPageStrip: fixed ? <FixedPageStrip controller={controller} authority={authority} format={publication.format} reportError={code => reportError({code})}/> : undefined,
       onPanelDismiss: () => setPanel(undefined), actions: [
