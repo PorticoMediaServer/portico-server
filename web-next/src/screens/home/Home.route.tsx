@@ -6,6 +6,7 @@ import {useScreenAppearance} from '../browse/screen-preferences';
 import {isReadingLibrary} from '../browse/reading-library';
 import {HomeScreen} from './Home';
 import {FirstLibraryState} from './first-library-state';
+import {MemberEmptyState} from './member-empty-state';
 import {createReadingContinueBindings, type ReadingContinueBindings} from './reading-continue';
 import {useMusicMixes} from '../browse/music-mixes-hook';
 
@@ -28,6 +29,8 @@ function HomeRouteScreen() {
   const identity = context?.facts.identity;
   if (captured && context?.isCurrent() && context.session().viewer.role === 'owner' && identity?.primaryProfile === true
     && identity.capabilities?.manageServer === true && identity.libraries.length === 0 && !identity.liveAvailable) return <FirstLibraryState captured={captured}/>;
+  if (captured && context?.isCurrent() && context.session().viewer.role !== 'owner'
+    && identity?.libraries.length === 0 && !identity.liveAvailable) return <MemberEmptyState captured={captured}/>;
   return captured ? <HomeScreen {...captured.binding.home} appearance={appearance} musicMixes={musicMixes} readingContinue={reading && reading.context === context && supported ? reading.binding : undefined}/> : null;
 }
 
