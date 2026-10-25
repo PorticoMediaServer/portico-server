@@ -14,9 +14,12 @@ import (
 )
 
 // CB7 decoding runs in the owned bounded helper, never in this process. The
-// parent streams the leased bytes to the helper's stdin (bounded by MaxSource),
-// gives it a private scratch root through TMPDIR, owns the process group and
-// deadline, and removes the scratch root only after the physical wait.
+// parent copies the leased bytes into its own private scratch root (bounded by
+// MaxSource, read through the source lease; nothing is uploaded or fetched from
+// a provider beyond that lease), gives the helper that file on stdin, owns the
+// process group and deadline, closes the file and removes the scratch root only
+// after the physical wait. The page mode's argv carries one already-validated
+// member name — the archive's own path never does.
 const (
 	cb7ListMaxBytes  = 1 << 20
 	cb7PageMaxBytes  = MaxMember
@@ -48,6 +51,11 @@ func runCB7Helper(ctx context.Context, ra io.ReaderAt, size int64, args ...strin
 	if size <= 0 || size > MaxSource {
 		return nil, ErrLimit
 	}
+	if !helperPlatformSupported() {
+		// Windows cannot enforce the worker's resource limits; refuse before any
+		// provider read or scratch creation rather than starting unsupported.
+		return nil, ErrArchiveFormat
+	}
 	path, err := cb7HelperPath()
 	if err != nil {
 		return nil, err
@@ -74,19 +82,24 @@ func runCB7Helper(ctx context.Context, ra io.ReaderAt, size int64, args ...strin
 		_ = os.RemoveAll(scratch)
 		return nil, ErrLimit
 	}
-	defer input.Close()
 	command := exec.CommandContext(deadline, path, append([]string{archive7z.Mode}, args...)...)
 	command.Env = []string{"TMPDIR=" + scratch, "HOME=" + scratch, "PATH="}
 	command.Stdin = input
 	stdout, pipeErr := command.StdoutPipe()
 	if pipeErr != nil {
-		_ = os.RemoveAll(scratch)
+		_ = input.Close()
+		if cleanupErr := os.RemoveAll(scratch); cleanupErr != nil {
+			return nil, errors.Join(ErrLimit, cleanupErr)
+		}
 		return nil, ErrArchiveFormat
 	}
 	command.Cancel = killHelper
 	command.WaitDelay = 5 * time.Second
 	if err = startHelper(command); err != nil {
-		_ = os.RemoveAll(scratch)
+		_ = input.Close()
+		if cleanupErr := os.RemoveAll(scratch); cleanupErr != nil {
+			return nil, errors.Join(ErrLimit, cleanupErr)
+		}
 		return nil, ErrArchiveFormat
 	}
 	limit := int64(cb7ListMaxBytes)
@@ -95,9 +108,13 @@ func runCB7Helper(ctx context.Context, ra io.ReaderAt, size int64, args ...strin
 	}
 	body, readErr := io.ReadAll(io.LimitReader(stdout, limit+1))
 	waitErr := command.Wait()
-	// The helper writes only beneath the parent-owned scratch root; remove it
-	// after the physical wait, never before.
-	_ = os.RemoveAll(scratch)
+	// Owned input closes after the physical wait and before removal, on every
+	// path: an open file would keep the scratch root undeletable on Windows.
+	closeErr := input.Close()
+	removeErr := os.RemoveAll(scratch)
+	if cleanupErr := errors.Join(closeErr, removeErr); cleanupErr != nil {
+		return nil, errors.Join(ErrLimit, cleanupErr)
+	}
 	if readErr != nil || int64(len(body)) > limit {
 		return nil, ErrLimit
 	}
