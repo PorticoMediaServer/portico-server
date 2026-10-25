@@ -12,6 +12,8 @@ export const tvMoreMessages = {
   'music.allSongs': 'All songs',
   'music.moreLikeThis': 'More like this',
   'music.moreLikeThisHint': 'Same genres first, then what people here play alongside it',
+  // music-plus f7 (MC-9): the same row's line once the album is analyzed and ranked by sound.
+  'music.moreLikeThisBySound': 'Closest in sound',
   'music.onServer': '{albums, plural, one {# album} other {# albums}} and {songs, plural, one {# song} other {# songs}} on your server',
   'music.songCountAndDuration': '{songs, plural, one {# song} other {# songs}}, {minutes} min',
   'music.shuffleArtist': 'Shuffle {artist}',

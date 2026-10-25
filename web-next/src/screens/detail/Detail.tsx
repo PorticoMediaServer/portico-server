@@ -53,6 +53,16 @@ export function TitleBody({binding, compact = false}: {binding: DetailBindings; 
   const data = snapshot.data, {tab} = useSyncExternalStore(binding.view.subscribe, binding.view.getSnapshot, binding.view.getSnapshot);
   const recommendations = useSyncExternalStore(binding.recommendations.subscribe, binding.recommendations.getSnapshot, binding.recommendations.getSnapshot);
   useEffect(() => { if (data?.item.kind === 'movie') void binding.recommendations.select(data, () => binding.service.getSnapshot().data === data); }, [binding, data]);
+  // music-plus f7 (MC-9): an album's More like this is the server's own bounded ranking, read
+  // for this captured page and item; it ranks by sound once the album is analyzed.
+  const [similar, setSimilar] = useState<Readonly<{data: DetailProjection; value: Awaited<ReturnType<DetailBindings['readSimilar']>>}>>();
+  useEffect(() => {
+    if (!data || data.item.kind !== 'album') { setSimilar(undefined); return; }
+    const request = new AbortController();
+    setSimilar(undefined);
+    void binding.readSimilar(data, request.signal).then(value => { if (!request.signal.aborted) setSimilar({data, value}); }, () => undefined);
+    return () => request.abort();
+  }, [binding, data]);
   // Keep the viewport hook unconditional while the detail request is loading.
   const standalonePhone = useShellWidth() < 600;
   if (!data) return snapshot.phase === 'error' ? <ScreenProblem context={binding.context} error={snapshot.error} subject={binding.subject()} retry={() => { void binding.service.retry(); }} /> : <DetailLoading key={snapshot.target?.itemId} />;
@@ -66,6 +76,7 @@ export function TitleBody({binding, compact = false}: {binding: DetailBindings; 
     {snapshot.mutationError && <ScreenFailure retry={() => { void binding.service.retryMutation(); }} />}
     <div key={tab} className={tab === 'details' ? styles.tabPanel : `${styles.tabPanel} ${styles.rowsPanel}`}>{tab === 'details' ? <TitleDetails binding={binding} data={data} /> : tab === 'extras' ? data.extras?.map(extra => <TitleRow key={extra.type} heading={extra.label} entries={extra.items} binding={binding} />)
       : recommendations.data ? titleRecommendationRows(recommendations.data).map(row => <TitleRecommendationRow key={row.id} row={row} binding={binding} subtitleVisible={!compact} guard={() => binding.current(data)} />)
+        : similar?.data === data ? (similar.value.entries.length > 0 && <TitleRow heading={t('music.moreLikeThis')} subtitle={t(similar.value.bySound ? 'music.moreLikeThisBySound' : 'music.moreLikeThisHint')} entries={similar.value.entries} binding={binding} guard={() => binding.current(data)} />)
         : data.related?.rows.map(row => <TitleRow key={row.id} heading={row.heading} entries={row.entries} binding={binding} guard={() => binding.current(data)} />)}</div>
   </article>;
 }

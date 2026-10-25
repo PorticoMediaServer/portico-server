@@ -1,4 +1,5 @@
 import {DetailService, readFileInfo, parseCreditPage, type DetailProjection, type DetailTarget, type FileInfoProjection, type PersonalIntent} from '@core/detail.ts';
+import {readListeningSimilar} from '@core/library-content.ts';
 import {PlaybackOptionsClient} from '@core/playback-v1/options.ts';
 import {localV1Http} from '@core/playback-v1/local-http.ts';
 import {parseMediaItem} from '@core/media-item.ts';
@@ -76,6 +77,18 @@ export function createDetailBindings(context: ScreenContext) {
     const item = parseMediaItem(await life.api.request(encodedRoutePath('get_items_id', {id: encodeURIComponent(itemId)}), 'GET', undefined, signal));
     return validateContentEntry({id: item.id, libraryId: item.libraryId, kind: item.kind, title: item.title, posterUrl: item.posterUrl, backdropUrl: item.backdropUrl, navigation: {view: 'item', entityId: item.id}});
   };
+  /** music-plus f7 (MC-9): the album's own More like this, ranked by sound when the server has
+   * analyzed it and by today's rule otherwise. The same captured page, api and revisions. */
+  const similar = async (data: DetailProjection, signal?: AbortSignal) => {
+    current(data);
+    const viewer = context.identity?.viewer;
+    if (!viewer || (viewer.authority !== 'local' && viewer.authority !== 'hosted')) throw new DOMException('Title authority changed', 'AbortError');
+    const value = await readListeningSimilar(life.api, {serverId: context.scope.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId,
+      controllerId: 'v1', controllerEpoch: 'v1', commandLaneId: 'v1'}, data.item.id, {limit: 12, by: 'sound', signal: life.signal(signal)});
+    current(data);
+    if (value.itemId !== data.item.id || value.libraryId !== data.item.libraryId || value.revision.catalog !== data.revision.catalog || value.revision.viewer !== data.revision.viewer) throw new DOMException('Title recommendations changed', 'AbortError');
+    return value;
+  };
   const versions = async (data: DetailProjection, signal?: AbortSignal) => {
     current(data); const value = await options.options(data.item.id, {}, life.signal(signal)); current(data);
     if (value.itemId !== data.item.id) throw new Error('Playback options target mismatch');
@@ -85,7 +98,7 @@ export function createDetailBindings(context: ScreenContext) {
   const binding = {
     context, service, select, current, recommendations, view,
     subject() { const target = service.getSnapshot().target; return life.current() && target?.itemId === subject?.itemId && target?.libraryId === subject?.libraryId ? subject?.title : undefined; },
-    readFileInfo: files, readVersions: versions,
+    readFileInfo: files, readVersions: versions, readSimilar: similar,
     async chooseVersion(data: DetailProjection, captured: PlaybackOptions, signal: AbortSignal, returnFocusRef?: RefObject<HTMLElement | null>): Promise<void> {
       current(data);signal.throwIfAborted();
       const action = data.actions.find(value => value.enabled && value.playback?.itemId === data.item.id && value.id !== 'start_over');
