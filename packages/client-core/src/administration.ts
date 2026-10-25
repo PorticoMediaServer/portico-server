@@ -35,9 +35,13 @@ export type LiveTimeshiftMinutes=10|30|60|120;
 export type LiveDefaults=Readonly<{timeshiftMinutes?:LiveTimeshiftMinutes;importLimits:Readonly<{bytes:number;channels:number;programmes:number}>;streamBufferMs:number;retryWindowMs:number;userAgent:string;guideDays:number;logoImport:boolean;discoveryEnabled:boolean}>;
 export type FilterRule=Readonly<{mode:'include'|'exclude';values:readonly string[]}>;
 export type LiveSourceKind='playlist'|'xmltv-guide'|'hdhomerun';
+/** How a source gets its next version: an owner upload, or a remote refresh loop. Optional; an older server sends neither and this client claims neither. */
+export type LiveSourceAcquisition='upload'|'remote';
 /** `importLimits`: this source's own, lower than the server's; null keeps the server's. */
 export type LiveSourceSettings=Readonly<{enabledGroups:readonly string[];enabledChannels:readonly string[];kind:LiveSourceKind;streamBufferMs:number|null;retryWindowMs:number|null;userAgent:string;guideSourceId:string;importLimits:Readonly<{bytes:number;channels:number;programmes:number}>|null;filters:Readonly<{categories:FilterRule;countries:FilterRule;keywords:FilterRule}>;logoImport:Readonly<{enabled:boolean;overwriteExisting:boolean}>;channelNumbering:Readonly<{mode:'source'|'sequential';startAt:number;step:number}>}>;
-export type LiveSourceDocument=Readonly<{sourceId:string;sourceName:string;revision:number;digest:string;tunerCount:number;availableKinds:readonly LiveSourceKind[];settings:LiveSourceSettings;effective:LiveDefaults}>;
+export type LiveSourceDocument=Readonly<{sourceId:string;sourceName:string;revision:number;digest:string;tunerCount:number;availableKinds:readonly LiveSourceKind[];settings:LiveSourceSettings;effective:LiveDefaults;
+ /** The authoritative update mode when the server sends it; absent means unknown, not remote or upload. */
+ acquisition?:LiveSourceAcquisition}>;
 export type ChannelMapEntry=Readonly<{channelId:string;name:string;sourceNumber:string;number:string;group:string;guideChannelId:string;hidden:boolean;position:number;overridden:boolean}>;
 export type ChannelMapPage=Readonly<{sourceId:string;generation:string;items:readonly ChannelMapEntry[];nextCursor:string}>;
 export type FolderToken=Readonly<{token:string;description:string;example:string;supportsPadding:boolean}>;
@@ -248,6 +252,8 @@ function parseFilter(v:unknown,what:string):FilterRule{
  return Object.freeze({mode:choice(v.mode,['include','exclude'] as const,what),values:strings(v.values,200,what)});
 }
 const liveKinds:readonly LiveSourceKind[]=['playlist','xmltv-guide','hdhomerun'];
+/** The two acquisition values the server may send. Anything else, or nothing, is unknown; refresh-row absence is never read as manual. */
+export function liveSourceAcquisition(v:unknown):LiveSourceAcquisition|undefined{return v==='upload'||v==='remote'?v:undefined;}
 /** parseLiveSourceDocument reads one source's configuration and the effective values behind it. */
 export function parseLiveSourceDocument(v:unknown):LiveSourceDocument{
  if(!object(v)||!filled(v.sourceId,256)||!text(v.sourceName,512)||!count(v.revision)||v.revision<1||!filled(v.digest,128)||!count(v.tunerCount)||!object(v.settings))invalid('live source document');
@@ -265,7 +271,8 @@ export function parseLiveSourceDocument(v:unknown):LiveSourceDocument{
  const settings=Object.freeze({enabledGroups:Object.freeze(strings(s.enabledGroups,100000,"enabled groups")),enabledChannels:Object.freeze(strings(s.enabledChannels,100000,"enabled channels")),kind,streamBufferMs:buffer,retryWindowMs:nullableCount(s.retryWindowMs,'live source retry window'),userAgent:s.userAgent,guideSourceId:s.guideSourceId,importLimits:object(s.importLimits)&&count(s.importLimits.bytes)&&count(s.importLimits.channels)&&count(s.importLimits.programmes)?Object.freeze({bytes:s.importLimits.bytes,channels:s.importLimits.channels,programmes:s.importLimits.programmes}):null,filters:Object.freeze({categories:parseFilter(s.filters.categories,'live source category filter'),countries:parseFilter(s.filters.countries,'live source country filter'),keywords:parseFilter(s.filters.keywords,'live source keyword filter')}),logoImport:Object.freeze({enabled:logos.enabled,overwriteExisting:logos.overwriteExisting}),channelNumbering:Object.freeze({mode:choice(numbering.mode,['source','sequential'] as const,'live source numbering mode'),startAt:numbering.startAt,step:numbering.step})});
  // A kind of source this app does not know is not offered. The stored settings stay exact.
  const kinds=keepReadable('administration','live source kinds',list(v.availableKinds,8,'live source kinds'),value=>oneOf(value,liveKinds));
- return Object.freeze({sourceId:v.sourceId,sourceName:v.sourceName,revision:v.revision,digest:v.digest,tunerCount:v.tunerCount,availableKinds:Object.freeze(kinds),settings,effective:parseLiveDefaults(v.effective)});
+ const acquisition=liveSourceAcquisition(v.acquisition);
+ return Object.freeze({sourceId:v.sourceId,sourceName:v.sourceName,revision:v.revision,digest:v.digest,tunerCount:v.tunerCount,availableKinds:Object.freeze(kinds),settings,effective:parseLiveDefaults(v.effective),...(acquisition?{acquisition}:{})});
 }
 /** parseChannelMapPage reads one page of a source's channel map. */
 export function parseChannelMapPage(v:unknown):ChannelMapPage{

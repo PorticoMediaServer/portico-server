@@ -4,9 +4,19 @@
  * for is left out, never shown as a key.
  */
 import type {MessageId, MessageValues} from '../../../i18n/src/index.ts';
+import type {LiveSourceAcquisition} from '../administration.ts';
 
 type Translate = (id: MessageId, values?: MessageValues) => string;
 type Has = (id: string) => boolean;
+
+/**
+ * The saved-settings line for a Live source: an upload that has no refresh loop defers to the
+ * next upload, a remote source keeps the guide-refresh sentence, and an unknown mode claims no
+ * deferral at all.
+ */
+export function liveSavedSettingsId(acquisition: LiveSourceAcquisition | undefined): MessageId {
+  return acquisition === 'upload' ? 'server.live.changesAfterUpload' : acquisition === 'remote' ? 'server.live.settingsSaved' : 'settings.saved';
+}
 
 export type ImportSkipped = Readonly<{/** "12 channels and 340 programs were left out. 5 program times were adjusted." */ summary: string; /** Why, in sentences, each once. */ reasons: readonly string[]}>;
 
