@@ -1,5 +1,7 @@
 import type {LibraryAdminDocument} from '@core/administration.ts';
-import type {LibraryContentApi} from '@core/library-content.ts';
+import {defaultI18n} from '@i18n';
+import {LibraryManagementService} from '@core/library-management.ts';
+import type {ContentScope, LibraryContentApi} from '@core/library-content.ts';
 import {patchLibrarySettingsBinding, readLibrarySettingsBinding, patchLibrarySonicSettingsBinding, readLibrarySonicSettingsBinding} from '@core/presentation/settings-bindings.ts';
 import {randomId} from '@core/random-id.ts';
 import {readLibrarySettings, saveLibrarySettings} from '@core/server-admin/libraries.ts';
@@ -14,7 +16,10 @@ export class SettingsLibrarySource {
   private request?: AbortController;
   private pending?: Promise<void>;
   private closed = false;
-  constructor(private readonly api: LibraryContentApi, private readonly isCurrent: () => boolean, private readonly notify: () => void, private readonly reportError: (error: unknown) => void) {}
+  private readonly management?: LibraryManagementService;
+  constructor(private readonly api: LibraryContentApi, private readonly isCurrent: () => boolean, private readonly notify: () => void, private readonly reportError: (error: unknown) => void, scope?: ContentScope) {
+    if (scope) this.management = new LibraryManagementService({api, scope});
+  }
   private current = () => !this.closed && this.isCurrent();
   getSnapshot = () => this.current() ? this.state : empty;
   document = (libraryId?: string) => libraryId && this.current() && this.state.libraryId === libraryId ? this.state.document : undefined;
@@ -42,6 +47,12 @@ export class SettingsLibrarySource {
   };
   read = (libraryId: string | undefined, rowId: string) => {
     const document = this.document(libraryId);
+    if (document?.eligibleControls.includes(rowId)) {
+      const current = rowId === 'libraries.name' ? document.libraryName : rowId === 'libraries.type'
+        ? defaultI18n.t(('next.ownerLibraries.kind.' + document.libraryKind) as Parameters<typeof defaultI18n.t>[0])
+        : rowId === 'libraries.access' ? defaultI18n.t(document.audience.everyone ? 'next.ownerLibraries.audience' : 'next.ownerLibraries.audienceSubset', {count: document.audience.accounts}) : undefined;
+      if (current !== undefined) return {current, effective: current, default: undefined, source: 'library', configOnly: false};
+    }
     if (rowId === 'libraries.sonicAnalysis') {
       const sonic = this.state.sonic;
       return document && sonic ? readLibrarySonicSettingsBinding(rowId, document, sonic) : undefined;
@@ -60,6 +71,7 @@ export class SettingsLibrarySource {
     }
     const before = this.document(libraryId);
     if (!before || this.state.loading || this.state.saving) return false;
+    if (rowId === 'libraries.name') return this.rename(libraryId, value, before);
     const settings = patchLibrarySettingsBinding(rowId, value, before);
     const request = new AbortController();this.request = request;
     this.publish({...this.state, libraryId, document: before, loading: false, saving: true});
@@ -69,6 +81,26 @@ export class SettingsLibrarySource {
     } catch (error) {
       // A lost/conflicting response needs a genuine reread before another edit.
       if (this.owns(request, libraryId)) {this.publish({libraryId, loading: false, saving: false, error});throw error;}
+    } finally {if (this.request === request) this.request = undefined;}
+    return false;
+  }
+  private async rename(libraryId: string, value: unknown, before: LibraryAdminDocument): Promise<boolean> {
+    const management = this.management;
+    if (!management || typeof value !== 'string' || !before.actions.includes('rename')) return false;
+    const request = new AbortController(); this.request = request;
+    this.publish({...this.state, saving: true});
+    try {
+      await management.selectLibrary(libraryId);
+      if (!this.owns(request, libraryId)) return false;
+      const selected = management.getSnapshot().selected;
+      if (selected.phase !== 'ready' || selected.data?.library.id !== libraryId) throw new Error('library_changed');
+      await management.rename(value, selected.data.library.revision);
+      if (!this.owns(request, libraryId)) return false;
+      if (management.getSnapshot().mutation.phase !== 'complete') throw new Error('library_rename_failed');
+      const document = await readLibrarySettings(this.api, libraryId, request.signal);
+      if (this.owns(request, libraryId)) {this.publish({...this.state, document, saving: false}); return true;}
+    } catch (error) {
+      if (this.owns(request, libraryId)) {this.publish({libraryId, loading: false, saving: false, error}); throw error;}
     } finally {if (this.request === request) this.request = undefined;}
     return false;
   }
@@ -91,5 +123,5 @@ export class SettingsLibrarySource {
     } finally {if (this.request === request) this.request = undefined;}
     return false;
   }
-  dispose() {this.closed = true;this.request?.abort();this.request = undefined;this.pending = undefined;this.state = empty;}
+  dispose() {this.closed = true;this.management?.dispose();this.request?.abort();this.request = undefined;this.pending = undefined;this.state = empty;}
 }
