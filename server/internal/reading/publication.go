@@ -3,8 +3,9 @@ package reading
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
+	"math"
+	"reflect"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -23,12 +24,14 @@ type Publication struct {
 	// EmbeddedAuthor is the package's own single creator, when it carries
 	// exactly one exact value. It is evidence for adoption only; it never
 	// substitutes for the catalogue's accepted author.
-	EmbeddedAuthor  string
-	Resources       []Resource
-	Spine           []string
-	PageNames       []string
-	Contents        []ContentsEntry
-	PublicationType *compactcatalog.ReadingValue
+	EmbeddedAuthor       string
+	EmbeddedSeries       string
+	EmbeddedSeriesNumber *float64
+	Resources            []Resource
+	Spine                []string
+	PageNames            []string
+	Contents             []ContentsEntry
+	PublicationType      *compactcatalog.ReadingValue
 }
 
 // Inspect returns only actual, bounded package/archival facts. PDF page count
@@ -45,6 +48,7 @@ func Inspect(f *Source) (Publication, error) {
 		out.Metadata.ExplicitPublicationType = e.Metadata.ExplicitPublicationType
 		out.Metadata.PublicationTypeField, out.Metadata.PublicationTypeRaw, out.Metadata.PublicationTypeComplete = e.Metadata.PublicationTypeField, e.Metadata.PublicationTypeRaw, e.Metadata.PublicationTypeComplete
 		out.EmbeddedAuthor = acceptedEmbeddedAuthor(e.Metadata.Author)
+		out.EmbeddedSeries, out.EmbeddedSeriesNumber = acceptedEmbeddedSeries(e.Series, e.SeriesNumber)
 		if e.CoverResource != "" {
 			out.cover = func() ([]byte, error) { return e.archive.read(f.ctx, e.CoverResource, maxAutomaticCover) }
 		}
@@ -63,6 +67,7 @@ func Inspect(f *Source) (Publication, error) {
 		out.Metadata.ExplicitPublicationType = c.Metadata.ExplicitPublicationType
 		out.Metadata.PublicationTypeField, out.Metadata.PublicationTypeRaw, out.Metadata.PublicationTypeComplete = c.Metadata.PublicationTypeField, c.Metadata.PublicationTypeRaw, c.Metadata.PublicationTypeComplete
 		out.EmbeddedAuthor = acceptedEmbeddedAuthor(c.Metadata.Author)
+		out.EmbeddedSeries, out.EmbeddedSeriesNumber = acceptedEmbeddedSeries(c.Series, c.SeriesNumber)
 		if len(c.Names) > 0 {
 			out.cover = func() ([]byte, error) { return c.readMember(f.ctx, c.Names[0], maxAutomaticCover) }
 		}
@@ -92,16 +97,35 @@ func acceptedEmbeddedAuthor(value string) string {
 	return value
 }
 
-// adoptEmbeddedAuthor publishes the publication's own single creator as
-// accepted file-metadata evidence. It is called only from the Prepare that
-// opened this exact source. The writer rechecks the same current inventory
-// observation and same-source association in its own transaction before it
-// writes, and an unchanged observation writes nothing. Owner overrides keep
-// their existing precedence over this row. The normalized accepted fields carry
-// no title, so the embedded title is deliberately not published here; the
-// catalogue title remains the path rule's title.
-func (s *Service) adoptEmbeddedAuthor(ctx context.Context, p identity.Principal, selected Selection, author string) error {
-	if author == "" || (selected.Format != "epub" && selected.Format != "cbz") {
+// acceptedEmbeddedSeries keeps one exact series value and, only when it parses
+// as a non-negative number, its position. A non-numeric position stays unknown
+// instead of becoming an ordinal guess; the series itself still publishes.
+func acceptedEmbeddedSeries(value, number string) (string, *float64) {
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > 4096 || !utf8.ValidString(value) || strings.ContainsAny(value, "\x00\r\n") {
+		return "", nil
+	}
+	number = strings.TrimSpace(number)
+	if number == "" {
+		return value, nil
+	}
+	n, err := strconv.ParseFloat(number, 64)
+	if err != nil || math.IsInf(n, 0) || math.IsNaN(n) || n < 0 {
+		return value, nil
+	}
+	return value, &n
+}
+
+// adoptEmbeddedFacts publishes the publication's own accepted facts as
+// file-metadata evidence. It is called only from the Prepare that opened this
+// exact source. The writer rechecks the same current inventory observation and
+// same-source association in its own transaction before it writes, and an
+// unchanged observation writes nothing. Owner overrides keep their existing
+// precedence over these rows. The normalized accepted fields carry no title, so
+// the embedded title is deliberately not published here; the catalogue title
+// remains the path rule's title.
+func (s *Service) adoptEmbeddedFacts(ctx context.Context, p identity.Principal, selected Selection, author, series string, number *float64) error {
+	if (author == "" && series == "") || (selected.Format != "epub" && selected.Format != "cbz") {
 		return nil
 	}
 	if s == nil || s.DB == nil {
@@ -122,45 +146,93 @@ func (s *Service) adoptEmbeddedAuthor(ctx context.Context, p identity.Principal,
 	if current.Revision != selected.Revision || current.object != selected.object || current.inventory != selected.inventory || current.inventoryRow != selected.inventoryRow {
 		return ErrChanged
 	}
-	var text, revision, object string
-	err = tx.QueryRowContext(ctx, `SELECT text_value,source_revision,inventory_object_id FROM reading_source_values WHERE item_id=? AND asset_id=? AND field='author' AND source='file-metadata'`, current.Entity, current.Asset).Scan(&text, &revision, &object)
-	if err == nil && text == author && revision == current.inventory && object == current.inventoryRow {
-		return nil
+	type stored struct {
+		text, object, revision string
+		number                 sql.NullFloat64
 	}
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return err
+	next := map[string]stored{}
+	if author != "" {
+		next["author"] = stored{text: author, object: current.inventoryRow, revision: current.inventory}
 	}
-	if _, err = tx.ExecContext(ctx, `DELETE FROM reading_source_values WHERE item_id=? AND asset_id=? AND field='author' AND source='file-metadata'`, current.Entity, current.Asset); err != nil {
-		return err
+	if series != "" {
+		next["series"] = stored{text: series, object: current.inventoryRow, revision: current.inventory}
+		if number != nil {
+			next["seriesNumber"] = stored{object: current.inventoryRow, revision: current.inventory, number: sql.NullFloat64{Float64: *number, Valid: true}}
+		}
 	}
-	// Recheck the exact observation at publication, as the path publisher does.
-	// The insert selects only a current object of this same source and library.
-	result, err := tx.ExecContext(ctx, `INSERT INTO reading_source_values(item_id,asset_id,field,text_value,number_value,source,inventory_object_id,source_revision)
- SELECT ?1,?2,'author',?3,NULL,'file-metadata',o.id,o.revision FROM inventory_objects o
- JOIN catalog_assets a ON a.token=o.asset_id AND a.id=?2
- JOIN reading_publications p ON p.item_id=?1 AND p.asset_id=a.id
- JOIN catalog_asset_links link ON link.entity_id=p.item_id AND link.asset_id=p.asset_id
- JOIN catalog_entities e ON e.id=p.item_id JOIN catalog_libraries cl ON cl.id=e.library_id
- JOIN library_sources s ON s.id=o.source_id AND s.library_id=cl.library_id
- WHERE o.id=?4 AND o.revision=?5 AND o.root_incarnation=s.incarnation AND o.retired=0`, current.Entity, current.Asset, author, current.inventoryRow, current.inventory)
+	old := map[string]stored{}
+	rows, err := tx.QueryContext(ctx, `SELECT field,COALESCE(text_value,''),number_value,source_revision,inventory_object_id FROM reading_source_values WHERE item_id=? AND asset_id=? AND source='file-metadata' AND field IN('author','series','seriesNumber')`, current.Entity, current.Asset)
 	if err != nil {
 		return err
 	}
-	if n, err := result.RowsAffected(); err != nil {
+	for rows.Next() {
+		var field string
+		var value stored
+		if err = rows.Scan(&field, &value.text, &value.number, &value.revision, &value.object); err != nil {
+			rows.Close()
+			return err
+		}
+		old[field] = value
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
 		return err
-	} else if n != 1 {
-		return ErrChanged
+	}
+	if reflect.DeepEqual(old, next) {
+		return nil
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM reading_source_values WHERE item_id=? AND asset_id=? AND source='file-metadata' AND field IN('author','series','seriesNumber')`, current.Entity, current.Asset); err != nil {
+		return err
+	}
+	for _, field := range []string{"author", "series", "seriesNumber"} {
+		fact, ok := next[field]
+		if !ok {
+			continue
+		}
+		var text, value any
+		if fact.number.Valid {
+			value = fact.number.Float64
+		} else {
+			text = fact.text
+		}
+		// Recheck the exact observation at publication, as the path publisher
+		// does. The insert selects only a current object of this same source.
+		result, err := tx.ExecContext(ctx, `INSERT INTO reading_source_values(item_id,asset_id,field,text_value,number_value,source,inventory_object_id,source_revision)
+  SELECT ?1,?2,?3,?4,?5,'file-metadata',o.id,o.revision FROM inventory_objects o
+  JOIN catalog_assets a ON a.token=o.asset_id AND a.id=?2
+  JOIN reading_publications p ON p.item_id=?1 AND p.asset_id=a.id
+  JOIN catalog_asset_links link ON link.entity_id=p.item_id AND link.asset_id=p.asset_id
+  JOIN catalog_entities e ON e.id=p.item_id JOIN catalog_libraries cl ON cl.id=e.library_id
+  JOIN library_sources s ON s.id=o.source_id AND s.library_id=cl.library_id
+  WHERE o.id=?6 AND o.revision=?7 AND o.root_incarnation=s.incarnation AND o.retired=0`, current.Entity, current.Asset, field, text, value, current.inventoryRow, current.inventory)
+		if err != nil {
+			return err
+		}
+		if n, err := result.RowsAffected(); err != nil {
+			return err
+		} else if n != 1 {
+			return ErrChanged
+		}
 	}
 	automatic, err := compactcatalog.ReadingAutomaticFieldsTx(ctx, tx, current.Entity)
 	if err != nil {
 		return err
 	}
-	value := ""
+	values := map[string]string{"author": "", "series": "", "seriesNumber": ""}
 	if automatic.Author != nil {
-		value = automatic.Author.Value
+		values["author"] = automatic.Author.Value
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE metadata_owner_fields SET automatic_value=? WHERE kind='item' AND entity_id=? AND field='author' AND automatic_value<>?`, value, current.Entity, value); err != nil {
-		return err
+	if automatic.Series != nil {
+		values["series"] = automatic.Series.Value
+	}
+	if automatic.SeriesNumber != nil {
+		values["seriesNumber"] = strconv.FormatFloat(automatic.SeriesNumber.Value, 'g', -1, 64)
+	}
+	for _, field := range []string{"author", "series", "seriesNumber"} {
+		if _, err = tx.ExecContext(ctx, `UPDATE metadata_owner_fields SET automatic_value=? WHERE kind='item' AND entity_id=? AND field=? AND automatic_value<>?`, values[field], current.Entity, field, values[field]); err != nil {
+			return err
+		}
 	}
 	return gate.Commit()
 }

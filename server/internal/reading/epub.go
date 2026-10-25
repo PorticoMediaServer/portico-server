@@ -26,6 +26,8 @@ type Metadata struct {
 }
 type EPUB struct {
 	CoverResource string
+	Series        string
+	SeriesNumber  string
 	archive       *archive
 	Resources     []Resource
 	Metadata      Metadata
@@ -34,6 +36,18 @@ type EPUB struct {
 	allowed       map[string]string
 	navigation    []string
 	ncx           string
+}
+
+// epubMeta is one OPF meta declaration. EPUB 3 carries property text and
+// refinements; EPUB 2 and Calibre carry name/content attributes.
+type epubMeta struct {
+	ID       string `xml:"id,attr"`
+	Name     string `xml:"name,attr"`
+	Content  string `xml:"content,attr"`
+	Property string `xml:"property,attr"`
+	Refines  string `xml:"refines,attr"`
+	Value    string `xml:",chardata"`
+	Inner    string `xml:",innerxml"`
 }
 
 type containerXML struct {
@@ -48,11 +62,8 @@ type packageXML struct {
 		Title    string        `xml:"title"`
 		Creators []epubCreator `xml:"http://purl.org/dc/elements/1.1/ creator"`
 		Language string        `xml:"language"`
-		Meta     []struct {
-			Name    string `xml:"name,attr"`
-			Content string `xml:"content,attr"`
-		} `xml:"http://www.idpf.org/2007/opf meta"`
-		Types []struct {
+		Meta     []epubMeta    `xml:"http://www.idpf.org/2007/opf meta"`
+		Types    []struct {
 			Value string `xml:",chardata"`
 			Inner string `xml:",innerxml"`
 		} `xml:"http://purl.org/dc/elements/1.1/ type"`
@@ -132,6 +143,166 @@ func readingCreator(values []epubCreator) string {
 		exact = value
 	}
 	return exact
+}
+
+// epubSeries keeps only one explicit series declaration. An EPUB 3 collection
+// counts only when its collection-type is explicitly "series"; a generic
+// belongs-to-collection is never inferred to be one. The common Calibre series
+// meta is an explicit series field. Conflicting or nested declarations decline
+// the affected fact rather than choosing another declaration, and every
+// conflict flag is durable, so a later duplicate cannot resurrect a value.
+func epubSeries(p packageXML) (string, string) {
+	type declaration struct {
+		name             string
+		typeSeen         bool
+		typedSeries      bool
+		typeConflict     bool
+		position         string
+		positionSeen     bool
+		positionConflict bool
+	}
+	declarations := []declaration{}
+	byID := map[string]int{}
+	seriesConflict := false
+	for _, meta := range p.Metadata.Meta {
+		if meta.Property != "belongs-to-collection" {
+			continue
+		}
+		name := strings.TrimSpace(meta.Value)
+		if strings.Contains(meta.Inner, "<") || name == "" {
+			// Not a scalar declaration. The series fact is unreliable rather
+			// than merely absent.
+			seriesConflict = true
+			continue
+		}
+		if meta.ID != "" {
+			if _, exists := byID[meta.ID]; exists {
+				// One refinement id cannot reliably name two declarations.
+				seriesConflict = true
+				continue
+			}
+			byID[meta.ID] = len(declarations)
+		}
+		declarations = append(declarations, declaration{name: name})
+	}
+	calibreSeries, calibreIndex := "", ""
+	calibreSeriesSeen, calibreIndexSeen := false, false
+	calibreSeriesConflict, calibreIndexConflict := false, false
+	for _, meta := range p.Metadata.Meta {
+		if meta.Property == "collection-type" || meta.Property == "group-position" {
+			id := strings.TrimPrefix(meta.Refines, "#")
+			index, ok := byID[id]
+			if id == meta.Refines || !ok {
+				continue
+			}
+			declaration := &declarations[index]
+			if strings.Contains(meta.Inner, "<") {
+				if meta.Property == "collection-type" {
+					declaration.typeConflict = true
+				} else {
+					declaration.positionConflict = true
+				}
+				continue
+			}
+			value := strings.TrimSpace(meta.Value)
+			if value == "" {
+				continue
+			}
+			if meta.Property == "collection-type" {
+				if declaration.typeConflict {
+					continue
+				}
+				series := strings.EqualFold(value, "series")
+				if declaration.typeSeen && declaration.typedSeries != series {
+					declaration.typeConflict = true
+					continue
+				}
+				declaration.typeSeen, declaration.typedSeries = true, series
+				continue
+			}
+			if declaration.positionConflict {
+				continue
+			}
+			if declaration.positionSeen && declaration.position != value {
+				declaration.positionConflict = true
+				continue
+			}
+			declaration.position, declaration.positionSeen = value, true
+			continue
+		}
+		value := strings.TrimSpace(meta.Content)
+		switch meta.Name {
+		case "calibre:series":
+			if calibreSeriesSeen && calibreSeries != value {
+				calibreSeriesConflict = true
+			}
+			calibreSeries, calibreSeriesSeen = value, true
+		case "calibre:series_index":
+			if calibreIndexSeen && calibreIndex != value {
+				calibreIndexConflict = true
+			}
+			calibreIndex, calibreIndexSeen = value, true
+		}
+	}
+	candidates := map[string]bool{}
+	positions, positionSeen, positionConflict := map[string]string{}, map[string]bool{}, map[string]bool{}
+	for _, declaration := range declarations {
+		if declaration.typeConflict {
+			seriesConflict = true
+			continue
+		}
+		if !declaration.typedSeries {
+			continue
+		}
+		candidates[declaration.name] = true
+		if declaration.positionConflict {
+			positionConflict[declaration.name] = true
+			continue
+		}
+		if !declaration.positionSeen {
+			continue
+		}
+		if positionSeen[declaration.name] && positions[declaration.name] != declaration.position {
+			positionConflict[declaration.name] = true
+			continue
+		}
+		positions[declaration.name], positionSeen[declaration.name] = declaration.position, true
+	}
+	if seriesConflict || len(candidates) > 1 {
+		return "", ""
+	}
+	if len(candidates) == 1 {
+		var series, number string
+		for name := range candidates {
+			series = name
+			if !positionConflict[name] && positionSeen[name] {
+				number = positions[name]
+			}
+		}
+		if calibreSeriesSeen {
+			if calibreSeriesConflict || calibreSeries != series {
+				return "", ""
+			}
+		}
+		if positionConflict[series] || calibreIndexConflict {
+			return series, ""
+		}
+		if calibreSeriesSeen && calibreIndexSeen && calibreIndex != "" {
+			if number == "" {
+				number = calibreIndex
+			} else if calibreIndex != number {
+				return series, ""
+			}
+		}
+		return series, number
+	}
+	if calibreSeriesConflict || !calibreSeriesSeen || calibreSeries == "" {
+		return "", ""
+	}
+	if calibreIndexConflict {
+		return calibreSeries, ""
+	}
+	return calibreSeries, calibreIndex
 }
 
 func OpenEPUB(ctx context.Context, r io.ReaderAt, size int64) (*EPUB, error) {
@@ -223,6 +394,7 @@ func openEPUBArchive(ctx context.Context, a *archive) (*EPUB, error) {
 		}
 	}
 	e.CoverResource = epubCover(p, ids, e.allowed)
+	e.Series, e.SeriesNumber = epubSeries(p)
 	for _, item := range p.Spine.Items {
 		name := ids[item.ID]
 		if name == "" || e.allowed[name] != "application/xhtml+xml" {

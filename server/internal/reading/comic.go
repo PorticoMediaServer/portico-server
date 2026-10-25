@@ -34,6 +34,8 @@ type Comic struct {
 	members  memberArchive
 	Names    []string
 	Metadata Metadata
+	// Series and SeriesNumber are the package's own ComicInfo series facts.
+	Series, SeriesNumber string
 }
 
 func OpenComic(ctx context.Context, r io.ReaderAt, size int64) (*Comic, error) {
@@ -70,6 +72,7 @@ func openComicArchive(ctx context.Context, a *archive) (*Comic, error) {
 		var info struct {
 			XMLName                           xml.Name
 			Title, Writer, Manga, LanguageISO string
+			Series, Number                    string
 			Format                            []struct {
 				XMLName xml.Name
 				Value   string `xml:",chardata"`
@@ -80,6 +83,7 @@ func openComicArchive(ctx context.Context, a *archive) (*Comic, error) {
 			return nil, err
 		}
 		c.Metadata.Title, c.Metadata.Author, c.Metadata.Language = info.Title, info.Writer, info.LanguageISO
+		c.Series, c.SeriesNumber = info.Series, info.Number
 		c.Metadata.PublicationTypeField = "ComicInfo/Format"
 		if info.XMLName.Space == "" && info.XMLName.Local == "ComicInfo" {
 			values := []string{}
