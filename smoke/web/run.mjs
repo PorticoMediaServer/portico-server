@@ -16,6 +16,7 @@
 import {mkdirSync} from 'node:fs';
 import {join} from 'node:path';
 import {createReport, assert, blocked} from '../lib/report.mjs';
+import {matchesBuildPin, buildStability} from '../lib/build.mjs';
 import {loadCredentials, redactor} from '../lib/creds.mjs';
 import {
   loadPlaywright, launch, Evidence, settle, clickAny, findAny, bodyText,
@@ -207,20 +208,15 @@ async function main() {
   const expectedSha = (process.env.SMOKE_EXPECT_SHA || '').trim();
   const servedSha = report.buildStart.build && report.buildStart.build.commit;
   if (expectedSha) {
-    const matches = servedSha && servedSha.startsWith(expectedSha.slice(0, 12));
+    const matches = matchesBuildPin(servedSha, expectedSha);
     if (!matches) {
       report.note('build-pin', `STOP: expected ${expectedSha.slice(0, 12)} but the deployment serves ${servedSha || 'no build file'}; not running the flows`);
-      const endBuild = await readBuild();
-  const moved = JSON.stringify(endBuild.build) !== JSON.stringify(report.buildStart.build) ||
-    endBuild.version !== report.buildStart.version;
-  if (moved) {
-    report.note('build-drift', `the deployment changed during the run: start ${JSON.stringify(report.buildStart)} end ${JSON.stringify(endBuild)}`);
-  }
-  const result = report.write();
-  if (moved) {
-    console.log('\nBUILD DRIFT: the deployment changed while the flows ran; treat this run as invalid');
-    process.exit(4);
-  }
+      await report.check('build-pin-valid', async () => {
+        assert(false, 'deployment does not match the requested build pin');
+      });
+      report.write();
+      await context.close();
+      await browser.close();
       console.log(`\nSTOPPED on a build mismatch (expected ${expectedSha.slice(0, 12)}, served ${servedSha || 'none'})`);
       process.exit(3);
     }
@@ -1088,18 +1084,13 @@ async function main() {
 
   const endBuild = report.buildEnd || {};
   report.buildInfo = {start: report.buildStart, end: endBuild, expected: expectedSha || null};
-  const comparable = !!endBuild.build && !!report.buildStart.build;
-  const moved = comparable && (JSON.stringify(endBuild.build) !== JSON.stringify(report.buildStart.build) ||
-    endBuild.version !== report.buildStart.version);
-  if (!comparable) {
-    report.note('build-drift', `could not re-read the build at the end of the run (${JSON.stringify(endBuild).slice(0, 160)}); stability is unproven`);
-  }
-  if (moved) {
-    report.note('build-drift', `the deployment changed during the run: start ${JSON.stringify(report.buildStart)} end ${JSON.stringify(endBuild)}`);
-  }
+  const stability = buildStability(report.buildStart, endBuild);
+  await report.check('build-stability', async () => {
+    assert(stability.valid, stability.reason, {start: report.buildStart, end: endBuild});
+  });
   const result = report.write();
-  if (moved) {
-    console.log('\nBUILD DRIFT: the deployment changed while the flows ran; treat this run as invalid');
+  if (!stability.valid) {
+    console.log('\nBUILD INVALID: ' + stability.reason);
     process.exit(4);
   }
   console.log(`\n${result.verdict.toUpperCase()} ${result.counts.pass} pass / ${result.counts.fail} fail / ${result.counts.blocked} blocked`);
