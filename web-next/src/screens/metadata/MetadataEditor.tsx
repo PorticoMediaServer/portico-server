@@ -283,7 +283,7 @@ function People({data, target, busy, onCommit, onLock}: {
   const credits = data.snapshot.relationships.filter(row => row.kind === 'credit');
   const [draft, setDraft] = useState<RepairData['snapshot']['relationships'] | null>(null);
   const rows = draft ?? credits;
-  const editable = (row: RepairData['snapshot']['relationships'][number]) => !row.recordId || row.provider === 'manual' && !row.locked;
+  const editable = (row: RepairData['snapshot']['relationships'][number]) => row.provider === 'manual' && (!row.recordId || !row.locked);
   const clean = (value: string) => !/[\u0000-\u001f\u007f]/.test(value);
   const valid = rows.length <= 100 && rows.every(row => row.label.trim() !== '' && row.label.length <= 300 &&
     (row.role?.length ?? 0) <= 500 && (row.department?.length ?? 0) <= 200 && clean(row.label) && clean(row.role ?? '') && clean(row.department ?? ''));
@@ -297,7 +297,7 @@ function People({data, target, busy, onCommit, onLock}: {
   };
   const add = () => {
     if (busy || target.kind !== 'item' || rows.length >= 100) return;
-    setDraft([...rows, {kind: 'credit', targetKind: 'scoped_credit', targetId: '', label: '', role: '', department: '',
+    setDraft([...rows, {kind: 'credit', provider: 'manual', targetKind: 'scoped_credit', targetId: '', label: '', role: '', department: '',
       ordinal: rows.reduce((top, row) => Math.max(top, row.ordinal), 0) + 1, source: 'manual', locked: true}]);
   };
   const save = async () => {
