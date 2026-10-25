@@ -299,7 +299,7 @@ const accountPages: readonly AuthoredPage[] = [
         toggle('playback.showSyncedLyrics', 'settings.row.lyrics', {help: 'settings.help.lyrics'}),
       ]},
       {id: 'audiobooks', title: 'next.settingsSpec.account.music.groups.2.title', rows: [
-        pref('audiobooks.defaultSpeed', 'settings.row.audiobookSpeed', {type: 'choice', choices: audiobookSpeeds}, {needs: c => c.playbackSpeed !== false}),
+        pref('audiobooks.defaultSpeed', 'next.settingsSpec.account.music.groups.2.rows.0.label', {type: 'choice', choices: audiobookSpeeds}, {needs: c => c.playbackSpeed !== false}),
         pref('audiobooks.skipBackMs', 'pref.label.playback.skipBackMs', {type: 'choice', choices: seconds(10, 15, 30, 60)}, {scope: 'profile'}),
         pref('audiobooks.skipForwardMs', 'pref.label.playback.skipForwardMs', {type: 'choice', choices: seconds(15, 30, 60, 90)}, {scope: 'profile'}),
         pref('audiobooks.resumeRewindMs', 'pref.label.audiobooks.resumeRewindMs', {type: 'choice', choices: [
