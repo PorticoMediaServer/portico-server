@@ -28,8 +28,7 @@ export function MissingTitles({source, isCurrent, artwork}: Readonly<{source: Se
     const held = generation.current;await source.remove(confirmation, typed);
     if (isCurrent() && held === generation.current && source.getSnapshot().page !== confirmation) {setConfirmation(undefined);setTyped('');setCursors(['']);}
   };
-  return <section id="storage.missingNow" className={styles.section}>
-    <h3>{t('next.settingsSpec.server.libraries.groups.1.rows.1.label')}</h3>
+  return <div className={styles.section}>
     {state.error && <p role="alert">{t(state.error === 'remove' ? 'error.unconfirmedChange' : 'error.unavailable')} <Button size="xs" disabled={busy} onClick={() => {if (isCurrent()) void source.refresh();}}>{t('action.refresh')}</Button></p>}
     {state.removed && <p role="status" className={styles.note}>{t('web.missingTitles.removed', {count: state.removed.titles})}</p>}
     {!page && busy && <p role="status">{t('next.settings.loading')}</p>}
@@ -45,5 +44,5 @@ export function MissingTitles({source, isCurrent, artwork}: Readonly<{source: Se
       footer={<><Button variant="glass" size="compact" disabled={state.busy} onClick={() => setConfirmation(undefined)}>{t('action.cancel')}</Button><Button variant="glass" size="compact" icon="i-trash" className={styles.danger} disabled={busy || confirmation !== page || typed !== String(confirmation?.total)} onClick={() => {void remove();}}>{t('web.missingTitles.removeConfirm')}</Button></>}>
       <TextField label={t('server.missing.confirmCount', {count: confirmation?.total ?? 0})} inputMode="numeric" autoComplete="off" value={typed} disabled={state.busy} onChange={event => setTyped(event.target.value)} />
     </Dialog>
-  </section>;
+  </div>;
 }
