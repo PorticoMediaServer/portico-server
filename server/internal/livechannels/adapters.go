@@ -228,15 +228,18 @@ type Input struct {
 
 // Fence identifies what a producer reading this input depends on: the
 // channel's stream address and the network access the owner approved for the
-// source. The guide generation and the source revision are deliberately not
+// source, plus the actual admitted acquisition buffering/retry behavior.
+// The guide generation and the source revision are deliberately not
 // part of it, so republishing a line-up whose stream did not change yields the
 // same fence, and a changed address or approval yields a different one.
 func (in Input) Fence() string {
 	raw, _ := json.Marshal(struct {
-		Locator   string                 `json:"locator"`
-		Approvals []remotemedia.Approval `json:"approvals"`
-		UserAgent string                 `json:"userAgent"`
-	}{in.Locator, in.Policy.Approvals, in.Policy.UserAgent})
+		Locator             string                 `json:"locator"`
+		Approvals           []remotemedia.Approval `json:"approvals"`
+		UserAgent           string                 `json:"userAgent"`
+		StreamBufferSeconds int                    `json:"streamBufferSeconds"`
+		RetryWindowSeconds  int                    `json:"retryWindowSeconds"`
+	}{in.Locator, in.Policy.Approvals, in.Policy.UserAgent, in.StreamBufferSeconds, in.RetryWindowSeconds})
 	sum := sha256.Sum256(raw)
 	return hex.EncodeToString(sum[:16])
 }

@@ -194,6 +194,10 @@ func (g *Gateway) Reserve() (*decoder.EndpointReservation, error) {
 	return decoder.ReserveEndpoints(g.v4, g.v6)
 }
 func (g *Gateway) RetryExpired() bool {
+	// A reader reports the original acquisition it owns, never a newer registry entry.
+	if g.shared != nil {
+		return g.shared.RetryExpired()
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	return errors.Is(g.failure, ErrRetryWindow)
