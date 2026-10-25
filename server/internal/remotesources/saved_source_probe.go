@@ -82,15 +82,17 @@ func (s *Service) TestSavedSource(ctx context.Context, source string, authorize 
 		// errors and record nothing.
 		var observed *providerTestFailure
 		if errors.As(err, &observed) {
-			s.noteSourceContact(row.ID, row.MountID, effective, time.Now(), err)
-			if code := contactErrorCode(err); code != "" {
+			// One completed test observation: checked time and the closed
+			// provider failure merge atomically under one timestamp.
+			if code := s.noteSourceTest(row.ID, row.MountID, effective, time.Now(), err); code != "" {
 				result.ErrorCode = code
 				return result, nil
 			}
 		}
 		return result, err
 	}
-	s.noteSourceContact(row.ID, row.MountID, effective, time.Now(), nil)
+	// One completed test observation: checked time and success merge atomically.
+	s.noteSourceTest(row.ID, row.MountID, effective, time.Now(), nil)
 	result.Reachable = true
 	result.RangeSupport = support
 	return result, nil

@@ -3775,6 +3775,7 @@ CREATE TABLE remote_source_contacts(
  last_success_ms INTEGER NOT NULL DEFAULT 0 CHECK(last_success_ms>=0),
  last_failure_ms INTEGER NOT NULL DEFAULT 0 CHECK(last_failure_ms>=0),
  last_error_code TEXT NOT NULL DEFAULT '',
+ last_check_ms INTEGER NOT NULL DEFAULT 0 CHECK(last_check_ms>=0),
  CHECK(last_failure_ms=0 OR last_error_code IN('offline','credentials_required','rate_limited','quota_exceeded')),
  CHECK(last_failure_ms>0 OR last_error_code='')) STRICT;
 CREATE TABLE remote_source_operations(operation_id TEXT PRIMARY KEY,actor TEXT NOT NULL,fingerprint TEXT NOT NULL,response TEXT NOT NULL,created_at INTEGER NOT NULL) STRICT;

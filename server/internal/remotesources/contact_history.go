@@ -32,6 +32,7 @@ type sourceContact struct {
 	successMs int64
 	failureMs int64
 	errorCode string
+	checkMs   int64
 }
 
 type contactEntry struct {
@@ -79,7 +80,62 @@ func (s *Service) noteSourceContact(source, mountID, generation string, at time.
 	if ms <= 0 {
 		return
 	}
-	key := contactKey{source: source, mountID: mountID, generation: gen}
+	s.recordContact(source, mountID, gen, ms, func(current *sourceContact) {
+		if err == nil && ms > current.successMs {
+			current.successMs = ms
+		}
+		if code != "" && ms >= current.failureMs {
+			current.failureMs, current.errorCode = ms, code
+		}
+	})
+}
+
+// noteSourceTest records one completed explicit saved-source Test connection
+// for the worker wake. Checked time and the completed outcome merge atomically
+// under one contactsMu acquisition and one captured timestamp, so a flush cannot
+// persist one half and drop the other. It returns the closed failure code, or ""
+// for a real completed backend success. Only a real success or a guarded
+// direct-provider failure returned reachable=false calls this; local/private-RC/
+// setup/custody errors, cancelled or retired checks, cached outcomes and
+// ordinary reads or scans never do.
+func (s *Service) noteSourceTest(source, mountID, generation string, at time.Time, err error) string {
+	if s == nil || source == "" || generation == "" {
+		return ""
+	}
+	gen, e := strconv.ParseInt(generation, 10, 64)
+	if e != nil || gen < 0 {
+		return ""
+	}
+	code := ""
+	if err != nil {
+		code = contactErrorCode(err)
+		if code == "" {
+			return ""
+		}
+	}
+	ms := at.UnixMilli()
+	if ms <= 0 {
+		return code
+	}
+	s.recordContact(source, mountID, gen, ms, func(current *sourceContact) {
+		if ms > current.checkMs {
+			current.checkMs = ms
+		}
+		if err == nil {
+			if ms > current.successMs {
+				current.successMs = ms
+			}
+		} else if ms >= current.failureMs {
+			current.failureMs, current.errorCode = ms, code
+		}
+	})
+	return code
+}
+
+// recordContact applies one observation to the exact association under the
+// existing bounded pending set and oldest-pending order.
+func (s *Service) recordContact(source, mountID string, generation, ms int64, apply func(*sourceContact)) {
+	key := contactKey{source: source, mountID: mountID, generation: generation}
 	s.contactsMu.Lock()
 	if s.contacts == nil {
 		s.contacts = map[contactKey]sourceContact{}
@@ -95,12 +151,7 @@ func (s *Service) noteSourceContact(source, mountID, generation string, at time.
 		s.contactSeq++
 		current.order = s.contactSeq
 	}
-	if err == nil && ms > current.successMs {
-		current.successMs = ms
-	}
-	if code != "" && ms >= current.failureMs {
-		current.failureMs, current.errorCode = ms, code
-	}
+	apply(&current)
 	s.contacts[key] = current
 	s.contactsMu.Unlock()
 }
@@ -217,7 +268,7 @@ func (s *Service) flushContactBatch(ctx context.Context) (wrote, pending bool) {
 	for _, entry := range entries {
 		contact := entry.contact
 		generation := strconv.FormatInt(entry.key.generation, 10)
-		if _, err = gated.Tx().ExecContext(ctx, `INSERT INTO remote_source_contacts(source_id,mount_id,source_generation,last_success_ms,last_failure_ms,last_error_code) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM remote_sources r WHERE r.id=? AND r.removed=0 AND r.mount_id=? AND (CASE WHEN r.kind IN('rclone','sftp','smb') THEN (SELECT CAST(m.generation AS TEXT) FROM mount_backend_configs m WHERE m.mount_id=r.mount_id) ELSE CAST(r.generation AS TEXT) END)=?) ON CONFLICT(source_id) DO UPDATE SET mount_id=excluded.mount_id,source_generation=excluded.source_generation,last_success_ms=CASE WHEN remote_source_contacts.mount_id=excluded.mount_id AND remote_source_contacts.source_generation=excluded.source_generation THEN MAX(remote_source_contacts.last_success_ms,excluded.last_success_ms) ELSE excluded.last_success_ms END,last_failure_ms=CASE WHEN remote_source_contacts.mount_id=excluded.mount_id AND remote_source_contacts.source_generation=excluded.source_generation THEN MAX(remote_source_contacts.last_failure_ms,excluded.last_failure_ms) ELSE excluded.last_failure_ms END,last_error_code=CASE WHEN remote_source_contacts.mount_id<>excluded.mount_id OR remote_source_contacts.source_generation<>excluded.source_generation THEN excluded.last_error_code WHEN excluded.last_failure_ms>0 AND excluded.last_failure_ms>=remote_source_contacts.last_failure_ms THEN excluded.last_error_code ELSE remote_source_contacts.last_error_code END`, entry.key.source, entry.key.mountID, generation, contact.successMs, contact.failureMs, contact.errorCode, entry.key.source, entry.key.mountID, generation); err != nil {
+		if _, err = gated.Tx().ExecContext(ctx, `INSERT INTO remote_source_contacts(source_id,mount_id,source_generation,last_success_ms,last_failure_ms,last_error_code,last_check_ms) SELECT ?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM remote_sources r WHERE r.id=? AND r.removed=0 AND r.mount_id=? AND (CASE WHEN r.kind IN('rclone','sftp','smb') THEN (SELECT CAST(m.generation AS TEXT) FROM mount_backend_configs m WHERE m.mount_id=r.mount_id) ELSE CAST(r.generation AS TEXT) END)=?) ON CONFLICT(source_id) DO UPDATE SET mount_id=excluded.mount_id,source_generation=excluded.source_generation,last_success_ms=CASE WHEN remote_source_contacts.mount_id=excluded.mount_id AND remote_source_contacts.source_generation=excluded.source_generation THEN MAX(remote_source_contacts.last_success_ms,excluded.last_success_ms) ELSE excluded.last_success_ms END,last_failure_ms=CASE WHEN remote_source_contacts.mount_id=excluded.mount_id AND remote_source_contacts.source_generation=excluded.source_generation THEN MAX(remote_source_contacts.last_failure_ms,excluded.last_failure_ms) ELSE excluded.last_failure_ms END,last_error_code=CASE WHEN remote_source_contacts.mount_id<>excluded.mount_id OR remote_source_contacts.source_generation<>excluded.source_generation THEN excluded.last_error_code WHEN excluded.last_failure_ms>0 AND excluded.last_failure_ms>=remote_source_contacts.last_failure_ms THEN excluded.last_error_code ELSE remote_source_contacts.last_error_code END,last_check_ms=CASE WHEN remote_source_contacts.mount_id=excluded.mount_id AND remote_source_contacts.source_generation=excluded.source_generation THEN MAX(remote_source_contacts.last_check_ms,excluded.last_check_ms) ELSE excluded.last_check_ms END`, entry.key.source, entry.key.mountID, generation, contact.successMs, contact.failureMs, contact.errorCode, contact.checkMs, entry.key.source, entry.key.mountID, generation); err != nil {
 			gated.Rollback()
 			s.requeueContacts(entries)
 			return false, remaining
@@ -260,6 +311,9 @@ func (s *Service) requeueContacts(entries []contactEntry) {
 		}
 		if entry.contact.failureMs > 0 && entry.contact.failureMs >= current.failureMs {
 			current.failureMs, current.errorCode = entry.contact.failureMs, entry.contact.errorCode
+		}
+		if entry.contact.checkMs > current.checkMs {
+			current.checkMs = entry.contact.checkMs
 		}
 		if entry.contact.order < current.order {
 			current.order = entry.contact.order

@@ -67,11 +67,13 @@ var scanModes = map[string]bool{"first-import": true, "incremental": true, "inte
 var scanPhases = map[string]bool{"inventory": true, "legacy_inventory": true, "basic_pending": true, "basic_running": true, "analysis_enqueue": true, "reconciling": true, "sidecars": true, "verifying": true, "extras": true}
 
 type SourceStatus struct {
-	SourceID         string             `json:"sourceId"`
-	Generation       string             `json:"generation"`
-	State            string             `json:"state"`
-	ErrorCode        string             `json:"errorCode,omitempty"`
-	RangeSupport     string             `json:"rangeSupport"`
+	SourceID     string `json:"sourceId"`
+	Generation   string `json:"generation"`
+	State        string `json:"state"`
+	ErrorCode    string `json:"errorCode,omitempty"`
+	RangeSupport string `json:"rangeSupport"`
+	// LastCheckedAt is the latest completed explicit saved-source Test
+	// connection for the current association; it is not a save-time observation.
 	LastCheckedAt    string             `json:"lastCheckedAt"`
 	ConnectionsInUse int                `json:"connectionsInUse"`
 	PlaybackReads    int                `json:"playbackReads"`
@@ -160,21 +162,17 @@ func (s *Service) ReadSourceStatus(ctx context.Context, identities *identity.Ser
 	if active, ok := s.sourceOperationInUse(source, out.Generation); ok {
 		out.ServeOperationsInUse = &active
 	}
-	var observed int64
-	if err = snapshot.Tx().QueryRowContext(ctx, `SELECT COALESCE(MAX(observed_ms),0) FROM remote_source_webdav_tests WHERE source_id=? AND source_generation=?`, row.ID, row.Generation).Scan(&observed); err != nil {
-		return SourceStatus{}, err
-	}
-	if observed > 0 {
-		out.LastCheckedAt = time.UnixMilli(observed).UTC().Format(time.RFC3339)
-	}
-	// Contact evidence is keyed by the effective generation. Without that
-	// authority proof the status still reads, but contact facts are omitted
+	// Contact and checked evidence are keyed by the effective generation.
+	// Without that authority proof the status still reads, but both are omitted
 	// rather than matched against the raw configuration generation.
 	if effective, e := observationGenerationTx(ctx, snapshot.Tx(), row.ID); e == nil {
-		var successMs, failureMs int64
+		var successMs, failureMs, checkMs int64
 		var lastError string
-		contactErr := snapshot.Tx().QueryRowContext(ctx, `SELECT last_success_ms,last_failure_ms,last_error_code FROM remote_source_contacts WHERE source_id=? AND mount_id=? AND source_generation=?`, row.ID, row.MountID, effective).Scan(&successMs, &failureMs, &lastError)
+		contactErr := snapshot.Tx().QueryRowContext(ctx, `SELECT last_success_ms,last_failure_ms,last_error_code,last_check_ms FROM remote_source_contacts WHERE source_id=? AND mount_id=? AND source_generation=?`, row.ID, row.MountID, effective).Scan(&successMs, &failureMs, &lastError, &checkMs)
 		if contactErr == nil {
+			if at := contactTime(checkMs); at != "" {
+				out.LastCheckedAt = at
+			}
 			if at := contactTime(successMs); at != "" {
 				out.LastConnectedAt = at
 			}
