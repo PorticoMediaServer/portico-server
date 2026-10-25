@@ -12,6 +12,8 @@ import {Button, ResumeButton} from '../../kit/controls';
 import {Menu, MenuItem} from '../../kit/overlays';
 import {Skeleton, StateView} from '../../kit/states';
 import {ReadBookFacts, ReadBookHero, ReadBookSections} from '../../kit/reader/ReadBookHero';
+import {useLibraryScreenContext} from '../browse/screen-context';
+import {ReadMetadata} from './ReadMetadata';
 import {createReadBindings} from './bindings';
 import {readDestination, type ReadItemEligibility} from './navigation';
 import styles from './read-item.module.css';
@@ -24,6 +26,9 @@ export function ReadItemEntry({itemId, eligibility}: {itemId: string; eligibilit
   return captured && eligibility.itemId === itemId ? <BoundReadItem key={itemId} captured={captured} eligibility={eligibility}/> : null;
 }
 function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility: ReadItemEligibility}) {
+  const context = useLibraryScreenContext(captured);
+  const [editing, setEditing] = useState(false), [more, setMore] = useState(false);
+  const editorAnchor = useRef<HTMLButtonElement>(null);
   const errorSink = useRef(captured.binding.home.effects.reportError); errorSink.current = captured.binding.home.effects.reportError;
   const [sourceId, setSourceId] = useState(() => eligibility.versions.find(version => version.inventoryAvailable)?.sourceId);
   const [menu, setMenu] = useState(false), [retry, setRetry] = useState(0);
@@ -71,6 +76,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   };
   /** No Version control with one file (notes/read-web.md); the details keep format and size. */
   const chooseVersion = eligibility.versions.length > 1;
+  const viewer = context.identity?.viewer, canEdit = viewer?.authority === 'local' && viewer.role === 'owner';
   const details = <ReadBookFacts heading={t('next.reader.details')} facts={[
     ...(author ? [{id: 'author', label: t('filter.field.author'), value: author}] : []),
     ...(manifest.metadata.language ? [{id: 'language', label: t('next.selection.language'), value: manifest.metadata.language}] : []),
@@ -81,11 +87,12 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     ambient={<span className={styles.ambient} style={{'--read-tint-first': tint.first, '--read-tint-second': tint.second} as CSSProperties} aria-hidden="true"/>}
     actions={progression !== undefined && progression > 0 ? <ResumeButton icon="i-book" progress={progression} onClick={() => open()}>{t('next.cards.read')}</ResumeButton>
       : <Button variant="primary" icon="i-book" onClick={() => open()}>{t('next.reader.read')}</Button>}
-    under={chooseVersion ? <><Button ref={anchor} size="small" variant="glass" onClick={() => setMenu(value => !value)} aria-label={t('next.reader.version')}>
+    under={<>{canEdit && <><Button ref={editorAnchor} size="small" variant="glass" icon="i-more" iconOnly aria-label={t('next.controls.more')} onClick={() => setMore(value => !value)}/><Menu open={more} onOpenChange={setMore} title={title} anchorRef={editorAnchor}><MenuItem onSelect={() => {if (context.isCurrent()) setEditing(true);}}>{t('entry.editMetadata')}</MenuItem></Menu></>}{chooseVersion ? <><Button ref={anchor} size="small" variant="glass" onClick={() => setMenu(value => !value)} aria-label={t('next.reader.version')}>
       {version.format.toUpperCase()}<Icon name="i-down" size={14}/></Button>
       <Menu open={menu} onOpenChange={setMenu} title={t('next.reader.version')} anchorRef={anchor}>{eligibility.versions.map(candidate => <MenuItem key={candidate.sourceId}
         selected={candidate.sourceId === sourceId} disabled={!candidate.inventoryAvailable} onSelect={() => setSourceId(candidate.sourceId)} description={defaultI18n.bytes(candidate.size)}>
-        {candidate.format.toUpperCase()}</MenuItem>)}</Menu></> : undefined}/>
+        {candidate.format.toUpperCase()}</MenuItem>)}</Menu></> : null}</>}/>
+    {editing && canEdit && <ReadMetadata context={context} itemId={eligibility.itemId} anchor={editorAnchor} onClose={() => {setEditing(false); setRetry(value => value + 1);}}/>}
     <ReadBookSections contents={detail.targets?.length ? <><h2>{t('next.reader.contents')}</h2><ReaderContents entries={detailContents(manifest.contents ?? [], index => open(index))}/></> : <span hidden/>} details={details}/></>;
 }
 
