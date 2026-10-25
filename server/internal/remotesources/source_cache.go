@@ -231,7 +231,7 @@ func (c *rangeCache) commit(ctx context.Context) error {
 		return err
 	}
 	if c.service.cacheGuardRetired(guard) {
-		return c.discard(name)
+		return c.discardLocked(name)
 	}
 	now := time.Now().UnixMilli()
 	result, err := dbwork.ExecWrite(ctx, c.service.db, dbwork.ClassBackgroundMedia, `INSERT INTO remote_source_cache_entries(source_id,cache_key,file_name,used_bytes,object_size,accessed_ms)
@@ -242,18 +242,18 @@ ON CONFLICT(source_id,cache_key) DO UPDATE SET used_bytes=excluded.used_bytes,ob
 		return err
 	}
 	if n, _ := result.RowsAffected(); n == 0 {
-		return c.discard(name)
+		return c.discardLocked(name)
 	}
 	return c.service.evictSourceCache(ctx, c.source, c.configured, c.key, 0)
 }
 
-func (c *rangeCache) discard(name string) error {
-	c.guard.mu.Lock()
+// discardLocked runs under commit's guard. Reacquiring it would deadlock the
+// acquisition's Close before it can unpin the cache and release its source slot.
+func (c *rangeCache) discardLocked(name string) error {
 	sole := c.guard.pins <= 1
 	if sole {
 		c.guard.cached, c.guard.loaded = 0, false
 	}
-	c.guard.mu.Unlock()
 	if sole {
 		directory, err := cacheDirectory(c.service.private, c.source)
 		if err == nil {
