@@ -311,7 +311,7 @@ const accountPages: readonly AuthoredPage[] = [
   {
     id: 'region', title: 'settings.page.region', icon: 'globe', sections: [
       {id: 'region', rows: [
-        pref('region.locale', 'settings.row.language', {type: 'locale'}),
+        pref('region.locale', 'settings.row.language', {type: 'locale'}, {help: 'next.settingsSpec.account.language.groups.0.rows.0.help'}),
         // No time zone: every client shows times in the device's own zone (Justin, 5 Oct 2026).
         pref('region.hourCycle', 'pref.label.region.hourCycle', {type: 'choice', choices: (['auto', 'h12', 'h23'] as const).map(value => ({value, label: `pref.value.region.hourCycle.${value}` as MessageId}))}),
       ]},
