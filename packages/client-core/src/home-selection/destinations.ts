@@ -93,7 +93,8 @@ export class HomeSelectionDestinations {
       await this.playlist.select({view: 'playlist', playlistId: id}); this.active();
       const state = this.playlist.getSnapshot(), resource = state.playlist;
       if (state.phase !== 'ready' || !resource || !resource.actions.includes('add')) throw selectionExecutionError(state.error?.code ?? 'destination-not-permitted');
-      const artwork = (state.projection?.sections.flatMap(section => section.entries) ?? []).flatMap(entry => entry.kind === 'playlist_entry' ? entry.hidden ? [] : [entry.media] : entry.kind === 'playlist' ? [] : [entry]).slice(0, 4);
+      // Saved Reading groups are opaque references, never ordinary media artwork.
+      const artwork = (state.projection?.sections.flatMap(section => section.entries) ?? []).flatMap(entry => entry.kind === 'playlist_entry' ? entry.hidden ? [] : [entry.media] : entry.kind === 'playlist' || entry.kind === 'reading_group' ? [] : [entry]).slice(0, 4);
       this.retainDestination({id, name: resource.name, count: resource.entryCount, revision: resource.revision, canAdd: true, artwork});
       return resource.revision;
     }
