@@ -9186,3 +9186,40 @@ CREATE TABLE social_cast_controllers(
  sender_device_id TEXT NOT NULL, sender_family_id TEXT NOT NULL, sender_role TEXT NOT NULL, sender_epoch INTEGER NOT NULL,
  proof_digest TEXT NOT NULL, ticket_digest TEXT NOT NULL DEFAULT '', ticket_attempt TEXT NOT NULL DEFAULT '', ticket_expires_ms INTEGER NOT NULL DEFAULT 0
 ) STRICT;
+
+-- Root52 private custody for ONE complete admitted weak finite ISO acquisition.
+-- Source-policy reservations are owned separately by the source adapter.
+CREATE TABLE owned_capture_sources(
+ capture_id TEXT PRIMARY KEY CHECK(length(capture_id)=64),
+ source_id TEXT NOT NULL,config_generation TEXT NOT NULL,
+ object_id TEXT NOT NULL,object_revision TEXT NOT NULL,asset_id TEXT NOT NULL,
+ acquisition_id TEXT NOT NULL UNIQUE,reservation_id TEXT NOT NULL UNIQUE,
+ policy_witness TEXT NOT NULL,authority_witness TEXT NOT NULL,
+ expected_size INTEGER NOT NULL CHECK(expected_size>0),
+ created_ms INTEGER NOT NULL,expires_ms INTEGER NOT NULL CHECK(expires_ms>created_ms)
+) STRICT;
+CREATE TABLE owned_capture_lifecycle(
+ capture_id TEXT PRIMARY KEY REFERENCES owned_capture_sources(capture_id),
+ state TEXT NOT NULL CHECK(state IN('capturing','ready','retired','deleted')),
+ pending_digest TEXT NOT NULL DEFAULT '',updated_ms INTEGER NOT NULL
+) STRICT;
+CREATE INDEX owned_capture_lifecycle_collect ON owned_capture_lifecycle(state,updated_ms,capture_id);
+CREATE TABLE owned_capture_receipts(
+ capture_id TEXT PRIMARY KEY REFERENCES owned_capture_sources(capture_id),
+ artifact_id TEXT NOT NULL UNIQUE CHECK(length(artifact_id)=64),
+ digest TEXT NOT NULL CHECK(length(digest)=64),
+ size INTEGER NOT NULL CHECK(size>0),version_id TEXT NOT NULL CHECK(length(version_id)=64)
+) STRICT;
+CREATE TABLE owned_capture_reader_pins(
+ id TEXT PRIMARY KEY,capture_id TEXT NOT NULL REFERENCES owned_capture_receipts(capture_id),
+ expires_ms INTEGER NOT NULL
+) STRICT;
+CREATE INDEX owned_capture_reader_pins_capture ON owned_capture_reader_pins(capture_id,expires_ms);
+CREATE TRIGGER owned_capture_source_immutable BEFORE UPDATE ON owned_capture_sources
+BEGIN SELECT RAISE(ABORT,'owned capture provenance is immutable'); END;
+CREATE TRIGGER owned_capture_receipt_immutable BEFORE UPDATE ON owned_capture_receipts
+BEGIN SELECT RAISE(ABORT,'owned capture receipt is immutable'); END;
+CREATE TRIGGER owned_capture_receipt_complete BEFORE INSERT ON owned_capture_receipts
+WHEN NOT EXISTS(SELECT 1 FROM owned_capture_sources s JOIN owned_capture_lifecycle l ON l.capture_id=s.capture_id
+ WHERE s.capture_id=NEW.capture_id AND s.expected_size=NEW.size AND l.state='capturing' AND l.pending_digest=NEW.digest)
+BEGIN SELECT RAISE(ABORT,'owned capture receipt is not a completed acquisition'); END;
