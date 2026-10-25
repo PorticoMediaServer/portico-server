@@ -82,7 +82,15 @@ func TestCSSRejectsExternalActiveAmbiguousAndUndeclaredReferences(t *testing.T) 
 		`@import "https://origin.invalid/private.css";`,
 		`@import url(//origin.invalid/private.css);`,
 		`@import "../Images/page.png";`,
-		`@namespace "https://origin.invalid/namespace";`,
+		`@namespace url("https://origin.invalid/namespace");`,
+		`@namespace epub "https://origin.invalid/namespace"`,
+		`@namespace 2epub "urn:publication";`,
+		`@namespace e/**/pub "urn:publication";`,
+		`@namespace epub "urn:publication" extra;`,
+		`p { @namespace epub "urn:publication"; }`,
+		`p { color: red; } @namespace epub "urn:publication";`,
+		`@namespace "urn:publication"; @import "import.css";`,
+		`@namespace "</style>";`,
 		`p { background: url(https://origin.invalid/private); }`,
 		`p { background: url(//origin.invalid/private); }`,
 		`p { background: url(/EPUB/Images/page.png); }`,
@@ -117,6 +125,26 @@ func TestCSSRejectsExternalActiveAmbiguousAndUndeclaredReferences(t *testing.T) 
 	} {
 		if err := validateXHTML("EPUB/chapter.xhtml", []byte(body), assets); err == nil {
 			t.Fatal("unsafe split or inline CSS accepted", body)
+		}
+	}
+}
+
+func TestCSSCommentsAndQuotedNamespacesAreInertIdentifiers(t *testing.T) {
+	assets := map[string]string{"EPUB/Styles/import.css": "text/css"}
+	for _, css := range []string{
+		`/* comparisons < are inert; @import url(https://origin.invalid/ignored) */ p { color: red; }`,
+		`@namespace epub 'http://www.idpf.org/2007/ops'; p { color: red; }`,
+		`@namespace "https://origin.invalid/not-an-asset"; p { color: red; }`,
+		`@namespace x "urn:publisher:non-fetching"; p { color: red; }`,
+		`@namespace 日本語 "urn:publisher"; p { color: red; }`,
+		`@charset "UTF-8"; @import "import.css" screen; @namespace epub "urn:publisher"; p { color: red; }`,
+	} {
+		original := []byte(css)
+		if err := validateCSS("EPUB/Styles/main.css", original, assets); err != nil {
+			t.Fatalf("inert CSS refused: %v", err)
+		}
+		if string(original) != css {
+			t.Fatal("publisher bytes changed")
 		}
 	}
 }

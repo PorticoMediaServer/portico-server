@@ -3,6 +3,7 @@ package reading
 import (
 	"bytes"
 	"strings"
+	"unicode/utf8"
 )
 
 // validateCSS checks references without changing publisher bytes or enumerated
@@ -10,12 +11,13 @@ import (
 // and indirect image functions are deliberately outside this bounded subset.
 func validateCSS(base string, b []byte, assets map[string]string) error {
 	for _, c := range b {
-		if c == '\\' || c == '<' || c == 127 || c < 32 && !cssSpace(c) {
+		if c == '\\' || c == 127 || c < 32 && !cssSpace(c) {
 			return ErrInvalid
 		}
 	}
 	p := cssValidator{base: base, b: b, assets: assets}
 	var stack []byte
+	namespaceAllowed, namespaceSeen, importPrelude := true, false, false
 	for p.i < len(b) {
 		if err := p.space(); err != nil {
 			return err
@@ -24,6 +26,12 @@ func validateCSS(base string, b []byte, assets map[string]string) error {
 			break
 		}
 		c := b[p.i]
+		// Namespace rules precede qualified/block rules. Keep an import's
+		// optional media prelude separate until its semicolon, without altering
+		// any bytes or joining tokens across comments.
+		if len(stack) == 0 && !importPrelude && c != '@' {
+			namespaceAllowed = false
+		}
 		switch {
 		case c == '\'' || c == '"':
 			if _, err := p.quoted(); err != nil {
@@ -33,7 +41,21 @@ func validateCSS(base string, b []byte, assets map[string]string) error {
 			p.i++
 			name := p.ident()
 			switch name {
+			case "namespace":
+				if len(stack) != 0 || !namespaceAllowed || importPrelude {
+					return ErrInvalid
+				}
+				if err := p.namespace(); err != nil {
+					return err
+				}
+				namespaceSeen = true
 			case "import":
+				if len(stack) == 0 {
+					if namespaceSeen || importPrelude {
+						return ErrInvalid
+					}
+					importPrelude = true
+				}
 				if err := p.space(); err != nil || p.i == len(b) {
 					return ErrInvalid
 				}
@@ -49,7 +71,17 @@ func validateCSS(base string, b []byte, assets map[string]string) error {
 				if err != nil || !p.reference(reference, true) {
 					return ErrInvalid
 				}
-			case "font-face", "media", "supports", "page", "layer", "container", "keyframes", "-webkit-keyframes", "counter-style", "charset":
+			case "charset":
+				if len(stack) == 0 {
+					if namespaceSeen || importPrelude {
+						return ErrInvalid
+					}
+					importPrelude = true
+				}
+			case "font-face", "media", "supports", "page", "layer", "container", "keyframes", "-webkit-keyframes", "counter-style":
+				if len(stack) == 0 {
+					namespaceAllowed = false
+				}
 			default:
 				return ErrInvalid
 			}
@@ -75,9 +107,19 @@ func validateCSS(base string, b []byte, assets map[string]string) error {
 				}
 			}
 		default:
+			if c == '<' {
+				return ErrInvalid
+			}
 			p.i++
 			switch c {
+			case ';':
+				if len(stack) == 0 {
+					importPrelude = false
+				}
 			case '{', '(', '[':
+				if c == '{' && len(stack) == 0 && importPrelude {
+					return ErrInvalid
+				}
 				stack = append(stack, c)
 				if len(stack) > 128 {
 					return ErrLimit
@@ -90,7 +132,7 @@ func validateCSS(base string, b []byte, assets map[string]string) error {
 			}
 		}
 	}
-	if len(stack) != 0 {
+	if len(stack) != 0 || importPrelude {
 		return ErrInvalid
 	}
 	return nil
@@ -154,7 +196,7 @@ func (p *cssValidator) quoted() (string, error) {
 			p.i++
 			return value, nil
 		}
-		if c == '\n' || c == '\r' || c == '\f' {
+		if c == '\n' || c == '\r' || c == '\f' || c == '<' {
 			return "", ErrInvalid
 		}
 		p.i++
@@ -181,7 +223,7 @@ func (p *cssValidator) url() (string, error) {
 		start := p.i
 		for p.i < len(p.b) && p.b[p.i] != ')' && !cssSpace(p.b[p.i]) {
 			c := p.b[p.i]
-			if c == '(' || c == '\'' || c == '"' || c == '/' && p.i+1 < len(p.b) && p.b[p.i+1] == '*' {
+			if c == '<' || c == '(' || c == '\'' || c == '"' || c == '/' && p.i+1 < len(p.b) && p.b[p.i+1] == '*' {
 				return "", ErrInvalid
 			}
 			p.i++
@@ -193,6 +235,45 @@ func (p *cssValidator) url() (string, error) {
 	}
 	p.i++
 	return reference, nil
+}
+
+// namespace accepts the quoted identifier form only. Its string is not a
+// resource: no URL parser, archive lookup, approval, or network request runs.
+func (p *cssValidator) namespace() error {
+	if err := p.space(); err != nil || p.i == len(p.b) {
+		return ErrInvalid
+	}
+	if p.b[p.i] != '\'' && p.b[p.i] != '"' {
+		start := p.i
+		p.ident()
+		prefix := p.b[start:p.i]
+		if len(prefix) == 0 || len(prefix) > 64 || !utf8.Valid(prefix) {
+			return ErrInvalid
+		}
+		for i, c := range prefix {
+			if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 128 || c == '_' || c == '-' || i > 0 && c >= '0' && c <= '9') {
+				return ErrInvalid
+			}
+		}
+		if prefix[0] == '-' && (len(prefix) == 1 || prefix[1] >= '0' && prefix[1] <= '9') {
+			return ErrInvalid
+		}
+		if err := p.space(); err != nil || p.i == len(p.b) {
+			return ErrInvalid
+		}
+	}
+	if p.b[p.i] != '\'' && p.b[p.i] != '"' {
+		return ErrInvalid
+	}
+	identifier, err := p.quoted()
+	if err != nil || len(identifier) > 2048 || !utf8.ValidString(identifier) {
+		return ErrInvalid
+	}
+	if err = p.space(); err != nil || p.i == len(p.b) || p.b[p.i] != ';' {
+		return ErrInvalid
+	}
+	p.i++
+	return nil
 }
 
 func (p *cssValidator) reference(reference string, imported bool) bool {
