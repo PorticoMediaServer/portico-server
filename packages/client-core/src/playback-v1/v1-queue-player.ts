@@ -521,9 +521,11 @@ export class V1QueuePlayer implements QueueController {
   }
 
   /** Shows an existing queue (this device's, after a relaunch) without playing it. */
-  async open(queueId: string, signal?: AbortSignal): Promise<void> {
-    const header = await this.client.header(queueId, signal);
-    const window = await this.client.window(queueId, WINDOW_BEFORE, WINDOW_AFTER, signal);
+  async open(queueId: string, signal?: AbortSignal, isCurrent?: () => boolean): Promise<void> {
+    const check = () => {if (signal?.aborted || isCurrent && !isCurrent()) throw Object.assign(new Error('Queue open retired'), {name: 'AbortError'});};
+    check();
+    const header = await this.client.header(queueId, signal); check();
+    const window = await this.client.window(queueId, WINDOW_BEFORE, WINDOW_AFTER, signal); check();
     this.accept(header, window);
   }
 

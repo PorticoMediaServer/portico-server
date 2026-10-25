@@ -21,7 +21,7 @@ import {wholeViewQuery} from './selection-query';
 /** The play adapter's own model owns the whole-view registration and the range
  * preview; these become available when the route supplies them. The operation
  * pair lets the bar capture the exact target before an awaited job. */
-export type LibrarySelectionHost = Omit<LibraryPlaySelection, 'selectWhole' | 'preview' | 'selected' | 'keepOnly'> & Readonly<{
+export type LibrarySelectionHost = Omit<LibraryPlaySelection, 'selectWhole' | 'preview' | 'selected' | 'keepOnly' | 'enqueue'> & Readonly<{
   keepOnly?: (kind: import('@core/selection-model/index.ts').SelectionKind) => unknown;
   selectWhole?: (query: SelectionQuery) => unknown;
   preview?: (row: LibraryPlayRow) => boolean;
@@ -75,7 +75,7 @@ function explicitLeafItems(selection: BrowseSelection | undefined): readonly str
   if (!target || target.mode !== 'explicit' || !target.displayItems.length) return undefined;
   if (!personalTargetIsLeaf(target)) return undefined;
   const ids: string[] = [];
-  for (const pick of target.displayItems) {
+  for (const pick of target.items) {
     const item = pick.item;
     if (item.kind === 'channel' || item.kind === 'person') return undefined;
     ids.push(item.id);
