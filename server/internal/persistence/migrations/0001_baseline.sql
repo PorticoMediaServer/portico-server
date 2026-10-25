@@ -2380,6 +2380,8 @@ CREATE TABLE lyric_fetch_runs (
  created_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL
 ) STRICT;
 CREATE TABLE metadata_runtime_settings(
+ default_language TEXT NOT NULL DEFAULT 'en' CHECK(length(default_language)=2),
+ default_region TEXT NOT NULL DEFAULT 'US' CHECK(length(default_region)=2),
  singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL DEFAULT 1,
  artwork_max_edge INTEGER NOT NULL DEFAULT 1920 CHECK(artwork_max_edge IN(1280,1920,2560)),
  local_artwork_limit_bytes INTEGER NOT NULL DEFAULT 2147483648 CHECK(local_artwork_limit_bytes>0),
@@ -4565,7 +4567,7 @@ CREATE TRIGGER admin_revision_jobs_INSERT AFTER INSERT ON jobs BEGIN UPDATE admi
 CREATE TRIGGER admin_revision_jobs_UPDATE AFTER UPDATE ON jobs BEGIN UPDATE admin_revision SET revision=revision+1 WHERE id=1;END;
 CREATE TRIGGER admin_revision_jobs_DELETE AFTER DELETE ON jobs BEGIN UPDATE admin_revision SET revision=revision+1 WHERE id=1;END;
 CREATE TRIGGER metadata_publication_library_create AFTER INSERT ON libraries BEGIN
- INSERT INTO metadata_provider_policies(library_id,provider) VALUES(NEW.id,'tmdb');
+ INSERT INTO metadata_provider_policies(library_id,provider,language,region) SELECT NEW.id,'tmdb',default_language,default_region FROM metadata_runtime_settings WHERE singleton=1;
 END;
 CREATE TRIGGER metadata_policy_changed AFTER UPDATE OF enabled,language,region,refresh_mode,algorithm ON metadata_provider_policies
  WHEN OLD.enabled IS NOT NEW.enabled OR OLD.language IS NOT NEW.language OR OLD.region IS NOT NEW.region OR OLD.refresh_mode IS NOT NEW.refresh_mode OR OLD.algorithm IS NOT NEW.algorithm
@@ -4797,7 +4799,7 @@ CREATE TRIGGER lyric_head_monotonic BEFORE UPDATE ON lyric_resources
  WHEN NEW.revision<=OLD.revision OR NEW.item_id<>OLD.item_id OR NEW.asset_id<>OLD.asset_id OR NEW.source_version<>OLD.source_version OR NEW.source_duration<>OLD.source_duration OR NEW.source_start<>OLD.source_start OR NEW.source_end<>OLD.source_end OR NEW.scope<>OLD.scope OR NEW.authority<>OLD.authority OR NEW.account_id<>OLD.account_id OR NEW.profile_id<>OLD.profile_id
  BEGIN SELECT RAISE(ABORT,'invalid lyric resource transition'); END;
 CREATE TRIGGER screen_policy_create AFTER INSERT ON libraries WHEN NEW.kind IN('movie','tv','anime') BEGIN
- INSERT INTO screen_metadata_policies(library_id,providers) VALUES(NEW.id,'["tmdb"]');
+ INSERT INTO screen_metadata_policies(library_id,providers,language,region) SELECT NEW.id,'["tmdb"]',default_language,default_region FROM metadata_runtime_settings WHERE singleton=1;
 END;
 CREATE TRIGGER screen_configuration_change AFTER UPDATE OF revision ON library_configuration WHEN NEW.revision<>OLD.revision BEGIN
  UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error='' WHERE library_id=NEW.library_id;

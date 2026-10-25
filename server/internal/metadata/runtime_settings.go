@@ -3,6 +3,7 @@ package metadata
 import (
 	"context"
 	"database/sql"
+	"slices"
 	"strings"
 	"time"
 
@@ -14,6 +15,8 @@ const DefaultLocalArtworkLimitBytes int64 = 2 << 30
 // MetadataSettings exposes credential presence only. Submitted keys never return
 // in JSON or provider failures; blank keys restore Portico's application key.
 type MetadataSettings struct {
+	DefaultLanguage          string                    `json:"defaultLanguage,omitempty"`
+	DefaultRegion            string                    `json:"defaultRegion,omitempty"`
 	LibrariesComplete        *bool                     `json:"librariesComplete,omitempty"`
 	Libraries                []MetadataLibrarySettings `json:"libraries,omitempty"`
 	LocalArtworkUsedBytes    int64                     `json:"localArtworkUsedBytes"`
@@ -74,6 +77,8 @@ func (s *Service) CheckOpenSubtitles(ctx context.Context) (OpenSubtitlesStatus, 
 }
 
 type MetadataSettingsUpdate struct {
+	DefaultLanguage        *string                 `json:"defaultLanguage,omitempty"`
+	DefaultRegion          *string                 `json:"defaultRegion,omitempty"`
 	Libraries              []MetadataLibraryChange `json:"libraries,omitempty"`
 	ExpectedRevision       int64                   `json:"expectedRevision"`
 	LocalArtworkLimitBytes int64                   `json:"localArtworkLimitBytes"`
@@ -103,7 +108,7 @@ func readMetadataSettingsWithSubtitles(ctx context.Context, tx *sql.Tx) (Metadat
 	var out MetadataSettings
 	var tmdb, tvdb string
 	var subs subtitleCredentials
-	err := tx.QueryRowContext(ctx, `SELECT revision,local_artwork_limit_bytes,include_adult,artwork_max_edge,tmdb_read_token,tvdb_project_key,opensubtitles_api_key,opensubtitles_username,opensubtitles_password FROM metadata_runtime_settings WHERE singleton=1`).Scan(&out.Revision, &out.LocalArtworkLimitBytes, &out.IncludeAdult, &out.ArtworkMaxEdge, &tmdb, &tvdb, &subs.key, &subs.username, &subs.password)
+	err := tx.QueryRowContext(ctx, `SELECT revision,local_artwork_limit_bytes,include_adult,artwork_max_edge,tmdb_read_token,tvdb_project_key,opensubtitles_api_key,opensubtitles_username,opensubtitles_password,default_language,default_region FROM metadata_runtime_settings WHERE singleton=1`).Scan(&out.Revision, &out.LocalArtworkLimitBytes, &out.IncludeAdult, &out.ArtworkMaxEdge, &tmdb, &tvdb, &subs.key, &subs.username, &subs.password, &out.DefaultLanguage, &out.DefaultRegion)
 	out.TMDBCredentialConfigured = tmdb != ""
 	out.TVDBCredentialConfigured = tvdb != ""
 	out.OpenSubtitlesKeyConfigured = subs.key != ""
@@ -271,6 +276,20 @@ func ApplyMetadataSettingsTx(ctx context.Context, tx *sql.Tx, in MetadataSetting
 	if current.Revision != in.ExpectedRevision {
 		return current, ErrScreenConflict
 	}
+	if in.DefaultLanguage != nil && !slices.Contains(ScreenMetadataLanguages, *in.DefaultLanguage) {
+		return current, ErrRepairInput
+	}
+	if in.DefaultRegion != nil && (len(*in.DefaultRegion) != 2 || (*in.DefaultRegion)[0] < 'A' || (*in.DefaultRegion)[0] > 'Z' || (*in.DefaultRegion)[1] < 'A' || (*in.DefaultRegion)[1] > 'Z') {
+		return current, ErrRepairInput
+	}
+	defaultLanguage, defaultRegion := current.DefaultLanguage, current.DefaultRegion
+	if in.DefaultLanguage != nil {
+		defaultLanguage = *in.DefaultLanguage
+	}
+	if in.DefaultRegion != nil {
+		defaultRegion = *in.DefaultRegion
+	}
+
 	if e = applyMetadataLibraries(ctx, tx, in.Libraries); e != nil {
 		return current, e
 	}
@@ -298,7 +317,7 @@ func ApplyMetadataSettingsTx(ctx context.Context, tx *sql.Tx, in MetadataSetting
 	if in.ArtworkMaxEdge != nil {
 		edge = *in.ArtworkMaxEdge
 	}
-	_, e = tx.ExecContext(ctx, `UPDATE metadata_runtime_settings SET revision=revision+1,local_artwork_limit_bytes=?,include_adult=?,artwork_max_edge=?,tmdb_read_token=?,tvdb_project_key=?,opensubtitles_api_key=?,opensubtitles_username=?,opensubtitles_password=? WHERE singleton=1`, in.LocalArtworkLimitBytes, in.IncludeAdult, edge, tmdb, tvdb, subs.key, subs.username, subs.password)
+	_, e = tx.ExecContext(ctx, `UPDATE metadata_runtime_settings SET revision=revision+1,local_artwork_limit_bytes=?,include_adult=?,artwork_max_edge=?,tmdb_read_token=?,tvdb_project_key=?,opensubtitles_api_key=?,opensubtitles_username=?,opensubtitles_password=?,default_language=?,default_region=? WHERE singleton=1`, in.LocalArtworkLimitBytes, in.IncludeAdult, edge, tmdb, tvdb, subs.key, subs.username, subs.password, defaultLanguage, defaultRegion)
 	if e == nil && edge != current.ArtworkMaxEdge {
 		e = scheduleArtworkSizeTx(ctx, tx, current.ArtworkMaxEdge, edge)
 	}

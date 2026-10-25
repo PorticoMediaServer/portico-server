@@ -273,3 +273,28 @@ func syncLibraryAgentTx(ctx context.Context, tx *sql.Tx, library string, online 
 func LibraryLocalOnlyTx(ctx context.Context, tx *sql.Tx, library string) (bool, error) {
 	return localonly.Library(ctx, tx, library)
 }
+
+// NewLibraryAgentOptions publishes the stored default used by library creation.
+// Existing library locale and the independent provider consent are not changed.
+func (s *Service) NewLibraryAgentOptions(ctx context.Context, kind string) ([]LibraryAgentOption, error) {
+	if !ValidLibraryKind(kind) {
+		return nil, ErrLibraryAgentInput
+	}
+	var selected string
+	if err := dbwork.QueryRow(ctx, s.db, `SELECT default_language FROM metadata_runtime_settings WHERE singleton=1`).Scan(&selected); err != nil {
+		return nil, err
+	}
+	options := LibraryAgentOptions(kind)
+	for i := range options {
+		if len(options[i].Languages) == 0 {
+			continue
+		}
+		for _, language := range options[i].Languages {
+			if language == selected {
+				options[i].DefaultLanguage = selected
+				break
+			}
+		}
+	}
+	return options, nil
+}
