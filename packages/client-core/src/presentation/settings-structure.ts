@@ -97,10 +97,10 @@ export type CompositeId =
   | 'libraryView' | 'reduceMotion' | 'textSize' | 'receiveFromDevices'
   // Kept by the device and read before the app draws anything (B-19.10).
   | 'layout';
-export type SettingsActionId = 'signOut' | 'resetRecommendations' | 'linkTV' | 'customizeHome';
+export type SettingsActionId = 'signOut' | 'resetRecommendations' | 'linkTV' | 'customizeHome' | 'devicePlayerFixes';
 export type SettingsCustomId =
   | 'identity' | 'profiles' | 'password' | 'twoStep' | 'devices' | 'porticoAccount' | 'servers'
-  | 'subtitlePreview' | 'deviceName' | 'downloadsStorage' | 'equalizer' | 'about' | 'accessTokens' | 'privacyNote' | 'remoteControls'
+  | 'subtitlePreview' | 'deviceName' | 'deviceServerAddress' | 'downloadsStorage' | 'equalizer' | 'about' | 'accessTokens' | 'privacyNote' | 'remoteControls'
   // The Server heading's panels: each is drawn natively by the client.
   | 'server.nowPlaying' | 'server.alerts' | 'server.health' | 'server.activity' | 'server.statistics'
   | 'server.playHistory'
@@ -132,7 +132,7 @@ type RowCopy = Readonly<{
 export type SettingsRow =
   | (RowCopy & Readonly<{kind: 'preference'; key: string; control: SettingsControl}>)
   | (RowCopy & Readonly<{kind: 'composite'; id: CompositeId; /** `device`: kept by this device itself, not in the registry. */ storage: 'registry' | 'device'; control: Extract<SettingsControl, {type: 'choice' | 'switch'}>}>)
-  | (RowCopy & Readonly<{kind: 'action'; id: SettingsActionId; icon?: IconId; destructive?: boolean}>)
+  | (RowCopy & Readonly<{kind: 'action'; id: SettingsActionId; icon?: IconId; destructive?: boolean; /** A drawn destination value; the action still runs the one target. */ value?: MessageId}>)
   | Readonly<{kind: 'custom'; id: SettingsCustomId; /** For search and for a client that titles the panel. */ label?: MessageId}>
   | ServerSettingRow;
 
@@ -479,6 +479,12 @@ const accountPages: readonly AuthoredPage[] = [
       {id: 'remote', rows: [custom('remoteControls', 'remote.title')]},
       {id: 'servers', title: 'settings.section.servers', rows: [custom('servers', 'settings.section.servers')]},
       // account-device.json: About Portico is the last group of This device, not a page of its own.
+      // Frame 11's advanced Connection group. Only the read-only server address is drawn:
+      // no at-home/secure status is claimed without a canonical source. It sits before About
+      // so the Player section inserted ahead of it leaves About as the last group.
+      {id: 'deviceConnection', title: 'next.settingsSpec.account.device.advanced.groups.4.title', advanced: true, platforms: ['tv'], rows: [
+        {kind: 'custom', id: 'deviceServerAddress', label: 'next.settingsSpec.account.device.advanced.groups.4.rows.1.label'},
+      ]},
       {id: 'about', title: 'settings.about', rows: [custom('about', 'settings.about')]},
     ],
   },
