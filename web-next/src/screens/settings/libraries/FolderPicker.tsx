@@ -15,15 +15,16 @@ export function FolderPicker({open, onOpenChange, api, onChoose}: Readonly<{
 }>) {
   const [page, setPage] = useState<Awaited<ReturnType<typeof browseServerFilesystem>>>();
   const [typed, setTyped] = useState(''), [failed, setFailed] = useState(false), [busy, setBusy] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
   const request = useRef<AbortController | undefined>(undefined);
-  const read = useCallback(async (path?: string) => {
+  const read = useCallback(async (path?: string, hidden = false) => {
     request.current?.abort();
     const active = new AbortController();
     request.current = active;
     // A pending or failed destination must never leave the previous folder choosable.
     setPage(undefined); setTyped(path ?? ''); setBusy(true); setFailed(false);
     try {
-      const next = await browseServerFilesystem(api, {...(path ? {path} : {}), includeFiles: false, limit: 200}, active.signal);
+      const next = await browseServerFilesystem(api, {...(path ? {path} : {}), includeFiles: false, showHidden: hidden, limit: 200}, active.signal);
       if (active.signal.aborted || request.current !== active) return;
       setPage(next); setTyped(next.path);
     } catch {
@@ -33,14 +34,14 @@ export function FolderPicker({open, onOpenChange, api, onChoose}: Readonly<{
     }
   }, [api]);
   useEffect(() => {
-    if (open) void read(undefined);
+    if (open) { setShowHidden(false); void read(undefined); }
     return () => { request.current?.abort(); request.current = undefined; };
   }, [open, read]);
   const changeOpen = (next: boolean) => {
     if (!next) { request.current?.abort(); request.current = undefined; }
     onOpenChange(next);
   };
-  const go = (path: string) => { void read(path); };
+  const go = (path: string) => { void read(path, showHidden); };
   return <Dialog open={open} onOpenChange={changeOpen} size="md" title={t('next.settings.chooseFolder')} description={t('next.settings.folderBreadcrumbs')}
     footer={<><Button onClick={() => changeOpen(false)}>{t('next.settings.cancel')}</Button>
       <Button variant="primary" disabled={!page?.path || busy || failed} onClick={() => { if (page?.path) { onChoose(page.path); changeOpen(false); } }}>{t('next.settings.chooseThisFolder')}</Button></>}>
@@ -50,6 +51,12 @@ export function FolderPicker({open, onOpenChange, api, onChoose}: Readonly<{
         <Button disabled={busy} onClick={() => go(typed)}>{t('next.settings.go')}</Button>
         <Button disabled={busy || !page?.parent} onClick={() => { if (page?.parent) go(page.parent); }}>{t('next.settings.up')}</Button>
       </div>
+      <label className={styles.pickerNote}>
+        <input type="checkbox" checked={showHidden} disabled={busy} onChange={event => {
+          const next = event.currentTarget.checked;
+          setShowHidden(next); void read(page?.path, next);
+        }} /> {t('next.settings.hiddenFolders')}
+      </label>
       {failed && <p role="alert" className={styles.pickerNote}>{t('next.settings.folderUnreadable')}</p>}
       {busy && !page && <p role="status">{t('next.settings.loading')}</p>}
       {page && !page.path && <ul className={styles.pickerList}>{page.roots.map(root => <li key={root.path}>
