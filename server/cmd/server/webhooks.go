@@ -22,6 +22,15 @@ import (
 // part in it.
 func startWebhooks(ctx context.Context, db *sql.DB, ident *identity.Service, backups *backup.Service, updates *administration.Service, console *operations.Store) *webhooks.Store {
 	store := webhooks.New(db)
+	previousOwnerChanged := ident.OnOwnerChangedTx
+	ident.OnOwnerChangedTx = func(ctx context.Context, tx *sql.Tx) error {
+		if previousOwnerChanged != nil {
+			if err := previousOwnerChanged(ctx, tx); err != nil {
+				return err
+			}
+		}
+		return store.RetireOwnerTx(ctx, tx)
+	}
 	dispatcher := webhooks.NewDispatcher(store)
 	dispatcher.Server = func() (string, string) { return ident.ID(), ident.Name() }
 	dispatcher.UserAgent = "Portico-Webhooks/" + buildinfo.Info()["version"]

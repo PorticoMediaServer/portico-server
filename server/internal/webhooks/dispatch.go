@@ -118,6 +118,7 @@ type queued struct {
 	id, webhook, event, data, url, secret string
 	attempts                              int
 	created                               int64
+	generation                            int64
 }
 
 // Step sends what is due and returns how long until there may be more.
@@ -130,7 +131,7 @@ func (d *Dispatcher) Step(ctx context.Context) time.Duration {
 	// Select destinations before deliveries: one destination's backlog must
 	// never occupy the whole pass while another has something ready to send.
 	rows, err := dbwork.Query(ctx, store.DB, `SELECT w.id FROM webhooks w
- WHERE EXISTS(SELECT 1 FROM webhook_deliveries d WHERE d.webhook_id=w.id AND d.state='pending' AND (w.enabled=1 OR d.type=?)) ORDER BY w.id LIMIT ?`, Test, MaxWebhooks)
+ WHERE EXISTS(SELECT 1 FROM webhook_deliveries d WHERE d.webhook_id=w.id AND d.state='pending' AND d.authority_generation=w.authority_generation AND w.owner_review_required=0 AND (w.enabled=1 OR d.type=?)) ORDER BY w.id LIMIT ?`, Test, MaxWebhooks)
 	if err != nil {
 		return idlePoll
 	}
@@ -154,15 +155,15 @@ func (d *Dispatcher) Step(ctx context.Context) time.Duration {
 	byWebhook := map[string][]queued{}
 	share := min(perWebhookStep, perStep/max(1, len(order)))
 	for _, id := range order {
-		rows, err = dbwork.Query(ctx, store.DB, `SELECT d.id,d.webhook_id,d.type,d.data,d.attempts,d.created_ms,w.url,w.secret,d.next_attempt_ms FROM webhook_deliveries d JOIN webhooks w ON w.id=d.webhook_id
- WHERE d.webhook_id=? AND d.state='pending' AND (w.enabled=1 OR d.type=?) ORDER BY d.created_ms,d.rowid LIMIT ?`, id, Test, share)
+		rows, err = dbwork.Query(ctx, store.DB, `SELECT d.id,d.webhook_id,d.type,d.data,d.attempts,d.created_ms,w.url,w.secret,d.next_attempt_ms,d.authority_generation FROM webhook_deliveries d JOIN webhooks w ON w.id=d.webhook_id
+ WHERE d.webhook_id=? AND d.state='pending' AND d.authority_generation=w.authority_generation AND w.owner_review_required=0 AND (w.enabled=1 OR d.type=?) ORDER BY d.created_ms,d.rowid LIMIT ?`, id, Test, share)
 		if err != nil {
 			return idlePoll
 		}
 		for rows.Next() {
 			var q queued
 			var due int64
-			if err = rows.Scan(&q.id, &q.webhook, &q.event, &q.data, &q.attempts, &q.created, &q.url, &q.secret, &due); err != nil {
+			if err = rows.Scan(&q.id, &q.webhook, &q.event, &q.data, &q.attempts, &q.created, &q.url, &q.secret, &due, &q.generation); err != nil {
 				break
 			}
 			// A head waiting for its retry or initial delay holds back everything
@@ -207,7 +208,7 @@ func (d *Dispatcher) Step(ctx context.Context) time.Duration {
 	// there is nothing to wake for but a new row.
 	var next sql.NullInt64
 	var enabled int
-	if err = dbwork.QueryRow(ctx, store.DB, `SELECT (SELECT min(d.next_attempt_ms) FROM webhooks w JOIN webhook_deliveries d ON d.id=(SELECT h.id FROM webhook_deliveries h WHERE h.webhook_id=w.id AND h.state='pending' AND (w.enabled=1 OR h.type=?) ORDER BY h.created_ms,h.rowid LIMIT 1)),(SELECT count(*) FROM webhooks WHERE enabled=1)`, Test).Scan(&next, &enabled); err != nil {
+	if err = dbwork.QueryRow(ctx, store.DB, `SELECT (SELECT min(d.next_attempt_ms) FROM webhooks w JOIN webhook_deliveries d ON d.id=(SELECT h.id FROM webhook_deliveries h WHERE h.webhook_id=w.id AND h.state='pending' AND h.authority_generation=w.authority_generation AND w.owner_review_required=0 AND (w.enabled=1 OR h.type=?) ORDER BY h.created_ms,h.rowid LIMIT 1)),(SELECT count(*) FROM webhooks WHERE enabled=1)`, Test).Scan(&next, &enabled); err != nil {
 		return idlePoll
 	}
 	if !next.Valid {
@@ -265,19 +266,30 @@ func (d *Dispatcher) settle(webhook string, delivered bool, now time.Time) {
 // queue should continue this step.
 func (d *Dispatcher) attempt(ctx context.Context, q queued) bool {
 	store := d.Store
-	body, err := d.payload(ctx, q)
+	life, release, err := store.admitSend(ctx, q)
+	if err != nil {
+		return false
+	}
+	defer release()
+	body, err := d.payload(life, q)
 	status, code := 0, ""
 	started := time.Now()
 	if err != nil {
 		code = "payload_too_large"
 	} else {
-		status, code = d.post(ctx, q, body)
+		status, code = d.post(life, q, body)
 	}
 	elapsed := time.Since(started).Milliseconds()
 	now := store.now()
 	delivered := code == ""
 	attempts := q.attempts + 1
+	accepted := false
 	err = dbwork.WithWriteTx(ctx, store.DB, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
+		current, e := currentDeliveryTx(ctx, tx, q)
+		if e != nil || !current {
+			return e
+		}
+		accepted = true
 		switch {
 		case delivered:
 			if _, e := tx.ExecContext(ctx, `UPDATE webhook_deliveries SET state='delivered',attempts=?,finished_ms=?,status=?,duration_ms=?,error='' WHERE id=? AND state='pending'`, attempts, now, status, elapsed, q.id); e != nil {
@@ -303,10 +315,9 @@ func (d *Dispatcher) attempt(ctx context.Context, q queued) bool {
 			}
 		}
 		// The log keeps the most recent finished deliveries and no more.
-		_, e := tx.ExecContext(ctx, `DELETE FROM webhook_deliveries WHERE webhook_id=? AND state<>'pending' AND id NOT IN(SELECT id FROM webhook_deliveries WHERE webhook_id=? AND state<>'pending' ORDER BY created_ms DESC,id DESC LIMIT ?)`, q.webhook, q.webhook, LogKept)
-		return e
+		return pruneDeliveryLog(ctx, tx, q.webhook)
 	})
-	if err != nil {
+	if err != nil || !accepted {
 		return false
 	}
 	d.settle(q.webhook, delivered, store.Now())
@@ -393,6 +404,9 @@ func (d *Dispatcher) present(ctx context.Context, event string, data map[string]
 // response) and a short reason for a failure, or "" for a delivery. The reason
 // never contains the address.
 func (d *Dispatcher) post(ctx context.Context, q queued, body []byte) (int, string) {
+	if ctx.Err() != nil {
+		return 0, "authority_retired"
+	}
 	if !ValidURL(q.url) {
 		return 0, "address_not_valid"
 	}

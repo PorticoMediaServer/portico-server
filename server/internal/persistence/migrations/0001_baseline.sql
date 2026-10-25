@@ -6369,6 +6369,11 @@ CREATE TABLE webhooks(
  failures INTEGER NOT NULL DEFAULT 0, dropped INTEGER NOT NULL DEFAULT 0,
  created_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL,
  revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0),
+ authority_generation INTEGER NOT NULL DEFAULT 1 CHECK(authority_generation>0),
+ owner_review_required INTEGER NOT NULL DEFAULT 0 CHECK(owner_review_required IN(0,1)),
+ owner_reviewed INTEGER NOT NULL DEFAULT 0 CHECK(owner_reviewed IN(0,1)),
+ owner_secret_replaced INTEGER NOT NULL DEFAULT 0 CHECK(owner_secret_replaced IN(0,1)),
+ retired_secret_digest TEXT NOT NULL DEFAULT '' CHECK(retired_secret_digest='' OR (length(retired_secret_digest)=64 AND retired_secret_digest NOT GLOB '*[^0-9a-f]*')),
  -- The create this row answers: the owner who asked, the identifier that owner
  -- sent, and the digest of that request. All empty for a create that named no
  -- identifier, which keeps the original create unchanged. The identity lives as
@@ -6378,6 +6383,7 @@ CREATE TABLE webhooks(
  create_digest TEXT NOT NULL DEFAULT '',
  -- A create that named an identifier carries the whole identity, and one that
  -- did not carries none of it; a half identity can never be stored.
+ CHECK(owner_review_required=0 OR enabled=0),
  CHECK ((create_actor='' AND create_operation='' AND create_digest='')
      OR (create_actor<>'' AND length(create_operation) BETWEEN 8 AND 128
          AND length(create_digest)=64 AND create_digest NOT GLOB '*[^0-9a-f]*'))) STRICT;
@@ -6392,6 +6398,7 @@ CREATE TABLE webhook_create_receipts(
  CHECK (length(operation) BETWEEN 8 AND 128 AND length(digest)=64 AND digest NOT GLOB '*[^0-9a-f]*')) STRICT;
 CREATE TABLE webhook_deliveries(
  id TEXT PRIMARY KEY, webhook_id TEXT NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,
+ authority_generation INTEGER NOT NULL DEFAULT 1 CHECK(authority_generation>0),
  type TEXT NOT NULL, subject TEXT NOT NULL DEFAULT '', data TEXT NOT NULL DEFAULT '{}',
  state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN('pending','delivered','failed')),
  attempts INTEGER NOT NULL DEFAULT 0, next_attempt_ms INTEGER NOT NULL, created_ms INTEGER NOT NULL,
@@ -6406,10 +6413,10 @@ CREATE TABLE webhook_events(type TEXT NOT NULL, subject TEXT NOT NULL DEFAULT ''
 CREATE TRIGGER webhook_events_fan_out AFTER INSERT ON webhook_events BEGIN
  UPDATE webhooks SET dropped=dropped+1 WHERE enabled=1 AND instr(events,','||NEW.type||',')>0
   AND (SELECT count(*) FROM webhook_deliveries d WHERE d.webhook_id=webhooks.id AND d.state='pending')>=1000;
- INSERT OR IGNORE INTO webhook_deliveries(id,webhook_id,type,subject,data,next_attempt_ms,created_ms)
-  SELECT lower(hex(randomblob(16))),w.id,NEW.type,NEW.subject,NEW.data,
+ INSERT OR IGNORE INTO webhook_deliveries(id,webhook_id,authority_generation,type,subject,data,next_attempt_ms,created_ms)
+  SELECT lower(hex(randomblob(16))),w.id,w.authority_generation,NEW.type,NEW.subject,NEW.data,
    CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)+CASE WHEN NEW.type IN('title.added','title.updated') THEN 45000 ELSE 0 END,CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)
-  FROM webhooks w WHERE w.enabled=1 AND instr(w.events,','||NEW.type||',')>0
+  FROM webhooks w WHERE w.enabled=1 AND w.owner_review_required=0 AND instr(w.events,','||NEW.type||',')>0
    AND (SELECT count(*) FROM webhook_deliveries d WHERE d.webhook_id=w.id AND d.state='pending')<1000
    AND NOT(NEW.type='title.updated' AND EXISTS(SELECT 1 FROM webhook_deliveries d WHERE d.webhook_id=w.id AND d.type='title.added' AND d.subject=NEW.subject AND d.state='pending' AND d.attempts=0));
  DELETE FROM webhook_events WHERE rowid=NEW.rowid;

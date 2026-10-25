@@ -14,6 +14,10 @@ import (
 // constructor in the server; a test that needs isolation uses Reset.
 var gate = NewGate()
 
+// Live gated transactions are also addressed by their exact SQL handle for
+// accepting callbacks whose caller still passes the original request context.
+var liveWrites sync.Map // *sql.Tx -> *Write
+
 // WriteGate exposes the gate for diagnostics and for exclusive maintenance that
 // must not start while any writer is active or queued.
 func WriteGate() *Gate { return gate }
@@ -56,13 +60,14 @@ type Write struct {
 	// conn is set only for a security-fence transaction, which runs on a
 	// connection of its own so that synchronous=FULL applies to it and to
 	// nothing else. See beginDurable.
-	conn    *sql.Conn
-	release func()
-	parent  *carried
-	owned   *carried
-	once    sync.Once
-	done    bool
-	mu      sync.Mutex
+	conn        *sql.Conn
+	release     func()
+	parent      *carried
+	owned       *carried
+	once        sync.Once
+	done        bool
+	mu          sync.Mutex
+	afterCommit []func()
 }
 
 // Begin acquires the write gate for class and opens a transaction. It is the
@@ -112,6 +117,7 @@ func Begin(ctx context.Context, db *sql.DB, class Class) (*Write, error) {
 	}
 	held := &carried{tx: tx, class: class}
 	w := &Write{changes: changes, tx: tx, conn: conn, ctx: context.WithValue(ctx, writeKey{}, held), release: release, owned: held}
+	liveWrites.Store(tx, w)
 	w.changesAtStart = rowChanges(ctx, tx)
 	return w, nil
 }
@@ -227,6 +233,7 @@ func (w *Write) Commit() error {
 		}
 		return nil
 	}
+	defer w.finish()
 	if w.owned != nil && w.owned.failed() {
 		// A helper that joined this transaction rolled back. Committing now would
 		// make durable exactly the work it refused.
@@ -241,6 +248,17 @@ func (w *Write) Commit() error {
 		return ErrSnapshotWrite
 	}
 	err := w.tx.Commit()
+	if err == nil {
+		// Retirement must happen after durable acceptance and before the gate
+		// admits another sender. A rollback must never retire live authority.
+		w.mu.Lock()
+		callbacks := w.afterCommit
+		w.afterCommit = nil
+		w.mu.Unlock()
+		for _, callback := range callbacks {
+			callback()
+		}
+	}
 	if err == nil && !w.readOnly {
 		publications.Add(1)
 	}
@@ -293,6 +311,9 @@ func (w *Write) Rollback() error {
 
 func (w *Write) finish() {
 	w.once.Do(func() {
+		if w.parent == nil {
+			liveWrites.Delete(w.tx)
+		}
 		// The connection goes back before the gate does, so the next writer never
 		// finds the pool one connection short.
 		releaseDurable(w.ctx, w.conn)
@@ -300,6 +321,25 @@ func (w *Write) finish() {
 			w.release()
 		}
 	})
+}
+
+// AfterCommit binds a bounded in-memory retirement to this exact accepting
+// transaction. It runs only after a successful commit, before writer release.
+// Callbacks must not perform IO, acquire the write gate, or start other work.
+// An untracked or already-finished transaction is refused, never guessed.
+func AfterCommit(tx *sql.Tx, callback func()) error {
+	value, ok := liveWrites.Load(tx)
+	if !ok || callback == nil {
+		return errors.New("dbwork: callback requires a live gated transaction")
+	}
+	w := value.(*Write)
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.done {
+		return errors.New("dbwork: callback transaction already finished")
+	}
+	w.afterCommit = append(w.afterCommit, callback)
+	return nil
 }
 
 // WithWriteTx runs fn inside one gated transaction of the given class. This is

@@ -23,6 +23,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -107,6 +108,9 @@ type Webhook struct {
 	URL     string   `json:"url"`
 	Events  []string `json:"events"`
 	Enabled bool     `json:"enabled"`
+	// A transferred integration cannot send, including tests, until its new
+	// owner explicitly reviews the destination/events and replaces the secret.
+	RequiresOwnerReview bool `json:"requiresOwnerReview,omitempty"`
 	// SecretHint is the last characters of the signing secret.
 	SecretHint string `json:"secretHint"`
 	CreatedAt  string `json:"createdAt"`
@@ -199,7 +203,9 @@ type Store struct {
 	DB  *sql.DB
 	Now func() time.Time
 	// Wake, when set, tells the dispatcher there is something to send.
-	Wake func()
+	Wake     func()
+	activeMu sync.Mutex
+	active   map[string]*sendAdmission
 }
 
 func New(db *sql.DB) *Store { return &Store{DB: db, Now: time.Now} }
@@ -325,13 +331,13 @@ func (s *Store) write(ctx context.Context, auth Authorize, fn func(*sql.Tx) erro
 	})
 }
 
-const webhookColumns = `w.id,w.name,w.url,w.events,w.enabled,w.secret,w.created_ms,w.updated_ms,w.failures,w.dropped,(SELECT count(*) FROM webhook_deliveries d WHERE d.webhook_id=w.id AND d.state='pending'),w.revision`
+const webhookColumns = `w.id,w.name,w.url,w.events,w.enabled,w.secret,w.created_ms,w.updated_ms,w.failures,w.dropped,(SELECT count(*) FROM webhook_deliveries d WHERE d.webhook_id=w.id AND d.state='pending'),w.revision,w.owner_review_required`
 
 func scanWebhook(row interface{ Scan(...any) error }) (Webhook, error) {
 	var w Webhook
 	var events, secret string
 	var created, updated int64
-	if err := row.Scan(&w.ID, &w.Name, &w.URL, &events, &w.Enabled, &secret, &created, &updated, &w.Failing, &w.Dropped, &w.Waiting, &w.Revision); err != nil {
+	if err := row.Scan(&w.ID, &w.Name, &w.URL, &events, &w.Enabled, &secret, &created, &updated, &w.Failing, &w.Dropped, &w.Waiting, &w.Revision, &w.RequiresOwnerReview); err != nil {
 		return w, err
 	}
 	w.Events, w.SecretHint, w.CreatedAt, w.UpdatedAt = unpackEvents(events), hint(secret), stamp(created), stamp(updated)
@@ -563,7 +569,52 @@ func (s *Store) Update(ctx context.Context, auth Authorize, id string, q Change)
 		if current.Revision != q.ExpectedRevision {
 			return &RevisionError{Current: current}
 		}
+		var reviewed, replaced bool
+		var generation int64
+		var previousSecret string
+		var retiredSecretDigest string
+		if err = tx.QueryRowContext(ctx, `SELECT owner_reviewed,owner_secret_replaced,authority_generation,secret,retired_secret_digest FROM webhooks WHERE id=?`, id).Scan(&reviewed, &replaced, &generation, &previousSecret, &retiredSecretDigest); err != nil {
+			return err
+		}
+		if secret != "" && retiredSecretDigest != "" && secretDigest(secret) == retiredSecretDigest {
+			return &ValidationError{[]string{"secret"}}
+		}
+		if current.RequiresOwnerReview {
+			// Explicitly saving both fields records review, even when the new
+			// owner deliberately keeps their values. A bare enable is never review.
+			if q.URL != nil && q.Events != nil {
+				reviewed = true
+			}
+			if secret != "" {
+				if secret == previousSecret {
+					return &ValidationError{[]string{"secret"}}
+				}
+				replaced = true
+			}
+			if q.Enabled != nil && *q.Enabled && (!reviewed || !replaced) {
+				return &ValidationError{[]string{"requiresOwnerReview"}}
+			}
+		}
 		now := s.now()
+		authorityChanged := q.URL != nil || q.Events != nil || q.Enabled != nil || secret != ""
+		if authorityChanged {
+			generation++
+			requiresReview := current.RequiresOwnerReview && !(q.Enabled != nil && *q.Enabled && reviewed && replaced)
+			if _, err = tx.ExecContext(ctx, `UPDATE webhooks SET authority_generation=?,owner_review_required=?,owner_reviewed=?,owner_secret_replaced=? WHERE id=?`, generation, requiresReview, reviewed, replaced, id); err != nil {
+				return err
+			}
+			// Cached tests and retries keep their original generation. Changing
+			// configuration never repurposes that old backlog for a new target.
+			if _, err = tx.ExecContext(ctx, `UPDATE webhook_deliveries SET state='failed',finished_ms=?,error='configuration_changed' WHERE webhook_id=? AND state='pending'`, now, id); err != nil {
+				return err
+			}
+			if err = pruneDeliveryLog(ctx, tx, id); err != nil {
+				return err
+			}
+			if err = dbwork.AfterCommit(tx, func() { s.cancelSends(id, generation) }); err != nil {
+				return err
+			}
+		}
 		// One change is one revision, whatever it touches.
 		if _, err := tx.ExecContext(ctx, `UPDATE webhooks SET updated_ms=?,revision=revision+1 WHERE id=?`, now, id); err != nil {
 			return err
@@ -643,7 +694,7 @@ func (s *Store) Delete(ctx context.Context, auth Authorize, id string) error {
 		if n, _ := result.RowsAffected(); n == 0 {
 			return sql.ErrNoRows
 		}
-		return nil
+		return dbwork.AfterCommit(tx, func() { s.cancelSends(id, 0) })
 	})
 }
 
@@ -732,9 +783,13 @@ func (s *Store) Deliveries(ctx context.Context, auth Authorize, id, cursor strin
 func (s *Store) SendTest(ctx context.Context, auth Authorize, id string) (Delivery, error) {
 	var out Delivery
 	err := s.write(ctx, auth, func(tx *sql.Tx) error {
-		var exists int
-		if err := tx.QueryRowContext(ctx, `SELECT 1 FROM webhooks WHERE id=?`, id).Scan(&exists); err != nil {
+		var retired bool
+		var generation int64
+		if err := tx.QueryRowContext(ctx, `SELECT owner_review_required,authority_generation FROM webhooks WHERE id=?`, id).Scan(&retired, &generation); err != nil {
 			return err
+		}
+		if retired {
+			return &ValidationError{[]string{"requiresOwnerReview"}}
 		}
 		var waiting int
 		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM webhook_deliveries WHERE webhook_id=? AND state='pending' AND type=?`, id, Test).Scan(&waiting); err != nil {
@@ -744,7 +799,7 @@ func (s *Store) SendTest(ctx context.Context, auth Authorize, id string) (Delive
 			return ErrCapacity
 		}
 		delivery, now := identifier(), s.now()
-		if _, err := tx.ExecContext(ctx, `INSERT INTO webhook_deliveries(id,webhook_id,type,data,next_attempt_ms,created_ms) VALUES(?,?,?,?,?,?)`, delivery, id, Test, `{"message":"This is a test from Portico."}`, now, now); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO webhook_deliveries(id,webhook_id,authority_generation,type,data,next_attempt_ms,created_ms) VALUES(?,?,?,?,?,?,?)`, delivery, id, generation, Test, `{"message":"This is a test from Portico."}`, now, now); err != nil {
 			return err
 		}
 		var err error
