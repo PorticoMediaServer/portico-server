@@ -195,3 +195,8 @@
   .songArtist,.songAlbum,.songPlays { display: none; }
   .songColumns > :nth-child(6) { text-align: right; }
 }
+.songIndexPlay { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--color-text-tertiary); font: inherit; cursor: pointer; }
+.songIndexPlay > svg { display: none; }
+.songIndexPlay:hover > span,.songIndexPlay:focus-visible > span { display: none; }
+.songIndexPlay:hover > svg,.songIndexPlay:focus-visible > svg { display: block; }
+.songIndexPlay:hover,.songIndexPlay:focus-visible { background: var(--color-raised-high); color: var(--color-text); }

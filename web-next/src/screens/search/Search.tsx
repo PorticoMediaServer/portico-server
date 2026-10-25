@@ -254,7 +254,8 @@ export function SongTableRow({entry, binding, selection, position = 0, onCommit}
     else open();
   };
   return <div className={styles.songTableRow} data-selected={picked?.checked || undefined} data-preview={picked?.preview || undefined} {...range}>
-    <span className={styles.songIndex}>{picked ? <SelectionCircle variant="row" selected={picked.checked} selecting={picked.active} accessibilityLabel={t('next.selection.select')} onClick={event => {event.preventDefault(); picked.onToggle({range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});}}/> : defaultI18n.number(position + 1)}</span>
+    <span className={styles.songIndex}>{picked ? <SelectionCircle variant="row" selected={picked.checked} selecting={picked.active} accessibilityLabel={t('next.selection.select')} onClick={event => {event.preventDefault(); picked.onToggle({range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});}}/>
+      : <button type="button" className={styles.songIndexPlay} onClick={activate} aria-label={t('next.browse.play', {title})}><span>{defaultI18n.number(position + 1)}</span><Icon name="i-play" size={16}/></button>}</span>
     <button type="button" className={styles.songTitleCell} onClick={activate} aria-label={title}><Artwork source={context.artwork.foreground(entry.posterUrl, 88, 1)} alt="" /><b>{title}</b></button>
     <span className={styles.songArtist}>{entry.artist?.name}</span>
     <span className={styles.songAlbum}>{entry.album?.name}</span>
