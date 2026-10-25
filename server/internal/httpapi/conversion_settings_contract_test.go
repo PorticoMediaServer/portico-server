@@ -118,3 +118,35 @@ func TestSegmentConfidenceExplicitValuesAreClosedChoices(t *testing.T) {
 		values[key] = original
 	}
 }
+
+func TestChapterSettingExplicitBooleanOrOmission(t *testing.T) {
+	raw, _ := json.Marshal(operations.SettingsChange{ExpectedRevision: 1, IdempotencyKey: "chapter-policy", Values: operations.DefaultSettings()})
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	var values map[string]json.RawMessage
+	if err := json.Unmarshal(body["values"], &values); err != nil {
+		t.Fatal(err)
+	}
+	for _, candidate := range []struct {
+		value string
+		valid bool
+	}{{"true", true}, {"false", true}, {"null", false}, {"0", false}, {"1", false}, {"\"false\"", false}} {
+		values["segments.useChapterNames"] = json.RawMessage(candidate.value)
+		body["values"], _ = json.Marshal(values)
+		encoded, _ := json.Marshal(body)
+		var request ConsoleSettingsChange
+		err := json.Unmarshal(encoded, &request)
+		if (err == nil) != candidate.valid {
+			t.Fatalf("value=%s error=%v", candidate.value, err)
+		}
+	}
+	delete(values, "segments.useChapterNames")
+	body["values"], _ = json.Marshal(values)
+	encoded, _ := json.Marshal(body)
+	var request ConsoleSettingsChange
+	if err := json.Unmarshal(encoded, &request); err != nil || request.Values.SegmentUseChapterNames != nil {
+		t.Fatal("omission", request, err)
+	}
+}

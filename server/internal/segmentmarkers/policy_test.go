@@ -1,11 +1,14 @@
 package segmentmarkers
 
-import "testing"
+import (
+	"portico.local/server/internal/segmentdetect"
+	"testing"
+)
 
 func TestConfidencePolicyCannotGrantMeasurementOrResolveAmbiguity(t *testing.T) {
 	for _, viewer := range []int{30, 50, 70} {
 		for _, automatic := range []int{70, 85, 95} {
-			p := ConfidencePolicy{viewer, automatic}
+			p := ConfidencePolicy{ViewerPercent: viewer, AutomaticPercent: automatic, UseChapterNames: true}
 			if !p.Valid() {
 				t.Fatal(p)
 			}
@@ -29,5 +32,30 @@ func TestConfidencePolicyCannotGrantMeasurementOrResolveAmbiguity(t *testing.T) 
 				t.Fatal("viewer boundary", p)
 			}
 		}
+	}
+}
+
+func TestChapterPolicyPreservesApprovalAndOtherEvidence(t *testing.T) {
+	if ChapterProvenance != segmentdetect.ChapterProvenance {
+		t.Fatal("chapter provenance drift")
+	}
+	p := DefaultConfidencePolicy()
+	if !p.ViewerVisible(false, .85, ChapterProvenance) {
+		t.Fatal("chapter default lost")
+	}
+	p.UseChapterNames = false
+	if p.ViewerVisible(false, 1, ChapterProvenance) {
+		t.Fatal("disabled chapter suggestion visible")
+	}
+	if !p.ViewerVisible(true, .1, ChapterProvenance) {
+		t.Fatal("owner approval hidden")
+	}
+	for _, provenance := range []string{"visual_credits:v1", "season_audio_match:intro:v1"} {
+		if !p.ViewerVisible(false, .9, provenance) {
+			t.Fatal("unrelated evidence hidden", provenance)
+		}
+	}
+	if p.AutomaticSafe(false, 1, ChapterProvenance) {
+		t.Fatal("chapter label became measurement")
 	}
 }

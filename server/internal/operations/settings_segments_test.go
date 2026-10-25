@@ -77,3 +77,48 @@ func TestSegmentConfidenceReceiptDistinguishesOmissionFromExplicitDefaults(t *te
 		t.Fatal("explicit defaults reused omission receipt")
 	}
 }
+
+func TestChapterSettingDefaultsFalseOmissionAndReceipt(t *testing.T) {
+	s, owner, auth := consoleFixture(t)
+	ctx := context.Background()
+	doc, err := s.Settings(ctx, auth)
+	if err != nil || doc.Requested.SegmentUseChapterNames == nil || !*doc.Requested.SegmentUseChapterNames {
+		t.Fatal(doc, err)
+	}
+	disabled := false
+	values := doc.Requested
+	values.SegmentUseChapterNames = &disabled
+	saved, err := s.ApplySettings(ctx, owner, auth, SettingsChange{doc.Revision, "chapters-disable", values})
+	if err != nil || saved.Requested.SegmentUseChapterNames == nil || *saved.Requested.SegmentUseChapterNames {
+		t.Fatal(saved, err)
+	}
+	snapshot, err := dbwork.BeginSnapshot(ctx, s.DB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy, err := segmentmarkers.ReadConfidencePolicy(ctx, snapshot.Tx())
+	snapshot.Rollback()
+	if err != nil || policy.UseChapterNames {
+		t.Fatal(policy, err)
+	}
+	values = saved.Requested
+	values.SegmentUseChapterNames = nil
+	change := SettingsChange{saved.Revision, "chapters-omitted", values}
+	preserved, err := s.ApplySettings(ctx, owner, auth, change)
+	if err != nil || preserved.Requested.SegmentUseChapterNames == nil || *preserved.Requested.SegmentUseChapterNames {
+		t.Fatal(preserved, err)
+	}
+	replay, err := s.ApplySettings(ctx, owner, auth, change)
+	if err != nil || replay.Revision != preserved.Revision {
+		t.Fatal(replay, err)
+	}
+	enabled := true
+	change.Values.SegmentUseChapterNames = &enabled
+	if _, err = s.ApplySettings(ctx, owner, auth, change); err == nil {
+		t.Fatal("explicit true reused omitted receipt")
+	}
+	binding := ConfigurationBinding{Field: "segments.useChapterNames", Scale: 1}
+	if err = assignConfiguration(&values, binding, false); err != nil || values.SegmentUseChapterNames == nil || *values.SegmentUseChapterNames || configurationValue(binding, values.SegmentUseChapterNames) != false {
+		t.Fatal(values, err)
+	}
+}

@@ -23,6 +23,7 @@ func ConfigurationBindings() []ConfigurationBinding {
 	return []ConfigurationBinding{
 		{"storage.missingRule", "storage.remove_missing_titles", "library.missingTitles", 1, false},
 		{"storage.missingDaysExact", "storage.remove_missing_titles_days", "library.missingTitlesDays", 1, false},
+		{"segments.chapters", "segments.use_chapter_names", "segments.useChapterNames", 1, false},
 		{"segments.viewerFloor", "segments.viewer_confidence_percent", "segments.viewerConfidencePercent", 1, false},
 		{"segments.autoFloor", "segments.automatic_confidence_percent", "segments.automaticConfidencePercent", 1, false},
 		{"segments.mode", "library.segment_detection", "library.segmentDetection", 1, false},
@@ -111,6 +112,12 @@ func configurationValue(b ConfigurationBinding, v any) any {
 			}
 			return float64(n) / float64(b.Scale)
 		}
+	}
+	if enabled, ok := v.(*bool); ok {
+		if enabled == nil {
+			return nil
+		}
+		return *enabled
 	}
 	if n, ok := v.(*int); ok {
 		if n == nil {
@@ -231,6 +238,14 @@ func assignConfiguration(v *Settings, b ConfigurationBinding, raw any) error {
 			return nil
 		}
 		return ErrInvalid
+	}
+	if target.Kind() == reflect.Pointer && target.Type().Elem().Kind() == reflect.Bool {
+		enabled, ok := raw.(bool)
+		if !ok {
+			return ErrInvalid
+		}
+		target.Set(reflect.ValueOf(&enabled))
+		return nil
 	}
 	switch target.Kind() {
 	case reflect.Int, reflect.Pointer:
