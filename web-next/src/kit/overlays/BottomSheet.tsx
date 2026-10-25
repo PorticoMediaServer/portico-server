@@ -6,10 +6,10 @@ import {springs} from '@design';
 import {Button} from '../controls/Button';
 import {releaseSheet, resistedHeight, sheetDetents, springFrames} from './model';
 import {classes, useDismissReason, useOverlayKeys, usePresence, useReducedMotion, useSurfaceFocus} from './shared';
-import type {OverlayContentSlots, OverlayStyle, OverlaySurfaceProps} from './types';
+import type {OverlayContentSlots, OverlaySheetFooterProps, OverlayStyle, OverlaySurfaceProps} from './types';
 import styles from './overlays.module.css';
 
-export type BottomSheetProps = OverlaySurfaceProps & OverlayContentSlots & {
+export type BottomSheetProps = OverlaySurfaceProps & OverlayContentSlots & OverlaySheetFooterProps & {
   detents?: readonly number[];
   detent?: number;
   onDetentChange?: (index: number) => void;
@@ -25,10 +25,11 @@ export type BottomSheetProps = OverlaySurfaceProps & OverlayContentSlots & {
 };
 type Drag = {pointer: number; startY: number; startHeight: number; y: number; time: number; velocity: number};
 
-export function BottomSheet({open, onOpenChange, title, headerAction, children, description, footer, initialFocusRef, returnFocusRef, accessibilityLabel, className, testID, headerClassName, bodyClassName, footerClassName, detents, detent, onDetentChange, scrollRef, fitContent = false, trigger, dismissOnOutsidePress = true, dismissOnBack = true, showCloseButton = true, role = 'dialog'}: BottomSheetProps) {
+export function BottomSheet({open, onOpenChange, title, headerAction, children, description, footer, initialFocusRef, returnFocusRef, accessibilityLabel, className, testID, headerClassName, bodyClassName, footerClassName, detents, detent, onDetentChange, scrollRef, fitContent = false, trigger, dismissOnOutsidePress = true, dismissOnBack = true, showCloseButton = true, stackFooter = false, role = 'dialog'}: BottomSheetProps) {
   const portalTarget = useOverlayPortalTarget();
   const id = useId(), [viewport, setViewport] = useState(() => typeof window === 'undefined' ? 844 : window.visualViewport?.height ?? window.innerHeight);
   const [active, setActive] = useState(0), [naturalHeight, setNaturalHeight] = useState(0), [element, setElement] = useState<HTMLDivElement | null>(null);
+  const [footerHeight, setFooterHeight] = useState(0);
   const body = useRef<HTMLDivElement | null>(null), header = useRef<HTMLDivElement | null>(null), footerRef = useRef<HTMLElement | null>(null), scrim = useRef<HTMLDivElement | null>(null);
   const drag = useRef<Drag | null>(null), height = useRef(0), animations = useRef<Animation[]>([]), closingVelocity = useRef(0), initialized = useRef<HTMLElement | null>(null);
   const triggerElement = useRef<HTMLButtonElement | null>(null);
@@ -47,8 +48,22 @@ export function BottomSheet({open, onOpenChange, title, headerAction, children, 
     const measure = () => setNaturalHeight((header.current?.offsetHeight ?? 0) + (body.current?.scrollHeight ?? 0) + (footerRef.current?.offsetHeight ?? 0) + Number.parseFloat(getComputedStyle(element).paddingBottom));
     const observer = new ResizeObserver(measure);
     if (body.current) observer.observe(body.current); if (header.current) observer.observe(header.current);
+    // A footer that appears later, or one that grows as its actions wrap, is the
+    // last part of the contents' own height.
+    if (footerRef.current) observer.observe(footerRef.current);
     measure(); return () => observer.disconnect();
-  }, [element, fitContent]);
+  }, [element, fitContent, footerHeight, footer !== undefined]);
+
+  // account28/29: an opted-in sheet stacks its actions, so its body clears the
+  // footer by the footer's own measured height rather than a fixed guess.
+  useLayoutEffect(() => {
+    const node = footerRef.current;
+    if (!stackFooter || !element || !node) return;
+    const measure = () => setFooterHeight(node.offsetHeight);
+    const observer = new ResizeObserver(measure);
+    observer.observe(node); measure();
+    return () => observer.disconnect();
+  }, [element, stackFooter]);
 
   const paintedHeight = useCallback(() => {
     if (!element) return height.current;
@@ -120,7 +135,8 @@ export function BottomSheet({open, onOpenChange, title, headerAction, children, 
     <RadixDialog.Overlay forceMount ref={scrim} className={styles.sheetScrim} data-state={open ? 'open' : 'closed'} />
     <RadixDialog.Content forceMount ref={setElement} className={classes(styles.sheet, className)} role={role} aria-modal={open || undefined} data-testid={testID} data-state={open ? 'open' : 'closed'}
       data-full-height={selected?.height === maximum || undefined} data-has-footer={footer !== undefined || undefined} aria-label={accessibilityLabel} aria-describedby={description === undefined ? undefined : `${id}-description`}
-      style={{'--overlay-sheet-height': `${maximum}px`} as OverlayStyle}
+      data-footer-stack={stackFooter || undefined}
+      style={{'--overlay-sheet-height': `${maximum}px`, ...(stackFooter && footerHeight ? {'--overlay-sheet-footer-height': `${footerHeight}px`} : {})} as OverlayStyle}
       onOpenAutoFocus={focus.onOpenAutoFocus} onCloseAutoFocus={focus.onCloseAutoFocus}
       onEscapeKeyDown={event => { if (!dismissOnBack) event.preventDefault(); else reason.current = 'escape'; }} onPointerDownOutside={event => { if (!dismissOnOutsidePress) event.preventDefault(); else reason.current = 'outside'; }}>
       <div ref={header} className={classes(styles.sheetHeader, headerClassName)} onPointerDown={start} onPointerMove={move} onPointerUp={event => end(event)} onPointerCancel={event => end(event, true)} onLostPointerCapture={event => { if (drag.current) end(event, true); }}>

@@ -19,6 +19,8 @@ export type DialogProps = OverlaySurfaceProps & OverlayContentSlots & {
   role?: 'dialog' | 'alertdialog';
   /** Phone widths use the real sheet, including gestures, focus and scroll containment. */
   responsive?: boolean;
+  /** Phone sheets stack their actions full width, action first (account28/29). Off by default. */
+  stackFooter?: boolean;
 };
 
 export function Dialog({responsive = true, ...props}: DialogProps) {

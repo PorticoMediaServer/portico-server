@@ -3,6 +3,8 @@ import type {CSSProperties, ReactElement, ReactNode, RefObject} from 'react';
 export type OverlayDismissReason = 'close-button' | 'outside' | 'escape' | 'back' | 'action' | 'gesture';
 export type OverlayChange = (open: boolean, reason: OverlayDismissReason) => void;
 export type OverlayContentSlots = {headerClassName?: string; bodyClassName?: string; footerClassName?: string};
+/** Phone sheets may stack their actions full width; the desktop dialog is unchanged. */
+export type OverlaySheetFooterProps = {stackFooter?: boolean};
 export type OverlaySurfaceProps = {
   open: boolean;
   onOpenChange: OverlayChange;

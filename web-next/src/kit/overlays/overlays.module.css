@@ -57,6 +57,17 @@
 .sheet[data-full-height="true"] .sheetBody { overflow: auto; }
 .sheetFooter { position: absolute; inset: auto 0 0; display: flex; gap: 10px; padding: 12px 16px max(30px, env(safe-area-inset-bottom)); background: linear-gradient(180deg, rgba(16,33,45,0), var(--color-raised) 30%); }
 .sheet[data-has-footer="true"] .sheetBody { padding-bottom: 96px; }
+
+/* Opted-in sheets only (account28/29 workspace confirmations): actions stack full
+   width with the sheet's own action on top, and the body clears the footer by the
+   footer's measured height so nothing hides behind it. */
+
+.sheet[data-footer-stack]:has(> .sheetFooter > :nth-child(2)) .sheetFooter { flex-direction: column-reverse; }
+
+.sheet[data-footer-stack]:has(> .sheetFooter > :nth-child(2)) .sheetFooter > * { width: 100%; }
+
+.sheet[data-footer-stack]:has(> .sheetFooter > :nth-child(2)) .sheetBody { padding-bottom: calc(var(--overlay-sheet-footer-height, 96px) + 12px); }
+
 .phoneMenu .sheetHeading { padding-bottom: 12px; }
 .phoneMenu .menuGroup { margin: 0 16px; }
 .phoneMenu .menuGroup + .menuGroup { margin-top: 12px; }
