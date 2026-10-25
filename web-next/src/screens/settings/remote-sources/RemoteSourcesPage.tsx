@@ -1091,7 +1091,16 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
             {presetName && <small>{t(presetHint(presetName))}</small>}</span>
           <Button size="xs" variant="glass" disabled={busy || loadingProfile || !profile || !sourceNow} onClick={openReadingChange}>{t('next.remoteSources.change')}</Button>
         </div>
-        : <ReadingChoices values={values} origin={result?.origin ?? sourceNow?.origin} rangeSupport={result?.rangeSupport ?? sourceNow?.rangeSupport ?? 'unknown'} disabled={busy} onChange={setValues}/>}
+        : advancedOpen
+          // Frame 4b folds the four choices into one line while Advanced is
+          // open, so the page does not double in length. It states only the
+          // current profile in the same words the phone uses; it makes no claim
+          // that any Advanced value belongs to that choice.
+          ? <div className={styles.readingSummary}>
+            <span><b>{t(presetName ? presetLabel(presetName) : 'next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.4.label')}</b>
+              {presetName && <small>{t(presetHint(presetName))}</small>}</span>
+          </div>
+          : <ReadingChoices values={values} origin={result?.origin ?? sourceNow?.origin} rangeSupport={result?.rangeSupport ?? sourceNow?.rangeSupport ?? 'unknown'} disabled={busy} onChange={setValues}/>}
       <div className={styles.limits}>
         <SettingNumber label={t('next.remoteSources.connections')} value={values.connections} min={1} max={32} unit={t('next.remoteSources.atOnce')} disabled={busy} onCommit={value => {if (value !== null) setValues({...values, connections: value});}}/>
         <SettingNumber label={t('next.remoteSources.requestsPerSecond')} value={values.requestsPerSecond} min={1} max={50} unit={t('next.remoteSources.aSecond')} disabled={busy} onCommit={value => {if (value !== null) setValues({...values, requestsPerSecond: value});}}/>
