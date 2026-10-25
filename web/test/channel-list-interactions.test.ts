@@ -66,7 +66,6 @@ async function mount(options: {channels?: GuideChannelRow[]} = {}) {
     channels: async (from: number, limit: number) => ({items: rows.slice(from, from + limit), total: rows.length}),
     programs: async (ids: readonly string[], start: number, end: number) => {
       programCalls++;
-      if (options.fail?.()) throw Object.assign(new Error('unavailable'), {status: 503});
       const out: Record<string, readonly GuideProgram[]> = {};
       for (const id of ids) out[id] = programs.filter(p => p.channelId === id && p.end > start && p.start < end);
       return out;
