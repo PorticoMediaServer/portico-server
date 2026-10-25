@@ -39,7 +39,7 @@ import {NeedsAttention} from '../metadata/NeedsAttention';
 import type {AttentionEntry} from '@core/metadata-attention.ts';
 import {LibraryDiscoveryScreen} from './Discovery';
 import {discoverySections} from './discovery-selection';
-import {useCommittedLibraryScreenContext, useLibraryScreenContext, type ProtectedLibraryScreen} from './screen-context';
+import {useCommittedLibraryScreenContext, type ProtectedLibraryScreen} from './screen-context';
 import {useScreenAppearance} from './screen-preferences';
 import {browseConjunction, parseLibraryScreenSearch, type LibraryScreenSearch} from './route-search';
 import {SaveView} from './SaveView';
@@ -67,9 +67,46 @@ function readingTabs(capabilities: BrowseCapabilities | undefined, kind: string)
   return out.length > 1 ? out : base;
 }
 
+/** A committed Reading route owns its original context and its own API lifetime. Strict effect
+ *  replay opens another lifetime; it never revives the one it just disposed, and the original
+ *  captured actor, library and search are the witnesses every read is admitted against. */
+function useReadingLifetime(context: ScreenContext, routeKey: string, routeCurrent: () => boolean) {
+  const [published, publish] = useState<Readonly<{id: string; context: ScreenContext; routeKey: string; life: ReturnType<typeof screenLifetime>}>>();
+  useLayoutEffect(() => {
+    const original = screenLifetime(context);
+    let live = true;
+    const current = () => live && original.current() && routeCurrent();
+    const retired = () => new DOMException('Reading route retired', 'AbortError');
+    const life: ReturnType<typeof screenLifetime> = {...original, current,
+      api: {
+        async request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+          if (!current()) throw retired(); const value = await original.api.request<T>(path, method, body, signal); if (!current()) throw retired(); return value;
+        },
+        async requestRaw(...args: Parameters<typeof original.api.requestRaw>) {
+          if (!current()) throw retired(); const value = await original.api.requestRaw(...args); if (!current()) throw retired(); return value;
+        },
+      },
+      dispose: () => {live = false; original.dispose();}};
+    publish({id: crypto.randomUUID(), context, routeKey, life});
+    return () => {life.dispose();};
+    // routeCurrent belongs to this exact route key and is never adopted later.
+  }, [context, routeKey]);
+  return published?.context === context && published.routeKey === routeKey && published.life.current() ? published : undefined;
+}
 function ReadingLibrary({captured, library, search, onMarked}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch; onMarked: () => void}) {
-  const context = useLibraryScreenContext(captured), appearance = useScreenAppearance(captured.context)!, width = useShellWidth();
-  const life = useMemo(() => screenLifetime(context), [context]);
+  const href = useLocation({select: location => location.href});
+  const context = useCommittedLibraryScreenContext(captured, href, () => router.state.location.href === href);
+  return context ? <CommittedReadingLibrary captured={captured} library={library} search={search} onMarked={onMarked} context={context} href={href}/> : <Skeleton height={320}/>;
+}
+function CommittedReadingLibrary({captured, library, search, onMarked, context, href}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch; onMarked: () => void; context: ScreenContext; href: string}) {
+  const published = useReadingLifetime(context, href, () => router.state.location.href === href);
+  return published ? <LiveReadingLibrary key={published.id} captured={captured} library={library} search={search} onMarked={onMarked} context={context} life={published.life}/>
+    : <Skeleton height={320}/>;
+}
+/** The live reading body: every hook below runs only with a committed, non-optional lifetime,
+ *  so no hook order changes when one is published or replaced. */
+function LiveReadingLibrary({captured, library, search, onMarked, context, life}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch; onMarked: () => void; context: ScreenContext; life: ReturnType<typeof screenLifetime>}) {
+  const appearance = useScreenAppearance(captured.context)!, width = useShellWidth();
   const markAll = useReadingMarkAll(context, library.id, JSON.stringify(search), onMarked);
   const [capabilitySnapshot, setCapabilities] = useState<Readonly<{context: ProtectedLibraryScreen['context']; data: BrowseCapabilities}>>();
   const capabilities = capabilitySnapshot?.context === captured.context && capabilitySnapshot.data.library.id === library.id && capabilitySnapshot.data.library.kind === library.kind ? capabilitySnapshot.data : undefined;
@@ -78,7 +115,6 @@ function ReadingLibrary({captured, library, search, onMarked}: {captured: Protec
   const {wash, counts, libraryCounts} = useReadLibrarySummary({context: captured.context, libraryId: library.id, artwork: context.artwork,
     api: life.api, signal: life.signal, isCurrent: life.current, reportError: context.effects.reportError, enabled: true});
   const libraryChoices = (context.identity?.libraries ?? []).map(choice => ({...choice, count: libraryCounts.find(row => row.id === choice.id)?.text}));
-  useEffect(() => () => life.dispose(), [life]);
   useEffect(() => {
     let active = true;
     void (async () => {
