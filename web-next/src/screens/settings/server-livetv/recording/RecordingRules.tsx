@@ -32,7 +32,12 @@ export function RecordingRules({controller, permissions, sources}: {controller: 
     {!!state.error && <p role="alert" className={styles.error}>{errorMessage(state.error)}</p>}
     {state.loading && <p role="status">{t('status.loading')}</p>}
     {!state.loading && !state.rules.length && <p>{t('web.recordingRules.noRules')}</p>}
-    {state.rules.map(rule => <SettingsRow key={rule.id} label={rule.name} help={needsRuleOwner(rule) ? t('web.recordingRules.chooseOwner') : !rule.enabled ? t('web.recordingRules.pausedRule') : t(rule.kind === 'title' ? 'web.recordingRules.titleMatch' : 'web.recordingRules.seriesKind')}>
+    {state.rules.map(rule => <SettingsRow key={rule.id} label={rule.name} help={[
+      needsRuleOwner(rule) ? t('web.recordingRules.chooseOwner') : !rule.enabled ? t('web.recordingRules.pausedRule') : t(rule.kind === 'title' ? 'web.recordingRules.titleMatch' : 'web.recordingRules.seriesKind'),
+      sources.find(source => source.id === rule.sourceId)?.name,
+      ...policy.owners.filter(row => recordingOwnerKey(row.owner) === recordingOwnerKey(rule.owner)).map(recordingOwnerLabel),
+      rule.options.newEpisodesOnly ? t('guide.newOnly') : undefined,
+    ].filter(Boolean).join(' · ')}>
       <Button size="small" variant="text" disabled={busy || !!draft} onClick={() => controller.open(rule)}>{t(needsRuleOwner(rule) ? 'web.recordingRules.replaceOwned' : 'web.recordingRules.editRule')}</Button>
       <Button size="small" variant="text" disabled={state.saving || !!draft || !!state.uncertain && remove !== rule} onClick={() => {if (controller.isActive()) setRemove(rule);}}>{t('web.recordingRules.remove')}</Button>
     </SettingsRow>)}
