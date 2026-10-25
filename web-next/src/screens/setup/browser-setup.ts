@@ -15,6 +15,7 @@ export type BrowserSetupPortsInput = Readonly<{
   resumeHosted?: SetupPorts['resumeHosted'];
   /** The composition binds this to the admitted owner's authenticated API. */
   addLibrary: SetupPorts['addLibrary'];
+  libraryFolders?: SetupPorts['libraryFolders'];
   complete: () => void;
   origin?: () => string;
 }>;
@@ -43,6 +44,7 @@ export function createBrowserSetupPorts(input: BrowserSetupPortsInput): SetupPor
     continueHosted: input.continueHosted,
     ...(input.resumeHosted ? {resumeHosted: input.resumeHosted} : {}),
     addLibrary: input.addLibrary,
+    ...(input.libraryFolders ? {libraryFolders: input.libraryFolders} : {}),
     complete: input.complete,
     hostname: () => location.hostname,
   });
