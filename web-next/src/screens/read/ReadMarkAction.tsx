@@ -12,35 +12,41 @@ const definite = new Set(['personal_state_conflict', 'personal_needs_resolution'
 export function ReadMarkAction({client, itemId, isCurrent, reportError}: {client: ReadingClient; itemId: string; isCurrent: () => boolean; reportError: (error: unknown) => void}) {
   const inputs = useRef({client, itemId, isCurrent, reportError}); inputs.current = {client, itemId, isCurrent, reportError};
   const opening = useRef<Opening>(), [view, setView] = useState<View>({});
+  // Publish synchronously as well as through React: an old event closure must
+  // retire before a successor view is committed, not at passive cleanup.
+  const currentView = useRef(view);
+  const publish = useCallback((next: View) => {currentView.current = next; setView(next);}, []);
   const current = useCallback((held: Opening) => held.live && opening.current === held && !held.controller.signal.aborted && !held.client.signal.aborted
     && inputs.current.client === held.client && inputs.current.itemId === held.itemId && inputs.current.isCurrent(), []);
   const load = useCallback(async (held: Opening) => {
     if (!current(held) || held.busy) return;
-    held.busy = true; setView(previous => ({...previous, opening: held, busy: true}));
+    held.busy = true; publish({...currentView.current, opening: held, busy: true});
     try {
       const mark = await held.client.readMark(held.itemId, held.controller.signal);
       if (!current(held)) return;
-      held.needsRead = false; setView({opening: held, mark});
+      held.needsRead = false; publish({opening: held, mark});
     } catch (error) {if (current(held)) {
-      if (error instanceof ReadingError && (error.status === 403 || error.status === 404)) setView({opening: held, unavailable: true});
-      else setView(previous => ({...previous, opening: held, busy: false, failed: true}));
+      if (error instanceof ReadingError && (error.status === 403 || error.status === 404)) publish({opening: held, unavailable: true});
+      else publish({...currentView.current, opening: held, busy: false, failed: true});
       inputs.current.reportError(error);
     }}
     finally {held.busy = false;}
-  }, [current]);
+  }, [current, publish]);
   useLayoutEffect(() => {
     const held: Opening = {client, itemId, controller: new AbortController(), live: true, busy: false, needsRead: true};
-    opening.current = held; setView({opening: held});
+    opening.current = held; publish({opening: held});
     if (client.canMarkRead(itemId)) void load(held);
     return () => {held.live = false; held.controller.abort(); if (opening.current === held) opening.current = undefined;};
-  }, [client, itemId, load]);
+  }, [client, itemId, load, publish]);
   const held = view.opening, mark = view.mark;
   if (!held || !current(held) || !client.canMarkRead(itemId) || view.unavailable || !mark && !view.failed) return null;
+  const renderedView = view, renderedCommand = held.command, renderedNeedsRead = held.needsRead;
   const press = async () => {
-    if (!current(held) || held.busy) return;
-    if (held.needsRead || !mark) {await load(held); return;}
-    const command = held.command ?? Object.freeze({operationId: crypto.randomUUID(), expectedRevision: mark.revision, read: !mark.read});
-    held.command = command; held.busy = true; setView({opening: held, mark, busy: true});
+    if (!current(held) || held.busy || currentView.current !== renderedView || renderedView.opening !== held || renderedView.mark !== mark
+      || held.command !== renderedCommand || held.needsRead !== renderedNeedsRead) return;
+    if (renderedNeedsRead || !mark) {await load(held); return;}
+    const command = renderedCommand ?? Object.freeze({operationId: crypto.randomUUID(), expectedRevision: mark.revision, read: !mark.read});
+    held.command = command; held.busy = true; publish({opening: held, mark, busy: true});
     let committed = false;
     try {
       const updated = await held.client.setReadMark(held.itemId, command, held.controller.signal);
@@ -53,11 +59,11 @@ export function ReadMarkAction({client, itemId, isCurrent, reportError}: {client
       const fresh = await held.client.readMark(held.itemId, held.controller.signal);
       if (!current(held)) return;
       if (fresh.viewerFence !== mark.viewerFence || fresh.revision < updated.revision) throw new ReadingError('source_changed');
-      held.needsRead = false; setView({opening: held, mark: fresh});
+      held.needsRead = false; publish({opening: held, mark: fresh});
     } catch (error) {
       if (current(held) && (held.command === command || committed)) {
         if (error instanceof ReadingError && definite.has(error.code)) {held.command = undefined; held.needsRead = true;}
-        setView({opening: held, mark, failed: true}); inputs.current.reportError(error);
+        publish({opening: held, mark, failed: true}); inputs.current.reportError(error);
       }
     } finally {held.busy = false;}
   };
