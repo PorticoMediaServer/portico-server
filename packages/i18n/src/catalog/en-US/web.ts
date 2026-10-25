@@ -1084,6 +1084,7 @@ export const webMessages = {
   'web.direct.newPasswordLede': 'The server’s owner asked you to choose a new password before you continue.',
   'web.direct.continue': 'Continue',
   'web.chooser.loadFailed': 'Your servers couldn’t be loaded',
+  'web.chooser.loadFailedBody': 'Check your connection, then try again.',
   'web.chooser.lede': 'Choose the server to watch from.',
   'web.chooser.loading': 'Loading your servers',
   'web.chooser.checkingAgain': 'Checking again in {seconds, plural, one {# second} other {# seconds}}',
