@@ -414,8 +414,9 @@ export class DecodeAudioRender {
   private reportProcessing(): void {
     const snapshot = this.service.getSnapshot(), session = snapshot.session;
     if (!session) { this.processingReport = ''; return; }
-    const facts = this.audioFacts(), value = {eqApplied: facts?.eqApplied ?? false, levelingApplied: facts?.levelingApplied ?? false};
-    const key = `${snapshot.intentId}:${session.id}:${session.generation}:${value.eqApplied}:${value.levelingApplied}`;
+    const facts = this.audioFacts(), levelingGainDb = facts && facts.levelingApplied === true ? facts.levelingGainDb : undefined;
+    const value = {eqApplied: facts?.eqApplied ?? false, levelingApplied: facts?.levelingApplied ?? false, ...(levelingGainDb !== undefined ? {levelingGainDb} : {})};
+    const key = `${snapshot.intentId}:${session.id}:${session.generation}:${value.eqApplied}:${value.levelingApplied}:${levelingGainDb ?? ''}`;
     if (key === this.processingReport) return;
     this.processingReport = key;
     this.listening.audioProcessingApplied({intentId: snapshot.intentId, sessionId: session.id, generation: session.generation}, value);

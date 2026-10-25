@@ -900,7 +900,7 @@ export class PlaybackService {
     const changed='session' in patch&&(patch.session?.id!==this.snapshot.session?.id||patch.session?.generation!==this.snapshot.session?.generation);
     if(changed||patch.phase==='idle'||patch.phase==='error'||patch.phase==='ended'){
       const actual=patch.phase==='idle'||patch.phase==='error'||patch.phase==='ended'?undefined:patch.nativeListening;
-      patch={...patch,audioEffects:{...(patch.audioEffects??this.snapshot.audioEffects),eqApplied:actual?.eqApplied===true,levelingApplied:actual?.levelingApplied===true}};
+      patch={...patch,audioEffects:{...(patch.audioEffects??this.snapshot.audioEffects),eqApplied:actual?.eqApplied===true,levelingApplied:actual?.levelingApplied===true,levelingGainDb:undefined}};
     }
     // `ended` belongs to one session: a new start or another session clears it.
     if (!("ended" in patch) && this.snapshot.ended && (patch.phase === "starting" || ("session" in patch && patch.session?.id !== this.snapshot.session?.id)))
@@ -1096,7 +1096,8 @@ export class PlaybackService {
     settings=parseAudioEffects(settings);if(!this.nativeV1){this.queue?.seekRetiringAudio?.(this.snapshot.positionSeconds);this.queue?.invalidateAudioPreparation?.();}
     const current=this.snapshot,effects=current.audioEffects;
     const enable=renderable(current.session)&&(audioEffectsEnabled(settings)||this.deviceAudioProcessing);
-    this.update({audioEffects:{...effects,settings,rendering:effects.rendering||enable,levelingApplied:effects.settings.normalization===settings.normalization&&effects.levelingApplied}});
+    const sameNormalization=effects.settings.normalization===settings.normalization;
+    this.update({audioEffects:{...effects,settings,rendering:effects.rendering||enable,levelingApplied:sameNormalization&&effects.levelingApplied,levelingGainDb:sameNormalization&&effects.levelingApplied?effects.levelingGainDb:undefined}});
     this.syncListeningPolicy();
     if(enable&&!effects.rendering&&current.session&&!this.nativeV1)this.requestSeek(current.positionSeconds);
     void this.queue?.saveAudioEffects(settings);
@@ -1135,9 +1136,10 @@ export class PlaybackService {
   }
   /** Called only after filters/gain have actually been installed or removed for this song. */
   audioProcessingApplied(binding:AudioProcessingBinding,facts:AudioProcessingApplied):boolean{
-    const s=this.snapshot;
-    if(!s.session||this.nativeV1||s.phase==='idle'||s.phase==='error'||s.phase==='ended'||s.intentId!==binding.intentId||s.session.id!==binding.sessionId||s.session.generation!==binding.generation||typeof facts.eqApplied!=='boolean'||typeof facts.levelingApplied!=='boolean')return false;
-    if(s.audioEffects.eqApplied!==facts.eqApplied||s.audioEffects.levelingApplied!==facts.levelingApplied)this.update({audioEffects:{...s.audioEffects,...facts}});
+    const s=this.snapshot,amount=facts.levelingGainDb;
+    if(!s.session||this.nativeV1||s.phase==='idle'||s.phase==='error'||s.phase==='ended'||s.intentId!==binding.intentId||s.session.id!==binding.sessionId||s.session.generation!==binding.generation||typeof facts.eqApplied!=='boolean'||typeof facts.levelingApplied!=='boolean'||amount!==undefined&&(typeof amount!=='number'||!Number.isFinite(amount)||amount<-60||amount>30))return false;
+    const levelingGainDb=facts.levelingApplied&&amount!==undefined?amount:undefined;
+    if(s.audioEffects.eqApplied!==facts.eqApplied||s.audioEffects.levelingApplied!==facts.levelingApplied||s.audioEffects.levelingGainDb!==levelingGainDb)this.update({audioEffects:{...s.audioEffects,eqApplied:facts.eqApplied,levelingApplied:facts.levelingApplied,levelingGainDb}});
     return true;
   }
   audioDiagnostic(code:string,detail?:string){
@@ -1159,7 +1161,7 @@ export class PlaybackService {
     const current=this.snapshot;
     if(!current.session||!current.audioEffects.rendering||!current.session.streamUrl||this.nativeV1)return false;
     this.queue?.invalidateAudioPreparation?.();this.bookmarkProtected=true;
-    this.requestSeek(current.pendingSeek?.positionSeconds??current.positionSeconds,{audioEffects:{...current.audioEffects,rendering:false,eqApplied:false,levelingApplied:false,prepared:undefined,committed:undefined}});
+    this.requestSeek(current.pendingSeek?.positionSeconds??current.positionSeconds,{audioEffects:{...current.audioEffects,rendering:false,eqApplied:false,levelingApplied:false,levelingGainDb:undefined,prepared:undefined,committed:undefined}});
     return true;
   }
   async commitAudioAuthority(token:string,itemId:string,session:PlaybackSession,expectedIntent:number):Promise<boolean>{
@@ -1353,7 +1355,7 @@ export class PlaybackService {
       phase:event.terminal?'error':event.ended?'ended':event.ready?'ready':'starting',
       ...(changed?{audio:this.audioSelection.reset()}:{}),
       ...(event.observed&&!event.seeking?{pendingSeek:undefined,failedSeek:undefined,seekError:undefined}:{}),
-      audioEffects:{...this.snapshot.audioEffects,rendering:event.rendering??false,eqApplied:event.eqApplied===true,levelingApplied:event.levelingApplied===true,rate:event.rate,effectiveRate:event.effectiveRate,waiting:event.rateWaiting,prepared:undefined,committed:undefined},
+      audioEffects:{...this.snapshot.audioEffects,rendering:event.rendering??false,eqApplied:event.eqApplied===true,levelingApplied:event.levelingApplied===true,levelingGainDb:undefined,rate:event.rate,effectiveRate:event.effectiveRate,waiting:event.rateWaiting,prepared:undefined,committed:undefined},
       error:event.error??undefined,listeningDeadlines:event.deadlines});
     // The server ended it (an administrator, a transfer, the lease): its reason, never an advance.
     if(event.terminal&&event.end)this.serverEnded(session.id,event.end);
@@ -1854,7 +1856,7 @@ export class PlaybackService {
     this.bookmarkProtected = true;
     const old = this.snapshot.session;
     this.update({
-      audioEffects:{...this.snapshot.audioEffects,rendering:false,eqApplied:false,levelingApplied:false,effectiveRate:0,waiting:false,prepared:undefined,committed:undefined},
+      audioEffects:{...this.snapshot.audioEffects,rendering:false,eqApplied:false,levelingApplied:false,levelingGainDb:undefined,effectiveRate:0,waiting:false,prepared:undefined,committed:undefined},
       audio: this.audioSelection.reset(),
       audioTracks: undefined,
       intentId: this.snapshot.intentId + 1,

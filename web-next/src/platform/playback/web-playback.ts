@@ -55,7 +55,7 @@ export type PlaybackMediaPort = MediaPlayer & {
   applyAudioEffects?(snapshot: PlaybackSnapshot): void;
   /** Actual current-load observation. The adapter clears it on replacement, including reuse
    * of a public generation, and publishes only after its private engine has observed the graph. */
-  readonly audioProcessing?: Readonly<{generation: number; eqApplied: boolean; levelingApplied: boolean}>;
+  readonly audioProcessing?: Readonly<{generation: number; eqApplied: boolean; levelingApplied: boolean; levelingGainDb?: number}>;
   readonly nativeSurfaceActive?: boolean;
   readonly loaded: number;
   readonly settling: boolean;
@@ -211,7 +211,7 @@ export class PlayerSlot implements MediaPlayer {
     const facts = real.audioProcessing, observed = real.observe();
     if (this.real !== real || this.source !== source || !facts || facts.generation !== source.generation || observed.generation !== source.generation
       || !['playing', 'paused', 'buffering'].includes(observed.state) || typeof facts.eqApplied !== 'boolean' || typeof facts.levelingApplied !== 'boolean') return undefined;
-    return Object.freeze({generation: facts.generation, eqApplied: facts.eqApplied, levelingApplied: facts.levelingApplied});
+    return Object.freeze({generation: facts.generation, eqApplied: facts.eqApplied, levelingApplied: facts.levelingApplied, ...(facts.levelingApplied&&facts.levelingGainDb!==undefined?{levelingGainDb: facts.levelingGainDb}:{})});
   }
 
   mount(real: PlaybackMediaPort): void {
@@ -473,7 +473,7 @@ export class WebPlayback implements PlaybackAdapter {
     if (!now) return;
     const {service, snapshot} = now, o = e.observation, intent = snapshot.intentId, seconds = o.positionMs / 1000;
     const processing = e.type !== 'error' && ['playing', 'paused', 'buffering'].includes(o.state) ? this.slot.audioProcessing : undefined;
-    if (processing && snapshot.session) service.audioProcessingApplied({intentId: intent, sessionId: snapshot.session.id, generation: snapshot.session.generation}, {eqApplied: processing.eqApplied, levelingApplied: processing.levelingApplied});
+    if (processing && snapshot.session) service.audioProcessingApplied({intentId: intent, sessionId: snapshot.session.id, generation: snapshot.session.generation}, {eqApplied: processing.eqApplied, levelingApplied: processing.levelingApplied, ...(processing.levelingApplied&&processing.levelingGainDb!==undefined?{levelingGainDb: processing.levelingGainDb}:{})});
     if (this.direct && !snapshot.channel && e.type !== 'error' && o.state !== 'idle' && o.state !== 'loading' && !this.slot.settling) this.controller.observe({state: o.state, positionMs: o.positionMs, rate: o.rate, volume: o.volume, muted: o.muted}, e.type);
     switch (e.type) {
       case 'error': this.engineError(service, intent, e.code, e.detail ?? ''); return;

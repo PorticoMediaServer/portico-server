@@ -15,9 +15,9 @@ export type PreparedAudio=Readonly<{token:string;expiresAtMs:number;itemId?:stri
 export type ListeningNoticeCode='audio_autoplay_blocked'|'listening_policy_failed';
 export const listeningNoticeKey=(code:ListeningNoticeCode):'web.player.pressPlay'|'listening.paused'=>code==='audio_autoplay_blocked'?'web.player.pressPlay':'listening.paused';
 export type AudioProcessingBinding=Readonly<{intentId:number;sessionId:string;generation:number}>;
-export type AudioProcessingApplied=Readonly<{eqApplied:boolean;levelingApplied:boolean}>;
+export type AudioProcessingApplied=Readonly<{eqApplied:boolean;levelingApplied:boolean; /** Measured gain the renderer actually applied; only meaningful with levelingApplied. */ levelingGainDb?:number}>;
 export type AudioEffectsSnapshot=Readonly<{
- settings:AudioEffectsSettings;rendering:boolean;rate:number;eqApplied:boolean;levelingApplied:boolean;effectiveRate?:number;waiting?:boolean;
+ settings:AudioEffectsSettings;rendering:boolean;rate:number;eqApplied:boolean;levelingApplied:boolean; /** Applied leveling gain in dB, absent when unknown or not applied. */ levelingGainDb?:number;effectiveRate?:number;waiting?:boolean;
  prepared?:PreparedAudio;committed?:Readonly<{token:string;itemId:string;session:PlaybackSession}>;
 }>;
 export function parseAudioEffects(v:any):AudioEffectsSettings {
