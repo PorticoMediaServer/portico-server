@@ -6,8 +6,9 @@ import type {scopedHostedOwnerClaim} from './owner-pending';
 type Controller = ReturnType<typeof scopedHostedOwnerClaim>;
 export type OwnerApprovalDisplay = Readonly<{
   name: string; address: string; accountName: string; requestedAt: string; expiresAt: string;
-  /** The signed claim's own reason; a plain switch carries no previous-owner role. */
-  reason: 'switch' | 'change-owner'; previousOwnerRole?: 'admin' | 'member' | 'remove';
+  /** The signed claim's own reason; a plain switch carries no previous-owner role.
+   * start-over is the distinct signed transition mode the server binds to the move. */
+  reason: 'switch' | 'change-owner' | 'start-over'; previousOwnerRole?: 'admin' | 'member' | 'remove';
   /** Signed other-people count when the producer supplied one; absent otherwise. */
   otherPeopleCount?: number;
 }>;

@@ -1,5 +1,6 @@
 import {useEffect, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {ApiError} from '@core/index.ts';
+import type {MessageId} from '@i18n';
 import {HostedError, ServicesActions, ServicesAuthStage, ServicesFacts, ServicesHeading, ServicesLead, ServicesNotice, ServicesQuiet} from '../kit/accounts/ServicesAuth';
 import {Button} from '../kit/controls';
 import type {ServicesAccount} from './session';
@@ -8,19 +9,29 @@ import {OwnerApprovalFlow, type OwnerApprovalDisplay, type OwnerApprovalSnapshot
 import {servicesI18n} from './i18n';
 import {servicesRelativeTime} from './time';
 
+/** The four drawn reasons, each with its own title and consequence sentence. The
+ * reason is the signed claim's own fact; this only chooses the drawn words. */
+export function claimApprovalCopy(reason: 'switch' | 'change-owner' | 'start-over'): {title: MessageId; lead: MessageId} {
+  return reason === 'start-over'
+    ? {title: 'services.claim.startOverTitle', lead: 'services.claim.startOverLead'}
+    : reason === 'change-owner'
+      ? {title: 'services.claim.changeOwnerTitle', lead: 'services.claim.changeOwnerLead'}
+      : {title: 'services.claim.switchTitle', lead: 'services.claim.switchLead'};
+}
+
 /** auth24e2. Facts and the other-people sentence come from the authenticated
  * lookup; an absent count is an absent sentence, never zero or a URL hint. */
 export function OwnerApprovalReview({display, requested, approved = false, busy = false, notice, onApprove, onDeny, onReturn}: {
   display: OwnerApprovalDisplay; requested: string; approved?: boolean; busy?: boolean; notice?: ReactNode;
   onApprove: () => void; onDeny: () => void; onReturn: () => void;
 }) {
-  const {t} = servicesI18n(), changeOwner = display.reason === 'change-owner';
+  const {t} = servicesI18n(), copy = claimApprovalCopy(display.reason);
   const previous = display.previousOwnerRole === 'admin' ? 'services.claim.previousAdmin'
     : display.previousOwnerRole === 'member' ? 'services.claim.previousMember'
       : display.previousOwnerRole === 'remove' ? 'services.claim.previousRemoved' : undefined;
   return <ServicesAuthStage variant="ownerReview">
-    <ServicesHeading>{t(changeOwner ? 'services.claim.changeOwnerTitle' : 'services.claim.switchTitle', {server: display.name})}</ServicesHeading>
-    <ServicesLead>{t(changeOwner ? 'services.claim.changeOwnerLead' : 'services.claim.switchLead', {server: display.name, account: display.accountName})}</ServicesLead>
+    <ServicesHeading>{t(copy.title, {server: display.name})}</ServicesHeading>
+    <ServicesLead>{t(copy.lead, {server: display.name, account: display.accountName})}</ServicesLead>
     <ServicesFacts items={[
       {id: 'server', label: t('web.claim.server'), value: display.name},
       {id: 'address', label: t('web.claim.address'), value: new URL(display.address).host},
