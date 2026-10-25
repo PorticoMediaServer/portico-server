@@ -49,13 +49,14 @@ export type ProgrammePanelViewProps = Readonly<{
   onSeriesOpenChange: (open: boolean) => void;
   onChoice: (patch: Partial<SeriesChoice>) => void;
   onReminder?: (airing: PreviewAiring) => void;
+  onProgrammeReminder?: () => void;
   onViewRecordings?: () => void;
 }>;
 
 /** The drawn programme panel (desktop-live.html#live-sheet). Presentation only: every
  * role, value and action is a real fact the bound wrapper supplies. */
 export function ProgrammePanelView({channel, programme, now, timezone, snapshot, choice, seriesOpen,
-  reminders, onClose, onWatch, onRecord, onCancelRecording, onRecordSeries, onFavorite, onSeriesOpenChange, onChoice, onReminder, onViewRecordings}: ProgrammePanelViewProps) {
+  reminders, onClose, onWatch, onRecord, onCancelRecording, onRecordSeries, onFavorite, onSeriesOpenChange, onChoice, onReminder, onProgrammeReminder, onViewRecordings}: ProgrammePanelViewProps) {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [recordingOpen, setRecordingOpen] = useState(false);
   const mark = channelMark(channel), tint = channelTint(mark.seed);
@@ -125,9 +126,12 @@ export function ProgrammePanelView({channel, programme, now, timezone, snapshot,
         : <Button className={styles.programmeAction} variant="glass" icon="i-rec" onClick={onRecord} disabled={busy} loading={snapshot.busy === 'record'}>{t('guide.record')}</Button>)}
       {canRecord && <Button className={`${styles.programmeAction} ${seriesOpen ? styles.programmeActionOpen : ''}`} variant="glass"
         icon="i-series" aria-expanded={seriesOpen} disabled={busy} onClick={() => onSeriesOpenChange(!seriesOpen)}>{t('guide.recordSeries')}</Button>}
+      {future && onProgrammeReminder && <Button className={styles.programmeAction} variant="glass" icon={reminders.includes(programme.id) ? 'i-bell-f' : 'i-bell'}
+        aria-pressed={reminders.includes(programme.id)} onClick={onProgrammeReminder}>{t(reminders.includes(programme.id) ? 'guide.stopRemind' : 'guide.remind')}</Button>}
       {onFavorite && <Button className={`${styles.programmeAction} ${styles.programmeFavoriteAction}`} variant="glass" iconOnly icon={snapshot.favorite ? 'i-star-f' : 'i-star'}
         aria-label={snapshot.favorite ? t('channels.removeFavorite') : t('channels.addFavorite')} aria-pressed={snapshot.favorite} disabled={busy} onClick={onFavorite}/>}
     </div>
+    {future && onProgrammeReminder && <p className={styles.airingsNote}>{t('guide.reminderSet')}</p>}
     {seriesOpen && canRecord && <div className={styles.seriesBox} role="group" aria-label={t('guide.recordSeriesTitle')}>
       <div className={styles.seriesHead}><b>{t('guide.recordSeriesTitle')}</b>
         <span>{snapshot.preview ? t('next.live.matchCount', {count: snapshot.preview.matches}) : snapshot.previewLoading ? t('recordings.loading') : ''}</span></div>
@@ -205,6 +209,7 @@ export function ProgrammePanel({captured, channel, programme, now, timezone, ope
     onClose={onClose} {...(onWatch ? {onWatch} : {})} onRecord={() => {void binding.record();}}
     onCancelRecording={() => {void binding.cancel();}} onRecordSeries={() => {void binding.recordSeries(choice).then(ok => {if (ok) setSeriesOpen(false);});}}
     onFavorite={() => {void binding.toggleFavorite();}} onSeriesOpenChange={openSeries} onChoice={change} onReminder={reminder}
+    {...(programme ? {onProgrammeReminder: () => {if (context.isCurrent()) toggleReminder({programId: programme.id, channelId: channel.id, title: programme.title, channelName: channel.name, start: programme.start});}} : {})}
     {...(onViewRecordings ? {onViewRecordings} : {})}/>;
   return phone ? <SidePanel open={open} onOpenChange={value => {if (!value) onClose();}} width={Math.min(600, width)} topInset={0}
     className={styles.programmePanel} accessibilityLabel={programme?.title ?? channel.name} title={programme?.title ?? channel.name}>{view}</SidePanel>
