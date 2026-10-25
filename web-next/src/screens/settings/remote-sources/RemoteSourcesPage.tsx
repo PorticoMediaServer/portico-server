@@ -323,7 +323,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   };
   const chooseSourceKind = (next: SourceKind) => {
     if (next === sourceKind) return;
-    testAttempt.current++;retireOAuthCurrentRef.current();setResult(undefined);setRcloneResult(undefined);setS3Tested(undefined);setDriveTested(undefined);setCloudTested(undefined);invalidateS3();invalidateDrive();invalidateCloud();setError('');setSourceKind(next);
+    testAttempt.current++;retireOAuth(oauthRenderTicket);setResult(undefined);setRcloneResult(undefined);setS3Tested(undefined);setDriveTested(undefined);setCloudTested(undefined);invalidateS3();invalidateDrive();invalidateCloud();setError('');setSourceKind(next);
     if (next === 'rclone' && !program) void loadProgram();
     if (next === 'config' && !configView) void loadConfig();
   };
@@ -336,26 +336,34 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   // One rendered sign-in ticket owns Start/Paste/Status/Cancel and every phase.
   const oauthTicket = useRef<object | null>(null);
   const oauthPollPromise = useRef<Promise<void> | null>(null);
+  const oauthApproved = useRef<{clientId: string; clientSecret: string} | null>(null);
   const oauthClientRef = useRef({id: '', secret: ''});
   const oauthRenderTicket = oauthTicket.current;
   const oauthRenderLease = oauthLease.current;
   const oauthRenderClient = {id: oauthClientId, secret: oauthClientSecret};
   oauthClientRef.current = oauthRenderClient;
-  const retireOAuth = (ticket: object | null) => {
+  const retireOAuth = (ticket: object | null): boolean => {
     // Only the exact opening may retire itself; it cannot retire a successor.
-    if (ticket !== oauthTicket.current) return;
+    if (ticket !== oauthTicket.current) return false;
     oauthGeneration.current++;
     oauthTicket.current = null;
     const lease = oauthLease.current;
     oauthLease.current = null;
+    oauthApproved.current = null;
     if (ticket && lease) void service.driveOAuthCancel(lease.state);
     setOauthState('');setOauthToken('');setOauthClientSecret('');setOauthPhase('idle');setOauthAddress('');setOauthError('');
+    return true;
+  };
+  /** Every OAuth transport carries this opening's exact ticket, lease and draft revision. */
+  const oauthGuardFor = (ticket: object, revision: number, lease?: {state: string}) => () => {
+    const guard = attemptGuard();
+    return guard() && oauthTicket.current === ticket && driveRevisionRef.current === revision && (!lease || oauthLease.current === lease);
   };
   const retireOAuthCurrentRef = useRef<() => void>(() => {});
   retireOAuthCurrentRef.current = () => retireOAuth(oauthTicket.current);
   const updateOAuthClient = (patch: {clientId?: string; clientSecret?: string}) => {
     // A new client is a new authorization: cancel the old lease at once.
-    retireOAuthCurrentRef.current();
+    retireOAuth(oauthRenderTicket);
     invalidateDrive();setDriveTested(undefined);setRcloneResult(undefined);setError('');
     if (patch.clientId !== undefined) setOauthClientId(patch.clientId);
     if (patch.clientSecret !== undefined) setOauthClientSecret(patch.clientSecret);
@@ -366,7 +374,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
       await new Promise(resolve => setTimeout(resolve, 2000));
       if (!guard() || oauthTicket.current !== ticket || oauthGeneration.current !== generation || driveRevisionRef.current !== revision) return;
       try {
-        const status = await service.driveOAuthStatus(state, guard);
+        const status = await service.driveOAuthStatus(state, oauthGuardFor(ticket, revision, oauthLease.current ?? undefined));
         if (!guard() || oauthTicket.current !== ticket || oauthGeneration.current !== generation || driveRevisionRef.current !== revision) return;
         if (status.phase === 'pending') continue;
         if (status.phase === 'ready') {setOauthToken(status.token);setDriveTested(undefined);setOauthPhase('ready');return;}
@@ -379,22 +387,26 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     const guard = attemptGuard();
     const frozen = oauthRenderClient, revision = driveRevision;
     if (pending.current || !guard()) return;
+    if (oauthTicket.current !== oauthRenderTicket) return;
     if (oauthClientRef.current.id !== frozen.id || oauthClientRef.current.secret !== frozen.secret || revision !== driveRevisionRef.current) return;
     if (!frozen.id.trim() || !frozen.secret) {setOauthError(t('next.remoteSources.driveOAuthInvalid'));return;}
-    retireOAuth(oauthRenderTicket);
+    if (!retireOAuth(oauthRenderTicket)) return;
     const ticket = {};oauthTicket.current = ticket;
     pending.current = true;setOauthError('');setOauthPhase('starting');
     try {
-      const started = await service.startDriveOAuth(frozen.id.trim(), frozen.secret, guard);
-      if (!guard() || oauthTicket.current !== ticket) {void service.driveOAuthCancel(started.state);return;}
-      oauthLease.current = {state: started.state};setOauthState(started.state);setOauthPhase('waiting');
+      const startedGuard = oauthGuardFor(ticket, revision);
+      const started = await service.startDriveOAuth(frozen.id.trim(), frozen.secret, startedGuard);
+      if (!startedGuard()) {void service.driveOAuthCancel(started.state);return;}
+      // The opening's client tuple stays private for its Ready/Test/Save; the visible secret field stays empty.
+      oauthLease.current = {state: started.state};oauthApproved.current = {clientId: frozen.id, clientSecret: frozen.secret};
+      setOauthState(started.state);setOauthPhase('waiting');
       window.open(started.authorizationUrl, '_blank', 'noopener,noreferrer');
       // One status owner: await the retiring flight's settlement, then start this ticket's.
       const prior = oauthPollPromise.current;
       const run = (async () => {
         if (prior) await prior;
         if (!guard() || oauthTicket.current !== ticket) return;
-        await pollOAuth(started.state, ticket, guard, revision, ++oauthGeneration.current);
+        await pollOAuth(started.state, ticket, startedGuard, revision, ++oauthGeneration.current);
       })();
       oauthPollPromise.current = run;
       void run.finally(() => {if (oauthPollPromise.current === run) oauthPollPromise.current = null;});
@@ -409,9 +421,10 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     const ticket = oauthRenderTicket, lease = oauthRenderLease;
     if (pending.current || !guard() || !ticket || !lease || !oauthAddress.trim()) return;
     if (oauthTicket.current !== ticket || oauthLease.current !== lease) return;
+    const pasteGuard = oauthGuardFor(ticket, driveRevision, lease);
     pending.current = true;setOauthError('');
     try {
-      await service.driveOAuthPaste(lease.state, oauthAddress, guard);
+      await service.driveOAuthPaste(lease.state, oauthAddress, pasteGuard);
       if (!guard() || oauthTicket.current !== ticket || oauthLease.current !== lease) return;
       // The pasted address is spent; the running poll is the only status owner.
       setOauthAddress('');
@@ -440,7 +453,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     const revision = driveRevision, fields = {...drive};
     if (pending.current || !guard() || revision !== driveRevisionRef.current) return;
     const result = driveMode === 'oauth'
-      ? driveOAuthDraft({clientId: oauthClientId, clientSecret: oauthClientSecret, token: oauthToken, location: fields.location, locationId: fields.locationId})
+      ? driveOAuthDraft({clientId: oauthApproved.current?.clientId ?? '', clientSecret: oauthApproved.current?.clientSecret ?? '', token: oauthToken, location: fields.location, locationId: fields.locationId})
       : driveServiceAccountDraft(fields);
     if (!result.ok) {setError(t(driveMode === 'oauth' ? 'next.remoteSources.driveOAuthInvalid' : driveReason(result.reason)));return;}
     pending.current = true;
@@ -460,7 +473,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     const revision = driveRevision, fields = {...drive}, name = driveName.trim(), tested = driveTested;
     if (pending.current || !guard() || !tested || tested.revision !== revision || revision !== driveRevisionRef.current || !name) return;
     const result = driveMode === 'oauth'
-      ? driveOAuthDraft({clientId: oauthClientId, clientSecret: oauthClientSecret, token: oauthToken, location: fields.location, locationId: fields.locationId})
+      ? driveOAuthDraft({clientId: oauthApproved.current?.clientId ?? '', clientSecret: oauthApproved.current?.clientSecret ?? '', token: oauthToken, location: fields.location, locationId: fields.locationId})
       : driveServiceAccountDraft(fields);
     if (!result.ok) {setError(t(driveMode === 'oauth' ? 'next.remoteSources.driveOAuthInvalid' : driveReason(result.reason)));return;}
     pending.current = true;setError('');setBusy(true);
