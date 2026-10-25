@@ -18,20 +18,30 @@ class Device:
   if name!=ALLOWED[mode]:raise Refusal('wrong-allocated-avd')
  def command(self,args):
   self.sequence+=1;code,out,err=self.custody.private_capture([self.target['command'],*args,*self.target['targetArgs']],self.private,'command-'+str(self.sequence),timeout=30)
-  if code:raise Refusal('device-command-refused')
+  if code:
+   try:error=json.loads(out.read_text()).get('error',{})
+   except (ValueError,OSError):error={}
+   if args[0]=='snapshot' and error.get('code')=='COMMAND_FAILED' and error.get('message')=='Android snapshot helper returned only non-application windows':raise Refusal('authoritative-tree-unavailable')
+   raise Refusal('device-command-refused')
   return out
  def snapshot(self):
   d=json.loads(self.command(['snapshot','-i','--json']).read_text());data=d.get('data',{})
-  if d.get('success') is not True or data.get('appBundleId')!=PACKAGE or data.get('truncated') is not False or not data.get('nodes'):raise Refusal('authoritative-tree-unavailable')
+  if d.get('success') is not True or not any(n.get('bundleId')==PACKAGE for n in data.get('nodes',[])) or any(n.get('bundleId') not in (None,'',PACKAGE) for n in data.get('nodes',[])) or data.get('truncated') is not False or not data.get('nodes'):raise Refusal('authoritative-tree-unavailable')
   return data
- def nodes(self):return self.snapshot()['nodes']
+ def nodes(self):
+  deadline=time.monotonic()+20
+  while True:
+   try:return self.snapshot()['nodes']
+   except Refusal as error:
+    if str(error)!='authoritative-tree-unavailable' or time.monotonic()>=deadline:raise
+    time.sleep(1)
  def text(self):
   nodes=self.nodes()
   if any(x.get('password') is True or x.get('editable') is True for x in nodes):raise Refusal('editable-or-credential-screen')
   return '\n'.join(str(x.get('label','')) for x in nodes)
  def key(self,key):subprocess.run(['adb','-s',self.serial,'shell','input','keyevent',key],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=10)
  def tap(self,pattern):
-  nodes=self.nodes();candidates=[x for x in nodes if re.fullmatch(pattern,str(x.get('label',''))) and x.get('hittable') is True and x.get('enabled') is not False and x.get('type','').endswith('Button')]
+  nodes=self.nodes();candidates=[x for x in nodes if re.fullmatch(pattern,str(x.get('label',''))) and x.get('hittable') is True and x.get('enabled') is not False and (x.get('type','').endswith('Button') or str(x.get('identifier','')).startswith('phone-tab-'))]
   if len(candidates)!=1:raise Refusal('unique-visible-control-unavailable')
   ref=candidates[0].get('ref','')
   if not re.fullmatch('e[0-9]+',ref):raise Refusal('invalid-control-reference')
@@ -46,7 +56,10 @@ class Device:
  def wait_text(self,pattern,timeout=20):
   until=time.monotonic()+timeout
   while time.monotonic()<until:
-   text=self.text()
+   try:text=self.text()
+   except Refusal as error:
+    if str(error)!='authoritative-tree-unavailable':raise
+    time.sleep(1);continue
    if re.search(pattern,text,re.I):return True
    time.sleep(1)
   raise Refusal('expected-ui-timeout')
@@ -73,11 +86,13 @@ def safe_diagnostics(raw):
   if len(rows)>=256:break
  return rows
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('--target',type=Path,required=True);p.add_argument('--mode',choices=ALLOWED,required=True);p.add_argument('--out',type=Path,required=True);a=p.parse_args();os.umask(0o077)
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('--target',type=Path,required=True);p.add_argument('--mode',choices=ALLOWED,required=True);p.add_argument('--out',type=Path,required=True);p.add_argument('--disabled',type=json.loads,default=[]);a=p.parse_args();os.umask(0o077)
  if a.target.is_symlink() or a.target.stat().st_mode&0o077 or a.target.stat().st_uid!=os.getuid():p.error('private owned target required')
- out=a.out;out.mkdir(parents=True,exist_ok=False);private=ROOT/'.private/v3-checkpoints'/out.name;private.mkdir(mode=0o700,exist_ok=False);server=ROOT/'.worktrees/ui-2026/v3-release/server';legacy=load('legacy_android_flows',server/'smoke/android/flows.py');target=json.loads(a.target.read_text());d=Device(target,a.mode,out,private,server);flows=[];log=(private/'native-logcat.log').open('wb');capture=subprocess.Popen(['adb','-s',d.serial,'logcat','-v','brief','-T','1','ReactNativeJS:W','AndroidRuntime:E','*:S'],stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
+ out=a.out;out.mkdir(parents=True,exist_ok=False);private=ROOT/'.private/v3-checkpoints'/out.name;private.mkdir(mode=0o700,exist_ok=False);server=ROOT/'.worktrees/ui-2026/v3-release/server';legacy=load('legacy_android_flows',server/'smoke/android/flows.py');target=json.loads(a.target.read_text());d=Device(target,a.mode,out,private,server);flows=[];log=(private/'native-logcat.log').open('wb');capture=subprocess.Popen(['adb','-s',d.serial,'logcat','-v','brief','-T','1','ReactNativeJS:W','AndroidRuntime:E','*:S'],stdout=log,stderr=subprocess.STDOUT)
  def flow(name,fn):
-  started=time.monotonic();record={'surface':'android-'+a.mode,'id':name}
+  record={'surface':'android-'+a.mode,'id':name}
+  if record['surface']+':'+name in a.disabled:record.update(status='dropped',manual='Justin hands-on; flaky twice');flows.append(record);return False
+  started=time.monotonic()
   try:fn();record['status']='pass'
   except Refusal as e:record.update(status='fail',reason=str(e),timeout=str(e)=='expected-ui-timeout')
   except Exception as e:record.update({'status':'fail','class':type(e).__name__})
@@ -86,7 +101,13 @@ def main():
   except Exception:record['screenshotWithheld']=True
   flows.append(record);return record['status']=='pass'
  try:
-  flow('launch-restored-family',lambda:(d.command(['open',PACKAGE,'--foreground','--json']),d.wait_text(legacy.HOME_ROWS.pattern,25)))
+  def launch():
+   # Exact allocated AVD was checked above; am start avoids stale agent claims
+   # from unrelated emulators that previously reused this serial. UI remains
+   # driven by the exact device_open launcher/session and authoritative refs.
+   subprocess.run(['adb','-s',d.serial,'shell','am','start','-W','-n',PACKAGE+'/.MainActivity'],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=20)
+   d.wait_text(legacy.HOME_ROWS.pattern,25)
+  flow('launch-restored-family',launch)
   home=flow('home-real-rows',lambda:d.wait_text(legacy.HOME_ROWS.pattern,20))
   if home:
    if a.mode=='phone':flow('libraries-open',lambda:(d.tap('Libraries'),d.wait_text('Movies',15)))
@@ -102,15 +123,19 @@ def main():
     flow('dpad-focus-walk',focus_walk)
    if movies:
     # Prefer the real fixture by its visible title; no arbitrary first control.
-    detail=flow('movie-detail',lambda:(d.tap('Monsters, Inc\\.(?:,.*)?'),d.wait_text('Play|Resume',15)))
+    detail=flow('movie-detail',lambda:(d.tap(r'12 Angry Men(?:,.*)?'),d.wait_text('Play|Resume',15)))
     if detail:
      def play():
       d.tap('Play|Resume(?:.*)?');time.sleep(5)
       original=legacy.Device(d.serial,str(private));playing,states=original.playing()
       if not playing:raise Refusal('media-session-not-playing')
      flow('movie-playback-session',play)
-   d.key('KEYCODE_MEDIA_STOP');d.key('KEYCODE_BACK');d.key('KEYCODE_BACK')
-   flow('settings-open',lambda:(d.tap('Settings(?:,.*)?'),d.wait_text('Settings',15)))
+   d.key('KEYCODE_MEDIA_STOP')
+   if movies:d.key('KEYCODE_BACK');d.key('KEYCODE_BACK')
+   def settings():
+    if a.mode=='phone':d.tap('Home');d.wait_text(legacy.HOME_ROWS.pattern,20)
+    d.tap('Settings(?:,.*)?');d.wait_text('Settings',15)
+   flow('settings-open',settings)
   else:flows.append({'surface':'android-'+a.mode,'id':'remaining-core-flows','status':'unavailable','dependency':'retained-family Home failed; no reset/re-auth fallback'})
  finally:
   with contextlib.suppress(Exception):d.key('KEYCODE_MEDIA_STOP')

@@ -31,8 +31,9 @@ try{
  page.on('pageerror',error=>{if(pageErrors.length>=12)return;const text=String(error.message??''),code=/dynamically imported module/i.test(text)?'import_failed':/play\(\).*user|user.*interact|play.*not allowed/i.test(text)?'play_not_allowed':/no supported source|source.*not supported/i.test(text)?'unsupported_source':/Cannot read properties of (?:null|undefined)/.test(text)?'null_property':/Minified React error #\d+/.test(text)?'react_error':'other';pageErrors.push({phase,class:errorClasses.includes(error.name)?error.name:'Other',code,coordinates:[...String(error.stack??'').matchAll(/:(\d+):(\d+)/g)].slice(0,6).map(x=>[Number(x[1]),Number(x[2])])});});
  page.on('response',async response=>{try{
   const url=new URL(response.url());if(![input.origin,input.apiOrigin].includes(url.origin)||network.length>=100)return;
-  const known=new Map([['/v1/sessions','sessions'],['/v1/sessions/refresh','refresh'],['/v1/account','account'],['/v1/account/security','security'],['/v1/account/sessions','devices'],['/v1/servers','directory'],['/v1/playback/start','playback-start'],['/v1/playback/options','playback-options'],['/v1/playback/controls','playback-controls']]);
-  let operation=known.get(url.pathname);if(/\/reading\/sessions\/[^/]+\/assets$/.test(url.pathname))operation='reading-assets';
+  const known=new Map([['/v1/sessions','sessions'],['/v1/sessions/refresh','refresh'],['/v1/account','account'],['/v1/account/security','security'],['/v1/account/sessions','devices'],['/v1/servers','directory'],['/v1/playback/sessions','playback-start'],['/v1/search','search'],['/v1/queues','queue-create'],['/v1/playback/controls','playback-controls']]);
+  let operation=known.get(url.pathname);if(/^\/v1\/items\/[^/]+\/playback-options$/.test(url.pathname))operation='playback-options';
+  if(/\/reading\/sessions\/[^/]+\/assets$/.test(url.pathname))operation='reading-assets';
   else if(/\/reading\/sessions(?:\/[^/]+)?$/.test(url.pathname))operation='reading-sessions';
   if(!operation)return;const row={phase,operation,method:response.request().method(),status:response.status()};
   if(operation==='reading-sessions'&&response.request().method()==='POST'&&response.status()===200){try{const data=await response.json();if(['epub','pdf','comic'].includes(data.format))row.format=data.format;}catch{}}
@@ -52,15 +53,30 @@ try{
  if(input.surface==='web'&&authenticated){
   await flow('home-real-rows',async()=>{await home();await page.locator('[data-home-row] [data-card-kind]').first().waitFor();return {rows:await page.locator('[data-home-row]').count()};});
   let movie='';
-  await flow('movies-browse-detail',async()=>{await home();await page.getByRole('link',{name:'Movies',exact:true}).click();const card=page.locator('[data-card-kind]').first();await card.waitFor();movie=await card.locator(':scope > button').first().getAttribute('aria-label');await card.locator(':scope > button').first().click();await page.locator('[data-title-id]').waitFor();});
+  await flow('movies-browse-detail',async()=>{await home();await page.getByRole('link',{name:'Movies',exact:true}).click();const card=page.locator('[data-card-kind]').first();await card.waitFor();movie=await card.locator(':scope > button').first().getAttribute('aria-label');await card.locator(':scope > button').first().click();await page.locator('[data-title-id]').waitFor();movie=await page.locator('[data-title-id] h1').first().innerText();});
   await flow('video-start-progress',async()=>{const play=page.locator('[data-title-id]').getByRole('button').filter({hasText:/^(Play|Resume)/}).first();await play.click();await page.waitForFunction(()=>[...document.querySelectorAll('video')].some(v=>v.currentTime>1.5&&!v.paused),{},{timeout:35000});const a=await page.locator('video').evaluateAll(v=>Math.max(...v.map(x=>x.currentTime)));await page.waitForTimeout(2000);const b=await page.locator('video').evaluateAll(v=>Math.max(...v.map(x=>x.currentTime)));if(!(b>a))throw Error();return {advanced:true};});
   await flow('music-browse',async()=>{await home();await page.getByRole('link',{name:'Music',exact:true}).click();await page.locator('[data-card-kind]').first().waitFor();return {visibleCards:await page.locator('[data-card-kind]').count()};});
   await flow('reading-nonblank-no-egress',async()=>{
    await home();await page.getByRole('link',{name:'Books',exact:true}).click();await page.locator('[data-card-kind]').first().waitFor();await page.locator('[data-card-kind]').first().locator(':scope > button').first().click();await page.getByRole('button',{name:/^(Read|Continue reading|Start reading)/}).first().click();await page.waitForURL(/\/read\//);
    let nonblank=false;
    for(let i=0;i<40&&!nonblank;i++){
-    for(const frame of page.frames().filter(x=>x!==page.mainFrame())){
-     try{nonblank=await frame.evaluate(()=>{const b=document.body;if(!b||!b.getBoundingClientRect().height)return false;return b.innerText.trim().length>20||[...b.querySelectorAll('img')].some(x=>x.complete&&x.naturalWidth>0);});}catch{}
+    for(const frame of page.frames().filter(x=>x!==page.mainFrame()&&x.childFrames().length===0&&/^(blob:|about:)/.test(x.url()))){
+     try{
+      const element=await frame.frameElement();
+      if(!await element.isVisible()||!await element.evaluate(e=>{const r=e.getBoundingClientRect();return r.width>1&&r.height>1&&r.right>0&&r.bottom>0&&r.left<innerWidth&&r.top<innerHeight;}))continue;
+      nonblank=await frame.evaluate(()=>{
+       const visible=r=>r.width>1&&r.height>1&&r.right>0&&r.bottom>0&&r.left<innerWidth&&r.top<innerHeight;
+       if(!document.body||!visible(document.body.getBoundingClientRect()))return false;
+       const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);let chars=0;
+       for(let n=walker.nextNode();n;n=walker.nextNode()){
+        const parent=n.parentElement;if(!parent||['SCRIPT','STYLE','TITLE'].includes(parent.tagName))continue;
+        const style=getComputedStyle(parent);if(style.visibility!=='visible'||style.display==='none'||Number(style.opacity)===0)continue;
+        const range=document.createRange();range.selectNodeContents(n);
+        if([...range.getClientRects()].some(visible))chars+=n.textContent.trim().length;
+       }
+       return chars>=80||[...document.images].some(i=>i.complete&&i.naturalWidth>=128&&visible(i.getBoundingClientRect())&&getComputedStyle(i).visibility==='visible');
+      });
+     }catch{}
      if(nonblank)break;
     }
     if(!nonblank)await page.waitForTimeout(500);
