@@ -25,7 +25,7 @@ export class RecordingPermissionsController extends OwnerStore<State> {
     try {
       const raw = await this.api.request('/v1/admin/dvr/recording-owners?' + new URLSearchParams({limit: '100', cursor: more ? head.cursor : ''}), 'GET', undefined, attempt.abort.signal);if (!this.valid(attempt)) return;
       const result = envelope(raw, this.serverId).result;
-      const page = parseRecordingOwners(result);if (page.items.length > 100 || page.nextCursor.length > 4096) throw {code: 'invalid_response'};
+      const page = parseRecordingOwners(result);if (page.items.length > 100 || page.nextCursor.length > 4096 || more && page.nextCursor && page.nextCursor === head.cursor) throw {code: 'invalid_response'};
       const items = page.items.map(row => Object.freeze({owner: checkedOwner(row.owner), accountName: text(row.accountName, 512), profileName: text(row.profileName, 512)}));
       const owners = more ? [...head.owners, ...items.filter(row => !head.owners.some(prior => recordingOwnerKey(prior.owner) === recordingOwnerKey(row.owner)))] : items;
       if (!this.valid(attempt)) return;
