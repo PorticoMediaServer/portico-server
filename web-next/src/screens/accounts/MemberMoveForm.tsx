@@ -6,6 +6,7 @@ import {AuthError, AuthLinks, AuthPasswordField, AuthStage} from '../../kit/acco
 import {ServicesStrength} from '../../kit/accounts/ServicesAuth';
 import {Button, TextField} from '../../kit/controls';
 import styles from '../../kit/accounts/accounts.module.css';
+import moveStyles from './member-move.module.css';
 
 const t = defaultI18n.t;
 type Props = Readonly<{
@@ -23,17 +24,17 @@ export function MemberMoveForm({mode, serverName, initialUsername = '', busy, er
   const title = t(mode === 'portico' ? 'accounts.move.toPortico' : mode === 'code' ? 'accounts.move.enterCode' : local ? 'accounts.move.chooseSignIn' : 'accounts.move.oldSignIn', {server: serverName});
   const body = t(mode === 'portico' ? 'accounts.move.linkBody' : mode === 'code' ? 'accounts.move.codeHelp' : local ? 'accounts.move.profilesKept' : 'accounts.move.oldSignInBody', {server: serverName});
   const ready = mode === 'code' ? !!code.trim() : !!username.trim() && !!password && (!local || password === confirm && passwordStrength(password).acceptable);
-  return <AuthStage><h1>{title}</h1><p className={styles.lede}>{body}</p>
+  return <AuthStage className={moveStyles.stage}><h1>{title}</h1><p className={styles.lede}>{body}</p>
     {mode === 'code' && error instanceof ApiError && error.code === 'move_code_invalid'
       ? <p role="alert">{t('accounts.move.codeInvalid')}</p> : <AuthError error={error}/>}
     {mode === 'portico' ? <Button variant="primary" loading={busy} onClick={onPortico}>{t('accounts.signIn.handoff')}</Button>
-      : <form className={styles.form} onSubmit={event => {
+      : <form className={`${styles.form} ${moveStyles.form}`} onSubmit={event => {
         event.preventDefault(); if (busy || !ready) return;
         if (mode === 'code') {const value = code; setCode(''); onCode(value);}
         else {const value = password; setPassword(''); setConfirm(''); if (old) onOldPassword(username, value); else onLocal(username, value);}
       }}>
-        {mode === 'code' ? <TextField variant="auth" label={t('accounts.move.code')} name="move-code" autoComplete="one-time-code" value={code} onChange={event => setCode(event.currentTarget.value)} disabled={busy} autoFocus required/>
-          : <><TextField variant="auth" label={t('accounts.signIn.username')} name="username" autoComplete="username" value={username} onChange={event => setUsername(event.currentTarget.value)} disabled={busy} required/>
+        {mode === 'code' ? <TextField variant="auth" containerClassName={moveStyles.code} label={t('accounts.move.code')} name="move-code" autoComplete="one-time-code" autoCapitalize="characters" spellCheck={false} value={code} onChange={event => setCode(event.currentTarget.value)} disabled={busy} autoFocus required/>
+          : <><TextField variant="auth" label={t('accounts.signIn.username')} name="username" autoComplete="username" autoCapitalize="none" spellCheck={false} value={username} onChange={event => setUsername(event.currentTarget.value)} disabled={busy} required/>
             <AuthPasswordField label={t('accounts.signIn.password')} name="password" autoComplete={local ? 'new-password' : 'current-password'} value={password} aria-describedby={local && password ? strengthId : undefined} onChange={event => setPassword(event.currentTarget.value)} disabled={busy} required/>
             {local && <><ServicesStrength password={password} id={strengthId}/><AuthPasswordField label={t('web.reset.confirm')} name="confirm-password" autoComplete="new-password" value={confirm} error={confirm && password !== confirm ? t('accounts.signIn.passwordsDiffer') : undefined} onChange={event => setConfirm(event.currentTarget.value)} disabled={busy} required/></>}</>}
         <Button variant="primary" type="submit" loading={busy} disabled={!ready}>{t('action.continue')}</Button>
