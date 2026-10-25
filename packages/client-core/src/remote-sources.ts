@@ -10,6 +10,16 @@ export type RemoteSource=Readonly<{id:string;kind:'rclone'|'webdav'|'sftp'|'smb'
 export type DAVConfiguration=Readonly<{name:string;root:string;username:string;password:string;keepPassword:boolean;keepConnection:boolean;insecureLocal:boolean;expectedGeneration?:number}>;
 export type DAVConnectionInput=Pick<DAVConfiguration,'name'|'root'|'username'|'password'|'insecureLocal'>;
 export type DAVConnectionResult=Readonly<{origin:string;rangeSupport:'unknown'|'conditional'|'unsupported'}>;
+/** An imported source is connection material only: a remote name and the
+ * configuration that defines it. Portico supplies the program, never the owner. */
+export type RcloneSourceDraft=Readonly<{name:string;remote:string;config:string}>;
+export type RcloneTestInput=Readonly<{remote:string;config:string}>;
+export type RcloneTestResult=Readonly<{version:string}>;
+/** The bundled program's own status: what the server ships, never a chosen path. */
+export type RcloneProgram=Readonly<{included:boolean;available:boolean;version:string;minimumVersion:string;errorCode:string}>;
+/** The durable identity an imported source save returns; the receipt carries no
+ * source body, so the list is read again for the row's display facts. */
+export type RcloneReceipt=Readonly<{operationId:string;sourceId:string;generation:number;removed:boolean}>;
 export type RemoteReceipt=Readonly<{operationId:string;accepted:true;removed:boolean;source:RemoteSource}>;
 export type AnalysisPolicy=Readonly<{libraryId:string;enabled:boolean;revision:number;effective?:boolean;scanTier?:string}>;
 /** The read-authority part of one source's Reading settings. A missing saved profile is
@@ -67,10 +77,14 @@ function remoteSourceStatus(raw:unknown,id:string):RemoteSourceStatus{
  if(raw.errorCode!==undefined&&!text(raw.errorCode,100))invalid();
  return Object.freeze({sourceId:id,generation:raw.generation,state:raw.state,...(raw.errorCode===undefined?{}:{errorCode:raw.errorCode as string}),rangeSupport:raw.rangeSupport,lastCheckedAt:raw.lastCheckedAt,connectionsInUse:raw.connectionsInUse,playbackReads:raw.playbackReads,analysisReads:raw.analysisReads,scanIntervalSeconds:raw.scanIntervalSeconds,libraries:Object.freeze(raw.libraries.map(sourceLibraryUse))});
 }
-/** `alreadyDone`: the last command found, on a fresh read, that what it asked for is already so (a share removed elsewhere). */
-export type RemoteState=Readonly<{sources:readonly RemoteSource[];loading:boolean;busy:boolean;error:string;errorCode:string;operationId:string|null;ambiguous:boolean;receipt:RemoteReceipt|null;alreadyDone:boolean;mountSupported:boolean}>;
+/** `alreadyDone`: the last command found, on a fresh read, that what it asked for is already so (a share removed elsewhere).
+ * `operationKind` picks the receipt route that command's outcome is recovered from. */
+export type RemoteState=Readonly<{sources:readonly RemoteSource[];loading:boolean;busy:boolean;error:string;errorCode:string;operationId:string|null;operationKind:'source'|'rclone'|'';ambiguous:boolean;receipt:RemoteReceipt|null;rclone:RcloneReceipt|null;alreadyDone:boolean;mountSupported:boolean}>;
 const record=(x:unknown):x is Record<string,unknown>=>!!x&&typeof x==='object'&&!Array.isArray(x);
 const text=(x:unknown,n=8192):x is string=>typeof x==='string'&&x.length<=n&&!/[\x00-\x1f\x7f]/.test(x);
+/** Configuration is multi-line INI, so line feeds and tabs are the only control
+ * characters it may carry; everything else is refused before it is sent. */
+const configText=(x:unknown,n=65536):x is string=>typeof x==='string'&&x.length<=n&&!/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(x);
 const integer=(x:unknown):x is number=>typeof x==='number'&&Number.isSafeInteger(x)&&x>=0;
 function invalid():never{throw new Error('Invalid remote source response.');}
 /** Display-only saved endpoint fact. This never authorizes a connection. Native
@@ -98,9 +112,9 @@ function source(x:unknown):RemoteSource{
  if(x.mountId!==undefined&&!text(x.mountId,256))invalid();
  return Object.freeze({id:x.id,kind:x.kind as RemoteSource['kind'],name:x.name,rootPath:x.rootPath,generation:x.generation,state:x.state,rangeSupport:oneOfOr('remote-sources','source.rangeSupport',x.rangeSupport,['unknown','conditional','unsupported','sequential'] as const,'unknown'),insecureLocal:x.insecureLocal,credentialPresent:x.credentialPresent,...(x.origin===undefined?{}:{origin:x.origin as string}),...(errorCode===undefined?{}:{errorCode}),...(x.mountId===undefined?{}:{mountId:x.mountId as string})});
 }
-const messages:Record<string,string>={remote_source_changed:'This source changed. Refresh before submitting a new configuration.',storage_command_conflict:'The source changed or this operation conflicts with a previous receipt.',storage_operation_expired:'The operation expired. Check the device clock and refresh.',remote_credentials_required:'The provider rejected the credentials. The previous configuration remains active.',source_credentials_required:'The provider rejected the credentials. The previous configuration remains active.',remote_invalid_configuration:'Check the endpoint, approved network access and configuration.',remote_range_unsupported:'The server cannot safely range-read this provider representation.',remote_binary_changed:'The approved rclone executable changed. Reapprove it in source configuration.',remote_budget_exceeded:'This operation exceeded the configured safety budget.',remote_rate_limited:'The provider or server is busy. Check the original receipt before retrying.',revision_mismatch:'This source changed. Refresh before saving.',idempotency_key_reused:'This operation was already used. Refresh and try again.',request_in_progress:'Another source change is in progress. Try again in a moment.',refresh_failed:'The profile was saved, but the refreshed values could not be read.',unauthorized:'Owner sign-in is required.',forbidden:'This viewer cannot manage sources.'};
+const messages:Record<string,string>={remote_source_changed:'This source changed. Refresh before submitting a new configuration.',storage_command_conflict:'The source changed or this operation conflicts with a previous receipt.',storage_operation_expired:'The operation expired. Check the device clock and refresh.',remote_credentials_required:'The provider rejected the credentials. The previous configuration remains active.',source_credentials_required:'The provider rejected the credentials. The previous configuration remains active.',remote_invalid_configuration:'Check the endpoint, approved network access and configuration.',remote_range_unsupported:'The server cannot safely range-read this provider representation.',remote_binary_changed:'The approved rclone executable changed. Reapprove it in source configuration.',remote_budget_exceeded:'This operation exceeded the configured safety budget.',remote_rate_limited:'The provider or server is busy. Check the original receipt before retrying.',revision_mismatch:'This source changed. Refresh before saving.',idempotency_key_reused:'This operation was already used. Refresh and try again.',request_in_progress:'Another source change is in progress. Try again in a moment.',refresh_failed:'The profile was saved, but the refreshed values could not be read.',remote_administration_unavailable:'The rclone program on this server is unavailable. Check the server, then test again.',unauthorized:'Owner sign-in is required.',forbidden:'This viewer cannot manage sources.'};
 const CONFLICT='storage_command_conflict';
-const ERROR_CODES=new Set(['remote_source_changed','storage_command_conflict','storage_operation_expired','remote_credentials_required','remote_invalid_configuration','remote_range_unsupported','remote_binary_changed','remote_budget_exceeded','remote_rate_limited','revision_mismatch','idempotency_key_reused','request_in_progress','refresh_failed','source_credentials_required','unauthorized','forbidden','not_permitted','invalid_request','internal']);
+const ERROR_CODES=new Set(['remote_source_changed','storage_command_conflict','storage_operation_expired','remote_credentials_required','remote_invalid_configuration','remote_range_unsupported','remote_binary_changed','remote_budget_exceeded','remote_rate_limited','revision_mismatch','idempotency_key_reused','request_in_progress','refresh_failed','source_credentials_required','administration_unavailable','remote_administration_unavailable','storage_command_capacity','storage_allocation_recovery_required','unauthorized','forbidden','not_permitted','invalid_request','internal']);
 function normalizedCode(value:unknown):string{return typeof value==='string'&&ERROR_CODES.has(value)?value:'internal';}
 
 /**
@@ -119,14 +133,14 @@ export function rebaseDavEdit(base:RemoteSource,fresh:RemoteSource,input:DAVConf
 }
 function safeError(e:unknown):string{const code=record(e)&&typeof e.code==='string'?normalizedCode(e.code):'';return messages[code]??'The operation outcome is not confirmed. Check the original receipt; credentials will not be resent automatically.';}
 export class RemoteSourceService{
- private state:RemoteState={sources:[],loading:false,busy:false,error:'',errorCode:'',operationId:null,ambiguous:false,receipt:null,alreadyDone:false,mountSupported:false};
+ private state:RemoteState={sources:[],loading:false,busy:false,error:'',errorCode:'',operationId:null,operationKind:'',ambiguous:false,receipt:null,rclone:null,alreadyDone:false,mountSupported:false};
  private listeners=new Set<()=>void>();private controllers=new Set<AbortController>();private epoch=0;private read=0;private disposed=false;private viewerFence?:string;
  private api:LibraryContentApi;private scope:ContentScope;private operationId:()=>Promise<string>;private readonly isCurrent:()=>boolean;
  constructor(api:LibraryContentApi,scope:ContentScope,operationId:()=>Promise<string>,isCurrent:()=>boolean=()=>true){if(!scope.serverId||!scope.viewerId)throw new Error('Owner scope required.');this.api=api;this.scope=Object.freeze({...scope});this.operationId=operationId;this.isCurrent=isCurrent;}
  getSnapshot=()=>this.state;subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>this.listeners.delete(fn);};
  private live(){return !this.disposed&&this.isCurrent();}
  private publish(value:Partial<RemoteState>){if(!this.live())return;this.state=Object.freeze({...this.state,...value});for(const fn of this.listeners)fn();}
- dispose(){this.epoch++;this.disposed=true;for(const c of this.controllers)c.abort();this.controllers.clear();this.listeners.clear();this.state={...this.state,sources:[],receipt:null,operationId:null};}
+ dispose(){this.epoch++;this.disposed=true;for(const c of this.controllers)c.abort();this.controllers.clear();this.listeners.clear();this.state={...this.state,sources:[],receipt:null,rclone:null,operationId:null,operationKind:''};}
  private fence(raw:unknown){if(!record(raw)||!record(raw.scope)||raw.scope.serverId!==this.scope.serverId||!text(raw.scope.viewerFence,256)||!raw.scope.viewerFence||this.viewerFence&&this.viewerFence!==raw.scope.viewerFence)invalid();this.viewerFence=raw.scope.viewerFence;}
  private async request(path:string,method='GET',body?:unknown,guard?:()=>boolean):Promise<unknown>{if(!this.live()||(guard&&!guard()))throw new Error('Scope changed.');const c=new AbortController();this.controllers.add(c);let timer:ReturnType<typeof setTimeout>|undefined;try{return await Promise.race([this.api.request(path,method,body,c.signal),new Promise<never>((_,reject)=>{timer=setTimeout(()=>{c.abort();reject(new Error('timeout'));},45000);})]);}finally{if(timer)clearTimeout(timer);this.controllers.delete(c);}}
  /** The sources as the server has them, checked; `undefined` when a later read or another viewer has taken over. */
@@ -137,8 +151,75 @@ export class RemoteSourceService{
   * a command is in flight or its outcome is unknown.
   */
  async revalidate(){if(!this.live()||this.state.busy||this.state.ambiguous||this.state.loading)return;const epoch=this.epoch,sequence=++this.read;const next=await this.readSources(epoch,sequence);if(next&&!this.state.busy)this.publish({...next,error:''});}
- async load(){if(!this.live())return;const epoch=this.epoch,sequence=++this.read;this.publish({loading:true,error:''});try{const next=await this.readSources(epoch,sequence);if(!next)return;this.publish(next);}catch(e){if(epoch===this.epoch&&sequence===this.read)this.publish({error:safeError(e),sources:[],receipt:null,mountSupported:false});}finally{if(epoch===this.epoch&&sequence===this.read)this.publish({loading:false});}}
+ async load(){if(!this.live())return;const epoch=this.epoch,sequence=++this.read;this.publish({loading:true,error:''});try{const next=await this.readSources(epoch,sequence);if(!next)return;this.publish(next);}catch(e){if(epoch===this.epoch&&sequence===this.read)this.publish({error:safeError(e),sources:[],receipt:null,rclone:null,mountSupported:false});}finally{if(epoch===this.epoch&&sequence===this.read)this.publish({loading:false});}}
  private parseReceipt(raw:unknown,op:string):RemoteReceipt{this.fence(raw);if(!record(raw)||!record(raw.receipt)||raw.receipt.operationId!==op||raw.receipt.accepted!==true||typeof raw.receipt.removed!=='boolean')invalid();return Object.freeze({operationId:op,accepted:true,removed:raw.receipt.removed,source:source(raw.receipt.source)});}
+ /** The imported-source receipt holds identity only. `removed` is left out when false. */
+ private parseRcloneReceipt(raw:unknown,op:string):RcloneReceipt{this.fence(raw);if(!record(raw)||!record(raw.receipt))invalid();const r=raw.receipt;
+  if(r.operationId!==op||r.accepted!==true||!text(r.sourceId,256)||!r.sourceId||!integer(r.generation)||r.generation<1||r.removed!==undefined&&typeof r.removed!=='boolean')invalid();
+  return Object.freeze({operationId:op,sourceId:r.sourceId,generation:r.generation,removed:r.removed===true});}
+ /** What rclone the server ships, and whether it starts now. The route carries no
+  * owner scope, so this read neither sets nor checks the viewer fence. */
+ async rcloneProgram():Promise<RcloneProgram>{
+  const epoch=this.epoch;
+  const raw=await this.request(routePath('get_storage_rclone_bundled'));
+  if(!this.live()||epoch!==this.epoch)throw new Error('Scope changed.');
+  if(!record(raw)||typeof raw.included!=='boolean'||typeof raw.available!=='boolean'||!text(raw.version,200)||!text(raw.minimumVersion,200)||!text(raw.errorCode,100))invalid();
+  return Object.freeze({included:raw.included,available:raw.available,version:raw.version,minimumVersion:raw.minimumVersion,errorCode:raw.errorCode});
+ }
+ /** The configuration backend types this server accepts. Facts only: no form,
+  * readiness or guided schema is implied by a name in this list. */
+ async rcloneProviders():Promise<readonly string[]>{
+  const epoch=this.epoch;
+  const raw=await this.request(routePath('get_storage_source_rclone_providers'));
+  if(!this.live()||epoch!==this.epoch)throw new Error('Scope changed.');
+  this.fence(raw);
+  if(!record(raw)||!Array.isArray(raw.providers)||raw.providers.length>64||!raw.providers.every(name=>text(name,100)&&!!name))invalid();
+  return Object.freeze([...raw.providers] as string[]);
+ }
+ /** One explicit in-flight configuration test. It saves no source, receipt or approval. */
+ async testRclone(input:RcloneTestInput,guard?:()=>boolean):Promise<RcloneTestResult>{
+  if(!this.live()||(guard&&!guard())||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');
+  if(!text(input.remote,512)||!input.remote.trim()||!configText(input.config)||!input.config.trim())throw new Error('Invalid connection fields.');
+  const epoch=this.epoch;this.publish({busy:true,error:'',errorCode:''});
+  try{
+   const raw=await this.request(routePath('test_storage_source_rclone'),'POST',routeBody('test_storage_source_rclone',{remote:input.remote,config:input.config}),guard);
+   if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
+   this.fence(raw);
+   if(!record(raw))invalid();
+   const result=raw.result;
+   if(!record(result)||!text(result.version,200)||['remote','config','password','token'].some(key=>result[key]!==undefined))invalid();
+   return Object.freeze({version:result.version});
+  }catch(error){
+   if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
+   const rawCode=record(error)&&typeof error.code==='string'?normalizedCode(error.code):'';
+   const code=['unauthorized','not_permitted','invalid_request','source_credentials_required','administration_unavailable','internal'].includes(rawCode)?rawCode:'internal';
+   const aliases:Record<string,string>={not_permitted:'forbidden',invalid_request:'remote_invalid_configuration',source_credentials_required:'remote_credentials_required',administration_unavailable:'remote_administration_unavailable'};
+   const message=safeError({code:aliases[code]??(code==='internal'?'remote_invalid_configuration':code)});
+   this.publish({error:message,errorCode:code});throw Object.assign(new Error(message),{code});
+  }finally{if(this.live()&&epoch===this.epoch)this.publish({busy:false});}
+ }
+ /** Saves an imported source from its configuration, or replaces one at its
+  * expected generation. A generation changed underneath is read again and the
+  * same edit is sent once more; the configuration is never kept after the call. */
+ async configureRclone(id:string|null,input:RcloneSourceDraft,base?:RemoteSource,guard?:()=>boolean):Promise<RcloneReceipt|undefined>{
+  if(!this.live()||(guard&&!guard())||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');
+  if(id&&(!base||base.kind!=='rclone'))throw new Error('This source cannot be changed now.');
+  if(!text(input.name,100)||!input.name.trim()||!text(input.remote,512)||!input.remote.trim()||!configText(input.config)||!input.config.trim())throw new Error('Invalid connection fields.');
+  const path=routePath('create_storage_source_rclone')+(id?'/'+encodeURIComponent(id):'');
+  const body=id?{name:input.name,remote:input.remote,config:input.config,expectedGeneration:base!.generation}:{name:input.name,remote:input.remote,config:input.config};
+  const receipt=await this.command(path,id?'PUT':'POST',body,'rclone',guard);
+  if(!id||this.state.errorCode!==CONFLICT)return receipt as RcloneReceipt|undefined;
+  const fresh=await this.reread(id,guard);if(!fresh)return;
+  return await this.command(path,'PUT',{name:input.name,remote:input.remote,config:input.config,expectedGeneration:fresh.generation},'rclone',guard) as RcloneReceipt|undefined;
+ }
+ /** Removes an imported source. One changed elsewhere is still the source the
+  * owner meant: it is read again and removed; one already gone is done. */
+ async removeRclone(row:RemoteSource,guard?:()=>boolean){if(!this.live()||(guard&&!guard())||row.kind!=='rclone'||this.state.busy||this.state.ambiguous)throw new Error('This source cannot be removed now.');
+  const path=encodedRoutePath('remove_storage_source_rclone',{id:encodeURIComponent(row.id)});
+  await this.command(path,'DELETE',{expectedGeneration:row.generation},'rclone',guard);
+  if(this.state.errorCode!==CONFLICT)return;
+  const fresh=await this.reread(row.id,guard);if(fresh===null)return this.publish({error:'',errorCode:'',alreadyDone:true});if(!fresh)return;
+  return this.command(path,'DELETE',{expectedGeneration:fresh.generation},'rclone',guard);}
  /** A new-source test uses one explicit in-flight credential request. It saves no source or retry receipt. */
  async testConnection(input:DAVConnectionInput,guard?:()=>boolean):Promise<DAVConnectionResult>{
   if(!this.live()||(guard&&!guard())||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');
@@ -168,22 +249,22 @@ export class RemoteSourceService{
   */
  async configure(id:string|null,input:DAVConfiguration,base?:RemoteSource,guard?:()=>boolean){if(!this.live()||(guard&&!guard())||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');if(!text(input.name,100)||!input.name.trim()||!text(input.root)||!text(input.username,1024)||!text(input.password))throw new Error('Invalid connection fields.');
   const path=routePath("post_storage_sources_webdav")+(id?'/'+encodeURIComponent(id):'');
-  await this.command(path,id?'PUT':'POST',input,guard);
+  await this.command(path,id?'PUT':'POST',input,'source',guard);
   if(!id||!base||this.state.errorCode!==CONFLICT)return;
   const fresh=await this.reread(id,guard);if(!fresh)return;
   const rebased=rebaseDavEdit(base,fresh,input);if(!rebased)return this.publish({error:safeError({code:CONFLICT}),errorCode:CONFLICT});
-  return this.command(path,'PUT',rebased,guard);}
+  return this.command(path,'PUT',rebased,'source',guard);}
  /** Removes a share. A share changed elsewhere is still the share the owner meant: it is read again and removed; one already gone is done. */
  async remove(row:RemoteSource,guard?:()=>boolean){if(!this.live()||(guard&&!guard())||row.kind!=='webdav'||this.state.busy||this.state.ambiguous)throw new Error('This source cannot be removed now.');
   const path=encodedRoutePath("delete_storage_sources_webdav_id", {"id": encodeURIComponent(row.id)});
-  await this.command(path,'DELETE',{expectedGeneration:row.generation},guard);
+  await this.command(path,'DELETE',{expectedGeneration:row.generation},'source',guard);
   if(this.state.errorCode!==CONFLICT)return;
   const fresh=await this.reread(row.id,guard);if(fresh===null)return this.publish({error:'',errorCode:'',alreadyDone:true});if(!fresh)return;
-  return this.command(path,'DELETE',{expectedGeneration:fresh.generation},guard);}
+  return this.command(path,'DELETE',{expectedGeneration:fresh.generation},'source',guard);}
  /** After a conflict: the share as the server has it now, null when it is gone, undefined when it could not be read (the conflict stays as it was). */
  private async reread(id:string,guard?:()=>boolean):Promise<RemoteSource|null|undefined>{const epoch=this.epoch,sequence=++this.read;try{const next=await this.readSources(epoch,sequence,guard);if(!next||(guard&&!guard()))return undefined;this.publish(next);return next.sources.find(s=>s.id===id)??null;}catch{return undefined;}}
- private async command(path:string,method:string,body:unknown,guard?:()=>boolean){const epoch=this.epoch;this.publish({busy:true,error:'',errorCode:'',receipt:null,alreadyDone:false,operationId:null});let submitted=false;try{const op=await this.operationId();if(!this.live()||(guard&&!guard())||epoch!==this.epoch)return;if(!/^\d{13}-[0-9a-f-]{36}$/i.test(op))invalid();this.publish({operationId:op});submitted=true;const pending=this.request(path,method,{...(body as object),operationId:op},guard);body=undefined;const raw=await pending;if(!this.live()||(guard&&!guard())||epoch!==this.epoch)return;const receipt=this.parseReceipt(raw,op);if(guard&&!guard())return;this.publish({receipt,ambiguous:false});await this.load();}catch(e){if(!this.live()||(guard&&!guard())||epoch!==this.epoch)return;const code=record(e)&&typeof e.code==='string'?normalizedCode(e.code):'';const rejected=['storage_command_conflict','storage_operation_expired','remote_invalid_configuration','remote_credentials_required','unauthorized','forbidden'].includes(code);this.publish({ambiguous:submitted&&!rejected,error:safeError(e),errorCode:code});}finally{body=undefined;if(this.live()&&epoch===this.epoch)this.publish({busy:false});}}
- async recover(){if(!this.live()||this.state.busy||!this.state.operationId)throw new Error('No source operation to recover.');const op=this.state.operationId,epoch=this.epoch;this.publish({busy:true,error:''});try{const raw=await this.request(encodedRoutePath("get_storage_source_operations_id", {"id": encodeURIComponent(op)}));if(!this.live()||epoch!==this.epoch)return;this.publish({receipt:this.parseReceipt(raw,op),ambiguous:false});await this.load();}catch(e){if(epoch===this.epoch)this.publish({ambiguous:true,error:safeError(e)});}finally{if(this.live()&&epoch===this.epoch)this.publish({busy:false});}}
+ private async command(path:string,method:string,body:unknown,kind:'source'|'rclone',guard?:()=>boolean):Promise<RemoteReceipt|RcloneReceipt|undefined>{const epoch=this.epoch;this.publish({busy:true,error:'',errorCode:'',receipt:null,rclone:null,alreadyDone:false,operationId:null,operationKind:kind});let submitted=false;try{const op=await this.operationId();if(!this.live()||(guard&&!guard())||epoch!==this.epoch)return;if(!/^\d{13}-[0-9a-f-]{36}$/i.test(op))invalid();this.publish({operationId:op});submitted=true;const pending=this.request(path,method,{...(body as object),operationId:op},guard);body=undefined;const raw=await pending;if(!this.live()||(guard&&!guard())||epoch!==this.epoch)return;const receipt=kind==='rclone'?this.parseRcloneReceipt(raw,op):this.parseReceipt(raw,op);if(guard&&!guard())return;this.publish(kind==='rclone'?{rclone:receipt as RcloneReceipt,receipt:null,ambiguous:false}:{receipt:receipt as RemoteReceipt,rclone:null,ambiguous:false});await this.load();return receipt;}catch(e){if(!this.live()||(guard&&!guard())||epoch!==this.epoch)return;const code=record(e)&&typeof e.code==='string'?normalizedCode(e.code):'';const rejected=['storage_command_conflict','storage_operation_expired','storage_command_capacity','storage_allocation_recovery_required','remote_invalid_configuration','remote_credentials_required','source_credentials_required','administration_unavailable','request_in_progress','unauthorized','forbidden','not_permitted','invalid_request'].includes(code);this.publish({ambiguous:submitted&&!rejected,error:safeError(e),errorCode:code});}finally{body=undefined;if(this.live()&&epoch===this.epoch)this.publish({busy:false});}}
+ async recover(){if(!this.live()||this.state.busy||!this.state.operationId)throw new Error('No source operation to recover.');const op=this.state.operationId,kind=this.state.operationKind,epoch=this.epoch;this.publish({busy:true,error:''});try{const path=kind==='rclone'?encodedRoutePath('get_storage_source_rclone_operation',{id:encodeURIComponent(op)}):encodedRoutePath('get_storage_source_operations_id',{id:encodeURIComponent(op)});const raw=await this.request(path);if(!this.live()||epoch!==this.epoch)return;const receipt=kind==='rclone'?this.parseRcloneReceipt(raw,op):this.parseReceipt(raw,op);this.publish(kind==='rclone'?{rclone:receipt as RcloneReceipt,receipt:null,ambiguous:false}:{receipt:receipt as RemoteReceipt,rclone:null,ambiguous:false});await this.load();}catch(e){if(epoch===this.epoch)this.publish({ambiguous:true,error:safeError(e)});}finally{if(this.live()&&epoch===this.epoch)this.publish({busy:false});}}
  async policy(libraryId:string):Promise<AnalysisPolicy>{const epoch=this.epoch,raw=await this.request(encodedRoutePath("get_libraries_id_strm_analysis_policy", {"id": encodeURIComponent(libraryId)}));if(!this.live()||epoch!==this.epoch)throw new Error('Scope changed.');return this.parsePolicy(raw,libraryId);}
  private parsePolicy(raw:unknown,id:string):AnalysisPolicy{this.fence(raw);if(!record(raw)||!record(raw.policy)||raw.policy.libraryId!==id||typeof raw.policy.enabled!=='boolean'||!integer(raw.policy.revision))invalid();if(raw.policy.effective!==undefined&&typeof raw.policy.effective!=='boolean')invalid();const scanTier=['file_list_only','basic','complete','custom'].includes(String(raw.policy.scanTier))?raw.policy.scanTier as string:undefined;if(raw.policy.scanTier!==undefined&&scanTier===undefined)noteSkipped('remote-sources','policy.scanTier');return Object.freeze({libraryId:id,enabled:raw.policy.enabled,revision:raw.policy.revision,...(raw.policy.effective===undefined?{}:{effective:raw.policy.effective as boolean}),...(scanTier===undefined?{}:{scanTier})});}
  async setPolicy(policy:AnalysisPolicy,enabled:boolean):Promise<AnalysisPolicy>{const epoch=this.epoch,raw=await this.request(encodedRoutePath("put_libraries_id_strm_analysis_policy", {"id": encodeURIComponent(policy.libraryId)}),'PUT',routeBody("put_libraries_id_strm_analysis_policy", {enabled,expectedRevision:policy.revision}));if(!this.live()||epoch!==this.epoch)throw new Error('Scope changed.');return this.parsePolicy(raw,policy.libraryId);}
@@ -209,7 +290,7 @@ async saveProfile(profile:SourceReadSettings,values:SourceReadValues,guard?:()=>
  const parsed=sourceReadValues(values);
  if(!profile.sourceId||!profile.generation||!Number.isSafeInteger(profile.revision)||profile.revision<0)throw new Error('Invalid source profile.');
  const epoch=this.epoch;
- this.publish({busy:true,error:'',errorCode:'',receipt:null,alreadyDone:false,operationId:null});
+ this.publish({busy:true,error:'',errorCode:'',receipt:null,rclone:null,alreadyDone:false,operationId:null,operationKind:'source'});
  let submitted=false,accepted=false;
  try{
   const op=await this.operationId();if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
