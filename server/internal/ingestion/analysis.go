@@ -577,18 +577,26 @@ func (s *Service) inspectDisc(ctx context.Context, job, object, revision string,
 	if !ok {
 		return assets.Facts{}, errors.New("disc has no title of at least a minute")
 	}
-	manifest := func() ([]storage.Snapshot, error) { return nil, nil }
+	manifest := func() ([]storage.DiscMember, error) { return nil, nil }
 	if directory {
-		members, e := disc.ConsumedMembers(structure, title)
+		consumed, e := disc.ConsumedMembers(structure)
 		if e != nil {
 			return assets.Facts{}, e
 		}
-		req := storage.InventoryRequest{Root: source.ResolvedPath, RelativePath: relative, RootIdentity: source.RootIdentity, FollowSymlinks: source.FollowSymlinks}
-		manifest = func() ([]storage.Snapshot, error) {
-			if s.storage != nil {
-				return s.storage.DiscMemberManifest(readCtx, source.ID, req, members)
+		required, optional := []string{}, []string{}
+		for _, member := range consumed {
+			if member.Required {
+				required = append(required, member.Path)
+			} else {
+				optional = append(optional, member.Path)
 			}
-			return storage.LocalDiscMemberManifest(req, members)
+		}
+		req := storage.InventoryRequest{Root: source.ResolvedPath, RelativePath: relative, RootIdentity: source.RootIdentity, FollowSymlinks: source.FollowSymlinks}
+		manifest = func() ([]storage.DiscMember, error) {
+			if s.storage != nil {
+				return s.storage.DiscMemberManifest(readCtx, source.ID, req, required, optional)
+			}
+			return storage.LocalDiscMemberManifest(req, required, optional)
 		}
 	}
 	// The consumed files are witnessed before and after the reads, and the
@@ -614,7 +622,7 @@ func (s *Service) inspectDisc(ctx context.Context, job, object, revision string,
 		if e != nil {
 			return assets.Facts{}, e
 		}
-		if !sameDiscMembers(before, after) {
+		if len(before) == 0 || len(after) == 0 || !sameDiscMembers(before, after) {
 			return assets.Facts{}, errors.New("disc members changed during analysis")
 		}
 	}
@@ -626,12 +634,12 @@ func (s *Service) inspectDisc(ctx context.Context, job, object, revision string,
 
 // sameDiscMembers compares the bounded identities and revisions of the files
 // the title read actually consumed.
-func sameDiscMembers(a, b []storage.Snapshot) bool {
-	if len(a) != len(b) {
+func sameDiscMembers(a, b []storage.DiscMember) bool {
+	if len(a) == 0 || len(a) != len(b) {
 		return false
 	}
 	for i := range a {
-		if a[i].Path != b[i].Path || a[i].ObjectIdentity != b[i].ObjectIdentity || a[i].Size != b[i].Size || a[i].ModifiedNS != b[i].ModifiedNS {
+		if a[i].Path != b[i].Path || a[i].ObjectIdentity != b[i].ObjectIdentity || a[i].Size != b[i].Size || a[i].ModifiedNS != b[i].ModifiedNS || a[i].Required != b[i].Required {
 			return false
 		}
 	}

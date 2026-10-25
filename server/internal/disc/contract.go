@@ -201,36 +201,64 @@ func (p Probe) OrderedTitles() []Title {
 	return out
 }
 
-// MaxConsumedMembers bounds the file manifest one title analysis may stat.
+// MaxConsumedMembers bounds the file manifest one folder analysis may stat.
 const MaxConsumedMembers = 256
 
-// ConsumedMembers names the files the selected title's reader consumes, as
-// paths relative to the disc root. It is a bounded manifest: a title that
-// needs more members than the bound is refused rather than sampled.
-func ConsumedMembers(p Probe, t Title) ([]string, error) {
-	out := []string{}
+// DiscMember is one file a published disc structure or a selected title read
+// consumes, relative to the admitted disc folder. Required members must exist
+// and be regular; optional structure files may be absent.
+type DiscMember struct {
+	Path     string
+	Required bool
+}
+
+// ConsumedMembers names every file the published title list and its media
+// reads depend on. The manifest covers all titles, not only the selected one,
+// because every title is published; it refuses a disc that needs more members
+// than the bound instead of sampling.
+func ConsumedMembers(p Probe) ([]DiscMember, error) {
+	if p.Packaging != "folder" {
+		return nil, ErrProtocol
+	}
+	out := []DiscMember{}
+	index := map[string]int{}
+	add := func(path string, required bool) {
+		if i, ok := index[path]; ok {
+			out[i].Required = out[i].Required || required
+			return
+		}
+		index[path] = len(out)
+		out = append(out, DiscMember{Path: path, Required: required})
+	}
 	switch p.Kind {
 	case "bluray":
-		if t.PlaylistFile != "" {
-			out = append(out, "PLAYLIST/"+t.PlaylistFile)
-		}
-		out = append(out, "index.bdmv", "MovieObject.bdmv")
-		for _, clip := range t.Clips {
-			out = append(out, "STREAM/"+clip.File)
-			if base, ok := strings.CutSuffix(clip.File, ".m2ts"); ok {
-				out = append(out, "CLIPINF/"+base+".clpi")
+		add("BDMV/index.bdmv", true)
+		add("BDMV/MovieObject.bdmv", false)
+		for _, t := range p.Titles {
+			add("BDMV/PLAYLIST/"+t.PlaylistFile, true)
+			for _, clip := range t.Clips {
+				add("BDMV/STREAM/"+clip.File, true)
+				if base, ok := strings.CutSuffix(clip.File, ".m2ts"); ok {
+					add("BDMV/CLIPINF/"+base+".clpi", true)
+				}
 			}
 		}
 	case "dvd":
-		out = append(out, "VIDEO_TS/VIDEO_TS.IFO", fmt.Sprintf("VIDEO_TS/VTS_%02d_0.IFO", t.VTS))
-		for n := 0; n < 10; n++ {
-			out = append(out, fmt.Sprintf("VIDEO_TS/VTS_%02d_%d.VOB", t.VTS, n))
+		add("VIDEO_TS/VIDEO_TS.IFO", true)
+		for _, t := range p.Titles {
+			add(fmt.Sprintf("VIDEO_TS/VTS_%02d_0.IFO", t.VTS), true)
+			add(fmt.Sprintf("VIDEO_TS/VTS_%02d_1.VOB", t.VTS), true)
+			for n := 0; n < 10; n++ {
+				if n != 1 {
+					add(fmt.Sprintf("VIDEO_TS/VTS_%02d_%d.VOB", t.VTS, n), false)
+				}
+			}
 		}
 	default:
 		return nil, ErrProtocol
 	}
 	if len(out) > MaxConsumedMembers {
-		return nil, fmt.Errorf("disc title needs more than %d consumed members", MaxConsumedMembers)
+		return nil, fmt.Errorf("disc needs more than %d consumed members", MaxConsumedMembers)
 	}
 	return out, nil
 }
