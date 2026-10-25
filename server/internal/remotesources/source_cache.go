@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"portico.local/server/internal/dbwork"
@@ -22,21 +24,21 @@ import (
 // private to the source, bounded by that source's saved cache size and floor,
 // and never shared with another source or another version of the same object.
 
-const (
-	cacheBlockMin = 1 << 20
-	cacheEntryMax = 64 << 10
-)
-
 type rangeCache struct {
-	service    *Service
-	source     string
-	key        string
-	file       *os.File
-	size       int64
-	cached     int64
-	configured int64
-	floor      int64
-	committed  bool
+	service       *Service
+	source        string
+	key           string
+	file          *os.File
+	size          int64
+	cached        int64
+	configured    int64
+	floor         int64
+	committed     bool
+	guard         *cacheGuard
+	reservedBytes int64
+	generation    string
+	binding       binding
+	release       func()
 }
 
 func cacheDirectory(private, source string) (string, error) {
@@ -112,52 +114,101 @@ func (s *Service) openRangeCache(ctx context.Context, b binding, generation stri
 			}
 		}
 	}
-	return &rangeCache{service: s, source: b.ID, key: key, file: handle, size: snapshot.Size, cached: cached, configured: bytes, floor: floor}, nil
+	return &rangeCache{service: s, source: b.ID, key: key, file: handle, size: snapshot.Size, cached: cached, configured: bytes, floor: floor, guard: s.guardFor(b.ID, key), generation: generation, binding: b}, nil
 }
 
 // append fills the cache from the current end to end, from a stream positioned
-// at the current end. A failed or short read leaves the committed prefix as it
-// was, so a later read never trusts bytes that were not fully copied.
+// at the current end. Growth is reserved against this source's own budget and
+// the host floor before a byte is copied; a failed or short read releases the
+// reservation and leaves the committed prefix as it was.
 func (c *rangeCache) append(ctx context.Context, stream io.Reader, end int64) error {
 	if c == nil || c.file == nil || end <= c.cached || end > c.size {
 		return nil
 	}
-	if !mounts.CacheSpaceAvailable(c.service.private, c.floor) {
+	growth := end - c.cached
+	if !mounts.CacheSpaceFor(c.service.private, c.floor, growth) {
+		return storage.ErrRemoteLimit
+	}
+	budget := c.service.budgetFor(c.source)
+	if err := budget.load(ctx, c.service, c.source, c.configured); err != nil {
+		return err
+	}
+	if !budget.reserve(c.configured, c.floor, growth) {
 		return storage.ErrRemoteLimit
 	}
 	if _, err := c.file.Seek(c.cached, io.SeekStart); err != nil {
+		budget.release(growth)
 		return err
 	}
-	n, err := io.CopyN(c.file, stream, end-c.cached)
-	if err != nil || n != end-c.cached {
+	n, err := io.CopyN(c.file, stream, growth)
+	if err != nil || n != growth {
+		budget.release(growth)
 		_ = c.file.Truncate(c.cached)
 		return mapError(err)
 	}
+	budget.accept(growth)
 	c.cached = end
+	c.reservedBytes += growth
 	return nil
 }
 
-// commit records the cached prefix and evicts this source's least recently
-// used entries until the source is inside its saved size again. It never
-// evicts the entry just read, and never touches another source's directory.
+// commit records the cached prefix only if this source is still the same
+// generation with the same cache size, then evicts this source's least
+// recently used entries. A source reconfigured or removed while the read ran
+// leaves nothing behind.
 func (c *rangeCache) commit(ctx context.Context) error {
 	if c == nil || c.file == nil || c.committed {
 		return nil
 	}
 	c.committed = true
+	guard := c.guard
+	name := filepath.Base(c.file.Name())
 	if err := c.file.Sync(); err != nil {
 		_ = c.file.Close()
 		return err
 	}
-	name := filepath.Base(c.file.Name())
 	if err := c.file.Close(); err != nil {
 		return err
+	}
+	keep := false
+	if !guard.retired {
+		var generation, configured int64
+		if err := c.service.db.QueryRowContext(ctx, `SELECT generation FROM remote_sources WHERE id=? AND removed=0`, c.source).Scan(&generation); err == nil {
+			if strconv.FormatInt(generation, 10) == c.generation {
+				if err := c.service.db.QueryRowContext(ctx, `SELECT cache_bytes FROM remote_source_settings WHERE source_id=?`, c.source).Scan(&configured); err == nil && configured == c.configured {
+					keep = true
+				}
+			}
+		}
+	}
+	if !keep {
+		directory, err := cacheDirectory(c.service.private, c.source)
+		if err == nil {
+			_ = os.Remove(filepath.Join(directory, name))
+		}
+		budget := c.service.budgetFor(c.source)
+		budget.subtract(c.reservedBytes)
+		return nil
 	}
 	now := time.Now().UnixMilli()
 	if _, err := dbwork.ExecWrite(ctx, c.service.db, dbwork.ClassBackgroundMedia, `INSERT INTO remote_source_cache_entries(source_id,cache_key,file_name,used_bytes,object_size,accessed_ms) VALUES(?,?,?,?,?,?) ON CONFLICT(source_id,cache_key) DO UPDATE SET used_bytes=excluded.used_bytes,object_size=excluded.object_size,accessed_ms=excluded.accessed_ms`, c.source, c.key, name, c.cached, c.size, now); err != nil {
 		return err
 	}
 	return c.service.evictSourceCache(ctx, c.source, c.configured, c.key)
+}
+
+// cacheKeyBusy says whether a live reader or writer still holds this entry, so
+// eviction never deletes a file under another acquisition.
+func (s *Service) cacheKeyBusy(source, key string) bool {
+	s.cacheMu.Lock()
+	g := s.cacheGuards[source+"\x00"+key]
+	s.cacheMu.Unlock()
+	if g == nil {
+		return false
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.readers > 0
 }
 
 // evictSourceCache deletes the least recently used entries of one source,
@@ -188,6 +239,9 @@ func (s *Service) evictSourceCache(ctx context.Context, source string, limit int
 		if err = rows.Scan(&v.key, &v.file, &v.bytes); err != nil {
 			break
 		}
+		if s.cacheKeyBusy(source, v.key) {
+			continue
+		}
 		victims = append(victims, v)
 		total -= v.bytes
 	}
@@ -217,6 +271,10 @@ func (s *Service) clearSourceCache(ctx context.Context, source string) error {
 	if s == nil || s.db == nil {
 		return nil
 	}
+	s.retireSourceCacheGuards(source)
+	s.cacheMu.Lock()
+	delete(s.cacheBudgets, source)
+	s.cacheMu.Unlock()
 	if _, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM remote_source_cache_entries WHERE source_id=?`, source); err != nil {
 		return err
 	}
@@ -237,48 +295,215 @@ func (s *Service) clearSourceCache(ctx context.Context, source string) error {
 	return nil
 }
 
-// reconcileSourceCache drops rows whose file is gone and files no row owns,
-// bounded per call so startup work stays small.
+// reconcileSourceCache drops entries whose file is missing or shorter than the
+// bytes they claim, using exact key lookup and bounded pages. It never deletes
+// files it cannot account for from a partial or failed row read: unowned files
+// are removed only when the source itself is cleared or reconfigured.
 func (s *Service) reconcileSourceCache(ctx context.Context, source string, private string) {
 	directory, err := cacheDirectory(private, source)
 	if err != nil {
 		return
 	}
-	known := map[string]bool{}
-	rows, err := s.db.QueryContext(ctx, `SELECT cache_key,file_name,used_bytes FROM remote_source_cache_entries WHERE source_id=? LIMIT 256`, source)
-	if err == nil {
-		type row struct {
+	cursor := ""
+	for page := 0; page < 8; page++ {
+		rows, qerr := s.db.QueryContext(ctx, `SELECT cache_key,file_name,used_bytes FROM remote_source_cache_entries WHERE source_id=? AND cache_key>? ORDER BY cache_key LIMIT 64`, source, cursor)
+		if qerr != nil {
+			return
+		}
+		type entry struct {
 			key, file string
 			used      int64
 		}
-		all := []row{}
+		pageRows := []entry{}
 		for rows.Next() {
-			var r row
-			if rows.Scan(&r.key, &r.file, &r.used) == nil {
-				all = append(all, r)
-				known[filepath.Base(r.file)] = true
+			var e entry
+			if rows.Scan(&e.key, &e.file, &e.used) == nil {
+				pageRows = append(pageRows, e)
 			}
 		}
+		readErr := rows.Err()
 		rows.Close()
-		for _, r := range all {
-			if info, statErr := os.Stat(filepath.Join(directory, filepath.Base(r.file))); statErr != nil || info.Size() < r.used {
-				_, _ = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM remote_source_cache_entries WHERE source_id=? AND cache_key=?`, source, r.key)
-				known[filepath.Base(r.file)] = false
+		if readErr != nil || len(pageRows) == 0 {
+			return
+		}
+		for _, e := range pageRows {
+			cursor = e.key
+			if filepath.Base(e.file) != e.file {
+				continue
 			}
+			info, statErr := os.Stat(filepath.Join(directory, e.file))
+			if statErr == nil && info.Size() >= e.used {
+				continue
+			}
+			// Exact row and key before removal; a scan that lagged behind a
+			// concurrent write is re-checked and left alone if it moved.
+			if _, err = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM remote_source_cache_entries WHERE source_id=? AND cache_key=? AND used_bytes=?`, source, e.key, e.used); err != nil {
+				return
+			}
+			_ = os.Remove(filepath.Join(directory, e.file))
+		}
+		if len(pageRows) < 64 {
+			return
 		}
 	}
-	entries, err := os.ReadDir(directory)
-	if err != nil {
-		return
+}
+
+type sourceCacheBudget struct {
+	mu       sync.Mutex
+	used     int64
+	reserved int64
+	limit    int64
+	loaded   bool
+}
+
+type cacheGuard struct {
+	mu      sync.Mutex
+	readers int
+	retired bool
+}
+
+// guardFor returns the per source+key ownership record, creating it lazily.
+func (s *Service) guardFor(source, key string) *cacheGuard {
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+	if s.cacheGuards == nil {
+		s.cacheGuards = map[string]*cacheGuard{}
 	}
-	removed := 0
-	for _, entry := range entries {
-		if entry.IsDir() || known[entry.Name()] || removed >= 256 {
-			continue
+	id := source + "\x00" + key
+	if g := s.cacheGuards[id]; g != nil {
+		return g
+	}
+	g := &cacheGuard{}
+	s.cacheGuards[id] = g
+	return g
+}
+
+func (s *Service) budgetFor(source string) *sourceCacheBudget {
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+	if s.cacheBudgets == nil {
+		s.cacheBudgets = map[string]*sourceCacheBudget{}
+	}
+	if b := s.cacheBudgets[source]; b != nil {
+		return b
+	}
+	b := &sourceCacheBudget{}
+	s.cacheBudgets[source] = b
+	return b
+}
+
+// load reads the committed total once and keeps it in memory under the budget
+// lock, so concurrent writers reserve against a single number.
+func (b *sourceCacheBudget) load(ctx context.Context, service *Service, source string, limit int64) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.limit = limit
+	if b.loaded {
+		return nil
+	}
+	var used int64
+	if err := service.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(used_bytes),0) FROM remote_source_cache_entries WHERE source_id=?`, source).Scan(&used); err != nil {
+		return err
+	}
+	b.used = used
+	b.loaded = true
+	return nil
+}
+
+// reserve accepts growth only when the source's own budget and the host floor
+// both still hold, counting other writers' reservations.
+func (b *sourceCacheBudget) reserve(limit, floor, growth int64) bool {
+	if growth <= 0 || limit <= 0 || growth > limit {
+		return false
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.used+b.reserved+growth > limit {
+		return false
+	}
+	b.reserved += growth
+	return true
+}
+
+func (b *sourceCacheBudget) accept(growth int64) {
+	b.mu.Lock()
+	b.reserved -= growth
+	b.used += growth
+	if b.reserved < 0 {
+		b.reserved = 0
+	}
+	b.mu.Unlock()
+}
+
+func (b *sourceCacheBudget) release(growth int64) {
+	b.mu.Lock()
+	b.reserved -= growth
+	if b.reserved < 0 {
+		b.reserved = 0
+	}
+	b.mu.Unlock()
+}
+
+func (b *sourceCacheBudget) subtract(bytes int64) {
+	b.mu.Lock()
+	b.used -= bytes
+	if b.used < 0 {
+		b.used = 0
+	}
+	b.mu.Unlock()
+}
+
+// retireSourceCacheGuards stops any finishing writer of this source from
+// publishing after its configuration or generation changed.
+func (s *Service) retireSourceCacheGuards(source string) {
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+	prefix := source + "\x00"
+	for id, g := range s.cacheGuards {
+		if strings.HasPrefix(id, prefix) {
+			g.retired = true
 		}
-		_ = os.Remove(filepath.Join(directory, entry.Name()))
-		removed++
 	}
+}
+
+// cacheReadCloser keeps the acquisition lease and its cancellation live for the
+// whole body, exactly like a provider range read.
+type cacheReadCloser struct {
+	reader  io.Reader
+	ctx     context.Context
+	release func()
+	guard   *cacheGuard
+}
+
+func (r *cacheReadCloser) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.reader.Read(p)
+}
+
+func (r *cacheReadCloser) Close() error {
+	if r.guard != nil {
+		r.guard.mu.Lock()
+		if r.guard.readers > 0 {
+			r.guard.readers--
+		}
+		r.guard.mu.Unlock()
+		r.guard = nil
+	}
+	if r.release != nil {
+		r.release()
+		r.release = nil
+	}
+	return nil
+}
+
+// holdReader marks a live reader of one key and returns the wrapper body.
+func (c *rangeCache) holdReader(ctx context.Context, offset, length int64, release func()) io.ReadCloser {
+	c.guard.mu.Lock()
+	c.guard.readers++
+	c.guard.mu.Unlock()
+	return &cacheReadCloser{reader: io.NewSectionReader(c.file, offset, length), ctx: ctx, release: release, guard: c.guard}
 }
 
 func (s *Service) cacheUsed(ctx context.Context, source string) (int64, error) {

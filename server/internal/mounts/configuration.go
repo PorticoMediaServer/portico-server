@@ -261,3 +261,13 @@ func (s *Service) PrivateDigest(raw []byte) string {
 // CacheSpaceAvailable checks the real host free-space floor for private native
 // acquisition caches as well as optional compatibility mounts.
 func CacheSpaceAvailable(path string, floor int64) bool { return cacheSpaceAvailable(path, floor) }
+
+// CacheSpaceFor checks that growth more bytes can still be written while
+// keeping the host free-space floor. It is the growth-aware form used before a
+// cache copy, not just a snapshot of free space.
+func CacheSpaceFor(path string, floor, growth int64) bool {
+	if growth < 0 {
+		return false
+	}
+	return cacheSpaceFor(path, floor, growth)
+}

@@ -30,3 +30,15 @@ func MountSupported() bool {
 	}
 	return false
 }
+
+func cacheSpaceFor(path string, floor, growth int64) bool {
+	var stat unix.Statfs_t
+	if unix.Statfs(path, &stat) != nil {
+		return false
+	}
+	free := uint64(stat.Bavail) * uint64(stat.Bsize)
+	if uint64(growth) >= free {
+		return false
+	}
+	return free-uint64(growth) >= uint64(floor)
+}

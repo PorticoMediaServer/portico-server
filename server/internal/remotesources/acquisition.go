@@ -268,8 +268,10 @@ func (o *object) OpenRange(parent context.Context, offset, length int64) (io.Rea
 		return nil, err
 	}
 	if o.conditional != nil {
-		if cached, ok := o.fromRangeCache(ctx, offset, length); ok {
+		if cached, cacheErr := o.fromRangeCache(ctx, offset, length, release); cacheErr != nil {
 			release()
+			return nil, cacheErr
+		} else if cached != nil {
 			return cached, nil
 		}
 		response, e := o.conditional.Open(ctx, http.MethodGet, fmt.Sprintf("bytes=%d-%d", offset, offset+length-1))
@@ -335,33 +337,38 @@ func (o *object) OpenRange(parent context.Context, offset, length int64) (io.Rea
 	return &readCloser{Reader: reader, close: func() error { release(); return nil }}, nil
 }
 
-// fromRangeCache serves a read from this source's own cache when the requested
-// bytes are inside the immutable prefix already held, fetching and appending
-// only the gap. A seek beyond the prefix bypasses the cache rather than
-// inventing a sparse entry.
-func (o *object) fromRangeCache(ctx context.Context, offset, length int64) (io.ReadCloser, bool) {
+// fromRangeCache serves a read from this source's own cache. A nil reader and
+// nil error is a legitimate miss; a provider, floor, identity or cancellation
+// failure is returned as itself and never retried as a miss.
+func (o *object) fromRangeCache(ctx context.Context, offset, length int64, release func()) (io.ReadCloser, error) {
 	cache := o.rangeCache
 	if cache == nil || offset < 0 || offset > cache.cached {
-		return nil, false
-	}
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	if offset > cache.cached {
-		return nil, false
+		return nil, nil
 	}
 	end := offset + length
 	if end > cache.cached {
-		response, err := o.conditional.Open(ctx, http.MethodGet, fmt.Sprintf("bytes=%d-%d", cache.cached, end-1))
-		if err != nil {
-			return nil, false
-		}
-		appendErr := cache.append(ctx, response.Body, end)
-		closeErr := response.Body.Close()
-		if appendErr != nil || closeErr != nil || end > cache.cached {
-			return nil, false
+		cache.guard.mu.Lock()
+		defer cache.guard.mu.Unlock()
+		// Re-check under the writer lock: another acquisition may have grown it.
+		if end > cache.cached {
+			response, err := o.conditional.Open(ctx, http.MethodGet, fmt.Sprintf("bytes=%d-%d", cache.cached, end-1))
+			if err != nil {
+				return nil, mapError(err)
+			}
+			appendErr := cache.append(ctx, response.Body, end)
+			closeErr := response.Body.Close()
+			if appendErr != nil {
+				return nil, appendErr
+			}
+			if closeErr != nil {
+				return nil, mapError(closeErr)
+			}
+			if end > cache.cached {
+				return nil, storage.ErrRemoteChanged
+			}
 		}
 	}
-	return io.NopCloser(io.NewSectionReader(cache.file, offset, length)), true
+	return cache.holdReader(ctx, offset, length, release), nil
 }
 
 func (o *object) Close() error {

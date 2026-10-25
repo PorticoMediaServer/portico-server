@@ -382,9 +382,16 @@ func (s *Service) ReadSourceAdvanced(ctx context.Context, identities *identity.S
 func advancedSettings(row Source, settings advancedRow, cacheError string) SourceAdvancedSettings {
 	// Applied is read from the stored projection alone: asking to disable the
 	// cache is only applied once the mount really reports no cache.
-	applied := settings.values.CacheBytes == 0 || row.MountID == "" && settings.saved ||
-		settings.appliedBytes == settings.values.CacheBytes &&
+	var applied bool
+	if row.MountID == "" {
+		// The server's own cache is in force as soon as the page is saved.
+		applied = settings.saved
+	} else {
+		// A mounted cache is applied only when its stored projection matches,
+		// including a requested disable (zero) that the mount has not taken yet.
+		applied = settings.appliedBytes == settings.values.CacheBytes &&
 			(settings.values.CacheFloorBytes == 0 || settings.appliedFloor == settings.values.CacheFloorBytes)
+	}
 	return SourceAdvancedSettings{
 		SourceID:             row.ID,
 		Generation:           strconv.FormatInt(row.Generation, 10),

@@ -65,6 +65,9 @@ type Service struct {
 	bindings            atomic.Value
 	listings            sync.Mutex
 	listingClaims       map[string]bool
+	cacheMu             sync.Mutex
+	cacheBudgets        map[string]*sourceCacheBudget
+	cacheGuards         map[string]*cacheGuard
 	nativeListings      map[string]*nativeListing
 	nativeClosed        bool
 	inventory, playback chan struct{}
@@ -434,8 +437,14 @@ func (s *Service) Run(ctx context.Context) {
 	wake := worker.NewSignal()
 	stopWake := registerRemoteSourceWake(wake)
 	defer stopWake()
+	reconciled := false
 	worker.Run(ctx, "remotesources", wake, func(ctx context.Context) time.Duration {
 		_ = s.RefreshMounts(ctx)
+		if !reconciled {
+			// One bounded startup reconciliation; later wakes do not repeat it.
+			reconciled = true
+			s.reconcileSourceCaches(ctx)
+		}
 		// Completed/failed old scan listings are disposable adapter cache; current
 		// pending cursors keep their snapshots regardless of wall-clock age.
 		_, _ = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM remote_listing_sessions WHERE created_at<? AND NOT EXISTS(SELECT 1 FROM jobs j WHERE (j.id=remote_listing_sessions.job_id OR EXISTS(SELECT 1 FROM remote_inventory_checks c WHERE c.check_job=remote_listing_sessions.job_id AND c.job_id=j.id)) AND j.status IN ('queued','running','paused'))`, time.Now().Add(-24*time.Hour).Unix())
