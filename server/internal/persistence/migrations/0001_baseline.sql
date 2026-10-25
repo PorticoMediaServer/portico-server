@@ -8978,3 +8978,48 @@ END;
 
 -- Exact admitted occurrence lookup must not load a whole large queue in its writer.
 CREATE INDEX queue_v1_segments_entry ON queue_v1_segments(queue_id,snapshot_id,first_ordinal);
+
+-- Account-capacity invalidations are one metadata-free pending row per account.
+-- The ordinary feed flush publishes them only after the releasing transaction commits.
+CREATE TRIGGER playback_v1_capacity_release AFTER UPDATE OF ended_ms ON playback_v1_sessions
+WHEN OLD.ended_ms=0 AND NEW.ended_ms>0 AND OLD.account_id<>'' AND OLD.authority IN('local','hosted')
+BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data)
+ VALUES('capacity:'||OLD.authority||':'||OLD.account_id,'capacity.changed','','','','')
+ ON CONFLICT(audience,type,resource_kind,resource_id) DO NOTHING;
+END;
+CREATE TRIGGER playback_v1_capacity_delete AFTER DELETE ON playback_v1_sessions
+WHEN OLD.ended_ms=0 AND OLD.account_id<>'' AND OLD.authority IN('local','hosted')
+BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data)
+ VALUES('capacity:'||OLD.authority||':'||OLD.account_id,'capacity.changed','','','','')
+ ON CONFLICT(audience,type,resource_kind,resource_id) DO NOTHING;
+END;
+CREATE TRIGGER playback_media_capacity_release AFTER UPDATE OF state ON playback_sessions
+WHEN OLD.state NOT IN('stopped','ended','failed') AND NEW.state IN('stopped','ended','failed')
+BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data)
+ SELECT 'capacity:'||auth.authority||':'||OLD.account_id,'capacity.changed','','','',''
+ FROM authorization_access auth
+ WHERE auth.hash=OLD.session_hash AND auth.account_id=OLD.account_id
+ AND auth.authority IN('local','hosted') AND OLD.account_id<>''
+ AND NOT EXISTS(SELECT 1 FROM playback_v1_sessions v WHERE v.media_session_id=OLD.id AND v.ended_ms=0
+  AND v.lease_expires_ms>CAST((julianday('now')-2440587.5)*86400000 AS INTEGER))
+ AND NOT EXISTS(SELECT 1 FROM playback_private_presentations pp JOIN playback_sessions owner ON owner.id=pp.owner_session_id
+  WHERE pp.session_id=OLD.id AND owner.state NOT IN('stopped','ended','failed') AND owner.expires_at>strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+ ON CONFLICT(audience,type,resource_kind,resource_id) DO NOTHING;
+END;
+CREATE TRIGGER playback_media_capacity_delete AFTER DELETE ON playback_sessions
+WHEN OLD.state NOT IN('stopped','ended','failed')
+BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data)
+ SELECT 'capacity:'||auth.authority||':'||OLD.account_id,'capacity.changed','','','',''
+ FROM authorization_access auth
+ WHERE auth.hash=OLD.session_hash AND auth.account_id=OLD.account_id
+ AND auth.authority IN('local','hosted') AND OLD.account_id<>''
+ AND NOT EXISTS(SELECT 1 FROM playback_v1_sessions v WHERE v.media_session_id=OLD.id AND v.ended_ms=0
+  AND v.lease_expires_ms>CAST((julianday('now')-2440587.5)*86400000 AS INTEGER))
+ AND NOT EXISTS(SELECT 1 FROM playback_private_presentations pp JOIN playback_sessions owner ON owner.id=pp.owner_session_id
+  WHERE pp.session_id=OLD.id AND owner.state NOT IN('stopped','ended','failed') AND owner.expires_at>strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+ ON CONFLICT(audience,type,resource_kind,resource_id) DO NOTHING;
+END;

@@ -91,8 +91,10 @@ type RemotePlayback struct {
 	Next   *QueueEntry `json:"next,omitempty"`
 }
 type RemoteControlsDocument struct {
-	Items      []RemotePlayback `json:"items"`
-	NextCursor string           `json:"nextCursor"`
+	// Exact durable admission count, independent of the paged V1 controls rows.
+	StreamLimit *StreamLimitDetail `json:"streamLimit,omitempty"`
+	Items       []RemotePlayback   `json:"items"`
+	NextCursor  string             `json:"nextCursor"`
 }
 
 // RemoteControls lists this account's active playback across its profiles.
@@ -177,6 +179,14 @@ func (s *Service) RemoteControls(ctx context.Context, c Caller, cursor string, l
 		}
 		out.Items = append(out.Items, remote)
 	}
+	detail, err := s.AccountStreamLimit(ctx, c)
+	if err != nil {
+		return out, err
+	}
+	// An absent/unlimited policy supplies no finite-capacity inference.
+	if detail.Limit > 0 {
+		out.StreamLimit = &detail
+	}
 	return out, nil
 }
 
@@ -197,7 +207,7 @@ func (s *Service) StopAccountSession(ctx context.Context, c Caller, id string) e
 }
 
 // AccountStreamLimit reads the same durable media slots as owner admission.
-// It is called only after that producer refuses the account cap.
+// It is used by the account-cap refusal and the same admitted own-account controls read.
 func (s *Service) AccountStreamLimit(ctx context.Context, c Caller) (StreamLimitDetail, error) {
 	out := StreamLimitDetail{Scope: "account"}
 	tx, err := s.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
