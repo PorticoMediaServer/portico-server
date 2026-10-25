@@ -1,4 +1,6 @@
 import {
+  decodeGetReadingPeriodicalGroupsResponse, decodeGetReadingPeriodicalIssuesResponse,
+  type GetReadingPeriodicalGroupsResponse, type GetReadingPeriodicalIssuesResponse,
   routePath, errors, decodeGetReadingSeriesItemsResponse, decodeGetReadingDiscoverResponse, decodeGetReadingContinueResponse, decodeGetReadingItemsResponse, decodeGetItemsItemIdReadingVersionsResponse,
   decodePostReadingSessionsResponse, decodeGetReadingSessionsSessionIdProgressResponse,
   decodePutReadingSessionsSessionIdProgressResponse,
@@ -7,6 +9,7 @@ import {
   type GetReadingSessionsSessionIdProgressResponse,
   type PutReadingSessionsSessionIdProgressRequest, type PutReadingSessionsSessionIdProgressResponse,
 } from '../../contracts/src/index.ts';
+import type {schemas} from '../../contracts/src/schemas.ts';
 import type {Viewer} from './index.ts';
 
 export type ReadingScope = Readonly<{viewer: Readonly<Viewer>; isCurrent: () => boolean; signal?: AbortSignal}>;
@@ -16,7 +19,13 @@ export type ReadingManifest = Immutable<PostReadingSessionsResponse>;
 export type ReadingItem = GetReadingItemsResponse['items'][number];
 export type ReadingContinueItem = GetReadingContinueResponse['items'][number];
 export type ReadingDiscover = GetReadingDiscoverResponse;
+export type ReadingShortRead = NonNullable<ReadingDiscover['rows'][number]['shortReads']>[number];
 export type ReadingSeriesPage = GetReadingSeriesItemsResponse;
+export type ReadingPeriodicalGroupsPage = GetReadingPeriodicalGroupsResponse;
+export type ReadingPeriodicalIssuesPage = GetReadingPeriodicalIssuesResponse;
+export type ReadingPeriodicalType = (typeof schemas)['GetReadingPeriodicalGroupsResponse']['properties']['publicationType']['enum'][number];
+export type ReadingPeriodicalGroup = ReadingPeriodicalGroupsPage['groups'][number];
+export type ReadingPeriodicalIssue = ReadingPeriodicalIssuesPage['items'][number];
 export type ReadingAuthor = NonNullable<ReadingItem['author']>;
 export type ReadingSeries = NonNullable<ReadingItem['series']>;
 export type ReadingAttributionSource = ReadingAuthor['source'];
@@ -43,6 +52,18 @@ const cancellation = (signal: AbortSignal) => signal.reason instanceof ReadingEr
 const integer = (n: number, low: number, high: number) => Number.isSafeInteger(n) && n >= low && n <= high;
 const id = (s: string) => typeof s === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(s);
 const revision = (s: string) => typeof s === 'string' && /^[0-9a-f]{64}$/.test(s);
+const periodicalType = (s: string) => s === 'magazine' || s === 'newspaper';
+const seriesID = (s: string) => /^[A-Za-z0-9_-]{43}$/.test(s);
+const seriesCursor = (s: string) => /^[A-Za-z0-9_-]{171}\.[A-Za-z0-9_-]{43}$/.test(s);
+function issueDate(value: string, kind: ReadingPeriodicalType): boolean {
+  if (typeof value !== 'string' || !/^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$/.test(value) || value.startsWith('0000') || kind === 'newspaper' && value.length !== 10) return false;
+  const parsed = new Date((value.length === 7 ? value + '-01' : value) + 'T12:00:00Z');
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, value.length) === value;
+}
+function validateIssue(value: ReadingPeriodicalIssue, library: string, kind: ReadingPeriodicalType, group: string) {
+  const item = value.item;
+  if (!validReadingCover(item.id, item.coverUrl) || !id(item.id) || item.libraryId !== library || !id(item.sourceId) || item.format !== 'epub' && item.format !== 'pdf' || item.publicationType?.value !== kind || item.series?.id !== group || !issueDate(value.issueDate, kind)) fail('invalid_document');
+}
 const format = (s: string) => s === 'epub' || s === 'pdf' || s === 'cbz';
 const mime = (s: string | null) => s?.split(';', 1)[0].trim().toLowerCase();
 const member = (s: string) => typeof s === 'string' && s.length > 0 && s.length <= 1024 && !/[\\\x00-\x1f\x7f?#]/.test(s) && !/^[a-z][a-z0-9+.-]*:/i.test(s) && s.split('/').every(p => p !== '' && p !== '.' && p !== '..');
@@ -170,8 +191,17 @@ function scopedByteStream(source: ByteSource): ReadingByteStream {
   });
 }
 
+/** A selected Reading cover is a versioned local route for this exact item. */
+function validReadingCover(itemId: string, value: unknown): boolean {
+  if (value === undefined) return true;
+  if (typeof value !== 'string') return false;
+  const prefix = routePath('get_items_id_art_kind', {id: itemId, kind: 'cover'}) + '?v=';
+  return value.startsWith(prefix) && /^[a-f0-9]{64}$/.test(value.slice(prefix.length));
+}
+
 function validateManifest(m: PostReadingSessionsResponse, request: PostReadingSessionsRequest) {
   if (!id(m.sessionId) || m.itemId !== request.itemId || m.sourceId !== request.sourceId || !revision(m.revision) || !format(m.format) || !integer(m.size, 1, 2 ** 31)) fail('invalid_manifest');
+  if (!validReadingCover(m.itemId, m.metadata.coverUrl)) fail('invalid_manifest');
   if (m.sequential === true && m.format !== 'pdf') fail('invalid_manifest');
   if (m.metadata.direction !== undefined && !['ltr', 'rtl', 'vertical'].includes(m.metadata.direction)) fail('invalid_manifest');
   const resources = m.resources ?? [], pages = m.pageNames ?? [], spine = m.spine ?? [];
@@ -276,24 +306,39 @@ export class ReadingClient {
   async list(options: Readonly<{libraryId?: string; cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<GetReadingItemsResponse> {
     if (options.libraryId !== undefined && !id(options.libraryId) || !integer(options.limit ?? 50, 1, 100) || (options.cursor !== undefined && !/^\d{1,20}$/.test(options.cursor))) fail('invalid_request');
     const out = await this.json(query(routePath('get_reading_items'), options), 'GET', undefined, signal, decodeGetReadingItemsResponse, 256 << 10);
-    if (out.items.length > 100 || out.items.some(row => !id(row.id) || !id(row.sourceId) || !format(row.format))) fail('invalid_document');
+    if (out.items.length > 100 || out.items.some(row => !id(row.id) || !id(row.sourceId) || !format(row.format) || !validReadingCover(row.id, row.coverUrl))) fail('invalid_document');
     return out;
   }
-  async discover(options: Readonly<{libraryId?: string; limit?: number; seriesLimit?: number}> = {}, signal?: AbortSignal): Promise<ReadingDiscover> {
+  async discover(options: Readonly<{libraryId?: string; limit?: number; seriesLimit?: number; shortReadsLimit?: number}> = {}, signal?: AbortSignal): Promise<ReadingDiscover> {
     if (options.libraryId !== undefined && !id(options.libraryId) || !integer(options.limit ?? 20, 1, 100) || options.seriesLimit !== undefined && (options.libraryId === undefined || !id(options.libraryId) || !integer(options.seriesLimit,1,20))) fail('invalid_request');
+    if (options.shortReadsLimit !== undefined && (options.libraryId === undefined || !id(options.libraryId) || !integer(options.shortReadsLimit, 1, 20))) fail('invalid_request');
     const out = await this.json(query(routePath('get_reading_discover'), options), 'GET', undefined, signal, decodeGetReadingDiscoverResponse, 2 << 20);
-    if (out.rows.length < 1 || out.rows.length > 2 || out.rows[0].key !== 'recent' || out.rows[0].series !== undefined || out.rows[0].items.length > (options.limit ?? 20)) fail('invalid_document');
+    if (out.rows.length < 1 || out.rows.length > 3 || out.rows[0].key !== 'recent' || out.rows[0].series !== undefined || out.rows[0].shortReads !== undefined || out.rows[0].items.length > (options.limit ?? 20)) fail('invalid_document');
     const seen = new Set<string>();
     const checkItem = (item: ReadingItem, libraryId?: string) => {
-      if (!id(item.id) || !id(item.libraryId) || !id(item.sourceId) || !format(item.format) || (libraryId !== undefined && item.libraryId !== libraryId)) fail('invalid_document');
+      if (!validReadingCover(item.id, item.coverUrl) || !id(item.id) || !id(item.libraryId) || !id(item.sourceId) || !format(item.format) || (libraryId !== undefined && item.libraryId !== libraryId)) fail('invalid_document');
     };
     for (const item of out.rows[0].items) {
       checkItem(item,options.libraryId);
       if(seen.has(item.id)) fail('invalid_document');
       seen.add(item.id);
     }
-    const row=out.rows[1];
-    if(row!==undefined){
+    let seriesSeen = false, shortSeen = false;
+    for (const row of out.rows.slice(1)) {
+      if (row.key === 'short-reads') {
+        const short = row.shortReads ?? fail('invalid_document');
+        if (shortSeen || options.shortReadsLimit === undefined || row.series !== undefined || row.items.length !== 0 || short.length < 1 || short.length > options.shortReadsLimit) fail('invalid_document');
+        shortSeen = true;
+        const ids = new Set<string>();
+        for (const entry of short) {
+          checkItem(entry.item, options.libraryId);
+          if (entry.item.format !== 'epub' || !integer(entry.wordCount, 1, 44999) || !integer(entry.estimatedSeconds, 1, 10800) || entry.estimatedSeconds !== Math.ceil(entry.wordCount * 60 / 250) || ids.has(entry.item.id)) fail('invalid_document');
+          ids.add(entry.item.id);
+        }
+        continue;
+      }
+      if (seriesSeen || shortSeen || row.shortReads !== undefined) fail('invalid_document');
+      seriesSeen = true;
       const series=row.series??fail('invalid_document');
       if(options.seriesLimit===undefined || row.key!=='series' || row.items.length!==0 || series.length<1 || series.length>options.seriesLimit)fail('invalid_document');
       const seriesIds=new Set<string>(), previews=new Set<string>();
@@ -309,6 +354,32 @@ export class ReadingClient {
     }
     return out;
   }
+  async periodicalGroups(libraryId: string, publicationType: ReadingPeriodicalType, options: Readonly<{cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<ReadingPeriodicalGroupsPage> {
+    const limit = options.limit ?? 24;
+    if (!id(libraryId) || !periodicalType(publicationType) || !integer(limit, 1, 100) || options.cursor !== undefined && !seriesCursor(options.cursor)) fail('invalid_request');
+    const out = await this.json(query(routePath('get_reading_periodical_groups', {libraryId}), {...options, publicationType}), 'GET', undefined, signal, decodeGetReadingPeriodicalGroupsResponse, 2 << 20);
+    if (out.libraryId !== libraryId || out.publicationType !== publicationType || out.groups.length > limit || out.nextCursor !== undefined && (!seriesCursor(out.nextCursor) || out.groups.length !== limit)) fail('invalid_document');
+    const groups = new Set<string>(), latest = new Set<string>();
+    for (const group of out.groups) {
+      if (!seriesID(group.id) || groups.has(group.id) || typeof group.name !== 'string' || !group.name.trim() || group.name.length > 4096 || !integer(group.issueCount, 1, Number.MAX_SAFE_INTEGER) || latest.has(group.latest.item.id)) fail('invalid_document');
+      validateIssue(group.latest, libraryId, publicationType, group.id);
+      groups.add(group.id); latest.add(group.latest.item.id);
+    }
+    return out;
+  }
+  async periodicalIssues(libraryId: string, seriesId: string, publicationType: ReadingPeriodicalType, options: Readonly<{cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<ReadingPeriodicalIssuesPage> {
+    const limit = options.limit ?? 50;
+    if (!id(libraryId) || !seriesID(seriesId) || !periodicalType(publicationType) || !integer(limit, 1, 100) || options.cursor !== undefined && !seriesCursor(options.cursor)) fail('invalid_request');
+    const out = await this.json(query(routePath('get_reading_periodical_issues', {libraryId, seriesId}), {...options, publicationType}), 'GET', undefined, signal, decodeGetReadingPeriodicalIssuesResponse, 2 << 20);
+    if (out.libraryId !== libraryId || out.seriesId !== seriesId || out.publicationType !== publicationType || out.items.length > limit || out.nextCursor !== undefined && (!seriesCursor(out.nextCursor) || out.items.length !== limit)) fail('invalid_document');
+    const seen = new Set<string>(); let previous: string | undefined;
+    for (const entry of out.items) {
+      validateIssue(entry, libraryId, publicationType, seriesId);
+      if (seen.has(entry.item.id) || previous !== undefined && previous < entry.issueDate) fail('invalid_document');
+      seen.add(entry.item.id); previous = entry.issueDate;
+    }
+    return out;
+  }
   async series(libraryId: string, seriesId: string, options: Readonly<{cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<ReadingSeriesPage> {
     const cursor = options.cursor;
     if (!id(libraryId) || !/^[A-Za-z0-9_-]{43}$/.test(seriesId) || !integer(options.limit ?? 50, 1, 100) || (cursor !== undefined && !/^[A-Za-z0-9_-]{171}\.[A-Za-z0-9_-]{43}$/.test(cursor))) fail('invalid_request');
@@ -316,7 +387,7 @@ export class ReadingClient {
     if (out.items.length > (options.limit ?? 50) || (out.nextCursor !== undefined && !/^[A-Za-z0-9_-]{171}\.[A-Za-z0-9_-]{43}$/.test(out.nextCursor))) fail('invalid_document');
     const seen = new Set<string>();
     for (const item of out.items) {
-      if (!id(item.id) || item.libraryId !== libraryId || !id(item.sourceId) || !format(item.format) || item.series?.id !== seriesId || seen.has(item.id)) fail('invalid_document');
+      if (!validReadingCover(item.id, item.coverUrl) || !id(item.id) || item.libraryId !== libraryId || !id(item.sourceId) || !format(item.format) || item.series?.id !== seriesId || seen.has(item.id)) fail('invalid_document');
       seen.add(item.id);
     }
     return out;
@@ -328,7 +399,7 @@ export class ReadingClient {
     const seen = new Set<string>();
     for (const {item, progress} of out.items) {
       const location = progress.location;
-      if (!id(item.id) || !id(item.libraryId) || !id(item.sourceId) || !format(item.format) || seen.has(item.id) || progress.sourceId !== item.sourceId || !revision(progress.sourceRevision) || !integer(progress.revision, 1, Number.MAX_SAFE_INTEGER) || !integer(progress.observedAt, 1, Number.MAX_SAFE_INTEGER) || !format(location.format) || (!progress.stale && location.format !== item.format) || !Number.isFinite(location.progression) || location.progression < 0 || location.progression >= 1) fail('invalid_progress');
+      if (!validReadingCover(item.id, item.coverUrl) || !id(item.id) || !id(item.libraryId) || !id(item.sourceId) || !format(item.format) || seen.has(item.id) || progress.sourceId !== item.sourceId || !revision(progress.sourceRevision) || !integer(progress.revision, 1, Number.MAX_SAFE_INTEGER) || !integer(progress.observedAt, 1, Number.MAX_SAFE_INTEGER) || !format(location.format) || (!progress.stale && location.format !== item.format) || !Number.isFinite(location.progression) || location.progression < 0 || location.progression >= 1) fail('invalid_progress');
       if (location.format === 'epub') {
         if (location.pageIndex !== undefined || !location.cfi?.startsWith('epubcfi(/') || !location.cfi.endsWith(')') || new TextEncoder().encode(location.cfi).length > 4096 || /[\p{Cc}<>]/u.test(location.cfi) || (location.section !== undefined && !member(location.section))) fail('invalid_progress');
       } else if (location.cfi !== undefined || location.section !== undefined || !integer(location.pageIndex ?? -1, 0, 2147483647)) fail('invalid_progress');

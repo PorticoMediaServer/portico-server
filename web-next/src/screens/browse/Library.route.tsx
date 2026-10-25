@@ -1,5 +1,7 @@
 import {LibraryMetadataMenu} from '../metadata/LibraryMetadataMenu';
 import {ReadSeriesEntry} from '../read/ReadSeriesEntry';
+import {ReadPeriodicalEntry} from '../read/ReadPeriodicalEntry';
+import type {ReadingPeriodicalType} from '@portico/client-core';
 import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {useLocation, useParams, useSearch} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
@@ -13,7 +15,7 @@ import {randomId} from '@core/random-id.ts';
 import {defineWebScreen} from '../../route-registry';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
-import {StateView} from '../../kit/states';
+import {Skeleton, StateView} from '../../kit/states';
 import {LibraryEmpty} from '../../kit/states/LibraryEmpty';
 import {useShellWidth} from '../../shell/viewport';
 import {createEpisodeSelection} from '../detail/episode-selection';
@@ -38,34 +40,59 @@ import {FacetPage, ReadLibraryEntry, authorPredicate, type FacetRequest} from '.
 import {isReadingLibrary} from './reading-library';
 
 const t = defaultI18n.t;
+type PeriodicalTab = Readonly<{id: 'magazines' | 'newspapers'; label: 'library.tab.magazines' | 'library.tab.newspapers'; pivot: 'magazines' | 'newspapers'; shows: 'periodicals'; publicationType: ReadingPeriodicalType}>;
+type ReadingTab = LibraryTab | PeriodicalTab;
+function readingTabs(capabilities: BrowseCapabilities | undefined, kind: string): readonly ReadingTab[] {
+  const base = readingTabModel(capabilities) ?? libraryTabs(kind);
+  if (!capabilities || capabilities.library.kind !== 'book') return base;
+  const out: ReadingTab[] = [base.find(tab => tab.id === 'discover') ?? base[0]!];
+  for (const pivot of capabilities.pivots) {
+    if (!pivot.browsable && pivot.facetSource?.field === 'publicationType' && (pivot.id === 'magazines' || pivot.id === 'newspapers')) {
+      out.push({id: pivot.id, label: pivot.id === 'magazines' ? 'library.tab.magazines' : 'library.tab.newspapers', pivot: pivot.id, shows: 'periodicals', publicationType: pivot.id === 'magazines' ? 'magazine' : 'newspaper'});
+      continue;
+    }
+    const tab = base.find(tab => tab.pivot === pivot.id || tab.id === pivot.id);
+    if (tab && !out.some(candidate => candidate.id === tab.id)) out.push(tab);
+  }
+  return out.length > 1 ? out : base;
+}
+
 function ReadingLibrary({captured, library, search}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch}) {
   const context = useLibraryScreenContext(captured), appearance = useScreenAppearance(captured.context)!, width = useShellWidth();
   const life = useMemo(() => screenLifetime(context), [context]);
-  const [capabilities, setCapabilities] = useState<BrowseCapabilities>();
+  const [capabilitySnapshot, setCapabilities] = useState<Readonly<{context: ProtectedLibraryScreen['context']; data: BrowseCapabilities}>>();
+  const capabilities = capabilitySnapshot?.context === captured.context && capabilitySnapshot.data.library.id === library.id && capabilitySnapshot.data.library.kind === library.kind ? capabilitySnapshot.data : undefined;
   useEffect(() => () => life.dispose(), [life]);
   useEffect(() => {
     let active = true;
     void (async () => {
       const raw = await life.api.request(browseCapabilitiesPath(library.id, library.kind === 'comic' ? 'comics' : 'books'), 'GET');
-      if (active && life.current()) setCapabilities(parseBrowseCapabilities(raw));
+      if (active && life.current()) setCapabilities({context: captured.context, data: parseBrowseCapabilities(raw)});
     })().catch(error => {if (active && life.current()) context.effects.reportError(error);});
     return () => {active = false;};
   }, [context, life, library.id, library.kind]);
   /** Root §3: the server's published pivots decide the reading tabs; older servers keep the authored pair. */
-  const tabs = useMemo(() => readingTabModel(capabilities) ?? libraryTabs(library.kind), [capabilities, library.kind]);
-  const selected = tabs.find(tab => tab.id === (search.view ?? 'discover')) ?? tabs[0]!;
+  const tabs = useMemo(() => readingTabs(capabilities, library.kind), [capabilities, library.kind]);
+  const periodicalPivot = search.pivot === 'magazines' || search.pivot === 'newspapers' ? search.pivot : undefined;
+  const selected = tabs.find(tab => tab.id === (periodicalPivot ?? search.view ?? 'discover')) ?? tabs[0]!;
   const gridPivot = tabs.find(tab => tab.id === 'browse')?.pivot;
   const navigate = (value: LibraryScreenSearch) => {if (context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId: library.id}, search: value}).catch(context.effects.reportError);};
-  const header = <LibraryIdentity library={library} libraries={context.identity?.libraries ?? []} pivot={selected.id}
+  const header = <LibraryIdentity library={library} libraries={context.identity?.libraries ?? []} pivot={periodicalPivot ?? selected.id}
     tabs={tabs.map(tab => ({value: tab.id, label: t(tab.label)}))}
     appearance={{view: appearance.libraryView, cardWidth: width < 600 ? 108 : 190, cardSize: 'medium', backdrops: appearance.showBackdrops}}
     preferences={appearance} artwork={context.artwork} libraryMenu={undefined}
     onPivot={id => {const tab = tabs.find(tab => tab.id === id); if (!tab) return;
+      if (tab.shows === 'periodicals') {navigate({view: 'series', pivot: tab.id}); return;}
       if (tab.shows === 'facet') {navigate({view: tab.id === 'authors' ? 'authors' : 'series'}); return;}
       navigate({view: tab.id === 'discover' ? 'discover' : 'browse', ...(tab.pivot ? {pivot: tab.pivot} : {})});}}
     onLibrary={libraryId => {if (context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId}, search: {}}).catch(context.effects.reportError);}}
     onLibraries={() => {if (context.isCurrent()) void router.navigate({to: '/libraries'}).catch(context.effects.reportError);}}/>;
   const request = useMemo<FacetRequest>(() => (path, method, body, signal) => life.api.request(path, method, body, signal), [life]);
+  if (periodicalPivot) {
+    if (!capabilities) return <>{header}<Skeleton height={320}/></>;
+    if (selected.shows !== 'periodicals' || selected.id !== periodicalPivot || search.query || search.sort?.length || search.q) return <>{header}<StateView title={t('title.nothingHere')}/></>;
+    return <>{header}<ReadPeriodicalEntry libraryId={library.id} kind={selected.publicationType} seriesId={search.entityId}/></>;
+  }
   if (search.view === 'series' && search.entityId) return <>{header}<ReadSeriesEntry libraryId={library.id} seriesId={search.entityId}/></>;
   if (selected.shows === 'facet') return <>{header}<FacetPage libraryId={library.id} field={selected.facetSource?.field === 'series' ? 'series' : 'author'}
     pivot={gridPivot ?? (library.kind === 'comic' ? 'comics' : 'books')} request={request}
