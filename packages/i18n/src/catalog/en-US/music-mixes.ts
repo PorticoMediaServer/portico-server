@@ -13,4 +13,6 @@ export const musicMixMessages = {
   'music.mix.style.dance': 'Dance',
   'music.mix.style.country': 'Country',
   'music.mix.style.metal': 'Metal',
+  'music.mixesAndMore': 'and more',
+  'music.mixesFromListening': 'From your listening',
 } as const;
