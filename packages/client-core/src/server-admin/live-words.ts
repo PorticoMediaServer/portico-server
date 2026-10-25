@@ -49,7 +49,7 @@ export function tunerStatus(t: Translate, source: Readonly<{conflicts: number; i
   return {tone: source.tunerCount > 0 && source.inUse >= source.tunerCount ? 'warning' : 'healthy', text: t('server.live.tunersInUse', {used: source.inUse, total: source.tunerCount})};
 }
 
-/** What a Live TV source is doing, for the badge on its row: paused by the owner, refreshing, in trouble, or up to date. A state this client has no word for reads as up to date only when nothing says otherwise. */
+/** What a remote Live TV source is doing, for the badge on its row, from the admin source document: the source is on or paused by the owner, and its refresh row is healthy, refreshing, degraded or waiting for sign-in. A state this client has no word for says Not checked instead of claiming health. */
 export function liveSourceState(source: Readonly<{state: string}>, refresh: Readonly<{state: string}> | undefined): Readonly<{id: MessageId; tone: 'healthy' | 'warning' | 'danger' | 'neutral'; live: boolean}> {
   if (source.state === 'disabled') return {id: 'web.liveTv.pausedBadge', tone: 'neutral', live: false};
   if (refresh?.state === 'refreshing') return {id: 'server.live.state.refreshing', tone: 'warning', live: true};
@@ -57,5 +57,6 @@ export function liveSourceState(source: Readonly<{state: string}>, refresh: Read
   if (source.state === 'failed') return {id: 'server.live.state.failed', tone: 'danger', live: false};
   if (refresh?.state === 'degraded') return {id: 'server.live.state.degraded', tone: 'danger', live: false};
   if (source.state === 'pending' || source.state === 'new') return {id: 'server.live.state.waiting', tone: 'neutral', live: false};
-  return {id: 'server.live.state.ready', tone: 'healthy', live: false};
+  if ((source.state === 'active' || source.state === 'ready') && (refresh === undefined || refresh.state === 'healthy')) return {id: 'server.live.state.ready', tone: 'healthy', live: false};
+  return {id: 'web.capabilities.unknown', tone: 'neutral', live: false};
 }
