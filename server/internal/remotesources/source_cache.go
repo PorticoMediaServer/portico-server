@@ -25,21 +25,21 @@ import (
 // and never shared with another source or another version of the same object.
 
 type rangeCache struct {
-	service       *Service
-	source        string
-	key           string
-	file          *os.File
-	size          int64
-	cached        int64
-	configured    int64
-	floor         int64
-	committed     bool
-	guard         *cacheGuard
-	budget        *sourceCacheBudget
-	reservedBytes int64
-	generation    string
-	binding       binding
-	release       func()
+	service    *Service
+	source     string
+	key        string
+	file       *os.File
+	size       int64
+	cached     int64
+	configured int64
+	floor      int64
+	committed  bool
+	guard      *cacheGuard
+	budget     *sourceCacheBudget
+	fileInfo   os.FileInfo
+	generation string
+	binding    binding
+	release    func()
 }
 
 func cacheDirectory(private, source string) (string, error) {
@@ -70,6 +70,10 @@ func (s *Service) openRangeCache(ctx context.Context, b binding, generation stri
 	if s == nil || s.db == nil || s.private == "" {
 		return nil, nil
 	}
+	// Publication and admission cannot cross a source-cache cleanup cut. The
+	// lifecycle lock is always taken before an entry guard, never beneath one.
+	s.cacheLife.RLock()
+	defer s.cacheLife.RUnlock()
 	snapshotTx, err := dbwork.BeginSnapshot(ctx, s.db)
 	if err != nil {
 		return nil, err
@@ -88,12 +92,29 @@ func (s *Service) openRangeCache(ctx context.Context, b binding, generation stri
 	}
 	key := cacheKey(generation, snapshot)
 	file := filepath.Join(directory, key+".range")
-	guard := s.guardFor(b.ID, key)
+	guard := s.guardForOpen(b.ID, key)
 	guard.mu.Lock()
 	defer guard.mu.Unlock()
+	if s.cacheGuardRetired(guard) {
+		return nil, storage.ErrRemoteChanged
+	}
+	if err := s.check(ctx, b, generation); err != nil {
+		return nil, err
+	}
 	handle, err := os.OpenFile(file, os.O_RDWR|os.O_CREATE, 0600)
 	if err != nil {
 		return nil, storage.ErrRemoteLimit
+	}
+	info, err := handle.Stat()
+	if err != nil {
+		handle.Close()
+		return nil, err
+	}
+	if guard.loaded && (guard.fileInfo == nil || !os.SameFile(guard.fileInfo, info) || info.Size() < guard.cached) {
+		// A shared prefix cannot be rebound or truncated under another acquisition.
+		// In particular, an old descriptor must never publish a replacement inode.
+		handle.Close()
+		return nil, storage.ErrRemoteChanged
 	}
 	if !guard.loaded {
 		cached := int64(0)
@@ -114,18 +135,17 @@ func (s *Service) openRangeCache(ctx context.Context, b binding, generation stri
 		}
 		guard.cached = cached
 		guard.loaded = true
-	}
-	// A file shorter than the shared prefix (truncated outside this process) is
-	// not trusted: the prefix restarts at zero for everyone.
-	if info, statErr := handle.Stat(); statErr != nil || info.Size() < guard.cached {
-		if err = handle.Truncate(0); err != nil {
-			handle.Close()
-			return nil, err
-		}
-		guard.cached = 0
+		guard.fileInfo = info
 	}
 	guard.pins++
-	return &rangeCache{service: s, source: b.ID, key: key, file: handle, size: snapshot.Size, configured: bytes, floor: floor, guard: guard, generation: generation, binding: b}, nil
+	return &rangeCache{service: s, source: b.ID, key: key, file: handle, fileInfo: info, size: snapshot.Size, configured: bytes, floor: floor, guard: guard, budget: guard.budget, generation: generation, binding: b}, nil
+}
+
+// currentFileLocked verifies the pathname still names this acquisition's inode.
+// Callers hold the entry guard; no cleanup can unlink a successor by name alone.
+func (c *rangeCache) currentFileLocked() bool {
+	info, err := os.Lstat(c.file.Name())
+	return err == nil && info.Mode().IsRegular() && c.fileInfo != nil && os.SameFile(c.fileInfo, info)
 }
 
 // append fills the cache from the current end to end. Growth is checked
@@ -135,6 +155,15 @@ func (s *Service) openRangeCache(ctx context.Context, b binding, generation stri
 func (c *rangeCache) append(ctx context.Context, stream io.Reader, end int64) error {
 	if c == nil || c.file == nil || end <= c.guard.cached || end > c.size {
 		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if c.service.cacheGuardRetired(c.guard) || !c.currentFileLocked() {
+		return storage.ErrRemoteChanged
+	}
+	if err := c.service.check(ctx, c.binding, c.generation); err != nil {
+		return err
 	}
 	var configured, floor int64
 	if err := c.service.db.QueryRowContext(ctx, `SELECT cache_bytes,cache_floor_bytes FROM remote_source_settings WHERE source_id=?`, c.source).Scan(&configured, &floor); err != nil || configured <= 0 {
@@ -146,9 +175,6 @@ func (c *rangeCache) append(ctx context.Context, stream io.Reader, end int64) er
 	growth := end - c.guard.cached
 	if !reserveDiskGrowth(c.service.private, floor, growth) {
 		return storage.ErrRemoteLimit
-	}
-	if c.budget == nil {
-		c.budget = c.service.budgetFor(c.source)
 	}
 	budget := c.budget
 	if err := budget.load(ctx, c.service, c.source, configured); err != nil {
@@ -169,6 +195,12 @@ func (c *rangeCache) append(ctx context.Context, stream io.Reader, end int64) er
 	}
 	n, err := io.CopyN(c.file, stream, growth)
 	releaseDiskGrowth(c.service.private, growth)
+	if err == nil {
+		err = ctx.Err()
+	}
+	if err == nil && (c.service.cacheGuardRetired(c.guard) || !c.currentFileLocked()) {
+		err = storage.ErrRemoteChanged
+	}
 	if err != nil || n != growth {
 		budget.release(growth)
 		_ = c.file.Truncate(c.guard.cached)
@@ -176,7 +208,6 @@ func (c *rangeCache) append(ctx context.Context, stream io.Reader, end int64) er
 	}
 	budget.accept(growth)
 	c.guard.cached = end
-	c.reservedBytes += growth
 	return nil
 }
 
@@ -218,6 +249,8 @@ func (c *rangeCache) commit(ctx context.Context) error {
 	if c == nil || c.file == nil || c.committed {
 		return nil
 	}
+	c.service.cacheLife.RLock()
+	defer c.service.cacheLife.RUnlock()
 	c.committed = true
 	guard := c.guard
 	guard.mu.Lock()
@@ -230,8 +263,8 @@ func (c *rangeCache) commit(ctx context.Context) error {
 	if err := c.file.Close(); err != nil {
 		return err
 	}
-	if c.service.cacheGuardRetired(guard) {
-		return c.discardLocked(name)
+	if c.service.cacheGuardRetired(guard) || !c.currentFileLocked() {
+		return c.discardLocked(ctx)
 	}
 	now := time.Now().UnixMilli()
 	result, err := dbwork.ExecWrite(ctx, c.service.db, dbwork.ClassBackgroundMedia, `INSERT INTO remote_source_cache_entries(source_id,cache_key,file_name,used_bytes,object_size,accessed_ms)
@@ -242,28 +275,38 @@ ON CONFLICT(source_id,cache_key) DO UPDATE SET used_bytes=excluded.used_bytes,ob
 		return err
 	}
 	if n, _ := result.RowsAffected(); n == 0 {
-		return c.discardLocked(name)
+		return c.discardLocked(ctx)
 	}
 	return c.service.evictSourceCache(ctx, c.source, c.configured, c.key, 0)
 }
 
 // discardLocked runs under commit's guard. Reacquiring it would deadlock the
 // acquisition's Close before it can unpin the cache and release its source slot.
-func (c *rangeCache) discardLocked(name string) error {
-	sole := c.guard.pins <= 1
-	if sole {
-		c.guard.cached, c.guard.loaded = 0, false
+func (c *rangeCache) discardLocked(ctx context.Context) error {
+	if c.guard.pins > 1 {
+		// The bytes and their budget belong to the shared file, not this writer.
+		return nil
 	}
-	if sole {
-		directory, err := cacheDirectory(c.service.private, c.source)
-		if err == nil {
-			_ = os.Remove(filepath.Join(directory, name))
+	var published string
+	err := c.service.db.QueryRowContext(ctx, `SELECT file_name FROM remote_source_cache_entries WHERE source_id=? AND cache_key=?`, c.source, c.key).Scan(&published)
+	if err == nil {
+		// Another acquisition may have published this shared prefix under newer
+		// settings. A refused old commit must not unlink or unaccount its bytes.
+		return nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if c.currentFileLocked() {
+		if err = os.Remove(c.file.Name()); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
 		}
 	}
 	// Settle against the exact bucket this allocation reserved from.
 	if c.budget != nil {
-		c.budget.subtract(c.reservedBytes)
+		c.budget.subtract(c.guard.cached)
 	}
+	c.guard.cached, c.guard.loaded, c.guard.fileInfo = 0, false, nil
 	return nil
 }
 
@@ -288,6 +331,7 @@ func (s *Service) evictSourceCache(ctx context.Context, source string, limit int
 	if limit <= 0 {
 		return nil
 	}
+	budget := s.budgetFor(source)
 	var total int64
 	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(used_bytes),0) FROM remote_source_cache_entries WHERE source_id=?`, source).Scan(&total); err != nil {
 		return err
@@ -321,8 +365,13 @@ func (s *Service) evictSourceCache(ctx context.Context, source string, limit int
 		return readErr
 	}
 	directory, dirErr := cacheDirectory(s.private, source)
-	budget := s.budgetFor(source)
+	if dirErr != nil {
+		return dirErr
+	}
 	for _, v := range victims {
+		if filepath.Base(v.file) != v.file {
+			continue
+		}
 		g := s.guardFor(source, v.key)
 		// Never block while another key's guard is held by this caller: a pair
 		// of growths would otherwise wait on each other. Skipping is safe; the
@@ -334,17 +383,32 @@ func (s *Service) evictSourceCache(ctx context.Context, source string, limit int
 			g.mu.Unlock()
 			continue
 		}
-		if _, err = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM remote_source_cache_entries WHERE source_id=? AND cache_key=?`, source, v.key); err != nil {
+		info, _ := os.Lstat(filepath.Join(directory, v.file))
+		result, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM remote_source_cache_entries WHERE source_id=? AND cache_key=? AND file_name=? AND used_bytes=?`, source, v.key, v.file, v.bytes)
+		if err != nil {
 			g.mu.Unlock()
 			return err
 		}
-		if dirErr == nil && filepath.Base(v.file) == v.file {
-			_ = os.Remove(filepath.Join(directory, v.file))
+		if n, _ := result.RowsAffected(); n != 1 {
+			g.mu.Unlock()
+			continue
 		}
-		// The inode is gone; the shared prefix for that key restarts empty.
-		g.cached, g.loaded = 0, false
+		if g.fileInfo != nil {
+			info = g.fileInfo
+		}
+		removeCacheFile(filepath.Join(directory, v.file), info)
+		// The row is gone; a later acquisition cannot reuse its remembered prefix.
+		freed := v.bytes
+		if g.loaded && g.cached > freed {
+			freed = g.cached
+		}
+		g.cached, g.loaded, g.fileInfo = 0, false, nil
+		ownedBudget := g.budget
 		g.mu.Unlock()
-		budget.subtract(v.bytes)
+		if ownedBudget == nil {
+			ownedBudget = budget
+		}
+		ownedBudget.subtract(freed)
 	}
 	return nil
 }
@@ -355,47 +419,65 @@ func (s *Service) clearSourceCache(ctx context.Context, source string) error {
 	if s == nil || s.db == nil {
 		return nil
 	}
+	s.cacheLife.Lock()
+	defer s.cacheLife.Unlock()
 	s.retireSourceCacheGuards(source)
-	// A new budget object owns all future allocations; old allocations settle
-	// only against the object they reserved from.
-	s.cacheMu.Lock()
-	delete(s.cacheBudgets, source)
-	s.cacheMu.Unlock()
-	rows, err := s.db.QueryContext(ctx, `SELECT cache_key,file_name FROM remote_source_cache_entries WHERE source_id=? LIMIT 1024`, source)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	directory, err := cacheDirectory(s.private, source)
 	if err != nil {
 		return err
 	}
 	type owned struct{ key, file string }
-	files := []owned{}
-	for rows.Next() {
-		var one owned
-		if rows.Scan(&one.key, &one.file) == nil {
+	for {
+		rows, err := s.db.QueryContext(ctx, `SELECT cache_key,file_name FROM remote_source_cache_entries WHERE source_id=? ORDER BY cache_key LIMIT 64`, source)
+		if err != nil {
+			return err
+		}
+		files := []owned{}
+		for rows.Next() {
+			var one owned
+			if err = rows.Scan(&one.key, &one.file); err != nil {
+				break
+			}
 			files = append(files, one)
 		}
-	}
-	rows.Close()
-	if _, err = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM remote_source_cache_entries WHERE source_id=?`, source); err != nil {
-		return err
-	}
-	directory, dirErr := cacheDirectory(s.private, source)
-	if dirErr != nil {
-		return nil
-	}
-	for _, one := range files {
-		if filepath.Base(one.file) != one.file || one.key == "" {
-			continue
+		readErr := rows.Err()
+		rows.Close()
+		if err != nil {
+			return err
 		}
-		g := s.guardFor(source, one.key)
-		if !g.mu.TryLock() {
-			continue
+		if readErr != nil {
+			return readErr
 		}
-		if g.pins == 0 && g.readers == 0 {
-			_ = os.Remove(filepath.Join(directory, one.file))
-			g.cached, g.loaded = 0, false
+		if len(files) == 0 {
+			return nil
 		}
-		g.mu.Unlock()
+		for _, one := range files {
+			// Never delete unseen rows beyond the bounded page. An interrupted
+			// cleanup retains their ownership records for a later attempt.
+			result, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM remote_source_cache_entries WHERE source_id=? AND cache_key=? AND file_name=?`, source, one.key, one.file)
+			if err != nil {
+				return err
+			}
+			if n, _ := result.RowsAffected(); n != 1 || filepath.Base(one.file) != one.file || one.key == "" {
+				continue
+			}
+			g := s.guardFor(source, one.key)
+			if !g.mu.TryLock() {
+				continue
+			}
+			if g.pins == 0 && g.readers == 0 {
+				info := g.fileInfo
+				if info == nil {
+					info, _ = os.Lstat(filepath.Join(directory, one.file))
+				}
+				removeCacheFile(filepath.Join(directory, one.file), info)
+				g.cached, g.loaded, g.fileInfo = 0, false, nil
+			}
+			g.mu.Unlock()
+		}
 	}
-	return nil
 }
 
 // reconcileSourceCache drops entries whose file is missing or shorter than the
@@ -449,16 +531,28 @@ func (s *Service) reconcileSourceCachePage(ctx context.Context) {
 			g.mu.Unlock()
 			continue
 		}
-		info, statErr := os.Stat(filepath.Join(directory, e.file))
-		if statErr == nil && info.Size() >= e.used {
+		info, statErr := os.Lstat(filepath.Join(directory, e.file))
+		if statErr == nil && info.Mode().IsRegular() && info.Size() >= e.used && (g.fileInfo == nil || os.SameFile(g.fileInfo, info)) {
 			g.mu.Unlock()
 			continue
 		}
-		result, delErr := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM remote_source_cache_entries WHERE source_id=? AND cache_key=? AND used_bytes=?`, e.source, e.key, e.used)
+		budget := g.budget
+		if budget == nil {
+			budget = s.budgetFor(e.source)
+		}
+		result, delErr := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM remote_source_cache_entries WHERE source_id=? AND cache_key=? AND file_name=? AND used_bytes=?`, e.source, e.key, e.file, e.used)
 		if delErr == nil {
 			if n, _ := result.RowsAffected(); n == 1 {
-				_ = os.Remove(filepath.Join(directory, e.file))
-				s.budgetFor(e.source).subtract(e.used)
+				if g.fileInfo != nil {
+					info = g.fileInfo
+				}
+				removeCacheFile(filepath.Join(directory, e.file), info)
+				freed := e.used
+				if g.loaded && g.cached > freed {
+					freed = g.cached
+				}
+				budget.subtract(freed)
+				g.cached, g.loaded, g.fileInfo = 0, false, nil
 			}
 		}
 		g.mu.Unlock()
@@ -466,6 +560,17 @@ func (s *Service) reconcileSourceCachePage(ctx context.Context) {
 	s.cacheMu.Lock()
 	s.cacheReconcile.source, s.cacheReconcile.key = cursorSource, cursorKey
 	s.cacheMu.Unlock()
+}
+
+// The guard excludes in-process replacements; the inode check also refuses a
+// pathname that changed while the database writer was accepting the deletion.
+func removeCacheFile(path string, original os.FileInfo) {
+	if original == nil || !original.Mode().IsRegular() {
+		return
+	}
+	if current, err := os.Lstat(path); err == nil && os.SameFile(original, current) {
+		_ = os.Remove(path)
+	}
 }
 
 type sourceCacheBudget struct {
@@ -482,8 +587,10 @@ type cacheGuard struct {
 	retired bool
 	// cached is the committed prefix both readers and writers share for this
 	// source+key; it only moves under mu.
-	cached int64
-	loaded bool
+	cached   int64
+	loaded   bool
+	fileInfo os.FileInfo
+	budget   *sourceCacheBudget
 	// pins counts acquisitions holding this entry open, so eviction never
 	// unlinks a file an acquisition may still publish from.
 	pins int
@@ -493,14 +600,33 @@ type cacheGuard struct {
 func (s *Service) guardFor(source, key string) *cacheGuard {
 	s.cacheMu.Lock()
 	defer s.cacheMu.Unlock()
+	return s.guardForLocked(source, key, false)
+}
+
+// Only an admission after cleanup may replace a retired, completely unpinned
+// guard. Cleanup itself retains the original guard and original budget owner.
+func (s *Service) guardForOpen(source, key string) *cacheGuard {
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+	return s.guardForLocked(source, key, true)
+}
+
+func (s *Service) guardForLocked(source, key string, renew bool) *cacheGuard {
 	if s.cacheGuards == nil {
 		s.cacheGuards = map[string]*cacheGuard{}
 	}
 	id := source + "\x00" + key
 	if g := s.cacheGuards[id]; g != nil {
-		return g
+		if !renew || !g.retired || !g.mu.TryLock() {
+			return g
+		}
+		busy := g.pins > 0 || g.readers > 0
+		g.mu.Unlock()
+		if busy {
+			return g
+		}
 	}
-	g := &cacheGuard{}
+	g := &cacheGuard{budget: s.budgetForLocked(source)}
 	s.cacheGuards[id] = g
 	return g
 }
@@ -508,6 +634,10 @@ func (s *Service) guardFor(source, key string) *cacheGuard {
 func (s *Service) budgetFor(source string) *sourceCacheBudget {
 	s.cacheMu.Lock()
 	defer s.cacheMu.Unlock()
+	return s.budgetForLocked(source)
+}
+
+func (s *Service) budgetForLocked(source string) *sourceCacheBudget {
 	if s.cacheBudgets == nil {
 		s.cacheBudgets = map[string]*sourceCacheBudget{}
 	}
@@ -591,6 +721,9 @@ func (s *Service) retireSourceCacheGuards(source string) {
 			g.retired = true
 		}
 	}
+	// Guard creation captures its bucket under this same lock. A new source
+	// incarnation cannot inherit a bucket that old file owners still settle.
+	delete(s.cacheBudgets, source)
 }
 
 // cacheReadCloser keeps the acquisition lease and its cancellation live for the
@@ -600,28 +733,40 @@ type cacheReadCloser struct {
 	ctx     context.Context
 	release func()
 	guard   *cacheGuard
+	service *Service
+	cache   *rangeCache
+	once    sync.Once
 }
 
 func (r *cacheReadCloser) Read(p []byte) (int, error) {
 	if err := r.ctx.Err(); err != nil {
 		return 0, err
 	}
-	return r.reader.Read(p)
+	if r.service.cacheGuardRetired(r.guard) {
+		return 0, storage.ErrRemoteChanged
+	}
+	n, err := r.reader.Read(p)
+	if stopped := r.ctx.Err(); stopped != nil {
+		return 0, stopped
+	}
+	if r.service.cacheGuardRetired(r.guard) {
+		return 0, storage.ErrRemoteChanged
+	}
+	return n, err
 }
 
 func (r *cacheReadCloser) Close() error {
-	if r.guard != nil {
+	r.once.Do(func() {
 		r.guard.mu.Lock()
 		if r.guard.readers > 0 {
 			r.guard.readers--
 		}
+		r.cache.discardUnownedLocked()
 		r.guard.mu.Unlock()
-		r.guard = nil
-	}
-	if r.release != nil {
-		r.release()
-		r.release = nil
-	}
+		if r.release != nil {
+			r.release()
+		}
+	})
 	return nil
 }
 
@@ -635,7 +780,7 @@ func (c *rangeCache) holdReader(ctx context.Context, offset, length int64, relea
 // lookup and reader pin cannot be separated from the fill decision.
 func (c *rangeCache) holdReaderLocked(ctx context.Context, offset, length int64, release func()) io.ReadCloser {
 	c.guard.readers++
-	return &cacheReadCloser{reader: io.NewSectionReader(c.file, offset, length), ctx: ctx, release: release, guard: c.guard}
+	return &cacheReadCloser{reader: io.NewSectionReader(c.file, offset, length), ctx: ctx, release: release, guard: c.guard, service: c.service, cache: c}
 }
 
 // unpin releases the acquisition's hold on this entry after its cache has been
@@ -648,7 +793,19 @@ func (c *rangeCache) unpin() {
 	if c.guard.pins > 0 {
 		c.guard.pins--
 	}
+	c.discardUnownedLocked()
 	c.guard.mu.Unlock()
+}
+
+// A cleanup may have skipped a busy file after deleting its exact row. The
+// final original owner retries private cleanup, without selecting a successor.
+func (c *rangeCache) discardUnownedLocked() {
+	if c.guard.pins != 0 || c.guard.readers != 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_ = c.discardLocked(ctx)
 }
 
 func (s *Service) cacheUsed(ctx context.Context, source string) (int64, error) {

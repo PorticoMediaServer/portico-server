@@ -407,6 +407,14 @@ func (o *object) fromRangeCache(ctx context.Context, offset, length int64, relea
 		return nil, nil
 	}
 	cache.guard.mu.Lock()
+	if err := ctx.Err(); err != nil {
+		cache.guard.mu.Unlock()
+		return nil, err
+	}
+	if cache.service.cacheGuardRetired(cache.guard) || !cache.currentFileLocked() {
+		cache.guard.mu.Unlock()
+		return nil, storage.ErrRemoteChanged
+	}
 	if offset > cache.guard.cached {
 		cache.guard.mu.Unlock()
 		return nil, nil

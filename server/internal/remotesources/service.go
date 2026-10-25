@@ -66,6 +66,7 @@ type Service struct {
 	listings            sync.Mutex
 	listingClaims       map[string]bool
 	cacheMu             sync.Mutex
+	cacheLife           sync.RWMutex
 	cacheBudgets        map[string]*sourceCacheBudget
 	cacheGuards         map[string]*cacheGuard
 	cacheReconcile      struct{ source, key string }
