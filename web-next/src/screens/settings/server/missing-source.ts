@@ -1,7 +1,7 @@
 import {listMissingTitles, parseMissingEmptied, type MissingTitlesPage, type MissingEmptied, type TitleIdentityApi} from '@core/title-identity.ts';
 import {routePath} from '../../../../../packages/contracts/src/routes.ts';
 
-export type MissingSnapshot = Readonly<{phase: 'idle'|'loading'|'ready'|'error'; page?: MissingTitlesPage; busy: boolean; removed?: MissingEmptied; error?: boolean}>;
+export type MissingSnapshot = Readonly<{phase: 'idle'|'loading'|'ready'|'error'; page?: MissingTitlesPage; busy: boolean; removed?: MissingEmptied; error?: 'read'|'remove'}>;
 const empty: MissingSnapshot = Object.freeze({phase: 'idle', busy: false});
 const terminal = (error: unknown) => {
   const {status, code} = (error && typeof error === 'object' ? error : {}) as {status?: number; code?: string};
@@ -26,7 +26,7 @@ export class SettingsMissingSource {
   private failure(error: unknown) {
     if (terminal(error)) {this.read?.abort();this.lifetime.abort();this.state = empty;for (const listener of this.listeners) listener();this.reportError(error);}
   }
-  load = async (cursor = '', keepError = false): Promise<void> => {
+  load = async (cursor = '', keepError?: MissingSnapshot['error']): Promise<void> => {
     if (!this.current() || this.removing) return;
     this.read?.abort();const read = new AbortController();this.read = read;
     this.publish({phase: 'loading', error: keepError});
@@ -36,7 +36,7 @@ export class SettingsMissingSource {
       if (!this.ownsRead(read)) return;
       this.cursor = cursor;this.publish({phase: 'ready', page});
     } catch (error) {
-      if (this.ownsRead(read)) {this.publish({phase: 'error', error: true});this.failure(error);}
+      if (this.ownsRead(read)) {this.publish({phase: 'error', error: 'read'});this.failure(error);}
     }
   };
   refresh = () => this.load(this.cursor);
@@ -44,7 +44,7 @@ export class SettingsMissingSource {
    * that confirmation; the owner must inspect and confirm its new count. */
   remove = async (page: MissingTitlesPage, typed: string): Promise<void> => {
     if (!this.current() || this.removing || this.state.phase !== 'ready' || this.state.page !== page || !page.total || typed !== String(page.total)) return;
-    this.removing = true;this.read?.abort();this.read = undefined;this.publish({busy: true, removed: undefined, error: false});
+    this.removing = true;this.read?.abort();this.read = undefined;this.publish({busy: true, removed: undefined, error: undefined});
     try {
       if (!this.current() || !this.removing) return;
       const removed = parseMissingEmptied(await this.api.request(routePath('empty_missing_titles'), 'POST', {}, this.lifetime.signal));
@@ -53,7 +53,7 @@ export class SettingsMissingSource {
       // explicit typed confirmation for any remaining work.
       this.publish({removed, page: undefined, phase: 'idle'});
     } catch (error) {
-      if (this.current()) {this.publish({page: undefined, phase: 'error', error: true});this.failure(error);}
+      if (this.current()) {this.publish({page: undefined, phase: 'error', error: 'remove'});this.failure(error);}
     } finally {this.removing = false;this.publish({busy: false});}
     if (this.current()) await this.load('', this.state.error);
   };

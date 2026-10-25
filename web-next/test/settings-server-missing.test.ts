@@ -23,7 +23,7 @@ test('lost removal response rereads and never retries the destructive call', asy
   let posts = 0, reads = 0;
   const errors: unknown[] = [];
   const source = new SettingsMissingSource({request: async <T>(_path: string, method?: string) => {if (method === 'POST') {posts++;throw new Error('Response lost');}reads++;return page as T;}}, () => true, error => errors.push(error));
-  await source.load();await source.remove(source.getSnapshot().page!, '1');assert.equal(posts, 1);assert.equal(reads, 2);assert.equal(errors.length, 0);assert.equal(source.getSnapshot().error, true);source.dispose();
+  await source.load();await source.remove(source.getSnapshot().page!, '1');assert.equal(posts, 1);assert.equal(reads, 2);assert.equal(errors.length, 0);assert.equal(source.getSnapshot().error, 'remove');source.dispose();
 });
 
 test('terminal read failure retires the source and cannot issue a removal or another read', async () => {
