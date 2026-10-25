@@ -21,3 +21,5 @@
 .pinFields { display: grid; gap: 16px; }
 .pinFields > label { display: grid; gap: 8px; font-size: var(--type-synopsis-size); color: var(--color-text-secondary); }
 .danger { color: var(--color-record); }
+.pictureActions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pictureError { margin: 0; color: var(--color-record); font-size: var(--type-caption-size); }

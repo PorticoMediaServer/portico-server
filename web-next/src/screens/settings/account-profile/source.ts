@@ -1,10 +1,12 @@
 import {routePath} from '../../../../../packages/contracts/src/routes.ts';
 import {CodedError} from '@core/server-messages.ts';
+import {IdentityClient, type IdentityUpload} from '@core/identity-client.ts';
+import type {ProfileAvatar} from '@core/identity-restrictions.ts';
 import {ManagedProfilesClient, parseDirectSnapshot, type DirectSnapshot, type ManagedProfile, type ProfileAPI, type ProfileArt, type ProfileDeletion} from '@core/profile-management.ts';
 
 export type ProfileSettingsScope = Readonly<{serverId: string; accountId: string; profileId: string}>;
 export type ProfileSettingsSnapshot = Readonly<{
-  loading: boolean; busy: boolean; document?: DirectSnapshot; selectedId?: string; error?: unknown;
+  loading: boolean; busy: boolean; document?: DirectSnapshot; selectedId?: string; error?: unknown; avatars?: readonly ProfileAvatar[];
 }>;
 const empty: ProfileSettingsSnapshot = Object.freeze({loading: true, busy: false});
 
@@ -13,6 +15,7 @@ const empty: ProfileSettingsSnapshot = Object.freeze({loading: true, busy: false
  * cached shell capability into permission to edit another profile. */
 export class ProfileSettingsSource {
   private readonly client: ManagedProfilesClient;
+  private readonly identity: IdentityClient;
   private readonly scope: ProfileSettingsScope;
   private readonly lifetime = new AbortController();
   private readonly listeners = new Set<() => void>();
@@ -20,9 +23,10 @@ export class ProfileSettingsSource {
   private pending?: Promise<void>;
   private closed = false;
 
-  constructor(private readonly api: ProfileAPI, scope: ProfileSettingsScope, private readonly isCurrent: () => boolean) {
+  constructor(private readonly api: ProfileAPI, scope: ProfileSettingsScope, private readonly isCurrent: () => boolean, upload?: (path: string, body: Parameters<IdentityUpload>[1], contentType: string, signal: AbortSignal) => Promise<unknown>) {
     this.scope = Object.freeze({...scope});
     this.client = new ManagedProfilesClient(api, {...scope, authority: 'local'});
+    this.identity = new IdentityClient({request: (path, method, body, signal) => api.request(path, method, body, signal ?? this.lifetime.signal)}, upload ? (path, body, contentType) => upload(path, body, contentType, this.lifetime.signal) : undefined);
   }
   private current = () => !this.closed && this.isCurrent();
   getSnapshot = (): ProfileSettingsSnapshot => this.current() ? this.snapshot : empty;
@@ -90,6 +94,19 @@ export class ProfileSettingsSource {
   }
   rename = (name: string): Promise<void> => this.edit({name});
   color = (art: ProfileArt): Promise<void> => this.edit({art});
+  loadPictures = async (): Promise<void> => {
+    if (!this.current() || !this.snapshot.document || this.snapshot.avatars) return;
+    try {
+      const avatars = await this.identity.avatars(this.lifetime.signal);
+      if (this.current() && this.snapshot.document) this.publish({...this.snapshot, avatars});
+    } catch (error) {if (this.current()) this.publish({loading: false, busy: false, error});}
+  };
+  picture = (target: Pick<ManagedProfile, 'id' | 'revision'>, file?: File): Promise<void> => this.mutate(async document => {
+    const profile = document.profiles.find(candidate => candidate.id === target.id && candidate.revision === target.revision);
+    if (!profile) throw new CodedError('conflict', 'Refresh the profiles before trying again.');
+    if (file) await this.identity.uploadAvatar(profile.id, file, file.type);
+    else await this.identity.removeAvatar(profile.id);
+  }).then(() => this.loadPictures());
   /** Bind a PIN dialog to the profile/revision it actually opened for. */
   setPIN = (target: Pick<ManagedProfile, 'id' | 'revision'>, pin: string): Promise<void> => this.mutate(async document => {
     const profile = document.profiles.find(candidate => candidate.id === target.id && candidate.revision === target.revision);
