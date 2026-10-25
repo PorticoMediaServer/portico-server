@@ -9,6 +9,7 @@ def atomic(path,raw):
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--config',type=Path,required=True);parser.add_argument('--android',action='store_true',help='enable qualified native machine flows');args=parser.parse_args();os.umask(0o077)
     if args.config.resolve()!=ROOT/'.private/v3-checkpoints/config.json':parser.error('fixed private campaign config required')
+    args.config=args.config.resolve()
     cfg=json.loads(args.config.read_text());directory=args.config.parent;source=Path(__file__).with_name('run.py');installed=directory/'run.py';atomic(installed,source.read_bytes())
     native=directory/'native-tools/checkpoints'
     if args.android:
