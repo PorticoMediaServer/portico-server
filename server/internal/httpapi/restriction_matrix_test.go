@@ -303,6 +303,7 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/reading/items":                                                      {check: readingRestrictionCheck("GET /v1/reading/items")},
 		"GET /v1/reading/discover":                                                   {check: readingRestrictionCheck("GET /v1/reading/discover")},
 		"GET /v1/libraries/{libraryId}/reading/series/{seriesId}":                    {check: readingSeriesRestrictionCheck},
+		"GET /v1/items/{itemId}/reading/mark":                                        {check: readingMarkRestrictionCheck},
 		"GET /v1/items/{itemId}/reading/versions":                                    {check: readingRestrictionCheck("GET /v1/items/{itemId}/reading/versions")},
 		"GET /v1/reading/sessions/{sessionId}/source":                                {check: readingRestrictionCheck("GET /v1/reading/sessions/{sessionId}/source")},
 		"GET /v1/reading/sessions/{sessionId}/assets":                                {check: readingRestrictionCheck("GET /v1/reading/sessions/{sessionId}/assets")},
