@@ -217360,6 +217360,44 @@
         ],
         "type": "object"
       },
+      "ReleaseProfileDownloadsCacheRequest": {
+        "properties": {
+          "operationId": {
+            "type": "string"
+          },
+          "profileKey": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "profileKey",
+          "operationId"
+        ],
+        "type": "object"
+      },
+      "ReleaseProfileDownloadsCacheResponse": {
+        "properties": {
+          "claims": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "more": {
+            "type": "boolean"
+          },
+          "retained": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "claims",
+          "retained",
+          "more"
+        ],
+        "type": "object"
+      },
       "RemoveLibraryRequest": {
         "properties": {
           "confirmation": {
@@ -251591,6 +251629,110 @@
           "internal"
         ],
         "x-lane": "default",
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/downloads/cache/release": {
+      "post": {
+        "operationId": "release_profile_downloads_cache",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "profileKey": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "profileKey",
+                  "operationId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "claims": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "more": {
+                      "type": "boolean"
+                    },
+                    "retained": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "claims",
+                    "retained",
+                    "more"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Release one bounded page of a profile’s prepared download copies without withdrawing offline permissions; repeat while more is true",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "invalid_request",
+          "idempotency_key_reused",
+          "downloads_unavailable",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 4096,
         "x-scope": "admin"
       }
     },

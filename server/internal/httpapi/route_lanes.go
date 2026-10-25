@@ -447,6 +447,7 @@ var routeLanes = map[string]string{
 	"POST /v1/admin/console/jobs/{id}/{action}":                                  "admin-heavy",
 	"POST /v1/admin/diagnostics/integrity":                                       "admin-long",
 	"POST /v1/admin/diagnostics/integrity/repair":                                "admin-long",
+	"POST /v1/admin/downloads/cache/release":                                     "admin",
 	"POST /v1/admin/downloads/revoke":                                            "security-fence",
 	"POST /v1/admin/dvr/recording-groups":                                        "admin",
 	"POST /v1/admin/feedback/reports/{id}/status":                                "admin-heavy",

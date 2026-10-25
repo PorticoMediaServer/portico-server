@@ -670,6 +670,7 @@ export function decodePutV1ItemsItemIdSubtitlesResourceResponse(input: unknown):
 export function decodeQueryTitlesResponse(input: unknown): types.QueryTitlesResponse { return decode("QueryTitlesResponse", input) as types.QueryTitlesResponse; }
 export function decodeRefreshItemsMetadataResponse(input: unknown): types.RefreshItemsMetadataResponse { return decode("RefreshItemsMetadataResponse", input) as types.RefreshItemsMetadataResponse; }
 export function decodeRefreshShowsMetadataResponse(input: unknown): types.RefreshShowsMetadataResponse { return decode("RefreshShowsMetadataResponse", input) as types.RefreshShowsMetadataResponse; }
+export function decodeReleaseProfileDownloadsCacheResponse(input: unknown): types.ReleaseProfileDownloadsCacheResponse { return decode("ReleaseProfileDownloadsCacheResponse", input) as types.ReleaseProfileDownloadsCacheResponse; }
 export function decodeRemoveLibraryResponse(input: unknown): types.RemoveLibraryResponse { return decode("RemoveLibraryResponse", input) as types.RemoveLibraryResponse; }
 export function decodeRemoveQueueEntryResponse(input: unknown): types.RemoveQueueEntryResponse { return decode("RemoveQueueEntryResponse", input) as types.RemoveQueueEntryResponse; }
 export function decodeRemoveStorageSourceRcloneResponse(input: unknown): types.RemoveStorageSourceRcloneResponse { return decode("RemoveStorageSourceRcloneResponse", input) as types.RemoveStorageSourceRcloneResponse; }

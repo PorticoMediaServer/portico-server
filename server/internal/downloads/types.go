@@ -88,7 +88,10 @@ const (
 	ReasonFailed          = "preparation_failed"
 	ReasonAccountDisabled = "account_disabled"
 	ReasonRevoked         = "revoked"
-	ReasonUnknownReceipt  = "unknown_receipt"
+	// ReasonCacheReleased ends a server-side prepared copy at the owner's
+	// request. Offline permissions stay as they were.
+	ReasonCacheReleased  = "cache_released"
+	ReasonUnknownReceipt = "unknown_receipt"
 	// ReasonUnknownPreparation answers a receipt asked for a claim this server
 	// has no record of, which a client recovers from by asking again.
 	ReasonUnknownPreparation = "unknown_preparation"
@@ -103,7 +106,7 @@ var publishedReasons = map[string]bool{
 	ReasonNotAllowed: true, ReasonItemDeleted: true, ReasonSourceMissing: true, ReasonSourceChanged: true,
 	ReasonNotOptimized: true, ReasonOptimizeFailed: true, ReasonStorageFull: true, ReasonArtifactChanged: true,
 	ReasonVerifyFailed: true, ReasonRetention: true, ReasonCancelled: true, ReasonFailed: true,
-	ReasonAccountDisabled: true, ReasonRevoked: true, ReasonUnknownReceipt: true, ReasonUnknownPreparation: true,
+	ReasonAccountDisabled: true, ReasonRevoked: true, ReasonCacheReleased: true, ReasonUnknownReceipt: true, ReasonUnknownPreparation: true,
 	ReasonSeveralFiles: true, ReasonRemoved: true,
 }
 

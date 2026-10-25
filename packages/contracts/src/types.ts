@@ -1337,6 +1337,8 @@ export type RefreshItemsMetadataRequest = {  };
 export type RefreshItemsMetadataResponse = { "itemId": string; "status": string };
 export type RefreshShowsMetadataRequest = {  };
 export type RefreshShowsMetadataResponse = { "itemId": string; "status": string };
+export type ReleaseProfileDownloadsCacheRequest = { "operationId": string; "profileKey": string };
+export type ReleaseProfileDownloadsCacheResponse = { "claims": number; "more": boolean; "retained": number };
 export type RemoveLibraryRequest = { "confirmation": string; "expectedRevision": number };
 export type RemoveLibraryResponse = { "libraryId": string; "removing": boolean };
 export type RemoveQueueEntryRequest = {  };
@@ -2153,6 +2155,7 @@ export type RouteContracts = {
 "query_titles": { request: QueryTitlesRequest; response: QueryTitlesResponse };
 "refresh_items_metadata": { request: RefreshItemsMetadataRequest; response: RefreshItemsMetadataResponse };
 "refresh_shows_metadata": { request: RefreshShowsMetadataRequest; response: RefreshShowsMetadataResponse };
+"release_profile_downloads_cache": { request: ReleaseProfileDownloadsCacheRequest; response: ReleaseProfileDownloadsCacheResponse };
 "remove_library": { request: RemoveLibraryRequest; response: RemoveLibraryResponse };
 "remove_queue_entry": { request: RemoveQueueEntryRequest; response: RemoveQueueEntryResponse };
 "remove_storage_source_rclone": { request: RemoveStorageSourceRcloneRequest; response: RemoveStorageSourceRcloneResponse };

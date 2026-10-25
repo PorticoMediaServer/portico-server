@@ -1,5 +1,5 @@
 import {randomId} from '@core/random-id.ts';
-import {decodeRevokeProfileDownloadsResponse} from '../../../../../packages/contracts/src/decoders.ts';
+import {decodeReleaseProfileDownloadsCacheResponse} from '../../../../../packages/contracts/src/decoders.ts';
 import {routePath, routeBody} from '../../../../../packages/contracts/src/routes.ts';
 import type {StorageTransport} from '../server/storage-source';
 import type {DownloadsUsageRow, DownloadsUsageSource, UsagePage} from './downloads-usage-source';
@@ -9,9 +9,11 @@ type Intent = Readonly<{continuation?: Continuation; row: DownloadsUsageRow; pag
 export type DownloadRemovalSnapshot = Readonly<{busy: boolean; pending?: DownloadsUsageRow; continuation?: DownloadsUsageRow; error?: boolean; done?: boolean}>;
 const empty: DownloadRemovalSnapshot = Object.freeze({busy: false});
 
-/** One bounded withdrawal of the selected person's claims and offline permissions.
- * Unknown outcomes retry only the original receipt ID/body. A confirmed `more`
- * permits a separate explicit confirmation after a checked usage refresh. */
+/** One bounded release of the selected person's prepared server copies. Their
+ * offline permissions are untouched, so a device keeps its copy and the server
+ * prepares it again when needed. Unknown outcomes retry only the original
+ * receipt ID/body; a confirmed `more` permits one more explicit release after a
+ * checked usage refresh. */
 export class DownloadRemovalSource {
   private state = empty;
   private readonly lifetime = new AbortController();
@@ -45,10 +47,10 @@ export class DownloadRemovalSource {
     try {
       if (!this.owns(request) || !confirmed()) return false;
       submitted = true;
-      const raw = await this.api.request<unknown>(routePath('revoke_profile_downloads'), 'POST', routeBody('revoke_profile_downloads', intent.body), signal);
+      const raw = await this.api.request<unknown>(routePath('release_profile_downloads_cache'), 'POST', routeBody('release_profile_downloads_cache', intent.body), signal);
       if (!this.owns(request)) return false;
-      const receipt = decodeRevokeProfileDownloadsResponse(raw);
-      if (!Number.isSafeInteger(receipt.claims) || receipt.claims < 0 || receipt.claims > 100 || !Number.isSafeInteger(receipt.receipts) || receipt.receipts < 0 || receipt.receipts > 100 || receipt.more && receipt.claims < 100 && receipt.receipts < 100) throw new Error('invalid_download_removal_receipt');
+      const receipt = decodeReleaseProfileDownloadsCacheResponse(raw);
+      if (!Number.isSafeInteger(receipt.claims) || receipt.claims < 0 || receipt.claims > 100 || !Number.isSafeInteger(receipt.retained) || receipt.retained < 0 || receipt.retained > 100 || receipt.more && receipt.claims === 0) throw new Error('invalid_download_cache_release_receipt');
       this.intent = undefined;this.usedPage = intent.page;
       this.continuation = receipt.more ? Object.freeze({row: intent.row, after: intent.page}) : undefined;
       await this.usage.refresh();
@@ -58,7 +60,7 @@ export class DownloadRemovalSource {
         this.publish({pending: undefined, continuation: this.continuation?.row, error: true});return false;
       }
       // A confirmed more=true receipt witnesses this same target even when the
-      // remaining offline permissions no longer have a live preparation row.
+      // remaining prepared copies no longer have a live usage row.
       this.publish({pending: undefined, continuation: receipt.more ? intent.row : undefined, done: !receipt.more});
       return true;
     } catch (error) {
