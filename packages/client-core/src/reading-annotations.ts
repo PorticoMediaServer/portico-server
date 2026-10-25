@@ -54,7 +54,7 @@ export function parseReadingAnnotations(raw: unknown, source: Readonly<{sourceId
   if (!record(raw) || raw.sourceId !== source.sourceId || raw.sourceRevision !== source.revision || !integer(raw.revision) || !Array.isArray(raw.entries) || raw.entries.length > 50 || typeof raw.nextCursor !== 'string' || raw.nextCursor !== '' && !readingAnnotationId(raw.nextCursor)) invalid();
   const entries: ReadingAnnotation[] = []; let previous = cursor;
   for (const row of raw.entries) {
-    if (!record(row) || !integer(row.createdAt) || !integer(row.updatedAt) || row.updatedAt < row.createdAt) invalid();
+    if (!record(row) || !integer(row.createdAt) || !integer(row.updatedAt) || row.updatedAt < row.createdAt || !Number.isFinite(new Date(row.createdAt).getTime()) || !Number.isFinite(new Date(row.updatedAt).getTime())) invalid();
     const value = content(row, validate); if (value.id <= previous) invalid(); previous = value.id;
     entries.push(Object.freeze({...value, createdAt: row.createdAt, updatedAt: row.updatedAt}));
   }
