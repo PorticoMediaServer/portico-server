@@ -250,7 +250,9 @@ func videoRejections(v *SourceVideo, client ClientProfile, t ClientTransport, al
 			out = append(out, RouteRejection{ReasonHDRNotAllowed, v.DynamicRange})
 		case shown == "":
 			out = append(out, RouteRejection{RejectDolbyVision, fmt.Sprintf("profile %d", v.DolbyVisionProfile)})
-		case shown != assets.RangeSDR && !containsString(c.DynamicRanges, shown):
+		case shown != assets.RangeSDR && !containsString(c.DynamicRanges, shown) && !(shown == assets.RangeHDR10 && containsString(c.DynamicRanges, "hdr10plus")):
+			// A decoder that declares HDR10+ decodes the HDR10 base picture
+			// and applies the dynamic metadata (VIDEO §3 VS-2a).
 			out = append(out, RouteRejection{RejectDynamicRange, shown})
 		case shown != assets.RangeSDR && !client.presents(shown):
 			// The engine decodes the range, but neither the display nor the

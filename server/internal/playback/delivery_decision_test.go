@@ -417,3 +417,27 @@ func TestCapabilityDocumentParsing(t *testing.T) {
 		t.Fatal(back, err)
 	}
 }
+
+// A device that declares HDR10+ (and not HDR10 on its own) shows the HDR10
+// base picture with the dynamic metadata (VIDEO §3 VS-2a).
+func TestHDR10PlusDeclarationCoversTheHDR10Base(t *testing.T) {
+	detail := hdr10Detail
+	detail.HDR10Plus = true
+	source := videoSource("mp4", "hevc", detail, SourceAudio{Index: 1, Codec: "eac3", Channels: 6})
+	client := appleTVProfile()
+	client.Display.DynamicRanges = []string{"sdr", "hdr10plus"}
+	for i := range client.Video {
+		if client.Video[i].Codec == "hevc" {
+			client.Video[i].DynamicRanges = []string{"sdr", "hdr10plus"}
+		}
+	}
+	if p := decide(t, source, client, nil); p.Strategy != DeliveryOriginal {
+		t.Fatalf("an HDR10+ declaration did not cover the HDR10 base: %+v", p)
+	}
+	// Without the dynamic metadata the same declaration is not HDR10.
+	plain := videoSource("mp4", "hevc", hdr10Detail, SourceAudio{Index: 1, Codec: "eac3", Channels: 6})
+	in := DeliveryInput{Source: plain, Client: client, Policy: openPolicy(), Target: autoTarget(openPolicy(), plain.Video.Height), Config: DefaultDeliveryConfiguration(), TranscodingEnabled: true}
+	if _, err := planDelivery(in); err == nil {
+		t.Fatal("a plain HDR10 picture played on an HDR10+ only declaration")
+	}
+}
