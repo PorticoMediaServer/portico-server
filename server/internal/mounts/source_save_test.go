@@ -38,4 +38,8 @@ func TestRcloneSourceReceiptContainsOnlyAcceptedSourceIdentity(t *testing.T) {
 	if err != nil || result.SourceID != "source" || result.Generation != 2 || result.OperationID != "op" || !result.Accepted {
 		t.Fatal("source receipt lost durable identity", err)
 	}
+	removed, err := sourceReceipt(Receipt{OperationID: "remove", Accepted: true, Deleted: true, MountID: "source", Mount: &Mount{ID: "source", BackendRevision: 2, RemovalPending: true}})
+	if err != nil || !removed.Removed || removed.SourceID != "source" {
+		t.Fatal("logical removal receipt lost its explicit state", err)
+	}
 }

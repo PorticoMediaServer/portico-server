@@ -239,6 +239,10 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 	}
 	s.serveMu.Lock()
 	life := s.serveLife
+	if s.sourceRemovals[binding.Observation.SourceID] {
+		s.serveMu.Unlock()
+		return nil, storage.ErrBusy
+	}
 	slot := s.serveLeases[binding.Observation.SourceID]
 	if slot != nil {
 		process := slot.process

@@ -65,10 +65,19 @@ func (s *Service) Acquire(ctx context.Context, path, lane string) (storage.Remot
 		o.ceiling = 16 << 20
 	}
 	s.mu.Lock()
+	s.serveMu.Lock()
+	if s.sourceRemovals[b.ID] {
+		s.serveMu.Unlock()
+		s.mu.Unlock()
+		cancel()
+		<-pool
+		return nil, storage.ErrBusy
+	}
 	if s.active[b.ID] == nil {
 		s.active[b.ID] = map[string]activeRead{}
 	}
 	s.active[b.ID][token] = activeRead{cancel, lane}
+	s.serveMu.Unlock()
 	s.mu.Unlock()
 	o.release = func() {
 		s.mu.Lock()

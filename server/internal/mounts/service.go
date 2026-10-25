@@ -63,6 +63,7 @@ type child struct {
 type Service struct {
 	// NativeBusy is installed by the remote source registry for playback removal safety.
 	NativeBusy             func(string) bool
+	GuardSourceRemoval     func(context.Context, string) (func(), error)
 	NativeInvalidated      func(string)
 	PrepareSourceCandidate func(context.Context, SourceCandidateInput, func(*sql.Tx) error) (*SourceCandidatePublication, error)
 	commands               sync.Mutex

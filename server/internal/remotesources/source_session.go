@@ -121,6 +121,11 @@ func (s *Service) CaptureReadSourceTx(ctx context.Context, tx *sql.Tx, admission
 		cancel()
 		return nil, storage.ErrRemoteOffline
 	}
+	if s.sourceRemovals[ref.SourceID] {
+		s.serveMu.Unlock()
+		cancel()
+		return nil, storage.ErrBusy
+	}
 	if s.readLeases == nil {
 		s.readLeases = make(map[string]map[int64]*SourceReadLease)
 	}

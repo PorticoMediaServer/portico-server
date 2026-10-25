@@ -25,13 +25,14 @@ type RcloneSourceReceipt struct {
 	Accepted    bool   `json:"accepted"`
 	SourceID    string `json:"sourceId"`
 	Generation  int64  `json:"generation"`
+	Removed     bool   `json:"removed,omitempty"`
 }
 
 func sourceReceipt(receipt Receipt) (RcloneSourceReceipt, error) {
-	if !receipt.Accepted || receipt.Deleted || receipt.Mount == nil || receipt.MountID == "" || receipt.Mount.ID != receipt.MountID || receipt.Mount.BackendRevision < 1 {
+	if !receipt.Accepted || receipt.Mount == nil || receipt.MountID == "" || receipt.Mount.ID != receipt.MountID || receipt.Mount.BackendRevision < 1 || receipt.Deleted != receipt.Mount.RemovalPending {
 		return RcloneSourceReceipt{}, ErrCommandConflict
 	}
-	return RcloneSourceReceipt{receipt.OperationID, true, receipt.MountID, receipt.Mount.BackendRevision}, nil
+	return RcloneSourceReceipt{OperationID: receipt.OperationID, Accepted: true, SourceID: receipt.MountID, Generation: receipt.Mount.BackendRevision, Removed: receipt.Deleted}, nil
 }
 
 func (s *Service) rcloneSourceOwner(ctx context.Context, authorize func(*sql.Tx) error) error {
