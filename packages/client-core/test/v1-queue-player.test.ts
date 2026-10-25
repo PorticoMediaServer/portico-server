@@ -5,13 +5,15 @@ import {FakePlaybackServer, fakeHttp} from '../src/playback-v1/testing/fake-serv
 import {V1PlaybackApi, toPlaybackSession} from '../src/playback-v1/legacy-bridge.ts';
 import {V1QueuePlayer, movedEntry, playbackV1ForKind, serverSupportsPlaybackV1, serverSupportsQueueTransitions} from '../src/playback-v1/v1-queue-player.ts';
 import {queueItemInput} from '../src/queue-controller.ts';
+import {parseSession, type Session} from '../src/playback-v1/types.ts';
+import type {QueuedSelectionRetirer} from '../src/playback-v1/selection-registration.ts';
 import {QueueClient} from '../src/playback-v1/queue.ts';
 import {playbackUserMessage, sessionEndMessage} from '../src/playback-messages.ts';
 import {PlaybackApiError, type V1Http, type V1Request, type V1Response} from '../src/playback-v1/http.ts';
 
 const viewer = {serverId: 'server', authority: 'local' as const, accountId: 'account', profileId: 'profile'};
 
-function setup(options: {postPlay?: {autoplay: boolean; countdownMs: number; passoutCheckDue: boolean; automaticAdvances: number; startDuringCredits?: boolean}; log?: {method: string; path: string; body?: unknown}[]; server?: ConstructorParameters<typeof FakePlaybackServer>[0]; beforeFreshPlayback?: () => Promise<void>; afterResponse?: (request: V1Request, response: V1Response) => Promise<V1Response | void>} = {}) {
+function setup(options: {retireQueuedSelection?: QueuedSelectionRetirer; postPlay?: {autoplay: boolean; countdownMs: number; passoutCheckDue: boolean; automaticAdvances: number; startDuringCredits?: boolean}; log?: {method: string; path: string; body?: unknown}[]; server?: ConstructorParameters<typeof FakePlaybackServer>[0]; beforeFreshPlayback?: () => Promise<void>; afterResponse?: (request: V1Request, response: V1Response) => Promise<V1Response | void>} = {}) {
   const server = new FakePlaybackServer(options.server);
   const inner = fakeHttp(server);
   const log = options.log ?? [];
@@ -27,7 +29,7 @@ function setup(options: {postPlay?: {autoplay: boolean; countdownMs: number; pas
   let serial = 0;
   const api = new V1PlaybackApi(http, {timers: {setTimer: (fn, ms) => { timers.push({fn, ms}); return timers.length; }, clearTimer: () => {}}, key: () => `k${++serial}`});
   const playback = new PlaybackService(api, () => `r${++serial}`, options.beforeFreshPlayback ? {beforeFreshPlayback: options.beforeFreshPlayback} : {});
-  const player = new V1QueuePlayer({http, api, playback, viewer, key: () => `q${++serial}-key-000000`, pendingPollMs: 10});
+  const player = new V1QueuePlayer({http, api, playback, viewer, key: () => `q${++serial}-key-000000`, pendingPollMs: 10, retireQueuedSelection: options.retireQueuedSelection});
   const stop = player.connect();
   return {server, api, playback, player, log, timers, stop};
 }
@@ -917,4 +919,101 @@ test('a lifetime-scoped ended recovery cannot return an unrelated newer Play as 
   const pending=f.player.changePlayback({subtitleTrackId:'s1'},{isCurrent:()=>true});const rejected=assert.rejects(pending,{name:'AbortError'});await reached;
   await f.player.playItem('other');const current=f.player.currentSession();release();await rejected;assert.equal(f.player.currentSession(),current);
  }finally{f.stop();}
+});
+
+// These regression sources are intentionally not executed during campaign item work.
+function queuedSelection(f: ReturnType<typeof setup>) {
+  const session = f.player.currentSession()!, view = f.player.getSnapshot().view!;
+  const row = view.window!.entries.find(e => e.entryId !== session.queue!.entryId && e.available === true)!;
+  assert.ok(row);
+  return {target: {sessionId: session.id, generation: session.presentation.generation,
+    playbackRun: f.playback.getSnapshot().playbackRun, itemId: session.itemId!, versionId: session.versionId!,
+    queueId: session.queue!.queueId, entryId: session.queue!.entryId},
+  request: {queueId: view.queue.id, expectedRevision: view.queue.revision, entryId: row.entryId}};
+}
+
+test('queued selection never stops or forgets a same-id same-generation occurrence accepted by a later intent/run', async () => {
+  for (const freshRun of [false, true]) {
+    let admitted: Session | undefined, retired = 0, forgotten = 0;
+    const f = setup({server: {itemKind: () => 'movie'}, retireQueuedSelection: () => {retired++; return true;},
+      afterResponse: async (request, response) => {
+        if (request.path.endsWith(':advance') && response.status === 200) admitted = parseSession((response.body as {session: unknown}).session);
+      }});
+    try {
+      await f.player.playEntries(['movie-a', 'movie-b'].map(queueItemInput));
+      const selection = queuedSelection(f);
+      const forget = f.api.forget.bind(f.api);
+      f.api.forget = id => {forgotten++; forget(id);};
+      let owner: ReturnType<typeof f.api.selectionRegistration> | undefined;
+      f.api.duration = async () => {
+        assert.ok(admitted);
+        const playback = f.api.adopt(admitted, 120);
+        owner = f.api.selectionRegistration(admitted.id, playback);
+        const intent = f.playback.beginQueueIntent(admitted.itemId, freshRun);
+        await f.playback.adoptQueueSession(admitted.itemId!, playback, intent);
+        throw new Error('late original duration failed');
+      };
+      await assert.rejects(f.player.selectQueuedEntry(selection.target, selection.request, {isCurrent: () => true}));
+      assert.equal(f.playback.getSnapshot().session?.id, admitted!.id);
+      assert.equal(f.playback.getSnapshot().session?.generation, admitted!.presentation.generation);
+      assert.notEqual(f.playback.getSnapshot().intentId, 0);
+      assert.equal(owner?.current(), true, 'later registration remains owned');
+      assert.equal(retired, 0); assert.equal(forgotten, 0);
+    } finally {f.stop();}
+  }
+});
+
+test('queued selection cannot clean a re-registered occurrence even before another output is adopted', async () => {
+  let admitted: Session | undefined, retired = 0;
+  const f = setup({server: {itemKind: () => 'movie'}, retireQueuedSelection: () => {retired++; return true;},
+    afterResponse: async (request, response) => {
+      if (request.path.endsWith(':advance') && response.status === 200) admitted = parseSession((response.body as {session: unknown}).session);
+    }});
+  try {
+    await f.player.playEntries(['movie-a', 'movie-b'].map(queueItemInput));
+    const selection = queuedSelection(f);
+    let owner: ReturnType<typeof f.api.selectionRegistration> | undefined;
+    f.api.duration = async () => {
+      assert.ok(admitted); const playback = f.api.adopt(admitted, 120); owner = f.api.selectionRegistration(admitted.id, playback);
+      throw new Error('original selection failed after registration changed');
+    };
+    await assert.rejects(f.player.selectQueuedEntry(selection.target, selection.request, {isCurrent: () => true}));
+    assert.equal(owner?.current(), true); assert.equal(retired, 0);
+  } finally {f.stop();}
+});
+
+test('queued selection original-principal retirement refusal/throw/absence never falls back to raw stop or forget', async () => {
+  for (const outcome of ['refuse', 'throw', 'absent'] as const) {
+    let retired = 0, stops = 0, forgets = 0;
+    const f = setup({server: {itemKind: () => 'movie'}, retireQueuedSelection: outcome === 'absent' ? undefined : () => {
+      retired++; if (outcome === 'throw') throw new Error('original principal retired'); return false;
+    }});
+    try {
+      await f.player.playEntries(['movie-a', 'movie-b'].map(queueItemInput));
+      const selection = queuedSelection(f);
+      f.api.duration = async () => {throw new Error('duration failed');};
+      f.api.stopPlayback = async () => {stops++;}; f.api.forget = () => {forgets++;};
+      await assert.rejects(f.player.selectQueuedEntry(selection.target, selection.request, {isCurrent: () => true}));
+      assert.equal(retired, outcome === 'absent' ? 0 : 1);
+      assert.equal(stops, 0); assert.equal(forgets, 0);
+    } finally {f.stop();}
+  }
+});
+
+
+test('queued selection cleanup cannot use a changed original core operation after another Play', async () => {
+  let retired = 0;
+  const f = setup({server: {itemKind: () => 'movie'}, retireQueuedSelection: () => {retired++; return true;}});
+  try {
+    await f.player.playEntries(['movie-a', 'movie-b'].map(queueItemInput));
+    const selection = queuedSelection(f), duration = f.api.duration.bind(f.api);
+    f.api.duration = async () => {
+      f.api.duration = duration;
+      await f.player.playItem('replacement-movie');
+      throw new Error('late original operation');
+    };
+    await assert.rejects(f.player.selectQueuedEntry(selection.target, selection.request, {isCurrent: () => true}));
+    assert.equal(f.playback.getSnapshot().itemId, 'replacement-movie');
+    assert.equal(retired, 0);
+  } finally {f.stop();}
 });

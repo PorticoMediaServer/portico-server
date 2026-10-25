@@ -44,6 +44,7 @@ import type {CompletionPolicy, HeldCompletion, QueueController, QueuePlaybackVie
 import type {QueueEntry as LegacyEntry, QueueIntent, QueueItemInput, QueueScope, QueueSnapshot, QueueState} from '../queues.ts';
 import {PlaybackApiError, call, idempotencyKey, type V1Http} from './http.ts';
 import {toPlaybackSession} from './session-shape.ts';
+import {retireQueuedSelectionRegistration, type QueuedSelectionRetirer, type QueueSelectionRegistration} from './selection-registration.ts';
 import {audioTrackId, type PlaybackChoices} from './choices.ts';
 import {requestInForce, type QualityRequest} from './quality.ts';
 import type {SessionChange, StartOptions, StartTarget} from './sessions.ts';
@@ -83,6 +84,9 @@ export interface QueueSessionTransport {
   /** The server replaced or completed this session: nothing more is reported for it. */
   retire(id: string): void;
   forget(id: string): void;
+  /** Bare id captures known absence only; adopted captures that returned object's original registration.
+   * Omission or unknown ownership leaves selection cleanup closed. */
+  selectionRegistration?(id: string, adopted?: PlaybackSession): QueueSelectionRegistration | undefined;
   reportedSeq(id: string): number;
   /** Re-plans a live session (quality, version, audio track): same session, next generation. */
   change?(id: string, change: SessionChange, durationSeconds: number, context?: SessionChangeContext): Promise<{session: Session; playback: PlaybackSession}>;
@@ -102,8 +106,9 @@ export type V1QueuePlayerOptions = Readonly<{
   retainQueueIds?: () => readonly string[];
   playback: PlaybackService;
   viewer: V1Viewer;
-  /** Original-principal cleanup when a received selection retires before installation. */
-  retireQueuedSelection?: (session: Session) => void;
+  /** Original-principal cleanup; true means retired under the supplied ownership guard.
+   * Refusal/throw/omission never falls back to another principal or raw forget. */
+  retireQueuedSelection?: QueuedSelectionRetirer;
   key?: () => string;
   /** Poll interval while a start waits for its snapshot (tests shorten it). */
   pendingPollMs?: number;
@@ -716,8 +721,8 @@ export class V1QueuePlayer implements QueueController {
     await this.adoptPlayback(session, this.api.adopt(session, duration), intent, current);
   }
 
-  private async adoptPlayback(session: Session, playback: PlaybackSession, intent: number, isCurrent?: () => boolean) {
-    if (isCurrent?.() === false) {this.api.forget(session.id); this.abandon(session); return;}
+  private async adoptPlayback(session: Session, playback: PlaybackSession, intent: number, isCurrent?: () => boolean, retireOnFailure = true) {
+    if (isCurrent?.() === false) {if (retireOnFailure) {this.api.forget(session.id); this.abandon(session);} return;}
     const previous = this.session;
     this.session = session;
     this.sessionStartedAt = Date.now();
@@ -726,13 +731,13 @@ export class V1QueuePlayer implements QueueController {
     this.endedId = undefined;
     this.nativeSession = undefined;
     if (this.header) this.accept(this.header);
-    if (isCurrent?.() === false) { this.api.forget(session.id); this.abandon(session); return; }
+    if (isCurrent?.() === false) {if (retireOnFailure) {this.api.forget(session.id); this.abandon(session);} return;}
     const itemKind = this.window.find(e => e.entryId === session.queue?.entryId)?.kind ?? '';
     if (this.native && session.kind === 'audio' && this.nativeFor(itemKind)) { await this.adoptNative(session, playback, intent); return; }
     if (!await this.playback.adoptQueueSession(session.itemId ?? '', playback, intent)) {
       // The viewer did something else while this session was being made. Unless that already put
       // another session here, this one has no player: it ends now instead of holding a stream.
-      if (this.session?.id === session.id && this.playback.getSnapshot().session?.id !== session.id) { this.api.forget(session.id); this.abandon(session); }
+      if (retireOnFailure && this.session?.id === session.id && this.playback.getSnapshot().session?.id !== session.id) { this.api.forget(session.id); this.abandon(session); }
     }
   }
 
@@ -881,6 +886,7 @@ export class V1QueuePlayer implements QueueController {
       const current = () => !this.disposed && generation === this.generation && changes === this.changeSequence
         && sessionChangeCurrent(lifetime) && !this.nativeOwns() && !this.playback.hasNativeOwner();
       let acceptedRevision: string | undefined, admitted: Session | undefined, installedIntent: number | undefined;
+      let registration: QueueSelectionRegistration | undefined;
       const headerCurrent = () => this.header?.id === command.queueId
         && (this.header.revision === command.revision && this.header.current?.entryId === target.entryId && this.header.current.position === opening.current?.position
           || acceptedRevision !== undefined && this.header.revision === acceptedRevision && this.header.current?.entryId === command.body.entryId && this.header.current.position === selected.position);
@@ -898,6 +904,7 @@ export class V1QueuePlayer implements QueueController {
         if (!admitted || admitted.kind !== 'vod' || admitted.role !== 'local' || admitted.state !== 'playing'
           || admitted.queue?.queueId !== command.queueId || admitted.queue.entryId !== command.body.entryId
           || admitted.itemId !== selected.itemId || !admitted.versionId) throw new ContractError('queue selection session');
+        registration = this.api.selectionRegistration?.(admitted.id);
         const session = admitted, versionId = admitted.versionId;
         acceptedRevision = result.queue.revision;
         const accepted = (header: QueueHeader) => header.id === command.queueId && header.revision === acceptedRevision
@@ -933,12 +940,13 @@ export class V1QueuePlayer implements QueueController {
               && p.itemId === target.itemId && p.intentId === openingPlayback.intentId && p.intent === 'playing' && p.playbackRun === target.playbackRun
             || nextOutput());
         };
-        const playback = this.api.adopt(session, duration); checkOld();
+        const playback = this.api.adopt(session, duration);
+        registration = this.api.selectionRegistration?.(session.id, playback); checkOld();
         this.invalidateAudioPreparation(); checkOld();
         replacing = true;
         const intent = this.playback.beginQueueIntent(selected.itemId); checkOld();
         this.header = header; this.window = window; ++this.refreshSequence;
-        const adoption = this.adoptPlayback(session, playback, intent, installing);
+        const adoption = this.adoptPlayback(session, playback, intent, installing, false);
         // adoptPlayback installs synchronously before its persistence await. Once
         // installed, PlaybackService owns cleanup; a late callback cannot stop its successor.
         if (nextOutput()) {installedIntent = this.playback.getSnapshot().intentId; handedOff = true; ++this.epoch;}
@@ -947,19 +955,18 @@ export class V1QueuePlayer implements QueueController {
         this.publish({phase: 'ready'});
       } catch (error) {
         if (admitted && !handedOff) {
-          const live = this.playback.getSnapshot();
-          const newer = live.session?.id === admitted.id && live.session.generation !== admitted.presentation.generation
-            || this.session?.id === admitted.id && this.session.presentation.generation !== admitted.presentation.generation;
-          if (!newer) {
-            if (generation === this.generation && live.session?.id === admitted.id && live.session.generation === admitted.presentation.generation
-              && live.itemId === admitted.itemId && live.playbackRun === target.playbackRun) this.playback.leave(false);
-            if (this.session?.id === admitted.id && generation === this.generation) this.session = undefined;
-            // Cleanup is deliberately not canceled by the retired caller's signal.
-            if (this.retireQueuedSelection) {
-              try {this.retireQueuedSelection(admitted);} catch {await this.api.stopPlayback(admitted.id).catch(() => {});}
-            } else await this.api.stopPlayback(admitted.id).catch(() => {});
-            this.api.forget(admitted.id);
-          }
+          const unowned = () => {
+            const live = this.playback.getSnapshot();
+            // Any accepted same occurrence is protected, even with the same
+            // presentation generation under a different run or intent.
+            return !this.disposed && generation === this.generation && changes === this.changeSequence
+              && live.playbackRun === target.playbackRun && live.intentId === openingPlayback.intentId
+              && live.session?.id === target.sessionId && live.session.generation === target.generation
+              && live.session.id !== admitted!.id
+              && (this.session?.id !== admitted!.id || this.session === admitted);
+          };
+          if (await retireQueuedSelectionRegistration(admitted, registration, this.retireQueuedSelection, unowned)
+            && unowned() && this.session === admitted) this.session = undefined;
         }
         if (oldCurrent()) this.publish({phase: 'ready', error: message(error, serviceText('queuePlayer.moveFailed'))});
         throw error;

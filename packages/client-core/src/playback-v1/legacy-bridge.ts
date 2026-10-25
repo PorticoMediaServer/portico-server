@@ -16,6 +16,7 @@ import type {PlayerFailureCode} from '../client-profile.ts';
 import type {TimelineReport, TimelineState} from './timeline.ts';
 import {parseSessionEnd, type DiscTitleRef, type Session, type SessionEnd} from './types.ts';
 import {toPlaybackSession} from './session-shape.ts';
+import {QueueSelectionRegistrations, type QueueSelectionRegistration} from './selection-registration.ts';
 
 export {toPlaybackSession};
 
@@ -34,6 +35,8 @@ export class V1PlaybackApi implements PlaybackApi {
   readonly sessions: SessionsClient;
   private readonly optionsClient: PlaybackOptionsClient;
   private readonly tracked = new Map<string, Tracked>();
+  private readonly registrations = new QueueSelectionRegistrations();
+  private readonly selectionAdoptions = new WeakMap<PlaybackSession, {id: string; registration: QueueSelectionRegistration}>();
   private readonly setTimer: (fn: () => void, ms: number) => unknown;
   private readonly clearTimer: (t: unknown) => void;
   private readonly key: () => string;
@@ -85,8 +88,11 @@ export class V1PlaybackApi implements PlaybackApi {
     tracked.positionAt = this.now();
     tracked.state = session.state === 'paused' ? 'paused' : 'playing';
     tracked.everyMs = session.lease.reportEveryMs;
+    this.registrations.changed(session.id);
     this.tracked.set(session.id, tracked);
-    return toPlaybackSession(session, durationSeconds);
+    const playback = toPlaybackSession(session, durationSeconds);
+    this.selectionAdoptions.set(playback, {id: session.id, registration: this.captureSelectionRegistration(session.id)});
+    return playback;
   }
 
   /**
@@ -174,6 +180,7 @@ export class V1PlaybackApi implements PlaybackApi {
   async progressPlayback(id: string, payload: {generation: number; sequence: number; positionSeconds: number; state: 'playing' | 'paused' | 'ended'}): Promise<void> {
     if (this.retired.has(id)) return;
     const t = this.tracked.get(id) ?? {seq: 0, generation: payload.generation, positionMs: 0, state: 'playing' as TimelineState, everyMs: 10_000};
+    if (!this.tracked.has(id)) this.registrations.changed(id);
     this.tracked.set(id, t);
     if (t.stopping) return;
     t.generation = payload.generation;
@@ -329,13 +336,28 @@ export class V1PlaybackApi implements PlaybackApi {
   }
 
   /** Stops tracking (the session ended or was replaced) without a request. */
-  forget(id: string) {
-    const t = this.tracked.get(id);
-    if (t?.timer !== undefined) this.clearTimer(t.timer);
-    t?.reportAbort?.abort();
-    for (const pending of t?.pending ?? []) pending.resolve();
-    if (t) t.pending = [];
-    this.tracked.delete(id);
+  forget(id: string) {this.forgetRegistration(id, this.tracked.get(id));}
+
+  selectionRegistration(id: string, adopted?: PlaybackSession): QueueSelectionRegistration | undefined {
+    if (adopted) {const own = this.selectionAdoptions.get(adopted); return own?.id === id ? own.registration : undefined;}
+    // A returned session does not grant ownership of another caller's registration.
+    return this.tracked.has(id) ? undefined : this.captureSelectionRegistration(id);
+  }
+
+  private captureSelectionRegistration(id: string): QueueSelectionRegistration {
+    const original = this.tracked.get(id);
+    return this.registrations.capture(id, () => this.tracked.get(id) === original, () => this.forgetRegistration(id, original));
+  }
+
+  private forgetRegistration(id: string, original: Tracked | undefined): boolean {
+    if (this.tracked.get(id) !== original) return false;
+    // Remove only this registration before callbacks can re-register the id.
+    this.tracked.delete(id); this.registrations.changed(id);
+    if (original?.timer !== undefined) this.clearTimer(original.timer);
+    original?.reportAbort?.abort();
+    for (const pending of original?.pending ?? []) pending.resolve();
+    if (original) original.pending = [];
+    return true;
   }
 
   /** The highest timeline `seq` sent for a session (0 when none): a native owner that takes the
