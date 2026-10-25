@@ -1,3 +1,4 @@
+import {playCatalogueQuerySelection, enqueueCatalogueQuerySelection} from '@core/catalogue-query-selection.ts';
 import {BrowseSelectionModel, browseSelectionKey, readCatalogueSelectionItem, playCatalogueSelection, enqueueCatalogueSelection, selectionCapabilities,
   type CatalogueSelectionQueuePort,
   type BrowseSelectionScope, type BrowseSelectionContext, type SelectionItem, type SelectionOperation, type SelectionQuery,
@@ -18,6 +19,7 @@ export type LibraryPlaySelectionSnapshot = Readonly<{
   resolving: boolean;
   playing: boolean;
   canPlay: boolean;
+  canQueue?: boolean;
   error?: unknown;
 }>;
 /** Explicit catalogue consumers retain their own opaque source continuity. They
@@ -84,7 +86,7 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
     if (closed) return;
     const selection = model?.getSnapshot();
     state = Object.freeze({...state, phase: model ? 'ready' : 'waiting', ...patch,
-      ...(selection ? {selection} : {}), playing: !!playing, canPlay: !!playback && !!selection?.summary.every.play,
+      ...(selection ? {selection} : {}), playing: !!playing, canPlay: !!playback && !!selection?.summary.every.play, canQueue: !!queue && !!selection?.summary.every.queue,
       ...(error === undefined ? {} : {error})});notify();
   };
   const clearWindow = () => {
@@ -284,16 +286,27 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
         isCurrent: () => current() && request.isCurrent() && model!.isOperationCurrent(operation),
       });
     },
+    async enqueueQuery(request: Readonly<{placement: 'next' | 'end'; signal: AbortSignal; isCurrent(): boolean}>) {
+      if (!current() || !model || !queue || !request.isCurrent()) throw cancelled();
+      const operation = model.captureOperation();
+      if (!operation || operation.target.mode !== 'query' || !model.getSnapshot().summary.every.queue) throw unavailable();
+      return enqueueCatalogueQuerySelection(queue, operation.target, request.placement, {
+        signal: AbortSignal.any([signal, life.signal, request.signal]),
+        isCurrent: () => current() && request.isCurrent() && model!.isOperationCurrent(operation),
+      });
+    },
     async play(callerSignal: AbortSignal = signal) {
       if (!current()) throw cancelled();
       if (!model || !playback || !model.getSnapshot().summary.every.play) throw unavailable();
       callerSignal.throwIfAborted();
-      const operation = model.captureOperation();if (!operation || operation.target.mode !== 'explicit') throw unavailable();
+      const operation = model.captureOperation();if (!operation) throw unavailable();
       playing?.controller.abort();
       const captured = Object.freeze({operation, controller: new AbortController()});playing = captured;publish();
       const commandSignal = AbortSignal.any([signal, life.signal, callerSignal, captured.controller.signal]);
-      try {return await playCatalogueSelection(playback, operation.target.displayItems.map(value => value.item),
-        {signal: commandSignal, isCurrent: () => current() && playing === captured && model!.isOperationCurrent(operation)});}
+      const lifetime = {signal: commandSignal, isCurrent: () => current() && playing === captured && model!.isOperationCurrent(operation)};
+      try {return operation.target.mode === 'query'
+        ? await playCatalogueQuerySelection(playback, operation.target, lifetime)
+        : await playCatalogueSelection(playback, operation.target.displayItems.map(value => value.item), lifetime);}
       finally {if (playing === captured) {playing = undefined;publish();}}
     },
     dispose,

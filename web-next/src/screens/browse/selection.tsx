@@ -1,3 +1,4 @@
+import {catalogueQuerySelectionSegments} from '@core/catalogue-query-selection.ts';
 import {QuerySelectionEditorSurface} from './QuerySelectionEditorSurface';
 import {LibraryPickerSurface, type LibraryPickerOptions} from './LibraryPickerSurface';
 import type {EntryActionPorts, EntryDestination} from '../../shell/entry-actions';
@@ -26,7 +27,7 @@ import {wholeViewQuery} from './selection-query';
 /** The play adapter's own model owns the whole-view registration and the range
  * preview; these become available when the route supplies them. The operation
  * pair lets the bar capture the exact target before an awaited job. */
-export type LibrarySelectionHost = Omit<LibraryPlaySelection, 'selectWhole' | 'preview' | 'selected' | 'keepOnly' | 'enqueue'> & Readonly<{
+export type LibrarySelectionHost = Omit<LibraryPlaySelection, 'selectWhole' | 'preview' | 'selected' | 'keepOnly' | 'enqueue' | 'enqueueQuery'> & Readonly<{
   keepOnly?: (kind: import('@core/selection-model/index.ts').SelectionKind) => unknown;
   selectWhole?: (query: SelectionQuery) => unknown;
   preview?: (row: LibraryPlayRow) => boolean;
@@ -56,6 +57,7 @@ export type LibrarySelectionOptions = Readonly<{
   deletion?: LibraryDeleteOptions;
   pickers?: LibraryPickerOptions;
   enqueue?: (input: LibraryEnqueueInput) => Promise<unknown>;
+  enqueueQuery?: (input: Omit<LibraryEnqueueInput, 'items'>) => Promise<unknown>;
   destinations?: LibraryDestinations;
   reportError: (error: unknown) => void;
 }>;
@@ -151,9 +153,12 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {visible: Visi
   }, [playSelection, reportError]);
   if (current.phase !== 'ready' || !current.selection?.active) return null;
   const summary = current.selection.summary, whole = descriptor?.(), selectWhole = playSelection.selectWhole;
-  // Play dispatches explicit picks only; a whole view needs the server queue capture
-  // that does not exist yet, so the button is not drawn for it.
-  const canPlay = summary.every.play && current.selection.target?.mode === 'explicit';
+  const target = current.selection.target;
+  const queryCan = (capability: 'play' | 'queue') => {
+    if (target?.mode !== 'query') return false;
+    try {catalogueQuerySelectionSegments(target, capability);return true;} catch {return false;}
+  };
+  const canPlay = summary.every.play && (target?.mode === 'explicit' || current.canPlay && queryCan('play'));
   // Whole-view Select all N is offered only with the server's exact descriptor and
   // a model that can hold it; never as a local guess from the loaded window.
   const queryHeld = current.selection.target?.mode === 'query';
@@ -164,7 +169,7 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {visible: Visi
   const pickerItems = props.pickers ? explicitDestinationItems(current.selection) : leafItems;
   const queueLease = !!playSelection.captureOperation && !!playSelection.isOperationCurrent && !!actions?.signal
     && !actions.signal.aborted && actions.isCurrent();
-  const canQueue = !!explicitQueueItems(current.selection) && !!enqueue && queueLease && summary.every.queue, canPlaylist = !!pickerItems && (!!destinations?.playlist || !!props.pickers) && queueLease && summary.every.playlist,
+  const canQueue = queueLease && summary.every.queue && (!!explicitQueueItems(current.selection) && !!enqueue || !!props.enqueueQuery && current.canQueue === true && queryCan('queue')), canPlaylist = !!pickerItems && (!!destinations?.playlist || !!props.pickers) && queueLease && summary.every.playlist,
     canCollection = !!pickerItems && (!!destinations?.collection || !!props.pickers) && queueLease && summary.every.collection;
   return <SelectionBar
     selection={{count: summary.count, kind: summary.types.length === 1 ? summary.types[0].kind : undefined}}
@@ -193,7 +198,7 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {visible: Visi
     sticky />;
 }
 
-export function createLibrarySelection({playSelection, owner, descriptor, actions, editor, deletion, pickers, enqueue, destinations, reportError}: LibrarySelectionOptions): LibrarySelection {
+export function createLibrarySelection({playSelection, owner, descriptor, actions, editor, deletion, pickers, enqueue, enqueueQuery, destinations, reportError}: LibrarySelectionOptions): LibrarySelection {
   const visibleListeners = new Set<() => void>();
   let visibleValue: VisibleRange | undefined;
   const visible: VisibleStore = {subscribe: listener => {visibleListeners.add(listener); return () => {visibleListeners.delete(listener);};}, getSnapshot: () => visibleValue};
@@ -250,17 +255,23 @@ export function createLibrarySelection({playSelection, owner, descriptor, action
     return items;
   };
   const queue = async (placement: 'next' | 'end') => {
-    if (!enqueue || !actions?.signal || !playSelection.captureOperation || !playSelection.isOperationCurrent) throw new Error('selection-queue-unavailable');
+    if ((!enqueue && !enqueueQuery) || !actions?.signal || !playSelection.captureOperation || !playSelection.isOperationCurrent) throw new Error('selection-queue-unavailable');
     const signal = actions.signal;
     const operation = playSelection.captureOperation();
     const snapshot = playSelection.getSnapshot().selection;
     if (!operation || operation.target !== snapshot?.target) throw new Error('selection-target-required');
-    const items = explicitQueueItems(snapshot);
-    if (!items) throw new Error('leaf-explicit-selection-required');
+
     const isCurrent = () => !signal.aborted && actions.isCurrent() && playSelection.isOperationCurrent!(operation)
       && playSelection.getSnapshot().selection?.target === operation.target;
     if (!isCurrent()) throw new DOMException('Library selection retired', 'AbortError');
-    await enqueue({items, placement, signal, isCurrent});
+    if (operation.target.mode === 'query') {
+      if (!enqueueQuery) throw new Error('selection-query-queue-unavailable');
+      await enqueueQuery({placement, signal, isCurrent});
+    } else {
+      const items = explicitQueueItems(snapshot);
+      if (!items || !enqueue) throw new Error('leaf-explicit-selection-required');
+      await enqueue({items, placement, signal, isCurrent});
+    }
   };
   const addToPlaylist = async (anchor: HTMLElement) => {
     if (pickers) {openPicker('playlist', anchor); return;}
@@ -309,7 +320,7 @@ export function createLibrarySelection({playSelection, owner, descriptor, action
     }
   };
   return {
-    toolbar: <><LibrarySelectionToolbar visible={visible} pickers={pickers} deletion={deletion} openDelete={openDelete} editor={editor} openEditor={openEditor} progress={progress} owner={owner} playSelection={playSelection} descriptor={descriptor} actions={actions} enqueue={enqueue} destinations={destinations} reportError={reportError} personal={personal} queue={queue} addToPlaylist={addToPlaylist} addToCollection={addToCollection} />{editor && <LibraryEditorHost playSelection={playSelection} store={editorStore} options={editor} close={closeEditor}/>} {deletion && <LibraryDeleteHost playSelection={playSelection} store={deleteStore} options={deletion} close={closeDelete}/>} {pickers && <LibraryPickerHost playSelection={playSelection} store={pickerStore} options={pickers} close={closePicker}/>}</>,
+    toolbar: <><LibrarySelectionToolbar visible={visible} pickers={pickers} deletion={deletion} openDelete={openDelete} editor={editor} openEditor={openEditor} progress={progress} owner={owner} playSelection={playSelection} descriptor={descriptor} actions={actions} enqueue={enqueue} enqueueQuery={enqueueQuery} destinations={destinations} reportError={reportError} personal={personal} queue={queue} addToPlaylist={addToPlaylist} addToCollection={addToCollection} />{editor && <LibraryEditorHost playSelection={playSelection} store={editorStore} options={editor} close={closeEditor}/>} {deletion && <LibraryDeleteHost playSelection={playSelection} store={deleteStore} options={deletion} close={closeDelete}/>} {pickers && <LibraryPickerHost playSelection={playSelection} store={pickerStore} options={pickers} close={closePicker}/>}</>,
     entry: (member, index) => {
       const current = snapshot(), row = rowFor(member, index);
       if (!row || current.phase !== 'ready') return undefined;
