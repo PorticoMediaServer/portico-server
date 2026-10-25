@@ -557,12 +557,14 @@ const serverPages: readonly AuthoredPage[] = [
       on('certificate', 'enabled', 'settings.server.secure.toggle', 'settings.server.secure.toggleHelp', {key: 'claimed', equals: true}),
       custom('server.certificateStatus'),
     ]},
-    // For an owner with a domain and no reverse proxy: where the files are, and whether the server is using them.
-    {id: 'ownCertificate', title: 'web.connectivity.customCert', description: 'settings.server.ownCertificateLede', rows: [
-      custom('server.ownCertificateStatus', 'web.connectivity.customCert'),
-      setting('connectivity', 'customCertificateDomain', 'web.connectivity.customCertDomain', {type: 'text', mono: true, example: 'media.example.com'}),
-      setting('connectivity', 'customCertificatePath', 'web.connectivity.customCertPath', {type: 'text', mono: true, example: '/etc/letsencrypt/live/media.example.com/fullchain.pem'}),
-      setting('connectivity', 'customCertificateKeyPath', 'web.connectivity.customCertKey', {type: 'text', mono: true, example: '/etc/letsencrypt/live/media.example.com/privkey.pem'}),
+    // The drawn Your own address group: the switch, then exactly what it needs. Every server
+    // has it, whatever its sign-in; on a Portico Account server it is an extra route.
+    {id: 'ownCertificate', title: 'next.settingsSpec.server.remote.groups.1.title', rows: [
+      setting('connectivity', 'ownAddressEnabled', 'next.settingsSpec.server.remote.groups.1.rows.0.label', {type: 'switch'}, {help: 'next.settingsSpec.server.remote.groups.1.rows.0.help'}),
+      setting('connectivity', 'customCertificateDomain', 'next.settingsSpec.server.remote.groups.1.rows.0.children.0.label', {type: 'text', mono: true, example: 'https://media.example.com'}, {help: 'next.settingsSpec.server.remote.groups.1.rows.0.children.0.help'}),
+      setting('connectivity', 'customCertificatePath', 'next.settingsSpec.server.remote.groups.1.rows.0.children.1.label', {type: 'text', mono: true, example: '/config/certs/fullchain.pem'}, {help: 'next.settingsSpec.server.remote.groups.1.rows.0.children.1.help'}),
+      setting('connectivity', 'customCertificateKeyPath', 'next.settingsSpec.server.remote.groups.1.rows.0.children.2.label', {type: 'text', mono: true, example: '/config/certs/privkey.pem'}, {help: 'next.settingsSpec.server.remote.groups.1.rows.0.children.2.help'}),
+      custom('server.ownCertificateStatus', 'next.settingsSpec.server.remote.groups.1.rows.0.children.3.label'),
     ]},
     panel('account', 'server.accountConnection', 'web.general.accountConnection'),
     {id: 'reach', title: 'web.network.remoteTitle', description: 'web.network.remoteLede', rows: [
