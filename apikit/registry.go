@@ -369,7 +369,7 @@ func (r *Registry) define(m Metadata, request, response reflect.Type, access boo
 	}
 	for _, code := range m.Errors {
 		if _, ok := r.errors.Definition(code); !ok {
-			return errors.New("unregistered route error")
+			return fmt.Errorf("route %s: unregistered route error %q", m.ID, code)
 		}
 	}
 	for _, d := range r.routes {

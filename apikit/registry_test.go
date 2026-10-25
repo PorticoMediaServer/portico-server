@@ -350,3 +350,16 @@ func TestPathRewriteReachesTypedAndHTTPHandlers(t *testing.T) {
 		t.Fatal("HTTP route missed the rewrite", seen)
 	}
 }
+
+func TestUnregisteredErrorNamesItsRouteAndCode(t *testing.T) {
+	r := New(func(context.Context, *http.Request, Metadata) error { return nil }, nil)
+	m := testMetadata()
+	m.Errors = []string{"missing_declared_outcome"}
+	err := Register(r, Route[testRequest, testResponse]{Metadata: m, Handler: func(context.Context, *http.Request, testRequest) (testResponse, error) { return testResponse{}, nil }})
+	if err == nil || !strings.Contains(err.Error(), m.ID) || !strings.Contains(err.Error(), "missing_declared_outcome") {
+		t.Fatalf("missing registration context: %v", err)
+	}
+	if len(r.routes) != 0 {
+		t.Fatal("invalid route was registered")
+	}
+}
