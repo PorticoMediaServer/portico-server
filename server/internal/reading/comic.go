@@ -27,6 +27,8 @@ type Page struct {
 	Image Image
 }
 type Comic struct {
+	// pageReader is an accepted direct-folder member reader; nil keeps archive behavior.
+	pageReader func(ctx context.Context, name string, limit int64) ([]byte, error)
 	archive  *archive
 	Names    []string
 	Metadata Metadata
@@ -125,7 +127,13 @@ func (c *Comic) Page(ctx context.Context, index, width int) (Page, error) {
 		return Page{}, ErrInvalid
 	}
 	name := c.Names[index]
-	b, err := c.archive.read(ctx, name, MaxMember)
+	var b []byte
+	var err error
+	if c.pageReader != nil {
+		b, err = c.pageReader(ctx, name, MaxMember)
+	} else {
+		b, err = c.archive.read(ctx, name, MaxMember)
+	}
 	if err != nil {
 		return Page{}, err
 	}
