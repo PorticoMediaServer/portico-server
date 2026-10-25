@@ -5,6 +5,7 @@ import {browseServerFilesystem, classifyServerPath} from '@core/library-manageme
 import {Button, Switch, TextField} from '../controls';
 import {Icon, type IconName} from '../Icon';
 import {Dialog} from '../overlays/Dialog';
+import {usePhone} from '../overlays/shared';
 import {Skeleton} from '../states';
 import styles from './server-directory-explorer.module.css';
 
@@ -28,6 +29,7 @@ export function ServerDirectoryExplorer({open, onOpenChange, api, onChoose, onCh
    * caller has none, the dialog keeps its truthful generic label. */
   serverName?: string;
 }>) {
+  const phone = usePhone();
   const [chosen, setChosen] = useState<readonly string[]>([]), [typing, setTyping] = useState(false);
   const [attempt, setAttempt] = useState<object>();
   const activeAttempt = useRef<object | undefined>(undefined);
@@ -148,13 +150,20 @@ export function ServerDirectoryExplorer({open, onOpenChange, api, onChoose, onCh
       <span className={styles.pickerPlaceIcon}><Icon name={rootIcon(root)} size={24}/></span>
       <span className={styles.pickerPlaceCopy}><b>{root.name}</b><small>{root.description || root.path}</small></span>
     </button>;
-  return <Dialog open={open} onOpenChange={changeOpen} size="lg" width={1000} responsive={false} returnFocusRef={returnFocusRef} className={styles.explorer} bodyClassName={styles.explorerBody} footerClassName={styles.explorerFooter} title={t(onChooseMany ? 'next.ownerLibraries.explorer.title' : 'next.settings.chooseFolder')} description={serverName?.trim() ? t('next.ownerLibraries.explorer.subtitle', {server: serverName.trim()}) : t('next.settings.folderBreadcrumbs')}
+  const title = t(onChooseMany ? 'next.ownerLibraries.explorer.title' : 'next.settings.chooseFolder'), subtitle = serverName?.trim() ? t('next.ownerLibraries.explorer.subtitle', {server: serverName.trim()}) : t('next.settings.folderBreadcrumbs') as string;
+  return <Dialog open={open} onOpenChange={changeOpen} size="lg" width={1000} responsive={false} showCloseButton={!phone} returnFocusRef={returnFocusRef} className={styles.explorer} bodyClassName={styles.explorerBody} footerClassName={styles.explorerFooter} title={title} description={subtitle}
     footer={<>
       {onChooseMany ? <ChosenServerFolders paths={chosen} onRemove={toggle}/> : null}
       <Button onClick={() => changeOpen(false)}>{t('next.settings.cancel')}</Button>
       <Button variant="primary" disabled={onChooseMany ? !current() || !chosen.length : !canChooseCurrent} onClick={submit}>{onChooseMany && chosen.length ? t('next.ownerLibraries.explorer.useFolders', {count: chosen.length}) : t('next.ownerLibraries.explorer.useFolder')}</Button>
     </>}>
     <div className={styles.picker}>
+      {phone ? <><div className={styles.phoneTop}>
+        <button type="button" className={styles.phoneAction} onClick={() => changeOpen(false)}>{t('next.shell.cancel')}</button>
+        <b>{title}</b>
+        <button type="button" className={styles.phoneDone} disabled={onChooseMany ? !chosen.length : !canChooseCurrent} onClick={submit}>{t('next.settings.done')}</button>
+      </div>
+      <p className={styles.phoneSub}>{subtitle}</p></> : null}
       <div className={styles.pickerPath}>
         <Button disabled={busy || !page?.parent} aria-label={t('next.ownerLibraries.explorer.up')} onClick={() => {if (page?.parent) go(page.parent);}}>{t('next.settings.up')}</Button>
         {typing || !breadcrumbs.length ? <TextField label={t('next.settings.folderPath')} list={suggestionId} autoComplete="off" disabled={busy} error={failed ? t('next.ownerLibraries.explorer.failed') : undefined} value={typed} onChange={event => {if (current()) {setTyped(event.currentTarget.value);setFailed(false);}}} onKeyDown={event => {
@@ -164,9 +173,14 @@ export function ServerDirectoryExplorer({open, onOpenChange, api, onChoose, onCh
           <Button variant="text" size="small" onClick={() => {if (current()) setTyping(true);}}>{t('next.ownerLibraries.explorer.typePath')}</Button>
         </nav>}
         {typing || !breadcrumbs.length ? <Button disabled={busy || !typed} onClick={() => go(typed)}>{t('next.settings.go')}</Button> : null}
-        {onChooseMany ? <Button disabled={!canChooseCurrent || !!page && !chosen.includes(page.path) && chosen.length >= 64} onClick={() => {if (canChooseCurrent && page && !chosen.includes(page.path)) toggle(page.path);}}>{t('next.settings.chooseThisFolder')}</Button> : null}
+        {onChooseMany && !phone ? <Button disabled={!canChooseCurrent || !!page && !chosen.includes(page.path) && chosen.length >= 64} onClick={() => {if (canChooseCurrent && page && !chosen.includes(page.path)) toggle(page.path);}}>{t('next.settings.chooseThisFolder')}</Button> : null}
         <datalist id={suggestionId}>{suggestions.map(path => <option key={path} value={path}/>)}</datalist>
       </div>
+      {phone && onChooseMany && page?.path && canChooseCurrent ? <button type="button" className={styles.addThis} aria-pressed={chosen.includes(page.path)} disabled={!chosen.includes(page.path) && chosen.length >= 64} onClick={() => toggle(page.path)}>
+        <span className={styles.addCheck} data-on={chosen.includes(page.path) || undefined}>{chosen.includes(page.path) ? <Icon name="i-check" size={13}/> : null}</span>
+        <Icon name="i-folder" size={20}/>
+        <span className={styles.addCopy}><b>{t('next.ownerLibraries.explorer.addThisFolder')}</b><small>{page.path}</small></span>
+      </button> : null}
       <div className={styles.explorerColumns} data-roots={!page?.path || undefined}>
         {!!page?.path && places.length > 0 ? <nav className={styles.pickerPlaces} aria-label={t('next.ownerLibraries.explorer.places')}>
           <h4>{t('next.ownerLibraries.explorer.places')}</h4>{places.map(root => <div key={root.path}>{placeButton(root)}</div>)}
@@ -187,6 +201,10 @@ export function ServerDirectoryExplorer({open, onOpenChange, api, onChoose, onCh
           {page?.nextCursor ? <Button disabled={busy} onClick={() => {if (current()) void read(page.path, showHidden, page.nextCursor);}}>{t('next.ownerLibraries.explorer.more')}</Button> : null}
         </section>
       </div>
+      {phone ? <div className={styles.phoneTray}>
+        {onChooseMany ? <ChosenServerFolders paths={chosen} onRemove={toggle} disabled={busy}/> : null}
+        <Button variant="primary" disabled={onChooseMany ? !current() || !chosen.length : !canChooseCurrent} onClick={submit}>{onChooseMany && chosen.length ? t('next.ownerLibraries.explorer.useFolders', {count: chosen.length}) : t('next.ownerLibraries.explorer.useFolder')}</Button>
+      </div> : null}
     </div>
   </Dialog>;
 }
