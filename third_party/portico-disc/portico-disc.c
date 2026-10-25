@@ -6,6 +6,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include <errno.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -227,8 +228,7 @@ static void dvd_stream(unsigned pid, const char *kind, unsigned coding, uint16_t
     emit("%s{\"clipSequence\":0,\"pid\":%u,\"kind\":\"%s\",\"coding\":%u,\"language\":", *first ? "" : ",", pid, kind, coding);
     dvd_language(lang); emit(",\"dolbyVisionEnhancementLayer\":false,\"dolbyVisionEnhancementKnown\":true}"); *first = 0;
 }
-static int probe_dvd(const char *path, const char *packaging) {
-    dvd_reader_t *dvd = DVDOpen(path);
+static int probe_dvd_readers(dvd_reader_t *dvd, const char *path, void *stream, dvd_reader_stream_cb *callbacks, const char *packaging) {
     ifo_handle_t *vmg = NULL, *vts = NULL;
     dvdnav_t *nav = NULL;
     int ret = 3, first_title = 1;
@@ -236,7 +236,8 @@ static int probe_dvd(const char *path, const char *packaging) {
     if (!dvd) return 2;
     vmg = ifoOpen(dvd, 0);
     if (!vmg || !vmg->tt_srpt || vmg->tt_srpt->nr_of_srpts > 99) goto done;
-    if (dvdnav_open(&nav, path) != DVDNAV_STATUS_OK || dvdnav_set_readahead_flag(nav, 0) != DVDNAV_STATUS_OK) goto done;
+    if ((path ? dvdnav_open(&nav, path) : dvdnav_open_stream(&nav, stream, callbacks)) != DVDNAV_STATUS_OK ||
+        dvdnav_set_readahead_flag(nav, 0) != DVDNAV_STATUS_OK) goto done;
     /* Check every referenced VTS before publishing any playable title. */
     for (unsigned i = 0; i < vmg->tt_srpt->nr_of_srpts; i++) {
         int status = dvd_scrambled(dvd, vmg->tt_srpt->title[i].title_set_nr);
@@ -290,6 +291,78 @@ done:
     if (vmg) ifoClose(vmg);
     DVDClose(dvd); return ret;
 }
+static int probe_dvd(const char *path, const char *packaging) {
+    return probe_dvd_readers(DVDOpen(path), path, NULL, NULL, packaging);
+}
+
+#ifndef _WIN32
+/* The parent brokers one captured immutable ISO over inherited pipes. There
+ * are no paths, URLs, credentials, HTTP parser or network calls in this mode.
+ * The same parent's RemoteObject owns all conditional range/source checks. */
+typedef struct { uint64_t size, position; int failed; } remote_image;
+#define REMOTE_RANGE_MAX (2U * 1024U * 1024U)
+static int remote_transfer(int fd, void *buffer, size_t length, int writing) {
+    unsigned char *p = buffer;
+    while (length) {
+        ssize_t n = writing ? write(fd, p, length) : read(fd, p, length);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) return 0;
+        p += n; length -= (size_t)n;
+    }
+    return 1;
+}
+static int remote_read_at(remote_image *image, uint64_t offset, void *buffer, size_t length) {
+    unsigned char *target = buffer;
+    if (image->failed || offset > image->size || length > image->size - offset) return 0;
+    while (length) {
+        unsigned char request[16] = {'P','D','R','1'}, reply[8];
+        uint32_t part = length > REMOTE_RANGE_MAX ? REMOTE_RANGE_MAX : (uint32_t)length;
+        for (int i = 0; i < 8; i++) request[4+i] = (unsigned char)(offset >> (56-8*i));
+        for (int i = 0; i < 4; i++) request[12+i] = (unsigned char)(part >> (24-8*i));
+        if (!remote_transfer(3, request, sizeof(request), 1) ||
+            !remote_transfer(4, reply, sizeof(reply), 0) || memcmp(reply, "PDA1", 4) ||
+            (((uint32_t)reply[4]<<24)|((uint32_t)reply[5]<<16)|((uint32_t)reply[6]<<8)|reply[7]) != part ||
+            !remote_transfer(4, target, part, 0)) {
+            image->failed = 1; return 0;
+        }
+        offset += part; target += part; length -= part;
+    }
+    return 1;
+}
+static int remote_bd_blocks(void *handle, void *buffer, int lba, int blocks) {
+    remote_image *image = handle;
+    if (lba < 0 || blocks <= 0 || blocks > INT_MAX / 2048) return -1;
+    return remote_read_at(image, (uint64_t)lba * 2048, buffer, (size_t)blocks * 2048) ? blocks : -1;
+}
+static int remote_dvd_seek(void *handle, uint64_t position) {
+    remote_image *image = handle;
+    if (image->failed || position > image->size) return -1;
+    image->position = position; return 0;
+}
+static int remote_dvd_read(void *handle, void *buffer, int length) {
+    remote_image *image = handle;
+    if (length < 0 || !remote_read_at(image, image->position, buffer, (size_t)length)) return -1;
+    image->position += (uint64_t)length; return length;
+}
+static int probe_remote_image(uint64_t size) {
+    remote_image image = {size, 0, 0}, navigation = {size, 0, 0};
+    BLURAY *bd = bd_init();
+    dvd_reader_t *dvd;
+    dvd_reader_stream_cb callbacks = {remote_dvd_seek, remote_dvd_read, NULL};
+    int result;
+    if (!size || size > INT64_MAX || size % 2048) return 2;
+    if (!bd) return 3;
+    if (bd_open_stream(bd, &image, remote_bd_blocks) && bd_get_disc_info(bd) && bd_get_disc_info(bd)->bluray_detected) {
+        result = probe_bd(bd, "iso"); bd_close(bd); return image.failed ? 3 : result;
+    }
+    bd_close(bd);
+    if (image.failed) return 3;
+    image.position = 0;
+    dvd = DVDOpenStream(&image, &callbacks);
+    result = probe_dvd_readers(dvd, NULL, &navigation, &callbacks, "iso");
+    return image.failed || navigation.failed ? 3 : result;
+}
+#endif
 static int number(const char *s, uint64_t *out) {
     char *end;
     if (!s || !*s) return 0;
@@ -300,6 +373,13 @@ static int run(int argc, char **argv) {
     struct stat st;
     BLURAY *bd;
     int result;
+#ifndef _WIN32
+    if (argc == 3 && !strcmp(argv[1], "probe-image-stream")) {
+        uint64_t size;
+        if (!number(argv[2], &size)) return 2;
+        return probe_remote_image(size);
+    }
+#endif
     if (argc < 3 || stat(argv[2], &st) || (!S_ISDIR(st.st_mode) && !S_ISREG(st.st_mode))) return 2;
     if (!strcmp(argv[1], "probe") && argc == 3) {
         bd = bd_open(argv[2], NULL);
