@@ -112,10 +112,11 @@ def main():
         device.shell("input", "tap", str(point[0]), str(point[1]))
         device.wait_text(r"Who|Main profile|Home|Your servers", 40)
         if re.search(r"Who|Main profile", device.text(), re.I):
-            device.tap_contains(creds["username"], "main profile")
-            time.sleep(5)
-        device.tap_contains("portico demo")
-        time.sleep(4)
+            device.tap_clickable_containing(creds["username"], "main profile")
+            device.wait_text(r"Your servers|Home|Continue Watching|New on", 30)
+        if re.search(r"Your servers", device.text(), re.I):
+            device.tap_clickable_containing("portico demo")
+            device.wait_text(r"Home|Continue Watching|New on", 30)
     home_text = device.text()
     signed_in = any(word in home_text for word in ("Home", "Continue Watching", "New on", "Your servers"))
     note("signed-in", shot("signed-in"), signed_in, home_text[:100].replace("\n", " | "))

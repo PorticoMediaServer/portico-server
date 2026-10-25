@@ -101,6 +101,20 @@ class Device:
                     return node["text"] or node["desc"]
         return None
 
+    def tap_clickable_containing(self, *fragments):
+        """Prefer a clickable node; fall back to any node with the text."""
+        lowered = [fragment.lower() for fragment in fragments]
+        for node in self.nodes():
+            if not node["clickable"]:
+                continue
+            haystack = f"{node['text']} {node['desc']}".lower()
+            if any(fragment in haystack for fragment in lowered):
+                point = self.center(node["bounds"])
+                if point:
+                    self.shell("input", "tap", str(point[0]), str(point[1]))
+                    return node["text"] or node["desc"]
+        return self.tap_contains(*fragments)
+
     def type_text(self, value):
         escaped = value.replace(" ", "%s")
         self.shell("input", "text", escaped)
@@ -274,11 +288,12 @@ def main():
         device.shell("input", "tap", str(point[0]), str(point[1]))
         assert device.wait_text(r"Who|Main profile|Home", 40) is not None, "sign-in did not reach the app"
         if re.search(r"Who|Main profile", device.text(), re.I):
-            device.tap_contains(creds["username"], "main profile")
-            time.sleep(5)
+            device.tap_clickable_containing(creds["username"], "main profile")
+            device.wait_text(r"Your servers|Home|Continue Watching|New on", 30)
         # A server list may sit between the profile and Home.
-        if device.tap_contains("portico demo") and not device.wait_text(r"Continue Watching|New on|Home", 8):
-            pass
+        if re.search(r"Your servers", device.text(), re.I):
+            device.tap_clickable_containing("portico demo")
+            device.wait_text(r"Home|Continue Watching|New on", 30)
         assert device.wait_text(r"Home|Continue Watching|New on|Search", 40) is not None, "Home did not draw after sign-in"
         text = device.text()
         return f"signed in; {len(text)} chars visible", {"screenshot": device.screenshot("after-signin")}
