@@ -27,6 +27,9 @@ function MountedAuthForm({account, flow, initialUsername = '', embedded = false,
   useSyncExternalStore(account.service.subscribe, account.service.getSnapshot);
   const readyAccount = flow.readyAccount();
   const [username, setUsername] = useState(initialUsername), [password, setPassword] = useState(''), [email, setEmail] = useState(''), [name, setName] = useState(''), [code, setCode] = useState('');
+  // The exact create request's username, so a taken-name indication clears once
+  // the person changes the field rather than on every keystroke request.
+  const [submittedUsername, setSubmittedUsername] = useState('');
   const [clock, setClock] = useState(Date.now);
   useEffect(() => {
     if (!state.retryAt) return;
@@ -45,6 +48,7 @@ function MountedAuthForm({account, flow, initialUsername = '', embedded = false,
   const errorCode = (state.error as {code?: string} | undefined)?.code;
   const codeRejected = mode === 'verify' && errorCode === 'challenge_invalid';
   const mailDown = mode === 'create' && errorCode === 'mail_unavailable';
+  const nameTaken = mode === 'create' && errorCode === 'username_unavailable' && submittedUsername !== '' && username.trim().toLowerCase() === submittedUsername;
   const back = <button type="button" disabled={busy} onClick={() => flow.go('signin')}>{t('auth.backToSignIn')}</button>;
   // Frame 7 draws the create form's way back with the same left arrow the provider
   // screen's Cancel uses; the code and reset screens draw it as plain text.
@@ -61,7 +65,7 @@ function MountedAuthForm({account, flow, initialUsername = '', embedded = false,
     {!(invitation && mode === 'signin') && <><ServicesHeading singleLine>{title}</ServicesHeading>{mode === 'verify' && state.registration ? <ServicesRegistrationLead address={state.registration.maskedAddress} /> : <ServicesLead>{body}</ServicesLead>}</>}
     {mode === 'signin' && before}
     {(mode === 'signin' || mode === 'create') && providerButtons}
-    {state.error && !codeRejected ? state.retryAt > 0 ? <ServicesNotice tone="error">{t('services.signin.tooMany')}</ServicesNotice> : errorCode === 'invalid_credentials' ? <ServicesNotice tone="error">{t('services.signin.credentials')}</ServicesNotice> : mailDown ? <ServicesNotice icon="i-clock">{t('services.signup.mailUnavailable')}</ServicesNotice> : <HostedError error={state.error} /> : null}
+    {state.error && !codeRejected && !(errorCode === 'username_unavailable' && mode === 'create') ? state.retryAt > 0 ? <ServicesNotice tone="error">{t('services.signin.tooMany')}</ServicesNotice> : errorCode === 'invalid_credentials' ? <ServicesNotice tone="error">{t('services.signin.credentials')}</ServicesNotice> : mailDown ? <ServicesNotice icon="i-clock">{t('services.signup.mailUnavailable')}</ServicesNotice> : <HostedError error={state.error} /> : null}
     {mode === 'signin' && state.options?.password && <>
       <form className={styles.form} onSubmit={submit(() => flow.signIn(username, password, code))}>
         <TextField variant="auth" label={t('auth.usernameOrEmail')} placeholder={t('auth.usernameOrEmail')} name="username" autoComplete="username" autoCapitalize="off" spellCheck={false} value={username} onChange={event => setUsername(event.currentTarget.value)} disabled={busy} required />
@@ -71,10 +75,10 @@ function MountedAuthForm({account, flow, initialUsername = '', embedded = false,
       <AuthLinks>{state.options.recovery && <button type="button" disabled={busy} onClick={() => flow.go('forgot')}>{t('auth.forgotPassword')}</button>}{state.options.registration && <button type="button" disabled={busy} onClick={() => flow.go('create')}>{t('auth.createAccount')}</button>}</AuthLinks>
     </>}
     {mode === 'create' && state.options?.registration && <>
-      <form className={styles.form} onSubmit={submit(() => flow.create({username, password, displayName: name, contactAddress: email}))}>
+      <form className={styles.form} onSubmit={submit(() => { setSubmittedUsername(username.trim().toLowerCase()); return flow.create({username, password, displayName: name, contactAddress: email}); })}>
         <TextField variant="auth" label={t('auth.email')} name="email" type="email" autoComplete="email" value={email} onChange={event => setEmail(event.currentTarget.value)} description={t('services.signup.emailHelp')} required disabled={busy} />
         <ServicesPair>
-          <TextField variant="auth" label={t('auth.username')} name="username" autoComplete="username" autoCapitalize="off" spellCheck={false} value={username} onChange={event => setUsername(event.currentTarget.value)} minLength={3} maxLength={32} required disabled={busy} />
+          <TextField variant="auth" label={t('auth.username')} name="username" autoComplete="username" autoCapitalize="off" spellCheck={false} value={username} onChange={event => setUsername(event.currentTarget.value)} minLength={3} maxLength={32} required disabled={busy} error={nameTaken ? t('web.signIn.error.accountTaken') : undefined} />
           <TextField variant="auth" label={<ServicesLabel detail={t('field.optional')}>{t('auth.yourName')}</ServicesLabel>} name="name" autoComplete="name" placeholder={t('services.signup.sameUsername')} value={name} onChange={event => setName(event.currentTarget.value)} maxLength={80} disabled={busy} />
         </ServicesPair>
         <ServicesHint>{t('auth.usernameHelp')}</ServicesHint>
