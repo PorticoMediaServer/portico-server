@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import type {LibraryContentApi} from '@core/library-content.ts';
 import type {LibraryManagementService} from '@core/library-management.ts';
@@ -18,28 +18,33 @@ export function RemoveLibrary({open, onOpenChange, libraryId, service, api, onRe
 }>) {
   const [typed, setTyped] = useState(''), [name, setName] = useState(''), [revision, setRevision] = useState<number>();
   const [busy, setBusy] = useState(false), [failed, setFailed] = useState(false);
+  const lifetime = useRef<{libraryId: string; running: boolean} | undefined>(undefined);
   useEffect(() => {
     if (!open) return;
-    let alive = true;
-    setTyped(''); setFailed(false); setName(''); setRevision(undefined);
+    const capture = {libraryId, running: false}; lifetime.current = capture;
+    const current = () => lifetime.current === capture;
+    setTyped(''); setFailed(false); setBusy(false); setName(''); setRevision(undefined);
     void service.selectLibrary(libraryId).then(() => {
-      if (!alive) return;
+      if (!current()) return;
       const library = service.getSnapshot().selected.data?.library;
-      if (library) { setName(library.name); setRevision(library.revision); }
-    }).catch(error => { if (alive) onError(error); });
-    return () => { alive = false; };
+      if (library?.id === libraryId && service.getSnapshot().selected.phase === 'ready') { setName(library.name); setRevision(library.revision); }
+    }).catch(error => { if (current()) onError(error); });
+    return () => {if (current()) lifetime.current = undefined;};
   }, [open, libraryId, service, onError]);
   const confirm = async () => {
-    if (!revision || typed !== name) return;
+    const capture = lifetime.current;
+    if (!open || !capture || capture.libraryId !== libraryId || capture.running || revision === undefined || !name || typed !== name) return;
+    capture.running = true;
+    const current = () => lifetime.current === capture;
     setBusy(true); setFailed(false);
-    try { await removeLibrary(api, libraryId, typed, revision); onOpenChange(false); onRemoved(); }
-    catch (error) { setFailed(true); onError(error); }
-    finally { setBusy(false); }
+    try { await removeLibrary(api, libraryId, typed, revision); if (current()) {onOpenChange(false); onRemoved();} }
+    catch (error) { if (current()) {setFailed(true); onError(error);} }
+    finally {if (current()) {capture.running = false;setBusy(false);}}
   };
-  return <Dialog open={open} onOpenChange={onOpenChange} size="sm" role="alertdialog"
+  return <Dialog open={open} onOpenChange={value => {if (!lifetime.current?.running) onOpenChange(value);}} dismissOnBack={!busy} dismissOnOutsidePress={!busy} showCloseButton={!busy} size="sm" role="alertdialog"
     title={t('next.settingsSpec.server.libraries.panels.library.tabs.0.groups.2.rows.0.control.label')}
     description={t('next.settingsSpec.server.libraries.panels.library.tabs.0.groups.2.rows.0.control.confirm')}
-    footer={<><Button onClick={() => onOpenChange(false)}>{t('next.settings.cancel')}</Button>
+    footer={<><Button disabled={busy} onClick={() => {if (!lifetime.current?.running) onOpenChange(false);}}>{t('next.settings.cancel')}</Button>
       <Button variant="primary" loading={busy} disabled={busy || !name || typed !== name} onClick={() => { void confirm(); }}>{t('next.settingsSpec.server.libraries.panels.library.tabs.0.groups.2.rows.0.control.label')}</Button></>}>
     <div className={styles.form}>
       <p className={styles.formNote}>{t('next.settingsSpec.server.libraries.panels.library.tabs.0.groups.2.rows.0.help')}</p>
