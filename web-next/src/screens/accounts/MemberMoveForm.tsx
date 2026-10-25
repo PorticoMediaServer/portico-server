@@ -34,8 +34,8 @@ export function MemberMoveForm({mode, serverName, initialUsername = '', busy, er
       }}>
         {mode === 'code' ? <TextField variant="auth" label={t('accounts.move.code')} name="move-code" autoComplete="one-time-code" value={code} onChange={event => setCode(event.currentTarget.value)} disabled={busy} autoFocus required/>
           : <><TextField variant="auth" label={t('accounts.signIn.username')} name="username" autoComplete="username" value={username} onChange={event => setUsername(event.currentTarget.value)} disabled={busy} required/>
-            <AuthPasswordField label={t('accounts.signIn.password')} name="password" autoComplete={local ? 'new-password' : 'current-password'} value={password} onChange={event => setPassword(event.currentTarget.value)} disabled={busy} required/>
-            {local && <><ServicesStrength password={password} id={strengthId}/><AuthPasswordField label={t('web.reset.confirm')} name="confirm-password" autoComplete="new-password" value={confirm} onChange={event => setConfirm(event.currentTarget.value)} disabled={busy} required/></>}</>}
+            <AuthPasswordField label={t('accounts.signIn.password')} name="password" autoComplete={local ? 'new-password' : 'current-password'} value={password} aria-describedby={local && password ? strengthId : undefined} onChange={event => setPassword(event.currentTarget.value)} disabled={busy} required/>
+            {local && <><ServicesStrength password={password} id={strengthId}/><AuthPasswordField label={t('web.reset.confirm')} name="confirm-password" autoComplete="new-password" value={confirm} error={confirm && password !== confirm ? t('accounts.signIn.passwordsDiffer') : undefined} onChange={event => setConfirm(event.currentTarget.value)} disabled={busy} required/></>}</>}
         <Button variant="primary" type="submit" loading={busy} disabled={!ready}>{t('action.continue')}</Button>
       </form>}
     {old && <p className={styles.lede}>{t('accounts.move.oldPasswordHelp')}</p>}
