@@ -377,6 +377,10 @@
                           }
                         ]
                       },
+                      "selectionRevision": {
+                        "pattern": "^browse_[a-f0-9]{64}$",
+                        "type": "string"
+                      },
                       "sort": {
                         "items": {
                           "properties": {
@@ -3721,6 +3725,10 @@
                             "type": "object"
                           }
                         ]
+                      },
+                      "selectionRevision": {
+                        "pattern": "^browse_[a-f0-9]{64}$",
+                        "type": "string"
                       },
                       "sort": {
                         "items": {
@@ -17107,6 +17115,10 @@
                                 }
                               ]
                             },
+                            "selectionRevision": {
+                              "pattern": "^browse_[a-f0-9]{64}$",
+                              "type": "string"
+                            },
                             "sort": {
                               "items": {
                                 "properties": {
@@ -17363,6 +17375,10 @@
                             "type": "object"
                           }
                         ]
+                      },
+                      "selectionRevision": {
+                        "pattern": "^browse_[a-f0-9]{64}$",
+                        "type": "string"
                       },
                       "sort": {
                         "items": {
@@ -20598,6 +20614,9 @@
           },
           "libraryId": {
             "type": "string"
+          },
+          "onlineLookups": {
+            "type": "boolean"
           },
           "revision": {
             "type": "string"
@@ -118898,6 +118917,9 @@
           "libraryId": {
             "type": "string"
           },
+          "onlineLookups": {
+            "type": "boolean"
+          },
           "revision": {
             "type": "string"
           },
@@ -119197,6 +119219,9 @@
       },
       "GetMetadataSettingsResponse": {
         "properties": {
+          "artworkLanguage": {
+            "type": "string"
+          },
           "artworkMaxEdge": {
             "enum": [
               1280,
@@ -119206,6 +119231,9 @@
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "artworkPreference": {
+            "type": "string"
           },
           "defaultLanguage": {
             "type": "string"
@@ -119285,6 +119313,9 @@
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "onlineLookups": {
+            "type": "boolean"
           },
           "openSubtitles": {
             "properties": {
@@ -155245,6 +155276,9 @@
       },
       "GetStorageSourceStatusResponse": {
         "properties": {
+          "assignmentFenceSupported": {
+            "type": "boolean"
+          },
           "scope": {
             "properties": {
               "serverId": {
@@ -155375,6 +155409,7 @@
           }
         },
         "required": [
+          "assignmentFenceSupported",
           "scope",
           "status"
         ],
@@ -175874,6 +175909,26 @@
           "classification": {
             "type": "string"
           },
+          "expectedRemoteSource": {
+            "additionalProperties": false,
+            "properties": {
+              "generation": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "sourceId": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "sourceId",
+              "generation"
+            ],
+            "type": "object"
+          },
           "expectedRevision": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -181409,6 +181464,26 @@
           },
           "classification": {
             "type": "string"
+          },
+          "expectedRemoteSource": {
+            "additionalProperties": false,
+            "properties": {
+              "generation": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "sourceId": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "sourceId",
+              "generation"
+            ],
+            "type": "object"
           },
           "expectedRevision": {
             "maximum": 9007199254740991,
@@ -196551,6 +196626,26 @@
       },
       "PostLibrariesRequest": {
         "properties": {
+          "expectedRemoteSource": {
+            "additionalProperties": false,
+            "properties": {
+              "generation": {
+                "maximum": 9007199254740991,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "sourceId": {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "sourceId",
+              "generation"
+            ],
+            "type": "object"
+          },
           "folders": {
             "items": {
               "type": "string"
@@ -197833,6 +197928,9 @@
           "libraryId": {
             "type": "string"
           },
+          "onlineLookups": {
+            "type": "boolean"
+          },
           "revision": {
             "type": "string"
           },
@@ -198528,6 +198626,9 @@
           },
           "libraryId": {
             "type": "string"
+          },
+          "onlineLookups": {
+            "type": "boolean"
           },
           "revision": {
             "type": "string"
@@ -204545,6 +204646,185 @@
           "controlRevision",
           "accepted",
           "deleted"
+        ],
+        "type": "object"
+      },
+      "PostStorageSourceDriveOauthCancelRequest": {
+        "properties": {
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "type": "object"
+      },
+      "PostStorageSourceDriveOauthCancelResponse": {
+        "properties": {
+          "cancelled": {
+            "type": "boolean"
+          },
+          "scope": {
+            "properties": {
+              "serverId": {
+                "type": "string"
+              },
+              "viewerFence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "serverId",
+              "viewerFence"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "scope",
+          "cancelled"
+        ],
+        "type": "object"
+      },
+      "PostStorageSourceDriveOauthPasteRequest": {
+        "properties": {
+          "redirectUrl": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "redirectUrl"
+        ],
+        "type": "object"
+      },
+      "PostStorageSourceDriveOauthPasteResponse": {
+        "properties": {
+          "phase": {
+            "enum": [
+              "pending",
+              "ready",
+              "expired",
+              "denied"
+            ],
+            "type": "string"
+          },
+          "scope": {
+            "properties": {
+              "serverId": {
+                "type": "string"
+              },
+              "viewerFence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "serverId",
+              "viewerFence"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "scope",
+          "phase"
+        ],
+        "type": "object"
+      },
+      "PostStorageSourceDriveOauthStartRequest": {
+        "properties": {
+          "clientId": {
+            "type": "string"
+          },
+          "clientSecret": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "clientId",
+          "clientSecret"
+        ],
+        "type": "object"
+      },
+      "PostStorageSourceDriveOauthStartResponse": {
+        "properties": {
+          "authorizationUrl": {
+            "type": "string"
+          },
+          "scope": {
+            "properties": {
+              "serverId": {
+                "type": "string"
+              },
+              "viewerFence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "serverId",
+              "viewerFence"
+            ],
+            "type": "object"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "authorizationUrl",
+          "state"
+        ],
+        "type": "object"
+      },
+      "PostStorageSourceDriveOauthStatusRequest": {
+        "properties": {
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "type": "object"
+      },
+      "PostStorageSourceDriveOauthStatusResponse": {
+        "properties": {
+          "phase": {
+            "enum": [
+              "pending",
+              "ready",
+              "expired",
+              "denied"
+            ],
+            "type": "string"
+          },
+          "scope": {
+            "properties": {
+              "serverId": {
+                "type": "string"
+              },
+              "viewerFence": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "serverId",
+              "viewerFence"
+            ],
+            "type": "object"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "phase"
         ],
         "type": "object"
       },
@@ -214866,6 +215146,9 @@
       },
       "PutMetadataSettingsRequest": {
         "properties": {
+          "artworkLanguage": {
+            "type": "string"
+          },
           "artworkMaxEdge": {
             "enum": [
               1280,
@@ -214875,6 +215158,9 @@
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "artworkPreference": {
+            "type": "string"
           },
           "defaultLanguage": {
             "type": "string"
@@ -214925,6 +215211,9 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "onlineLookups": {
+            "type": "boolean"
+          },
           "openSubtitlesApiKey": {
             "type": "string"
           },
@@ -214950,6 +215239,9 @@
       },
       "PutMetadataSettingsResponse": {
         "properties": {
+          "artworkLanguage": {
+            "type": "string"
+          },
           "artworkMaxEdge": {
             "enum": [
               1280,
@@ -214959,6 +215251,9 @@
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "artworkPreference": {
+            "type": "string"
           },
           "defaultLanguage": {
             "type": "string"
@@ -215038,6 +215333,9 @@
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "onlineLookups": {
+            "type": "boolean"
           },
           "openSubtitles": {
             "properties": {
@@ -219729,6 +220027,9 @@
           },
           "rate": {
             "type": "number"
+          },
+          "seeked": {
+            "type": "boolean"
           },
           "seq": {
             "maximum": 9007199254740991,
@@ -261726,6 +262027,26 @@
                   "classification": {
                     "type": "string"
                   },
+                  "expectedRemoteSource": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "generation": {
+                        "maximum": 9007199254740991,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "sourceId": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "sourceId",
+                      "generation"
+                    ],
+                    "type": "object"
+                  },
                   "expectedRevision": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -261880,6 +262201,7 @@
         "x-admission": "admin-heavy",
         "x-cost": "constant",
         "x-error-codes": [
+          "source_changed",
           "invalid_request",
           "unauthorized",
           "not_permitted",
@@ -262012,6 +262334,26 @@
                   },
                   "classification": {
                     "type": "string"
+                  },
+                  "expectedRemoteSource": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "generation": {
+                        "maximum": 9007199254740991,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "sourceId": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "sourceId",
+                      "generation"
+                    ],
+                    "type": "object"
                   },
                   "expectedRevision": {
                     "maximum": 9007199254740991,
@@ -262167,6 +262509,7 @@
         "x-admission": "admin-heavy",
         "x-cost": "constant",
         "x-error-codes": [
+          "source_changed",
           "invalid_request",
           "unauthorized",
           "not_permitted",
@@ -274464,6 +274807,9 @@
               "application/json": {
                 "schema": {
                   "properties": {
+                    "artworkLanguage": {
+                      "type": "string"
+                    },
                     "artworkMaxEdge": {
                       "enum": [
                         1280,
@@ -274473,6 +274819,9 @@
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "artworkPreference": {
+                      "type": "string"
                     },
                     "defaultLanguage": {
                       "type": "string"
@@ -274552,6 +274901,9 @@
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "onlineLookups": {
+                      "type": "boolean"
                     },
                     "openSubtitles": {
                       "properties": {
@@ -274688,6 +275040,9 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "artworkLanguage": {
+                    "type": "string"
+                  },
                   "artworkMaxEdge": {
                     "enum": [
                       1280,
@@ -274697,6 +275052,9 @@
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "artworkPreference": {
+                    "type": "string"
                   },
                   "defaultLanguage": {
                     "type": "string"
@@ -274747,6 +275105,9 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "onlineLookups": {
+                    "type": "boolean"
+                  },
                   "openSubtitlesApiKey": {
                     "type": "string"
                   },
@@ -274780,6 +275141,9 @@
               "application/json": {
                 "schema": {
                   "properties": {
+                    "artworkLanguage": {
+                      "type": "string"
+                    },
                     "artworkMaxEdge": {
                       "enum": [
                         1280,
@@ -274789,6 +275153,9 @@
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "artworkPreference": {
+                      "type": "string"
                     },
                     "defaultLanguage": {
                       "type": "string"
@@ -274868,6 +275235,9 @@
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "onlineLookups": {
+                      "type": "boolean"
                     },
                     "openSubtitles": {
                       "properties": {
@@ -405349,6 +405719,26 @@
             "application/json": {
               "schema": {
                 "properties": {
+                  "expectedRemoteSource": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "generation": {
+                        "maximum": 9007199254740991,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "sourceId": {
+                        "maxLength": 256,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "sourceId",
+                      "generation"
+                    ],
+                    "type": "object"
+                  },
                   "folders": {
                     "items": {
                       "type": "string"
@@ -405518,6 +405908,7 @@
         "x-admission": "browsing",
         "x-cost": "constant",
         "x-error-codes": [
+          "source_changed",
           "invalid_request",
           "unauthorized",
           "not_permitted",
@@ -430716,6 +431107,9 @@
                     "libraryId": {
                       "type": "string"
                     },
+                    "onlineLookups": {
+                      "type": "boolean"
+                    },
                     "revision": {
                       "type": "string"
                     },
@@ -431491,6 +431885,9 @@
                     },
                     "libraryId": {
                       "type": "string"
+                    },
+                    "onlineLookups": {
+                      "type": "boolean"
                     },
                     "revision": {
                       "type": "string"
@@ -432292,6 +432689,9 @@
                     "libraryId": {
                       "type": "string"
                     },
+                    "onlineLookups": {
+                      "type": "boolean"
+                    },
                     "revision": {
                       "type": "string"
                     },
@@ -432953,6 +433353,9 @@
                     },
                     "libraryId": {
                       "type": "string"
+                    },
+                    "onlineLookups": {
+                      "type": "boolean"
                     },
                     "revision": {
                       "type": "string"
@@ -449455,6 +449858,9 @@
                   "rate": {
                     "type": "number"
                   },
+                  "seeked": {
+                    "type": "boolean"
+                  },
                   "seq": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -455567,6 +455973,10 @@
                                         }
                                       ]
                                     },
+                                    "selectionRevision": {
+                                      "pattern": "^browse_[a-f0-9]{64}$",
+                                      "type": "string"
+                                    },
                                     "sort": {
                                       "items": {
                                         "properties": {
@@ -455823,6 +456233,10 @@
                                     "type": "object"
                                   }
                                 ]
+                              },
+                              "selectionRevision": {
+                                "pattern": "^browse_[a-f0-9]{64}$",
+                                "type": "string"
                               },
                               "sort": {
                                 "items": {
@@ -459597,6 +460011,10 @@
                                     "type": "object"
                                   }
                                 ]
+                              },
+                              "selectionRevision": {
+                                "pattern": "^browse_[a-f0-9]{64}$",
+                                "type": "string"
                               },
                               "sort": {
                                 "items": {
@@ -465033,6 +465451,10 @@
                                     "type": "object"
                                   }
                                 ]
+                              },
+                              "selectionRevision": {
+                                "pattern": "^browse_[a-f0-9]{64}$",
+                                "type": "string"
                               },
                               "sort": {
                                 "items": {
@@ -503328,6 +503750,447 @@
         "x-scope": "admin"
       }
     },
+    "/v1/storage/sources/rclone/drive/oauth/cancel": {
+      "post": {
+        "operationId": "post_storage_source_drive_oauth_cancel",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "state": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "state"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "cancelled": {
+                      "type": "boolean"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "cancelled"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "End the owner's Google sign-in session",
+        "x-access": "owner",
+        "x-admission": "admin-long",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "invalid_request",
+          "administration_unavailable",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 8192,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/storage/sources/rclone/drive/oauth/paste": {
+      "post": {
+        "operationId": "post_storage_source_drive_oauth_paste",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "redirectUrl": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "state",
+                  "redirectUrl"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "phase": {
+                      "enum": [
+                        "pending",
+                        "ready",
+                        "expired",
+                        "denied"
+                      ],
+                      "type": "string"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "phase"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Take the code from the address Google ended on",
+        "x-access": "owner",
+        "x-admission": "admin-long",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "invalid_request",
+          "source_credentials_required",
+          "administration_unavailable",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 8192,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/storage/sources/rclone/drive/oauth/start": {
+      "post": {
+        "operationId": "post_storage_source_drive_oauth_start",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "clientId": {
+                    "type": "string"
+                  },
+                  "clientSecret": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "clientId",
+                  "clientSecret"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "authorizationUrl": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    },
+                    "state": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "authorizationUrl",
+                    "state"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Start the owner's own Google OAuth sign-in for a Drive source",
+        "x-access": "owner",
+        "x-admission": "admin-long",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "invalid_request",
+          "administration_unavailable",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 8192,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/storage/sources/rclone/drive/oauth/status": {
+      "post": {
+        "operationId": "post_storage_source_drive_oauth_status",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "state": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "state"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "phase": {
+                      "enum": [
+                        "pending",
+                        "ready",
+                        "expired",
+                        "denied"
+                      ],
+                      "type": "string"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    },
+                    "token": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "phase"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read the owner's Google sign-in and exchange its one code",
+        "x-access": "owner",
+        "x-admission": "admin-long",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "invalid_request",
+          "source_credentials_required",
+          "administration_unavailable",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 8192,
+        "x-scope": "admin"
+      }
+    },
     "/v1/storage/sources/rclone/operations/{id}": {
       "get": {
         "operationId": "get_storage_source_rclone_operation",
@@ -506513,6 +507376,9 @@
               "application/json": {
                 "schema": {
                   "properties": {
+                    "assignmentFenceSupported": {
+                      "type": "boolean"
+                    },
                     "scope": {
                       "properties": {
                         "serverId": {
@@ -506643,6 +507509,7 @@
                     }
                   },
                   "required": [
+                    "assignmentFenceSupported",
                     "scope",
                     "status"
                   ],

@@ -697,6 +697,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "source_changed",
+    "status": 409,
+    "message": "The request could not be completed.",
+    "retry": "after_refresh"
+  },
+  {
     "code": "source_credentials_required",
     "status": 422,
     "message": "The provider refused these credentials. Enter them again.",

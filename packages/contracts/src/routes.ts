@@ -10034,6 +10034,7 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "errors": [
+      "source_changed",
       "invalid_request",
       "unauthorized",
       "not_permitted",
@@ -10818,6 +10819,7 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "errors": [
+      "source_changed",
       "invalid_request",
       "unauthorized",
       "not_permitted",
@@ -12762,6 +12764,7 @@ export const routes = [
     "cost": "constant",
     "bodyLimit": 65536,
     "errors": [
+      "source_changed",
       "invalid_request",
       "unauthorized",
       "not_permitted",
@@ -13937,6 +13940,88 @@ export const routes = [
     "status": 200,
     "http": true,
     "admission": "default"
+  },
+  {
+    "id": "post_storage_source_drive_oauth_cancel",
+    "method": "POST",
+    "path": "/v1/storage/sources/rclone/drive/oauth/cancel",
+    "summary": "End the owner's Google sign-in session",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 8192,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin-long"
+  },
+  {
+    "id": "post_storage_source_drive_oauth_paste",
+    "method": "POST",
+    "path": "/v1/storage/sources/rclone/drive/oauth/paste",
+    "summary": "Take the code from the address Google ended on",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 8192,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "source_credentials_required",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin-long"
+  },
+  {
+    "id": "post_storage_source_drive_oauth_start",
+    "method": "POST",
+    "path": "/v1/storage/sources/rclone/drive/oauth/start",
+    "summary": "Start the owner's own Google OAuth sign-in for a Drive source",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 8192,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin-long"
+  },
+  {
+    "id": "post_storage_source_drive_oauth_status",
+    "method": "POST",
+    "path": "/v1/storage/sources/rclone/drive/oauth/status",
+    "summary": "Read the owner's Google sign-in and exchange its one code",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 8192,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "source_credentials_required",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin-long"
   },
   {
     "id": "post_storage_sources_webdav",
@@ -19391,6 +19476,10 @@ export const routePaths = {
   "post_sign_in_move_preview": "/v1/admin/sign-in/move/preview",
   "post_storage_mounts": "/v1/storage/mounts",
   "post_storage_mounts_id_actions": "/v1/storage/mounts/{id}/actions",
+  "post_storage_source_drive_oauth_cancel": "/v1/storage/sources/rclone/drive/oauth/cancel",
+  "post_storage_source_drive_oauth_paste": "/v1/storage/sources/rclone/drive/oauth/paste",
+  "post_storage_source_drive_oauth_start": "/v1/storage/sources/rclone/drive/oauth/start",
+  "post_storage_source_drive_oauth_status": "/v1/storage/sources/rclone/drive/oauth/status",
   "post_storage_sources_webdav": "/v1/storage/sources/webdav",
   "post_topshelf_token": "/v1/topshelf/token",
   "post_v1_items_itemId_subtitles": "/v1/items/{itemId}/subtitles",
