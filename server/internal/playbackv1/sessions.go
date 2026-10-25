@@ -1374,6 +1374,12 @@ func (s *Service) Get(ctx context.Context, c Caller, id string) (SessionView, er
 			view.ObservedPlayback, err = playback.ReadObservedPlayback(readCtx, tx, id, current.generation, view.Presentation.Generation)
 			if err == nil && current.kind == "vod" {
 				view.PlaybackInfo, err = playback.ReadPlaybackInfoTx(readCtx, tx, current.media, current.mediaGeneration, c.Principal)
+			} else if err == nil && current.kind == "audio" && view.Presentation.AudioRender.playable() {
+				audio := view.Presentation.AudioRender
+				view.PlaybackInfo, err = playback.ReadAudioPlaybackInfoTx(readCtx, tx, current.media, current.mediaGeneration, &playback.AudioPlan{
+					Version: audio.Version, ID: audio.ID, Mode: audio.Mode, Codec: audio.Codec,
+					SampleRate: audio.SampleRate, Channels: audio.Channels, BitDepth: audio.BitDepth,
+				})
 			}
 		}
 		return err

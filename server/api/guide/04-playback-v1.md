@@ -23,6 +23,16 @@ source or technical revisions, and multi-part versions do not invent a title.
 This display block does not turn disc titles into playable versions, identify
 the current owner-selected main title, or grant a title-change/play command.
 
+Audio sessions can return the same optional `playbackInfo` comparison from
+their pinned version-2 AudioPlan. Its source facts were captured when that plan
+was accepted; delivered facts describe its direct or converted audio bytes.
+The current session, media generation and committed audio-render ID and target
+must still match. Legacy, unavailable, ambiguous or replaced plans omit the
+comparison. This never substitutes the general VOD delivery recipe for an
+AudioPlan. It reports no sink/output handling: `observedPlayback.audio` remains
+the current renderer's independent output report. A client using a fallback
+outside that AudioPlan must not present the AudioPlan recipe as its delivery.
+
 ## Start, change and report
 
 ```text

@@ -31,6 +31,9 @@ type AudioDecodeCap struct {
 // the original file (direct) or a FLAC/Opus/AAC conversion (converted) with the
 // server's exact trim and gains. Pinned to one presentation.
 type AudioPlan struct {
+	// comparison is private persisted evidence for this exact audio generation.
+	// It is not an extra field on the audio-render wire plan.
+	comparison        *PlaybackInfo
 	SourceBitrateBPS  int64                  `json:"sourceBitrateBps,omitempty"`
 	ConversionGainDB  float64                `json:"conversionGainDb,omitempty"`
 	LoudnessAppliedDB *float64               `json:"loudnessAppliedDb,omitempty"`
@@ -261,6 +264,10 @@ func (s *Service) pinAudioPlan(ctx context.Context, tx *sql.Tx, principal identi
 		p.Reason = "Portico hasn't measured this track yet, so it plays without gapless or crossfade."
 		return p, s.storeAudioPlan(tx, session.ID, p)
 	}
+	comparisonSource, err := audioComparisonSource(ctx, tx, asset, f)
+	if err != nil {
+		return nil, err
+	}
 	measuredSourceFrames := f.DurationFrames
 	virtual := false
 	var sourceStart float64
@@ -347,6 +354,7 @@ func (s *Service) pinAudioPlan(ctx context.Context, tx *sql.Tx, principal identi
 		if f.HasSeekIndex {
 			p.SeekIndex = &AudioSeekIndex{URL: "/v1/media/" + grant + "/audio-index"}
 		}
+		p.comparison = audioPlanComparison(comparisonSource, p, v1.Remote, false)
 		return p, s.storeAudioPlan(tx, session.ID, p)
 	}
 	if !ownerTranscoding {
@@ -464,13 +472,14 @@ func (s *Service) pinAudioPlan(ctx context.Context, tx *sql.Tx, principal identi
 		// About 30 s of FLAC at this rate, depth and channel count (~60% of PCM).
 		p.PrefetchBytes = max(4<<20, int64(conv.Rate)*int64(conv.Channels)*int64(conv.BitDepth/8)*30*6/10)
 	}
+	p.comparison = audioPlanComparison(comparisonSource, p, v1.Remote, limited || cdLimited)
 	return p, s.storeAudioPlan(tx, session.ID, p)
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
 
 func (s *Service) storeAudioPlan(tx *sql.Tx, session string, p *AudioPlan) error {
-	raw, err := json.Marshal(p)
+	raw, err := json.Marshal(storedAudioPlan{AudioPlan: *p, Comparison: p.comparison})
 	if err != nil {
 		return err
 	}
@@ -490,14 +499,7 @@ func readAudioPlan(tx interface {
 	if err != nil {
 		return nil, err
 	}
-	var p AudioPlan
-	if err = json.Unmarshal([]byte(raw), &p); err != nil {
-		return nil, err
-	}
-	if p.Generation != generation {
-		return nil, nil
-	}
-	return &p, nil
+	return decodeStoredAudioPlan(raw, generation)
 }
 
 // AudioPlanByGrant is the plan and media session behind a grant, for the audio routes.
