@@ -31,7 +31,7 @@ const titleLine = (title: SegmentTitleSummary) => [
 /** The owner's review under the drawn mode row and progress line: the status
  * the server reports, each video library, its shows and films, and one title's
  * markers with the drawn zoomed windows. Every number is the server's own. */
-export function ServerIntros({source, modeRows}: {source: SegmentIntrosSource; modeRows: ReactNode}) {
+export function ServerIntros({source, modeRows, onPreview}: {source: SegmentIntrosSource; modeRows: ReactNode; onPreview: (libraryId: string, itemId: string, start: number) => void}) {
   const snapshot = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
   const [edit, setEdit] = useState<{entryId: string; marker: SegmentReviewMarker; start: number; end: number}>();
   useEffect(() => {void source.load();}, [source]);
@@ -97,14 +97,14 @@ export function ServerIntros({source, modeRows}: {source: SegmentIntrosSource; m
             onSave={(entry) => {if (!edit) return; void source.saveMarker(entry, edit.marker, edit.marker.kind, String(Math.round(edit.start * 1e6)), String(Math.round(edit.end * 1e6))); setEdit(undefined);}}
             onCancel={() => setEdit(undefined)}
             onApprove={(entry, marker) => {void source.approveMarker(entry, marker);}}
-            busy={busy} />}
+            busy={busy} onPreview={onPreview} />}
         </div>
       </div>}
     </section>
   </>;
 }
 
-function Review({title, season, entries, snapshot, edit, onSeason, onApproveAll, onDetect, onRetryTitle, onEdit, onChange, onSave, onCancel, onApprove, busy}: {
+function Review({title, season, entries, snapshot, edit, onSeason, onApproveAll, onDetect, onRetryTitle, onEdit, onChange, onSave, onCancel, onApprove, busy, onPreview}: {
   title: SegmentTitleReview; season?: number; entries: readonly SegmentReviewEntry[]; snapshot: SegmentIntrosSnapshot;
   edit?: {entryId: string; marker: SegmentReviewMarker; start: number; end: number};
   onSeason: (value: number) => void; onApproveAll: () => void; onDetect: () => void; onRetryTitle: () => void;
@@ -112,6 +112,7 @@ function Review({title, season, entries, snapshot, edit, onSeason, onApproveAll,
   onChange: (entry: SegmentReviewEntry, value: SegmentEdit) => void;
   onSave: (entry: SegmentReviewEntry) => void; onCancel: () => void;
   onApprove: (entry: SegmentReviewEntry, marker: SegmentReviewMarker) => void; busy: boolean;
+  onPreview: (libraryId: string, itemId: string, start: number) => void;
 }) {
   return <>
     <header className={styles.reviewTitle}>
@@ -132,16 +133,17 @@ function Review({title, season, entries, snapshot, edit, onSeason, onApproveAll,
     {snapshot.titleError ? <ReviewNotice tone="bad" onRetry={onRetryTitle}>{t('web.segments.error')}</ReviewNotice> : null}
     {!snapshot.titleLoading && !entries.length ? <p className={styles.empty}>{t('web.segments.entryState', {state: 'complete'})}</p> : null}
     {entries.map(entry => <Episode key={entry.itemId} entry={entry} title={title} edit={edit?.entryId === entry.itemId ? edit : undefined} busy={busy}
-      onEdit={onEdit} onChange={onChange} onSave={onSave} onCancel={onCancel} onApprove={onApprove} />)}
+      onEdit={onEdit} onChange={onChange} onSave={onSave} onCancel={onCancel} onApprove={onApprove} onPreview={onPreview} />)}
   </>;
 }
 
-function Episode({entry, title, edit, busy, onEdit, onChange, onSave, onCancel, onApprove}: {
+function Episode({entry, title, edit, busy, onEdit, onChange, onSave, onCancel, onApprove, onPreview}: {
   entry: SegmentReviewEntry; title: SegmentTitleReview; edit?: {entryId: string; marker: SegmentReviewMarker; start: number; end: number}; busy: boolean;
   onEdit: (entry: SegmentReviewEntry, marker: SegmentReviewMarker) => void;
   onChange: (entry: SegmentReviewEntry, value: SegmentEdit) => void;
   onSave: (entry: SegmentReviewEntry) => void; onCancel: () => void;
   onApprove: (entry: SegmentReviewEntry, marker: SegmentReviewMarker) => void;
+  onPreview: (libraryId: string, itemId: string, start: number) => void;
 }) {
   const duration = seconds(entry.durationUS);
   const opening = entry.markers.filter(marker => isOpening(marker.kind)).map(mark);
@@ -156,6 +158,7 @@ function Episode({entry, title, edit, busy, onEdit, onChange, onSave, onCancel, 
     </header>
     {duration > 0 && (opening.length || ending.length)
       ? <SegmentWindows duration={duration} opening={opening} ending={ending} edit={edit ? {id: edit.marker.id, start: edit.start, end: edit.end} : undefined}
+          onPreview={(_mark, start) => onPreview(title.libraryId, entry.itemId, start)}
           onEdit={value => {const marker = entry.markers.find(candidate => candidate.id === value.id); if (marker) onEdit(entry, marker);}}
           onChange={value => onChange(entry, value)} onSave={() => onSave(entry)} onCancel={onCancel}
           onApprove={value => {const marker = entry.markers.find(candidate => candidate.id === value.id); if (marker && !busy) onApprove(entry, marker);}} />
