@@ -47,6 +47,15 @@ type SourceStatus struct {
 	CacheUsedBytes  int64  `json:"cacheUsedBytes"`
 	Remote          string `json:"remote,omitempty"`
 	BackgroundSpeed string `json:"backgroundSpeed,omitempty"`
+	// ServeOperationsInUse is the live serve process's admitted provider
+	// operations for this generation: listings, stats and ranges holding one
+	// permit each on the source's saved operation budget. They are admissions,
+	// never physical sockets and never distinct viewers. Absent when no process
+	// holds this generation, which is the honest signal that this counter is
+	// unknown; a present zero is measured idleness. ConnectionsInUse keeps its
+	// shipped meaning (admitted media read objects, which may share a stream);
+	// no complete per-source upstream connection count exists.
+	ServeOperationsInUse *int `json:"serveOperationsInUse,omitempty"`
 }
 
 // ReadSourceStatus is a bounded read of one source's present state. It lists
@@ -76,6 +85,16 @@ func (s *Service) ReadSourceStatus(ctx context.Context, identities *identity.Ser
 		out.State, out.ErrorCode = code, code
 	}
 	out.PlaybackReads, out.AnalysisReads, out.ConnectionsInUse = s.liveReads(source)
+	// ConnectionsInUse keeps its shipped meaning: the media read objects this
+	// server admits for the source. Reads can share a stream and an open object
+	// need not hold an upstream operation, so that legacy field is deliberately
+	// left alone and is not a connection count. The only complete measured
+	// operation counter is the live serve process's admitted work; it is
+	// published separately and omitted when no process holds this generation, so
+	// a reader sees "unknown" instead of a fabricated global count.
+	if active, ok := s.sourceOperationInUse(source, out.Generation); ok {
+		out.ServeOperationsInUse = &active
+	}
 	var observed int64
 	if err = snapshot.Tx().QueryRowContext(ctx, `SELECT COALESCE(MAX(observed_ms),0) FROM remote_source_webdav_tests WHERE source_id=? AND source_generation=?`, row.ID, row.Generation).Scan(&observed); err != nil {
 		return SourceStatus{}, err
