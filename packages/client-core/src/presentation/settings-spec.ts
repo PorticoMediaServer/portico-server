@@ -5479,6 +5479,145 @@ export const settingsSpec: readonly SettingsSection[] = [
                 ]
               },
               {
+                "title": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.title",
+                "rows": [
+                  {
+                    "id": "libraries.cwWeeks",
+                    "scope": "server",
+                    "key": "library.continue.weeks",
+                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.0.label",
+                    "control": {
+                      "type": "select",
+                      "default": 16,
+                      "options": [
+                        {
+                          "value": 4,
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.0.control.options.0.label"
+                        },
+                        {
+                          "value": 8,
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.0.control.options.1.label"
+                        },
+                        {
+                          "value": 16,
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.0.control.options.2.label"
+                        },
+                        {
+                          "value": 26,
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.0.control.options.3.label"
+                        },
+                        {
+                          "value": 52,
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.0.control.options.4.label"
+                        },
+                        {
+                          "value": 104,
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.0.control.options.5.label"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "libraries.cwMax",
+                    "scope": "server",
+                    "key": "library.continue.max_items",
+                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.1.label",
+                    "control": {
+                      "type": "select",
+                      "default": 40,
+                      "options": [
+                        {
+                          "value": 20,
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.1.control.options.0.label"
+                        },
+                        {
+                          "value": 40,
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.1.control.options.1.label"
+                        },
+                        {
+                          "value": 100,
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.1.control.options.2.label"
+                        },
+                        {
+                          "value": 200,
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.1.control.options.3.label"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "libraries.cwPremieres",
+                    "scope": "server",
+                    "key": "library.continue.include_premieres",
+                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.2.label",
+                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.2.help",
+                    "control": {
+                      "type": "toggle",
+                      "default": true
+                    }
+                  },
+                  {
+                    "id": "libraries.cwWatched",
+                    "scope": "server",
+                    "key": "library.continue.played_percent",
+                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.3.label",
+                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.3.help",
+                    "control": {
+                      "type": "select",
+                      "default": "95",
+                      "options": [
+                        {
+                          "value": "80",
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.3.control.options.0.label"
+                        },
+                        {
+                          "value": "85",
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.3.control.options.1.label"
+                        },
+                        {
+                          "value": "90",
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.3.control.options.2.label"
+                        },
+                        {
+                          "value": "95",
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.3.control.options.3.label"
+                        },
+                        {
+                          "value": "100",
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.3.control.options.4.label"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "libraries.cwRule",
+                    "scope": "server",
+                    "key": "library.continue.completion",
+                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.4.label",
+                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.4.help",
+                    "control": {
+                      "type": "select",
+                      "default": "earliest",
+                      "options": [
+                        {
+                          "value": "earliest",
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.4.control.options.0.label"
+                        },
+                        {
+                          "value": "threshold",
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.4.control.options.1.label"
+                        },
+                        {
+                          "value": "credits",
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.4.control.options.2.label",
+                          "hint": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.4.control.options.2.hint"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
                 "rows": [
                   {
                     "id": "libraries.remove",
@@ -6044,6 +6183,115 @@ export const settingsSpec: readonly SettingsSection[] = [
                     }
                   }
                 ]
+              },
+              {
+                "title": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.title",
+                "rows": [
+                  {
+                    "id": "libraries.titleSource",
+                    "scope": "server",
+                    "key": "library.title_source",
+                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.0.label",
+                    "control": {
+                      "type": "select",
+                      "default": "tags",
+                      "options": [
+                        {
+                          "value": "tags",
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.0.control.options.0.label",
+                          "hint": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.0.control.options.0.hint"
+                        },
+                        {
+                          "value": "names",
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.0.control.options.1.label",
+                          "hint": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.0.control.options.1.hint"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "libraries.episodeNumbering",
+                    "scope": "server",
+                    "key": "library.episode_numbering",
+                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.1.label",
+                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.1.help",
+                    "control": {
+                      "type": "select",
+                      "default": "season",
+                      "options": [
+                        {
+                          "value": "season",
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.1.control.options.0.label",
+                          "hint": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.1.control.options.0.hint"
+                        },
+                        {
+                          "value": "absolute",
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.1.control.options.1.label",
+                          "hint": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.1.control.options.1.hint"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "libraries.extras",
+                    "scope": "server",
+                    "key": "library.find_extras",
+                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.2.label",
+                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.2.help",
+                    "control": {
+                      "type": "toggle",
+                      "default": true
+                    }
+                  },
+                  {
+                    "id": "libraries.sortArticles",
+                    "scope": "server",
+                    "key": "library.sort_ignore_articles",
+                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.3.label",
+                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.3.help",
+                    "control": {
+                      "type": "toggle",
+                      "default": true
+                    }
+                  }
+                ]
+              },
+              {
+                "title": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.4.title",
+                "rows": [
+                  {
+                    "id": "libraries.refreshMode",
+                    "scope": "server",
+                    "key": "library.refresh_mode",
+                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.4.rows.0.label",
+                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.4.rows.0.help",
+                    "control": {
+                      "type": "select",
+                      "default": "replace_unlocked",
+                      "options": [
+                        {
+                          "value": "replace_unlocked",
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.4.rows.0.control.options.0.label"
+                        },
+                        {
+                          "value": "fill_missing",
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.4.rows.0.control.options.1.label"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "libraries.acoustid",
+                    "scope": "server",
+                    "key": "library.acoustid",
+                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.4.rows.1.label",
+                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.4.rows.1.help",
+                    "control": {
+                      "type": "toggle",
+                      "default": false
+                    }
+                  }
+                ]
               }
             ]
           },
@@ -6190,6 +6438,114 @@ export const settingsSpec: readonly SettingsSection[] = [
                 ]
               },
               {
+                "title": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.0.title",
+                "rows": [
+                  {
+                    "id": "libraries.symlinks",
+                    "scope": "server",
+                    "key": "library.folder.follow_symlinks",
+                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.0.rows.0.label",
+                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.0.rows.0.help",
+                    "control": {
+                      "type": "toggle",
+                      "default": false
+                    }
+                  },
+                  {
+                    "id": "libraries.strm",
+                    "scope": "server",
+                    "key": "library.strm_analysis",
+                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.0.rows.1.label",
+                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.0.rows.1.help",
+                    "control": {
+                      "type": "toggle",
+                      "default": false
+                    }
+                  },
+                  {
+                    "id": "libraries.scanAll",
+                    "scope": "server",
+                    "key": "library.scan_all",
+                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.0.rows.2.label",
+                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.0.rows.2.help",
+                    "control": {
+                      "type": "action",
+                      "style": "glass",
+                      "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.0.rows.2.control.label"
+                    }
+                  }
+                ]
+              },
+              {
+                "title": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.title",
+                "rows": [
+                  {
+                    "id": "libraries.analysisSteps",
+                    "scope": "server",
+                    "key": "library.analysis_steps",
+                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.label",
+                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.help",
+                    "control": {
+                      "type": "matrix",
+                      "columns": [
+                        {
+                          "value": "run",
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.control.columns.0.label",
+                          "hint": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.control.columns.0.hint"
+                        },
+                        {
+                          "value": "skip",
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.control.columns.1.label",
+                          "hint": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.control.columns.1.hint"
+                        }
+                      ],
+                      "items": [
+                        {
+                          "id": "local_metadata",
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.control.items.0.label",
+                          "default": "run"
+                        },
+                        {
+                          "id": "subtitle_discovery",
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.control.items.1.label",
+                          "default": "run"
+                        },
+                        {
+                          "id": "checksum",
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.control.items.2.label",
+                          "default": "skip"
+                        },
+                        {
+                          "id": "waveform",
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.control.items.3.label",
+                          "default": "skip"
+                        },
+                        {
+                          "id": "loudness",
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.control.items.4.label",
+                          "default": "skip"
+                        },
+                        {
+                          "id": "audio_fingerprint",
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.control.items.5.label",
+                          "default": "skip"
+                        },
+                        {
+                          "id": "trickplay",
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.control.items.6.label",
+                          "default": "skip"
+                        },
+                        {
+                          "id": "chapter_images",
+                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.control.items.7.label",
+                          "default": "skip"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
                 "title": "next.settingsSpec.server.libraries.panels.library.tabs.3.groups.1.title",
                 "rows": [
                   {
@@ -6316,137 +6672,6 @@ export const settingsSpec: readonly SettingsSection[] = [
                     }
                   }
                 ]
-              }
-            ]
-          },
-          {
-            "id": "advanced",
-            "title": "next.settingsSpec.server.libraries.panels.library.tabs.4.title",
-            "groups": [
-              {
-                "title": "next.ownerLibraries.deleting",
-                "description": "next.ownerLibraries.deletingOff",
-                "rows": [
-                  {
-                    "id": "libraries.allowDelete",
-                    "scope": "server",
-                    "key": "library.allow_media_deletion",
-                    "label": "next.ownerLibraries.allowDeletion",
-                    "help": "next.ownerLibraries.allowDeletionHelp",
-                    "control": {
-                      "type": "toggle",
-                      "default": false
-                    }
-                  }
-                ]
-              },
-              {
-                "title": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.0.title",
-                "rows": [
-                  {
-                    "id": "libraries.symlinks",
-                    "scope": "server",
-                    "key": "library.folder.follow_symlinks",
-                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.0.rows.0.label",
-                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.0.rows.0.help",
-                    "control": {
-                      "type": "toggle",
-                      "default": false
-                    }
-                  },
-                  {
-                    "id": "libraries.strm",
-                    "scope": "server",
-                    "key": "library.strm_analysis",
-                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.0.rows.1.label",
-                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.0.rows.1.help",
-                    "control": {
-                      "type": "toggle",
-                      "default": false
-                    }
-                  },
-                  {
-                    "id": "libraries.scanAll",
-                    "scope": "server",
-                    "key": "library.scan_all",
-                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.0.rows.2.label",
-                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.0.rows.2.help",
-                    "control": {
-                      "type": "action",
-                      "style": "glass",
-                      "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.0.rows.2.control.label"
-                    }
-                  }
-                ]
-              },
-              {
-                "title": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.title",
-                "rows": [
-                  {
-                    "id": "libraries.analysisSteps",
-                    "scope": "server",
-                    "key": "library.analysis_steps",
-                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.label",
-                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.help",
-                    "control": {
-                      "type": "matrix",
-                      "columns": [
-                        {
-                          "value": "run",
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.control.columns.0.label",
-                          "hint": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.control.columns.0.hint"
-                        },
-                        {
-                          "value": "skip",
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.control.columns.1.label",
-                          "hint": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.control.columns.1.hint"
-                        }
-                      ],
-                      "items": [
-                        {
-                          "id": "local_metadata",
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.control.items.0.label",
-                          "default": "run"
-                        },
-                        {
-                          "id": "subtitle_discovery",
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.control.items.1.label",
-                          "default": "run"
-                        },
-                        {
-                          "id": "checksum",
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.control.items.2.label",
-                          "default": "skip"
-                        },
-                        {
-                          "id": "waveform",
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.control.items.3.label",
-                          "default": "skip"
-                        },
-                        {
-                          "id": "loudness",
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.control.items.4.label",
-                          "default": "skip"
-                        },
-                        {
-                          "id": "audio_fingerprint",
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.control.items.5.label",
-                          "default": "skip"
-                        },
-                        {
-                          "id": "trickplay",
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.control.items.6.label",
-                          "default": "skip"
-                        },
-                        {
-                          "id": "chapter_images",
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.1.rows.0.control.items.7.label",
-                          "default": "skip"
-                        }
-                      ]
-                    }
-                  }
-                ]
               },
               {
                 "title": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.2.title",
@@ -6542,251 +6767,26 @@ export const settingsSpec: readonly SettingsSection[] = [
                     }
                   }
                 ]
-              },
+              }
+            ]
+          },
+          {
+            "id": "advanced",
+            "title": "next.settingsSpec.server.libraries.panels.library.tabs.4.title",
+            "groups": [
               {
-                "title": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.title",
+                "title": "next.ownerLibraries.deleting",
+                "description": "next.ownerLibraries.deletingOff",
                 "rows": [
                   {
-                    "id": "libraries.titleSource",
+                    "id": "libraries.allowDelete",
                     "scope": "server",
-                    "key": "library.title_source",
-                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.0.label",
-                    "control": {
-                      "type": "select",
-                      "default": "tags",
-                      "options": [
-                        {
-                          "value": "tags",
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.0.control.options.0.label",
-                          "hint": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.0.control.options.0.hint"
-                        },
-                        {
-                          "value": "names",
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.0.control.options.1.label",
-                          "hint": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.0.control.options.1.hint"
-                        }
-                      ]
-                    }
-                  },
-                  {
-                    "id": "libraries.episodeNumbering",
-                    "scope": "server",
-                    "key": "library.episode_numbering",
-                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.1.label",
-                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.1.help",
-                    "control": {
-                      "type": "select",
-                      "default": "season",
-                      "options": [
-                        {
-                          "value": "season",
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.1.control.options.0.label",
-                          "hint": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.1.control.options.0.hint"
-                        },
-                        {
-                          "value": "absolute",
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.1.control.options.1.label",
-                          "hint": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.1.control.options.1.hint"
-                        }
-                      ]
-                    }
-                  },
-                  {
-                    "id": "libraries.extras",
-                    "scope": "server",
-                    "key": "library.find_extras",
-                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.2.label",
-                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.2.help",
-                    "control": {
-                      "type": "toggle",
-                      "default": true
-                    }
-                  },
-                  {
-                    "id": "libraries.sortArticles",
-                    "scope": "server",
-                    "key": "library.sort_ignore_articles",
-                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.3.label",
-                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.3.rows.3.help",
-                    "control": {
-                      "type": "toggle",
-                      "default": true
-                    }
-                  }
-                ]
-              },
-              {
-                "title": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.4.title",
-                "rows": [
-                  {
-                    "id": "libraries.refreshMode",
-                    "scope": "server",
-                    "key": "library.refresh_mode",
-                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.4.rows.0.label",
-                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.4.rows.0.help",
-                    "control": {
-                      "type": "select",
-                      "default": "replace_unlocked",
-                      "options": [
-                        {
-                          "value": "replace_unlocked",
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.4.rows.0.control.options.0.label"
-                        },
-                        {
-                          "value": "fill_missing",
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.4.rows.0.control.options.1.label"
-                        }
-                      ]
-                    }
-                  },
-                  {
-                    "id": "libraries.acoustid",
-                    "scope": "server",
-                    "key": "library.acoustid",
-                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.4.rows.1.label",
-                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.4.rows.1.help",
+                    "key": "library.allow_media_deletion",
+                    "label": "next.ownerLibraries.allowDeletion",
+                    "help": "next.ownerLibraries.allowDeletionHelp",
                     "control": {
                       "type": "toggle",
                       "default": false
-                    }
-                  }
-                ]
-              },
-              {
-                "title": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.title",
-                "rows": [
-                  {
-                    "id": "libraries.cwWeeks",
-                    "scope": "server",
-                    "key": "library.continue.weeks",
-                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.0.label",
-                    "control": {
-                      "type": "select",
-                      "default": 16,
-                      "options": [
-                        {
-                          "value": 4,
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.0.control.options.0.label"
-                        },
-                        {
-                          "value": 8,
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.0.control.options.1.label"
-                        },
-                        {
-                          "value": 16,
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.0.control.options.2.label"
-                        },
-                        {
-                          "value": 26,
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.0.control.options.3.label"
-                        },
-                        {
-                          "value": 52,
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.0.control.options.4.label"
-                        },
-                        {
-                          "value": 104,
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.0.control.options.5.label"
-                        }
-                      ]
-                    }
-                  },
-                  {
-                    "id": "libraries.cwMax",
-                    "scope": "server",
-                    "key": "library.continue.max_items",
-                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.1.label",
-                    "control": {
-                      "type": "select",
-                      "default": 40,
-                      "options": [
-                        {
-                          "value": 20,
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.1.control.options.0.label"
-                        },
-                        {
-                          "value": 40,
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.1.control.options.1.label"
-                        },
-                        {
-                          "value": 100,
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.1.control.options.2.label"
-                        },
-                        {
-                          "value": 200,
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.1.control.options.3.label"
-                        }
-                      ]
-                    }
-                  },
-                  {
-                    "id": "libraries.cwPremieres",
-                    "scope": "server",
-                    "key": "library.continue.include_premieres",
-                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.2.label",
-                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.2.help",
-                    "control": {
-                      "type": "toggle",
-                      "default": true
-                    }
-                  },
-                  {
-                    "id": "libraries.cwWatched",
-                    "scope": "server",
-                    "key": "library.continue.played_percent",
-                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.3.label",
-                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.3.help",
-                    "control": {
-                      "type": "select",
-                      "default": "95",
-                      "options": [
-                        {
-                          "value": "80",
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.3.control.options.0.label"
-                        },
-                        {
-                          "value": "85",
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.3.control.options.1.label"
-                        },
-                        {
-                          "value": "90",
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.3.control.options.2.label"
-                        },
-                        {
-                          "value": "95",
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.3.control.options.3.label"
-                        },
-                        {
-                          "value": "100",
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.3.control.options.4.label"
-                        }
-                      ]
-                    }
-                  },
-                  {
-                    "id": "libraries.cwRule",
-                    "scope": "server",
-                    "key": "library.continue.completion",
-                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.4.label",
-                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.4.help",
-                    "control": {
-                      "type": "select",
-                      "default": "earliest",
-                      "options": [
-                        {
-                          "value": "earliest",
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.4.control.options.0.label"
-                        },
-                        {
-                          "value": "threshold",
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.4.control.options.1.label"
-                        },
-                        {
-                          "value": "credits",
-                          "label": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.4.control.options.2.label",
-                          "hint": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.5.rows.4.control.options.2.hint"
-                        }
-                      ]
                     }
                   }
                 ]
