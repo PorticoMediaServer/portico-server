@@ -1,5 +1,4 @@
 import {useEffect,useLayoutEffect,useMemo,useRef,useState,useSyncExternalStore} from 'react';
-import {useLocation} from '@tanstack/react-router';
 import {router} from '../../router';
 import {defaultI18n} from '@i18n';
 import {shellLanguage} from '../../shell/settings';
@@ -23,11 +22,16 @@ import {WatchInfoPanel} from './WatchInfoPanel';
 import {watchLossNotice} from './loss-copy';
 import {settingsPlatform} from '../../platform/settings-platform';
 const noSubscribe=()=>()=>{},noPreferences=()=>null;
+// The persistent media host is a sibling of RouterProvider, including while
+// signed out. Subscribe to the existing router directly; context hooks here
+// would throw before the credential screen can render.
+const subscribeQueueRoute=(changed:()=>void)=>router.subscribe('onResolved',changed);
+const queueRouteSnapshot=()=>router.state.location;
 /** Selecting a queue row replaces the output and its drawer, but not the
  * original route/authority. Keep that command on this committed route lifetime
  * so drawer teardown cannot cancel its own accepted playback. */
 function useQueueSelectionLife(context:ShellAssemblyContext|undefined,runtime:WebShellPlaybackRuntime|undefined):WebQueueListLifetime|undefined {
- const location=useLocation({select:value=>value});
+ const location=useSyncExternalStore(subscribeQueueRoute,queueRouteSnapshot,queueRouteSnapshot);
  const [held,publish]=useState<Readonly<{context:ShellAssemblyContext;runtime:WebShellPlaybackRuntime;location:typeof location;life:WebQueueListLifetime}>>();
  useLayoutEffect(()=>{
   if(!context?.isCurrent()||!runtime)return;
