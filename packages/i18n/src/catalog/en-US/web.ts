@@ -914,7 +914,7 @@ export const webMessages = {
   'web.metadataLookup.badge.off': 'Off',
   'web.metadataLookup.badge.waiting': 'Waiting',
   'web.metadataLookup.change': 'Change',
-  'error.localMetadataOnly': 'This library uses local metadata only. Change its metadata source to look things up online.',
+  'error.localMetadataOnly': 'Online metadata lookup is turned off for this library or server.',
   'web.pager.previous': 'Previous page',
   'web.pager.next': 'Next page',
   'web.pager.page': 'Page {page}',
