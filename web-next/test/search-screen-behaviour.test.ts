@@ -5,16 +5,16 @@ import {defaultI18n} from '@i18n';
 import {componentModule} from '../../web/test/helpers/component-harness.mjs';
 import {all, createRenderer, one, tree, textOf} from '../../web/test/helpers/interaction-harness.mjs';
 const t = (key: any, values?: any) => defaultI18n.t(key, values);
-async function mount(context: any, options: {text?: string; remember?: boolean; failClear?: () => boolean} = {}) {
+async function mount(context: any, options: {text?: string; remember?: boolean; failClear?: () => boolean; snapshot?: any; summary?: any[]} = {}) {
   context.mock.timers.enable({apis: ['setTimeout', 'setInterval']});
   const h = createRenderer(), calls: {name: string; args: any[]}[] = [];
   let current = true;
   const record = (name: string) => (...args: any[]) => { calls.push({name, args}); return Promise.resolve(); };
   const initial = options.text ?? 'harbor';
   const store = (value: any) => ({subscribe: () => () => {}, getSnapshot: () => value});
-  const service = {...store({phase: 'ready', query: {q: initial}, groups: [], pagination: {cursor: ''}}),
+  const service = {...store(options.snapshot ?? {phase: 'ready', query: {q: initial}, groups: [], pagination: {cursor: ''}}),
     cancel: record('cancel'), retry: record('retry'), refresh: record('refresh')};
-  const binding = {service, session: () => ({text: initial}), summary: () => [], select: record('select'),
+  const binding = {service, session: () => ({text: initial}), summary: () => options.summary ?? [], select: record('select'),
     recent: async () => { calls.push({name: 'recent', args: []}); return {entries: [{q: 'Stored Query'}]}; },
     clearRecent: async () => { calls.push({name: 'clearRecent', args: []}); if (options.failClear?.()) throw new Error('unavailable'); },
     genres: {...store({phase: 'ready', genres: []}), load: record('genres')},
@@ -90,5 +90,54 @@ test('a retired screen does not submit or apply a recent-query selection', async
   one(f.flat(), 'RecentSearches').props.onSelect('Stored Query');
   one(f.flat(), 'form').props.onSubmit({preventDefault() {}});
   assert.equal(one(f.flat(), 'TextField').props.value, '');
+  assert.equal(selects(f).length, 0);
+});
+
+
+test('choosing a type chip submits that group after debounce; typing resets to All', async context => {
+  const f = await mount(context);
+  const movies = all(f.flat(), 'Chip').find(node => textOf(node) === t('search.chip.movies')); assert.ok(movies);
+  movies.props.onClick(); f.flat();
+  context.mock.timers.tick(260); await f.settle();
+  assert.deepEqual(selects(f).at(-1)?.args, ['harbor', {group: 'movies'}]);
+  one(f.flat(), 'TextField').props.onChange({currentTarget: {value: 'new query'}}); f.flat();
+  context.mock.timers.tick(260); await f.settle();
+  assert.deepEqual(selects(f).at(-1)?.args, ['new query', {}]);
+  assert.equal(all(f.flat(), 'Chip').find(node => textOf(node) === t('search.chip.all'))?.props.selected, true);
+});
+
+test('exact zero summary disables its chip; failed and inexact summaries remain honest', async context => {
+  const f = await mount(context, {summary: [
+    {id: 'movies', status: 'success', totalCountExact: true, totalCount: 0},
+    {id: 'shows', status: 'error', totalCountExact: false, totalCount: 0},
+    {id: 'episodes', status: 'success', totalCountExact: false, totalCount: 12},
+  ]});
+  const chip = (label: string) => all(f.flat(), 'Chip').find(node => textOf(node) === t(label));
+  assert.equal(chip('search.chip.movies')?.props.disabled, true);
+  assert.equal(chip('search.chip.movies')?.props.count, undefined);
+  assert.equal(chip('search.chip.shows')?.props.retry, true);
+  assert.equal(chip('search.chip.shows')?.props.disabled, false);
+  assert.equal(chip('search.chip.episodes')?.props.count, undefined);
+});
+
+test('a whole-search error retries through its own service without submitting another query', async context => {
+  const error = {code: 'request_failed'};
+  const f = await mount(context, {snapshot: {phase: 'error', query: {q: 'harbor'}, groups: [], error, pagination: {cursor: ''}}});
+  const problem = one(f.flat(), 'ScreenProblem');
+  assert.equal(problem.props.error, error);
+  problem.props.retry();
+  assert.equal(f.calls.filter(call => call.name === 'retry').length, 1);
+  assert.equal(selects(f).length, 0);
+});
+
+test('partial group failure uses refresh while unavailable capabilities hide their chip', async context => {
+  const groups = [{id: 'movies', status: 'error', items: [], totalCountExact: false, totalCount: 0},
+    {id: 'shows', status: 'success', items: [], totalCountExact: true, totalCount: 0}];
+  const f = await mount(context, {snapshot: {phase: 'ready', query: {q: 'harbor'}, groups, pagination: {cursor: ''},
+    data: {query: {q: 'harbor', group: ''}, capabilities: {groups: [{id: 'shows', available: false}]}}}});
+  assert.equal(all(f.flat(), 'Chip').some(node => textOf(node) === t('search.chip.shows')), false);
+  const retry = all(f.flat(), 'Button').find(node => node.props.icon === 'i-retry'); assert.ok(retry);
+  retry.props.onClick();
+  assert.equal(f.calls.filter(call => call.name === 'refresh').length, 1);
   assert.equal(selects(f).length, 0);
 });
