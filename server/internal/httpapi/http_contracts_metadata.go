@@ -217,7 +217,7 @@ func registerMetadataHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/manual_metadata.go:53
-	if err := apikit.RegisterHTTP[metadata.RepairCommand, metadata.RepairState](registry, apikit.Metadata{ID: "post_metadata_kind_id", Method: "POST", Path: "/v1/metadata/{kind}/{id}", Summary: "Run metadata", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[metadata.RepairCommand, metadata.RepairState](registry, apikit.Metadata{ID: "post_metadata_kind_id", Method: "POST", Path: "/v1/metadata/{kind}/{id}", Summary: "Run metadata", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.PageSized, BodyLimit: 1048576, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/manual_metadata.go:53

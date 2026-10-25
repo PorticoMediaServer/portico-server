@@ -1009,7 +1009,7 @@ type Credit struct {
 
 // SetCreditsTx replaces an entity's credits from one provider, creating the
 // people they name.
-func SetCreditsTx(ctx context.Context, tx *sql.Tx, entity int64, provider string, credits []Credit) error {
+func setCreditProjectionProviderTx(ctx context.Context, tx *sql.Tx, entity int64, provider string, credits []Credit) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_credits WHERE entity_id=? AND provider=?`, entity, provider); err != nil {
 		return err
 	}
@@ -1091,6 +1091,16 @@ func AdoptLocalPersonTx(ctx context.Context, tx *sql.Tx, entity int64, provider,
 	}
 	if err != nil {
 		return err
+	}
+	// Root17 captured identity is not a mutable name alias. Once accepted
+	// evidence names this exact key/token, a later same-name provider observation
+	// must remain a distinct identity rather than changing old credit decisions.
+	var captured bool
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM credit_source_rows r WHERE r.original_person_identity_key=? AND r.original_person_token=? AND EXISTS(SELECT 1 FROM credit_source_publication_members m JOIN credit_source_publications p ON p.publication_id=m.publication_id WHERE m.source_row_id=r.source_row_id AND p.sealed=1))`, local, token).Scan(&captured); err != nil {
+		return err
+	}
+	if captured {
+		return nil
 	}
 	into := from
 	err = tx.QueryRowContext(ctx, `SELECT id FROM catalog_people WHERE identity_key=?`, providerKey).Scan(&into)

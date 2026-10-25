@@ -60,6 +60,33 @@ func readRepairRelationships(ctx context.Context, tx *sql.Tx, t RepairTarget) ([
 			return out, err
 		}
 	}
+	if t.Kind == "item" {
+		provenance, e := tx.QueryContext(ctx, `SELECT c.ord,COALESCE(c.source_row_id,''),COALESCE(c.owner_entry_id,''),c.source_status,CASE WHEN o.operation IN('edit','add') THEN 'manual' ELSE c.provider END FROM catalog_credits c LEFT JOIN credit_owner_entries o ON o.entry_id=c.owner_entry_id WHERE c.entity_id=? ORDER BY c.ord`, entity)
+		if e != nil {
+			return out, e
+		}
+		for provenance.Next() {
+			var ordinal int
+			var source, owner, status, provenanceSource string
+			if e = provenance.Scan(&ordinal, &source, &owner, &status, &provenanceSource); e != nil {
+				provenance.Close()
+				return out, e
+			}
+			for n := range out {
+				if out[n].Kind == "credit" && out[n].Ordinal == ordinal {
+					out[n].SourceRowID = source
+					out[n].OwnerEntryID = owner
+					out[n].SourceStatus = status
+					out[n].Source = provenanceSource
+				}
+			}
+		}
+		e = provenance.Err()
+		provenance.Close()
+		if e != nil {
+			return out, e
+		}
+	}
 	rows, err := tx.QueryContext(ctx, `SELECT relationship,source,locked,observed_at FROM metadata_relationship_decisions WHERE kind=? AND entity_id=?`, t.Kind, entity)
 	if err != nil {
 		return out, err
@@ -75,7 +102,7 @@ func readRepairRelationships(ctx context.Context, tx *sql.Tx, t RepairTarget) ([
 			if out[n].Kind == class {
 				out[n].Locked = locked
 				out[n].Observed = observed
-				if source == "manual" {
+				if source == "manual" && (class != "credit" || out[n].SourceRowID == "" && out[n].OwnerEntryID == "") {
 					out[n].Source = "manual"
 				}
 			}

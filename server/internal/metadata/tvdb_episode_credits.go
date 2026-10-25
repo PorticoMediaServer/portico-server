@@ -94,7 +94,7 @@ func (s *Service) tvdbEpisodeCreditsStep(ctx context.Context) error {
 				}
 				continue
 			}
-			if err := writeTVDBEpisodeCredits(ctx, tx, c.item, results[i].credits); err != nil {
+			if err := writeTVDBEpisodeCredits(ctx, tx, c.item, results[i].credits, "tvdb:episode:"+strconv.FormatInt(c.providerID, 10), stamp); err != nil {
 				return err
 			}
 			if _, err := tx.ExecContext(ctx, `INSERT INTO tvdb_episode_credit_evidence(item_id,provider_id,observed_at,credits,attempts) VALUES(?,?,?,COALESCE((SELECT count(*) FROM catalog_credits WHERE entity_id=? AND provider='tvdb'),0),0) ON CONFLICT(item_id,provider_id) DO UPDATE SET observed_at=excluded.observed_at,credits=excluded.credits,attempts=0`, c.item, c.providerID, stamp, c.item); err != nil {
@@ -113,7 +113,7 @@ func (s *Service) tvdbEpisodeCreditsStep(ctx context.Context) error {
 // untouched: a selected provider owns only its own family. Person identity is
 // the TVDB person id, the same key movies and show cast use, so a guest star
 // is one /v1/people person everywhere.
-func writeTVDBEpisodeCredits(ctx context.Context, tx *sql.Tx, item int64, chars []metadataprovider.TVDBEpisodeCharacter) error {
+func writeTVDBEpisodeCredits(ctx context.Context, tx *sql.Tx, item int64, chars []metadataprovider.TVDBEpisodeCharacter, accepted ...string) error {
 	credits := make([]compactcatalog.Credit, 0, len(chars))
 	for ordinal, c := range chars {
 		department := "Guest"
@@ -142,6 +142,12 @@ func writeTVDBEpisodeCredits(ctx context.Context, tx *sql.Tx, item int64, chars 
 			Department:       department,
 			Ordinal:          ordinal,
 		})
+	}
+	if len(accepted) == 2 {
+		return compactcatalog.SetCreditsFromRecordTx(ctx, tx, item, "tvdb", accepted[0], accepted[1], credits)
+	}
+	if len(accepted) != 0 {
+		return ErrRepairInput
 	}
 	return compactcatalog.SetCreditsTx(ctx, tx, item, "tvdb", credits)
 }

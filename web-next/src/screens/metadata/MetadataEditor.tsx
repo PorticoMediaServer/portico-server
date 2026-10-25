@@ -114,7 +114,7 @@ export function MetadataEditor({api, scope, target, onClose, initialTab = 'gener
       {shown === 'general' ? <General data={data} draft={draft} set={set} requiredTitle={target.kind !== 'season'} /> : null}
       {shown === 'tags' ? <Tags data={data} draft={draft} set={set} busy={state.phase !== 'ready'} /> : null}
       {shown === 'people' ? <People data={data} target={target} busy={state.phase !== 'ready'}
-        onCommit={rows => run({action: 'edit_relationships', role: 'credit', confirm: true, relationships: rows})}
+        onCommit={rows => run({action: 'edit_relationships', role: 'credit', confirm: true, relationships: rows, ...(data.snapshot.canEditProviderCredits === true ? {effectiveCredits: true as const} : {})})}
         onLock={locked => void run({action: 'relationship_lock', role: 'credit', locked, confirm: true})} /> : null}
       {shown === 'matching' ? <Matching data={data} target={target} busy={state.phase !== 'ready'} onSearch={query => void run({action: 'search', query})}
         onRetry={() => void run({action: 'retry'})} onLock={locked => void run({action: 'relationship_lock', role: 'identity', locked, confirm: true})}
@@ -389,19 +389,25 @@ function Matching({data, target, busy, onSearch, onUse, onRetry, onLock}: {
 }
 
 
-/** Frame 9: draft edits preserve every existing identity tuple. The current producer only
- * writes manual credits; provider rows stay read-only until its owner override is available. */
+/** Frame 9: provider presentation edits retain exact captured source references. */
 function People({data, target, busy, onCommit, onLock}: {
   data: RepairData; target: RepairTarget; busy: boolean;
   onCommit: (rows: RepairData['snapshot']['relationships']) => Promise<boolean>; onLock: (locked: boolean) => void;
 }) {
   const credits = data.snapshot.relationships.filter(row => row.kind === 'credit');
-  const [draft, setDraft] = useState<RepairData['snapshot']['relationships'] | null>(null);
+  const [ownedDraft, setOwnedDraft] = useState<{owner: RepairData; rows: RepairData['snapshot']['relationships']} | null>(null);
+  const draft = ownedDraft?.owner === data ? ownedDraft.rows : null;
+  const rendered = useRef({data, draft: ownedDraft}); rendered.current = {data, draft: ownedDraft};
+  const currentDraft = () => rendered.current.data === data && rendered.current.draft === ownedDraft;
+  const setDraft = (next: RepairData['snapshot']['relationships'] | null) => {
+    if (!currentDraft()) return;
+    setOwnedDraft(current => current === ownedDraft ? next === null ? null : {owner: data, rows: next} : current);
+  };
   const rows = draft ?? credits;
-  const editable = (row: RepairData['snapshot']['relationships'][number]) => row.provider === 'manual' && (!row.recordId || !row.locked);
+  const editable = (row: RepairData['snapshot']['relationships'][number]) => data.snapshot.canEditProviderCredits === true || row.provider === 'manual' && (!row.recordId || !row.locked);
   const clean = (value: string) => !/[\u0000-\u001f\u007f]/.test(value);
-  const valid = rows.length <= 100 && rows.every(row => row.label.trim() !== '' && row.label.length <= 300 &&
-    (row.role?.length ?? 0) <= 500 && (row.department?.length ?? 0) <= 200 && clean(row.label) && clean(row.role ?? '') && clean(row.department ?? ''));
+  const valid = rows.length <= 512 && rows.every(row => row.label.trim() !== '' && row.label.length <= 300 &&
+    (row.role?.length ?? 0) <= 500 && (row.department?.length ?? 0) <= 200 && clean(row.label) && clean(row.role ?? '') && clean(row.department ?? '')) && new TextEncoder().encode(JSON.stringify(rows)).length <= (1 << 20) - 1024;
   const change = (index: number, patch: Partial<Pick<RepairData['snapshot']['relationships'][number], 'label' | 'role' | 'department'>>) => {
     if (busy || !editable(rows[index])) return;
     setDraft(rows.map((row, at) => at === index ? {...row, ...patch} : row));
@@ -411,25 +417,26 @@ function People({data, target, busy, onCommit, onLock}: {
     setDraft(rows.filter((_, at) => at !== index));
   };
   const add = () => {
-    if (busy || target.kind !== 'item' || rows.length >= 100) return;
+    if (busy || target.kind !== 'item' || rows.length >= 512) return;
     setDraft([...rows, {kind: 'credit', provider: 'manual', targetKind: 'scoped_credit', targetId: '', label: '', role: '', department: '',
       ordinal: rows.reduce((top, row) => Math.max(top, row.ordinal), 0) + 1, source: 'manual', locked: true}]);
   };
   const save = async () => {
-    if (busy || !draft || !valid) return;
-    if (await onCommit(rows.map(row => editable(row) ? {...row, label: row.label.trim(), role: row.role?.trim(), department: row.department?.trim()} : row))) setDraft(null);
+    if (!currentDraft() || busy || !draft || !valid) return;
+    if (await onCommit(rows.map(row => editable(row) && !credits.includes(row) ? {...row, label: row.label.trim(), role: row.role?.trim(), department: row.department?.trim()} : row))) setDraft(null);
   };
   return <div className={styles.fields}>
     <div className={styles.creditHeader}><h3>{t('web.metadata.tabPeople')}</h3><small>{t('web.metadata.creditCount', {count: rows.length})}</small>
       <button type="button" className={styles.lock} disabled={busy || draft !== null} aria-pressed={data.snapshot.relationshipLocks.credit === true}
-        onClick={() => onLock(data.snapshot.relationshipLocks.credit !== true)}>{t(data.snapshot.relationshipLocks.credit ? 'web.metadata.locked' : 'web.metadata.unlocked')}</button>
-      {target.kind === 'item' ? <Button size="small" disabled={busy || rows.length >= 100} onClick={add}>{t('web.metadata.addPerson')}</Button> : null}
+        onClick={() => {if (currentDraft()) onLock(data.snapshot.relationshipLocks.credit !== true);}}>{t(data.snapshot.relationshipLocks.credit ? 'web.metadata.locked' : 'web.metadata.unlocked')}</button>
+      {target.kind === 'item' ? <Button size="small" disabled={busy || rows.length >= 512} onClick={add}>{t('web.metadata.addPerson')}</Button> : null}
     </div>
     {rows.map((row, index) => <div key={`${row.recordId ?? 'new'}:${row.targetId}:${index}`} className={styles.creditRow} data-new={!row.recordId || undefined}>
       <TextField label={t('web.metadata.field.name')} value={row.label} disabled={busy || !editable(row)} maxLength={300} onChange={event => change(index, {label: event.currentTarget.value})}/>
       <TextField label={t('web.metadata.field.department')} value={row.department ?? ''} disabled={busy || !editable(row)} maxLength={200} onChange={event => change(index, {department: event.currentTarget.value})}/>
       <TextField label={t(row.department?.toLowerCase() === 'acting' ? 'web.metadata.creditCharacter' : 'web.metadata.creditRole')} value={row.role ?? ''} disabled={busy || !editable(row)} maxLength={500} onChange={event => change(index, {role: event.currentTarget.value})}/>
       <Button size="small" disabled={busy || !editable(row)} onClick={() => remove(index)}>{t('web.metadata.removeLabel', {label: row.label})}</Button>
+      {row.sourceStatus === 'missing' || row.sourceStatus === 'replaced' ? <small className={styles.creditStatus}>{t(row.sourceStatus === 'missing' ? 'web.metadata.creditSourceMissing' : 'web.metadata.creditSourceReplaced')}</small> : null}
     </div>)}
     <footer className={styles.editorFooter}>
       <Button size="small" disabled={busy || draft === null} onClick={() => setDraft(null)}>{t('action.discard')}</Button>
