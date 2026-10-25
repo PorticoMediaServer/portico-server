@@ -36,7 +36,7 @@ def main():
         parser.error("cycle must be a safe review- name")
     if args.stage_only == args.activate_only:
         parser.error("choose --stage-only, then --activate-only after public setup")
-    if args.runtime_root and (not args.stage_only or not re.fullmatch(r"/opt/portico/media-runtimes/[a-z0-9-]{1,64}/bundle", args.runtime_root)):
+    if args.runtime_root and (not args.stage_only or not re.fullmatch(r"/opt/portico/media-runtimes/[A-Za-z0-9-]{1,64}/bundle", args.runtime_root)):
         parser.error("runtime root must be a safe installed bundle used only with --stage-only")
     if args.activate_only and not all((args.browser_repo, args.runner, args.private_review, args.smoke_output)):
         parser.error('activation requires the real browser smoke repo, runner, private review file and output')
