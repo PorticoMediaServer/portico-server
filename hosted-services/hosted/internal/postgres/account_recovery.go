@@ -43,12 +43,32 @@ func (s *AccountSecurity) RequestRecovery(ctx context.Context, q RecoveryRequest
 	var account, contact string
 	var epoch int64
 	var password []byte
-	e = tx.QueryRowContext(ctx, `SELECT a.id,a.auth_epoch,a.password_hash,c.id,c.address FROM accounts a JOIN account_contact_emails c ON c.account_id=a.id AND c.is_primary WHERE ($1='' OR a.username=$1) AND lower(c.address)=lower($2) AND a.password_hash IS NOT NULL FOR UPDATE OF a`, q.Username, address).Scan(&account, &epoch, &password, &contact, &address)
-	if errors.Is(e, sql.ErrNoRows) {
-		return nil
-	}
+	// The primary-contact constraint gives one row per distinct account. Two
+	// rows prove ambiguity; order only stabilizes locking, never selects a winner.
+	rows, e := tx.QueryContext(ctx, `SELECT a.id,a.auth_epoch,a.password_hash,c.id,c.address FROM accounts a JOIN account_contact_emails c ON c.account_id=a.id AND c.is_primary WHERE ($1='' OR a.username=$1) AND lower(c.address)=lower($2) AND a.password_hash IS NOT NULL ORDER BY a.id LIMIT 2 FOR UPDATE OF a`, q.Username, address)
 	if e != nil {
 		return e
+	}
+	matches := 0
+	for rows.Next() {
+		matches++
+		if e = rows.Scan(&account, &epoch, &password, &contact, &address); e != nil {
+			rows.Close()
+			return e
+		}
+	}
+	e = rows.Err()
+	closeErr := rows.Close()
+	if e != nil {
+		return e
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	if matches != 1 {
+		// Unknown, password-less and ambiguous contacts have the same public
+		// outcome and cannot create or supersede anybody's existing proof.
+		return nil
 	}
 	var prior bool
 	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM account_email_challenges WHERE account_id=$1 AND purpose='password_reset' AND operation_id=$2)`, account, q.RequestID).Scan(&prior); e != nil {
