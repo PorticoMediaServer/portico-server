@@ -27,6 +27,17 @@ export function identitySelector(identity: SelectionIdentity): JobSelector {
 export type HomeJobTask = {request: JobRequest; job?: Job; attempted?: boolean; rejected?: boolean; failures: readonly JobFailure[]; observed: boolean};
 /** In pick order: consecutive playable items share a capped selector, aggregates keep their scope. */
 export async function selectionJobTasks(target: SelectionTarget, command: JobCommand, args: JobArgs, requestId: () => Promise<string>): Promise<HomeJobTask[]> {
+  if (target.mode === 'query') {
+    const checked = selectionQuerySelector(target);
+    const capability = command === 'playlist-add' ? 'playlist' : command === 'collection-add' ? 'collection' : undefined;
+    if (!checked.ok || !capability || !target.summary.every[capability] || !target.total
+      || !('query' in checked.selector) || !/^browse_[a-f0-9]{64}$/.test(checked.expected.catalogRevision)
+      || target.summary.library.kind !== 'single' || target.summary.library.libraryId !== checked.selector.query.libraryId
+      || target.summary.types.some(type => !['movie', 'episode', 'song', 'audiobook_file'].includes(type.kind))) throw selectionExecutionError('query-destination-unavailable');
+    const selector = structuredClone(checked.selector), capturedArgs = structuredClone(args), expected = {...checked.expected};
+    const operationId = (await requestId()).replaceAll('-', '');
+    return [{request: {operationId, command, selector, args: capturedArgs, expected}, failures: [], observed: false}];
+  }
   const identities = explicitIdentities(target), selectors: JobSelector[] = [];
   for (const identity of identities) {
     const selector = identitySelector(identity), previous = selectors.at(-1);

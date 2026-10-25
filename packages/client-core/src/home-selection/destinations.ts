@@ -162,6 +162,7 @@ export class HomeSelectionDestinations {
       return;
     }
     if (this.state.phase === 'partial') {
+      if (this.target.mode === 'query') throw selectionExecutionError('query-failures-require-new-selection');
       // Each retry uses only the next bounded real unresolved failure window.
       // The next summary includes all earlier jobs and supplies remaining rows.
       const missing = this.state.receipt?.failures.map(f => f.itemId) ?? [];

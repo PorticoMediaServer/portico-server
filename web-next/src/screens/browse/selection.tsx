@@ -1,3 +1,4 @@
+import {queryDestinationTarget, type LibraryPickerTarget} from './selection-picker';
 import {QuerySelectionEditorSurface} from './QuerySelectionEditorSurface';
 import {LibraryPickerSurface, type LibraryPickerOptions} from './LibraryPickerSurface';
 import type {EntryActionPorts, EntryDestination} from '../../shell/entry-actions';
@@ -72,6 +73,11 @@ export type LibrarySelection = Readonly<{
   addToCollection: (anchor: HTMLElement) => Promise<void>;
   playSelection: LibrarySelectionHost;
 }>;
+
+function queryDestination(selection: BrowseSelection | undefined, kind: EntryDestination) {
+  const target = selection?.target;
+  return target?.mode === 'query' && queryDestinationTarget(target, kind);
+}
 
 /** Leaf explicit picks are the only target every add path can act on correctly:
  * a container's add would either become a container entry or a different command.
@@ -164,8 +170,8 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {visible: Visi
   const pickerItems = props.pickers ? explicitDestinationItems(current.selection) : leafItems;
   const queueLease = !!playSelection.captureOperation && !!playSelection.isOperationCurrent && !!actions?.signal
     && !actions.signal.aborted && actions.isCurrent();
-  const canQueue = !!explicitQueueItems(current.selection) && !!enqueue && queueLease && summary.every.queue, canPlaylist = !!pickerItems && (!!destinations?.playlist || !!props.pickers) && queueLease && summary.every.playlist,
-    canCollection = !!pickerItems && (!!destinations?.collection || !!props.pickers) && queueLease && summary.every.collection;
+  const canQueue = !!explicitQueueItems(current.selection) && !!enqueue && queueLease && summary.every.queue, canPlaylist = queueLease && summary.every.playlist && (!!pickerItems && (!!destinations?.playlist || !!props.pickers) || !!props.pickers && queryDestination(current.selection, 'playlist')),
+    canCollection = queueLease && summary.every.collection && (!!pickerItems && (!!destinations?.collection || !!props.pickers) || !!props.pickers && queryDestination(current.selection, 'collection'));
   return <SelectionBar
     selection={{count: summary.count, kind: summary.types.length === 1 ? summary.types[0].kind : undefined}}
     actions={{
@@ -233,7 +239,7 @@ export function createLibrarySelection({playSelection, owner, descriptor, action
   const openPicker = (kind: EntryDestination, anchor: HTMLElement) => {
     const selection = playSelection.getSnapshot().selection, operation = playSelection.captureOperation?.();
     if (!pickers || !pickers.pickerIdentity || pickers.signal.aborted || !pickers.isCurrent() || !selection || !operation || operation.target !== selection.target
-      || operation.target.mode !== 'explicit' || !explicitDestinationItems(selection) || !selection.summary.every[kind] || !playSelection.isOperationCurrent?.(operation)) throw new Error('selection-picker-unavailable');
+      || !(operation.target.mode === 'query' ? queryDestination(selection, kind) : explicitDestinationItems(selection)) || !selection.summary.every[kind] || !playSelection.isOperationCurrent?.(operation)) throw new Error('selection-picker-unavailable');
     closePicker();
     const lifetime = new AbortController(), signal = AbortSignal.any([lifetime.signal, pickers.signal]);
     const current = () => !signal.aborted && pickers.isCurrent() && playSelection.isOperationCurrent?.(operation) === true;
@@ -241,7 +247,7 @@ export function createLibrarySelection({playSelection, owner, descriptor, action
     const ports: EntryActionPorts = {...pickers, isCurrent: current, api: {request: async<T>(path: string, method?: string, body?: unknown, caller?: AbortSignal): Promise<T> => {
       check(); const value = await pickers.api.request<T>(path, method, body, caller ? AbortSignal.any([signal, caller]) : signal); check(); return value;
     }}};
-    pickerSession = Object.freeze({operation, anchor, lifetime, current, kind, ports, items: Object.freeze(operation.target.items.map(pick => pick.item))});
+    pickerSession = Object.freeze({operation, anchor, lifetime, current, kind, ports, items: operation.target.mode === 'query' ? operation.target : Object.freeze(operation.target.items.map(pick => pick.item))});
     for (const listener of pickerListeners) listener();
   };
   const leafItems = () => {
@@ -351,7 +357,7 @@ function LibraryDeleteHost({playSelection, store, options, close}: {playSelectio
   return session && valid ? <LibraryDeleteSurface session={session} options={options} onClose={close}/> : null;
 }
 
-type LibraryPickerSession = LibraryEditorSession & Readonly<{kind: EntryDestination; ports: EntryActionPorts; items: readonly SelectionItem[]}>;
+type LibraryPickerSession = LibraryEditorSession & Readonly<{kind: EntryDestination; ports: EntryActionPorts; items: LibraryPickerTarget}>;
 function LibraryPickerHost({playSelection, store, options, close}: {playSelection: LibrarySelectionHost; store: Readonly<{subscribe: (listener: () => void) => () => void; getSnapshot: () => LibraryPickerSession | undefined}>; options: LibraryPickerOptions; close: () => void}) {
   const session = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   useSyncExternalStore(playSelection.subscribe, playSelection.getSnapshot, playSelection.getSnapshot);
