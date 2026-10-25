@@ -48,7 +48,7 @@ function FileInfoBody({model, layout, pickedFileId, disc, onManage}: Pick<FileIn
       </dl>
     </section>;
   })}<p className={styles.note}>{t(phone ? 'next.overlays.fileInfoNote' : 'next.overlays.fileInfoDesktopNote')}</p>{disc && disc.titles.length > 0 && <section className={styles.owner} aria-label={t('next.overlays.discTitles')}>
-    <div className={styles.ownerHeading}>{phone ? <ServerMark size={36} context="file-info-phone" /> : <ServerMark size={34} />}<div><h3>{t('next.overlays.discTitles')}{!phone && <OwnerTag />}</h3>{!phone && <small>{t('next.overlays.discTitlesNote')}</small>}</div>{phone && <OwnerTag size="phone" />}</div>
+    <div className={styles.ownerHeading}>{phone ? <ServerMark size={36} context="file-info-phone" /> : <ServerMark size={34} />}<div><h3>{t('next.overlays.discTitles')}{!phone && <OwnerTag />}</h3>{!phone && <small>{model.files.find(file => file.id === disc.fileId)?.display.heading.text}</small>}</div>{phone && <OwnerTag size="phone" />}</div>
     <dl className={styles.ownerLocations}>{disc.titles.map(title => <div key={title.number} className={styles.location}><span className={styles.versionBadge}>{t('next.overlays.discTitle', {number: title.number})}</span><span className={styles.path}>{durationText(title.durationMs / 1000, t) ?? ''}</span><span className={styles.path}>{t('next.overlays.discChapters', {count: title.chapters})}</span></div>)}</dl>
     <p className={styles.note}>{t('next.overlays.discTitlesNote')}</p>
   </section>}{model.owner && <section className={styles.owner} aria-label={t('next.shell.ownerOnly')}>
