@@ -401,10 +401,11 @@ type Report struct {
 	PositionMs int64   `json:"positionMs"`
 	PartIndex  *int    `json:"partIndex,omitempty"`
 	Rate       float64 `json:"rate,omitempty"`
-	// Seeked marks a report whose position follows a seek, skip or other jump
-	// since the previous report. Progress readers use it to end a played run;
-	// it is evidence about the report, never a transport command.
-	Seeked          bool           `json:"seeked,omitempty"`
+	// Seeked says whether this report's position follows a seek or other jump
+	// since the previous report. Presence matters: a report that omits it comes
+	// from a client that cannot answer, so no played interval may be counted
+	// there. It is evidence about the report, never a transport command.
+	Seeked          *bool          `json:"seeked,omitempty"`
 	BufferedMs      int64          `json:"bufferedMs,omitempty"`
 	BandwidthKbps   int64          `json:"bandwidthKbps,omitempty"`
 	DroppedFrames   int64          `json:"droppedFrames,omitempty"`
