@@ -7,7 +7,7 @@ export type SettingsTarget = Readonly<{scope: 'account' | 'server'; section: str
  * Rows whose drawn control this batch does not own yet. They stay absent rather
  * than showing an empty control or a setting with no engine (ruling 3).
  */
-export const pendingServerRows: ReadonlySet<string> = new Set(['storage.networkNotice', 'storage.emptyCache',
+export const pendingServerRows: ReadonlySet<string> = new Set(['storage.emptyCache',
   'storage.upgradeCopy', 'storage.backupKeysNote']);
 
 /** The rows this page draws from its own owner-scoped producers. */
@@ -23,7 +23,7 @@ export const backupRows: ReadonlySet<string> = new Set(['storage.backupFolder', 
 export const fileRestoreRows: ReadonlySet<string> = new Set(['storage.restoreFile']);
 
 /** What the page has actually learned: the selected session is live and the backup document arrived. */
-export type StorageRowFacts = Readonly<{live: boolean; backups: boolean}>;
+export type StorageRowFacts = Readonly<{live: boolean; backups: boolean; dataDirectoryOnNetwork?: boolean}>;
 
 /**
  * A drawn link's `to` is `server/<section>[/<row>]` for a page inside Settings.
@@ -39,6 +39,7 @@ export function sectionTarget(to: string | undefined): SettingsTarget | undefine
 
 /** The Storage surfaces answer for their own rows and leave every other row to the shared reader. */
 export function storageRowState(row: SettingsRow, facts: StorageRowFacts): Readonly<{present: boolean}> | undefined {
+  if (row.id === 'storage.networkNotice') return {present: facts.live && facts.dataDirectoryOnNetwork === true};
   if (pendingServerRows.has(row.id)) return {present: false};
   if (factRows.has(row.id) || fileRestoreRows.has(row.id)) return {present: facts.live};
   if (backupRows.has(row.id)) return {present: facts.backups};

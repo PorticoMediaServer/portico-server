@@ -6,7 +6,7 @@ export type StorageCategory = Readonly<{
   cleanable: boolean; regenerable: boolean; present: boolean; fileCount: number; oldestDays: number; retentionKey: string;
 }>;
 export type StorageReport = Readonly<{
-  stateDirectory: string; totalBytes: number; totalBytesText: string; truncated: boolean; categories: readonly StorageCategory[];
+  stateDirectory: string; stateDirectoryOnNetwork?: boolean; totalBytes: number; totalBytesText: string; truncated: boolean; categories: readonly StorageCategory[];
 }>;
 export type StorageSnapshot = Readonly<{phase: 'idle' | 'loading' | 'ready' | 'error'}> & Readonly<{report?: StorageReport; error?: boolean}>;
 
@@ -19,7 +19,11 @@ export function storageReport(value: unknown, serverId: string): StorageReport {
   const decoded = decodeGetAdminStorageUsageResponse(value);
   if (decoded.serverId !== serverId) throw Object.assign(new Error('other_server'), {code: 'other_server'});
   const result = decoded.result;
-  return Object.freeze({stateDirectory: result.stateDirectory, totalBytes: result.totalBytes, totalBytesText: result.totalBytesText, truncated: result.truncated,
+  // Optional additive producer field; official decoder generation is checkpoint-owned.
+  const raw = value as {result?: {stateDirectoryOnNetwork?: unknown}};
+  const onNetwork = raw.result?.stateDirectoryOnNetwork;
+  if (onNetwork !== undefined && typeof onNetwork !== 'boolean') throw new Error('invalid_storage_network_fact');
+  return Object.freeze({stateDirectory: result.stateDirectory, ...(onNetwork === undefined ? {} : {stateDirectoryOnNetwork: onNetwork}), totalBytes: result.totalBytes, totalBytesText: result.totalBytesText, truncated: result.truncated,
     categories: Object.freeze(result.categories.map(category => Object.freeze({id: category.id, name: category.name, description: category.description, bytes: category.bytes,
       bytesText: category.bytesText, cleanable: category.cleanable, regenerable: category.regenerable, present: category.present, fileCount: category.fileCount,
       oldestDays: category.oldestDays, retentionKey: category.retentionKey}))) });
