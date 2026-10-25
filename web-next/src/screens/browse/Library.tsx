@@ -178,7 +178,7 @@ export function LibraryBrowse(bindings: LibraryBrowseBindings) {
     <Menu open={!!openMenu} onOpenChange={open => {if (!open && openMenu && cardMenuRef.current === openMenu) setCardMenu(undefined);}} title={openMenu?.title ?? ''} anchorRef={cardAnchor} width={280}
       items={openMenu ? [
         ...(openMenu.play ? [{id: 'play', label: t('next.selection.play'), icon: 'i-play' as const, onSelect: () => {if (!cardMenuCurrent(openMenu)) return; setCardMenu(undefined); openMenu.play!();}}] : []),
-        ...(openMenu.select ? [{id: 'select', label: t('next.selection.select'), onSelect: () => {if (!cardMenuCurrent(openMenu)) return; setCardMenu(undefined); openMenu.select!();}}] : []),
+        ...(openMenu.select ? [{id: 'select', label: t('next.selection.select'), icon: 'i-select' as const, onSelect: () => {if (!cardMenuCurrent(openMenu)) return; setCardMenu(undefined); openMenu.select!();}}] : []),
       ] : []}/>
   </>;
 }
