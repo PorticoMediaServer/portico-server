@@ -1,24 +1,35 @@
-import {useEffect, useState, useSyncExternalStore} from 'react';
+import {useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
+import type {ShellAssemblyContext} from '../../shell/bootstrap';
 import {ViewerFeedback} from './feedback-controller';
 import {installFeedback} from './feedback';
 import {FeedbackDialog} from '../../kit/accounts/FeedbackDialog';
 
+type FeedbackSession = Pick<ReturnType<ShellAssemblyContext['session']>, 'sessionFamilyId' | 'viewer'>;
+type FeedbackLease = Readonly<{context: ShellAssemblyContext; session: FeedbackSession; controller: ViewerFeedback; key: number; current: () => boolean}>;
+const sameSession = (left: FeedbackSession, right: FeedbackSession) => left.sessionFamilyId === right.sessionFamilyId
+  && (['serverId', 'authority', 'accountId', 'profileId', 'role'] as const).every(key => left.viewer[key] === right.viewer[key]);
+
 export function FeedbackHost() {
   const captured = useProtectedWebScreenContext();
-  const [controller, setController] = useState<ViewerFeedback>();
-  const context = captured?.context;
-  useEffect(() => {
-    if (!context?.isCurrent()) return;
-    const session = context.session(), viewer = session.viewer;
-    let active = true;
-    const current = () => active && context.isCurrent() && context.session().sessionFamilyId === session.sessionFamilyId &&
-      (['serverId', 'authority', 'accountId', 'profileId'] as const).every(key => context.session().viewer[key] === viewer[key]);
-    const owned = new ViewerFeedback(context.api, viewer, current);
-    const off = installFeedback(owned); setController(owned); owned.initialize();
-    return () => {active = false;owned.dispose();off();};
-  }, [context]);
-  return controller && context?.isCurrent() ? <BoundFeedback controller={controller} /> : null;
+  const [published, publish] = useState<FeedbackLease>(), generation = useRef(0);
+  const context = captured?.context, session = context?.session(), viewer = session?.viewer;
+  useLayoutEffect(() => {
+    if (!context?.isCurrent() || !session) return;
+    const original: FeedbackSession = {sessionFamilyId: session.sessionFamilyId, viewer: {...session.viewer}};
+    let live = true;
+    const current = () => live && context.isCurrent() && sameSession(context.session(), original);
+    if (!current()) return;
+    const controller = new ViewerFeedback(context.api, original.viewer, current);
+    const off = installFeedback(controller);
+    publish({context, session: original, controller, key: ++generation.current, current});
+    controller.initialize();
+    return () => {live = false;off();controller.dispose();};
+    // Keep the first API/viewer ports and draft across ordinary shell, route and
+    // playback publications. A replay or authority replacement owns a new lease.
+  }, [context, session?.sessionFamilyId, viewer?.serverId, viewer?.authority, viewer?.accountId, viewer?.profileId, viewer?.role]);
+  const owned = published && published.context === context && session && sameSession(session, published.session) && published.current() ? published : undefined;
+  return owned ? <BoundFeedback key={owned.key} controller={owned.controller} /> : null;
 }
 function BoundFeedback({controller}: {controller: ViewerFeedback}) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
