@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import {useLayoutEffect, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {defineWebScreen} from '../../route-registry';
 import {router} from '../../router';
@@ -11,7 +11,7 @@ import {AccountProfilesView, type ProfilePickerViewBinding} from './AccountProfi
 
 function ProfilesScreen() {
   const [entry, setEntry] = useState<BrowserAccountEntry>();
-  useEffect(() => {
+  useLayoutEffect(() => {
     const current = createBrowserAccountEntry(); setEntry(current);
     void current.loadProfiles();
     return () => current.dispose();
@@ -31,7 +31,7 @@ function BoundProfiles({entry}: {entry: BrowserAccountEntry}) {
   const binding = useMemo<ProfilePickerViewBinding>(() => ({
     subscribe: entry.subscribe, getSnapshot: entry.getSnapshot,
     loadProfiles: () => entry.loadProfiles(), chooseProfile: (id, pin, remember) => entry.chooseProfile(id, pin, remember),
-    profileRecovery: id => entry.profileRecovery(id),
+    profileRecovery: (id, current) => entry.profileRecovery(id, current),
     async porticoRecovery(flow) {
       const account = browserAccount(); await account.service.synchronize();
       const session = await account.service.accessSession();

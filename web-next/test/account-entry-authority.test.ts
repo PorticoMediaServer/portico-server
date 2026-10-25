@@ -14,23 +14,25 @@ function session(family = 'restricted-family'): LocalSession {
 }
 const record = (value: LocalSession): RememberedServer => ({version: '1', logicalOrigin: origin, pin, session: value, routes: {paired: [origin]}});
 const settle = () => new Promise(resolve => setImmediate(resolve));
-async function fixture(required = true) {
+async function fixture(required = true, recovery = false) {
+  let profileRevision = 1, pinRevision = 1, directGate: Promise<void> | undefined, releaseDirect: (() => void) | undefined, directStarted = false;
   let raw: AppSessionRecord | undefined, disconnected = 0, failRead = false;
   let enrolGate: Promise<void> | undefined, releaseEnrol: (() => void) | undefined, enrolStarted = false;
   const hints = new Set<() => void>(), tokens: string[] = [], calls: string[] = [], selections: unknown[][] = [];
   const hint = () => {for (const changed of hints) changed();};
   const store = new AppSessionStore({read: async () => raw, change: async update => {raw = update(raw);hint();}});
   const initial = session(), system = {id: serverId, name: 'Actual server', version: '1', signIn: 'local', move: null, setupRequired: false, hostedConfigured: false, hostedAttached: false};
-  const snapshot = () => ({authority: 'local', serverId, canManage: false, twoStepSetupRequired: required,
-    capabilities: {manageAccount: false, managePeople: false, manageServer: false, manageSignIn: false},
+  const snapshot = () => ({authority: 'local', serverId, canManage: recovery, twoStepSetupRequired: required,
+    capabilities: {manageAccount: recovery, managePeople: false, manageServer: false, manageSignIn: false},
     account: {id: 'account-a', username: 'actual-user', primaryProfileId: 'main', role: 'member', revision: 1, disabled: false, allowedLibraries: []},
-    profiles: [{id: 'main', name: 'Actual profile', primary: true, position: 0, art: 'mint', revision: 1, pinRevision: 1, pinRequired: false}]});
+    profiles: [{id: 'main', name: 'Actual profile', primary: true, position: 0, art: 'mint', revision: profileRevision, pinRevision, pinRequired: recovery}]});
   const connection = {pin, dispose() {disconnected++;}, getSnapshot: () => ({phase: 'ready'})};
   const api = new HttpLocalApi(origin, '');api.getRouteConnection = () => connection as never;api.setAccessToken = token => {tokens.push(token);};
   api.request = (async path => {
     calls.push(path);
     if (path === '/v1/system') return system;
-    if (path === '/v1/direct') return snapshot();
+    if (path === '/v1/direct') {directStarted = true; await directGate; return snapshot();}
+    if (path === '/v1/direct/profiles/main/pin-reset') {profileRevision++;pinRevision++;return undefined;}
     if (path === '/v1/direct/two-factor/enrol') {enrolStarted = true;await enrolGate;return {secret: 'ABCDEFGHIJKLMNOP', uri: 'otpauth://totp/Actual?secret=ABCDEFGHIJKLMNOP', recoveryCodes: ['ephemeral-code']};}
     throw new Error('Unexpected fixture route');
   }) as HttpLocalApi['request'];
@@ -45,7 +47,8 @@ async function fixture(required = true) {
     observeSelection: changed => {hints.add(changed);return () => {hints.delete(changed);};},
   });
   await entry.loadProfiles();await settle();
-  return {entry, store, initial, chosen, save, hint, hints, tokens, calls, selections, get disconnected() {return disconnected;},
+  return {entry, store, initial, chosen, save, hint, hints, tokens, calls, selections,
+    holdDirect: () => {directStarted = false;directGate = new Promise(resolve => {releaseDirect = resolve;});}, releaseDirect: () => releaseDirect?.(), get directStarted() {return directStarted;}, get disconnected() {return disconnected;},
     failRead: () => {failRead = true;},
     holdEnrol: () => {enrolGate = new Promise(resolve => {releaseEnrol = resolve;});}, releaseEnrol: () => releaseEnrol?.(), get enrolStarted() {return enrolStarted;}};
 }
@@ -100,4 +103,26 @@ test('profile recovery uses only a current eligible picker and retires with its 
   const recovery = f.entry.profileRecovery('main');assert.equal(recovery.getSnapshot().phase, 'password');
   const before = f.calls.length;await f.save(session('successor'));await settle();
   await recovery.password('fixture-input');assert.equal(f.calls.length, before);assert.equal(f.entry.getSnapshot().phase, 'welcome');recovery.dispose();f.entry.dispose();
+});
+
+test('recovered profile opens only through its original committed picker and main family', async () => {
+  const f = await fixture(false, true), flow = f.entry.profileRecovery('main');
+  await flow.reset('2468');assert.equal(flow.getSnapshot().phase,'done');
+  await flow.openProfile('2468',()=>true);
+  assert.equal(f.selections.length,1);assert.deepEqual(f.selections[0][1],f.initial);assert.equal(f.selections[0][2],'main');assert.equal(f.selections[0][6],false);
+  flow.dispose();f.entry.dispose();
+});
+test('retired recovery view during the profile read cannot dispatch a successor choice', async () => {
+  const f = await fixture(false, true);let current = true;
+  const flow = f.entry.profileRecovery('main',()=>current);await flow.reset('2468');
+  f.holdDirect();const pending=flow.openProfile('2468',()=>current);await settle();assert.equal(f.directStarted,true);
+  current=false;f.releaseDirect();await pending;
+  assert.equal(f.selections.length,0);assert.equal(f.entry.getSnapshot().busy,false);flow.dispose();f.entry.dispose();
+});
+test('same-server account-family replacement during recovered-profile read refuses before selection', async () => {
+  const f = await fixture(false, true), flow=f.entry.profileRecovery('main');await flow.reset('2468');
+  f.holdDirect();const pending=flow.openProfile('2468',()=>true);await settle();assert.equal(f.directStarted,true);
+  await f.save(session('successor'));f.releaseDirect();await pending;
+  assert.equal(f.selections.length,0);assert.equal((await f.store.selected())?.connection.session.sessionFamilyId,'successor');
+  flow.dispose();f.entry.dispose();
 });

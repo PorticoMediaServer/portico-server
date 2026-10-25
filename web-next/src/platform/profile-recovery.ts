@@ -18,7 +18,8 @@ export class BrowserProfileRecovery {
   private challenge?: Extract<DirectSignIn, {kind: 'challenge'}>;
   private disposed = false;
   constructor(private readonly api: HttpLocalApi, readonly snapshot: DirectSnapshot, readonly profileId: string, kind: SignInKind,
-    private readonly authorityCurrent: () => boolean, private readonly temporaryAPI?: (session: LocalSession) => HttpLocalApi) {
+    private readonly authorityCurrent: () => boolean, private readonly temporaryAPI?: (session: LocalSession) => HttpLocalApi,
+    private readonly openRecovered?: (pin: string, current: () => boolean) => Promise<void>) {
     if (!snapshot.profiles.some(profile => profile.id === profileId)) throw new Error('This profile is no longer available.');
     this.state = Object.freeze({phase: snapshot.canManage ? 'pin' : kind === 'local' ? 'password' : 'portico'});
   }
@@ -74,6 +75,11 @@ export class BrowserProfileRecovery {
     } catch (error) {if (operation.current()) this.publish({phase: 'pin', error});}
     finally {if (grant && (completed || !operation.current())) {this.grant = undefined; await this.retire(grant);}}
   }
+  async openProfile(pin: string, current: () => boolean) {
+    if (this.disposed || this.state.phase !== 'done' || !/^\d{4}$/.test(pin) || !this.authorityCurrent() || !current() || !this.openRecovered) return;
+    await this.openRecovered(pin, current);
+  }
+
   dispose() {
     if (this.disposed) return; this.disposed = true; ++this.epoch; this.controller?.abort(); this.challenge = undefined;
     const grant = this.grant; this.grant = undefined; if (grant) void this.retire(grant); this.listeners.clear();

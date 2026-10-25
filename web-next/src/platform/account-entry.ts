@@ -738,12 +738,36 @@ export class BrowserAccountEntry {
   try{const chosen=await this.ports.actions.switchProfile(api,session,profileId,pin,op.signal,op.current,remember);if(op.current()){this.session=chosen;this.challenge=undefined;this.challengeRevision=undefined;this.retired();if(op.current()){this.publish({...state,phase:'ready',busy:false});this.watchAuthority();}}}
   catch(error){if(op.current()){this.publish({...state,busy:false,error});this.watchAuthority();}}
  }
- profileRecovery(profileId:string){
+ profileRecovery(profileId:string,viewCurrent:()=>boolean=()=>true){
   const api=this.api,state=this.state,snapshot=state.snapshot,session=this.session,epoch=this.epoch;
   if(state.phase!=='profiles'||state.busy||!api||!snapshot||snapshot.twoStepSetupRequired||!state.server||!session)throw new Error('Choose a current server profile first.');
   return new BrowserProfileRecovery(api,snapshot,profileId,state.server.signIn,
-   ()=>!this.disposed&&this.epoch===epoch&&this.api===api&&this.state.phase==='profiles'&&this.state.snapshot===snapshot&&this.session?.sessionFamilyId===session.sessionFamilyId,
-   grant=>this.temporary(api,grant));
+   ()=>viewCurrent()&&!this.disposed&&this.epoch===epoch&&this.api===api&&this.state.phase==='profiles'&&this.state.snapshot===snapshot&&this.session?.sessionFamilyId===session.sessionFamilyId,
+   grant=>this.temporary(api,grant),(pin,current)=>this.openRecoveredProfile(api,session,state,snapshot,profileId,epoch,pin,current));
+ }
+
+ private async openRecoveredProfile(api:HttpLocalApi,session:LocalSession,state:AccountEntryState,snapshot:DirectSnapshot,profileId:string,epoch:number,pin:string,viewCurrent:()=>boolean){
+  const original=snapshot.profiles.find(profile=>profile.id===profileId),serverPin=state.pin;
+  if(!original||!serverPin||this.disposed||this.epoch!==epoch||this.api!==api||this.session!==session||this.state.snapshot!==snapshot||this.state.phase!=='profiles'||this.state.busy||!viewCurrent())return;
+  const op=this.operation();this.stopAuthorityWatch();this.publish({...state,busy:true,error:undefined});
+  const current=()=>op.current()&&viewCurrent()&&this.api===api&&this.session===session&&this.state.phase==='profiles'&&this.state.snapshot===snapshot;
+  const selected=(record:Awaited<ReturnType<AppSessionStore['read']>>)=>{
+   const saved=record.servers.find(value=>value.connection.pin.serverId===record.selectedServerId);
+   return !!saved&&record.selectedServerId===snapshot.serverId&&sameServerPin(saved.connection.pin,serverPin)&&saved.connection.session.sessionFamilyId===session.sessionFamilyId&&(['authority','serverId','accountId','profileId','role'] as const).every(key=>saved.connection.session.viewer[key]===session.viewer[key]);
+  };
+  try{
+   const before=await this.ports.store.read();if(!current())return;if(!selected(before))throw new CodedError('cancelled','The server selection changed.');
+   const fresh=parseDirectSnapshot(await api.request(routePath('get_direct_account'),'GET',undefined,op.signal),{authority:'local',accountId:snapshot.account.id,serverId:snapshot.serverId});
+   if(!current())return;
+   const target=fresh.profiles.find(profile=>profile.id===profileId);
+   if(fresh.account.revision!==snapshot.account.revision||fresh.account.disabled||fresh.twoStepSetupRequired||!target||target.pinRevision<=original.pinRevision||target.revision<original.revision)throw new CodedError('cancelled','The profile changed. Choose it again.');
+   const after=await this.ports.store.read();if(!current())return;if(after.revision!==before.revision||!selected(after))throw new CodedError('cancelled','The server selection changed.');
+   // Dispatch on this original API/session under this one operation. Never call
+   // the public chooser later and let it discover a successor entry.
+   const chosen=await this.ports.actions.switchProfile(api,session,profileId,pin,op.signal,current,false);
+   if(current()){this.session=chosen;this.challenge=undefined;this.challengeRevision=undefined;this.retired();if(op.current()){this.publish({...state,snapshot:fresh,phase:'ready',busy:false});this.watchAuthority();}}
+  }catch(error){if(current()){this.publish({...state,busy:false,error});this.watchAuthority();}}
+  finally{if(op.current()&&this.api===api&&this.session===session&&this.state.phase==='profiles'&&this.state.snapshot===snapshot&&this.state.busy){this.publish({...this.state,busy:false});this.watchAuthority();}}
  }
 
  dispose(){this.cancel();this.disposed=true;this.probe.dispose();this.listeners.clear();this.retiredListeners.clear();}
