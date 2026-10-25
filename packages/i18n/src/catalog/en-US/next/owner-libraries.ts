@@ -25,6 +25,7 @@ export const ownerLibrariesMessages = {
   'next.ownerLibraries.kindDescription.book': 'Novels, non-fiction, magazines and newspapers.',
   'next.ownerLibraries.kindDescription.comic': 'Comics, graphic novels and manga, left to right or right to left.',
   'next.ownerLibraries.audience': 'All {count, plural, one {# account} other {# accounts}} on this server',
+  'next.ownerLibraries.audienceSubset': '{count, plural, one {# account} other {# accounts}} on this server',
   'next.ownerLibraries.audienceEveryone': 'Everyone on this server',
   'next.ownerLibraries.scanDepth.fileListOnly': 'Just find files',
   'next.ownerLibraries.scanDepth.basic': 'Standard',
