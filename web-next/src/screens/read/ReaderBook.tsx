@@ -22,11 +22,22 @@ import {ReaderMatchNavigation} from './ReaderMatchNavigation';
 import {ReaderBrowserHint} from './ReaderBrowserHint';
 const {t} = defaultI18n;
 const directionIcon = (rtl: boolean): 'i-rtl' | 'i-ltr' => rtl ? 'i-rtl' : 'i-ltr';
-/** A chapter mark is the file's own contents entry; its end is the next entry, never a guess. */
+/** Real outline boundaries, including nested chapters; coincident starts draw one tick. */
 export function readerChapterMarks(items: readonly ReaderTocItem[], location?: ReaderLocation): readonly ReaderChapterMark[] {
-  const starts = items.map(item => item.location.progression);
-  return items.map((item, index) => ({id: item.id, start: item.location.progression, end: starts[index + 1] ?? 1,
-    current: location ? location.progression >= item.location.progression && (starts[index + 1] === undefined || location.progression < starts[index + 1]) : undefined}));
+  const outline: ReaderTocItem[] = [];
+  const visit = (entries: readonly ReaderTocItem[]) => {for (const entry of entries) {
+    const start = entry.location.progression;
+    if (Number.isFinite(start) && start >= 0 && start <= 1) outline.push(entry);
+    if (entry.children) visit(entry.children);
+  }};
+  visit(items);
+  outline.sort((left, right) => left.location.progression - right.location.progression);
+  const boundaries = outline.filter((entry, index) => index === 0 || entry.location.progression !== outline[index - 1].location.progression);
+  return boundaries.map((item, index) => {
+    const start = item.location.progression, end = boundaries[index + 1]?.location.progression ?? 1;
+    return {id: item.id, start, end, current: location && location.format === item.location.format
+      ? location.progression >= start && location.progression < end : undefined};
+  });
 }
 /** Fixed page ordinals/counts are actual renderer facts, never inferred EPUB pages. */
 export function readerPagePosition(location: ReaderLocation | null, count: number | undefined): string | undefined {
