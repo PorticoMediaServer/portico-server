@@ -25,6 +25,8 @@ export const drawnSubtitleMessages = {
   'player.subtitles.loadingDrawn': 'Loading subtitles…',
   'player.subtitles.drawFailed': 'These subtitles could not be drawn on this device, so they are being shown another way.',
   'player.subtitles.drawUnavailable': 'These subtitles could not be shown.',
+  'next.subtitles.image.noPictures': 'This subtitle has no pictures that can be shown.',
+  'next.subtitles.image.unreadable': 'This subtitle could not be read.',
   'player.subtitles.forcedOnly': 'Forced only',
   'player.subtitles.forcedOnlyHelp': 'Show only the lines marked forced: foreign dialogue and signs',
   'player.upNext.duringCredits': 'Up next',
