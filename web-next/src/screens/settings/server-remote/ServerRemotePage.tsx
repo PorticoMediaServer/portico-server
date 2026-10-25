@@ -1,7 +1,7 @@
 import {useEffect, useMemo, useState, useSyncExternalStore} from 'react';
 import type {ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
-import {routePath} from '../../../../../contracts/src/routes.ts';
+import {routePath} from '../../../../../packages/contracts/src/routes.ts';
 import {loadRemoteAccess, remoteAccessSummary, type RemoteAccess} from '@core/remote-access.ts';
 import {parseConnectivityStatus, type ConnectivityStatus} from '@core/server-administration.ts';
 import {connectivityForm, remoteAccessForm} from '@core/server-admin/server-forms.ts';
