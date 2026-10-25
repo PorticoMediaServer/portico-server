@@ -162,74 +162,57 @@ func cb7MemberBytes(ctx context.Context, ra io.ReaderAt, size int64, name string
 }
 
 // stageCB7Archive copies the leased bytes into the parent-owned scratch root
-// under the child deadline AND the source's own retirement context. A source
-// whose extent blocks is retired (its own Close) when either ends, and staging
-// reports only after that copy actually finishes or the bounded wait lapses;
-// nothing detached is left running.
+// through the source's context-aware extent seam, carrying both the captured
+// retirement and the child deadline into every read. There is no goroutine and
+// no bounded wait substituting for cancellation: the copy either finishes,
+// including its close and sync, or the seam returns the cancellation itself.
 func stageCB7Archive(ctx context.Context, ra io.ReaderAt, size int64, scratch string) (string, error) {
-	life := ctx
-	if provider, ok := ra.(interface{ Context() context.Context }); ok {
-		combined, cancel := context.WithCancel(ctx)
-		stop := context.AfterFunc(provider.Context(), cancel)
-		defer func() { stop(); cancel() }()
-		life = combined
+	reader, ok := ra.(interface {
+		ReadAtContext(context.Context, []byte, int64) (int, error)
+	})
+	if !ok {
+		return "", ErrArchiveFormat
 	}
 	path := filepath.Join(scratch, "archive.7z")
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0600)
 	if err != nil {
 		return "", ErrLimit
 	}
-	done := make(chan error, 1)
-	go func() {
-		defer file.Close()
-		done <- copyCB7Chunks(life, ra, size, file)
-	}()
-	select {
-	case err := <-done:
-		if err != nil {
-			return "", err
-		}
-	case <-life.Done():
-		if closer, ok := ra.(io.Closer); ok {
-			_ = closer.Close()
-		}
-		select {
-		case <-done:
-		case <-time.After(5 * time.Second):
-		}
-		return "", life.Err()
-	}
-	return path, nil
-}
-
-func copyCB7Chunks(ctx context.Context, ra io.ReaderAt, size int64, file *os.File) error {
 	const chunk = 1 << 20
 	buffer := make([]byte, chunk)
 	written := int64(0)
 	for written < size {
 		if err := ctx.Err(); err != nil {
-			return err
+			_ = file.Close()
+			return "", err
 		}
 		want := int64(chunk)
 		if size-written < want {
 			want = size - written
 		}
-		read, readErr := ra.ReadAt(buffer[:want], written)
+		read, readErr := reader.ReadAtContext(ctx, buffer[:want], written)
 		if read > 0 {
 			if _, writeErr := file.Write(buffer[:read]); writeErr != nil {
-				return ErrLimit
+				_ = file.Close()
+				return "", ErrLimit
 			}
 			written += int64(read)
 		}
 		if readErr != nil && readErr != io.EOF {
-			return ErrArchiveFormat
+			_ = file.Close()
+			return "", ErrArchiveFormat
 		}
 		if read == 0 {
-			return ErrArchiveFormat
+			_ = file.Close()
+			return "", ErrArchiveFormat
 		}
 	}
 	if err := file.Sync(); err != nil {
-		return ErrLimit
+		_ = file.Close()
+		return "", ErrLimit
 	}
-	return nil
+	if err := file.Close(); err != nil {
+		return "", ErrLimit
+	}
+	return path, nil
 }

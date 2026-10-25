@@ -238,7 +238,23 @@ func (f *Source) checkObservation(o storage.ObservedFileObservation) error {
 	}
 	return nil
 }
+
+// ReadAtContext is the context-aware extent seam: it carries both the captured
+// request/session retirement and the caller's own deadline through the range,
+// observation and validation reads, so a blocked extent can be cancelled rather
+// than abandoned by a timeout around it.
+func (f *Source) ReadAtContext(ctx context.Context, b []byte, offset int64) (int, error) {
+	combined, cancel := context.WithCancel(f.ctx)
+	stop := context.AfterFunc(ctx, cancel)
+	defer func() { stop(); cancel() }()
+	return f.readAt(combined, b, offset)
+}
+
 func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
+	return f.readAt(f.ctx, b, offset)
+}
+
+func (f *Source) readAt(ctx context.Context, b []byte, offset int64) (result int, failure error) {
 	defer func() {
 		if failure != nil && failure != io.EOF && !errors.Is(failure, storage.ErrBusy) && !errors.Is(failure, context.Canceled) && !errors.Is(failure, context.DeadlineExceeded) && f.onFailure != nil {
 			f.onFailure()
@@ -247,7 +263,7 @@ func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 	}()
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if err := f.ctx.Err(); err != nil {
+	if err := ctx.Err(); err != nil {
 		return 0, err
 	}
 	if offset < 0 || offset > f.Size {
@@ -256,7 +272,7 @@ func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 	if len(b) == 0 {
 		return 0, nil
 	}
-	if err := f.validateCurrent(f.ctx); err != nil {
+	if err := f.validateCurrent(ctx); err != nil {
 		return 0, err
 	}
 	if f.remoteSession != nil {
@@ -265,12 +281,12 @@ func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 		}
 		if f.remoteRange == nil {
 			var err error
-			f.remoteRange, err = f.remoteSession.remote.OpenRange(f.ctx)
+			f.remoteRange, err = f.remoteSession.remote.OpenRange(ctx)
 			if err != nil {
 				return 0, fmt.Errorf("reading range acquisition: %w", err)
 			}
 		}
-		n, err := f.remoteRange.ReadAt(f.ctx, b, offset)
+		n, err := f.remoteRange.ReadAt(ctx, b, offset)
 		if err != nil && err != io.EOF {
 			return n, fmt.Errorf("reading range extent: %w", err)
 		}
@@ -280,19 +296,19 @@ func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 	done := 0
 	for int64(done) < wanted {
 		n := int(min(wanted-int64(done), storage.ObservedReadLimit))
-		data, err := f.reader.ReadExtent(f.ctx, offset+int64(done), n)
+		data, err := f.reader.ReadExtent(ctx, offset+int64(done), n)
 		if err != nil {
 			return done, err
 		}
-		o, err := f.reader.Observe(f.ctx)
+		o, err := f.reader.Observe(ctx)
 		if err == nil {
 			err = f.checkObservation(o)
 		}
 		if err == nil {
-			err = f.validateCurrent(f.ctx)
+			err = f.validateCurrent(ctx)
 		}
 		if err == nil {
-			err = f.ctx.Err()
+			err = ctx.Err()
 		}
 		if err != nil {
 			return done, err
