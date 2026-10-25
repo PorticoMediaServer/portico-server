@@ -549,3 +549,36 @@ func TestHomeActionSelectionDoesNotOfferUnavailableJobServices(t *testing.T) {
 		t.Fatalf("aggregate selection did not distinguish direct personal commands from jobs: %+v", aggregate)
 	}
 }
+
+func TestHomeNotInterestedOfferUsesPersonalWriterSupportAndVisibleIdentity(t *testing.T) {
+	db := homeFixture(t)
+	s := New(db)
+	for _, personal := range []bool{true, false} {
+		rows := []HomeRow{{Kind: "recent", Entries: []ContentEntry{}}}
+		for _, key := range []string{"m1", "show", "e101", "s1", "album", "artist", "t1", "book", "p1"} {
+			item := homeItem(t, db, key)
+			var kind, library string
+			if err := db.QueryRow(`SELECT k.name,l.library_id FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind JOIN catalog_libraries l ON l.id=e.library_id WHERE e.id=?`, item.ID).Scan(&kind, &library); err != nil {
+				t.Fatal(err)
+			}
+			rows[0].Entries = append(rows[0].Entries, ContentEntry{ID: item.Public, Kind: kind, LibraryID: library})
+		}
+		show := rows[0].Entries[1]
+		show.Navigation = &ContentNavigation{View: "show", EntityID: homeItem(t, db, "m1").Public}
+		rows[0].Entries = append(rows[0].Entries, show)
+		if err := dbwork.WithReadSnapshot(context.Background(), db, func(ctx context.Context) error {
+			return s.WithContext(ctx).ProjectHomeActions(homeRequestFixture().Viewer, HomeActionAuthority{Personal: personal}, rows, nil)
+		}); err != nil {
+			t.Fatal(err)
+		}
+		for i, entry := range rows[0].Entries {
+			expected := personal && i != 3 && i != 5 && i != 9
+			if entry.HomeActions == nil || entry.HomeActions.NotInterested != expected {
+				t.Fatalf("personal=%v kind=%s index=%d actions=%+v", personal, entry.Kind, i, entry.HomeActions)
+			}
+			if entry.HomeActions.Selection != selectionOffers(HomeActionAuthority{Personal: personal}, entry.Kind, false, false) {
+				t.Fatal("Not interested changed bulk offers")
+			}
+		}
+	}
+}

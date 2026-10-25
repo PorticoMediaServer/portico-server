@@ -20,7 +20,7 @@ export type HomeSelectionActions = Readonly<{
 /** Server grants for implemented commands. Platform support is applied separately. */
 export type HomeActions = Readonly<{
  play:boolean;queue:boolean;playlist:boolean;collection:boolean;myList:boolean;favorite:boolean;watched:boolean;played:boolean;rating:boolean;
- editMetadata:boolean;refreshMetadata:boolean;delete:boolean;download:boolean;details:boolean;removeFromContinue?:boolean;state:HomeActionState;selection:HomeSelectionActions;
+ editMetadata:boolean;refreshMetadata:boolean;delete:boolean;download:boolean;details:boolean;removeFromContinue?:boolean;notInterested?:boolean;state:HomeActionState;selection:HomeSelectionActions;
 }>;
 /** Genuine parent-show facts for a returned Home episode, independent of the
  * episode's own year/genres and of its selection or playback identity. */
@@ -94,7 +94,7 @@ export function parseHomeActions(value:unknown):HomeActions|undefined {
   const selectionFlags=['play','queue','playlist','collection','myList','favorite','watched','download','edit','refresh','delete'] as const;
   const suppliedSelection:Record<string,unknown>=object(value.selection)?value.selection:{};
   const selection=Object.freeze(Object.fromEntries(selectionFlags.map(flag=>[flag,suppliedSelection[flag]===true])) as HomeSelectionActions);
-  return Object.freeze({...offers,...(value.removeFromContinue===true?{removeFromContinue:true}:{}),selection,state:Object.freeze({watchlisted:s.watchlisted,favorite:s.favorite,watched:s.watched,rating:s.rating as number|null,personalRevision:s.personalRevision,containerRevision:s.containerRevision})});
+  return Object.freeze({...offers,...(value.notInterested===true?{notInterested:true}:{}),...(value.removeFromContinue===true?{removeFromContinue:true}:{}),selection,state:Object.freeze({watchlisted:s.watchlisted,favorite:s.favorite,watched:s.watched,rating:s.rating as number|null,personalRevision:s.personalRevision,containerRevision:s.containerRevision})});
 }
 
 function parseHomeTitleContext(value:unknown):HomeTitleContext|undefined {
