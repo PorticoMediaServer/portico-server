@@ -664,21 +664,22 @@ export class ReadingSession {
     this.#check();
     if (this.manifest.canSaveFile !== true) fail('not_permitted');
     if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(operationId)) fail('invalid_request');
-    if (this.manifest.size > 64 << 20) fail('response_size');
+    const originalSize=this.manifest.conversion?.originalSize??this.manifest.size, originalRevision=this.manifest.conversion?.originalRevision??this.manifest.revision;
+    if (originalSize > 64 << 20) fail('response_size');
     if (this.#savingFile) fail('request_in_progress');
     this.#savingFile = true;
     try {
       // The canonical session route supplies the captured identity; the new
       // source-declared subresource descriptor is checkpoint-generated.
       const path = routePath('delete_reading_sessions_sessionId', {sessionId: this.manifest.sessionId}) + '/file-save';
-      return await this.#binary(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({operationId})}, signal, async (r, active, check) => {
+      return await this.#binary(path, {method: 'POST', headers: {'Content-Type': 'application/json','If-Match':'"'+originalRevision+'"'}, body: JSON.stringify({operationId})}, signal, async (r, active, check) => {
         if (r.status !== 200) return this.#client.error(r, active, check);
-        this.#etag(r);
+        if(r.headers.get('ETag')!=='"'+originalRevision+'"')fail('source_changed');
         if (r.headers.get('X-Reading-Item') !== this.manifest.itemId || r.headers.get('X-Reading-Source') !== this.manifest.sourceId
-          || r.headers.get('Content-Length') !== String(this.manifest.size) || r.headers.has('Content-Range')
+          || r.headers.get('Content-Length') !== String(originalSize) || r.headers.has('Content-Range')
           || r.headers.get('Accept-Ranges') !== 'none' || mime(r.headers.get('Content-Type')) !== 'application/octet-stream'
           || r.headers.get('Content-Disposition') !== 'attachment; filename="publication"') fail('source_changed');
-        return bytes(r, 64 << 20, active, check, this.manifest.size);
+        return bytes(r, 64 << 20, active, check, originalSize);
       });
     } finally { this.#savingFile = false; }
   };
