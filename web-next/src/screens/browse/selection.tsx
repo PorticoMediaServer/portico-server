@@ -18,6 +18,8 @@ import {wholeViewQuery} from './selection-query';
 export type LibrarySelectionHost = LibraryPlaySelection & Readonly<{
   selectWhole?: (query: SelectionQuery) => unknown;
   preview?: (row: LibraryPlayRow) => boolean;
+  /** The model's own membership: explicit picks and whole-view query members. */
+  selected?: (row: LibraryPlayRow) => boolean;
 }>;
 
 /** A browse-safe queue add. Items are the explicit display ids in order. */
@@ -152,7 +154,7 @@ export function createLibrarySelection({playSelection, descriptor, actions, enqu
     entry: (member, index) => {
       const current = snapshot(), row = rowFor(member, index);
       if (!row || current.phase !== 'ready') return undefined;
-      const checked = current.selection?.selectedKeys.includes(row.key) === true, active = current.selection?.active === true;
+      const checked = playSelection.selected?.(row) ?? current.selection?.selectedKeys.includes(row.key) === true, active = current.selection?.active === true;
       return {
         active, checked,
         ...(active && playSelection.preview?.(row) === true ? {preview: true} : {}),

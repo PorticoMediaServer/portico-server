@@ -1,11 +1,12 @@
-import type {JobArgs} from '@core/bulk-jobs.ts';
+import type {BulkEdit, BulkReceipt} from '@core/metadata-bulk.ts';
+import {validBulkEdit, validateBulkReceipt} from '@core/metadata-bulk.ts';
 import {fetchBulkMetadataPreview, metadataPreviewTargets, type BulkMetadataPreview, type BulkMetadataPreviewRequest} from '@core/home-selection/index.ts';
-import {runSelectionJobs, selectionJobTasks, type HomeJobTask} from '@core/home-selection/execution.ts';
 import type {HomeApi} from '@core/home.ts';
 import type {EventsClient} from '@core/playback-v1/events.ts';
 import type {BrowseSelectionContext, SelectionOperation, SelectionTarget} from '@core/selection-model/index.ts';
-import {selectionQuerySelector} from '@core/selection-model/index.ts';
 import type {BulkEditorDraft} from '../../kit/selection';
+import {editorCoreDraft} from '../../shell/selection-presentation';
+import {routePath} from '../../../../packages/contracts/src/routes.ts';
 
 /** The library selection's bulk editor data path. It reuses the same preview
  * parser and job planner the Home editor uses, so a library edit and a Home edit
@@ -22,8 +23,6 @@ export type SelectionEditorOptions = Readonly<{
 
 type AnyOperation = SelectionOperation<BrowseSelectionContext>;
 type BrowseTarget = SelectionTarget<BrowseSelectionContext>;
-/** selectionQuerySelector ignores the context; the wire target is identical. */
-const querySelector = (target: BrowseTarget) => selectionQuerySelector(target as never);
 
 export class SelectionEditorError extends Error {
   constructor(readonly code: string, readonly retryable = false) {
@@ -32,16 +31,11 @@ export class SelectionEditorError extends Error {
   }
 }
 
-/** A whole view is edited through the server's query selector; explicit picks go
- * as their exact displayed identities. A refined query is refused: the job
- * selector cannot carry the kind/exclusion refinement. */
+/** Only explicit picks are edited: the server's whole-view edit path does not
+ * exist yet, so a whole view is refused rather than approximated with loaded ids. */
 export function editorPreviewRequest(target: BrowseTarget): BulkMetadataPreviewRequest {
-  if (target.mode === 'explicit') {
-    return {targets: metadataPreviewTargets(target.displayItems.map(pick => pick.item))};
-  }
-  const checked = querySelector(target);
-  if (!checked.ok) throw new SelectionEditorError(checked.reason);
-  return {selector: checked.selector, expected: checked.expected};
+  if (target.mode !== 'explicit' || !target.displayItems.length) throw new SelectionEditorError('whole-view-editor-unavailable');
+  return {targets: metadataPreviewTargets(target.displayItems.map(pick => pick.item))};
 }
 
 export function createSelectionEditor({api, events, requestId, isCurrent, serverId, signal: lifetime}: SelectionEditorOptions) {
@@ -55,26 +49,22 @@ export function createSelectionEditor({api, events, requestId, isCurrent, server
       const request = editorPreviewRequest(operation.target);
       return fetchBulkMetadataPreview(api, request, serverId, routeSignal);
     },
-    /** One metadata-edit job over the same target, carrying only changed values. */
-    async save(operation: AnyOperation, draft: BulkEditorDraft, caller?: AbortSignal): Promise<Readonly<{updated: number; failed: number; jobs: readonly string[]}>> {
+    /** The same direct bulk endpoint the Home editor uses, so each title gets its
+     * own outcome and receipt instead of a job's aggregate counts. */
+    async save(operation: AnyOperation, preview: BulkMetadataPreview, draft: BulkEditorDraft, caller?: AbortSignal): Promise<readonly BulkReceipt[]> {
       current(caller);
-      const target = operation.target;
-      const args: JobArgs = {fields: {...draft.fields}, lists: Object.fromEntries(Object.entries(draft.lists).map(([field, value]) => [field, value])), lockEdited: draft.lockEdited};
-      let tasks: HomeJobTask[];
-      if (target.mode === 'query') {
-        // A whole view is fenced to the revision the page was read at, so an edit
-        // cannot land on a different set of titles than the one the person saw.
-        const checked = querySelector(target);
-        if (!checked.ok) throw new SelectionEditorError(checked.reason);
-        tasks = [{request: {operationId: (await requestId()).replaceAll('-', ''), command: 'metadata-edit', selector: checked.selector, args, expected: {catalogRevision: checked.expected.catalogRevision}}, failures: [], observed: false}];
-      } else {
-        // The planner reads only the selector and identities; the context type differs.
-        tasks = await selectionJobTasks(target as never, 'metadata-edit', args, requestId);
+      const core = editorCoreDraft(draft), receipts: BulkReceipt[] = [];
+      const targets = preview.targets;
+      for (let start = 0; start < targets.length; start += 200) {
+        const body: BulkEdit = {operationId: await requestId(),
+          targets: targets.slice(start, start + 200).map(({kind, id, expectedRevision}) => ({kind, id, expectedRevision})), ...core};
+        if (!validBulkEdit(body, preview.schema)) throw new SelectionEditorError('invalid-bulk-edit');
+        current(caller);
+        const raw = await api.request(routePath('post_metadata_bulk'), 'POST', body, routeSignal);
+        current(caller);
+        receipts.push(validateBulkReceipt(raw, body));
       }
-      if (!tasks.length) throw new SelectionEditorError('empty-selection');
-      await runSelectionJobs(api, tasks, AbortSignal.any([routeSignal, ...(caller ? [caller] : [])]), isCurrent, () => {}, undefined, events);
-      return Object.freeze({updated: tasks.reduce((sum, task) => sum + (task.job?.done ?? 0), 0),
-        failed: tasks.reduce((sum, task) => sum + (task.job?.failed ?? 0), 0), jobs: Object.freeze(tasks.flatMap(task => task.job ? [task.job.jobId] : []))});
+      return Object.freeze(receipts);
     },
   };
 }
@@ -84,8 +74,6 @@ export type SelectionEditor = ReturnType<typeof createSelectionEditor>;
 /** A whole-view query target's selector is what the preview expects; exported for
  * the adapter's gate so it can refuse a refined view before opening an editor. */
 export function editorTargetLawful(target: BrowseTarget | null | undefined): boolean {
-  if (!target) return false;
-  if (target.mode === 'explicit') return target.displayItems.length > 0;
-  return querySelector(target).ok;
+  return !!target && target.mode === 'explicit' && target.displayItems.length > 0;
 }
 

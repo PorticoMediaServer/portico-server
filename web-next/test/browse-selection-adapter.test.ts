@@ -193,3 +193,13 @@ test('container and whole-view picks are offered no Queue or destination action'
   await assert.rejects(adapter.queue('next'), /leaf-explicit-selection-required/);
   await assert.rejects(adapter.addToPlaylist({} as HTMLElement), /leaf-explicit-selection-required/);
 });
+
+
+test('a whole-view member paints checked from the model, not the explicit keys', () => {
+  const whole = {...target, mode: 'query' as const, items: undefined, selector: {query: {libraryId: 'a', pivot: 'movies'}}, total: 48000, sourceTotal: 48000, refinement: {kind: null, excludedItems: []}, expected: {catalogRevision: 'r1'}};
+  const {selection} = fake({selection: {active: true, summary: {count: 48000, types: [{kind: 'movie', count: 48000}], library: {kind: 'single', libraryId: 'a'}, every: capabilities},
+    selectedKeys: [], version: 2, registeredWindowCount: 1, registeredItemCount: 1, lastSectionId: 'library', target: whole}},
+    {selected: (row: {key: string}) => row.key === 'key-0'});
+  const adapter = createLibrarySelection({playSelection: selection, reportError: () => {}});
+  assert.equal(adapter.entry({membershipId: 'm1', entry} as never, 0)?.checked, true);
+});
