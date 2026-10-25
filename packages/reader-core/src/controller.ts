@@ -176,11 +176,17 @@ export class ReaderController<P extends object> {
     session.tail = next.catch(error => { if (this.current(session)) this.publish({error: readerErrorCode(error)}); });
     return next;
   }
-  navigate(target: ReaderNavigation): Promise<void> {
-    if (target.kind === 'location') validateLocation(target.location, this.snapshot.format!);
-    if (target.kind === 'progression' && (!Number.isFinite(target.value) || target.value < 0 || target.value > 1))
+  navigate(target: ReaderNavigation, callerSignal?: AbortSignal): Promise<void> {
+    const captured: ReaderNavigation = target.kind === 'location'
+      ? Object.freeze({kind: 'location', location: copy(target.location)}) : Object.freeze({...target});
+    if (captured.kind === 'location') validateLocation(captured.location, this.snapshot.format!);
+    if (captured.kind === 'progression' && (!Number.isFinite(captured.value) || captured.value < 0 || captured.value > 1))
       return Promise.reject(new ReaderError('invalid_location'));
-    return this.enqueue((view, signal) => view.navigate(target, signal));
+    return this.enqueue(async (view, signal) => {
+      const task = abortScope([signal, ...(callerSignal ? [callerSignal] : [])]);
+      try {throwIfAborted(task.signal); await view.navigate(captured, task.signal); throwIfAborted(task.signal);}
+      finally {task.dispose();}
+    });
   }
   /** Only an actual result of this exact session/query can request a search mark. */
   navigateSearchResult(result: ReaderSearchResult, callerSignal?: AbortSignal): Promise<void> {
