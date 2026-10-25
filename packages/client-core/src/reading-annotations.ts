@@ -35,7 +35,7 @@ function content(v: Record<string, unknown>, validate: ValidateLocation): Readin
     if (!Array.isArray(v.rects) || v.rects.length > 128) invalid();
     for (const r of v.rects) {
       if (!record(r) || !['x','y','width','height'].every(key => {const value=r[key];return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;})
-        || (r.width as number) <= 0 || (r.height as number) <= 0 || (r.x as number)+(r.width as number)>1.000001 || (r.y as number)+(r.height as number)>1.000001) invalid();
+        || (r.width as number) <= 0 || (r.height as number) <= 0 || (r.x as number)+(r.width as number)>1 || (r.y as number)+(r.height as number)>1) invalid();
       rects.push(Object.freeze({x:r.x as number,y:r.y as number,width:r.width as number,height:r.height as number}));
     }
   }

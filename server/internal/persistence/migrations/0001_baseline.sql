@@ -256,7 +256,6 @@ CREATE TABLE reading_annotations(
  section TEXT CHECK(section IS NULL OR length(section)<=1024),
  page_index INTEGER,
  progression REAL NOT NULL CHECK(progression>=0 AND progression<=1),
- rects TEXT NOT NULL DEFAULT '[]' CHECK(length(rects)<=24000 AND json_valid(rects)),
  quote TEXT NOT NULL CHECK(length(quote)<=8192),
  note TEXT NOT NULL CHECK(length(note)<=4096),
  colour TEXT NOT NULL,
@@ -266,6 +265,20 @@ CREATE TABLE reading_annotations(
  FOREIGN KEY(owner_key,item_id,asset_id,source_revision) REFERENCES reading_annotation_sets(owner_key,item_id,asset_id,source_revision) ON DELETE CASCADE,
  CHECK((kind='bookmark' AND quote='' AND colour='') OR (kind='highlight' AND length(quote)>0 AND colour IN('yellow','green','blue','pink'))),
  CHECK((format='epub' AND cfi IS NOT NULL AND page_index IS NULL) OR (format IN('pdf','cbz') AND cfi IS NULL AND section IS NULL AND page_index IS NOT NULL AND page_index BETWEEN 0 AND 1000000))) WITHOUT ROWID, STRICT;
+CREATE TABLE reading_annotation_rects(
+ owner_key TEXT NOT NULL,
+ item_id INTEGER NOT NULL,
+ asset_id INTEGER NOT NULL,
+ source_revision TEXT NOT NULL,
+ annotation_id TEXT NOT NULL,
+ ordinal INTEGER NOT NULL CHECK(ordinal BETWEEN 0 AND 127),
+ x REAL NOT NULL CHECK(x>=0 AND x<=1),
+ y REAL NOT NULL CHECK(y>=0 AND y<=1),
+ width REAL NOT NULL CHECK(width>0 AND width<=1 AND x+width<=1),
+ height REAL NOT NULL CHECK(height>0 AND height<=1 AND y+height<=1),
+ PRIMARY KEY(owner_key,item_id,asset_id,source_revision,annotation_id,ordinal),
+ FOREIGN KEY(owner_key,item_id,asset_id,source_revision,annotation_id) REFERENCES reading_annotations(owner_key,item_id,asset_id,source_revision,id) ON DELETE CASCADE
+) WITHOUT ROWID, STRICT;
 CREATE TABLE reading_progress(
  owner_key TEXT NOT NULL,
  item_id INTEGER NOT NULL,
