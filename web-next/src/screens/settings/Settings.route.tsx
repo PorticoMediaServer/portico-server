@@ -124,7 +124,7 @@ export function SettingsEntry() {
   // captured identity, scope or route changes, before the next paint: the
   // passive cleanup alone could let the old reader write while the page
   // already shows the next one.
-  const updatesLife = useRef<SettingsUpdatesSource>();
+  const updatesLife = useRef<SettingsUpdatesSource | undefined>(undefined);
   useLayoutEffect(() => () => {
     const held = updatesLife.current;
     updatesLife.current = undefined;
