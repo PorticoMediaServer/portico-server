@@ -1284,7 +1284,7 @@ func run() (runErr error) {
 	textCounts := &reading.TextCountPreparation{DB: db, Prepare: readingService.PrepareTextCount, Index: readingService.PrepareTextIndex, PrimaryPublicationSQL: readingService.PrimaryPublicationSQL, Admission: workAdmission.Admit}
 	supervise.Supervise(ctx, "cmd.reading-text-counts", func(life context.Context) {
 		wake := worker.NewSignal()
-		unregister := dbwork.WakeOnTables(wake, "reading_publications", "inventory_objects", "library_sources", "catalog_assets")
+		unregister := dbwork.WakeOnTables(wake, "reading_publications", "inventory_objects", "library_sources", "catalog_assets", "reading_text_index_state")
 		defer unregister()
 		worker.Run(life, "cmd.reading-text-counts", wake, textCounts.Step)
 	})
