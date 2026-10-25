@@ -158,17 +158,54 @@ export class RemoteSourceService{
  private listeners=new Set<()=>void>();private controllers=new Set<AbortController>();private epoch=0;private read=0;private disposed=false;private viewerFence?:string;
  private intent:SourceCommandIntent|null=null;
  /** An owner refusal retires this viewer's source capability here: no later
-  * request, read or command, is sent with it. A new service reads afresh. */
- private refused=false;
+  * request, read or command, is sent with it, and nothing already in flight can
+  * publish into this viewer's snapshot. A new service reads afresh. */
+ private refused=false;private refusedCode='';
  private api:LibraryContentApi;private scope:ContentScope;private operationId:()=>Promise<string>;private readonly isCurrent:()=>boolean;
  constructor(api:LibraryContentApi,scope:ContentScope,operationId:()=>Promise<string>,isCurrent:()=>boolean=()=>true){if(!scope.serverId||!scope.viewerId)throw new Error('Owner scope required.');this.api=api;this.scope=Object.freeze({...scope});this.operationId=operationId;this.isCurrent=isCurrent;}
  getSnapshot=()=>this.state;subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>this.listeners.delete(fn);};
  private live(){return !this.disposed&&this.isCurrent();}
- private refuse(error:unknown){const code=record(error)&&typeof error.code==='string'?normalizedCode(error.code):'';if(['unauthorized','forbidden','not_permitted'].includes(code))this.refused=true;}
- private publish(value:Partial<RemoteState>){if(!this.live())return;this.state=Object.freeze({...this.state,...value});for(const fn of this.listeners)fn();}
- dispose(){this.epoch++;this.disposed=true;this.intent=null;this.refused=false;for(const c of this.controllers)c.abort();this.controllers.clear();this.listeners.clear();this.state={...this.state,sources:[],receipt:null,rclone:null,operationId:null,operationKind:''};}
+ /** The refusal a failed transport carries, if it is one: an auth code, or a 401/403 status. */
+ private refusalMessage(code:string):string{return code==='not_permitted'?messages.forbidden:(messages[code]??messages.unauthorized);}
+ private refusalCode(error:unknown):string{
+  const raw=record(error)?error:undefined;
+  const code=raw&&typeof raw.code==='string'?normalizedCode(raw.code):'';
+  if(['unauthorized','forbidden','not_permitted'].includes(code))return code;
+  const status=raw?(typeof raw.status==='number'?raw.status:typeof raw.statusCode==='number'?raw.statusCode:NaN):NaN;
+  if(status===401)return 'unauthorized';
+  if(status===403)return 'forbidden';
+  return '';
+ }
+ /** A refusal retires the capability at once: later reads and commands are
+  * refused, in-flight transports are aborted, and the snapshot is emptied before
+  * any captured UI handler reports it. Nothing publishes afterwards. */
+ private retire(code:string){
+  if(this.refused)return;
+  this.refused=true;this.refusedCode=code;
+  this.intent=null;
+  this.epoch++;
+  for(const c of this.controllers)c.abort();
+  this.controllers.clear();
+  this.state=Object.freeze({...this.state,sources:[],loading:false,busy:false,receipt:null,rclone:null,operationId:null,operationKind:'',ambiguous:false,alreadyDone:false,error:this.refusalMessage(code),errorCode:code});
+  for(const fn of this.listeners)fn();
+ }
+ private refuse(error:unknown){const code=this.refusalCode(error);if(code)this.retire(code);}
+ private publish(value:Partial<RemoteState>){if(this.refused||!this.live())return;this.state=Object.freeze({...this.state,...value});for(const fn of this.listeners)fn();}
+ dispose(){this.epoch++;this.disposed=true;this.intent=null;this.refused=false;this.refusedCode='';for(const c of this.controllers)c.abort();this.controllers.clear();this.listeners.clear();this.state={...this.state,sources:[],receipt:null,rclone:null,operationId:null,operationKind:''};}
  private fence(raw:unknown){if(!record(raw)||!record(raw.scope)||raw.scope.serverId!==this.scope.serverId||!text(raw.scope.viewerFence,256)||!raw.scope.viewerFence||this.viewerFence&&this.viewerFence!==raw.scope.viewerFence)invalid();this.viewerFence=raw.scope.viewerFence;}
- private async request(path:string,method='GET',body?:unknown,guard?:()=>boolean):Promise<unknown>{if(this.refused)throw Object.assign(new Error(messages.unauthorized),{code:'unauthorized'});if(!this.live()||(guard&&!guard()))throw new Error('Scope changed.');const c=new AbortController();this.controllers.add(c);let timer:ReturnType<typeof setTimeout>|undefined;try{return await Promise.race([this.api.request(path,method,body,c.signal),new Promise<never>((_,reject)=>{timer=setTimeout(()=>{c.abort();reject(new Error('timeout'));},45000);})]);}finally{if(timer)clearTimeout(timer);this.controllers.delete(c);}}
+ private async request(path:string,method='GET',body?:unknown,guard?:()=>boolean):Promise<unknown>{
+  if(this.refused)throw Object.assign(new Error(messages[this.refusedCode]??messages.unauthorized),{code:this.refusedCode||'unauthorized'});
+  if(!this.live()||(guard&&!guard()))throw new Error('Scope changed.');
+  const c=new AbortController();this.controllers.add(c);let timer:ReturnType<typeof setTimeout>|undefined;
+  try{
+   return await Promise.race([this.api.request(path,method,body,c.signal),new Promise<never>((_,reject)=>{timer=setTimeout(()=>{c.abort();reject(new Error('timeout'));},45000);})]);
+  }catch(error){
+   // One place decides that the owner has been refused, whatever the transport shape.
+   const code=this.refusalCode(error);
+   if(code){this.retire(code);throw Object.assign(new Error(this.refusalMessage(code)),{code});}
+   throw error;
+  }finally{if(timer)clearTimeout(timer);this.controllers.delete(c);}
+ }
  /** The sources as the server has them, checked; `undefined` when a later read or another viewer has taken over. */
  private async readSources(epoch:number,sequence:number,guard?:()=>boolean){const raw=await this.request(routePath("get_storage_sources"),'GET',undefined,guard);if(!this.live()||(guard&&!guard())||epoch!==this.epoch||sequence!==this.read)return undefined;this.fence(raw);if(!record(raw)||!Array.isArray(raw.sources)||typeof raw.mountSupported!=='boolean')invalid();const rows=firstOfEach('remote-sources','sources',keepReadable('remote-sources','sources',raw.sources,source),s=>s.id);return {sources:Object.freeze(rows),mountSupported:raw.mountSupported};}
  /**
@@ -229,6 +266,9 @@ export class RemoteSourceService{
    if(!record(result)||!text(result.version,200)||['remote','config','password','token'].some(key=>result[key]!==undefined))invalid();
    return Object.freeze({version:result.version});
   }catch(error){
+   // A refusal keeps its normalized code for the captured UI report path.
+   const refused=this.refusalCode(error);
+   if(refused)throw Object.assign(new Error(this.refusalMessage(refused)),{code:refused});
    if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
    const rawCode=record(error)&&typeof error.code==='string'?normalizedCode(error.code):'';
    const code=['unauthorized','forbidden','not_permitted','invalid_request','source_credentials_required','administration_unavailable','internal'].includes(rawCode)?rawCode:'internal';
@@ -276,6 +316,8 @@ export class RemoteSourceService{
    if(!text(result.origin)||!sourceOrigin(result.origin,'webdav')||!['unknown','conditional','unsupported'].includes(String(result.rangeSupport))||['password','username','config','root'].some(key=>result[key]!==undefined))invalid();
    return Object.freeze({origin:result.origin,rangeSupport:result.rangeSupport as DAVConnectionResult['rangeSupport']});
   }catch(error){
+   const refused=this.refusalCode(error);
+   if(refused)throw Object.assign(new Error(this.refusalMessage(refused)),{code:refused});
    if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
    const rawCode=record(error)&&typeof error.code==='string'?normalizedCode(error.code):'';
    const code=['unauthorized','forbidden','not_permitted','invalid_request','source_credentials_required','internal'].includes(rawCode)?rawCode:'internal';
@@ -373,6 +415,8 @@ export class RemoteSourceService{
   if(settings.sourceId!==id||expectedGeneration!==undefined&&settings.generation!==expectedGeneration)invalid();
   return settings;
  }catch(error){
+  const refused=this.refusalCode(error);
+  if(refused)throw Object.assign(new Error(this.refusalMessage(refused)),{code:refused});
   if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
   if(error instanceof Error&&error.message==='Invalid remote source response.')throw error;
   const code=record(error)&&typeof error.code==='string'?normalizedCode(error.code):'internal';
@@ -406,6 +450,8 @@ async saveProfile(profile:SourceReadSettings,values:SourceReadValues,guard?:()=>
    throw Object.assign(new Error(safeError({code:'refresh_failed'})),{code:'refresh_failed'});
   }
  }catch(error){
+  const refused=this.refusalCode(error);
+  if(refused)throw Object.assign(new Error(this.refusalMessage(refused)),{code:refused});
   if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
   const code=record(error)&&typeof error.code==='string'?normalizedCode(error.code):'';
   const rejected=['storage_command_conflict','storage_operation_expired','revision_mismatch','idempotency_key_reused','remote_invalid_configuration','remote_credentials_required','unauthorized','forbidden','not_permitted','invalid_request'].includes(code);

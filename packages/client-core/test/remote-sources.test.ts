@@ -464,3 +464,55 @@ test('an owner refusal from the imported routes keeps its own code',async()=>{
   service.dispose();
  }
 });
+
+test('a refused owner retires the source capability at the transport boundary',async()=>{
+ let calls=0;
+ const service=new RemoteSourceService(api(async()=>{calls++;throw Object.assign(new Error('private target'),{status:403});}),scope,async()=>op);
+ await service.load();
+ const state=service.getSnapshot();
+ assert.equal(state.errorCode,'forbidden');
+ assert.equal(state.sources.length,0);
+ assert(!JSON.stringify(state).includes('private target'));
+ await service.load();
+ await assert.rejects(service.revalidate(),error=>(error as {code?:string}).code==='forbidden');
+ assert.equal(calls,1,'no later request is sent with the refused capability');
+ await assert.rejects(service.readProfile('dav'),error=>(error as {code?:string}).code==='forbidden');
+ assert.equal(calls,1);
+ service.dispose();
+});
+
+test('an in-flight read cannot publish into a refused snapshot',async()=>{
+ const held=deferred();let calls=0;
+ const service=new RemoteSourceService(api(async(path:string)=>{
+  calls++;
+  if(path.endsWith('/storage/rclone/bundled'))throw Object.assign(new Error('private token'),{statusCode:401});
+  return held.promise;
+ }),scope,async()=>op);
+ const listing=service.load();
+ await assert.rejects(service.rcloneProgram(),error=>(error as {code?:string}).code==='unauthorized');
+ held.resolve(list([source()]));await listing;
+ assert.deepEqual(service.getSnapshot().sources,[]);
+ assert.equal(service.getSnapshot().errorCode,'unauthorized');
+ assert.equal(calls,2);
+ await assert.rejects(service.rcloneProviders(),error=>(error as {code?:string}).code==='unauthorized');
+ assert.equal(calls,2,'the refused provider read is not attempted');
+ service.dispose();
+});
+
+test('a refused imported command keeps its own code and clears the capability snapshot',async()=>{
+ let calls=0;
+ const service=new RemoteSourceService(api(async(path)=>{
+  calls++;
+  if(path.endsWith('/storage/sources/rclone/test'))throw Object.assign(new Error('no'),{status:403});
+  if(path.includes('/storage/sources/rclone'))throw Object.assign(new Error('no'),{code:'not_permitted'});
+  return list([rcloneSource()]);
+ }),scope,async()=>op);
+ await assert.rejects(service.testRclone({remote:'archive',config:rcloneConfig}),error=>(error as {code?:string}).code==='forbidden');
+ assert.equal(service.getSnapshot().errorCode,'forbidden');
+ assert.deepEqual(service.getSnapshot().sources,[]);
+ const held=await service.configureRclone(null,rcloneInput);
+ assert.equal(held,undefined);
+ assert.equal(calls,1,'no command is sent after the refusal');
+ assert.equal(service.getSnapshot().errorCode,'forbidden');
+ service.dispose();
+});
