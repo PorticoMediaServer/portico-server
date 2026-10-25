@@ -14,6 +14,9 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"portico.local/server/internal/localonly"
+	"portico.local/server/internal/persistence"
 )
 
 type p08cTransport func(*http.Request) (*http.Response, error)
@@ -55,14 +58,24 @@ func TestArtworkRepairOriginPolicy(t *testing.T) {
 	}
 }
 func TestArtworkRepairRedirectDoesNotLeakCredentials(t *testing.T) {
+	db, err := persistence.Open(filepath.Join(t.TempDir(), "catalog.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	allowed, epoch, err := localonly.Online(context.Background(), db)
+	if err != nil || !allowed || epoch < 1 {
+		t.Fatalf("fixture must reach the redirect guard through real lookup admission: allowed=%v epoch=%d err=%v", allowed, epoch, err)
+	}
 	calls := 0
-	s := &Service{artClient: &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }, Transport: p08cTransport(func(r *http.Request) (*http.Response, error) {
+	s := New(db, "in-process-fixture")
+	s.artClient = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }, Transport: p08cTransport(func(r *http.Request) (*http.Response, error) {
 		calls++
 		if r.Header.Get("Authorization") != "" || r.Header.Get("Cookie") != "" {
 			t.Fatal("credentials reached image origin")
 		}
 		return &http.Response{StatusCode: 302, Header: http.Header{"Location": []string{"http://127.0.0.1/private"}}, Body: io.NopCloser(bytes.NewReader(nil)), Request: r}, nil
-	})}}
+	})}
 	if _, err := s.fetchArtwork(context.Background(), "https://image.tmdb.org/t/p/original/a.jpg", "tmdb"); err == nil {
 		t.Fatal("redirect accepted")
 	}
