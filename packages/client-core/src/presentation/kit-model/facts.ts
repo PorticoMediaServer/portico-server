@@ -18,7 +18,7 @@ export type CardSubject = TitleFacts & Readonly<{
   id: string; kind: TitleKind; title: string; show?: Readonly<{id?: string; title: string}>;
   episode?: EpisodeNumbering; seasonNumber?: number; positionSeconds?: number;
 }>;
-export type CardTextModel = Readonly<{id: string; title: string; caption: readonly FactPart[]; detail: readonly FactPart[]; progress?: number}>;
+export type CardTextModel = Readonly<{id: string; title: string; caption: readonly FactPart[]; detail: readonly FactPart[]; progress?: number; resume?: FactPart}>;
 export type TitleFactContext = 'video' | 'music' | 'audiobook' | 'audiobook-chapters' | 'home-movie' | 'home-show';
 
 /** A calendar day is not a device-zone instant. Reject impossible days, including rollover. */
@@ -105,6 +105,18 @@ function chapterPart(facts: TitleFacts, env: TextEnvironment, includeTotal = fal
     : env.t('next.kit.chapter', {number: facts.chapterNumber}), 'context');
 }
 
+/** tv.html#f5 draws the top result's resume point as one line under its facts:
+ * the episode code it resumes at, then the time left. Only a real position, a
+ * real length and a real episode number produce it; a title never supplies one. */
+function resumeLine(subject: CardSubject, remainingSeconds: number | undefined, env: TextEnvironment): FactPart | undefined {
+  if (!positive(subject.positionSeconds) || !positive(remainingSeconds)) return undefined;
+  const left = durationText(remainingSeconds, env.t);
+  if (!left) return undefined;
+  const remaining = env.t('next.kit.remaining', {time: left});
+  const label = episodeLabel(subject.episode, 'search', env);
+  return part('resume', label ? env.t('next.search.resume', {episode: label.text, remaining}) : remaining, 'supplement');
+}
+
 /** Separate name, caption, facts and measured progress for every card family. */
 export function cardText(subject: CardSubject, context: CardContext, env: TextEnvironment): CardTextModel {
   if (subject.kind === 'ebook' || subject.kind === 'comic') {
@@ -113,6 +125,7 @@ export function cardText(subject: CardSubject, context: CardContext, env: TextEn
       detail: Object.freeze(compact([integer(subject.year) ? part('year', String(subject.year)) : undefined]))});
   }
   const {t} = env, timeline = timelineFacts(subject.durationSeconds, subject.positionSeconds);
+  const resume = context === 'search' ? resumeLine(subject, timeline.remainingSeconds, env) : undefined;
   if (context === 'dock') {
     const kind = ['album', 'song', 'disc'].includes(subject.kind) ? 'music' : ['book', 'audiobook_file', 'chapter'].includes(subject.kind) ? 'audiobook' : 'video';
     const identity = playbackIdentity({kind, item: subject}, 'dock', env);
@@ -155,7 +168,8 @@ export function cardText(subject: CardSubject, context: CardContext, env: TextEn
       : compact([integer(subject.year) ? part('year', String(subject.year), 'supplement') : undefined]);
     if (context === 'continuation') detail = compact([remaining]);
   }
-  return Object.freeze({id: subject.id, title, caption: Object.freeze(caption), detail: Object.freeze(detail), ...(timeline.progress === undefined ? {} : {progress: timeline.progress})});
+  return Object.freeze({id: subject.id, title, caption: Object.freeze(caption), detail: Object.freeze(detail),
+    ...(timeline.progress === undefined ? {} : {progress: timeline.progress}), ...(resume ? {resume} : {})});
 }
 
 export type PlaybackSubject =

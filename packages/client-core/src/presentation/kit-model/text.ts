@@ -1,8 +1,9 @@
 import type {shared} from '../../../../i18n/src/catalog/en-US/next/shared.ts';
 
-export type KitMessageId = keyof typeof shared | 'filter.preset.lastDays' | 'filter.preset.lastYear';
+export type KitMessageId = keyof typeof shared | 'filter.preset.lastDays' | 'filter.preset.lastYear' | 'next.search.resume';
 type Arguments = {
   'filter.preset.lastDays': {count: number};
+  'next.search.resume': {episode: string; remaining: string};
   'next.kit.episode': {number: number}; 'next.kit.episodeCode': {season: number; episode: number};
   'next.kit.season': {number: number}; 'next.kit.seasons': {count: number};
   'next.kit.songs': {count: number}; 'next.kit.albums': {count: number}; 'next.kit.books': {count: number}; 'next.kit.items': {count: number}; 'next.kit.itemsAtLeast': {count: number};
