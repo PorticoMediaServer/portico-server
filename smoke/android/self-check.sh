@@ -74,6 +74,8 @@ grep -q 'home_wait_stages' "$ROOT/smoke/android/flows.py" \
   && ok "a Home stall keeps staged evidence" || bad "a Home stall keeps no evidence"
 grep -q 'def actual_viewport' "$ROOT/smoke/android/settings-capture.py" \
   && ok "the capture records the real viewport" || bad "the capture records a constant viewport"
+grep -q 'server_rows_in_drawn_order' "$ROOT/smoke/android/settings-capture.py" \
+  && ok "the capture records the Server row order" || bad "the capture records no row order"
 
 printf 'self-check exit=%s\n' "$fail"
 exit "$fail"

@@ -132,6 +132,8 @@ def main():
     # 2. Settings -> Server group
     opened = tap("settings", "Settings")
     settings_text = device.text()
+    server_rows = [line.strip() for line in settings_text.splitlines() if line.strip()]
+    evidence["server_rows_in_drawn_order"] = server_rows[:40]
     server_group = device.tap_contains("Server", "This device")
     time.sleep(3)
     group_shot = shot("settings-server-group")
