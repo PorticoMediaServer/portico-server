@@ -26,6 +26,19 @@ export function DevicePage({account, initialCode = ''}: {account: ServicesAccoun
       setError(new ApiError(409, 'account_changed', 'account_changed', false));
     }
   }, [stale]);
+  useEffect(() => {
+    if (!review || busy || stale) return;
+    const expire = () => {
+      // A submitted decision owns its result; only retire an idle preview.
+      if (operation.current) return;
+      setReview(current => current === review ? undefined : current);
+      setError(new ApiError(410, 'expired', 'expired', false));
+    };
+    const remaining = Date.parse(review.preview.expiresAt) - Date.now();
+    if (remaining <= 0) {expire(); return;}
+    const timer = setTimeout(expire, Math.min(remaining, 2147483647));
+    return () => clearTimeout(timer);
+  }, [review, busy, stale]);
   const run = async (work: (signal: AbortSignal) => Promise<void>) => {
     if (operation.current) return;
     const controller = new AbortController(); operation.current = controller; setBusy(true); setError(undefined);
@@ -42,7 +55,12 @@ export function DevicePage({account, initialCode = ''}: {account: ServicesAccoun
     finally { clearTimeout(timeout); if (operation.current === controller) operation.current = null; if (!controller.signal.aborted || controller.signal.reason?.name === 'TimeoutError') setBusy(false); }
   };
   const inspect = () => run(async signal => { const value = await reviewHostedDevice(account, code, signal); if (!signal.aborted) setReview(value); });
-  const decide = (decision: 'approve' | 'deny') => run(async signal => { if (!review) return; await decideHostedDevice(account, review, decision, signal); if (!signal.aborted) { setDone({decision, identity: review.identity}); setReview(undefined); } });
+  const decide = (decision: 'approve' | 'deny') => run(async signal => {
+    if (!review) return;
+    if (Date.parse(review.preview.expiresAt) <= Date.now()) throw new ApiError(410, 'expired', 'expired', false);
+    await decideHostedDevice(account, review, decision, signal);
+    if (!signal.aborted) {setDone({decision, identity: review.identity}); setReview(undefined);}
+  });
   const another = () => {
     if (operation.current) return;
     setCode(''); setFromQR(false); setReview(undefined); setDone(undefined); setError(undefined);
