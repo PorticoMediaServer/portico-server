@@ -70,8 +70,11 @@ export class SettingsApiKeysSource {
     if (!this.current() || this.mutation || this.intent || this.state.phase !== 'ready' || !this.state.options) return;
     const name = draft.name.trim(), scopes = [...new Set(draft.scopes)], offered = this.state.options.scopes;
     if (!name || name.length > 80 || !scopes.length || scopes.some(scope => !offered.includes(scope)) || (scopes.includes('admin') && scopes.length !== 1)) return;
+    let intent: NewApiCredential;
+    try {intent = Object.freeze({...draft, name, scopes: Object.freeze(scopes), operationId: randomId()});}
+    catch (error) {if (this.current()) this.failure(error, 'create');return;}
     const attempt = this.claim('create');if (!attempt) return;
-    const intent = Object.freeze({...draft, name, scopes: Object.freeze(scopes), operationId: randomId()});this.intent = intent;
+    this.intent = intent;
     // Private single flight is claimed before any subscriber can retry/re-enter.
     this.publish({busy: true, pendingCreate: true, error: undefined});
     return this.performCreate(attempt, intent);
