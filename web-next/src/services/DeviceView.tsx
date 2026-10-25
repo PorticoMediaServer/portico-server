@@ -6,7 +6,7 @@ import {Button, TextField} from '../kit/controls';
 import {servicesI18n} from './i18n';
 import styles from './services.module.css';
 
-const platforms: Partial<Record<string, MessageId>> = {ios: 'services.platform.ios', tvos: 'services.platform.tvos', android: 'services.platform.android', androidtv: 'services.platform.androidtv', web: 'services.platform.web', macos: 'services.platform.macos'};
+const platforms: Partial<Record<string, MessageId>> = {ios: 'services.platform.ios', tvos: 'services.platform.tvos', android: 'services.platform.android', androidtv: 'services.platform.androidtv', firetv: 'services.platform.firetv', web: 'services.platform.web', macos: 'services.platform.macos'};
 /** Presentation only. The controller retains the canonical account/family and device grant. */
 export function DeviceView({name, code, fromQR = false, preview, busy, error, onCodeChange, onInspect, onDecision, onAnother, onSignOut}: {
   name: string; code: string; fromQR?: boolean; preview?: Pick<SetupPreview, 'deviceName' | 'platform' | 'userCode'>;
@@ -22,7 +22,7 @@ export function DeviceView({name, code, fromQR = false, preview, busy, error, on
     {error && !notFound ? errorCode === 'account_changed' || errorCode === 'timeout' ? <ServicesNotice icon={errorCode === 'timeout' ? 'i-clock' : 'i-warn'} tone={errorCode === 'timeout' ? 'warning' : 'error'}>{t(errorCode === 'account_changed' ? 'services.device.accountChanged' : 'services.device.timeout')}</ServicesNotice> : <HostedError error={error} /> : null}
     {preview ? <>
       <ServicesFacts items={[
-        {id: 'device', label: t('services.device.device'), value: <ServicesDeviceName name={preview.deviceName} television={preview.platform === 'tvos' || preview.platform === 'androidtv'} />},
+        {id: 'device', label: t('services.device.device'), value: <ServicesDeviceName name={preview.deviceName} television={preview.platform === 'tvos' || preview.platform === 'androidtv' || preview.platform === 'firetv'} />},
         {id: 'platform', label: t('services.device.platform'), value: platforms[preview.platform] ? t(platforms[preview.platform]!) : preview.platform},
         {id: 'code', label: t('auth.code'), value: <ServicesDeviceCode>{preview.userCode}</ServicesDeviceCode>},
       ]} />

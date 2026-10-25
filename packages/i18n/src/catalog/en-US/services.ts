@@ -89,6 +89,7 @@ export const servicesMessages = {
   'services.platform.androidtv': 'Android TV',
   'services.platform.web': 'Web browser',
   'services.platform.macos': 'Mac',
+  'services.platform.firetv': 'Fire TV',
   'services.start.ready': 'Your Portico Account is ready',
   'services.start.welcome': 'Welcome to Portico',
   'services.start.body': 'Portico plays your media from a server. Join one that someone has shared with you, or set up your own.',
