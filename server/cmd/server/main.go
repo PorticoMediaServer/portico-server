@@ -590,7 +590,7 @@ func run() (runErr error) {
 	lyricService := &lyrics.Service{DB: db, Local: storeIO, Provider: lyricProvider}
 	lyricFetch := &lyrics.Bulk{Service: lyricService}
 	player := playback.New(db)
-	player.PersonalProgress = cat.AcceptPlaybackProgress
+	player.PersonalProgress = cat.AcceptPlaybackProgressEvidence
 	player.StorageGuard = managed.Guard
 	remote := playback.NewRemote(db, storeIO, assets.Probe{Binary: ffprobeTool, Supervisor: storeIO.Supervisor})
 	player.ConfigureRemote(remote)

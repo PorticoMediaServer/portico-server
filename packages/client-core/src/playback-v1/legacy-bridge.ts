@@ -231,6 +231,8 @@ export class V1PlaybackApi implements PlaybackApi {
     const positionMs = t.positionMs + (t.state === 'playing' && t.positionAt !== undefined ? Math.max(0, Math.min(5000, at - t.positionAt)) : 0);
     let resolve!: () => void, reject!: (error: unknown) => void;
     const promise = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+    // This bridge receives positions and states, not an explicit seek observation. Omit seeked
+    // so the server withholds chapter intervals instead of treating a guessed false as evidence.
     const body = {generation: t.generation, state: t.state, positionMs, rate: 1, ...(t.skipped ? {skipped: t.skipped} : {})};
     t.skipped = undefined;
     (t.pending ??= []).push({body, at, promise, resolve, reject});

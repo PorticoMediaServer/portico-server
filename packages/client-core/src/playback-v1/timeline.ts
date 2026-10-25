@@ -27,11 +27,10 @@ export type TimelineReport = Readonly<{
   positionMs: number;
   partIndex?: number;
   rate: number;
-  /** Always sent: false when this report continues from the previous one and
-   * true when its position follows a seek or other jump, so a reader can tell a
-   * played interval from a jump. An older client omits it, and then no interval
-   * counts. */
-  seeked: boolean;
+  /** The observation reporter always sends false or true for whether a seek or
+   * other jump occurred. Callers without that observation omit it: absence is
+   * unknown and cannot establish a played interval. */
+  seeked?: boolean;
   bufferedMs?: number;
   bandwidthKbps?: number;
   droppedFrames?: number;
