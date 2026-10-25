@@ -51,7 +51,7 @@ func readingAutomaticValuesTx(ctx context.Context, tx *sql.Tx, items []int64) (m
  JOIN inventory_objects o ON o.id=v.inventory_object_id AND o.asset_id=a.token AND o.revision=v.source_revision AND o.retired=0
  JOIN library_sources s ON s.id=o.source_id AND s.library_id=cl.library_id AND s.incarnation=o.root_incarnation
  WHERE e.id IN (` + strings.Join(marks, ",") + `) AND e.retired=0 AND cl.retired=0
- AND ((e.kind=20 AND lib.kind='book' AND p.format IN('epub','pdf')) OR (e.kind=21 AND lib.kind='comic' AND p.format IN('cbz','pdf')))
+ AND ((e.kind=20 AND lib.kind='book' AND p.format IN('epub','pdf')) OR (e.kind=21 AND lib.kind='comic' AND p.format IN('cbz','pdf','image-folder')))
  ORDER BY e.id,v.field,CASE v.source WHEN 'file-metadata' THEN 0 WHEN 'file-name' THEN 1 ELSE 2 END`
 	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {

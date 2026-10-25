@@ -199,17 +199,18 @@ CREATE TABLE reading_publications(
 -- original accepted object/revision tuple and cannot be supplied by a guest.
 CREATE TABLE reading_image_folders(
  asset_id INTEGER PRIMARY KEY REFERENCES reading_publications(asset_id) ON DELETE CASCADE,
- source_id TEXT NOT NULL REFERENCES library_sources(id),
+ source_id TEXT NOT NULL REFERENCES library_sources(id) ON DELETE CASCADE,
  root_incarnation TEXT NOT NULL, root_identity TEXT NOT NULL,
  directory_path TEXT NOT NULL, directory_identity TEXT NOT NULL,
- directory_revision TEXT NOT NULL, job_id TEXT NOT NULL REFERENCES jobs(id),
- member_revision TEXT NOT NULL,
+ directory_revision TEXT NOT NULL, job_id TEXT NOT NULL,
+ member_revision TEXT NOT NULL CHECK(length(member_revision)=64),
+ member_count INTEGER NOT NULL CHECK(member_count BETWEEN 1 AND 4097),
  UNIQUE(source_id,root_incarnation,directory_path)
 ) STRICT;
 CREATE TABLE reading_image_members(
  folder_asset_id INTEGER NOT NULL REFERENCES reading_image_folders(asset_id) ON DELETE CASCADE,
- position INTEGER NOT NULL CHECK(position>=0 AND position<4096),
- inventory_object_id TEXT NOT NULL REFERENCES inventory_objects(id),
+ position INTEGER NOT NULL CHECK(position>=0 AND position<=4096),
+ inventory_object_id TEXT NOT NULL REFERENCES inventory_objects(id) ON DELETE CASCADE,
  relative_path TEXT NOT NULL, object_identity TEXT NOT NULL, revision TEXT NOT NULL,
  evidence_json TEXT NOT NULL, size INTEGER NOT NULL CHECK(size>0 AND size<=33554432),
  modified_ns INTEGER NOT NULL,
@@ -2207,7 +2208,7 @@ CREATE TABLE inventory_source_active (
 CREATE TABLE inventory_directories (
  job_id TEXT NOT NULL REFERENCES jobs(id), relative_path TEXT NOT NULL,
  identity TEXT NOT NULL DEFAULT '', revision TEXT NOT NULL DEFAULT '', cursor TEXT NOT NULL DEFAULT '',
- state TEXT NOT NULL DEFAULT 'pending', pages INTEGER NOT NULL DEFAULT 0, skipped INTEGER NOT NULL DEFAULT 0,
+ state TEXT NOT NULL DEFAULT 'pending', pages INTEGER NOT NULL DEFAULT 0, skipped INTEGER NOT NULL DEFAULT 0, entries INTEGER NOT NULL DEFAULT 0,
  PRIMARY KEY(job_id,relative_path)
 ) STRICT;
 CREATE TABLE inventory_objects (

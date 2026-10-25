@@ -40,7 +40,7 @@ func Inspect(f *Source) (Publication, error) {
 		if err != nil {
 			return out, err
 		}
-	case "cbz":
+	case "cbz", "image-folder":
 		c, err := f.comic()
 		if err != nil {
 			return out, err
@@ -128,7 +128,7 @@ func (s *Service) List(ctx context.Context, p identity.Principal, library, curso
  JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id
  JOIN catalog_assets a ON a.id=p.asset_id
  WHERE e.retired=0 AND cl.retired=0
- AND ((lib.kind='book' AND e.kind=20 AND p.format IN('epub','pdf')) OR (lib.kind='comic' AND e.kind=21 AND p.format IN('cbz','pdf')))
+ AND ((lib.kind='book' AND e.kind=20 AND p.format IN('epub','pdf')) OR (lib.kind='comic' AND e.kind=21 AND p.format IN('cbz','pdf','image-folder')))
  AND e.id>? AND (?='' OR cl.library_id=?) AND (` + filter + `) ORDER BY e.id LIMIT ?`
 	values := append([]any{after, library, library}, args...)
 	values = append(values, limit+1)

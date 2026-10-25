@@ -48,9 +48,10 @@ type Selection struct {
 	Entity, Asset, Size, ModifiedNS                                                                                    int64
 	library, token, path, root, relative, rootID, rootIdentity, incarnation, object, inventory, evidence, inventoryRow string
 	generation                                                                                                         int64
+	folderRevision                                                                                                     string
 }
 
-const publicationFields = `e.id,p.asset_id,p.format,e.title,e.metadata_language,cl.library_id,a.token,a.path,a.size,a.modified_ns,s.id,s.root,s.generation,s.incarnation,s.root_identity,o.relative_path,o.object_identity,o.revision,o.evidence_json,o.id`
+const publicationFields = `e.id,p.asset_id,p.format,e.title,e.metadata_language,cl.library_id,a.token,a.path,a.size,a.modified_ns,s.id,s.root,s.generation,s.incarnation,s.root_identity,o.relative_path,o.object_identity,o.revision,o.evidence_json,o.id,COALESCE((SELECT member_revision FROM reading_image_folders WHERE asset_id=p.asset_id),'')`
 
 const publicationJoins = ` CROSS JOIN reading_publications p ON p.item_id=e.id
  CROSS JOIN catalog_libraries cl ON cl.id=e.library_id CROSS JOIN libraries lib ON lib.id=cl.library_id
@@ -61,10 +62,11 @@ const publicationJoins = ` CROSS JOIN reading_publications p ON p.item_id=e.id
  CROSS JOIN inventory_item_availability available ON available.item_id=e.id AND available.asset_id=a.token`
 
 const publicationObjectEligible = `o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND o.root_incarnation=s.incarnation
+ AND ` + imageFolderEligibleSQL + `
  AND o.size=a.size AND o.modified_ns=a.modified_ns AND s.enabled=1 AND s.health NOT IN('offline','root_changed','removing')`
 
 const publicationEligible = `e.retired=0 AND cl.retired=0 AND e.kind IN(20,21)
- AND ((lib.kind='book' AND e.kind=20 AND p.format IN('epub','pdf')) OR (lib.kind='comic' AND e.kind=21 AND p.format IN('cbz','pdf'))) AND link.available=1 AND a.available=1 AND available.available=1
+ AND ((lib.kind='book' AND e.kind=20 AND p.format IN('epub','pdf')) OR (lib.kind='comic' AND e.kind=21 AND p.format IN('cbz','pdf','image-folder'))) AND link.available=1 AND a.available=1 AND available.available=1
  AND ` + publicationObjectEligible
 
 const selectPublication = `SELECT ` + publicationFields + ` FROM catalog_entities e` + publicationJoins + `
@@ -100,7 +102,10 @@ func (s *Service) selectionValid(v Selection) error {
 	if v.Size <= 0 || v.Size > MaxSource || !filepath.IsAbs(v.root) || !filepath.IsLocal(v.relative) || v.relative == "." || v.rootIdentity == "" {
 		return ErrInvalid
 	}
-	if v.Format != "epub" && v.Format != "pdf" && v.Format != "cbz" {
+	if v.Format != "epub" && v.Format != "pdf" && v.Format != "cbz" && v.Format != "image-folder" {
+		return ErrInvalid
+	}
+	if v.Format == "image-folder" && v.folderRevision == "" {
 		return ErrInvalid
 	}
 	if filepath.Clean(filepath.Join(v.root, v.relative)) != filepath.Clean(v.path) {
@@ -109,11 +114,16 @@ func (s *Service) selectionValid(v Selection) error {
 	return nil
 }
 func selectionColumns(v *Selection) []any {
-	return []any{&v.Entity, &v.Asset, &v.Format, &v.Title, &v.Language, &v.library, &v.token, &v.path, &v.Size, &v.ModifiedNS, &v.rootID, &v.root, &v.generation, &v.incarnation, &v.rootIdentity, &v.relative, &v.object, &v.inventory, &v.evidence, &v.inventoryRow}
+	return []any{&v.Entity, &v.Asset, &v.Format, &v.Title, &v.Language, &v.library, &v.token, &v.path, &v.Size, &v.ModifiedNS, &v.rootID, &v.root, &v.generation, &v.incarnation, &v.rootIdentity, &v.relative, &v.object, &v.inventory, &v.evidence, &v.inventoryRow, &v.folderRevision}
 }
 
 func (v Selection) fence() string {
-	return readingidentity.Revision(v.Entity, v.Asset, v.Format, v.token, v.Size, v.ModifiedNS, v.rootID, v.generation, v.incarnation, v.rootIdentity, v.relative, v.object, v.inventory, v.evidence)
+	evidence := v.evidence
+	if v.Format == "image-folder" {
+		b, _ := json.Marshal([]string{evidence, v.folderRevision})
+		evidence = string(b)
+	}
+	return readingidentity.Revision(v.Entity, v.Asset, v.Format, v.token, v.Size, v.ModifiedNS, v.rootID, v.generation, v.incarnation, v.rootIdentity, v.relative, v.object, v.inventory, evidence)
 }
 func (s *Service) Resolve(ctx context.Context, p identity.Principal, item, sourceID string) (Selection, error) {
 	if s == nil || s.DB == nil || s.Storage == nil {
@@ -344,6 +354,9 @@ func (f *Source) Validate() (failure error) {
 		return err
 	}
 	if err := f.validateCurrent(f.ctx); err != nil {
+		return err
+	}
+	if err := f.checkImageDirectory(f.ctx); err != nil {
 		return err
 	}
 	if f.remoteSession != nil {

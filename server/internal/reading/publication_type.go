@@ -49,7 +49,7 @@ func boundedTypeEvidence(values []string) ([]string, bool) {
 }
 
 func (s *Service) adoptPublicationType(ctx context.Context, p identity.Principal, selected Selection, facts Metadata) error {
-	if selected.Format != "epub" && selected.Format != "cbz" {
+	if selected.Format != "epub" && selected.Format != "cbz" && selected.Format != "image-folder" {
 		return nil
 	}
 	value := facts.ExplicitPublicationType

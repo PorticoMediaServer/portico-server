@@ -5,7 +5,7 @@ package httpapi
 type ReadingFormat string
 
 func (ReadingFormat) JSONSchema() map[string]any {
-	return map[string]any{"type": "string", "enum": []string{"epub", "pdf", "cbz"}}
+	return map[string]any{"type": "string", "enum": []string{"epub", "pdf", "cbz", "image-folder"}}
 }
 
 type ReadingDirection string

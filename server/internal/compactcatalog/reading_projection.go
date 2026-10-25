@@ -88,7 +88,7 @@ func StepReadingAttribution(ctx context.Context, tx *sql.Tx, limit int) (int, er
  SELECT 1 FROM reading_publications p JOIN catalog_asset_links link ON link.entity_id=p.item_id AND link.asset_id=p.asset_id
  WHERE p.item_id=e.id AND p.asset_id=(SELECT candidate.asset_id FROM reading_publications candidate WHERE candidate.item_id=e.id
  ORDER BY EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=candidate.item_id AND available.asset_id=(SELECT token FROM catalog_assets WHERE id=candidate.asset_id) AND available.available=1) DESC,candidate.asset_id LIMIT 1)
- AND ((e.kind=20 AND p.format IN('epub','pdf')) OR (e.kind=21 AND p.format IN('cbz','pdf')))) THEN 1 ELSE 0 END
+ AND ((e.kind=20 AND p.format IN('epub','pdf')) OR (e.kind=21 AND p.format IN('cbz','pdf','image-folder')))) THEN 1 ELSE 0 END
  FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries lib ON lib.id=cl.library_id
  WHERE e.library_id=? AND e.id>? ORDER BY e.id LIMIT ?`, library, after, limit)
 	if err != nil {

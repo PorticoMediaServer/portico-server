@@ -177,6 +177,9 @@ func (f *Source) epub() (*EPUB, error) {
 	return OpenEPUB(f.ctx, f, f.Size)
 }
 func (f *Source) comic() (*Comic, error) {
+	if f.Format == "image-folder" {
+		return f.imageFolder()
+	}
 	if f.Sequential() {
 		return OpenSequentialComic(f.ctx, SequentialSource{Size: f.Size, Open: func(ctx context.Context) (io.ReadCloser, error) {
 			if err := ctx.Err(); err != nil {

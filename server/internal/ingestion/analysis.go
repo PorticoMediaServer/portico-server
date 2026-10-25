@@ -86,6 +86,7 @@ func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source ca
 	rows, err := tx.QueryContext(ctx, `WITH batch AS MATERIALIZED (
  SELECT o.* FROM inventory_objects o JOIN inventory_runs r ON r.source_id=o.source_id
  WHERE r.job_id=? AND o.id>r.reconcile_cursor AND o.retired=0 AND o.state='available' AND o.root_incarnation=r.root_incarnation AND o.unsupported_reason=''
+ AND NOT (lower(substr(o.relative_path,-4)) IN('.jpg','.png') OR lower(substr(o.relative_path,-5)) IN('.jpeg','.webp') OR o.relative_path='ComicInfo.xml' OR substr(o.relative_path,-14)='/ComicInfo.xml')
  ORDER BY o.id LIMIT `+analysisEnqueuePageSize+`)
  SELECT o.id,o.revision,(lower(substr(o.relative_path,-5))<>'.epub' AND lower(substr(o.relative_path,-4)) NOT IN('.pdf','.cbz') AND (lower(substr(o.relative_path,-5))<>'.strm' OR ?=1) AND (o.analysis_revision<>o.revision OR o.analysis_policy<>? OR o.analysis_state='pending' OR o.analysis_generation<>r.source_generation OR (o.analysis_algorithm<>? AND EXISTS(SELECT 1 FROM json_each((SELECT operations_json FROM library_scan_policies WHERE library_id=?)) WHERE value IN('checksum','chapter_images','trickplay','waveform','loudness','fingerprint'))) OR
  (lower(substr(o.relative_path,-5))<>'.strm' AND EXISTS(SELECT 1 FROM json_each(?) wanted WHERE NOT EXISTS(SELECT 1 FROM json_each(o.analysis_operations_json) done WHERE done.value=wanted.value))) OR
