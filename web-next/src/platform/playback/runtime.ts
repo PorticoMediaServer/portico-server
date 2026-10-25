@@ -1097,6 +1097,21 @@ export class WebShellPlaybackRuntime {
       this.runtimeProblem = 'playback_subtitles_failed'; this.sync();
     });
   }
+  /** The image overlay's own retirement: its reads, canvas, offer, identity and epoch all end here. */
+  private clearImageSubtitles(stack: Stack): void {
+    stack.imageAbort?.abort(); stack.imageAbort = undefined;
+    stack.imageSurface?.clear(); stack.imageSurface?.dispose(); stack.imageSurface = undefined;
+    stack.imageKey = undefined; stack.imageEpoch = (stack.imageEpoch ?? 0) + 1;
+    stack.forcedLines = undefined; stack.forcedOnly = undefined; stack.imageFailed = undefined;
+  }
+  /** The text path's own teardown, so exactly one subtitle owner draws at a time. */
+  private clearTextSubtitles(stack: Stack): void {
+    stack.documentAbort?.abort(); stack.documentAbort = undefined;
+    this.clearTimer(stack.documentTimer); stack.documentTimer = undefined;
+    stack.documentKey = undefined;
+    this.surface?.guard(false); this.surface?.clear();
+    stack.subtitles?.setPolling(false);
+  }
   private renderSubtitles(stack: Stack): void {
     const state = stack.subtitles?.getSnapshot() ?? emptySubtitle, plan = state.plan, surface = this.surface;
     // A PGS/VobSub track is drawn from its own file by the image overlay, not as text cues.
@@ -1110,7 +1125,7 @@ export class WebShellPlaybackRuntime {
     }
     this.clearImageSubtitles(stack);
     // The dock is quiet: Portico's subtitle surface is never visible in a thumbnail.
-    if (!surface || !stack.expanded || !plan || state.suppressed || plan.mode !== 'track' || plan.renderer !== 'external_text' || !plan.documentUrl) { stack.documentAbort?.abort(); this.surface?.guard(false); this.surface?.clear(); stack.documentKey = undefined; return; }
+    if (!surface || !stack.expanded || !plan || state.suppressed || plan.mode !== 'track' || plan.renderer !== 'external_text' || !plan.documentUrl) { this.clearTextSubtitles(stack); return; }
     stack.subtitles?.setPolling(plan.mode === 'track');
     const documentUrl = plan.documentUrl;
     const key = JSON.stringify([stack.sessionKey, plan.sourceId, plan.revision, plan.documentUrl, plan.offsetUs]);
@@ -1503,7 +1518,7 @@ export class WebShellPlaybackRuntime {
   setSubtitleForcedOnly(fence: PlaybackFence, on: boolean): void {
     if (fence.kind !== 'queue') problem('playback_subtitle_unavailable');
     const stack = this.require(fence), offer = stack.forcedLines;
-    if (!stack.imageSurface || stack.imageFailed || !offer || offer.key !== stack.imageKey || offer.epoch !== stack.imageEpoch) problem('playback_subtitle_unavailable');
+    if (!stack.imageSurface || !stack.expanded || stack.imageFailed || !offer || offer.key !== stack.imageKey || offer.epoch !== stack.imageEpoch) problem('playback_subtitle_unavailable');
     stack.forcedOnly = on === true;
     stack.imageSurface.setForcedOnly(stack.forcedOnly);
     this.sync();
