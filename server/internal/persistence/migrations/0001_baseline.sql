@@ -8480,3 +8480,109 @@ CREATE TRIGGER identity_server_short_invitation_retire AFTER UPDATE ON networkin
  BEGIN DELETE FROM access_invitation_short_codes; END;
 CREATE TRIGGER identity_server_short_invitation_deleted AFTER DELETE ON networking_claim_identity
  BEGIN DELETE FROM access_invitation_short_codes; END;
+
+-- PROPOSED FIRST SLICE ONLY. No effective projection/writer cutover.
+CREATE TABLE credit_source_publications(
+ publication_id TEXT PRIMARY KEY CHECK(length(publication_id)=32 AND publication_id NOT GLOB '*[^0-9a-f]*'),
+ entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ provider TEXT NOT NULL CHECK(length(CAST(provider AS BLOB)) BETWEEN 1 AND 64),
+ accepted_record_reference TEXT NOT NULL CHECK(length(CAST(accepted_record_reference AS BLOB)) BETWEEN 1 AND 256 AND length(trim(accepted_record_reference))>0),
+ observed_at TEXT NOT NULL CHECK(length(CAST(observed_at AS BLOB)) BETWEEN 1 AND 64),
+ member_count INTEGER NOT NULL CHECK(member_count BETWEEN 0 AND 128),
+ sealed INTEGER NOT NULL DEFAULT 0 CHECK(sealed IN(0,1)),
+ UNIQUE(publication_id,entity_id,provider)
+) STRICT;
+CREATE TABLE credit_source_rows(
+ source_row_id TEXT PRIMARY KEY CHECK(length(source_row_id)=32 AND source_row_id NOT GLOB '*[^0-9a-f]*'),
+ entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ provider TEXT NOT NULL CHECK(length(CAST(provider AS BLOB)) BETWEEN 1 AND 64),
+ tuple_digest TEXT NOT NULL CHECK(length(tuple_digest)=64 AND tuple_digest NOT GLOB '*[^0-9a-f]*'),
+ original_record_reference TEXT NOT NULL CHECK(length(CAST(original_record_reference AS BLOB))<=256 AND length(trim(original_record_reference))>0),
+ original_credit_id TEXT NOT NULL CHECK(length(CAST(original_credit_id AS BLOB))<=256),
+ original_provider_person_id TEXT NOT NULL CHECK(length(CAST(original_provider_person_id AS BLOB))<=256),
+ original_person_identity_key TEXT NOT NULL CHECK(length(CAST(original_person_identity_key AS BLOB))<=512),
+ original_person_token TEXT NOT NULL CHECK(length(CAST(original_person_token AS BLOB))<=256),
+ original_target_kind TEXT NOT NULL CHECK(length(CAST(original_target_kind AS BLOB))<=64),
+ original_target_id TEXT NOT NULL CHECK(length(CAST(original_target_id AS BLOB))<=256),
+ original_credited_name TEXT NOT NULL CHECK(length(CAST(original_credited_name AS BLOB))<=512),
+ original_role TEXT NOT NULL CHECK(length(CAST(original_role AS BLOB))<=512),
+ original_department TEXT NOT NULL CHECK(length(CAST(original_department AS BLOB))<=200),
+ original_source_ordinal INTEGER NOT NULL CHECK(original_source_ordinal>=0),
+ UNIQUE(source_row_id,entity_id,provider),
+ UNIQUE(source_row_id,entity_id)
+) STRICT;
+CREATE INDEX credit_source_rows_tuple ON credit_source_rows(entity_id,provider,tuple_digest);
+CREATE TABLE credit_source_publication_members(
+ publication_id TEXT NOT NULL,
+ entity_id INTEGER NOT NULL,
+ provider TEXT NOT NULL,
+ position INTEGER NOT NULL CHECK(position>=0 AND position<128),
+ source_row_id TEXT NOT NULL,
+ reference_status TEXT NOT NULL CHECK(reference_status IN('new','exact','ambiguous')),
+ PRIMARY KEY(publication_id,position),
+ FOREIGN KEY(publication_id,entity_id,provider) REFERENCES credit_source_publications(publication_id,entity_id,provider) ON DELETE CASCADE,
+ FOREIGN KEY(source_row_id,entity_id,provider) REFERENCES credit_source_rows(source_row_id,entity_id,provider),
+ UNIQUE(publication_id,source_row_id)
+) WITHOUT ROWID, STRICT;
+CREATE INDEX credit_source_publication_members_source ON credit_source_publication_members(source_row_id,publication_id);
+CREATE TABLE credit_source_heads(
+ entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ provider TEXT NOT NULL CHECK(length(CAST(provider AS BLOB)) BETWEEN 1 AND 64),
+ publication_id TEXT NOT NULL,
+ revision INTEGER NOT NULL CHECK(revision>0),
+ PRIMARY KEY(entity_id,provider),
+ FOREIGN KEY(publication_id,entity_id,provider) REFERENCES credit_source_publications(publication_id,entity_id,provider)
+) WITHOUT ROWID, STRICT;
+CREATE TABLE credit_owner_families(
+ entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ revision INTEGER NOT NULL CHECK(revision>0),
+ locked INTEGER NOT NULL CHECK(locked IN(0,1)),
+ actor TEXT NOT NULL,
+ observed_at TEXT NOT NULL
+) STRICT;
+CREATE TABLE credit_owner_entries(
+ entry_id TEXT PRIMARY KEY CHECK(length(entry_id)=32 AND entry_id NOT GLOB '*[^0-9a-f]*'),
+ entity_id INTEGER NOT NULL REFERENCES credit_owner_families(entity_id) ON DELETE CASCADE,
+ position INTEGER NOT NULL CHECK(position>=0),
+ operation TEXT NOT NULL CHECK(operation IN('retain','edit','exclude','add')),
+ source_row_id TEXT,
+ credited_name TEXT NOT NULL,
+ role TEXT NOT NULL,
+ department TEXT NOT NULL,
+ UNIQUE(entity_id,position),
+ FOREIGN KEY(source_row_id,entity_id) REFERENCES credit_source_rows(source_row_id,entity_id),
+ CHECK((operation='add' AND source_row_id IS NULL) OR(operation<>'add' AND source_row_id IS NOT NULL))
+) STRICT;
+CREATE UNIQUE INDEX credit_owner_entries_source ON credit_owner_entries(entity_id,source_row_id) WHERE source_row_id IS NOT NULL;
+-- Only the one-way closure transition may update a publication header.
+CREATE TRIGGER credit_source_publications_close BEFORE UPDATE ON credit_source_publications
+ WHEN NOT(OLD.sealed=0 AND NEW.sealed=1 AND NEW.publication_id=OLD.publication_id AND NEW.entity_id=OLD.entity_id AND NEW.provider=OLD.provider AND NEW.accepted_record_reference=OLD.accepted_record_reference AND NEW.observed_at=OLD.observed_at AND NEW.member_count=OLD.member_count)
+ BEGIN SELECT RAISE(ABORT,'credit source publication is immutable'); END;
+CREATE TRIGGER credit_source_publications_seal BEFORE UPDATE OF sealed ON credit_source_publications WHEN NEW.sealed=1
+ BEGIN
+ SELECT CASE WHEN (SELECT count(*) FROM credit_source_publication_members WHERE publication_id=OLD.publication_id)<>NEW.member_count OR (NEW.member_count>0 AND ((SELECT min(position) FROM credit_source_publication_members WHERE publication_id=OLD.publication_id)<>0 OR (SELECT max(position) FROM credit_source_publication_members WHERE publication_id=OLD.publication_id)<>NEW.member_count-1)) THEN RAISE(ABORT,'credit source publication is incomplete') END;
+ END;
+CREATE TRIGGER credit_source_publications_closed_insert BEFORE INSERT ON credit_source_publications WHEN NEW.sealed<>0
+ BEGIN SELECT RAISE(ABORT,'credit source publication must be assembled before sealing'); END;
+CREATE TRIGGER credit_source_publications_keep BEFORE DELETE ON credit_source_publications WHEN OLD.sealed=1 AND EXISTS(SELECT 1 FROM catalog_entities WHERE id=OLD.entity_id)
+ BEGIN SELECT RAISE(ABORT,'sealed credit source publication is immutable'); END;
+CREATE TRIGGER credit_source_rows_immutable BEFORE UPDATE ON credit_source_rows BEGIN SELECT RAISE(ABORT,'credit source row is immutable'); END;
+CREATE TRIGGER credit_source_rows_keep BEFORE DELETE ON credit_source_rows WHEN EXISTS(SELECT 1 FROM catalog_entities WHERE id=OLD.entity_id)
+ BEGIN SELECT RAISE(ABORT,'credit source row is immutable'); END;
+CREATE TRIGGER credit_source_members_insert BEFORE INSERT ON credit_source_publication_members
+ WHEN NOT EXISTS(SELECT 1 FROM credit_source_publications p WHERE p.publication_id=NEW.publication_id AND p.entity_id=NEW.entity_id AND p.provider=NEW.provider AND p.sealed=0 AND NEW.position<p.member_count)
+ BEGIN SELECT RAISE(ABORT,'credit source publication is not open'); END;
+CREATE TRIGGER credit_source_members_immutable BEFORE UPDATE ON credit_source_publication_members BEGIN SELECT RAISE(ABORT,'credit source membership is immutable'); END;
+CREATE TRIGGER credit_source_members_delete BEFORE DELETE ON credit_source_publication_members
+ WHEN EXISTS(SELECT 1 FROM catalog_entities WHERE id=OLD.entity_id) AND EXISTS(SELECT 1 FROM credit_source_publications WHERE publication_id=OLD.publication_id AND sealed=1)
+ BEGIN SELECT RAISE(ABORT,'sealed credit source membership is immutable'); END;
+CREATE TRIGGER credit_source_heads_sealed_insert BEFORE INSERT ON credit_source_heads
+ WHEN NOT EXISTS(SELECT 1 FROM credit_source_publications WHERE publication_id=NEW.publication_id AND entity_id=NEW.entity_id AND provider=NEW.provider AND sealed=1)
+ BEGIN SELECT RAISE(ABORT,'credit source head requires sealed publication'); END;
+CREATE TRIGGER credit_source_heads_sealed_update BEFORE UPDATE ON credit_source_heads
+ WHEN NOT EXISTS(SELECT 1 FROM credit_source_publications WHERE publication_id=NEW.publication_id AND entity_id=NEW.entity_id AND provider=NEW.provider AND sealed=1)
+ BEGIN SELECT RAISE(ABORT,'credit source head requires sealed publication'); END;
+CREATE TRIGGER credit_source_publications_no_replace BEFORE INSERT ON credit_source_publications WHEN EXISTS(SELECT 1 FROM credit_source_publications WHERE publication_id=NEW.publication_id)
+ BEGIN SELECT RAISE(ABORT,'credit source publication already exists'); END;
+CREATE TRIGGER credit_source_rows_no_replace BEFORE INSERT ON credit_source_rows WHEN EXISTS(SELECT 1 FROM credit_source_rows WHERE source_row_id=NEW.source_row_id)
+ BEGIN SELECT RAISE(ABORT,'credit source row already exists'); END;
