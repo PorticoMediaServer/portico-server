@@ -428,6 +428,9 @@ func (s *Service) listeningContent(r ContentRequest, lib Library) (ContentEnvelo
 			return out, e
 		}
 	}
+	if r.View == "author" || r.View == "book_series" {
+		applyAuthorSeriesEntityFacts(&out)
+	}
 	if r.EntityID != "" && visibleTotal == 0 {
 		return out, sql.ErrNoRows
 	}
@@ -616,7 +619,15 @@ func (s *Service) listeningSection(r ContentRequest, spec listeningSection, offs
 		sec.Entries = sec.Entries[:r.Limit]
 		sec.NextCursor = strconv.Itoa(offset + r.Limit)
 	}
-	return sec, s.enrichListeningEntries(r, spec, &sec)
+	if e := s.enrichListeningEntries(r, spec, &sec); e != nil {
+		return sec, e
+	}
+	if (r.View == "author" || r.View == "book_series") && spec.id == "books" {
+		if e := s.enrichAuthorSeriesBooks(r, &sec); e != nil {
+			return sec, e
+		}
+	}
+	return sec, nil
 }
 
 // enrichListeningEntries fills each page entry of a listening section: the
