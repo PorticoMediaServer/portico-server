@@ -5,23 +5,34 @@ import {presentError} from '@core/presentation/errors.ts';
 export type SetupMode = 'hosted' | 'local';
 export type SetupLibraryKind = 'movie' | 'tv' | 'anime' | 'music' | 'audiobook' | 'book' | 'comic';
 
-/** The seven drawn library kinds (owner-libraries#13), in frame order. */
-export const setupLibraryKinds: readonly Readonly<{id: SetupLibraryKind; label: MessageId; icon: 'i-film' | 'i-tvlib' | 'i-category' | 'i-music' | 'i-headph' | 'i-book'}>[] = Object.freeze([
-  {id: 'movie', label: 'web.libraryKind.plural', icon: 'i-film'},
-  {id: 'tv', label: 'web.libraryKind.plural', icon: 'i-tvlib'},
-  {id: 'anime', label: 'web.libraryKind.plural', icon: 'i-category'},
-  {id: 'music', label: 'web.libraryKind.plural', icon: 'i-music'},
-  {id: 'audiobook', label: 'web.libraryKind.plural', icon: 'i-headph'},
-  {id: 'book', label: 'web.libraryKind.plural', icon: 'i-book'},
-  {id: 'comic', label: 'web.libraryKind.plural', icon: 'i-book'},
+type SetupKindIcon = 'i-film' | 'i-tvlib' | 'i-category' | 'i-music' | 'i-headph' | 'i-sbook' | 'i-book';
+
+/** The seven drawn library kinds (owner-libraries#13), in frame order, with the
+ * frame's own name and one-line description for each. */
+export const setupLibraryKinds: readonly Readonly<{id: SetupLibraryKind; label: MessageId; description: MessageId; icon: SetupKindIcon}>[] = Object.freeze([
+  {id: 'movie', label: 'next.ownerLibraries.kind.movie', description: 'next.ownerLibraries.kindDescription.movie', icon: 'i-film'},
+  {id: 'tv', label: 'next.ownerLibraries.kind.tv', description: 'next.ownerLibraries.kindDescription.tv', icon: 'i-tvlib'},
+  {id: 'anime', label: 'next.ownerLibraries.kind.anime', description: 'next.ownerLibraries.kindDescription.anime', icon: 'i-category'},
+  {id: 'music', label: 'next.ownerLibraries.kind.music', description: 'next.ownerLibraries.kindDescription.music', icon: 'i-music'},
+  {id: 'audiobook', label: 'next.ownerLibraries.kind.audiobook', description: 'next.ownerLibraries.kindDescription.audiobook', icon: 'i-headph'},
+  {id: 'book', label: 'next.ownerLibraries.kind.book', description: 'next.ownerLibraries.kindDescription.book', icon: 'i-sbook'},
+  {id: 'comic', label: 'next.ownerLibraries.kind.comic', description: 'next.ownerLibraries.kindDescription.comic', icon: 'i-book'},
 ]);
 
+const kindMessages: Readonly<Record<SetupLibraryKind, Readonly<{label: MessageId; description: MessageId}>>> = Object.freeze(
+  Object.fromEntries(setupLibraryKinds.map(kind => [kind.id, {label: kind.label, description: kind.description}])) as Record<SetupLibraryKind, Readonly<{label: MessageId; description: MessageId}>>);
+
 export function libraryKindLabel(kind: SetupLibraryKind): string {
-  return defaultI18n.t('web.libraryKind.plural', {kind});
+  return defaultI18n.t(kindMessages[kind].label);
+}
+
+/** The chosen kind's own line under the tiles (owner-libraries#13). */
+export function libraryKindDescription(kind: SetupLibraryKind): string {
+  return defaultI18n.t(kindMessages[kind].description);
 }
 
 export function defaultLibraryName(kind: SetupLibraryKind): string {
-  return defaultI18n.t('web.libraryKind.plural', {kind});
+  return libraryKindLabel(kind);
 }
 
 /** A server left named "Portico" is indistinguishable from every other one; suggest the host. */

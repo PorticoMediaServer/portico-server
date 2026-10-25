@@ -16,7 +16,7 @@ import {settingsRoute} from '../../kit/settings/search';
 import {SettingsPageFailure} from '../../kit/settings';
 import {settingsPlatform} from '../../platform/settings-platform';
 import {DashboardScreen, HistoryScreen, createDashboardBindings, type DashboardBindings} from '../dashboard';
-import {SettingsScreen, type SettingsBindings, type SettingsPageSnapshot} from './Settings';
+import {SettingsScreen, type SettingsBindings, type SettingsContext, type SettingsPageSnapshot} from './Settings';
 import {CustomizeHomeRow} from './account-appearance/CustomizeHome';
 import {SettingsController, type SettingsControllerOptions} from './controller';
 import {createSettingsBindings} from './bindings';
@@ -345,9 +345,14 @@ export function SettingsEntry() {
               rowActions={person => person.status === 'waiting' ? <MoveCodeRowAction accountId={person.accountId} hasCode={person.hasMoveCode} /> : null} />}</SignInMoveWatch></MoveCodesPortProvider> : selected.section.id === 'dashboard' && dashboard ? <DashboardScreen bindings={dashboard} embedded /> : selected.section.id === 'history' && dashboard ? <><HistoryScreen bindings={dashboard} embedded /><HistoryRetention section={selected.section} renderRows={renderRows}/></> : selected.section.id === 'troubleshooting' ? troubleshooting?.render(<><MessageOptions>{renderRows({groups:selected.section.advanced?.groups?.map(group=>({...group,rows:group.rows.filter(row=>row.id==='troubleshooting.logLevel'||row.id==='troubleshooting.detailLength')})).filter(group=>group.rows.length)})}</MessageOptions>{playbackProblems && <div id="troubleshooting.playbackProblems"><PlaybackProblems source={playbackProblems}/></div>}</>,controller.messageDetailMinutes()) : undefined,
     });
     const deviceFacts = {serverName: identity.serverName, ...(identity.serverVersion === undefined ? {} : {serverVersion: identity.serverVersion})};
+    const lyricsSourceIsLrclib = (selected: SettingsContext) => {
+      const row = settingsRowIndex.get('libraries.lyrics')?.row;
+      return !!row && controller.rowState(row, selected).value === 'lrclib';
+    };
     const settings: SettingsBindings = {...source,
       panelIntro: selected => selected.recordId && selected.tabId === 'metadata' && libraries ? <MetadataSource key={selected.recordId} libraryId={selected.recordId} api={context.api} isCurrent={current} /> : null,
-      panelHeader: (selected, title) => selected.recordId && libraries ? <LibraryHeader key={selected.recordId} libraryId={selected.recordId} name={title} rename={name => controller.renameLibrary(selected.recordId!, name)} service={libraries} artwork={context.artwork} onError={reportError} /> : null,
+      panelHeader: (selected, title) => selected.recordId && libraries ? <LibraryHeader key={selected.recordId} libraryId={selected.recordId} name={title} rename={name => controller.renameLibrary(selected.recordId!, name)} service={libraries} artwork={context.artwork} onError={reportError}
+        lyrics={{api: context.api, available: lyricsSourceIsLrclib(selected), isCurrent: current}} /> : null,
       subscribe: listener => {const off = source.subscribe(listener), offProfiles = profiles?.subscribe(listener), offLimits = restrictions?.subscribe(listener), offHardware = hardware?.subscribe(listener), offServer = server?.subscribe(listener);return () => {off();offProfiles?.();offLimits?.();offHardware?.();offServer?.();};},
       change: (row, value, selected) => {
         if (restrictions && isProfileRestriction(row.id)) {void changeRestriction(restrictions, row.id, value)?.catch(reportError);return;}

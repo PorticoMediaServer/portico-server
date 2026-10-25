@@ -3,11 +3,22 @@ import {defaultI18n} from '@i18n';
 import type {LibraryContentApi} from '@core/library-content.ts';
 import {browseServerFilesystem} from '@core/library-management.ts';
 import {Button, Switch, TextField} from '../controls';
+import {Icon, type IconName} from '../Icon';
 import {Dialog} from '../overlays/Dialog';
 import {Skeleton} from '../states';
 import styles from './server-directory-explorer.module.css';
 
 const t = defaultI18n.t;
+
+/** A root's glyph follows the server's own word for it: a drive is a disk, a
+ * share or network mount is the server, volumes are storage, Home is the house. */
+function rootIcon(root: Readonly<{kind: string; description: string}>): IconName {
+  if (root.kind === 'home') return 'i-house';
+  if (root.kind === 'unc' || root.kind === 'volumes') return 'i-server';
+  if (/^(network drive|mounted (nfs|cifs|smb|afp|sshfs|webdav))|\\\\/i.test(root.description)) return 'i-server';
+  if (root.kind === 'mount' || root.kind === 'volume' || root.kind === 'configured') return 'i-storage';
+  return 'i-disk';
+}
 
 /** The server's own folder explorer, folders only (owner-libraries.html#9). A
  * typed path is always available; Places are the roots the server publishes. */
@@ -20,12 +31,13 @@ export function ServerDirectoryExplorer({open, onOpenChange, api, onChoose, onCh
   useLayoutEffect(() => {
     if (!open) return;
     const next = {}; activeAttempt.current = next; setAttempt(next);
-    setChosen([...new Set(initialPaths ?? [])].slice(0, 64)); setTyping(false); setPage(undefined);
+    setChosen([...new Set(initialPaths ?? [])].slice(0, 64)); setTyping(false); setPage(undefined); setUncPath('');
     return () => {if (activeAttempt.current === next) activeAttempt.current = undefined; request.current?.abort();};
   }, [open, api, onChoose, onChooseMany, initialPaths, initialPath]);
   const current = () => open && !!attempt && activeAttempt.current === attempt;
   const [page, setPage] = useState<Awaited<ReturnType<typeof browseServerFilesystem>>>();
   const [typed, setTyped] = useState(''), [failed, setFailed] = useState(false), [busy, setBusy] = useState(false);
+  const [uncPath, setUncPath] = useState('');
   const [showHidden, setShowHidden] = useState(false);
   const suggestionId = useId();
   const [suggestions, setSuggestions] = useState<readonly string[]>([]);
@@ -99,10 +111,29 @@ export function ServerDirectoryExplorer({open, onOpenChange, api, onChoose, onCh
     }
   }
   const places = page?.roots ?? [];
-  const rootButton = (root: (typeof places)[number]) => <button type="button" className={styles.pickerPlace} disabled={busy} aria-current={page?.path === root.path ? 'location' : undefined} onClick={() => {
+  const placeButton = (root: (typeof places)[number]) => <button type="button" className={styles.pickerPlace} disabled={busy} aria-current={page?.path === root.path ? 'location' : undefined} onClick={() => {
     if (!current()) return;
     if (root.kind === 'unc') {setTyping(true); setTyped(root.path);} else go(root.path);
-  }}><b>{root.name}</b><small>{root.description || root.path}</small></button>;
+  }}><span className={styles.pickerPlaceIcon}><Icon name={rootIcon(root)} size={20}/></span><span className={styles.pickerPlaceCopy}><b>{root.name}</b><small>{root.description || root.path}</small></span></button>;
+  const rootCard = (root: (typeof places)[number]) => root.kind === 'unc'
+    ? <div key={root.path} className={styles.pickerRootWide}>
+      <span className={styles.pickerPlaceIcon}><Icon name={rootIcon(root)} size={24}/></span>
+      <div className={styles.pickerRootBody}>
+        <b>{root.name}</b><small>{root.description || root.path}</small>
+        <div className={styles.pickerUnc}>
+          <TextField label={t('next.ownerLibraries.explorer.uncPath')} value={uncPath} disabled={busy} autoComplete="off" spellCheck={false} placeholder={root.path}
+            onChange={event => {if (current()) setUncPath(event.currentTarget.value);}} onKeyDown={event => {
+              if (event.key === 'Enter' && !event.nativeEvent.isComposing && !busy && uncPath.trim()) {event.preventDefault(); go(uncPath.trim());}
+            }}/>
+          <Button disabled={busy || !uncPath.trim()} onClick={() => {if (current()) go(uncPath.trim());}}>{t('next.ownerLibraries.explorer.open')}</Button>
+        </div>
+        <p className={styles.pickerNote}>{t('next.ownerLibraries.explorer.uncHelp')}</p>
+      </div>
+    </div>
+    : <button key={root.path} type="button" className={styles.pickerPlace} disabled={busy} onClick={() => {if (current()) go(root.path);}}>
+      <span className={styles.pickerPlaceIcon}><Icon name={rootIcon(root)} size={24}/></span>
+      <span className={styles.pickerPlaceCopy}><b>{root.name}</b><small>{root.description || root.path}</small></span>
+    </button>;
   return <Dialog open={open} onOpenChange={changeOpen} size="lg" width={1000} returnFocusRef={returnFocusRef} className={styles.explorer} bodyClassName={styles.explorerBody} footerClassName={styles.explorerFooter} title={t(onChooseMany ? 'next.ownerLibraries.explorer.title' : 'next.settings.chooseFolder')} description={t('next.settings.folderBreadcrumbs')}
     footer={<>
       {onChooseMany ? <ChosenServerFolders paths={chosen} onRemove={toggle}/> : null}
@@ -124,13 +155,13 @@ export function ServerDirectoryExplorer({open, onOpenChange, api, onChoose, onCh
       </div>
       <div className={styles.explorerColumns} data-roots={!page?.path || undefined}>
         {!!page?.path && places.length > 0 ? <nav className={styles.pickerPlaces} aria-label={t('next.ownerLibraries.explorer.places')}>
-          <h4>{t('next.ownerLibraries.explorer.places')}</h4>{places.map(root => <div key={root.path}>{rootButton(root)}</div>)}
+          <h4>{t('next.ownerLibraries.explorer.places')}</h4>{places.map(root => <div key={root.path}>{placeButton(root)}</div>)}
         </nav> : null}
         <section className={styles.explorerMain} aria-label={t('next.ownerLibraries.explorer.folders')}>
-          <header className={styles.pickerListHeader}><b>{t('next.ownerLibraries.explorer.folders')}</b><label>{t('next.ownerLibraries.explorer.showHidden')}<Switch aria-label={t('next.ownerLibraries.explorer.showHidden')} checked={showHidden} disabled={busy} onCheckedChange={value => {if (current()) {setShowHidden(value); void read(page?.path, value);}}}/></label></header>
+          {page ? <header className={styles.pickerListHeader}>{page.path ? <><b>{t('next.ownerLibraries.explorer.folders')}</b><label>{t('next.ownerLibraries.explorer.showHidden')}<Switch aria-label={t('next.ownerLibraries.explorer.showHidden')} checked={showHidden} disabled={busy} onCheckedChange={value => {if (current()) {setShowHidden(value); void read(page.path, value);}}}/></label></> : <b>{t('next.ownerLibraries.explorer.whereToLook')}</b>}</header> : null}
           {failed ? <div role="alert" className={styles.pickerNote}><p>{t('next.ownerLibraries.explorer.failed')}</p><p>{t('next.ownerLibraries.explorer.failedHelp')}</p></div> : null}
           {busy && !page ? <div aria-busy="true"><p role="status">{t('next.ownerLibraries.explorer.reading')}</p>{[0, 1, 2].map(index => <Skeleton key={index} height={52}/>)}</div> : null}
-          {page && !page.path ? <div className={styles.pickerRoots}>{places.map(root => <div key={root.path}>{rootButton(root)}</div>)}</div> : null}
+          {page && !page.path ? <div className={styles.pickerRoots}>{places.map(root => rootCard(root))}</div> : null}
           {page?.path ? <ul className={styles.pickerList}>{page.entries.filter(entry => entry.kind === 'directory').map(entry => <li key={entry.path} className={styles.pickerEntry} data-hidden={entry.hidden || undefined}>
             {onChooseMany ? <input type="checkbox" aria-label={entry.path} checked={chosen.includes(entry.path)} disabled={!entry.readable || busy || !chosen.includes(entry.path) && chosen.length >= 64} onChange={() => toggle(entry.path)}/> : null}
             <button type="button" className={styles.pickerRow} disabled={!entry.readable || busy} onClick={() => go(entry.path)}><span>{entry.name}</span></button>

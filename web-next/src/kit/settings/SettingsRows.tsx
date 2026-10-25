@@ -44,7 +44,7 @@ function Group({group, advanced, ...props}: SettingsRowsProps & {group: GroupSpe
   const rows = group.rows.filter(row => props.state(row).present);
   if (!rows.length) return null;
   const flat = rows.length === 1 && ['table', 'list'].includes(rows[0].control.type) && !rows[0].control.reorder;
-  return <SettingsGroup title={group.title && t(group.title)} advanced={advanced} plain={flat}>
+  return <SettingsGroup title={group.title && t(group.title)} description={group.description && t(group.description)} advanced={advanced} plain={flat}>
     {rows.map(row => <Row key={row.id} row={row} {...props} flat={flat} />)}
   </SettingsGroup>;
 }

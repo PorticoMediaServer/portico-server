@@ -22,7 +22,7 @@ export type SettingsControl = Readonly<{
 export type SettingsRow = Readonly<{id: string; label: MessageId; help?: MessageId; control: SettingsControl; children?: readonly SettingsRow[];
  scope?: 'server' | 'account' | 'profile' | 'device'; key?: string; platforms?: readonly SettingsPlatform[]; os?: readonly SettingsOperatingSystem[]; shapes?: readonly string[]; audience?: string;
  enableWhen?: Readonly<{id: string; in?: readonly SettingsValue[]; notIn?: readonly SettingsValue[]}>; noChanged?: boolean}>;
-export type SettingsGroup = Readonly<{title?: MessageId; platforms?: readonly SettingsPlatform[]; rows: readonly SettingsRow[]}>;
+export type SettingsGroup = Readonly<{title?: MessageId; description?: MessageId; platforms?: readonly SettingsPlatform[]; rows: readonly SettingsRow[]}>;
 export type SettingsHolder = Readonly<{groups?: readonly SettingsGroup[]; advanced?: Readonly<{groups?: readonly SettingsGroup[]}>}>;
 export type SettingsPanel = SettingsHolder & Readonly<{title?: MessageId; newTitle?: MessageId; searchName?: MessageId; tabs?: readonly (SettingsHolder & Readonly<{id: string; title: MessageId}>)[]; footer?: Readonly<{primary: MessageId; secondary?: MessageId}>}>;
 export type SettingsSection = SettingsHolder & Readonly<{scope: 'account' | 'server'; id: string; title: MessageId; navGroup: string; icon: string; kind: string; platforms?: readonly SettingsPlatform[]; panels?: Readonly<Record<string, SettingsPanel>>; configOnly: readonly Readonly<{key: string; label: MessageId}>[]}>;
@@ -5475,17 +5475,6 @@ export const settingsSpec: readonly SettingsSection[] = [
                       "type": "toggle",
                       "default": true
                     }
-                  },
-                  {
-                    "id": "libraries.allowDelete",
-                    "scope": "server",
-                    "key": "library.allow_media_deletion",
-                    "label": "next.settingsSpec.server.libraries.panels.library.tabs.0.groups.1.rows.1.label",
-                    "help": "next.settingsSpec.server.libraries.panels.library.tabs.0.groups.1.rows.1.help",
-                    "control": {
-                      "type": "toggle",
-                      "default": false
-                    }
                   }
                 ]
               },
@@ -6334,6 +6323,23 @@ export const settingsSpec: readonly SettingsSection[] = [
             "id": "advanced",
             "title": "next.settingsSpec.server.libraries.panels.library.tabs.4.title",
             "groups": [
+              {
+                "title": "next.ownerLibraries.deleting",
+                "description": "next.ownerLibraries.deletingOff",
+                "rows": [
+                  {
+                    "id": "libraries.allowDelete",
+                    "scope": "server",
+                    "key": "library.allow_media_deletion",
+                    "label": "next.ownerLibraries.allowDeletion",
+                    "help": "next.ownerLibraries.allowDeletionHelp",
+                    "control": {
+                      "type": "toggle",
+                      "default": false
+                    }
+                  }
+                ]
+              },
               {
                 "title": "next.settingsSpec.server.libraries.panels.library.tabs.4.groups.0.title",
                 "rows": [

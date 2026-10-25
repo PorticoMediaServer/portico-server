@@ -6,7 +6,7 @@ import {AuthStage} from '../../kit/accounts/AuthStage';
 import {ServicesStrength} from '../../kit/accounts/ServicesAuth';
 import {Icon} from '../../kit/Icon';
 import {SetupFlow, type SetupPorts, type SetupSnapshot} from './setup-flow';
-import {libraryKindLabel, localPasswordValid, setupLibraryKinds, setupNameValid, setupSteps, validLocalUsername} from './setup-model';
+import {libraryKindDescription, localPasswordValid, setupLibraryKinds, setupNameValid, setupSteps, validLocalUsername} from './setup-model';
 import styles from './setup.module.css';
 
 const t = defaultI18n.t;
@@ -101,15 +101,19 @@ function FirstLibrary({flow, state}: {flow: SetupFlow; state: SetupSnapshot}) {
     <div className={styles.kinds} role="group" aria-label={t('web.setup.firstLibrary')}>
       {setupLibraryKinds.map(kind => <button key={kind.id} type="button" className={styles.kind} aria-pressed={state.kind === kind.id}
         onClick={() => flow.setKind(kind.id)} disabled={state.busy}>
-        <Icon name={kind.icon} size={26}/>{libraryKindLabel(kind.id)}
+        <Icon name={kind.icon} size={26}/>{t(kind.label)}
       </button>)}
     </div>
+    <p className={styles.kindDescription}><b>{t(setupLibraryKinds.find(kind => kind.id === state.kind)!.label)}.</b> {libraryKindDescription(state.kind)}</p>
     <div className={styles.field}><TextField variant="auth" label={t('web.setup.folderName')} value={state.libraryName} maxLength={80}
       required disabled={state.busy} onChange={event => flow.setLibraryName(event.currentTarget.value)}/></div>
-    <div className={styles.legend}>{t('web.setup.folder')}</div>
+    <div className={styles.legend}>{t('web.setup.folders')}</div>
     {folderApi ? <>
       <div className={styles.setupFolders}>{state.folders?.map(path => <div key={path} className={styles.setupFolder}><Icon name="i-folder" size={20}/><span>{path}</span><Button variant="text" size="small" icon="i-x" aria-label={`${t('next.ownerLibraries.explorer.removeChosen')} ${path}`} disabled={state.busy} onClick={() => flow.setFolders(state.folders?.filter(value => value !== path) ?? [])}/></div>)}</div>
-      <Button variant="glass" disabled={state.busy} onClick={() => setPicking(true)}>{t('next.ownerLibraries.explorer.choose')}</Button>
+      <div className={styles.folderChoose}>
+        <Button variant="glass" disabled={state.busy} onClick={() => setPicking(true)}>{t('next.ownerLibraries.explorer.choose')}</Button>
+        <small>{t('web.setup.chooseFoldersHelp')}</small>
+      </div>
       <FolderPicker open={picking && !state.busy} onOpenChange={setPicking} api={folderApi} onChoose={flow.setPath} onChooseMany={flow.setFolders} initialPaths={state.folders}/>
     </> : <div className={styles.field}><TextField variant="auth" label={t('web.setup.orTypePath')} value={state.path} required disabled={state.busy}
       autoComplete="off" spellCheck={false} onChange={event => flow.setPath(event.currentTarget.value)}/></div>}

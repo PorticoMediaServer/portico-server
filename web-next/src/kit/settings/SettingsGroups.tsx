@@ -4,9 +4,10 @@ import {Icon} from '../Icon';
 import styles from './settings.module.css';
 
 const t = defaultI18n.t;
-export function SettingsGroup({title, actions, children, advanced = false, deviceLabel, plain = false}: {title?: ReactNode; actions?: ReactNode; children: ReactNode; advanced?: boolean; deviceLabel?: string; plain?: boolean}) {
+export function SettingsGroup({title, description, actions, children, advanced = false, deviceLabel, plain = false}: {title?: ReactNode; description?: ReactNode; actions?: ReactNode; children: ReactNode; advanced?: boolean; deviceLabel?: string; plain?: boolean}) {
   return <section className={styles.group} data-advanced={advanced || undefined}>
     {(title || actions) && <div className={styles.groupHeading}><h3>{title}{deviceLabel && <small>{deviceLabel}</small>}</h3>{actions}</div>}
+    {description && <p className={styles.groupDescription}>{description}</p>}
     <div className={styles.groupRows} data-plain={plain || undefined}>{children}</div>
   </section>;
 }
