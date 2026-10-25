@@ -27,8 +27,9 @@ try {
  await server.listen(); const origin=`http://127.0.0.1:${server.httpServer.address().port}`;
  browser=await chromium.launch({executablePath,headless:true,args:['--no-sandbox','--disable-dev-shm-usage']});
  const page=await browser.newPage({viewport:{width:1440,height:900},deviceScaleFactor:1});page.setDefaultTimeout(20000);
- await page.goto(`${origin}/src/dev/entries/show.html?frame=6`);await page.waitForSelector('[data-show-frame6-ready]');await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:`${output}/show6-build.jpg`,type:'jpeg',quality:90});
- const source=await readFile(path.join(designRoot,'desktop-detail.html'),'utf8');
+ await page.goto(`${origin}/src/dev/entries/show.html?frame=6`);await page.waitForSelector('[data-show-frame6-ready]');await page.getByRole('option').filter({hasText:'Season 4'}).focus();await page.evaluate(()=>document.fonts.ready);await page.screenshot({path:`${output}/show6-build.jpg`,type:'jpeg',quality:90});
+ const kit=await readFile(path.join(designRoot,'kit.css'),'utf8');
+ const source=(await readFile(path.join(designRoot,'desktop-detail.html'),'utf8')).replace('<link rel="stylesheet" href="kit.css">',`<link rel="stylesheet" href="${origin}/src/kit/fonts.css"><style>${kit}</style>`);
  await page.route('**/__detail_reference__',route=>route.fulfill({contentType:'text/html',body:source.replace('<head>','<head><base href="'+origin+'/">')}));
  await page.goto(`${origin}/__detail_reference__?only=6`);await page.evaluate(()=>document.fonts.ready);
  await page.locator('#f6').screenshot({path:`${output}/show6-frame.jpg`,type:'jpeg',quality:90});
