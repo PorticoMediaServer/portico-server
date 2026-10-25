@@ -3,6 +3,8 @@ import {defaultI18n, type MessageId} from '@i18n';
 import type {Library} from '@core/index.ts';
 import type {ChannelApi} from '@core/channel-guide.ts';
 import {ChannelPins} from './ChannelPins';
+import {ChannelConditions} from './ChannelConditions';
+import {applyChannelConditions} from '@core/server-admin/channel-conditions.ts';
 import {librarySampleLabel, type LibraryChannelConfig, type LibraryChannelRule} from '@core/library-channels.ts';
 import {Button, RichSelect, Switch, TextField} from '../../../../kit/controls';
 import {Dialog} from '../../../../kit/overlays';
@@ -20,6 +22,7 @@ const episodeWords: readonly MessageId[] = ['builder.episodes.none', 'builder.ep
 export function ChannelEditor({source, api, reportError, libraries, isCurrent, close}: Readonly<{source: SettingsChannelEditorSource; api: ChannelApi; reportError: (error: unknown) => void; libraries: readonly Library[]; isCurrent: () => boolean; close: () => void}>) {
   const state = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
   const [advanced, setAdvanced] = useState(false), [tried, setTried] = useState(false);
+  const [validation] = useState(() => ({conditions: true})), [conditionsValid, setConditionsValid] = useState(true);
   const config = state.config, rule = config?.rules.find(row => row.id === config.defaultRuleId);
   const video = libraries.filter(library => ['movie', 'tv', 'anime'].includes(library.kind));
   const current = () => isCurrent() && source.getSnapshot().phase === 'editing' && source.getSnapshot().config === config;
@@ -31,11 +34,11 @@ export function ChannelEditor({source, api, reportError, libraries, isCurrent, c
   try {if (config?.timezone) {new Intl.DateTimeFormat(undefined, {timeZone: config.timezone});zoneValid = true;}} catch { /* The entered zone stays editable. */ }
   const valid = !!config?.name.trim() && !!rule?.query.libraryIds.length && !!rule?.query.kinds.length && zoneValid;
   useEffect(() => {
-    if (!config || !rule?.query.libraryIds.length || state.pending || !isCurrent()) return;
-    const timer = setTimeout(() => {if (isCurrent() && source.getSnapshot().config === config) void source.preview();}, 350);
+    if (!config || !rule?.query.libraryIds.length || state.pending || !isCurrent() || !validation.conditions) return;
+    const timer = setTimeout(() => {if (isCurrent() && validation.conditions && source.getSnapshot().config === config) void source.preview();}, 350);
     return () => clearTimeout(timer);
-  }, [config, rule?.query.libraryIds.length, state.pending, source, isCurrent]);
-  const save = () => {if (!current() || state.busy) return;setTried(true);if (valid) void (state.pending ? source.retry() : source.save());};
+  }, [config, rule?.query.libraryIds.length, state.pending, source, isCurrent, conditionsValid, validation]);
+  const save = () => {if (!current() || state.busy) return;setTried(true);if (valid && validation.conditions) void (state.pending ? source.retry() : source.save());};
   const preview = state.preview, count = preview?.rules.reduce((sum, item) => sum + item.eligible, 0) ?? 0;
   const unresolved = preview?.rules.reduce((sum, item) => sum + item.unresolved, 0) ?? 0;
   const title = state.templateName ? t('builder.reviewTemplate', {name: state.templateName}) : t('builder.editTitle');
@@ -52,7 +55,12 @@ export function ChannelEditor({source, api, reportError, libraries, isCurrent, c
           {!video.length && <p className={styles.help}>{t('builder.noVideoLibraries')}</p>}
           {tried && !rule.query.libraryIds.length && <p role="alert" className={styles.warning}>{t('builder.error.libraries')}</p>}
           <div><b>{t('builder.kinds')}</b><div className={styles.choices}>{(['movie', 'episode'] as const).map(kind => <label key={kind}><input type="checkbox" disabled={locked} checked={rule.query.kinds.includes(kind)} onChange={event => query({kinds: event.target.checked ? [...rule.query.kinds, kind] : rule.query.kinds.filter(value => value !== kind)})}/>{t(kind === 'movie' ? 'builder.movies' : 'builder.shows')}</label>)}</div></div>
-          {rule.query.filter || rule.query.genres?.length || rule.query.yearFrom || rule.query.yearThrough ? <p className={styles.help}>{t('builder.opaqueConditions')}</p> : <p className={styles.help}>{t('builder.noConditions')}</p>}
+          <ChannelConditions api={api} libraries={libraries} query={rule.query} locked={locked} isCurrent={isCurrent} reportError={reportError} onChange={(conditions, complete) => {
+            if (!current() || locked) return false;
+            validation.conditions = complete;setConditionsValid(complete);
+            if (complete) source.change(value => applyChannelConditions(value, conditions));
+            return true;
+          }}/>
           <TextField label={t('builder.mentions')} value={rule.query.text ?? ''} maxLength={200} disabled={locked} onChange={event => query({text: event.target.value})}/><p className={styles.help}>{t('builder.mentionsHint')}</p>
         </section>
         <ChannelPins api={api} libraries={libraries} libraryIds={rule.query.libraryIds} ids={rule.query.includeItemIds ?? []} locked={locked} isCurrent={isCurrent} reportError={reportError} onChange={includeItemIds => query({includeItemIds})}/>
@@ -74,7 +82,7 @@ export function ChannelEditor({source, api, reportError, libraries, isCurrent, c
       <aside className={styles.preview} aria-busy={state.previewLoading}><h3>{t('builder.preview')}</h3>
         {state.previewLoading && <p role="status">{t('builder.previewing')}</p>}
         {!preview && !state.previewLoading && <p className={styles.help}>{t('builder.previewEmpty')}</p>}
-        {preview && <><b>{t(preview.complete ? 'builder.matches' : 'next.browse.countAtLeast', {count})}</b>{preview.durationMs > 0 && <p>{t('builder.hours', {hours: Number((preview.durationMs / 3600000).toFixed(1))})}</p>}{unresolved > 0 && <p>{t('builder.unresolved', {count: unresolved})}</p>}
+        {preview && conditionsValid && <><b>{t(preview.complete ? 'builder.matches' : 'next.browse.countAtLeast', {count})}</b>{preview.durationMs > 0 && <p>{t('builder.hours', {hours: Number((preview.durationMs / 3600000).toFixed(1))})}</p>}{unresolved > 0 && <p>{t('builder.unresolved', {count: unresolved})}</p>}
           <h4>{t('builder.samples')}</h4><ul>{preview.rules.flatMap(item => item.sample.map(sample => <li key={`${item.ruleId}/${sample.itemId}`}>{librarySampleLabel(sample)}</li>))}</ul>
           {!!preview.firstDay.length && <><h4>{t('builder.firstDay')}</h4><ul>{preview.firstDay.map(entry => <li key={entry.id}>{channelClock(entry.startMs, config.timezone)} · {entry.itemId ? entry.title : t('builder.nothingScheduled')}</li>)}</ul></>}
         </>}
