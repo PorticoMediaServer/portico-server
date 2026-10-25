@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useRef, useState} from 'react';
+import {useCallback, useEffect, useId, useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import type {LibraryContentApi} from '@core/library-content.ts';
 import {browseServerFilesystem} from '@core/library-management.ts';
@@ -16,6 +16,19 @@ export function FolderPicker({open, onOpenChange, api, onChoose}: Readonly<{
   const [page, setPage] = useState<Awaited<ReturnType<typeof browseServerFilesystem>>>();
   const [typed, setTyped] = useState(''), [failed, setFailed] = useState(false), [busy, setBusy] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
+  const suggestionId = useId();
+  const [suggestions, setSuggestions] = useState<readonly string[]>([]);
+  useEffect(() => {
+    setSuggestions([]);
+    if (!open || !typed || typed === page?.path) return;
+    const active = new AbortController();
+    const timer = setTimeout(() => {
+      void browseServerFilesystem(api, {path: typed, includeFiles: false, showHidden, limit: 8}, active.signal).then(next => {
+        if (!active.signal.aborted) setSuggestions(next.suggestions);
+      }, () => {});
+    }, 250);
+    return () => { clearTimeout(timer); active.abort(); };
+  }, [api, open, typed, page?.path, showHidden]);
   const request = useRef<AbortController | undefined>(undefined);
   const read = useCallback(async (path?: string, hidden = false, cursor?: string) => {
     request.current?.abort();
@@ -72,9 +85,10 @@ export function FolderPicker({open, onOpenChange, api, onChoose}: Readonly<{
         </span>)}
       </nav>}
       <div className={styles.pickerPath}>
-        <TextField label={t('next.settings.folderPath')} value={typed} onChange={event => setTyped(event.currentTarget.value)} onKeyDown={event => {
+        <TextField label={t('next.settings.folderPath')} list={suggestionId} autoComplete="off" value={typed} onChange={event => setTyped(event.currentTarget.value)} onKeyDown={event => {
           if (event.key === 'Enter' && !event.nativeEvent.isComposing && !busy) { event.preventDefault(); go(typed); }
         }} />
+        <datalist id={suggestionId}>{suggestions.map(path => <option key={path} value={path}/>)}</datalist>
         <Button disabled={busy} onClick={() => go(typed)}>{t('next.settings.go')}</Button>
         <Button disabled={busy || !page?.parent} onClick={() => { if (page?.parent) go(page.parent); }}>{t('next.settings.up')}</Button>
       </div>
