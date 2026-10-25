@@ -243,6 +243,7 @@ func adoptTextCountRow(ctx context.Context, tx *sql.Tx, current Selection, count
 
 // Reuse one exact admitted source; never acquire a second version or retain an
 // actor credential for background work. Cache only this row/revision/rule.
+// Comics are not text publications; their page count is adopted separately.
 func (s *Service) adoptTextCount(ctx context.Context, p identity.Principal, f *Source) error {
 	selected := f.Selection
 	// Viewer opens count EPUB only. Fixed-layout PDFs are covered by the
@@ -281,6 +282,55 @@ func (s *Service) adoptTextCount(ctx context.Context, p identity.Principal, f *S
 		return err
 	}
 	return gate.Commit()
+}
+
+// adoptComicPageCount retains the inspected comic archive's exact page count.
+// The count is the same complete, naturally ordered member list Prepare already
+// validated; no words or reading time are estimated for it. The writer rechecks
+// the same current observation before it publishes, and an unchanged count
+// writes nothing.
+func (s *Service) adoptComicPageCount(ctx context.Context, p identity.Principal, selected Selection, pages int) error {
+	if selected.Format != "cbz" || pages < 1 || pages > MaxEntries {
+		return nil
+	}
+	cached, err := s.comicPageCountCached(ctx, selected, pages)
+	if err != nil || cached {
+		return err
+	}
+	gate, err := dbwork.Begin(ctx, s.DB, dbwork.ClassBackgroundMedia)
+	if err != nil {
+		return err
+	}
+	defer gate.Rollback()
+	current, err := s.selectTx(ctx, gate.Tx(), p, selected.ItemID, selected.SourceID)
+	if err != nil {
+		return err
+	}
+	if current.Revision != selected.Revision || current.inventoryRow != selected.inventoryRow || current.object != selected.object || current.inventory != selected.inventory {
+		return ErrChanged
+	}
+	count := int64(pages)
+	if err = adoptTextCountRow(ctx, gate.Tx(), current, nil, "", &count, readingPageRuleVersion); err != nil {
+		return err
+	}
+	return gate.Commit()
+}
+
+func (s *Service) comicPageCountCached(ctx context.Context, selected Selection, pages int) (bool, error) {
+	g, err := dbwork.BeginSnapshot(ctx, s.DB)
+	if err != nil {
+		return false, err
+	}
+	defer g.Rollback()
+	var cached int
+	err = g.Tx().QueryRowContext(ctx, `SELECT 1 FROM reading_text_counts WHERE item_id=? AND asset_id=? AND inventory_object_id=? AND source_revision=? AND rule_version=? AND page_rule_version=? AND page_count=?`, selected.Entity, selected.Asset, selected.inventoryRow, selected.inventory, readingTextRuleVersion, readingPageRuleVersion, pages).Scan(&cached)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return false, err
 }
 
 // This cached file text is published only by a prepared, source-authorized
