@@ -1,4 +1,6 @@
 export const selectionMessages = {
+  'next.selection.jobProgress': '{done, number} of {total, number} processed',
+  'next.selection.jobPreparing': 'Preparing selection…',
   'next.selection.keepHolding': 'Keep holding to select',
   'next.selection.select': 'Select',
   'next.selection.selected': '{count, number} selected',
