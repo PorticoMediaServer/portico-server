@@ -4,6 +4,7 @@ import {mkdtempSync, readFileSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createReport, assert as requireCheck} from './report.mjs';
+import {buildStability} from './build.mjs';
 
 // Checkpoint-only regression coverage; no browser, network or credentials.
 test('a deployment-pin failure remains failed in the serialized checkpoint report', async () => {
@@ -29,3 +30,32 @@ test('a deployment-pin failure remains failed in the serialized checkpoint repor
     rmSync(out, {recursive: true, force: true});
   }
 });
+
+for (const [name, end] of [
+  ['unreadable', null],
+  ['replaced server', {version: 'server-one', id: 'server-two', build: {commit: 'a'.repeat(40)}}],
+  ['changed static build', {version: 'server-one', id: 'server-one', build: {commit: 'b'.repeat(40)}}],
+]) {
+  test(`${name} deployment is saved as a required checkpoint failure with both stamps`, async () => {
+    const out = mkdtempSync(join(tmpdir(), 'portico-smoke-stability-'));
+    try {
+      const start = {version: 'server-one', id: 'server-one', build: {commit: 'a'.repeat(40)}};
+      const report = createReport({surface: 'web', origin: 'https://example.invalid', out});
+      report.buildInfo = {start, end};
+      const stability = buildStability(start, end);
+      await report.check('build-stability', async () => {
+        requireCheck(stability.valid, stability.reason, {start, end});
+      });
+      report.write();
+      const saved = JSON.parse(readFileSync(join(out, 'report.json'), 'utf8'));
+      assert.equal(saved.verdict, 'fail');
+      assert.deepEqual(saved.build, {start, end});
+      assert.equal(saved.checks[0].required, true);
+      assert.equal(saved.checks[0].status, 'fail');
+      assert.equal(saved.checks[0].detail, stability.reason);
+      assert.deepEqual(saved.checks[0].evidence, {start, end});
+    } finally {
+      rmSync(out, {recursive: true, force: true});
+    }
+  });
+}
