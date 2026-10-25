@@ -177,3 +177,4 @@
 .runSkipChoice { height: 28px; border: 0; border-radius: 7px; background: transparent; color: var(--color-text-tertiary); font: inherit; font-size: var(--type-label-size); font-weight: var(--type-body-strong-weight); cursor: pointer; }
 .runSkipChoice[data-picked] { background: color-mix(in srgb, var(--color-accent) 16%, transparent); color: var(--color-text); box-shadow: inset 0 0 0 1px var(--color-accent); }
 .runSkipChoice:disabled { cursor: default; opacity: .6; }
+.monoInput { font-family: var(--font-mono); }

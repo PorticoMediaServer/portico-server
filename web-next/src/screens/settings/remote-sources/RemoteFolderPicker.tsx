@@ -100,7 +100,7 @@ export function RemoteFolderPicker({service, sourceId, sourceName, open, onOpenC
       </div>
       {!failed && <p className={styles.explorerNote}><Icon name="i-info" size={18}/>{t('next.remoteSources.foldersNote')}</p>}
       <TextField label={t('next.remoteSources.folderPath')} value={typed} disabled={busy} autoCapitalize="off" spellCheck={false}
-        style={{fontFamily: 'var(--font-mono)'}} onChange={event => setTyped(event.currentTarget.value)}
+        className={styles.monoInput} onChange={event => setTyped(event.currentTarget.value)}
         onKeyDown={event => {
           if (event.key === 'Enter' && !event.nativeEvent.isComposing && !busy) {
             event.preventDefault();

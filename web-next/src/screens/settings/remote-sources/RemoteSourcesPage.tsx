@@ -573,7 +573,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
         <div className={styles.kind}><Icon name="i-globe" size={22} /><span><b>{t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.0.label')}</b><small>{t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.0.hint')}</small></span></div>
         <TextField label={t('next.remoteSources.name')} value={draft.name} maxLength={100} disabled={busy} onChange={event => updateDraft({name: event.target.value})}/>
         <TextField label={t('next.remoteSources.address')} value={draft.root} placeholder={t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.1.rows.0.control.placeholder')} disabled={busy}
-          autoCapitalize="off" spellCheck={false} style={{fontFamily: 'var(--font-mono)'}} onChange={event => updateDraft({root: event.target.value})}/>
+          autoCapitalize="off" spellCheck={false} className={styles.monoInput} onChange={event => updateDraft({root: event.target.value})}/>
         <TextField label={t('next.remoteSources.username')} value={draft.username} placeholder={t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.1.rows.1.control.placeholder')} disabled={busy} autoCapitalize="off" spellCheck={false} onChange={event => updateDraft({username: event.target.value})}/>
         <TextField label={t('next.remoteSources.password')} type="password" value={draft.password} placeholder={t('next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.1.rows.2.control.placeholder')} disabled={busy} onChange={event => updateDraft({password: event.target.value})}/>
         <label className={styles.switchRow}><span>{t('next.remoteSources.insecureLocal')}</span><Switch aria-label={t('next.remoteSources.insecureLocal')} checked={draft.insecureLocal} disabled={busy} onCheckedChange={value => updateDraft({insecureLocal: value})}/></label>
@@ -613,7 +613,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
         </div>
         <TextField label={t(drive.location === 'drive' ? 'next.remoteSources.driveDriveId' : 'next.remoteSources.driveFolderId')}
           description={t(drive.location === 'drive' ? 'next.remoteSources.driveDriveHelp' : 'next.remoteSources.driveFolderHelp')}
-          value={drive.locationId} maxLength={200} disabled={busy} autoCapitalize="off" spellCheck={false} style={{fontFamily: 'var(--font-mono)'}} onChange={event => updateDrive({locationId: event.target.value})}/>
+          value={drive.locationId} maxLength={200} disabled={busy} autoCapitalize="off" spellCheck={false} className={styles.monoInput} onChange={event => updateDrive({locationId: event.target.value})}/>
         <p className={styles.note}>{t('next.remoteSources.driveCannotSee')}</p>
         <p className={styles.note}>{t('next.remoteSources.driveChecks')}</p>
         <div className={styles.testRow}><Button size="compact" variant="glass" disabled={busy || !driveResult.ok} onClick={() => void testDrive()}>{busy ? t('next.remoteSources.testing') : t('next.remoteSources.test')}</Button>
@@ -623,16 +623,16 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
         <div className={styles.kind}><Icon name="i-storage" size={22} /><span><b>{t('next.remoteSources.connectS3')}</b><small>{t('next.remoteSources.connectS3Hint')}</small></span></div>
         <TextField label={t('next.remoteSources.name')} value={s3.name} maxLength={200} disabled={busy} onChange={event => updateS3({name: event.target.value})}/>
         <TextField label={t('next.remoteSources.s3Endpoint')} description={t('next.remoteSources.s3EndpointHelp')} value={s3.endpoint} placeholder={t('next.remoteSources.s3EndpointPlaceholder')} maxLength={2048} disabled={busy}
-          autoCapitalize="off" spellCheck={false} style={{fontFamily: 'var(--font-mono)'}} onChange={event => updateS3({endpoint: event.target.value})}/>
+          autoCapitalize="off" spellCheck={false} className={styles.monoInput} onChange={event => updateS3({endpoint: event.target.value})}/>
         <TextField label={t('next.remoteSources.s3Region')} description={t('next.remoteSources.s3RegionHelp')} value={s3.region} maxLength={32} disabled={busy}
-          autoCapitalize="off" spellCheck={false} style={{fontFamily: 'var(--font-mono)'}} onChange={event => updateS3({region: event.target.value})}/>
+          autoCapitalize="off" spellCheck={false} className={styles.monoInput} onChange={event => updateS3({region: event.target.value})}/>
         <TextField label={t('next.remoteSources.s3AccessKey')} value={s3.accessKey} maxLength={256} disabled={busy}
-          autoCapitalize="off" spellCheck={false} style={{fontFamily: 'var(--font-mono)'}} onChange={event => updateS3({accessKey: event.target.value})}/>
+          autoCapitalize="off" spellCheck={false} className={styles.monoInput} onChange={event => updateS3({accessKey: event.target.value})}/>
         <TextField label={t('next.remoteSources.s3SecretKey')} type="password" value={s3.secretKey} maxLength={1024} disabled={busy} onChange={event => updateS3({secretKey: event.target.value})}/>
         <TextField label={t('next.remoteSources.s3Bucket')} description={t('next.remoteSources.s3BucketHelp')} value={s3.bucket} maxLength={63} disabled={busy}
-          autoCapitalize="off" spellCheck={false} style={{fontFamily: 'var(--font-mono)'}} onChange={event => updateS3({bucket: event.target.value})}/>
+          autoCapitalize="off" spellCheck={false} className={styles.monoInput} onChange={event => updateS3({bucket: event.target.value})}/>
         <TextField label={t('next.remoteSources.s3Folder')} description={t('next.remoteSources.s3FolderHelp')} value={s3.folder} maxLength={1024} disabled={busy}
-          autoCapitalize="off" spellCheck={false} style={{fontFamily: 'var(--font-mono)'}} onChange={event => updateS3({folder: event.target.value})}/>
+          autoCapitalize="off" spellCheck={false} className={styles.monoInput} onChange={event => updateS3({folder: event.target.value})}/>
         <p className={styles.note}>{t('next.remoteSources.s3Checks')}</p>
         <div className={styles.testRow}><Button size="compact" variant="glass" disabled={busy || !s3.endpoint.trim() || !s3.accessKey.trim() || !s3.secretKey || !s3.bucket.trim()} onClick={() => void testS3()}>{busy ? t('next.remoteSources.testing') : t('next.remoteSources.test')}</Button>
           {rcloneResult && <span className={styles.testCard} data-tone="good"><Icon name="i-check" size={18}/>{rcloneResult.version ? t('next.remoteSources.testedRclone', {version: rcloneResult.version}) : t('next.remoteSources.testedRcloneUnknown')}</span>}
@@ -658,7 +658,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
         <div className={styles.kind}><Icon name="i-storage" size={22} /><span><b>{t('next.remoteSources.connectRclone')}</b><small>{t('next.remoteSources.connectRcloneHint')}</small></span></div>
         <TextField label={t('next.remoteSources.name')} value={rclone.name} maxLength={100} disabled={busy} onChange={event => updateRclone({name: event.target.value})}/>
         <TextField label={t('next.remoteSources.remoteName')} description={t('next.remoteSources.remoteNameHelp')} value={rclone.remote} placeholder={t('next.remoteSources.remoteNamePlaceholder')} maxLength={200} disabled={busy}
-          autoCapitalize="off" spellCheck={false} style={{fontFamily: 'var(--font-mono)'}} onChange={event => updateRclone({remote: event.target.value})}/>
+          autoCapitalize="off" spellCheck={false} className={styles.monoInput} onChange={event => updateRclone({remote: event.target.value})}/>
         <label className={styles.configField}><span className={styles.configLabel}>{t('next.remoteSources.configuration')}</span>
           <textarea className={styles.config} aria-label={t('next.remoteSources.configuration')} value={rclone.config} placeholder={t('next.remoteSources.configurationPlaceholder')} maxLength={65536}
             disabled={busy} spellCheck={false} rows={8} onChange={event => updateRclone({config: event.target.value})}/>
@@ -910,7 +910,7 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, openSecti
     <section className={styles.group} id="source-connection"><h3>{t('next.remoteSources.connection')}</h3>
       <TextField label={t('next.remoteSources.name')} value={draft.name} maxLength={100} disabled={busy} onChange={event => updateDraft({name: event.target.value})}/>
       <TextField label={t('next.remoteSources.address')} value={draft.root} placeholder={source.origin ?? t('next.settingsSpec.server.remote-sources.panels.source.tabs.0.groups.0.rows.1.control.placeholder')} disabled={busy}
-        autoCapitalize="off" spellCheck={false} style={{fontFamily: 'var(--font-mono)'}} onChange={event => updateDraft({root: event.target.value})}/>
+        autoCapitalize="off" spellCheck={false} className={styles.monoInput} onChange={event => updateDraft({root: event.target.value})}/>
       <TextField label={t('next.remoteSources.username')} value={draft.username} disabled={busy} autoCapitalize="off" spellCheck={false} onChange={event => updateDraft({username: event.target.value})}/>
       <TextField label={t('next.remoteSources.password')} type="password" value={draft.password} disabled={busy} onChange={event => updateDraft({password: event.target.value})}/>
       <label className={styles.switchRow}><span>{t('next.remoteSources.insecureLocal')}</span><Switch aria-label={t('next.remoteSources.insecureLocal')} checked={draft.insecureLocal} disabled={busy} onCheckedChange={value => updateDraft({insecureLocal: value})}/></label>
@@ -1112,7 +1112,7 @@ function ManageRcloneDialog({service, source, isCurrent, reportError, onClose, o
       <p className={styles.note}><SourceStatus source={source}/> {t('next.remoteSources.kindRclone')}</p>
       <TextField label={t('next.remoteSources.name')} value={draft.name} maxLength={100} disabled={busy} onChange={event => updateDraft({name: event.target.value})}/>
       <TextField label={t('next.remoteSources.remoteName')} description={t('next.remoteSources.remoteNameHelp')} value={draft.remote} placeholder={t('next.remoteSources.remoteNamePlaceholder')} maxLength={200} disabled={busy}
-        autoCapitalize="off" spellCheck={false} style={{fontFamily: 'var(--font-mono)'}} onChange={event => updateDraft({remote: event.target.value})}/>
+        autoCapitalize="off" spellCheck={false} className={styles.monoInput} onChange={event => updateDraft({remote: event.target.value})}/>
       <label className={styles.configField}><span className={styles.configLabel}>{t('next.remoteSources.configuration')}</span>
         <textarea className={styles.config} aria-label={t('next.remoteSources.configuration')} value={draft.config} placeholder={t('next.remoteSources.replaceConfiguration')} maxLength={65536}
           disabled={busy} spellCheck={false} rows={8} onChange={event => updateDraft({config: event.target.value})}/>

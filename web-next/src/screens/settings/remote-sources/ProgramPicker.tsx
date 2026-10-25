@@ -42,7 +42,7 @@ export function ProgramPicker({open, api, startAt, onOpenChange, onChoose}: Read
     <div className={styles.explorer}>
       <div className={styles.explorerPath}>
         <TextField label={t('next.remoteSources.programPath')} value={typed} disabled={busy} autoCapitalize="off" spellCheck={false}
-          style={{fontFamily: 'var(--font-mono)'}} onChange={event => setTyped(event.currentTarget.value)}
+          className={styles.monoInput} onChange={event => setTyped(event.currentTarget.value)}
           onKeyDown={event => {if (event.key === 'Enter' && !event.nativeEvent.isComposing) {event.preventDefault(); void read(typed.trim() || undefined);}}}/>
         <Button size="small" variant="glass" disabled={busy} onClick={() => void read(typed.trim() || undefined)}>{t('next.remoteSources.go')}</Button>
       </div>
