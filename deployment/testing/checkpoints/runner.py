@@ -139,6 +139,10 @@ class Job:
         # path is a private disk-backed bind mount rather than a host write.
         transcode=self.work/'transcode';transcode.mkdir(mode=0o700)
         app=self.spawn('server-runtime',['bwrap','--die-with-parent','--unshare-user','--ro-bind','/','/','--bind',str(self.work),str(self.work),'--tmpfs','/var/cache','--dir','/var/cache/portico','--bind',str(transcode),'/var/cache/portico','--proc','/proc','--dev','/dev','--',str(self.work/'server')],env=env);self.ready(base+'/health/ready',app)
+        books=self.work/'book-fixture';books.mkdir(mode=0o700)
+        epubs=list((self.args.fixtures/'media/Read/Books').rglob('*.epub'))
+        if len(epubs)!=1 or hashlib.sha256(epubs[0].read_bytes()).hexdigest()!='85814417c1a74d2ca7f3b077b47454d0cfc728392d40d846d1c97d44f24c5279':raise StepFailure('unchanged-epub-fixture')
+        shutil.copy2(epubs[0],books/epubs[0].name);self.report['epubFixtureSHA256']='85814417c1a74d2ca7f3b077b47454d0cfc728392d40d846d1c97d44f24c5279'
         username='cp'+secrets.token_hex(5);password='Cp9!'+secrets.token_urlsafe(24);installation=secrets.token_urlsafe(32)
         setup=self.json_call(base,'POST','/v1/setup/browser',{},installation=installation,headers={'Origin':base})['setupToken']
         owner=self.json_call(base,'POST','/v1/setup',{'setupToken':setup,'requestId':str(uuid.uuid4()),'name':'Portico checkpoint','authMode':'local','interactive':True,'username':username,'password':password},installation=installation,headers={'Origin':base},expected=(201,));grant=owner.get('session',owner);token=grant['accessToken']
@@ -148,7 +152,7 @@ class Job:
             settings=self.json_call(base,'GET','/v1/admin/console/settings',token=token,installation=installation)['data'];values=settings['requested'];values['conversionMode']='all';self.json_call(base,'PATCH','/v1/admin/console/settings',{'expectedRevision':settings['revision'],'idempotencyKey':str(uuid.uuid4()),'values':values},token,installation)
             libraries=[];jobs=[]
             for name,kind,path in [('Movies','movie','Movies'),('Music','music','Music'),('Books','book','Read/Books')]:
-                library=self.json_call(base,'POST','/v1/libraries',{'name':name,'kind':kind,'path':str(self.args.fixtures/'media'/path),'metadataAgent':'local'},token,installation,expected=(200,201));library=library.get('library',library);libraries.append(library)
+                library=self.json_call(base,'POST','/v1/libraries',{'name':name,'kind':kind,'path':str(books if kind=='book' else self.args.fixtures/'media'/path),'metadataAgent':'local'},token,installation,expected=(200,201));library=library.get('library',library);libraries.append(library)
                 job=self.json_call(base,'POST','/v1/libraries/'+library['id']+'/scans',{},token,installation,expected=(200,201,202));jobs.append(job.get('jobId',job.get('id')))
             deadline=time.monotonic()+150
             while time.monotonic()<deadline:

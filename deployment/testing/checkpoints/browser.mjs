@@ -7,6 +7,7 @@ const {privacy}=await import(pathToFileURL(process.env.PORTICO_RUNNER_SECONDARY_
 const out=process.env.PORTICO_RUNNER_OUTPUT,flows=[],network=[],pageErrors=[],privateValues=[input.username,input.password];
 let browser,page,phase='startup',populatedCredentials=false;const external=[];
 process.on('SIGTERM',async()=>{await browser?.close();process.exit(143);});
+const errorClasses=['Error','TypeError','ReferenceError','SyntaxError','SecurityError','AbortError','NotSupportedError','InvalidStateError','NetworkError','EncodingError','NotAllowedError','DOMException'];
 const disabled=new Set(input.disabled??[]);
 async function capture(id){
  const credentials=await page.locator('input[type="password"],input[name="username"]').count();
@@ -27,14 +28,15 @@ async function home(){await page.goto(input.origin+'/',{waitUntil:'domcontentloa
 try{
  browser=await chromium.launch({executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage','--disable-background-networking']});
  const context=await browser.newContext({viewport:{width:1440,height:900}});page=await context.newPage();page.setDefaultTimeout(12000);
- page.on('pageerror',error=>pageErrors.length<8&&pageErrors.push({class:['Error','TypeError','ReferenceError','SyntaxError'].includes(error.name)?error.name:'Other',coordinates:[...String(error.stack??'').matchAll(/:(\d+):(\d+)/g)].slice(0,6).map(x=>[Number(x[1]),Number(x[2])])}));
+ page.on('pageerror',error=>{if(pageErrors.length>=12)return;const text=String(error.message??''),code=/dynamically imported module/i.test(text)?'import_failed':/play\(\).*user|user.*interact|play.*not allowed/i.test(text)?'play_not_allowed':/no supported source|source.*not supported/i.test(text)?'unsupported_source':/Cannot read properties of (?:null|undefined)/.test(text)?'null_property':/Minified React error #\d+/.test(text)?'react_error':'other';pageErrors.push({phase,class:errorClasses.includes(error.name)?error.name:'Other',code,coordinates:[...String(error.stack??'').matchAll(/:(\d+):(\d+)/g)].slice(0,6).map(x=>[Number(x[1]),Number(x[2])])});});
  page.on('response',async response=>{try{
   const url=new URL(response.url());if(![input.origin,input.apiOrigin].includes(url.origin)||network.length>=100)return;
-  const known=new Map([['/v1/sessions','sessions'],['/v1/sessions/refresh','refresh'],['/v1/account','account'],['/v1/account/security','security'],['/v1/account/sessions','devices'],['/v1/servers','directory']]);
+  const known=new Map([['/v1/sessions','sessions'],['/v1/sessions/refresh','refresh'],['/v1/account','account'],['/v1/account/security','security'],['/v1/account/sessions','devices'],['/v1/servers','directory'],['/v1/playback/start','playback-start'],['/v1/playback/options','playback-options'],['/v1/playback/controls','playback-controls']]);
   let operation=known.get(url.pathname);if(/\/reading\/sessions\/[^/]+\/assets$/.test(url.pathname))operation='reading-assets';
   else if(/\/reading\/sessions(?:\/[^/]+)?$/.test(url.pathname))operation='reading-sessions';
   if(!operation)return;const row={phase,operation,method:response.request().method(),status:response.status()};
-  if(response.status()>=400){try{const data=await response.json(),code=data?.error?.code??data?.code;if(['invalid_credentials','session_mode_denied','origin_denied','invalid_request','forbidden','source_unavailable','metadata_conflict','challenge_invalid','rate_limited','session_expired'].includes(code))row.code=code;}catch{}}
+  if(operation==='reading-sessions'&&response.request().method()==='POST'&&response.status()===200){try{const data=await response.json();if(['epub','pdf','comic'].includes(data.format))row.format=data.format;}catch{}}
+  if(response.status()>=400){try{const data=await response.json(),code=data?.error?.code??data?.code;if(['invalid_credentials','session_mode_denied','origin_denied','invalid_request','forbidden','source_unavailable','metadata_conflict','challenge_invalid','rate_limited','session_expired','stream_limit_reached','conversion_capacity','transcode_not_allowed','unsupported_media','connection_too_slow','queue_building','not_permitted','no_tuner_available'].includes(code))row.code=code;}catch{}}
   network.push(row);
  }catch{}});
  page.on('request',request=>{try{const u=new URL(request.url());if(phase==='reading-nonblank-no-egress'&&!['data:','blob:','about:'].includes(u.protocol)&&u.origin!==input.origin)external.push({method:request.method(),foreignOrigin:true});}catch{}});
@@ -69,7 +71,7 @@ try{
    }
    return {nonblank:true,externalRequests:external.length,fixtureUnchanged:true};
   });
-  if(movie)await flow('search-real-title',async()=>{await page.goto(input.origin+'/search',{waitUntil:'domcontentloaded'});await page.getByRole('searchbox').first().fill(movie);await page.locator('[data-card-kind]').first().waitFor();return {visibleCards:await page.locator('[data-card-kind]').count()};});
+  if(movie)await flow('search-real-title',async()=>{await page.goto(input.origin+'/search',{waitUntil:'domcontentloaded'});await page.getByRole('searchbox').first().fill(movie);await page.getByRole('heading',{name:movie,exact:true}).first().waitFor();return {realTitleResult:true};});
   await flow('settings-open',async()=>{await page.goto(input.origin+'/settings',{waitUntil:'domcontentloaded'});await page.getByRole('heading').first().waitFor();});
   await flow('profile-switch',async()=>{await page.goto(input.origin+'/profiles',{waitUntil:'domcontentloaded'});await page.getByRole('button').filter({hasText:input.reviewProfile}).first().click();await page.locator('[data-home-document]').waitFor();});
   await flow('sign-out',async()=>{await home();const menu=page.getByRole('button',{name:/^Switch profile or server(?:,|$)|, account menu$/});await menu.click();await page.getByRole('menuitem',{name:/^Sign out of /}).click();await page.locator('input[name="password"]').waitFor();if(await page.locator('input[name="password"]').inputValue())throw Error();});
