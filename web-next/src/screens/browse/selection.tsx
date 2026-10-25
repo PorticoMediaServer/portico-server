@@ -115,13 +115,18 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {visible: Visi
   const current = useSyncExternalStore(playSelection.subscribe, playSelection.getSnapshot, playSelection.getSnapshot);
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || event.altKey || event.ctrlKey || event.metaKey) return;
+      const escape = event.key === 'Escape' && !event.ctrlKey && !event.metaKey;
+      const selectLoaded = (event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === 'a';
+      if ((!escape && !selectLoaded) || event.defaultPrevented || event.isComposing || event.altKey) return;
       const target = event.target;
       if (target instanceof Element && target.closest('input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="slider"],[role="dialog"],[role="alertdialog"],[role="menu"]')) return;
       const value = playSelection.getSnapshot();
-      if (value.phase !== 'ready' || !value.selection?.active) return;
-      event.preventDefault();
-      try {playSelection.clear();} catch (error) {reportError(error);}
+      if (value.phase !== 'ready' || (escape ? !value.selection?.active : !value.rows.length)) return;
+      try {
+        if (escape) playSelection.clear();
+        else {const result = playSelection.selectLoaded(); if (!result.ok) return;}
+        event.preventDefault();
+      } catch (error) {reportError(error);}
     };
     document.addEventListener('keydown', key);
     return () => document.removeEventListener('keydown', key);
