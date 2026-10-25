@@ -8689,3 +8689,27 @@ CREATE TRIGGER credit_source_publications_no_replace BEFORE INSERT ON credit_sou
  BEGIN SELECT RAISE(ABORT,'credit source publication already exists'); END;
 CREATE TRIGGER credit_source_rows_no_replace BEFORE INSERT ON credit_source_rows WHEN EXISTS(SELECT 1 FROM credit_source_rows WHERE source_row_id=NEW.source_row_id)
  BEGIN SELECT RAISE(ABORT,'credit source row already exists'); END;
+
+-- Root §23: an explicit Send app log is a closed, code-only journal, separate from
+-- the server-reference feedback diagnostics. Only the receiving server's owner reads it.
+CREATE TABLE app_reports(
+ id TEXT PRIMARY KEY,
+ authority TEXT NOT NULL,
+ account_id TEXT NOT NULL,
+ profile_id TEXT NOT NULL,
+ device_id TEXT NOT NULL,
+ created_ms INTEGER NOT NULL,
+ expires_ms INTEGER NOT NULL,
+ entry_count INTEGER NOT NULL
+);
+CREATE TABLE app_report_entries(
+ report_id TEXT NOT NULL,
+ position INTEGER NOT NULL,
+ at_ms INTEGER NOT NULL,
+ level TEXT NOT NULL CHECK(level IN ('info','warn','error')),
+ code TEXT NOT NULL,
+ PRIMARY KEY(report_id,position),
+ FOREIGN KEY(report_id) REFERENCES app_reports(id) ON DELETE CASCADE
+);
+CREATE INDEX app_reports_receipt ON app_reports(authority,created_ms);
+CREATE INDEX app_report_entries_report ON app_report_entries(report_id);
