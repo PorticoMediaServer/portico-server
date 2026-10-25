@@ -291,12 +291,23 @@ func (g *Gateway) fetch(ctx context.Context, locator, rng string) (*remotemedia.
 		return nil, nil, ErrUnavailable
 	}
 	if r.StatusCode != 200 && r.StatusCode != 206 || (r.Header.Get("Content-Encoding") != "" && r.Header.Get("Content-Encoding") != "identity") {
+		var refused error = ErrFormat
+		advice := retryAfter(r.Header.Get("Retry-After"), g.retryWindow())
+		switch r.StatusCode {
+		case http.StatusRequestTimeout, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+			refused = &retryableInput{after: advice}
+		case http.StatusTooManyRequests:
+			// A rate refusal is replayed only after an actual bounded supplier hint.
+			if advice > 0 {
+				refused = &retryableInput{after: advice}
+			}
+		}
 		r.Body.Close()
 		c.Close()
 		g.mu.Lock()
 		delete(g.clients, c)
 		g.mu.Unlock()
-		return nil, nil, ErrFormat
+		return nil, nil, refused
 	}
 	g.mu.Lock()
 	g.bodies[r.Body] = true

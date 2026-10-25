@@ -124,6 +124,7 @@ func (g *Gateway) openRetry(tsOnly bool) (*remotemedia.Client, *http.Response, *
 		} else {
 			delay = min(5*time.Second, delay*2)
 		}
+		delay = retryDelay(err, delay)
 	}
 	if g.ctx.Err() != nil {
 		return nil, nil, nil, ErrUnavailable

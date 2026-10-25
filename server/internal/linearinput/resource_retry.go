@@ -50,7 +50,7 @@ func (g *Gateway) resourceData(res resource, rng string) ([]byte, string, string
 		if work.Err() != nil {
 			break
 		}
-		timer := time.NewTimer(delay)
+		timer := time.NewTimer(retryDelay(err, delay))
 		select {
 		case <-work.Done():
 			timer.Stop()
