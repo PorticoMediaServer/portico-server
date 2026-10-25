@@ -13,8 +13,8 @@ export function recordingAllowed(owner: RecordingOwner, grants: readonly Recordi
   if (exact) return exact.enabled;
   return grants.some(g => g.enabled && g.inheritProfiles && g.owner.authority === owner.authority && g.owner.accountId === owner.accountId);
 }
-export function recordingSeries(guide: ChannelGuide): RecordingSeries[] {
-  return guide.channels.flatMap(c => c.provenance !== 'live-source' ? [] : c.programmes.filter(p => p.seriesId).map(p => ({
+export function recordingSeries(guide: ChannelGuide, includeTitleMatches = false): RecordingSeries[] {
+  return guide.channels.flatMap(c => c.provenance !== 'live-source' ? [] : c.programmes.filter(p => p.seriesId || includeTitleMatches && p.title.trim()).map(p => ({
     key: JSON.stringify([c.sourceId, c.id, c.generation, p.id]), title: p.title, channelName: c.name, startsAt: p.start, seriesId: p.seriesId,
     anchor: {sourceId: c.sourceId, channelId: c.id, generation: c.generation, programmeId: p.id}, recordAvailable: c.recordAvailable, newEvidence: p.newEvidence,
   })));
@@ -50,7 +50,7 @@ type RuleDraft = {id?: string; revision?: number; owner: RecordingOwner; anchor?
 export function recordingRulePayload(draft: RuleDraft, grants: readonly RecordingGrant[], operationId: string) {
   owner(draft.owner);
   if (!recordingAllowed(draft.owner, grants)) throw new Error('Allow this profile to record before saving its rule.');
-  if (draft.kind !== 'series' || !draft.name.trim() || !draft.match || !draft.sourceId) throw new Error('Choose a series from the guide.');
+  if (!['series', 'title'].includes(draft.kind) || !draft.name.trim() || !draft.match || !draft.sourceId) throw new Error('Choose a series from the guide.');
   if (!draft.id && (!draft.anchor?.programmeId || !draft.anchor.channelId || !draft.anchor.generation || draft.anchor.sourceId !== draft.sourceId)) throw new Error('Choose a program from the current guide.');
-  return {expectedRevision: draft.revision ?? 0, operationId, owner: draft.owner, ...(draft.anchor ? {anchor: draft.anchor} : {}), kind: 'series', name: draft.name.trim(), match: draft.match, sourceId: draft.sourceId, enabled: draft.enabled, options: draft.options};
+  return {expectedRevision: draft.revision ?? 0, operationId, owner: draft.owner, ...(draft.anchor ? {anchor: draft.anchor} : {}), kind: draft.kind, name: draft.name.trim(), match: draft.match, sourceId: draft.sourceId, enabled: draft.enabled, options: draft.options};
 }

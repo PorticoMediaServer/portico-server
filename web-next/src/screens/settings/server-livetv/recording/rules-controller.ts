@@ -24,7 +24,7 @@ function parseRule(raw: unknown): OwnerRule {
       keepPolicy: keep ? Object.freeze({mode: keep.mode as Keep['mode'], keepCount: num(keep.keepCount, 0, 1000), keepDays: num(keep.keepDays, 0, 3650), keepUntilWatched: flag(keep.keepUntilWatched)}) : null,
       newEpisodesOnly: flag(o.newEpisodesOnly), priority: num(o.priority, -100, 100), folderTemplate: text(o.folderTemplate, 400)})});
 }
-export const needsRuleOwner = (rule: OwnerRule) => rule.status === 'needs-owner-and-guide-selection' || !rule.owner.accountId || !rule.owner.profileId || rule.kind !== 'series';
+export const needsRuleOwner = (rule: OwnerRule) => rule.status === 'needs-owner-and-guide-selection' || !rule.owner.accountId || !rule.owner.profileId || !['series', 'title'].includes(rule.kind);
 const empty: State = Object.freeze({loading: false, saving: false, guideLoading: false, rules: Object.freeze([]), cursor: '', series: Object.freeze([]), guideCursor: '', day: '', sourceId: ''});
 export class RecordingRulesController extends OwnerStore<State> {
   private ids = new Map<string, string>();
@@ -53,7 +53,7 @@ export class RecordingRulesController extends OwnerStore<State> {
   choose(expected: RuleDraft, series: RecordingSeries) {
     if (this.snapshot.draft !== expected) return;
     if (!this.isActive() || this.snapshot.saving || this.pending || !this.snapshot.draft || !this.snapshot.series.includes(series)) return;
-    this.publish({...this.snapshot, draft: {...this.snapshot.draft, name: this.snapshot.draft.name || series.title, match: series.seriesId, sourceId: series.anchor.sourceId, anchor: series.anchor, enabled: series.recordAvailable, options: {...this.snapshot.draft.options, newEpisodesOnly: false}}});
+    this.publish({...this.snapshot, draft: {...this.snapshot.draft, name: this.snapshot.draft.name || series.title, kind: series.seriesId ? 'series' : 'title', match: series.seriesId || series.title, sourceId: series.anchor.sourceId, anchor: series.anchor, enabled: series.recordAvailable, options: {...this.snapshot.draft.options, newEpisodesOnly: false}}});
   }
   async guide(day: string, sourceId: string, cursor = '') {
     if (!this.isActive() || this.snapshot.saving || this.pending || !this.snapshot.draft || this.snapshot.draft.id) return;
@@ -64,7 +64,7 @@ export class RecordingRulesController extends OwnerStore<State> {
       const params = new URLSearchParams({kind: route.kind, start: route.start, end: route.end, timezone: route.timezone, search: route.search, sourceId: route.sourceId, limit: '30', cursor});
       const raw = await this.api.request('/v1/guide?' + params, 'GET', undefined, attempt.abort.signal);if (!this.valid(attempt)) return;
       const guide = parseChannelGuide(raw, this.serverId, route);
-      this.publish({...this.snapshot, guideLoading: false, series: Object.freeze(recordingSeries(guide)), guideCursor: guide.nextCursor});
+      this.publish({...this.snapshot, guideLoading: false, series: Object.freeze(recordingSeries(guide, true)), guideCursor: guide.nextCursor});
     } catch (error) {if (this.valid(attempt)) this.fail(error, {...this.snapshot, guideLoading: false, error: errorFacts(error)});}
   }
   private id(key: string) {let id = this.ids.get(key);if (!id) {if (this.ids.size >= 256) throw {code: 'server_busy'};id = channelRequestID();this.ids.set(key, id);}return id;}
@@ -81,7 +81,7 @@ export class RecordingRulesController extends OwnerStore<State> {
       if (!this.valid(attempt)) return false;
       const raw = await this.api.request(request.path, request.method, request.body, attempt.abort.signal);if (!this.valid(attempt)) return false;
       const saved = parseRule(envelope(raw, this.serverId).result);
-      if (draft.id && saved.id !== draft.id || recordingOwnerKey(saved.owner) !== recordingOwnerKey(draft.owner) || saved.match !== draft.match || saved.sourceId !== draft.sourceId || saved.name !== draft.name.trim() || saved.enabled !== draft.enabled || saved.kind !== 'series' || saved.revision <= (draft.revision ?? 0) || JSON.stringify(saved.options) !== JSON.stringify(draft.options)) throw {code: 'invalid_response'};
+      if (draft.id && saved.id !== draft.id || recordingOwnerKey(saved.owner) !== recordingOwnerKey(draft.owner) || saved.match !== draft.match || saved.sourceId !== draft.sourceId || saved.name !== draft.name.trim() || saved.enabled !== draft.enabled || saved.kind !== draft.kind || saved.revision <= (draft.revision ?? 0) || JSON.stringify(saved.options) !== JSON.stringify(draft.options)) throw {code: 'invalid_response'};
       this.pending = undefined;this.publish({...this.snapshot, saving: false, draft: undefined, uncertain: false, series: [], rules: [saved, ...this.snapshot.rules.filter(row => row.id !== saved.id)]});return this.valid(attempt);
     } catch (error) {if (this.valid(attempt)) this.fail(error, {...this.snapshot, saving: false, uncertain: !!this.pending, error: errorFacts(error)});return false;}
   }
