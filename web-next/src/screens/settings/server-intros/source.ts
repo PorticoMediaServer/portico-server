@@ -1,6 +1,7 @@
 import {defaultI18n} from '@i18n';
+import {ApiError} from '@core/index.ts';
 import {
-  approveSegments, editSegmentMarker, readSegmentStatus, readSegmentTitle, readSegmentTitles, redetectSegments,
+  approveSegments, editSegmentMarker, readSegmentStatus, readSegmentTitle, readSegmentTitles, redetectSegments, segmentKinds, segmentRequestId,
   type SegmentApi, type SegmentKind, type SegmentReviewEntry, type SegmentReviewMarker, type SegmentStatus, type SegmentTitlePage, type SegmentTitleReview, type SegmentTitleSummary,
 } from '@core/segment-review.ts';
 
@@ -14,8 +15,17 @@ export type SegmentIntrosReads = Readonly<{
   redetect: (id: string) => Promise<number>;
   approveMarker: (entry: SegmentReviewEntry, marker: SegmentReviewMarker) => Promise<unknown>;
   dismissMarker: (entry: SegmentReviewEntry, marker: SegmentReviewMarker) => Promise<unknown>;
+  createMarker: (entry: SegmentReviewEntry, kind: SegmentKind, startUS: string, endUS: string, requestId: string) => Promise<unknown>;
   editMarker: (entry: SegmentReviewEntry, marker: SegmentReviewMarker, kind: SegmentKind, startUS: string, endUS: string) => Promise<unknown>;
 }>;
+
+const definiteMarkerRefusal = new Set(['invalid_request', 'unauthorized', 'not_permitted', 'not_found']);
+/** Strict positive microsecond field. */
+const markerMicros = (value: string): number | undefined => {
+  if (!/^(0|[1-9][0-9]{0,18})$/.test(value)) return undefined;
+  const micros = Number(value);
+  return Number.isSafeInteger(micros) ? micros : undefined;
+};
 
 export function segmentIntrosReads(api: SegmentApi): SegmentIntrosReads {
   return {
@@ -26,6 +36,7 @@ export function segmentIntrosReads(api: SegmentApi): SegmentIntrosReads {
     redetect: id => redetectSegments(api, id),
     approveMarker: (entry, marker) => editSegmentMarker(api, entry, {action: 'approve', markerId: marker.id}),
     dismissMarker: (entry, marker) => editSegmentMarker(api, entry, {action: 'dismiss', markerId: marker.id}),
+    createMarker: (entry, kind, startUS, endUS, requestId) => editSegmentMarker(api, entry, {action: 'create', kind, startUS, endUS}, requestId),
     editMarker: (entry, marker, kind, startUS, endUS) => editSegmentMarker(api, entry, {action: 'edit', markerId: marker.id, kind, startUS, endUS}),
   };
 }
@@ -256,6 +267,43 @@ export class SegmentIntrosSource {
       if (!this.current() || generation !== this.titleGeneration) return;
       this.publish({actionError: error});
       this.report(error);
+    } finally {
+      if (this.current() && generation === this.titleGeneration) this.publish({busy: undefined});
+    }
+  };
+  private createPending?: Readonly<{entry: SegmentReviewEntry; kind: SegmentKind; startUS: string; endUS: string; requestId: string}>;
+  createMarker = async (entry: SegmentReviewEntry, kind: SegmentKind, startUS: string, endUS: string): Promise<boolean> => {
+    if (!this.current() || this.state.busy) return false;
+    const snapshot = this.state, title = snapshot.title;
+    if (!title || title.id !== snapshot.titleId) return false;
+    // The exact captured row must still be this open title's row.
+    if (!title.seasons.some(season => season.entries.some(value => value === entry))) return false;
+    if (!segmentKinds.includes(kind)) return false;
+    const start = markerMicros(startUS), end = markerMicros(endUS), duration = markerMicros(entry.durationUS);
+    if (start === undefined || end === undefined || duration === undefined || start < 0 || start >= end || end > duration) return false;
+    const generation = this.titleGeneration;
+    const previous = this.createPending;
+    const sameDraft = !!previous && previous.entry.itemId === entry.itemId && previous.entry.sourceId === entry.sourceId && previous.entry.sourceRevision === entry.sourceRevision
+      && previous.entry.mappingRevision === entry.mappingRevision && previous.entry.markerRevision === entry.markerRevision
+      && previous.kind === kind && previous.startUS === startUS && previous.endUS === endUS;
+    // An unknown result must be resolved with the original request; a different
+    // draft cannot start a second create over it.
+    if (previous && !sameDraft) return false;
+    const pending = sameDraft && previous ? previous : {entry, kind, startUS, endUS, requestId: segmentRequestId()};
+    this.createPending = pending;
+    this.publish({busy: 'marker', note: undefined, actionError: undefined});
+    try {
+      await this.reads.createMarker(pending.entry, kind, startUS, endUS, pending.requestId);
+      if (!this.current() || generation !== this.titleGeneration) return false;
+      if (this.createPending === pending) this.createPending = undefined;
+      await this.reloadTitle(generation);
+      return this.current() && generation === this.titleGeneration;
+    } catch (error) {
+      if (!this.current() || generation !== this.titleGeneration) return false;
+      if (error instanceof ApiError && definiteMarkerRefusal.has(error.code) && this.createPending === pending) this.createPending = undefined;
+      this.publish({actionError: error});
+      this.report(error);
+      return false;
     } finally {
       if (this.current() && generation === this.titleGeneration) this.publish({busy: undefined});
     }

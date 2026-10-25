@@ -4,7 +4,9 @@ import type {FactPart} from '@core/presentation/kit-model';
 import type {SegmentKind, SegmentReviewEntry, SegmentReviewMarker, SegmentTitleReview, SegmentTitleSummary} from '@core/segment-review.ts';
 import {Button} from '../../../kit/controls';
 import {Icon} from '../../../kit/Icon';
-import {SegmentWindows, StatTiles, type SegmentEdit, type SegmentMark} from '../../../kit/shell';
+import {CreateMarkerSheet, SegmentWindows, StatTiles, type SegmentEdit, type SegmentMark} from '../../../kit/shell';
+import {Menu} from '../../../kit/overlays/Popover';
+import {usePhone} from '../../../kit/overlays/shared';
 import type {SegmentIntrosSnapshot, SegmentIntrosSource} from './source';
 import styles from './server-intros.module.css';
 
@@ -34,12 +36,25 @@ const titleLine = (title: SegmentTitleSummary) => [
 /** One opened marker editor. The token makes a reopened marker in the same
  * episode a different opening; Review and Episode carry this exact shape. */
 type EditOpening = Readonly<{opening: number; entryId: string; marker: SegmentReviewMarker; start: number; end: number; kind: SegmentKind}>;
+/** One Add a marker opening: the exact row and library captured when the menu
+ * opened. A replacement row or context retires it. */
+type CreateOpening = Readonly<{opening: number; entry: SegmentReviewEntry; libraryId: string}>;
+type CreateOp = Readonly<{opening: CreateOpening; source: SegmentIntrosSource}>;
 
 export function ServerIntros({source, modeRows, onPreview}: {source: SegmentIntrosSource; modeRows: ReactNode; onPreview: (libraryId: string, itemId: string, start: number) => void}) {
   const snapshot = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
   const opening = useRef(0);
   const committed = useRef<EditOpening | undefined>(undefined);
   const [edit, setEdit] = useState<EditOpening>();
+  const [creating, setCreating] = useState<CreateOpening>();
+  const createCommitted = useRef<CreateOpening | undefined>(undefined);
+  const createOp = useRef<CreateOp | undefined>(undefined);
+  useLayoutEffect(() => () => {createOp.current = undefined;}, []);
+  const createOpening = useRef(0);
+  useLayoutEffect(() => {
+    createCommitted.current = creating;
+    return () => {if (createCommitted.current === creating) createCommitted.current = undefined;};
+  }, [creating]);
   useLayoutEffect(() => {
     committed.current = edit;
     return () => {if (committed.current === edit) committed.current = undefined;};
@@ -50,7 +65,14 @@ export function ServerIntros({source, modeRows, onPreview}: {source: SegmentIntr
     const first = snapshot.status?.libraries[0];
     if (first && !snapshot.libraryId) void source.openLibrary(first.libraryId);
   }, [source, snapshot.status, snapshot.libraryId]);
-  useLayoutEffect(() => {committed.current = undefined;setEdit(undefined);}, [source, snapshot.libraryId, snapshot.titleId, snapshot.season]);
+  useLayoutEffect(() => {committed.current = undefined;setEdit(undefined);createCommitted.current = undefined;createOp.current = undefined;setCreating(undefined);}, [source, snapshot.libraryId, snapshot.titleId, snapshot.season]);
+  useLayoutEffect(() => {
+    const open = createCommitted.current;
+    if (!open) return;
+    const title = snapshot.title;
+    if (title && title.id === snapshot.titleId && title.seasons.some(season => season.entries.some(value => value === open.entry))) return;
+    createCommitted.current = undefined;setCreating(undefined);
+  }, [snapshot.title, snapshot.titleId, creating]);
   const status = snapshot.status;
   const stateText = !status ? '' : status.mode === 'off' ? t('web.segments.stateOff') : status.files.pending || status.showsWaiting || !status.catchUpComplete ? t('web.segments.stateWorking') : t('web.segments.stateDone');
   const busy = !!snapshot.busy;
@@ -108,20 +130,46 @@ export function ServerIntros({source, modeRows, onPreview}: {source: SegmentIntr
             onCancel={token => {const open = committed.current;if (!open || open.opening !== token) return;committed.current = undefined;setEdit(undefined);}}
             onApprove={(entry, marker) => {void source.approveMarker(entry, marker);}}
             onDismiss={(entry, marker) => {void source.dismissMarker(entry, marker);}}
+            onAdd={entry => {const currentTitle = snapshot.title;if (!currentTitle || currentTitle.id !== snapshot.titleId) return;const open: CreateOpening = {opening: ++createOpening.current, entry, libraryId: currentTitle.libraryId};createCommitted.current = open;setCreating(open);}}
             busy={busy} onPreview={onPreview} />}
         </div>
       </div>}
     </section>
+    {creating ? <CreateMarkerSheet key={creating.opening} duration={seconds(creating.entry.durationUS)} busy={busy}
+      onCancel={() => {const open = createCommitted.current;if (!open || open.opening !== creating.opening) return;createCommitted.current = undefined;setCreating(undefined);}}
+      onSave={draft => {
+        const open = createCommitted.current;
+        if (!open || open.opening !== creating.opening || createOp.current) return;
+        const currentTitle = snapshot.title;
+        if (!currentTitle || currentTitle.id !== snapshot.titleId || !currentTitle.seasons.some(season => season.entries.some(value => value === open.entry))) return;
+        const op: CreateOp = {opening: open, source};
+        createOp.current = op;
+        void source.createMarker(open.entry, draft.kind, draft.startUS, draft.endUS).then(saved => {
+          if (createOp.current !== op) return;
+          createOp.current = undefined;
+          if (!saved || createCommitted.current !== open) return;
+          createCommitted.current = undefined;setCreating(undefined);
+        }).catch(() => {if (createOp.current === op) createOp.current = undefined;});
+      }}
+      onPreviewAt={start => {
+        const open = createCommitted.current;
+        if (!open || open.opening !== creating.opening) return;
+        const currentTitle = snapshot.title;
+        if (!currentTitle || currentTitle.id !== snapshot.titleId || !currentTitle.seasons.some(season => season.entries.some(value => value === open.entry))) return;
+        const duration = seconds(open.entry.durationUS);
+        if (!Number.isFinite(start) || duration <= 0 || start < 0 || start > duration) return;
+        onPreview(open.libraryId, open.entry.itemId, start);
+      }} /> : null}
   </>;
 }
 
-function Review({title, season, entries, snapshot, edit, onSeason, onApproveAll, onDetect, onRetryTitle, onEdit, onChange, onSave, onCancel, onApprove, onDismiss, busy, onPreview}: {
+function Review({title, season, entries, snapshot, edit, onSeason, onApproveAll, onDetect, onRetryTitle, onEdit, onChange, onSave, onCancel, onApprove, onDismiss, onAdd, busy, onPreview}: {
   title: SegmentTitleReview; season?: number; entries: readonly SegmentReviewEntry[]; snapshot: SegmentIntrosSnapshot;
     onSeason: (value: number) => void; onApproveAll: () => void; onDetect: () => void; onRetryTitle: () => void;
   onEdit: (entry: SegmentReviewEntry, marker: SegmentReviewMarker) => void;
   onChange: (entry: SegmentReviewEntry, value: SegmentEdit) => void;
   onSave: (entry: SegmentReviewEntry, draft: SegmentEdit) => void; onCancel: (opening: number) => void;
-  onApprove: (entry: SegmentReviewEntry, marker: SegmentReviewMarker) => void; onDismiss: (entry: SegmentReviewEntry, marker: SegmentReviewMarker) => void; busy: boolean; edit?: EditOpening;
+  onApprove: (entry: SegmentReviewEntry, marker: SegmentReviewMarker) => void; onDismiss: (entry: SegmentReviewEntry, marker: SegmentReviewMarker) => void; onAdd: (entry: SegmentReviewEntry) => void; busy: boolean; edit?: EditOpening;
   onPreview: (libraryId: string, itemId: string, start: number) => void;
 }) {
   return <>
@@ -143,19 +191,57 @@ function Review({title, season, entries, snapshot, edit, onSeason, onApproveAll,
     {snapshot.titleError ? <ReviewNotice tone="bad" onRetry={onRetryTitle}>{t('web.segments.error')}</ReviewNotice> : null}
     {!snapshot.titleLoading && !entries.length ? <p className={styles.empty}>{t('web.segments.entryState', {state: 'complete'})}</p> : null}
     {entries.map(entry => <Episode key={entry.itemId} entry={entry} title={title} edit={edit?.entryId === entry.itemId ? edit : undefined} busy={busy}
-      onEdit={onEdit} onChange={onChange} onSave={onSave} onCancel={onCancel} onApprove={onApprove} onDismiss={onDismiss} onPreview={onPreview} />)}
+      onEdit={onEdit} onChange={onChange} onSave={onSave} onCancel={onCancel} onApprove={onApprove} onDismiss={onDismiss} onAdd={onAdd} onPreview={onPreview} />)}
   </>;
 }
 
-function Episode({entry, title, edit, busy, onEdit, onChange, onSave, onCancel, onApprove, onDismiss, onPreview}: {
+/** The episode's own menu captures the exact row and Add callback it opened
+ * with; a replacement retires it in layout, and Add claims synchronously. */
+function EpisodeMenu({entry, title, onAdd, t = defaultI18n.t}: Readonly<{
+  entry: SegmentReviewEntry; title: string; onAdd: (entry: SegmentReviewEntry) => void; t?: typeof defaultI18n.t;
+}>) {
+  type Admission = Readonly<{entry: SegmentReviewEntry; onAdd: (entry: SegmentReviewEntry) => void}>;
+  const admitted = useRef<Admission | undefined>(undefined);
+  const [admission, setAdmission] = useState<Admission | undefined>(undefined);
+  const live = useRef<{admission: Admission} | undefined>(undefined);
+  const [opening, setOpening] = useState<{admission: Admission} | undefined>(undefined);
+  useLayoutEffect(() => {
+    const current = admitted.current;
+    if (current && current.entry === entry && current.onAdd === onAdd) return;
+    const next: Admission = {entry, onAdd};
+    admitted.current = next;setAdmission(next);
+    if (live.current && live.current.admission !== next) {live.current = undefined;setOpening(undefined);}
+    return () => {
+      if (admitted.current === next) admitted.current = undefined;
+      if (live.current?.admission === next) {live.current = undefined;setOpening(undefined);}
+    };
+  }, [entry, onAdd]);
+  const retire = (expected: {admission: Admission}) => {if (live.current !== expected) return;live.current = undefined;setOpening(undefined);};
+  const changeOpen = (next: boolean) => {
+    if (!next) {if (opening) retire(opening);return;}
+    if (opening || live.current) return;
+    if (!admission || admitted.current !== admission) return;
+    const lease = {admission};live.current = lease;setOpening(lease);
+  };
+  const run = () => {
+    const current = live.current;
+    if (!current || opening !== current) return;
+    live.current = undefined;setOpening(undefined);
+    current.admission.onAdd(current.admission.entry);
+  };
+  return <Menu open={opening !== undefined} onOpenChange={changeOpen} title={title} trigger={<Button variant="icon" icon="i-more" iconOnly aria-label={t('next.shell.markerMenu')} />}
+    items={[{id: 'add', label: t('web.segments.addTitle'), onSelect: run}]} />;
+}
+
+function Episode({entry, title, edit, busy, onEdit, onChange, onSave, onCancel, onApprove, onDismiss, onAdd, onPreview}: {
   entry: SegmentReviewEntry; title: SegmentTitleReview; edit?: EditOpening; busy: boolean;
   onEdit: (entry: SegmentReviewEntry, marker: SegmentReviewMarker) => void;
   onChange: (entry: SegmentReviewEntry, value: SegmentEdit) => void;
   onSave: (entry: SegmentReviewEntry, draft: SegmentEdit) => void; onCancel: (opening: number) => void;
-  onApprove: (entry: SegmentReviewEntry, marker: SegmentReviewMarker) => void; onDismiss: (entry: SegmentReviewEntry, marker: SegmentReviewMarker) => void;
+  onApprove: (entry: SegmentReviewEntry, marker: SegmentReviewMarker) => void; onDismiss: (entry: SegmentReviewEntry, marker: SegmentReviewMarker) => void; onAdd: (entry: SegmentReviewEntry) => void;
   onPreview: (libraryId: string, itemId: string, start: number) => void;
 }) {
-  const duration = seconds(entry.durationUS);
+  const duration = seconds(entry.durationUS), phone = usePhone();
   const opening = entry.markers.filter(marker => isOpening(marker.kind)).map(mark);
   const ending = entry.markers.filter(marker => !isOpening(marker.kind)).map(mark);
   const todo = entry.markers.filter(waiting).length;
@@ -165,6 +251,7 @@ function Episode({entry, title, edit, busy, onEdit, onChange, onSave, onCancel, 
       <b>{entry.title || t('web.segments.untitled')}</b>
       {duration > 0 && <span className={styles.duration}>{t('web.segments.durationMinutes', {count: Math.round(duration / 60)})}</span>}
       <span className={styles.state} data-todo={todo > 0 || undefined}>{todo > 0 ? t('web.segments.titleSuggested', {count: todo}) : t('web.segments.entryState', {state: 'complete'})}</span>
+      {phone ? <EpisodeMenu entry={entry} title={entry.title || t('web.segments.untitled')} onAdd={onAdd} t={t} /> : null}
     </header>
     {duration > 0 && (opening.length || ending.length)
       ? <SegmentWindows duration={duration} opening={opening} ending={ending} edit={edit ? {id: edit.marker.id, opening: edit.opening, start: edit.start, end: edit.end, kind: edit.kind} : undefined}

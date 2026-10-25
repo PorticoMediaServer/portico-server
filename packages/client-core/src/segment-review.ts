@@ -125,14 +125,14 @@ export const redetectSegments = async (api: SegmentApi, id: string) => changed(a
 
 export type SegmentEdit = Readonly<{action: 'create' | 'edit' | 'approve' | 'dismiss'; markerId?: string; kind?: SegmentKind; startUS?: string; endUS?: string}>;
 let sequence = 0;
-const requestID = (): string => globalThis.crypto?.randomUUID?.() ?? `segment-${Date.now()}-${++sequence}-${Math.random().toString(36).slice(2)}`;
+export const segmentRequestId = (): string => globalThis.crypto?.randomUUID?.() ?? `segment-${Date.now()}-${++sequence}-${Math.random().toString(36).slice(2)}`;
 
 /** One marker change on one entry, fenced to the source and marker revision the review read. */
-export function editSegmentMarker(api: SegmentApi, entry: SegmentReviewEntry, edit: SegmentEdit): Promise<unknown> {
+export function editSegmentMarker(api: SegmentApi, entry: SegmentReviewEntry, edit: SegmentEdit, requestId: string = segmentRequestId()): Promise<unknown> {
   if (!entry.sourceId || !entry.sourceRevision || !entry.mappingRevision) return Promise.reject(new Error(unreadableServerResponse));
   return api.request(routePath('post_items_id_analysis_markers', {id: entry.itemId}), 'POST', {
     sourceId: entry.sourceId, sourceRevision: entry.sourceRevision, mappingRevision: entry.mappingRevision, sessionId: '', generation: 0,
-    expectedRevision: entry.markerRevision, requestId: requestID(), action: edit.action, markerId: edit.markerId ?? '', kind: edit.kind ?? '', title: '', startUS: edit.startUS ?? '', endUS: edit.endUS ?? '',
+    expectedRevision: entry.markerRevision, requestId, action: edit.action, markerId: edit.markerId ?? '', kind: edit.kind ?? '', title: '', startUS: edit.startUS ?? '', endUS: edit.endUS ?? '',
   });
 }
 
