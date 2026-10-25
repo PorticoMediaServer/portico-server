@@ -408952,6 +408952,14 @@
           },
           {
             "in": "query",
+            "name": "episodeDirection",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "playState",
             "required": false,
             "schema": {

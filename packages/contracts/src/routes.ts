@@ -5925,6 +5925,7 @@ export const routes = [
     "cost": "page_sized",
     "bodyLimit": 0,
     "query": [
+      "episodeDirection",
       "playState",
       "cursor",
       "episodeId",
