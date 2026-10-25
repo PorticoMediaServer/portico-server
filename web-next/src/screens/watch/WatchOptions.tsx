@@ -9,6 +9,10 @@ import {phoneOptionRows,type WatchPanelModel,type WatchRadioChoice} from './pane
 import styles from './panels.module.css';
 
 type Section = 'subtitles' | 'audio' | 'quality' | 'speed';
+const SUBTITLE_SIZES = ['small','medium','large','extra-large'] as const;
+const SUBTITLE_BACKGROUNDS = ['none','translucent','opaque'] as const;
+const SIZE_LABEL = {small:'settings.subtitleSize.small',medium:'settings.subtitleSize.medium',large:'settings.subtitleSize.large','extra-large':'settings.subtitleSize.extra-large'} as const;
+const BACKGROUND_LABEL = {none:'settings.subtitleBackground.none',translucent:'settings.subtitleBackground.translucent',opaque:'settings.subtitleBackground.opaque'} as const;
 const sectionOf = (panel: string | null): Section | undefined => panel === 'subtitles-audio' ? undefined : panel === 'subtitles' || panel === 'audio' || panel === 'quality' || panel === 'speed' ? panel : undefined;
 
 function RadioRows({rows,select,reportError,label}:{rows:readonly WatchRadioChoice[];select(id:string):void|Promise<void>;reportError(error:unknown):void;label:string}){
@@ -98,6 +102,17 @@ export function WatchOptions({model,context,i18n,reportError,openSettings,info}:
   {(model.audio.length>0||model.quality.length>0)&&<div>
    {model.audio.length>0&&<div data-section="audio"><TrackChoices title={t('player.opt.audio')} choices={model.audio} layout={context.layout} onSelect={model.selectAudio} reportError={reportError} t={t}/>{model.audioNotes.length>0&&<div className={styles.optionFoot}>{model.audioNotes.map(note=><span key={note}>{note}</span>)}</div>}</div>}
    {model.quality.length>0&&<div data-section="quality"><RadioColumn title={t('player.opt.quality')} rows={model.quality} select={model.selectQuality} reportError={reportError}/>{model.qualityNotes.length>0&&<div className={styles.optionFoot}>{model.qualityNotes.map(note=><span key={note}>{note}</span>)}</div>}</div>}
+  </div>}
+  {model.subtitleStyle&&<div data-section="style" className={styles.column}>
+   <h3>{t('player.opt.subtitleStyle')}</h3>
+   <p className={styles.styleLabel}>{t('settings.row.subtitleSize')}</p>
+   <Segmented className={styles.speeds} aria-label={t('settings.row.subtitleSize')} value={model.subtitleStyle.size}
+    items={SUBTITLE_SIZES.map(value=>({value,label:t(SIZE_LABEL[value])}))}
+    onValueChange={value=>{const next=SUBTITLE_SIZES.find(size=>size===value);if(next)model.subtitleStyle?.set({size:next});}}/>
+   <p className={styles.styleLabel}>{t('settings.row.subtitleBackground')}</p>
+   <Segmented className={styles.speeds} aria-label={t('settings.row.subtitleBackground')} value={model.subtitleStyle.background}
+    items={SUBTITLE_BACKGROUNDS.map(value=>({value,label:t(BACKGROUND_LABEL[value])}))}
+    onValueChange={value=>{const next=SUBTITLE_BACKGROUNDS.find(background=>background===value);if(next)model.subtitleStyle?.set({background:next});}}/>
   </div>}
   {model.speed.length>0&&<div data-section="speed" className={styles.column}>
    <h3>{t('player.opt.speed')}<span>{model.speed.find(row=>row.selected)?.label}</span></h3>

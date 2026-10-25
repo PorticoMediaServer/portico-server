@@ -55,6 +55,7 @@
 .timingStep button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
 .timingStep b { min-width: 54px; text-align: center; font-variant-numeric: tabular-nums; font-weight: var(--type-body-strong-weight); }
 .additions { margin-top: 6px; }
+.styleLabel { margin: 10px 12px 4px; font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
 .searchRow { margin: 10px 12px 2px; color: var(--color-text-tertiary); }
 .searchLabel { display: flex; align-items: center; gap: 10px; font-size: var(--type-body-size); font-weight: var(--type-body-strong-weight); }
 .searchWhy { margin: 4px 0 0 28px; font-size: var(--type-chip-size); line-height: calc(var(--type-chip-size) * 1.45); }

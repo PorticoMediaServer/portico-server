@@ -24,6 +24,7 @@ import {CapabilityPublisher, PlaybackOptionsClient} from '@core/playback-v1/opti
 import {audioStreamIndex, qualityChoiceOf, qualityRequest, offeredQualities, type QualityChoice} from '@core/playback-v1/choices.ts';
 import {PlayerOffersService, type PlayerOffersData} from '@core/player-offers.ts';
 import {SubtitleService, fetchSubtitleDocument, type SubtitleDocument, type SubtitleSnapshot} from '@core/subtitles.ts';
+import type {SubtitlePreferences} from '@core/preference-effects.ts';
 import type {PlaybackOptions, QueueHeader, Session} from '@core/playback-v1/types.ts';
 import type {PlaybackSubject} from '@core/presentation/kit-model/index.ts';
 import {PlaybackDock, PlaybackPolicy, PlayerSessionChoices, playbackFence, queueScope, sameFence, type DockPlayback, type DockTransition, type PlaybackFence, type PolicyCommand, type PolicyView, type QueuePlaybackFence, type ChannelPlaybackFence} from '../../../../packages/player-core/src/index.ts';
@@ -63,6 +64,8 @@ type Stack = {
   life: AbortController; offers: PlayerOffersService; optionsClient: PlaybackOptionsClient;
   offs: (() => void)[]; unmount?: () => void; subtitles?: SubtitleService; offSubtitles?: () => void;
   subtitleKey?: string; documentKey?: string; documentAbort?: AbortController; documentTimer?: unknown;
+  /** A style change made in the options panel for this playback only. */
+  subtitleStyle?: Partial<Pick<SubtitlePreferences,'size'|'background'>>;
   sessionKey?: string; metadataAbort?: AbortController; options: PlaybackOptions | null;
   offerBinding?: OfferBinding;
   itemId?: string; metadataItemId?: string; libraryId?: string; subject?: PlaybackSubject; showId?: string; seasonId?: string;
@@ -244,7 +247,7 @@ export class WebShellPlaybackRuntime {
     if (this.video) problem('playback_surface_already_mounted');
     this.video = video;
     if (this.env.subtitleSurface !== false && compatibleVideo(video) && SubtitleSurface.supported(video)) this.surface = new SubtitleSurface(video);
-    this.surface?.applyPreferences(this.source.settings.subtitlePreferences?.());
+    this.surface?.applyPreferences(this.subtitlePreferences(this.stack));
     this.bindElement(this.stack);
     const volume = () => this.sync();
     video.addEventListener('volumechange', volume);
@@ -1352,6 +1355,28 @@ export class WebShellPlaybackRuntime {
     await stack.service.changePlayback({subtitleTrackId: track.id, subtitleOffsetMs: offsetMs});
     if (this.current(stack)) this.sync();
   }
+  private subtitlePreferences(stack: Stack): SubtitlePreferences | undefined {
+    const saved = this.source.settings.subtitlePreferences?.();
+    return saved && stack.subtitleStyle ? {...saved, ...stack.subtitleStyle} : saved;
+  }
+  /** The style this playback actually draws with: the saved preferences plus any change made
+   * here. Undefined where the host supplies no preferences at all. */
+  subtitleStyle(fence: PlaybackFence): Readonly<Pick<SubtitlePreferences,'size'|'background'>> | undefined {
+    if (fence.kind !== 'queue' || !this.matches(fence)) return undefined;
+    const preferences = this.subtitlePreferences(this.stack);
+    return preferences ? Object.freeze({size: preferences.size, background: preferences.background}) : undefined;
+  }
+  /** desktop-player f3: size and background last until this playback stops. The change reaches
+   * only this stack's own surface; the saved preferences are never written. */
+  setSubtitleStyle(fence: PlaybackFence, patch: Readonly<{size?: SubtitlePreferences['size']; background?: SubtitlePreferences['background']}>): void {
+    if (fence.kind !== 'queue') problem('playback_subtitle_unavailable');
+    const stack = this.require(fence);
+    if (patch.size !== undefined && !['small','medium','large','extra-large'].includes(patch.size)) problem('playback_subtitle_unavailable');
+    if (patch.background !== undefined && !['none','translucent','opaque'].includes(patch.background)) problem('playback_subtitle_unavailable');
+    stack.subtitleStyle = Object.freeze({...stack.subtitleStyle, ...(patch.size ? {size: patch.size} : {}), ...(patch.background ? {background: patch.background} : {})});
+    this.surface?.applyPreferences(this.subtitlePreferences(stack));
+    this.sync();
+  }
   /** The server's own subtitle-provider facts for this fence's plan. Read-only: whether
    * subtitles found online can be searched at all, and the server's reason when they cannot. */
   subtitleProvider(fence: PlaybackFence): Readonly<{enabled: boolean; reason?: string}> | undefined {
@@ -1415,7 +1440,7 @@ export class WebShellPlaybackRuntime {
     else await stack.web.setEqualizer(settings);
     if (this.current(stack)) this.sync();
   }
-  refreshSettings(): void { this.assertCurrent(); this.stack.queue.listening.refreshAudiobookPreferences(); this.surface?.applyPreferences(this.source.settings.subtitlePreferences?.()); this.stack.service.adoptAudioEffectsPreference(this.source.settings.audioEffects()); this.sync(); }
+  refreshSettings(): void { this.assertCurrent(); this.stack.queue.listening.refreshAudiobookPreferences(); this.surface?.applyPreferences(this.subtitlePreferences(this.stack)); this.stack.service.adoptAudioEffectsPreference(this.source.settings.audioEffects()); this.sync(); }
 
   onAction = async (action: WebPlaybackAction): Promise<void> => {
     if (action.remote) problem('remote_playback_binding_unavailable');

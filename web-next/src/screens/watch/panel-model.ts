@@ -5,6 +5,7 @@ import {videoTrackName,videoTrackWords} from '@core/video-track-labels.ts';
 import {subtitleReason} from '@core/subtitles.ts';
 import {sameFence,type QueuePlaybackFence} from '../../../../packages/player-core/src/index.ts';
 import type {I18n} from '@i18n';
+import type {SubtitlePreferences} from '@core/preference-effects.ts';
 import type {TrackChoice} from '../../kit/media';
 import {lossSentences} from './loss-copy';
 
@@ -16,6 +17,8 @@ export type WatchPanelModel=Readonly<{
  subtitleTiming?:Readonly<{offsetSeconds:number;shift(deltaMs:number):Promise<void>}>;
  /** Draws the search row only when the server says why it cannot be used. */
  subtitleSearch?:Readonly<{reason:string}>;
+ /** The style this playback draws with; a change lasts until it stops. */
+ subtitleStyle?:Readonly<{size:SubtitlePreferences['size'];background:SubtitlePreferences['background'];set(patch:Readonly<{size?:SubtitlePreferences['size'];background?:SubtitlePreferences['background']}>):void}>;
  isCurrent():boolean;selectAudio(id:string):Promise<void>;selectSubtitle(id:string):Promise<void>;
  selectQuality(id:string):Promise<void>;selectSpeed(id:string):void;
 }>;
@@ -98,11 +101,13 @@ export function watchPanelModel(runtime:WebShellPlaybackRuntime,snapshot:WebPlay
    if(!Number.isSafeInteger(next)||Math.abs(next)>600000)throw new Error('playback_subtitle_unavailable');
    await runtime.setSubtitleOffset(fence,next);}}):undefined;
  // desktop-player f3: a search that cannot run stays visible with the server's own reason.
+ const style=matched?runtime.subtitleStyle(fence):undefined;
+ const subtitleStyle=style?Object.freeze({...style,set:(patch:Readonly<{size?:SubtitlePreferences['size'];background?:SubtitlePreferences['background']}>)=>{check();runtime.setSubtitleStyle(fence,patch);}}):undefined;
  const provider=matched?runtime.subtitleProvider(fence):undefined;
  const subtitleSearch=provider&&!provider.enabled?Object.freeze({reason:subtitleReason(provider.reason,t)}):undefined;
  let speeds:readonly number[]=[];try{speeds=runtime.speedChoices(fence);}catch{/* source changed */}
  const speed=Object.freeze(speeds.map(rate=>Object.freeze({id:String(rate),label:rate===1?t('player.opt.normalSpeed'):t('next.dock.rate',{rate}),selected:snapshot.presentation?.rate===rate,enabled:true})));
- return Object.freeze({fence,audio,subtitles:Object.freeze(subtitleRows),subtitleAdditions:Object.freeze(subtitleAdditions),quality:Object.freeze(qualityRows),speed,automatic:selected==='automatic',qualityLabel,qualityNotes,audioNotes,...(subtitleTiming?{subtitleTiming}:{}),...(subtitleSearch?{subtitleSearch}:{}),
+ return Object.freeze({fence,audio,subtitles:Object.freeze(subtitleRows),subtitleAdditions:Object.freeze(subtitleAdditions),quality:Object.freeze(qualityRows),speed,automatic:selected==='automatic',qualityLabel,qualityNotes,audioNotes,...(subtitleTiming?{subtitleTiming}:{}),...(subtitleSearch?{subtitleSearch}:{}),...(subtitleStyle?{subtitleStyle}:{}),
   qualityAccessibleLabel:qualityLabel?(selected==='automatic'?t('player.quality.automaticNow',{quality:qualityLabel}):qualityLabel):undefined,
   audioLabel:audio.find(r=>r.selected)?.primary,subtitleLabel:subtitleRows.find(r=>r.selected)?.primary,isCurrent,
   selectAudio:async id=>{check();if(!audio.some(r=>r.id===id&&!r.unavailable))throw new Error('playback_audio_unavailable');await runtime.selectAudio(fence,id);},
