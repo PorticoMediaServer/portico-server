@@ -154,9 +154,20 @@ function fieldError(spec: RepairFieldSpec, value: string, values: readonly strin
   return '';
 }
 
+function enumChoiceLabel(spec: RepairFieldSpec, value: string): string {
+  if (spec.field !== 'publicationType') return value;
+  switch (value) {
+    case '': return t('web.metadata.publicationType.automatic');
+    case 'book': return t('web.metadata.publicationType.book');
+    case 'magazine': return t('web.metadata.publicationType.magazine');
+    case 'newspaper': return t('web.metadata.publicationType.newspaper');
+    default: return value;
+  }
+}
+
 function input(spec: RepairFieldSpec, value: string, set: (value: string) => void, accessibility: Readonly<{'aria-labelledby': string; 'aria-describedby': string; 'aria-invalid': boolean}>) {
   if (spec.type === 'enum' && spec.allowed) return <select {...accessibility} value={value} onChange={event => set(event.currentTarget.value)}>
-    {spec.allowed.map(choice => <option key={choice} value={choice}>{choice}</option>)}</select>;
+    {spec.allowed.map(choice => <option key={choice} value={choice}>{enumChoiceLabel(spec, choice)}</option>)}</select>;
   if (spec.type === 'multiline') return <textarea {...accessibility} rows={4} value={value} onChange={event => set(event.currentTarget.value)} />;
   return <input {...accessibility} type={spec.type === 'date' ? 'date' : 'text'} inputMode={spec.type === 'integer' || spec.type === 'number' ? 'numeric' : undefined} value={value} onChange={event => set(event.currentTarget.value)} />;
 }
