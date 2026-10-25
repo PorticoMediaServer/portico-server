@@ -148,13 +148,15 @@ func (d Dependencies) searchHandler(w http.ResponseWriter, r *http.Request) {
 		failure(w, e)
 		return
 	}
-	if all {
-		ids, _, e = d.homeScopeFor(r, p)
-		if e != nil {
-			failure(w, e)
-			return
-		}
+	offerLibraries, offerFence, e := d.homeScopeFor(r, p)
+	if e != nil {
+		failure(w, e)
+		return
 	}
+	if all {
+		ids = offerLibraries
+	}
+
 	restrictions, _, e := d.viewerRestrictions(r, p)
 	if e != nil {
 		failure(w, e)
@@ -177,7 +179,16 @@ func (d Dependencies) searchHandler(w http.ResponseWriter, r *http.Request) {
 		var composeErr error
 		viewer := catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: fence, Libraries: ids, Restrictions: restrictions}
 		out, composeErr = cat.Search(cat.Context(), catalog.SearchRequest{Viewer: viewer, ServerID: d.Identity.ID(), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, Q: q.Get("q"), Group: q.Get("group"), Cursor: q.Get("cursor"), Sort: q.Get("sort"), Direction: q.Get("direction"), Limit: limit, AllLibraries: all, Libraries: ids, LibraryIDs: libraryIDs, Groups: groups, LiveTV: liveTV, Record: q.Get("record") == "1", Restrictions: restrictions})
-		return composeErr
+		if composeErr != nil {
+			return composeErr
+		}
+		rows := make([]catalog.HomeRow, 0, len(out.Groups))
+		for _, group := range out.Groups {
+			if group.EntityKind != "person" && group.EntityKind != "channel" {
+				rows = append(rows, catalog.HomeRow{Entries: group.Items})
+			}
+		}
+		return d.projectHomeActions(cat.Context(), p, viewer, cat, rows, nil)
 	})
 	if e != nil {
 		if errors.Is(e, context.DeadlineExceeded) || errors.Is(e, context.Canceled) {
@@ -193,6 +204,15 @@ func (d Dependencies) searchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if after != fence {
+		failure(w, catalog.ErrStaleContinuation)
+		return
+	}
+	// Command offers also prove the original device family after composition.
+	// The Home fence is not compared with Search's independent content fence.
+	if afterOffers, offerErr := d.homeActionFenceAfter(r, p); offerErr != nil {
+		failure(w, offerErr)
+		return
+	} else if afterOffers != offerFence {
 		failure(w, catalog.ErrStaleContinuation)
 		return
 	}

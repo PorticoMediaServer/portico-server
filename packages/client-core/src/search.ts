@@ -4,7 +4,8 @@ import {unreadableServerResponse} from './server-messages.ts';
 /** Authorized server search projections. No local matching, grouping, ranking or query persistence.
  * Groups are independent: one group may fail while the response as a whole succeeds, and the
  * client renders that group's own failure rather than discarding the results that arrived. */
-import {validateContentEntry,type ContentEntry,type ContentScope,type ContentHeading,type LibraryContentApi} from './library-content.ts';
+import type {ContentScope,ContentHeading,LibraryContentApi} from './library-content.ts';
+import {validateHomeEntry,type HomeEntry} from './home.ts';
 import {firstOfEach,keepReadable,noteSkipped,oneOf,oneOfOr} from './tolerant.ts';
 /** How many results each group shows when every group is searched at once (the server's `SearchPreviewLimit`). */
 export const SEARCH_PREVIEW_LIMIT=12;
@@ -14,7 +15,7 @@ export type SearchDirection='asc'|'desc';
 export type SearchGroupStatus='success'|'error';
 export type SearchGroupErrorCode=''|'search_group_timeout'|'search_group_unavailable';
 export type SearchQuery=Readonly<{q:string;group?:SearchGroup;groups?:readonly SearchGroup[];sort?:SearchSort;direction?:SearchDirection;libraryIds?:readonly string[];record?:boolean}>;
-export type SearchEntry=ContentEntry|Readonly<{id:string;kind:'person'|'channel';title:string;subtitle?:string;posterUrl?:string;count?:number;navigation:Readonly<{view:'person'|'channel';entityId:string;sourceId?:string;channelId?:string;provenance?:'live-source'}>}>;
+export type SearchEntry=HomeEntry|Readonly<{id:string;kind:'person'|'channel';title:string;subtitle?:string;posterUrl?:string;count?:number;navigation:Readonly<{view:'person'|'channel';entityId:string;sourceId?:string;channelId?:string;provenance?:'live-source'}>}>;
 export type SearchGroupResult=Readonly<{id:SearchGroup;labelKey?:string;title:string;entityKind:string;status:SearchGroupStatus;errorCode:SearchGroupErrorCode;items:readonly SearchEntry[];totalCount:number;totalCountExact:boolean;hasMore:boolean;nextCursor:string}>;
 export type SearchGroupCapability=Readonly<{id:SearchGroup;labelKey?:string;title:string;entityKind:string;available:boolean;reason:string;sorts:readonly SearchSort[]}>;
 export type SearchCapabilities=Readonly<{groups:readonly SearchGroupCapability[];sorts:readonly SearchSort[];directions:readonly SearchDirection[];maxLimit:number;groupBudgetMs:number}>;
@@ -135,7 +136,7 @@ function parse(raw:unknown,op:Operation,s:ContentScope,limit:number):SearchData{
   if(status==='error')return Object.freeze({id:group,title:(value.title??'') as string,...(text(value.labelKey,512)?{labelKey:value.labelKey}:{}),entityKind:value.entityKind as string,status,errorCode:oneOf(code,errorCodes)||'search_group_unavailable' as const,items:Object.freeze([]),totalCount:0,totalCountExact:false,hasMore:false,nextCursor:''});
   const items=firstOfEach('search','items',keepReadable('search','items',array(value.items,op.query.group?limit:Math.min(limit,SEARCH_PREVIEW_LIMIT)),v=>{
    if(entityGroups.includes(group))return entityEntry(v,group);
-   const media=validateContentEntry(v);
+   const media=validateHomeEntry(v);
    if(!id(media.libraryId)||media.kind!==kinds[group]||media.navigation?.view!==targets[group]||media.navigation.entityId!==media.id)invalid();
    if(media.playback&&(!['movies','episodes','songs'].includes(group)||media.playback.itemId!==media.id||media.available===false))invalid();
    return media;
