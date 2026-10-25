@@ -386,7 +386,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     }}>
       {surfaces?.body}
     </div>
-    {open && surfaces?.render({panel, snapshot, layout: width < 1024 ? 'phone' : 'desktop', phoneTop: portrait ? geometry?.picture ? geometry.picture.top + geometry.picture.height : width * 9 / 16 + (window.visualViewport?.offsetTop ?? 0) : 0, close: () => setPanel(null), show: next => showPanel(next), returnFocusRef: panelAnchor})}
+    {open && surfaces?.render({panel, snapshot, available: surfaces.available, reportProblem: surfaces.more?.find(action => action.id === 'report-problem'), layout: width < 1024 ? 'phone' : 'desktop', phoneTop: portrait ? geometry?.picture ? geometry.picture.top + geometry.picture.height : width * 9 / 16 + (window.visualViewport?.offsetTop ?? 0) : 0, close: () => setPanel(null), show: next => showPanel(next), returnFocusRef: panelAnchor})}
     <Menu open={more} onOpenChange={setMore} title={t('player.more')} anchorRef={moreAnchor} returnFocusRef={moreAnchor} presentation="anchored" width={300} items={menuItems} />
     <KeyboardShortcuts open={shortcuts} onOpenChange={setShortcuts} skipBackSeconds={binding.skips.back} skipForwardSeconds={binding.skips.forward} returnFocusRef={moreAnchor} />
   </div>;

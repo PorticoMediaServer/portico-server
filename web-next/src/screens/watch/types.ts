@@ -24,6 +24,9 @@ export type WatchPanelContext = Readonly<{
   snapshot: WebPlaybackRuntimeSnapshot;
   layout: 'desktop' | 'phone';
   phoneTop: number;
+  /** Current parent-offered title panels and the existing guarded feedback action. */
+  available?: readonly WatchPanel[];
+  reportProblem?: Readonly<{label: string; action: () => void | Promise<void>}>;
   close: () => void;
   /** Navigate the parent's open panel, e.g. a phone row to its own sub-panel. */
   show: (panel: WatchPanel) => void;
