@@ -123,7 +123,7 @@ export function MetadataEditor({api, scope, target, onClose, initialTab = 'gener
         onRemove={removeUpload} isDataCurrent={currentRepairData} onMakeFromVideo={data.canMakeEpisodeThumbnail ? makeThumbnail : undefined} localOnly={target.kind === 'book'}
         onUpload={api.requestMetadataUpload ? (role, file) => service.uploadArtwork(role, file) : undefined}
         onLock={(role, subject, locked) => void run({action: 'artwork_lock', role, subject, locked})}
-        onFindMore={localArtworkOnly || target.kind === 'book' ? undefined : role => void run({action: 'discover_artwork', role})} onRefetch={localArtworkOnly || target.kind === 'book' ? undefined : role => void run({action: 'repair_assets', role})} /> : null}
+        onFindMore={localArtworkOnly || target.kind === 'book' || data.onlineLookups === false ? undefined : role => void run({action: 'discover_artwork', role})} onRefetch={localArtworkOnly || target.kind === 'book' ? undefined : role => void run({action: 'repair_assets', role})} /> : null}
       {shown === 'lyrics' ? <SongLyricsEditor api={api} scope={scope} target={target} repairData={data} isCurrent={currentRepairGrant}/> : null}
       {shown === 'history' ? <History data={data} busy={state.phase !== 'ready'} onUndo={historyId => void run({action: 'undo', historyId, confirm: true})}
         onAll={locked => void run({action: locked ? 'lock_all' : 'unlock_all', confirm: true})} /> : null}
@@ -344,6 +344,7 @@ function Matching({data, target, busy, onSearch, onUse, onRetry, onLock}: {
   const typeKey = `metadata.attention.kind.${identity?.type === 'movie' ? 'film' : identity?.type ?? ''}`;
   const type = defaultI18n.has(typeKey) ? t(typeKey) : '';
   const scannedMatch = target.kind === 'album';
+  const lookupBusy = busy || data.onlineLookups === false;
   return <div className={styles.fields}>
     <section className={styles.candidate}>
       <div><b>{t('web.metadata.currentMatch')}</b>
@@ -351,12 +352,13 @@ function Matching({data, target, busy, onSearch, onUse, onRetry, onLock}: {
       <button type="button" className={styles.lock} disabled={busy} aria-pressed={identity?.locked === true}
         onClick={() => onLock(identity?.locked !== true)}>{t(identity?.locked ? 'web.metadata.identityLocked' : 'web.metadata.identityUnlocked')}</button>
     </section>
-    <form className={styles.matchSearch} onSubmit={event => {event.preventDefault(); if (!scannedMatch && query.trim() && !busy) onSearch(query.trim());}}>
+    {data.onlineLookups === false ? <p className={styles.lockHelp}>{t('web.metadata.onlineLookupOff')}</p> : null}
+    <form className={styles.matchSearch} onSubmit={event => {event.preventDefault(); if (!scannedMatch && query.trim() && !lookupBusy) onSearch(query.trim());}}>
       {scannedMatch ? <p>{t('web.metadata.searchProviderHelpAuto')}</p> : <>
-        <TextField label={t('web.metadata.searchProvider')} description={t('web.metadata.searchProviderHelp')} value={query} onChange={event => setQuery(event.currentTarget.value)} />
-        <Button size="small" type="submit" disabled={busy || !query.trim()}>{t('web.search.title')}</Button>
+        <TextField label={t('web.metadata.searchProvider')} description={t('web.metadata.searchProviderHelp')} disabled={lookupBusy} value={query} onChange={event => setQuery(event.currentTarget.value)} />
+        <Button size="small" type="submit" disabled={lookupBusy || !query.trim()}>{t('web.search.title')}</Button>
       </>}
-      <Button size="small" type="button" disabled={busy} onClick={onRetry}>{t('web.chooser.tryAgain')}</Button>
+      <Button size="small" type="button" disabled={lookupBusy} onClick={onRetry}>{t('web.chooser.tryAgain')}</Button>
     </form>
     {data.candidates.map(candidate => {
       const key = `${candidate.provider}:${candidate.id}`;
@@ -378,7 +380,7 @@ function Matching({data, target, busy, onSearch, onUse, onRetry, onLock}: {
           {candidate.orders && candidate.orders.length > 1 ? <label className={styles.order}>{t('metadata.attention.episodeOrder')}
             <select value={chosen.order} disabled={busy} onChange={event => setOrder({order: event.currentTarget.value})}>{candidate.orders.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : null}
           {takesOffset ? <TextField label={t('web.metadata.numberOffset')} description={t('web.metadata.numberOffsetHelp')} type="number" inputMode="numeric" min={-1000000} max={1000000} step={1} value={chosen.offset} disabled={busy} onChange={event => setOrder({offset: event.currentTarget.value})} error={!validOffset ? t('web.metadata.numberRange', {label: t('web.metadata.numberOffset'), min: -1000000, max: 1000000}) : undefined}/> : null}</div>
-        {current ? <span className={styles.matchCurrent}>{t('web.metadata.currentMatch')}</span> : <Button size="small" disabled={busy || !validOffset || order.length > 160} onClick={() => onUse(candidate.provider, candidate.id, offered.length ? order : undefined)}>{t('web.liveSource.useThis')}</Button>}
+        {current ? <span className={styles.matchCurrent}>{t('web.metadata.currentMatch')}</span> : <Button size="small" disabled={lookupBusy || !validOffset || order.length > 160} onClick={() => onUse(candidate.provider, candidate.id, offered.length ? order : undefined)}>{t('web.liveSource.useThis')}</Button>}
       </div>;
     })}
     <p className={styles.lockHelp}>{t('web.metadata.chooseMatchHelp')}</p>
