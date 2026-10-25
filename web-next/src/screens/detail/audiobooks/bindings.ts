@@ -1,5 +1,5 @@
 import {LibraryContentService, type ContentEntry, type ContentProjection} from '@core/library-content.ts';
-import {getContainerState, setContainerState} from '@core/container-state.ts';
+import {getContainerState, setContainerFlag, setContainerState} from '@core/container-state.ts';
 import {screenLifetime, type ScreenContext} from '../context';
 
 export type AudiobookTarget = Readonly<{libraryId: string; view: 'book' | 'author' | 'book_series'; entityId: string}>;
@@ -34,6 +34,22 @@ export function createAudiobookBindings(context: ScreenContext, input: Audiobook
       current(page);return result;
     },
     play,
+    /** The book's own Watchlist flag, read from the container state the server already keeps. */
+    async watchlisted(page: ContentProjection) {
+      current(page);
+      if (target.view !== 'book') throw new DOMException('Not a book', 'AbortError');
+      const state = await getContainerState(life.api, 'book', target.entityId, life.signal());
+      current(page);
+      return state.watchlisted;
+    },
+    /** One plain flag write; the server treats it as last-write-wins, so no revision is claimed. */
+    async setWatchlisted(page: ContentProjection, value: boolean) {
+      current(page);
+      if (target.view !== 'book' || typeof value !== 'boolean') throw new DOMException('Not a book', 'AbortError');
+      const state = await setContainerFlag(life.api, 'book', target.entityId, 'watchlisted', value, life.signal());
+      current(page);
+      return state.watchlisted;
+    },
     async primary(page: ContentProjection, restart = false) {
       current(page);
       const rows = entries();

@@ -29,13 +29,16 @@ const duration = (value: number | undefined) => value === undefined ? undefined 
 function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: Props['onMore']}) {
   const phone = useShellWidth() < 1024;
   const state = useSyncExternalStore(binding.service.subscribe, binding.service.getSnapshot, binding.service.getSnapshot);
-  const [expanded, setExpanded] = useState(false), [finished, setFinished] = useState<boolean>(), [busy, setBusy] = useState(false);
+  const [expanded, setExpanded] = useState(false), [finished, setFinished] = useState<boolean>(), [watchlisted, setWatchlisted] = useState<boolean>(), [busy, setBusy] = useState(false);
   const [more, setMore] = useState<Readonly<{entry: ContentEntry; page: ContentProjection; anchor: HTMLElement}>>();
   const page = state.projection, entity = page?.entity;
   useFreshDocument(() => [dependsOn.libraries, ...titlesWithPersonalState(page?.scope.libraryId), dependsOn.event('stream.resync')], refresh => binding.service.revalidate(refresh), () => binding.service.getSnapshot().phase === 'ready');
   useEffect(() => {
-    setExpanded(false);setFinished(undefined);setMore(undefined);
-    if (page?.scope.view === 'book') {let active = true;void binding.finished(page).then(value => {if (active) setFinished(value.watched);}, error => {if (active) binding.context.effects.reportError(error);});return () => {active = false;};}
+    setExpanded(false);setFinished(undefined);setWatchlisted(undefined);setMore(undefined);
+    if (page?.scope.view === 'book') {let active = true;
+      void binding.finished(page).then(value => {if (active) setFinished(value.watched);}, error => {if (active) binding.context.effects.reportError(error);});
+      void binding.watchlisted(page).then(value => {if (active) setWatchlisted(value);}, () => undefined);
+      return () => {active = false;};}
   }, [binding, page]);
   if (!page || !entity) return state.phase === 'error' || state.phase === 'refresh-required'
     ? <ScreenProblem context={binding.context} error={state.error} retry={() => {void binding.load().catch(binding.context.effects.reportError);}}/> : <DetailLoading/>;
@@ -90,6 +93,8 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
     <div className={styles.actions}>
       {canPlay && <Button className={styles.primary} variant="primary" icon="i-play" onClick={() => run(() => binding.primary(page))}>{label}</Button>}
       {book && page.listening?.actions.includes('play') && <Button variant="glass" onClick={() => run(() => binding.primary(page, true))}>{t('action.startOver')}</Button>}
+      {book && !phone && watchlisted !== undefined && <Button className={styles.round} icon={watchlisted ? 'i-check' : 'i-plus'} iconOnly aria-pressed={watchlisted}
+        aria-label={t('next.controls.myList')} onClick={() => {setBusy(true);void binding.setWatchlisted(page, !watchlisted).then(value => setWatchlisted(value)).catch(binding.context.effects.reportError).finally(() => setBusy(false));}}/>}
       {book && finished !== undefined && <Button className={styles.round} icon="i-check" iconOnly disabled={busy} aria-pressed={finished} aria-label={t(finished ? 'title.markNotFinished' : 'title.markFinished')} onClick={() => {setBusy(true);void binding.markFinished(page).then(value => setFinished(value.watched)).catch(binding.context.effects.reportError).finally(() => setBusy(false));}}/>}
       {!book && !author && primaryBook && <Button className={styles.round} icon="i-retry" iconOnly aria-label={t('action.startOver')} onClick={() => open(primaryBook)}/>}
       {!onMore && !phone && <AudiobookMore binding={binding} page={page} entry={entity}/>}
