@@ -47,6 +47,7 @@ export const readerMessages = {
   'next.reader.issueCount': '{count, plural, one {# issue} other {# issues}}',
   'next.reader.shortReads': 'Short reads',
   'next.reader.underThreeHours': 'Under three hours',
+  'next.reader.shortReadsFromWordCount': 'Under three hours, from the word count',
   'next.reader.aboutDuration': 'About {duration}',
   'next.reader.bulkLimit': 'Edit up to {count, number} books at a time.',
   'next.reader.bookNumber': 'Book {number}',
