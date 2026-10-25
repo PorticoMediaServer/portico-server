@@ -102,7 +102,7 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
   const rows: readonly ReadDiscoveryRow[] = [
     ...(resume.length > 0 ? [{id: 'continue', kind: 'resume' as const, heading: t('next.cards.read'), items: resumeRows(resources, resume)}] : []),
     ...(recent && recent.length > 0 ? [{
-      id: 'recent', kind: 'covers' as const, heading: t('next.layout.recentIn', {library: name}),
+      id: 'recent', kind: 'covers' as const, heading: t('home.row.recentlyAdded'),
       items: recentCards(recent, {kind: comic ? 'comic' : 'book', read: t('next.reader.read'),
         open: entry => {if (resources.bindings.authority.isCurrent()) void router.navigate({to: '/item/$itemId', params: {itemId: entry.id}}).catch(resources.reportError);},
         artwork: url => resources.artwork.foreground(url, 380, 2 / 3),
