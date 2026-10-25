@@ -1,6 +1,6 @@
 import {HandoffController} from '@core/remote-playback.ts';
 import {sameFence} from '../../../../packages/player-core/src/index.ts';
-import {defaultI18n} from '@i18n';
+import {defaultI18n, type MessageId, type MessageValues} from '@i18n';
 import type {HttpLocalApi} from '@core/index.ts';
 import type {WebShellPlaybackRuntime} from '../../platform/playback';
 import type {PlayOnLinkPort, PlayOnLinkPreview, PlayOnReceiversPort, PlayOnReceiver} from '../../platform/playback/play-on';
@@ -27,7 +27,7 @@ export class WatchReceivers implements PlayOnReceiversPort {
   // continue to grant, hand off or commit, and no live request is ever unguarded.
   private flight?: Readonly<{guard: Readonly<{fence: PlaybackFence; sessionId: string; itemId: string; authority: unknown}>}>;
 
-  constructor(private readonly options: {api: WatchReceiverApi; runtime: WebShellPlaybackRuntime; isCurrent(): boolean; reportError(error: unknown): void}) {
+  constructor(private readonly options: {api: WatchReceiverApi; runtime: WebShellPlaybackRuntime; /** The shell's own catalogue translator, when the host has one. */ t?: (id: MessageId, values?: MessageValues) => string; isCurrent(): boolean; reportError(error: unknown): void}) {
     const identity = installationIdentity();
     // Without the persisted installation, this browser cannot prove who is asking;
     // the rows stay hidden from a send rather than inventing a device identity.
@@ -79,8 +79,8 @@ export class WatchReceivers implements PlayOnReceiversPort {
   };
 
   private describe(platform: string): string {
-    const label = PLATFORMS[platform.toLowerCase()];
-    return label ? defaultI18n.t('next.cast.receiverOn', {platform: label}) : defaultI18n.t('next.cast.receiverOnly');
+    const label = PLATFORMS[platform.toLowerCase()], t = this.options.t ?? defaultI18n.t;
+    return label ? t('next.cast.receiverOn', {platform: label}) : t('next.cast.receiverOnly');
   }
 
   private publish = (): void => {
