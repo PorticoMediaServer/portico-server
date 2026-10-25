@@ -26,10 +26,15 @@ export class LocalMoveCustody {
     this.state = 'transferring';
     return this.facts;
   };
-  /** Admission has taken the grant: accept owns it from here; retire is disarmed. */
-  transfer = (): void => {if (this.state === 'transferring') this.state = 'transferred';};
-  /** Put an unclaimed/transferring custody back so a retry can claim it. */
-  release = (): void => {if (this.state === 'transferring') this.state = 'owned';};
+  /** Admission takes the grant here: accept owns it from now on and retire is
+   * disarmed. Returns whether this call was the one that took it, so admission can
+   * refuse a custody that a concurrent retire already shut. There is deliberately
+   * no way back to owned: a claim is final. */
+  transfer = (): boolean => {
+    if (this.state !== 'transferring') return false;
+    this.state = 'transferred';
+    return true;
+  };
   /** Revoke only while still ours; never after transfer, and only once. */
   retire = async (): Promise<void> => {
     if (this.state === 'transferred' || this.state === 'retired') return;

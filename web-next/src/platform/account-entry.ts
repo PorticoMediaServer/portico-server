@@ -272,7 +272,7 @@ export class BrowserAccountEntry {
    const op = this.operation();
    const revision = (await this.ports.store.read()).revision;
    if (!op.current() || revision !== selectionRevision) {await custody.retire();return false;}
-   custody.transfer();
+   if (!custody.transfer()) return false;
    await this.accept(grant, api, revision, op);
    return ['challenge', 'profiles', 'ready', 'change-password'].includes(this.getSnapshot().phase);
   } catch (error) {
