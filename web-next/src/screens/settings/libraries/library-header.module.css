@@ -8,3 +8,5 @@
 .facts { display:flex; flex-wrap:wrap; gap:14px; color:var(--color-muted); font-size:var(--type-body-size); }
 .facts > span:first-child { color:var(--color-text); font-weight:700; }
 @media (max-width:600px) { .hero { min-height:210px; } .content h1 { font-size:var(--type-title-size); } .strip { opacity:.6; } }
+
+.actions { display:flex; flex-wrap:wrap; align-items:center; gap:12px; margin-top:18px; }
