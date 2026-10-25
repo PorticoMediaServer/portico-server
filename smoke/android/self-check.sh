@@ -27,6 +27,37 @@ PY
 python3 "$ROOT/smoke/android/flows.py" --help >/dev/null && ok "flows.py CLI loads" || bad "flows.py CLI does not load"
 python3 "$ROOT/smoke/android/settings-capture.py" --help >/dev/null && ok "settings-capture.py CLI loads" || bad "settings-capture.py CLI does not load"
 
+python3 - "$ROOT" <<'PY' || fail=1
+import sys
+sys.path.insert(0, sys.argv[1] + "/smoke/android")
+import flows
+
+
+class Fake:
+    def __init__(self, text):
+        self.screen = text
+        self.shots = []
+
+    def text(self):
+        return self.screen
+
+    def screenshot(self, name):
+        self.shots.append(name)
+        return "/tmp/" + name + ".png"
+
+
+stalled = Fake("Loading, busy\nHome  Search  Settings")
+text, stages, _ = flows.wait_for_home(stalled, timeout=0.05, poll=0.01)
+assert text is None, "a nav label without rows must not count as Home"
+assert stages and "Loading" in stages[0]["visible"], stages
+print("PASS a stalled Home records staged evidence, not a pass")
+
+ready = Fake("Home\nContinue Watching\nNew on\nSearch")
+text, stages, _ = flows.wait_for_home(ready, timeout=1, poll=0.01)
+assert text and "Continue Watching" in text and stages == [], (text, stages)
+print("PASS a drawn Home ends the wait at once")
+PY
+
 grep -q 'readlink -f "${BASH_SOURCE\[0\]}"' "$ROOT/smoke/android/m0-pass.sh" \
   && ok "the pass resolves its own root" || bad "the pass resolves its root from the caller"
 grep -q 'a device or emulator is already attached' "$ROOT/smoke/android/m0-pass.sh" \

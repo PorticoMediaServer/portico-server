@@ -22,6 +22,29 @@ import xml.etree.ElementTree as ElementTree
 
 PACKAGE = "tv.getportico.portico"
 
+# A drawn Home shows at least one of these rows. The shell's "Home" nav label alone is not enough:
+# a screen stuck on "Loading, busy" can carry the nav bar with no content behind it.
+HOME_ROWS = re.compile(r"Continue Watching|New on|On now|Listen", re.I)
+
+
+def wait_for_home(device, timeout=90, poll=10):
+    """Poll for real Home content and keep a screenshot plus the visible text at each stage.
+
+    Returns (text or None, stages, elapsed). Stages are what classify a stall: a spinner, an error or
+    an empty shell each look different in the evidence.
+    """
+    started = time.time()
+    stages = []
+    while time.time() - started < timeout:
+        text = device.text()
+        if HOME_ROWS.search(text):
+            return text, stages, round(time.time() - started, 1)
+        at = int(round(time.time() - started))
+        stages.append({"at_s": at, "visible": text[:160],
+                       "screenshot": device.screenshot(f"home-wait-{at}s")})
+        time.sleep(poll)
+    return None, stages, round(time.time() - started, 1)
+
 
 class Device:
     def __init__(self, serial, out):
@@ -313,23 +336,11 @@ def main():
             device.wait_text(r"Home|Continue Watching|New on", 30)
         # Home is the step that stalled on the previous pass. Poll past the old 40s window and keep a
         # screenshot plus the visible text at each stage, so a stall can be classified next time.
-        started = time.time()
-        stages = []
-        drawn = None
-        while time.time() - started < args.home_timeout:
-            text = device.text()
-            if re.search(r"Home|Continue Watching|New on|Search", text):
-                drawn = text
-                break
-            at = int(round(time.time() - started))
-            stages.append({"at_s": at, "visible": text[:160],
-                           "screenshot": device.screenshot(f"home-wait-{at}s")})
-            time.sleep(10)
+        drawn, stages, elapsed = wait_for_home(device, timeout=args.home_timeout)
         assert drawn is not None, (
-            "Home did not draw within %ss after sign-in; stages %s"
+            "Home drew no row within %ss after sign-in; stages %s"
             % (args.home_timeout, json.dumps(stages)[:800]))
-        elapsed = round(time.time() - started, 1)
-        return f"signed in; Home drew after {elapsed}s; {len(drawn)} chars visible", {
+        return f"signed in; Home rows drew after {elapsed}s; {len(drawn)} chars visible", {
             "screenshot": device.screenshot("after-signin"), "home_wait_stages": stages}
 
     def home():
