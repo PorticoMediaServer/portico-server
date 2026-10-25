@@ -1,8 +1,8 @@
-import {useCallback, useEffect, useId, useRef, useState} from 'react';
+import {useCallback, useEffect, useId, useLayoutEffect, useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import type {LibraryContentApi} from '@core/library-content.ts';
 import {browseServerFilesystem} from '@core/library-management.ts';
-import {Button, TextField} from '../../../kit/controls';
+import {Button, Switch, TextField} from '../../../kit/controls';
 import {Dialog} from '../../../kit/overlays/Dialog';
 import styles from './libraries.module.css';
 
@@ -10,9 +10,19 @@ const t = defaultI18n.t;
 
 /** The server's own folder explorer, folders only (owner-libraries.html#9). A
  * typed path is always available; Places are the roots the server publishes. */
-export function FolderPicker({open, onOpenChange, api, onChoose}: Readonly<{
-  open: boolean; onOpenChange: (open: boolean) => void; api: LibraryContentApi; onChoose: (path: string) => void;
+export function FolderPicker({open, onOpenChange, api, onChoose, onChooseMany, initialPaths}: Readonly<{
+  open: boolean; onOpenChange: (open: boolean) => void; api: LibraryContentApi; onChoose: (path: string) => void; onChooseMany?: (paths: readonly string[]) => void; initialPaths?: readonly string[];
 }>) {
+  const [chosen, setChosen] = useState<readonly string[]>([]), [typing, setTyping] = useState(false);
+  const [attempt, setAttempt] = useState<object>();
+  const activeAttempt = useRef<object | undefined>(undefined);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const next = {}; activeAttempt.current = next; setAttempt(next);
+    setChosen([...new Set(initialPaths ?? [])].slice(0, 64)); setTyping(false); setPage(undefined);
+    return () => {if (activeAttempt.current === next) activeAttempt.current = undefined; request.current?.abort();};
+  }, [open, api, onChoose, onChooseMany]);
+  const current = () => open && !!attempt && activeAttempt.current === attempt;
   const [page, setPage] = useState<Awaited<ReturnType<typeof browseServerFilesystem>>>();
   const [typed, setTyped] = useState(''), [failed, setFailed] = useState(false), [busy, setBusy] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
@@ -60,10 +70,19 @@ export function FolderPicker({open, onOpenChange, api, onChoose}: Readonly<{
     return () => { request.current?.abort(); request.current = undefined; };
   }, [open, read]);
   const changeOpen = (next: boolean) => {
-    if (!next) { request.current?.abort(); request.current = undefined; }
+    if (!current()) return;
+    if (!next) { activeAttempt.current = undefined; request.current?.abort(); request.current = undefined; }
     onOpenChange(next);
   };
-  const go = (path: string) => { void read(path, showHidden); };
+  const go = (path: string) => { if (current()) {setTyping(false); void read(path, showHidden);} };
+  const toggle = (path: string) => {if (!current()) return; setChosen(previous => previous.includes(path) ? previous.filter(value => value !== path) : previous.length < 64 ? [...previous, path] : previous);};
+  const canChooseCurrent = current() && !!page?.path && typed === page.path && !busy && !failed;
+  const submit = () => {
+    if (!current()) return;
+    if (onChooseMany) {if (!chosen.length) return; onChooseMany(Object.freeze([...chosen])); changeOpen(false);}
+    else if (canChooseCurrent && page) {onChoose(page.path); changeOpen(false);}
+  };
+
   const breadcrumbs: {path: string; label: string}[] = [];
   if (page?.path) {
     const separator = page.separator;
@@ -78,49 +97,50 @@ export function FolderPicker({open, onOpenChange, api, onChoose}: Readonly<{
       }
     }
   }
-  return <Dialog open={open} onOpenChange={changeOpen} size="md" title={t('next.settings.chooseFolder')} description={t('next.settings.folderBreadcrumbs')}
-    footer={<><Button onClick={() => changeOpen(false)}>{t('next.settings.cancel')}</Button>
-      <Button variant="primary" disabled={!page?.path || typed !== page.path || busy || failed} onClick={() => { if (page?.path && typed === page.path && !busy && !failed) { onChoose(page.path); changeOpen(false); } }}>{t('next.settings.chooseThisFolder')}</Button></>}>
+  const places = page?.roots ?? [];
+  const rootButton = (root: (typeof places)[number]) => <button type="button" className={styles.pickerPlace} disabled={busy} aria-current={page?.path === root.path ? 'location' : undefined} onClick={() => {
+    if (!current()) return;
+    if (root.kind === 'unc') {setTyping(true); setTyped(root.path);} else go(root.path);
+  }}><b>{root.name}</b><small>{root.description || root.path}</small></button>;
+  return <Dialog open={open} onOpenChange={changeOpen} size="lg" width={1000} className={styles.explorer} bodyClassName={styles.explorerBody} footerClassName={styles.explorerFooter} title={t(onChooseMany ? 'next.ownerLibraries.explorer.title' : 'next.settings.chooseFolder')} description={t('next.settings.folderBreadcrumbs')}
+    footer={<>
+      {onChooseMany ? <div className={styles.chosenFolders} aria-label={t('next.ownerLibraries.explorer.chosen')}>
+        <span>{t('next.ownerLibraries.explorer.chosen')}</span>{!chosen.length ? <span>{t('next.ownerLibraries.explorer.noneChosen')}</span> : null}{chosen.map(path => <Button key={path} size="small" variant="glass" icon="i-x" aria-label={`${t('next.ownerLibraries.explorer.removeChosen')} ${path}`} onClick={() => toggle(path)}>{path}</Button>)}
+      </div> : null}
+      <Button onClick={() => changeOpen(false)}>{t('next.settings.cancel')}</Button>
+      <Button variant="primary" disabled={onChooseMany ? !current() || !chosen.length : !canChooseCurrent} onClick={submit}>{onChooseMany && chosen.length ? t('next.ownerLibraries.explorer.useFolders', {count: chosen.length}) : t('next.ownerLibraries.explorer.useFolder')}</Button>
+    </>}>
     <div className={styles.picker}>
-      {breadcrumbs.length > 0 && <nav aria-label={t('next.settings.folderPath')}>
-        {breadcrumbs.map((crumb, index) => <span key={crumb.path}>
-          {index > 0 && <span aria-hidden="true"> {page?.separator} </span>}
-          <Button variant="text" size="small" disabled={busy} aria-current={index === breadcrumbs.length - 1 ? 'location' : undefined}
-            onClick={() => go(crumb.path)}>{crumb.label}</Button>
-        </span>)}
-      </nav>}
       <div className={styles.pickerPath}>
-        <TextField label={t('next.settings.folderPath')} list={suggestionId} autoComplete="off" value={typed} onChange={event => setTyped(event.currentTarget.value)} onKeyDown={event => {
-          if (event.key === 'Enter' && !event.nativeEvent.isComposing && !busy) { event.preventDefault(); go(typed); }
-        }} />
+        <Button disabled={busy || !page?.parent} aria-label={t('next.ownerLibraries.explorer.up')} onClick={() => {if (page?.parent) go(page.parent);}}>{t('next.settings.up')}</Button>
+        {typing || !breadcrumbs.length ? <TextField label={t('next.settings.folderPath')} list={suggestionId} autoComplete="off" value={typed} onChange={event => {if (current()) setTyped(event.currentTarget.value);}} onKeyDown={event => {
+          if (event.key === 'Enter' && !event.nativeEvent.isComposing && !busy) {event.preventDefault(); go(typed);}
+        }}/> : <nav className={styles.pickerBreadcrumbs} aria-label={t('next.settings.folderPath')}>
+          {breadcrumbs.map((crumb, index) => <Button key={crumb.path} variant="text" size="small" disabled={busy} aria-current={index === breadcrumbs.length - 1 ? 'location' : undefined} onClick={() => go(crumb.path)}>{crumb.label}</Button>)}
+          <Button variant="text" size="small" onClick={() => {if (current()) setTyping(true);}}>{t('next.ownerLibraries.explorer.typePath')}</Button>
+        </nav>}
+        {typing || !breadcrumbs.length ? <Button disabled={busy || !typed} onClick={() => go(typed)}>{t('next.settings.go')}</Button> : null}
+        {onChooseMany ? <Button disabled={!canChooseCurrent || !!page && !chosen.includes(page.path) && chosen.length >= 64} onClick={() => {if (canChooseCurrent && page && !chosen.includes(page.path)) toggle(page.path);}}>{t('next.settings.chooseThisFolder')}</Button> : null}
         <datalist id={suggestionId}>{suggestions.map(path => <option key={path} value={path}/>)}</datalist>
-        <Button disabled={busy} onClick={() => go(typed)}>{t('next.settings.go')}</Button>
-        <Button disabled={busy || !page?.parent} onClick={() => { if (page?.parent) go(page.parent); }}>{t('next.settings.up')}</Button>
       </div>
-      <label className={styles.pickerNote}>
-        <input type="checkbox" checked={showHidden} disabled={busy} onChange={event => {
-          const next = event.currentTarget.checked;
-          setShowHidden(next); void read(page?.path, next);
-        }} /> {t('next.settings.hiddenFolders')}
-      </label>
-      {failed && <div role="alert" className={styles.pickerNote}>
-        <p>{t('next.ownerLibraries.explorer.failed')}</p>
-        <p>{t('next.ownerLibraries.explorer.failedHelp')}</p>
-      </div>}
-      {busy && !page && <p role="status">{t('next.ownerLibraries.explorer.reading')}</p>}
-      {page && page.roots.length > 0 && <nav aria-label={t('next.ownerLibraries.explorer.places')}>
-        <p className={styles.pickerNote}>{t('next.ownerLibraries.explorer.places')}</p>
-        <ul className={styles.pickerList}>{page.roots.map(root => <li key={root.path}>
-          <button type="button" className={styles.pickerRow} disabled={busy} aria-current={page.path === root.path ? 'location' : undefined}
-            onClick={() => go(root.path)}><span>{root.name}</span><small>{root.path}</small></button>
-        </li>)}</ul>
-      </nav>}
-      {page && page.path && (page.entries.length
-        ? <ul className={styles.pickerList}>{page.entries.filter(entry => entry.kind === 'directory').map(entry => <li key={entry.path}>
-          <button type="button" className={styles.pickerRow} disabled={!entry.readable} onClick={() => go(entry.path)}>
-            <span>{entry.name}</span>{entry.symlink && <small>{t('next.ownerLibraries.explorer.link')}</small>}{!entry.readable && <small>{t('next.ownerLibraries.explorer.noAccess')}</small>}</button></li>)}</ul>
-        : <p className={styles.pickerNote}>{t('next.ownerLibraries.explorer.noFolders')}</p>)}
-      {page?.nextCursor && <Button disabled={busy} onClick={() => { void read(page.path, showHidden, page.nextCursor); }}>{t('next.ownerLibraries.explorer.more')}</Button>}
+      <div className={styles.explorerColumns} data-roots={!page?.path || undefined}>
+        {!!page?.path && places.length > 0 ? <nav className={styles.pickerPlaces} aria-label={t('next.ownerLibraries.explorer.places')}>
+          <h4>{t('next.ownerLibraries.explorer.places')}</h4>{places.map(root => <div key={root.path}>{rootButton(root)}</div>)}
+        </nav> : null}
+        <section className={styles.explorerMain} aria-label={t('next.ownerLibraries.explorer.folders')}>
+          <header className={styles.pickerListHeader}><b>{t('next.ownerLibraries.explorer.folders')}</b><label>{t('next.ownerLibraries.explorer.showHidden')}<Switch aria-label={t('next.ownerLibraries.explorer.showHidden')} checked={showHidden} disabled={busy} onCheckedChange={value => {if (current()) {setShowHidden(value); void read(page?.path, value);}}}/></label></header>
+          {failed ? <div role="alert" className={styles.pickerNote}><p>{t('next.ownerLibraries.explorer.failed')}</p><p>{t('next.ownerLibraries.explorer.failedHelp')}</p></div> : null}
+          {busy && !page ? <p role="status">{t('next.ownerLibraries.explorer.reading')}</p> : null}
+          {page && !page.path ? <div className={styles.pickerRoots}>{places.map(root => <div key={root.path}>{rootButton(root)}</div>)}</div> : null}
+          {page?.path ? <ul className={styles.pickerList}>{page.entries.filter(entry => entry.kind === 'directory').map(entry => <li key={entry.path} className={styles.pickerEntry} data-hidden={entry.hidden || undefined}>
+            {onChooseMany ? <input type="checkbox" aria-label={entry.path} checked={chosen.includes(entry.path)} disabled={!entry.readable || busy || !chosen.includes(entry.path) && chosen.length >= 64} onChange={() => toggle(entry.path)}/> : null}
+            <button type="button" className={styles.pickerRow} disabled={!entry.readable || busy} onClick={() => go(entry.path)}><span>{entry.name}</span></button>
+            {entry.hidden ? <small>{t('next.ownerLibraries.explorer.hidden')}</small> : null}{entry.symlink ? <small>{t('next.ownerLibraries.explorer.link')}</small> : null}{!entry.readable ? <small>{t('next.ownerLibraries.explorer.noAccess')}</small> : null}
+          </li>)}</ul> : null}
+          {page?.path && !page.entries.length ? <p className={styles.pickerNote}>{t('next.ownerLibraries.explorer.noFolders')}</p> : null}
+          {page?.nextCursor ? <Button disabled={busy} onClick={() => {if (current()) void read(page.path, showHidden, page.nextCursor);}}>{t('next.ownerLibraries.explorer.more')}</Button> : null}
+        </section>
+      </div>
     </div>
   </Dialog>;
 }
