@@ -11,9 +11,9 @@ def main():
     if args.config.resolve()!=ROOT/'.private/v3-checkpoints/config.json':parser.error('fixed private campaign config required')
     cfg=json.loads(args.config.read_text());directory=args.config.parent;source=Path(__file__).with_name('run.py');installed=directory/'run.py';atomic(installed,source.read_bytes())
     units=Path.home()/'.config/systemd/user';units.mkdir(parents=True,exist_ok=True)
-    for name,flags,calendar,timeout in [('portico-v3-checkpoints','','*-*-* 00,04,08,12,16,20:47:00 UTC','75min'),('portico-v3-ci-audit',' --audit-ci','*-*-* *:50:00 UTC','5min')]:
+    for name,flags,calendar,timeout in [('portico-v3-checkpoints','','*-*-* 00,04,08,12,16,20:47:00 UTC','75min'),('portico-v3-ci-audit',' --audit-ci','*-*-* *:50:00 UTC','5min'),('portico-v3-ledger',' --refresh-ledger','*-*-* 00,06,12,18:35:00 UTC','5min')]:
         service=f'''[Unit]
-Description=Portico v3 unattended {'M0 checkpoints' if not flags else 'hourly CI failure inbox'}
+Description=Portico v3 unattended {'M0 checkpoints' if not flags else 'ledger refresh' if flags==' --refresh-ledger' else 'hourly CI failure inbox'}
 [Service]
 Type=oneshot
 WorkingDirectory={ROOT}
@@ -26,7 +26,7 @@ StandardOutput=append:{directory}/{name}.log
 StandardError=append:{directory}/{name}.log
 '''
         timer=f'''[Unit]
-Description=Portico v3 {'four-hour' if not flags else 'hourly'} machine checks
+Description=Portico v3 {'four-hour' if not flags else 'six-hour' if flags==' --refresh-ledger' else 'hourly'} machine checks
 [Timer]
 OnCalendar={calendar}
 Persistent=false
@@ -37,10 +37,10 @@ WantedBy=timers.target
 '''
         atomic(units/(name+'.service'),service.encode());atomic(units/(name+'.timer'),timer.encode())
     subprocess.run(['systemctl','--user','daemon-reload'],check=True)
-    subprocess.run(['systemctl','--user','enable','--now','portico-v3-checkpoints.timer','portico-v3-ci-audit.timer'],check=True,stdout=subprocess.DEVNULL)
+    subprocess.run(['systemctl','--user','enable','--now','portico-v3-checkpoints.timer','portico-v3-ci-audit.timer','portico-v3-ledger.timer'],check=True,stdout=subprocess.DEVNULL)
     evidence=Path(cfg['evidence']);evidence.mkdir(parents=True,exist_ok=True)
     receipt={'coordinatorSHA256':hashlib.sha256(installed.read_bytes()).hexdigest(),'sourcePrivateMain':subprocess.check_output(['git','rev-parse','HEAD'],cwd=source.parent,text=True).strip(),'timers':[]}
-    for name in ['portico-v3-checkpoints','portico-v3-ci-audit']:
+    for name in ['portico-v3-checkpoints','portico-v3-ci-audit','portico-v3-ledger']:
         result=subprocess.check_output(['systemctl','--user','show',name+'.timer','--property=ActiveState,NextElapseUSecRealtime'],text=True).strip();receipt['timers'].append({'name':name,'state':result})
     (evidence/'machine-timers.json').write_text(json.dumps(receipt,indent=2)+'\n');print(json.dumps(receipt))
 if __name__=='__main__':main()

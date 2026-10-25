@@ -36,7 +36,10 @@ class Job:
         self.report['flows'].append({'surface':surface,'id':name,'status':'pass','kind':kind});return True
     def ready(self,url,process):
         for _ in range(160):
-            if process.poll() is not None:raise StepFailure('runtime-start')
+            if process.poll() is not None:
+                log=self.work/'server-runtime.private.log';text=log.read_text(errors='replace') if log.is_file() else ''
+                self.report['runtimeExit']={'exitCode':process.returncode,'categories':[code for token,code in [('permission denied','permission'),('Operation not permitted','namespace-denied'),('No such file','missing-file'),('read-only file system','read-only-path'),('/var/cache/portico','service-transcode-path'),('schema','schema'),('baseline','baseline'),('address already in use','address-busy')] if token in text]}
+                raise StepFailure('runtime-start')
             try:
                 with urllib.request.urlopen(url,timeout=1) as r:
                     if r.status==200:return
@@ -123,7 +126,10 @@ class Job:
         if not all((runtime/x).is_file() for x in ['toolchain-manifest.json','bin/ffmpeg','bin/ffprobe']):raise StepFailure('qualified-runtime-unavailable')
         self.run('runtime-manifest',['python3',str(self.source/'scripts/sonic-bundle.py'),'verify-installed',str(runtime),'--target','linux-x64'])
         env=dict(self.process_env,PORTICO_BIND='127.0.0.1:'+str(bind),PORTICO_DATA_DIR=str(state),PORTICO_WEB_DIR=str(web),PORTICO_FFMPEG=str(runtime/'bin/ffmpeg'),PORTICO_FFPROBE=str(runtime/'bin/ffprobe'),PORTICO_SERVICE='1',PORTICO_DISCOVERY='0',XDG_CACHE_HOME=str(self.work/'cache'))
-        app=self.spawn('server-runtime',[str(self.work/'server')],env=env);self.ready(base+'/health/ready',app)
+        # Exercise the normal Linux service profile, while its fixed transcode
+        # path is a private disk-backed bind mount rather than a host write.
+        transcode=self.work/'transcode';transcode.mkdir(mode=0o700)
+        app=self.spawn('server-runtime',['bwrap','--die-with-parent','--unshare-user','--ro-bind','/','/','--bind',str(self.work),str(self.work),'--bind',str(transcode),'/var/cache/portico','--proc','/proc','--dev','/dev','--',str(self.work/'server')],env=env);self.ready(base+'/health/ready',app)
         username='cp'+secrets.token_hex(5);password='Cp9!'+secrets.token_urlsafe(24);installation=secrets.token_urlsafe(32)
         setup=self.json_call(base,'POST','/v1/setup/browser',{},installation=installation,headers={'Origin':base})['setupToken']
         owner=self.json_call(base,'POST','/v1/setup',{'setupToken':setup,'requestId':str(uuid.uuid4()),'name':'Portico checkpoint','authMode':'local','interactive':True,'username':username,'password':password},installation=installation,headers={'Origin':base},expected=(201,));grant=owner.get('session',owner);token=grant['accessToken']

@@ -62,9 +62,20 @@ def audit(config,root):
         rows.append({'repo':repo,**latest,'failures':[{'job':j['name'],'steps':[s['name'] for s in j['steps'] if s['conclusion']=='failure']} for j in jobs if j['conclusion']=='failure']})
     path=Path(config['evidence'])/'ci-inbox.json';path.parent.mkdir(parents=True,exist_ok=True);path.write_text(json.dumps(rows,indent=2)+'\n');print(json.dumps({'ciFailures':len(rows),'inbox':str(path)}))
 
+def refresh_ledger(config,root):
+    program=root/'.worktrees/ui-2026/_program'
+    command=['python3',str(program/'runner-tools/ledger-from-trailers.py')]
+    for key in ['serverRepo','nativeRepo','privateRepo']:command+=['--repo',config[key]]
+    log=Path(config['evidence'])/'ledger-refresh.log';log.parent.mkdir(parents=True,exist_ok=True)
+    with log.open('ab') as output:
+        subprocess.run(command,check=True,stdout=output,stderr=subprocess.STDOUT,timeout=180)
+        subprocess.run(['python3',str(program/'v3/make-worklists.py')],check=True,stdout=output,stderr=subprocess.STDOUT,timeout=30)
+    print('Ledger and owner work lists refreshed from published main; owner notes preserved.')
+
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--config',required=True,type=Path);parser.add_argument('--audit-ci',action='store_true');parser.add_argument('--host',choices=['netcup','contabo']);parser.add_argument('--surface',choices=['web-server','hosted']);args=parser.parse_args();config,root=read_config(args.config)
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--config',required=True,type=Path);parser.add_argument('--audit-ci',action='store_true');parser.add_argument('--refresh-ledger',action='store_true');parser.add_argument('--host',choices=['netcup','contabo']);parser.add_argument('--surface',choices=['web-server','hosted']);args=parser.parse_args();config,root=read_config(args.config)
     os.umask(0o077)
+    if args.refresh_ledger:refresh_ledger(config,root);return 0
     if args.audit_ci:audit(config,root);return 0
     lock=Path(config['state']).with_suffix('.lock');lock.parent.mkdir(parents=True,exist_ok=True)
     with lock.open('a') as held:
