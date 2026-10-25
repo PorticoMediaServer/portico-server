@@ -15,6 +15,7 @@ type ReadingDiscoverRow struct {
 	Key        string                   `json:"key"`
 	Items      []ReadingItem            `json:"items"`
 	Series     []ReadingDiscoverSeries  `json:"series,omitempty"`
+	Newspaper  *ReadingPeriodicalGroup  `json:"newspaper,omitempty"`
 	NewIssues  []ReadingPeriodicalIssue `json:"newIssues,omitempty"`
 	ShortReads []ReadingShortRead       `json:"shortReads,omitempty"`
 }
@@ -111,7 +112,16 @@ func (d Dependencies) readingDiscover(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	discover, err := d.readingService().Discover(r.Context(), p, r.URL.Query().Get("libraryId"), reading.DiscoverLimits{Recent: limit, Series: seriesLimit, ShortReads: shortReadsLimit, NewIssues: newIssuesLimit})
+	newspaperLimit := 0
+	if raw := r.URL.Query().Get("newspaperLimit"); r.URL.Query().Has("newspaperLimit") {
+		var err error
+		newspaperLimit, err = strconv.Atoi(raw)
+		if err != nil || newspaperLimit != 1 || r.URL.Query().Get("libraryId") == "" {
+			readingFailure(w, reading.ErrInvalid)
+			return
+		}
+	}
+	discover, err := d.readingService().Discover(r.Context(), p, r.URL.Query().Get("libraryId"), reading.DiscoverLimits{Recent: limit, Series: seriesLimit, ShortReads: shortReadsLimit, NewIssues: newIssuesLimit, Newspaper: newspaperLimit})
 	if err != nil {
 		readingFailure(w, err)
 		return
@@ -146,6 +156,10 @@ func (d Dependencies) readingDiscover(w http.ResponseWriter, r *http.Request) {
 		}
 		out.Rows = append(out.Rows, ReadingDiscoverRow{Key: "new-issues", Items: []ReadingItem{}, NewIssues: issues})
 	}
+	if group := discover.Newspaper; group != nil {
+		newspaper := &ReadingPeriodicalGroup{ID: group.ID, Name: group.Name, IssueCount: group.IssueCount, Latest: ReadingPeriodicalIssue{Item: readingItemProjection(group.Latest), IssueDate: ReadingIssueDate(group.Latest.IssueDate)}}
+		out.Rows = append(out.Rows, ReadingDiscoverRow{Key: "newspaper", Items: []ReadingItem{}, Newspaper: newspaper})
+	}
 	write(w, 200, out)
 }
 
@@ -153,6 +167,6 @@ func (d Dependencies) readingDiscover(w http.ResponseWriter, r *http.Request) {
 // operation; the vocabulary is a rows-only payload of the existing item shape.
 func registerReadingDiscoverHTTPContract(registry *apikit.Registry) error {
 	errors := []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_required", "revision_mismatch", "request_in_progress", "body_too_large", "internal"}
-	m := apikit.Metadata{ID: "get_reading_discover", Method: "GET", Path: "/v1/reading/discover", Summary: "Read the server-composed Discover rows", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Errors: errors, Query: []string{"libraryId", "limit", "seriesLimit", "shortReadsLimit", "newIssuesLimit"}}
+	m := apikit.Metadata{ID: "get_reading_discover", Method: "GET", Path: "/v1/reading/discover", Summary: "Read the server-composed Discover rows", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, Status: 200, Errors: errors, Query: []string{"libraryId", "limit", "seriesLimit", "shortReadsLimit", "newIssuesLimit", "newspaperLimit"}}
 	return apikit.RegisterHTTP[struct{}, ReadingDiscoverResponse](registry, m)
 }

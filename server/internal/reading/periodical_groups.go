@@ -74,19 +74,7 @@ func (s *Service) PeriodicalGroups(ctx context.Context, p identity.Principal, li
 		return out, ErrChanged
 	}
 	current := seriesCursor{Namespace: generation.Namespace, Input: generation.Input, Ready: generation.Ready, Catalog: scope.Catalog, Viewer: scope.Viewer, Expiry: time.Now().Add(30 * time.Minute).Unix(), Scope: digest}
-	cte := `WITH eligible AS MATERIALIZED(
- SELECT m.series_id,m.series_key,m.series_value,m.series_source,m.issue_date,e.id AS entity,pid(e.public_id) AS public_id,cl.library_id,e.title,p.format,a.token,
- EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=e.id AND available.asset_id=a.token AND available.available=1) AS available
- FROM reading_attribution_members m JOIN catalog_entities e ON e.id=m.item_id AND e.library_id=m.library_id
- JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries lib ON lib.id=cl.library_id
- JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=` + primaryPublicationSQL + `
- JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id JOIN catalog_assets a ON a.id=p.asset_id
- WHERE m.library_id=? AND m.generation=? AND m.publication_type=? AND m.series_id IS NOT NULL AND m.issue_date IS NOT NULL
- AND (?='magazine' OR length(m.issue_date)=10) AND e.retired=0 AND cl.retired=0 AND lib.kind='book' AND e.kind=20 AND p.format IN('epub','pdf') AND (` + visible + `)),
- spellings AS(SELECT series_id,series_key,series_value,count(*) AS frequency,sum(series_source='owner') AS owners FROM eligible GROUP BY series_id,series_key,series_value),
- labels AS(SELECT series_id,series_key,series_value,row_number() OVER(PARTITION BY series_id ORDER BY owners>0 DESC,CASE WHEN owners>0 THEN owners ELSE frequency END DESC,series_value COLLATE BINARY) AS label_rank FROM spellings),
- members AS(SELECT e.*,count(*) OVER(PARTITION BY series_id) AS issue_count,row_number() OVER(PARTITION BY series_id ORDER BY issue_date DESC,entity DESC) AS latest_rank FROM eligible e),
- groups_page AS(SELECT l.series_id,l.series_key,l.series_value,m.issue_count,m.entity,m.public_id,m.library_id,m.title,m.format,m.token,m.available,m.issue_date FROM labels l JOIN members m ON m.series_id=l.series_id WHERE l.label_rank=1 AND m.latest_rank=1) `
+	cte := periodicalGroupsCTE(visible)
 	args := append([]any{handle, generation.Ready, publicationType, publicationType}, visibleArgs...)
 	afterKey, afterID := "", ""
 	if cursor != "" {
@@ -175,4 +163,21 @@ func (s *Service) PeriodicalGroups(ctx context.Context, p identity.Principal, li
 		return PeriodicalGroupsPage{}, ErrChanged
 	}
 	return out, nil
+}
+
+// Shared complete eligible membership; callers keep their original authorized snapshot.
+func periodicalGroupsCTE(visible string) string {
+	return `WITH eligible AS MATERIALIZED(
+ SELECT m.series_id,m.series_key,m.series_value,m.series_source,m.issue_date,e.id AS entity,pid(e.public_id) AS public_id,cl.library_id,e.title,p.format,a.token,
+ EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=e.id AND available.asset_id=a.token AND available.available=1) AS available
+ FROM reading_attribution_members m JOIN catalog_entities e ON e.id=m.item_id AND e.library_id=m.library_id
+ JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries lib ON lib.id=cl.library_id
+ JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=` + primaryPublicationSQL + `
+ JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id JOIN catalog_assets a ON a.id=p.asset_id
+ WHERE m.library_id=? AND m.generation=? AND m.publication_type=? AND m.series_id IS NOT NULL AND m.issue_date IS NOT NULL
+ AND (?='magazine' OR length(m.issue_date)=10) AND e.retired=0 AND cl.retired=0 AND lib.kind='book' AND e.kind=20 AND p.format IN('epub','pdf') AND (` + visible + `)),
+ spellings AS(SELECT series_id,series_key,series_value,count(*) AS frequency,sum(series_source='owner') AS owners FROM eligible GROUP BY series_id,series_key,series_value),
+ labels AS(SELECT series_id,series_key,series_value,row_number() OVER(PARTITION BY series_id ORDER BY owners>0 DESC,CASE WHEN owners>0 THEN owners ELSE frequency END DESC,series_value COLLATE BINARY) AS label_rank FROM spellings),
+ members AS(SELECT e.*,count(*) OVER(PARTITION BY series_id) AS issue_count,row_number() OVER(PARTITION BY series_id ORDER BY issue_date DESC,entity DESC) AS latest_rank FROM eligible e),
+ groups_page AS(SELECT l.series_id,l.series_key,l.series_value,m.issue_count,m.entity,m.public_id,m.library_id,m.title,m.format,m.token,m.available,m.issue_date FROM labels l JOIN members m ON m.series_id=l.series_id WHERE l.label_rank=1 AND m.latest_rank=1) `
 }
