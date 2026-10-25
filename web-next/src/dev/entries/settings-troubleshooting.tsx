@@ -5,6 +5,7 @@ import {IconSprite} from '../../kit/Icon';
 import {TroubleshootingPage} from '../../screens/settings/server/troubleshooting';
 import {SettingsFeedbackSource} from '../../screens/settings/server/troubleshooting/feedback-source';
 import {SettingsReportsSource} from '../../screens/settings/server/troubleshooting/reports-source';
+import {SettingsMessagesSource} from '../../screens/settings/server/troubleshooting/messages-source';
 import {SettingsSupportSource} from '../../screens/settings/server/troubleshooting/support-source';
 import '../../kit/tokens.css';
 import '../../kit/fonts.css';
@@ -66,6 +67,8 @@ const request = async (path: string, method = 'GET'): Promise<unknown> => {
   if (path.includes('/console/diagnostics/')) return {scope: {serverId, viewerFence: fence}, data: {items: records, nextCursor: ''}};
   if (path.includes('/catalogue/failures')) return setAside;
   if (method === 'DELETE') return undefined;
+  if (path.includes('/logs/settings')) return {revision: 1, logLevel: 'info', effectiveLevel: 'info', retention: [], levels: ['error','warn','info','debug'], categories: ['server','playback','scan','network','client']};
+  if (path.includes('/admin/logs')) return {items: [{sequence: '1', at: '2026-10-22T19:58:02Z', level: 'info', category: 'server', message: 'Backup finished. 18 MB written, 7 backups kept.'}], limit: 200, nextCursor: '', level: 'info', effectiveLevel: 'info'};
   if (path.includes('/diagnostics/capabilities')) return capabilities;
   if (path.includes('/console/alerts')) return {scope: {serverId, viewerFence: fence}, data: alerts};
   if (path.includes('/admin/feedback/')) {
@@ -81,6 +84,7 @@ const request = async (path: string, method = 'GET'): Promise<unknown> => {
   ], limit: 25, nextCursor: ''});
 };
 const transport = {request: <T,>(path: string, method?: string) => request(path, method) as Promise<T>};
+const messages = new SettingsMessagesSource(transport, undefined, () => true);
 const reports = new SettingsReportsSource(transport, serverId, 'specimen-viewer', () => true);
 const feedbackSource = new SettingsFeedbackSource(transport, serverId, 'specimen-viewer', () => true);
 const supportSource = new SettingsSupportSource(transport, serverId, 'specimen-viewer', () => true);
@@ -88,7 +92,7 @@ const subscribe = (listener: () => void) => {const offs = [reports.subscribe(lis
 
 createRoot(document.getElementById('root')!).render(<div style={{minHeight: '100vh', background: '#071018', padding: '40px 32px'}}>
   <div style={{maxWidth: 952, margin: '0 auto'}}><IconSprite />
-    <TroubleshootingPage reports={reports} feedback={feedbackSource} support={supportSource} subscribe={subscribe} isCurrent={() => true} downloadBase="" reportError={() => {}}
-      initialView={params.get('view') === 'reports' ? 'reports' : params.get('view') === 'support' ? 'support' : 'feedback'} />
+    <TroubleshootingPage messages={messages} reports={reports} feedback={feedbackSource} support={supportSource} subscribe={subscribe} isCurrent={() => true} downloadBase="" reportError={() => {}}
+      initialView={params.get('view') === 'messages' ? 'messages' : params.get('view') === 'reports' ? 'reports' : params.get('view') === 'support' ? 'support' : 'feedback'} />
   </div>
 </div>);
