@@ -854,6 +854,13 @@ func BuildConversion(r ConversionRequest) (ConversionGraph, error) {
 			backend, spec = r.Probe.Backend, s
 		}
 	}
+	// The pinned VideoToolbox encoder/upload path writes colour tags but has no
+	// AVFrame mastering-display/content-light metadata writer. Preserve known
+	// static HDR10 metadata with the software encoder instead of silently losing
+	// it on a hardware route. Copied video, SDR and HLG keep their existing path.
+	if r.ConvertVideo && backend == BackendVideoToolbox && target.DynamicRange == "hdr10" && (target.MasterDisplay != "" || target.MaxCLL != "") {
+		backend, spec = BackendSoftware, backendSpec{}
+	}
 	encoder := ""
 	if r.ConvertVideo {
 		encoder = encoderFor(backend, spec)
