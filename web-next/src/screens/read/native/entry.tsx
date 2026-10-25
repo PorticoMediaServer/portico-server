@@ -55,7 +55,7 @@ function NativeReading({guest}: {guest: ReadingGuest}) {
   }, [guest]);
   if (failed) return <StateView title={defaultI18n.t('next.states.pageFailed')} body={defaultI18n.t('next.states.pageFailedBody')}/>;
   return <div className={styles.host} hidden={!active} aria-hidden={!active} inert={!active}>{book
-    ? <ReaderBook environment="native" book={book} active={active} crease={crease} reportError={reportError} onBack={() => {void (async () => {await progressRef.current?.stop(); await guest.back();})().catch(reportError);}} onOpenSettings={() => {void guest.openSettings();}}/>
+    ? <ReaderBook environment="native" saveHighlights={guest.saveHighlights} book={book} active={active} crease={crease} reportError={reportError} onBack={() => {void (async () => {await progressRef.current?.stop(); await guest.back();})().catch(reportError);}} onOpenSettings={() => {void guest.openSettings();}}/>
     : <Skeleton height="100dvh"/>}</div>;
 }
 function NativeReaderEntry() {
