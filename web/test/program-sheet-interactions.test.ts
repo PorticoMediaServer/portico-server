@@ -8,22 +8,28 @@ import {componentModule} from './helpers/component-harness.mjs';
 import {all, createRenderer, tree} from './helpers/interaction-harness.mjs';
 const T = Date.UTC(2026, 9, 24, 18);
 const MIN = 60_000;
+// Use protocol-valid identities: seriesRuleConfig validates the real source/channel IDs.
+const SOURCE = 'a'.repeat(48);
+const CHANNEL = 'b'.repeat(64);
+const GENERATION = 'c'.repeat(48);
+const PROGRAMME = 'd'.repeat(64);
+const RULE = 'e'.repeat(64);
 const t = (key: any, values?: any) => defaultI18n.t(key, values);
 
 async function mount(options: {when?: 'past' | 'future'; series?: boolean; noProgram?: boolean; unavailable?: boolean; recordable?: boolean; fail?: () => boolean} = {}) {
   const h = createRenderer();
   const calls = {watch: [] as any[], favorite: [] as any[], remind: [] as any[], schedule: [] as any[], rules: [] as any[], navigate: [] as any[], changed: 0, close: 0};
-  const rawChannel: any = {id: 'c0', sourceId: 's1', provenance: 'live-source', name: 'One', number: '1', group: '', generation: 'g1',
+  const rawChannel: any = {id: CHANNEL, sourceId: SOURCE, provenance: 'live-source', name: 'One', number: '1', group: '', generation: GENERATION,
     programmes: [], tuneAvailable: !options.unavailable, recordAvailable: options.recordable !== false,
     tuneUnavailableReason: '', recordUnavailableReason: '', favorite: false, hidden: false, preferenceRevision: 1};
   const start = options.when === 'past' ? T - 120 * MIN : options.when === 'future' ? T + 60 * MIN : T - 15 * MIN;
-  const rawProgram: any = {id: 'p0', channelId: 'c0', title: 'Programme', start: new Date(start).toISOString(), end: new Date(start + 60 * MIN).toISOString(),
+  const rawProgram: any = {id: PROGRAMME, channelId: CHANNEL, title: 'Programme', start: new Date(start).toISOString(), end: new Date(start + 60 * MIN).toISOString(),
     lineage: 'provider-id', seriesId: options.series ? 'series-0' : '', episodeId: '', newEvidence: 'unknown', description: 'Description'};
   const channel = legacyChannelRow(rawChannel), program = legacyProgram(rawProgram);
   const dvr = {schedule: async (...args: any[]) => {
     calls.schedule.push(args);
     if (options.fail?.()) throw new Error('unavailable');
-  }, newRuleID: async () => 'rule-0', saveRule: async (...args: any[]) => { calls.rules.push(args); }};
+  }, newRuleID: async () => RULE, saveRule: async (...args: any[]) => { calls.rules.push(args); }};
   const nowStore = {get: () => T, getSnapshot: () => T, subscribe: () => () => {}, dispose() {}};
   const app = await componentModule(new URL('../src/screens/channels/Channels.tsx', import.meta.url), {
     react: h.react,
@@ -35,7 +41,7 @@ async function mount(options: {when?: 'past' | 'future'; series?: boolean; noPro
       setChannelSurf: () => {}, forgetGuideReads: () => {}, channelReason: () => '', serverWideOf: () => undefined,
       subscribeReminders: () => () => {}, toggleReminder: (value: any) => calls.remind.push(value),
       useChannelMemory: () => ({view: 'guide', sort: 'number', setView() {}, setSort() {}}),
-      useChannelSources: () => ({sources: [{id: 's1', name: 'Living room', type: 'live', position: 0, recordAvailable: true}], loading: false, failed: false, refresh() {}}),
+      useChannelSources: () => ({sources: [{id: SOURCE, name: 'Living room', type: 'live', position: 0, recordAvailable: true}], loading: false, failed: false, refresh() {}}),
       channelGuideSource: () => ({}), localTimezone: () => 'UTC',
     },
     '../../app/session': {useSession: () => ({api: {}, session: {viewer: {serverId: 'server'}}, owner: false})},
@@ -59,7 +65,7 @@ async function mount(options: {when?: 'past' | 'future'; series?: boolean; noPro
   const format = {zone: 'UTC', t, dayLabel: () => t('guide.today'), clock: (ms: number) => defaultI18n.time(ms),
     range: (a: number, b: number) => t('guide.range', {start: defaultI18n.time(a), end: defaultI18n.time(b)}), duration: () => ''};
   const draw = () => app.ProgramSheet({selection: {channel, ...(options.noProgram ? {} : {program})}, format,
-    sources: [{id: 's1', name: 'Living room'}], showSource: true,
+    sources: [{id: SOURCE, name: 'Living room'}], showSource: true,
     onClose: () => { calls.close++; }, onWatch: (row: any) => calls.watch.push(row),
     onChanged: () => { calls.changed++; }, onFavorite: (row: any) => calls.favorite.push(row)});
   const render = () => tree(h.render(draw));
@@ -75,10 +81,10 @@ test('on-air Watch and Favorite dispatch the shown channel and close the sheet',
   const f = await mount();
   const rendered = f.render();
   lastButton(rendered, t('guide.watchLive')).props.onClick();
-  assert.equal(f.calls.watch.at(-1).id, 'c0');
+  assert.equal(f.calls.watch.at(-1).id, CHANNEL);
   assert.equal(f.calls.close, 1);
   lastButton(rendered, t('channels.addFavorite')).props.onClick();
-  assert.equal(f.calls.favorite.at(-1).id, 'c0');
+  assert.equal(f.calls.favorite.at(-1).id, CHANNEL);
   assert.equal(f.calls.close, 2);
 });
 
@@ -89,7 +95,7 @@ test('a future programme offers Remind rather than Watch and passes the programm
   assert.equal(buttons(rendered, t('guide.watchLive')).length, 0);
   assert.equal(buttons(rendered, t('guide.watchChannel')).length, 0);
   lastButton(rendered, t('guide.remind')).props.onClick();
-  assert.deepEqual(f.calls.remind, [{programId: 'p0', channelId: 'c0', title: 'Programme', channelName: 'One', start: T + 60 * MIN}]);
+  assert.deepEqual(f.calls.remind, [{programId: PROGRAMME, channelId: CHANNEL, title: 'Programme', channelName: 'One', start: T + 60 * MIN}]);
 });
 
 test('past programmes and non-recordable channels have no Record action', async context => {
@@ -175,7 +181,7 @@ test('series confirmation maps episode, channel scope, keep and padding choices 
   rendered = await f.settle();
   assert.equal(f.calls.rules.length, 1);
   const [id, revision, config, anchor] = f.calls.rules[0];
-  assert.equal(id, 'rule-0');
+  assert.equal(id, RULE);
   assert.equal(revision, 0);
   assert.equal(config.seriesId, 'series-0');
   assert.equal(config.episodes, 'all');
@@ -183,7 +189,7 @@ test('series confirmation maps episode, channel scope, keep and padding choices 
   assert.equal(config.options.episodeLimit, 5);
   assert.equal(config.options.beforeSeconds, 60);
   assert.equal(config.options.afterSeconds, 120);
-  assert.deepEqual(anchor, {sourceId: 's1', channelId: 'c0', generation: 'g1', programmeId: 'p0'});
+  assert.deepEqual(anchor, {sourceId: SOURCE, channelId: CHANNEL, generation: GENERATION, programmeId: PROGRAMME});
   assert.equal(f.calls.changed, 1);
   assert.equal(all(rendered, 'Dialog').length, 1);
   assert.equal(buttons(rendered, t('guide.recordSeries')).length, 0);
@@ -201,5 +207,5 @@ test('series Cancel creates no rule, and default scope is this channel with new 
   await f.settle();
   assert.equal(f.calls.rules.length, 1);
   assert.equal(f.calls.rules[0][2].episodes, 'new');
-  assert.deepEqual(f.calls.rules[0][2].allowedChannels, ['c0']);
+  assert.deepEqual(f.calls.rules[0][2].allowedChannels, [CHANNEL]);
 });
