@@ -1,8 +1,8 @@
-import {useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
+import {useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject} from 'react';
 import {defaultI18n} from '@i18n';
 import {Icon} from '../Icon';
 import {BottomSheet, Popover} from '../overlays';
-import type {PlayOnLinkPreview, PlayOnLinkPort, PlayOnReceiver, PlayOnReceiversPort} from '../../platform/playback/play-on';
+import type {PlayOnController, PlayOnLinkPreview, PlayOnLinkPort, PlayOnReceiver, PlayOnReceiversPort} from '../../platform/playback/play-on';
 import type {CastPlayerTranslate, PlayOnPanelProps} from './types';
 import styles from './cast-player.module.css';
 
@@ -59,6 +59,15 @@ function LinkTv({t, state, onCode, onLookup, onDecide, onRetry, onClose}: {
     </div>
     <p className={styles.footnote}>{t('next.cast.linkTvHint')}</p>
   </form>;
+}
+
+/** The drawn Play on button. It opens the authoritative panel, which owns every guard. */
+export function PlayOnButton({controller, available, buttonRef, onOpen, t = defaultI18n.t}: Readonly<{
+  controller: PlayOnController; available: boolean; buttonRef?: RefObject<HTMLButtonElement | null>; onOpen?: () => void; t?: CastPlayerTranslate;
+}>) {
+  if (!available) return null;
+  return <button type="button" ref={buttonRef} className={styles.playOnButton} aria-label={t('next.dock.playOnDevice')} aria-haspopup="menu"
+    onClick={() => { onOpen?.(); controller.openPlayOn(); }}><Icon name="i-cast" size={24} /></button>;
 }
 
 /** Desktop f1s and the phone sheet, with the binding browser rows, the Portico televisions
