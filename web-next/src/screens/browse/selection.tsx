@@ -75,7 +75,7 @@ function explicitLeafItems(selection: BrowseSelection | undefined): readonly str
   if (!target || target.mode !== 'explicit' || !target.displayItems.length) return undefined;
   if (!personalTargetIsLeaf(target)) return undefined;
   const ids: string[] = [];
-  for (const pick of target.displayItems) {
+  for (const pick of target.items) {
     const item = pick.item;
     if (item.kind === 'channel' || item.kind === 'person') return undefined;
     ids.push(item.id);

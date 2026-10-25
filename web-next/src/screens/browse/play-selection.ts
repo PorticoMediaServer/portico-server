@@ -265,7 +265,7 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
       if (!current() || !model || !queue || !request.isCurrent()) throw cancelled();
       const operation = model.captureOperation();
       if (!operation || operation.target.mode !== 'explicit' || !model.getSnapshot().summary.every.queue) throw unavailable();
-      const items = operation.target.displayItems.map(pick => pick.item);
+      const items = operation.target.items.map(pick => pick.item);
       if (items.length !== request.items.length || items.some((item, index) => item.id !== request.items[index])) throw unavailable();
       return enqueueCatalogueSelection(queue, items, request.placement, {
         signal: AbortSignal.any([signal, life.signal, request.signal]),
