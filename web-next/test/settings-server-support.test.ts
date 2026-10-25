@@ -114,7 +114,8 @@ test('held requestConsole download cannot reach a download sink after parent ret
     requestConsole: async <T>(path: string, _method: string, _body: unknown, signal: AbortSignal) => {
       assert.ok(signal);
       if (path.includes('/exports/')) {started();return new Promise<T>(resolve => {release = value => resolve(value as T);});}
-      receipt = {...ready, manifest: {...ready.manifest, from: sent.from, to: sent.to, included: [...sent.components]}};
+      const sent = _body as {from:string;to:string;components:string[]};
+      const receipt = {...ready, manifest: {...ready.manifest, from: sent.from, to: sent.to, included: [...sent.components]}};
       return envelope(receipt) as T;
     },
   };
