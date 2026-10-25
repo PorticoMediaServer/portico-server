@@ -1,18 +1,27 @@
-import {useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type FormEvent} from 'react';
+import {useEffect, useLayoutEffect, useCallback, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type FormEvent} from 'react';
 import {passwordStrength} from '@core/password-strength.ts';
 import {AuthCodeBoxes, AuthLinks, AuthPasswordField} from '../kit/accounts';
 import {HostedError, ServicesActions, ServicesAuthStage, ServicesBackAction, ServicesDivider, ServicesHeading, ServicesHint, ServicesInvitationCredentials, ServicesLabel, ServicesLead, ServicesNotice, ServicesPair, ServicesProviderAccount, ServicesProviderButton, ServicesProviderContext, ServicesProviderReturnHint, ServicesQuiet, ServicesRegistrationLead, ServicesStateIcon, ServicesStrength, ServicesTerms, ServicesVerificationCode} from '../kit/accounts/ServicesAuth';
 import {Button, TextField} from '../kit/controls';
 import {ServicesAuthFlow} from './auth-flow';
+import {useAccountResource} from './use-account-resource';
 import type {ServicesAccount} from './session';
 import {servicesI18n} from './i18n';
 import styles from './services.module.css';
 import signInStyles from './services-signin-r46.module.css';
 
 type Props = {account: ServicesAccount; onSignedIn: (gesture?: boolean) => void; initialMode?: 'signin' | 'create' | 'forgot'; initialUsername?: string; embedded?: boolean; invitation?: boolean; heading?: ReactNode; lead?: ReactNode; before?: ReactNode; after?: ReactNode};
-export function ServicesAuthForm({account, onSignedIn, initialMode = 'signin', initialUsername = '', embedded = false, invitation = false, heading, lead, before, after}: Props) {
-  const {t} = useMemo(servicesI18n, []), complete = useRef(onSignedIn); complete.current = onSignedIn;
-  const flow = useMemo(() => new ServicesAuthFlow(account, gesture => complete.current(gesture), initialMode), [account, initialMode]);
+export function ServicesAuthForm(props: Props) {
+  const {account, initialMode = 'signin'} = props;
+  const complete = useRef(props.onSignedIn); complete.current = props.onSignedIn;
+  const create = useCallback(() => new ServicesAuthFlow(account, gesture => complete.current(gesture), initialMode), [account, initialMode]);
+  const bound = useAccountResource(create);
+  if (!bound) return props.embedded ? null : <ServicesAuthStage><></></ServicesAuthStage>;
+  return <MountedAuthForm key={bound.id} {...props} flow={bound.value} />;
+}
+
+function MountedAuthForm({account, flow, initialUsername = '', embedded = false, invitation = false, heading, lead, before, after}: Props & {flow: ServicesAuthFlow}) {
+  const {t} = useMemo(servicesI18n, []);
   const state = useSyncExternalStore(flow.subscribe, flow.getSnapshot);
   // Follow family replacement without copying a second session into the form.
   useSyncExternalStore(account.service.subscribe, account.service.getSnapshot);
@@ -25,7 +34,7 @@ export function ServicesAuthForm({account, onSignedIn, initialMode = 'signin', i
     const timer = setInterval(() => setClock(Date.now()), 250);
     return () => clearInterval(timer);
   }, [state.retryAt]);
-  useEffect(() => { void flow.initialize(); return () => flow.dispose(); }, [flow]);
+  useLayoutEffect(() => { void flow.initialize(); }, [flow]);
   useEffect(() => { setPassword(''); setCode(''); if (state.mode === 'provider') setName(state.suggestedName ?? ''); }, [state.mode, state.suggestedName]);
   const submit = (work: () => Promise<void>) => (event: FormEvent) => { event.preventDefault(); void work(); };
   const retrySeconds = Math.max(0, Math.ceil((state.retryAt - clock) / 1000));

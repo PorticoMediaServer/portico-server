@@ -1,4 +1,4 @@
-import {useEffect, useState, useSyncExternalStore} from 'react';
+import {useCallback, useEffect, useLayoutEffect, useState, useSyncExternalStore} from 'react';
 import {createRootRouteWithContext, createRoute, createRouter, Outlet, RouterProvider} from '@tanstack/react-router';
 import type {JoinLink} from '@core/join-link.ts';
 import {IconSprite} from '../kit/Icon';
@@ -7,7 +7,8 @@ import {ServicesAuthStage, ServicesActions, ServicesHeading, ServicesLead, Servi
 import {Button} from '../kit/controls';
 import {servicesAccount, type ServicesAccount} from './session';
 import {ServicesBootstrap} from './bootstrap';
-import {captureServicesLink, scrubUnsupportedServicesFragment, servicesLinkStore, type LinkCapture} from './intake';
+import {useAccountResource} from './use-account-resource';
+import {servicesLinkStore, type LinkCapture} from './intake';
 import {servicesI18n} from './i18n';
 import {ServicesAuthForm} from './AuthForm';
 import {DevicePage} from './DevicePage';
@@ -17,8 +18,8 @@ import {SignedOutRecoveryCodes} from './SecurityPanel';
 import {JoinPage, ShortJoinPage} from './JoinPage';
 import {ServicesHomePage} from './HomePage';
 import {RegisteredSignInPage} from './SignInPage';
-import {captureHostedSignIn, type SignInCapture} from './sign-in';
-import {captureHostedOwnerClaim, type HostedOwnerClaimCapture} from './owner-claim';
+import type {SignInCapture} from './sign-in';
+import type {HostedOwnerClaimCapture} from './owner-claim';
 import {OwnerApprovalPage} from './OwnerApprovalPage';
 import {SetupApprovalPage} from './SetupApprovalPage';
 import {HostedSetupApproval} from '../screens/setup/HostedSetupApproval';
@@ -43,17 +44,19 @@ function makeRouter(context: Context) {
 }
 // This router's types stay local. The server app remains the only global TanStack Register.
 export function ServicesApp({capture, invalidContinuation, join, plainShortJoin, signIn, owner}: {capture?: LinkCapture; invalidContinuation?: boolean; join?: JoinLink; plainShortJoin?: boolean; signIn?: SignInCapture; owner?: HostedOwnerClaimCapture} = {}) {
-  const [value] = useState(() => {
-    const signedCapture = signIn ?? captureHostedSignIn(location, history, location.origin);
-    const ownerCapture = owner ?? captureHostedOwnerClaim(location, history, location.origin);
-    const captured = capture ?? captureServicesLink(location, history);
-    const invalid = invalidContinuation ?? scrubUnsupportedServicesFragment(location, history);
-    const account = servicesAccount(), bootstrap = new ServicesBootstrap(account, servicesLinkStore, captured, {origin: location.origin, capture: signedCapture},
-      location.pathname === '/claim' ? {origin: location.origin, capture: ownerCapture} : undefined);
-    return {account, bootstrap, router: makeRouter({account, bootstrap, invalidContinuation: invalid, join, plainShortJoin})};
-  });
-  useEffect(() => { void value.bootstrap.start(); return () => value.bootstrap.dispose(); }, [value]);
-  return <><IconSprite /><RouterProvider router={value.router} /></>;
+  // main.tsx captures and scrubs intake once, before React. A discarded render
+  // must not reread a scrubbed URL or allocate a terminal bootstrap controller.
+  const create = useCallback(() => {
+    const account = servicesAccount(), bootstrap = new ServicesBootstrap(account, servicesLinkStore, capture, {origin: location.origin, capture: signIn},
+      location.pathname === '/claim' ? {origin: location.origin, capture: owner} : undefined);
+    return {account, bootstrap, router: makeRouter({account, bootstrap, invalidContinuation: invalidContinuation === true, join, plainShortJoin}), dispose: () => bootstrap.dispose()};
+  }, [capture, invalidContinuation, join, plainShortJoin, signIn, owner]);
+  const bound = useAccountResource(create);
+  return <><IconSprite />{bound ? <MountedServicesRouter key={bound.id} value={bound.value} /> : <ServicesAuthStage><></></ServicesAuthStage>}</>;
+}
+function MountedServicesRouter({value}: {value: {bootstrap: ServicesBootstrap; router: ServicesRouter}}) {
+  useLayoutEffect(() => {void value.bootstrap.start();}, [value]);
+  return <RouterProvider router={value.router} />;
 }
 function ServicesRoot() {
   const {account, bootstrap, invalidContinuation} = root.useRouteContext<ServicesRouter>();
