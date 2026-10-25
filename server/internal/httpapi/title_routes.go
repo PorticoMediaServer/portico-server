@@ -157,6 +157,7 @@ func registerIdentityRoutes(r *apikit.Registry, d Dependencies) {
 
 	registerStorageStatus(r, d)
 	registerDataStorage(r, d)
+	registerAdminAccessEvents(r, d)
 	registerLiveChoices(r, d)
 	registerInventoryRead(r, d)
 	registerPlaybackControls(r, d)

@@ -4395,6 +4395,7 @@ CREATE INDEX analysis_marker_source ON analysis_markers(object_id,source_revisio
 CREATE INDEX analysis_stage_job ON analysis_stage_runs(job_id,state);
 CREATE INDEX console_receipts_expiry ON console_receipts(expires_ms);
 CREATE INDEX console_records_page ON console_records(lane,sequence DESC);
+CREATE INDEX console_audit_action_page ON console_audit(action,sequence DESC);
 CREATE INDEX console_reports_owner ON console_reports(scope,sequence DESC);
 CREATE INDEX console_inbox_page ON console_notifications(scope,sequence DESC);
 CREATE UNIQUE INDEX console_active_work ON console_operations(kind,resource) WHERE state IN ('queued','running','cancellation-requested','reconciling','paused');
