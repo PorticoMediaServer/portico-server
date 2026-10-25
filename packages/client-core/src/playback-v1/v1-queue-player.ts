@@ -65,7 +65,7 @@ export type V1Viewer = Readonly<{serverId: string; authority: 'local' | 'hosted'
 export type V1QueuePolicyIntent = Readonly<{action: 'repeat'; repeat: 'off' | 'one' | 'all'} | {action: 'shuffle'; shuffled: boolean}>;
 export type V1PlaybackTarget = Readonly<{sessionId: string; generation: number; playbackRun: number; itemId: string; versionId: string; queueId: string; entryId: string}>;
 /** Captured caller lifetime; its predicate must remain current across this start's own output change. */
-export type V1PlayItemContext = Readonly<{signal?: AbortSignal; isCurrent?: () => boolean; state?: 'playing' | 'paused'}>;
+export type V1PlayItemContext = Readonly<{signal?: AbortSignal; isCurrent?: () => boolean; state?: 'playing' | 'paused'; propagateError?: boolean}>;
 
 /**
  * How the queue player starts, adopts and ends sessions. The web gives it the session controller's
@@ -427,10 +427,12 @@ export class V1QueuePlayer implements QueueController {
     try {
       if (!keepIntent && (!await this.playback.prepareQueueIntent(intent) || !current())) return;
       await this.startEntry(header.id, header.current.entryId, intent, startSeconds, generation, choices, state, context?.signal, context ? current : undefined);
+      if (context?.propagateError && current() && this.playback.getSnapshot().phase === 'error') throw new ContractError('queue playback adoption');
       if (current()) this.publish({phase: 'ready'});
     } catch (e) {
-      if (!current()) return;
+      if (!current()) {if (context?.propagateError) throw new DOMException('Playback start retired', 'AbortError'); return;}
       this.fail(entry?.itemId ?? '', e, serviceText('queuePlayer.startFailed'));
+      if (context?.propagateError) throw e;
     } finally { context?.signal?.removeEventListener('abort', cancel); }
   }
 
