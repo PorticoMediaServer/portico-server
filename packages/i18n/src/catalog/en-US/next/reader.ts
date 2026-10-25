@@ -3,6 +3,8 @@ export const readerMessages = {
   'next.reader.month': 'Month',
   'next.reader.year': 'Year',
   'next.reader.allYears': 'All years',
+  'next.reader.newIssues': 'New issues',
+  'next.reader.datesFromFileNames': 'Dates from the file names',
   'next.reader.goToDate': 'Go to a date',
   'next.reader.issueCount': '{count, plural, one {# issue} other {# issues}}',
   'next.reader.shortReads': 'Short reads',
