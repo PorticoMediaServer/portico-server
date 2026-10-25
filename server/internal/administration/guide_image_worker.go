@@ -185,12 +185,14 @@ func (s *Service) importGuideImagesBatch(ctx context.Context, source, generation
 		if err = ctx.Err(); err != nil {
 			return out, after, false, err
 		}
+		// The same per-sweep definition as the channel logo pass: every visited
+		// candidate is requested, and ends imported or skipped.
+		out.Requested++
 		if skipped[url] {
 			after = url
 			out.Skipped++
 			continue
 		}
-		out.Requested++
 		fetchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		raw, fetchErr := s.LogoFetch(fetchCtx, url)
 		cancel()

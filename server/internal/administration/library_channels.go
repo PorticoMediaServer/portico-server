@@ -764,12 +764,15 @@ func (s *Service) importLogosBatch(ctx context.Context, auth Authorize, source, 
 			return out, after, false, err
 		}
 		processed++
+		// Every candidate this sweep looks at ends Imported or Skipped, so the
+		// owner's receipt ("5 imported, 3 skipped of 8") adds up. A logo that is
+		// left alone by the overwrite guard is still one the sweep considered.
+		out.Requested++
 		if skipped[channel] {
 			after = channel
 			out.Skipped++
 			continue
 		}
-		out.Requested++
 		fetchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		raw, fetchErr := fetch(fetchCtx, candidates[channel])
 		cancel()

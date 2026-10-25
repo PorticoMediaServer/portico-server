@@ -875,7 +875,9 @@ func broadcastTargets() []net.IP {
 	return out
 }
 
-// LogoImportResult reports a logo import sweep over one source's channels.
+// LogoImportResult reports one bounded logo import sweep over one source.
+// Requested is how many candidates the sweep looked at; each one ends Imported
+// or Skipped, so Imported+Skipped equals Requested for that sweep.
 type LogoImportResult struct {
 	SourceID  string `json:"sourceId"`
 	Requested int    `json:"requested"`
