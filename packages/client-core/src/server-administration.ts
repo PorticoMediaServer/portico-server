@@ -236,6 +236,42 @@ export function parseLogPage(raw:unknown):AdministrationPage<LogRecord>&{level:L
  return Object.freeze({...page(raw,parseLogRecord,row=>row.sequence),level:oneOfOr('server-administration','log-page.level',raw.level,logLevels,'info'),effectiveLevel:oneOfOr('server-administration','log-page.effectiveLevel',raw.effectiveLevel,logLevels,'info')});
 }
 
+/**
+ * The administrator TV Troubleshooting page's closed vocabulary. Each code is one
+ * exact maintenance action the server records in its own audit trail, and each is
+ * emitted only by a server-wide owner or administrator path. One viewer's own
+ * download work is deliberately absent, so its timing never reaches an
+ * administrator. The server omits any action outside this list, and this parser
+ * drops an unknown code rather than rendering a sentence that would misstate what
+ * happened.
+ *
+ * A control code records that the action was accepted, not that the work behind it
+ * finished: a cancel may still be acknowledged by the producer, a resume puts the
+ * task back in the queue, and a retry admits a fresh run. Only `settings.apply`,
+ * `downloads.settings`, `schedule.apply` and `alert.acknowledge` record a completed
+ * change, so their copy may say the setting or alert changed.
+ */
+export const adminServerEventCodes=['alert.acknowledge','downloads.settings','job.cancel','job.pause','job.resume','job.retry','optimization.cancel','optimization.delete','optimization.request','optimization.retry','schedule.apply','settings.apply'] as const;
+export type AdminServerEventCode=typeof adminServerEventCodes[number];
+export type AdminServerEvent=Readonly<{at:string;code:AdminServerEventCode}>;
+
+/** The bounded list is the latest eligible events, not the latest log lines. A
+ * document that claims more than the eight-record bound is refused, and a record
+ * carries only its time and its code: no actor, target, path, title or token. */
+export function parseAdminServerEvents(raw:unknown):readonly AdminServerEvent[]{
+ if(!obj(raw))return invalid();
+ const items=raw.items;
+ if(!Array.isArray(items))return invalid();
+ if(raw.limit!==8||items.length>8)return invalid();
+ const out:AdminServerEvent[]=[];
+ for(const entry of items){
+  if(!obj(entry))return invalid();
+  if(typeof entry.code!=='string'||!(adminServerEventCodes as readonly string[]).includes(entry.code))continue;
+  out.push(Object.freeze({at:when(entry.at),code:entry.code as AdminServerEventCode}));
+ }
+ return Object.freeze(out);
+}
+
 export function parseLogSettings(raw:unknown):LogSettings{
  if(!obj(raw))return invalid();
  if(raw.logDetailMinutes!==undefined&&(typeof raw.logDetailMinutes!=='number'||!(LOG_DETAIL_MINUTES as readonly number[]).includes(raw.logDetailMinutes)))return invalid();

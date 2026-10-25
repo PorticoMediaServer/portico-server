@@ -117,6 +117,24 @@ export const settingsMessages = {
   'next.tvPeople.daysAgo': '{count, plural, one {# day ago} other {# days ago}}',
   'next.tvPeople.weeksAgo': '{count, plural, one {# week ago} other {# weeks ago}}',
   'next.tvPeople.monthsAgo': '{count, plural, one {# month ago} other {# months ago}}',
+  // TV Troubleshooting, the administrator's page (Root §27): the latest eligible
+  // maintenance events, one reviewed sentence each. Nothing here is built from a
+  // server message or from any field of a record. A control code says the action
+  // was accepted, never that the work behind it finished.
+  'next.tvTroubleshooting.title': 'Recent server events',
+  'next.tvTroubleshooting.empty': 'No server events to show.',
+  'next.tvTroubleshooting.alertAcknowledge': 'An alert was acknowledged.',
+  'next.tvTroubleshooting.downloadSettings': 'Download settings were changed.',
+  'next.tvTroubleshooting.jobCancel': 'Cancelling a background task was requested.',
+  'next.tvTroubleshooting.jobPause': 'Pausing a background task was requested.',
+  'next.tvTroubleshooting.jobResume': 'Resuming a background task was requested.',
+  'next.tvTroubleshooting.jobRetry': 'A background task was asked to run again.',
+  'next.tvTroubleshooting.optimizationCancel': 'Cancelling a prepared version was requested.',
+  'next.tvTroubleshooting.optimizationDelete': 'Deleting a prepared version was requested.',
+  'next.tvTroubleshooting.optimizationRequest': 'A prepared version was requested.',
+  'next.tvTroubleshooting.optimizationRetry': 'Preparing a version was asked to run again.',
+  'next.tvTroubleshooting.scheduleApply': 'A schedule was changed.',
+  'next.tvTroubleshooting.settingsApply': 'Server settings were changed.',
   'next.settings.peopleTotal': '{total, plural, one {# person} other {# people}}',
   'next.settings.people.inviteTitle': 'Invite someone',
   'next.settings.people.role': 'Role',
