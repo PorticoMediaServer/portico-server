@@ -39,6 +39,7 @@ import {detailMessages} from './detail.ts';
 import {infoMessages} from './info.ts';
 import {musicMessages} from './music.ts';
 import {deviceCapabilitiesMessages} from './device-capabilities.ts';
+import {playerMessages} from './player.ts';
 
 export const nextMessages = {
   ...platformMessages,
@@ -82,6 +83,7 @@ export const nextMessages = {
   ...infoMessages,
   ...musicMessages,
   ...deviceCapabilitiesMessages,
+  ...playerMessages,
 } as const satisfies Record<`next.${string}`, string>;
 
 export type NextMessageId = keyof typeof nextMessages;
