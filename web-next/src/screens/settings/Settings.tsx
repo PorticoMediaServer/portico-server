@@ -64,6 +64,7 @@ export function SettingsScreen({bindings, route, navigate, openDetail = false}: 
   const snapshot = useSyncExternalStore(bindings.subscribe, () => bindings.getSnapshot(section), () => bindings.getSnapshot(section));
   const context: SettingsContext = {section};
   const openPanel = (id: string, recordId?: string) => {
+    if (!id) {setPanel(undefined);opener.current?.focus();return;}
     if (!section.panels?.[id]) return;
     opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setPanel({id, recordId, tab: section.panels[id].tabs?.[0]?.id});
