@@ -128,13 +128,15 @@ test('filters live in the complete ordered panel groups; unknown readable fields
   const model = browseToolbarModel({...capabilities, resolvedPivot: null, fields: [...capabilities.fields].reverse().concat(futureField)}, 'movie', [], titleSort, env);
   assert.equal('promoted' in model, false);
   assert.deepEqual(model.groups.map(g => [g.id, ids(g.fields)]), [
-    ['title', ['genre', 'year', 'actor', 'providerTag']],
+    ['title', ['match', 'genre', 'year', 'actor', 'providerTag']],
     ['activity', ['playState', 'favorite', 'watchlisted']],
     ['file', ['audioLanguage', 'availability', 'versions', 'subtitleLanguage']],
   ]);
   assert.equal(model.groups[0]!.fields.at(-1), futureField);
-  assert.equal(filterIds(model).includes('match'), false);
+  assert.equal(filterIds(model).includes('match'), true);
   assert.equal(filterIds(browseToolbarModel(capabilities, 'movie', [], titleSort, {...env, owner: true})).includes('match'), true);
+  const localOnly = browseToolbarModel({...capabilities, fields: capabilities.fields.filter(f => f.id !== 'match')}, 'movie', [], titleSort, env);
+  assert.equal(filterIds(localOnly).includes('match'), false);
   const decadeOnly = browseToolbarModel({...capabilities, resolvedPivot: null, fields: capabilities.fields.filter(f => f.id === 'decade')}, 'movie', [], titleSort, env);
   assert.deepEqual(filterIds(decadeOnly), ['decade']);
 });
@@ -192,12 +194,12 @@ test('exact positive quick predicates alone leave the applied line; Any/All/Not 
   assert.equal(browseToolbarModel(capabilities, 'movie', [none, either, both], titleSort, env).quick[0]!.active, false);
 });
 
-test('unknown and compound quick presets retain query identity, exact matching and owner permission', () => {
+test('unknown and compound quick presets retain query identity, exact matching and published capabilities', () => {
   const capabilities = caps();
   const quick = {id: 'provider-preset', labelKey: 'provider.preset', query: {all: [{field: 'genre', operator: 'contains-all', value: ['Drama', 'Mystery']}, {not: {field: 'watchlisted', operator: 'equals', value: false}}]}} as const;
-  const ownerOnly = {id: 'unmatched', labelKey: 'filter.unmatched', query: {field: 'match', operator: 'equals', value: 'unmatched'}} as const;
+  const publicMatch = {id: 'unmatched', labelKey: 'filter.unmatched', query: {field: 'match', operator: 'equals', value: 'unmatched'}} as const;
   const prototypeId = {...quick, id: '__proto__'};
-  const source = {...capabilities, quickFilters: [...capabilities.quickFilters, quick, ownerOnly, prototypeId]};
+  const source = {...capabilities, quickFilters: [...capabilities.quickFilters, quick, publicMatch, prototypeId]};
   const model = browseToolbarModel(source, 'movie', [quick.query], titleSort, env);
   const output = model.filterQuick.find(q => q.id === quick.id)!;
   assert.equal(output.query, quick.query);
@@ -205,7 +207,7 @@ test('unknown and compound quick presets retain query identity, exact matching a
   assert.equal(output.label, undefined);
   assert.equal(output.labelKey, 'provider.preset');
   assert.equal(model.filterQuick.find(q => q.id === '__proto__')?.label, undefined);
-  assert.equal(ids(model.filterQuick).includes('unmatched'), false);
+  assert.equal(ids(model.filterQuick).includes('unmatched'), true);
   assert.equal(ids(browseToolbarModel(source, 'movie', [], titleSort, {...env, owner: true}).filterQuick).includes('unmatched'), true);
 });
 
