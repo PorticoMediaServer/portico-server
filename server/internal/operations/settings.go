@@ -137,6 +137,7 @@ func Registry() []Field {
 		field("advertiseUrl", "connectivity", "string", "", nil, nil, nil, "hot", "client connection candidates", "External address clients may use to reach this server. Use a hostname with no path. HTTPS addresses can also be listed by Hosted."),
 		field("trustedProxies", "connectivity", "string-list", []string{}, nil, nil, nil, "hot", "request locality and forwarded client address", "Reverse proxies (addresses or CIDR networks) whose forwarded client address this server believes. Other peers are judged by their own address."),
 		field("uploadCapacityKbps", "connectivity", "integer", 0, bounded(0), bounded(100000000), nil, "next-operation", "remote playback admission", "The home connection's upload speed in kbps. New remote streams share about 80% of it and get a lower quality when it is busy. 0 means unknown: no budget."),
+		field("people.invitation_role", "people", "enumeration", "member", nil, nil, []string{"member", "administrator"}, "hot", "access invitation creation", "The role a new invitation starts with. The invitation dialog offers Member and Administrator and starts at this value; an invitation already started keeps the role it was opened with."),
 		field("people.invitation_days", "people", "integer", 7, bounded(1), bounded(30), nil, "hot", "access invitation creation", "How long a new invitation stays usable, in days. The invitation dialog offers 1, 3, 7 and 30 and starts at this value; an invitation already started keeps the expiry it was opened with."),
 		field("pausedSessionTimeoutMinutes", "connectivity", "integer", 0, bounded(0), bounded(1440), nil, "hot", "playback session sweeper", "End video sessions paused for longer than this many minutes, freeing their stream slot. Audio and Live are never ended. 0 means never."),
 		field("advertisedInterface", "connectivity", "string", "", nil, nil, nil, "hot", "LAN route publication", "The network interface whose address LAN clients are given. Empty advertises all available interfaces."),
@@ -214,6 +215,7 @@ type Settings struct {
 	// PeopleInvitationDays is how long a new invitation stays usable, in days.
 	// A document saved before the field existed reads as 0, which the accessor
 	// resolves to the shipped default of 7 days.
+	PeopleInvitationRole PeopleInviteRole `json:"people.invitation_role,omitempty"`
 	PeopleInvitationDays PeopleInvitationDays `json:"people.invitation_days,omitempty"`
 	MissingTitles     string `json:"library.missingTitles"`
 	MissingTitlesDays int    `json:"library.missingTitlesDays"`
@@ -274,8 +276,45 @@ type LogRetention struct {
 // fresh database and a document saved before these fields existed agree.
 func DefaultSettings() Settings {
 	chapterNames := true
-	return Settings{AnalysisStorageGiB: 32, AnalysisStageStorageMiB: 256, SubtitleTrackLimit: medialimits.DefaultSubtitleTracks, SubtitleFileLimitMiB: medialimits.DefaultSubtitleFileMiB, Name: "Portico", TranscodingEnabled: true, ConversionMode: "all", OutputFormat: "auto", DownloadMaxQuality: "original", MusicAwayQuality: "original", HDRToneMapping: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferMs: 60000, PlayedRetentionMs: 180000, SessionStorageMiB: 4096, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, MissingTitles: "after_days", MissingTitlesDays: 30, PeopleInvitationDays: 7, SegmentDetection: "standard", SegmentUseChapterNames: &chapterNames, SegmentShortestEpisode: 2, SegmentShortestFilm: 10, SegmentIntroWindow: "usual", SegmentCreditsWindow: "usual", SegmentFilmCreditsWindow: "usual", SegmentTVMode: "server", SegmentAnimeMode: "server", SegmentMovieMode: "server", SegmentViewerConfidencePercent: 50, SegmentAutomaticConfidencePercent: 85,
+	return Settings{AnalysisStorageGiB: 32, AnalysisStageStorageMiB: 256, SubtitleTrackLimit: medialimits.DefaultSubtitleTracks, SubtitleFileLimitMiB: medialimits.DefaultSubtitleFileMiB, Name: "Portico", TranscodingEnabled: true, ConversionMode: "all", OutputFormat: "auto", DownloadMaxQuality: "original", MusicAwayQuality: "original", HDRToneMapping: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferMs: 60000, PlayedRetentionMs: 180000, SessionStorageMiB: 4096, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, MissingTitles: "after_days", MissingTitlesDays: 30, PeopleInvitationRole: "member", PeopleInvitationDays: 7, SegmentDetection: "standard", SegmentUseChapterNames: &chapterNames, SegmentShortestEpisode: 2, SegmentShortestFilm: 10, SegmentIntroWindow: "usual", SegmentCreditsWindow: "usual", SegmentFilmCreditsWindow: "usual", SegmentTVMode: "server", SegmentAnimeMode: "server", SegmentMovieMode: "server", SegmentViewerConfidencePercent: 50, SegmentAutomaticConfidencePercent: 85,
 		RemoteSignInPolicy: "allow", LANNetworks: networkpolicy.DefaultHomeNetworks(), AccessURLs: []string{}, LANDiscoveryEnabled: true, TrustedProxies: []string{}, LogLevel: "info", LogDetailMinutes: 30, LogRetention: []LogRetention{}}
+}
+
+// PeopleInviteRole is the role a new invitation starts with, in the owner
+// screen's own words: member or administrator. Its empty value represents an
+// omitted field in an older request only; the shipped default is member.
+type PeopleInviteRole string
+
+// InviteRoles is the one ladder the owner is offered.
+var InviteRoles = []PeopleInviteRole{"member", "administrator"}
+
+func (PeopleInviteRole) JSONSchema() map[string]any {
+	offered := make([]string, 0, len(InviteRoles))
+	for _, role := range InviteRoles {
+		offered = append(offered, string(role))
+	}
+	return map[string]any{"type": "string", "enum": offered}
+}
+
+func (m *PeopleInviteRole) UnmarshalJSON(raw []byte) error {
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return err
+	}
+	if !validPeopleInviteRole(PeopleInviteRole(value)) {
+		return errors.New("invalid people.invitation_role")
+	}
+	*m = PeopleInviteRole(value)
+	return nil
+}
+
+func validPeopleInviteRole(value PeopleInviteRole) bool {
+	for _, offered := range InviteRoles {
+		if value == offered {
+			return true
+		}
+	}
+	return false
 }
 
 // PeopleInvitationDays is the saved default expiry for a new invitation, in
@@ -658,6 +697,7 @@ func (s *Store) ApplyLogSettingsInput(ctx context.Context, p identity.Principal,
 	return s.applySettings(ctx, p, auth, c, append(json.RawMessage(nil), input...))
 }
 func (s *Store) applySettings(ctx context.Context, p identity.Principal, auth Authorize, c SettingsChange, input json.RawMessage) (out SettingsDocument, e error) {
+	omittedPeopleInvitationRole := c.Values.PeopleInvitationRole == ""
 	omittedPeopleInvitationDays := c.Values.PeopleInvitationDays == 0
 	omittedLogDetailMinutes := c.Values.LogDetailMinutes == 0
 	omittedSegmentShortestEpisode := c.Values.SegmentShortestEpisode == 0
@@ -706,6 +746,9 @@ func (s *Store) applySettings(ctx context.Context, p identity.Principal, auth Au
 			return &ConflictError{current.Revision}
 		}
 		values := normalized
+		if omittedPeopleInvitationRole {
+			values.PeopleInvitationRole = current.Requested.PeopleInvitationRole
+		}
 		if omittedPeopleInvitationDays {
 			values.PeopleInvitationDays = current.Requested.PeopleInvitationDays
 		}

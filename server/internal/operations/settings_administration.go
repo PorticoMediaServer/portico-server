@@ -39,6 +39,9 @@ func validateAdministration(v *Settings) []string {
 	if !validLogDetailMinutes(v.LogDetailMinutes) {
 		fields = append(fields, "values.logDetailMinutes")
 	}
+	if !validPeopleInviteRole(v.PeopleInvitationRole) && v.PeopleInvitationRole != "" {
+		fields = append(fields, "values.people.invitation_role")
+	}
 	if !validPeopleInvitationDays(v.PeopleInvitationDays) && v.PeopleInvitationDays != 0 {
 		fields = append(fields, "values.people.invitation_days")
 	}
