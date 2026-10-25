@@ -866,6 +866,7 @@ export const webMessages = {
   'web.player.error.notAvailable': 'This title isn’t available any more. Its file may have been moved or removed.',
   'web.player.error.streamLimit': 'Your account is already playing as many streams as it is allowed. Stop one and try again.',
   'web.player.error.report': 'Report a problem',
+  'web.player.error.turnOnConverting': 'Turn on converting',
   'web.player.crashed.title': 'The player ran into a problem',
   'web.player.crashed.body': 'Playback was interrupted. Try again to pick up where you were, or close the player.',
   'web.player.pressPlay': 'Press play to start playback.',

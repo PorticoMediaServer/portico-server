@@ -5,8 +5,9 @@ import {Button} from '../controls';
 import styles from './playback-failure.module.css';
 const t = defaultI18n.t;
 /** Safe existing failure vocabulary; no raw engine diagnostics or transport ownership. */
-export function PlaybackFailure({error, onRetry, onVersions, onReport, onClose, onError}: Readonly<{
+export function PlaybackFailure({error, onRetry, onVersions, onReport, onClose, onError, closeLabel}: Readonly<{
   error?: string; onRetry?: () => Promise<void>; onVersions?: () => void; onReport?: () => void; onClose: () => void; onError: (error: unknown) => void;
+  /** The drawn owner variant names the setting this card closes to; absent keeps "Close". */ closeLabel?: string;
 }>) {
   const failure = playbackFailure(error), [busy, setBusy] = useState(false);
   const running = useRef(false), alive = useRef(true);
@@ -17,6 +18,6 @@ export function PlaybackFailure({error, onRetry, onVersions, onReport, onClose, 
     <div>{!failure.permanent && onRetry && <Button variant="primary" disabled={busy} loading={busy} onClick={() => {void retry();}}>{t('next.states.tryAgain')}</Button>}
       {onVersions && <Button variant="glass" onClick={onVersions}>{t('browse.field.versions')}</Button>}
       {onReport && <Button variant="glass" onClick={onReport}>{t('web.player.error.report')}</Button>}
-      <Button variant="glass" onClick={onClose}>{t('action.close')}</Button></div>
+      <Button variant="glass" onClick={onClose}>{closeLabel ?? t('action.close')}</Button></div>
   </section>;
 }

@@ -5,6 +5,8 @@ import {shellLanguage} from '../../shell/settings';
 import type {ShellAssemblyContext} from '../../shell/bootstrap';
 import type {WebPlaybackRuntimeSnapshot,WebQueueListPort} from '../../platform/playback';
 import {fenceKey} from '../../shell/playback-model';
+import {sameFence} from '../../../../packages/player-core/src/index.ts';
+import {playbackFailure} from '../../../../web/src/player/failure';
 import type {WatchBindings,WatchSurfaces,WatchPanel} from './types';
 import {watchPanelModel} from './panel-model';
 import {WatchOptions} from './WatchOptions';
@@ -30,6 +32,21 @@ export function useWatchPanels(binding:WatchBindings|undefined,snapshot:WebPlayb
  const fence=snapshot?.fence,key=fence?fenceKey(fence):undefined;
  if(!key||key!==ports.current.key||!ports.current.port?.isCurrent())ports.current={key,port:fence&&binding&&typeof binding.runtime.queueList==='function'?binding.runtime.queueList(fence):undefined};
  const queue=ports.current.port?.isCurrent()?ports.current.port:undefined;
+ // states f9: an owner who can manage this server gets the drawn way to the real setting. The
+ // action belongs to the exact failed attempt it was drawn for; the click re-checks that attempt
+ // and the same owner/main-profile/manage-server gate before it goes anywhere.
+ const identity=context?.facts.identity,viewer=identity?.viewer,ownerContext=context?.isCurrent()?context:undefined;
+ const runtime=binding?.runtime,failedFence=snapshot?.fence,failedRun=snapshot?.playback.playbackRun,failedIntent=snapshot?.playback.intentId;
+ const failureBody=snapshot?.playback.phase==='error'?playbackFailure(snapshot.playback.error).body:undefined;
+ const canManage=viewer?.role==='owner'&&identity?.primaryProfile===true&&identity?.capabilities?.manageServer===true;
+ const convertingOwnerAction=!!snapshot&&!!runtime&&failureBody==='web.player.error.conversionOff'&&canManage&&ownerContext
+  ?()=>{
+   if(!ownerContext.isCurrent()||viewer?.role!=='owner'||identity?.primaryProfile!==true||identity?.capabilities?.manageServer!==true)return;
+   const live=runtime.getSnapshot();
+   if(live.disposed||live.playback.phase!=='error'||live.playback.playbackRun!==failedRun||live.playback.intentId!==failedIntent
+    ||!live.fence||!failedFence||live.fence.kind!=='queue'||!sameFence(live.fence,failedFence))return;
+   void router.navigate({to:'/settings',search:()=>({scope:'server' as const,section:'streaming'})});
+  }:undefined;
  // desktop-player f1: Watch Together is listed only when this playback has no room yet.
  const canStartRoom=!!together&&!!snapshot&&!snapshot.disposed&&snapshot.fence?.kind==='queue'&&snapshot.presentation?.kind==='video'
   &&!(room?.group&&(room.phase==='live'||room.phase==='reconnecting'));
@@ -62,6 +79,7 @@ export function useWatchPanels(binding:WatchBindings|undefined,snapshot:WebPlayb
   quality:model?.qualityLabel&&model.qualityAccessibleLabel&&available.includes('quality')?{fence:model.fence,automatic:model.automatic,label:model.qualityLabel,accessibleLabel:model.qualityAccessibleLabel}:undefined,
   tracks:model?{fence:model.fence,audio:model.audioLabel,subtitles:model.subtitleLabel}:undefined,
   ...(queue?{queue}:{}),
+  ...(convertingOwnerAction?{convertingOwnerAction}:{}),
   ...(loss?{loss:{notice:loss,enabled:deviceDocument?.values['lossNotices']!==false}}:{}),
   together:<WatchRoomPill binding={together} runtime={binding.runtime} snapshot={snapshot} reportError={binding.reportError}/>,
   more:canStartRoom&&together?[{id:'watch-together',label:i18n.t('web.settings.together'),action:()=>setStartRoom(true)}]:[],

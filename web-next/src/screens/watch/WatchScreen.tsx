@@ -263,7 +263,8 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
         onRetry={fence && binding.runtime.canRetryFailure(fence) ? () => binding.runtime.retryFailure(fence) : undefined}
         onVersions={surfaces?.available.includes('versions') ? () => showPanel('versions') : undefined}
         onReport={surfaces?.more?.find(action => action.id === 'report-problem') ? () => effect(() => surfaces.more!.find(action => action.id === 'report-problem')!.action()) : undefined}
-        onClose={onCollapse} onError={binding.reportError}/>}
+        closeLabel={surfaces?.convertingOwnerAction ? t('web.player.error.turnOnConverting') : undefined}
+        onClose={surfaces?.convertingOwnerAction ?? onCollapse} onError={binding.reportError}/>}
       <PlaybackWaiting key={playbackKey} waiting={open && snapshot.playback.recovering === true && snapshot.playback.intent === 'playing' && snapshot.playback.phase !== 'error' && !snapshot.problem}/>
       <button type="button" className={styles.pictureTap} aria-label={t('player.stageLabel', {title: identity?.title ?? ''})}
         onPointerDown={event => { pointerKind.current = event.pointerType; event.preventDefault(); }}
