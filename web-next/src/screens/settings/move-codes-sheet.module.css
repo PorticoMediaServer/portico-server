@@ -4,6 +4,7 @@
 .paper svg { width: 112px; height: 112px; fill: var(--color-ink); background: var(--color-white); }
 .paper table { width: 100%; border-collapse: collapse; margin-top: 24px; text-align: left; }
 .paper th, .paper td { padding: 12px 8px; border-bottom: 1px solid color-mix(in srgb, var(--color-ink) 16%, var(--color-white)); }
+.codeActions { display: flex; gap: 8px; margin-top: 8px; }
 .code { font-family: var(--font-mono); overflow-wrap: anywhere; }
 @media print {
   :global(body) * { visibility: hidden; }
@@ -12,5 +13,6 @@
   .sheet > header, .sheet > footer { display: none; }
   .sheet > div { max-height: none; overflow: visible; }
   .paper { position: static; overflow: visible; }
+  .codeActions { display: none; }
   .paper tr { break-inside: avoid; }
 }
