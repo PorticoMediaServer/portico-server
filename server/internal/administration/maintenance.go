@@ -60,7 +60,7 @@ type StorageUsage struct {
 
 // StorageReport is the whole storage care page.
 type StorageReport struct {
-	// Present only when the resolved state folder is observed on a known network filesystem.
+	// Present only when the resolved state folder is observed on a known shared or network filesystem.
 	StateDirectoryOnNetwork *bool          `json:"stateDirectoryOnNetwork,omitempty"`
 	StateDirectory          string         `json:"stateDirectory"`
 	Categories              []StorageUsage `json:"categories"`

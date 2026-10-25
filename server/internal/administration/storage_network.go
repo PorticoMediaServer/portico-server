@@ -17,7 +17,7 @@ func observedNetworkDirectory(directory string) *bool {
 		return nil
 	}
 	switch storagepaths.Filesystem(resolved, mounts) {
-	case "nfs", "nfs4", "cifs", "smb3", "smbfs", "fuse.sshfs":
+	case "fuse.shfs", "nfs", "nfs4", "cifs", "smb3", "smbfs", "fuse.sshfs":
 		network := true
 		return &network
 	default:
