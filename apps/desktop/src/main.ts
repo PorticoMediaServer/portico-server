@@ -15,7 +15,8 @@ import {createDesktopDownloadsHost} from './downloads-host.ts';
 import {createDesktopAppLifetime} from './app-lifetime.ts';
 import {installDesktopCloseHost} from './close-host.ts';
 import {browserViewerStorage} from '../../../web-next/src/platform/viewer-selection-storage.ts';
-import {installOfflineDownloads, watchSelectionReplaced} from '../../../web-next/src/shell/offline-downloads.ts';
+import {installOfflineDownloads} from '../../../web-next/src/shell/offline-downloads.ts';
+import {observeBrowserSessionChanges} from '../../../web-next/src/platform/server-connections.ts';
 import {OfflineMediaHost} from '../../../web-next/src/shell/offline-media.ts';
 import {installPlaybackAdoptionRetirement} from '../../../web-next/src/shell/playback-media-owner.ts';
 import type {VideoLike, WebMediaPlayerOptions, WebLocalQueueResource} from '../../../web-next/src/platform/playback/index.ts';
@@ -133,8 +134,12 @@ async function startDesktop(){
         publish(items.length?{phase:'ready',items}:{phase:'unavailable',items:[]});
       };
       void refresh();
-      // Another window replacing the selection retires this list at once, without waiting for a read.
-      lifetime.retain(watchSelectionReplaced(retire));
+      // The canonical AppSessionStore change hint (same tab, another tab, focus/pageshow) is
+      // the one selection source: re-read the exact retained lease and retire on any mismatch.
+      lifetime.retain(observeBrowserSessionChanges(()=>{
+        if(!live())return;
+        void leased().then(ok=>{if(!ok)retire();},()=>retire());
+      }));
       lifetime.retain(installOfflineDownloads({
         subscribe:listener=>{listeners.add(listener);return()=>{listeners.delete(listener);};},
         snapshot:()=>{if(!live()){void Promise.resolve().then(retire);return unavailable;}return snapshot;},
@@ -166,7 +171,9 @@ async function startDesktop(){
             const resource=await port.prepare(id,action.signal,()=>live());
             // Own it before retirement can drain, even if it arrived after retirement started.
             retain(resource);
-            if(stopped){void retire();throw new DOMException('Aborted','AbortError');}
+            // The exact persisted lease again after preparation and before the runtime
+            // takes it; a refusal leaves the preparation tracked for the barrier to release.
+            if(stopped||!await leased()){void retire();throw new DOMException('Aborted','AbortError');}
             let handed=false;
             try{handed=await current.play(resource,{signal:action.signal,isCurrent:()=>live()&&!mediaLife.signal.aborted});}
             catch(error){preparations.delete(resource);throw error;}

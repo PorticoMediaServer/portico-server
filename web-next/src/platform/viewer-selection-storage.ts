@@ -1,8 +1,8 @@
 import {parseSelectedViewerRecord,selectedViewerRecord,type SelectedViewerRecord,type SelectedViewerStorage} from '@core/viewer-selection';
-import {BrowserProtectedStore,browserAppSessions} from './server-connections';
+import {BrowserProtectedStore,browserAppSessions,observeBrowserSessionChanges} from './server-connections';
 import type {AppSessionStore} from '@core/app-sessions.ts';
 import {forgetAllShells, forgetShell} from '../shell/last-known';
-import {announceSelectionReplaced, clearOfflineDownloads} from '../shell/offline-downloads';
+import {clearOfflineDownloads} from '../shell/offline-downloads';
 
 
 /** Signing in lasts: the selected viewer is kept for this browser, not for one tab, so closing
@@ -38,13 +38,11 @@ return {
    const json=JSON.stringify(record);
    await store.change(()=>JSON.parse(json) as SelectedViewerRecord);
    if(JSON.stringify(await store.read())!==json)throw new Error('Server credentials could not be read back from this browser.');
-   announceSelectionReplaced();
   }else{
    forgetAllShells();
    clearOfflineDownloads();
    await store.change(()=>undefined);
    if((await store.read())!==undefined)throw new Error('The old server credential could not be removed from this browser.');
-   announceSelectionReplaced();
   }
  },
  async clearIfFamily(sessionFamilyId){
@@ -72,17 +70,34 @@ export function createAppViewerStorage(store:AppSessionStore):SelectedViewerStor
    if(!entry||entry.connection.session.sessionFamilyId!==record.session.sessionFamilyId||entry.connection.session.viewer.profileId!==record.session.viewer.profileId||entry.connection.logicalOrigin!==record.serverUrl)throw new Error('Save the verified server connection before selecting it.');
    await store.select(entry.connection.pin.serverId);
   },
-  async clearIfFamily(family){const state=await store.read();const entry=state.servers.find(value=>value.connection.pin.serverId===state.selectedServerId&&value.connection.session.sessionFamilyId===family);if(entry)await store.signOutServer(entry.connection.pin.serverId,family);},
+  async clearIfFamily(family){forgetShell(family);clearOfflineDownloads();const state=await store.read();const entry=state.servers.find(value=>value.connection.pin.serverId===state.selectedServerId&&value.connection.session.sessionFamilyId===family);if(entry)await store.signOutServer(entry.connection.pin.serverId,family);},
  };
 }
-// The selected record this window last observed, including a change written by another tab.
-let observedSelection:string|undefined;
+// The exact retained selection this window last observed, including a change written by
+// another tab or by the canonical app-session actions (switch/sign-out). The durable
+// AppSessionStore is the only writer; its existing change hint makes us re-read and compare.
+let observedSelection:string|undefined,observedFamily:string|undefined,observing=false;
 const selectionLease=(record:SelectedViewerRecord|null)=>record
  ? JSON.stringify([record.session.viewer.authority,record.session.viewer.serverId,record.session.viewer.accountId,record.session.viewer.profileId,record.session.sessionFamilyId,record.session.tokenGeneration])
  : '';
-const noteSelection=(record:SelectedViewerRecord|null)=>{const next=selectionLease(record);if(observedSelection!==undefined&&observedSelection!==next)clearOfflineDownloads();observedSelection=next;};
+const noteSelection=(record:SelectedViewerRecord|null)=>{
+ const next=selectionLease(record),family=record?.session.sessionFamilyId;
+ if(observedSelection!==undefined&&observedSelection!==next){
+  clearOfflineDownloads();
+  // A durable sign-out, family end or server/profile replacement also forgets the old
+  // family's last-known names; an unchanged family (token rotation) keeps them.
+  if(observedFamily&&observedFamily!==family)forgetShell(observedFamily);
+ }
+ observedSelection=next;observedFamily=family;
+};
+/** Subscribe once to the canonical session change hint; it carries no identity itself. */
+const observeSelection=()=>{
+ if(observing||typeof window==='undefined')return;
+ observing=true;
+ observeBrowserSessionChanges(()=>{void createAppViewerStorage(browserAppSessions()).read().then(record=>noteSelection(record),()=>noteSelection(null));});
+};
 export const browserViewerStorage:SelectedViewerStorage = {
- read:async()=>{const record=await createAppViewerStorage(browserAppSessions()).read();noteSelection(record);return record;},
- write:async record=>{noteSelection(record);await createAppViewerStorage(browserAppSessions()).write(record);announceSelectionReplaced();},
- clearIfFamily:async family=>{clearOfflineDownloads();observedSelection=undefined;return createAppViewerStorage(browserAppSessions()).clearIfFamily!(family);},
+ read:async()=>{observeSelection();const record=await createAppViewerStorage(browserAppSessions()).read();noteSelection(record);return record;},
+ write:async record=>{observeSelection();noteSelection(record);await createAppViewerStorage(browserAppSessions()).write(record);},
+ clearIfFamily:async family=>{observeSelection();forgetShell(family);clearOfflineDownloads();observedSelection=undefined;observedFamily=undefined;return createAppViewerStorage(browserAppSessions()).clearIfFamily!(family);},
 };
