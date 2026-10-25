@@ -112,7 +112,7 @@ function LibraryShow({context, captured, libraryId, search}: {context: ScreenCon
   useEffect(() => {selection.start(); return () => selection.dispose();}, [selection]);
   return <ShowScreen binding={binding} selection={selection} target={{libraryId, ...(search.view === 'season' ? {seasonId: search.entityId} : {showId: search.entityId})}}/>;
 }
-function BoundLibrary({captured, library, search, tabs: offered}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch; tabs?: readonly LibraryTab[]}) {
+function BoundLibrary({captured, library, search, tabs: offered}: {captured: ProtectedLibraryScreen; library: Library; search: LibraryScreenSearch; tabs?: readonly ReadingTab[]}) {
   const context = useLibraryScreenContext(captured), appearance = useScreenAppearance(captured.context)!, width = useShellWidth();
   // The offer needs this exact library's own online metadata agent. The fact is keyed to the
   // library and screen scope that produced it, so a stale read can never enable another library
@@ -122,7 +122,10 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
   // The captured ScreenContext itself is part of the fact: a new capture for the same viewer
   // must not reuse a previous true before its own read, including on early lifetime refusal.
   const onlineAttention = agentFact?.key === agentKey && agentFact.context === context && context.isCurrent() && agentFact.online === true;
-  const tabs = offered ?? libraryTabs(library.kind, {owner: context.identity?.capabilities?.manageServer === true, onlineAttention}), requested = search.unmatched ? tabs.find(tab => tab.shows === 'unmatched') : tabs.find(tab => search.pivot ? tab.pivot === search.pivot : tab.id === (search.view ?? library.defaultView ?? 'discover')) ?? tabs[0];
+  const tabs = offered ?? libraryTabs(library.kind, {owner: context.identity?.capabilities?.manageServer === true, onlineAttention});
+  const selectedTab = search.unmatched ? tabs.find(tab => tab.shows === 'unmatched') : tabs.find(tab => search.pivot ? tab.pivot === search.pivot : tab.id === (search.view ?? library.defaultView ?? 'discover')) ?? tabs[0];
+  // ReadingLibrary owns periodical screens; only real browse tabs supply sorts.
+  const requested = selectedTab?.shows === 'periodicals' ? undefined : selectedTab;
   const view: ContentView = search.view ?? (search.pivot ? 'browse' : library.defaultView ?? 'discover');
   const musicMixes = useMusicMixes(captured, library.kind === 'music' && view === 'discover');
   const pivot = search.pivot ?? requested?.pivot;
@@ -211,6 +214,7 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
     artwork: context.artwork, libraryMenu: context.effects.editMetadata && onlineAttention ? <LibraryMetadataMenu key={agentKey} onUnmatched={() => {if (resources.life.current()) navigate({unmatched: true});}}/> : undefined,
     onLibrary: (id: string) => navigate({}, id), onLibraries: () => {void router.navigate({to: '/libraries'}).catch(context.effects.reportError);},
     onPivot: (id: string) => {const tab = tabs.find(tab => tab.id === id);if (!tab) return;
+      if (tab.shows === 'periodicals') {navigate({view: 'series', pivot: tab.id});return;}
       if (tab.shows === 'unmatched') {navigate({unmatched: true});return;}
       if (tab.shows === 'playlists') {void router.navigate({to: '/saved', search: {view: 'playlists'}}).catch(context.effects.reportError);return;}
       navigate({view: tab.id === 'discover' ? 'discover' : 'browse', ...(tab.pivot ? {pivot: tab.pivot} : {}), ...(tab.defaultSort ? {sort: [tab.defaultSort]} : {})});}};
