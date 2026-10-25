@@ -41,6 +41,7 @@ type ReadingNumber struct {
 type ReadingValues struct {
 	Title           string
 	Author, Series  *ReadingValue
+	IssueDate       *ReadingValue
 	PublicationType *ReadingValue
 	SeriesNumber    *ReadingNumber
 }
@@ -260,6 +261,9 @@ func ReadingPathValue(in ReadingRuleInput, titles int, everySeries bool) (Readin
 	stem := strings.TrimSuffix(path.Base(in.RelativePath), path.Ext(in.RelativePath))
 	author, title := readingFileAuthor(stem)
 	v := ReadingValues{}
+	if date := ReadingIssueDate(in.RelativePath); date != "" {
+		v.IssueDate = &ReadingValue{date, ReadingFileName}
+	}
 	if author != "" {
 		v.Author = &ReadingValue{author, ReadingFileName}
 	}
