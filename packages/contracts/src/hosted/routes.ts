@@ -10,7 +10,9 @@ export const routes = [
     "lane": "security",
     "cost": "constant",
     "bodyLimit": 65536,
-    "errors": [],
+    "errors": [
+      "username_unavailable"
+    ],
     "status": 202
   },
   {
@@ -683,7 +685,9 @@ export const routes = [
     "lane": "security",
     "cost": "constant",
     "bodyLimit": 65536,
-    "errors": [],
+    "errors": [
+      "username_unavailable"
+    ],
     "status": 202
   },
   {
@@ -735,7 +739,9 @@ export const routes = [
     "lane": "security",
     "cost": "constant",
     "bodyLimit": 65536,
-    "errors": [],
+    "errors": [
+      "username_unavailable"
+    ],
     "status": 201
   },
   {
