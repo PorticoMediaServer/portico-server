@@ -115,7 +115,8 @@ func readingAutomaticValuesTx(ctx context.Context, tx *sql.Tx, items []int64) (m
       JOIN inventory_objects o ON o.id=v.inventory_object_id AND o.asset_id=a.token AND o.revision=v.source_revision AND o.retired=0
       JOIN library_sources s ON s.id=o.source_id AND s.library_id=cl.library_id AND s.incarnation=o.root_incarnation
       WHERE e.id IN (`+strings.Join(marks, ",")+`) AND e.retired=0 AND cl.retired=0
-      AND ((e.kind=20 AND lib.kind='book') OR (e.kind=21 AND lib.kind='comic'))`, args...)
+      AND ((e.kind=20 AND lib.kind='book') OR (e.kind=21 AND lib.kind='comic'))
+      AND v.publication_type IS NOT NULL AND v.evidence_complete=1 AND v.classifier_version=?`, append(append([]any(nil), args...), ReadingPublicationTypeRuleVersion)...)
 	if err != nil {
 		return nil, err
 	}

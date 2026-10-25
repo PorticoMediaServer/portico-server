@@ -533,3 +533,6 @@ func ReadingSeriesItems(library, id string, items []ReadingFacetItem) ([]Reading
 func ValidReadingPublicationType(value string) bool {
 	return value == "book" || value == "magazine" || value == "newspaper"
 }
+
+// Bump when recognized mappings change; older automatic facts become unavailable immediately.
+const ReadingPublicationTypeRuleVersion = 1
