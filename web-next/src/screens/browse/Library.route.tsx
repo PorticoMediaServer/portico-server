@@ -11,6 +11,7 @@ import {libraryTabs, readingTabModel, type LibraryTab} from '@core/presentation/
 import {browseCapabilitiesPath, parseBrowseCapabilities, type BrowseCapabilities} from '@core/browse.ts';
 import {metadataAgentPath, parseMetadataAgent} from '@core/server-admin/metadata-agent.ts';
 import type {SavedDefinition} from '@core/personal-saved.ts';
+import {readLibrarySummaries} from '@core/library-summary.ts';
 import {randomId} from '@core/random-id.ts';
 import {defineWebScreen} from '../../route-registry';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
@@ -36,7 +37,7 @@ import {useLibraryScreenContext, type ProtectedLibraryScreen} from './screen-con
 import {useScreenAppearance} from './screen-preferences';
 import {browseConjunction, parseLibraryScreenSearch, type LibraryScreenSearch} from './route-search';
 import {SaveView} from './SaveView';
-import {FacetPage, ReadLibraryEntry, authorPredicate, type FacetRequest} from '../read';
+import {FacetPage, ReadLibraryEntry, ReadLibraryWash, authorPredicate, type FacetRequest} from '../read';
 import {isReadingLibrary} from './reading-library';
 
 const t = defaultI18n.t;
@@ -62,6 +63,12 @@ function ReadingLibrary({captured, library, search}: {captured: ProtectedLibrary
   const life = useMemo(() => screenLifetime(context), [context]);
   const [capabilitySnapshot, setCapabilities] = useState<Readonly<{context: ProtectedLibraryScreen['context']; data: BrowseCapabilities}>>();
   const capabilities = capabilitySnapshot?.context === captured.context && capabilitySnapshot.data.library.id === library.id && capabilitySnapshot.data.library.kind === library.kind ? capabilitySnapshot.data : undefined;
+  /** desktop-read 1b/2/2c draw the library's own recent covers behind its header. The
+   *  bounded summary is the only place those cover URLs are published; nothing is invented. */
+  const [washSnapshot, setWash] = useState<Readonly<{context: ProtectedLibraryScreen['context']; libraryId: string; covers: readonly string[]}>>();
+  const wash = washSnapshot?.context === captured.context && washSnapshot.libraryId === library.id && washSnapshot.covers.length > 0
+    ? <ReadLibraryWash covers={washSnapshot.covers.flatMap((path, index) => {const cover = context.artwork.foreground(path, 760, 2 / 3, {group: library.id, order: index});return cover ? [cover] : [];})}/>
+    : undefined;
   useEffect(() => () => life.dispose(), [life]);
   useEffect(() => {
     let active = true;
@@ -71,6 +78,16 @@ function ReadingLibrary({captured, library, search}: {captured: ProtectedLibrary
     })().catch(error => {if (active && life.current()) context.effects.reportError(error);});
     return () => {active = false;};
   }, [captured.context, context, life, library.id, library.kind]);
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    void readLibrarySummaries(life.api, life.signal(controller.signal)).then(rows => {
+      if (!active || !life.current()) return;
+      const row = rows.find(candidate => candidate.id === library.id);
+      setWash({context: captured.context, libraryId: library.id, covers: row?.summary.coverUrls ?? []});
+    }).catch(error => {if (active && life.current()) context.effects.reportError(error);});
+    return () => {active = false; controller.abort();};
+  }, [captured.context, context, life, library.id]);
   /** Root §3: the server's published pivots decide the reading tabs; older servers keep the authored pair. */
   const tabs = useMemo(() => readingTabs(capabilities, library.kind), [capabilities, library.kind]);
   const periodicalPivot = search.pivot === 'magazines' || search.pivot === 'newspapers' ? search.pivot : undefined;
@@ -80,7 +97,7 @@ function ReadingLibrary({captured, library, search}: {captured: ProtectedLibrary
   const header = <LibraryIdentity library={library} libraries={context.identity?.libraries ?? []} pivot={periodicalPivot ?? selected.id}
     tabs={tabs.map(tab => ({value: tab.id, label: t(tab.label)}))}
     appearance={{view: appearance.libraryView, cardWidth: width < 600 ? 108 : 190, cardSize: 'medium', backdrops: appearance.showBackdrops}}
-    preferences={appearance} artwork={context.artwork} libraryMenu={undefined}
+    preferences={appearance} artwork={context.artwork} libraryMenu={undefined} wash={wash}
     onPivot={id => {const tab = tabs.find(tab => tab.id === id); if (!tab) return;
       if (tab.shows === 'periodicals') {navigate({view: 'series', pivot: tab.id}); return;}
       if (tab.shows === 'facet') {navigate({view: tab.id === 'authors' ? 'authors' : 'series'}); return;}
