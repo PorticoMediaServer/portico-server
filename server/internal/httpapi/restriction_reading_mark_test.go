@@ -3,11 +3,60 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
 	"portico.local/server/internal/identity"
 )
+
+// Ineligible actors fail before any target lookup, profile-key read or receipt
+// access. A nil transaction/dependencies deliberately make accidental access fail.
+func TestReadingMarkRequiresNormalSelectedProfile(t *testing.T) {
+	normal := identity.Principal{Viewer: identity.Viewer{Authority: "local", AccountID: "account", ProfileID: "profile", Role: "member"}}
+	for _, role := range []string{"owner", "admin", "member"} {
+		p := normal
+		p.Role = role
+		if !identity.CanUsePersonalState(p) {
+			t.Fatalf("normal profile %s is ineligible", role)
+		}
+	}
+	cases := map[string]identity.Principal{}
+	for _, role := range []string{"guest", "account", "", "other"} {
+		p := normal
+		p.Role = role
+		cases["role-"+role] = p
+	}
+	for _, grant := range []string{identity.GrantCastTarget, "other-restricted-grant"} {
+		p := normal
+		p.Grant = grant
+		cases[grant] = p
+	}
+	p := normal
+	p.Authority = ""
+	cases["no-authority"] = p
+	p = normal
+	p.AccountID = ""
+	cases["no-account"] = p
+	p = normal
+	p.ProfileID = ""
+	cases["no-profile"] = p
+	d := Dependencies{}
+	for name, p := range cases {
+		t.Run(name, func(t *testing.T) {
+			if identity.CanUsePersonalState(p) {
+				t.Fatal("ineligible profile accepted")
+			}
+			var fence string
+			if err := d.readingMarkAuthorize(context.Background(), p, "hidden-item", &fence)(nil); !errors.Is(err, identity.ErrForbidden) || fence != "" {
+				t.Fatal("target authorization did not refuse before data access", err)
+			}
+			if _, err := d.readingMarkView(context.Background(), p, "hidden-item"); !errors.Is(err, identity.ErrForbidden) {
+				t.Fatal("personal read did not refuse before profile data access", err)
+			}
+		})
+	}
+}
 
 // Both registry entries retain non-vacuous real-target reads/writes, then
 // compare concealed title/library refusals with a truly absent target.
@@ -71,6 +120,22 @@ func readingMarkRestrictionCheck(t *testing.T) {
 			var replayed ReadingMarkResponse
 			if replay.Code != 200 || json.Unmarshal(replay.Body.Bytes(), &replayed) != nil || replayed.Revision != marked.Revision || !replayed.Read {
 				t.Fatal("immutable operation replay", replay.Code, replay.Body.String())
+			}
+			no := false
+			later := readingHTTP(t, h, "PUT", path(r.item), token, "", ReadingMarkRequest{OperationID: "matrix-mark-unread", ExpectedRevision: marked.Revision, Read: &no})
+			var unmarked ReadingMarkResponse
+			if later.Code != 200 || json.Unmarshal(later.Body.Bytes(), &unmarked) != nil || unmarked.Read || unmarked.Revision <= marked.Revision {
+				t.Fatal("later explicit unread", later.Code, later.Body.String())
+			}
+			old := readingHTTP(t, h, "PUT", path(r.item), token, "", body)
+			var oldReceipt ReadingMarkResponse
+			if old.Code != 200 || json.Unmarshal(old.Body.Bytes(), &oldReceipt) != nil || !oldReceipt.Read || oldReceipt.Revision != marked.Revision || oldReceipt.OperationID != body.OperationID {
+				t.Fatal("old receipt changed after later intent", old.Code, old.Body.String())
+			}
+			latest := readingHTTP(t, h, "GET", path(r.item), token, "", nil)
+			var currentMark ReadingMarkResponse
+			if latest.Code != 200 || json.Unmarshal(latest.Body.Bytes(), &currentMark) != nil || currentMark.Read || currentMark.Revision != unmarked.Revision {
+				t.Fatal("replay replaced later explicit choice", latest.Code, latest.Body.String())
 			}
 			if readingRestrictionProgress(t, r) != before {
 				t.Fatal("explicit mark changed saved Reading location")
