@@ -2,6 +2,8 @@
 export const readerMessages = {
   'next.reader.exportHighlights': 'Export highlights',
   'next.reader.saveFile': 'Save file',
+  'next.reader.markRead': 'Mark as read',
+  'next.reader.markUnread': 'Mark as unread',
   'next.reader.annotationReopen': 'After reloading, close and reopen this note before saving.',
   'next.reader.annotationUnsupportedSelection': 'This selection cannot be saved as a complete highlight. Select a smaller range on one page.',
   'next.reader.bookmarks': 'Bookmarks',

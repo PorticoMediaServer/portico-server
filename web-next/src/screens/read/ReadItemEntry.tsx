@@ -1,3 +1,4 @@
+import {ReadMarkAction} from './ReadMarkAction';
 import {useEffect, useLayoutEffect, useRef, useState, type CSSProperties} from 'react';
 import {defaultI18n} from '@i18n';
 import {generatedCoverTint} from '@design';
@@ -39,7 +40,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const attemptRef = useRef<ReadAttempt>();
   const renderIdentity = useRef({context: captured.context, sourceId, retry});
   renderIdentity.current = {context: captured.context, sourceId, retry};
-  const [detail, setDetail] = useState<Readonly<{attempt?: ReadAttempt; manifest?: ReadingManifest; progress?: ReadingProgress; targets?: readonly ReaderContentsTarget[]; failed?: boolean}>>({});
+  const [detail, setDetail] = useState<Readonly<{attempt?: ReadAttempt; manifest?: ReadingManifest; progress?: ReadingProgress; client?: ReturnType<typeof createReadBindings>['client']; targets?: readonly ReaderContentsTarget[]; failed?: boolean}>>({});
   const current = (value: ReadAttempt | undefined): value is ReadAttempt => !!value && value.live && attemptRef.current === value
     && renderIdentity.current.context === value.context && renderIdentity.current.sourceId === value.sourceId && renderIdentity.current.retry === value.retry && value.context.isCurrent();
   const retire = (value: ReadAttempt) => {value.fileLife.abort(); value.live = false; value.ready = false; value.target = undefined; if (attemptRef.current === value) attemptRef.current = undefined;};
@@ -70,7 +71,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
       original.ready = true;
       original.session = session;
       original.target = index => {if (!live() || !original.ready) throw new Error('source_changed'); return publication!.contentsTarget(index);};
-      setDetail({attempt: original, manifest: session.manifest, progress,
+      setDetail({attempt: original, manifest: session.manifest, progress, client: bindings.client,
         targets: session.manifest.format === 'epub' ? (session.manifest.contents ?? []).map((_, index) => publication!.contentsTarget(index)) : []});
     })().catch(error => {if (live()) {errorSink.current(error); original.ready = false; original.target = undefined; setDetail({attempt: original, failed: true});} void bindings.close().catch(() => {});});
     return () => {active = false; original.ready = false; original.target = undefined; publication?.dispose(); off(); void bindings.dispose().catch(() => {});};
@@ -132,8 +133,8 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
       ...(metadata.estimatedSeconds !== undefined && metadata.estimatedSeconds > 0 ? [{id: 'estimate', text: t('next.reader.aboutDuration', {duration: defaultI18n.duration(metadata.estimatedSeconds)}), role: 'context' as const}] : []),
     ]} opening={metadata.openingLines ? {label: t('next.reader.openingLines'), text: metadata.openingLines} : undefined}
     ambient={<span className={styles.ambient} style={{'--read-tint-first': tint.first, '--read-tint-second': tint.second} as CSSProperties} aria-hidden="true"/>}
-    actions={progression !== undefined && progression > 0 ? <ResumeButton icon="i-book" progress={progression} remaining={defaultI18n.percent(progression)} onClick={() => open()}>{t('next.cards.read')}</ResumeButton>
-      : <Button variant="primary" icon="i-book" onClick={() => open()}>{t('next.reader.read')}</Button>}
+    actions={<>{progression !== undefined && progression > 0 ? <ResumeButton icon="i-book" progress={progression} remaining={defaultI18n.percent(progression)} onClick={() => open()}>{t('next.cards.read')}</ResumeButton>
+      : <Button variant="primary" icon="i-book" onClick={() => open()}>{t('next.reader.read')}</Button>}{detail.client && <ReadMarkAction client={detail.client} itemId={eligibility.itemId} isCurrent={factsCurrent} reportError={error => errorSink.current(error)}/>}</>}
     under={<>{(canEdit || canSaveFile) && <><Button ref={editorAnchor} size="small" variant="glass" icon="i-more" iconOnly aria-label={t('next.controls.more')} onClick={() => setMore(value => !value)}/><Menu open={more} onOpenChange={setMore} title={title} anchorRef={editorAnchor}>{canEdit && <MenuItem onSelect={() => {if (context.isCurrent()) setEditing(true);}}>{t('entry.editMetadata')}</MenuItem>}{canSaveFile && <MenuItem disabled={saving} onSelect={() => {void saveFile();}}>{t('next.reader.saveFile')}</MenuItem>}</Menu></>}{chooseVersion ? <><Button ref={anchor} size="small" variant="glass" onClick={() => setMenu(value => !value)} aria-label={t('next.reader.version')}>
       {version.format.toUpperCase()}<Icon name="i-down" size={14}/></Button>
       <Menu open={menu} onOpenChange={setMenu} title={t('next.reader.version')} anchorRef={anchor}>{eligibility.versions.map(candidate => <MenuItem key={candidate.sourceId}
