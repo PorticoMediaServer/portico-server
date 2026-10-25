@@ -2036,6 +2036,9 @@ export type HostedServer = {
   publicKey: string;
   policyRevision: number;
   presence?: ServerPresence;
+  /** Display facts from the authenticated directory, never server admission authority. */
+  role?: 'owner' | 'admin' | 'member';
+  ownedByMe?: boolean;
 };
 /** Reads a server's presence defensively: anything malformed is "unknown" (undefined). */
 export function parseServerPresence(value: unknown): ServerPresence | undefined {
@@ -2118,9 +2121,11 @@ export class HttpHostedApi {
     if (!out || !Array.isArray(out.items)) return out;
     return { ...out, items: out.items.map(server => {
       if (!server || typeof server !== "object") return server;
-      const { presence: raw, ...rest } = server as HostedServer & { presence?: unknown };
+      const { presence: raw, role, ownedByMe, ...rest } = server as HostedServer & { presence?: unknown };
       const presence = parseServerPresence(raw);
-      return presence ? { ...rest, presence } : rest;
+      const ownership = ['owner', 'admin', 'member'].includes(String(role)) && typeof ownedByMe === 'boolean' && (role === 'owner') === ownedByMe
+        ? {role, ownedByMe} : {};
+      return {...rest, ...ownership, ...(presence ? {presence} : {})};
     }) };
   }
   /** The account's transport, for `porticoSignIn` and `acceptPorticoInvitation`. */
