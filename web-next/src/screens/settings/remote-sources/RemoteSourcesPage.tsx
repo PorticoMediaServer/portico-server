@@ -15,25 +15,17 @@ import {SettingsRow} from '../../../kit/shell/SettingsSurfaces';
 import {Icon, type IconName} from '../../../kit/Icon';
 import styles from './remote-sources.module.css';
 import {RemoteFolderPicker} from './RemoteFolderPicker';
+import {ReadingChoices} from './ReadingChoices';
 
 const t = defaultI18n.t;
 const emptyDraft: WebDavDraft = {name: '', root: '', username: '', password: '', insecureLocal: false};
-const presetKeys: readonly SourceReadPreset[] = ['list', 'once', 'everything', 'ask'];
 const presetLabels: Readonly<Record<SourceReadPreset, MessageId>> = {
   list: 'next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.0.label',
   once: 'next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.1.label',
   everything: 'next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.2.label',
   ask: 'next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.3.label',
 };
-const presetHints: Readonly<Record<SourceReadPreset, MessageId>> = {
-  list: 'next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.0.hint',
-  once: 'next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.1.hint',
-  everything: 'next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.2.hint',
-  ask: 'next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.3.hint',
-};
 const presetLabel = (name: SourceReadPreset): MessageId => presetLabels[name];
-const presetHint = (name: SourceReadPreset): MessageId => presetHints[name];
-const presetOptions = presetKeys.map(name => ({value: name, label: t(presetLabel(name)), description: t(presetHint(name))}));
 
 function stateId(source: RemoteSource): MessageId {
   switch (source.errorCode) {
@@ -314,8 +306,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     </>}
     {step === 'reading' && <>
       <p className={styles.note}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.label')}</p>
-      <RichSelect aria-label={t('next.remoteSources.readingMode')} value={sourceReadPresetName(values) ?? 'custom'} options={[...presetOptions, ...(sourceReadPresetName(values) ? [] : [{value: 'custom', label: t('next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.4.label'), disabled: true}])]}
-        onValueChange={value => {if (value !== 'custom') setValues(sourceReadPreset(value as SourceReadPreset));}}/>
+      <ReadingChoices values={values} origin={result?.origin ?? sourceNow?.origin} rangeSupport={result?.rangeSupport ?? sourceNow?.rangeSupport ?? 'unknown'} disabled={busy} onChange={setValues}/>
       <div className={styles.limits}>
         <SettingNumber label={t('next.remoteSources.connections')} value={values.connections} min={1} max={32} unit={t('next.remoteSources.atOnce')} disabled={busy} onCommit={value => {if (value !== null) setValues({...values, connections: value});}}/>
         <SettingNumber label={t('next.remoteSources.requestsPerSecond')} value={values.requestsPerSecond} min={1} max={50} unit={t('next.remoteSources.aSecond')} disabled={busy} onCommit={value => {if (value !== null) setValues({...values, requestsPerSecond: value});}}/>
@@ -505,8 +496,7 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, isCurrent
       <Button size="compact" variant="primary" disabled={busy || !draft.name.trim() || (!result && !draft.root.trim())} onClick={() => void saveConnection()}>{t('next.remoteSources.save')}</Button>
     </section>
     <section className={styles.group}><h3>{t('next.remoteSources.reading')}</h3>
-      <RichSelect aria-label={t('next.remoteSources.readingMode')} value={sourceReadPresetName(values) ?? 'custom'} options={[...presetOptions, ...(sourceReadPresetName(values) ? [] : [{value: 'custom', label: t('next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.4.label'), disabled: true}])]}
-        onValueChange={value => {if (value !== 'custom') setValues(sourceReadPreset(value as SourceReadPreset));}}/>
+      <ReadingChoices values={values} origin={source.origin} rangeSupport={source.rangeSupport} disabled={busy} onChange={setValues}/>
       <div className={styles.limits}>
         <SettingNumber label={t('next.remoteSources.connections')} value={values.connections} min={1} max={32} unit={t('next.remoteSources.atOnce')} disabled={busy} onCommit={value => {if (value !== null) setValues({...values, connections: value});}}/>
         <SettingNumber label={t('next.remoteSources.requestsPerSecond')} value={values.requestsPerSecond} min={1} max={50} unit={t('next.remoteSources.aSecond')} disabled={busy} onCommit={value => {if (value !== null) setValues({...values, requestsPerSecond: value});}}/>

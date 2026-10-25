@@ -105,3 +105,24 @@
 .attachRow { display: flex; align-items: flex-end; gap: 10px; }
 .attachRow > :first-child { flex: 1; min-width: 0; }
 @media (max-width: 720px) { .statusRows > div { grid-template-columns: 1fr; gap: 2px; } }
+
+/* The four reading choices as radio cards (remote-sources.html#4, #4d). */
+.choices { display: grid; gap: 8px; }
+.choice { display: flex; gap: 12px; width: 100%; padding: 12px 14px; border: 0; border-radius: 12px; background: var(--color-raised); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.choice[data-picked] { background: color-mix(in srgb, var(--color-accent) 12%, transparent); box-shadow: inset 0 0 0 1.5px var(--color-accent); }
+.choice[data-unavailable] { opacity: .62; cursor: default; }
+.choice:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.choiceRadio { flex: none; width: 18px; height: 18px; margin-top: 2px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--color-line-strong); }
+.choice[data-picked] .choiceRadio { box-shadow: inset 0 0 0 5px var(--color-accent); }
+.choiceBody { display: grid; gap: 4px; min-width: 0; }
+.choiceTitle { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: var(--type-row-subtitle-size); font-weight: var(--type-body-strong-weight); }
+.choiceTag { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px; font-size: var(--type-micro-size, 11px); font-weight: var(--type-body-strong-weight); color: var(--color-text-tertiary); background: color-mix(in srgb, var(--color-text) 8%, transparent); }
+.choiceTag[data-tone="good"] { color: var(--color-healthy); background: color-mix(in srgb, var(--color-healthy) 12%, transparent); }
+.choiceTag[data-tone="warning"] { color: var(--color-amber); background: color-mix(in srgb, var(--color-amber) 12%, transparent); }
+.choiceHint { font-size: var(--type-caption-size); color: var(--color-text-tertiary); line-height: var(--type-troubleshooting-log-line); }
+.choiceFacts { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: var(--type-label-size); color: var(--color-text-secondary); }
+.choiceFacts em { font-style: normal; color: var(--color-text-tertiary); margin-right: 6px; }
+.choiceCost { display: flex; align-items: flex-start; gap: 8px; margin-top: 4px; padding: 8px 10px; border-radius: 8px; font-size: var(--type-label-size); line-height: var(--type-troubleshooting-log-line); color: var(--color-text-secondary); background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+.choiceCost[data-tone="warning"] { color: var(--color-amber); background: color-mix(in srgb, var(--color-amber) 10%, transparent); }
+.choiceCost[data-tone="info"] { color: var(--color-passive, var(--color-text-secondary)); }
+.choiceCost svg { flex: none; margin-top: 1px; }
