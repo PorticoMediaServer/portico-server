@@ -3,6 +3,12 @@
  * Certificate decisions are headless; people compare an identity code only when required.
  */
 export const connectionTrustMessages = {
+  'connection.certificates.title': 'Trusted certificates',
+  'connection.certificates.forget': 'Forget certificate',
+  'connection.certificates.confirm': 'Forget this certificate?',
+  'connection.certificates.body': 'The next connection to {address} will check its certificate again. Your server sign-in stays on this device.',
+  'connection.certificates.fingerprint': 'SHA-256 fingerprint',
+
   'connection.identity.changedBody': 'A different server is answering at its address, so nothing was sent. Check with its owner before you sign in again.',
   'connection.identity.forget': 'Forget {server}',
   'connection.identity.forgetTitle': 'Forget {server}?',
