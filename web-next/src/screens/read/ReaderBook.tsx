@@ -50,6 +50,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
     if (presentation === 'phone') setPanel(undefined);
   };
   useEffect(() => {
+    setCurrentHit(undefined);
     if (!active || panel !== 'search' || !query.trim()) {setHits([]); setSearching(false); return;}
     const life = new AbortController(); let queryCurrent = true;
     setSearching(true); setHits([]);
