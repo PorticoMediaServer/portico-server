@@ -727,9 +727,33 @@ export const errors = [
     "retry": "after_refresh"
   },
   {
+    "code": "storage_allocation_recovery_required",
+    "status": 409,
+    "message": "Review the storage configuration before trying again.",
+    "retry": "after_refresh"
+  },
+  {
+    "code": "storage_command_capacity",
+    "status": 429,
+    "message": "There are too many requests. Try again shortly.",
+    "retry": "same_request"
+  },
+  {
+    "code": "storage_command_conflict",
+    "status": 409,
+    "message": "This information changed. Refresh and try again.",
+    "retry": "after_refresh"
+  },
+  {
     "code": "storage_full",
     "status": 409,
     "message": "There is not enough storage for this download.",
+    "retry": "never"
+  },
+  {
+    "code": "storage_operation_expired",
+    "status": 410,
+    "message": "This request expired. Start again.",
     "retry": "never"
   },
   {
