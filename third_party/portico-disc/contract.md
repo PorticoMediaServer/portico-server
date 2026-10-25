@@ -4,6 +4,42 @@ This is the bounded helper/protocol component, not complete disc playback. Linux
 
 `portico-disc probe <absolute path>` writes one JSON object and newline on stdout. Kind is `bluray` or `dvd`; packaging is `iso` or `folder`; encryption is `none`, `aacs`, `bdplus` or `css`. Encrypted results contain an empty titles array. There are no paths, URLs, credentials or arbitrary library strings in the response.
 
+### Captured remote ISO probe foundation
+
+On Unix, `portico-disc probe-image-stream <size>` reads an ISO through inherited
+descriptors only. `<size>` is the original positive, 2048-byte-aligned extent;
+it is not a locator or an acquisition request. Descriptor 3 writes requests to
+the parent; descriptor 4 reads replies. The helper has no network permission,
+URL, provider path, credential or source-directory access.
+
+Each request is exactly `PDR1`, an unsigned 64-bit big-endian byte offset and an
+unsigned 32-bit big-endian length. A response is `PDA1`, the exact unsigned 32-bit
+big-endian length, then that complete range. Individual ranges are at most 2 MiB.
+Channel closure, bad framing, truncated responses and out-of-extent reads fail
+the invocation. Library callbacks use `bd_open_stream`, `DVDOpenStream` and
+`dvdnav_open_stream`; they do not concatenate clips or resolve local paths.
+The DVD seek callback uses byte offsets and returns 0 on success, as required by
+the pinned libdvdread source. Read callbacks return bytes for DVD and blocks for
+Blu-ray. DVD reader and navigation cursors remain separate.
+
+The Go `disc.Tool.ProbeRemoteImage` caller must already own one captured
+`storage.RemoteObject` with real immutable version evidence and finite random
+access. The broker uses that same object's `OpenRange` and original context for
+every request, retaining the adapter's conditional representation, source and
+configuration checks. Size/mtime alone, a latest-source lookup or a sequential
+object is insufficient. The complete invocation has one 20-second deadline,
+at most 1024 requests and 16 MiB, including library fallback. Each range retains
+the existing 15-second read bound. Only a complete range is framed as success;
+the final probe is discarded unless the original object still observes the
+same snapshot. The caller retains ownership of the object; all pipes, process
+and broker goroutine belong to this invocation.
+
+This foundation does not enable remote disc inventory or playback. Title byte
+streaming, seek integration, BDMV file-open callbacks and production admission
+are still required. Existing scans continue to report the remote-disc
+unsupported message until the full stream-mode qualification. No fixture,
+binary, source bundle or playback acceptance is established by this source.
+
 Each title has `discOrder` (zero-based retained disc order), `durationMs` (integer title-relative milliseconds), `angleCount`, `clips`, `streams` and `chapters`. Blu-ray adds `playlist` (integer 0..99999, zero valid) and `playlistFile` (`NNNNN.mpls`). DVD adds `title` (one-based), `vts` and `pgc`. An array is always present, even when empty. Discs with no titles of at least 60000 ms return an empty array; that is not a playable source.
 
 Blu-ray uses TITLES_RELEVANT with a 60-second minimum. DVD considers all titles and filters by their library-reported duration. The Go projection performs stable descending duration sorting; equal durations retain disc order. The displayed name is the sorted one-based `Title N`, independent of the separately persisted owner's main-title choice. Main-title changes never rename or reorder versions.
