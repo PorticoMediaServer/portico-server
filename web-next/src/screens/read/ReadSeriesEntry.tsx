@@ -2,7 +2,10 @@ import {ReadGroupSavedAction} from './ReadGroupSavedAction';
 import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties} from 'react';
 import {defaultI18n} from '@i18n';
 import {generatedCoverTint} from '@design';
+import {useLocation} from '@tanstack/react-router';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
+import {useCommittedLibraryScreenContext} from '../browse/screen-context';
+import type {ScreenContext} from '../detail/context';
 import {router} from '../../router';
 import {CoverCard} from '../../kit/cards';
 import {Button} from '../../kit/controls';
@@ -22,7 +25,7 @@ import readItemStyles from './read-item.module.css';
 
 const {t} = defaultI18n;
 type Captured = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
-type Resources = Readonly<{context: Captured['context']; artwork: Captured['context']['artwork']; comic: boolean; bindings: ReturnType<typeof createReadBindings>;
+type Resources = Readonly<{id: string; context: Captured['context']; artwork: Captured['context']['artwork']; comic: boolean; bindings: ReturnType<typeof createReadBindings>;
   libraryId: string; seriesId: string; rows: ReturnType<typeof createReadingSeriesCollection>; reportError: (error: unknown) => void}>;
 
 /** The canonical series cursor owns complete membership and ordering, including unnumbered volumes. */
@@ -38,24 +41,32 @@ function BoundSeries({captured, libraryId, seriesId}: {captured: Captured; libra
     const bindings = createReadBindings(captured.context), rows = createReadingSeriesCollection(bindings.client, libraryId, seriesId);
     setRetired(false);
     const off = bindings.authority.subscribe(() => {setRetired(true); setResources(undefined);});
-    setResources({context: captured.context, artwork: captured.context.artwork, bindings, comic: captured.context.facts.identity.libraries.find(library => library.id === libraryId)?.kind === 'comic', libraryId, seriesId, rows,
+    setResources({id: crypto.randomUUID(), context: captured.context, artwork: captured.context.artwork, bindings, comic: captured.context.facts.identity.libraries.find(library => library.id === libraryId)?.kind === 'comic', libraryId, seriesId, rows,
       reportError: error => {if (bindings.authority.isCurrent()) captured.binding.home.effects.reportError(error);}});
     return () => {off(); rows.dispose(); void bindings.dispose().catch(() => {});};
   }, [captured.context, libraryId, seriesId, retry]);
   if (retired) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => setRetry(value => value + 1)}}/>;
-  return resources && resources.context === captured.context ? <SeriesRows resources={resources} retry={() => setRetry(value => value + 1)}/> : <Skeleton height={320}/>;
+  return resources && resources.context === captured.context ? <SeriesRows resources={resources} captured={captured} retry={() => setRetry(value => value + 1)}/> : <Skeleton height={320}/>;
 }
-function SeriesRows({resources, retry}: {resources: Resources; retry: () => void}) {
+/** The holder acquires the committed context; the live body below always receives one. */
+function SeriesRows({resources, captured, retry}: {resources: Resources; captured: Captured; retry: () => void}) {
+  const href = useLocation({select: location => location.href});
+  const context = useCommittedLibraryScreenContext(captured, href, () => router.state.location.href === href);
+  return context ? <LiveSeriesRows key={resources.id} resources={resources} context={context} retry={retry}/> : <Skeleton height={320}/>;
+}
+/** A fresh resource id keys this body, so a new cursor or a strict replay never inherits the
+ *  previous selection or bulk draft. */
+function LiveSeriesRows({resources, context, retry}: {resources: Resources; context: ScreenContext; retry: () => void}) {
   const state = useSyncExternalStore(resources.rows.collection.subscribe, resources.rows.collection.getSnapshot, resources.rows.collection.getSnapshot);
   const overview = useSyncExternalStore(resources.rows.overview.subscribe, resources.rows.overview.getSnapshot, resources.rows.overview.getSnapshot);
   const width = useShellWidth(), grid = useRef<HTMLDivElement>(null), [height, setHeight] = useState(600);
   /** phone-read 4: Select is the owner's, and it edits this series' own volumes in this order. */
-  const viewer = resources.context.identity?.viewer;
+  const viewer = context.identity?.viewer;
   const canEdit = viewer?.authority === 'local' && viewer.role === 'owner';
   const [selection, setSelection] = useState<ReadonlyMap<string, ReadingLibraryItem>>(), [bulk, setBulk] = useState<readonly ReadingLibraryItem[]>();
   const bulkAnchor = useRef<HTMLElement | null>(null);
   const toggle = (item: ReadingLibraryItem) => {
-    if (!canEdit || !resources.context.isCurrent() || !resources.bindings.authority.isCurrent() || !resources.rows.collection.residentItems().includes(item)) return;
+    if (!canEdit || !context.isCurrent() || !resources.bindings.authority.isCurrent() || !resources.rows.collection.residentItems().includes(item)) return;
     setSelection(previous => {const next = new Map(previous); if (next.has(item.id)) next.delete(item.id); else if (next.size < bulkTargetLimit) next.set(item.id, item); return next;});
   };
   // The actual progressed member of this series comes from the canonical continue
@@ -100,7 +111,7 @@ function SeriesRows({resources, retry}: {resources: Resources; retry: () => void
       <div className={styles.seriesHeading}><h2>{t(resources.comic ? 'next.reader.volumes' : 'next.kit.booksInSeries')}</h2>
         {total === undefined ? null : <span>{t(resources.comic ? 'next.reader.volumeCount' : 'next.kit.books', {count: total})}</span>}
         {canEdit && <button type="button" className={styles.seriesSelect} aria-pressed={selection !== undefined}
-          onClick={() => setSelection(selection === undefined ? new Map() : undefined)}>{t('next.selection.select')}<ServerMark size={18}/></button>}</div></> : <h2>{t('library.tab.series')}</h2>}
+          onClick={() => setSelection(selection === undefined ? new Map() : undefined)}>{t('next.selection.select')}<ServerMark size={22}/></button>}</div></> : <h2>{t('library.tab.series')}</h2>}
     {selection && canEdit && <SelectionBar selection={{count: selection.size, kind: resources.comic ? 'comic' : 'ebook'}}
       context={t('next.reader.bulkLimit', {count: bulkTargetLimit})} onExit={() => setSelection(undefined)}
       actions={{...(selection.size ? {onEdit: (anchor: HTMLElement) => {bulkAnchor.current = anchor; setBulk(Object.freeze([...selection.values()]));}, ownerMark: <ServerMark size={22}/>} : {})}}/>}
@@ -115,7 +126,7 @@ function SeriesRows({resources, retry}: {resources: Resources; retry: () => void
         onPlay={item.inventoryAvailable ? () => {if (resources.bindings.authority.isCurrent()) void router.navigate(readDestination(item.id, item.sourceId)).catch(report);} : undefined}
         playLabel={t('next.reader.read')}
         selection={canEdit ? {active: selection !== undefined, checked: selection?.has(item.id) ?? false, onToggle: () => toggle(item), onExit: () => setSelection(undefined)} : undefined}/>} /></div>
-    {bulk && canEdit && <ReadBulkMetadata context={{...resources.context, isCurrent: () => resources.context.isCurrent() && !!bulk && resources.bindings.authority.isCurrent() && bulk.every(item => resources.rows.collection.residentItems().includes(item))}}
+    {bulk && canEdit && <ReadBulkMetadata context={{...context, isCurrent: () => context.isCurrent() && !!bulk && resources.bindings.authority.isCurrent() && bulk.every(item => resources.rows.collection.residentItems().includes(item))}}
       items={bulk} kind={resources.comic ? 'comic' : 'ebook'} anchor={bulkAnchor} onClose={() => {setBulk(undefined); setSelection(undefined);}}/>}
   </section>;
 }
