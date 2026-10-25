@@ -396,7 +396,7 @@ const serverPages: readonly AuthoredPage[] = [
     {id: 'mode', rows: [
       setting('runtime', 'library.segmentDetection', 'settings.server.segmentMode', {type: 'choice', choices: choices('settings.server.segmentMode', ['standard', 'thorough', 'off'])}, {help: 'settings.server.segmentModeHelp'}),
     ]},
-    panel('review', 'server.segments', undefined, {platforms: ['web']}),
+    panel('review', 'server.segments', undefined, {platforms: ['web', 'phone']}),
   ]},
   {id: 'live', title: 'settings.server.live', icon: 'live', needs: c => c.liveTV !== false,
     tabs: [{id: 'sources', title: 'settings.server.liveSources'}, {id: 'recording', title: 'settings.server.recording'}, {id: 'channels', title: 'settings.server.libraryChannels'}],
