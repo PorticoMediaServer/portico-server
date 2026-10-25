@@ -40,6 +40,13 @@ export function personalTargetIsLeaf(target: AnyOperation['target']): boolean {
   return target.items.length > 0 && target.items.every(pick => leafKinds.has(pick.item.kind));
 }
 
+/** Container jobs use the displayed parent's canonical descendant-selection
+ * grant, independently of its own title-level personal-state toggles. */
+export function personalTargetSupportsJob(target: AnyOperation['target']): boolean {
+  return target.mode === 'query' || target.items.length > 0 && target.items.every(pick => leafKinds.has(pick.item.kind)
+    || ['show', 'season', 'album', 'artist', 'book', 'collection'].includes(pick.item.kind));
+}
+
 export class SelectionActionError extends Error {
   constructor(readonly code: string, readonly retryable = false) {
     super(code);
@@ -68,7 +75,7 @@ export function createSelectionActions({api, events, requestId, isCurrent, repor
     const target = operation.target as SelectionTarget;
     const current = () => !routeSignal.aborted && isCurrent() && (guard?.() ?? true);
     if (!current() || signal.aborted) throw new SelectionActionError('cancelled');
-    if (!personalTargetIsLeaf(target)) throw new SelectionActionError('container-personal-state-unsupported');
+    if (!personalTargetSupportsJob(target)) throw new SelectionActionError('selection-personal-state-unsupported');
     const grant = args.watched !== undefined ? 'watched' : args.favorite !== undefined ? 'favorite' : args.watchlist !== undefined ? 'myList' : undefined;
     const offered = grant !== undefined && (target.mode === 'query'
       ? target.summary.every[grant] === true

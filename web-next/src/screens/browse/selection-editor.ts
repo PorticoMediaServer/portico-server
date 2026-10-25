@@ -1,3 +1,4 @@
+import {validateRepair} from '@core/metadata-repair.ts';
 import {parseMediaItem} from '@core/media-item.ts';
 import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
 import type {BulkEdit, BulkReceipt} from '@core/metadata-bulk.ts';
@@ -20,6 +21,7 @@ export type SelectionEditorOptions = Readonly<{
   requestId: () => Promise<string>;
   isCurrent: () => boolean;
   serverId: string;
+  viewerId?: string;
   signal?: AbortSignal;
   viewerFence: () => string | undefined;
 }>;
@@ -41,7 +43,7 @@ export function editorPreviewRequest(target: BrowseTarget): BulkMetadataPreviewR
   return {targets: metadataPreviewTargets(target.displayItems.map(pick => pick.item))};
 }
 
-export function createSelectionEditor({api, events, requestId, isCurrent, serverId, viewerFence, signal: lifetime}: SelectionEditorOptions) {
+export function createSelectionEditor({api, events, requestId, isCurrent, serverId, viewerId, viewerFence, signal: lifetime}: SelectionEditorOptions) {
   const routeSignal = lifetime ?? new AbortController().signal;
   const current = (caller?: AbortSignal) => {
     if (!isCurrent() || routeSignal.aborted || caller?.aborted) throw new SelectionEditorError('cancelled');
@@ -54,9 +56,19 @@ export function createSelectionEditor({api, events, requestId, isCurrent, server
       const result: {id: string; title: string}[] = [];
       for (const pick of operation.target.displayItems) {
         if (!('libraryId' in pick.item)) throw new SelectionEditorError('metadata-target-unavailable');
-        const item = parseMediaItem(await api.request(encodedRoutePath('get_items_id', {id: encodeURIComponent(pick.item.id)}), 'GET', undefined, routeSignal)); current();
-        if (item.id !== pick.item.id || item.libraryId !== pick.item.libraryId || item.kind !== pick.item.kind) throw new SelectionEditorError('metadata-target-mismatch');
-        result.push({id: item.id, title: item.title});
+        const target = metadataPreviewTargets([pick.item])[0];
+        if (target.kind === 'item') {
+          const item = parseMediaItem(await api.request(encodedRoutePath('get_items_id', {id: encodeURIComponent(pick.item.id)}), 'GET', undefined, routeSignal)); current();
+          if (item.id !== pick.item.id || item.libraryId !== pick.item.libraryId || item.kind !== pick.item.kind) throw new SelectionEditorError('metadata-target-mismatch');
+          result.push({id: item.id, title: item.title});
+        } else {
+          if (!viewerId) throw new SelectionEditorError('metadata-authority-unavailable');
+          const fence = viewerFence();
+          const raw = await api.request(encodedRoutePath('get_metadata_kind_id', {kind: encodeURIComponent(target.kind), id: encodeURIComponent(target.id)}), 'GET', undefined, routeSignal); current();
+          const data = validateRepair(raw, {serverId, viewerId}, target);
+          if (!fence || data.viewerFence !== fence || viewerFence() !== fence || data.snapshot.fields.title === undefined) throw new SelectionEditorError('metadata-target-mismatch');
+          result.push({id: target.id, title: data.snapshot.fields.title.value});
+        }
       }
       return result;
     },

@@ -160,7 +160,7 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
     descriptor: () => resources.controller.wholeSelection(),
     ...(context.identity?.viewer.role === 'owner' && context.identity.viewer.authority === 'local' ? {deletion: {api: resources.life.api, serverId: context.scope.serverId, viewerId: context.scope.viewerId,
       requestId: async () => randomId(), signal: resources.life.signal(), isCurrent: resources.life.current}, editor: {
-      api: resources.life.api, events: context.events, requestId: async () => randomId(), serverId: context.scope.serverId,
+      api: resources.life.api, events: context.events, requestId: async () => randomId(), serverId: context.scope.serverId, viewerId: context.scope.viewerId,
       viewerFence: () => captured.context.viewerFence, signal: resources.life.signal(), isCurrent: () => resources.life.current(),
     }} : {}),
     actions: {api: resources.life.api, events: context.events, requestId: async () => randomId(),
