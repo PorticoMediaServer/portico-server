@@ -1,4 +1,5 @@
 export {WebShellPlaybackRuntime} from './runtime.ts';
+export type {WebPlaybackCapacityWait} from './capacity-retry.ts';
 export type {WebQueueListPort, WebQueueListSnapshot, WebQueueListEntry} from './queue-list.ts';
 export type {WebPlaybackScreenTarget, WebPlaybackScreenLifetime, WebPlaybackInfoRead, WebLocalQueueController} from './types.ts';
 export type {WebPlaybackQueueSource} from './queue-source.ts';

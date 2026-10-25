@@ -21,6 +21,7 @@ import type {HlsModule, VideoLike, WebPlayerTimers} from './web-media-player.ts'
 import type {EqualizerPort} from '../../kit/media/equalizer-port.ts';
 import type {LocalPlaybackScope} from '../../../../packages/player-core/src/index.ts';
 import type {WebLocalQueueSnapshot, WebLocalQueueResource} from './local-queue.ts';
+import type {WebPlaybackCapacityWait} from './capacity-retry.ts';
 
 export type WebPlaybackAuthority = V1Viewer & Readonly<{epoch: string | number; viewerFence: string}>;
 export type WebPlaybackStart = Readonly<{entry: ContentEntry; target: NonNullable<ContentEntry['playback']>; origin?: Readonly<{kind: 'home-row'; rowId: string}>}>;
@@ -85,6 +86,8 @@ export type WebPlaybackInfoRead = Readonly<{
   isCurrent():boolean;
 }>;
 export type WebPlaybackRuntimeSnapshot = Readonly<{
+  /** The server refused conversion capacity and directed an exact idempotent retry. */
+  capacityWait?: WebPlaybackCapacityWait;
   /** Actual app-local receipt/queue state, never projected as a V1 session or queueView. */
   local?: WebLocalQueueSnapshot;
   nativeVideoSurfaceActive: boolean;

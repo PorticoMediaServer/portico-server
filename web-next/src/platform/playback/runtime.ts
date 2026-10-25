@@ -2,6 +2,7 @@ import {playbackFailurePermanent} from '@core/playback-messages.ts';
 import {captureAppLogRecorder, type AppLogRecorder} from '../app-log';
 import {advancePendingChoice, takePendingTrackChoice, type PendingChoiceProgress} from '@core/pending-track-choice.ts';
 import {createWebQueueListPort, type WebQueueListPort} from './queue-list';
+import {capacityRetryHttp, type WebPlaybackCapacityWait} from './capacity-retry';
 import {PlaybackService, type PlaybackSnapshot} from '@core/index.ts';
 import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
 import type {GetItemsIdResponse} from '../../../../packages/contracts/src/types.ts';
@@ -64,6 +65,8 @@ type OfferBinding = {
   detailFence?: string;
 };
 type Stack = {
+  capacityWait?: WebPlaybackCapacityWait;
+  capacityCurrent?: () => boolean;
   preplay?: Readonly<{versionId: string; progress: PendingChoiceProgress}>;
   mode: 'server' | 'local'; local?: Readonly<{controller: WebLocalQueue; lease: LocalQueueLease}>;
   capabilityRejected?: boolean;
@@ -201,7 +204,13 @@ export class WebShellPlaybackRuntime {
     const life = new AbortController(), inner = localV1Http(this.source.api);
     // A stale successful start is returned to the retired core owner so it can abandon the
     // actual server session. DELETE cleanup still uses its original viewer-bound API.
-    const http: V1Http = {send: request => inner.send(request.method === 'DELETE' ? request : {...request, signal: request.signal ? AbortSignal.any([request.signal, life.signal]) : life.signal})};
+    const bound: V1Http = {send: request => inner.send(request.method === 'DELETE' ? request : {...request, signal: request.signal ? AbortSignal.any([request.signal, life.signal]) : life.signal})};
+    const http = capacityRetryHttp({http: bound, life: life.signal, timers: this.env.timers,
+      isCurrent: () => this.current(stackReference), captureCurrent: () => stackReference.capacityCurrent, publish: wait => {
+        if (!this.current(stackReference)) return;
+        stackReference.capacityWait = wait;
+        this.sync();
+      }});
     const web = new WebPlayback({
       recordDiagnostic: this.recordDiagnostic,
       http, mediaUrl: path => this.source.api.mediaUrl(path),
@@ -454,6 +463,7 @@ export class WebShellPlaybackRuntime {
     } };
     lifetime.addEventListener('abort', cancel, {once: true});
     try {
+      stack.capacityCurrent = current;
       await stack.queue.playItem(item.id, startSeconds, undefined, undefined, undefined,
         {...(versionId ? {versionId} : {}), ...(audio ? {audioTrackId: audio.id} : {})}, {signal: lifetime, isCurrent: current});
       if (!current()) problem('stale_selection_context');
@@ -462,7 +472,7 @@ export class WebShellPlaybackRuntime {
         || versionId !== undefined && session.versionId !== versionId) problem('playback_start_failed');
       this.sync();
     } catch (error) {cancel();throw error;}
-    finally {lifetime.removeEventListener('abort', cancel);}
+    finally {if (stack.capacityCurrent === current) stack.capacityCurrent = undefined; lifetime.removeEventListener('abort', cancel);}
   }
 
   /** Canonical room follower and local corrections share this runtime's one actual engine. */
@@ -639,6 +649,7 @@ export class WebShellPlaybackRuntime {
     } };
     lifetime.addEventListener('abort', cancel, {once: true});
     try {
+      stack.capacityCurrent = current;
       await stack.queue.playItem(itemId, startSeconds, undefined, undefined, undefined, {versionId}, {signal: lifetime, isCurrent: current});
       if ('choices' in request) { if (lifetime.aborted) problem('stale_playback_command'); }
       else this.selectionCurrent(request.context, signal, isCurrent!);
@@ -648,7 +659,7 @@ export class WebShellPlaybackRuntime {
         || started.session?.id !== session.id || started.session.generation !== session.presentation.generation) problem('playback_version_failed');
       this.sync();
     } catch (error) { cancel(); throw error; }
-    finally { lifetime.removeEventListener('abort', cancel); }
+    finally {if (stack.capacityCurrent === current) stack.capacityCurrent = undefined; lifetime.removeEventListener('abort', cancel);}
   }
 
   /** Start the whole genuine browse/resource selection. Never expand a visible page locally.
@@ -733,6 +744,7 @@ export class WebShellPlaybackRuntime {
     }};
     lifetime.addEventListener('abort', cancel, {once: true});
     try {
+      stack.capacityCurrent = current;
       const queue = await stack.queue.playSegments(segments, {startSeconds, signal: lifetime, isCurrent: current});
       if (!current()) problem('stale_selection_context');
       const session = stack.queue.currentSession(), started = stack.service.getSnapshot();
@@ -747,7 +759,7 @@ export class WebShellPlaybackRuntime {
       if (admissionFailed) problem('playback_start_failed');
       throw error;
     }
-    finally {lifetime.removeEventListener('abort', cancel);}
+    finally {if (stack.capacityCurrent === current) stack.capacityCurrent = undefined; lifetime.removeEventListener('abort', cancel);}
   }
 
   /** The shell supplies the same current Home context guard used by its selection controller.
@@ -995,7 +1007,8 @@ export class WebShellPlaybackRuntime {
         presentation = {fence, subject: stack.subject, kind: stack.subject.kind === 'channel' ? 'video' : stack.subject.kind, posterUrl: stack.posterUrl, backdropUrl: stack.backdropUrl, durationSeconds: playback.duration, positionSeconds: local.positionSeconds, playing: local.playing, expanded: stack.expanded, finished, controls, volume: this.video?.volume ?? 1, muted: this.video?.muted ?? false, rate: speed, policy: this.policyView, ...(playback.channel && playback.linear ? {seekWindow: {startSeconds: Number(playback.linear.media.windowStartUs) / 1e6, endSeconds: Number(playback.linear.media.windowEndUs) / 1e6}} : {})};
         this.renderSubtitles(stack);
       }
-      this.snapshot = Object.freeze({nativeVideoSurfaceActive: !!fence && stack.subject?.kind === 'video' && stack.web.slot.nativeSurfaceActive, authority: this.authority, sequence: ++this.sequence, playback, dock: this.dock.getSnapshot(), fence, subject: stack.subject, presentation, presentations: this.presentations(presentation), queueView: stack.queue.getSnapshot().view, session, offers, options: stack.options, problem: this.runtimeProblem, disposed: false});
+      this.snapshot = Object.freeze({nativeVideoSurfaceActive: !!fence && stack.subject?.kind === 'video' && stack.web.slot.nativeSurfaceActive, authority: this.authority, sequence: ++this.sequence, playback, dock: this.dock.getSnapshot(), fence, subject: stack.subject, presentation, presentations: this.presentations(presentation), queueView: stack.queue.getSnapshot().view, session, offers, options: stack.options, problem: this.runtimeProblem, disposed: false,
+        ...(stack.capacityWait?.isCurrent() ? {capacityWait: stack.capacityWait} : {})});
       this.advancePreplay(stack, playback, fence);
       this.rememberCurrent();
       for (const listener of [...this.listeners]) listener();
