@@ -72,7 +72,7 @@ func (d DiscSelection) MainTitle() (disc.Title, bool) {
 }
 func ReadDiscSelection(ctx context.Context, q discQueryer, asset string) (*DiscSelection, error) {
 	rows, err := q.QueryContext(ctx, `SELECT d.object_id,d.asset_id,o.source_id,d.source_revision,d.fingerprint,d.owner_title_key,d.media_title_key,
- d.source_generation,d.choice_revision,d.media_stream_revision,d.media_chapter_revision,s.resolved_path,s.root_identity,s.incarnation,o.relative_path,o.object_identity,s.follow_symlinks,o.size,o.modified_ns
+ d.source_generation,d.choice_revision,d.media_stream_revision,d.media_chapter_revision,s.root,s.root_identity,s.incarnation,o.relative_path,o.object_identity,s.follow_symlinks,o.size,o.modified_ns
  FROM inventory_disc_facts d JOIN inventory_objects o ON o.id=d.object_id AND o.asset_id=d.asset_id
  JOIN library_sources s ON s.id=o.source_id JOIN catalog_assets a ON a.token=d.asset_id
  WHERE d.asset_id=? AND a.available=1 AND a.size=o.size AND a.modified_ns=o.modified_ns AND o.retired=0 AND o.state='available' AND s.enabled=1 AND s.kind='local' AND d.encryption='none'
