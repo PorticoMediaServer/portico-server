@@ -31,6 +31,7 @@ type AttentionCandidate struct {
 	Orders     []metadataprovider.ScreenOrder `json:"orders"`
 }
 type AttentionEntry struct {
+	ArtworkURL   string               `json:"artworkUrl,omitempty"`
 	ParentTitle  string               `json:"parentTitle,omitempty"`
 	ParentArtist string               `json:"parentArtist,omitempty"`
 	LibraryID    string               `json:"libraryId"`
@@ -237,6 +238,28 @@ func (s *Service) AttentionFiltered(ctx context.Context, library, cursor string,
 				}
 			}
 			out.Entries[i].Actions = actions
+		}
+	}
+	for i := range out.Entries {
+		entry := &out.Entries[i]
+		album := ""
+		if entry.Kind == "album" {
+			album = entry.EntityID
+		} else if entry.Kind == "song" {
+			album = entry.ParentID
+		}
+		if album == "" {
+			continue
+		}
+		choices, err := readArtworkChoices(ctx, tx, RepairTarget{Kind: "album", ID: album})
+		if err != nil {
+			return out, err
+		}
+		for _, choice := range choices {
+			if choice.Role == "cover" && choice.Subject == "" {
+				entry.ArtworkURL = choice.URL
+				break
+			}
 		}
 	}
 	return out, nil
