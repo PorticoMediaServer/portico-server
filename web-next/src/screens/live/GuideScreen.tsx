@@ -10,6 +10,7 @@ import {Icon} from '../../kit/Icon';
 import {Skeleton, StateView} from '../../kit/states';
 import {liveListPrograms} from './program-window';
 import {useGuideSwipe} from './guide-swipe';
+import type {RowWitness} from './row-witness';
 import styles from './live.module.css';
 
 const t = defaultI18n.t;
@@ -48,6 +49,8 @@ export type GuideRowData = Readonly<{
   /** Position in the complete filtered order; rows are placed by it. */
   index: number;
   channel?: GuideChannelRow;
+  /** The source store's own membership witness for this exact row. */
+  witness?: RowWitness;
   programs: readonly GuideProgram[];
   /** The source answered this row's programmes completely. */
   complete: boolean;
@@ -75,15 +78,15 @@ export type GuideScreenProps = Readonly<{
   rows: readonly GuideRowData[];
   total: number;
   selected?: Readonly<{channelId: string; programmeId?: string}>;
-  onSelect(channel: GuideChannelRow, programme?: GuideProgram): void;
-  onPlay?(channel: GuideChannelRow): void;
+  onSelect(channel: GuideChannelRow, programme?: GuideProgram, witness?: RowWitness): void;
+  onPlay?(channel: GuideChannelRow, witness?: RowWitness): void;
   onVisibleWindow?(first: number, last: number): void;
   onRetry?(): void;
 }>;
 
-function CellButton({cell, channel, now, timezone, selected, onSelect}: Readonly<{
-  cell: GuideCell; channel: GuideChannelRow; now: number; timezone: string; selected: boolean;
-  onSelect: (channel: GuideChannelRow, programme: GuideProgram) => void;
+function CellButton({cell, channel, witness, now, timezone, selected, onSelect}: Readonly<{
+  cell: GuideCell; channel: GuideChannelRow; witness?: RowWitness; now: number; timezone: string; selected: boolean;
+  onSelect: (channel: GuideChannelRow, programme: GuideProgram, witness?: RowWitness) => void;
 }>) {
   const programme = cell.program!;
   const parts = programmeFactParts({startMs: programme.start, endMs: programme.end,
@@ -95,7 +98,7 @@ function CellButton({cell, channel, now, timezone, selected, onSelect}: Readonly
   const label = t('guide.cellTime', {start: defaultI18n.time(programme.start), end: defaultI18n.time(programme.end)});
   return <button type="button" className={styles.guideCell} data-kind="program" data-state={cell.state} data-tier={cell.tier} data-selected={selected || undefined}
     style={{left: cell.x + GUIDE_CELL_INSET, width: Math.max(0, cell.width - GUIDE_CELL_INSET)}}
-    aria-label={`${programme.title}, ${label}`} aria-current={selected || undefined} onClick={() => onSelect(channel, programme)}>
+    aria-label={`${programme.title}, ${label}`} aria-current={selected || undefined} onClick={() => onSelect(channel, programme, witness)}>
     <span className={styles.guideCellTitle}>
       {cell.clippedStart && <Icon className={styles.guideClip} name="i-left" size={13}/>}
       {recording === 'recording' && <i className={styles.guideRecordDot} data-pulse title={t('next.kit.recording')}/>}
@@ -186,8 +189,8 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
     const cell = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-kind]');
     if (!cell) return;
     if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {event.preventDefault();move(cell, event.key === 'ArrowLeft' ? -1 : 1);return;}
-    const row = rows.find(item => item.channel?.id === cell.closest<HTMLElement>('[data-guide-row]')?.dataset.guideRow)?.channel;
-    if ((event.key === 'w' || event.key === 'W') && row && onPlay) {event.preventDefault();onPlay(row);return;}
+    const item = rows.find(item => item.channel?.id === cell.closest<HTMLElement>('[data-guide-row]')?.dataset.guideRow);
+    if ((event.key === 'w' || event.key === 'W') && item?.channel && onPlay) {event.preventDefault();onPlay(item.channel, item.witness);return;}
     if (event.key === 'n' || event.key === 'N') {event.preventDefault();time.onNow();}
   };
 
@@ -264,7 +267,7 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
                             {cell.tier === 'full' && <><span className={styles.guideCellTitle}>{row.channel!.guide === 'none' ? t('guide.noGuide') : t('guide.noInformation')}</span>
                               {row.channel!.guide === 'none' && <span className={styles.guideCellDetail}>{t('guide.noGuideBody')}</span>}</>}
                           </div>
-                        : <CellButton key={`cell:${cell.start}`} cell={cell} channel={row.channel!} now={now} timezone={timezone}
+                        : <CellButton key={`cell:${cell.start}`} cell={cell} channel={row.channel!} witness={row.witness} now={now} timezone={timezone}
                             selected={selected?.channelId === row.channel!.id && (selected.programmeId === undefined || selected.programmeId === cell.program?.id)} onSelect={onSelect}/>)}
                   </>}
               </div>
@@ -285,14 +288,14 @@ export function GuideScreen({title, switcher, summary, conflicts, onTabChange, c
               const [current, next, later] = liveListPrograms(row.programs, now);
               return <>
                 <div className={styles.guideListNow}>{current
-                  ? <ProgrammeSummary programme={current} now={now} timezone={timezone} current onSelect={() => onSelect(row.channel!, current)}/>
+                  ? <ProgrammeSummary programme={current} now={now} timezone={timezone} current onSelect={() => onSelect(row.channel!, current, row.witness)}/>
                   : <><b><span className={styles.guideListMuted}>{row.channel?.guide === 'none' ? t('guide.noGuide') : t('guide.noInformation')}</span></b>
                     {row.channel?.guide === 'none'
                       ? <small>{t('guide.noGuideBody')}</small>
                       : liveListPrograms(row.programs, now)[1] ? <small>{t('guide.until', {time: defaultI18n.time(liveListPrograms(row.programs, now)[1]!.start)})}</small> : null}</>}</div>
-                <div className={styles.guideListNext}>{next ? <ProgrammeSummary programme={next} now={now} timezone={timezone} onSelect={() => onSelect(row.channel!, next)}/> : null}</div>
-                <div className={styles.guideListNext}>{later ? <ProgrammeSummary programme={later} now={now} timezone={timezone} onSelect={() => onSelect(row.channel!, later)}/> : null}</div>
-                <div className={styles.guideListActions}>{row.channel?.tuneAvailable && onPlay && <Button size="compact" icon="i-play" onClick={() => onPlay(row.channel!)}>{t('channels.watch')}</Button>}</div>
+                <div className={styles.guideListNext}>{next ? <ProgrammeSummary programme={next} now={now} timezone={timezone} onSelect={() => onSelect(row.channel!, next, row.witness)}/> : null}</div>
+                <div className={styles.guideListNext}>{later ? <ProgrammeSummary programme={later} now={now} timezone={timezone} onSelect={() => onSelect(row.channel!, later, row.witness)}/> : null}</div>
+                <div className={styles.guideListActions}>{row.channel?.tuneAvailable && onPlay && <Button size="compact" icon="i-play" onClick={() => onPlay(row.channel!, row.witness)}>{t('channels.watch')}</Button>}</div>
               </>;
             })()}
         </div>)}

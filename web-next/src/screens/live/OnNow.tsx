@@ -1,4 +1,4 @@
-import {useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {legacyChannel, type GuideChannelRow, type GuideProgram} from '@core/guide/index.ts';
 import {defaultI18n} from '@i18n';
 import {Row} from '../../kit/layout';
@@ -8,17 +8,32 @@ import {Skeleton, StateView} from '../../kit/states';
 import type {ShellArtwork} from '../../shell/artwork';
 import type {LiveBindings} from './bindings';
 import {onNowProgramme} from './on-now-programme';
+import type {RowWitness} from './row-witness';
 import styles from './live.module.css';
 
 const cardWidth = 344, step = 364, t = defaultI18n.t;
 /** O(visible) horizontally, including distant positions. The source supplies
  * the complete favorites-first order and total; no lineup is copied or ranked. */
-export function LiveOnNow({owner, now, timezone, artwork, reducedMotion, onOpen, onPlay}: Readonly<{
+type LiveOnNowProps = Readonly<{
   owner: LiveBindings; now: number; timezone: string; artwork: ShellArtwork; reducedMotion: boolean;
-  onOpen: (channel: GuideChannelRow, programme?: GuideProgram) => void; onPlay?: (channel: GuideChannelRow) => void;
-}>) {
-  const current = useMemo(() => owner.onNow(), [owner]);
-  useEffect(() => () => current.dispose(), [current]);
+  onOpen: (channel: GuideChannelRow, programme?: GuideProgram, witness?: RowWitness) => void; onPlay?: (channel: GuideChannelRow, witness?: RowWitness) => void;
+}>;
+type OnNowLease = {id: string; owner: LiveBindings; live: boolean; current: ReturnType<LiveBindings['onNow']>};
+/** The favorites-first store is created in a layout-owned lease, so Strict
+ * effect replay gets a fresh store instead of reviving one it just disposed. */
+export function LiveOnNow(props: LiveOnNowProps) {
+  const {owner} = props;
+  const [published, publish] = useState<OnNowLease>();
+  useLayoutEffect(() => {
+    if (!owner.life.current()) return;
+    const current = owner.onNow(), lease: OnNowLease = {id: crypto.randomUUID(), owner, live: true, current};
+    publish(lease);
+    return () => {lease.live = false;current.dispose();};
+  }, [owner]);
+  const lease = published?.live && published.owner === owner && owner.life.current() ? published : undefined;
+  return lease ? <CommittedOnNow key={lease.id} {...props} current={lease.current}/> : null;
+}
+function CommittedOnNow({owner, now, timezone, artwork, reducedMotion, onOpen, onPlay, current}: LiveOnNowProps & {current: ReturnType<LiveBindings['onNow']>}) {
   const state = useSyncExternalStore(current.store.subscribe, current.store.getSnapshot, current.store.getSnapshot);
   const track = useRef<HTMLDivElement>(null), [window, setWindow] = useState({left: 0, width: 1});
   useLayoutEffect(() => {
@@ -43,11 +58,13 @@ export function LiveOnNow({owner, now, timezone, artwork, reducedMotion, onOpen,
     }
     const native = legacyChannel(channel);
     if (!native) return null;
+    // This row's witness is the exact object at its index in this On Now store.
+    const witness: RowWitness = {row: channel, current: () => owner.life.current() && current.store.channelAt(index) === channel};
     return <div className={styles.nowSlot} style={{left: index * step}} key={index} data-on-now-channel-id={channel.id}>
       <LiveCard large channel={{id: channel.id, sourceId: native.sourceId, name: channel.name, number: channel.number, favorite: channel.favorite,
         ...(channel.mark ? {mark: {...channel.mark, sourceId: native.sourceId, id: native.id}} : {})}}
         logo={artwork.foreground(channel.logoUrl, 68, 1)} programme={onNowProgramme(page.programs, now, defaultI18n, timezone)}
-        onNavigate={() => {if (!owner.life.current()) return;if (channel.tuneAvailable && onPlay) onPlay(channel);else onOpen(channel, page.programs.find(programme => programme.start <= now && now < programme.end));}} onPlay={channel.tuneAvailable && onPlay ? () => onPlay(channel) : undefined}/>
+        onNavigate={() => {if (!witness.current()) return;if (channel.tuneAvailable && onPlay) onPlay(channel, witness);else onOpen(channel, page.programs.find(programme => programme.start <= now && now < programme.end), witness);}} onPlay={channel.tuneAvailable && onPlay ? () => onPlay(channel, witness) : undefined}/>
     </div>;
   });
   return <Row className={styles.onNow} data-reduced-motion={reducedMotion || undefined} heading={t('web.live.onNow')} subtitle={t('next.live.favoritesFirst')}>

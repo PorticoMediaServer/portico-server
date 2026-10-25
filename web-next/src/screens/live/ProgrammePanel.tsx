@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties} from 'react';
 import {defaultI18n} from '@i18n';
 import {channelTint, programmeFactParts, type ChannelMarkModel} from '@portico/client-core/kit-model';
 import {legacyProgramme, type GuideChannelRow, type GuideProgram} from '@core/guide/index.ts';
@@ -8,7 +8,8 @@ import {ChannelMark} from '../../kit/artwork';
 import {Icon} from '../../kit/Icon';
 import {Banner, Dialog, Menu, SidePanel, type MenuEntry} from '../../kit/overlays';
 import {useShellWidth} from '../../shell/viewport';
-import {useLibraryScreenContext, type ProtectedLibraryScreen} from '../browse/screen-context';
+import type {ScreenContext} from '../detail/context';
+import type {SelectionAdmission} from './row-witness';
 import {createProgrammeBindings, defaultSeriesChoice, type PreviewAiring, type ProgrammeSnapshot, type SeriesChoice} from './programme-bindings';
 import {readReminders, subscribeReminders, toggleReminder} from './reminders';
 import styles from './live.module.css';
@@ -173,19 +174,37 @@ export function ProgrammePanelView({channel, programme, now, timezone, snapshot,
   </div>;
 }
 
-/** The mounted programme panel. It owns this selection's captured DVR scope; closing it
- * disposes every read and command that belongs to that selection. */
-export function ProgrammePanel({captured, channel, programme, now, timezone, open, onClose, onWatch, onChanged, onViewRecordings}: Readonly<{
-  captured: ProtectedLibraryScreen; channel: GuideChannelRow; programme?: GuideProgram; now: number; timezone: string;
+/** The mounted programme panel. It owns this selection's captured DVR scope;
+ * closing it disposes every read and command that belongs to that selection.
+ * A layout-owned lease creates those bindings fresh after Strict effect replay,
+ * and the panel is drawn only for the lease that is still committed. */
+type ProgrammePanelProps = Readonly<{
+  context: ScreenContext; admission: SelectionAdmission; channel: GuideChannelRow; programme?: GuideProgram; now: number; timezone: string;
   open: boolean; onClose: () => void; onWatch?: () => void; onChanged?: () => void; onViewRecordings?: () => void;
-}>) {
-  const context = useLibraryScreenContext(captured);
-  const width = useShellWidth();
+}>;
+type ProgrammeLease = {id: string; context: ScreenContext; admission: SelectionAdmission; channel: GuideChannelRow; programme?: GuideProgram;
+  timezone: string; onChanged?: () => void; live: boolean; binding: ReturnType<typeof createProgrammeBindings>};
+export function ProgrammePanel(props: ProgrammePanelProps) {
+  const {context, admission, channel, programme, timezone, onChanged} = props;
+  const [published, publish] = useState<ProgrammeLease>();
+  useLayoutEffect(() => {
+    // Every command belongs to this exact selected row as well as this page.
+    const screen: ScreenContext = {...context, isCurrent: () => context.isCurrent() && admission.row === channel && admission.current()};
+    const binding = createProgrammeBindings(screen, channel, programme, {timezone,
+      locale: defaultI18n.region.formatLocale, onChanged});
+    const lease: ProgrammeLease = {id: crypto.randomUUID(), context, admission, channel, programme, timezone, onChanged, live: true, binding};
+    publish(lease);
+    void binding.load().catch(() => {});
+    return () => {lease.live = false;binding.dispose();};
+  }, [context, admission, channel, programme, timezone, onChanged]);
+  const current = published?.live && published.context === context && published.admission === admission && published.channel === channel && published.programme === programme
+    && published.timezone === timezone && published.onChanged === onChanged && admission.row === channel && context.isCurrent() ? published : undefined;
+  return current ? <CommittedProgrammePanel key={current.id} {...props} lease={current}/> : null;
+}
+function CommittedProgrammePanel({context, admission, channel, programme, now, timezone, open, onClose, onWatch, onViewRecordings, lease}:
+  ProgrammePanelProps & {lease: ProgrammeLease}) {
+  const binding = lease.binding, width = useShellWidth();
   const phone = width < 600;
-  const binding = useMemo(() => createProgrammeBindings(context, channel, programme, {timezone,
-    locale: defaultI18n.region.formatLocale, onChanged}), [context, channel, programme, timezone, onChanged]);
-  useEffect(() => () => binding.dispose(), [binding]);
-  useEffect(() => { void binding.load().catch(() => {}); }, [binding]);
   const snapshot = useSyncExternalStore(binding.subscribe, binding.getSnapshot, binding.getSnapshot);
   const reminders = useSyncExternalStore(subscribeReminders, reminderIds, reminderIds);
   const [seriesOpen, setSeriesOpen] = useState(false);
@@ -202,7 +221,11 @@ export function ProgrammePanel({captured, channel, programme, now, timezone, ope
     setSeriesOpen(value);
     if (value) void binding.preview(choice).catch(() => {});
   };
+  // Reminders are direct local writes; a retired opening or row admission
+  // must not write them from a retained panel.
+  const canWrite = () => lease.live && context.isCurrent() && admission.row === channel && admission.current();
   const reminder = (airing: PreviewAiring) => {
+    if (!canWrite()) return;
     toggleReminder({programId: airing.id, channelId: airing.channelId, title: airing.title, channelName: channel.name, start: airing.start});
   };
   const view = <ProgrammePanelView channel={channel} {...(programme ? {programme} : {})} now={now} timezone={timezone} snapshot={snapshot}
@@ -210,7 +233,7 @@ export function ProgrammePanel({captured, channel, programme, now, timezone, ope
     onClose={onClose} {...(onWatch ? {onWatch} : {})} onRecord={() => {void binding.record();}}
     onCancelRecording={() => {void binding.cancel();}} onRecordSeries={() => {void binding.recordSeries(choice).then(ok => {if (ok) setSeriesOpen(false);});}}
     onFavorite={() => {void binding.toggleFavorite();}} onSeriesOpenChange={openSeries} onChoice={change} onReminder={reminder}
-    {...(programme ? {onProgrammeReminder: () => {if (context.isCurrent()) toggleReminder({programId: programme.id, channelId: channel.id, title: programme.title, channelName: channel.name, start: programme.start});}} : {})}
+    {...(programme ? {onProgrammeReminder: () => {if (!canWrite()) return; toggleReminder({programId: programme.id, channelId: channel.id, title: programme.title, channelName: channel.name, start: programme.start});}} : {})}
     {...(onViewRecordings ? {onViewRecordings} : {})}/>;
   return phone ? <SidePanel open={open} onOpenChange={value => {if (!value) onClose();}} width={Math.min(600, width)} topInset={0}
     className={styles.programmePanel} accessibilityLabel={programme?.title ?? channel.name} title={programme?.title ?? channel.name}>{view}</SidePanel>

@@ -1,5 +1,5 @@
-import {useCallback, useEffect, useMemo, useState, useSyncExternalStore} from 'react';
-import {useSearch} from '@tanstack/react-router';
+import {useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
+import {useLocation, useSearch} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
 import {dayStarts, localDayStart, legacyChannel, legacyChannelRow, legacyProgram, pxPerMsFor, type GuideChannelRow, type GuideProgram} from '@core/guide/index.ts';
 import {dayPrimeTime} from '@core/channel-guide.ts';
@@ -12,64 +12,145 @@ import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
 import {StateView} from '../../kit/states';
 import {useShellWidth} from '../../shell/viewport';
-import {useLibraryScreenContext, type ProtectedLibraryScreen} from '../browse/screen-context';
+import {useCommittedLibraryScreenContext, type ProtectedLibraryScreen} from '../browse/screen-context';
 import {useScreenAppearance} from '../browse/screen-preferences';
+import type {ScreenContext} from '../detail/context';
 import {SeriesRulesEntry} from './SeriesRulesEntry';
 import {ScreenProblem} from '../detail/ScreenProblem';
 import {ProgrammePanel} from './ProgrammePanel';
 import {RecordingsScreen} from './RecordingsScreen';
-import {createLiveBindings, type LiveBindings} from './bindings';
 import {parseLiveScreenSearch, type LiveScreenSearch} from './route-search';
 import {liveProgramWindow} from './program-window';
 import {useGuideViewPreference} from './guide-view-preference';
 import {LiveOnNow} from './OnNow';
 import {GuideScreen, type GuideRowData} from './GuideScreen';
+import {useLiveLease, type LiveLease} from './useLiveLease';
+import type {RowWitness, SelectionAdmission} from './row-witness';
 import styles from './live.module.css';
 
 const t = defaultI18n.t, halfHour = 30 * 60_000;
 const liveDependencies = [dependsOn.list('guide'), dependsOn.list('liveSources'), dependsOn.list('libraryChannels'), dependsOn.list('myRecordings'), dependsOn.personal(), dependsOn.event('stream.resync')];
 const nowStart = () => Math.floor(Date.now() / halfHour) * halfHour;
-type Selected = Readonly<{owner: LiveBindings; channel: GuideChannelRow; programme?: GuideProgram}>;
+type Selected = Readonly<{lease: LiveLease; channel: GuideChannelRow; programme?: GuideProgram; admission: SelectionAdmission}>;
+type ReadAttempt = Readonly<{current: () => boolean; retire: () => void}>;
+type CommittedSelection = {selection: Selected; live: boolean; admission: SelectionAdmission};
+const noSubscribe = () => () => {};
+const emptySnapshot = Object.freeze({version: 0, channelsError: false});
+const noSnapshot = () => emptySnapshot;
+const noFailure = () => undefined;
+
+/** The guide page a row was admitted through: its own source and provenance,
+ * never a newer row with the same id. */
+function admittedChannel(options: LegacyGuideOptions, row: GuideChannelRow) {
+  const channel = legacyChannel(row);
+  if (!channel) return undefined;
+  if (options.kind !== 'all' && channel.provenance !== options.kind) return undefined;
+  if (options.sourceId && channel.sourceId !== options.sourceId) return undefined;
+  return channel;
+}
+function playableChannel(options: LegacyGuideOptions, row: GuideChannelRow) {
+  const channel = admittedChannel(options, row);
+  return channel && channel.tuneAvailable && !channel.tuneUnavailableReason ? channel : undefined;
+}
+/** This guide page's own membership witness: the same row object at the same
+ * row index, in the store that drew it. A replacement page has other objects. */
+function guideWitness(lease: LiveLease, index: number, channel: GuideChannelRow): RowWitness {
+  return {row: channel, current: () => lease.live && lease.life.current() && lease.routeCurrent() && lease.bindings.store.channelAt(index) === channel};
+}
+/** The exact source/channel/kind a deep link asked to read. */
+const linkKey = (sourceId?: string, channelId?: string, kind?: string) => JSON.stringify([sourceId ?? '', channelId ?? '', kind ?? '']);
+function currentLink() {
+  const value = router.state.location.search as unknown as Record<string, unknown>;
+  return linkKey(typeof value.sourceId === 'string' ? value.sourceId : undefined,
+    typeof value.channelId === 'string' ? value.channelId : undefined, typeof value.kind === 'string' ? value.kind : undefined);
+}
+
 function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
-  const context = useLibraryScreenContext(captured), search = parseLiveScreenSearch(useSearch({from: '/live'})), width = useShellWidth();
+  const search = parseLiveScreenSearch(useSearch({from: '/live'}));
+  const pathname = useLocation({select: location => location.pathname});
+  const context = useCommittedLibraryScreenContext(captured, pathname, () => router.state.location.pathname === pathname);
+  return context ? <LiveArea captured={captured} context={context} search={search} pathname={pathname}/> : null;
+}
+
+function LiveArea({captured, context, search, pathname}: {captured: ProtectedLibraryScreen; context: ScreenContext; search: LiveScreenSearch; pathname: string}) {
+  const width = useShellWidth();
   const appearance = useScreenAppearance(captured.context)!;
   const timezone = defaultI18n.region.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const key = JSON.stringify({kind: search.kind ?? 'all', sourceId: search.sourceId ?? '', timezone, group: search.group, favorites: search.favorites,
     search: search.q, sort: search.sort ?? 'number'} satisfies LegacyGuideOptions);
-  const owner = useMemo(() => createLiveBindings(context, JSON.parse(key)), [context, key]);
-  useEffect(() => () => owner.dispose(), [owner]);
-  const snapshot = useSyncExternalStore(owner.store.subscribe, owner.store.getSnapshot, owner.store.getSnapshot);
-  const authorityFailure = useSyncExternalStore(owner.failure.subscribe, owner.failure.getSnapshot, owner.failure.getSnapshot);
-  const [summary, setSummary] = useState<{owner: LiveBindings; value: GuideSourceSummaries}>(), [failed, setFailed] = useState<LiveBindings>(), [attempt, setAttempt] = useState(0);
+  const runtime = captured.binding.playback?.runtime, routeCurrent = () => router.state.location.pathname === pathname;
+  const [reopen, setReopen] = useState(0);
+  const lease = useLiveLease(context, key, pathname, routeCurrent, runtime, reopen);
+  const store = lease?.bindings.store;
+  const snapshot = useSyncExternalStore(store?.subscribe ?? noSubscribe, store?.getSnapshot ?? noSnapshot, store?.getSnapshot ?? noSnapshot);
+  const failure = lease?.bindings.failure;
+  const authorityFailure = useSyncExternalStore(failure?.subscribe ?? noSubscribe, failure?.getSnapshot ?? noFailure, failure?.getSnapshot ?? noFailure);
+  const [summary, setSummary] = useState<{lease: LiveLease; value: GuideSourceSummaries}>();
+  const [failed, setFailed] = useState<LiveLease>(), [attempt, setAttempt] = useState(0);
   useEffect(() => {
+    if (!lease) return;
     let current = true;
-    void owner.sources().then(value => {if (current) {setSummary({owner, value});setFailed(undefined);}}).catch(() => {if (current) {setSummary(undefined);setFailed(owner);}});
+    void lease.bindings.sources().then(value => {if (current && lease.life.current()) {setSummary({lease, value});setFailed(undefined);}})
+      .catch(() => {if (current && lease.life.current()) {setSummary(undefined);setFailed(lease);}});
     return () => {current = false;};
-  }, [owner, attempt]);
-  const sources = summary?.owner === owner ? summary.value.sources : undefined;
-  const selectedSources = sources?.filter(source => (!search.sourceId || source.id === search.sourceId) && (!search.kind || search.kind === 'all' || source.provenance === search.kind)) ?? [];
-  const groupCounts = new Map<string, number>();
-  // Source summaries partition channels. Their published counts are combined,
-  // never calculated from the loaded guide page or a lineup scan.
-  for (const source of selectedSources) for (const group of source.groupCounts) groupCounts.set(group.name, (groupCounts.get(group.name) ?? 0) + group.count);
-  const groups = [...groupCounts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  }, [lease, attempt]);
   const searchKey = JSON.stringify(search);
   const navigate = useCallback((change: Partial<LiveScreenSearch>) => {
     const filtersChanged = ['sourceId', 'kind', 'group', 'favorites', 'q'].some(key => Object.hasOwn(change, key));
     if (context.isCurrent()) void router.navigate({to: '/live', search: {...JSON.parse(searchKey), ...(filtersChanged ? {channelId: undefined} : {}), ...change}, replace: true, resetScroll: false}).catch(context.effects.reportError);
   }, [context, searchKey]);
   const [start, setStart] = useState(nowStart), [now, setNow] = useState(Date.now), [selected, setSelected] = useState<Selected>();
+  const [committedSelection, setCommittedSelection] = useState<CommittedSelection>();
+  const committedSelectionRef = useRef<CommittedSelection | undefined>(undefined);
+  const reads = useRef<ReadAttempt | undefined>(undefined);
+  const selectRow = useCallback((selection: Selected) => {
+    // A row choice replaces any deep-link read still in flight.
+    reads.current?.retire();reads.current = undefined;setSelected(selection);
+  }, []);
+  // Publish the exact committed selection. Its cleanup retires only the
+  // admission of the selection it published; a successor owns its own.
+  useLayoutEffect(() => {
+    if (!selected || !lease || selected.lease !== lease) return;
+    // A stable admission for every retained panel command: the original row
+    // admission plus this exact committed selection's own live flag.
+    const committed: CommittedSelection = {selection: selected, live: true,
+      admission: {row: selected.channel, current: () => committed.live && selected.admission.current()}};
+    committedSelectionRef.current = committed;
+    setCommittedSelection(committed);
+    return () => {
+      committed.live = false;
+      if (committedSelectionRef.current === committed) committedSelectionRef.current = undefined;
+      selected.admission.retire?.();
+    };
+  }, [selected, lease]);
+  const closeSelection = (target: Selected) => {
+    const committed = committedSelectionRef.current;
+    if (!committed?.live || committed.selection !== target) return;
+    // Consume before dispatch so a retained same-tick callback refuses.
+    committedSelectionRef.current = undefined;committed.live = false;
+    setSelected(current => current === target ? undefined : current);
+  };
   useEffect(() => {const timer = setInterval(() => setNow(Date.now()), 30_000);return () => clearInterval(timer);}, []);
-  useEffect(() => {
-    if (!search.sourceId || !search.channelId || search.kind !== 'live-source' && search.kind !== 'library-channel') return;
-    const request = new AbortController();
-    void owner.selectedChannel({sourceId: search.sourceId, channelId: search.channelId, provenance: search.kind}, request.signal).then(channel => {
-      if (!channel || request.signal.aborted || !owner.life.current()) return;
+  useLayoutEffect(() => {
+    if (!lease || !search.sourceId || !search.channelId || search.kind !== 'live-source' && search.kind !== 'library-channel') return;
+    const request = new AbortController(), link = linkKey(search.sourceId, search.channelId, search.kind);
+    // The deep-link read owns a local admission for this exact link. Layout
+    // retirement, a newer read, a row choice, or a cleared selection retires
+    // it; the admission also checks the current route search, so a same-path
+    // replacement never keeps the old panel's commands alive until passive
+    // cleanup. Its result can never replace a successor.
+    let attemptLive = true;
+    const attempt: ReadAttempt = {current: () => attemptLive && link === currentLink() && lease.live && lease.life.current() && lease.routeCurrent(),
+      retire: () => {attemptLive = false;}};
+    reads.current?.retire();reads.current = attempt;
+    void lease.bindings.selectedChannel({sourceId: search.sourceId, channelId: search.channelId, provenance: search.kind}, request.signal).then(channel => {
+      if (!channel || request.signal.aborted || !attempt.current()) return;
       const time = Date.now(), programme = channel.programmes.find(programme => Date.parse(programme.start) <= time && time < Date.parse(programme.end)) ?? channel.programmes[0];
-      setSelected({owner, channel: legacyChannelRow(channel), ...(programme ? {programme: legacyProgram(programme)} : {})});
-    }).catch(error => {if (!request.signal.aborted) context.effects.reportError(error);});
-    return () => request.abort();
-  }, [context, owner, search.sourceId, search.channelId, search.kind]);
+      const row = legacyChannelRow(channel);
+      setSelected({lease, channel: row, ...(programme ? {programme: legacyProgram(programme)} : {}), admission: {row, current: attempt.current, retire: attempt.retire}});
+    }).catch(error => {if (!request.signal.aborted && attempt.current()) lease.screen.effects.reportError(error);});
+    return () => {attempt.retire();request.abort();if (reads.current === attempt) reads.current = undefined;};
+  }, [lease, search.sourceId, search.channelId, search.kind]);
   const phone = width < 600, column = phone ? 60 : width < 1024 ? 180 : 284, rowHeight = phone ? 72 : width < 1024 ? 62 : 76;
   const scale = pxPerMsFor(width < 1024 ? 90 : 240), end = start + Math.max(1, width - column) / scale;
   const {view, remember} = useGuideViewPreference({...context.scope, kind: search.kind ?? 'all', sourceId: search.sourceId ?? ''}, search.view, context.isCurrent);
@@ -78,29 +159,75 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
   const [visible, setVisible] = useState({first: 0, last: Math.max(0, Math.ceil(640 / rowHeight))});
   const onVisibleWindow = useCallback((first: number, last: number) => setVisible(old => old.first === first && old.last === last ? old : {first, last}), []);
   const first = visible.first, last = visible.last;
-  useEffect(() => owner.store.setViewport({firstRow: first, lastRow: last, start: readStart, end: readEnd}), [owner, first, last, readStart, readEnd]);
+  useEffect(() => {if (lease) lease.bindings.store.setViewport({firstRow: first, lastRow: last, start: readStart, end: readEnd});}, [lease, first, last, readStart, readEnd]);
   useEffect(() => {
-    if (!search.channelId || selected?.owner === owner) return;
+    if (!lease || !search.channelId || selected?.lease === lease) return;
     for (let index = first; index <= last; index++) {
-      const channel = owner.store.channelAt(index);
-      if (channel?.id !== search.channelId) continue;
-      const programme = owner.store.programsFor(index, readStart, readEnd).programs.find(programme => programme.start <= now && now < programme.end);
-      if (programme) setSelected({owner, channel, programme});
+      const channel = lease.bindings.store.channelAt(index);
+      if (channel?.id !== search.channelId || !admittedChannel(lease.options, channel)) continue;
+      const programme = lease.bindings.store.programsFor(index, readStart, readEnd).programs.find(programme => programme.start <= now && now < programme.end);
+      if (programme) selectRow({lease, channel, programme, admission: guideWitness(lease, index, channel)});
       return;
     }
-  }, [owner, snapshot.version, search.channelId, selected, first, last, readStart, readEnd, now]);
-  const currentSelection = selected?.owner === owner ? selected : undefined;
+  }, [lease, snapshot.version, search.channelId, selected, first, last, readStart, readEnd, now, selectRow]);
+  // Drawn for the committed page even when a row witness has since retired;
+  // every retained action checks that exact admission again.
+  const currentSelection = committedSelection?.live && committedSelection.selection === selected && lease && committedSelection.selection.lease === lease
+    && lease.live && lease.routeCurrent() && committedSelection.admission.row === committedSelection.selection.channel ? committedSelection : undefined;
   useQuietRefresh('live-guide', async refresh => {
+    if (!lease) return;
+    // Only the committed selection that existed when this refresh began may be
+    // retired when it ends. A row or deep link opened while it awaited stays.
+    const originalCommitted = committedSelectionRef.current, originalRead = reads.current;
     await refresh.settle();
-    if (refresh.signal.aborted || !owner.life.current()) return;
-    const value = await owner.refresh(refresh.signal);
-    if (!refresh.signal.aborted && owner.life.current()) {setSelected(undefined);setSummary({owner, value});setFailed(undefined);}
-  }, () => summary?.owner === owner, {dependencies: liveDependencies, everyMs: 0});
-  const play = (channel: GuideChannelRow) => {
-    const actual = legacyChannel(channel), playback = captured.binding.playback;
-    if (!actual || !playback || !owner.life.current()) return;
-    void playback.runtime.playFromGuide(actual, {signal: owner.life.signal(), isCurrent: owner.life.current}).catch(context.effects.reportError);
+    if (refresh.signal.aborted || !lease.life.current()) return;
+    const value = await lease.bindings.refresh(refresh.signal);
+    if (!refresh.signal.aborted && lease.life.current()) {
+      // A deep link that was already pending when this refresh began cannot
+      // publish after it. A read opened while we awaited is not touched.
+      if (originalRead && reads.current === originalRead) {originalRead.retire();reads.current = undefined;}
+      if (originalCommitted && committedSelectionRef.current === originalCommitted) {
+        committedSelectionRef.current = undefined;originalCommitted.live = false;
+        setSelected(current => current === originalCommitted.selection ? undefined : current);
+      }
+      setSummary({lease, value});setFailed(undefined);
+    }
+  }, () => !!lease && summary?.lease === lease, {dependencies: liveDependencies, everyMs: 0});
+  const onChanged = useCallback(() => {
+    if (!lease || !lease.life.current() || !lease.routeCurrent()) return;
+    lease.bindings.store.invalidate();
+    setAttempt(value => value + 1);
+  }, [lease]);
+  const openRecordings = useCallback((target: Selected) => {
+    // An old panel's callback cannot retire or navigate away from a successor.
+    const committed = committedSelectionRef.current;
+    if (!committed?.live || committed.selection !== target) return;
+    if (!target.lease.live || !target.lease.life.current() || !target.lease.routeCurrent()
+      || target.admission.row !== target.channel || !target.admission.current()) return;
+    // Consume before dispatch so a retained same-tick callback refuses.
+    committedSelectionRef.current = undefined;committed.live = false;
+    setSelected(current => current === target ? undefined : current);
+    if (context.isCurrent()) void router.navigate({to: '/live', search: {...JSON.parse(searchKey), tab: 'recordings', dvr: 'upcoming'}, replace: true, resetScroll: false}).catch(context.effects.reportError);
+  }, [context, searchKey]);
+  if (!lease) return null;
+  if (authorityFailure) return <ScreenProblem context={lease.screen} error={authorityFailure} retry={() => {if (context.isCurrent()) setReopen(value => value + 1);}}/>;
+  if (!lease.live || !lease.life.current() || !lease.routeCurrent()) return null;
+  const play = (channel: GuideChannelRow, admission?: SelectionAdmission) => {
+    const actual = playableChannel(lease.options, channel), playback = lease.playbackOwner;
+    if (!actual || !playback || !admission || admission.row !== channel) return;
+    const current = () => lease.live && lease.life.current() && lease.routeCurrent() && admission.row === channel
+      && admission.current() && !!playableChannel(lease.options, channel);
+    if (!current()) return;
+    void playback.playFromGuide(actual, {signal: lease.life.signal(), isCurrent: current}).catch(lease.screen.effects.reportError);
   };
+  const onPlay = lease.playbackOwner ? play : undefined;
+  const sources = summary?.lease === lease ? summary.value.sources : undefined;
+  const selectedSources = sources?.filter(source => (!search.sourceId || source.id === search.sourceId) && (!search.kind || search.kind === 'all' || source.provenance === search.kind)) ?? [];
+  const groupCounts = new Map<string, number>();
+  // Source summaries partition channels. Their published counts are combined,
+  // never calculated from the loaded guide page or a lineup scan.
+  for (const source of selectedSources) for (const group of source.groupCounts) groupCounts.set(group.name, (groupCounts.get(group.name) ?? 0) + group.count);
+  const groups = [...groupCounts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   const ends = selectedSources.map(source => Date.parse(source.availableEnd));
   const through = ends.length && ends.every(value => Number.isFinite(value)) ? Math.min(...ends) : undefined;
   const days = through === undefined ? [] : dayStarts(now, through, timezone);
@@ -109,8 +236,8 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
   const total = snapshot.total ?? Math.max(1, last + 1);
   const rows: GuideRowData[] = [];
   for (let index = first; index <= last; index++) {
-    const channel = owner.store.channelAt(index), page = owner.store.programsFor(index, readStart, readEnd);
-    rows.push({index, ...(channel ? {channel} : {}), programs: page.programs, complete: page.complete, failed: page.failed});
+    const channel = lease.bindings.store.channelAt(index), page = lease.bindings.store.programsFor(index, readStart, readEnd);
+    rows.push({index, ...(channel ? {channel, witness: guideWitness(lease, index, channel)} : {}), programs: page.programs, complete: page.complete, failed: page.failed});
   }
   const favoriteCount = selectedSources.reduce((sum, source) => sum + source.favoriteCount, 0);
   const chips = [
@@ -126,42 +253,36 @@ function BoundLive({captured}: {captured: ProtectedLibraryScreen}) {
     else if (value === 'all') navigate({sourceId: undefined, kind: undefined, channelId: undefined, group: undefined});
   };
   const sourceName = search.sourceId ? selectedSources[0]?.provenance === 'library-channel' ? t('channels.custom.name') : selectedSources[0]?.name : t('channels.all');
-  const onChanged = useCallback(() => { owner.store.invalidate(); setAttempt(value => value + 1); }, [owner]);
-  const openRecordings = useCallback(() => {
-    setSelected(undefined);
-    if (context.isCurrent()) void router.navigate({to: '/live', search: {...JSON.parse(searchKey), tab: 'recordings', dvr: 'upcoming'}, replace: true, resetScroll: false}).catch(context.effects.reportError);
-  }, [context, searchKey]);
-  if (authorityFailure) return <ScreenProblem context={context} error={authorityFailure} retry={() => setAttempt(value => value + 1)}/>;
   return <>
-    {failed === owner ? <div className={styles.guideState}><StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => setAttempt(value => value + 1)}}/></div>
+    {failed === lease ? <div className={styles.guideState}><StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => {if (lease.life.current() && lease.routeCurrent()) setAttempt(value => value + 1);}}}/></div>
       : sources && !sources.length ? <div className={styles.guideState}><StateView title={t('channels.noSourcesTitle')} body={t(context.identity?.viewer.role === 'owner' ? 'channels.noSourcesOwner' : 'channels.noSourcesMember')}/></div>
         : <GuideScreen title={t('next.home.shell.live')}
           switcher={hasSources ? {value: search.sourceId ? JSON.stringify(['source', selectedSources[0]?.provenance, search.sourceId]) : 'all', options: sourceOptions, onChange: switchSource} : undefined}
           summary={hasSources ? {name: sourceName ?? t('channels.all'), ...(snapshot.total !== undefined ? {channels: snapshot.total} : {}), ...(throughDay ? {through: t('next.live.guideThrough', {day: throughDay})} : {})} : undefined}
           onTabChange={() => navigate({tab: 'recordings'})}
           chips={chips}
-          onNow={width >= 1024 && hasSources ? <LiveOnNow owner={owner} now={now} timezone={timezone} artwork={context.artwork} reducedMotion={appearance.reducedMotion}
-            onOpen={(channel, programme) => {if (owner.life.current()) setSelected({owner, channel, programme});}}
-            onPlay={captured.binding.playback ? play : undefined}/> : undefined}
+          onNow={width >= 1024 && hasSources ? <LiveOnNow owner={lease.bindings} now={now} timezone={timezone} artwork={context.artwork} reducedMotion={appearance.reducedMotion}
+            onOpen={(channel, programme, witness) => {if (!witness || witness.row !== channel || !witness.current() || !admittedChannel(lease.options, channel)) return;selectRow({lease, channel, programme, admission: witness});}}
+            onPlay={onPlay}/> : undefined}
           day={{label: t('guide.day'), value: String(localDayStart(start, timezone)),
             options: days.map(day => ({value: String(day), label: day === localDayStart(now, timezone) ? t('guide.today') : new Intl.DateTimeFormat(defaultI18n.region.formatLocale, {weekday: 'long', timeZone: timezone}).format(day)})),
             onChange: value => {const day = days.find(day => String(day) === value);if (day !== undefined) setStart(dayPrimeTime(day, timezone));}}}
           sort={{value: search.sort ?? 'number', options: [{value: 'number', label: t('channels.sortNumber')}, {value: 'name', label: t('channels.sortName')}, {value: 'favorites', label: t('channels.favorites')}],
             onChange: sort => {if (sort === 'number' || sort === 'name' || sort === 'favorites') navigate({sort});}}}
-          problem={snapshot.channelsError ? <StateView title={t('guide.tileFailed')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => owner.store.retry()}}/> : undefined}
+          problem={snapshot.channelsError ? <StateView title={t('guide.tileFailed')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => {if (lease.life.current()) lease.bindings.store.retry();}}}/> : undefined}
           empty={snapshot.total === 0 ? <StateView title={t('channels.filterEmptyTitle', {filter: search.group ?? (search.favorites ? t('channels.favorites') : search.q ?? t('channels.all'))})}
             primary={{id: 'all', label: t('channels.showAll'), onPress: () => navigate({group: undefined, favorites: undefined, q: undefined})}}/> : undefined}
           view={view} onViewChange={view => {if (context.isCurrent()) {remember(view);navigate({view});}}}
           time={{earlier: t('guide.earlier'), now: t('guide.now'), later: t('guide.later'), onEarlier: () => setStart(value => value - 2 * 60 * 60_000), onNow: () => setStart(nowStart()), onLater: () => setStart(value => value + 2 * 60 * 60_000)}}
           span={{start, end, now, scale, column, rowHeight, timezone}}
           rows={rows} total={total}
-          selected={currentSelection ? {channelId: currentSelection.channel.id, ...(currentSelection.programme ? {programmeId: currentSelection.programme.id} : {})} : undefined}
-          onSelect={(channel, programme) => {if (owner.life.current()) setSelected({owner, channel, ...(programme ? {programme} : {})});}}
-          onPlay={captured.binding.playback ? play : undefined}
-          onVisibleWindow={onVisibleWindow} onRetry={() => owner.store.retry()}/>}
-    {currentSelection && <ProgrammePanel key={JSON.stringify([currentSelection.channel.sourceId, currentSelection.channel.id, currentSelection.programme?.id, currentSelection.programme?.start])} captured={captured} channel={currentSelection.channel} programme={currentSelection.programme}
-      now={now} timezone={timezone} open onClose={() => setSelected(undefined)}
-      onWatch={captured.binding.playback ? () => play(currentSelection.channel) : undefined} onChanged={onChanged} onViewRecordings={openRecordings}/>}
+          selected={currentSelection ? {channelId: currentSelection.selection.channel.id, ...(currentSelection.selection.programme ? {programmeId: currentSelection.selection.programme.id} : {})} : undefined}
+          onSelect={(channel, programme, witness) => {if (!witness || witness.row !== channel || !witness.current() || !admittedChannel(lease.options, channel)) return;selectRow({lease, channel, ...(programme ? {programme} : {}), admission: witness});}}
+          onPlay={onPlay}
+          onVisibleWindow={onVisibleWindow} onRetry={() => {if (lease.life.current()) lease.bindings.store.retry();}}/>}
+    {currentSelection && <ProgrammePanel key={JSON.stringify([currentSelection.selection.lease.id, currentSelection.selection.channel.sourceId, currentSelection.selection.channel.id, currentSelection.selection.programme?.id, currentSelection.selection.programme?.start])} context={lease.screen} admission={currentSelection.admission} channel={currentSelection.selection.channel} programme={currentSelection.selection.programme}
+      now={now} timezone={timezone} open onClose={() => closeSelection(currentSelection.selection)}
+      onWatch={onPlay ? () => onPlay(currentSelection.selection.channel, currentSelection.admission) : undefined} onChanged={onChanged} onViewRecordings={() => openRecordings(currentSelection.selection)}/>}
   </>;
 }
 function LiveRouteScreen() {
