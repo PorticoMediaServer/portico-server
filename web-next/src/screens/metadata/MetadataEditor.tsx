@@ -60,13 +60,14 @@ export function MetadataEditor({api, scope, target, onClose, initialTab = 'gener
     return () => clearTimeout(timer);
   }, [service, shown, state.phase, data, changed.length]);
   const edit = async (fields: NonNullable<RepairCommand['fields']>) => {
-    if (!data) return;
+    if (!data || service.getSnapshot().data !== data || service.getSnapshot().phase !== 'ready') return;
     setError(undefined);
-    await service.command({action: 'edit', fields});
+    await service.command({action: 'edit', fields}, data);
   };
   const run = async (command: RepairCommand) => {
+    if (!data || service.getSnapshot().data !== data || service.getSnapshot().phase !== 'ready') return false;
     setError(undefined);
-    const saved = await service.command(command);
+    const saved = await service.command(command, data);
     if (!saved) setError(service.getSnapshot().error ?? new Error(t('web.metadata.saveChanges')));
     return saved;
   };
@@ -108,19 +109,19 @@ export function MetadataEditor({api, scope, target, onClose, initialTab = 'gener
       {shown === 'tags' ? <Tags data={data} draft={draft} set={set} busy={state.phase !== 'ready'} /> : null}
       {shown === 'people' ? <People data={data} target={target} busy={state.phase !== 'ready'}
         onCommit={rows => run({action: 'edit_relationships', role: 'credit', confirm: true, relationships: rows})}
-        onLock={locked => void run({action: 'relationship_lock', role: 'credit', locked})} /> : null}
+        onLock={locked => void run({action: 'relationship_lock', role: 'credit', locked, confirm: true})} /> : null}
       {shown === 'matching' ? <Matching data={data} target={target} busy={state.phase !== 'ready'} onSearch={query => void run({action: 'search', query})}
-        onRetry={() => void run({action: 'retry'})} onLock={locked => void run({action: 'relationship_lock', role: 'identity', locked})}
-        onUse={(provider, candidateId, order) => void run({action: 'identify', provider, candidateId, ...(order ? {order} : {})})} /> : null}
+        onRetry={() => void run({action: 'retry'})} onLock={locked => void run({action: 'relationship_lock', role: 'identity', locked, confirm: true})}
+        onUse={(provider, candidateId, order) => void run({action: 'identify', provider, candidateId, confirm: true, ...(order ? {order} : {})})} /> : null}
       {shown === 'artwork' && data.artworkRoles.includes('cover') && api.requestMetadataUpload ? renderCoverPages?.(file => service.uploadArtwork('cover', file), state.phase !== 'ready') : null}
-      {shown === 'artwork' ? <Artwork portraitCover={localArtworkOnly} data={data} busy={state.phase !== 'ready'} onUse={(role, candidateId) => void run({action: 'select_artwork', role, candidateId})}
+      {shown === 'artwork' ? <Artwork portraitCover={localArtworkOnly} data={data} busy={state.phase !== 'ready'} onUse={(role, candidateId) => void run({action: 'select_artwork', role, candidateId, confirm: true})}
         onRemove={removeUpload} isDataCurrent={currentRepairData} onMakeFromVideo={data.canMakeEpisodeThumbnail ? makeThumbnail : undefined} localOnly={target.kind === 'book'}
         onUpload={api.requestMetadataUpload ? (role, file) => service.uploadArtwork(role, file) : undefined}
         onLock={(role, subject, locked) => void run({action: 'artwork_lock', role, subject, locked})}
         onFindMore={localArtworkOnly || target.kind === 'book' ? undefined : role => void run({action: 'discover_artwork', role})} onRefetch={localArtworkOnly || target.kind === 'book' ? undefined : role => void run({action: 'repair_assets', role})} /> : null}
       {shown === 'lyrics' ? <SongLyricsEditor api={api} scope={scope} target={target} repairData={data} isCurrent={currentRepairGrant}/> : null}
-      {shown === 'history' ? <History data={data} busy={state.phase !== 'ready'} onUndo={historyId => void run({action: 'undo', historyId})}
-        onAll={locked => void run({action: locked ? 'lock_all' : 'unlock_all'})} /> : null}
+      {shown === 'history' ? <History data={data} busy={state.phase !== 'ready'} onUndo={historyId => void run({action: 'undo', historyId, confirm: true})}
+        onAll={locked => void run({action: locked ? 'lock_all' : 'unlock_all', confirm: true})} /> : null}
       {shown === 'general' || shown === 'tags' ? <footer className={styles.editorFooter}>
         <span className={styles.pending}>{t(changed.length ? 'web.metadata.pendingCount' : 'web.metadata.noChanges', {count: changed.length})}</span><Button size="small" onClick={onClose}>{t('action.cancel')}</Button>
         <Button size="small" variant="primary" loading={state.phase === 'saving'} disabled={!changed.length || invalid || state.phase !== 'ready'} onClick={save}>
