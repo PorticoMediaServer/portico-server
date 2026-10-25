@@ -18,10 +18,42 @@ test('every declared table is a document the server accepts',()=>{
  assert.ok(castDeclaredProfile('chromecast').engines.native.video!.every(v=>v.codec!=='hevc'));
  assert.ok(castDeclaredProfile('google_tv_4k').engines.native.video!.find(v=>v.codec==='hevc')!.dynamicRanges!.includes('dolby_vision'));
  // Passthrough is beside the decoders, never one of them.
- for(const d of [vegaDeclaredProfile(),webosDeclaredProfile(),rokuDeclaredProfile()]){
+ for(const d of [vegaDeclaredProfile(),webosDeclaredProfile()]){
   assert.deepEqual(d.engines.native.audioPassthrough!.map(a=>a.codec),['ac3','eac3']);
   assert.equal(d.engines.native.audio!.some(a=>a.codec==='ac3'||a.codec==='eac3'),false);
  }
+ assert.deepEqual(rokuDeclaredProfile().engines.native.audioPassthrough!.map(a=>a.codec),['ac3','eac3','dts'],'Roku passes the DTS core to the sink');
+ assert.equal(rokuDeclaredProfile().engines.native.audio!.some(a=>a.codec==='ac3'||a.codec==='eac3'||a.codec==='dts'),false);
+});
+
+test('the Roku document declares what its models take, per VIDEO.md VC-5b',()=>{
+ const uhd=rokuDeclaredProfile();
+ const native=uhd.engines.native,video=native.video!;
+ const hevc=video.find(v=>v.codec==='hevc')!,h264=video.find(v=>v.codec==='h264')!;
+ // MKV direct, HEVC 10-bit and HLG on the 4K models.
+ assert.ok(native.transports!.find(t=>t.transport==='direct'&&t.containers!.includes('mkv'))!.video!.includes('hevc'));
+ assert.deepEqual(hevc.bitDepths,[8,10]);assert.ok(hevc.dynamicRanges!.includes('hlg'));
+ // Dolby Vision is declared only for the models that report it: 5 on HEVC
+ // (`dvhe.05`) and 9 on H.264 (`dvav.09`).
+ assert.equal(uhd.display.dynamicRanges!.includes('dolby_vision'),false,'a model that has not reported Dolby Vision does not claim it');
+ assert.deepEqual(hevc.dolbyVisionProfiles,[],'no Dolby Vision until roDeviceInfo reports it');
+ const dv=rokuDeclaredProfile({dolbyVision:true});
+ assert.deepEqual(dv.engines.native.video!.find(v=>v.codec==='hevc')!.dolbyVisionProfiles,[5]);
+ assert.deepEqual(dv.engines.native.video!.find(v=>v.codec==='h264')!.dolbyVisionProfiles,[9]);
+ assert.ok(dv.engines.native.video!.find(v=>v.codec==='hevc')!.codecTags!.includes('dvh1'));
+ assert.ok(dv.display.dynamicRanges!.includes('dolby_vision'));
+ // HDR10+ arrives on AV1, and only on the models that decode AV1.
+ assert.equal(uhd.display.dynamicRanges!.includes('hdr10plus'),false);
+ assert.equal(video.some(v=>v.codec==='av1'),false);
+ const av1=rokuDeclaredProfile({av1:true});
+ const av1Codec=av1.engines.native.video!.find(v=>v.codec==='av1')!;
+ assert.deepEqual(av1Codec.bitDepths,[8,10]);assert.ok(av1Codec.dynamicRanges!.includes('hdr10plus'));
+ assert.ok(av1.engines.native.transports!.find(t=>t.transport==='direct')!.video!.includes('av1'));
+ // DTS passthrough names the core it can hand over, and Atmos rides E-AC-3.
+ const dts=native.audioPassthrough!.find(a=>a.codec==='dts')!;
+ assert.deepEqual(dts.variants,['dts_core']);assert.equal(dts.maxChannels,8);
+ assert.deepEqual(native.audioPassthrough!.find(a=>a.codec==='eac3')!.objectAudio,['atmos']);
+ assert.equal(h264.dolbyVisionProfiles!.length,0,'an SDR H.264 model claims no Dolby Vision');
 });
 
 test('the validator mirrors the server',()=>{

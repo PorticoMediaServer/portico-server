@@ -331,27 +331,33 @@ export function tizenDeclaredProfile(options:{osVersion?:string;model?:string}={
 }
 
 /** Roku: the SceneGraph Video node. Every current model decodes H.264 at 1080p60;
- * the 4K models add HEVC 10-bit, VP9 and HDR10/HLG. Dolby goes to the HDMI sink
- * as passthrough. The channel widens this from roDeviceInfo at run time. */
-export function rokuDeclaredProfile(options:{osVersion?:string;model?:string;uhd?:boolean}={}):CapabilityDocument{
+ * the 4K models add HEVC 10-bit, VP9, HDR10/HLG and, on the models that report
+ * it, Dolby Vision 5 (`dvhe.05`) and 9 (`dvav.09`). AV1 models carry HDR10+ on
+ * AV1. DTS and Dolby go to the HDMI sink as passthrough. The channel widens this
+ * from roDeviceInfo at run time (VIDEO.md VC-5b). */
+export function rokuDeclaredProfile(options:{osVersion?:string;model?:string;uhd?:boolean;av1?:boolean;dolbyVision?:boolean}={}):CapabilityDocument{
  const uhd=options.uhd!==false;
  const width=uhd?3840:1920,height=uhd?2160:1080;
- const hdr:DynamicRange[]=uhd?['sdr','hdr10','hlg']:['sdr'];
- const video=[v('h264',{bitDepths:[8],maxWidth:width,maxHeight:height,maxLevel:uhd?51:42,maxFrameRate:60,dynamicRanges:['sdr']})];
+ const dolby=uhd&&options.dolbyVision===true;
+ const av1=uhd&&options.av1===true;
+ const hdr:DynamicRange[]=uhd?['sdr','hdr10','hlg',...(av1?['hdr10plus'] as DynamicRange[]:[])]:['sdr'];
+ const ranges:DynamicRange[]=dolby?[...hdr,'dolby_vision']:hdr;
+ const video=[v('h264',{bitDepths:dolby?[8,10]:[8],maxWidth:width,maxHeight:height,maxLevel:uhd?51:42,maxFrameRate:60,dynamicRanges:dolby?['sdr','dolby_vision']:['sdr'],dolbyVisionProfiles:dolby?[9]:[],codecTags:dolby?['avc1','dva1','dvav']:[]})];
  if(uhd){
-  video.push(v('hevc',{bitDepths:[8,10],maxWidth:width,maxHeight:height,maxLevel:153,maxFrameRate:60,dynamicRanges:hdr}));
-  video.push(v('vp9',{bitDepths:[8,10],maxWidth:width,maxHeight:height,maxFrameRate:60,dynamicRanges:hdr}));
+  video.push(v('hevc',{bitDepths:[8,10],maxWidth:width,maxHeight:height,maxLevel:153,maxFrameRate:60,dynamicRanges:ranges,dolbyVisionProfiles:dolby?[5]:[],codecTags:dolby?['dvh1','dvhe','hev1','hvc1']:[]}));
+  video.push(v('vp9',{bitDepths:[8,10],maxWidth:width,maxHeight:height,maxFrameRate:60,dynamicRanges:hdr.filter(r=>r!=='hdr10plus')}));
+  if(av1)video.push(v('av1',{bitDepths:[8,10],maxWidth:width,maxHeight:height,maxFrameRate:60,dynamicRanges:hdr}));
  }
  const names=video.map(x=>x.codec);
- const audio=['aac','mp3','ac3','eac3','flac','pcm','alac','opus','vorbis'];
+ const audio=['aac','mp3','ac3','eac3','flac','pcm','alac','opus','vorbis','dts'];
  return {
   version:2,engineSetting:'automatic',
   client:defined({family:'roku',form:'tv' as const,platform:'roku',os:'roku',osVersion:options.osVersion,model:options.model,app:'portico-roku'}),
-  display:{width,height,dynamicRanges:hdr,maxFrameRate:60},audioOutput:{route:'hdmi',maxChannels:2},
+  display:{width,height,dynamicRanges:ranges,maxFrameRate:60},audioOutput:{route:'hdmi',maxChannels:2},
   engines:{native:{
    name:'roku-video',evidence:'declared',video,
    audio:[a('aac',6),a('mp3',2),a('flac',2),a('pcm',2),a('alac',2),a('opus',2),a('vorbis',2)],
-   audioPassthrough:[pass('ac3',6),pass('eac3',8,{objectAudio:['atmos']})],
+   audioPassthrough:[pass('ac3',6),pass('eac3',8,{objectAudio:['atmos']}),pass('dts',8,{variants:['dts_core']})],
    transports:[
     {transport:'direct',containers:['mp4','m4v','mov','mkv','ts','m2ts'],video:names,audio},
     audioFiles(['aac','mp3','flac','pcm','alac','opus','vorbis'],['mp3','m4a','aac','flac','wav','ogg']),
