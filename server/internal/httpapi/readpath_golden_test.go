@@ -401,6 +401,17 @@ func TestReadPathGoldenEquivalence(t *testing.T) {
 	cases := goldenMatrix(f.library, f.item)
 	for index := range cases {
 		status, body := call(cases[index].Method, cases[index].Path, cases[index].Body, cases[index].Viewer)
+		if status == 200 && strings.HasPrefix(cases[index].Name, "browse:") {
+			var doc map[string]any
+			if err := json.Unmarshal([]byte(body), &doc); err != nil { t.Fatal(err) }
+			if aggregate, ok := doc["wholeSelection"].(map[string]any); ok {
+				page, pageOK := doc["pageInfo"].(map[string]any)
+				revision, revisionOK := page["revision"].(string)
+				if !pageOK || !revisionOK || revision == "" || aggregate["catalogRevision"] != revision {
+					t.Errorf("%s: whole selection is not bound to this page's raw revision", cases[index].Name)
+				}
+			}
+		}
 		cases[index].Status = status
 		cases[index].Response = canonical(body)
 	}

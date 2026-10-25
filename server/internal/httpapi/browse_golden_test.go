@@ -245,7 +245,10 @@ func goldenWholeSelection(t *testing.T, f *goldenFixture, c goldenCase, doc, pag
 		counts := map[string]any{"play": n, "queue": n, "playlist": 0, "myList": 0, "watched": 0, "collection": 0, "favorite": 0, "download": 0, "edit": 0, "refresh": 0, "delete": 0}
 		types = append(types, map[string]any{"kind": kind, "count": n, "capabilityCounts": counts, "libraries": []any{map[string]any{"libraryId": library, "count": n}}})
 	}
-	doc["wholeSelection"] = map[string]any{"selector": map[string]any{"query": query}, "catalogRevision": page["revision"], "total": n, "types": types}
+	// canonical() marks a string named revision as volatile, but a bare
+	// digest under catalogRevision as a digest. The raw equality is checked
+	// before normalization in TestReadPathGoldenEquivalence.
+	doc["wholeSelection"] = map[string]any{"selector": map[string]any{"query": query}, "catalogRevision": "<digest>", "total": n, "types": types}
 }
 
 func goldenNewBrowseFacets(t *testing.T, f *goldenFixture, c goldenCase) (goldenCase, bool) {
