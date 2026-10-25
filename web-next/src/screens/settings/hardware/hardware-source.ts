@@ -1,4 +1,5 @@
 import type {TranscodeCapacity} from '@core/telemetry.ts';
+import type {SettingsPageSnapshot} from '../Settings';
 import {readHardwareInventory, readTranscodeCapacity, testHardware, type HardwareApi, type HardwareInventory} from '@core/hardware.ts';
 
 export type HardwareSnapshot = Readonly<{
@@ -22,6 +23,7 @@ export class SettingsHardwareSource {
   private readonly lifetime = new AbortController();
   private read?: AbortController;
   private loading = false;
+  private page?: {base: SettingsPageSnapshot; hardware: HardwareSnapshot; value: SettingsPageSnapshot};
   constructor(private readonly api: HardwareApi, private readonly isCurrent: () => boolean, private readonly reportError: (error: unknown) => void) {}
 
   private current() {return !this.lifetime.signal.aborted && this.isCurrent();}
@@ -32,6 +34,15 @@ export class SettingsHardwareSource {
     this.state = Object.freeze({...this.state, ...patch});
     for (const listener of [...this.listeners]) listener();
   }
+  /** The page's snapshot for this section. It changes only when the controller's
+   * state or these measured facts do, so the screen repaints once per read and
+   * React never sees a new object on every render. */
+  pageSnapshot = (base: SettingsPageSnapshot): SettingsPageSnapshot => {
+    const hardware = this.getSnapshot();
+    if (!this.page || this.page.base !== base || this.page.hardware !== hardware)
+      this.page = {base, hardware, value: Object.freeze({...base})};
+    return this.page.value;
+  };
   private terminal(error: unknown) {
     const {status, code} = (error && typeof error === 'object' ? error : {}) as {status?: number; code?: string};
     if (status === 401 || status === 403 || ['unauthorized', 'not_permitted', 'forbidden'].includes(code ?? '')) {
