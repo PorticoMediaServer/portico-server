@@ -9,22 +9,25 @@ const capabilities = {items: [
   {capability: 'hardware_encoding', available: false, code: 'hardware_unavailable', detail: 'No usable encoder.', checkedAt: '2026-10-22T18:00:00Z'},
 ]};
 const alert = {id: 'permissions', code: 'state-permissions', status: 'open', severity: 'warning', firstAt: '2026-10-22T17:00:00Z', lastAt: '2026-10-22T18:00:00Z', occurrences: 3, revision: 1};
-const ready = {id: 'export-1', expiresAt: '2026-10-25T18:00:00Z', manifest: {version: '1', from: '2026-10-21T18:00:00Z', to: '2026-10-22T18:00:00Z',
+const ready = {id: 'export-1', expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(), manifest: {version: '1', from: '2026-10-21T18:00:00Z', to: '2026-10-22T18:00:00Z',
   included: ['runtime', 'client'], excluded: ['media'], redaction: 'on', maxBytes: 1048576}};
 
 function fixture() {
   const calls: {path: string; method: string; body: unknown}[] = [];
   let permissions = true;
+  let receipt = ready;
   const transport = {request: async <T>(path: string, method = 'GET', body?: unknown) => {
     calls.push({path, method, body});
     if (path.includes('/diagnostics/capabilities')) return capabilities as T;
     if (path.includes('/state-permissions:fix')) {permissions = false;return undefined as T;}
+    if (path.includes('/console/registry')) return envelope({fields: []}) as T;
     if (path.includes('/console/alerts')) return envelope(permissions ? [alert] : []) as T;
-    if (path.includes('/console/exports/')) return envelope({...ready, snapshot: {anything: true}}) as T;
+    if (path.includes('/console/exports/')) return envelope({...receipt, snapshot: {anything: true}}) as T;
     if (path.includes('/console/exports')) {
       const sent = body as {from: string; to: string; components: string[]};
       assert.deepEqual(sent.components, ['runtime', 'client', 'audit', 'snapshot']);
-      return envelope(ready) as T;
+      receipt = {...ready, manifest: {...ready.manifest, from: sent.from, to: sent.to, included: [...sent.components]}};
+      return envelope(receipt) as T;
     }
     return envelope({items: [], nextCursor: ''}) as T;
   }};
@@ -111,7 +114,8 @@ test('held requestConsole download cannot reach a download sink after parent ret
     requestConsole: async <T>(path: string, _method: string, _body: unknown, signal: AbortSignal) => {
       assert.ok(signal);
       if (path.includes('/exports/')) {started();return new Promise<T>(resolve => {release = value => resolve(value as T);});}
-      return envelope(ready) as T;
+      receipt = {...ready, manifest: {...ready.manifest, from: sent.from, to: sent.to, included: [...sent.components]}};
+      return envelope(receipt) as T;
     },
   };
   const source = new SettingsSupportSource(transport, serverId, 'viewer', () => current);
