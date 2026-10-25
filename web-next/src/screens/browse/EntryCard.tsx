@@ -6,7 +6,7 @@ import {shapeFor} from '@core/presentation/card-shape.ts';
 import {homeCardSubject} from '../home/model';
 import {cardText} from '@portico/client-core/kit-model';
 import type {TextEnvironment} from '@portico/client-core/kit-model';
-import {GeneratedArt} from '../../kit/artwork';
+import {GeneratedCover} from '../../kit/artwork';
 import {CircleCard, CollectionTile, CoverCard, GenreTile, PosterCard, SquareCard, type CardSelection} from '../../kit/cards';
 import type {ShellArtwork} from '../../shell/artwork';
 import {collectionWatchedCount, collectionWatchedProgress} from './collection-card';
@@ -38,7 +38,7 @@ export function BrowseEntryCard({entry, actions, artwork, env, width, family, mi
   const props = {model, context: 'grid' as const, visible, watched: entry.watched, isNew: entry.new,
     onNavigate: actions.onOpen, onPlay: actions.onPlay, onMore: actions.onMore, moreExpanded: actions.moreExpanded,
     onNotInterested: actions.onNotInterested, selection: actions.selection, style: {'--cards-width': `${width}px`} as CSSProperties,
-    fallback: <GeneratedArt glyph={Array.from(title.trim())[0] ?? ''}/>};
+    fallback: <GeneratedCover title={title} glyph={Array.from(title.trim())[0] ?? ''} tint={generatedCoverTint(title)}/>};
   const source = artwork.foreground(entry.posterUrl, width * devicePixelRatio, shape === 'poster' ? 2 / 3 : 1, {group, order});
   if (entry.kind === 'category' && family === 'music') return <GenreTile variant="music" context="grid" visible={visible} onNavigate={actions.onOpen} selection={actions.selection} style={props.style}
     model={{title, caption: entry.count === undefined ? [] : [{id: 'song-count', role: 'supplement', text: defaultI18n.t(entry.countIsLowerBound ? 'lib.countAtLeast' : 'lib.count', {count: entry.count, pivot: 'songs'})}]}}
