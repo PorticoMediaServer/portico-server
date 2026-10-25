@@ -44,7 +44,8 @@ function BoundSaved({captured, owner}: {captured: ProtectedLibraryScreen; owner:
         ...(card.navigation.pivot ? {pivot: card.navigation.pivot} : {})}}).catch(context.effects.reportError);
     },
     async playEntry(entry: ContentEntry, signal: AbortSignal) {
-      if (!entry.libraryId || !entry.playback || entry.available === false || entry.missing) throw new DOMException('Saved playback changed', 'AbortError');
+      // A radio station is played from its seed by its own screen, never as an item.
+      if (entry.kind === 'radio' || !entry.libraryId || !entry.playback || entry.available === false || entry.missing) throw new DOMException('Saved playback changed', 'AbortError');
       await context.effects.play({libraryId: entry.libraryId, itemId: entry.playback.itemId,
         startSeconds: entry.playback.startSeconds ?? 0}, signal);
     },

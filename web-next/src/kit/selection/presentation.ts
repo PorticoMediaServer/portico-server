@@ -26,6 +26,9 @@ const selectionCountKeys = {
   disc: 'next.selection.disc',
   extra: 'next.selection.extra',
   playlist: 'next.selection.playlistsCount',
+  // A radio station is refused before it can be a selection member; the phrase stays
+  // neutral rather than naming a count that cannot happen.
+  radio: 'next.selection.titles',
 } satisfies Readonly<Record<Exclude<SelectionMediaKind, 'channel' | 'person'>, SelectionMessage>>;
 
 export function selectionCountText({count, kind}: SelectionCount): string {

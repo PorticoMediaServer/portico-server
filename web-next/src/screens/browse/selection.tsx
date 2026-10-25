@@ -107,6 +107,8 @@ function explicitLeafItems(selection: BrowseSelection | undefined): readonly str
 function explicitQueueItems(selection: BrowseSelection | undefined): readonly string[] | undefined {
   const target = selection?.target;
   if (!target || target.mode !== 'explicit' || !target.items.length || !selection?.summary.every.queue) return undefined;
+  // A radio station is never queued or played as an item.
+  if (target.items.some(pick => pick.item.kind === 'radio')) return undefined;
   if (target.items.some(pick => !('libraryId' in pick.item) || !['movie', 'episode', 'song', 'audiobook_file', 'show', 'season', 'album', 'artist', 'book', 'collection'].includes(pick.item.kind))) return undefined;
   const ids: string[] = [];
   for (const pick of target.items) {if (!('id' in pick.item)) return undefined; ids.push(pick.item.id);}
@@ -116,6 +118,8 @@ function explicitQueueItems(selection: BrowseSelection | undefined): readonly st
 function explicitDestinationItems(selection: BrowseSelection | undefined): readonly string[] | undefined {
   const target = selection?.target;
   if (!target || target.mode !== 'explicit' || !personalTargetSupportsJob(target)) return undefined;
+  // A station cannot be added to a playlist or collection as a title.
+  if (target.items.some(pick => pick.item.kind === 'radio')) return undefined;
   const ids: string[] = [];
   for (const pick of target.items) {if (!('libraryId' in pick.item) || !('id' in pick.item)) return undefined; ids.push(pick.item.id);}
   return ids;
@@ -336,6 +340,8 @@ export function createLibrarySelection({playSelection, owner, descriptor, action
   return {
     toolbar: <><LibrarySelectionToolbar visible={visible} pickers={pickers} deletion={deletion} openDelete={openDelete} editor={editor} openEditor={openEditor} progress={progress} owner={owner} playSelection={playSelection} descriptor={descriptor} actions={actions} enqueue={enqueue} enqueueQuery={enqueueQuery} destinations={destinations} reportError={reportError} personal={personal} queue={queue} addToPlaylist={addToPlaylist} addToCollection={addToCollection} />{editor && <LibraryEditorHost playSelection={playSelection} store={editorStore} options={editor} close={closeEditor}/>}{deletion && <LibraryDeleteHost playSelection={playSelection} store={deleteStore} options={deletion} close={closeDelete}/>}{pickers && <LibraryPickerHost playSelection={playSelection} store={pickerStore} options={pickers} close={closePicker}/>}</>,
     entry: (member, index) => {
+      // A radio station has no item to select: its own screen plays its seed.
+      if (member.entry.kind === 'radio') return undefined;
       const current = snapshot(), row = rowFor(member, index);
       if (!row || current.phase !== 'ready') return undefined;
       const checked = playSelection.selected?.(row) ?? current.selection?.selectedKeys.includes(row.key) === true, active = current.selection?.active === true;

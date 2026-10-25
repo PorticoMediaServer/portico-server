@@ -84,12 +84,14 @@ export function createCatalogueDocumentSelection(context: ScreenContext, sourceD
     canSelectEntries(entries: readonly ContentEntry[]) {
       const owned = active;
       if (!owned || sourceKey() !== owned.key || !entries.length || entries.length > 60 || new Set(entries).size !== entries.length) return false;
+      if (entries.some(entry => entry.kind === 'radio')) return false;
       const registered = owned.play.getSnapshot().rows;
       return entries.every(entry => admitted.has(entry) && mounted.has(entry) && registered.some(row => row.entry === entry));
     },
     selectEntries(entries: readonly ContentEntry[]) {
       const owned = active;
       if (!owned || sourceKey() !== owned.key || !entries.length || entries.length > 60 || new Set(entries).size !== entries.length) throw new DOMException('Selection changed', 'AbortError');
+      if (entries.some(entry => entry.kind === 'radio')) throw new DOMException('Selection changed', 'AbortError');
       const registered = owned.play.getSnapshot().rows;
       const selected = entries.map(entry => {
         const row = registered.find(row => row.entry === entry);
@@ -107,7 +109,7 @@ export function createCatalogueDocumentSelection(context: ScreenContext, sourceD
       const previous = mounted.get(entry); mounted.set(entry, {order, count: (previous?.count ?? 0) + 1}); register();
       return () => {if (active !== owned) return; const value = mounted.get(entry); if (value && value.count > 1) mounted.set(entry, {...value, count: value.count - 1}); else mounted.delete(entry); register();};
     },
-    card(entry: ContentEntry) {return active?.selection.entry({entry}, rows().indexOf(entry));},
+    card(entry: ContentEntry) {return entry.kind === 'radio' ? undefined : active?.selection.entry({entry}, rows().indexOf(entry));},
     dispose() {if (disposed) return; disposed = true; off(); retire(); life.dispose(); emit(); listeners.clear(); sourceListeners.clear();},
   };
 }

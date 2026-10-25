@@ -8,7 +8,10 @@ import type {SavedRuntime, SavedScreenRoute} from './runtime';
 import {sameSavedRoute, savedRouteKey} from './route';
 
 export function savedCatalogueEntry(entry: SavedEntry): ContentEntry | undefined {
-  return entry.kind === 'playlist' || entry.kind === 'reading_group' ? undefined : entry.kind === 'playlist_entry' ? entry.hidden ? undefined : entry.media : entry;
+  if (entry.kind === 'playlist' || entry.kind === 'reading_group') return undefined;
+  const media = entry.kind === 'playlist_entry' ? entry.hidden ? undefined : entry.media : entry;
+  // A radio station is a seed, not an item: it is never a saved selection member.
+  return media?.kind === 'radio' ? undefined : media;
 }
 /** Only current, server-projected catalogue members participate. Playlist
  * occurrence removal and resource administration keep their separate owners. */
