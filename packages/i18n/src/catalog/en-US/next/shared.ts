@@ -206,6 +206,12 @@ export const shared = {
   'next.watch.info.screen': 'Screen',
   'next.watch.info.format': 'Format',
   'next.watch.info.channels': 'Channels',
+  // tv-player/phone-player 5 and 13: the loss notice, the plan's own words.
+  'next.watch.notice.one': '{feature} isn’t available {where}. Playing {playing}.',
+  'next.watch.notice.many': '{features} aren’t available {where}. Playing {playing}.',
+  'next.watch.notice.onDevice': 'on this device',
+  'next.watch.notice.onScreen': 'on this screen',
+  'next.watch.notice.and': '{first} and {second}',
   'next.watch.info.sampleRate': 'Sample rate',
   'next.watch.info.output': 'Output',
   'next.watch.info.track': 'Track',

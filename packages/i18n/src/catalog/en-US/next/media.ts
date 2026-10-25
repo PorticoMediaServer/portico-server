@@ -11,4 +11,6 @@ export const mediaMessages = {
   'next.media.eq.hz': '{frequency, number} Hz',
   'next.media.eq.khz': '{frequency, number} kHz',
   'next.media.eq.db': '{value} dB',
+  'next.media.eq.on': 'On',
+  'next.media.eq.off': 'Off',
 } as const;
