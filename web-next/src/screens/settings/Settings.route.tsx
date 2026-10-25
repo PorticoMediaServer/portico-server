@@ -42,6 +42,7 @@ import {MusicEqualizerRow, musicEqualizerAvailable} from './account-music/MusicE
 import {RemoteSourcesPage} from './remote-sources/RemoteSourcesPage';
 import {browserAccountOrigin} from '../../platform/account-origin';
 import {SettingsInvitations} from './invitations';
+import {createOwnerSources, OwnerSourcesPage} from '../live/owner/OwnerSourcesPage';
 
 // A carry contains calendar bounds only. The captured session object owns its lifetime.
 const historyContexts = new WeakMap<ShellAssemblyContext, ReportContext>();
@@ -135,6 +136,10 @@ export function SettingsEntry() {
       backups: controller.backups, subscribe: controller.subscribe, scopeKey: `${viewer.serverId}/${options.viewerId}`, reportError}) : undefined;
     const troubleshooting = route.section === 'troubleshooting' ? createTroubleshootingSurfaces({transport: context.api, serverId: viewer.serverId,
       viewerId: options.viewerId, downloadBase: context.api.baseUrl, isCurrent: current, subscribe: controller.subscribe, reportError}) : undefined;
+    const live = route.section === 'live' && role === 'owner' && identity.primaryProfile === true && identity.capabilities?.manageServer === true
+      ? createOwnerSources({api: context.api, serverId: viewer.serverId, viewerId: options.viewerId,
+        isCurrent: () => current() && context.session().viewer.role === 'owner' && context.session().viewer.serverId === viewer.serverId && context.session().viewer.authority === viewer.authority && context.session().viewer.accountId === viewer.accountId && context.session().viewer.profileId === viewer.profileId && context.facts.identity.primaryProfile === true && context.facts.identity.capabilities?.manageServer === true,
+        reportError}) : undefined;
     const source = createSettingsBindings(controller, options, identity, {openHome, signIn,
       special: (row, state, rowContext, openPanel) => {
         const storageControl = server?.special(row, state);
@@ -163,14 +168,14 @@ export function SettingsEntry() {
           return <LibraryScanAction rowId={row.id} label={defaultI18n.t(row.control.label ?? row.label)} libraryId={rowContext.recordId} service={libraries} onError={reportError} />;
         return row.id === 'metadata.perLibrary' ? <Button variant="glass" size="small" onClick={() => openSettings('libraries')}>{defaultI18n.t(row.control.label ?? row.label)}</Button> : null;
       },
-      section: selected => selected.section.id === 'remote-sources' ? <RemoteSourcesPage api={context.api} serverId={viewer.serverId} viewerId={options.viewerId} isCurrent={current} reportError={reportError} /> : selected.section.id === 'people' && people ? <PeopleScreen bindings={people} /> : selected.section.id === 'dashboard' && dashboard ? <DashboardScreen bindings={dashboard} embedded /> : selected.section.id === 'history' && dashboard ? <HistoryScreen bindings={dashboard} embedded /> : selected.section.id === 'troubleshooting' ? troubleshooting?.render() : undefined,
+      section: selected => selected.section.id === 'live' && live ? <OwnerSourcesPage source={live}/> : selected.section.id === 'remote-sources' ? <RemoteSourcesPage api={context.api} serverId={viewer.serverId} viewerId={options.viewerId} isCurrent={current} reportError={reportError} /> : selected.section.id === 'people' && people ? <PeopleScreen bindings={people} /> : selected.section.id === 'dashboard' && dashboard ? <DashboardScreen bindings={dashboard} embedded /> : selected.section.id === 'history' && dashboard ? <HistoryScreen bindings={dashboard} embedded /> : selected.section.id === 'troubleshooting' ? troubleshooting?.render() : undefined,
     });
     const deviceFacts = {serverName: identity.serverName, ...(identity.serverVersion === undefined ? {} : {serverVersion: identity.serverVersion})};
     const settings: SettingsBindings = {...source,
       // The Remote sources page owns its own checked source reads; the generic
       // server-section configuration read would replace that page with a failure.
-      getSnapshot: section => section.scope === 'server' && section.id === 'remote-sources' ? remoteSourcesPageSnapshot : source.getSnapshot(section),
-      load: section => section.scope === 'server' && section.id === 'remote-sources' ? Promise.resolve() : source.load(section),
+      getSnapshot: section => section.scope === 'server' && (section.id === 'remote-sources' || section.id === 'live' && !!live) ? remoteSourcesPageSnapshot : source.getSnapshot(section),
+      load: section => section.scope === 'server' && (section.id === 'remote-sources' || section.id === 'live' && !!live) ? Promise.resolve() : source.load(section),
       eligible: (row, selected) => server?.eligible(row) ?? (row.id === 'libraries.folders' ? current() && isLibraryPanelContext(selected) && controller.sectionVisible(selected.section) : libraryScanAction(row.id) ? current() && !!libraries && selected.panelId === 'library' && !!selected.recordId && controller.sectionVisible(selected.section) : isSubtitlePreview(row.id) ? current() && controller.sectionVisible(selected.section) : isDeviceSyntheticRow(row.id) ? current() && controller.sectionVisible(selected.section) && deviceRowState(row, deviceFacts) !== undefined : row.id === 'music.eq' ? current() && controller.sectionVisible(selected.section) && musicEqualizerAvailable(platform) : row.id === 'people.table' ? !!people && current() && controller.sectionVisible(selected.section) : row.id === 'metadata.perLibrary' || row.id === 'appearance.customizeHome' ? current() && controller.sectionVisible(selected.section) : source.eligible(row, selected)),
       rowState: (row, selected) => {
         const privacyState = privacy.rowState(row);
@@ -183,7 +188,7 @@ export function SettingsEntry() {
       },
     };
     setFailure(false);setOwned({context, settings, dashboard});
-    return () => {active = false;signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();server?.dispose();troubleshooting?.dispose();controller.dispose();};
+    return () => {active = false;signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();server?.dispose();troubleshooting?.dispose();live?.dispose();controller.dispose();};
   // The captured identity decides which sections exist (main profile, manageServer,
   // role). It can be replaced without the assembly context object changing, so
   // every fact the gate reads is a dependency: a newer identity must rebuild the
@@ -191,7 +196,7 @@ export function SettingsEntry() {
   }, [context, retry, route.section, reportTimeZone, context?.facts.identity.primaryProfile,
     context?.facts.identity.capabilities?.manageServer, context?.facts.identity.capabilities?.managePeople,
     context?.facts.identity.capabilities?.manageSignIn, context?.facts.identity.signIn,
-    context?.session().viewer.role, context?.session().viewer.serverId, context?.session().viewer.profileId]);
+    context?.session().viewer.role, context?.session().viewer.serverId, context?.session().viewer.authority, context?.session().viewer.accountId, context?.session().viewer.profileId]);
   if (!protectedContext || !owned || owned.context !== context) return null;
   const navigate = (next: Parameters<typeof SettingsScreen>[0]['route']) => {if (context?.isCurrent()) void router.navigate({to: '/settings', search: () => next});};
   const settings = failure ? {...owned.settings, section: () => <SettingsPageFailure retry={() => setRetry(value => value + 1)} home={owned.settings.openHome} />} : owned.settings;
