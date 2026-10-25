@@ -1,6 +1,7 @@
 import {useEffect, useMemo, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {MetadataRepairService, type RepairCommand, type RepairData, type RepairFieldSpec, type RepairTarget} from '@core/metadata-repair.ts';
+import {EditorHeader} from '../../kit/shell';
 import {Button, TextField} from '../../kit/controls';
 import {providerName} from '@core/server-admin/attention-words.ts';
 import {HostedError} from '../../kit/accounts/ServicesAuth';
@@ -71,8 +72,9 @@ export function MetadataEditor({api, scope, target, onClose}: {
     void edit(fields);
   };
   const heading = data ? (data.snapshot.fields.title?.value || target.id) : '';
+  const kind = target.kind === 'item' ? data?.schema.some(field => field.field === 'episodeNumber') ? 'episode' : 'film' : target.kind;
   return <aside className={styles.editor} aria-label={t('web.metadata.sections')}>
-    <header className={styles.editorHead}><h2>{heading}</h2><Button size="small" onClick={onClose}>{t('action.close')}</Button></header>
+    <EditorHeader audience={{authority: 'owner'}} title={heading ? t('web.metadata.editTitle', {title: heading}) : t('web.metadata.editFallbackTitle')} description={t('web.metadata.editorLede', {kind})} onClose={onClose} className={styles.editorHead}/>
     <nav className={styles.editorTabs} aria-label={t('web.metadata.sections')}>
       {tabsFor(data).map(id => <button key={id} type="button" aria-current={shown === id ? 'page' : undefined} onClick={() => setTab(id)}>
         {t(id === 'general' ? 'web.metadata.tabGeneral' : id === 'artwork' ? 'web.metadata.tabArtwork' : id === 'tags' ? 'web.metadata.tabTags' : id === 'people' ? 'web.metadata.tabPeople' : id === 'matching' ? 'web.metadata.tabMatching' : 'web.metadata.tabHistory')}</button>)}
@@ -96,7 +98,7 @@ export function MetadataEditor({api, scope, target, onClose}: {
       {shown === 'history' ? <History data={data} busy={state.phase !== 'ready'} onUndo={historyId => void run({action: 'undo', historyId})}
         onAll={locked => void run({action: locked ? 'lock_all' : 'unlock_all'})} /> : null}
       {shown === 'general' || shown === 'tags' ? <footer className={styles.editorFooter}>
-        <Button size="small" disabled={!changed.length || state.phase === 'saving'} onClick={() => setDraft({})}>{t('action.discard')}</Button>
+        <span className={styles.pending}>{t(changed.length ? 'web.metadata.pendingCount' : 'web.metadata.noChanges', {count: changed.length})}</span><Button size="small" onClick={onClose}>{t('action.cancel')}</Button>
         <Button size="small" variant="primary" loading={state.phase === 'saving'} disabled={!changed.length || invalid || state.phase !== 'ready'} onClick={save}>
           {t('web.metadata.saveChanges')}{changed.length ? ` (${changed.length})` : ''}</Button>
       </footer> : null}
@@ -134,18 +136,20 @@ function input(spec: RepairFieldSpec, value: string, set: (value: string) => voi
 function Field({spec, field, draft, set}: {spec: RepairFieldSpec; field?: {value: string; automaticValue: string; locked: boolean; source: string; values?: readonly string[]}; draft?: {value: string; locked: boolean}; set: (patch: Partial<{value: string; locked: boolean}>) => void}) {
   const value = draft?.value ?? field?.value ?? '', locked = draft?.locked ?? field?.locked ?? false, error = fieldError(spec, value);
   const changed = draft !== undefined && (draft.value !== (field?.value ?? '') || draft.locked !== (field?.locked ?? false));
-  return <label className={styles.field} data-changed={changed || undefined}>
+  return <label className={styles.field} data-wide={spec.type === 'multiline' || spec.field === 'tagline' || undefined} data-changed={changed || undefined}>
     <span className={styles.fieldLabel}>{t(spec.label as Parameters<typeof t>[0])}
-      <button type="button" className={styles.lock} aria-pressed={locked} title={t(locked ? 'web.metadata.lockedTip' : 'web.metadata.unlockedTip')} onClick={() => set({locked: !locked})}>{locked ? t('web.metadata.locked') : t('web.metadata.unlocked')}</button>
+      {changed ? <em>{t('web.metadata.editorChanged')}</em> : null}
     </span>
-    {input(spec, value, next => set({value: next}))}
+    <span className={styles.fieldControl}>{input(spec, value, next => set({value: next}))}
+      <button type="button" className={styles.lock} aria-pressed={locked} title={t(locked ? 'web.metadata.lockedTip' : 'web.metadata.unlockedTip')} aria-label={t(locked ? 'web.metadata.unlockField' : 'web.metadata.lockField', {label: t(spec.label as Parameters<typeof t>[0])})} onClick={() => set({locked: !locked})}>{locked ? t('web.metadata.locked') : t('web.metadata.unlocked')}</button>
+    </span>
     {error ? <small className={styles.fieldError} role="alert">{error}</small> : null}
-    <small>{field?.source}{field && field.automaticValue !== field.value && !locked ? <button type="button" onClick={() => set({value: field.automaticValue})}>{t('web.metadata.useIt')}</button> : null}</small>
+    <small>{field?.source === 'manual' ? t('web.metadata.editedHere') : field?.source ? t('web.metadata.fromSource', {source: ['tmdb', 'tvdb', 'anilist', 'musicbrainz'].includes(field.source) ? providerName(field.source) : field.source}) : ''}{field && field.automaticValue !== value ? <button type="button" onClick={() => set({value: field.automaticValue})}>{t('web.metadata.useIt')}</button> : null}</small>
   </label>;
 }
 
 function General({data, draft, set}: {data: RepairData; draft: Draft; set: (field: string, patch: Partial<{value: string; locked: boolean}>) => void}) {
-  return <div className={styles.fields}>{data.schema.filter(spec => spec.type !== 'list' && spec.group !== 'identity').map(spec =>
+  return <div className={styles.generalFields}><p className={styles.lockHelp}>{t('web.metadata.editorLockHelp')}</p>{data.schema.filter(spec => spec.type !== 'list' && spec.group !== 'identity').map(spec =>
     <Field key={spec.field} spec={spec} field={data.snapshot.fields[spec.field]} draft={draft[spec.field]} set={patch => set(spec.field, patch)} />)}</div>;
 }
 
