@@ -440,10 +440,19 @@ func (l *LinearRuntime) runOccurrence(ctx context.Context, id string, entry *lin
 			return
 		}
 		attempts = linearFailureCount(attempts, entry.buffer.Produced()-before)
+		retryExpired := errors.Is(e, linearinput.ErrRetryWindow)
+		if retryExpired {
+			// The gateway already spent this outage's admitted wall-time budget.
+			// A producer restart must not silently grant another whole retry window.
+			attempts = linearRecoveryBudget
+		}
 		if e == nil {
 			e = channelFault("source_ended", 503)
 		}
 		l.fail(ctx, entry, work, e)
+		if retryExpired {
+			continue
+		}
 		if !waitLinear(ctx, time.Duration(1<<min(attempts-1, 3))*time.Second) {
 			return
 		}
@@ -776,6 +785,11 @@ func (l *LinearRuntime) produceLive(ctx context.Context, w playback.LinearWork, 
 		return e
 	}
 	defer gateway.Close()
+	defer func() {
+		if gateway.RetryExpired() {
+			result = errors.Join(result, linearinput.ErrRetryWindow)
+		}
+	}()
 	startup.enter(linearStartupProbing, gateway)
 	reservation, e := gateway.Reserve()
 	if e != nil {

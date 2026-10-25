@@ -3,7 +3,6 @@
 package linearinput
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -28,6 +27,7 @@ import (
 
 var (
 	ErrUnavailable = errors.New("The live source is unavailable.")
+	ErrRetryWindow = errors.New("The live source retry window expired.")
 	ErrWindow      = errors.New("The live source input window advanced.")
 )
 
@@ -140,30 +140,13 @@ func openInput(ctx context.Context, in livechannels.Input) (*Gateway, error) {
 		return nil, ErrUnavailable
 	}
 	g.address = "http://127.0.0.1:" + strconv.Itoa(port)
-	client, response, e := g.fetch(child, in.Locator, "")
+	client, response, reader, e := g.openRetry(false)
 	if e != nil {
 		g.Close()
 		return nil, e
 	}
-	reader := bufio.NewReaderSize(response.Body, 4096)
-	prefix, e := reader.Peek(7)
-	if len(prefix) >= 3 && bytes.Equal(prefix[:3], []byte{0xef, 0xbb, 0xbf}) {
-		_, _ = reader.Discard(3)
-		prefix, e = reader.Peek(7)
-	}
-	if e != nil && len(prefix) < 7 {
-		response.Body.Close()
-		client.Close()
-		g.Close()
-		return nil, ErrFormat
-	}
+	prefix, _ := reader.Peek(7) // openRetry already admitted this buffered prefix.
 	g.hls = bytes.Equal(prefix, []byte("#EXTM3U"))
-	if !g.hls && (len(prefix) == 0 || prefix[0] != 0x47) {
-		response.Body.Close()
-		client.Close()
-		g.Close()
-		return nil, ErrFormat
-	}
 	finalURL := in.Locator
 	if response.Request != nil && response.Request.URL != nil {
 		finalURL = response.Request.URL.String()
@@ -209,6 +192,11 @@ func (g *Gateway) URL() string {
 }
 func (g *Gateway) Reserve() (*decoder.EndpointReservation, error) {
 	return decoder.ReserveEndpoints(g.v4, g.v6)
+}
+func (g *Gateway) RetryExpired() bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return errors.Is(g.failure, ErrRetryWindow)
 }
 func (g *Gateway) Snapshot() Span { g.mu.Lock(); defer g.mu.Unlock(); return g.span }
 func (g *Gateway) signal()        { close(g.changed); g.changed = make(chan struct{}) }
@@ -257,40 +245,19 @@ func (g *Gateway) pump(r io.Reader) {
 			g.span.Gaps++
 			g.span.Reconnecting = true
 			g.mu.Unlock()
-			until := time.Now().Add(time.Duration(g.input.RetryWindowSeconds) * time.Second)
-			if g.input.RetryWindowSeconds <= 0 {
-				until = time.Now().Add(time.Minute)
+			_, _, next, err := g.openRetry(true)
+			if g.ctx.Err() != nil {
+				return
 			}
-			recovered := false
-			for delay := time.Second; time.Now().Before(until); delay = min(5*time.Second, delay*2) {
-				timer := time.NewTimer(delay)
-				select {
-				case <-g.ctx.Done():
-					timer.Stop()
-					return
-				case <-timer.C:
-				}
-				client, response, err := g.fetch(g.ctx, g.input.Locator, "")
-				if err != nil {
-					continue
-				}
-				next := bufio.NewReaderSize(response.Body, 4096)
-				prefix, err := next.Peek(1)
-				if err != nil || len(prefix) != 1 || prefix[0] != 0x47 {
-					response.Body.Close()
-					client.Close()
-					g.untrack(client, response.Body)
-					continue
-				}
+			recovered := err == nil
+			if recovered {
 				r = next
-				recovered = true
-				break
 			}
 			if !recovered {
 				g.mu.Lock()
 				g.done = true
 				g.span.Ended = true
-				g.failure = ErrUnavailable
+				g.failure = err
 				g.signal()
 				g.mu.Unlock()
 				return
