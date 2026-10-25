@@ -77,7 +77,9 @@ export function SourceAdvancedRows({values, cacheSupported, cacheApplied, cacheE
         options={floors.map((size, index) => ({value: size, label: t(`next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.2.rows.0.control.options.${index}.label` as never)}))}
         onValueChange={value => set('cacheFloorBytes', gb(value))}/>
       {!cacheApplied && <p className={styles.note} role="status">{t('next.remoteSources.advCachePending')}</p>}
-      {cacheError && <p className={styles.error} role="alert">{t('next.remoteSources.advCacheFailed', {reason: cacheError})}</p>}
+      {cacheError && <p className={styles.error} role="alert">{t(cacheError === 'source_changed' ? 'next.remoteSources.advCacheChanged'
+        : cacheError === 'mount_unavailable' ? 'next.remoteSources.advCacheUnavailable'
+          : 'next.remoteSources.advCacheFailed')}</p>}
     </>}
   </>;
 }

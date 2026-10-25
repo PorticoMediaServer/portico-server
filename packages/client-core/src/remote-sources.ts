@@ -91,7 +91,7 @@ function sourceAdvanced(raw:unknown):SourceAdvanced{
 }
 function sourceAdvancedSettings(raw:unknown,id:string):SourceAdvancedSettings{
  if(!record(raw)||raw.sourceId!==id||!text(raw.generation,64)||!raw.generation||!integer(raw.revision)||typeof raw.saved!=='boolean'||typeof raw.cacheSupported!=='boolean'||typeof raw.cacheApplied!=='boolean'||!integer(raw.scanIntervalObserved))invalid();
- if(raw.cacheError!==undefined&&!text(raw.cacheError,2048))invalid();
+ if(raw.cacheError!==undefined&&!['source_changed','mount_unavailable','cache_refused','cache_record_failed'].includes(String(raw.cacheError)))invalid();
  return Object.freeze({sourceId:id,generation:raw.generation,revision:raw.revision,saved:raw.saved,cacheSupported:raw.cacheSupported,cacheApplied:raw.cacheApplied,...(raw.cacheError===undefined?{}:{cacheError:raw.cacheError as string}),scanIntervalObserved:raw.scanIntervalObserved,values:sourceAdvanced(raw.values)});
 }
 function remoteSourceStatus(raw:unknown,id:string):RemoteSourceStatus{

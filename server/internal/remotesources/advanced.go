@@ -238,8 +238,9 @@ func (s *Service) ReadSourceAdvanced(ctx context.Context, identities *identity.S
 }
 
 func advancedSettings(row Source, settings advancedRow, cacheError string) SourceAdvancedSettings {
-	applied := settings.values.CacheBytes == 0 || row.MountID != "" &&
-		settings.appliedBytes == settings.values.CacheBytes &&
+	// Applied is read from the stored projection alone: asking to disable the
+	// cache is only applied once the mount really reports no cache.
+	applied := settings.appliedBytes == settings.values.CacheBytes &&
 		(settings.values.CacheFloorBytes == 0 || settings.appliedFloor == settings.values.CacheFloorBytes)
 	return SourceAdvancedSettings{
 		SourceID:             row.ID,
@@ -321,12 +322,19 @@ func (s *Service) SaveSourceAdvanced(ctx context.Context, identities *identity.S
 	settings := advancedRow{values: v, saved: true, revision: revision + 1, appliedBytes: current.appliedBytes, appliedFloor: current.appliedFloor, observedIntervalSecond: current.observedIntervalSecond}
 	cacheError := ""
 	if row.MountID != "" {
+		apply := cacheApply{admitted: row, revision: revision + 1, values: v}
 		var applied bool
-		applied, cacheError = s.applyCache(ctx, identities, owner, row.MountID, v.CacheBytes, v.CacheFloorBytes)
+		applied, cacheError = s.applyCache(ctx, identities, owner, apply)
 		if applied {
 			settings.appliedBytes, settings.appliedFloor = v.CacheBytes, effectiveFloor(v.CacheFloorBytes, current.appliedFloor)
-			if _, e := dbwork.ExecWrite(ctx, s.db, dbwork.ClassInteractive, `UPDATE remote_source_settings SET cache_applied_bytes=?,cache_applied_floor_bytes=? WHERE source_id=?`, settings.appliedBytes, settings.appliedFloor, source); e != nil && cacheError == "" {
-				cacheError = e.Error()
+			// The projection belongs to the exact saved revision it describes.
+			result, e := dbwork.ExecWrite(ctx, s.db, dbwork.ClassInteractive, `UPDATE remote_source_settings SET cache_applied_bytes=?,cache_applied_floor_bytes=? WHERE source_id=? AND revision=?`, settings.appliedBytes, settings.appliedFloor, source, revision+1)
+			if e != nil {
+				applied = false
+				cacheError = cacheReasonCacheLost
+			} else if n, _ := result.RowsAffected(); n != 1 {
+				applied = false
+				cacheError = cacheReasonChanged
 			}
 		}
 	}
@@ -336,43 +344,96 @@ func (s *Service) SaveSourceAdvanced(ctx context.Context, identities *identity.S
 	return advancedSettings(row, settings, cacheError), nil
 }
 
+// cacheApply is the exact accepted settings a cache change belongs to.
+type cacheApply struct {
+	admitted Source
+	revision int64
+	values   SourceAdvanced
+}
+
+const (
+	cacheReasonChanged     = "source_changed"
+	cacheReasonUnavailable = "mount_unavailable"
+	cacheReasonRefused     = "cache_refused"
+	cacheReasonCacheLost   = "cache_record_failed"
+)
+
 // applyCache changes a mounted source's real read cache through the existing
-// mount command, with the owner's own current authorization. It reports whether
-// the mount took the change and why not, so the page never shows a saved cache
-// as applied when the mount refused it. Zero floor means "keep the mount's
-// current floor"; zero cache removes the read cache.
-func (s *Service) applyCache(ctx context.Context, identities *identity.Service, owner identity.Principal, mountID string, cacheBytes, floorBytes int64) (bool, string) {
-	if s.mounts == nil || mountID == "" {
-		return false, "the source has no mount to apply a cache to"
+// mount command. Its authorizer re-checks the captured owner, source
+// generation, root, mount and saved settings revision in the mount writer's
+// own transaction, so a change accepted after the settings moved on is refused
+// rather than applied to the wrong source. Reasons are closed codes, never
+// provider or database text.
+func (s *Service) applyCache(ctx context.Context, identities *identity.Service, owner identity.Principal, accept cacheApply) (bool, string) {
+	if s.mounts == nil || accept.admitted.MountID == "" {
+		return false, cacheReasonUnavailable
 	}
 	list, err := s.mounts.List()
 	if err != nil {
-		return false, err.Error()
+		return false, cacheReasonUnavailable
 	}
+	controlRevision := int64(-1)
 	for _, mount := range list {
-		if mount.ID != mountID {
-			continue
+		if mount.ID == accept.admitted.MountID {
+			controlRevision = mount.ControlRevision
+			break
 		}
-		floor := effectiveFloor(floorBytes, mount.CacheFloor)
-		if mount.CacheBytes == cacheBytes && mount.CacheFloor == floor {
-			return true, ""
-		}
-		authorize := func(tx *sql.Tx) error {
-			return currentLocalOwnerTx(ctx, tx, identities, owner)
-		}
-		_, err = s.mounts.Command(ctx, owner.Hash, mount.ID, mounts.Command{
-			OperationID:      scanOperationID(),
-			Action:           "configure",
-			ExpectedRevision: mount.ControlRevision,
-			CacheBytes:       &cacheBytes,
-			CacheFloor:       &floor,
-		}, authorize)
-		if err != nil {
-			return false, err.Error()
-		}
-		return true, ""
 	}
-	return false, "the source's mount is not present"
+	if controlRevision < 1 {
+		return false, cacheReasonUnavailable
+	}
+	floor := effectiveFloor(accept.values.CacheFloorBytes, 0)
+	cacheBytes := accept.values.CacheBytes
+	authorize := func(tx *sql.Tx) error {
+		if err := currentLocalOwnerTx(ctx, tx, identities, owner); err != nil {
+			return err
+		}
+		current, err := sourceRowTx(ctx, tx, accept.admitted.ID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return storage.ErrRemoteChanged
+			}
+			return err
+		}
+		if current.Generation != accept.admitted.Generation || current.RootPath != accept.admitted.RootPath || current.MountID != accept.admitted.MountID || current.Kind != accept.admitted.Kind {
+			return storage.ErrRemoteChanged
+		}
+		var revision, savedBytes, savedFloor int64
+		if err = tx.QueryRowContext(ctx, `SELECT revision,cache_bytes,cache_floor_bytes FROM remote_source_settings WHERE source_id=?`, accept.admitted.ID).Scan(&revision, &savedBytes, &savedFloor); err != nil {
+			return storage.ErrRemoteChanged
+		}
+		if revision != accept.revision || savedBytes != accept.values.CacheBytes || savedFloor != accept.values.CacheFloorBytes {
+			return storage.ErrRemoteChanged
+		}
+		return nil
+	}
+	if floor == 0 {
+		// No floor requested means keep the mount's current floor, read under
+		// the same association check before the command runs.
+		for _, mount := range list {
+			if mount.ID == accept.admitted.MountID {
+				floor = effectiveFloor(accept.values.CacheFloorBytes, mount.CacheFloor)
+			}
+		}
+	}
+	_, err = s.mounts.Command(ctx, owner.Hash, accept.admitted.MountID, mounts.Command{
+		OperationID:      scanOperationID(),
+		Action:           "configure",
+		ExpectedRevision: controlRevision,
+		CacheBytes:       &cacheBytes,
+		CacheFloor:       &floor,
+	}, authorize)
+	if err != nil {
+		switch {
+		case errors.Is(err, storage.ErrRemoteChanged), errors.Is(err, mounts.ErrCommandConflict), errors.Is(err, mounts.ErrCommandExpired):
+			return false, cacheReasonChanged
+		case errors.Is(err, mounts.ErrUnavailable):
+			return false, cacheReasonUnavailable
+		default:
+			return false, cacheReasonRefused
+		}
+	}
+	return true, ""
 }
 
 func effectiveFloor(requested, current int64) int64 {

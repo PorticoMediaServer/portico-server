@@ -6,15 +6,17 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
-// RootedDir is one directory confined by an os.Root. Windows has no openat
-// O_NOFOLLOW equivalent here, so every step re-checks that the next component
-// is a real directory and not a reparse point before it is used.
+// RootedDir is one directory confined by its own os.Root. Each instance owns
+// that handle, so closing a parent never closes a child a caller still uses.
+// Windows has no openat O_NOFOLLOW here, so every step re-checks that the next
+// component is a real directory and not a reparse point before opening it.
 type RootedDir struct {
 	root *os.Root
-	rel  string
+	dir  string
 }
 
 func OpenRootedDir(path string) (*RootedDir, error) {
@@ -22,29 +24,25 @@ func OpenRootedDir(path string) (*RootedDir, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &RootedDir{root: root, rel: "."}, nil
-}
-
-func (d *RootedDir) path(name string) string {
-	if d.rel == "." {
-		return name
-	}
-	return d.rel + "/" + name
+	return &RootedDir{root: root, dir: path}, nil
 }
 
 func (d *RootedDir) Child(name string) (*RootedDir, error) {
 	if d == nil || d.root == nil || name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\\\x00") {
 		return nil, ErrRemoteConfig
 	}
-	next := d.path(name)
-	info, err := d.root.Lstat(next)
+	info, err := d.root.Lstat(name)
 	if err != nil {
 		return nil, err
 	}
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return nil, ErrRemoteConfig
 	}
-	return &RootedDir{root: d.root, rel: next}, nil
+	child, err := os.OpenRoot(filepath.Join(d.dir, name))
+	if err != nil {
+		return nil, err
+	}
+	return &RootedDir{root: child, dir: filepath.Join(d.dir, name)}, nil
 }
 
 func (d *RootedDir) Close() error {
@@ -58,7 +56,7 @@ func (d *RootedDir) Names(limit int) ([]string, bool, error) {
 	if d == nil || d.root == nil || limit < 1 {
 		return nil, false, ErrRemoteConfig
 	}
-	directory, err := d.root.Open(d.rel)
+	directory, err := d.root.Open(".")
 	if err != nil {
 		return nil, false, err
 	}
@@ -93,7 +91,7 @@ func (d *RootedDir) IsDirectoryEntry(name string) bool {
 	if d == nil || d.root == nil || name == "" || name == "." || name == ".." || strings.ContainsAny(name, "/\\\x00") {
 		return false
 	}
-	info, err := d.root.Lstat(d.path(name))
+	info, err := d.root.Lstat(name)
 	if err != nil {
 		return false
 	}
