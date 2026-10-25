@@ -1,3 +1,4 @@
+import {collectReadingHighlights, type ReadingHighlightsFile} from './reading-highlights-export.ts';
 import type {ReadingManifest, ReadingProgress, ReadingSavedProgress, ReadingSession, ReadingPage} from './reading.ts';
 import {captureReadingAnnotationMutation, parseReadingAnnotations, parseReadingAnnotationSaved} from './reading-annotations.ts';
 import {ReadingError, parseReadingManifest, validateReadingLocation} from './reading.ts';
@@ -67,7 +68,8 @@ function contentsTarget(value: unknown, manifest: ReadingManifest): ReadingHostC
 /** RN retains the actual captured facade. Its caller still owns session.close().
  * Binary messages are pulled in <=48KiB chunks; just one original member/page is
  * retained, with an idle deadline, never a book/archive cache. */
-export function createReadingHost({session, channel, preferences, initialProgress, initialContentsTarget, crease, current, send, onBack, onSettings, onUnavailable}: Readonly<{
+export function createReadingHost({session, channel, preferences, initialProgress, initialContentsTarget, crease, current, send, onBack, onSettings, onUnavailable, saveHighlights}: Readonly<{
+  saveHighlights?: (file: ReadingHighlightsFile, signal: AbortSignal, isCurrent: () => boolean) => Promise<'saved' | 'cancelled'>;
   session: ReadingHostSession; channel: string; preferences: () => PreferenceSnapshot; initialProgress: ReadingProgress;
   initialContentsTarget?: ReadingHostContentsTarget; crease?: ReadingHostCrease; onUnavailable?: () => void;
   current: () => boolean; send: (message: string) => void; onBack: () => void; onSettings: () => void;
@@ -80,6 +82,7 @@ export function createReadingHost({session, channel, preferences, initialProgres
   let started = false, active = true, last = 0, binaryRequest = false, transfer: {id: number; bytes: Uint8Array; offset: number; timer: ReturnType<typeof setTimeout>} | undefined;
   type Sequential = {id: number; life: AbortController; reader?: Pick<ReadableStreamDefaultReader<Uint8Array>, 'read' | 'cancel' | 'releaseLock'>; total: number; pulling: boolean; timer?: ReturnType<typeof setTimeout>};
   let sequential: Sequential | undefined;
+  let highlightsRequest: AbortController | undefined;
   const valid = () => !life.signal.aborted && !session.signal.aborted && current() && session.manifest === manifest;
   const check = () => {if (!valid()) fail('cancelled');};
   const post = (value: RecordValue) => {if (valid()) send(JSON.stringify({v: 1, channel, ...value}));};
@@ -122,7 +125,7 @@ export function createReadingHost({session, channel, preferences, initialProgres
     if (data.kind === 'ready') {
       if (started || !valid()) return;
       if (capturedContentsTarget && data.contentsTarget !== true) {dispose(); onUnavailable?.(); return;}
-      started = true; post({kind: 'initial', manifest: {...manifest, canAnnotate:manifest.canAnnotate === true && !!session.annotations && !!session.mutateAnnotation ? true : undefined}, preferences: preferences(), progress: initialProgress, active,
+      started = true; post({kind: 'initial', canSaveHighlights: !!saveHighlights && manifest.canAnnotate === true && !!session.annotations && !!session.mutateAnnotation, manifest: {...manifest, canAnnotate:manifest.canAnnotate === true && !!session.annotations && !!session.mutateAnnotation ? true : undefined}, preferences: preferences(), progress: initialProgress, active,
         ...(capturedContentsTarget ? {contentsTarget: capturedContentsTarget} : {}), ...(capturedCrease ? {crease: capturedCrease} : {})}); return;
     }
     if (!started || data.channel !== channel || !valid()) return;
@@ -137,7 +140,19 @@ export function createReadingHost({session, channel, preferences, initialProgres
     void (async () => {
       check(); let value: unknown;
       if (method === 'range' || method === 'asset' || method === 'page') {if (binaryRequest || transfer) fail('bridge_busy'); binaryRequest = true; ownsBinary = true;}
-      if (method === 'head') value = await session.headPDF(request.signal) ?? null;
+      if (method === 'highlights-export') {
+        if (!active || !saveHighlights || manifest.canAnnotate !== true || !session.annotations || !session.mutateAnnotation || Object.keys(args).some(key => key !== 'revision') || !integer(args.revision, 0, Number.MAX_SAFE_INTEGER)) fail('not_permitted');
+        if (highlightsRequest) fail('bridge_busy');
+        highlightsRequest = request;
+        const revision = args.revision;
+        const live = () => valid() && active && !request.signal.aborted;
+        const port = {manifest, signal: session.signal, annotations: session.annotations, mutateAnnotation: session.mutateAnnotation};
+        const file = await collectReadingHighlights({port, revision, title: manifest.metadata.title, author: manifest.metadata.author, signal: request.signal, isCurrent: live});
+        if (!live()) fail('cancelled');
+        value = await saveHighlights(file, request.signal, live);
+        if (!live()) fail('cancelled');
+        if (value !== 'saved' && value !== 'cancelled') fail();
+      } else if (method === 'head') value = await session.headPDF(request.signal) ?? null;
       else if (method === 'range') {
         if (manifest.sequential) fail('invalid_format');
         if (!integer(args.start, 0, manifest.size - 1) || !integer(args.endExclusive, Number(args.start) + 1, manifest.size) || args.endExclusive - args.start > 65536) fail('invalid_range');
@@ -208,10 +223,10 @@ export function createReadingHost({session, channel, preferences, initialProgres
       if (ownsBinary) {binaryRequest = false; ownsBinary = false;}
       post({kind: 'reply', id, value});
     })().catch(error => {if (transfer?.id === id) release(); post({kind: 'reply', id, error: errorInfo(error)});})
-      .finally(() => {clearTimeout(deadline); if (ownsBinary) binaryRequest = false; requests.delete(id);});
+      .finally(() => {if (highlightsRequest === request) highlightsRequest = undefined; clearTimeout(deadline); if (ownsBinary) binaryRequest = false; requests.delete(id);});
   };
   return Object.freeze({receive, dispose, confirm: () => {if (started) post({kind: 'preferences', preferences: preferences()});},
-    setActive: (value: boolean) => {active = value; if (started) post({kind: 'active', active});},
+    setActive: (value: boolean) => {active = value; if (!active) highlightsRequest?.abort(); if (started) post({kind: 'active', active});},
     setCrease: (value: ReadingHostCrease | undefined) => {
       try {capturedCrease = creaseOf(value);} catch {capturedCrease = undefined;}
       if (started) post({kind: 'layout', ...(capturedCrease ? {crease: capturedCrease} : {})});
@@ -224,6 +239,7 @@ export type ReadingGuest = Readonly<{
   readonly crease?: ReadingHostCrease; onCrease: (listener: () => void) => () => void;
   preferences: Readonly<{getSnapshot: () => PreferenceSnapshot; subscribe: (listener: () => void) => () => void}>;
   onActive: (listener: (active: boolean) => void) => () => void;
+  saveHighlights?: (revision: number, signal: AbortSignal) => Promise<'saved' | 'cancelled'>;
   back: () => Promise<void>; openSettings: () => Promise<void>; dispose: () => void;
 }>;
 /** Bundled browser side: structural source ports only, no selected-server API. */
@@ -356,7 +372,13 @@ export function connectReadingHost(transport: ReadingHostTransport): Readonly<{r
           progress: async signal => decodeGetReadingSessionsSessionIdProgressResponse(await call('progress', {}, signal)),
           saveProgress: async (request, signal): Promise<ReadingSavedProgress> => decodePutReadingSessionsSessionIdProgressResponse(await call('save', request, signal)),
         });
-        resolveReady(Object.freeze({session, initialProgress, ...(initialContentsTarget ? {contentsTarget: initialContentsTarget} : {}), get crease() {return crease;},
+        resolveReady(Object.freeze({session, initialProgress,
+          ...(data.canSaveHighlights === true && manifest.canAnnotate === true ? {saveHighlights: async (revision: number, signal: AbortSignal): Promise<'saved' | 'cancelled'> => {
+            if (!integer(revision, 0, Number.MAX_SAFE_INTEGER)) fail();
+            const result = await call('highlights-export', {revision}, signal);
+            if (result !== 'saved' && result !== 'cancelled') fail();
+            return result;
+          }} : {}), ...(initialContentsTarget ? {contentsTarget: initialContentsTarget} : {}), get crease() {return crease;},
           onCrease: (listener: () => void) => {if (life.signal.aborted) return () => {}; creaseListeners.add(listener); return () => {creaseListeners.delete(listener);};},
           preferences: Object.freeze({getSnapshot: () => snapshot, subscribe: (listener: () => void) => {listeners.add(listener); return () => {listeners.delete(listener);};}}),
           onActive: (listener: (active: boolean) => void) => {

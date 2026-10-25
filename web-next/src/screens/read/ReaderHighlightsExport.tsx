@@ -7,7 +7,7 @@ import {Button} from '../../kit/controls';
 type Lease = {life: AbortController};
 type Attempt = {owner: Lease; life: AbortController; url?: string};
 /** Browser-only local file sink. Native hosts must supply a real save port first. */
-export function ReaderHighlightsExport({service, signal, title, author, reportError}: {service: ReadingAnnotationService; signal: AbortSignal; title?: string; author?: string; reportError: (error: unknown) => void}) {
+export function ReaderHighlightsExport({service, signal, title, author, reportError, nativeSave}: {service: ReadingAnnotationService; signal: AbortSignal; title?: string; author?: string; reportError: (error: unknown) => void; nativeSave?: (revision: number, signal: AbortSignal) => Promise<'saved' | 'cancelled'>}) {
   const [lease, setLease] = useState<Lease>();
   const [running, setRunning] = useState<Attempt>();
   const request = useRef<Attempt>();
@@ -28,6 +28,7 @@ export function ReaderHighlightsExport({service, signal, title, author, reportEr
       && owner.current.service === service && owner.current.signal === signal && service.getSnapshot().revision === revision && !service.getSnapshot().saving;
     setRunning(attempt);
     void (async () => {
+      if (nativeSave) {await nativeSave(revision, AbortSignal.any([signal, lease.life.signal, attempt.life.signal])); return;}
       const file = await collectReadingHighlights({port: service.port, revision, title, author, signal: AbortSignal.any([signal, lease.life.signal, attempt.life.signal]), isCurrent: current});
       if (!current()) return;
       const blob = new Blob([file.markdown], {type: 'text/markdown;charset=utf-8'});
