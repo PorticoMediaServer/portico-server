@@ -874,7 +874,20 @@ func (l *LinearRuntime) produceLibrary(ctx context.Context, w playback.LinearWor
 	plan.Finite = true
 	plan.SeekUS = max(int64(0), w.Selection.SourceOffsetMS+now-w.Selection.EntryStartMS) * 1000
 	plan.ClipEndUS = (w.Selection.SourceOffsetMS + w.Selection.EntryEndMS - w.Selection.EntryStartMS) * 1000
-	publisher, e := entry.buffer.Publisher(linearbuffer.Producer{ID: w.ProducerOrdinal, Scheduled: true, TimelineBaseMS: w.Selection.EntryStartMS - w.Selection.SourceOffsetMS, EndMS: w.Selection.EntryEndMS}, func() error {
+	publisher, e := entry.buffer.Publisher(linearbuffer.Producer{ID: w.ProducerOrdinal, Scheduled: true, TimelineBaseMS: w.Selection.EntryStartMS - w.Selection.SourceOffsetMS, EndMS: w.Selection.EntryEndMS, OnPlayable: func() error {
+		// This observer is on the actual borrowed library-media output only;
+		// slate/live/setup paths never reach it. Recheck the exact producer
+		// before recording its retained real occurrence, without viewer IDs.
+		observed, done := context.WithTimeout(ctx, 2*time.Second)
+		defer done()
+		if e := l.checkProducerWithPatience(observed, w); e != nil {
+			return e
+		}
+		if _, e := borrow.Validate(observed); e != nil {
+			return e
+		}
+		return l.config.Library.RecordPlayableStart(observed, w.Selection.Reference.ChannelID, w.Selection.Reference.Generation, w.Selection.EntryID, w.Selection.ItemID)
+	}}, func() error {
 		if e := l.checkProducerWithPatience(ctx, w); e != nil {
 			return e
 		}
