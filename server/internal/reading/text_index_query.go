@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 	"unicode"
@@ -31,13 +32,41 @@ import (
 // query text reaches SQLite only as a bound FTS parameter and as a literal
 // re-check, never as SQL.
 type TextIndexSearch struct {
-	Query     string
-	Limit     int
-	Cursor    string
+	Query  string
+	Limit  int
+	Cursor string
+	// Fence is a caller-supplied scope token; FenceFunc computes the same token
+	// inside the query snapshot when the caller needs same-snapshot facts.
 	Fence     string
+	FenceFunc func(ctx context.Context, tx *sql.Tx) (string, error)
 	Principal identity.Principal
 	Visible   Visibility
 	Authorize func(ctx context.Context, tx *sql.Tx, itemID int64) (bool, error)
+	// Accept re-admits the caller's current authority and the captured
+	// observation inside the query snapshot. A session search uses it to prove
+	// the retained revision is still the current one, so a replacement refuses
+	// late results instead of retargeting the latest source.
+	Accept func(ctx context.Context, tx *sql.Tx) error
+	// Observation pins the search to one captured publication observation. Nil
+	// searches the current canonical primary version.
+	Observation *TextIndexObservation
+}
+
+// TextIndexObservation is one captured publication observation. ObjectID is
+// the inventory object id and Revision its inventory revision, not the public
+// publication revision.
+type TextIndexObservation struct {
+	ItemID   int64
+	AssetID  int64
+	ObjectID string
+	Revision string
+}
+
+// TextIndexCoverage is the exact index state for the capture. An absent index is
+// reported as pending, never as "no matches".
+type TextIndexCoverage struct {
+	Status string
+	Reason string
 }
 
 // TextIndexHit is one exact literal hit inside an indexed section. Offsets are
@@ -54,8 +83,10 @@ type TextIndexHit struct {
 }
 
 type TextIndexResult struct {
-	Hits []TextIndexHit
-	Next string
+	Hits          []TextIndexHit
+	Next          string
+	Coverage      TextIndexCoverage
+	IndexRevision int64
 }
 
 type textIndexCursor struct {
@@ -84,7 +115,25 @@ const (
 // required too, so a row awaiting re-preparation after a rule bump cannot
 // answer. The caller's Authorize callback remains the principal/library/
 // restriction admission; this is the shared eligibility join.
-func (s *Service) textIndexSearchSQL(scope string) string {
+func (s *Service) textIndexSearchSQL(scope string, observation *TextIndexObservation) string {
+	if observation != nil {
+		return `SELECT s.id,s.item_id,s.section_index,s.section_path,s.text
+ FROM reading_text_fts
+ JOIN reading_text_sections s ON s.id=reading_text_fts.rowid
+ JOIN reading_text_index_state x ON x.item_id=s.item_id AND x.asset_id=s.asset_id AND x.outcome='indexed' AND x.index_rule_version=?
+ JOIN inventory_objects o ON o.id=x.inventory_object_id AND o.revision=x.source_revision AND o.retired=0 AND o.state='available' AND o.unsupported_reason=''
+ JOIN catalog_assets a ON a.id=x.asset_id AND a.token=o.asset_id AND a.available=1 AND o.size=a.size AND o.modified_ns=a.modified_ns
+ JOIN reading_publications p ON p.item_id=x.item_id AND p.asset_id=x.asset_id AND p.format='epub'
+ JOIN catalog_asset_links link ON link.entity_id=x.item_id AND link.asset_id=x.asset_id AND link.available=1
+ JOIN catalog_entities e ON e.id=x.item_id AND e.retired=0 AND e.kind=20
+ JOIN catalog_libraries cl ON cl.id=e.library_id AND cl.retired=0
+ JOIN libraries lib ON lib.id=cl.library_id AND lib.kind='book'
+ JOIN library_sources src ON src.id=o.source_id AND src.library_id=cl.library_id AND src.incarnation=o.root_incarnation AND src.enabled=1 AND src.kind='local' AND src.health NOT IN('offline','root_changed','removing')
+ JOIN inventory_item_availability available ON available.item_id=x.item_id AND available.asset_id=a.token AND available.available=1
+ WHERE x.item_id=? AND x.asset_id=? AND x.inventory_object_id=? AND x.source_revision=?
+ AND reading_text_fts MATCH ? AND reading_text_fts.rowid>=? AND (` + scope + `)
+ ORDER BY reading_text_fts.rowid LIMIT ?`
+	}
 	return `SELECT s.id,s.item_id,s.section_index,s.section_path,s.text
  FROM reading_text_fts
  JOIN reading_text_sections s ON s.id=reading_text_fts.rowid
@@ -103,6 +152,23 @@ func (s *Service) textIndexSearchSQL(scope string) string {
  ORDER BY reading_text_fts.rowid LIMIT ?`
 }
 
+// textIndexValidateQuery applies the literal-query and page bounds shared by
+// every caller, before any format-specific work.
+func textIndexValidateQuery(query string, limit int) (string, [][]rune, error) {
+	if limit < 1 || limit > 50 {
+		return "", nil, ErrInvalid
+	}
+	query = strings.TrimSpace(query)
+	if query == "" || len(query) > 4096 || !utf8.ValidString(query) || utf16Count(query) > 1024 {
+		return "", nil, ErrInvalid
+	}
+	tokens := textIndexTokens(query)
+	if !textIndexSearchable(tokens) {
+		return "", nil, ErrInvalid
+	}
+	return query, tokens, nil
+}
+
 // SearchTextIndex answers one literal, bounded page of the persisted EPUB text
 // index. A single token matches a whole Unicode word; several tokens match a
 // contiguous literal phrase. Every candidate is re-checked against the stored
@@ -115,35 +181,56 @@ func (s *Service) SearchTextIndex(ctx context.Context, search TextIndexSearch) (
 	if s == nil || s.DB == nil {
 		return out, ErrUnavailable
 	}
-	if search.Authorize == nil || search.Visible == nil || search.Limit < 1 || search.Limit > 50 {
+	if search.Authorize == nil || search.Visible == nil {
 		return out, ErrInvalid
 	}
-	query := strings.TrimSpace(search.Query)
-	if query == "" || len(query) > 4096 || !utf8.ValidString(query) || utf16Count(query) > 1024 {
+	if search.Observation != nil && search.Accept == nil {
 		return out, ErrInvalid
+	}
+	query, tokens, err := textIndexValidateQuery(search.Query, search.Limit)
+	if err != nil {
+		return out, err
 	}
 	fence := search.Fence
-	if fence == "" || len(fence) > 512 || !utf8.ValidString(fence) {
+	if fence == "" && search.FenceFunc == nil {
 		return out, ErrInvalid
 	}
-	tokens := textIndexTokens(query)
-	if !textIndexSearchable(tokens) {
+	if fence != "" && (len(fence) > 512 || !utf8.ValidString(fence)) {
 		return out, ErrInvalid
 	}
 	cursor, err := textIndexDecodeCursor(search.Cursor)
 	if err != nil {
 		return out, err
 	}
-	queryHash := textIndexQueryHash(query)
-	fenceHash := textIndexQueryHash(fence)
 	gate, err := dbwork.BeginSnapshot(ctx, s.DB)
 	if err != nil {
 		return out, err
 	}
 	defer gate.Rollback()
+	if search.Accept != nil {
+		if err = search.Accept(ctx, gate.Tx()); err != nil {
+			return out, err
+		}
+	}
+	if search.FenceFunc != nil {
+		if fence, err = search.FenceFunc(ctx, gate.Tx()); err != nil {
+			return out, err
+		}
+	}
+	if fence == "" || len(fence) > 512 || !utf8.ValidString(fence) {
+		return out, ErrInvalid
+	}
+	queryHash := textIndexQueryHash(query)
+	fenceHash := textIndexQueryHash(fence)
 	epoch, err := textIndexEpochTx(ctx, gate.Tx())
 	if err != nil {
 		return out, err
+	}
+	out.IndexRevision = epoch
+	if search.Observation != nil {
+		if out.Coverage, err = textIndexCoverageTx(ctx, gate.Tx(), *search.Observation); err != nil {
+			return out, err
+		}
 	}
 	if cursor != nil && (cursor.Epoch != epoch || cursor.Query != queryHash || cursor.Fence != fenceHash) {
 		return out, ErrInvalid
@@ -164,8 +251,12 @@ func (s *Service) SearchTextIndex(ctx context.Context, search TextIndexSearch) (
 	if strings.TrimSpace(scope) == "" {
 		return out, ErrInvalid
 	}
-	statement := s.textIndexSearchSQL(scope)
-	queryArgs := []any{readingIndexRuleVersion, textIndexPhrase(tokens), after}
+	statement := s.textIndexSearchSQL(scope, search.Observation)
+	queryArgs := []any{readingIndexRuleVersion}
+	if search.Observation != nil {
+		queryArgs = append(queryArgs, search.Observation.ItemID, search.Observation.AssetID, search.Observation.ObjectID, search.Observation.Revision)
+	}
+	queryArgs = append(queryArgs, textIndexPhrase(tokens), after)
 	queryArgs = append(queryArgs, scopeArgs...)
 	queryArgs = append(queryArgs, maxTextIndexScan)
 
@@ -270,6 +361,23 @@ func (s *Service) SearchTextIndex(ctx context.Context, search TextIndexSearch) (
 		out.Next = textIndexEncodeCursor(textIndexCursor{Version: 1, Epoch: epoch, Query: queryHash, Fence: fenceHash, Section: processed, Offset: -1})
 	}
 	return out, nil
+}
+
+// textIndexCoverageTx reports the exact determined outcome for a captured
+// observation. No row is pending: the document has no index for this exact
+// observation and rule yet.
+func textIndexCoverageTx(ctx context.Context, tx *sql.Tx, observation TextIndexObservation) (TextIndexCoverage, error) {
+	var outcome, reason string
+	err := tx.QueryRowContext(ctx, `SELECT outcome,reason FROM reading_text_index_state
+ WHERE item_id=? AND asset_id=? AND inventory_object_id=? AND source_revision=? AND index_rule_version=?`,
+		observation.ItemID, observation.AssetID, observation.ObjectID, observation.Revision, readingIndexRuleVersion).Scan(&outcome, &reason)
+	if errors.Is(err, sql.ErrNoRows) {
+		return TextIndexCoverage{Status: "pending"}, nil
+	}
+	if err != nil {
+		return TextIndexCoverage{}, err
+	}
+	return TextIndexCoverage{Status: outcome, Reason: reason}, nil
 }
 
 // textIndexTokens folds the trimmed query per rune. Per-rune lowercasing keeps
