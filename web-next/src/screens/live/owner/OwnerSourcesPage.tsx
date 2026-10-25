@@ -21,6 +21,8 @@ import {ChannelMapController} from '../../settings/server-livetv/channel-map-con
 import {SourceSettingsDialog} from '../../settings/server-livetv/SourceSettingsDialog';
 import {ChannelMapDialog} from '../../settings/server-livetv/ChannelMapDialog';
 import {terminal} from './lifetime';
+import {TunerController} from '../../settings/server-livetv/recording/tuner-controller';
+import {Tuners} from '../../settings/server-livetv/recording/Tuners';
 import {RecordingStorageController} from '../../settings/server-livetv/recording/storage-controller';
 import {RecordingStorage} from '../../settings/server-livetv/recording/RecordingStorage';
 import {RecordingDefaults} from '../../settings/server-livetv/recording/RecordingDefaults';
@@ -45,9 +47,10 @@ export function createOwnerSources(options: OwnerSourcesOptions) {
   const sources = new LiveSourceController(api, options.serverId, current, reportError);
   const defaults = liveDefaultsForm({api, serverId: options.serverId, console: new ConsoleClient(api, {serverId: options.serverId, viewerId: options.viewerId}), operationId: channelRequestID});
   const recording = recordingForm({api, serverId: options.serverId, console: new ConsoleClient(api, {serverId: options.serverId, viewerId: options.viewerId}), operationId: channelRequestID});
+  const tuners = new TunerController(api, options.serverId, current, reportError);
   const storage = new RecordingStorageController(api, options.serverId, current, reportError);
-  children.add(sources);children.add(defaults);children.add(recording);children.add(storage);
-  return {sources, defaults, recording, storage, api, current, reportError, serverId: options.serverId,
+  children.add(sources);children.add(defaults);children.add(recording);children.add(storage);children.add(tuners);
+  return {sources, defaults, recording, storage, tuners, api, current, reportError, serverId: options.serverId,
     track<T extends {dispose: () => void}>(child: T): T {if (!current()) child.dispose();else children.add(child);return child;},
     release(child: {dispose: () => void}) {children.delete(child);child.dispose();},
     subscribe: (listener: () => void) => {listeners.add(listener);return () => {listeners.delete(listener);};}, dispose};
@@ -73,7 +76,7 @@ export function OwnerSourcesPage({source}: {source: OwnerSources}) {
     <Tabs value={tab} onValueChange={value => {if (source.current()) {setModal(undefined);setTab(value);}}} aria-label={t('next.settingsSpec.server.live.title')} items={[
       {value: 'sources', label: t('web.liveTv.sources')}, {value: 'recording', label: t('settings.server.recording')},
     ]}/>
-    {tab === 'recording' ? <><RecordingDefaults form={source.recording} current={source.current} reportError={source.reportError}/><RecordingStorage controller={source.storage}/></> : <>
+    {tab === 'recording' ? <><Tuners controller={source.tuners}/><RecordingDefaults form={source.recording} current={source.current} reportError={source.reportError}/><RecordingStorage controller={source.storage}/></> : <>
     {!!snapshot.error && <p role="alert" className={styles.error}>{errorMessage(snapshot.error)}</p>}
     <SourceList snapshot={snapshot} refresh={() => void source.sources.load()} add={kind => {
       if (!source.current()) return;
