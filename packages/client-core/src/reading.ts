@@ -1,3 +1,5 @@
+import {readingMarkPath, parseReadingMark, validReadingMarkCommand, type ReadingReadMarkCommand} from './reading-mark.ts';
+export type {ReadingReadMark, ReadingReadMarkCommand} from './reading-mark.ts';
 import {withReadingManifestFacts, type ReadingManifestFacts} from './reading-manifest-facts.ts';
 import {captureReadingAnnotationMutation, parseReadingAnnotations, parseReadingAnnotationSaved, readingAnnotationId, type ReadingAnnotationMutation, type ReadingAnnotationsPage} from './reading-annotations.ts';
 import {
@@ -317,6 +319,18 @@ export class ReadingClient {
       } catch (error) { check(); /* Never retain an untrusted error body. */ }
     }
     await discard(response); throw new ReadingError(code, response.status);
+  }
+  canMarkRead(itemId: string): boolean { return readingMarkPath('GET', itemId) !== undefined && readingMarkPath('PUT', itemId) !== undefined; }
+  async readMark(itemId: string, signal?: AbortSignal) {
+    const path = readingMarkPath('GET', itemId);
+    if (!path) fail('unsupported');
+    return this.json(path, 'GET', undefined, signal, value => parseReadingMark(value, this.viewer.serverId, itemId), 4096);
+  }
+  async setReadMark(itemId: string, command: ReadingReadMarkCommand, signal?: AbortSignal) {
+    const path = readingMarkPath('PUT', itemId);
+    if (!path || !validReadingMarkCommand(command)) fail('invalid_request');
+    const captured = Object.freeze({...command});
+    return this.json(path, 'PUT', captured, signal, value => parseReadingMark(value, this.viewer.serverId, itemId, captured.operationId), 4096);
   }
   async list(options: Readonly<{libraryId?: string; cursor?: string; limit?: number}> = {}, signal?: AbortSignal): Promise<GetReadingItemsResponse> {
     if (options.libraryId !== undefined && !id(options.libraryId) || !integer(options.limit ?? 50, 1, 100) || (options.cursor !== undefined && !/^\d{1,20}$/.test(options.cursor))) fail('invalid_request');
