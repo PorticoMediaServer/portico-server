@@ -43,7 +43,7 @@ export class SettingsSupportSource {
   private preparing?: object;
   private exportIntent?: Readonly<{from:number;to:number;windowMs:number;components:readonly SupportComponent[];includePaths?:boolean}>;
   private readonly transport: ConsoleAPI;
-  constructor(transport: ConsoleAPI, private readonly serverId: string, viewerId: string, private readonly isCurrent: () => boolean) {
+  constructor(transport: ConsoleAPI, private readonly serverId: string, viewerId: string, private readonly isCurrent: () => boolean, private readonly reportError?: (error:unknown)=>void) {
     const guarded = async <T>(consoleRequest: boolean, path: string, method = 'GET', body?: unknown, signal?: AbortSignal): Promise<T> => {
       this.assertCurrent();
       const combined = signal ? AbortSignal.any([signal, this.lifetime.signal]) : this.lifetime.signal;
@@ -54,6 +54,7 @@ export class SettingsSupportSource {
     this.transport = {request: <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => guarded<T>(false, path, method, body, signal),
       ...(transport.requestConsole ? {requestConsole: <T>(path: string, method: string, body: unknown, signal: AbortSignal) => guarded<T>(true, path, method, body, signal)} : {})};
     this.console = new ConsoleClient(this.transport, {serverId, viewerId});
+    this.console.onDenied(()=>{const error=Object.assign(new Error('The support authority ended.'),{status:403});if(this.reportError){this.dispose();this.reportError(error);}else this.publish({...empty,phase:'error',error});});
   }
   private current() {return !this.lifetime.signal.aborted && this.isCurrent();}
   private assertCurrent() {if (!this.current()) throw new DOMException('The support scope ended.', 'AbortError');}
@@ -74,7 +75,7 @@ export class SettingsSupportSource {
         ]);
         if (!this.current()) return;
         this.publish({...this.state, phase: 'ready', capabilities, supportsPaths: registry.exportOptions?.includePaths === true, permissions: alerts.some(alert => isStatePermissionsAlert(alert)), skipped: skippedParts()});
-      } catch (error) {if (this.current()) this.publish({...this.state, phase: 'error', error});}
+      } catch (error) {if (this.current()) {const failure=(error&&typeof error==='object'?error:{}) as {status?:number};if(this.reportError&&(failure.status===401||failure.status===403)){this.dispose();this.reportError(error);}else this.publish({...this.state,phase:'error',error});}}
       finally {this.reading = undefined;}
     });
     this.reading = task;return task;
