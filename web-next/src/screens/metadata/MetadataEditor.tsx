@@ -60,6 +60,9 @@ export function MetadataEditor({api, scope, target, onClose, initialTab = 'gener
     if (!saved) setError(service.getSnapshot().error ?? new Error(t('web.metadata.saveChanges')));
     return saved;
   };
+  const makeThumbnail = useCallback(async (expectedData: RepairData) => {
+    try {await service.command({action: 'make_episode_thumbnail'}, expectedData);} catch (value) {setError(value);}
+  }, [service]);
   const currentRepairData = useCallback((expected: RepairData) => service.getSnapshot().data === expected, [service]);
   const removeUpload = useCallback(async (role: string, candidateId: string, expectedData: RepairData) => {
     try {return await service.removeUploadedArtwork(role, candidateId, expectedData);} catch (value) {setError(value); return false;}
@@ -99,7 +102,7 @@ export function MetadataEditor({api, scope, target, onClose, initialTab = 'gener
         onRetry={() => void run({action: 'retry'})} onLock={locked => void run({action: 'relationship_lock', role: 'identity', locked})}
         onUse={(provider, candidateId, order) => void run({action: 'identify', provider, candidateId, ...(order ? {order} : {})})} /> : null}
       {shown === 'artwork' ? <Artwork data={data} busy={state.phase !== 'ready'} onUse={(role, candidateId) => void run({action: 'select_artwork', role, candidateId})}
-        onRemove={removeUpload} isDataCurrent={currentRepairData}
+        onRemove={removeUpload} isDataCurrent={currentRepairData} onMakeFromVideo={data.canMakeEpisodeThumbnail ? makeThumbnail : undefined}
         onUpload={api.requestMetadataUpload ? (role, file) => service.uploadArtwork(role, file) : undefined}
         onLock={(role, subject, locked) => void run({action: 'artwork_lock', role, subject, locked})}
         onFindMore={role => void run({action: 'discover_artwork', role})} onRefetch={role => void run({action: 'repair_assets', role})} /> : null}
@@ -206,8 +209,9 @@ function TagList({spec, values, locked, onValues, onLock, busy}: {spec: RepairFi
   </section>;
 }
 
-function Artwork({data, busy, onUse, onLock, onFindMore, onRefetch, onUpload, onRemove, isDataCurrent}: {
+function Artwork({data, busy, onUse, onLock, onFindMore, onRefetch, onUpload, onRemove, isDataCurrent, onMakeFromVideo}: {
   isDataCurrent: (data: RepairData) => boolean;
+  onMakeFromVideo?: (expectedData: RepairData) => Promise<void>;
   onRemove: (role: string, candidateId: string, expectedData: RepairData) => Promise<boolean>;
   onUpload?: (role: string, file: File) => Promise<boolean>;
   data: RepairData; busy: boolean; onUse: (role: string, candidateId: string) => void;
@@ -265,6 +269,7 @@ function Artwork({data, busy, onUse, onLock, onFindMore, onRefetch, onUpload, on
           : <Button size="small" disabled={busy} onClick={() => onUse(role, candidate.id)}>{t('web.liveSource.useThis')}</Button>}
         {candidate.provider === 'upload' ? <Button size="small" disabled={busy} onClick={() => {if (removal.current) retireRemoval(removal.current); const attempt: Removal = {data, candidate, handler: onRemove, live: true, started: false}; removal.current = attempt; setRemoveFailed(false); setRemoving(attempt);}}>{t('web.metadata.removeUpload')}</Button> : null}
       </figure>)}</div> : <p className={styles.working}>{t('web.metadata.noCandidates')}</p>}
+      {onMakeFromVideo && (role === 'still' || role === 'thumbnail') ? <div className={styles.uploadTile}><b>{t('web.metadata.makeFromVideo')}</b><p>{t('web.metadata.makeFromVideoHelp')}</p><Button size="small" disabled={busy} onClick={() => {if (isDataCurrent(data)) void onMakeFromVideo(data);}}>{t('web.metadata.makeFromVideo')}</Button></div> : null}
       {onUpload ? <div className={styles.uploadTile} onDragOver={event => {if (!busy) event.preventDefault();}} onDrop={event => {event.preventDefault(); if (!busy) void upload(event.dataTransfer.files[0]);}}>
         <b>{t('web.metadata.uploadImage')}</b><p>{t('web.metadata.uploadImageHelp')}</p>
         <label>{t('web.metadata.chooseImageFile')}<input type="file" accept="image/jpeg,image/png" disabled={busy} onChange={event => {const file = event.currentTarget.files?.[0]; event.currentTarget.value = ''; void upload(file);}}/></label>
