@@ -21,7 +21,8 @@ import {wholeViewQuery} from './selection-query';
 /** The play adapter's own model owns the whole-view registration and the range
  * preview; these become available when the route supplies them. The operation
  * pair lets the bar capture the exact target before an awaited job. */
-export type LibrarySelectionHost = Omit<LibraryPlaySelection, 'selectWhole' | 'preview' | 'selected'> & Readonly<{
+export type LibrarySelectionHost = Omit<LibraryPlaySelection, 'selectWhole' | 'preview' | 'selected' | 'keepOnly'> & Readonly<{
+  keepOnly?: (kind: import('@core/selection-model/index.ts').SelectionKind) => unknown;
   selectWhole?: (query: SelectionQuery) => unknown;
   preview?: (row: LibraryPlayRow) => boolean;
   /** The model's own membership: explicit picks and whole-view query members. */
@@ -117,7 +118,7 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {openEditor: (
   return <SelectionBar
     selection={{count: summary.count, kind: summary.types.length === 1 ? summary.types[0].kind : undefined}}
     actions={{
-      ...(props.editor && summary.every.edit && summary.types.length === 1 && current.selection.target?.mode === 'explicit' && queueLease ? {onEdit: props.openEditor} : {}),
+      ...(props.editor && summary.every.edit && (summary.types.length === 1 || !!playSelection.keepOnly) && current.selection.target?.mode === 'explicit' && queueLease ? {onEdit: props.openEditor, editMode: summary.types.length > 1 ? 'mixed' as const : 'editable' as const} : {}),
       ...(canPlay ? {onPlay: () => { void playSelection.play().catch(reportError); }} : {}),
       ...(offers.watched ? {onWatchedChange: (watched: boolean) => { void personal({watched}); }} : {}),
       ...(offers.myList ? {onMyList: () => { void personal({watchlist: true}); }} : {}),
@@ -145,7 +146,7 @@ export function createLibrarySelection({playSelection, descriptor, actions, edit
   const openEditor = (anchor: HTMLElement) => {
     const selection = playSelection.getSnapshot().selection, operation = playSelection.captureOperation?.();
     if (!editor || !editor.signal || !editor.isCurrent() || !selection || !operation || operation.target !== selection.target || operation.target.mode !== 'explicit'
-      || !selection.summary.every.edit || selection.summary.types.length !== 1 || !playSelection.isOperationCurrent?.(operation)) throw new Error('selection-editor-unavailable');
+      || !selection.summary.every.edit || (selection.summary.types.length !== 1 && !playSelection.keepOnly) || !playSelection.isOperationCurrent?.(operation)) throw new Error('selection-editor-unavailable');
     closeEditor();
     const lifetime = new AbortController();
     const current = () => !lifetime.signal.aborted && !editor.signal!.aborted && editor.isCurrent() && playSelection.isOperationCurrent?.(operation) === true;
@@ -240,5 +241,5 @@ function LibraryEditorHost({playSelection, store, options, close}: {playSelectio
   const valid = !!session?.current();
   useEffect(() => {if (session && !valid) close();}, [session, valid, close]);
   useEffect(() => {const abort = () => close(); options.signal?.addEventListener('abort', abort, {once: true}); return () => {options.signal?.removeEventListener('abort', abort); close();};}, [options, close]);
-  return session && valid ? <SelectionEditorSurface session={session} options={options} onClose={close}/> : null;
+  return session && valid ? <SelectionEditorSurface session={session} options={options} onKeepOnly={kind => {if (session.current()) {playSelection.keepOnly?.(kind); close();}}} onClose={close}/> : null;
 }

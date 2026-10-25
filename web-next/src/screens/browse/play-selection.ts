@@ -254,6 +254,7 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
     },
     captureOperation() {return current() ? model?.captureOperation() ?? null : null;},
     isOperationCurrent(operation: SelectionOperation<BrowseSelectionContext>) {return current() && !!model?.isOperationCurrent(operation);},
+    keepOnly(kind: SelectionItem['kind']) {if (!current() || !model) throw cancelled();return model.keepOnly(kind);},
     selectWhole,
     selectLoaded() {if (!current() || !model) throw cancelled();return model.selectLoaded('library');},
     clear() {if (!current() || !model) throw cancelled();model.clear();},
