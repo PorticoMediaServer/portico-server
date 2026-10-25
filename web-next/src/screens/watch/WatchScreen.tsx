@@ -232,7 +232,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   </div>;
   const quality = surfaces?.quality && fence && sameFence(surfaces.quality.fence, fence) ? surfaces.quality : undefined;
   // desktop-player f4b: the film-end card stands in for the transport once nothing follows.
-  const endCard = surfaces?.end && !mobile && presentation?.finished && snapshot.queueView?.next.available !== true ? surfaces.end : undefined;
+  const endCard = surfaces?.end && presentation?.finished && snapshot.queueView?.next.available !== true ? surfaces.end : undefined;
   const tracks = surfaces?.tracks && fence && sameFence(surfaces.tracks.fence, fence) ? surfaces.tracks : undefined;
   const namedTrack = (section: 'audio' | 'subtitles', label: string | undefined) => tracks && label !== undefined && surfaces?.available.includes(section) ? <button type="button" className={styles.trackPill} onClick={event => showPanel(section, event.currentTarget)}>
     <Icon name={section === 'subtitles' ? 'i-cc' : 'i-audio'} size={17} />{t(section === 'subtitles' ? 'player.opt.subtitles' : 'player.opt.audio')}<span>{label}</span>
@@ -303,7 +303,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
       </div> : <>
         <div className={styles.shade} />
         {endCard?.backdrop && <><div className={styles.endAmbient} aria-hidden="true"><Artwork source={endCard.backdrop} alt="" width="100%" height="100%" /></div><div className={styles.endVeil} aria-hidden="true" /></>}
-        <div className={styles.top}>
+        {!(endCard && mobile) && <div className={styles.top}>
           <Control large icon="i-down" label={t('player.minimize')} action={onCollapse} />
           <div className={styles.identity}><h2>{identity?.title}</h2><p>{identity && <Facts parts={identity.subtitle} />}</p></div>
           <div className={styles.together}>{surfaces?.together}</div>
@@ -315,8 +315,8 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
             {!mobile && !endCard && <Control large buttonRef={moreAnchor} icon="i-more" label={t('player.more')} active={more} action={() => { setPanel(null); setMore(value => !value); }} />}
             {!mobile && <Control large icon="i-close" label={t('player.close')} action={() => send({kind: 'stop'})} />}
           </div>
-        </div>
-        {endCard ? <WatchEndCardView card={endCard} canReplay={can('replay')} onReplay={() => send({kind: 'replay'})} reportError={binding.reportError}
+        </div>}
+        {endCard ? <WatchEndCardView card={endCard} canReplay={can('replay')} onReplay={() => send({kind: 'replay'})} onClose={() => send({kind: 'stop'})} layout={mobile ? 'phone' : 'desktop'} reportError={binding.reportError}
           artwork={url => binding.artwork.foreground(url, 512, 16 / 9, {group: 'playback', priority: 'high'})} /> : <>
         <div className={styles.center}>{transport}</div>
         <div className={styles.bottom}>

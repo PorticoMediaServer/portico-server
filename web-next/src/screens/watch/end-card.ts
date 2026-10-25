@@ -13,6 +13,9 @@ export type WatchNextFacts = Readonly<{
  * rating permission, the rating itself and the server's related row. Nothing is inferred. */
 export type WatchEndCard = Readonly<{
   title: string;
+  /** The completed title's own year and real genres, as the phone card draws them. */
+  year?: number;
+  genres?: readonly string[];
   /** The title's own backdrop, as the drawn finished card's ambient layer. */
   backdrop?: ArtworkSource;
   related: readonly Readonly<{id: string; title: string; year?: number; poster?: ArtworkSource}>[];
@@ -37,10 +40,12 @@ export function watchEndCard(data: DetailProjection | undefined, poster: (entry:
     related.push({id: entry.id, title: entry.title, ...(entry.year === undefined ? {} : {year: entry.year}), ...(source ? {poster: source} : {})});
     if (related.length === 12) break;
   }
-  const canRate = data.actions.some(action => action.enabled && action.id === 'rating');
+  const canRate = data.actions.some(action => action.enabled && action.id === 'rating'), genres = data.metadata.genres.map(genre => genre.name).filter(Boolean);
   const backdropArt = data.item.backdropUrl && backdrop ? backdrop(data.item.backdropUrl) : undefined;
   return Object.freeze({
     title: data.item.title,
+    ...(typeof data.item.year === 'number' ? {year: data.item.year} : {}),
+    ...(genres.length ? {genres: Object.freeze(genres)} : {}),
     ...(backdropArt ? {backdrop: backdropArt} : {}),
     related: Object.freeze(related.map(entry => Object.freeze(entry))),
     ...(canRate ? {rating: Object.freeze({value: data.personal.rating, set: setRating})} : {}),

@@ -23,11 +23,15 @@
 .meter { height: 3px; border-radius: 2px; margin-top: 12px; background: color-mix(in srgb, var(--color-text) 14%, transparent); overflow: hidden; }
 .meter i { display: block; height: 100%; background: var(--color-accent-strong); }
 /* phone-player f6: the same card in the corner, at the phone's own proportions. */
-.card[data-layout='phone'] { right: 14%; bottom: 20px; width: min(360px, 84%); padding: 14px; border-radius: 16px;
+.card[data-layout='phone'] { right: 60px; bottom: 20px; width: min(360px, calc(100% - 74px)); padding: 14px; border-radius: 16px;
   --up-next-label-size: 12.5px; --up-next-title-size: 16.5px; --up-next-fact-size: 12.5px; --up-next-action-size: 14.5px; }
 .card[data-layout='phone'] .still { width: 112px; border-radius: 8px; }
-.card[data-layout='phone'][data-scene-after='true'] { width: min(360px, 84%); }
+.card[data-layout='phone'][data-scene-after='true'] { width: min(424px, calc(100% - 74px)); }
 .card[data-layout='phone'][data-scene-after='true'] .still { width: 112px; }
 .card[data-layout='phone'] .actions { margin-top: 12px; }
 .card[data-layout='phone'] .actions button { height: 40px; padding: 0 16px; border-radius: 10px; }
 @media (prefers-reduced-motion: reduce) { .actions button { transition: none; }.actions button:active { transform: none; } }
+
+/* phone-player f6c: with the controls up the card rises above them; the scene
+   variant's 424 px width stays bounded by the authored right inset. */
+.card[data-layout='phone'][data-controls-visible='true'] { bottom: 100px; }

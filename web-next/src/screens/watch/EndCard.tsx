@@ -11,9 +11,9 @@ const t = defaultI18n.t;
 
 /** desktop-player f4b. Drawn parts only: Finished, the title, the viewer's rating, Replay,
  * a way back to the title page and the server's related titles as a full row. */
-export function WatchEndCardView({card, canReplay, onReplay, reportError, artwork}: {
-  card: WatchEndCard; canReplay: boolean; onReplay: () => void; reportError: (error: unknown) => void;
-  artwork: (url: string | undefined) => ArtworkSource | undefined;
+export function WatchEndCardView({card, canReplay, onReplay, onClose, reportError, artwork, layout = 'desktop'}: {
+  card: WatchEndCard; canReplay: boolean; onReplay: () => void; onClose?: () => void; reportError: (error: unknown) => void;
+  artwork: (url: string | undefined) => ArtworkSource | undefined; layout?: 'desktop' | 'phone';
 }) {
   const [hover, setHover] = useState<number | null>(null), [pending, setPending] = useState(false);
   const stored = card.rating?.value == null ? null : card.rating.value / 2, shown = hover ?? stored ?? 0;
@@ -23,21 +23,24 @@ export function WatchEndCardView({card, canReplay, onReplay, reportError, artwor
     void card.rating.set(stars * 2).catch(reportError).finally(() => setPending(false));
   };
   const act = (action: () => void | Promise<void>) => { try { void Promise.resolve(action()).catch(reportError); } catch (error) { reportError(error); } };
-  return <div className={styles.card} data-watch-end-card>
+  return <div className={styles.card} data-watch-end-card data-layout={layout}>
     <div className={styles.left}>
       <p className={styles.kicker}>{t('player.post.finished')}</p>
       <h2 className={styles.title}>{card.title}</h2>
+      {layout === 'phone' && (card.year !== undefined || card.genres?.length) && <div className={styles.meta}>{card.year !== undefined && <strong>{card.year}</strong>}{card.year !== undefined && card.genres?.length ? ' · ' : null}{card.genres?.length ? card.genres.join(', ') : null}</div>}
       {card.rating && <div className={styles.rate}>
         <span>{stored == null ? t('player.rateThis') : t('player.rated', {stars: t('title.stars', {count: stored})})}</span>
         <div className={styles.stars} role="radiogroup" aria-label={t('player.rateThis')} onMouseLeave={() => setHover(null)}>
           {[1, 2, 3, 4, 5].map(star => <button key={star} type="button" role="radio" aria-checked={stored === star} aria-label={t('title.stars', {count: star})}
             disabled={pending} data-lit={shown >= star || undefined} onMouseEnter={() => setHover(star)} onFocus={() => setHover(star)} onBlur={() => setHover(null)}
-            onClick={() => rate(star)}><Icon name={shown >= star ? 'i-star-f' : 'i-star'} size={28} /></button>)}
+            onClick={() => rate(star)}><Icon name={shown >= star ? 'i-star-f' : 'i-star'} size={layout === 'phone' ? 22 : 28} /></button>)}
         </div>
       </div>}
       <div className={styles.actions}>
-        {canReplay && <Button size="small" icon="i-back" onClick={onReplay}>{t('player.post.replay')}</Button>}
-        <Button size="small" onClick={() => act(card.back)}>{t('player.post.backTo', {title: card.title})}</Button>
+        {canReplay && <Button variant={layout === 'phone' ? 'primary' : 'glass'} size="small" icon={layout === 'phone' ? 'i-restart' : 'i-back'} onClick={onReplay}>{t('player.post.replay')}</Button>}
+        {layout === 'phone'
+          ? onClose && <Button variant="glass" size="small" onClick={onClose}>{t('player.close')}</Button>
+          : <Button size="small" onClick={() => act(card.back)}>{t('player.post.backTo', {title: card.title})}</Button>}
       </div>
     </div>
     {card.collection && <section className={styles.feature} aria-label={t('player.collection.next', {collection: card.collection.collectionName})}>
@@ -49,9 +52,9 @@ export function WatchEndCardView({card, canReplay, onReplay, reportError, artwor
           onClick={() => {const myList = card.collection!.myList!;void myList.set(!myList.listed);}}>{t('next.controls.myList')}</Button>}</div>
     </section>}
     {card.related.length > 0 && <section className={styles.row} aria-label={t('player.moreLike', {title: card.title})}>
-      <h2>{t('player.moreLike', {title: card.title})}</h2>
+      <h2>{layout === 'phone' ? <>{t('player.moreLike', {title: card.title})}<Icon name="i-right" size={18} aria-hidden="true" /></> : t('player.moreLike', {title: card.title})}</h2>
       <div className={styles.track}>
-        {card.related.map(entry => <button key={entry.id} type="button" className={styles.related} onClick={() => act(() => card.openRelated(entry.id))} aria-label={entry.title}>
+        {(layout === 'phone' ? card.related.slice(0, 4) : card.related).map(entry => <button key={entry.id} type="button" className={styles.related} onClick={() => act(() => card.openRelated(entry.id))} aria-label={entry.title}>
           <span className={styles.art}><Artwork source={entry.poster} alt="" width="100%" height="100%" /></span>
           <span className={styles.name}>{entry.title}</span>
           {entry.year !== undefined && <span className={styles.year}>{entry.year}</span>}

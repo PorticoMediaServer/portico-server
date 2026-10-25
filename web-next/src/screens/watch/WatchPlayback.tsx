@@ -311,7 +311,7 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
     playOn: cast && castAvailable ? {active: remoteState?.panel === 'play-on', open: anchor => {castAnchor.current = anchor ?? null;cast.controller.openPlayOn();}, close: () => cast.controller.closePanel()} : surfaces?.playOn,
     prompts: <>{surfaces?.prompts}{policy && snapshot && <><WatchSkipPrompt binding={policy} snapshot={snapshot} expanded={expanded} controlsVisible={controlsVisible} layout={layout} />
       <WatchUndoPrompt binding={policy} snapshot={snapshot} expanded={expanded} controlsVisible={controlsVisible} layout={layout} />
-      <WatchUpNextPrompt binding={policy} snapshot={snapshot} expanded={expanded} layout={layout} artwork={binding!.artwork} environment={binding!.environment} /></>}</>};
+      <WatchUpNextPrompt binding={policy} snapshot={snapshot} expanded={expanded} controlsVisible={controlsVisible} layout={layout} artwork={binding!.artwork} environment={binding!.environment} /></>}</>};
   const remote = remoteState?.remote;
   const visualId = remote?.phase === 'playing' ? remoteState?.cast.receiver?.itemId : remote?.itemId;
   const item = visualId ? cast?.item(visualId) : undefined;
