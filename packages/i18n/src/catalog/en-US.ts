@@ -11,6 +11,7 @@
  */
 import {nextMessages} from './en-US/next/index.ts';
 import {musicMixMessages} from './en-US/music-mixes.ts';
+import {musicMetadataMessages} from './en-US/music-metadata.ts';
 import {remoteAccessMessages} from './en-US/remote-access.ts';
 import {webMessages} from './en-US/web.ts';
 import {channelMessages} from './en-US/channels.ts';
@@ -31,6 +32,7 @@ import {savedViewSummaryMessages} from './en-US/saved-view.ts';
 
 export const enUS = {
   ...remoteAccessMessages,
+  ...musicMetadataMessages,
   // Player engine facts shown by the shared player; keep their existing wording.
   "playback.engine.rateUnavailable": "This speed is unavailable for this media. Choose a supported speed, then press Play.",
   "playback.engine.seekUnavailable": "That position is not available yet. Try seeking again.",

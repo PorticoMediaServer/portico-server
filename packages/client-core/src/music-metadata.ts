@@ -1,3 +1,5 @@
+import type {MessageId, MessageValues} from '../../i18n/src/index.ts';
+import {serviceText} from './presentation/service-text.ts';
 import {routeBody} from "../../contracts/src/routes.ts";
 import type {RouteResponse} from "../../contracts/src/routes.ts";
 import {encodedRoutePath} from "../../contracts/src/routes.ts";
@@ -44,8 +46,52 @@ export function parseLocalBook(v:unknown):LocalBookMetadata {
  const publishedYear=typeof v.publishedYear==='number'&&Number.isSafeInteger(v.publishedYear)&&v.publishedYear>0&&v.publishedYear<=9999?v.publishedYear:undefined;
  return Object.freeze({...fields,...(publishedYear===undefined?{}:{publishedYear}),authors:strings(v.authors,128,'book.authors'),narrators:strings(v.narrators,128,'book.narrators'),series:Object.freeze(series),identifiers:Object.freeze(identifiers),sources:Object.freeze(sources)});
 }
-export const musicEvidenceLabel=(reason:string):string=>({provider_name_search:'Title and artist search',owner_review_required:'Owner review required',automatic_evidence_match:'Automatic evidence match',exact_title:'Title agrees',exact_artist:'Artist agrees',duration_match:'Duration agrees',duration_conflict:'Duration differs',acoustid_recording_match:'Fingerprint supports this recording',isrc_match:'ISRC agrees',isrc_conflict:'ISRC differs',release_year_match:'Release year agrees',release_year_conflict:'Release year differs',barcode_match:'Barcode agrees',barcode_conflict:'Barcode differs',country_match:'Release country agrees',country_conflict:'Release country differs',track_count_match:'Track count agrees',track_count_conflict:'Track count differs',edition_conflict:'Edition differs',local_evidence_conflict:'Local evidence disagrees'}[reason]??reason.replaceAll('_',' '));
-export const fingerprintStatusLabel=(status:string):string=>({unsupported_algorithm:'This fingerprint format is not compatible with AcoustID. Other matching evidence is still used.',not_applicable:'Fingerprint matching applies to recordings, not releases.',disabled:'Fingerprint matching is off.',scan_policy_disallows:'Fingerprint matching requires Complete or a Custom scan policy that permits fingerprints.',credential_required:'Configure the server’s AcoustID application key to use fingerprint lookup.',not_available:'No current fingerprint is available. Other matching evidence is still used.',stale_or_invalid:'The fingerprint is stale or invalid. Other matching evidence is still used.',provider_disabled:'AcoustID authentication or terms prevented lookup. Update the server application credential before retrying.',provider_backoff:'AcoustID requested a pause. Retry after the provider cooldown.',provider_unavailable:'AcoustID could not be reached. Other matching evidence is still used.',no_match:'AcoustID returned no supported recording match.',matched:'AcoustID supports one or more recording candidates.',ready:'A current fingerprint is available for lookup.'}[status]??status.replaceAll('_',' '));
+type MusicMetadataTranslate = (key: MessageId, values?: MessageValues) => string;
+const evidenceKeys: Readonly<Record<string, MessageId>> = {
+ provider_name_search: 'musicMetadata.evidence.provider_name_search',
+ owner_review_required: 'musicMetadata.evidence.owner_review_required',
+ automatic_evidence_match: 'musicMetadata.evidence.automatic_evidence_match',
+ exact_title: 'musicMetadata.evidence.exact_title',
+ exact_artist: 'musicMetadata.evidence.exact_artist',
+ duration_match: 'musicMetadata.evidence.duration_match',
+ duration_conflict: 'musicMetadata.evidence.duration_conflict',
+ acoustid_recording_match: 'musicMetadata.evidence.acoustid_recording_match',
+ isrc_match: 'musicMetadata.evidence.isrc_match',
+ isrc_conflict: 'musicMetadata.evidence.isrc_conflict',
+ release_year_match: 'musicMetadata.evidence.release_year_match',
+ release_year_conflict: 'musicMetadata.evidence.release_year_conflict',
+ barcode_match: 'musicMetadata.evidence.barcode_match',
+ barcode_conflict: 'musicMetadata.evidence.barcode_conflict',
+ country_match: 'musicMetadata.evidence.country_match',
+ country_conflict: 'musicMetadata.evidence.country_conflict',
+ track_count_match: 'musicMetadata.evidence.track_count_match',
+ track_count_conflict: 'musicMetadata.evidence.track_count_conflict',
+ edition_conflict: 'musicMetadata.evidence.edition_conflict',
+ local_evidence_conflict: 'musicMetadata.evidence.local_evidence_conflict',
+};
+const fingerprintKeys: Readonly<Record<string, MessageId>> = {
+ unsupported_algorithm: 'musicMetadata.fingerprint.unsupported_algorithm',
+ not_applicable: 'musicMetadata.fingerprint.not_applicable',
+ disabled: 'musicMetadata.fingerprint.disabled',
+ scan_policy_disallows: 'musicMetadata.fingerprint.scan_policy_disallows',
+ credential_required: 'musicMetadata.fingerprint.credential_required',
+ not_available: 'musicMetadata.fingerprint.not_available',
+ stale_or_invalid: 'musicMetadata.fingerprint.stale_or_invalid',
+ provider_disabled: 'musicMetadata.fingerprint.provider_disabled',
+ provider_backoff: 'musicMetadata.fingerprint.provider_backoff',
+ provider_unavailable: 'musicMetadata.fingerprint.provider_unavailable',
+ no_match: 'musicMetadata.fingerprint.no_match',
+ matched: 'musicMetadata.fingerprint.matched',
+ ready: 'musicMetadata.fingerprint.ready',
+};
+/** Known codes read from the viewer's catalogue. A code this build does not know keeps its own
+ * words (the current fallback) rather than borrowing wording that may not describe it. */
+export function musicEvidenceLabel(reason:string,t:MusicMetadataTranslate=serviceText):string {
+ return Object.hasOwn(evidenceKeys,reason)?t(evidenceKeys[reason]):reason.replaceAll('_',' ');
+}
+export function fingerprintStatusLabel(status:string,t:MusicMetadataTranslate=serviceText):string {
+ return Object.hasOwn(fingerprintKeys,status)?t(fingerprintKeys[status]):status.replaceAll('_',' ');
+}
 
 export type LocalAudioPolicy=Readonly<{revision:number;localMode:'prefer'|'supplement'|'off'}>;
 export function parseLocalAudioPolicy(v:unknown):LocalAudioPolicy {
