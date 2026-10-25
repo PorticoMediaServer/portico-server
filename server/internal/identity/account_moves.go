@@ -33,6 +33,8 @@ type AccountMove struct {
 	Devices            *int       `json:"devices,omitempty"`
 	Invitations        int        `json:"invitations"`
 	Profiles           int        `json:"profiles"`
+	RetainedProfiles   *int64     `json:"retainedProfiles,omitempty"`
+	RemovedProfiles    *int64     `json:"removedProfiles,omitempty"`
 	Waiting            int        `json:"waiting"`
 	ServerName         string     `json:"serverName"`
 	OwnAddressRequired bool       `json:"ownAddressRequired"`
@@ -110,11 +112,17 @@ func (s *Service) moveOwnerTx(ctx context.Context, tx *sql.Tx, bearer string) (d
 }
 func readMoveTx(ctx context.Context, tx *sql.Tx, id string) (out AccountMove, err error) {
 	var devices int
-	var count sql.NullInt64
-	err = tx.QueryRowContext(ctx, `SELECT id,from_kind,to_kind,start_over,stage,revision,people,devices,profiles,server_name,invitations,other_people_count FROM identity_moves WHERE id=?`, id).Scan(&out.ID, &out.From, &out.To, &out.StartOver, &out.Stage, &out.Revision, &out.People, &devices, &out.Profiles, &out.ServerName, &out.Invitations, &count)
+	var count, retained, removed sql.NullInt64
+	err = tx.QueryRowContext(ctx, `SELECT id,from_kind,to_kind,start_over,stage,revision,people,devices,profiles,server_name,invitations,other_people_count,retained_profiles,removed_profiles FROM identity_moves WHERE id=?`, id).Scan(&out.ID, &out.From, &out.To, &out.StartOver, &out.Stage, &out.Revision, &out.People, &devices, &out.Profiles, &out.ServerName, &out.Invitations, &count, &retained, &removed)
 	if err == nil && count.Valid && count.Int64 >= 0 && count.Int64 <= 10000 {
 		value := int(count.Int64)
 		out.otherPeopleCount = &value
+	}
+	if err == nil && (retained.Valid || removed.Valid) {
+		if !out.StartOver || !retained.Valid || !removed.Valid || retained.Int64 < 0 || removed.Int64 < 0 || retained.Int64 > 9007199254740991 || removed.Int64 > 9007199254740991 || retained.Int64 > 9007199254740991-removed.Int64 || retained.Int64+removed.Int64 != int64(out.Profiles) {
+			return out, ErrDirectInput
+		}
+		out.RetainedProfiles, out.RemovedProfiles = &retained.Int64, &removed.Int64
 	}
 	if !out.StartOver {
 		out.Devices = &devices
@@ -162,6 +170,18 @@ func (s *Service) PreviewAccountMove(ctx context.Context, bearer string, q MoveP
 		if e = tx.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM accounts WHERE id<>?1),(SELECT count(*) FROM identity_devices WHERE platform<>'api'),(SELECT count(*) FROM direct_profiles WHERE deleted=0)`, c.account.ID).Scan(&out.People, &devices, &out.Profiles); e != nil {
 			return e
 		}
+		if q.StartOver {
+			// Capture once with the same undeleted base and exact move owner.
+			// Later reads and active-preview reuse only replay these stored facts.
+			var retained, removed int64
+			if e = tx.QueryRowContext(ctx, `SELECT count(*) FILTER (WHERE account_id=?1),count(*) FILTER (WHERE account_id<>?1) FROM direct_profiles WHERE deleted=0`, c.account.ID).Scan(&retained, &removed); e != nil {
+				return e
+			}
+			if retained < 0 || removed < 0 || retained > 9007199254740991-removed || retained+removed != int64(out.Profiles) {
+				return ErrDirectInput
+			}
+			out.RetainedProfiles, out.RemovedProfiles = &retained, &removed
+		}
 		if kind == SignInLocal && q.To == SignInPortico {
 			out.otherPeopleCount, e = captureOwnerSwitchCountTx(ctx, tx, c.account.ID)
 			if e != nil {
@@ -174,7 +194,7 @@ func (s *Service) PreviewAccountMove(ctx context.Context, bearer string, q MoveP
 		if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM access_invitations WHERE state='pending'`).Scan(&out.Invitations); e != nil {
 			return e
 		}
-		_, e = tx.ExecContext(ctx, `INSERT INTO identity_moves(id,owner_id,owner_revision,from_kind,to_kind,start_over,stage,revision,people,devices,profiles,server_name,created_ms,invitations,other_people_count) VALUES(?,?,?,?,?,?,'preview',1,?,?,?,?,?,?,?)`, out.ID, c.account.ID, c.account.Revision, kind, q.To, q.StartOver, out.People, devices, out.Profiles, out.ServerName, time.Now().UnixMilli(), out.Invitations, out.otherPeopleCount)
+		_, e = tx.ExecContext(ctx, `INSERT INTO identity_moves(id,owner_id,owner_revision,from_kind,to_kind,start_over,stage,revision,people,devices,profiles,server_name,created_ms,invitations,other_people_count,retained_profiles,removed_profiles) VALUES(?,?,?,?,?,?,'preview',1,?,?,?,?,?,?,?,?,?)`, out.ID, c.account.ID, c.account.Revision, kind, q.To, q.StartOver, out.People, devices, out.Profiles, out.ServerName, time.Now().UnixMilli(), out.Invitations, out.otherPeopleCount, out.RetainedProfiles, out.RemovedProfiles)
 		return e
 	})
 	return
