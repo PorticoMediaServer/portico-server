@@ -104,6 +104,12 @@ func (p Probe) InspectRemoteMP4(ctx context.Context, path string) (Facts, error)
 	return facts, e
 }
 func (p Probe) probeOutput(ctx context.Context, path, input string, options []string) ([]byte, error) {
+	return p.probeOutputMode(ctx, path, input, options, false)
+}
+
+// probeOutputMode reads a disc folder through its descriptor-bound directory
+// input; every other probe keeps the file descriptor or bridge it always had.
+func (p Probe) probeOutputMode(ctx context.Context, path, input string, options []string, directory bool) ([]byte, error) {
 	bin := p.Binary
 	if bin == "" {
 		bin = mediatools.Resolve("ffprobe")
@@ -120,7 +126,13 @@ func (p Probe) probeOutput(ctx context.Context, path, input string, options []st
 		return nil, e
 	}
 	runScan := storage.RunScanCommand
-	if input != path {
+	if directory {
+		// A disc folder is one admitted directory descriptor; the sandbox
+		// mounts it at its own root and the tool never sees a host path.
+		runScan = func(ctx context.Context, binary string, args []string, path string, out io.Writer) (bool, error) {
+			return storage.RunDiscDirectoryCommand(ctx, binary, args, path, out)
+		}
+	} else if input != path {
 		// Only the validated disc reader uses a prefixed input. The storage
 		// bridge accepts exactly bluray:path and retains that prefix on FD3.
 		runScan = func(ctx context.Context, binary string, args []string, path string, out io.Writer) (bool, error) {
@@ -129,6 +141,10 @@ func (p Probe) probeOutput(ctx context.Context, path, input string, options []st
 	}
 	if handled, err := runScan(ctx, bin, args, path, out); handled {
 		runErr = err
+	} else if directory {
+		// A disc folder has no path-based fallback: without the admitted
+		// descriptor mount it stays unreadable.
+		return nil, fmt.Errorf("media probe failed: %w", storage.ErrInventoryChanged)
 	} else if p.Supervisor != nil {
 		cmd, err := mediaexec.Command(probeJob(bin, args, path))
 		if err != nil {

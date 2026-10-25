@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 )
 
 const Schema = 1
@@ -198,6 +199,78 @@ func (p Probe) OrderedTitles() []Title {
 	out := append([]Title(nil), p.Titles...)
 	sort.SliceStable(out, func(i, j int) bool { return out[i].DurationMs > out[j].DurationMs })
 	return out
+}
+
+// MaxConsumedMembers bounds the file manifest one folder analysis may stat.
+const MaxConsumedMembers = 256
+
+// DiscMember is one file a published disc structure or a selected title read
+// consumes, relative to the admitted disc folder. Required members must exist
+// and be regular; optional structure files may be absent.
+type DiscMember struct {
+	Path      string
+	Required  bool
+	Directory bool
+}
+
+// ConsumedMembers names every file the published title list and its media
+// reads depend on. The manifest covers all titles, not only the selected one,
+// because every title is published; it refuses a disc that needs more members
+// than the bound instead of sampling.
+func ConsumedMembers(p Probe) ([]DiscMember, error) {
+	if p.Packaging != "folder" {
+		return nil, ErrProtocol
+	}
+	out := []DiscMember{}
+	index := map[string]int{}
+	add := func(path string, required, directory bool) {
+		if i, ok := index[path]; ok {
+			out[i].Required = out[i].Required || required
+			out[i].Directory = out[i].Directory || directory
+			return
+		}
+		index[path] = len(out)
+		out = append(out, DiscMember{Path: path, Required: required, Directory: directory})
+	}
+	switch p.Kind {
+	case "bluray":
+		// The title set is discovered from this directory membership, so the
+		// directories' identity and revision are part of the witness: a
+		// playlist added between observations changes the directory even
+		// though no named file changed.
+		for _, dir := range []string{"BDMV", "BDMV/PLAYLIST", "BDMV/CLIPINF", "BDMV/STREAM"} {
+			add(dir, true, true)
+		}
+		add("BDMV/index.bdmv", true, false)
+		add("BDMV/MovieObject.bdmv", false, false)
+		for _, t := range p.Titles {
+			add("BDMV/PLAYLIST/"+t.PlaylistFile, true, false)
+			for _, clip := range t.Clips {
+				add("BDMV/STREAM/"+clip.File, true, false)
+				if base, ok := strings.CutSuffix(clip.File, ".m2ts"); ok {
+					add("BDMV/CLIPINF/"+base+".clpi", true, false)
+				}
+			}
+		}
+	case "dvd":
+		add("VIDEO_TS", true, true)
+		add("VIDEO_TS/VIDEO_TS.IFO", true, false)
+		for _, t := range p.Titles {
+			add(fmt.Sprintf("VIDEO_TS/VTS_%02d_0.IFO", t.VTS), true, false)
+			add(fmt.Sprintf("VIDEO_TS/VTS_%02d_1.VOB", t.VTS), true, false)
+			for n := 0; n < 10; n++ {
+				if n != 1 {
+					add(fmt.Sprintf("VIDEO_TS/VTS_%02d_%d.VOB", t.VTS, n), false, false)
+				}
+			}
+		}
+	default:
+		return nil, ErrProtocol
+	}
+	if len(out) > MaxConsumedMembers {
+		return nil, fmt.Errorf("disc needs more than %d consumed members", MaxConsumedMembers)
+	}
+	return out, nil
 }
 
 // MainTitle is the title a disc plays by default: the longest title of at

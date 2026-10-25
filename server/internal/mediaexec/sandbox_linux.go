@@ -167,6 +167,12 @@ func linuxArgv(bwrap string, job Job, disableUserns bool) ([]string, error) {
 	for _, path := range job.ReadPaths {
 		args = append(args, "--ro-bind", path, path)
 	}
+	if job.InputFD == 3 && job.InputMount != "" {
+		// The disc reader's directory, mounted from the helper's admitted
+		// descriptor. Nothing else of the host root is mounted, so the
+		// sandbox cannot walk out of the subtree with "..".
+		args = append(args, "--ro-bind-fd", "3", job.InputMount)
+	}
 	for _, dir := range job.WriteDirs {
 		args = append(args, "--bind", dir, dir)
 	}

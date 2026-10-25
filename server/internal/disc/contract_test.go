@@ -357,3 +357,57 @@ func TestMainTitleIsTheLongestOfAtLeastAMinute(t *testing.T) {
 		t.Fatal("an empty probe named a main title")
 	}
 }
+
+// A folder disc's consumed-member manifest covers every published title, is
+// rooted at BDMV/ or VIDEO_TS/, marks required members, and is bounded.
+func TestConsumedMembersAreRelativeAndBounded(t *testing.T) {
+	playlist := 1
+	probe := Probe{Kind: "bluray", Packaging: "folder", Titles: []Title{
+		{DiscOrder: 0, DurationMs: 120000, Playlist: &playlist, PlaylistFile: "00001.mpls", Clips: []Clip{{Sequence: 0, File: "00002.m2ts", InTime90k: 0, OutTime90k: 1}}},
+		{DiscOrder: 1, DurationMs: 90000, Playlist: &playlist, PlaylistFile: "00001.mpls", Clips: []Clip{{Sequence: 0, File: "00002.m2ts", InTime90k: 0, OutTime90k: 1}}},
+	}}
+	members, err := ConsumedMembers(probe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]DiscMember{}
+	for _, member := range members {
+		found[member.Path] = member
+	}
+	for _, dir := range []string{"BDMV", "BDMV/PLAYLIST", "BDMV/CLIPINF", "BDMV/STREAM"} {
+		if member, ok := found[dir]; !ok || !member.Required || !member.Directory {
+			t.Errorf("missing required directory %s in %+v", dir, members)
+		}
+	}
+	for _, want := range []string{"BDMV/PLAYLIST/00001.mpls", "BDMV/STREAM/00002.m2ts", "BDMV/CLIPINF/00002.clpi", "BDMV/index.bdmv"} {
+		member, ok := found[want]
+		if !ok || !member.Required || member.Directory {
+			t.Errorf("missing required file %s in %+v", want, members)
+		}
+	}
+	if member, ok := found["BDMV/MovieObject.bdmv"]; !ok || member.Required {
+		t.Errorf("MovieObject must be an optional member: %+v", members)
+	}
+	dvd := Probe{Kind: "dvd", Packaging: "folder", Titles: []Title{{DiscOrder: 0, DurationMs: 120000, Title: 1, VTS: 3, PGC: 1}}}
+	members, err = ConsumedMembers(dvd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	required := map[string]DiscMember{}
+	for _, member := range members {
+		required[member.Path] = member
+	}
+	if !required["VIDEO_TS"].Directory || !required["VIDEO_TS/VTS_03_0.IFO"].Required || !required["VIDEO_TS/VTS_03_1.VOB"].Required || required["VIDEO_TS/VTS_03_2.VOB"].Required {
+		t.Fatal(members)
+	}
+	if _, err = ConsumedMembers(Probe{Kind: "bluray", Packaging: "iso"}); err == nil {
+		t.Fatal("an image source was given folder members")
+	}
+	many := Probe{Kind: "bluray", Packaging: "folder"}
+	for i := 0; i < MaxConsumedMembers; i++ {
+		many.Titles = append(many.Titles, Title{DiscOrder: i, DurationMs: 120000, Playlist: &playlist, PlaylistFile: "00001.mpls", Clips: []Clip{{Sequence: 0, File: "00002.m2ts", InTime90k: 0, OutTime90k: 1}}})
+	}
+	if _, err = ConsumedMembers(many); err == nil {
+		t.Fatal("an unbounded disc was admitted")
+	}
+}

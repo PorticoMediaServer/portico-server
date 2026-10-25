@@ -2,7 +2,9 @@ package catalog
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"path/filepath"
@@ -229,6 +231,14 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 		}
 		if v.Directory {
 			if discs := naming.DiscLayout(filepath.ToSlash(child)); len(discs) > 0 {
+				// A title-bearing disc root belongs to the folder that holds
+				// BDMV or VIDEO_TS. The scan loop publishes that folder as one
+				// object after this page, if the host can admit a directory
+				// descriptor; otherwise the layout stays explicitly unsupported.
+				videoLibrary := libraryKind != "music" && libraryKind != "audiobook" && libraryKind != "book" && libraryKind != "comic"
+				if root := discs[0].Value.ParentPath; root != "" && root != "." && videoLibrary && source.Kind == "local" && storage.DirectoryDiscScanSupported() {
+					continue
+				}
 				if _, e := s.observeInventoryTx(ctx, tx, job, source, child, v, "unsupported_disc_layout", policy, movedOut); e != nil {
 					return false, e
 				}
@@ -667,6 +677,67 @@ func (s *Service) reinterpretInventoryTx(ctx context.Context, tx *sql.Tx, source
 		return nil
 	}
 	return nil
+}
+
+// CommitInventoryDiscRoot publishes one BDMV or VIDEO_TS folder as a single
+// title object. The caller stats the admitted directory outside this
+// transaction; the object's revision is that exact observation, so the
+// analysis fence compares the same directory snapshot. The folder's own
+// children are not inventoried as loose files.
+func (s *Service) CommitInventoryDiscRoot(ctx context.Context, job, relative string, v storage.Snapshot) error {
+	if relative == "" || relative == "." || !v.Directory {
+		return ErrAdminQuery
+	}
+	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
+	if err != nil {
+		return err
+	}
+	tx := gated.Tx()
+	defer gated.Rollback()
+	source, err := InventoryFenceTx(ctx, tx, job)
+	if err != nil {
+		return err
+	}
+	policy, err := ScanPolicyTx(ctx, tx, source.LibraryID)
+	if err != nil {
+		return err
+	}
+	// The folder's own size and mtime cannot witness the bytes of the title it
+	// holds. The object's evidence is the last committed disc structure, and
+	// every scan re-probes the folder's actual title bytes below it.
+	var fingerprint string
+	err = tx.QueryRowContext(ctx, `SELECT COALESCE(f.fingerprint,'') FROM inventory_objects o JOIN inventory_disc_facts f ON f.object_id=o.id WHERE o.source_id=? AND o.relative_path=? AND o.retired=0`, source.ID, relative).Scan(&fingerprint)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	v.ChangeToken = DiscStructureWitness(fingerprint)
+	if _, err = s.observeInventoryTx(ctx, tx, job, source, relative, v, "", policy, map[string]bool{}); err != nil {
+		return err
+	}
+	if policy.Tier == "file_list_only" {
+		return gated.Commit()
+	}
+	// Re-probe every time: a clip, playlist or VIDEO_TS member can change
+	// without changing the folder's revision.
+	if _, err = tx.ExecContext(ctx, `UPDATE inventory_objects SET analysis_revision='',analysis_policy=0,analysis_operations_json='[]',analysis_state='pending' WHERE source_id=? AND relative_path=? AND retired=0`, source.ID, relative); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO inventory_analysis_queue(job_id,object_id,revision,policy_revision) SELECT ?,id,revision,? FROM inventory_objects WHERE source_id=? AND relative_path=? AND retired=0 ON CONFLICT(job_id,object_id) DO UPDATE SET revision=excluded.revision,policy_revision=excluded.policy_revision,state='pending'`, job, policy.Revision, source.ID, relative); err != nil {
+		return err
+	}
+	return gated.Commit()
+}
+
+// DiscStructureWitness is the object-evidence token for a folder disc: the
+// last committed structure fingerprint. It changes the object revision when
+// playlists or member layout change, without pretending the folder's own
+// size/mtime is the title's content revision.
+func DiscStructureWitness(fingerprint string) string {
+	if fingerprint == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte("disc_structure_witness_v1\x00" + fingerprint))
+	return "disc-structure:" + hex.EncodeToString(sum[:])
 }
 
 // CommitInventoryAnalysis never stats/reads storage while holding a DB writer.

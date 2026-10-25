@@ -1,7 +1,6 @@
 import {unreadableServerResponse} from './server-messages.ts';
 import {routePath,routePattern} from '../../contracts/src/routes.ts';
 const readingFacetRoute=routePattern('get_library_facets');
-const readingPeriodicalRoute=routePattern('get_reading_periodical_groups');
 /** Browse engine contract. The server owns the vocabulary, the query grammar and
  * every count; this module only parses what it publishes and refuses to send a
  * query the published capabilities cannot execute. No client-side filtering,
@@ -165,7 +164,7 @@ export function parseBrowseCapabilities(raw:unknown):BrowseCapabilities{
  const pivot=(v:unknown):BrowsePivotCapability=>{
   if(!obj(v)||!id(v.id)||!id(v.labelKey))bad();
   // A pivot that does not say it can be queried is not queried.
-  const facetSource=v.facetSource==null?undefined:obj(v.facetSource)&&((v.facetSource.endpoint===readingFacetRoute&&(v.facetSource.field==='author'||v.facetSource.field==='series'))||(v.facetSource.endpoint===readingPeriodicalRoute&&v.facetSource.field==='publicationType'&&(v.id==='magazines'||v.id==='newspapers')&&v.browsable===false))?{endpoint:v.facetSource.endpoint,field:v.facetSource.field}:bad();
+  const facetSource=v.facetSource==null?undefined:obj(v.facetSource)&&v.facetSource.endpoint===readingFacetRoute&&(v.facetSource.field==='author'||v.facetSource.field==='series')?{endpoint:v.facetSource.endpoint,field:v.facetSource.field}:bad();
   return {...(facetSource?{facetSource}:{}),id:v.id,labelKey:v.labelKey,entityKinds:known('pivot.entityKinds',v.entityKinds,32),defaultSort:keepReadable('browse','pivot.defaultSort',rows(v.defaultSort??[],3),sortSelection),supportedViews:known('pivot.supportedViews',v.supportedViews,8),sorts:known('pivot.sorts',v.sorts,64),filters:known('pivot.filters',v.filters,128),...(v.paging==='keyset'||v.paging==='offset'?{paging:v.paging}:{}),browsable:v.browsable===true,...(v.members===true?{members:true}:{}),...(v.aggregate===undefined?{}:{aggregate:id(v.aggregate)?v.aggregate:bad()})};
  };
  const pivots=firstOfEach('browse','pivots',keepReadable('browse','pivots',rows(raw.pivots,32),pivot),p=>p.id);

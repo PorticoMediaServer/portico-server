@@ -373,13 +373,10 @@ export class RemoteSourceService{
  }
  /** Saves a source from one remote of that configuration. The section itself is
   * read on the server and never sent to, or read back by, this client. */
- async configureRcloneFromConfig(input:Readonly<{name:string;remote:string;folder?:string}>,guard?:()=>boolean):Promise<RcloneReceipt|undefined>{
+ async configureRcloneFromConfig(input:Readonly<{name:string;remote:string}>,guard?:()=>boolean):Promise<RcloneReceipt|undefined>{
   if(!this.live()||(guard&&!guard())||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');
   if(!text(input.name,200)||!input.name.trim()||!text(input.remote,64)||!input.remote.trim())throw new Error('Invalid connection fields.');
-  const folder=input.folder?.trim().replace(/^\/+|\/+$/g,'')??'';
-  if(folder&&(folder.length>1024||!folder.split('/').every(part=>part!==''&&part!=='.'&&part!=='..'&&!/[\r\n\u0000]/.test(part))))throw new Error('Invalid start folder.');
-  // The folder field reaches the server ahead of its generated declaration.
-  const body:Record<string,unknown>={name:input.name.trim(),remote:input.remote.trim(),...(folder?{folder}:{})};
+  const body=routeBody('create_storage_source_rclone_config',{name:input.name.trim(),remote:input.remote.trim()});
   const intent:SourceCommandIntent={operationId:'',kind:'rclone',action:'create',sourceId:null};
   return await this.command(routePath('create_storage_source_rclone_config'),'POST',body,intent,guard) as RcloneReceipt|undefined;
  }

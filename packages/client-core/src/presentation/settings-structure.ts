@@ -57,8 +57,6 @@ export type SettingsCapabilities = Readonly<{
   playbackSpeed?: boolean;
   /** This device renders audio itself: gapless, crossfade and volume leveling. Absent: it does (a Roku's player cannot). */
   audioEffects?: boolean;
-  /** This device's audio engine can match the output rate to the file (Smart/Strict/Off). Absent: it cannot. */
-  sampleRateMatching?: boolean;
   /** This build has mpv as a second player beside the device's own, so there is a player to choose (the capability document then has an `mpv` engine). Absent or false: there is not (the web never has). */
   playerEngines?: boolean;
   /** This device can hand sound to a receiver undecoded (the capability document lists `audioPassthrough`). */
@@ -91,7 +89,7 @@ export type SettingsControl =
 export type CompositeId =
   | 'playbackMethod' | 'cardSize'
   // Kept by the device and published in its capability document (`withViewerSettings`).
-  | 'playerEngine' | 'forceStereo' | 'disablePassthrough' | 'disableHdr' | 'tvHdr' | 'tvSurround' | 'music.sampleRateMatching'
+  | 'playerEngine' | 'forceStereo' | 'disablePassthrough' | 'disableHdr' | 'tvHdr' | 'tvSurround'
   | 'libraryView' | 'reduceMotion' | 'textSize' | 'receiveFromDevices'
   // Kept by the device and read before the app draws anything (B-19.10).
   | 'layout';
@@ -310,14 +308,6 @@ const accountPages: readonly AuthoredPage[] = [
         ]}, {scope: 'deviceClass'}),
       ]},
       {id: 'advancedSound', title: 'next.settingsSpec.account.music.advanced.groups.0.title', advanced: true, rows: [
-        // One device-local engine value, never an account preference (23 Oct ruling).
-        {kind: 'composite', id: 'music.sampleRateMatching', storage: 'device', scope: 'device', platforms: ['phone', 'tv'],
-          label: 'next.settingsSpec.account.music.advanced.groups.0.rows.0.label', help: 'next.settingsSpec.account.music.advanced.groups.0.rows.0.help',
-          needs: c => c.sampleRateMatching === true, control: {type: 'choice', choices: [
-            {value: 'smart', label: 'next.settingsSpec.account.music.advanced.groups.0.rows.0.control.options.0.label'},
-            {value: 'strict', label: 'next.settingsSpec.account.music.advanced.groups.0.rows.0.control.options.1.label'},
-            {value: 'off', label: 'next.settingsSpec.account.music.advanced.groups.0.rows.0.control.options.2.label'},
-          ]}},
         toggle('music.neverBoost', 'next.settingsSpec.account.music.advanced.groups.0.rows.1.label', {help: 'next.settingsSpec.account.music.advanced.groups.0.rows.1.help', needs: c => c.audioEffects !== false}),
         pref('music.dsdGainDb', 'next.settingsSpec.account.music.advanced.groups.0.rows.2.label', {type: 'choice', choices: [0, -3, -6, -9, -12].map((value, index) => ({value, label: `next.settingsSpec.account.music.advanced.groups.0.rows.2.control.options.${index}.label` as MessageId}))}, {help: 'next.settingsSpec.account.music.advanced.groups.0.rows.2.help'}),
       ]},

@@ -84,7 +84,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     {id: 'format', label: t('next.reader.format'), value: manifest.format.toUpperCase()},
     {id: 'size', label: t('next.reader.fileSize'), value: defaultI18n.bytes(manifest.size)},
   ]}/>;
-  return <><ReadBookHero cover={context.artwork.foreground(manifest.metadata.coverUrl, 784, 2 / 3)} title={title} author={author ? {name: author} : undefined} facts={[]}
+  return <><ReadBookHero title={title} author={author ? {name: author} : undefined} facts={[]}
     ambient={<span className={styles.ambient} style={{'--read-tint-first': tint.first, '--read-tint-second': tint.second} as CSSProperties} aria-hidden="true"/>}
     actions={progression !== undefined && progression > 0 ? <ResumeButton icon="i-book" progress={progression} remaining={defaultI18n.percent(progression)} onClick={() => open()}>{t('next.cards.read')}</ResumeButton>
       : <Button variant="primary" icon="i-book" onClick={() => open()}>{t('next.reader.read')}</Button>}

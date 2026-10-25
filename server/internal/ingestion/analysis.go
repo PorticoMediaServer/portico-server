@@ -16,6 +16,7 @@ import (
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/subtitles"
 	"portico.local/server/internal/supervise"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
@@ -282,18 +283,39 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 	}
 	stat := func() (storage.Snapshot, error) {
 		r := storage.InventoryRequest{Root: source.ResolvedPath, RootIdentity: source.RootIdentity, RelativePath: relative, FollowSymlinks: source.FollowSymlinks}
+		// A folder disc's object path is a directory, which the regular-file
+		// observation refuses; the directory observation is its exact stat.
 		if s.storage != nil {
-			return s.storage.InventoryStat(ctx, source.ID, r)
+			if v, err := s.storage.InventoryStat(ctx, source.ID, r); err == nil {
+				return v, nil
+			}
+			return s.storage.InventoryDirectory(ctx, source.ID, r)
 		}
-		return storage.LocalInventoryStat(r)
+		if v, err := storage.LocalInventoryStat(r); err == nil {
+			return v, nil
+		}
+		return storage.LocalInventoryDirectory(r)
 	}
+	// A folder disc carries its title bytes below the observed folder, so the
+	// queued revision includes the last committed structure witness. The same
+	// token is applied to every stat of this object while it is analysed.
+	discToken := ""
 	matches := func(v storage.Snapshot) bool {
+		if v.Directory {
+			v.ChangeToken = discToken
+		}
 		r, _, e2 := catalog.ObservationRevision(source, v)
 		return e2 == nil && r == revision
 	}
 	clearActivityFile := s.activityFile(ctx, job, relative)
 	defer clearActivityFile()
 	before, err := stat()
+	if err == nil && before.Directory {
+		var fingerprint string
+		if e := s.db.QueryRowContext(ctx, `SELECT COALESCE(fingerprint,'') FROM inventory_disc_facts WHERE object_id=?`, object).Scan(&fingerprint); e == nil {
+			discToken = catalog.DiscStructureWitness(fingerprint)
+		}
+	}
 	if err != nil || !matches(before) {
 		if ctx.Err() != nil {
 			return nil
@@ -351,8 +373,16 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 		s.recordDescriptorAnalysis(ctx, path, err)
 	} else if s.storage.IsRemote(path) {
 		f, err = s.inspectRemote(ctx, path, before)
+	} else if before.Directory {
+		if !storage.DirectoryDiscScanSupported() {
+			return s.analysisOutcome(parent, job, object, revision, queuedPolicy, true, "unsupported_disc_layout")
+		}
+		f, err = s.inspectDisc(ctx, job, object, revision, policy.Revision, source, relative, readContext("probe"), probe, path, true)
+		if errors.Is(err, disc.ErrEncrypted) {
+			return s.analysisOutcome(parent, job, object, revision, queuedPolicy, true, "unsupported_disc_image")
+		}
 	} else if assets.DiscImage(path) {
-		f, err = s.inspectDisc(ctx, job, object, revision, policy.Revision, readContext("probe"), probe, path)
+		f, err = s.inspectDisc(ctx, job, object, revision, policy.Revision, source, relative, readContext("probe"), probe, path, false)
 		if errors.Is(err, disc.ErrEncrypted) {
 			// Portico ships no disc decryption (VIDEO §3 VS-4). The image is
 			// catalogued as unsupported rather than probed as a broken file.
@@ -528,8 +558,15 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 // observes the disc structure, the committed structure picks the main title
 // (the longest of at least a minute, ties by disc order), and only that title's
 // timed media is read through the closed disc input (VIDEO §3 VS-4a/VS-4b).
-func (s *Service) inspectDisc(ctx context.Context, job, object, revision string, policyRevision int64, readCtx context.Context, probe assets.Probe, path string) (assets.Facts, error) {
-	structure, err := (disc.Tool{}).ProbeLocal(readCtx, path)
+func (s *Service) inspectDisc(ctx context.Context, job, object, revision string, policyRevision int64, source catalog.LibrarySource, relative string, readCtx context.Context, probe assets.Probe, path string, directory bool) (assets.Facts, error) {
+	tool := disc.Tool{}
+	probeStructure := func() (disc.Probe, error) {
+		if directory {
+			return tool.ProbeDirectory(readCtx, path)
+		}
+		return tool.ProbeLocal(readCtx, path)
+	}
+	structure, err := probeStructure()
 	if err != nil {
 		return assets.Facts{}, err
 	}
@@ -540,10 +577,76 @@ func (s *Service) inspectDisc(ctx context.Context, job, object, revision string,
 	if !ok {
 		return assets.Facts{}, errors.New("disc has no title of at least a minute")
 	}
-	if err = s.catalog.CommitInventoryDiscProbe(ctx, job, object, revision, policyRevision, structure); err != nil {
+	manifest := func() ([]storage.DiscMember, error) { return nil, nil }
+	if directory {
+		consumed, e := disc.ConsumedMembers(structure)
+		if e != nil {
+			return assets.Facts{}, e
+		}
+		required, optional, directories := []string{}, []string{}, []string{}
+		for _, member := range consumed {
+			switch {
+			case member.Directory:
+				directories = append(directories, member.Path)
+			case member.Required:
+				required = append(required, member.Path)
+			default:
+				optional = append(optional, member.Path)
+			}
+		}
+		req := storage.InventoryRequest{Root: source.ResolvedPath, RelativePath: relative, RootIdentity: source.RootIdentity, FollowSymlinks: source.FollowSymlinks}
+		manifest = func() ([]storage.DiscMember, error) {
+			if s.storage != nil {
+				return s.storage.DiscMemberManifest(readCtx, source.ID, req, required, optional, directories)
+			}
+			return storage.LocalDiscMemberManifest(req, required, optional, directories)
+		}
+	}
+	// The consumed files are witnessed before and after the reads, and the
+	// structure is observed again between them, so a changed member can never
+	// mix two source revisions into one publication.
+	before, err := manifest()
+	if err != nil {
 		return assets.Facts{}, err
 	}
-	return probe.InspectDiscScan(readCtx, path, structure, title)
+	again, err := probeStructure()
+	if err != nil {
+		return assets.Facts{}, err
+	}
+	if !reflect.DeepEqual(structure, again) {
+		return assets.Facts{}, errors.New("disc structure changed during analysis")
+	}
+	facts, err := probe.InspectDiscScan(readCtx, path, again, title)
+	if err != nil {
+		return assets.Facts{}, err
+	}
+	if directory {
+		after, e := manifest()
+		if e != nil {
+			return assets.Facts{}, e
+		}
+		if len(before) == 0 || len(after) == 0 || !sameDiscMembers(before, after) {
+			return assets.Facts{}, errors.New("disc members changed during analysis")
+		}
+	}
+	if err = s.catalog.CommitInventoryDiscProbe(ctx, job, object, revision, policyRevision, again); err != nil {
+		return assets.Facts{}, err
+	}
+	return facts, nil
+}
+
+// sameDiscMembers compares the bounded identities and revisions of the files
+// the title read actually consumed.
+func sameDiscMembers(a, b []storage.DiscMember) bool {
+	if len(a) == 0 || len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Path != b[i].Path || a[i].ObjectIdentity != b[i].ObjectIdentity || a[i].Size != b[i].Size || a[i].ModifiedNS != b[i].ModifiedNS || a[i].Required != b[i].Required || a[i].Directory != b[i].Directory {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *Service) analysisOutcome(ctx context.Context, job, object, revision string, policy int64, warning bool, code string) error {

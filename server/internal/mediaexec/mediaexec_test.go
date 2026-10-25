@@ -289,3 +289,22 @@ func TestBurnInFindsFontsSandboxedAndBaseline(t *testing.T) {
 		})
 	}
 }
+
+// A descriptor-bound directory input is a Linux sandbox job only; nothing
+// else may carry it, and it never invents a second mount point.
+func TestDirectoryInputJobValidation(t *testing.T) {
+	base := Job{Executable: "/usr/bin/true", InputFD: 3, InputMount: "/disc"}
+	if err := validate(&base); (err == nil) != (runtime.GOOS == "linux") {
+		t.Fatalf("platform validation: %v", err)
+	}
+	for name, job := range map[string]Job{
+		"wrong descriptor": {Executable: "/usr/bin/true", InputFD: 4, InputMount: "/disc"},
+		"relative mount":   {Executable: "/usr/bin/true", InputFD: 3, InputMount: "disc"},
+		"unclean mount":    {Executable: "/usr/bin/true", InputFD: 3, InputMount: "/disc/../disc"},
+		"preconfined":      {Executable: "/usr/bin/true", InputFD: 3, InputMount: "/disc", PreConfined: true},
+	} {
+		if err := validate(&job); err == nil {
+			t.Errorf("%s: admitted", name)
+		}
+	}
+}
