@@ -90,6 +90,17 @@ export class ProfileSettingsSource {
   }
   rename = (name: string): Promise<void> => this.edit({name});
   color = (art: ProfileArt): Promise<void> => this.edit({art});
+  /** Bind a PIN dialog to the profile/revision it actually opened for. */
+  setPIN = (target: Pick<ManagedProfile, 'id' | 'revision'>, pin: string): Promise<void> => this.mutate(async document => {
+    const profile = document.profiles.find(candidate => candidate.id === target.id && candidate.revision === target.revision);
+    if (!profile) throw new CodedError('conflict', 'Refresh the profiles before trying again.');
+    await this.client.edit(profile, {pin}, this.lifetime.signal);
+  });
+  forgetDevices = (target: Pick<ManagedProfile, 'id' | 'revision'>): Promise<void> => this.mutate(async document => {
+    const profile = document.profiles.find(candidate => candidate.id === target.id && candidate.revision === target.revision && candidate.pinRequired);
+    if (!profile) throw new CodedError('conflict', 'Refresh the profiles before trying again.');
+    await this.client.forgetTrust(profile.id, this.lifetime.signal);
+  });
   private edit(change: {name?: string; art?: ProfileArt}): Promise<void> {
     const selectedId = this.getSnapshot().selectedId;
     return this.mutate(async document => {
