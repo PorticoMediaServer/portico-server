@@ -205,6 +205,9 @@ const accountPages: readonly AuthoredPage[] = [
       // What the Portico Account itself manages, and this server's link to it; a client with nothing to say draws nothing.
       {id: 'porticoAccount', rows: [custom('porticoAccount', 'settings.row.porticoAccount')]},
       {id: 'devices', title: 'settings.section.devices', rows: [custom('devices', 'settings.section.devices')], needs: c => c.manageDevices ?? !!c.localAccount},
+      {id: 'notifications', title: 'next.settingsSpec.account.profile.groups.7.title', rows: [
+        toggle('notifications.badges', 'next.settingsSpec.account.profile.groups.7.rows.0.label', {help: 'next.settingsSpec.account.profile.groups.7.rows.0.help'}),
+      ]},
       // For a member's own scripts and apps: kept out of the way until asked for. The owner makes API keys under Server › Integrations.
       {id: 'tokens', title: 'api.tokens.title', advanced: true, rows: [custom('accessTokens', 'api.tokens.title')], platforms: ['web', 'phone'], needs: c => !!c.accessTokens},
       {id: 'session', rows: [{kind: 'action', id: 'signOut', label: 'action.signOut', icon: 'signOut', destructive: true}]},
@@ -345,8 +348,6 @@ const accountPages: readonly AuthoredPage[] = [
         // the way the person says: Automatic decides from what the device reports.
         {kind: 'composite', id: 'layout', storage: 'device', label: 'settings.row.layout', help: 'settings.help.layout', scope: 'device', platforms: ['phone', 'tv'], needs: c => !!c.layoutChoice, control: {type: 'choice', choices: [{value: 'automatic', label: 'settings.layout.automatic'}, {value: 'television', label: 'settings.layout.television'}, {value: 'touch', label: 'settings.layout.touch'}]}},
         {kind: 'composite', id: 'libraryView', storage: 'device', label: 'settings.row.libraryView', help: 'settings.help.libraryView', scope: 'device', platforms: ['web'], control: {type: 'choice', choices: [{value: 'grid', label: 'settings.libraryView.grid'}, {value: 'list', label: 'settings.libraryView.list'}]}},
-        toggle('notifications.badges', 'settings.row.unreadBadge', {help: 'settings.help.unreadBadge', platforms: ['web', 'phone']}),
-        toggle('notifications.badges', 'settings.row.unreadBadge', {help: 'settings.help.unreadBadgeTV', platforms: ['tv']}),
       ]},
     ],
   },
