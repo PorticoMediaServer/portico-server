@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/remotesources"
 	"portico.local/server/internal/storage"
@@ -220,6 +221,25 @@ func (s *Service) Prepare(ctx context.Context, p identity.Principal, item, sourc
 	document.PublicationType = values.PublicationType
 	if values.Author != nil {
 		document.Metadata.Author = values.Author.Value
+	}
+	document.Metadata.WordCount, document.Metadata.OpeningLines, err = s.publicationTextFacts(ctx, p, document.Selection)
+	if err != nil {
+		return nil, Publication{}, err
+	}
+	if document.Selection.Format == "cbz" && len(document.PageNames) > 0 {
+		count := int64(len(document.PageNames))
+		document.Metadata.PageCount = &count
+	}
+	if values.Series != nil {
+		series := &SeriesValue{ID: compactcatalog.ReadingSeriesID(document.Selection.library, values.Series.Value), Name: values.Series.Value, Source: values.Series.Source}
+		if values.SeriesNumber != nil {
+			number := values.SeriesNumber.Value
+			series.Number = &number
+		}
+		document.Metadata.Series = series
+	}
+	if err = f.Validate(); err != nil {
+		return nil, Publication{}, err
 	}
 	session, err := s.captureSession(p, f)
 	return session, document, err
