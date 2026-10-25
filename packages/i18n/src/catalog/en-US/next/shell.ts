@@ -45,6 +45,8 @@ export const shellMessages = {
   'next.shell.clearSearch': 'Clear search',
   'next.shell.matchingSettings': 'Matching settings',
   'next.shell.settingsMatchCount': '{count, plural, one {# setting matches} other {# settings match}}',
+  'next.shell.tvSettingsMatchCount': '{count, plural, one {# match} other {# matches}}',
+  'next.shell.tvSettingsSearchHelp': 'Settings matches names, help text and page titles.',
   'next.shell.mainProfile': 'Main profile',
   'next.shell.currentProfile': 'Current profile',
   'next.shell.protected': 'Protected by a PIN',
