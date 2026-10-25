@@ -6,6 +6,7 @@ import (
 	"errors"
 
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/reading"
 )
 
 // Artwork alone admits nonplayable Reading items through the current Reading
@@ -16,5 +17,8 @@ func (d Dependencies) itemArtworkAccess(ctx context.Context, p identity.Principa
 		return err
 	}
 	_, err = d.readingService().Versions(ctx, p, item)
+	if errors.Is(err, reading.ErrUnavailable) {
+		return sql.ErrNoRows
+	}
 	return err
 }
