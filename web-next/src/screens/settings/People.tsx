@@ -15,6 +15,7 @@ import {InvitationShortCodeDialog} from '../../kit/accounts';
 import {randomId} from '@core/random-id.ts';
 import {InviteAttempts, defaultInviteChoices, inviteBody, type InviteAttempt, type InviteChoices} from './people-invite';
 import {PeopleInviteForm} from './people-invite-form';
+import {PeopleInvitations} from './PeopleInvitations';
 import type {ServerInvitation} from '@core/direct-account.ts';
 
 const invitationStates = ['pending', 'accepted', 'revoked', 'expired'] as const;
@@ -215,6 +216,9 @@ function PeopleWorkspace({bindings}: {bindings: PeopleBindings}) {
   };
   if (!live || denied) return null;
   return <>
+    <SettingsGroup title={t(section.groups![1].title!)} plain actions={<Button size="small" variant="primary" icon="i-plus" iconSize={20} disabled={!bindings.invite && !bindings.invitations} onClick={() => {if (bindings.invite) bindings.invite(document.body);}}>{t(section.groups![1].rows[0].control.addLabel ?? 'next.people.invitation.invite')}</Button>}>
+      <PeopleInvitations row={section.groups![1].rows[0]} bindings={bindings} />
+    </SettingsGroup>
     <SettingsGroup title={t(section.groups![0].title!)} plain actions={<Button size="small" variant="primary" icon="i-plus" iconSize={20} disabled={!bindings.invite && !bindings.invitations}
       onClick={event => { if (!bindings.authority.isCurrent()) return; if (bindings.invite) bindings.invite(event.currentTarget); else void openInvite(event.currentTarget); }}>{t(table.addLabel!)}</Button>}>
     {error && !page && !personId ? <SettingsPageFailure retry={() => setRefresh(value => value + 1)} home={bindings.openHome} /> : <SettingsTable ref={tableRef} height={table.height}
