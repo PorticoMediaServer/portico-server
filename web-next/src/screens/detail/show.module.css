@@ -214,7 +214,7 @@
 
 .seasonHeader { display: flex; align-items: center; gap: 12px; padding: 4px 6px 10px 10px; }
 
-.seasonHeader b { font-size: var(--type-caption-strong-size); font-weight: var(--type-caption-strong-weight); color: var(--color-text-secondary); }
+.seasonHeader b { font-size: 14px; font-weight: 800; color: var(--color-text-secondary); }
 
 .seasonJump { margin-left: auto; width: 168px; }
 
@@ -230,11 +230,11 @@
 
 .seasonName { display: grid; gap: 2px; min-width: 0; flex: 1; }
 
-.seasonName b { font-size: var(--type-body-size); font-weight: var(--type-row-heading-weight); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.seasonName b { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.seasonName small { font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
+.seasonName small { font-size: 12.5px; font-weight: 600; color: var(--color-text-tertiary); }
 
-.seasonFacts { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; margin-left: auto; font-size: var(--type-caption-size); color: var(--color-text-tertiary); white-space: nowrap; }
+.seasonFacts { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; margin-left: auto; font-size: 12.5px; font-weight: 600; color: var(--color-text-tertiary); white-space: nowrap; }
 
 .seasonWatched { display: inline-flex; align-items: center; gap: 4px; color: var(--color-accent-strong); }
 
