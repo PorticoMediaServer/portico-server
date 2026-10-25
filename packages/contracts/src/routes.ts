@@ -529,6 +529,31 @@ export const routes = [
     "admission": "playback"
   },
   {
+    "id": "create_storage_source_rclone",
+    "method": "POST",
+    "path": "/v1/storage/sources/rclone",
+    "summary": "Save an imported rclone source using the bundled program",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "source_credentials_required",
+      "administration_unavailable",
+      "storage_command_conflict",
+      "storage_operation_expired",
+      "storage_command_capacity",
+      "storage_allocation_recovery_required",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin-long"
+  },
+  {
     "id": "create_webhook",
     "method": "POST",
     "path": "/v1/admin/webhooks",
@@ -8100,6 +8125,49 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "get_storage_source_rclone_operation",
+    "method": "GET",
+    "path": "/v1/storage/sources/rclone/operations/{id}",
+    "summary": "Recover an imported rclone source save receipt",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "administration_unavailable",
+      "storage_command_conflict",
+      "storage_operation_expired",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_storage_source_rclone_providers",
+    "method": "GET",
+    "path": "/v1/storage/sources/rclone/providers",
+    "summary": "Read supported imported rclone configuration backend types",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
     "id": "get_storage_source_read_profile",
     "method": "GET",
     "path": "/v1/storage/sources/{id}/settings/read-profile",
@@ -15434,6 +15502,30 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "remove_storage_source_rclone",
+    "method": "DELETE",
+    "path": "/v1/storage/sources/rclone/{id}",
+    "summary": "Remove an unused imported source at its expected generation",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "administration_unavailable",
+      "request_in_progress",
+      "storage_command_conflict",
+      "storage_operation_expired",
+      "storage_command_capacity",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin"
+  },
+  {
     "id": "reorder_library_collection",
     "method": "PUT",
     "path": "/v1/collections/{id}/order",
@@ -18255,6 +18347,27 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "id": "test_storage_source_rclone",
+    "method": "POST",
+    "path": "/v1/storage/sources/rclone/test",
+    "summary": "Test an unsaved imported rclone source configuration",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "source_credentials_required",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin-long"
+  },
+  {
     "id": "test_storage_source_webdav",
     "method": "POST",
     "path": "/v1/storage/sources/webdav/test",
@@ -18345,6 +18458,30 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "update_storage_source_rclone",
+    "method": "PUT",
+    "path": "/v1/storage/sources/rclone/{id}",
+    "summary": "Replace an imported source connection at its expected generation",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "source_credentials_required",
+      "administration_unavailable",
+      "storage_command_conflict",
+      "storage_operation_expired",
+      "storage_command_capacity",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin-long"
+  },
+  {
     "id": "update_webhook",
     "method": "PATCH",
     "path": "/v1/admin/webhooks/{id}",
@@ -18393,6 +18530,7 @@ export const routePaths = {
   "create_download_request": "/v1/downloads/requests",
   "create_job": "/v1/jobs",
   "create_queue": "/v1/queues",
+  "create_storage_source_rclone": "/v1/storage/sources/rclone",
   "create_webhook": "/v1/admin/webhooks",
   "delete_admin_backup": "/v1/admin/backups/{id}",
   "delete_admin_dvr_recording_groups_id": "/v1/admin/dvr/recording-groups/{id}",
@@ -18719,6 +18857,8 @@ export const routePaths = {
   "get_storage_operations_id": "/v1/storage/operations/{id}",
   "get_storage_rclone_bundled": "/v1/storage/rclone/bundled",
   "get_storage_source_operations_id": "/v1/storage/source-operations/{id}",
+  "get_storage_source_rclone_operation": "/v1/storage/sources/rclone/operations/{id}",
+  "get_storage_source_rclone_providers": "/v1/storage/sources/rclone/providers",
   "get_storage_source_read_profile": "/v1/storage/sources/{id}/settings/read-profile",
   "get_storage_sources": "/v1/storage/sources",
   "get_storage_status": "/v1/admin/storage/status",
@@ -19029,6 +19169,7 @@ export const routePaths = {
   "refresh_shows_metadata": "/v1/shows/{id}/metadata/refresh",
   "remove_library": "/v1/admin/libraries/{id}",
   "remove_queue_entry": "/v1/queues/{id}/entries/{entryId}",
+  "remove_storage_source_rclone": "/v1/storage/sources/rclone/{id}",
   "reorder_library_collection": "/v1/collections/{id}/order",
   "reorder_playlist_window": "/v1/playlists/{id}/order",
   "reorder_saved_collection": "/v1/saved-resources/{id}/order",
@@ -19091,10 +19232,12 @@ export const routePaths = {
   "stop_playback_session": "/v1/playback/sessions/{id}",
   "sync_download_progress": "/v1/downloads/progress",
   "terminate_admin_session": "/v1/admin/sessions/{id}:terminate",
+  "test_storage_source_rclone": "/v1/storage/sources/rclone/test",
   "test_storage_source_webdav": "/v1/storage/sources/webdav/test",
   "test_webhook": "/v1/admin/webhooks/{id}/test",
   "undo_container_personal_state": "/v1/containers/{kind}/{id}/personal-state/undo",
   "update_queue": "/v1/queues/{id}",
+  "update_storage_source_rclone": "/v1/storage/sources/rclone/{id}",
   "update_webhook": "/v1/admin/webhooks/{id}"
 } as const;
 
