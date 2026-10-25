@@ -9,6 +9,13 @@ import (
 
 const WebOrigin = "https://web.getportico.tv"
 
+// BrandWordmarkURL is the wordmark drawn in both mail frames (account.html#18
+// and #19, design assets/wordmark.svg, byte-identical). It points at the stable
+// public brand path: the account web host emits the same file only as a
+// content-hashed build asset, so a /assets/ URL there goes stale on every build
+// and 404s (frames 18/19 draw a wordmark, not a broken image).
+const BrandWordmarkURL = "https://getportico.tv/brand/portico-wordmark-white.svg"
+
 // WebHost is the host of the configured public web origin. Mail templates
 // must derive it from WebOrigin, never from a literal, so the origin-bound
 // autofill line stays correct if the origin changes.

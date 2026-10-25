@@ -429,6 +429,7 @@ func TestCodeEmailMatchesDrawnFrame18(t *testing.T) {
 	for _, want := range []string{
 		`max-width:560px`,
 		`width:128px;background:#071018;padding:12px;border-radius:8px`,
+		`src="https://getportico.tv/brand/portico-wordmark-white.svg"`,
 		`padding:40px;background:#10212d;border:1px solid #28404f;border-radius:16px`,
 		`font-size:46px;line-height:1;font-weight:800;letter-spacing:.14em`,
 		`class="exp" style="font-size:15px;font-weight:700;line-height:1.7;margin:0 0 26px;color:#5cb3e2">Enter it in Portico. It expires in 10 minutes.`,
