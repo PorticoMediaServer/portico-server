@@ -4,7 +4,7 @@ import "testing"
 
 func TestHostClaimReadinessRemainsRequiredAfterGovernanceWindow(t *testing.T) {
 	const now int64 = 500000
-	g := record{state: "reconnecting", hostAuthority: "host-only", hostSeenMS: now - HostPauseSeconds*1000, pauseAfter: HostPauseSeconds, itemID: "item", playbackRevision: 4}
+	g := record{state: "host-reconnecting-paused", hostAuthority: "host-only", hostSeenMS: now - HostPauseSeconds*1000, pauseAfter: HostPauseSeconds, itemID: "item", playbackRevision: 4}
 	ready := hostClaimFacts{role: "member", state: "joined", readiness: "ready", seenMS: now, readyMS: now, readyRevision: 4}
 	if !hostClaimAllowed(g, ready, now) {
 		t.Fatal("capable member refused at pause boundary")
