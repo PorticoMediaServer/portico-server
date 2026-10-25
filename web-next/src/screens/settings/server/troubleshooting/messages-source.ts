@@ -1,4 +1,5 @@
 import type {ReportTransport} from '@core/client-reports.ts';
+import {LOG_DETAIL_MINUTES, type LogDetailMinutes} from '@core/server-administration.ts';
 import {parseLogPage, parseLogEvent, parseLogSettings, logLevels, type LogRecord, type LogLevel, type LogCategory, type LogSettings} from '@core/server-administration.ts';
 import {readEventStream} from '@core/sse.ts';
 import {randomId} from '@core/random-id.ts';
@@ -107,12 +108,14 @@ export class SettingsMessagesSource {
     };
     void connect();
   }
-  detail = async (on: boolean): Promise<void> => {
+  detail = async (on: boolean, configuredMinutes?: LogDetailMinutes): Promise<void> => {
     if (!this.current() || this.state.changing) return;
     // An uncertain write keeps its original intent, including its operation ID. Read it
     // back before another POST: the server's runtime window is not revisioned.
     const pending = this.detailIntent;
-    const intent = pending ?? Object.freeze({operationId: randomId(), minutes: on ? 30 : 0});
+    const minutes = configuredMinutes ?? this.state.settings?.logDetailMinutes ?? 30;
+    if (!pending && on && !(LOG_DETAIL_MINUTES as readonly number[]).includes(minutes)) return;
+    const intent = pending ?? Object.freeze({operationId: randomId(), minutes: on ? minutes : 0});
     this.detailIntent = intent;this.publish({changing: true});
     try {
       if (pending) {

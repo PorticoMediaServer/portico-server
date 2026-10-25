@@ -1,3 +1,4 @@
+import {LOG_DETAIL_MINUTES, type LogDetailMinutes} from '@core/server-administration.ts';
 import {ConsoleClient} from '@core/console.ts';
 import {PreferencesReader} from '@core/preferences-reader.ts';
 import {validatePreferencePatch, type PreferencePatch, type PreferenceScope, type PreferenceSnapshot} from '@core/preferences.ts';
@@ -116,6 +117,11 @@ export class SettingsController {
     if (this.current()) this.configuration = configuration;
   };
   getSnapshot = (section: SettingsSection) => this.sectionReads.snapshot(`${section.scope}/${section.id}`);
+  messageDetailMinutes = (): LogDetailMinutes | undefined => {
+    if (!this.current()) return;
+    const value = this.forms.logs?.status()?.logDetailMinutes;
+    return typeof value === 'number' && (LOG_DETAIL_MINUTES as readonly number[]).includes(value) ? value as LogDetailMinutes : undefined;
+  };
   preferencesSnapshot = () => this.current() ? this.preferences : undefined;
   serverHealth = () => this.current() ? this.header.health : undefined;
   serverFacts = () => this.current() ? this.header.facts : [];
@@ -182,6 +188,7 @@ export class SettingsController {
     return binding && readSettingsBinding(binding, this.sources(), row.id);
   }
   rowState = (row: SettingsRow, context?: SettingsContext): SettingPresentation => {
+    if (row.id === 'troubleshooting.detailLength' && this.forms.logs?.status()?.logDetailMinutes === undefined) return {present: false};
     const location = settingsRowIndex.get(row.id);
     if (!location || !this.sectionVisible(location.section)) return {present: false};
     const value = this.read(row, context);

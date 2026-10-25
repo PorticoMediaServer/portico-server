@@ -1,4 +1,5 @@
 import {useEffect, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
+import type {LogDetailMinutes} from '@core/server-administration.ts';
 import {defaultI18n, type MessageId} from '@i18n';
 import {logCategories, logLevels, type LogLevel, type LogCategory} from '@core/server-administration.ts';
 import {Button, Select, Switch} from '../../../../kit/controls';
@@ -9,7 +10,7 @@ const t = defaultI18n.t;
 const levelKey = (level: LogLevel) => `web.logs.level.${level}` as MessageId;
 const categoryKey = (category: LogCategory) => `web.logs.category.${category}` as MessageId;
 
-export function MessagesPanel({source, options}: Readonly<{source: SettingsMessagesSource; options?: ReactNode; reportError: (error: unknown) => void}>) {
+export function MessagesPanel({source, options, detailMinutes}: Readonly<{source: SettingsMessagesSource; options?: ReactNode; detailMinutes?: LogDetailMinutes; reportError: (error: unknown) => void}>) {
   const state = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
   const box = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(Date.now());
@@ -20,8 +21,8 @@ export function MessagesPanel({source, options}: Readonly<{source: SettingsMessa
   return <div className={styles.messagePanels}>
     {options}
     {state.settings && <section className={styles.detailWindow}>
-      <div><b>{t('settings.server.detailWindow')}</b><p className={styles.help}>{detailed ? t('settings.server.detailWindow.until', {time: defaultI18n.dateTime(until!)}) : t('settings.server.detailWindow.help')}</p></div>
-      <Button size="xs" variant="glass" disabled={state.changing} onClick={() => {void source.detail(!detailed).catch(() => { /* The source reports through its captured owner. */ });}}>{t(detailed ? 'settings.server.detailWindow.stop' : 'settings.server.detailWindow.start')}</Button>
+      <div><b>{t('settings.server.detailWindow.forMinutes', {minutes: detailMinutes ?? state.settings?.logDetailMinutes ?? 30})}</b><p className={styles.help}>{detailed ? t('settings.server.detailWindow.until', {time: defaultI18n.dateTime(until!)}) : t('settings.server.detailWindow.help')}</p></div>
+      <Button size="xs" variant="glass" disabled={state.changing} onClick={() => {void source.detail(!detailed, detailMinutes).catch(() => { /* The source reports through its captured owner. */ });}}>{t(detailed ? 'settings.server.detailWindow.stop' : 'settings.server.detailWindow.start')}</Button>
     </section>}
     <section className={styles.messages}>
       <div className={styles.messageHeader}><h3>{t('web.logs.messages')}<span className={styles.messageScope}>{t('web.logs.adminVisible')}</span></h3></div>

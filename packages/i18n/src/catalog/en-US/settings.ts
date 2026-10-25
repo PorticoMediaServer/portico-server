@@ -290,6 +290,7 @@ export const settingsMessages = {
   'settings.server.jobs.never': 'Not scheduled: no enabled window includes it',
   'settings.server.jobs.in': 'Runs in {windows}',
   'settings.server.troubleshooting': 'Troubleshooting',
+  'settings.server.detailWindow.forMinutes': 'Record more detail for {minutes} minutes',
   'settings.server.detailWindow': 'Record more detail for 30 minutes',
   'settings.server.detailWindow.help': 'Turns on detailed messages, then turns itself off.',
   'settings.server.detailWindow.until': 'Recording more detail until {time}.',
