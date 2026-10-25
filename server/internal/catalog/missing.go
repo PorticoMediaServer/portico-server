@@ -476,6 +476,7 @@ type MissingTitle struct {
 
 // MissingTitlesPage is a page of the owner's missing-titles list.
 type MissingTitlesPage struct {
+	ObservedAt string         `json:"observedAt,omitempty"`
 	Items      []MissingTitle `json:"items"`
 	NextCursor string         `json:"nextCursor,omitempty"`
 	Total      int64          `json:"total"`
@@ -503,7 +504,7 @@ func (s *Service) MissingTitlesAuthorized(ctx context.Context, library, cursor s
 }
 func (s *Service) missingTitles(ctx context.Context, library, cursor string, limit int, visibility MissingScope) (MissingTitlesPage, error) {
 	rule := s.MissingRule(ctx)
-	out := MissingTitlesPage{Items: []MissingTitle{}, Rule: rule.Mode, Days: rule.Days}
+	out := MissingTitlesPage{Items: []MissingTitle{}, Rule: rule.Mode, Days: rule.Days, ObservedAt: time.Now().UTC().Format(time.RFC3339Nano)}
 	if limit < 1 || limit > 200 {
 		limit = 50
 	}
