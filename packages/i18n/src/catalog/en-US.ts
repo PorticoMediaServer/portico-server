@@ -1985,6 +1985,7 @@ export const enUS = {
   'player.post.playNow': 'Play now',
   'player.post.cancel': 'Cancel',
   'player.post.replay': 'Replay',
+  'player.post.backTo': 'Back to {title}',
   'player.post.close': 'Close',
   'player.post.finished': 'Finished',
   'player.post.nextUnavailable': 'The next item in the queue is unavailable.',
