@@ -17,7 +17,7 @@ export function SelectionEditorSurface({session, options, onKeepOnly, onClose}: 
   const [preview, setPreview] = useState<BulkMetadataPreview>(), [targets, setTargets] = useState<readonly SelectionItemDisplay[]>([]);
   const [draft, setDraft] = useState<BulkEditorDraft>(() => editorUiDraft({lockEdited: true}));
   const [receipts, setReceipts] = useState<readonly BulkReceipt[]>([]), [busy, setBusy] = useState(true), [error, setError] = useState(false);
-  const types = session.operation.target.mode === 'explicit' ? [...session.operation.target.items.reduce((counts, pick) => counts.set(pick.item.kind, (counts.get(pick.item.kind) ?? 0) + 1), new Map<SelectionKind, number>())].map(([kind, count]) => ({kind, count})) : [];
+  const types = session.operation.target.mode === 'explicit' ? [...session.operation.target.items.reduce((counts, pick) => counts.set(pick.item.kind, (counts.get(pick.item.kind) ?? 0) + 1), new Map<SelectionKind, number>())].map(([kind, count]) => ({kind, count})) : session.operation.target.summary.types;
   const mixed = types.length > 1;
   const flight = useRef(false), operation = useRef(session.operation);
   const load = async () => {

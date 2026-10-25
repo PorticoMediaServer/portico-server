@@ -124,7 +124,7 @@ function LibrarySelectionToolbar(props: LibrarySelectionOptions & {openDelete: (
     actions={{
       ...(props.deletion && summary.library.kind === 'single' && summary.count <= 200 && summary.every.delete && current.selection.target?.mode === 'explicit' && queueLease ? {onDelete: props.openDelete} : {}),
       ...(props.owner && summary.count > 200 ? {deleteDisabledReason: defaultI18n.t('next.selection.tooMany')} : {}),
-      ...(props.editor && summary.every.edit && (summary.types.length === 1 || !!playSelection.keepOnly) && current.selection.target?.mode === 'explicit' && queueLease ? {onEdit: props.openEditor, editMode: summary.types.length > 1 ? 'mixed' as const : 'editable' as const} : {}),
+      ...(props.editor && summary.every.edit && (summary.types.length === 1 || !!playSelection.keepOnly) && (current.selection.target?.mode === 'explicit' || summary.types.length > 1 && !!playSelection.keepOnly) && queueLease ? {onEdit: props.openEditor, editMode: summary.types.length > 1 ? 'mixed' as const : 'editable' as const} : {}),
       ...(canPlay ? {onPlay: () => { void playSelection.play().catch(reportError); }} : {}),
       ...(offers.watched ? {onWatchedChange: (watched: boolean) => { void personal({watched}); }} : {}),
       ...(offers.myList ? {onMyList: () => { void personal({watchlist: true}); }} : {}),
@@ -151,7 +151,7 @@ export function createLibrarySelection({playSelection, owner, descriptor, action
   const editorStore = {subscribe: (listener: () => void) => {editorListeners.add(listener); return () => {editorListeners.delete(listener);};}, getSnapshot: () => editorSession};
   const openEditor = (anchor: HTMLElement) => {
     const selection = playSelection.getSnapshot().selection, operation = playSelection.captureOperation?.();
-    if (!editor || !editor.signal || !editor.isCurrent() || !selection || !operation || operation.target !== selection.target || operation.target.mode !== 'explicit'
+    if (!editor || !editor.signal || !editor.isCurrent() || !selection || !operation || operation.target !== selection.target || (operation.target.mode !== 'explicit' && !(selection.summary.types.length > 1 && playSelection.keepOnly))
       || !selection.summary.every.edit || (selection.summary.types.length !== 1 && !playSelection.keepOnly) || !playSelection.isOperationCurrent?.(operation)) throw new Error('selection-editor-unavailable');
     closeEditor();
     const lifetime = new AbortController();
