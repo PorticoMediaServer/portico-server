@@ -208,6 +208,9 @@ def main():
     parser.add_argument("--creds", required=True, help="private JSON with username and password")
     parser.add_argument("--build", default="unknown", help="build SHA for the report")
     parser.add_argument("--skip-playback", action="store_true", help="hold decode steps while Media owns readiness")
+    parser.add_argument("--home-timeout", type=int, default=90,
+                        help="seconds to wait for Home after sign-in, with staged evidence")
+    parser.add_argument("--display", default="unset", help="actual wm size/density for the report")
     args = parser.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
@@ -215,7 +218,8 @@ def main():
         creds = json.load(handle)
     device = Device(args.serial, args.out)
     checks = Checks(args.out)
-    meta = {"surface": f"android-{args.mode}", "build": args.build, "serial": args.serial, "server": args.server}
+    meta = {"surface": f"android-{args.mode}", "build": args.build, "serial": args.serial,
+            "server": args.server, "display": args.display}
 
     def install():
         output, code, error = device.adb("install", "-r", "-d", args.apk)
@@ -295,9 +299,26 @@ def main():
         if re.search(r"Your servers", device.text(), re.I):
             device.tap_clickable_containing("portico demo")
             device.wait_text(r"Home|Continue Watching|New on", 30)
-        assert device.wait_text(r"Home|Continue Watching|New on|Search", 40) is not None, "Home did not draw after sign-in"
-        text = device.text()
-        return f"signed in; {len(text)} chars visible", {"screenshot": device.screenshot("after-signin")}
+        # Home is the step that stalled on the previous pass. Poll past the old 40s window and keep a
+        # screenshot plus the visible text at each stage, so a stall can be classified next time.
+        started = time.time()
+        stages = []
+        drawn = None
+        while time.time() - started < args.home_timeout:
+            text = device.text()
+            if re.search(r"Home|Continue Watching|New on|Search", text):
+                drawn = text
+                break
+            at = int(round(time.time() - started))
+            stages.append({"at_s": at, "visible": text[:160],
+                           "screenshot": device.screenshot(f"home-wait-{at}s")})
+            time.sleep(10)
+        assert drawn is not None, (
+            "Home did not draw within %ss after sign-in; stages %s"
+            % (args.home_timeout, json.dumps(stages)[:800]))
+        elapsed = round(time.time() - started, 1)
+        return f"signed in; Home drew after {elapsed}s; {len(drawn)} chars visible", {
+            "screenshot": device.screenshot("after-signin"), "home_wait_stages": stages}
 
     def home():
         text = device.text()

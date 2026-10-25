@@ -27,7 +27,13 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from flows import Device  # noqa: E402  (same lane, same helpers)
 
-VIEWPORT = "393x852"
+def actual_viewport(device):
+    """Read the metrics the device really has instead of recording the size we meant to set."""
+    size, _ = device.shell("wm", "size")
+    density, _ = device.shell("wm", "density")
+    size = re.sub(r"^Physical size:\s*", "", size).strip() or "unknown"
+    density = re.sub(r"^Physical density:\s*", "", density).strip() or "unknown"
+    return f"{size} at density {density}"
 
 
 def main():
@@ -44,7 +50,7 @@ def main():
     with open(args.creds) as handle:
         creds = json.load(handle)
     device = Device(args.serial, args.out)
-    evidence = {"viewport": VIEWPORT, "build": args.build, "steps": []}
+    evidence = {"viewport": actual_viewport(device), "build": args.build, "steps": []}
 
     def note(name, path, ok=True, detail=""):
         evidence["steps"].append({"step": name, "screenshot": path, "ok": ok, "detail": detail})
