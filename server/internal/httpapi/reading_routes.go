@@ -51,6 +51,7 @@ func (d Dependencies) readingRoutes(mux *http.ServeMux) {
 	register("GET /v1/libraries/{libraryId}/reading/periodicals/{seriesId}/issues", []string{"publicationType", "issueDate", "year", "month", "cursor", "limit"}, d.readingPeriodicalIssues)
 	register("GET /v1/reading/continue", []string{"libraryId", "cursor", "limit"}, d.readingContinue)
 	register("GET /v1/items/{itemId}/reading/versions", nil, d.readingVersions)
+	register("GET /v1/items/{itemId}/reading/cover", []string{"sourceId", "sourceRevision", "width", "w"}, d.readingImageFolderCover)
 	register("POST /v1/reading/offline/progress", nil, d.readingOfflineProgress)
 	register("POST /v1/reading/sessions", nil, d.prepareReadingSession)
 	register("POST /v1/reading/sessions/{sessionId}/file-save", nil, d.readingFileSave)
@@ -189,7 +190,7 @@ func (d Dependencies) prepareReadingSession(w http.ResponseWriter, r *http.Reque
 	readingManifestFactsProjection(&out.Metadata, m)
 	// This optional offer is descriptive only; the transfer rechecks the exact
 	// captured source and live download policy before and after each extent.
-	if v.Size > 0 && v.Size <= 64<<20 {
+	if v.Format != "image-folder" && v.Size > 0 && v.Size <= 64<<20 {
 		tx, err := d.DB.BeginTx(r.Context(), nil)
 		if err == nil {
 			out.CanSaveFile, _ = downloads.ProfileAllowsDownloads(tx, p.Viewer)

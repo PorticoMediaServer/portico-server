@@ -109,5 +109,12 @@ func registerReadingHTTPContracts(registry *apikit.Registry) error {
 	m.Lane, m.Admission, m.Cost = apikit.Media, laneMediaBody, apikit.Constant
 	m.Query, m.Headers, m.ResponseContentType = []string{"width"}, []string{"If-Match", "If-None-Match"}, "application/octet-stream"
 	m.ResponseStatuses = []int{304}
+	if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, m); err != nil {
+		return err
+	}
+	m = metadata("get_items_itemId_reading_cover", "GET", "/v1/items/{itemId}/reading/cover", "Read the first page cover of one pinned local image folder", apikit.ScopePlayback)
+	m.Lane, m.Admission, m.Cost = apikit.Media, laneMediaBody, apikit.Constant
+	m.Query, m.ResponseContentType = []string{"sourceId", "sourceRevision", "width", "w"}, "application/octet-stream"
+	m.Headers, m.ResponseStatuses = []string{"If-None-Match"}, []int{304}
 	return apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, m)
 }
