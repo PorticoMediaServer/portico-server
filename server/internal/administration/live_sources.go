@@ -485,15 +485,21 @@ func (s *Service) SaveChannelMap(ctx context.Context, auth Authorize, id string,
 		return out, ErrInput
 	}
 	numbers := map[string]bool{}
+	numbersList := []string{}
+	replacedIDs := []string{}
 	for _, o := range change.Overrides {
 		if o.ChannelID == "" || !safeText(o.ChannelID, 200) || !validChannelNumber(o.Number) || !safeText(o.GuideChannelID, 200) {
 			return out, invalid("overrides")
 		}
 		if o.Number != "" {
-			if numbers[o.Number] {
-				return out, invalid("overrides.number")
+			if !o.Hidden {
+				if numbers[o.Number] {
+					return out, invalid("overrides.number")
+				}
+				numbers[o.Number] = true
+				numbersList = append(numbersList, o.Number)
 			}
-			numbers[o.Number] = true
+			replacedIDs = append(replacedIDs, o.ChannelID)
 		}
 	}
 	scope := liveSourceScope(id)
@@ -509,6 +515,23 @@ func (s *Service) SaveChannelMap(ctx context.Context, auth Authorize, id string,
 		}
 		if _, _, err = liveSourceExists(ctx, tx, id); err != nil {
 			return err
+		}
+		if len(numbersList) > 0 {
+			var generation string
+			if err = tx.QueryRowContext(ctx, `SELECT active_generation FROM live_sources WHERE id=?`, id).Scan(&generation); err != nil {
+				return err
+			}
+			if generation != "" {
+				idsJSON, _ := json.Marshal(replacedIDs)
+				numbersJSON, _ := json.Marshal(numbersList)
+				var conflict int
+				if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM live_channel_versions v LEFT JOIN admin_channel_numbers n ON n.source_id=? AND n.channel_id=v.channel_id WHERE v.generation_id=? AND v.channel_id NOT IN (SELECT value FROM json_each(?)) AND COALESCE(n.hidden,0)=0 AND COALESCE(NULLIF(n.number,''),v.number) IN (SELECT value FROM json_each(?)))`, id, generation, string(idsJSON), string(numbersJSON)).Scan(&conflict); err != nil {
+					return err
+				}
+				if conflict != 0 {
+					return invalid("overrides.number")
+				}
+			}
 		}
 		_, revision, err := readDocument(ctx, tx, scope, DefaultLiveSourceSettings())
 		if err != nil {
