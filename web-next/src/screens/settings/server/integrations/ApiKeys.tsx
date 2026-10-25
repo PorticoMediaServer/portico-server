@@ -16,8 +16,8 @@ type IssuedCard = Readonly<{source: SettingsApiKeysSource; value: IssuedApiCrede
 type FormAttempt = Readonly<{source: SettingsApiKeysSource}>;
 type Props = Readonly<{source: SettingsApiKeysSource; webhooks: SettingsWebhooksSource; baseUrl: string; isCurrent: () => boolean; reportError: (error: unknown) => void; otherRows: ReactNode; advancedRows: ReactNode}>;
 
-/** The owner's real key list and creator; generic webhook/advanced rows retain
- * their existing controller, while Assistants invokes this same key creator. */
+/** The owner's real integration sources; advanced settings retain their
+ * existing controller, while Assistants invokes this same key creator. */
 export function IntegrationsPage({source, webhooks, baseUrl, isCurrent, reportError, otherRows, advancedRows}: Props) {
   const state = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
   const [creating, setCreating] = useState(false), [name, setName] = useState(''), [ticked, setTicked] = useState<ReadonlySet<ApiScope>>(new Set()), [days, setDays] = useState<ExpiryDays>(0);
