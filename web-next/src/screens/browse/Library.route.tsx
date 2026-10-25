@@ -22,6 +22,7 @@ import {useShellWidth} from '../../shell/viewport';
 import {createEpisodeSelection} from '../detail/episode-selection';
 import {ShowScreen} from '../detail/Show';
 import {AlbumScreen} from '../detail/Album';
+import {ArtistScreen} from '../detail/Artist';
 import {AudiobookEntry} from '../detail/audiobooks/Entry';
 import {createShowBindings} from '../detail/show-bindings';
 import type {ScreenContext} from '../detail/context';
@@ -358,6 +359,8 @@ function BoundLibrary({captured, library, search, tabs: offered, musicLookup}: {
     return <AudiobookEntry context={context} target={{libraryId: library.id, view, entityId: search.entityId}}/>;
   return <>{unmatched ? <><LibraryIdentity {...header}/><NeedsAttention artwork={context.artwork} libraryId={library.id} libraryName={library.name} api={resources.life.api} onOpen={openAttention} onEdit={context.effects.editMetadata ? editAttention : undefined}/></>
     : view === 'show' || view === 'season' ? <LibraryShow context={context} captured={captured} libraryId={library.id} search={search}/>
+    : view === 'artist' && search.entityId ? <ArtistScreen context={context} libraryId={library.id} artistId={search.entityId}
+      onBack={() => {const back = context.effects.back; if (back) {back(); return;} void router.navigate({to: '/library/$libraryId', params: {libraryId: library.id}, search: {}}).catch(context.effects.reportError);}} />
     : view === 'album' && search.entityId ? <AlbumScreen context={context} libraryId={library.id} albumId={search.entityId} actions={actions}
       onBack={() => {const back = context.effects.back; if (back) {back(); return;} void router.navigate({to: '/library/$libraryId', params: {libraryId: library.id}, search: {}}).catch(context.effects.reportError);}} />
     : browse ? <LibraryScreen {...bindings}/> : <LibraryDiscoveryScreen service={resources.service} route={contentRoute} musicMixes={musicMixes} mixesTarget={search.section === 'mixes'} reportError={context.effects.reportError} header={<LibraryIdentity {...header}/>} empty={empty}

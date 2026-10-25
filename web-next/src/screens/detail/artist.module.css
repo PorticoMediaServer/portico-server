@@ -1,0 +1,16 @@
+/* desktop-listen's artist page on the current kit. */
+.page { padding: 24px var(--shell-gutter, 40px) 80px; color: var(--color-text); }
+.loading { padding: 40px; color: var(--color-text-secondary); font-size: var(--type-body-size); }
+.hero { display: flex; align-items: flex-end; gap: 32px; margin: 8px 0 32px; }
+.disc { position: relative; flex: none; width: 240px; height: 240px; border-radius: 50%; }
+.ambient { position: absolute; inset: -25%; border-radius: 50%; opacity: .4; filter: blur(30px) saturate(1.4); overflow: hidden; }
+.disc > :last-child { position: relative; width: 100%; height: 100%; border-radius: 50%; overflow: hidden; }
+.copy { min-width: 0; padding-bottom: 6px; }
+.kind { margin: 0 0 8px; font-size: var(--type-caption-size); font-weight: var(--type-caption-strong-weight); color: var(--color-text-tertiary); letter-spacing: .04em; text-transform: uppercase; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+.more { display: flex; justify-content: center; margin-top: 12px; }
+@media (max-width: 599px) {
+  .page { padding: 12px 16px 64px; }
+  .hero { gap: 16px; }
+  .disc { width: 120px; height: 120px; }
+}
