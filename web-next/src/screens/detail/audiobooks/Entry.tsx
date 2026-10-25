@@ -1,6 +1,7 @@
-import {useEffect, useMemo, useState, useSyncExternalStore} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {serviceI18n} from '@core/presentation/service-text.ts';
 import {formatClock} from '@core/presentation/content.ts';
+import {ApiError} from '@core/index.ts';
 import type {ContentEntry, ContentProjection} from '@core/library-content.ts';
 import {Menu, MenuItem} from '../../../kit/overlays';
 import {Artwork, AmbientArt} from '../../../kit/artwork';
@@ -17,28 +18,88 @@ import {AudiobookMore} from './More';
 import {useShellWidth} from '../../../shell/viewport';
 
 type Props = {context: ScreenContext; target: AudiobookTarget; onMore?: (target: ContentEntry, anchor: HTMLElement) => void};
+type Lease = Readonly<{token: number; context: ScreenContext; key: string; binding: AudiobookBindings}>;
+/** One captured page operation: the exact binding and page it was claimed for. */
+type Operation = Readonly<{binding: AudiobookBindings; page: ContentProjection; kind: 'watchlist' | 'finished'}>;
+
+/** One committed binding lease per original context/library/view/entity, retired synchronously by
+ * the layout effect that made it. Only a lease that still matches the live token and the inputs it
+ * was made for is published, so a stale body can never render under new ones. */
 export function AudiobookEntry({context, target, onMore}: Props) {
-  const {libraryId, view, entityId} = target;
-  const binding = useMemo(() => createAudiobookBindings(context, {libraryId, view, entityId}), [context, libraryId, view, entityId]);
+  const {libraryId, view, entityId} = target, key = JSON.stringify([libraryId, view, entityId]);
+  const [lease, setLease] = useState<Lease>();
+  const live = useRef<Lease | undefined>(undefined), serial = useRef(0);
+  useLayoutEffect(() => {
+    const binding = createAudiobookBindings(context, {libraryId, view, entityId}), next: Lease = Object.freeze({token: ++serial.current, context, key, binding});
+    live.current = next;
+    setLease(next);
+    return () => { binding.dispose(); if (live.current === next) live.current = undefined; setLease(current => current === next ? undefined : current); };
+  }, [context, libraryId, view, entityId, key]);
+  const current = lease && live.current?.token === lease.token && lease.context === context && lease.key === key ? lease : undefined;
+  return current ? <AudiobookBound key={current.token} binding={current.binding} onMore={onMore}/> : <DetailLoading/>;
+}
+
+function AudiobookBound({binding, onMore}: {binding: AudiobookBindings; onMore?: Props['onMore']}) {
   const [failure, setFailure] = useState<unknown>();
-  useEffect(() => {let active = true;setFailure(undefined);void binding.load().catch(error => {if (active) setFailure(error);});return () => {active = false;binding.dispose();};}, [binding]);
-  return failure ? <ScreenProblem context={context} error={failure} retry={() => {setFailure(undefined);void binding.load().catch(setFailure);}}/>
+  useEffect(() => {let active = true;setFailure(undefined);void binding.load().catch(error => {if (active) setFailure(error);});return () => {active = false;};}, [binding]);
+  return failure ? <ScreenProblem context={binding.context} error={failure} retry={() => {setFailure(undefined);void binding.load().catch(setFailure);}}/>
     : <AudiobookBody binding={binding} onMore={onMore}/>;
 }
+
 const duration = (value: number | undefined) => value === undefined ? undefined : serviceI18n().duration(value);
 function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: Props['onMore']}) {
   const phone = useShellWidth() < 1024;
   const state = useSyncExternalStore(binding.service.subscribe, binding.service.getSnapshot, binding.service.getSnapshot);
-  const [expanded, setExpanded] = useState(false), [finished, setFinished] = useState<boolean>(), [watchlisted, setWatchlisted] = useState<boolean>(), [busy, setBusy] = useState(false);
+  const [expanded, setExpanded] = useState(false), [finished, setFinished] = useState<boolean>(), [watchlisted, setWatchlisted] = useState<boolean>();
+  // One captured page operation at a time, claimed synchronously before any I/O.
+  const operation = useRef<Operation | undefined>(undefined), [busy, setBusy] = useState<Operation['kind'] | undefined>(undefined);
+  const owns = (op: Operation) => {
+    if (operation.current !== op) return false;
+    try { op.binding.current(op.page); } catch { return false; }
+    return op.binding.context.isCurrent();
+  };
+  const claim = (pageAtRender: ContentProjection, kind: Operation['kind']): Operation | undefined => {
+    if (operation.current !== undefined) return undefined;
+    try { binding.current(pageAtRender); } catch { return undefined; }
+    if (!binding.context.isCurrent()) return undefined;
+    const op: Operation = Object.freeze({binding, page: pageAtRender, kind});
+    operation.current = op; setBusy(kind);
+    return op;
+  };
+  /** Only this exact operation's own completion may clear its busy state, and only while its page
+   * and binding are still the committed ones. A successor's operation is never touched. */
+  const settle = (op: Operation) => {
+    if (operation.current !== op) return;
+    operation.current = undefined;
+    try { op.binding.current(op.page); } catch { return; }
+    if (!op.binding.context.isCurrent()) return;
+    setBusy(undefined);
+  };
+  const refuse = (op: Operation) => (error: unknown) => { if (owns(op)) binding.context.effects.reportError(error); };
   const [more, setMore] = useState<Readonly<{entry: ContentEntry; page: ContentProjection; anchor: HTMLElement}>>();
   const page = state.projection, entity = page?.entity;
   useFreshDocument(() => [dependsOn.libraries, ...titlesWithPersonalState(page?.scope.libraryId), dependsOn.event('stream.resync')], refresh => binding.service.revalidate(refresh), () => binding.service.getSnapshot().phase === 'ready');
-  useEffect(() => {
-    setExpanded(false);setFinished(undefined);setWatchlisted(undefined);setMore(undefined);
-    if (page?.scope.view === 'book') {let active = true;
-      void binding.finished(page).then(value => {if (active) setFinished(value.watched);}, error => {if (active) binding.context.effects.reportError(error);});
-      void binding.watchlisted(page).then(value => {if (active) setWatchlisted(value);}, () => undefined);
-      return () => {active = false;};}
+  // The page's own read lifetime and operation are retired in layout, never after paint.
+  const reads = useRef<{token: object} | undefined>(undefined);
+  useLayoutEffect(() => {
+    const token = {}, pageAtRender = page, live = () => {
+      if (!pageAtRender || reads.current?.token !== token) return false;
+      try { binding.current(pageAtRender); } catch { return false; }
+      return binding.context.isCurrent();
+    };
+    reads.current = {token};
+    operation.current = undefined; setBusy(undefined);
+    setExpanded(false); setFinished(undefined); setWatchlisted(undefined); setMore(undefined);
+    if (pageAtRender?.scope.view === 'book') {
+      void binding.finished(pageAtRender).then(value => {if (live()) setFinished(value.watched);}, error => {if (live()) binding.context.effects.reportError(error);});
+      // A server that does not offer the container flag withholds the button; a real failure reports.
+      void binding.watchlisted(pageAtRender).then(value => {if (live()) setWatchlisted(value);}, error => {
+        if (!live()) return;
+        if (error instanceof ApiError && [403, 404, 405, 501].includes(error.status)) return;
+        binding.context.effects.reportError(error);
+      });
+    }
+    return () => { if (reads.current?.token === token) reads.current = undefined; };
   }, [binding, page]);
   if (!page || !entity) return state.phase === 'error' || state.phase === 'refresh-required'
     ? <ScreenProblem context={binding.context} error={state.error} retry={() => {void binding.load().catch(binding.context.effects.reportError);}}/> : <DetailLoading/>;
@@ -93,9 +154,15 @@ function AudiobookBody({binding, onMore}: {binding: AudiobookBindings; onMore?: 
     <div className={styles.actions}>
       {canPlay && <Button className={styles.primary} variant="primary" icon="i-play" onClick={() => run(() => binding.primary(page))}>{label}</Button>}
       {book && page.listening?.actions.includes('play') && <Button variant="glass" onClick={() => run(() => binding.primary(page, true))}>{t('action.startOver')}</Button>}
-      {book && !phone && watchlisted !== undefined && <Button className={styles.round} icon={watchlisted ? 'i-check' : 'i-plus'} iconOnly aria-pressed={watchlisted}
-        aria-label={t('next.controls.myList')} onClick={() => {setBusy(true);void binding.setWatchlisted(page, !watchlisted).then(value => setWatchlisted(value)).catch(binding.context.effects.reportError).finally(() => setBusy(false));}}/>}
-      {book && finished !== undefined && <Button className={styles.round} icon="i-check" iconOnly disabled={busy} aria-pressed={finished} aria-label={t(finished ? 'title.markNotFinished' : 'title.markFinished')} onClick={() => {setBusy(true);void binding.markFinished(page).then(value => setFinished(value.watched)).catch(binding.context.effects.reportError).finally(() => setBusy(false));}}/>}
+      {book && !phone && watchlisted !== undefined && <Button className={styles.round} icon={watchlisted ? 'i-check' : 'i-plus'} iconOnly aria-pressed={watchlisted} disabled={busy !== undefined}
+        aria-label={t('next.controls.myList')} onClick={() => {
+          const op = claim(page, 'watchlist'); if (!op) return;
+          void binding.setWatchlisted(page, !watchlisted).then(value => {if (owns(op)) setWatchlisted(value);}, refuse(op)).finally(() => settle(op));
+        }}/>}
+      {book && finished !== undefined && <Button className={styles.round} icon="i-check" iconOnly disabled={busy !== undefined} aria-pressed={finished} aria-label={t(finished ? 'title.markNotFinished' : 'title.markFinished')} onClick={() => {
+        const op = claim(page, 'finished'); if (!op) return;
+        void binding.markFinished(page).then(value => {if (owns(op)) setFinished(value.watched);}, refuse(op)).finally(() => settle(op));
+      }}/>}
       {!book && !author && primaryBook && <Button className={styles.round} icon="i-retry" iconOnly aria-label={t('action.startOver')} onClick={() => open(primaryBook)}/>}
       {!onMore && !phone && <AudiobookMore binding={binding} page={page} entry={entity}/>}
     </div>
