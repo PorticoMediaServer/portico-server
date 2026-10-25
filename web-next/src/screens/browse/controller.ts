@@ -1,5 +1,5 @@
 import {BrowseQueryBuilder, browseCapabilitiesPath, browsePath, browseMembershipId, parseBrowseCapabilities, parseBrowseResult, browseContextFacetsPath, parseBrowseFacets, browseCountsPath, browseCountsRequest, parseBrowseCounts, parseBrowseNode, type BrowseResult,
-  type BrowseCapabilities, type BrowseNode, type BrowseSortSelection} from '@core/browse.ts';
+  type BrowseCapabilities, type BrowseNode, type BrowseSortSelection, type BrowseWholeSelection} from '@core/browse.ts';
 import {createWindowedCollection, type WindowedCollection} from '@core/collections/windowed.ts';
 import type {ContentEntry, LibraryContentApi} from '@core/library-content.ts';
 import {isStaleAnswer} from '@core/freshness-actions.ts';
@@ -44,6 +44,7 @@ export class BrowseController {
   private epoch = 0;
   private sorts: readonly BrowseSortSelection[] = [];
   private members = new WeakMap<ContentEntry, number>();
+  private whole?: BrowseWholeSelection;
   constructor(private api: LibraryContentApi, source: BrowseSource, private isCurrent: () => boolean) {
     this.source = Object.freeze({...source,
       ...(source.base ? {base: Object.freeze(source.base.map(captureNode))} : {}),
@@ -63,6 +64,12 @@ export class BrowseController {
     return this.current() && this.state.phase === 'ready' && !!this.state.revision && this.members.get(entry) === this.epoch
       && this.collection.residentItems().some(member => member.entry === entry);
   }
+  /** The server's exact whole-view descriptor for the page this controller holds.
+   * It is present only while that same page revision is the current one; any
+   * invalidate, retry or revision change drops it before a new one can arrive. */
+  wholeSelection(): BrowseWholeSelection | undefined {
+    return this.current() && this.state.phase === 'ready' && !!this.state.revision ? this.whole : undefined;
+  }
   private publish(patch: Partial<BrowseState>) {
     if (!this.current()) return;
     this.state = Object.freeze({...this.state, ...patch});
@@ -71,6 +78,7 @@ export class BrowseController {
   async load() {
     if (!this.current()) return;
     const epoch = ++this.epoch;
+    this.whole = undefined;
     this.publish({phase: 'loading', error: undefined, revision: undefined});
     try {
       const caps = parseBrowseCapabilities(await this.api.request(browseCapabilitiesPath(this.source.libraryId, this.source.pivot), 'GET', undefined, this.life.signal));
@@ -102,6 +110,7 @@ export class BrowseController {
     if (!caps || !sort) return;
     const epoch = ++this.epoch;
     this.members = new WeakMap();
+    this.whole = undefined;
     this.publish({...next, revision: undefined, queryRevision: this.state.queryRevision + 1});
     let revision: string | undefined, stale = false;
     this.collection.invalidate(async (start, count, signal) => {
@@ -111,17 +120,21 @@ export class BrowseController {
       const raw = await this.api.request(browsePath(this.source.libraryId), 'POST', body, signal).catch(error => {
         if (this.current() && epoch === this.epoch && !signal.aborted && (isStaleAnswer(error)
           || typeof error === 'object' && error !== null && 'status' in error && typeof error.status === 'number' && [401, 403, 404].includes(error.status))) {
-          stale = true;this.members = new WeakMap();this.publish({revision: undefined});
+          stale = true;this.members = new WeakMap();this.whole = undefined;this.publish({revision: undefined});
         }
         throw error;
       });
       const page = withLibraryScope(parseBrowseResult(raw), this.source.libraryId);
       if (!this.current() || epoch !== this.epoch || signal.aborted) throw closed();
       if (page.pivot !== this.source.pivot || page.pageInfo.start !== start || revision && revision !== page.pageInfo.revision) {
-        stale = true;this.members = new WeakMap();this.publish({revision: undefined});
+        stale = true;this.members = new WeakMap();this.whole = undefined;this.publish({revision: undefined});
         throw changed();
       }
       revision = page.pageInfo.revision;
+      // The approved descriptor is first-page-only and source-bound. Later pages
+      // never install or replace it, and a descriptor for another library is not
+      // this controller's view even when its revision string matches.
+      if (start === 0 && page.wholeSelection !== undefined && page.wholeSelection.libraryId === this.source.libraryId) this.whole = page.wholeSelection;
       this.publish({revision});
       return {items: page.entries.map((entry, index) => {this.members.set(entry, epoch);return Object.freeze({membershipId: browseMembershipId(page, index)!, entry});}),
         total: page.pageInfo.total, totalIsLowerBound: page.pageInfo.totalIsLowerBound,
@@ -169,9 +182,10 @@ export class BrowseController {
   /** UI controls preserve compound predicates and validate every generated node. */
   parseNode = (value: unknown) => parseBrowseNode(value);
   retry = () => {
+    this.whole = undefined;
     if (this.state.phase === 'error') void this.load();
     else if (isStaleAnswer(this.collection.getSnapshot().error)) this.reset();
     else this.collection.retry();
   };
-  dispose() { this.life.abort(); this.epoch++; this.collection.dispose(); this.listeners.clear(); }
+  dispose() { this.life.abort(); this.epoch++; this.whole = undefined; this.collection.dispose(); this.listeners.clear(); }
 }
