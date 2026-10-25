@@ -485,18 +485,18 @@ type hostClaimFacts struct {
 	readyRevision             int64
 }
 
-// hostClaimAllowed is the one self-claim admission rule: a joined, connected,
-// fresh-ready, current-playback member may claim an absent host only after the
-// group's pause boundary, in a reconnecting or anyone-controls group that has
-// not ended. A sitting host never claims (it already is).
+// hostClaimGovernanceAllowed checks only whether a non-host self-claim is in
+// its governance window. Refuse closed windows before reading target readiness.
+func hostClaimGovernanceAllowed(g record, f hostClaimFacts, now int64) bool {
+	return f.role != "host" && f.state == "joined" && g.state != "ended" &&
+		(isReconnecting(g.state) || g.hostAuthority == "anyone") &&
+		now-g.hostSeenMS >= g.pauseAfter*1000
+}
+
+// hostClaimAllowed adds current, connected readiness to the governance window.
+// Reads and mutations use this same full rule for accepting a self-claim.
 func hostClaimAllowed(g record, f hostClaimFacts, now int64) bool {
-	if f.role == "host" || f.state != "joined" || g.state == "ended" {
-		return false
-	}
-	if !isReconnecting(g.state) && g.hostAuthority != "anyone" {
-		return false
-	}
-	if now-g.hostSeenMS < g.pauseAfter*1000 {
+	if !hostClaimGovernanceAllowed(g, f, now) {
 		return false
 	}
 	seen := f.seenMS
@@ -523,6 +523,9 @@ func (s *Store) TransferHost(ctx context.Context, p identity.Principal, device, 
 		// the caller claiming a host that has passed the pause boundary. A
 		// non-host naming someone else is never that caller.
 		if m.role != "host" && req.MemberID != m.id {
+			return errHost
+		}
+		if m.role != "host" && !hostClaimGovernanceAllowed(*g, hostClaimFacts{role: m.role, state: m.state}, s.ms()) {
 			return errHost
 		}
 		var state, role string
