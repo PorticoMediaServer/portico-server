@@ -61,6 +61,10 @@ def main():
     else:raise RuntimeError('emulator-boot-deadline')
     adb(serial,'shell','input','keyevent','KEYCODE_WAKEUP')
     adb(serial,'shell','wm','dismiss-keyguard')
+    before=time.time();clock=adb(serial,'shell','date','+%s');after=time.time();raw=clock.stdout.strip()
+    baseline={'hostBeforeEpoch':before,'hostAfterEpoch':after,'readDurationMs':round((after-before)*1000),'guestEpochSeconds':int(raw) if clock.returncode==0 and re.fullmatch(r'[0-9]{10,11}',raw) else None,'correctionPerformed':False}
+    if baseline['guestEpochSeconds'] is not None:baseline['guestMinusHostSeconds']=round(baseline['guestEpochSeconds']-(before+after)/2,3)
+    (out/(mode+'-'+flavour+'-clock.json')).write_text(json.dumps(baseline,indent=2)+'\n')
     installed=adb(serial,'install','-r','-d',str(apk),timeout=180)
     if installed.returncode or 'Success' not in installed.stdout:raise RuntimeError('candidate-install-failed')
     proof=installed_proof(serial,apk,private);proof.update(nativeMain=candidate['nativeMain'],flavour=flavour,requestedEmulatorFlags=['-no-snapshot','-no-window','-no-audio'],requestedReadOnlyFlag=False);(out/(mode+'-'+flavour+'-installation.json')).write_text(json.dumps(proof,indent=2)+'\n')
