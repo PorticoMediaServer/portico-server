@@ -1,0 +1,63 @@
+name: Checkpoint approved archive dependencies
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact coherent checkpoint source for approved dependency intake
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: checkpoint-archive-dependencies
+  cancel-in-progress: false
+jobs:
+  dependencies:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - name: Verify immutable input
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          mkdir -p "$RUNNER_TEMP/checkpoint-dependencies"
+          git rev-parse HEAD > "$RUNNER_TEMP/checkpoint-dependencies/source-sha.log"
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - name: Materialize the two approved exact module versions
+        working-directory: server
+        run: |
+          status=0
+          (go get github.com/nwaples/rardecode/v2@v2.4.5 github.com/bodgit/sevenzip@v1.6.5 && go mod download) > "$RUNNER_TEMP/checkpoint-dependencies/dependencies.log" 2>&1 || status=$?
+          echo "exit=$status"
+          tail -n 20 "$RUNNER_TEMP/checkpoint-dependencies/dependencies.log"
+          exit "$status"
+      - name: Verify selected versions and preserve actual module closure
+        working-directory: server
+        run: |
+          test "$(go list -m -f '{{.Version}}' github.com/nwaples/rardecode/v2)" = v2.4.5
+          test "$(go list -m -f '{{.Version}}' github.com/bodgit/sevenzip)" = v1.6.5
+          go list -m -json all > "$RUNNER_TEMP/checkpoint-dependencies/modules.log"
+          go mod download -json github.com/nwaples/rardecode/v2 github.com/bodgit/sevenzip > "$RUNNER_TEMP/checkpoint-dependencies/direct-checksums.log"
+      - name: Preserve only the official Go module changes
+        run: |
+          git diff --name-only > "$RUNNER_TEMP/checkpoint-dependencies/changed-paths.log"
+          if grep -Ev '^server/go\.(mod|sum)$' "$RUNNER_TEMP/checkpoint-dependencies/changed-paths.log"; then exit 1; fi
+          git diff --binary -- server/go.mod server/go.sum > "$RUNNER_TEMP/checkpoint-dependencies/dependencies.patch"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ always() }}
+        with:
+          name: checkpoint-dependencies-${{ inputs.source_sha }}
+          path: ${{ runner.temp }}/checkpoint-dependencies/
+          if-no-files-found: error
+          retention-days: 14
