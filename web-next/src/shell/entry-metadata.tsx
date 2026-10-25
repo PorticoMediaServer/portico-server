@@ -6,8 +6,9 @@ import {MetadataEditor} from '../screens/metadata/MetadataEditor';
 import styles from '../screens/metadata/metadata.module.css';
 import type {EntryActionPorts, EntryActionTarget} from './entry-actions';
 
+export type EntryMetadataPorts = Omit<EntryActionPorts, 'api'> & Readonly<{api: EntryActionPorts['api'] & Readonly<{requestMetadataUpload?: <T>(path: string, body: FormData, signal?: AbortSignal) => Promise<T>}>}>;
 export type EntryMetadataEffect = (target: EntryActionTarget, anchor: HTMLElement) => Promise<void>;
-type Open = Readonly<{id: number; target: EntryActionTarget; anchor: HTMLElement; ports: EntryActionPorts; lifetime: AbortController; ownerCurrent: () => boolean}>;
+type Open = Readonly<{id: number; target: EntryActionTarget; anchor: HTMLElement; ports: EntryMetadataPorts; lifetime: AbortController; ownerCurrent: () => boolean}>;
 let opened: Open | null = null;
 let serial = 0;
 const listeners = new Set<() => void>();
@@ -16,7 +17,7 @@ const close = () => {opened?.lifetime.abort(); opened = null; emit();};
 const current = (value: Open) => opened === value && !value.lifetime.signal.aborted && value.ports.isCurrent() && value.ownerCurrent();
 
 /** The caller's local owner epoch is rechecked for every read and write. */
-export function createEntryMetadataEffect(ports: EntryActionPorts, ownerCurrent: () => boolean): EntryMetadataEffect {
+export function createEntryMetadataEffect(ports: EntryMetadataPorts, ownerCurrent: () => boolean): EntryMetadataEffect {
   return async (target, anchor) => {
     if (!ports.isCurrent() || !ownerCurrent()) throw new DOMException('Metadata owner changed', 'AbortError');
     close();
@@ -54,7 +55,13 @@ function CheckedMetadata({value}: {value: Open}) {
     // Every full editing document must retain the fresh Detail viewer fence.
     if (result && typeof result === 'object' && 'viewerFence' in result && result.viewerFence !== data.scope.viewerFence) throw new Error('metadata-fence-mismatch');
     return result;
-  }}), [api, data, value]);
+  }, ...(value.ports.api.requestMetadataUpload ? {async requestMetadataUpload<T>(path: string, body: FormData, signal?: AbortSignal): Promise<T> {
+    if (!data || !current(value)) throw new DOMException('Metadata grant retired', 'AbortError');
+    const result = await value.ports.api.requestMetadataUpload!<T>(path, body, signal ? AbortSignal.any([signal, value.lifetime.signal]) : value.lifetime.signal);
+    if (!current(value)) throw new DOMException('Metadata grant retired', 'AbortError');
+    if (result && typeof result === 'object' && 'viewerFence' in result && result.viewerFence !== data.scope.viewerFence) throw new Error('metadata-fence-mismatch');
+    return result;
+  }} : {})}), [api, data, value]);
   const scope = useMemo(() => ({serverId: value.ports.serverId, viewerId: value.ports.viewerId}), [value]);
   const target = useMemo(() => ({kind: 'item' as const, id: value.target.itemId, libraryId: value.target.libraryId}), [value]);
   return <Dialog open onOpenChange={open => {if (!open) close();}} title={defaultI18n.t('next.home.editSelection')}
