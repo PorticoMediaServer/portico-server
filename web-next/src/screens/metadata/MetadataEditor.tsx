@@ -120,24 +120,26 @@ function fieldError(spec: RepairFieldSpec, value: string, values: readonly strin
   if (spec.type === 'integer' || spec.type === 'number') {
     if (value.trim() === '') return '';
     const number = Number(value);
-    if (!Number.isFinite(number)) return t('web.metadata.wholeNumber', {label});
-    if (spec.type === 'integer' && !Number.isInteger(number)) return t('web.metadata.wholeNumber', {label});
+    if (!Number.isSafeInteger(number) || number < 0 || String(number) !== value) return t('web.metadata.wholeNumber', {label});
     if (spec.min !== undefined || spec.max !== undefined) {
       if ((spec.min !== undefined && number < spec.min) || (spec.max !== undefined && number > spec.max)) return t('web.metadata.numberRange', {label, min: spec.min ?? '', max: spec.max ?? ''});
     }
     return '';
   }
-  if (spec.type === 'date' && value && Number.isNaN(Date.parse(value))) return t('web.metadata.dateError', {label});
+  if (spec.type === 'date' && value) {
+    const parsed = new Date(value + 'T00:00:00Z');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) return t('web.metadata.dateError', {label});
+  }
   if (spec.type === 'enum' && value && spec.allowed && !spec.allowed.includes(value)) return t('web.metadata.enumError', {label});
-  if (spec.maxLength !== undefined && value.length > spec.maxLength) return t('web.metadata.textTooLong', {label, max: spec.maxLength});
+  if (spec.maxLength !== undefined && Array.from(value).length > spec.maxLength) return t('web.metadata.textTooLong', {label, max: spec.maxLength});
   return '';
 }
 
 function input(spec: RepairFieldSpec, value: string, set: (value: string) => void) {
   if (spec.type === 'enum' && spec.allowed) return <select value={value} onChange={event => set(event.currentTarget.value)}>
     {spec.allowed.map(choice => <option key={choice} value={choice}>{choice}</option>)}</select>;
-  if (spec.type === 'multiline') return <textarea rows={4} maxLength={spec.maxLength} value={value} onChange={event => set(event.currentTarget.value)} />;
-  return <input type={spec.type === 'date' ? 'date' : 'text'} inputMode={spec.type === 'integer' || spec.type === 'number' ? 'numeric' : undefined} maxLength={spec.maxLength} value={value} onChange={event => set(event.currentTarget.value)} />;
+  if (spec.type === 'multiline') return <textarea rows={4} value={value} onChange={event => set(event.currentTarget.value)} />;
+  return <input type={spec.type === 'date' ? 'date' : 'text'} inputMode={spec.type === 'integer' || spec.type === 'number' ? 'numeric' : undefined} value={value} onChange={event => set(event.currentTarget.value)} />;
 }
 
 function Field({spec, field, draft, set}: {spec: RepairFieldSpec; field?: {value: string; automaticValue: string; locked: boolean; source: string; values?: readonly string[]}; draft?: {value: string; locked: boolean}; set: (patch: Partial<MetadataFieldDraft>) => void}) {
