@@ -39,6 +39,10 @@ export type SourceLibraryUse=Readonly<{libraryId:string;name:string;kind:string;
 /** A source's present state: the reads it holds now, when it was last checked,
  * and the libraries its folders went into. Nothing here is estimated. */
 export type RemoteSourceStatus=Readonly<{sourceId:string;generation:string;state:string;errorCode?:string;rangeSupport:string;lastCheckedAt:string;connectionsInUse:number;playbackReads:number;analysisReads:number;scanIntervalSeconds:number;libraries:readonly SourceLibraryUse[]}>;
+/** The drawn Advanced page: how a source's folders are checked, the disk its
+ * read cache may use, and which analysis stages run for files found through it. */
+export type SourceAdvanced=Readonly<{scanIntervalSeconds:number;watchForChanges:boolean;scanOnStart:boolean;fullRecheckDays:number;cacheBytes:number;cacheFloorBytes:number;seekPreviews:boolean;chapterImages:boolean;waveforms:boolean;loudness:boolean;checksums:boolean}>;
+export type SourceAdvancedSettings=Readonly<{sourceId:string;generation:string;revision:number;saved:boolean;cacheSupported:boolean;values:SourceAdvanced}>;
 const sourceReadPresets:Readonly<Record<SourceReadPreset,SourceReadValues>>=Object.freeze({
  list:{scanDepth:'file_list_only',wholeFileReads:false,connections:2,requestsPerSecond:2,bytesPerSecond:0},
  once:{scanDepth:'basic',wholeFileReads:false,connections:4,requestsPerSecond:4,bytesPerSecond:0},
@@ -74,6 +78,20 @@ function remoteFolderPage(raw:unknown,id:string):RemoteFolderPage{
 function sourceLibraryUse(raw:unknown):SourceLibraryUse{
  if(!record(raw)||!text(raw.libraryId,256)||!raw.libraryId||!text(raw.name,512)||!text(raw.kind,32)||!integer(raw.folders)||raw.folders<1)invalid();
  return Object.freeze({libraryId:raw.libraryId,name:raw.name,kind:raw.kind,folders:raw.folders});
+}
+function sourceAdvanced(raw:unknown):SourceAdvanced{
+ if(!record(raw))invalid();
+ const {scanIntervalSeconds,watchForChanges,scanOnStart,fullRecheckDays,cacheBytes,cacheFloorBytes,seekPreviews,chapterImages,waveforms,loudness,checksums}=raw;
+ if(!integer(scanIntervalSeconds)||![0,900,3600,21600,86400,604800].includes(scanIntervalSeconds))invalid();
+ if(typeof watchForChanges!=='boolean'||typeof scanOnStart!=='boolean')invalid();
+ if(!integer(fullRecheckDays)||![0,7,14,30].includes(fullRecheckDays))invalid();
+ if(!integer(cacheBytes)||cacheBytes>64*1024*1024*1024||!integer(cacheFloorBytes)||cacheFloorBytes>1024*1024*1024*1024)invalid();
+ if(![seekPreviews,chapterImages,waveforms,loudness,checksums].every(value=>typeof value==='boolean'))invalid();
+ return Object.freeze({scanIntervalSeconds,watchForChanges,scanOnStart,fullRecheckDays,cacheBytes,cacheFloorBytes,seekPreviews,chapterImages,waveforms,loudness,checksums}) as SourceAdvanced;
+}
+function sourceAdvancedSettings(raw:unknown,id:string):SourceAdvancedSettings{
+ if(!record(raw)||raw.sourceId!==id||!text(raw.generation,64)||!raw.generation||!integer(raw.revision)||typeof raw.saved!=='boolean'||typeof raw.cacheSupported!=='boolean')invalid();
+ return Object.freeze({sourceId:id,generation:raw.generation,revision:raw.revision,saved:raw.saved,cacheSupported:raw.cacheSupported,values:sourceAdvanced(raw.values)});
 }
 function remoteSourceStatus(raw:unknown,id:string):RemoteSourceStatus{
  if(!record(raw)||raw.sourceId!==id||!text(raw.generation,64)||!raw.generation||!text(raw.state,100)||!text(raw.rangeSupport,32)||!text(raw.lastCheckedAt,64)||!integer(raw.connectionsInUse)||!integer(raw.playbackReads)||!integer(raw.analysisReads)||!integer(raw.scanIntervalSeconds)||!Array.isArray(raw.libraries)||raw.libraries.length>200)invalid();
@@ -415,6 +433,38 @@ async networkPolicy(libraryId:string):Promise<NetworkPolicy>{const epoch=this.ep
   this.fence(raw);
   if(!record(raw)||!record(raw.folders))invalid();
   return remoteFolderPage(raw.folders,id);
+ }
+ /** The Advanced page as saved; unsaved values default from the source's folders. */
+ async readAdvanced(id:string,guard?:()=>boolean):Promise<SourceAdvancedSettings>{
+  if(!this.live()||(guard&&!guard()))throw new Error('Scope changed.');
+  if(!text(id,256)||!id)throw new Error('Invalid source.');
+  const epoch=this.epoch;
+  const raw=await this.request(encodedRoutePath('get_storage_source_advanced',{id:encodeURIComponent(id)}),'GET',undefined,guard);
+  if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
+  this.fence(raw);
+  if(!record(raw)||!record(raw.settings))invalid();
+  return sourceAdvancedSettings(raw.settings,id);
+ }
+ /** One CAS write of the Advanced page; the server applies it to the folders and cache. */
+ async saveAdvanced(settings:SourceAdvancedSettings,values:SourceAdvanced,guard?:()=>boolean):Promise<SourceAdvancedSettings>{
+  if(!this.live()||(guard&&!guard()))throw new Error('Scope changed.');
+  if(!settings.sourceId||!settings.generation||!Number.isSafeInteger(settings.revision)||settings.revision<0)throw new Error('Invalid source settings.');
+  const epoch=this.epoch;
+  this.publish({busy:true,error:'',errorCode:''});
+  try{
+   const raw=await this.request(encodedRoutePath('put_storage_source_advanced',{id:encodeURIComponent(settings.sourceId)}),'PUT',{expectedGeneration:settings.generation,expectedRevision:settings.revision,values:sourceAdvanced(values)},guard);
+   if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
+   this.fence(raw);
+   if(!record(raw)||!record(raw.settings))invalid();
+   const next=sourceAdvancedSettings(raw.settings,settings.sourceId);
+   if(next.revision<settings.revision||next.generation!==settings.generation)invalid();
+   return next;
+  }catch(error){
+   if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
+   const code=record(error)&&typeof error.code==='string'?normalizedCode(error.code):'internal';
+   this.publish({error:safeError({code}),errorCode:code});
+   throw Object.assign(new Error(safeError({code})),{code:code||'internal'});
+  }finally{if(this.live()&&epoch===this.epoch)this.publish({busy:false});}
  }
  /** What the source is doing now, and where its folders went; one bounded read. */
  async readStatus(id:string,guard?:()=>boolean):Promise<RemoteSourceStatus>{

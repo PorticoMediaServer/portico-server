@@ -2,7 +2,7 @@ import {useCallback, useLayoutEffect, useEffect, useMemo, useRef, useState, useS
 import {defaultI18n, type MessageId} from '@i18n';
 import {
   RemoteSourceService, sourceReadPreset, sourceReadPresetName,
-  type DAVConnectionResult, type RcloneProgram, type RcloneTestResult, type RemoteFolder, type RemoteSource, type RemoteSourceStatus, type SourceReadPreset, type SourceReadSettings, type SourceReadValues,
+  type DAVConnectionResult, type RcloneProgram, type RcloneTestResult, type RemoteFolder, type RemoteSource, type RemoteSourceStatus, type SourceAdvanced, type SourceReadPreset, type SourceReadSettings, type SourceReadValues,
 } from '@core/remote-sources.ts';
 import {LibraryManagementService, type ManagedLibrary} from '@core/library-management.ts';
 import {readLibraryInventoryConfig, saveLibraryFolder} from '@core/server-admin/libraries.ts';
@@ -16,6 +16,7 @@ import {Icon, type IconName} from '../../../kit/Icon';
 import styles from './remote-sources.module.css';
 import {RemoteFolderPicker} from './RemoteFolderPicker';
 import {ReadingChoices} from './ReadingChoices';
+import {SourceAdvancedRows} from './SourceAdvancedRows';
 
 const t = defaultI18n.t;
 const emptyDraft: WebDavDraft = {name: '', root: '', username: '', password: '', insecureLocal: false};
@@ -130,7 +131,13 @@ export function RemoteSourcesPage({api, serverId, viewerId, isCurrent, reportErr
   const [notice, setNotice] = useState('');
   const refresh = () => {if (!isCurrent()) return;setNotice('');void service.load();};
   const recover = () => {if (!isCurrent()) return;setNotice('');void service.recover().catch(error => {if (isCurrent()) setNotice(remoteErrorText(error));});};
+  const attention = sources.find(source => stateTone(source) === 'danger');
   return <div className={styles.page}>
+    {attention && <div className={styles.pageNotice} role="status">
+      <Icon name="i-warn" size={20}/>
+      <span><b>{t('next.remoteSources.problemHeading')}</b> {problemId(attention) ? t(problemId(attention)!) : t('next.remoteSources.problem.offline')}
+        <Button size="xs" variant="text" onClick={() => setManaging(attention)}>{t('next.remoteSources.openSource', {name: attention.name})}</Button></span>
+    </div>}
     <SettingsGroup title={t('next.settingsSpec.server.remote-sources.groups.0.title')}
       actions={<Button size="compact" variant="primary" icon="i-plus" onClick={() => setAdding(true)}>{t('next.settingsSpec.server.remote-sources.groups.0.rows.0.control.addLabel')}</Button>}>
       {snapshot.error && <p className={styles.error} role="alert">{snapshot.error}{snapshot.ambiguous && <Button size="xs" variant="text" onClick={recover}>{t('next.remoteSources.checkResult')}</Button>}</p>}
@@ -199,6 +206,8 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   const [finishBusy, setFinishBusy] = useState(false);
   const [finishError, setFinishError] = useState('');
   const [summary, setSummary] = useState<Readonly<{library?: string; folders: number}>>({folders: 0});
+  const [advancedValues, setAdvancedValues] = useState<SourceAdvanced>({scanIntervalSeconds: 21600, watchForChanges: false, scanOnStart: false, fullRecheckDays: 0, cacheBytes: 0, cacheFloorBytes: 0, seekPreviews: true, chapterImages: true, waveforms: true, loudness: true, checksums: true});
+  const [advancedTouched, setAdvancedTouched] = useState(false);
   const [leaving, setLeaving] = useState<'' | 'saved' | 'unsaved'>('');
   const [leaveChoice, setLeaveChoice] = useState<'keep' | 'remove'>('keep');
   const [leaveRemove, setLeaveRemove] = useState(false);
@@ -215,6 +224,8 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     setProfile(undefined); setValues(sourceReadPreset('once')); setBusy(false); setLoadingProfile(false);
     setChosen([]); setPicking(false); setAttachMode('new'); setLibraryName(''); setKind('movie'); setExistingId('');
     setFinishBusy(false); setFinishError(''); setSummary({folders: 0}); setLeaving(''); setLeaveRemove(false); setLeaveError(''); setLeaveChoice('keep');
+    setAdvancedValues({scanIntervalSeconds: 21600, watchForChanges: false, scanOnStart: false, fullRecheckDays: 0, cacheBytes: 0, cacheFloorBytes: 0, seekPreviews: true, chapterImages: true, waveforms: true, loudness: true, checksums: true});
+    setAdvancedTouched(false);
     testAttempt.current++; lifetime.current++; setFormToken(lifetime.current); pending.current = false;
   };
   const updateDraft = (patch: Partial<WebDavDraft>) => {testAttempt.current++;setResult(undefined);setError('');setDraft(current => ({...current, ...patch}));};
@@ -313,6 +324,14 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
       if (!guard()) return;
       if (service.getSnapshot().error) {setError(service.getSnapshot().error);return;}
       setProfile(next);
+      const savedSource = created ?? service.getSnapshot().sources.find(source => source.id === next.sourceId);
+      if (advancedTouched && savedSource) {
+        const current = await service.readAdvanced(savedSource.id, guard);
+        if (!guard()) return;
+        const advancedSaved = await service.saveAdvanced(current, advancedValues, guard);
+        if (!guard()) return;
+        setAdvancedValues(advancedSaved.values);
+      }
       setStep('folders');
       setLibraryName(current => current || (created ?? service.getSnapshot().sources.find(source => source.id === next.sourceId))?.name || '');
       void libraries.loadLibraries();
@@ -439,6 +458,11 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
         <SettingNumber label={t('next.remoteSources.downloadSpeed')} value={values.bytesPerSecond ? values.bytesPerSecond / 1_000_000 : null} min={1} max={1000} optional unit={t('next.remoteSources.megabytesPerSecond')} disabled={busy} onCommit={value => setValues({...values, bytesPerSecond: value === null ? 0 : Math.round(value) * 1_000_000})}/>
       </div>
       <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.label')}<small className={styles.note}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.help')}</small></span><Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.label')} checked={values.wholeFileReads} disabled={busy} onCheckedChange={value => setValues({...values, wholeFileReads: value})}/></label>
+      <details className={styles.advDisclosure}>
+        <summary>{t('next.remoteSources.advanced')}</summary>
+        <SourceAdvancedRows values={advancedValues} cacheSupported={!!sourceNow?.mountId} disabled={busy}
+          onChange={next => {setAdvancedTouched(true);setAdvancedValues(next);}}/>
+      </details>
     </>}
     {step === 'folders' && <>
       <p className={styles.note}>{t('next.remoteSources.foldersOnlyHint')}</p>
@@ -531,6 +555,9 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, isCurrent
   const [confirming, setConfirming] = useState(false);
   const [status, setStatus] = useState<RemoteSourceStatus>();
   const [changing, setChanging] = useState(false);
+  const [advanced, setAdvanced] = useState<{settings?: Awaited<ReturnType<RemoteSourceService['readAdvanced']>>; values: SourceAdvanced}>();
+  const [advancedBusy, setAdvancedBusy] = useState(false);
+  const [advancedNote, setAdvancedNote] = useState('');
   const [pendingValues, setPendingValues] = useState<SourceReadValues>(sourceReadPreset('list'));
   const libraries = useMemo(() => new LibraryManagementService({api, scope: {serverId, viewerId}}), [api, serverId, viewerId]);
   const librarySnapshot = useSyncExternalStore(libraries.subscribe, libraries.getSnapshot, libraries.getSnapshot);
@@ -553,10 +580,20 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, isCurrent
       setValues(next.saved ? next.values : sourceReadPreset('list'));
     }).catch(value => {if (guard()) setError(remoteErrorText(value));});
     service.readStatus(source.id, guard).then(next => {if (guard()) setStatus(next);}).catch(() => {});
+    service.readAdvanced(source.id, guard).then(next => {if (guard()) setAdvanced({settings: next, values: next.values});}).catch(() => {});
     void libraries.loadLibraries();
   }, [service, source.id, source.generation, isCurrent, libraries]);
   useEffect(() => {if (!attachTo && status?.libraries.length) setAttachTo(status.libraries[0].libraryId);}, [attachTo, status]);
   useEffect(() => {if (!attachTo && librarySnapshot.directory.data?.items.length) setAttachTo(librarySnapshot.directory.data.items[0].id);}, [attachTo, librarySnapshot.directory.data]);
+  const saveAdvanced = async () => {
+    if (!advanced || advancedBusy) return;
+    setAdvancedBusy(true);setAdvancedNote('');
+    try {
+      const saved = advanced.settings ? await service.saveAdvanced(advanced.settings, advanced.values, attemptGuard()) : undefined;
+      if (saved && active.current) {setAdvanced({settings: saved, values: saved.values});setAdvancedNote(t('next.remoteSources.saved'));}
+    } catch (value) {if (active.current) setAdvancedNote(attachFailure(value));}
+    finally {if (active.current) setAdvancedBusy(false);}
+  };
   const attach = async (folders: readonly RemoteFolder[]) => {
     if (!attachTo || attachBusy) return;
     setAttachBusy(true); setAttachNote('');
@@ -660,6 +697,15 @@ function ManageSourceDialog({service, source, api, serverId, viewerId, isCurrent
       </div>
       <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.label')}<small className={styles.note}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.help')}</small></span><Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.label')} checked={values.wholeFileReads} disabled={busy} onCheckedChange={value => setValues({...values, wholeFileReads: value})}/></label>
       <Button size="compact" variant="primary" disabled={busy || !profile} onClick={() => void saveReading()}>{t('next.remoteSources.save')}</Button>
+    </section>
+    <section className={styles.group}><h3>{t('next.remoteSources.advanced')}</h3>
+      <p className={styles.note}>{t('next.remoteSources.advancedHelp')}</p>
+      {advanced
+        ? <><SourceAdvancedRows values={advanced.values} cacheSupported={advanced.settings?.cacheSupported ?? false} disabled={advancedBusy}
+          onChange={values => setAdvanced(current => current && {...current, values})}/>
+          <Button size="compact" variant="primary" disabled={advancedBusy} onClick={() => void saveAdvanced()}>{t('next.remoteSources.save')}</Button></>
+        : <p className={styles.muted} role="status">{t('next.remoteSources.loading')}</p>}
+      {advancedNote && <p className={styles.note} role="status">{advancedNote}</p>}
     </section>
     <section className={styles.group}><h3>{t('next.remoteSources.foldersSection')}</h3>
       <p className={styles.note}>{t('next.remoteSources.foldersNote')}</p>

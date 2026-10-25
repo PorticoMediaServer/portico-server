@@ -145,3 +145,16 @@
 .config:focus-visible {box-shadow: inset 0 0 0 1px var(--color-line-strong), 0 0 0 3px var(--color-focus);}
 .configField small {display: block; margin-top: 8px;}
 .notice {margin: 0; padding: 10px 12px; border-radius: 9px; color: var(--color-amber); background: color-mix(in srgb, var(--color-amber) 10%, transparent); font-size: var(--type-caption-size); line-height: var(--type-troubleshooting-log-line);}
+
+/* Advanced groups (remote-sources.html#4b, #4c, #7b). */
+.advTitle { margin: 6px 0 0; font-size: var(--type-caption-size); font-weight: var(--type-body-strong-weight); color: var(--color-text-tertiary); }
+.advDisclosure { border-radius: 10px; }
+.advDisclosure > summary { cursor: pointer; padding: 8px 2px; font-size: var(--type-row-subtitle-size); font-weight: var(--type-body-strong-weight); color: var(--color-text-secondary); list-style: none; }
+.advDisclosure > summary::before { content: '▸ '; color: var(--color-text-tertiary); }
+.advDisclosure[open] > summary::before { content: '▾ '; }
+.advDisclosure[open] { display: grid; gap: 10px; }
+
+/* The whole-page announcement for a source that stopped working (7d2). */
+.pageNotice { display: flex; gap: 10px; padding: 12px 14px; border-radius: 10px; color: var(--color-danger-text); background: color-mix(in srgb, var(--color-danger) 10%, transparent); font-size: var(--type-caption-size); line-height: var(--type-troubleshooting-log-line); }
+.pageNotice b { color: var(--color-text); }
+.pageNotice svg { flex: none; margin-top: 1px; }
