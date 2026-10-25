@@ -42,20 +42,22 @@ export class SettingsMissingSource {
   refresh = () => this.load(this.cursor);
   /** The dialog captures the actual page and count. A refreshed page invalidates
    * that confirmation; the owner must inspect and confirm its new count. */
-  remove = async (page: MissingTitlesPage, typed: string): Promise<void> => {
-    if (!this.current() || this.removing || this.state.phase !== 'ready' || this.state.page !== page || !page.total || typed !== String(page.total)) return;
+  remove = async (page: MissingTitlesPage, typed: string, isAttemptCurrent: () => boolean = () => true): Promise<void> => {
+    if (!this.current() || !isAttemptCurrent() || this.removing || this.state.phase !== 'ready' || this.state.page !== page || !page.total || !page.observedAt || typed !== String(page.total)) return;
     this.removing = true;this.read?.abort();this.read = undefined;this.publish({busy: true, removed: undefined, error: undefined});
+    let sent = false, settled = false;
     try {
-      if (!this.current() || !this.removing) return;
-      const removed = parseMissingEmptied(await this.api.request(routePath('empty_missing_titles'), 'POST', {}, this.lifetime.signal));
-      if (!this.current()) return;
+      if (!this.current() || !isAttemptCurrent() || !this.removing || this.state.page !== page) return;
+      sent = true;
+      const removed = parseMissingEmptied(await this.api.request(routePath('empty_missing_titles'), 'POST', {before: page.observedAt}, this.lifetime.signal));
+      if (!this.current() || !isAttemptCurrent()) return;
       // A lost response is not retried. Read the current list and require another
       // explicit typed confirmation for any remaining work.
-      this.publish({removed, page: undefined, phase: 'idle'});
+      settled = true; this.publish({removed, page: undefined, phase: 'idle'});
     } catch (error) {
-      if (this.current()) {this.publish({page: undefined, phase: 'error', error: 'remove'});this.failure(error);}
-    } finally {this.removing = false;this.publish({busy: false});}
-    if (this.current()) await this.load('', this.state.error);
+      if (this.current() && isAttemptCurrent()) {settled = true;this.publish({page: undefined, phase: 'error', error: 'remove'});this.failure(error);}
+    } finally {this.removing = false;if (sent && !settled && !isAttemptCurrent()) this.publish({page: undefined, phase: 'error', error: 'remove'});this.publish({busy: false});}
+    if (this.current() && (isAttemptCurrent() || settled)) await this.load('', this.state.error);
   };
   dispose = () => {this.read?.abort();this.lifetime.abort();this.state = empty;this.listeners.clear();};
 }
