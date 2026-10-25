@@ -1,6 +1,14 @@
 /** Binary access is supplied by the selected server/viewer scope, or a lawful
  * local/offline file. Engines receive no URL, cookie, token or HTTP client. */
 export type ReaderRange = Readonly<{start: number; endExclusive: number}>;
+export type ReaderIndexedSearchStatus = 'indexed' | 'pending' | 'unsupported' | 'evicted' | 'excluded';
+export type ReaderIndexedSearchHit = Readonly<{sectionPath: string; sectionIndex: number; utf16Offset: number; excerpt: string; matchStart: number; matchLength: number}>;
+export type ReaderIndexedSearchPage = Readonly<{
+  sourceId: string; sourceRevision: string; indexRevision: number;
+  coverage: Readonly<{status: ReaderIndexedSearchStatus; reason?: string}>;
+  hits: readonly ReaderIndexedSearchHit[]; next?: string;
+}>;
+export type ReaderIndexedSearchOptions = Readonly<{signal: AbortSignal; limit: number; cursor?: string}>;
 export interface ReaderSource {
   readonly id: string;
   readonly revision: string;
@@ -8,6 +16,12 @@ export interface ReaderSource {
   readonly resources?: ReaderResources;
   /** Captured manifest entries for this source, never caller-supplied URLs. */
   readonly contents?: readonly ReaderContentsEntry[];
+  /** Captured manifest spine order, required only for optional indexed search. */
+  readonly spine?: readonly string[];
+  /** Optional persisted-index page for this exact source. The host binds the
+   * callback to one retained session/asset revision and supplies no URL or
+   * token to the engine. Converted/offline sources must not provide it. */
+  indexedSearch?(query: string, options: ReaderIndexedSearchOptions): Promise<ReaderIndexedSearchPage>;
   /** Genuine interactive from-start stream; never a synthetic random reader. */
   readonly sequential?: ReaderSequentialSource;
   read?(range: ReaderRange, signal: AbortSignal): Promise<Uint8Array>;
@@ -50,7 +64,11 @@ export type ReaderSelection = Readonly<{
   pageRects?: readonly ReaderRect[];
 }>;
 export type ReaderSearchResult = Readonly<{
-  id: string; excerpt: string; location: ReaderLocation; chapter?: string;
+  id: string; excerpt: string; chapter?: string;
+  /** A real engine location only when this hit's range was resolved and proved
+   * against the current source. A display-only hit omits it; callers must not
+   * navigate or persist a location they do not have. */
+  location?: ReaderLocation;
   /** UTF-16 range of this actual hit within its literal excerpt; absent means unknown. */
   match?: Readonly<{start: number; length: number}>;
 }>;

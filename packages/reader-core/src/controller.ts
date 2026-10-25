@@ -192,6 +192,9 @@ export class ReaderController<P extends object> {
   navigateSearchResult(result: ReaderSearchResult, callerSignal?: AbortSignal): Promise<void> {
     const grant = this.searchResults.get(result);
     if (!grant || !this.current(grant.session) || grant.signal.aborted) return Promise.reject(new ReaderError('invalid_location'));
+    // A display-only hit is still bound to this query/session, but it has no
+    // proved engine location; navigating it would invent one.
+    if (result.location === undefined) return Promise.reject(new ReaderError('invalid_location'));
     const location = copy(result.location);
     return this.enqueue(async (view, signal) => {
       const task = abortScope([signal, grant.signal, ...(callerSignal ? [callerSignal] : [])]);
@@ -305,11 +308,11 @@ export class ReaderController<P extends object> {
       throwIfAborted(signal);
       if (!this.current(session)) throw new ReaderError('aborted');
       const result = next.value;
-      validateLocation(result.location, session.document.format);
+      if (result.location !== undefined) validateLocation(result.location, session.document.format);
       const match = result.match;
       if (match && (!Number.isSafeInteger(match.start) || match.start < 0 || !Number.isSafeInteger(match.length) || match.length < 1
         || match.start + match.length > result.excerpt.length)) throw new ReaderError('invalid_book');
-      const captured = Object.freeze({...result, location: copy(result.location), ...(match ? {match: copy(match)} : {})});
+      const captured = Object.freeze({...result, ...(result.location === undefined ? {} : {location: copy(result.location)}), ...(match ? {match: copy(match)} : {})});
       this.searchResults.set(captured, {session, signal: options.signal});
       yield captured;
       if (++count >= options.limit) return;
