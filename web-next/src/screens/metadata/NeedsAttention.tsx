@@ -4,7 +4,7 @@ import {metadataAttentionService, type AttentionCommand, type AttentionEntry, ty
 import {attentionOffers, attentionReason, attentionInProgress, candidateFacts, candidateLine, providerName, typedProviderId} from '@core/server-admin/attention-words.ts';
 import {Button, TextField} from '../../kit/controls';
 import {Dialog} from '../../kit/overlays';
-import {Icon} from '../../kit/Icon';
+import {Icon, type IconName} from '../../kit/Icon';
 import {HostedError} from '../../kit/accounts/ServicesAuth';
 import styles from './metadata.module.css';
 
@@ -69,6 +69,7 @@ export function NeedsAttention({libraryId, api, onOpen}: {libraryId: string; api
     {!loading && !error && page && !page.entries.length ? <div className={styles.empty}>
       <b><Icon name="i-check" size={18} />{t('metadata.attention.empty')}</b><p>{t('metadata.attention.emptyBody')}</p>
     </div> : null}
+    {!loading && !error && page?.entries.length ? <p className={styles.listSummary}>{t('metadata.attention.showing', {count: page.entries.length, total: page.total})}</p> : null}
     {(cursors.length > 0 || page?.nextCursor) ? <div className={styles.pager}>
       <Button size="small" disabled={loading || !cursors.length} onClick={newer}>{t('web.hostedAccount.newer')}</Button>
       <Button size="small" disabled={loading || !page?.nextCursor} onClick={older}>{t('web.hostedAccount.older')}</Button>
@@ -101,13 +102,18 @@ function Row({entry, busy, onUse, onSearch, onIdentify, onRetry, onKeep, onOpen}
   // Frame 5: a release is chosen on the album's own Matching tab, never from this list.
   const candidates = attentionOffers(entry, 'accept') && !music ? entry.candidates : [];
   const subtitle = entry.parentTitle ?? entry.parentArtist;
+  const kind = entry.kind === 'item' ? (entry.itemKind === 'episode' ? 'episode' : 'film') : entry.kind;
+  const kindIcon: IconName = kind === 'show' ? 'i-tv' : kind === 'book' ? 'i-book' : kind === 'album' || kind === 'song' ? 'i-music' : 'i-film';
   const working = busy || attentionInProgress(entry.reason);
   return <article className={styles.row} data-busy={working || undefined}>
-    <header>
-      <h3>{onOpen ? <button type="button" onClick={onOpen}>{entry.title || t('server.attention.untitled')}</button> : entry.title || t('server.attention.untitled')}</h3>
+    <header className={styles.rowHead}>
+      <span className={styles.kindTile}><Icon name={kindIcon} size={24} /></span>
+      <div><h3>{onOpen ? <button type="button" onClick={onOpen}>{entry.title || t('server.attention.untitled')}</button> : entry.title || t('server.attention.untitled')}<span className={styles.kindChip}>{t(`metadata.attention.kind.${kind}`)}</span></h3>
       {subtitle ? <small>{subtitle}</small> : null}
       <p>{attentionReason(t, has, entry.reason, entry.kind)}</p>
       {music && entry.candidates.length ? <ul className={styles.candidatesOnly}>{entry.candidates.map(candidate => <li key={candidate.key}>{candidateLine(candidate)}</li>)}</ul> : null}
+      </div>
+      {!working && attentionOffers(entry, 'dismiss') ? <button className={styles.textAction} type="button" disabled={busy} onClick={onKeep}>{t('metadata.attention.keepAsIs')}</button> : null}
     </header>
     {working ? <p className={styles.working}>{t(entry.reason.includes('search') ? 'metadata.attention.rowSearching' : 'metadata.attention.rowMatching')}</p> : <>
       {candidates.map(candidate => {
@@ -123,11 +129,11 @@ function Row({entry, busy, onUse, onSearch, onIdentify, onRetry, onKeep, onOpen}
         </div>;
       })}
       <div className={styles.actions}>
-        {attentionOffers(entry, 'search') ? <Button size="small" disabled={busy} onClick={onSearch}>{t('metadata.attention.searchByHand')}</Button> : null}
-        {attentionOffers(entry, 'id') ? <Button size="small" disabled={busy} onClick={onIdentify}>{t('metadata.attention.enterProviderId')}</Button> : null}
-        {music && onOpen ? <Button size="small" disabled={busy} onClick={onOpen}>{t(entry.kind === 'book' ? 'metadata.attention.openBook' : 'metadata.attention.openAlbum')}</Button> : null}
-        {attentionOffers(entry, 'retry') ? <Button size="small" disabled={busy} onClick={onRetry}>{t('server.attention.lookUpAgain')}</Button> : null}
-        {attentionOffers(entry, 'dismiss') ? <Button size="small" disabled={busy} onClick={onKeep}>{t('metadata.attention.keepAsIs')}</Button> : null}
+        {!music && (attentionOffers(entry, 'search') || attentionOffers(entry, 'id')) ? <span>{t(candidates.length ? 'metadata.attention.notThese' : 'metadata.attention.lookYourself')}</span> : null}
+        {attentionOffers(entry, 'search') ? <button className={styles.textAction} type="button" disabled={busy} onClick={onSearch}><Icon name="i-search" size={16} />{t('metadata.attention.searchByHand')}</button> : null}
+        {attentionOffers(entry, 'id') ? <button className={styles.textAction} type="button" disabled={busy} onClick={onIdentify}><Icon name="i-link" size={16} />{t('metadata.attention.enterProviderId')}</button> : null}
+        {onOpen && (music || attentionOffers(entry, 'parent')) ? <button className={styles.textAction} type="button" disabled={busy} onClick={onOpen}><Icon name={kindIcon} size={16} />{t(music ? entry.kind === 'book' ? 'metadata.attention.openBook' : 'metadata.attention.openAlbum' : 'metadata.attention.openShow')}</button> : null}
+        {attentionOffers(entry, 'retry') ? <button className={styles.textAction} type="button" disabled={busy} onClick={onRetry}><Icon name="i-refresh" size={16} />{t('server.attention.lookUpAgain')}</button> : null}
       </div>
     </>}
   </article>;
