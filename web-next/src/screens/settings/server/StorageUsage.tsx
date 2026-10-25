@@ -1,5 +1,5 @@
 import {useEffect, useSyncExternalStore} from 'react';
-import {defaultI18n} from '@i18n';
+import {defaultI18n, type MessageId} from '@i18n';
 import type {SettingsStorageSource} from './storage-source';
 import styles from './server.module.css';
 
@@ -44,7 +44,7 @@ export function StorageUsage({source, label}: RowProps) {
   const usage = state.usage;
   const rows = folderRows.flatMap(([name, key]) => {
     const folder = usage.folders.find(candidate => candidate.name === name);
-    return folder ? [{id: name, name: t(`server.space.${key}`), help: t(`server.space.${key}Help`), bytes: folder.bytes}] : [];
+    return folder ? [{id: name, name: t(`server.space.${key}` as MessageId), help: t(`server.space.${key}Help` as MessageId), bytes: folder.bytes}] : [];
   });
   rows.push({id: 'Conversions', name: t('server.space.conversions'), help: t('server.space.conversionsHelp', {path: usage.transcodeDirectory || '/transcode'}), bytes: usage.transcodeBytes});
   const total = rows.reduce((sum, row) => sum + row.bytes, 0);
