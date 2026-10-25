@@ -2,10 +2,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {defaultI18n} from '@i18n';
+import {runScreenCommand} from '../src/screens/detail/context.ts';
 import {componentModule} from '../../web/test/helpers/component-harness.mjs';
 import {all, createRenderer, one, tree, textOf} from '../../web/test/helpers/interaction-harness.mjs';
 const t = (key: any, values?: any) => defaultI18n.t(key, values);
-async function mount(context: any, options: {text?: string; remember?: boolean; failClear?: () => boolean; snapshot?: any; summary?: any[]; group?: string; linkedQuery?: string; liveAvailable?: boolean; onNow?: any; openLive?: boolean} = {}) {
+async function mount(context: any, options: {text?: string; remember?: boolean; failClear?: () => boolean; snapshot?: any; summary?: any[]; group?: string; linkedQuery?: string; liveAvailable?: boolean; onNow?: any; openLive?: boolean; genres?: any; missingArt?: boolean} = {}) {
   context.mock.timers.enable({apis: ['setTimeout', 'setInterval']});
   const h = createRenderer(), calls: {name: string; args: any[]}[] = [];
   let current = true;
@@ -17,12 +18,12 @@ async function mount(context: any, options: {text?: string; remember?: boolean; 
   const binding = {service, session: () => ({text: initial, group: options.group}), summary: () => options.summary ?? [], select: record('select'),
     recent: async () => { calls.push({name: 'recent', args: []}); return {entries: [{q: 'Stored Query'}]}; },
     clearRecent: async () => { calls.push({name: 'clearRecent', args: []}); if (options.failClear?.()) throw new Error('unavailable'); },
-    genres: {...store({phase: 'ready', genres: []}), load: record('genres')},
+    genres: {...store(options.genres ?? {phase: 'ready', genres: []}), load: record('genres'), browseTarget: (genre: any) => ({view: 'genre', id: genre.value})},
     onNow: {...store(options.onNow ?? {phase: 'ready', cards: [], sourceNames: []}), load: record('onNow')},
-    context: {isCurrent: () => current, identity: {liveAvailable: options.liveAvailable === true}, effects: {reportError: record('error')},
+    context: {isCurrent: () => current, identity: {liveAvailable: options.liveAvailable === true}, effects: {reportError: record('error'), openBrowse: record('openBrowse')}, artwork: {foreground: (path: string) => options.missingArt ? undefined : path},
       preferences: store({effective: {'search.rememberHistory': options.remember !== false, 'appearance.cardSizePercent': 100}})}};
   const app = await componentModule(new URL('../src/screens/search/Search.tsx', import.meta.url), {
-    react: h.react, '../detail/text': {t, locale: () => 'en-US'},
+    react: h.react, '../detail/context': {runScreenCommand}, '../detail/text': {t, locale: () => 'en-US'},
     '../../kit/controls': {Button: 'Button', Chip: 'Chip', TextField: 'TextField'},
     '../../kit/cards': {PosterCard: 'PosterCard', SquareCard: 'SquareCard', CircleCard: 'CircleCard', EpisodeTile: 'EpisodeTile', GenreTile: 'GenreTile', LiveCard: 'LiveCard'},
     '../../kit/artwork': {Artwork: 'Artwork'}, '../../kit/layout': {WindowedGrid: 'WindowedGrid'},
@@ -227,4 +228,36 @@ test('initial Guide is disabled when no navigation callback is supplied', async 
   const f = await mount(context, {text: '', liveAvailable: true, onNow: initialLive});
   const guide = all(f.flat(), 'Button').find(node => textOf(node) === t('next.controls.guide')); assert.ok(guide);
   assert.equal(guide.props.disabled, true);
+});
+
+
+test('initial genre tiles keep server labels and open the exact browse target', async context => {
+  const genre = {value: 'science-fiction', label: 'Sci-Fi & Fantasy', count: 17, backdrop: {path: '/art/real'}};
+  const f = await mount(context, {text: '', genres: {phase: 'ready', genres: [genre]}});
+  const tile = one(f.flat(), 'GenreTile');
+  assert.equal(tile.props.model.title, genre.label);
+  assert.equal(tile.props.artwork, '/art/real');
+  tile.props.onNavigate();
+  assert.deepEqual(f.calls.filter(call => call.name === 'openBrowse').map(call => call.args), [[{view: 'genre', id: genre.value}]]);
+});
+
+test('genres without a backdrop or a resolved artwork never create an empty tile', async context => {
+  const f = await mount(context, {text: '', genres: {phase: 'ready', genres: [{value: 'missing', label: 'Missing', count: 1}]}});
+  assert.equal(all(f.flat(), 'GenreTile').length, 0);
+});
+
+test('unresolved genre artwork omits the tile without inventing an image', async context => {
+  const f = await mount(context, {text: '', missingArt: true, genres: {phase: 'ready', genres: [{value: 'genre', label: 'Genre', count: 1, backdrop: {path: '/art/unavailable'}}]}});
+  assert.equal(all(f.flat(), 'GenreTile').length, 0);
+});
+
+test('blank initial search loads idle genres and live cards once when live is available', async context => {
+  const f = await mount(context, {text: '', liveAvailable: true, genres: {phase: 'idle', genres: []}, onNow: {phase: 'idle', cards: [], sourceNames: []}});
+  assert.equal(f.calls.filter(call => call.name === 'genres').length, 1);
+  assert.equal(f.calls.filter(call => call.name === 'onNow').length, 1);
+});
+
+test('a typed query does not load idle initial genre or On now collections', async context => {
+  const f = await mount(context, {text: 'harbor', liveAvailable: true, genres: {phase: 'idle', genres: []}, onNow: {phase: 'idle', cards: [], sourceNames: []}});
+  assert.equal(f.calls.some(call => ['genres', 'onNow'].includes(call.name)), false);
 });
