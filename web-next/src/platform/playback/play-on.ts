@@ -30,8 +30,8 @@ export type PlayOnReceiversPort = Readonly<{
 export type PlayOnLinkPreview = Readonly<{requestId: string; userCode: string; deviceName: string; platform?: string}>;
 /** Signing a television in with the code it shows: review the device, then allow or deny. */
 export type PlayOnLinkPort = Readonly<{
-  preview(code: string): Promise<PlayOnLinkPreview>;
-  decide(requestId: string, code: string, decision: 'approve' | 'deny'): Promise<void>;
+  preview(code: string, life?: Readonly<{signal: AbortSignal}>): Promise<PlayOnLinkPreview>;
+  decide(requestId: string, code: string, decision: 'approve' | 'deny', life?: Readonly<{signal: AbortSignal}>): Promise<void>;
 }>;
 export type PlayOnSnapshot = Readonly<{
   cast: ReturnType<WebCastPort['getSnapshot']>; airPlayAvailable: boolean;
