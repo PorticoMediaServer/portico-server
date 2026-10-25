@@ -211,10 +211,15 @@ CREATE TABLE reading_source_values(
 CREATE TABLE reading_publication_types(
  item_id INTEGER NOT NULL,
  asset_id INTEGER NOT NULL,
- publication_type TEXT NOT NULL CHECK(publication_type IN('book','magazine','newspaper')),
+ publication_type TEXT CHECK(publication_type IS NULL OR publication_type IN('book','magazine','newspaper')),
+ source_format TEXT NOT NULL CHECK(source_format IN('epub','cbz')),
+ source_field TEXT NOT NULL CHECK(length(source_field) BETWEEN 1 AND 256),
+ source_raw_json TEXT NOT NULL CHECK(json_valid(source_raw_json) AND json_type(source_raw_json)='array' AND json_array_length(source_raw_json)<=64 AND length(source_raw_json)<=262144),
+ evidence_complete INTEGER NOT NULL CHECK(evidence_complete IN(0,1)),
  inventory_object_id TEXT NOT NULL REFERENCES inventory_objects(id) ON DELETE CASCADE,
  source_revision TEXT NOT NULL CHECK(length(source_revision)>0),
  classifier_version INTEGER NOT NULL CHECK(classifier_version>0),
+ CHECK(publication_type IS NULL OR evidence_complete=1),
  PRIMARY KEY(item_id,asset_id),
  FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
 CREATE TABLE reading_progress(

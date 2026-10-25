@@ -203,7 +203,7 @@ func (s *Service) Prepare(ctx context.Context, p identity.Principal, item, sourc
 	if err != nil {
 		return nil, Publication{}, f.StopAndRecheck(err)
 	}
-	if err = s.adoptPublicationType(ctx, p, document.Selection, document.Metadata.ExplicitPublicationType); err != nil {
+	if err = s.adoptPublicationType(ctx, p, document.Selection, document.Metadata); err != nil {
 		return nil, Publication{}, err
 	}
 	// Catalogue identity is authoritative; do not resurrect package creators.

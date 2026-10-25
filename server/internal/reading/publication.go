@@ -33,6 +33,7 @@ func Inspect(f *Source) (Publication, error) {
 		}
 		out.Metadata.Direction = e.Metadata.Direction
 		out.Metadata.ExplicitPublicationType = e.Metadata.ExplicitPublicationType
+		out.Metadata.PublicationTypeField, out.Metadata.PublicationTypeRaw, out.Metadata.PublicationTypeComplete = e.Metadata.PublicationTypeField, e.Metadata.PublicationTypeRaw, e.Metadata.PublicationTypeComplete
 		out.Resources = e.Resources
 		out.Spine = e.Spine
 		out.Contents, err = e.Contents(f.ctx)
@@ -46,6 +47,7 @@ func Inspect(f *Source) (Publication, error) {
 		}
 		out.Metadata.Direction = c.Metadata.Direction
 		out.Metadata.ExplicitPublicationType = c.Metadata.ExplicitPublicationType
+		out.Metadata.PublicationTypeField, out.Metadata.PublicationTypeRaw, out.Metadata.PublicationTypeComplete = c.Metadata.PublicationTypeField, c.Metadata.PublicationTypeRaw, c.Metadata.PublicationTypeComplete
 		out.PageNames = c.Names
 	case "pdf":
 		if err := f.CheckPDF(); err != nil {
