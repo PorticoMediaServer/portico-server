@@ -12,8 +12,9 @@ import (
 )
 
 // refreshImageFolderTx is called after the scan commits this directory page.
-// An in-progress/failed observation retires the old whole publication; only a
-// complete accepted direct inventory may publish a replacement.
+// An in-progress/failed observation withholds the old binding without deleting
+// its accepted publication or personal state. Only complete accepted inventory
+// may reconcile a current binding.
 func refreshImageFolderTx(ctx context.Context, tx *sql.Tx, job string, source LibrarySource, directory string) error {
 	if source.Kind != "local" {
 		return nil

@@ -175,6 +175,9 @@ type Source struct {
 	remoteCancel    func()
 	onClose         func()
 	onFailure       func()
+	imageMu         sync.Mutex
+	imageClosed     bool
+	imageFlights    map[*byte]context.CancelFunc
 	closeOnce       sync.Once
 }
 
@@ -322,6 +325,15 @@ func (f *Source) ReadAt(b []byte, offset int64) (result int, failure error) {
 	return done, nil
 }
 func (f *Source) Close() error {
+	// Directory/member helper work belongs to this exact Source, not merely
+	// the caller request. Close irrevocably cancels every original flight.
+	f.imageMu.Lock()
+	f.imageClosed = true
+	for _, cancel := range f.imageFlights {
+		cancel()
+	}
+	f.imageFlights = nil
+	f.imageMu.Unlock()
 	f.closeOnce.Do(func() {
 		if f.remoteCancel != nil {
 			f.remoteCancel()

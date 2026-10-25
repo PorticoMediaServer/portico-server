@@ -24,12 +24,48 @@ const imageFolderEligibleSQL = `(p.format<>'image-folder' OR EXISTS(
  WHERE folder.asset_id=p.asset_id AND ready.available=1 AND folder.source_id=s.id
  AND folder.root_incarnation=s.incarnation AND folder.root_identity=s.root_identity))`
 
+// Each original operation is synchronously cancelled by Source.Close. A held
+// callback cannot recreate a flight after terminal close or cancel a successor.
+func (f *Source) imageOperation(parent context.Context) (context.Context, func(), error) {
+	f.imageMu.Lock()
+	defer f.imageMu.Unlock()
+	if f.imageClosed {
+		return nil, nil, context.Canceled
+	}
+	if f.ctx == nil || parent == nil {
+		return nil, nil, ErrInvalid
+	}
+	if err := parent.Err(); err != nil {
+		return nil, nil, err
+	}
+	if err := f.ctx.Err(); err != nil {
+		return nil, nil, err
+	}
+	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
+	stop := context.AfterFunc(f.ctx, cancel)
+	key := new(byte)
+	if f.imageFlights == nil {
+		f.imageFlights = make(map[*byte]context.CancelFunc)
+	}
+	f.imageFlights[key] = cancel
+	return ctx, func() {
+		stop()
+		cancel()
+		f.imageMu.Lock()
+		delete(f.imageFlights, key)
+		f.imageMu.Unlock()
+	}, nil
+}
+
 func (f *Source) checkImageDirectory(ctx context.Context) error {
 	if f.Format != "image-folder" {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
+	ctx, finish, err := f.imageOperation(ctx)
+	if err != nil {
+		return err
+	}
+	defer finish()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -37,7 +73,7 @@ func (f *Source) checkImageDirectory(ctx context.Context) error {
 		return err
 	}
 	var directory, identity, revision string
-	err := f.service.DB.QueryRowContext(ctx, `SELECT directory_path,directory_identity,directory_revision FROM reading_image_folders WHERE asset_id=? AND source_id=? AND root_incarnation=? AND member_revision=?`, f.Asset, f.rootID, f.incarnation, f.folderRevision).Scan(&directory, &identity, &revision)
+	err = f.service.DB.QueryRowContext(ctx, `SELECT directory_path,directory_identity,directory_revision FROM reading_image_folders WHERE asset_id=? AND source_id=? AND root_incarnation=? AND member_revision=?`, f.Asset, f.rootID, f.incarnation, f.folderRevision).Scan(&directory, &identity, &revision)
 	if err == sql.ErrNoRows {
 		return ErrChanged
 	}
@@ -194,9 +230,11 @@ func (f *Source) imageFolder() (*Comic, error) {
 }
 
 func (f *Source) readImageMember(parent context.Context, m readingfolder.Member) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
-	stop := context.AfterFunc(f.ctx, cancel)
-	defer func() { stop(); cancel() }()
+	ctx, finish, err := f.imageOperation(parent)
+	if err != nil {
+		return nil, err
+	}
+	defer finish()
 	if err := f.checkImageDirectory(ctx); err != nil {
 		return nil, err
 	}
