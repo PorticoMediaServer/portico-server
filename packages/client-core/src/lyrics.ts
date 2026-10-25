@@ -150,10 +150,11 @@ export function parseLyricsView(raw: unknown, scope: ContentScope, target: Lyric
     }
     if (new Set(sources.map(v => v.id)).size !== sources.length || new Set(resources.map(v => v.id)).size !== resources.length || chosen && (!sources.some(v => v.id === chosen.id && v.version === chosen.version) || target.sourceId && chosen.id !== target.sourceId) || !chosen && (resources.length || selected) || !target.sessionId && selected)
         invalid();
-    if (selected?.document && chosen)
-        for (const line of selected.document.lines)
-            if (line.atMs !== null && line.atMs > chosen.sourceDuration * 1000 + 1000)
-                invalid();
+    for (const selectedRevision of [selected, librarySelection?.resource])
+        if (selectedRevision?.document && chosen)
+            for (const line of selectedRevision.document.lines)
+                if (line.atMs !== null && line.atMs > chosen.sourceDuration * 1000 + 1000)
+                    invalid();
     return Object.freeze({ ...(librarySelection ? {librarySelection} : {}), scope: Object.freeze({ ...raw.scope }) as LyricsView['scope'], sources: Object.freeze(sources), source: chosen, resources: Object.freeze(resources), selection: Object.freeze({ revision: raw.selection.revision, resource: selected }), canShare: raw.canShare, providers: Object.freeze({ ...raw.providers }) as LyricsView['providers'] });
 }
 /** Positive offsets delay lyrics. The input is the existing accepted player
