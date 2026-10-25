@@ -210,7 +210,7 @@ const accountPages: readonly AuthoredPage[] = [
       {id: 'porticoAccount', rows: [custom('porticoAccount', 'settings.row.porticoAccount')]},
       {id: 'devices', title: 'settings.section.devices', rows: [custom('devices', 'settings.section.devices')], needs: c => c.manageDevices ?? !!c.localAccount},
       // Frame 28 puts the TV row in Appearance; touch and web keep it in Profile.
-      {id: 'notifications', title: 'next.settingsSpec.account.profile.groups.7.title', platforms: ['web', 'phone', 'tablet'], rows: [
+      {id: 'notifications', title: 'next.settingsSpec.account.profile.groups.7.title', platforms: ['web', 'phone'], rows: [
         toggle('notifications.badges', 'next.settingsSpec.account.profile.groups.7.rows.0.label', {help: 'next.settingsSpec.account.profile.groups.7.rows.0.help'}),
       ]},
       // For a member's own scripts and apps: kept out of the way until asked for. The owner makes API keys under Server › Integrations.
