@@ -24,7 +24,7 @@ function createSources(ports: Pick<LibraryChannelsPageProps, 'api' | 'serverId' 
   const actions = new SettingsChannelActionsSource(ports.api, ports.serverId, reader, current, report);
   const logos = new SettingsChannelLogoSource(ports.uploadLogo, ports.serverId, reader, current, report);
   dispose = () => {lifetime.abort();reader.dispose();editor.dispose();actions.dispose();logos.dispose();};
-  return {reader, editor, actions, logos, current, dispose};
+  return {reader, editor, actions, logos, current, dispose, report};
 }
 type Sources = ReturnType<typeof createSources>;
 type Modal = Readonly<{kind: 'logo' | 'delete'; channel: LibraryChannel}>;
@@ -73,7 +73,7 @@ function ChannelPageBody({sources, ports}: Readonly<{sources: Sources; ports: Li
     {action.error && <div className={styles.warning} role="alert"><p>{t(action.pending ? 'error.unconfirmedChange' : 'error.unavailable')}</p>{action.pending && <Button size="small" disabled={action.busy} onClick={() => {if (current()) void sources.actions.retry();}}>{t('action.tryAgain')}</Button>}</div>}
     {logo.error && <div className={styles.warning} role="alert"><p>{t(logo.pending ? 'error.unconfirmedChange' : 'web.libraryChannels.logoSaveFailed')}</p>{logo.pending && <Button size="small" disabled={logo.busy} onClick={() => {if (current()) void sources.logos.retry();}}>{t('action.tryAgain')}</Button>}</div>}
     <LibraryChannels source={sources.reader} isCurrent={current} busy={blocked} logo={channel => ports.logo(channel, sources.logos.revision(channel.config.id))} create={create} action={actionOn}/>
-    {editorToken && <ChannelEditor key={editorToken.id} source={sources.editor} libraries={ports.libraries} isCurrent={editorCurrent} close={closeEditor}/>}
+    {editorToken && <ChannelEditor key={editorToken.id} source={sources.editor} api={ports.api} reportError={sources.report} libraries={ports.libraries} isCurrent={editorCurrent} close={closeEditor}/>}
     <Dialog open={held?.kind === 'delete'} title={t('web.libraryChannels.deleteTitle', {name: held?.channel.config.name ?? ''})} description={t('web.libraryChannels.deleteBody')} onOpenChange={value => {if (!value) close();}} dismissOnBack={!action.busy} dismissOnOutsidePress={!action.busy} showCloseButton={!action.busy}
       footer={<><Button size="compact" variant="glass" disabled={action.busy} onClick={close}>{t('action.cancel')}</Button><Button size="compact" variant="glass" className={styles.danger} disabled={action.busy} onClick={() => {void remove();}}>{t('web.libraryChannels.delete')}</Button></>}><></></Dialog>
     <Dialog open={held?.kind === 'logo'} title={t('web.libraryChannels.uploadLogo')} onOpenChange={value => {if (!value) close();}} dismissOnBack={!logo.busy} dismissOnOutsidePress={!logo.busy} showCloseButton={!logo.busy}

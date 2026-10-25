@@ -41,3 +41,5 @@
 .preview h4 { font-size: var(--type-caption-size); font-weight: var(--type-body-strong-weight); color: var(--color-text-tertiary); }
 .danger { color: var(--color-record); border-color: color-mix(in srgb, var(--color-record) 36%, transparent); }
 @media (max-width: 720px) { .editorGrid { grid-template-columns: minmax(0, 1fr); } .preview { position: static; } .control { align-items: flex-start; flex-direction: column; gap: 8px; } .control > :last-child { max-width: 100%; width: 100%; } }
+
+.pinResults { display: grid; gap: 4px; justify-items: start; }
