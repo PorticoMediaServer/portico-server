@@ -51,7 +51,12 @@ export function mountReaderSurface<P extends object>({controller, source, format
     const nextWidth = container.clientWidth, nextHeight = container.clientHeight;
     if (nextWidth <= 0 || nextHeight <= 0 || nextWidth === width && nextHeight === height) return;
     width = nextWidth; height = nextHeight;
-    void controller.resize({width, height}).catch(failed);
+    void controller.resize({width, height}).catch(error => {
+      // A refused resize is not an applied viewport. Let a later observation of
+      // the same size retry, without invalidating a newer resize's dimensions.
+      if (current() && width === nextWidth && height === nextHeight) {width = 0; height = 0;}
+      failed(error);
+    });
   };
   const measure = () => {
     if (current() && opened && frame === undefined) frame = requestAnimationFrame(resize);
