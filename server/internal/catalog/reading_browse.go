@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"fmt"
+	"portico.local/server/internal/readingpaths"
 
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
@@ -88,7 +89,7 @@ func (s *Service) BrowseCapabilitiesForViewer(viewer Viewer, library, pivot stri
 				if !periodical.available {
 					continue
 				}
-				offered := BrowsePivotCapability{ID: periodical.id, LabelKey: periodical.label, EntityKinds: []string{}, DefaultSort: []BrowseSortSelection{}, SupportedViews: []string{"grid"}, Browsable: false, Sorts: []string{}, Filters: []string{}, Paging: "keyset", FacetSource: &BrowseFacetSource{Endpoint: "/v1/libraries/{id}/reading/periodicals", Field: "publicationType"}}
+				offered := BrowsePivotCapability{ID: periodical.id, LabelKey: periodical.label, EntityKinds: []string{}, DefaultSort: []BrowseSortSelection{}, SupportedViews: []string{"grid"}, Browsable: false, Sorts: []string{}, Filters: []string{}, Paging: "keyset", FacetSource: &BrowseFacetSource{Endpoint: readingpaths.PeriodicalGroups, Field: "publicationType"}}
 				out.Pivots = append(out.Pivots, offered)
 				if periodical.id == pivot {
 					copy := offered
