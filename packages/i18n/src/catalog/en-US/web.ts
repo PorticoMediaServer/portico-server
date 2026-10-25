@@ -1977,6 +1977,7 @@ export const webMessages = {
   'web.metadata.lyricsPlain': 'Plain text',
   'web.metadata.lyricsTimed': 'Timed lyrics (LRC)',
   'web.metadata.localArtworkHelp': 'This library uses local artwork. Choose a picture from its files or upload an image.',
+  'web.metadata.showBackdropFallback': 'The show’s backdrop is used until this episode has its own picture.',
   'web.metadata.makeFromVideo': 'Make from the video',
   'web.metadata.makeFromVideoHelp': 'Make a new episode picture from its video. This replaces the current episode picture for everyone.',
   'web.metadata.uploadImage': 'Upload an image',
