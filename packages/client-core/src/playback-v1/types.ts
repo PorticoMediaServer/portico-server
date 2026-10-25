@@ -252,7 +252,7 @@ export function parsePreparedNext(v: unknown): PreparedNext {
 }
 
 // ── Queues (spec §8, ARCH-MEDIA-03) ─────────────────────────────────
-export type QueueBrowseSelector = Readonly<{libraryId: string; pivot?: string; query?: BrowseNode; sort?: readonly BrowseSortSelection[]}>;
+export type QueueBrowseSelector = Readonly<{selectionRevision?: string; libraryId: string; pivot?: string; query?: BrowseNode; sort?: readonly BrowseSortSelection[]}>;
 export type Selector =
   | Readonly<{container: Readonly<{kind: string; id: string}>}>
   | Readonly<{query: QueueBrowseSelector}>

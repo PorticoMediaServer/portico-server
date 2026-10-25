@@ -36,7 +36,8 @@ export function captureQueueSource(input: WebPlaybackQueueSource): WebPlaybackQu
   }
   if (!('query' in input) || !object(input.query)) invalid();
   const value = input.query;
-  keys(value, ['libraryId', 'pivot', 'query', 'sort']);
+  keys(value, ['libraryId', 'pivot', 'query', 'sort', 'selectionRevision']);
+  if (value.selectionRevision !== undefined && (typeof value.selectionRevision !== 'string' || !/^browse_[a-f0-9]{64}$/.test(value.selectionRevision))) invalid();
   if (!word(value.libraryId, 256) || value.pivot !== undefined && !word(value.pivot, 64)) invalid();
   if (value.sort !== undefined && (!Array.isArray(value.sort) || value.sort.length > 3)) invalid();
   const sort = value.sort?.map(entry => {
@@ -45,6 +46,6 @@ export function captureQueueSource(input: WebPlaybackQueueSource): WebPlaybackQu
     if (entry.seed !== undefined && (entry.field !== 'random' || !Number.isInteger(entry.seed) || (entry.seed as number) < 0 || (entry.seed as number) > 4294967295)) invalid();
     return {field: entry.field, direction: entry.direction as 'asc' | 'desc', ...(entry.seed === undefined ? {} : {seed: entry.seed as number})};
   });
-  return freeze({query: {libraryId: value.libraryId, ...(value.pivot === undefined ? {} : {pivot: value.pivot}),
+  return freeze({query: {libraryId: value.libraryId, ...(value.selectionRevision === undefined ? {} : {selectionRevision: value.selectionRevision}), ...(value.pivot === undefined ? {} : {pivot: value.pivot}),
     ...(value.query === undefined ? {} : {query: parseBrowseNode(value.query)}), ...(sort === undefined ? {} : {sort})}});
 }
