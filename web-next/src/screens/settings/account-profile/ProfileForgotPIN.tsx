@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState, useSyncExternalStore, type RefObject} from 'react';
+import {useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject} from 'react';
 import {defaultI18n} from '@i18n';
 import type {HttpLocalApi} from '@core/index.ts';
 import {BrowserProfileRecovery} from '../../../platform/profile-recovery';
@@ -13,10 +13,14 @@ const t = defaultI18n.t;
  * picker. Its grant never becomes the installed viewer or a profile switch. */
 export function ProfileForgotPIN({source, api, isCurrent}: {source: ProfileSettingsSource; api: HttpLocalApi; isCurrent: () => boolean}) {
   const state = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
-  type Opening = {flow: BrowserProfileRecovery; current: () => boolean; retire: () => void; profileName: string; username: string};
+  type Opening = {source: ProfileSettingsSource; flow: BrowserProfileRecovery; current: () => boolean; retire: () => void; profileName: string; username: string};
   const [opening, setOpening] = useState<Opening>();
-  const active = useRef<Opening | undefined>(undefined), trigger = useRef<HTMLButtonElement>(null);
-  useEffect(() => () => {active.current?.retire();active.current = undefined;}, [source]);
+  const active = useRef<Opening | undefined>(undefined), trigger = useRef<HTMLButtonElement>(null), rendered = useRef(source);
+  rendered.current = source;
+  useLayoutEffect(() => () => {
+    const captured = active.current;
+    if (captured?.source === source) {active.current = undefined; captured.retire();}
+  }, [source]);
   const selected = source.selected(), account = state.document;
   const close = (captured: Opening) => {
     if (active.current !== captured) return;
@@ -30,11 +34,11 @@ export function ProfileForgotPIN({source, api, isCurrent}: {source: ProfileSetti
       const accountId = document.account.id, accountRevision = document.account.revision;
       const profileId = profile.id, profileRevision = profile.revision;
       let retired = false, off = () => {};
-      const current = () => !retired && isCurrent() && source.getSnapshot().document === document &&
+      const current = () => !retired && rendered.current === source && isCurrent() && source.getSnapshot().document === document &&
         document.account.id === accountId && document.account.revision === accountRevision &&
         source.selected() === profile && profile.id === profileId && profile.revision === profileRevision;
       const flow = new BrowserProfileRecovery(api, document, profileId, 'local', current);
-      const captured: Opening = {flow, current, profileName: profile.name, username: document.account.username,
+      const captured: Opening = {source, flow, current, profileName: profile.name, username: document.account.username,
         retire: () => {if (retired) return;retired = true;off();flow.dispose();}};
       active.current = captured;
       off = source.subscribe(() => {
@@ -57,7 +61,7 @@ function RecoveryForm({flow, current, profileName, username, close, returnFocusR
   const state = useSyncExternalStore(flow.subscribe, flow.getSnapshot, flow.getSnapshot);
   const [password, setPassword] = useState(''), [pin, setPIN] = useState(''), [code, setCode] = useState('');
   const live = useRef(true), passwordInput = useRef<HTMLInputElement>(null);
-  useEffect(() => {live.current = true;return () => {live.current = false;};}, []);
+  useLayoutEffect(() => {live.current = true;return () => {live.current = false;};}, []);
   const admitted = () => live.current && current();
   const dismiss = () => {setPassword('');setPIN('');setCode('');close();};
   const title = state.phase === 'done' ? t('profile.pinChanged') : state.phase === 'pin' ? t('profile.pinRecoveryTitle', {name: profileName}) : t('accounts.profiles.forgotTitle', {profile: profileName});
