@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import type {ApiCredential} from '../../packages/client-core/src/api-access.ts';
 import {routePath} from '../../packages/contracts/src/routes.ts';
 import {SettingsApiKeysSource} from '../src/screens/settings/server/integrations/api-keys-source.ts';
-const key = {id: 'key-1', kind: 'key', name: 'Automation', scopes: ['read'], hint: '1234', createdAt: '2026-10-22T19:00:00Z', state: 'active', member: {accountId: 'owner', username: 'Owner', profileId: 'profile', profile: 'Owner'}};
+const key: ApiCredential = {id: 'key-1', kind: 'key', name: 'Automation', scopes: ['read'], hint: '1234', createdAt: '2026-10-22T19:00:00Z', state: 'active', member: {accountId: 'owner', username: 'Owner', profileId: 'profile', profile: 'Owner'}};
 const page = {items: [key], limit: 100};
 const options = {scopes: [{id: 'read'}, {id: 'admin'}], maximumKeys: 20, maximumTokens: 20, tokensAllowed: true, requestsPerMinute: 600, queryParameter: 'api_key'};
 const read = (path: string) => path === routePath('get_api_access_options') ? options : page;
@@ -41,7 +42,10 @@ test('a retired authority drops a late issued secret and makes no later request'
 test('a token in the owner key list is refused whole and cannot be revoked here', async () => {
   let deletes = 0;const errors: unknown[] = [];
   const source = new SettingsApiKeysSource({request: async <T>(path: string, method?: string) => {if (method === 'DELETE') deletes++;return (path === routePath('get_api_access_options') ? options : {...page, items: [{...key, kind: 'token'}]}) as T;}}, () => true, error => errors.push(error));
-  await source.load();assert.equal(source.getSnapshot().page, undefined);assert.equal(errors.length, 1);await source.revoke(key as never);assert.equal(deletes, 0);source.dispose();
+  await source.load();assert.equal(source.getSnapshot().page, undefined);
+  // Invalid credential documents stay refused and local; only terminal authority failures report globally.
+  assert.equal(source.getSnapshot().phase, 'error');assert.equal(source.getSnapshot().error, 'read');assert.equal(errors.length, 0);
+  await source.revoke(key);assert.equal(deletes, 0);source.dispose();
 });
 
 

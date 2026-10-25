@@ -11,14 +11,16 @@ const staged = {staged: true, restartRequired: true, validation: {schemaVersion:
 const envelope = (result: unknown) => ({protocolVersion: '1.0', serverId, result});
 /** A protected archive that answers the restore with its own refusal, as the server does. */
 function fixture(refusal: 'wrong-passphrase' | 'damaged' | undefined) {
-  let posted = false;
+  let posted = false, stagedRead = false;
   const api: BackupTransport = {request: async <T>(path: string) => {
     if (path.endsWith('/settings')) return envelope(settings) as T;
     if (path.endsWith('/inspect')) return envelope({encrypted: true}) as T;
     if (path.endsWith('/restore')) {posted = true;return envelope({jobId: 'restore-job'}) as T;}
-    return envelope(posted
-      ? {backups: [backup], ...(refusal === undefined ? {restore: {jobId: 'restore-job', phase: 'staged', bytesDone: 1, bytesTotal: 1, result: staged}} : {restore: {jobId: 'restore-job', phase: 'failed', bytesDone: 0, bytesTotal: 0, errorCode: 'restore_integrity_failed'}})}
-      : {backups: [backup]}) as T;
+    if (!posted) return envelope({backups: [backup]}) as T;
+    if (refusal !== undefined) return envelope({backups: [backup], restore: {jobId: 'restore-job', phase: 'failed', bytesDone: 0, bytesTotal: 0, errorCode: 'restore_integrity_failed'}}) as T;
+    // Preserve both real milestones: staged job, then matching post-restart result.
+    if (!stagedRead) {stagedRead = true;return envelope({backups: [backup], restore: {jobId: 'restore-job', phase: 'staged', bytesDone: 1, bytesTotal: 1, result: staged}}) as T;}
+    return envelope({backups: [backup], lastRestore: {jobId: 'restore-job', at: '2026-10-23T12:01:00Z', outcome: 'restored', reason: '', schemaVersion: 1}}) as T;
   }};
   return new SettingsBackupSource(api, serverId, () => true, () => {});
 }
@@ -55,7 +57,9 @@ test('the right passphrase on an intact archive is accepted, and unrelated refus
   const intact = await protectedRestore(undefined, 'the right phrase');
   try {
     assert.deepEqual(intact.result, staged);
-    assert.equal(intact.source.getSnapshot().staged?.validation.integrity, 'ok');
+    assert.equal(intact.source.getSnapshot().document?.lastRestore?.jobId, 'restore-job');
+    assert.equal(intact.source.getSnapshot().document?.lastRestore?.outcome, 'restored');
+    assert.equal(intact.source.getSnapshot().staged, undefined);assert.equal(intact.source.getSnapshot().restorePhase, undefined);
     // Anything that is not the shared authentication refusal is not passphrase wording.
     assert.equal(protectedRestoreResult({code: 'restore_pre_release'}), 'failed');
     assert.equal(protectedRestoreResult({code: 'insufficient_disk'}), 'failed');
