@@ -12,8 +12,9 @@ import (
 )
 
 type SourceStatusResponse struct {
-	Scope  catalog.AdminScope         `json:"scope"`
-	Status remotesources.SourceStatus `json:"status"`
+	AssignmentFenceSupported bool                       `json:"assignmentFenceSupported"`
+	Scope                    catalog.AdminScope         `json:"scope"`
+	Status                   remotesources.SourceStatus `json:"status"`
 }
 
 // registerSourceStatus publishes one source's present state: its health in the
@@ -36,6 +37,6 @@ func registerSourceStatus(registry *apikit.Registry, d Dependencies) {
 		if err != nil {
 			return SourceStatusResponse{}, folderError(err)
 		}
-		return SourceStatusResponse{Scope: scope, Status: status}, nil
+		return SourceStatusResponse{Scope: scope, Status: status, AssignmentFenceSupported: true}, nil
 	})
 }
