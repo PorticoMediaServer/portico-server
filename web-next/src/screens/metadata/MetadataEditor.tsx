@@ -208,6 +208,7 @@ function Artwork({data, busy, onUse, onLock, onFindMore, onRefetch, onUpload, on
   data: RepairData; busy: boolean; onUse: (role: string, candidateId: string) => void;
   onLock: (role: string, subject: string, locked: boolean) => void; onFindMore: (role: string) => void; onRefetch: (role: string) => void;
 }) {
+  const rolesId = useId();
   const [selected, setSelected] = useState(''), [uploadError, setUploadError] = useState('');
   const [removing, setRemoving] = useState<{role: string; id: string}>(), [removeFailed, setRemoveFailed] = useState(false);
   const upload = async (file: File | undefined) => {
@@ -220,9 +221,19 @@ function Artwork({data, busy, onUse, onLock, onFindMore, onRefetch, onUpload, on
   const candidates = data.artwork.candidates.filter(candidate => candidate.role === role);
   const chosen = data.snapshot.artwork.find(choice => choice.role === role);
   return <div className={styles.artwork}>
-    <div className={styles.artRoles} role="tablist" aria-label={t('web.metadata.tabArtwork')}>{data.artworkRoles.map(value =>
-      <button key={value} type="button" role="tab" aria-selected={role === value} onClick={() => setSelected(value)}>{t('web.metadata.artRole', {role: value})}</button>)}</div>
-    {role ? <section className={styles.role}>
+    <div className={styles.artRoles} role="tablist" aria-label={t('web.metadata.tabArtwork')}>{data.artworkRoles.map((value, index) =>
+      <button key={value} id={rolesId + '-' + value} type="button" role="tab" tabIndex={role === value ? 0 : -1} aria-selected={role === value} aria-controls={rolesId + '-panel'} onClick={() => setSelected(value)}
+        onKeyDown={event => {
+          let next = index;
+          if (event.key === 'ArrowRight') next = (index + 1) % data.artworkRoles.length;
+          else if (event.key === 'ArrowLeft') next = (index + data.artworkRoles.length - 1) % data.artworkRoles.length;
+          else if (event.key === 'Home') next = 0;
+          else if (event.key === 'End') next = data.artworkRoles.length - 1;
+          else return;
+          event.preventDefault(); setSelected(data.artworkRoles[next]);
+          event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
+        }}>{t('web.metadata.artRole', {role: value})}</button>)}</div>
+    {role ? <section className={styles.role} id={rolesId + '-panel'} role="tabpanel" aria-labelledby={rolesId + '-' + role}>
       <header><b>{t('web.metadata.candidateCount', {count: candidates.length})}</b>
         {chosen ? <Button size="small" disabled={busy} aria-pressed={chosen.locked} onClick={() => onLock(role, chosen.subject, !chosen.locked)}>{t(chosen.locked ? 'web.metadata.unlock' : 'web.metadata.lock')}</Button> : null}
         <Button size="small" onClick={() => onFindMore(role)} disabled={busy}>{t('web.metadata.findMore')}</Button>
