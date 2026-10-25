@@ -1,4 +1,4 @@
-import {useEffect, useMemo, useState, useSyncExternalStore} from 'react';
+import {useEffect, useId, useMemo, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {MetadataRepairService, type RepairCommand, type RepairData, type RepairFieldSpec, type RepairTarget} from '@core/metadata-repair.ts';
 import {EditorHeader} from '../../kit/shell';
@@ -138,28 +138,29 @@ function fieldError(spec: RepairFieldSpec, value: string, values: readonly strin
   return '';
 }
 
-function input(spec: RepairFieldSpec, value: string, set: (value: string) => void) {
-  if (spec.type === 'enum' && spec.allowed) return <select value={value} onChange={event => set(event.currentTarget.value)}>
+function input(spec: RepairFieldSpec, value: string, set: (value: string) => void, accessibility: Readonly<{'aria-labelledby': string; 'aria-describedby': string; 'aria-invalid': boolean}>) {
+  if (spec.type === 'enum' && spec.allowed) return <select {...accessibility} value={value} onChange={event => set(event.currentTarget.value)}>
     {spec.allowed.map(choice => <option key={choice} value={choice}>{choice}</option>)}</select>;
-  if (spec.type === 'multiline') return <textarea rows={4} value={value} onChange={event => set(event.currentTarget.value)} />;
-  return <input type={spec.type === 'date' ? 'date' : 'text'} inputMode={spec.type === 'integer' || spec.type === 'number' ? 'numeric' : undefined} value={value} onChange={event => set(event.currentTarget.value)} />;
+  if (spec.type === 'multiline') return <textarea {...accessibility} rows={4} value={value} onChange={event => set(event.currentTarget.value)} />;
+  return <input {...accessibility} type={spec.type === 'date' ? 'date' : 'text'} inputMode={spec.type === 'integer' || spec.type === 'number' ? 'numeric' : undefined} value={value} onChange={event => set(event.currentTarget.value)} />;
 }
 
 function Field({spec, field, draft, set, requiredTitle = false}: {requiredTitle?: boolean; spec: RepairFieldSpec; field?: {value: string; automaticValue: string; locked: boolean; source: string; values?: readonly string[]}; draft?: {value: string; locked: boolean}; set: (patch: Partial<MetadataFieldDraft>) => void}) {
+  const id = useId();
   const value = draft?.value ?? field?.value ?? '', locked = draft?.locked ?? field?.locked ?? false, error = fieldError(spec, value, [], requiredTitle);
   const changed = draft !== undefined && (draft.value !== (field?.value ?? '') || draft.locked !== (field?.locked ?? false));
   const numeric = spec.type === 'integer' || spec.type === 'number';
   const hint = numeric ? spec.min !== undefined && spec.max !== undefined ? t('web.metadata.numericBounds', {min: spec.min, max: spec.max}) : spec.min !== undefined ? t('web.metadata.numericMinimum', {min: spec.min}) : spec.max !== undefined ? t('web.metadata.numericMaximum', {max: spec.max}) : '' : spec.maxLength !== undefined ? t('web.metadata.characterCount', {count: Array.from(value).length, max: spec.maxLength}) : '';
   const source = field?.source ? ['tmdb', 'tvdb', 'anilist', 'musicbrainz'].includes(field.source) ? providerName(field.source) : field.source : '';
   return <label className={styles.field} data-wide={spec.type === 'multiline' || spec.field === 'tagline' || undefined} data-changed={changed || undefined}>
-    <span className={styles.fieldLabel}>{t(spec.label as Parameters<typeof t>[0])}
+    <span id={id + '-label'} className={styles.fieldLabel}>{t(spec.label as Parameters<typeof t>[0])}
       {changed ? <em>{t('web.metadata.editorChanged')}</em> : null}
     </span>
-    <span className={styles.fieldControl}>{input(spec, value, next => set({value: next}))}
+    <span className={styles.fieldControl}>{input(spec, value, next => set({value: next}), {'aria-labelledby': id + '-label', 'aria-describedby': id + '-hint' + (error ? ' ' + id + '-error' : ''), 'aria-invalid': Boolean(error)})}
       <button type="button" className={styles.lock} aria-pressed={locked} title={t(locked ? 'web.metadata.lockedTip' : 'web.metadata.unlockedTip')} aria-label={t(locked ? 'web.metadata.unlockField' : 'web.metadata.lockField', {label: t(spec.label as Parameters<typeof t>[0])})} onClick={() => set({locked: !locked})}>{locked ? t('web.metadata.locked') : t('web.metadata.unlocked')}</button>
     </span>
-    {error ? <small className={styles.fieldError} role="alert">{error}</small> : null}
-    <small>{field?.source === 'manual' ? t('web.metadata.editedHere') : source ? t('web.metadata.fromSource', {source}) : ''}{hint ? <span className={styles.fieldBounds}>{hint}</span> : null}</small>
+    {error ? <small id={id + '-error'} className={styles.fieldError} role="alert">{error}</small> : null}
+    <small id={id + '-hint'}>{field?.source === 'manual' ? t('web.metadata.editedHere') : source ? t('web.metadata.fromSource', {source}) : ''}{hint ? <span className={styles.fieldBounds}>{hint}</span> : null}</small>
     {field && field.automaticValue !== value ? <small>{field.source !== 'manual' && source ? t('web.metadata.automaticValueFrom', {source, value: field.automaticValue}) : t('web.metadata.automaticValue', {value: field.automaticValue})}<button type="button" onClick={() => set({value: field.automaticValue})}>{t('web.metadata.useIt')}</button></small> : null}
   </label>;
 }
