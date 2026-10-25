@@ -1,15 +1,8 @@
 name: CI
 on:
-  push:
-    branches: [main]
-  pull_request:
+  schedule:
+    - cron: '13 * * * *'
   workflow_dispatch:
-    inputs:
-      base:
-        description: Optional comparison commit (otherwise use origin/main)
-        type: string
-        required: false
-        default: ''
   workflow_call:
     inputs:
       ref:
@@ -21,23 +14,23 @@ permissions:
   contents: read
 concurrency:
   group: ci-main
-  cancel-in-progress: true
+  cancel-in-progress: false
 env:
-  CI_BASE: ${{ inputs.base || github.event.pull_request.base.sha || github.event.before || 'origin/main' }}
+  CI_FULL_TREE: '1'
   GOTOOLCHAIN: go1.26.10
   PORTICO_TEST_TIER: default
 jobs:
   repository:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with: {ref: '${{ inputs.ref }}', fetch-depth: 0}
+        with: {ref: '${{ inputs.ref || github.sha }}', fetch-depth: 0}
       - run: scripts/check-repo-binaries.sh
       - run: python3 scripts/test-ci-affected.py
   go:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix: {module: [apikit, server]}
@@ -49,7 +42,7 @@ jobs:
         options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with: {ref: '${{ inputs.ref }}', fetch-depth: 0}
+        with: {ref: '${{ inputs.ref || github.sha }}', fetch-depth: 0}
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
         with: {go-version-file: '${{ matrix.module }}/go.mod', cache-dependency-path: '${{ matrix.module }}/go.sum'}
       - name: Disposable database
@@ -57,11 +50,22 @@ jobs:
           mkdir -p .scratch
           printf '%s' 'postgres://portico:disposable-ci-password@localhost:5432/portico_test?sslmode=disable' > .scratch/postgres.url
           echo "PORTICO_TEST_DATABASE_URL_FILE=$PWD/.scratch/postgres.url" >> "$GITHUB_ENV"
-      - name: Changed Go tests and vet (catalogue full suite is nightly)
-        run: python3 scripts/ci-affected.py go --module '${{ matrix.module }}'
+      - name: Build every Go package
+        working-directory: ${{ matrix.module }}
+        run: |
+          status=0
+          go build ./... > "$RUNNER_TEMP/go-build.log" 2>&1 || status=$?
+          tail -n 20 "$RUNNER_TEMP/go-build.log"
+          exit "$status"
+      - name: Full Go module tests and vet
+        run: |
+          status=0
+          python3 scripts/ci-affected.py go --module '${{ matrix.module }}' > "$RUNNER_TEMP/full-ci.log" 2>&1 || status=$?
+          tail -n 20 "$RUNNER_TEMP/full-ci.log"
+          exit "$status"
   security:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix: {area: [auth, media]}
@@ -73,7 +77,7 @@ jobs:
         options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with: {ref: '${{ inputs.ref }}', fetch-depth: 0}
+        with: {ref: '${{ inputs.ref || github.sha }}', fetch-depth: 0}
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
         with: {go-version-file: server/go.mod, cache-dependency-path: server/go.sum}
       - name: Disposable database and genuine subprocess helper
@@ -84,13 +88,17 @@ jobs:
           (cd server && go build -o ../.scratch/portico-server ./cmd/server)
           echo "PORTICO_PLAYBACK_TEST_HELPER=$PWD/.scratch/portico-server" >> "$GITHUB_ENV"
       - name: Sign-in, sessions, account/profile privacy, restrictions, egress, sandbox and spawn allowlist
-        run: python3 scripts/ci-affected.py go --group '${{ matrix.area }}'
+        run: |
+          status=0
+          python3 scripts/ci-affected.py go --group '${{ matrix.area }}' > "$RUNNER_TEMP/full-ci.log" 2>&1 || status=$?
+          tail -n 20 "$RUNNER_TEMP/full-ci.log"
+          exit "$status"
   clients:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-        with: {ref: '${{ inputs.ref }}', fetch-depth: 0}
+        with: {ref: '${{ inputs.ref || github.sha }}', fetch-depth: 0}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with: {node-version-file: .node-version, cache: npm}
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
@@ -98,11 +106,13 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - name: Core and web types
         run: |
-          npx --no-install tsc -p packages/client-core/tsconfig.json
-          npx --no-install tsc -p packages/player-core/tsconfig.json
-          npx --no-install tsc -p packages/reader-core/tsconfig.json
-          npx --no-install tsc -p web-next/tsconfig.json --noEmit
-          npx --no-install tsc -p web/tsconfig.json --noEmit
+          status=0
+          for project in packages/client-core packages/player-core packages/reader-core web-next web; do
+            npx --no-install tsc -p "$project/tsconfig.json" --noEmit > "$RUNNER_TEMP/types.log" 2>&1 || status=1
+            echo "Types: $project"
+            tail -n 20 "$RUNNER_TEMP/types.log"
+          done
+          exit "$status"
       - if: ${{ !cancelled() }}
         name: Web lint (informational)
         run: |
@@ -116,5 +126,9 @@ jobs:
           npm run lint:boundary --workspace portico-web-next || status=1
           exit "$status"
       - if: ${{ !cancelled() }}
-        name: Affected tests plus mandatory account/session/privacy checks
-        run: python3 scripts/ci-affected.py js
+        name: Full-tree tests plus mandatory account/session/privacy checks
+        run: |
+          status=0
+          python3 scripts/ci-affected.py js > "$RUNNER_TEMP/full-ci.log" 2>&1 || status=$?
+          tail -n 20 "$RUNNER_TEMP/full-ci.log"
+          exit "$status"
