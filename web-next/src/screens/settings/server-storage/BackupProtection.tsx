@@ -13,7 +13,9 @@ export function BackupProtection(props: BackupSurfaceProps & Readonly<{label: st
     <Switch aria-label={props.label} checked={protectedBackup} disabled={unavailable} onCheckedChange={checked => {
       if (unavailable || !props.isCurrent()) return;
       if (checked) setOpen(true);
-      else void props.source.save({passphraseProtected: false}).catch(() => props.reportError(new Error('backup_protection_failed')));
+      else void props.source.save({passphraseProtected: false}).then(saved => {
+        if (!saved && props.isCurrent()) props.reportError(new Error('backup_protection_failed'));
+      }).catch(() => {if (props.isCurrent()) props.reportError(new Error('backup_protection_failed'));});
     }} />
     <BackupPassphraseDialog open={open} mode="protect" scopeKey={props.scopeKey} isCurrent={props.isCurrent} subscribeAuthority={props.subscribe}
       onClose={() => setOpen(false)} onDone={() => setOpen(false)}
