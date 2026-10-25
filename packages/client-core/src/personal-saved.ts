@@ -77,6 +77,14 @@ export function parseEntryOutcomes(v:unknown,limit=200):EntryOutcomes{
  if(new Set(all).size!==all.length)bad();
  return outcomes;
 }
+/** One already-named resource, without executing its saved query or scanning a
+ * directory. The same canonical metadata parser/actor scope is used as Saved. */
+export async function readPersonalResource(api:SavedApi,scope:SavedScope,resourceId:string,signal?:AbortSignal):Promise<PersonalResource>{
+ if(!id(resourceId))bad();
+ const value=resource(await api.request<unknown>(encodedRoutePath('get_saved_resources_id',{id:encodeURIComponent(resourceId)}),'GET',undefined,signal),scope);
+ if(value.id!==resourceId)bad();return freeze(value);
+}
+
 export const MAX_PERSONAL_BATCH=200;
 /** `notInterested` (recommendation feedback) is the one field a show, album or book id may carry. */
 export type PersonalBatchItem=Readonly<{itemId:string;expectedRevision?:number;watched?:boolean;favorite?:boolean;watchlisted?:boolean;notInterested?:boolean}>;

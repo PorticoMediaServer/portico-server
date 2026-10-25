@@ -228,7 +228,7 @@ func (d Dependencies) applyHomeLayout(w http.ResponseWriter, r *http.Request, re
 		return
 	}
 	var body struct {
-		ExpectedRevision int64    `json:"expectedRevision"`
+		ExpectedRevision *int64   `json:"expectedRevision"`
 		IdempotencyKey   string   `json:"idempotencyKey"`
 		RowOrder         []string `json:"rowOrder"`
 		HiddenRowIDs     []string `json:"hiddenRowIds"`
@@ -251,11 +251,16 @@ func (d Dependencies) applyHomeLayout(w http.ResponseWriter, r *http.Request, re
 	if body.IdempotencyKey == "" {
 		body.IdempotencyKey = identity.Token()
 	}
-	change := operations.HomeLayoutChange{ExpectedRevision: body.ExpectedRevision, IdempotencyKey: body.IdempotencyKey,
-		RowOrder: body.RowOrder, HiddenRowIDs: body.HiddenRowIDs, Reset: reset}
-	if reset {
-		change.ExpectedRevision = request.LayoutRevision
+	expectedRevision := int64(0)
+	if body.ExpectedRevision != nil {
+		expectedRevision = *body.ExpectedRevision
+	} else if reset {
+		// Older clients sent only the reset key. An explicitly supplied revision
+		// remains the editor's original revision, including a genuine zero.
+		expectedRevision = request.LayoutRevision
 	}
+	change := operations.HomeLayoutChange{ExpectedRevision: expectedRevision, IdempotencyKey: body.IdempotencyKey,
+		RowOrder: body.RowOrder, HiddenRowIDs: body.HiddenRowIDs, Reset: reset}
 	out, e := d.Console.ApplyHomeLayout(r.Context(), p, d.consoleAuthority(p, false), change)
 	if e != nil {
 		if errors.Is(e, operations.ErrConflict) && !errors.Is(e, operations.ErrIdempotencyKeyReused) {

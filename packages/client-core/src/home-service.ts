@@ -19,6 +19,9 @@
 import {appendHomeRowPage, fetchHome, fetchHomeLayout, fetchHomeRow, hasFencedHomeMembership, hasHomeRowContent, resetHomeLayout, saveHomeLayout, type HomeApi, type HomeDocument, type HomeLayout, type HomeLayoutView} from './home.ts';
 import {isStaleAnswer, mergeRevalidatedList} from './freshness-actions.ts';
 
+/** One original layout editor opening; it never becomes the next editor. */
+export type HomeLayoutWriteLifetime = Readonly<{signal: AbortSignal; isCurrent(): boolean}>;
+const layoutRetired = () => Object.assign(new Error('Home layout opening retired'), {name: 'AbortError'});
 export type HomeSnapshot = Readonly<{
   phase: 'idle' | 'loading' | 'ready' | 'error';
   document?: HomeDocument;
@@ -308,33 +311,37 @@ export class HomeService {
   loadLayout = (signal?: AbortSignal): Promise<HomeLayoutView> => fetchHomeLayout(this.api(), signal);
 
   /** A conflicting save is surfaced for Reload layout; it never overwrites another device silently. */
-  async saveLayout(rowOrder: readonly string[], hiddenRowIds: readonly string[], idempotencyKey: () => string, expectedRevision?: number): Promise<HomeLayout> {
+  async saveLayout(rowOrder: readonly string[], hiddenRowIds: readonly string[], idempotencyKey: () => string, expectedRevision?: number, lifetime?: HomeLayoutWriteLifetime): Promise<HomeLayout> {
+    if (lifetime && (lifetime.signal.aborted || !lifetime.isCurrent())) throw layoutRetired();
     const revision = expectedRevision ?? this.state.document?.layout.revision;
     if (revision === undefined) throw new Error('Home is not loaded.');
-    const saved = await saveHomeLayout(this.api(), {expectedRevision: revision, rowOrder, hiddenRowIds, idempotencyKey: idempotencyKey()});
-    await this.afterLayout();
+    const saved = await saveHomeLayout(this.api(), {expectedRevision: revision, rowOrder, hiddenRowIds, idempotencyKey: idempotencyKey()}, lifetime?.signal);
+    await this.afterLayout(lifetime);
     return saved;
   }
 
-  async resetLayout(idempotencyKey: () => string): Promise<void> {
-    await resetHomeLayout(this.api(), idempotencyKey());
-    await this.afterLayout();
+  async resetLayout(idempotencyKey: () => string, expectedRevision?: number, lifetime?: HomeLayoutWriteLifetime): Promise<void> {
+    if (lifetime && (lifetime.signal.aborted || !lifetime.isCurrent())) throw layoutRetired();
+    await resetHomeLayout(this.api(), idempotencyKey(), lifetime?.signal, expectedRevision);
+    await this.afterLayout(lifetime);
   }
 
   /** The rows follow a new arrangement at once, without a loading state when Home is already showing. */
-  private async afterLayout(): Promise<void> {
+  private async afterLayout(lifetime?: HomeLayoutWriteLifetime): Promise<void> {
+    const current = () => !lifetime || !lifetime.signal.aborted && lifetime.isCurrent();
+    if (!current()) return;
     if (this.state.phase === 'ready' && this.state.document) {
       const mine = this.generation;
       try {
-        const fresh = await this.read(new AbortController().signal);
-        if (!this.disposed && mine === this.generation && this.state.document) {
+        const fresh = await this.read(lifetime?.signal ?? new AbortController().signal);
+        if (current() && !this.disposed && mine === this.generation && this.state.document) {
           this.publish({document: mergeHomeDocument(this.state.document, fresh)});
           this.hydrateRows(fresh);
         }
         return;
       } catch { /* fall through to an ordinary load, which reports its own failure */ }
     }
-    await this.load();
+    if (current()) await this.load();
   }
 
   /** Take an entry out of every row at once (an optimistic removal the screen has just asked the server for); returns the way to put the rows back. */
