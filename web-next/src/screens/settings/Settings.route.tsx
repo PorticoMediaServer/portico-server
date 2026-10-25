@@ -109,7 +109,7 @@ export function SettingsEntry() {
       (role === 'owner' || role === 'admin') && (viewer.authority === 'local' || viewer.authority === 'hosted') ? {
         client: new SettingsPeopleClient(context.api, current), serverName: context.facts.serverName, libraries: identity.libraries,
         actor: {accountId: viewer.accountId, role}, streamLimits: peopleStreamLimits,
-        invitations: new SettingsInvitations(context.api, current, context.api.baseUrl, viewer.serverId), openHome, reportError,
+        invitations: new SettingsInvitations(context.api, current, context.api.baseUrl, viewer.serverId), signIn: identity.signIn, openHome, reportError,
         authority: {scope: {serverId: viewer.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId, sessionFamilyId: session.sessionFamilyId},
           isCurrent: current, subscribe: listener => {authorityListeners.add(listener); return () => {authorityListeners.delete(listener);};}, onAuthorityChanged: openHome},
       } : undefined;
