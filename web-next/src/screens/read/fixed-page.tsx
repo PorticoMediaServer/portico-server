@@ -71,10 +71,10 @@ export function FixedPagesPanel({controller, authority, reportError, format}: Fi
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const count = snapshot.metadata?.pageCount, location = snapshot.location;
   const current = location && location.format !== 'epub' ? location.page : undefined;
-  if (format === 'epub' || !count || count < 2 || current === undefined || snapshot.status !== 'ready') return null;
+  if (format === 'epub' || !count || count < 1 || current === undefined || snapshot.status !== 'ready') return null;
   const first = Math.max(0, Math.min(current - 6, count - 13)), last = Math.min(count, first + 13);
   const navigate = (index: number) => {
-    const target: ReaderLocation = {format: format === 'pdf' ? 'pdf' : 'cbz', page: index, progression: index / (count - 1)};
+    const target: ReaderLocation = {format: format === 'pdf' ? 'pdf' : 'cbz', page: index, progression: count === 1 ? 0 : index / (count - 1)};
     void controller.navigate({kind: 'location', location: target}).catch(error => {
       if (authority.isCurrent()) reportError(readerErrorCode(error));
     });
