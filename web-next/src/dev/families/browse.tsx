@@ -256,6 +256,7 @@ function tableCase(variant: 'album' | 'top-songs' | 'songs' | 'chapters' | 'comp
       });
       const selected = variant === 'album' || variant === 'disc' ? songs.filter(song => song.album?.name === 'After Hours') : variant === 'top-songs' ? songs.filter(song => song.album?.name === 'Abbey Road (2019 Mix)') : songs;
       return selected.map((entry, index) => {
+        if (entry.kind !== 'song') throw new Error('invalid_song_fixture');
         const album = albums.find(album => album.id === entry.album?.id), source = entry.album && sources.get(entry.album.id);
         return {id: entry.id, number: variant === 'songs' ? index + 1 : entry.trackNumber, text: cardText({id: entry.id, kind: entry.kind, title: entry.title,
           artist: variant === 'sparse' ? undefined : album?.artist?.name, album: variant === 'sparse' ? undefined : entry.album?.name, year: entry.year, durationSeconds: variant === 'sparse' ? undefined : entry.duration}, 'song-row', env),

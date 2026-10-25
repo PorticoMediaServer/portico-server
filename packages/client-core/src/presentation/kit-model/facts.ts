@@ -1,7 +1,7 @@
 import {clockText, compact, durationText, integer, nonnegative, part, positive, supplied, timelineFacts, type FactPart, type TextEnvironment} from './text.ts';
 
 /** Local semantic inputs, not generated wire responses. `book` means an audiobook; ebook/comic are non-playable Reading leaves. */
-export type TitleKind = 'movie' | 'show' | 'season' | 'episode' | 'extra' | 'artist' | 'album' | 'song' | 'disc' | 'book' | 'audiobook_file' | 'chapter' | 'author' | 'book_series' | 'collection' | 'category' | 'playlist' | 'ebook' | 'comic';
+export type TitleKind = 'movie' | 'show' | 'season' | 'episode' | 'extra' | 'artist' | 'album' | 'song' | 'disc' | 'radio' | 'book' | 'audiobook_file' | 'chapter' | 'author' | 'book_series' | 'collection' | 'category' | 'playlist' | 'ebook' | 'comic';
 export type EpisodeNumbering =
   | Readonly<{mode: 'seasonal'; season?: number; episode?: number}>
   | Readonly<{mode: 'absolute'; number?: number}>
@@ -119,6 +119,9 @@ function resumeLine(subject: CardSubject, remainingSeconds: number | undefined, 
 
 /** Separate name, caption, facts and measured progress for every card family. */
 export function cardText(subject: CardSubject, context: CardContext, env: TextEnvironment): CardTextModel {
+  // A radio start is a seed, never a media item, duration, count or resume point.
+  if (subject.kind === 'radio') return Object.freeze({id: subject.id, title: env.t('music.radioNamed', {name: subject.title}),
+    caption: Object.freeze([part('radio', env.t('music.radio'), 'context')]), detail: Object.freeze([])});
   if (subject.kind === 'ebook' || subject.kind === 'comic') {
     return Object.freeze({id: subject.id, title: subject.title,
       caption: Object.freeze(compact([supplied(subject.author) ? part('author', subject.author, 'identity') : undefined])),

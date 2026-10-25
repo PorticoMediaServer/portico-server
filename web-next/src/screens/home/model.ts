@@ -21,6 +21,7 @@ export function homePlaybackItem(document: HomeDocument, entry: ContentEntry, ta
 
 /** Fields stay semantic. In particular, the old joined subtitle is never parsed. */
 export function homeCardSubject(entry: ContentEntry): CardSubject {
+  if (entry.kind === 'radio') return {id: entry.id, kind: 'radio', title: entry.displayTitle ?? entry.title};
   const episode = entry.kind !== 'episode' ? undefined : entry.dateBased === true
     ? {mode: 'date' as const, day: entry.airDate}
     : entry.absoluteNumber !== undefined

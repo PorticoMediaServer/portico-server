@@ -3,7 +3,7 @@ import type {CardSubject, PlaybackSubject} from '@core/presentation/kit-model/in
 import type {GetItemsIdResponse} from '../../../../packages/contracts/src/types.ts';
 
 export function entrySubject(entry: ContentEntry): PlaybackSubject {
-  if (entry.kind === 'ebook' || entry.kind === 'comic') throw new Error('invalid_playback_item');
+  if (entry.kind === 'ebook' || entry.kind === 'comic' || entry.kind === 'radio') throw new Error('invalid_playback_item');
   const item: CardSubject = {
     id: entry.id, kind: entry.kind, title: entry.title, year: entry.year,
     artist: entry.artist?.name, album: entry.album?.name, author: entry.author,

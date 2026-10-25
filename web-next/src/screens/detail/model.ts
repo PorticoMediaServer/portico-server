@@ -22,6 +22,7 @@ export function instantDate(value: string | null | undefined, language: string):
 
 /** Same semantic TitleKind projection for Search, browse and details; no joined subtitle parsing. */
 export function entrySubject(entry: ContentEntry): CardSubject {
+  if (entry.kind === 'radio') return {id: entry.id, kind: 'radio', title: entry.displayTitle ?? entry.title};
   const episode = entry.kind !== 'episode' ? undefined : entry.dateBased === true
     ? {mode: 'date' as const, day: entry.airDate}
     : entry.absoluteNumber !== undefined
