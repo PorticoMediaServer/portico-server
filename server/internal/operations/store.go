@@ -60,6 +60,7 @@ func auditAnchor(tx *sql.Tx) (AuditAnchor, error) {
 }
 
 type Store struct {
+	RecordingRoot *RecordingRootRuntime
 	ConfigFile           *configfile.Loader
 	ConfigPath           string
 	ConfigurationDomains []ConfigurationDomain
