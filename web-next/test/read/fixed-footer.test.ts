@@ -2,8 +2,17 @@ import assert from 'node:assert/strict';
 import {test} from 'node:test';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
-import {ReaderChrome, type ReaderChromeProps} from '../../src/kit/reader/ReaderChrome.tsx';
+import type {ReaderChromeProps} from '../../src/kit/reader/ReaderChrome.tsx';
+import {registerHooks} from 'node:module';
+import {transformTsx} from '../transform-tsx.mjs';
 import type {ReaderChromePresentation} from '../../src/screens/read/ReadReader.tsx';
+
+registerHooks({load(url, context, next) {
+  if (url.endsWith('.module.css')) return {format: 'module', source: 'export default new Proxy({}, {get: (_, key) => String(key)});', shortCircuit: true};
+  if (url.endsWith('.tsx')) return {format: 'module', source: transformTsx(url), shortCircuit: true};
+  return next(url, context);
+}});
+const {ReaderChrome} = await import('../../src/kit/reader/ReaderChrome.tsx');
 
 const fixedPageFooter: ReaderChromePresentation['fixedPageFooter'] = createElement('span', {'data-test-fixed-footer': true}, 'Observed fit');
 const props: ReaderChromeProps = {
