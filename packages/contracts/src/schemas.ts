@@ -370,6 +370,9 @@ export const schemas = {
                       }
                     ]
                   },
+                  "selectionRevision": {
+                    "type": "string"
+                  },
                   "sort": {
                     "items": {
                       "properties": {
@@ -3638,6 +3641,9 @@ export const schemas = {
                         "type": "object"
                       }
                     ]
+                  },
+                  "selectionRevision": {
+                    "type": "string"
                   },
                   "sort": {
                     "items": {
@@ -15465,6 +15471,9 @@ export const schemas = {
                             }
                           ]
                         },
+                        "selectionRevision": {
+                          "type": "string"
+                        },
                         "sort": {
                           "items": {
                             "properties": {
@@ -15721,6 +15730,9 @@ export const schemas = {
                         "type": "object"
                       }
                     ]
+                  },
+                  "selectionRevision": {
+                    "type": "string"
                   },
                   "sort": {
                     "items": {

@@ -56,6 +56,19 @@ func newPlaybackV1(d Dependencies) *playbackv1.Service {
 		if err != nil {
 			return catalog.QueueSelection{}, err
 		}
+		if source.Query != nil && source.Query.SelectionRevision != "" {
+			browseViewer := viewer
+			browseViewer.Fence, err = d.browseFenceTx(ctx, tx, p, viewer.Restrictions)
+			if err != nil {
+				return catalog.QueueSelection{}, err
+			}
+			if err = d.Catalog.CheckQueueBrowseRevisionTx(ctx, tx, browseViewer, source.Query); err != nil {
+				if errors.Is(err, catalog.ErrStaleContinuation) {
+					return catalog.QueueSelection{}, playbackv1.ErrRevision
+				}
+				return catalog.QueueSelection{}, err
+			}
+		}
 		saved := ""
 		if source.Saved != nil {
 			saved = source.Saved.ID

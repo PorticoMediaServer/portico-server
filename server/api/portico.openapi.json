@@ -377,6 +377,9 @@
                           }
                         ]
                       },
+                      "selectionRevision": {
+                        "type": "string"
+                      },
                       "sort": {
                         "items": {
                           "properties": {
@@ -3721,6 +3724,9 @@
                             "type": "object"
                           }
                         ]
+                      },
+                      "selectionRevision": {
+                        "type": "string"
                       },
                       "sort": {
                         "items": {
@@ -17107,6 +17113,9 @@
                                 }
                               ]
                             },
+                            "selectionRevision": {
+                              "type": "string"
+                            },
                             "sort": {
                               "items": {
                                 "properties": {
@@ -17363,6 +17372,9 @@
                             "type": "object"
                           }
                         ]
+                      },
+                      "selectionRevision": {
+                        "type": "string"
                       },
                       "sort": {
                         "items": {
@@ -455425,6 +455437,9 @@
                                         }
                                       ]
                                     },
+                                    "selectionRevision": {
+                                      "type": "string"
+                                    },
                                     "sort": {
                                       "items": {
                                         "properties": {
@@ -455681,6 +455696,9 @@
                                     "type": "object"
                                   }
                                 ]
+                              },
+                              "selectionRevision": {
+                                "type": "string"
                               },
                               "sort": {
                                 "items": {
@@ -459455,6 +459473,9 @@
                                     "type": "object"
                                   }
                                 ]
+                              },
+                              "selectionRevision": {
+                                "type": "string"
                               },
                               "sort": {
                                 "items": {
@@ -464891,6 +464912,9 @@
                                     "type": "object"
                                   }
                                 ]
+                              },
+                              "selectionRevision": {
+                                "type": "string"
                               },
                               "sort": {
                                 "items": {

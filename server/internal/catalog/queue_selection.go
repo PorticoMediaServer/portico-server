@@ -5,18 +5,22 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"regexp"
 	"strconv"
 
 	"portico.local/server/internal/compactcatalog"
 )
 
+var queueSelectionRevisionPattern = regexp.MustCompile(`^browse_[a-f0-9]{64}$`)
+
 // QueueQuery uses the browse expression and ordering vocabulary. Paging belongs
 // to durable queue capture, so cursors, ranges and page sizes are absent.
 type QueueQuery struct {
-	LibraryID string                `json:"libraryId"`
-	Pivot     string                `json:"pivot,omitempty"`
-	Query     *BrowseNode           `json:"query,omitempty"`
-	Sort      []BrowseSortSelection `json:"sort,omitempty"`
+	SelectionRevision string                `json:"selectionRevision,omitempty"`
+	LibraryID         string                `json:"libraryId"`
+	Pivot             string                `json:"pivot,omitempty"`
+	Query             *BrowseNode           `json:"query,omitempty"`
+	Sort              []BrowseSortSelection `json:"sort,omitempty"`
 }
 
 type QueueSelection struct {
@@ -144,10 +148,11 @@ func (s *Service) QueueKeysTx(ctx context.Context, tx *sql.Tx, viewer Viewer, ac
 
 func (q *QueueQuery) UnmarshalJSON(raw []byte) error {
 	var body struct {
-		LibraryID string                `json:"libraryId"`
-		Pivot     string                `json:"pivot"`
-		Query     json.RawMessage       `json:"query"`
-		Sort      []BrowseSortSelection `json:"sort"`
+		SelectionRevision string                `json:"selectionRevision"`
+		LibraryID         string                `json:"libraryId"`
+		Pivot             string                `json:"pivot"`
+		Query             json.RawMessage       `json:"query"`
+		Sort              []BrowseSortSelection `json:"sort"`
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
@@ -161,10 +166,13 @@ func (q *QueueQuery) UnmarshalJSON(raw []byte) error {
 	if err != nil {
 		return err
 	}
+	if body.SelectionRevision != "" && !queueSelectionRevisionPattern.MatchString(body.SelectionRevision) {
+		return browseIssue("selectionRevision", "refresh the selected view")
+	}
 	if body.LibraryID == "" || len(body.LibraryID) > 256 || len(body.Pivot) > 64 {
 		return browseIssue("libraryId", "choose a library")
 	}
-	*q = QueueQuery{LibraryID: body.LibraryID, Pivot: body.Pivot, Query: node, Sort: body.Sort}
+	*q = QueueQuery{SelectionRevision: body.SelectionRevision, LibraryID: body.LibraryID, Pivot: body.Pivot, Query: node, Sort: body.Sort}
 	return nil
 }
 
