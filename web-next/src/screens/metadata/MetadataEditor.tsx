@@ -214,12 +214,12 @@ function Matching({data, busy, onSearch, onUse, onRetry, onLock}: {
     <form className={styles.matchSearch} onSubmit={event => {event.preventDefault(); if (query.trim() && !busy) onSearch(query.trim());}}>
       <TextField label={t('web.metadata.searchProvider')} description={t('web.metadata.searchProviderHelp')} value={query} onChange={event => setQuery(event.currentTarget.value)} />
       <Button size="small" type="submit" disabled={busy || !query.trim()}>{t('web.search.title')}</Button>
-      <Button size="small" type="button" disabled={busy} onClick={onRetry}>{t('server.attention.lookUpAgain')}</Button>
+      <Button size="small" type="button" disabled={busy} onClick={onRetry}>{t('web.chooser.tryAgain')}</Button>
     </form>
     {data.candidates.map(candidate => {
       const key = `${candidate.provider}:${candidate.id}`;
       const chosen = candidate.orders?.find(item => item.id === orders[key])?.id ?? candidate.orders?.[0]?.id;
-      return <div key={candidate.id} className={styles.candidate}>
+      return <div key={key} className={styles.candidate}>
         <div><b>{candidate.title}{candidate.year ? ` (${candidate.year})` : ''}</b><small>{providerName(candidate.provider)}{candidate.subtitle ? ` · ${candidate.subtitle}` : ''}</small>
           {candidate.orders && candidate.orders.length > 1 ? <label className={styles.order}>{t('metadata.attention.episodeOrder')}
             <select value={chosen} onChange={event => {const value = event.currentTarget.value; setOrders(current => ({...current, [key]: value}));}}>{candidate.orders.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : null}</div>

@@ -29,7 +29,7 @@ export function NeedsAttention({libraryId, api, onOpen}: {libraryId: string; api
     const current = ++generation.current;
     setLoading(true); setError(undefined);
     try {
-      const value = await service.list(next, 25, false);
+      const value = await service.list(next, 25, true);
       if (current === generation.current) {setPage(value); setCursor(next);}
     } catch (value) {if (current === generation.current) setError(value);}
     finally {if (current === generation.current) setLoading(false);}
