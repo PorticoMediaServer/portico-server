@@ -60,3 +60,7 @@
 @media (prefers-reduced-motion: reduce) { .fixedStrip { transform: none !important; transition-property: opacity; transition-duration: 160ms; } }
 @media (max-width: 1023px) { .fixedStrip { bottom: 100px; padding-inline: 28px; } }
 @media (max-width: 599px) { .fixedStrip { padding-inline: 20px; } }
+
+/* phone-read 6: retained match controls above the existing progress footer. */
+.searchNavigation { position: absolute; z-index: 9; inset: auto 20px 112px; display: flex; justify-content: center; pointer-events: none; }
+.searchNavigation > * { pointer-events: auto; }
