@@ -138,7 +138,7 @@ func (d Dependencies) readingContinue(w http.ResponseWriter, r *http.Request) {
 	out := ReadingContinueResponse{Items: []ReadingContinueItem{}, NextCursor: page.NextCursor}
 	for _, row := range page.Items {
 		v := row.Item
-		out.Items = append(out.Items, ReadingContinueItem{Item: readingItemProjection(v), Progress: *readingProgressProjection(&row.Progress)})
+		out.Items = append(out.Items, ReadingContinueItem{Conversion: readingConversionProjection(row.Conversion), Item: readingItemProjection(v), Progress: *readingProgressProjection(&row.Progress)})
 	}
 	write(w, 200, out)
 }
@@ -182,10 +182,7 @@ func (d Dependencies) prepareReadingSession(w http.ResponseWriter, r *http.Reque
 	}
 	v, m := document.Selection, document.Metadata
 	out := ReadingSessionResponse{CanAnnotate: reading.CanAnnotate(p), Sequential: document.Sequential, SessionID: session.ID, ItemID: v.ItemID, SourceID: v.SourceID, Revision: v.Revision, Format: ReadingFormat(v.Format), Size: v.Size, Metadata: ReadingMetadata{Title: m.Title, Author: m.Author, Language: m.Language, Direction: ReadingDirection(m.Direction), CoverURL: m.CoverURL}, Spine: document.Spine, PageNames: document.PageNames}
-	if document.Conversion != nil {
-		c := document.Conversion
-		out.Conversion = &ReadingConversionProvenance{OriginalRevision: c.OriginalRevision, OriginalSourceID: c.OriginalSourceID, OriginalFormat: c.OriginalFormat, OriginalSize: c.OriginalSize, InputSHA256: c.InputSHA256, Converter: c.Converter, WorkerSHA256: c.WorkerSHA256, Options: c.Options, OutputSHA256: c.OutputSHA256, OutputSize: c.OutputSize, Revision: c.Revision}
-	}
+	out.Conversion = readingConversionProjection(document.Conversion)
 	readingManifestFactsProjection(&out.Metadata, m)
 	// This optional offer is descriptive only; the transfer rechecks the exact
 	// captured source and live download policy before and after each extent.
