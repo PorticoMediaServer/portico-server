@@ -243,18 +243,15 @@ func (s *Service) workspaceSettingEpisodes(r ShowWorkspaceRequest, w ShowWorkspa
 			title = group.Title
 		}
 	}
-	direction := "asc"
-	if settings.NewestFirst {
-		direction = "desc"
-	}
-	out := ContentEnvelope{Scope: ContentScope{r.ServerID, r.Library, w.Show.LibraryKind, view, entity, r.ViewerFence}, Revision: revision, Heading: ContentHeading{Key: "entity.title", Fallback: w.Show.Title + " · " + title}, Navigation: []ContentTab{{"discover", "library.discover", "discover"}, {"browse", "library.shows", "browse"}}, Sorts: []ContentSort{{"episode", "sort.episode", []string{"asc"}}}, Filters: []ContentFilter{}, Sections: []ContentSection{}, Query: ContentQuery{"episode", "asc", "", "", r.Limit, "none"}}
+	direction := r.EpisodeDirection
+	out := ContentEnvelope{Scope: ContentScope{r.ServerID, r.Library, w.Show.LibraryKind, view, entity, r.ViewerFence}, Revision: revision, Heading: ContentHeading{Key: "entity.title", Fallback: w.Show.Title + " · " + title}, Navigation: []ContentTab{{"discover", "library.discover", "discover"}, {"browse", "library.shows", "browse"}}, Sorts: []ContentSort{{"episode", "sort.episode", []string{"asc", "desc"}}}, Filters: []ContentFilter{}, Sections: []ContentSection{}, Query: ContentQuery{"episode", direction, "", "", r.Limit, "none"}}
 	rows := groupEpisodes(ranked, w.Selected.Group, season)
-	if settings.NewestFirst {
+	if direction == "desc" {
 		for i, j := 0, len(rows)-1; i < j; i, j = i+1, j-1 {
 			rows[i], rows[j] = rows[j], rows[i]
 		}
 	}
-	scope := cursorScope{Library: r.Library, Viewer: r.ViewerFence, Profile: r.Profile, View: "show_workspace_episodes", Entity: show, Section: "settings:" + settings.fingerprint() + ":" + section + ":" + season, Search: r.EpisodeID, Sort: "episode", Direction: direction, Limit: r.Limit}
+	scope := cursorScope{Library: r.Library, Viewer: r.ViewerFence, Profile: r.Profile, View: "show_workspace_episodes", Entity: show, Section: "settings:" + settings.fingerprint() + ":" + section + ":" + season + ":" + r.PlayState, Search: r.EpisodeID, Sort: "episode", Direction: direction, Limit: r.Limit}
 	start := 0
 	if r.EpisodeID != "" {
 		for index, row := range rows {

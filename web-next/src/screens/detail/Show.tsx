@@ -1,14 +1,14 @@
 import {t, locale, environment as env} from './text';
-import {Fragment, useEffect, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {Fragment, useEffect, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {preferenceValue} from '@core/preferences.ts';
-import type {ShowWorkspaceRoute, ShowWorkspaceData, ShowSettings, WorkspaceShowCredit} from '@core/show-workspace.ts';
+import type {ShowWorkspaceRoute, ShowWorkspaceData, ShowSettings, WorkspaceSeason, WorkspaceShowCredit} from '@core/show-workspace.ts';
 import {cardText, episodeLabel, titleFactParts, type FactPart} from '@core/presentation/kit-model';
 import {Button, Chip, ResumeButton, Tabs, Segmented, Switch} from '../../kit/controls';
 import {AmbientArt, Artwork} from '../../kit/artwork';
 import {Icon} from '../../kit/Icon';
 import {Lockup} from '../../kit/layout';
 import {EpisodeTile} from '../../kit/cards';
-import {Menu, MenuItem, Popover} from '../../kit/overlays';
+import {Menu, MenuItem, MenuSeparator, Popover} from '../../kit/overlays';
 import {OwnerTag, ServerMark} from '../../kit/shell';
 import {StateView} from '../../kit/states';
 import {useShellWidth} from '../../shell/viewport';
@@ -18,6 +18,7 @@ import {episodeCode} from '@core/presentation/card-caption.ts';
 import {entrySubject, titlePageFacts, calendarDate, instantDate} from './model';
 import type {ShowBindings} from './show-bindings';
 import {showDetailFacts} from './show-bindings';
+import {seasonProgress} from '@core/presentation/title-page.ts';
 import styles from './show.module.css';
 import detail from './detail.module.css';
 import {dependsOn, titlesWithPersonalState} from '@core/freshness-hub.ts';
@@ -28,12 +29,47 @@ import {TitleTabs} from './TitleTabs';
 import {ScreenProblem} from './ScreenProblem';
 import {runScreenCommand} from './context';
 import {GenreNames} from './GenreNames';
+import type {ContainerState} from '@core/container-state.ts';
+import {SeasonMenu} from './SeasonMenu';
 
 export type ShowScreenProps = {binding: ShowBindings; target: ShowWorkspaceRoute};
 export function ShowScreen({binding, target}: ShowScreenProps) {
   const key = JSON.stringify(target);
   useEffect(() => { const route: ShowWorkspaceRoute = JSON.parse(key), request = new AbortController(); void binding.select(route, request.signal).catch(error => { if (!request.signal.aborted) binding.context.effects.reportError(error); }); return () => { request.abort(); binding.cancel(); }; }, [binding, key]);
   return <ShowBody binding={binding} />;
+}
+
+/** Root §14: complete-season actions; the display editor remains show-scoped. */
+export function SeasonOptions({binding, data, label}: {binding: ShowBindings; data: ShowWorkspaceData; label: string}) {
+  const [open, setOpen] = useState(false), [display, setDisplay] = useState(false), [state, setState] = useState<ContainerState>();
+  const anchor = useRef<HTMLButtonElement>(null), owner = binding.canManage();
+  useEffect(() => {
+    setState(undefined);
+    if (!open) return;
+    const request = new AbortController();
+    void binding.readSeasonState(data, request.signal).then(value => { if (!request.signal.aborted) setState(value); }).catch(error => { if (!request.signal.aborted) binding.context.effects.reportError(error); });
+    return () => request.abort();
+  }, [binding, data, open]);
+  const complete = !!state && (state.watchedCount ?? 0) > 0 && state.unwatchedCount === 0;
+  return <>
+    <Menu presentation="anchored" open={open} onOpenChange={setOpen} title={t('next.detail.seasonOptions', {season: label})} trigger={<Button ref={anchor} variant="icon" size="small" icon="i-more" iconOnly aria-label={t('next.detail.seasonOptions', {season: label})} />}>
+      <MenuItem onSelect={() => runScreenCommand(binding.context, () => binding.playSeason(data))}>{t('next.detail.playSeason')}</MenuItem>
+      <MenuItem disabled={!state} onSelect={() => runScreenCommand(binding.context, () => { if (!state) return; return binding.setSeasonWatched(data, state, !complete); })}>{t(complete ? 'next.detail.markSeasonUnwatched' : 'next.detail.markSeasonWatched')}</MenuItem>
+      {owner && <><MenuSeparator /><MenuItem onSelect={() => runScreenCommand(binding.context, () => { binding.current(data); if (!binding.canManage()) throw new DOMException('Show management changed', 'AbortError'); setDisplay(true); })}>{t('next.detail.episodeDisplay')}</MenuItem></>}
+    </Menu>
+    {owner && <Popover open={display} onOpenChange={setDisplay} anchorRef={anchor} returnFocusRef={anchor} width={540} className={styles.settingsMenu} title={t('title.showSettings')}><ShowSettingsMenu binding={binding} data={data} /></Popover>}
+  </>;
+}
+
+/** The drawn season row: its years, episode count and the viewer's real progress. */
+export function seasonMenuDescription(season: WorkspaceSeason): string | undefined {
+  const year = (value?: string) => { if (!value) return undefined; const date = new Date(value); return Number.isFinite(date.getTime()) ? date.getUTCFullYear() : undefined; };
+  const first = year(season.firstAired), last = year(season.lastAired), progress = seasonProgress(season.watchedCount, season.unwatchedCount);
+  const years = first === undefined ? undefined : t('next.detail.seasonYears', {first, last: last ?? first});
+  const parts = [years, season.episodeCount !== undefined ? t('count.episodes', {count: season.episodeCount}) : undefined,
+    progress ? t('title.seasonProgress', {watched: progress.watched, total: progress.total}) : undefined];
+  const value = parts.filter(Boolean).join(' · ');
+  return value || undefined;
 }
 
 /** One body below Watch's video as well as on the title route. No independent video host. */
@@ -44,12 +80,31 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
   const personal = useSyncExternalStore(binding.personal.subscribe, binding.personal.getSnapshot, binding.personal.getSnapshot);
   const busy = useSyncExternalStore(binding.personal.subscribe, binding.personal.getBusy, binding.personal.getBusy);
   const primary = useSyncExternalStore(binding.primary.service.subscribe, binding.primary.service.getSnapshot, binding.primary.service.getSnapshot);
-  const {tab, layout} = useSyncExternalStore(binding.view.subscribe, binding.view.getSnapshot, binding.view.getSnapshot), [seasonMenu, setSeasonMenu] = useState(false);
+  const {tab, layout} = useSyncExternalStore(binding.view.subscribe, binding.view.getSnapshot, binding.view.getSnapshot), [seasonMenu, setSeasonMenu] = useState(false), [filterMenu, setFilterMenu] = useState(false), [orderMenu, setOrderMenu] = useState(false);
   const width = useShellWidth(), phone = width < 1024, data = snapshot.data;
   const recommendations = useSyncExternalStore(binding.recommendations.subscribe, binding.recommendations.getSnapshot, binding.recommendations.getSnapshot);
   useEffect(() => { if (data && tab === 'related') void binding.recommendations.select(data, () => binding.service.getSnapshot().data === data); }, [binding, data, tab]);
   if (!data) return snapshot.phase === 'error' ? <ScreenProblem context={binding.context} error={snapshot.error} subject={binding.subject()} retry={() => { void binding.service.retry(); }} /> : <DetailLoading key={snapshot.route?.showId ?? snapshot.route?.episodeId ?? snapshot.route?.seasonId} />;
   const {show} = data, selectedSeason = data.seasons.find(season => season.id === data.selected.seasonId);
+  const selectedProgress = selectedSeason ? seasonProgress(selectedSeason.watchedCount, selectedSeason.unwatchedCount) : undefined;
+  const seasonLabel = selectedSeason ? selectedSeason.number === 0 ? t('next.kit.special') : t('next.kit.season', {number: selectedSeason.number}) : data.groups.find(group => group.id === data.selected.group)?.title ?? t('next.controls.episodes');
+  const selectSeason = (id: string) => { runScreenCommand(binding.context, () => { binding.current(data); return binding.service.selectSeason(id).then(() => setSeasonMenu(false)); }); };
+  const pageSeasons = (next: boolean) => { runScreenCommand(binding.context, () => { binding.current(data); return next ? binding.service.nextSeasons() : binding.service.previousSeasons(); }); };
+  const setPlayState = (state: 'all' | 'played' | 'unplayed' | 'in-progress') => {
+    runScreenCommand(binding.context, () => { binding.current(data); const route = snapshot.route; if (route) return binding.select({...route, playState: state === 'all' ? undefined : state}); });
+    setFilterMenu(false);
+  };
+  const jumpSeason = async (number: number) => {
+    try {
+      for (let page = 0; page < 20; page++) {
+        const snapshot = binding.service.getSnapshot(), seasons = snapshot.data?.seasons ?? [], target = seasons.find(season => season.number === number);
+        if (target) { await binding.service.selectSeason(target.id); return true; }
+        if (!snapshot.seasonPagination.nextCursor) return false;
+        await binding.service.nextSeasons();
+      }
+      return false;
+    } catch (error) { binding.context.effects.reportError(error); return false; }
+  };
   const episodes = data.episodes.sections[0]?.entries ?? [], art = binding.context.artwork;
   const actions = <div className={detail.actions}>
     {primary.data && <TitleActions binding={binding.primary} data={primary.data} small />}
@@ -75,14 +130,36 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
     <div key={tab} className={detail.tabPanel}>
     {tab === 'episodes' && <section className={styles.episodes}>
       <div className={styles.toolbar}>
-        <Menu open={seasonMenu} onOpenChange={setSeasonMenu} title={t('title.seasonMenu')} trigger={<Chip variant="toolbar" trailingIcon="i-down">{selectedSeason ? selectedSeason.number === 0 ? t('next.kit.special') : t('next.kit.season', {number: selectedSeason.number}) : data.groups.find(group => group.id === data.selected.group)?.title ?? t('next.controls.episodes')}</Chip>}>
-          {data.seasons.map(season => <MenuItem key={season.id} selected={season.id === data.selected.seasonId} description={season.episodeCount !== undefined ? t('count.episodes', {count: season.episodeCount}) : undefined} onSelect={() => runScreenCommand(binding.context, () => { binding.current(data); return binding.service.selectSeason(season.id); })}>{season.number === 0 ? t('next.kit.special') : t('next.kit.season', {number: season.number})}</MenuItem>)}
-          {data.groups.map(group => <MenuItem key={group.id} selected={group.id === data.selected.group} onSelect={() => runScreenCommand(binding.context, () => { binding.current(data); return binding.service.selectGroup(group.id); })}>{group.title}</MenuItem>)}
-          {snapshot.seasonPagination.canPrevious && <MenuItem onSelect={() => runScreenCommand(binding.context, () => { binding.current(data); return binding.service.previousSeasons(); })}>{t('title.earlierSeasons')}</MenuItem>}
-          {snapshot.seasonPagination.nextCursor && <MenuItem onSelect={() => runScreenCommand(binding.context, () => { binding.current(data); return binding.service.nextSeasons(); })}>{t('title.laterSeasons')}</MenuItem>}
-        </Menu>
+        {data.groups.length === 0 ? <SeasonMenu open={seasonMenu} onOpenChange={setSeasonMenu} label={seasonLabel} seasons={data.seasons} selectedId={data.selected.seasonId ?? undefined}
+          totalCount={data.seasonTotalCount} hasPrevious={snapshot.seasonPagination.canPrevious} hasNext={!!snapshot.seasonPagination.nextCursor}
+          onSelect={selectSeason} onPrevious={() => pageSeasons(false)} onNext={() => pageSeasons(true)} onJump={jumpSeason} />
+          : <Menu open={seasonMenu} onOpenChange={setSeasonMenu} title={t('title.seasonMenu')} trigger={<Chip variant="toolbar" trailingIcon="i-down">{seasonLabel}</Chip>}>
+            {data.seasons.map(season => <MenuItem key={season.id} selected={season.id === data.selected.seasonId} description={seasonMenuDescription(season)} onSelect={() => selectSeason(season.id)}>{season.number === 0 ? t('next.kit.special') : t('next.kit.season', {number: season.number})}</MenuItem>)}
+            {data.groups.map(group => <MenuItem key={group.id} selected={group.id === data.selected.group} onSelect={() => runScreenCommand(binding.context, () => { binding.current(data); return binding.service.selectGroup(group.id); })}>{group.title}</MenuItem>)}
+            {snapshot.seasonPagination.canPrevious && <MenuItem onSelect={() => pageSeasons(false)}>{t('title.earlierSeasons')}</MenuItem>}
+            {snapshot.seasonPagination.nextCursor && <MenuItem onSelect={() => pageSeasons(true)}>{t('title.laterSeasons')}</MenuItem>}
+          </Menu>}
         {selectedSeason?.episodeCount !== undefined && <span className={styles.progress}>{t('count.episodes', {count: selectedSeason.episodeCount})}</span>}
+        {selectedProgress ? <><span className={styles.progressDivider} aria-hidden="true" /><span className={styles.watchedProgress}><span className={styles.watchedMeter} aria-hidden="true"><i style={{width: `${selectedProgress.total > 0 ? 100 * selectedProgress.watched / selectedProgress.total : 0}%`}} /></span>{t('title.seasonProgress', {watched: selectedProgress.watched, total: selectedProgress.total})}</span></>
+          : null}
+        <div className={styles.toolbarActions}>
+        <Menu presentation="anchored" open={orderMenu} onOpenChange={setOrderMenu} title={t('next.detail.episodeOrder')} trigger={<Chip variant="toolbar" icon="i-sort" iconSize={18} trailingIcon="i-down" trailingSize={16}>{t('next.detail.episodeOrder')}</Chip>}>
+          <MenuItem selected={(snapshot.route?.episodeDirection ?? 'asc') === 'asc'} onSelect={() => runScreenCommand(binding.context, () => { binding.current(data); setOrderMenu(false); return binding.service.selectEpisodeDirection('asc'); })}>{t('next.detail.episodeOrder')}</MenuItem>
+          <MenuItem selected={snapshot.route?.episodeDirection === 'desc'} onSelect={() => runScreenCommand(binding.context, () => { binding.current(data); setOrderMenu(false); return binding.service.selectEpisodeDirection('desc'); })}>{t('next.detail.reverseEpisodeOrder')}</MenuItem>
+        </Menu>
+        <Menu open={filterMenu} onOpenChange={setFilterMenu} title={t('next.controls.filters')} trigger={<Chip variant="toolbar">{t('next.controls.filters')}</Chip>}>
+          <MenuItem selected={!snapshot.route?.playState} onSelect={() => setPlayState('all')}>{t('next.controls.all')}</MenuItem>
+          <MenuItem selected={snapshot.route?.playState === 'unplayed'} onSelect={() => setPlayState('unplayed')}>{t('filter.quick.unplayed')}</MenuItem>
+          <MenuItem selected={snapshot.route?.playState === 'played'} onSelect={() => setPlayState('played')}>{t('filter.quick.played')}</MenuItem>
+          <MenuItem selected={snapshot.route?.playState === 'in-progress'} onSelect={() => setPlayState('in-progress')}>{t('filter.quick.inProgress')}</MenuItem>
+        </Menu>
         <label className={styles.hide}>{t('next.controls.hideWatched')}<Switch checked={snapshot.route?.playState === 'unplayed'} onCheckedChange={checked => runScreenCommand(binding.context, () => { binding.current(data); const route = snapshot.route; if (route) return binding.select({...route, playState: checked ? 'unplayed' : 'all'}); })} /></label>
+        <span className={styles.layoutToggle} role="group" aria-label={t('next.controls.layout')}>
+          <button type="button" aria-label={t('next.controls.list')} aria-pressed={layout === 'list'} onClick={() => runScreenCommand(binding.context, () => binding.view.layout('list'))}><Icon name="i-list" size={18} /></button>
+          <button type="button" aria-label={t('next.controls.grid')} aria-pressed={layout === 'grid'} onClick={() => runScreenCommand(binding.context, () => binding.view.layout('grid'))}><Icon name="i-grid" size={18} /></button>
+        </span>
+        {data.selected.seasonId && <SeasonOptions binding={binding} data={data} label={seasonLabel} />}
+        </div>
       </div>
       {snapshot.phase === 'error' || snapshot.phase === 'refresh-required' ? <ScreenFailure retry={() => { void binding.service.retry(); }} /> : null}
       {!episodes.length && snapshot.phase === 'ready' && <StateView title={t('title.noEpisodes')} body={t('title.noEpisodesBody')} />}

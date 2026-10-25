@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {registerHooks} from 'node:module';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
+import {readFileSync} from 'node:fs';
 import {transformTsx} from './transform-tsx.mjs';
 import type {ShowWorkspaceData, WorkspaceShowCredit} from '@core/show-workspace.ts';
 
@@ -14,7 +15,7 @@ registerHooks({load(url, context, next) {
   if (url.endsWith('.tsx')) return {format: 'module', source: transformTsx(url), shortCircuit: true};
   return next(url, context);
 }});
-const {ShowDetails, ShowSettingsPanel, ShowSettingsMenu} = await import('../src/screens/detail/Show.tsx');
+const {ShowDetails, ShowSettingsPanel, ShowSettingsMenu, seasonMenuDescription} = await import('../src/screens/detail/Show.tsx');
 const {showDetailFacts} = await import('../src/screens/detail/show-bindings.ts');
 
 const credits: readonly WorkspaceShowCredit[] = [
@@ -70,6 +71,18 @@ test('the drawn Details facts come from the stored show record and never from fi
   assert.equal(showDetailFacts(data.show, 0, 'en-US').onServer, undefined);
 });
 
+test('the drawn season rows carry the stored years, episode count and real watched progress', () => {
+  assert.equal(seasonMenuDescription({id: 's3', showId: 'the-simpsons', number: 3, title: 'Season 3', episodeCount: 24,
+    watchedCount: 4, unwatchedCount: 20, firstAired: '1991-09-19', lastAired: '1992-05-14'}),
+  '1991 to 1992 · 24 episodes · 4 of 24 watched');
+  assert.equal(seasonMenuDescription({id: 's1', showId: 'the-simpsons', number: 1, title: 'Season 1', episodeCount: 13,
+    watchedCount: 13, unwatchedCount: 0, firstAired: '1989-12-17', lastAired: '1990-05-13'}),
+  '1989 to 1990 · 13 episodes · 13 of 13 watched');
+  assert.equal(seasonMenuDescription({id: 'sp', showId: 'the-simpsons', number: 0, title: 'Specials', episodeCount: 12,
+    watchedCount: 0, unwatchedCount: 12}), '12 episodes · 0 of 12 watched');
+  assert.equal(seasonMenuDescription({id: 's2', showId: 'the-simpsons', number: 2, title: 'Season 2'}), undefined);
+});
+
 test('frame 4 renders the About facts, the stored cast and creators, and the owner Server panel', () => {
   const html = renderToStaticMarkup(createElement(ShowDetails, {binding, data, owner: true}));
   assert.match(html, /About</);
@@ -107,4 +120,13 @@ test('a non-owner sees no Server panel and no settings command', () => {
   const html = renderToStaticMarkup(createElement(ShowDetails, {binding, data, owner: false}));
   assert.doesNotMatch(html, /Show settings|Owner only|Episode display|Change/);
   assert.match(html, /Cast and crew/);
+});
+
+test('the long-running show specimen keeps the drawn 36-season frame facts', () => {
+  const entry = readFileSync(new URL('../src/dev/entries/show.tsx', import.meta.url), 'utf8');
+  assert.match(entry, /frame !== '6'/);
+  assert.match(entry, /seasonTotalCount: 36/);
+  assert.match(entry, /watchedCount: 4, unwatchedCount: 20/);
+  assert.match(entry, /data-show-frame6-ready/);
+  assert.match(entry, /FreshnessProvider/);
 });

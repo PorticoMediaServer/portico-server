@@ -35,6 +35,7 @@ import {readerMessages} from './reader.ts';
 import {searchMessages} from './search.ts';
 import {showMessages} from './show.ts';
 import {remoteSourcesMessages} from './remote-sources.ts';
+import {detailMessages} from './detail.ts';
 
 export const nextMessages = {
   ...platformMessages,
@@ -74,6 +75,7 @@ export const nextMessages = {
   ...showMessages,
   ...remoteSourcesMessages,
   ...ownerLibrariesMessages,
+  ...detailMessages,
 } as const satisfies Record<`next.${string}`, string>;
 
 export type NextMessageId = keyof typeof nextMessages;

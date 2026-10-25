@@ -1,4 +1,5 @@
 import {createRoot} from 'react-dom/client';
+import {FreshnessProvider} from '../../platform/freshness';
 import {useEffect} from 'react';
 import {RouterProvider, createMemoryHistory} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
@@ -12,7 +13,7 @@ import {createOwnerActivity} from '../../shell/Activity';
 import type {ShellIdentity} from '../../shell/Shell';
 import type {HomeBindings} from '../../screens/home/Home';
 import {IconSprite} from '../../kit/Icon';
-import {createDetailSpecimen} from './detail-specimen';
+import {createDetailSpecimen, type SpecimenFrame} from './detail-specimen';
 import '../../kit/tokens.css';
 import '../../kit/fonts.css';
 import '../../bootstrap.css';
@@ -20,27 +21,28 @@ import '../../bootstrap.css';
 // The specimen is a public, development-only capture of the registered Item route. It never
 // reaches a production build: no production module imports it and this entry fails closed.
 if (!import.meta.env.DEV) throw new Error('Detail specimens require the development server.');
-const frame = new URLSearchParams(location.search).get('frame');
-if (frame !== null && frame !== '1') throw new Error('The detail specimen measures desktop frame 1 only.');
+const requested = new URLSearchParams(location.search).get('frame'), frame: SpecimenFrame = requested === '2' ? '2' : requested === '3' ? '3' : '1';
+if (requested !== null && requested !== '1' && requested !== '2' && requested !== '3') throw new Error('The detail specimen measures desktop frames 1, 2 and 3.');
 
 /** The measured state includes every real artwork slot; wait for the genuine
  *  images the screen mounts, never for a synthetic painting delay or a rewritten DOM. */
 function DetailReady() {
   useEffect(() => {
-    let frame = 0, stopped = false;
+    let request = 0, stopped = false;
+    const minimum = frame === '1' ? 18 : frame === '2' ? 10 : 2;
     const wait = () => {
       if (stopped) return;
       const images = [...document.querySelectorAll<HTMLImageElement>('#portico-content article img')];
-      if (images.length >= 18 && images.every(image => image.complete)) document.documentElement.dataset.detailReady = 'true';
-      else frame = requestAnimationFrame(wait);
+      if (images.length >= minimum && images.every(image => image.complete)) document.documentElement.dataset.detailReady = 'true';
+      else request = requestAnimationFrame(wait);
     };
     wait();
-    return () => { stopped = true; cancelAnimationFrame(frame); delete document.documentElement.dataset.detailReady; };
+    return () => { stopped = true; cancelAnimationFrame(request); delete document.documentElement.dataset.detailReady; };
   }, []);
   return null;
 }
 
-const specimen = createDetailSpecimen();
+const specimen = createDetailSpecimen(frame);
 const time = {t: defaultI18n.t, locale: 'en-US', timeZone: 'UTC'};
 const viewer: Viewer = {serverId: specimen.serverId, authority: 'local', accountId: 'specimen-account', profileId: 'demo', role: 'owner'};
 const session: LocalSession = {
@@ -92,11 +94,13 @@ const context = contextBase;
 
 router.update({history: createMemoryHistory({initialEntries: [`/item/${specimen.itemId}`]})});
 createRoot(document.getElementById('root')!).render(
+  <FreshnessProvider api={specimen.api} viewerId={specimen.personalFence} serverId={specimen.serverId} events={specimen.events}>
   <WebScreenProvider value={{binding, context}}>
     <DetailReady />
     <IconSprite />
     <ShellBindingsProvider value={binding}>
       <RouterProvider router={router} />
     </ShellBindingsProvider>
-  </WebScreenProvider>,
+  </WebScreenProvider>
+  </FreshnessProvider>,
 );

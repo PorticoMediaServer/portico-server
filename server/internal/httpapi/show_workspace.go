@@ -25,7 +25,7 @@ func (d Dependencies) showWorkspaceRoutes(mux *http.ServeMux) {
 			return
 		}
 		q := r.URL.Query()
-		known := map[string]bool{"playState": true, "showId": true, "seasonId": true, "episodeId": true, "selectedSeasonId": true, "group": true, "cursor": true, "seasonCursor": true, "limit": true, "seasonLimit": true}
+		known := map[string]bool{"episodeDirection": true, "playState": true, "showId": true, "seasonId": true, "episodeId": true, "selectedSeasonId": true, "group": true, "cursor": true, "seasonCursor": true, "limit": true, "seasonLimit": true}
 		for key, values := range q {
 			if !known[key] || len(values) != 1 || len(values[0]) > 4096 {
 				failure(w, catalog.ErrShowContext)
@@ -53,7 +53,7 @@ func (d Dependencies) showWorkspaceRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		out, e := d.Catalog.WithContext(r.Context()).ShowWorkspace(catalog.ShowWorkspaceRequest{Viewer: viewer, PlayState: q.Get("playState"), ServerID: d.Identity.ID(), Library: r.PathValue("id"), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, ShowID: q.Get("showId"), SeasonID: q.Get("seasonId"), EpisodeID: q.Get("episodeId"), SelectedSeasonID: q.Get("selectedSeasonId"), Group: q.Get("group"), Cursor: q.Get("cursor"), SeasonCursor: q.Get("seasonCursor"), Limit: limit, SeasonLimit: seasonLimit})
+		out, e := d.Catalog.WithContext(r.Context()).ShowWorkspace(catalog.ShowWorkspaceRequest{Viewer: viewer, EpisodeDirection: q.Get("episodeDirection"), PlayState: q.Get("playState"), ServerID: d.Identity.ID(), Library: r.PathValue("id"), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, ShowID: q.Get("showId"), SeasonID: q.Get("seasonId"), EpisodeID: q.Get("episodeId"), SelectedSeasonID: q.Get("selectedSeasonId"), Group: q.Get("group"), Cursor: q.Get("cursor"), SeasonCursor: q.Get("seasonCursor"), Limit: limit, SeasonLimit: seasonLimit})
 		if e != nil {
 			failure(w, e)
 			return
