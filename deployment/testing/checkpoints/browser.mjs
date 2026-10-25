@@ -11,7 +11,9 @@ const disabled=new Set(input.disabled??[]);
 async function capture(id){
  const credentials=await page.locator('input[type="password"],input[name="username"]').count();
  if(populatedCredentials&&credentials){fs.writeFileSync(path.join(out,'flow-'+id+'.log'),'Screenshot withheld: populated credential controls remain.\n');return;}
- await page.screenshot({path:path.join(out,'flow-'+id+'.jpg'),type:'jpeg',quality:82,timeout:5000});
+ await page.evaluate(values=>{const walk=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);for(let node=walk.nextNode();node;node=walk.nextNode())if(values.some(value=>value&&node.textContent.includes(value)))node.parentElement?.setAttribute('data-checkpoint-private','');},privateValues);
+ try{await page.screenshot({path:path.join(out,'flow-'+id+'.jpg'),type:'jpeg',quality:82,timeout:5000,mask:[page.locator('[data-checkpoint-private]')]});}
+ finally{await page.locator('[data-checkpoint-private]').evaluateAll(nodes=>nodes.forEach(node=>node.removeAttribute('data-checkpoint-private')));}
  fs.writeFileSync(path.join(out,'flow-'+id+'.log'),await page.evaluate(privacy,{kind:'dom',privateValues}));
 }
 async function flow(id,run){

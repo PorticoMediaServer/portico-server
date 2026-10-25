@@ -34,7 +34,7 @@ def receive(host,remote,destination):
                 raw=archive.extractfile(member).read()
                 if name.endswith('.jpg') and not raw.startswith(b'\xff\xd8'):raise ValueError('invalid screenshot')
                 target=destination/name
-                with target.open('xb') as out:out.write(raw)
+                with target.open('xb') as out:os.fchmod(out.fileno(),0o600);out.write(raw)
     subprocess.run(['ssh','-o','BatchMode=yes',host,'rm -rf -- '+shlex.quote(remote)],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     return True
 
