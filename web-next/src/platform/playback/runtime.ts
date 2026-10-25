@@ -76,6 +76,8 @@ type Stack = {
   forcedLines?: Readonly<{lines: SubtitleLines; key: string; epoch: number}>;
   imageEpoch?: number;
   imageFailed?: boolean;
+  /** The one track id this runtime told the player it is drawing, and which path wrote it. */
+  subtitleRecorded?: Readonly<{id: string | null; path: 'text' | 'image'; key: string}>;
   /** A style change made in the options panel, for the one playback run it belongs to. */
   subtitleStyle?: Partial<Pick<SubtitlePreferences,'size'|'background'>> & Readonly<{run: number}>;
   /** The drawn sleep timer: one playback run's record, with the token that armed it. */
@@ -323,6 +325,7 @@ export class WebShellPlaybackRuntime {
     if (stack.retired) return;
     this.clearSleepTimer(stack);
     this.clearImageSubtitles(stack);
+    this.clearRecordedSidecar(stack, 'text');
     // Pause before releasing the actual media and checkpoint its real position. The accepted
     // dock retains only the bookmark, never a second live or hidden media session.
     if (stack.mode === 'local') stack.web.slot.pause();else stack.service.pause();
@@ -1026,6 +1029,7 @@ export class WebShellPlaybackRuntime {
     if (!stack.retired) stack.offers.cancel();
     this.clearImageSubtitles(stack);
     this.surface?.guard(false); this.surface?.clear();
+    this.clearRecordedSidecar(stack, 'text');
   }
   private bindSubtitles(stack: Stack, offers: PlayerOffersData, key: string): void {
     const current = offers.current, plan = offers.subtitlePlan;
@@ -1089,6 +1093,7 @@ export class WebShellPlaybackRuntime {
       : {kind: 'pgs', data: original.url};
     void surface.present(source).then(() => {
       if (!this.current(stack) || stack.imageEpoch !== epoch || abort.signal.aborted) return;
+      this.recordSidecar(stack, 'image', key, plan.selected?.id ?? null);
       if (original.linesUrl) void this.readForcedLines(stack, original.linesUrl, key, epoch, abort.signal);
       this.sync();
     }).catch(() => {
@@ -1097,12 +1102,26 @@ export class WebShellPlaybackRuntime {
       this.runtimeProblem = 'playback_subtitles_failed'; this.sync();
     });
   }
+  /** The player's own observation of the track this runtime draws: never inferred from a choice. */
+  private recordSidecar(stack: Stack, path: 'text' | 'image', key: string, id: string | null): void {
+    stack.subtitleRecorded = Object.freeze({id, path, key});
+    stack.web.slot.selectSidecarSubtitle(id);
+  }
+  /** Retiring one path clears the record only when that path still owns it, so a late image
+   * teardown can never erase the successor text track (or the reverse). */
+  private clearRecordedSidecar(stack: Stack, path: 'text' | 'image'): void {
+    const recorded = stack.subtitleRecorded;
+    if (!recorded || recorded.path !== path) return;
+    stack.subtitleRecorded = undefined;
+    stack.web.slot.selectSidecarSubtitle(null);
+  }
   /** The image overlay's own retirement: its reads, canvas, offer, identity and epoch all end here. */
   private clearImageSubtitles(stack: Stack): void {
     stack.imageAbort?.abort(); stack.imageAbort = undefined;
     stack.imageSurface?.clear(); stack.imageSurface?.dispose(); stack.imageSurface = undefined;
     stack.imageKey = undefined; stack.imageEpoch = (stack.imageEpoch ?? 0) + 1;
     stack.forcedLines = undefined; stack.forcedOnly = undefined; stack.imageFailed = undefined;
+    this.clearRecordedSidecar(stack, 'image');
   }
   /** The text path's own teardown, so exactly one subtitle owner draws at a time. */
   private clearTextSubtitles(stack: Stack): void {
@@ -1111,6 +1130,7 @@ export class WebShellPlaybackRuntime {
     stack.documentKey = undefined;
     this.surface?.guard(false); this.surface?.clear();
     stack.subtitles?.setPolling(false);
+    this.clearRecordedSidecar(stack, 'text');
   }
   private renderSubtitles(stack: Stack): void {
     const state = stack.subtitles?.getSnapshot() ?? emptySubtitle, plan = state.plan, surface = this.surface;
@@ -1142,7 +1162,7 @@ export class WebShellPlaybackRuntime {
         const read = await fetchSubtitleDocument(this.env.fetch ?? fetch, url, etag, abort.signal);
         if (!this.current(stack) || stack.documentKey !== key || abort.signal.aborted) return;
         if (!read.unchanged) { document = read.document; etag = read.etag; }
-        if (document) { surface.show(document.cues, Number(plan.offsetUs) / 1e6); surface.guard(true); stack.web.slot.selectSidecarSubtitle(plan.selected?.id ?? null); }
+        if (document) { surface.show(document.cues, Number(plan.offsetUs) / 1e6); surface.guard(true); this.recordSidecar(stack, 'text', key, plan.selected?.id ?? null); }
       } catch { if (this.current(stack) && !abort.signal.aborted) { this.surface?.clear(); this.runtimeProblem = 'playback_subtitles_failed'; this.sync(); } }
       finally { if (this.current(stack) && stack.documentKey === key && !abort.signal.aborted) stack.documentTimer = this.setTimer(() => { void load(); }, 25_000); }
     };
