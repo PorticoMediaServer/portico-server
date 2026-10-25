@@ -426,6 +426,16 @@ func snapshot(path string, info os.FileInfo) Snapshot {
 	return v
 }
 
+// observedSnapshot is snapshot for a member whose identity is the witness
+// itself: an observation that cannot bind the object fails instead of returning
+// an empty identity that would silently weaken the manifest.
+func observedSnapshot(path string, info os.FileInfo) (Snapshot, error) {
+	v := Snapshot{Path: path, Name: info.Name(), Size: info.Size(), ModifiedNS: info.ModTime().UnixNano(), Directory: info.IsDir()}
+	var err error
+	v.ObjectIdentity, v.ChangeToken, err = observedObjectBinding(info, path)
+	return v, err
+}
+
 func (c *Client) ReadDescriptor(ctx context.Context, key, path string) (Snapshot, error) {
 	var out Snapshot
 	e := c.run(ctx, "playback:"+key, "descriptor", path, func(v Snapshot) error { out = v; return nil })
