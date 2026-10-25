@@ -53,6 +53,7 @@ export function ReaderAnnotationActions({service, snapshot, controller, onSearch
   const capture = () => current() && controller.getSnapshot().selection === selection && selection ? selectedContent(selection, colour) : undefined;
   return <>
     {selection && <div className={styles.selection} role="toolbar" aria-label={t('next.reader.selectionActions')}>
+      {!selectionSupported && <span role="status">{t('next.reader.annotationUnsupportedSelection')}</span>}
       {colours.map(value => <button key={value} type="button" data-colour={value} aria-label={t(colourLabels[value])} aria-pressed={value === colour} onPointerDown={event => event.preventDefault()} onMouseDown={event => event.preventDefault()} onClick={() => setColour(value)}/>)}
       <Button disabled={busy || !selectionSupported} onPointerDown={event => event.preventDefault()} onMouseDown={event => event.preventDefault()} onClick={() => {const content = capture();if (content) void service.write(content);}}>{t('next.reader.addHighlight')}</Button>
       <Button disabled={busy || !selectionSupported} onPointerDown={event => event.preventDefault()} onMouseDown={event => event.preventDefault()} onClick={() => {const content = capture();if (content) {setDraft({owner:service,content});setNote('');}}}>{t('next.reader.addNote')}</Button>

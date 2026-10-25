@@ -1,5 +1,6 @@
 /** Reader controls from desktop-read 6/7, phone-read 6 and tablet-read 6b. */
 export const readerMessages = {
+  'next.reader.annotationUnsupportedSelection': 'This selection cannot be saved as a complete highlight. Select a smaller range on one page.',
   'next.reader.bookmarks': 'Bookmarks',
   'next.reader.highlights': 'Highlights',
   'next.reader.addBookmark': 'Add bookmark',
