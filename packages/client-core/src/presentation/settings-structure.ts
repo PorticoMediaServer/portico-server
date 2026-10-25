@@ -503,6 +503,14 @@ const serverPages: readonly AuthoredPage[] = [
     ]},
   {id: 'streaming', title: 'settings.server.playback', icon: 'transcode', sections: [
     panel('status', 'server.transcodeStatus'),
+    {id: 'away', title: 'next.settingsSpec.server.streaming.groups.0.title', rows: [
+      setting('runtime', 'musicAwayQuality', 'next.settingsSpec.server.streaming.groups.0.rows.1.label', {type: 'choice', choices: [
+        {value: 'original', label: 'next.settingsSpec.server.streaming.groups.0.rows.1.control.options.0.label'},
+        {value: 'cd-quality', label: 'next.settingsSpec.server.streaming.groups.0.rows.1.control.options.1.label'},
+        {value: '320', label: 'next.settingsSpec.server.streaming.groups.0.rows.1.control.options.2.label'},
+        {value: '96', label: 'next.settingsSpec.server.streaming.groups.0.rows.1.control.options.3.label'},
+      ]}),
+    ]},
     {id: 'transcoding', title: 'settings.server.transcoding', description: 'web.transcoding.conversionLede', rows: [
       on('runtime', 'transcodingEnabled', 'settings.server.allowConverting', 'web.transcoding.allowTranscodingHelp'),
       setting('runtime', 'hardwareBackend', 'settings.server.hardware', {type: 'choice', choices: choices('settings.server.hardware', ['auto', 'software', 'videotoolbox', 'vaapi', 'qsv', 'nvenc', 'amf'])}, {help: 'settings.server.hardwareHelp'}),
