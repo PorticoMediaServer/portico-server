@@ -444,7 +444,7 @@ const accountPages: readonly AuthoredPage[] = [
         {kind: 'composite', id: 'libraryView', storage: 'device', label: 'settings.row.libraryView', help: 'settings.help.libraryView', scope: 'device', platforms: ['web'], control: {type: 'choice', choices: [{value: 'grid', label: 'settings.libraryView.grid'}, {value: 'list', label: 'settings.libraryView.list'}]}},
         // Frame 28 draws the rail profile badge choice here on television; the same preference
         // and copy, with touch and web keeping their Profile row.
-        toggle('notifications.badges', 'next.settingsSpec.account.profile.groups.7.rows.0.label', {platforms: ['tv'], help: 'next.settingsSpec.account.profile.groups.7.rows.0.help'}),
+        toggle('notifications.badges', 'next.settingsSpec.account.profile.groups.7.rows.0.label', {platforms: ['tv'], help: 'settings.help.unreadBadgeTV'}),
       ]},
     ],
   },
