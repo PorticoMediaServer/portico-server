@@ -84,6 +84,7 @@ type SourceFetcher struct {
 	Resolver       remotemedia.Resolver
 	defaults       LiveDefaults
 	guideUserAgent string
+	guideLimits    ImportLimits
 }
 
 // maxSealed bounds private source/playlist snapshots. Large guide bodies stay

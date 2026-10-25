@@ -403,6 +403,7 @@ func (s *Store) fetchSource(ctx context.Context, f SourceFetcher, c remoteConfig
 	f.defaults = d
 	if v.GuideSourceID != "" {
 		f.guideUserAgent = guideDefaults.UserAgent
+		f.guideLimits = guideDefaults.ImportLimits
 	}
 	in, count, e := f.fetch(fetchCtx, c)
 	if e != nil {

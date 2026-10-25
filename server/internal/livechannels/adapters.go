@@ -191,6 +191,9 @@ func (f SourceFetcher) fetch(ctx context.Context, c remoteConfig) (SourceInput, 
 		if remaining <= 0 {
 			return in, 0, ErrInvalid
 		}
+		if guideBytes := int64(f.guideLimits.Bytes); guideBytes > 0 && guideBytes < remaining {
+			remaining = guideBytes
+		}
 		guidePolicy := p
 		if f.guideUserAgent != "" {
 			guidePolicy.UserAgent = f.guideUserAgent
