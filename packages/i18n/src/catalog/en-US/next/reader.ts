@@ -1,5 +1,6 @@
 /** Reader controls from desktop-read 6/7, phone-read 6 and tablet-read 6b. */
 export const readerMessages = {
+  'next.reader.issueCount': '{count, plural, one {# issue} other {# issues}}',
   'next.reader.bulkLimit': 'Edit up to {count, number} books at a time.',
   'next.reader.bookNumber': 'Book {number}',
   'next.reader.volumeNumber': 'Volume {number}',
