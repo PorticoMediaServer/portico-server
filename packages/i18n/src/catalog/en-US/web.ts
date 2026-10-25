@@ -2297,6 +2297,7 @@ export const webMessages = {
   'api.webhooks.waiting': '{count, plural, one {# message} other {# messages}} waiting to be sent',
   'api.webhooks.failing': 'The last {count, plural, one {delivery} other {# deliveries}} did not arrive.',
   'api.webhooks.dropped': '{count, plural, one {# event was} other {# events were}} not kept because too many were already waiting.',
+  'api.webhooks.ownerReviewRequired': 'Review the destination and events, replace the signing secret, then turn this webhook on.',
   'api.webhooks.attempts': '{count, plural, one {# attempt} other {# attempts}}',
   'api.webhooks.delivery.pending': 'Waiting to be sent',
   'api.webhooks.delivery.delivered': 'Delivered',
