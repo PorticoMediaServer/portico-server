@@ -148,6 +148,8 @@ const handheldType = {
   troubleshootingLog: type(13, 19.5, 400), troubleshootingReason: type(13, 18.2, 400),
   troubleshootingMessage: type(15, 22.5, 400), troubleshootingCheck: type(15, 18, 400),
   troubleshootingLevel: type(12, 'normal', 800, .02),
+  // owner-server API-key rows (frame16).
+  integrationKeyName: type(15.5, 'normal', 700, -.005), integrationKeyFacts: type(13.5, 19.575, 400),
   stopBody: type(15, 23.25, 500), stopField: type(16, 'normal', 600), stopHelp: type(13.5, 'normal', 400),
 };
 export type TypeRole = keyof typeof handheldType;

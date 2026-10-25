@@ -27,6 +27,8 @@ import {LibraryLyricsAction} from './libraries/LibraryLyricsAction';
 import {isLibraryPanelContext, libraryScanAction} from './libraries/model';
 import {createServerSettingsSurfaces} from './server';
 import {createTroubleshootingSurfaces} from './server/troubleshooting';
+import {IntegrationsPage} from './server/integrations/ApiKeys';
+import {SettingsApiKeysSource} from './server/integrations/api-keys-source';
 import {presetEnginesAvailable} from './server/engines';
 import {LibraryFolders} from './libraries/LibraryFolders';
 import {SkippedFiles} from './libraries/SkippedFiles';
@@ -174,6 +176,8 @@ export function SettingsEntry() {
       ? createOwnerSources({api: context.api, serverId: viewer.serverId, viewerId: options.viewerId,
         isCurrent: () => current() && context.session().viewer.role === 'owner' && context.session().viewer.serverId === viewer.serverId && context.session().viewer.authority === viewer.authority && context.session().viewer.accountId === viewer.accountId && context.session().viewer.profileId === viewer.profileId && context.facts.identity.primaryProfile === true && context.facts.identity.capabilities?.manageServer === true,
         reportError}) : undefined;
+    const integrationKeys = route.section === 'integrations' && role === 'owner' && identity.primaryProfile === true && identity.capabilities?.manageServer === true
+      ? new SettingsApiKeysSource(context.api, current, reportError) : undefined;
     const source = createSettingsBindings(controller, options, identity, {openHome, signIn,
       special: (row, state, rowContext, openPanel) => {
         if (row.id === 'profile.delete' && profiles) return <ProfileDelete source={profiles} isCurrent={current} onFailure={reportError} />;
@@ -221,7 +225,9 @@ export function SettingsEntry() {
           return <LibraryScanAction rowId={row.id} label={defaultI18n.t(row.control.label ?? row.label)} libraryId={rowContext.recordId} service={libraries} onError={reportError} />;
         return row.id === 'metadata.perLibrary' ? <Button variant="glass" size="small" onClick={() => openSettings('libraries')}>{defaultI18n.t(row.control.label ?? row.label)}</Button> : null;
       },
-      section: (selected, _openPanel, renderRows) => selected.section.id === 'live' && live ? <OwnerSourcesPage source={live}/> : selected.section.id === 'remote-sources' ? <RemoteSourcesPage api={context.api} serverId={viewer.serverId} viewerId={options.viewerId} isCurrent={current} reportError={reportError} /> : selected.section.id === 'segments' && intros ? <ServerIntros source={intros} onPreview={(libraryId, itemId, startSeconds) => {if (current()) void preview({libraryId, itemId, startSeconds}, previewLife.signal, current).catch(reportError);}} modeRows={renderRows({groups: selected.section.groups?.map(group => ({...group, rows: group.rows.filter(row => row.id === 'segments.mode')})).filter(group => group.rows.length), advanced: selected.section.advanced})} /> : selected.section.id === 'people' && people ? <PeopleScreen bindings={people} /> : selected.section.id === 'dashboard' && dashboard ? <DashboardScreen bindings={dashboard} embedded /> : selected.section.id === 'history' && dashboard ? <><HistoryScreen bindings={dashboard} embedded /><HistoryRetention section={selected.section} renderRows={renderRows}/></> : selected.section.id === 'troubleshooting' ? troubleshooting?.render() : undefined,
+      section: (selected, _openPanel, renderRows) => selected.section.id === 'integrations' && integrationKeys ? <IntegrationsPage source={integrationKeys} baseUrl={context.api.baseUrl} isCurrent={current} reportError={reportError}
+        otherRows={renderRows({groups: selected.section.groups?.filter(group => !group.rows.some(row => ['integrations.apiKeys', 'integrations.assistantAddress', 'integrations.assistantKey'].includes(row.id)))})}
+        advancedRows={renderRows({advanced: selected.section.advanced})} /> : selected.section.id === 'live' && live ? <OwnerSourcesPage source={live}/> : selected.section.id === 'remote-sources' ? <RemoteSourcesPage api={context.api} serverId={viewer.serverId} viewerId={options.viewerId} isCurrent={current} reportError={reportError} /> : selected.section.id === 'segments' && intros ? <ServerIntros source={intros} onPreview={(libraryId, itemId, startSeconds) => {if (current()) void preview({libraryId, itemId, startSeconds}, previewLife.signal, current).catch(reportError);}} modeRows={renderRows({groups: selected.section.groups?.map(group => ({...group, rows: group.rows.filter(row => row.id === 'segments.mode')})).filter(group => group.rows.length), advanced: selected.section.advanced})} /> : selected.section.id === 'people' && people ? <PeopleScreen bindings={people} /> : selected.section.id === 'dashboard' && dashboard ? <DashboardScreen bindings={dashboard} embedded /> : selected.section.id === 'history' && dashboard ? <><HistoryScreen bindings={dashboard} embedded /><HistoryRetention section={selected.section} renderRows={renderRows}/></> : selected.section.id === 'troubleshooting' ? troubleshooting?.render() : undefined,
     });
     const deviceFacts = {serverName: identity.serverName, ...(identity.serverVersion === undefined ? {} : {serverVersion: identity.serverVersion})};
     const settings: SettingsBindings = {...source,
@@ -248,7 +254,7 @@ export function SettingsEntry() {
       },
     };
     setFailure(false);setOwned({context, settings, dashboard, profiles});
-    return () => {active = false;offProfileFailures?.();profiles?.dispose();previewLife.abort();signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();intros?.dispose();server?.dispose();troubleshooting?.dispose();live?.dispose();controller.dispose();};
+    return () => {active = false;offProfileFailures?.();profiles?.dispose();previewLife.abort();signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();intros?.dispose();server?.dispose();troubleshooting?.dispose();live?.dispose();integrationKeys?.dispose();controller.dispose();};
   // The captured identity decides which sections exist (main profile, manageServer,
   // role). It can be replaced without the assembly context object changing, so
   // every fact the gate reads is a dependency: a newer identity must rebuild the
