@@ -102,34 +102,69 @@ export class AccountNotificationsClient {
     return parseNotificationPreferences(await this.request(hostedRoutePath("account_notification_preferences_set"), 'PUT', hostedRouteBody("account_notification_preferences_set", {serverOffline: p.serverOffline})));
   }
   /** Starts (or rejoins) the account's export with the signed-in session (BE-hosted cc222bf: `{operationId}`, 16–128 characters, no proof). Idempotent per operation id. */
-  async requestExport(operationId: string): Promise<AccountExportJob> {
+  async requestExport(operationId: string, signal?: AbortSignal): Promise<AccountExportJob> {
     if (operationId.length < 16 || operationId.length > 128) throw new Error('An export operation id is 16 to 128 characters.');
-    return parseAccountExportJob(await this.request(hostedRoutePath("account_export_request"), 'POST', hostedRouteBody("account_export_request", {operationId})));
+    throwIfExportAborted(signal);
+    const raw = await this.request<unknown>(hostedRoutePath("account_export_request"), 'POST', hostedRouteBody("account_export_request", {operationId}), signal);
+    throwIfExportAborted(signal);
+    return parseAccountExportJob(raw);
   }
   async exportStatus(id: string, signal?: AbortSignal): Promise<AccountExportJob> {
-    return parseAccountExportJob(await this.request(hostedEncodedRoutePath("account_export_get", {"export": encodeURIComponent(id)}), 'GET', undefined, signal));
+    throwIfExportAborted(signal);
+    const raw = await this.request<unknown>(hostedEncodedRoutePath("account_export_get", {"export": encodeURIComponent(id)}), 'GET', undefined, signal);
+    throwIfExportAborted(signal);
+    return parseAccountExportJob(raw);
   }
-  async downloadExport(id: string): Promise<unknown> {
-    return this.request(hostedEncodedRoutePath("account_export_download", {"export": encodeURIComponent(id)}), 'POST', hostedRouteBody("account_export_download", {}));
+  async downloadExport(id: string, signal?: AbortSignal): Promise<unknown> {
+    throwIfExportAborted(signal);
+    const data = await this.request(hostedEncodedRoutePath("account_export_download", {"export": encodeURIComponent(id)}), 'POST', hostedRouteBody("account_export_download", {}), signal);
+    throwIfExportAborted(signal);
+    return data;
   }
+}
+
+/** A cancellation a caller can tell apart from a failed or unfinished export. */
+function throwIfExportAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new DOMException('Account export stopped', 'AbortError');
+}
+
+/** The default wait between polls, stopped with its timer and listener when the run is aborted. */
+function exportSleep(signal?: AbortSignal): (ms: number) => Promise<void> {
+  return ms => new Promise<void>((resolve, reject) => {
+    const stop = () => new DOMException('Account export stopped', 'AbortError');
+    if (signal?.aborted) { reject(stop()); return; }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onAbort = () => { if (timer !== undefined) clearTimeout(timer); signal?.removeEventListener('abort', onAbort); reject(stop()); };
+    timer = setTimeout(() => { signal?.removeEventListener('abort', onAbort); resolve(); }, ms);
+    signal?.addEventListener('abort', onAbort, {once: true});
+  });
 }
 
 /**
  * The whole export: request, wait until ready (polling with a growing interval, up to `maxWaitMs`),
  * download. Returns the document, or `pending` with the job when it's still being prepared (the
- * `account_export_ready` notification finishes it later).
+ * `account_export_ready` notification finishes it later). An aborted signal rejects with an
+ * `AbortError` before any further request, including after an injected sleep settles.
  */
 export async function runAccountExport(client: AccountNotificationsClient, operationId: string, o: {maxWaitMs?: number; sleep?: (ms: number) => Promise<void>; signal?: AbortSignal} = {}): Promise<{state: 'ready'; data: unknown; job: AccountExportJob} | {state: 'pending'; job: AccountExportJob}> {
-  const sleep = o.sleep ?? (ms => new Promise<void>(r => setTimeout(r, ms)));
-  let job = await client.requestExport(operationId);
+  const signal = o.signal;
+  const sleep = o.sleep ?? exportSleep(signal);
+  throwIfExportAborted(signal);
+  let job = await client.requestExport(operationId, signal);
+  throwIfExportAborted(signal);
   let waited = 0, step = 1500;
   while (job.state !== 'ready' && waited < (o.maxWaitMs ?? 60_000)) {
-    if (o.signal?.aborted) return {state: 'pending', job};
+    throwIfExportAborted(signal);
     await sleep(step);
+    throwIfExportAborted(signal);
     waited += step;
     step = Math.min(step * 2, 10_000);
-    job = await client.exportStatus(job.id, o.signal);
+    job = await client.exportStatus(job.id, signal);
+    throwIfExportAborted(signal);
   }
   if (job.state !== 'ready') return {state: 'pending', job};
-  return {state: 'ready', data: await client.downloadExport(job.id), job};
+  throwIfExportAborted(signal);
+  const data = await client.downloadExport(job.id, signal);
+  throwIfExportAborted(signal);
+  return {state: 'ready', data, job};
 }
