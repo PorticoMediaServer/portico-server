@@ -133,16 +133,21 @@ func PermitIdentity(executable string) string {
 	if err != nil {
 		return ""
 	}
-	permitIdentities.Lock()
-	defer permitIdentities.Unlock()
-	if known, ok := permitIdentities.known[absolute]; ok {
-		return known
-	}
+	// The executable is observed on every call: a binary replaced at the same path
+	// must not inherit the previous runtime's cell. When the observation changed,
+	// the ceilings measured for the previous one are retired at once.
 	info, err := os.Stat(absolute)
 	if err != nil || !info.Mode().IsRegular() {
 		return ""
 	}
 	identity := absolute + "\x00" + strconv.FormatInt(info.Size(), 10) + "\x00" + strconv.FormatInt(info.ModTime().UnixNano(), 10)
+	permitIdentities.Lock()
+	defer permitIdentities.Unlock()
+	if previous, ok := permitIdentities.known[absolute]; ok && previous == identity {
+		return identity
+	} else if ok && previous != "" {
+		hardwareSessionPermits.Retire(previous, "", "")
+	}
 	permitIdentities.known[absolute] = identity
 	return identity
 }
