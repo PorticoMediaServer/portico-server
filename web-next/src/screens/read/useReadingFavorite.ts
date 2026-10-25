@@ -10,7 +10,7 @@ const definite = new Set(['personal_state_conflict', 'personal_needs_resolution'
  * the existing Reader, and uncertain writes keep their original body/op ID. */
 export function useReadingFavorite({client, itemId, isCurrent, reportError}: {client?: ReadingClient; itemId: string; isCurrent: () => boolean; reportError: (error: unknown) => void}) {
   const inputs = useRef({client, itemId, isCurrent, reportError}); inputs.current = {client, itemId, isCurrent, reportError};
-  const opening = useRef<Opening>(), [view, setView] = useState<View>({});
+  const opening = useRef<Opening | undefined>(undefined), [view, setView] = useState<View>({});
   // Publish synchronously as well as through React: an old event closure must
   // retire before a successor view is committed, not at passive cleanup.
   const currentView = useRef(view);
