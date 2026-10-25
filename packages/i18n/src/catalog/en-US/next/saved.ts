@@ -46,4 +46,5 @@ export const savedMessages = {
   'next.saved.phone.stoppedHelp': 'The download stopped. It picks up from {percent}%, so nothing already downloaded is fetched again.',
   'next.saved.phone.downloading': 'Downloading, {percent}%',
   'next.saved.phone.onThisPhone': 'On this phone, {size}',
+  'next.saved.native.editElsewhere': 'Reordering, renaming and sharing are on a phone, tablet or computer.',
 } as const satisfies Record<`next.${string}`, string>;

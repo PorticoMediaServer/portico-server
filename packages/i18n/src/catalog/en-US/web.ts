@@ -445,6 +445,8 @@ export const webMessages = {
   'web.saved.collection': 'Collection',
   'web.saved.savedView': 'Saved view',
   'web.saved.sharedCollection': 'Shared collection',
+  'web.saved.inList': 'In {name}',
+  'web.saved.sharedByOwner': 'Shared by the owner',
   'web.saved.collectionOptions': 'Collection options',
   'web.saved.deleteView': 'Delete saved view…',
   'web.saved.deleteCollection': 'Delete collection…',
