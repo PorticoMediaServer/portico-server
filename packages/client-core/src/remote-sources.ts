@@ -24,6 +24,9 @@ export type RcloneReceipt=Readonly<{operationId:string;sourceId:string;generatio
  * an unsupported one is unsupported; no value from its section is here. */
 export type RcloneConfigRemote=Readonly<{name:string;kind:string;supported:boolean;reason:'kind'|'encrypted'|'wrapper'|'duplicate'|'ambiguous'|''}>;
 export type RcloneConfigView=Readonly<{path:string;remotes:readonly RcloneConfigRemote[];truncated:boolean}>;
+export type DriveOAuthStart=Readonly<{authorizationUrl:string;state:string}>;
+export type DriveOAuthPhase='pending'|'ready'|'expired';
+export type DriveOAuthStatus=Readonly<{phase:DriveOAuthPhase;token:string}>;
 export type RemoteReceipt=Readonly<{operationId:string;accepted:true;removed:boolean;source:RemoteSource}>;
 /** What one command was allowed to do, kept beside its operation id so a later
  * receipt (live or recovered) must still match the original target and posture. */
@@ -356,6 +359,41 @@ export class RemoteSourceService{
   this.fence(raw);
   if(!record(raw)||!Array.isArray(raw.providers)||raw.providers.length>64||!raw.providers.every(name=>text(name,100)&&!!name))invalid();
   return Object.freeze([...raw.providers] as string[]);
+ }
+ /** The owner's own Google OAuth client and the server-run sign-in it starts.
+  * The client secret is used by the server's exchange and is never returned. */
+ async startDriveOAuth(clientId:string,clientSecret:string,guard?:()=>boolean):Promise<DriveOAuthStart>{
+  if(!this.live()||(guard&&!guard())||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');
+  if(!text(clientId,512)||clientId.trim().length<8||!text(clientSecret,2048)||clientSecret.length<8)throw new Error('Invalid OAuth client.');
+  const epoch=this.epoch;
+  const raw=await this.request('/v1/storage/sources/rclone/drive/oauth/start','POST',{clientId:clientId.trim(),clientSecret},guard);
+  if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
+  this.fence(raw);
+  if(!record(raw)||!text(raw.authorizationUrl,8192)||!raw.authorizationUrl||!text(raw.state,128)||!raw.state)invalid();
+  if(!/^https:\/\/accounts\.google\.com\/o\/oauth2\/v2\/auth\?/.test(raw.authorizationUrl))invalid();
+  return Object.freeze({authorizationUrl:raw.authorizationUrl,state:raw.state});
+ }
+ private async driveOAuthAnswer(path:string,body:Record<string,unknown>,guard?:()=>boolean):Promise<DriveOAuthStatus>{
+  const epoch=this.epoch;
+  const raw=await this.request(path,'POST',body,guard);
+  if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
+  this.fence(raw);
+  if(!record(raw)||!['pending','ready','expired'].includes(String(raw.phase)))invalid();
+  if(raw.phase==='ready'){if(!text(raw.token,16384)||!raw.token)invalid();return Object.freeze({phase:'ready',token:raw.token});}
+  return Object.freeze({phase:raw.phase as DriveOAuthPhase,token:''});
+ }
+ async driveOAuthStatus(state:string,guard?:()=>boolean):Promise<DriveOAuthStatus>{
+  if(!this.live()||(guard&&!guard())||!text(state,128)||!state)throw new Error('Invalid sign-in.');
+  return await this.driveOAuthAnswer('/v1/storage/sources/rclone/drive/oauth/status',{state},guard);
+ }
+ async driveOAuthPaste(state:string,redirectUrl:string,guard?:()=>boolean):Promise<DriveOAuthStatus>{
+  if(!this.live()||(guard&&!guard())||!text(state,128)||!state||!text(redirectUrl,8192)||!redirectUrl.trim())throw new Error('Invalid sign-in address.');
+  await this.request('/v1/storage/sources/rclone/drive/oauth/paste','POST',{state,redirectUrl:redirectUrl.trim()},guard);
+  return await this.driveOAuthStatus(state,guard);
+ }
+ async driveOAuthCancel(state:string):Promise<void>{
+  if(!this.live()||!text(state,128)||!state)return;
+  try{await this.request('/v1/storage/sources/rclone/drive/oauth/cancel','POST',{state});}catch{/* A closed session needs no second report. */}
  }
  /** The server account's own rclone configuration, by remote name and type only. */
  async rcloneConfig():Promise<RcloneConfigView>{

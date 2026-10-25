@@ -47,6 +47,7 @@ import (
 	"portico.local/server/internal/playbackruntime"
 	"portico.local/server/internal/playbackv1"
 	"portico.local/server/internal/preparedmedia"
+	"portico.local/server/internal/driveoauth"
 	"portico.local/server/internal/rcloneprogram"
 	"portico.local/server/internal/reading"
 	"portico.local/server/internal/recordingaccess"
@@ -63,6 +64,8 @@ type Dependencies struct {
 	TelemetryContext  context.Context
 	streamTraffic     *telemetry.Traffic
 	RcloneProgram     *rcloneprogram.Status
+	// DriveOAuth holds the owner's in-flight Google sign-ins; nil disables them.
+	DriveOAuth *driveoauth.Store
 	StorageLayout     *storagepaths.Layout
 	ConnectionUsage   func() ConnectionUsage
 	LocalArtworkUsage func() (int64, bool)

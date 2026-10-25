@@ -667,6 +667,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	registerRcloneConfigurationProviders(registry, d)
 	registerRcloneSourceSave(registry, d)
 	registerRcloneConfigSource(registry, d)
+	registerDriveOAuth(registry, d)
 	registerScreenMetadataReads(registry, d)
 	registerFreshnessRoutes(registry, d)
 	registerCapabilityReport(registry)
