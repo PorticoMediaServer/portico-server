@@ -65,7 +65,11 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 			failure(w, err)
 			return
 		}
-		out, err := d.Catalog.WithContext(r.Context()).SavedSummary(d.Identity.ID(), viewer, resourceActor(p))
+		var admit catalog.SavedGroupAdmission
+		if identity.CanUsePersonalState(p) {
+			admit = d.savedReadingGroupsAdmission(p, viewer)
+		}
+		out, err := d.Catalog.WithContext(r.Context()).SavedSummaryWithReadingGroups(d.Identity.ID(), viewer, resourceActor(p), admit)
 		if err != nil {
 			failure(w, err)
 			return
