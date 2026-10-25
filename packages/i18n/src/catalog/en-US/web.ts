@@ -426,6 +426,7 @@ export const webMessages = {
   'web.saved.noneInProgress': 'Nothing in progress in your {list}',
   'web.saved.showAll': 'Show all',
   'web.saved.items': '{count, plural, one {# item} other {# items}}',
+ 'web.saved.playlists': '{count, plural, one {# playlist} other {# playlists}}',
   'web.saved.finished': 'Finished',
   'web.saved.summary': 'Description',
   'web.saved.visibleToAll': 'Visible to everyone on this server',

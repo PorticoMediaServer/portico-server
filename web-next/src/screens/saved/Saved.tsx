@@ -157,7 +157,7 @@ function SavedLists(bindings: SavedViewBindings & {onCreate: () => void}) {
             })}</> : null}
           {bindings.catalogueSelection?.toolbar ?? bindings.selection?.toolbar}
           <div className={styles.toolbarEnd}>
-            {total !== undefined && <span>{t('web.saved.items', {count: total})}</span>}
+            {total !== undefined && <span>{t('web.saved.playlists', {count: total})}</span>}
             {projection?.actions?.includes('create_playlist') && <Button icon="i-plus" size="small" onClick={bindings.onCreate}>{t('web.saved.newPlaylist')}</Button>}
           </div>
         </div>
