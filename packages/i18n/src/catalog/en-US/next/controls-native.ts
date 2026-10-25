@@ -11,4 +11,9 @@ export const controlsNativeMessages = {
   'next.controls.native.fieldsTitle': 'Search',
   'next.controls.native.selectTitle': 'Playback',
   'next.controls.native.richSelectTitle': 'Quality & data',
+  // TV key hints drawn on design/ui-v1/tv-more.html frame 22 (ds-native-live-r2).
+  'next.controls.native.up': 'Up',
+  'next.controls.native.down': 'Down',
+  'next.controls.native.left': 'Left',
+  'next.controls.native.right': 'Right',
 } as const satisfies Record<`next.controls.native.${string}`, string>;
