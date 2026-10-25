@@ -175,3 +175,19 @@
 @media(max-width:1023px) { .episodeLoading { display: block; } .episodeLoading > div + div { margin-top: 24px; } }
 
 .moreOpen { background: color-mix(in srgb, var(--color-text) 24%, transparent); }
+
+/* phone-detail frames 1 and 6: one quiet row naming this version's audio and subtitle mode. */
+.preplay { display: flex; align-items: center; gap: 14px; width: calc(100% - 40px); height: 40px; margin: 14px 20px 0; padding: 0 10px 0 12px; border: 0; border-radius: 10px; background: color-mix(in srgb, var(--color-text) 6%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 8%, transparent); font-family: inherit; font-size: var(--type-caption-strong-size); line-height: var(--type-caption-strong-line); font-weight: var(--type-caption-strong-weight); color: var(--color-text-secondary); text-align: left; cursor: pointer; }
+.preplay > span { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.preplay > span > svg { flex: none; color: var(--color-text-tertiary); }
+.preplay > svg:last-child { flex: none; margin-left: auto; color: var(--color-text-tertiary); }
+.preplay:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 2px; }
+.preplaySheet { display: grid; gap: 20px; padding: 4px 0 8px; }
+.preplayGroup { display: grid; gap: 2px; }
+.preplayGroup > h3 { margin: 0 0 6px; font-size: var(--type-caption-strong-size); line-height: var(--type-caption-strong-line); font-weight: var(--type-caption-strong-weight); color: var(--color-text-tertiary); }
+.preplayRow { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 0 4px; border: 0; border-radius: 8px; background: none; font: inherit; font-size: var(--type-body-size); line-height: var(--type-body-line); color: var(--color-text); text-align: left; cursor: pointer; }
+.preplayRow > span { flex: 1; min-width: 0; }
+.preplayRow small { display: block; font-size: var(--type-caption-size); line-height: var(--type-caption-line); color: var(--color-text-tertiary); }
+.preplayRow > svg { flex: none; opacity: 0; color: var(--color-accent-strong); }
+.preplayRow[aria-checked='true'] > svg { opacity: 1; }
+.preplayRow:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 2px; }

@@ -35,6 +35,7 @@ import {ScreenProblem} from './ScreenProblem';
 import {runScreenCommand} from './context';
 import {DetailLoading} from './Loading';
 import {GenreNames} from './GenreNames';
+import {PreplayChoices} from './PreplayChoices';
 export {DetailLoading} from './Loading';
 
 export type DetailScreenProps = {binding: DetailBindings; itemId: string; libraryId?: string};
@@ -84,6 +85,7 @@ function TitleHero({binding, data, showBackdrops}: {binding: DetailBindings; dat
       </div>
       <TitleActions binding={binding} data={data} />
       {item.overview && <TitleProse variant="hero" className={styles.phoneSynopsis}>{item.overview}</TitleProse>}
+      {(item.kind === 'movie' || item.kind === 'episode') && <PreplayChoices binding={binding} data={data} />}
     </header>;
   }
   return <header className={styles.hero}>
