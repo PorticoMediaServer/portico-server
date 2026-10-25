@@ -79,7 +79,7 @@ export function createSearchSelection(context: ScreenContext, service: SearchSer
   const getSnapshot = () => version;
   function Toolbar() {useSyncExternalStore(subscribe, getSnapshot, getSnapshot); return active?.selection.toolbar ?? null;}
   return {
-    subscribe, getSnapshot, epoch: () => serial, toolbar: <Toolbar/>,
+    subscribe, getSnapshot, epoch: () => serial, isActive: () => active?.play.getSnapshot().selection?.active === true, toolbar: <Toolbar/>,
     register(entry: ContentEntry, order: number) {
       const owned = active;
       if (!owned || sourceKey() !== owned.key || !admitted.has(entry)) return () => {};

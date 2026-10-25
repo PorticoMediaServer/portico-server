@@ -46,6 +46,8 @@ function onNowProgramme(card: SearchOnNowCard, now: number) {
 export type SearchScreenProps = {binding: SearchBindings; selection?: SearchSelection; linkedQuery?: string; onConsumeLinkedQuery?: () => void; onOpenLive?: (sourceId?: string) => void};
 
 export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQuery, onOpenLive}: SearchScreenProps) {
+  useSyncExternalStore(selection?.subscribe ?? noSelectionSubscription, selection?.getSnapshot ?? noSelectionSnapshot, selection?.getSnapshot ?? noSelectionSnapshot);
+  const selectionEpoch = selection?.epoch();
   const compact = useShellWidth() < 600;
   const {service, context} = binding, initial = binding.session();
   const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
@@ -93,7 +95,8 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
   }, [text]);
   const commit = () => { if (remember && text.trim() && !problem && committed.current !== text.trim()) { committed.current = text.trim(); submit(true); } };
   const showing = snapshot.data?.query.q === text.trim() && snapshot.data.query.group === (group ?? '') ? snapshot.data : null;
-  const groups = showing ? snapshot.groups : [], top = !group ? topSearchResult(text, groups) : undefined;
+  const groups = showing ? snapshot.groups : [], top = !group && !selection?.isActive() ? topSearchResult(text, groups) : undefined;
+  useEffect(() => {if (selection && top?.entry && 'libraryId' in top.entry) return selection.register(top.entry, -1);}, [selection, top?.entry, selectionEpoch]);
   const failed = groups.filter(value => value.status === 'error');
   const size = preferenceValue<number>(preferences, 'appearance.cardSizePercent') / 100;
   const empty = showing && groups.every(value => value.status === 'success' && !value.items.length);
