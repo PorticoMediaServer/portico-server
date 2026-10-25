@@ -19,6 +19,17 @@ func creditOverridesAvailable(ctx context.Context, tx *sql.Tx, entity int64) (bo
 	if count > 512 {
 		return false, nil
 	}
+	// A pre-cutover whole-list lock may hold credits from an older record
+	// without ever recording their source reference. Current target identity is
+	// not proof of that old record. Keep the legacy refusal until the owner
+	// explicitly releases that lock and an actual accepted refresh supplies it.
+	var unprovenLocked bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM metadata_relationship_decisions d WHERE d.kind='item' AND d.entity_id=? AND d.relationship='credit' AND d.locked=1 AND NOT EXISTS(SELECT 1 FROM credit_owner_families f WHERE f.entity_id=d.entity_id) AND EXISTS(SELECT 1 FROM catalog_credits c WHERE c.entity_id=d.entity_id AND c.provider<>'manual' AND c.source_row_id IS NULL))`, entity).Scan(&unprovenLocked); err != nil {
+		return false, err
+	}
+	if unprovenLocked {
+		return false, nil
+	}
 	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT provider FROM catalog_credits WHERE entity_id=? AND source_row_id IS NULL AND owner_entry_id IS NULL`, entity)
 	if err != nil {
 		return false, err
