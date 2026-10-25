@@ -9,8 +9,11 @@ import {useLoadingClock} from '../detail/Loading';
 import {Artwork} from '../../kit/artwork';
 import {useShellWidth} from '../../shell/viewport';
 import {BrowseEntryCard, type BrowseItemActions} from './EntryCard';
-import {CatalogueSelectionEntry} from './document-selection';
+import {CatalogueSelectionEntry, type CatalogueDocumentSelection} from './document-selection';
 import {useLibraryCardMenu} from './use-card-menu';
+import {SelectionCircle} from '../../kit/selection';
+import {Icon} from '../../kit/Icon';
+import type {CardSelection} from '../../kit/cards';
 import {useDiscoverySelection, discoveryEntries, discoverySections, type DiscoverySelectionInput} from './discovery-selection';
 import {PagedShelf} from './PagedShelf';
 import type {BrowsePresentation} from './Library';
@@ -81,7 +84,8 @@ export function LibraryDiscoveryScreen({service, route, header, empty, artwork, 
       // Music's authored quick grid precedes Mixes on both web widths. Its entries
       // and scope come unchanged from this library's actual Discover projection.
       if (snapshot.projection!.scope.libraryKind === 'music' && section.id === 'recently_played')
-        return <RecentTiles key={section.id} section={section} actions={actions} artwork={artwork} nowPlayingAlbumId={nowPlayingAlbumId}/>;
+        return <RecentTiles key={section.id} section={section} actions={actions} artwork={artwork} nowPlayingAlbumId={nowPlayingAlbumId}
+          selection={selection} wrapCard={wrapCard} base={orderBase.get(section.id) ?? 0}/>;
       const square = snapshot.projection!.scope.libraryKind === 'music' || snapshot.projection!.scope.libraryKind === 'audiobook';
       const cardWidth = appearance.cardWidth, musicGenres = snapshot.projection!.scope.libraryKind === 'music' && section.id === 'genres';
       const shape = musicGenres ? cardWidth / 152 : square ? 1 : 2 / 3;
@@ -99,22 +103,32 @@ export function LibraryDiscoveryScreen({service, route, header, empty, artwork, 
     {snapshot.appended.length === 0 ? !musicMixes && empty : snapshot.appended.filter(section => section !== recent).map(renderSection)}
   </div>}{cardMenu}</>;
 }
-function RecentTiles({section, actions, artwork, nowPlayingAlbumId}: {section: ContentSection; actions: DiscoveryBindings['actions']; artwork: ShellArtwork; nowPlayingAlbumId?: string}) {
+function RecentTiles({section, actions, artwork, nowPlayingAlbumId, selection, wrapCard, base}: {section: ContentSection; actions: DiscoveryBindings['actions']; artwork: ShellArtwork; nowPlayingAlbumId?: string;
+  selection?: CatalogueDocumentSelection; wrapCard: (base: BrowseItemActions, entry: ContentEntry) => BrowseItemActions; base: number}) {
   const artSize = (useShellWidth() >= 1024 ? 76 : 52) * devicePixelRatio;
   const heading = serverTextLabel(defaultI18n, {code: section.heading.key, fallback: section.heading.fallback, params: section.heading.params});
+  const tile = (entry: ContentEntry, index: number, cardSelection: CardSelection | undefined) => {
+    const action = wrapCard({...actions(section, entry, index), ...(cardSelection ? {selection: cardSelection} : {})}, entry);
+    const art = artwork.foreground(entry.posterUrl, artSize, 1), playing = entry.id === nowPlayingAlbumId, title = entry.kind === 'radio' ? defaultI18n.t('music.radioNamed', {name: entry.displayTitle ?? entry.title}) : entry.displayTitle ?? entry.title;
+    return <div key={entry.id} role="listitem" className={styles.item} data-selecting={cardSelection?.active || undefined} data-selected={cardSelection?.checked || undefined}>
+      <button type="button" className={styles.tile} data-playing={playing || undefined} onClick={action.onOpen}>
+        <span className={styles.art}>{art && <Artwork source={art} alt="" />}</span>
+        <span className={styles.copy}><span className={styles.title}>{playing && <span className={styles.levels} role="img" aria-label={defaultI18n.t('next.browse.playing')}><i/><i/><i/></span>}{title}</span>
+          <small className={styles.artist}>{entry.artist?.name ?? (entry.kind === 'radio' ? defaultI18n.t('music.radio') : undefined)}</small></span>
+      </button>
+      {cardSelection && <button type="button" className={styles.tileSelection} aria-label={defaultI18n.t('card.select', {title})} aria-pressed={cardSelection.checked}
+        onClick={event => {event.stopPropagation(); cardSelection.onToggle({range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});}}>
+        <SelectionCircle interactive={false} selected={cardSelection.checked} selecting={cardSelection.active} accessibilityLabel={title} />
+      </button>}
+      {action.onMore && <button type="button" className={styles.tileMore} aria-label={defaultI18n.t('next.browse.moreFor', {title})} aria-haspopup="menu"
+        onClick={event => action.onMore!(event.currentTarget)}><Icon name="i-more" size={18} /></button>}
+    </div>;
+  };
   return <section className={styles.section} aria-label={heading}>
     <header className={styles.heading}><h2>{heading}</h2></header>
     <div className={styles.grid} role="list">
-      {section.entries.map((entry, index) => {
-        const action = actions(section, entry, index), art = artwork.foreground(entry.posterUrl, artSize, 1), playing = entry.id === nowPlayingAlbumId;
-        return <div key={entry.id} role="listitem" className={styles.item}>
-          <button type="button" className={styles.tile} data-playing={playing || undefined} onClick={action.onOpen}>
-            <span className={styles.art}>{art && <Artwork source={art} alt="" />}</span>
-            <span className={styles.copy}><span className={styles.title}>{playing && <span className={styles.levels} role="img" aria-label={defaultI18n.t('next.browse.playing')}><i/><i/><i/></span>}{entry.kind === 'radio' ? defaultI18n.t('music.radioNamed', {name: entry.displayTitle ?? entry.title}) : entry.displayTitle ?? entry.title}</span>
-              <small className={styles.artist}>{entry.artist?.name ?? (entry.kind === 'radio' ? defaultI18n.t('music.radio') : undefined)}</small></span>
-          </button>
-        </div>;
-      })}
+      {section.entries.map((entry, index) => entry.kind === 'radio' ? tile(entry, index, undefined)
+        : <CatalogueSelectionEntry key={entry.id} selection={selection} entry={entry} position={base + index}>{cardSelection => tile(entry, index, cardSelection)}</CatalogueSelectionEntry>)}
     </div>
   </section>;
 }
