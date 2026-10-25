@@ -36,8 +36,12 @@ func summaryKinds(kind string) []string {
 		return []string{"show", "episode"}
 	case "music":
 		return []string{"artist", "album", "song"}
-	case "audiobook", "book", "comic":
+	case "audiobook":
 		return []string{"book", "author"}
+	case "book":
+		return []string{"ebook"}
+	case "comic":
+		return []string{"comic"}
 	default:
 		return []string{"movie"}
 	}
@@ -68,6 +72,18 @@ func (s *Service) librarySummary(ctx context.Context, viewer Viewer, library Lib
 	out := LibrarySummary{Counts: []LibraryKindCount{}, CoverURLs: []string{}, Empty: true}
 	kinds := summaryKinds(library.Kind)
 	clause, args := EntityRestrictionSQL("e.id", viewer.Restrictions)
+	if isReadingLibrary(library.Kind) {
+		reading, err := s.readingBrowseScope(library.ID)
+		if err != nil {
+			return out, err
+		}
+		// The bounded candidate window stays unchanged. Its visible counts and
+		// artwork must additionally belong to the same ready Reading membership
+		// and canonical publication/link/format choice as Browse. Availability
+		// does not exclude an otherwise eligible Reading title.
+		clause = "(" + clause + ") AND " + reading.eligibleSQL("e.id") +
+			" AND EXISTS(SELECT 1 FROM reading_attribution_members m WHERE " + reading.memberScope() + " AND m.item_id=e.id)"
+	}
 	selections := []string{}
 	values := []any{}
 	for _, kind := range kinds {
@@ -119,7 +135,7 @@ func (s *Service) librarySummary(ctx context.Context, viewer Viewer, library Lib
 		if kind == coverKind {
 			if len(targets) < 64 {
 				targetKind := kind
-				if kind == "movie" {
+				if kind == "movie" || kind == "ebook" || kind == "comic" {
 					targetKind = "item"
 				}
 				target := artworkTarget{targetKind, id}
