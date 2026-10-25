@@ -35,6 +35,7 @@ type rangeCache struct {
 	floor         int64
 	committed     bool
 	guard         *cacheGuard
+	budget        *sourceCacheBudget
 	reservedBytes int64
 	generation    string
 	binding       binding
@@ -146,7 +147,10 @@ func (c *rangeCache) append(ctx context.Context, stream io.Reader, end int64) er
 	if !reserveDiskGrowth(c.service.private, floor, growth) {
 		return storage.ErrRemoteLimit
 	}
-	budget := c.service.budgetFor(c.source)
+	if c.budget == nil {
+		c.budget = c.service.budgetFor(c.source)
+	}
+	budget := c.budget
 	if err := budget.load(ctx, c.service, c.source, configured); err != nil {
 		releaseDiskGrowth(c.service.private, growth)
 		return err
@@ -244,11 +248,22 @@ ON CONFLICT(source_id,cache_key) DO UPDATE SET used_bytes=excluded.used_bytes,ob
 }
 
 func (c *rangeCache) discard(name string) error {
-	directory, err := cacheDirectory(c.service.private, c.source)
-	if err == nil {
-		_ = os.Remove(filepath.Join(directory, name))
+	c.guard.mu.Lock()
+	sole := c.guard.pins <= 1
+	if sole {
+		c.guard.cached, c.guard.loaded = 0, false
 	}
-	c.service.budgetFor(c.source).subtract(c.reservedBytes)
+	c.guard.mu.Unlock()
+	if sole {
+		directory, err := cacheDirectory(c.service.private, c.source)
+		if err == nil {
+			_ = os.Remove(filepath.Join(directory, name))
+		}
+	}
+	// Settle against the exact bucket this allocation reserved from.
+	if c.budget != nil {
+		c.budget.subtract(c.reservedBytes)
+	}
 	return nil
 }
 
@@ -264,20 +279,6 @@ func (s *Service) cacheGuardRetired(g *cacheGuard) bool {
 	s.cacheMu.Lock()
 	defer s.cacheMu.Unlock()
 	return g.retired
-}
-
-// cacheKeyBusy says whether a live reader or writer still holds this entry, so
-// eviction never deletes a file under another acquisition.
-func (s *Service) cacheKeyBusy(source, key string) bool {
-	s.cacheMu.Lock()
-	g := s.cacheGuards[source+"\x00"+key]
-	s.cacheMu.Unlock()
-	if g == nil {
-		return false
-	}
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	return g.readers > 0
 }
 
 // evictSourceCache deletes the least recently used entries of one source,
@@ -307,9 +308,6 @@ func (s *Service) evictSourceCache(ctx context.Context, source string, limit int
 		var v victim
 		if err = rows.Scan(&v.key, &v.file, &v.bytes); err != nil {
 			break
-		}
-		if s.cacheKeyBusy(source, v.key) {
-			continue
 		}
 		victims = append(victims, v)
 		total -= v.bytes
@@ -358,30 +356,44 @@ func (s *Service) clearSourceCache(ctx context.Context, source string) error {
 		return nil
 	}
 	s.retireSourceCacheGuards(source)
+	// A new budget object owns all future allocations; old allocations settle
+	// only against the object they reserved from.
 	s.cacheMu.Lock()
-	budget := s.cacheBudgets[source]
+	delete(s.cacheBudgets, source)
 	s.cacheMu.Unlock()
-	if budget != nil {
-		budget.mu.Lock()
-		budget.used, budget.reserved, budget.loaded = 0, 0, false
-		budget.mu.Unlock()
-	}
-	if _, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM remote_source_cache_entries WHERE source_id=?`, source); err != nil {
+	rows, err := s.db.QueryContext(ctx, `SELECT cache_key,file_name FROM remote_source_cache_entries WHERE source_id=? LIMIT 1024`, source)
+	if err != nil {
 		return err
 	}
-	directory, err := cacheDirectory(s.private, source)
-	if err != nil {
+	type owned struct{ key, file string }
+	files := []owned{}
+	for rows.Next() {
+		var one owned
+		if rows.Scan(&one.key, &one.file) == nil {
+			files = append(files, one)
+		}
+	}
+	rows.Close()
+	if _, err = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `DELETE FROM remote_source_cache_entries WHERE source_id=?`, source); err != nil {
+		return err
+	}
+	directory, dirErr := cacheDirectory(s.private, source)
+	if dirErr != nil {
 		return nil
 	}
-	entries, err := os.ReadDir(directory)
-	if err != nil {
-		return nil
-	}
-	for _, entry := range entries {
-		if entry.IsDir() {
+	for _, one := range files {
+		if filepath.Base(one.file) != one.file || one.key == "" {
 			continue
 		}
-		_ = os.Remove(filepath.Join(directory, entry.Name()))
+		g := s.guardFor(source, one.key)
+		if !g.mu.TryLock() {
+			continue
+		}
+		if g.pins == 0 && g.readers == 0 {
+			_ = os.Remove(filepath.Join(directory, one.file))
+			g.cached, g.loaded = 0, false
+		}
+		g.mu.Unlock()
 	}
 	return nil
 }
@@ -430,8 +442,10 @@ func (s *Service) reconcileSourceCachePage(ctx context.Context) {
 			continue
 		}
 		g := s.guardFor(e.source, e.key)
-		g.mu.Lock()
-		if g.readers > 0 {
+		if !g.mu.TryLock() {
+			continue
+		}
+		if g.readers > 0 || g.pins > 0 {
 			g.mu.Unlock()
 			continue
 		}
