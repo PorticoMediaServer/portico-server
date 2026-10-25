@@ -171,7 +171,7 @@ func (d Dependencies) prepareReadingSession(w http.ResponseWriter, r *http.Reque
 	v, m := document.Selection, document.Metadata
 	out := ReadingSessionResponse{Sequential: document.Sequential, SessionID: session.ID, ItemID: v.ItemID, SourceID: v.SourceID, Revision: v.Revision, Format: ReadingFormat(v.Format), Size: v.Size, Metadata: ReadingMetadata{m.Title, m.Author, m.Language, ReadingDirection(m.Direction)}, Spine: document.Spine, PageNames: document.PageNames}
 	for _, entry := range document.Contents {
-		out.Contents = append(out.Contents, ReadingContentsEntry{entry.Title,entry.Section,entry.Fragment,entry.Depth})
+		out.Contents = append(out.Contents, ReadingContentsEntry{entry.Title, entry.Section, entry.Fragment, entry.Depth})
 	}
 	for _, resource := range document.Resources {
 		out.Resources = append(out.Resources, ReadingResource{resource.Path, resource.MIME, resource.Size})

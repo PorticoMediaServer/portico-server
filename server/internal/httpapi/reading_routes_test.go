@@ -224,10 +224,14 @@ func TestReadingRegisteredArchiveAssets(t *testing.T) {
 				if len(m.Resources) == 0 || len(m.Spine) == 0 || len(m.PageNames) != 0 {
 					t.Fatal(m)
 				}
-				if len(m.Contents)!=1 || m.Contents[0].Title!="Chapter" || m.Contents[0].Section!=m.Spine[0] || m.Contents[0].Depth!=0 {t.Fatalf("real selected EPUB navigation: %+v",m.Contents)}
+				if len(m.Contents) != 1 || m.Contents[0].Title != "Chapter" || m.Contents[0].Section != m.Spine[0] || m.Contents[0].Depth != 0 {
+					t.Fatalf("real selected EPUB navigation: %+v", m.Contents)
+				}
 				path = base + "/assets?path=" + url.QueryEscape(m.Spine[0])
 			} else {
-				if len(m.Contents)!=0 {t.Fatal("comic invented contents",m.Contents)}
+				if len(m.Contents) != 0 {
+					t.Fatal("comic invented contents", m.Contents)
+				}
 				if len(m.PageNames) != 2 || m.PageNames[0] != "page1.png" || m.PageNames[1] != "page2.png" || len(m.Resources) != 0 {
 					t.Fatal(m)
 				}
