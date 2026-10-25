@@ -4411,6 +4411,40 @@ export const schemas = {
               "type": "boolean"
             },
             "consent": {},
+            "ending": {
+              "additionalProperties": false,
+              "properties": {
+                "cause": {
+                  "enum": [
+                    "owner_removed"
+                  ],
+                  "type": "string"
+                },
+                "endedAt": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "expiresAt": {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                "sequence": {
+                  "maximum": 9007199254740991,
+                  "minimum": 1,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "sequence",
+                "cause",
+                "endedAt",
+                "expiresAt"
+              ],
+              "type": "object"
+            },
+            "membershipId": {
+              "type": "string"
+            },
             "role": {
               "type": "string"
             }
@@ -5346,6 +5380,47 @@ export const schemas = {
           "type": "object"
         },
         "type": "array"
+      },
+      "membershipEnding": {
+        "additionalProperties": false,
+        "properties": {
+          "cause": {
+            "enum": [
+              "owner_removed"
+            ],
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "membershipId": {
+            "pattern": "^[0-9a-f]{32}$",
+            "type": "string"
+          },
+          "sequence": {
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "serverId": {
+            "pattern": "^srv_[A-Za-z0-9_-]{43}$",
+            "type": "string"
+          },
+          "serverName": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "membershipId",
+          "sequence",
+          "cause",
+          "expiresAt"
+        ],
+        "type": "object"
       },
       "version": {
         "type": "string"
