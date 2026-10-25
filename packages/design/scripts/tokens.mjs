@@ -67,7 +67,7 @@ export function renderTokens() {
     ...entries(motion, 'motion', ms), ...entries(easings, 'ease', scalar), ...springEntries,
     `--motion-reduced: ${ms(reducedMotion.durationMs)}`, `--motion-reduced-easing: ${reducedMotion.easing}`,
     ...entries(layers, 'layer', scalar), ...entries(targets, 'target', px),
-    `--font: ${typography.webFamily}`, `--page-gutter: ${px(layout.gutter.phone)}`, ...entries(layout.gutter, 'gutter', px),
+    `--font: ${typography.webFamily}`, `--font-mono: ${typography.monoFamily}`, `--page-gutter: ${px(layout.gutter.phone)}`, ...entries(layout.gutter, 'gutter', px),
     '--text-transform: none', `--glass-fill: ${rgba('text', componentSpec.button.glass.alpha)}`, `--glass-hover-fill: ${rgba('text', componentSpec.button.glass.hoverAlpha)}`,
     `--glass-blur: ${px(componentSpec.button.glass.blur)}`, ...flattenSpec(componentSpec), ...platformTokens('phone'),
   ];

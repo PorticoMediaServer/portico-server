@@ -47,7 +47,7 @@ export const settingsMessages = {
   'next.settings.levelWarn': 'Warn',
   'next.settings.levelError': 'Error',
   'next.settings.levelDebug': 'Debug',
-  'next.settings.recordsHelp': 'What the server noted, by lane.',
+  'next.settings.recordsHelp': 'What the server noted.',
   'next.settings.recordsLatest': 'Latest',
   'next.settings.recordsOlder': 'Older',
   'next.settings.done': 'Done',
