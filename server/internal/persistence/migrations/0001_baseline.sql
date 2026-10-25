@@ -256,6 +256,7 @@ CREATE TABLE reading_annotations(
  section TEXT CHECK(section IS NULL OR length(section)<=1024),
  page_index INTEGER,
  progression REAL NOT NULL CHECK(progression>=0 AND progression<=1),
+ rects TEXT NOT NULL DEFAULT '[]' CHECK(length(rects)<=24000 AND json_valid(rects)),
  quote TEXT NOT NULL CHECK(length(quote)<=8192),
  note TEXT NOT NULL CHECK(length(note)<=4096),
  colour TEXT NOT NULL,
