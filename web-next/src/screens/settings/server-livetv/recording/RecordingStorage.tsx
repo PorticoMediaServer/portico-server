@@ -11,6 +11,8 @@ export function RecordingStorage({controller, embedded = false}: {embedded?: boo
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot), {storage, draft} = state;
   useEffect(() => {void controller.load();}, [controller]);
   if (!controller.isActive()) return null;
+  const measured = !!storage?.measurement.measuredAt;
+  const measuredBytes = (value: number) => measured ? defaultI18n.bytes(value) : t('server.usage.notMeasuredYet');
   const dirty = !!storage && !!draft && JSON.stringify(storage.policy) !== JSON.stringify(draft);
   const number = (id: MessageId, help: MessageId, value: number, max: number, set: (value: number) => void, unit?: MessageId) => <SettingsRow label={t(id)} help={t(help)}>
     <TextField type="number" variant="setting" value={value} min={0} max={max} step={1} required disabled={state.saving} aria-label={t(id)} onChange={event => {const value = event.currentTarget.valueAsNumber;if (controller.isActive() && Number.isSafeInteger(value) && value >= 0 && value <= max) set(value);}}/>{unit && <span className={styles.unit}>{t(unit)}</span>}</SettingsRow>;
@@ -24,20 +26,20 @@ export function RecordingStorage({controller, embedded = false}: {embedded?: boo
     {storage && draft && <>
       <div className={styles.sources}><SettingsRow label={t('web.liveTv.space')}><dl>
         {([
-          ['server.live.usedByRecordings', defaultI18n.bytes(storage.measurement.usedBytes)], ['server.live.freeOnVolume', defaultI18n.bytes(storage.measurement.freeBytes)],
-          ['web.liveTv.space.reserved', defaultI18n.bytes(storage.measurement.reservedBytes)], ['web.liveTv.space.waitingDelete', defaultI18n.bytes(storage.pendingDeleteBytes)],
+          ['server.live.usedByRecordings', measuredBytes(storage.measurement.usedBytes)], ['server.live.freeOnVolume', measuredBytes(storage.measurement.freeBytes)],
+          ['web.liveTv.space.reserved', measuredBytes(storage.measurement.reservedBytes)], ['web.liveTv.space.waitingDelete', defaultI18n.bytes(storage.pendingDeleteBytes)],
           ['web.liveTv.space.forecast', t('web.liveTv.space.forecastOver', {size: defaultI18n.bytes(storage.forecastBytes), hours: storage.forecastHours})],
         ] as const).map(([key, value]) => <div key={key}><dt>{t(key)}</dt><dd>{value}</dd></div>)}
       </dl></SettingsRow>
-      <StorageMeter used={t('next.live.storageUsed', {amount: Math.round(storage.measurement.usedBytes / 1e9)})} free={t('next.live.storageFree', {amount: Math.round(storage.measurement.freeBytes / 1e9)})}
-        remaining="" label={t('recordings.storage')} fraction={storage.measurement.usedBytes / Math.max(1, storage.policy.capBytes || storage.measurement.usedBytes + storage.measurement.freeBytes)}/>
+      {measured && <StorageMeter used={t('next.live.storageUsed', {amount: Math.round(storage.measurement.usedBytes / 1e9)})} free={t('next.live.storageFree', {amount: Math.round(storage.measurement.freeBytes / 1e9)})}
+        remaining="" label={t('recordings.storage')} fraction={storage.measurement.usedBytes / Math.max(1, storage.policy.capBytes || storage.measurement.usedBytes + storage.measurement.freeBytes)}/>}
       {!!storage.forecastDescription && <p className={styles.lede}>{storage.forecastDescription}</p>}
       {number('web.liveTv.keepRecordings', 'web.liveTv.keepRecordingsHelp', draft.retentionDays, 3650, retentionDays => controller.edit({retentionDays}), 'settings.unit.days')}
       {number('web.liveTv.episodesPerSeries', 'web.liveTv.episodesPerSeriesHelp', draft.episodeLimit, 100000, episodeLimit => controller.edit({episodeLimit}))}
       {number('web.liveTv.leaveFree', 'web.liveTv.leaveFreeHelp', Math.round(draft.floorBytes / 1e9), 9007199, value => controller.edit({floorBytes: value * 1e9}), 'web.liveTv.gbUnit')}
       {number('web.liveTv.capUpTo', 'web.liveTv.capUpToHelp', Math.round(draft.capBytes / 1e9), 9007199, value => controller.edit({capBytes: value * 1e9}), 'web.liveTv.gbUnit')}
       </div>
-      {!storage.measurement.writeHealthy && <p role="alert" className={styles.error}>{t('web.liveTv.notWritable')}</p>}
+      {measured && !storage.measurement.writeHealthy && <p role="alert" className={styles.error}>{t('web.liveTv.notWritable')}</p>}
     </>}
     </section>
     {!embedded && dirty && <div className={styles.save}><Button variant="text" size="small" disabled={state.saving} onClick={() => controller.discard()}>{t('action.discard')}</Button><Button variant="primary" size="small" type="submit" loading={state.saving}>{t('action.save')}</Button></div>}
