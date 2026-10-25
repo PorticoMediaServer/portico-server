@@ -34,3 +34,5 @@ closure, required bubblewrap options/user namespace posture, actual artifact
 packaging/resolver and supported server targets. This document grants no build,
 install, checkpoint or tooling approval. No generated or bundled binary is
 present in this source WIP.
+
+Concrete source recipe and complete linked-source pins are now in inputs.json, CMakeLists.txt, build-policy.h, build.py and REBUILD.md. libxml2 and external zlib are explicitly excluded; internal XML writer + bundled miniz + pinned musl form the intended worker closure. Actual builder/artifact qualification remains Release-owned and open.
