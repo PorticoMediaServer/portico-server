@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/personalstate"
-	"portico.local/server/internal/requestinput"
 	"strconv"
 	"time"
 )
@@ -65,28 +64,11 @@ func (s *Service) Saved(r ContentRequest, libraries []string) (ContentEnvelope, 
 		return ContentEnvelope{}, err
 	}
 	out := ContentEnvelope{Scope: ContentScope{r.ServerID, "", "mixed", r.View, "", r.ViewerFence}, Navigation: savedNavigation(), Sorts: savedSortOptions(), Filters: []ContentFilter{}, Sections: []ContentSection{}}
-	if r.Shape != "" && r.Shape != "posters" && r.Shape != "squares" {
-		return out, ErrCursor
-	}
-	if r.View != "watchlist" && r.View != "favorites" {
-		return out, requestinput.New("invalid Saved view")
-	}
-	if r.Sort == "" {
-		r.Sort = "title"
-	}
-	if r.Direction == "" {
-		r.Direction = "asc"
-	}
-	if r.Filter == "" {
-		r.Filter = "all"
-	}
-	if r.Limit == 0 {
-		r.Limit = 40
-	}
-	order, sortOK := savedSorts[r.Sort]
-	filter, filterOK := savedFilters[r.Filter]
-	if !sortOK || !filterOK || (r.Direction != "asc" && r.Direction != "desc") || r.Limit < 1 || r.Limit > 100 || r.Q != "" || r.Category != "" || r.EntityID != "" {
-		return out, requestinput.New("invalid Saved query")
+	var order, filter string
+	var e error
+	r, order, filter, e = normalizeSavedRequest(r)
+	if e != nil {
+		return out, e
 	}
 	heading := "My List"
 	flag := "watchlisted"
@@ -109,17 +91,7 @@ func (s *Service) Saved(r ContentRequest, libraries []string) (ContentEnvelope, 
 	out.Revision = rev
 	scope := cursorScope{Profile: r.Profile, View: r.View, Section: r.View, Viewer: r.ViewerFence, Sort: r.Sort, Direction: r.Direction, Category: r.Filter + ":" + r.Shape, Limit: r.Limit}
 	scope.Search = readingScope.fence
-	raw, _ := json.Marshal(libraries)
-	// A saved title is a playable item, an admitted Reading leaf, or a title that holds
-	// them (show, artist, album, book): the flag sits in the same personal_items row either way.
-	// An item is visible by its own rule; a container when it has a visible member.
-	base := ` FROM personal_items p CROSS JOIN catalog_entities i ON i.id=p.item_id LEFT JOIN catalog_item_details detail ON detail.entity_id=i.id WHERE p.profile_id=? AND p.` + flag + `=1 AND i.retired=0 AND i.library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(SELECT value FROM json_each(?)) AND retired=0)`
-	baseArgs := []any{r.Profile, string(raw)}
-	visibility, visibleArgs := r.Viewer.itemVisibilitySQL("i.id")
-	containers, containerArgs := r.Viewer.entityVisibilitySQL("i.id", "(SELECT library_id FROM catalog_libraries WHERE id=i.library_id)")
-	base += ` AND ((i.kind IN(1,4,7,9) AND ` + visibility + `) OR (i.kind IN(2,5,6,8) AND ` + containers + `) OR (i.kind IN(20,21) AND ` + visibility + ` AND ` + readingScope.predicate + `))`
-	baseArgs = append(append(append(baseArgs, visibleArgs...), containerArgs...), visibleArgs...)
-	baseArgs = append(baseArgs, readingScope.args...)
+	base, baseArgs := savedLeafBase(r, libraries, flag, readingScope)
 	shapeCounts := &SavedShapeCounts{}
 	if e = s.read().QueryRow(`SELECT COALESCE(sum(i.kind IN(1,2,3,4,20,21)),0),COALESCE(sum(i.kind IN(5,6,7,8,9,13)),0)`+base, baseArgs...).Scan(&shapeCounts.Posters, &shapeCounts.Squares); e != nil {
 		return out, e

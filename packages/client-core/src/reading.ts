@@ -1,3 +1,4 @@
+import {readingSavedGroupPath, parseReadingSavedGroupMembership, validReadingSavedGroupCommand, type ReadingSavedGroupTarget, type ReadingSavedGroupCommand} from './reading-saved-group.ts';
 import {readingFavoritePath, parseReadingFavorite, validReadingFavoriteCommand, type ReadingFavoriteCommand} from './reading-favorite.ts';
 export type {ReadingFavoriteFlag, ReadingFavoriteCommand} from './reading-favorite.ts';
 import {readingSavedPath, parseReadingSavedMembership, validReadingSavedCommand, type ReadingListCommand} from './reading-saved.ts';
@@ -361,6 +362,21 @@ export class ReadingClient {
     if (!path || !validReadingFavoriteCommand(command)) fail('invalid_request');
     const captured = Object.freeze({...command});
     return this.json(path, 'PUT', captured, signal, value => parseReadingFavorite(value, this.viewer.serverId, itemId, captured.operationId), 4096);
+  }
+  canUseGroupMyList(target: ReadingSavedGroupTarget): boolean {
+    const viewer = this.viewer;
+    return !!viewer.authority && !!viewer.accountId && !!viewer.profileId && ['owner', 'admin', 'member'].includes(viewer.role)
+      && readingSavedGroupPath('GET', target) !== undefined && readingSavedGroupPath('PUT', target) !== undefined;
+  }
+  async getGroupMyList(target: ReadingSavedGroupTarget, signal?: AbortSignal) {
+    const captured = Object.freeze({...target}), path = readingSavedGroupPath('GET', captured);
+    if (!path) fail('unsupported');
+    return this.json(path, 'GET', undefined, signal, value => parseReadingSavedGroupMembership(value, this.viewer.serverId, captured), 4096);
+  }
+  async setGroupMyList(target: ReadingSavedGroupTarget, command: ReadingSavedGroupCommand, signal?: AbortSignal) {
+    const capturedTarget = Object.freeze({...target}), captured = Object.freeze({...command}), path = readingSavedGroupPath('PUT', capturedTarget);
+    if (!path || !validReadingSavedGroupCommand(captured)) fail('invalid_request');
+    return this.json(path, 'PUT', captured, signal, value => parseReadingSavedGroupMembership(value, this.viewer.serverId, capturedTarget, captured.operationId), 4096);
   }
   canUseMyList(itemId: string): boolean {
     const viewer = this.viewer;
