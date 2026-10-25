@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 )
 
+var ErrRecordingFolderNotEmpty = errors.New("recording folder is not empty")
+
 // EmptyRecordingRootIdentity pins an existing empty directory without creating,
 // deleting or changing its contents. The identity is private activation metadata.
 func EmptyRecordingRootIdentity(path string) (string, error) { return recordingRootIdentity(path, true) }
@@ -26,7 +28,9 @@ func recordingRootIdentity(path string, requireEmpty bool) (string, error) {
 	identity, err := recordingDirectoryIdentity(folder, info)
 	if err != nil { return "", err }
 	if requireEmpty {
-		if _, err = folder.Readdirnames(1); err != io.EOF { return "", errors.New("recording folder is not empty") }
+		names, err := folder.Readdirnames(1)
+		if err != nil && err != io.EOF { return "", err }
+		if len(names) != 0 { return "", ErrRecordingFolderNotEmpty }
 	}
 	if err = canonicalParents(path); err != nil { return "", err }
 	current, err := os.Lstat(path)

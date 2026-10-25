@@ -29,15 +29,26 @@ func Runtime(admin *administration.Service, recordings *dvr.Store, effective str
 		Admit: func(ctx context.Context, tx *sql.Tx, old, destination string) (string, func(), error) {
 			if old != effective { return "", nil, errors.New("recording root binding changed") }
 			release, err := recordings.AdmitRootChange(ctx, tx)
-			if err != nil { return "", nil, err }
+			if err != nil {
+				if errors.Is(err, dvr.ErrConflict) { return "", nil, operations.ErrConflict }
+				return "", nil, err
+			}
 			accepted := false
 			defer func() { if !accepted { release() } }()
 			if old != "" {
 				current, err := storagepaths.EmptyRecordingRootIdentity(old)
-				if err != nil || current != identity { return "", nil, errors.New("recording folder contains content or changed") }
+				if err != nil {
+					if errors.Is(err, storagepaths.ErrRecordingFolderNotEmpty) { return "", nil, operations.ErrConflict }
+					return "", nil, err
+				}
+				if current != identity { return "", nil, operations.ErrConflict }
 			}
 			chosen, err := admin.RecordingDestination(destination)
-			if err != nil { return "", nil, err }
+			if err != nil {
+				if errors.Is(err, storagepaths.ErrRecordingFolderNotEmpty) { return "", nil, operations.ErrConflict }
+				if errors.Is(err, administration.ErrDenied) || errors.Is(err, administration.ErrInput) { return "", nil, operations.ErrInvalid }
+				return "", nil, err
+			}
 			if err = ctx.Err(); err != nil { return "", nil, err }
 			accepted = true
 			return chosen, release, nil
