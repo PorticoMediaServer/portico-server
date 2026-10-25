@@ -379,6 +379,11 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 		f, err = s.AnalyzeSTRM(ctx, source.LibraryID, path)
 		s.recordDescriptorAnalysis(ctx, path, err)
 	} else if s.storage.IsRemote(path) {
+		if assets.DiscImage(path) {
+			// Also fence jobs admitted before discovery learned the explicit
+			// remote-disc skipped reason. Generic FFprobe is not a disc reader.
+			return s.analysisOutcome(parent, job, object, revision, queuedPolicy, true, "unsupported_remote_disc")
+		}
 		f, err = s.inspectRemote(ctx, path, before)
 	} else if before.Directory {
 		if !storage.DirectoryDiscScanSupported() {

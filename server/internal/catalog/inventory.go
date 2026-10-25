@@ -239,11 +239,15 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 				if root := discs[0].Value.ParentPath; root != "" && root != "." && videoLibrary && source.Kind == "local" && storage.DirectoryDiscScanSupported() {
 					continue
 				}
-				if _, e := s.observeInventoryTx(ctx, tx, job, source, child, v, "unsupported_disc_layout", policy, movedOut); e != nil {
+				reason := "unsupported_disc_layout"
+				if source.Kind == "remote" && videoLibrary {
+					reason = "unsupported_remote_disc"
+				}
+				if _, e := s.observeInventoryTx(ctx, tx, job, source, child, v, reason, policy, movedOut); e != nil {
 					return false, e
 				}
 				discovered++
-				if err = InventoryIssueTx(ctx, tx, job, storage.InventoryIssue{Path: child, Reason: "unsupported_disc_layout", Warning: true}); err != nil {
+				if err = InventoryIssueTx(ctx, tx, job, storage.InventoryIssue{Path: child, Reason: reason, Warning: true}); err != nil {
 					return false, err
 				}
 				continue
@@ -280,6 +284,12 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 		if !supported {
 			continue
 		}
+		// Remote disc stream-mode admission is not qualified. Retain the real
+		// skipped file with its explicit reason; do not run a generic file probe
+		// and misclassify the missing disc reader as damaged media.
+		if source.Kind == "remote" && assets.DiscImage(v.Path) {
+			reason = "unsupported_remote_disc"
+		}
 		// CB7 has only a local bounded helper representation. A remote source
 		// never admits it, so a capable scan cannot create an inventory-ready
 		// remote cb7 or starve a local comic primary. The opener still refuses
@@ -288,7 +298,7 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 			continue
 		}
 		if reason != "" {
-			if err = InventoryIssueTx(ctx, tx, job, storage.InventoryIssue{Path: child, Reason: reason}); err != nil {
+			if err = InventoryIssueTx(ctx, tx, job, storage.InventoryIssue{Path: child, Reason: reason, Warning: reason == "unsupported_remote_disc"}); err != nil {
 				return false, err
 			}
 		}

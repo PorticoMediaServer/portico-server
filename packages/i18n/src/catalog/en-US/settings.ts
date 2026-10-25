@@ -577,6 +577,7 @@ export const settingsMessages = {
   'scan.issue.path_depth_exceeded': 'This folder was nested too deeply and was skipped.',
   'scan.issue.unsupported_disc_layout': 'This disc folder was listed as one title. Playing disc folders is not supported.',
   'scan.issue.unsupported_disc_image': 'This disc image was listed, but playing it is not supported.',
+  'scan.issue.unsupported_remote_disc': 'Not supported yet. Portico can’t play discs from remote folders.',
   'scan.issue.source_revision_changed': 'This file changed during analysis. Its title was kept and the file will be checked again.',
   'scan.issue.reported_file_removed': 'This file was removed during the scan. Its title was kept.',
   'scan.issue.embedded_name_fields_skipped': 'Some embedded title information could not be read. Usable information was kept.',

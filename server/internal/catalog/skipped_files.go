@@ -7,7 +7,7 @@ import (
 
 // SkippedIssuePredicate admits only a known unplayable file reason, never a
 // navigation, source-policy, metadata-matching or sidecar diagnostic.
-const SkippedIssuePredicate = `reason IN('probe_failed','file_truncated','damaged_media','unsupported_disc_layout','unsupported_disc_image','unsupported_container','unsupported_codec','not_media','unfinished_download','partial_download','sample_file')`
+const SkippedIssuePredicate = `reason IN('probe_failed','file_truncated','damaged_media','unsupported_disc_layout','unsupported_disc_image','unsupported_remote_disc','unsupported_container','unsupported_codec','not_media','unfinished_download','partial_download','sample_file')`
 
 func LastSkippedCount(ctx context.Context, tx *sql.Tx, library string) (int64, error) {
 	var n int64

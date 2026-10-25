@@ -73,7 +73,7 @@ func skippedCategory(reason string) string {
 	switch reason {
 	case "probe_failed", "file_truncated", "damaged_media":
 		return "damaged"
-	case "unsupported_disc_layout", "unsupported_disc_image", "unsupported_container", "unsupported_codec":
+	case "unsupported_disc_layout", "unsupported_disc_image", "unsupported_remote_disc", "unsupported_container", "unsupported_codec":
 		return "unsupported"
 	case "not_media", "unfinished_download", "partial_download", "sample_file":
 		return "not-media"
@@ -88,6 +88,8 @@ func scanIssueMessageKey(reason string) string {
 		return "scan.issue.unsupported_disc_image"
 	case "unsupported_disc_layout":
 		return "scan.issue.unsupported_disc_layout"
+	case "unsupported_remote_disc":
+		return "scan.issue.unsupported_remote_disc"
 	case "unfinished_download", "partial_download":
 		return "scan.issue.unfinished_download"
 	}
