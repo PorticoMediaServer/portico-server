@@ -191,9 +191,30 @@ CREATE INDEX retained_title_identities_state ON retained_title_identities(state_
 CREATE TABLE reading_publications(
  item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  asset_id INTEGER NOT NULL UNIQUE REFERENCES catalog_assets(id) ON DELETE CASCADE,
- format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz')),
+ format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz','image-folder')),
  PRIMARY KEY(item_id,asset_id),
  FOREIGN KEY(item_id,asset_id) REFERENCES catalog_asset_links(entity_id,asset_id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
+-- One complete accepted LOCAL directory. The anchor is the real first page's
+-- physical asset, never an archive or a generated file. Members retain the
+-- original accepted object/revision tuple and cannot be supplied by a guest.
+CREATE TABLE reading_image_folders(
+ asset_id INTEGER PRIMARY KEY REFERENCES reading_publications(asset_id) ON DELETE CASCADE,
+ source_id TEXT NOT NULL REFERENCES library_sources(id),
+ root_incarnation TEXT NOT NULL, root_identity TEXT NOT NULL,
+ directory_path TEXT NOT NULL, directory_identity TEXT NOT NULL,
+ directory_revision TEXT NOT NULL, job_id TEXT NOT NULL REFERENCES jobs(id),
+ member_revision TEXT NOT NULL,
+ UNIQUE(source_id,root_incarnation,directory_path)
+) STRICT;
+CREATE TABLE reading_image_members(
+ folder_asset_id INTEGER NOT NULL REFERENCES reading_image_folders(asset_id) ON DELETE CASCADE,
+ position INTEGER NOT NULL CHECK(position>=0 AND position<4096),
+ inventory_object_id TEXT NOT NULL REFERENCES inventory_objects(id),
+ relative_path TEXT NOT NULL, object_identity TEXT NOT NULL, revision TEXT NOT NULL,
+ evidence_json TEXT NOT NULL, size INTEGER NOT NULL CHECK(size>0 AND size<=33554432),
+ modified_ns INTEGER NOT NULL,
+ PRIMARY KEY(folder_asset_id,position), UNIQUE(folder_asset_id,relative_path)
+) WITHOUT ROWID, STRICT;
 CREATE TABLE reading_source_values(
  item_id INTEGER NOT NULL,
  asset_id INTEGER NOT NULL,
@@ -253,7 +274,7 @@ CREATE TABLE reading_annotations(
  source_revision TEXT NOT NULL CHECK(length(source_revision) BETWEEN 1 AND 256),
  id TEXT NOT NULL CHECK(length(id) BETWEEN 1 AND 64),
  kind TEXT NOT NULL CHECK(kind IN('bookmark','highlight')),
- format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz')),
+ format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz','image-folder')),
  cfi TEXT CHECK(cfi IS NULL OR length(cfi)<=4096),
  section TEXT CHECK(section IS NULL OR length(section)<=1024),
  page_index INTEGER,
@@ -286,7 +307,7 @@ CREATE TABLE reading_progress(
  item_id INTEGER NOT NULL,
  asset_id INTEGER NOT NULL,
  source_revision TEXT NOT NULL CHECK(length(source_revision) BETWEEN 1 AND 256),
- format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz')),
+ format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz','image-folder')),
  cfi TEXT CHECK(cfi IS NULL OR length(cfi)<=8192),
  section TEXT CHECK(section IS NULL OR length(section)<=4096),
  page_index INTEGER,
@@ -302,7 +323,7 @@ CREATE TABLE retained_reading_progress(
  state_id INTEGER NOT NULL REFERENCES retained_title_state(id) ON DELETE CASCADE,
  source_id TEXT NOT NULL CHECK(length(source_id)>0),
  source_revision TEXT NOT NULL CHECK(length(source_revision) BETWEEN 1 AND 256),
- format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz')),
+ format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz','image-folder')),
  cfi TEXT CHECK(cfi IS NULL OR length(cfi)<=8192),
  section TEXT CHECK(section IS NULL OR length(section)<=4096),
  page_index INTEGER,
