@@ -41,7 +41,8 @@ const textCountCanonicalObject = `o.id=(SELECT o2.id FROM inventory_objects o2 I
 // EPUB or PDF only, and only a local source. Each format keeps its own extractor
 // branch; this widening does not remove the approved EPUB branch. Enabled/
 // healthy/current inventory is still enforced by publicationEligible below.
-const textCountWorkerDomain = `e.kind=20 AND lib.kind='book' AND p.format IN('epub','pdf') AND s.kind='local'`
+const textCountSourceFormatsSQL = "'epub','pdf'"
+const textCountWorkerDomain = `e.kind=20 AND lib.kind='book' AND p.format IN(` + textCountSourceFormatsSQL + `) AND s.kind='local'`
 
 // Bounded, indexed order by item id. Remote sources are excluded rather than
 // approximating a full-file read through a viewer session: an unadmitted remote
@@ -49,11 +50,12 @@ const textCountWorkerDomain = `e.kind=20 AND lib.kind='book' AND p.format IN('ep
 // exclude unknown or stale facts. The cache join carries the whole current
 // rule, including the opening-text rule, so a row with an older opening rule is
 // pending rather than excluded forever.
-const textCountPendingSQL = `SELECT e.id,pid(e.public_id),cl.library_id,a.token
+func textCountPendingSQL() string {
+	return `SELECT e.id,pid(e.public_id),cl.library_id,a.token
  FROM catalog_entities e
  CROSS JOIN catalog_libraries cl ON cl.id=e.library_id
  CROSS JOIN libraries lib ON lib.id=cl.library_id
- CROSS JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=` + primaryPublicationSQL + `
+ CROSS JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=` + primaryPublicationSQLForFormats(textCountSourceFormatsSQL) + `
  CROSS JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id
  CROSS JOIN catalog_assets a ON a.id=link.asset_id
  CROSS JOIN inventory_objects o ON o.asset_id=a.token
@@ -63,6 +65,7 @@ const textCountPendingSQL = `SELECT e.id,pid(e.public_id),cl.library_id,a.token
  WHERE e.retired=0 AND cl.retired=0 AND ` + textCountWorkerDomain + ` AND ` + publicationEligible + `
  AND ` + textCountCanonicalObject + `
  AND c.item_id IS NULL AND e.id>? ORDER BY e.id LIMIT ?`
+}
 
 // TextCountPreparation is one worker.Run step over the pending canonical EPUBs.
 // It is woken by catalog/source writes and rests after a complete pass, so an
@@ -122,7 +125,7 @@ func (p *TextCountPreparation) Step(ctx context.Context) time.Duration {
 		}
 		p.passing, p.cursor, p.logged = true, 0, 0
 	}
-	rows, err := p.DB.QueryContext(ctx, textCountPendingSQL, readingTextRuleVersion, p.cursor, window)
+	rows, err := p.DB.QueryContext(ctx, textCountPendingSQL(), readingTextRuleVersion, p.cursor, window)
 	if err != nil {
 		log.Printf("Reading text counts: %v", err)
 		return time.Minute
@@ -191,7 +194,7 @@ func (s *Service) resolveBackgroundTx(ctx context.Context, tx *sql.Tx, library, 
 	var v Selection
 	v.ItemID = item
 	err := tx.QueryRowContext(ctx, `SELECT `+publicationFields+` FROM catalog_entities e`+publicationJoins+`
- WHERE e.public_id=pid_blob(?) AND a.token=? AND cl.library_id=? AND p.asset_id=`+primaryPublicationSQL+` AND `+textCountWorkerDomain+` AND `+publicationEligible+` ORDER BY a.id,o.id LIMIT 1`, item, asset, library).Scan(selectionColumns(&v)...)
+ WHERE e.public_id=pid_blob(?) AND a.token=? AND cl.library_id=? AND p.asset_id=`+primaryPublicationSQLForFormats(textCountSourceFormatsSQL)+` AND `+textCountWorkerDomain+` AND `+publicationEligible+` ORDER BY a.id,o.id LIMIT 1`, item, asset, library).Scan(selectionColumns(&v)...)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Selection{}, ErrUnavailable
 	}
