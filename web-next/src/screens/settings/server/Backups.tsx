@@ -6,6 +6,8 @@ import {Button} from '../../../kit/controls';
 import {Dialog} from '../../../kit/overlays/Dialog';
 import {BackupConfirmationDialog, BackupList, BackupPassphraseDialog, ServerFolderPicker, SettingsAction} from '../../../kit/settings';
 import type {SettingsBackupSource, SettingsRestoreSelection} from '../backup-source';
+import {isAuthenticationFailure} from '@core/backups.ts';
+import {RestoreStatus} from './RestoreStatus';
 import {protectedRestoreResult} from './restore';
 import styles from './server.module.css';
 
@@ -91,25 +93,26 @@ export function StorageBackups(props: BackupSurfaceProps) {
     catch (error) {if (view.active && view.protected === held && !signal.aborted && protectedRestoreResult(error) === 'unopened') return 'unopened' as const;throw error;}
   };
   if (!document) return <p role="status">{t('next.settings.loading')}</p>;
-  if (!document.backups.length) return <p className={styles.backupEmpty}>{t('web.maintenance.noBackups')}</p>;
   const open = (mode: 'restore' | 'delete', backup: BackupSummary) => {
     if (!view.active || !props.isCurrent() || !props.source.getSnapshot().document?.backups.includes(backup)) return;
     const next = {mode, backup, view};view.confirmation = next;setConfirm(next);
   };
   return <>
-    <BackupList backups={document.backups} busy={state.busy || !!document.running || !!document.restore} scopeKey={props.scopeKey}
+    <RestoreStatus {...props}/>
+    {!document.backups.length && <p className={styles.backupEmpty}>{t('web.maintenance.noBackups')}</p>}
+    <BackupList backups={document.backups} busy={state.busy || !!document.running || !!document.restore && !document.restore.errorCode} scopeKey={props.scopeKey}
       isCurrent={props.isCurrent} subscribeAuthority={props.subscribe} format={defaultI18n}
       requestRestore={backup => open('restore', backup)} requestDelete={backup => open('delete', backup)} />
     {confirmation && <BackupConfirmationDialog open mode={confirmation.mode} backup={confirmation.backup} scopeKey={props.scopeKey} isCurrent={props.isCurrent}
-      subscribeAuthority={props.subscribe} format={defaultI18n} submit={submit} onClose={closeConfirmation} onFailure={props.reportError} />}
+      subscribeAuthority={props.subscribe} format={defaultI18n} submit={submit} onClose={closeConfirmation} onFailure={error => {closeConfirmation();if (isAuthenticationFailure(error)) props.reportError(error);}} />}
     <BackupPassphraseDialog open={!!protectedCurrent} mode="restore" scopeKey={props.scopeKey} isCurrent={props.isCurrent} subscribeAuthority={props.subscribe}
-      submit={openPassphrase} onDone={closeProtected} onFailure={() => props.reportError(new Error('backup_passphrase_rejected'))} onClose={closeProtected} />
+      submit={openPassphrase} onDone={closeProtected} onFailure={() => {if (!props.source.getSnapshot().settings) props.reportError(new Error('backup_scope_ended'));}} onClose={closeProtected} />
   </>;
 }
 
 /** File selection, confirmation and the passphrase step each own their exact lifetime. */
 export function StorageRestoreFile(props: BackupSurfaceProps & Readonly<{api: LibraryContentApi}>) {
-  const state = useBackups(props), busyNow = state.busy || !!state.document?.running || !!state.document?.restore, view = useRestoreView(props);
+  const state = useBackups(props), busyNow = state.busy || !!state.document?.running || !!state.document?.restore && !state.document.restore.errorCode, view = useRestoreView(props);
   const [picker, setPicker] = useState<object>(), [chosen, setChosen] = useState<{path: string; view: RestoreView}>(), [busy, setBusy] = useState(false);
   const [protectedSelection, setProtectedSelection] = useState<ProtectedSelection>();
   const cancelButton = useRef<HTMLButtonElement>(null), opener = useRef<HTMLButtonElement>(null);
@@ -129,7 +132,7 @@ export function StorageRestoreFile(props: BackupSurfaceProps & Readonly<{api: Li
       if (selection.encrypted) {setProtectedSelection(handoff(props, view, selection));view.choice = undefined;setChosen(undefined);return;}
       await props.source.restore(selection, undefined, controller.signal);
       if (current()) close();
-    } catch (error) {if (current()) props.reportError(error);}
+    } catch (error) {if (current()) {close();if (isAuthenticationFailure(error)) props.reportError(error);}}
     finally {if (view.request === controller) {view.request = undefined;if (view.active) setBusy(false);}}
   };
   return <>
@@ -147,6 +150,6 @@ export function StorageRestoreFile(props: BackupSurfaceProps & Readonly<{api: Li
         try {const result = await props.source.restore(held.selection, passphrase, signal);if (!result?.staged) throw new Error('restore_not_confirmed');if (view.active && view.protected === held) closeProtected();return 'done' as const;}
         catch (error) {if (view.active && view.protected === held && !signal.aborted && protectedRestoreResult(error) === 'unopened') return 'unopened' as const;throw error;}
       }}
-      onDone={closeProtected} onFailure={() => props.reportError(new Error('backup_passphrase_rejected'))} onClose={closeProtected} />
+      onDone={closeProtected} onFailure={() => {if (!props.source.getSnapshot().settings) props.reportError(new Error('backup_scope_ended'));}} onClose={closeProtected} />
   </>;
 }

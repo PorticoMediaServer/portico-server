@@ -1,3 +1,6 @@
+import type {MessageId} from '@i18n';
+import type {RestoreRefusalCode} from '@core/administration.ts';
+
 /** The one honest answer for a protected restore the server refuses to open (v2 Root §1). */
 export type ProtectedRestoreResult = 'unopened' | 'failed';
 
@@ -10,3 +13,12 @@ export type ProtectedRestoreResult = 'unopened' | 'failed';
 export function protectedRestoreResult(error: unknown): ProtectedRestoreResult {
   return (error as {code?: unknown})?.code === 'restore_integrity_failed' ? 'unopened' : 'failed';
 }
+
+export const restoreRefusalMessage: Readonly<Record<RestoreRefusalCode, MessageId>> = Object.freeze({
+  restore_lock_unavailable: 'web.maintenance.restoreLockUnavailable',
+  restore_source_invalid: 'web.maintenance.restoreSourceInvalid',
+  restore_pre_release: 'web.maintenance.restorePreRelease',
+  restore_integrity_failed: 'web.maintenance.restoreIntegrityFailed',
+  restore_not_portico: 'web.maintenance.restoreNotPortico',
+  insufficient_disk: 'web.maintenance.restoreNoSpace',
+});
