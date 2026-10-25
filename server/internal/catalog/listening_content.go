@@ -308,6 +308,12 @@ func (s *Service) listeningContent(r ContentRequest, lib Library) (ContentEnvelo
 			member, memberArgs = ` AND context.series_key=?`, []any{lib.ID, key}
 		}
 		sections = append(sections, listeningSection{"books", "Books", "grid", "book", "book", books + member, memberArgs, false, ""})
+		if r.View == "book_series" {
+			// collections 41c/45: a series page names its author as a link to the
+			// author destination. The author navigation id is the same catalog
+			// identity the book page's own context section uses.
+			sections = append(sections, listeningSection{"context", "Author", "list", "context", "", `SELECT ` + listeningGroupNavigationID + ` id,g.id entity_id,g.name title,'author' subtitle,g.name ordering,0 n,0 chapter_index FROM catalog_book_groups series JOIN catalog_book_group_members member ON member.group_id=series.id JOIN catalog_book_context context ON context.book_id=member.book_id AND context.has_file=1 JOIN catalog_book_group_members authorship ON authorship.book_id=member.book_id JOIN catalog_book_groups g ON g.id=authorship.group_id AND g.kind=1 AND g.retired=0 JOIN catalog_libraries l ON l.id=g.library_id WHERE series.token=? AND l.library_id=? AND series.kind=2 AND series.retired=0 GROUP BY g.id`, []any{r.EntityID, lib.ID}, false, ""})
+		}
 	case "book":
 		if lib.Kind != "audiobook" {
 			return out, sql.ErrNoRows
