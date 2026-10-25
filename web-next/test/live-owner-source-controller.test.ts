@@ -1,13 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {LiveSourceController, type OwnerLiveSource} from '../src/screens/live/owner/source-controller.ts';
-const source: OwnerLiveSource = {id: 'source/a', name: 'Stored source', revision: 7, state: 'ready', tunerCount: 2, tunerCountMode: 'configured', generation: 'g', publishedAt: '', channels: 12, programmes: 20};
-const document = {serverId: 'server', sources: [source], refresh: []};
+import {storedSource as source, document, actionReceipt} from './live-owner-fixtures.ts';
 test('owner actions use displayed revision and encoded source, then read back', async () => {
   const calls: unknown[][] = [];
-  const controller = new LiveSourceController({async request<T>(...args: unknown[]) {calls.push(args);return document as T;}}, 'server', () => true, () => {}, () => 'operation-id');
+  const controller = new LiveSourceController({async request<T>(...args: unknown[]) {calls.push(args);return (args[1] === 'POST' ? actionReceipt : document) as T;}}, 'server', () => true, () => {}, () => 'operation-id');
   await controller.load();assert.equal(await controller.act(source, 'toggle'), true);
-  assert.deepEqual(calls[1]?.slice(0, 3), ['/v1/admin/live-sources/source%2Fa/enabled', 'POST', {expectedRevision: 7, requestId: 'operation-id', enabled: false}]);
+  assert.deepEqual(calls[1]?.slice(0, 3), [`/v1/admin/live-sources/${source.id}/enabled`, 'POST', {expectedRevision: 7, requestId: 'operation-id', enabled: false}]);
   assert.equal(calls.length, 3);controller.dispose();
 });
 test('retired identity discards a late list and prevents writes', async () => {
@@ -18,26 +17,26 @@ test('retired identity discards a late list and prevents writes', async () => {
 });
 test('stale displayed rows cannot remove a replacement source revision', async () => {
   let calls = 0;
-  const controller = new LiveSourceController({async request<T>() {calls++;return {serverId: 'server', sources: [{...source, revision: 8}], refresh: []} as T;}}, 'server', () => true, () => {});
+  const controller = new LiveSourceController({async request<T>() {calls++;return {...document, sources: [{...source, revision: 8}]} as T;}}, 'server', () => true, () => {});
   await controller.load();assert.equal(await controller.act(source, 'remove'), false);assert.equal(calls, 1);controller.dispose();
 });
 test('conflicting removal refreshes facts without replaying the command', async () => {
   let reads = 0, writes = 0;
   const conflict = {status: 409};
   const controller = new LiveSourceController({async request<T>(_path: string, method?: string) {if (method === 'POST') {writes++;throw conflict;}reads++;return document as T;}}, 'server', () => true, () => {});
-  await controller.load();assert.equal(await controller.act(source, 'remove'), false);assert.equal(writes, 1);assert.equal(reads, 2);assert.equal(controller.getSnapshot().error, conflict);controller.dispose();
+  await controller.load();assert.equal(await controller.act(source, 'remove'), false);assert.equal(writes, 1);assert.equal(reads, 2);assert.deepEqual(controller.getSnapshot().error, {status: 409, code: 'invalid_response'});controller.dispose();
 });
 test('authorization failure retires the controller and reports the boundary', async () => {
   const forbidden = {status: 403};let reported: unknown;
   const controller = new LiveSourceController({async request<T>(): Promise<T> {throw forbidden;}}, 'server', () => true, error => {reported = error;});
-  await controller.load();assert.equal(reported, forbidden);assert.equal(await controller.act(source, 'refresh'), false);
+  await controller.load();assert.deepEqual(reported, {status: 403, code: 'invalid_response'});assert.equal(await controller.act(source, 'refresh'), false);
 });
 
 test('transport retry retains the logical write id', async () => {
   const ids: unknown[] = [];let attempt = 0, serial = 0;
   const controller = new LiveSourceController({async request<T>(_path: string, method?: string, body?: unknown) {
     if (method === 'POST') {ids.push((body as {requestId: string}).requestId);if (++attempt === 1) throw {status: 503};}
-    return document as T;
+    return (method === 'POST' ? actionReceipt : document) as T;
   }}, 'server', () => true, () => {}, () => String(++serial));
   await controller.load();await controller.act(source, 'remove');await controller.act(source, 'remove');
   assert.deepEqual(ids, ['1', '1']);controller.dispose();
