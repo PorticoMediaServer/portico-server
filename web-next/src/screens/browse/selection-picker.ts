@@ -65,7 +65,7 @@ export class LibraryPickerProducer {
     }
     const targets = this.targets;
     if (!targets.length || targets.length > 256) throw new Error('picker-target-required');
-    if (!targets.every((item): item is SelectionItem & CatalogueSelectionIdentity => 'libraryId' in item && item.kind !== 'channel' && item.kind !== 'person')) throw new Error('picker-action-not-permitted');
+    if (!targets.every((item): item is SelectionItem & CatalogueSelectionIdentity => item.kind !== 'channel' && item.kind !== 'person' && 'libraryId' in item)) throw new Error('picker-action-not-permitted');
     if (new Set(targets.map(item => item.id)).size !== targets.length) throw new Error('picker-target-required');
     const picks: SelectedItem[] = [];
     let parents = false;

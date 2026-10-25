@@ -306,7 +306,7 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
       const operation = model.captureOperation();
       if (!operation || operation.target.mode !== 'explicit' || !model.getSnapshot().summary.every.queue) throw unavailable();
       const items = operation.target.items.map(pick => pick.item);
-      if (!items.every((item): item is SelectionItem & CatalogueSelectionIdentity => 'libraryId' in item && item.kind !== 'channel' && item.kind !== 'person')) throw unavailable();
+      if (!items.every((item): item is SelectionItem & CatalogueSelectionIdentity => item.kind !== 'channel' && item.kind !== 'person' && 'libraryId' in item)) throw unavailable();
       if (items.length !== request.items.length || items.some((item, index) => item.id !== request.items[index])) throw unavailable();
       return enqueueCatalogueSelection(queue, items, request.placement, {
         signal: AbortSignal.any([signal, life.signal, request.signal]),
