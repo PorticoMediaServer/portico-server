@@ -117,7 +117,7 @@ test('(h) an unavailable plan keeps the ordinary source and exposes availability
   const session = {id: 'ordinary', generation: 1, streamUrl: '/ordinary', mode: 'direct' as const, duration: 120, resumeSeconds: 0, audio};
   const service = new PlaybackService({createPlayback: async () => session, stopPlayback: async () => {}, progressPlayback: async () => {}}, () => 'request-unavailable');
   const render = new DecodeAudioRender(service, path => path, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
-  ctx.after(async () => {render.dispose();await service.stop();});
+  ctx.after(() => {render.dispose();service.leave();});
   await service.play('item', 0);
   const snapshot = service.getSnapshot();
   assert.equal(renderable(snapshot.session), false);
