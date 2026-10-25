@@ -88,7 +88,19 @@ func readingProjectionDrain(t *testing.T, c *catalogtest.Catalog) {
 func TestReadingProjectionBoundsResumeAndPublishesOnlyAfterCleanup(t *testing.T) {
 	c, library, items := readingProjectionFixture(t, 105)
 	readingProjectionGeneration(t, c, library, false)
-	readingProjectionStep(t, c, 1000) // Captures this generation, without deleting rows.
+	// A cold library first adopts the current publication rule. This bounded
+	// maintenance step must not scan titles or publish a ready generation.
+	if n := readingProjectionStep(t, c, 1000); n != 1 {
+		t.Fatalf("publication rule adoption visited %d inputs, want 1", n)
+	}
+	var rule, build, scanned int64
+	if err := c.DB.QueryRow(`SELECT publication_rule_version,build_generation,after_item FROM reading_attribution_state WHERE library_id=?`, library).Scan(&rule, &build, &scanned); err != nil || rule != compactcatalog.ReadingPublicationTypeRuleVersion || build != 0 || scanned != 0 {
+		t.Fatalf("publication rule adoption: rule=%d build=%d after=%d err=%v", rule, build, scanned, err)
+	}
+	readingProjectionGeneration(t, c, library, false)
+	if n := readingProjectionStep(t, c, 1000); n != 1 {
+		t.Fatalf("generation capture visited %d inputs, want 1", n)
+	}
 	if n := readingProjectionStep(t, c, 1000); n != 100 {
 		t.Fatalf("one worker call visited %d inputs, want 100", n)
 	}
