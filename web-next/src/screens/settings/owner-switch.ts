@@ -3,7 +3,7 @@ import {HttpLocalApi, type LocalSession} from '@core/index.ts';
 import type {DirectSignIn} from '@core/profile-management.ts';
 import type {SignInKind} from '@core/app-sessions.ts';
 import {passwordStrength} from '@core/password-strength.ts';
-import type {LocalMoveCustody} from '../../platform/local-move';
+import {LocalMoveCustody} from '../../platform/local-move';
 import {routePath} from '../../../../packages/contracts/src/routes.ts';
 import {RouteError, routeOrigin} from '@core/route-identity.ts';
 import {createBrowserOwnerClaim, type BrowserOwnerClaim} from '../../platform/owner-claim';
@@ -85,29 +85,37 @@ export class SettingsOwnerSwitch {
   async confirmLocal(credentials: Readonly<{username: string; password: string}>, confirmation: string): Promise<LocalMoveCustody> {
     const preview = this.state.preview;
     if (!preview || preview.to !== 'local' || this.state.confirmed) throw new Error('A fresh local move preview is required.');
-    if (typeof credentials.username !== 'string' || !credentials.username.trim() || credentials.username.length > 64 || credentials.username !== credentials.username.trim()) throw new Error('Enter the local owner username.');
-    if (typeof credentials.password !== 'string' || credentials.password.length > 72 || !passwordStrength(credentials.password).acceptable) throw new Error('Choose a stronger local owner password.');
+    // Read the caller's draft once, before any await.
+    const username = typeof credentials.username === 'string' ? credentials.username.trim() : '';
+    const password = typeof credentials.password === 'string' ? credentials.password : '';
+    if (!username || username.length > 64 || username !== credentials.username) throw new Error('Enter the local owner username.');
+    if (!password || password.length > 72 || !passwordStrength(password).acceptable) throw new Error('Choose a stronger local owner password.');
     const pin = this.api.getRouteConnection()?.pin;
     if (!pin) throw new Error('The server identity is not current.');
     if (!this.options.selectionRevision) throw new Error('The saved server selection is unavailable.');
     const operation = this.operation();
-    let grant: Extract<DirectSignIn, {kind: 'signed-in'}> | undefined;
+    let custody: LocalMoveCustody | undefined;
     try {
       const revision = await this.options.selectionRevision();
       operation.check();
-      const result: AccountMoveConfirmation = await this.moves.confirm({moveId: preview.id, expectedRevision: preview.revision, confirmation, username: credentials.username, password: credentials.password}, operation.signal);
+      const result: AccountMoveConfirmation = await this.moves.confirm({moveId: preview.id, expectedRevision: preview.revision, confirmation, username, password}, operation.signal);
+      // Register the returned grant immediately: from here every later guard or
+      // publication failure still has custody to retire.
+      if (result.kind === 'local' && result.signIn.kind === 'signed-in') {
+        const grant = result.signIn;
+        custody = new LocalMoveCustody({grant, issuer: Object.freeze({origin: this.api.baseUrl, pin}), serverId: preview.serverId, selectionRevision: revision},
+          () => this.retire(grant.session));
+      }
       operation.check();
-      if (result.kind !== 'local' || result.signIn.kind !== 'signed-in') throw new Error('Unexpected owner move continuation.');
-      if (result.signIn.snapshot.serverId !== preview.serverId) throw new Error('The owner move changed.');
-      grant = result.signIn;
+      if (!custody) throw new Error('Unexpected owner move continuation.');
+      const confirmedCustody = custody;
       if (await this.options.selectionRevision() !== revision) throw new Error('The server selection changed.');
-      const captured = grant;
+      operation.check();
       this.publish({busy: false, confirmed: false});
-      return Object.freeze({grant: captured, issuer: Object.freeze({origin: this.api.baseUrl, pin}), serverId: preview.serverId, selectionRevision: revision,
-        retire: () => this.retire(captured.session)});
+      operation.check();
+      return confirmedCustody;
     } catch (error) {
-      // The fresh grant is ours until admission takes custody; revoke exactly it.
-      if (grant) await this.retire(grant.session).catch(() => {});
+      if (custody) await custody.retire();
       throw error;
     } finally {operation.finish();}
   }

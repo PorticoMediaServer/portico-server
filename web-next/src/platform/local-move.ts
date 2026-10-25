@@ -1,23 +1,49 @@
 import type {DirectSignIn} from '@core/profile-management.ts';
 import type {ServerPin} from '@core/route-identity.ts';
 
-/** One completed owner move to local, held until the sign-in entry admits it.
- * The grant is single-use and never enters a URL, storage or public state; the
- * issuer facts are the ones captured when the server confirmed the move, and
- * `retire` revokes exactly that fresh grant through its original issuer. */
-export type LocalMoveCustody = Readonly<{
+/** The facts a completed owner move to local carries. The grant is single-use and
+ * never enters a URL, storage or public state; the issuer facts are the ones
+ * captured when the server confirmed the move. */
+export type LocalMove = Readonly<{
   grant: Extract<DirectSignIn, {kind: 'signed-in'}>;
   issuer: Readonly<{origin: string; pin: ServerPin}>;
   serverId: string;
   /** The app's saved-selection revision at confirmation; not the move revision. */
   selectionRevision: number;
-  retire: () => Promise<void>;
 }>;
 
-/** In-memory, single-use handoff owned outside the retiring Settings view. The
- * sign-in screen is the one entry instance that consumes it, so its exact
- * challenge/profile state stays authoritative; nothing is persisted. */
+/** One-shot custody of a fresh grant. It is owned until admission transfers it;
+ * after that the entry's accept owns cleanup, so a repeated claim, admission or
+ * discard must never retire the now-adopted family. */
+export class LocalMoveCustody {
+  private state: 'owned' | 'transferring' | 'transferred' | 'retired' = 'owned';
+  private readonly facts: LocalMove;
+  private readonly revoke: () => Promise<void>;
+  constructor(facts: LocalMove, revoke: () => Promise<void>) {this.facts = Object.freeze(facts);this.revoke = revoke;}
+  /** The facts, exactly once, while this custody is still owned. */
+  claim = (): LocalMove | undefined => {
+    if (this.state !== 'owned') return undefined;
+    this.state = 'transferring';
+    return this.facts;
+  };
+  /** Admission has taken the grant: accept owns it from here; retire is disarmed. */
+  transfer = (): void => {if (this.state === 'transferring') this.state = 'transferred';};
+  /** Put an unclaimed/transferring custody back so a retry can claim it. */
+  release = (): void => {if (this.state === 'transferring') this.state = 'owned';};
+  /** Revoke only while still ours; never after transfer, and only once. */
+  retire = async (): Promise<void> => {
+    if (this.state === 'transferred' || this.state === 'retired') return;
+    this.state = 'retired';
+    await this.revoke().catch(() => {});
+  };
+}
+
+/** In-memory, single-use handoff owned outside the retiring Settings view. */
 let pending: LocalMoveCustody | undefined;
-export function handOffLocalMove(custody: LocalMoveCustody): void {pending = custody;}
+export function handOffLocalMove(custody: LocalMoveCustody): void {
+  const previous = pending; pending = custody;
+  // A replaced handoff is retired only while it is still unclaimed.
+  if (previous && previous !== custody) void previous.retire();
+}
 export function takeLocalMove(): LocalMoveCustody | undefined {const value = pending; pending = undefined; return value;}
-export function discardLocalMove(): void {void pending?.retire().catch(() => {});pending = undefined;}
+export function discardLocalMove(): void {const value = pending; pending = undefined; if (value) void value.retire();}

@@ -251,34 +251,33 @@ export class BrowserAccountEntry {
  }
  /** Complete an owner-initiated move to local with the custody its confirmation
   * produced. The origin, pin and app-selection revision are the captured issuer
-  * facts, not a caller-supplied guess; the grant is admitted by the same `accept`
-  * sign-in uses, so revision, PIN/two-step challenge, remembered-server and
-  * native-remember rules all run. Before that handoff the fresh grant is still
-  * ours, so every early exit retires exactly it through its original issuer; after
-  * `accept` is entered, accept owns cleanup. */
+  * facts; the grant is admitted by the same `accept` sign-in uses, so revision,
+  * PIN/two-step challenge, remembered-server and native-remember rules all run.
+  * Custody is one-shot: it is claimed only once, retired only while still ours,
+  * and disarmed at the accept handoff so no later path can revoke an adopted
+  * family. */
  async completeLocalOwnerMove(custody: LocalMoveCustody): Promise<boolean> {
-  const {grant, issuer, serverId, selectionRevision, retire} = custody;
-  if (grant.snapshot.serverId !== serverId) {await retire().catch(() => {});throw new RouteError('identity_mismatch', 'The server identity changed.');}
-  const inspected = await this.inspect(issuer.origin);
-  if (!inspected?.current()) {await retire().catch(() => {});return false;}
-  const api = inspected.api, state = this.state;
-  const pin = api?.getRouteConnection()?.pin;
-  if (!api || !state.server || state.server.id !== serverId || state.server.signIn !== 'local' || !pin || !sameServerPin(pin, issuer.pin)) {
-   await retire().catch(() => {});return false;
-  }
-  const op = this.operation();
-  let handed = false;
   try {
+   const move = custody.claim();
+   if (!move) return false;
+   const {grant, issuer, serverId, selectionRevision} = move;
+   if (grant.snapshot.serverId !== serverId) throw new RouteError('identity_mismatch', 'The server identity changed.');
+   const inspected = await this.inspect(issuer.origin);
+   if (!inspected?.current()) {await custody.retire();return false;}
+   const api = inspected.api, state = this.state;
+   const pin = api?.getRouteConnection()?.pin;
+   if (!api || !state.server || state.server.id !== serverId || state.server.signIn !== 'local' || !pin || !sameServerPin(pin, issuer.pin)) {
+    await custody.retire();return false;
+   }
+   const op = this.operation();
    const revision = (await this.ports.store.read()).revision;
-   if (!op.current()) {await retire().catch(() => {});return false;}
-   if (revision !== selectionRevision) {await retire().catch(() => {});throw new CodedError('cancelled', 'The server selection changed.');}
-   handed = true;
+   if (!op.current() || revision !== selectionRevision) {await custody.retire();return false;}
+   custody.transfer();
    await this.accept(grant, api, revision, op);
    return ['challenge', 'profiles', 'ready', 'change-password'].includes(this.getSnapshot().phase);
   } catch (error) {
-   // accept owns the grant once entered (it retires a failed admission itself);
-   // anything raised before that handoff leaves the fresh grant in our custody.
-   if (!handed) await retire().catch(() => {});
+   // retire() is idempotent and refuses after transfer, so accept's own cleanup wins.
+   await custody.retire();
    throw error;
   }
  }
