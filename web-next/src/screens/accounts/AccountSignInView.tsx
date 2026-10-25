@@ -125,6 +125,9 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
     onMoveCode={state.server.move === 'to_local' && !state.invitation ? () => openMember('code') : undefined} />;
   if (state.phase === 'portico' && state.server?.signIn === 'portico') return <PorticoServerSignIn serverName={state.server.name} busy={busy} error={failure} onContinue={continuePortico}
     moving={state.server.move === 'to_portico' && !state.invitation} onOldPassword={() => openMember('old-password')}/>;
+  if (!failure && (initializing || busy || state.phase === 'checking' || state.phase === 'profiles' || state.phase === 'ready')) return <AuthStage legal={false}>
+    <p role="status">{defaultI18n.t(state.phase === 'profiles' || state.phase === 'ready' ? 'auth.loadingProfiles' : 'status.loading')}</p>
+  </AuthStage>;
   return <AuthStage legal={false}><AuthError error={failure} />{Boolean(failure) && <>
     <Button onClick={reauthenticate}>{defaultI18n.t('action.tryAgain')}</Button>
     <Button onClick={cancel}>{defaultI18n.t('settings.switchServer')}</Button>
