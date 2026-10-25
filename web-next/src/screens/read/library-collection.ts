@@ -1,4 +1,4 @@
-import {ReadingError, type ReadingClient} from '@portico/client-core';
+import {ReadingError, type ReadingClient, type ReadingPeriodicalType, type ReadingPeriodicalGroup, type ReadingPeriodicalIssue} from '@portico/client-core';
 import {createWindowedCollection} from '@core/collections/windowed.ts';
 
 export type ReadingLibraryItem = Awaited<ReturnType<ReadingClient['list']>>['items'][number];
@@ -18,6 +18,18 @@ export function createReadingCollection(client: ReadingClient, libraryId: string
 export function createReadingSeriesCollection(client: ReadingClient, libraryId: string, seriesId: string) {
   return cursorCollection<ReadingLibraryItem>(libraryId, item => item.id, item => item.libraryId,
     (cursor, limit, signal) => client.series(libraryId, seriesId, {cursor, limit}, signal));
+}
+
+export function createReadingPeriodicalGroupsCollection(client: ReadingClient, libraryId: string, kind: ReadingPeriodicalType) {
+  return cursorCollection<ReadingPeriodicalGroup>(libraryId, group => group.id, group => group.latest.item.libraryId,
+    async (cursor, limit, signal) => {
+      const page = await client.periodicalGroups(libraryId, kind, {cursor, limit}, signal);
+      return {items: page.groups, nextCursor: page.nextCursor};
+    });
+}
+export function createReadingPeriodicalIssuesCollection(client: ReadingClient, libraryId: string, seriesId: string, kind: ReadingPeriodicalType) {
+  return cursorCollection<ReadingPeriodicalIssue>(libraryId, issue => issue.item.id, issue => issue.item.libraryId,
+    (cursor, limit, signal) => client.periodicalIssues(libraryId, seriesId, kind, {cursor, limit}, signal));
 }
 
 /** The canonical recent index already selects the actual progressed version.
