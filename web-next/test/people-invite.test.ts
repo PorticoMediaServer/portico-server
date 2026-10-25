@@ -1,0 +1,63 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {InviteAttempts} from '../src/screens/settings/people-invite.ts';
+
+const input = {role: 'member', allowedLibraries: ['one', 'two'], expiresInHours: 168, notes: 'private note'};
+let counter = 0;
+const ids = () => 'op-' + ++counter;
+
+test('one explicit Invite owns one body and one operation id', () => {
+  counter = 0;
+  const attempts = new InviteAttempts(ids);
+  const first = attempts.begin(input);
+  assert.equal(first?.operationId, 'op-1');
+  assert.deepEqual(first?.body, {role: 'member', allowedLibraries: ['one', 'two'], expiresInHours: 168, notes: 'private note', operationId: 'op-1'});
+  assert.equal(attempts.begin(input), undefined, 'a second click while the first is in flight sends nothing');
+  assert.equal(counter, 1, 'no second operation id is minted');
+});
+
+test('an uncertain outcome keeps the same attempt for the next explicit retry', () => {
+  counter = 0;
+  const attempts = new InviteAttempts(ids);
+  const first = attempts.begin(input);
+  attempts.failed({status: 503});
+  const retry = attempts.begin(input);
+  assert.equal(retry?.operationId, first?.operationId);
+  assert.deepEqual(retry?.body, first?.body);
+  assert.equal(counter, 1);
+});
+
+test('a definite refusal did not create anything, so the next Invite is a new command', () => {
+  counter = 0;
+  const attempts = new InviteAttempts(ids);
+  attempts.begin(input);
+  attempts.failed({status: 403});
+  const next = attempts.begin(input);
+  assert.equal(next?.operationId, 'op-2');
+});
+
+test('a created invitation ends the attempt and the next Invite starts a new one', () => {
+  counter = 0;
+  const attempts = new InviteAttempts(ids);
+  attempts.begin(input);
+  attempts.created();
+  assert.equal(attempts.pending, undefined);
+  assert.equal(attempts.begin(input)?.operationId, 'op-2');
+});
+
+test('a retired workspace never begins, reuses or publishes an attempt again', () => {
+  counter = 0;
+  const attempts = new InviteAttempts(ids);
+  attempts.begin(input);
+  attempts.retire();
+  assert.equal(attempts.begin(input), undefined);
+  assert.equal(attempts.pending, undefined);
+  assert.equal(counter, 1);
+});
+
+test('the chosen values, not defaults, are what the create carries', () => {
+  counter = 0;
+  const attempts = new InviteAttempts(ids);
+  const chosen = {role: 'administrator', allowedLibraries: ['films'], expiresInHours: 24, notes: 'for the review'};
+  assert.deepEqual(attempts.begin(chosen)?.body, {...chosen, operationId: 'op-1'});
+});
