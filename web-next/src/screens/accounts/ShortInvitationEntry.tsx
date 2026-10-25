@@ -40,6 +40,7 @@ export type ShortInvitationEntryProps = Readonly<{
   /** Test seam only; the real entry keeps its own browser custody. */
   createEntry?: () => BrowserAccountEntry;
   initialAddress?: string;
+  initialCode?: string;
 }>;
 
 /** The ruling-10 initial Join step. The same entry instance carries the
@@ -55,9 +56,9 @@ export function ShortInvitationEntry(props: ShortInvitationEntryProps) {
   return entry ? <ShortInvitationOperation {...props} entry={entry} /> : null;
 }
 
-function ShortInvitationOperation({entry, onBack, onJoined, account, signedOutContent, onDifferentAccount, initialAddress = ''}: ShortInvitationEntryProps & {entry: BrowserAccountEntry}) {
+function ShortInvitationOperation({entry, onBack, onJoined, account, signedOutContent, onDifferentAccount, initialAddress = '', initialCode = ''}: ShortInvitationEntryProps & {entry: BrowserAccountEntry}) {
   const state = useSyncExternalStore(entry.subscribe, entry.getSnapshot);
-  const [address, setAddress] = useState(initialAddress), [code, setCode] = useState('');
+  const [address, setAddress] = useState(initialAddress), [code, setCode] = useState(initialCode);
   const delivered = useRef<unknown>(undefined);
   useEffect(() => {
     if (state.phase !== 'joined' || !state.joined || delivered.current === state.joined) return;

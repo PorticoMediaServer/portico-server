@@ -24,14 +24,14 @@ export function JoinPage({account, link, onBack}: {account: ServicesAccount; lin
 
 /** The typed address/code step. It carries only a verified destination out,
  * exactly as JoinPage does; no credential or long link is serialized. */
-export function ShortJoinPage({account, onBack}: {account: ServicesAccount; onBack: () => void}) {
+export function ShortJoinPage({account, onBack, initialCode}: {account: ServicesAccount; onBack: () => void; initialCode?: string}) {
   const session = useSyncExternalStore(account.service.subscribe, account.service.getSnapshot).session;
   const current = useMemo(() => session ? servicesInvitationAccount(account, session) : undefined, [account, session]);
   const [error, setError] = useState<unknown>();
   const different = () => {
     if (session) void account.service.logoutIfCurrent(accountIdentity(session)).catch(setError);
   };
-  return <ShortInvitationEntry account={current} onBack={onBack} onDifferentAccount={different}
+  return <ShortInvitationEntry initialCode={initialCode} account={current} onBack={onBack} onDifferentAccount={different}
     signedOutContent={<><HostedError error={error} /><ServicesAuthForm account={account} embedded invitation onSignedIn={() => {}} /></>}
     onJoined={destination => location.assign(destination.origin)} />;
 }

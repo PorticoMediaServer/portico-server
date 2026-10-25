@@ -6,7 +6,8 @@ import {ServicesAuthStage, HostedError, ServicesNotice} from '../kit/accounts/Se
 import {ServicesHeader, ServicesStart} from '../kit/accounts/ServicesWorkspace';
 import {ServerlessAccountMenu} from '../screens/accounts/ServerlessAccountMenu';
 import {AccountPage} from './AccountPage';
-import {JoinPage} from './JoinPage';
+import {JoinPage, ShortJoinPage} from './JoinPage';
+import {parseShortInvitationCode} from '@core/short-invitation-code.ts';
 import {distributionPage} from './distribution';
 import {servicesI18n} from './i18n';
 import {accountIdentity, type ServicesAccount} from './session';
@@ -34,11 +35,12 @@ function BoundHome({account, session}: {account: ServicesAccount; session: Omit<
 }
 function Start({account, session}: {account: ServicesAccount; session: Omit<HostedSession, 'refreshToken'>}) {
   const {t} = useMemo(servicesI18n, []);
-  const [invitation, setInvitation] = useState(''), [join, setJoin] = useState<JoinLink>();
+  const [invitation, setInvitation] = useState(''), [join, setJoin] = useState<JoinLink>(), [shortJoin, setShortJoin] = useState<string>();
   const [error, setError] = useState<unknown>(), [invalid, setInvalid] = useState(false);
   const inspect = (input = invitation) => {
-    const parsed = parseJoinLink(input.trim());
-    setInvalid(!parsed); setError(undefined);
+    const value = input.trim(), parsed = parseJoinLink(value), short = parseShortInvitationCode(value);
+    setInvalid(!parsed && !short); setError(undefined);
+    if (short) setShortJoin(value);
     if (parsed) setJoin(parsed);
   };
   const run = (work: () => Promise<void>) => { void Promise.resolve().then(work).catch(setError); };
@@ -48,6 +50,7 @@ function Start({account, session}: {account: ServicesAccount; session: Omit<Host
     const visible = id === 'setup' && !target?.getClientRects().length ? document.getElementById('setup-details') : target;
     visible?.scrollIntoView({block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
   };
+  if (shortJoin !== undefined) return <ShortJoinPage account={account} initialCode={shortJoin} onBack={() => setShortJoin(undefined)} />;
   if (join) return <JoinPage account={account} link={join} onBack={() => setJoin(undefined)} />;
   const name = session.account.displayName || session.account.username;
   return <ServicesStart header={<ServicesHeader notifications={false} avatar={<ServerlessAccountMenu username={session.account.username} name={name} t={t}
