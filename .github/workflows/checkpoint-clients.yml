@@ -1,0 +1,123 @@
+name: Checkpoint corrective clients
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact published corrective checkpoint source
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: checkpoint-corrective-clients
+  cancel-in-progress: false
+jobs:
+  clients:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Validate frozen source
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: '[[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]'
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+      - name: Verify checkout and prepare quiet logs
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          mkdir -p "$RUNNER_TEMP/checkpoint-clients"
+          cat > "$RUNNER_TEMP/checkpoint-command" <<'SH'
+          #!/usr/bin/env bash
+          label="$1"
+          shift
+          "$@" > "$RUNNER_TEMP/checkpoint-clients/$label.log" 2>&1
+          result=$?
+          printf 'exit=%s\n' "$result"
+          tail -n 20 "$RUNNER_TEMP/checkpoint-clients/$label.log"
+          exit "$result"
+          SH
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - name: Prepare fixture tools and Go licence inputs
+        run: |
+          bash "$RUNNER_TEMP/checkpoint-command" tools bash -c 'sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg && cd server && go mod download'
+      - id: deps
+        name: Install exact client dependencies
+        run: bash "$RUNNER_TEMP/checkpoint-command" deps npm ci --no-audit --no-fund
+      - id: contract-tests
+        name: contract-tests
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: bash "$RUNNER_TEMP/checkpoint-command" contract-tests node --experimental-strip-types --test packages/contracts/test/*.test.ts
+      - id: contract-build
+        name: contract-build
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: bash "$RUNNER_TEMP/checkpoint-command" contract-build npm run build --prefix packages/contracts
+      - id: core
+        name: core
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: bash "$RUNNER_TEMP/checkpoint-command" core npm run test:core
+      - id: cast
+        name: cast
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: bash "$RUNNER_TEMP/checkpoint-command" cast npm run test:cast
+      - id: legacy-checks
+        name: legacy-checks
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: bash "$RUNNER_TEMP/checkpoint-command" legacy-checks npm run check --workspace portico-web
+      - id: legacy-units
+        name: legacy-units
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' && steps.legacy-checks.outcome != 'success' }}
+        run: bash "$RUNNER_TEMP/checkpoint-command" legacy-units npm test --workspace portico-web
+      - id: legacy-build
+        name: legacy-build
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: bash "$RUNNER_TEMP/checkpoint-command" legacy-build npm run build --workspace portico-web
+      - id: player-checks
+        name: player-checks
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: bash "$RUNNER_TEMP/checkpoint-command" player-checks npm run check:player
+      - id: player-units
+        name: player-units
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' && steps.player-checks.outcome != 'success' }}
+        run: bash "$RUNNER_TEMP/checkpoint-command" player-units npm run test:player
+      - id: reader-checks
+        name: reader-checks
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: bash "$RUNNER_TEMP/checkpoint-command" reader-checks npm run check:reader
+      - id: reader-units
+        name: reader-units
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' && steps.reader-checks.outcome != 'success' }}
+        run: bash "$RUNNER_TEMP/checkpoint-command" reader-units npm run test:reader
+      - id: next-checks
+        name: next-checks
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: bash "$RUNNER_TEMP/checkpoint-command" next-checks npm run check --workspace portico-web-next
+      - id: next-types
+        name: next-types
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: bash "$RUNNER_TEMP/checkpoint-command" next-types npx --no-install tsc --noEmit -p web-next/tsconfig.json
+      - id: next-units
+        name: next-units
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' && steps.next-checks.outcome != 'success' }}
+        run: bash "$RUNNER_TEMP/checkpoint-command" next-units npm test --workspace portico-web-next
+      - id: next-build
+        name: next-build
+        if: ${{ !cancelled() && steps.deps.outcome == 'success' }}
+        run: bash "$RUNNER_TEMP/checkpoint-command" next-build npm run build --workspace portico-web-next
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ always() }}
+        with:
+          name: checkpoint-clients-${{ inputs.source_sha }}
+          path: ${{ runner.temp }}/checkpoint-clients/
+          if-no-files-found: error
+          retention-days: 14
