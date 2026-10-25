@@ -3,7 +3,8 @@ import {routePath} from '../../../../../packages/contracts/src/routes.ts';
 import type {GetDownloadUsageResponse} from '../../../../../packages/contracts/src/types.ts';
 import type {StorageTransport} from '../server/storage-source';
 
-type UsagePage = Readonly<{rows: readonly Readonly<GetDownloadUsageResponse['profiles'][number]>[]; next: string}>;
+export type DownloadsUsageRow = Readonly<GetDownloadUsageResponse['profiles'][number]>;
+export type UsagePage = Readonly<{rows: readonly DownloadsUsageRow[]; next: string}>;
 export type DownloadsUsageSnapshot = Readonly<{phase: 'idle' | 'loading' | 'ready' | 'error'; page?: UsagePage; previous: boolean}>;
 const empty: DownloadsUsageSnapshot = Object.freeze({phase: 'idle', previous: false});
 
@@ -22,8 +23,9 @@ export class DownloadsUsageSource {
   getSnapshot = () => this.current() ? this.state : empty;
   subscribe = (listener: () => void) => {this.listeners.add(listener);return () => {this.listeners.delete(listener);};};
   private publish(state: DownloadsUsageSnapshot) {if (this.current()) {this.state = Object.freeze(state);for (const listener of this.listeners) listener();}}
-  load = async (direction: 'initial' | 'retry' | 'next' | 'previous' = 'initial'): Promise<void> => {
-    const retry = direction === 'retry';
+  load = async (direction: 'initial' | 'retry' | 'refresh' | 'next' | 'previous' = 'initial'): Promise<void> => {
+    const retry = direction === 'retry' || direction === 'refresh';
+    if (direction === 'refresh') direction = 'initial';
     if (direction === 'retry') direction = this.lastDirection;
     if (!this.current() || this.flight || direction === 'initial' && !retry && this.state.phase !== 'idle') return;
     const next = direction === 'next' ? this.state.page?.next : direction === 'previous' ? this.history.at(-1) : this.cursor;
@@ -53,5 +55,6 @@ export class DownloadsUsageSource {
     }
     finally {if (this.flight === request) this.flight = undefined;}
   };
+  refresh = () => this.load('refresh');
   dispose() {this.lifetime.abort();this.flight?.abort();this.flight = undefined;this.state = empty;this.history = [];this.listeners.clear();}
 }
