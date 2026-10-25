@@ -92,7 +92,7 @@ func firstApprovedCreditsTx(tx *sql.Tx, item string) (sql.NullFloat64, error) {
  JOIN inventory_objects o ON o.asset_id=a.token AND o.retired=0 AND o.state='available'
  JOIN analysis_markers m ON m.object_id=o.id AND m.source_revision=o.revision
  WHERE i.public_id=pid_blob(?) AND m.kind='credits' AND m.deleted=0
- AND (m.approved=1 OR substr(m.provenance,1,?)=? AND m.provenance NOT LIKE '%semantic_ambiguous%' AND m.confidence>=? AND COALESCE(NULLIF((SELECT json_extract(d.body,'$.segmentDetection') FROM admin_documents d WHERE d.scope='library:'||l.library_id),'server'),(SELECT settings."library.segmentDetection" FROM server_settings AS settings WHERE settings.singleton=1),'standard')<>'off')
+ AND (m.approved=1 OR substr(m.provenance,1,?)=? AND m.provenance NOT LIKE '%semantic_ambiguous%' AND m.confidence>=? AND COALESCE((CASE (SELECT json_extract(d.body,'$.segmentDetection') FROM admin_documents d WHERE d.scope='library:'||l.library_id) WHEN 'standard' THEN 'standard' WHEN 'thorough' THEN 'thorough' WHEN 'off' THEN 'off' END),NULLIF((SELECT CASE library.kind WHEN 'tv' THEN settings."segments.tvMode" WHEN 'anime' THEN settings."segments.animeMode" WHEN 'movie' THEN settings."segments.movieMode" END FROM server_settings AS settings JOIN libraries AS library ON library.id=l.library_id WHERE settings.singleton=1),'server'),(SELECT settings."library.segmentDetection" FROM server_settings AS settings WHERE settings.singleton=1),'standard')<>'off')
  AND m.start_us>=ia.start_seconds*1000000.0
  AND m.start_us<COALESCE(ia.end_seconds,a.duration)*1000000.0`, item, len(segmentmarkers.MeasuredFamily+":"), segmentmarkers.MeasuredFamily+":", float64(policy.AutomaticPercent)/100).Scan(&start)
 	return start, err

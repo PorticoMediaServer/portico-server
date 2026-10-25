@@ -24,6 +24,9 @@ type settingConsumer struct{ file, witness, effect string }
 // Semantic tests beside those consumers verify behavior; this guard catches new
 // unowned fields and consumer removal. It is not a substitute for runtime tests.
 var settingConsumers = map[string]settingConsumer{
+	"operations.Settings.segments.tvMode":                                    {"internal/mediaanalysis/segment_modes.go", "literal:segments.tvMode", "Resolve the effective library kind detection mode"},
+	"operations.Settings.segments.animeMode":                                 {"internal/mediaanalysis/segment_modes.go", "literal:segments.animeMode", "Resolve the effective library kind detection mode"},
+	"operations.Settings.segments.movieMode":                                 {"internal/mediaanalysis/segment_modes.go", "literal:segments.movieMode", "Resolve the effective library kind detection mode"},
 	"operations.Settings.segments.useChapterNames":                           {"internal/segmentmarkers/policy.go", "literal:segments.useChapterNames", "Choose whether unapproved embedded chapter labels reach viewers"},
 	"operations.Settings.segments.viewerConfidencePercent":                   {"internal/segmentmarkers/policy.go", "literal:segments.viewerConfidencePercent", "Choose the confidence floor of unapproved viewer markers"},
 	"operations.Settings.segments.automaticConfidencePercent":                {"internal/segmentmarkers/policy.go", "literal:segments.automaticConfidencePercent", "Choose the confidence floor of measured automatic markers"},

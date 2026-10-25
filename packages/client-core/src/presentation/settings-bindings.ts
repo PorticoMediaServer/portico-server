@@ -27,6 +27,7 @@ const bindings:Readonly<Record<string,SettingsBinding>>={
  'playback.stillWatching':{form:'preferences',key:'playback.passoutProtection',scope:'profile-server',fields:{enabled:'playback.passoutProtection',episodes:'playback.passoutAfterEpisodes'},codec:'still-watching'},
  'storage.missingRule':{form:'runtime',key:'library.missingTitles',codec:'missing-rule'},
  'storage.missingDaysExact':{form:'runtime',key:'library.missingTitlesDays'},
+ 'segments.libraryModes':{form:'runtime',key:'segments.libraryModes',fields:{tv:'segments.tvMode',anime:'segments.animeMode',movies:'segments.movieMode'}},
  'segments.chapters':{form:'runtime',key:'segments.useChapterNames',codec:'boolean'},
  'segments.viewerFloor':{form:'runtime',key:'segments.viewerConfidencePercent',codec:'number-choice'},
  'segments.autoFloor':{form:'runtime',key:'segments.automaticConfidencePercent',codec:'number-choice'},
@@ -250,7 +251,7 @@ function presented(binding:SettingsBinding,v:unknown,sources:SettingsBindingSour
 }
 export function readSettingsBinding(binding:SettingsBinding,sources:SettingsBindingSources,rowId?:string):SettingsBindingValue|undefined{
  if(binding.fields){
-  const values=Object.entries(binding.fields).map(([name,key])=>[name,readSettingsBinding({form:binding.form,key,scope:binding.scope},sources)] as const);
+  const values=Object.entries(binding.fields).map(([name,key])=>[name,readSettingsBinding({form:binding.form,key,scope:binding.scope},sources,binding.key==='segments.libraryModes'?key:undefined)] as const);
   if(values.some(([,value])=>!value))return undefined;
   const part=(kind:'current'|'effective'|'default')=>{
    const v=Object.fromEntries(values.map(([name,value])=>[name,value![kind]]));
@@ -321,7 +322,7 @@ export function settingsBindingPatch(binding:SettingsBinding,value:unknown,sourc
    return {form:'device',values:{tvHdr:value==='hdr'||value==='hdr-surround',tvSurround:value==='surround'||value==='hdr-surround'}};
   }
   if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).length!==Object.keys(binding.fields).length)throw new Error('Invalid setting matrix.');
-  const values=Object.fromEntries(Object.entries(binding.fields).map(([name,key])=>{const v=(value as Record<string,unknown>)[name];if(v!=='ask'&&v!=='auto'&&v!=='off')throw new Error('Invalid skip mode.');return [key,v];}));
+  const values=Object.fromEntries(Object.entries(binding.fields).map(([name,key])=>{const v=(value as Record<string,unknown>)[name];if(binding.key==='segments.libraryModes'?v!=='server'&&v!=='standard'&&v!=='thorough'&&v!=='off':v!=='ask'&&v!=='auto'&&v!=='off')throw new Error('Invalid setting matrix.');return [key,v];}));
   return binding.form==='preferences'?preferenceBindingPatch(binding,values,sources):{form:binding.form,values};
  }
  if(binding.codec==='missing-rule'){if(value==='never')return {form:binding.form,values:{'library.missingTitles':'never'}};if(value==='now')return {form:binding.form,values:{'library.missingTitles':'immediately'}};const n=value==='7d'?7:value==='30d'?30:value==='90d'?90:undefined;if(n===undefined)throw new Error('Custom is derived.');return {form:binding.form,values:{'library.missingTitles':'after_days','library.missingTitlesDays':n}};}

@@ -63,8 +63,14 @@ func (c *ConsoleSettingsChange) UnmarshalJSON(raw []byte) error {
 		}
 		known[name] = true
 		value, ok := values[name]
-		if !ok && (name == "segments.useChapterNames" || name == "segments.viewerConfidencePercent" || name == "segments.automaticConfidencePercent") {
+		if !ok && (name == "segments.tvMode" || name == "segments.animeMode" || name == "segments.movieMode" || name == "segments.useChapterNames" || name == "segments.viewerConfidencePercent" || name == "segments.automaticConfidencePercent") {
 			continue
+		}
+		if name == "segments.tvMode" || name == "segments.animeMode" || name == "segments.movieMode" {
+			var mode string
+			if json.Unmarshal(value, &mode) != nil || (mode != "server" && mode != "standard" && mode != "thorough" && mode != "off") {
+				return operations.ErrInvalid
+			}
 		}
 		if name == "segments.useChapterNames" && bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
 			return operations.ErrInvalid

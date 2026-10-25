@@ -23,18 +23,28 @@ func validSegmentMode(v string) bool {
 	return v == SegmentModeOff || v == SegmentModeStandard || v == SegmentModeThorough
 }
 
-// serverSegmentModeTx is the owner's server-wide mode (the console setting
-// library.segmentDetection); a server that never saved one runs standard.
-func serverSegmentModeTx(ctx context.Context, q queryer) (string, error) {
-	var mode sql.NullString
-	err := q.QueryRowContext(ctx, `SELECT settings."library.segmentDetection" FROM server_settings AS settings WHERE settings.singleton=1`).Scan(&mode)
+// serverSegmentDefaultsTx reads the server mode and video-kind defaults in
+// the caller's existing snapshot. An absent kind choice follows the server.
+func serverSegmentDefaultsTx(ctx context.Context, q queryer) (string, map[string]string, error) {
+	kinds := map[string]string{"tv": "server", "anime": "server", "movie": "server"}
+	var mode, tv, anime, movie sql.NullString
+	err := q.QueryRowContext(ctx, `SELECT settings."library.segmentDetection",settings."segments.tvMode",settings."segments.animeMode",settings."segments.movieMode" FROM server_settings AS settings WHERE settings.singleton=1`).Scan(&mode, &tv, &anime, &movie)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return "", err
+		return "", nil, err
 	}
+	server := SegmentModeStandard
 	if mode.Valid && validSegmentMode(mode.String) {
-		return mode.String, nil
+		server = mode.String
 	}
-	return SegmentModeStandard, nil
+	for kind, value := range map[string]sql.NullString{"tv": tv, "anime": anime, "movie": movie} {
+		if value.Valid {
+			if value.String != "server" && !validSegmentMode(value.String) {
+				return "", nil, ErrInput
+			}
+			kinds[kind] = value.String
+		}
+	}
+	return server, kinds, nil
 }
 
 type queryer interface {
@@ -43,10 +53,10 @@ type queryer interface {
 }
 
 // segmentLibrariesTx resolves every video library's effective mode: its own
-// choice (the library setting $.segmentDetection) or, when it follows the
-// server, the server's. Music and audiobook libraries are never measured.
+// choice (the library setting $.segmentDetection), then the matching video-kind
+// default, then the server mode. Music and audiobook libraries are never measured.
 func segmentLibrariesTx(ctx context.Context, q queryer) ([]segmentLibrary, string, error) {
-	server, err := serverSegmentModeTx(ctx, q)
+	server, kinds, err := serverSegmentDefaultsTx(ctx, q)
 	if err != nil {
 		return nil, "", err
 	}
@@ -76,6 +86,9 @@ func segmentLibrariesTx(ctx context.Context, q queryer) ([]segmentLibrary, strin
 			l.Choice = choice.String
 		}
 		l.Mode = server
+		if kinds[kind] != "server" {
+			l.Mode = kinds[kind]
+		}
 		if l.Choice != "server" {
 			l.Mode = l.Choice
 		}
