@@ -1,3 +1,4 @@
+import {parseMembershipEndingNotice} from '@core/membership-ending.ts';
 import {decodeServersListResponse} from '../../../packages/contracts/src/hosted/decoders.ts';
 import {routePath} from '../../../packages/contracts/src/hosted/routes.ts';
 import type {browserAccount} from './account';
@@ -16,7 +17,16 @@ export function createAccountServerDirectory(account: AccountPort, scope: Accoun
         signal?.throwIfAborted();
         const raw = await account.api.send(routePath('servers_list'), 'GET', undefined, signal, session.accessToken);
         signal?.throwIfAborted();
-        return decodeServersListResponse(raw);
+        // The additive field is parsed strictly here until the next official
+        // generation, and stays narrowed after generation changes its TS shape.
+        if (raw && typeof raw === 'object' && !Array.isArray(raw) && Object.hasOwn(raw, 'membershipEnding')) {
+          const {membershipEnding, ...base} = raw as Record<string, unknown>;
+          const result = decodeServersListResponse(base);
+          const ending = parseMembershipEndingNotice(membershipEnding);
+          if (result.items.length) throw new Error('Membership ending accompanied current servers.');
+          return {...result, membershipEnding: ending};
+        }
+        return {...decodeServersListResponse(raw), membershipEnding: undefined};
       }, captured);
       signal?.throwIfAborted();
       return result;

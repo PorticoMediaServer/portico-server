@@ -132,13 +132,14 @@ function StartGlyph({kind, size = kind === 'paste' ? 20 : 22}: {kind: 'link' | '
 }
 
 /** connect26/31: controlled content only; invitation preview/session belongs to Apps. */
-export function ServicesStart({header, invitation, onInvitationChange, onInvitationPaste, onJoin, onPaste, onDownload, onApps, onCopyDownload, onShareDownload, error, children}: {
+export function ServicesStart({header, invitation, onInvitationChange, onInvitationPaste, onJoin, onPaste, onDownload, onApps, onCopyDownload, onShareDownload, error, children, returning = false, notice}: {
   header: ReactNode; invitation: string; onInvitationChange: (value: string) => void; onJoin: () => void; onPaste: () => void;
   onInvitationPaste?: (value: string) => void;
-  onDownload: () => void; onApps: () => void; onCopyDownload: () => void; onShareDownload: () => void; error?: ReactNode; children?: ReactNode;
+  onDownload: () => void; onApps: () => void; onCopyDownload: () => void; onShareDownload: () => void; error?: ReactNode; children?: ReactNode; returning?: boolean; notice?: ReactNode;
 }) {
   return <div className={styles.start}>{header}<div className={styles.startGlow} aria-hidden="true" />
-    <main className={styles.startMain}><div className={styles.startIntro}><div className={styles.startHeading}><p>{t('services.start.ready')}</p><h1>{t('services.start.welcome')}</h1><p className={styles.startLead}>{t('services.start.body')}<span className={styles.startDesktop}> {t('services.start.free')}</span></p></div>
+    <main className={styles.startMain}><div className={styles.startIntro}><div className={styles.startHeading}><p>{t('services.start.ready')}</p><h1>{t(returning ? 'services.start.returning' : 'services.start.welcome')}</h1><p className={styles.startLead}>{t('services.start.body')}{!returning && <span className={styles.startDesktop}> {t('services.start.free')}</span>}</p></div>
+      {notice && <div className={styles.startNotice}>{notice}</div>}
       <div className={styles.startCards}><section className={styles.startJoin} id="join">
         <div className={styles.startCardHeading}><span className={styles.startIcon}><StartGlyph kind="link" /></span><h2>{t('services.start.join')}</h2></div><p>{t('services.start.joinBody')}</p>
         <form className={styles.startJoinForm} onSubmit={event => { event.preventDefault(); onJoin(); }}>
