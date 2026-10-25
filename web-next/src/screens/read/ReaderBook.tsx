@@ -145,6 +145,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
     metadata={publication.metadata} signal={publication.signal} authority={authority} reportError={engineError} onBack={onBack}
     state={state => state.status === 'error' ? <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}/> : <Skeleton height="100%"/>}
     presentation={value => ({copy: {back: t('next.reader.back'), previous: t('next.reader.previous'), next: t('next.reader.next'), progress: t('next.reader.position')},
+      holdOpen: fixedMenu !== undefined,
       direction: publication.format === 'cbz' && value.preferences.comicDirection !== 'file' ? value.preferences.comicDirection === 'rtl' ? 'rtl' : 'ltr'
         : value.metadata?.direction === 'rtl' ? 'rtl' : 'ltr', tapTurnEnabled: value.preferences.tapToTurn, showPageArrows: layout.showPageArrows,
       chapters: readerChapterMarks(value.toc, value.location ?? undefined),
@@ -160,7 +161,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
         ...(publication.format === 'epub' ? [{id: 'display', label: t('next.reader.displayAction'), text: <ReaderDisplayMark sample={t('next.reader.sample')}/>, expanded: panel === 'display', onPress: (element: HTMLButtonElement) => {anchor.current = element; setPanel(panel === 'display' ? undefined : 'display');}}] : []),
         ...(fixed ? [{id: 'zoom', label: t('next.reader.zoom'), text: <span className={fixedStyles.zoomLabel}>{fixedPageZoomLabel(value.zoom)}</span>,
           expanded: fixedMenu === 'zoom', onPress: (element: HTMLButtonElement) => {zoomAnchor.current = element; setFixedMenu(fixedMenu === 'zoom' ? undefined : 'zoom');}},
-          ...(publication.format === 'cbz' ? [{id: 'direction', label: t('next.reader.direction'), icon: directionIcon(value.preferences.comicDirection === 'rtl' || publication.metadata.direction === 'rtl'),
+          ...(publication.format === 'cbz' ? [{id: 'direction', label: t('next.reader.direction'), icon: directionIcon(value.preferences.comicDirection === 'rtl' || value.preferences.comicDirection === 'file' && publication.metadata.direction === 'rtl'),
             expanded: fixedMenu === 'direction', onPress: (element: HTMLButtonElement) => {directionAnchor.current = element; setFixedMenu(fixedMenu === 'direction' ? undefined : 'direction');}}] : [])] : []),
         ...(layout.fullscreen && document.fullscreenEnabled ? [{id: 'fullscreen', label: t('next.reader.fullscreen'), icon: 'i-fs' as const, separatorBefore: true,
           onPress: (element: HTMLButtonElement) => {const root = element.closest<HTMLElement>('[data-reader-root]'); void (document.fullscreenElement ? document.exitFullscreen() : root?.requestFullscreen())?.catch(reportError);}}] : []),
