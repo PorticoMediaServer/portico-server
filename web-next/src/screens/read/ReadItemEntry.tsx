@@ -19,7 +19,7 @@ import {readDestination, type ReadItemEligibility} from './navigation';
 import styles from './read-item.module.css';
 
 type Captured = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
-type ManifestFactLease = {context: Captured['context']; manifest: ReadingManifest; sourceId: string; live: boolean};
+type ReadAttempt = {readonly context: Captured['context']; readonly sourceId: string | undefined; readonly retry: number; live: boolean; ready: boolean; target?: (index: number) => ReaderContentsTarget};
 const {t} = defaultI18n;
 /** The primary Item registration supplies a genuine Reading resource result. */
 export function ReadItemEntry({itemId, eligibility}: {itemId: string; eligibility: ReadItemEligibility}) {
@@ -33,48 +33,53 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const errorSink = useRef(captured.binding.home.effects.reportError); errorSink.current = captured.binding.home.effects.reportError;
   const [sourceId, setSourceId] = useState(() => eligibility.versions.find(version => version.inventoryAvailable)?.sourceId);
   const [menu, setMenu] = useState(false), [retry, setRetry] = useState(0);
-  const [detail, setDetail] = useState<Readonly<{context?: Captured['context']; manifest?: ReadingManifest; progress?: ReadingProgress; targets?: readonly ReaderContentsTarget[]; failed?: boolean}>>({});
-  const publicationReady = useRef(false);
-  const [factLease, setFactLease] = useState<ManifestFactLease>();
-  const factLeaseRef = useRef<ManifestFactLease>();
-  const factsRender = useRef({context: captured.context, manifest: detail.context === captured.context ? detail.manifest : undefined, sourceId});
-  factsRender.current = {context: captured.context, manifest: detail.context === captured.context ? detail.manifest : undefined, sourceId};
+  const [attempt, setAttempt] = useState<ReadAttempt>();
+  const attemptRef = useRef<ReadAttempt>();
+  const renderIdentity = useRef({context: captured.context, sourceId, retry});
+  renderIdentity.current = {context: captured.context, sourceId, retry};
+  const [detail, setDetail] = useState<Readonly<{attempt?: ReadAttempt; manifest?: ReadingManifest; progress?: ReadingProgress; targets?: readonly ReaderContentsTarget[]; failed?: boolean}>>({});
+  const current = (value: ReadAttempt | undefined): value is ReadAttempt => !!value && value.live && attemptRef.current === value
+    && renderIdentity.current.context === value.context && renderIdentity.current.sourceId === value.sourceId && renderIdentity.current.retry === value.retry && value.context.isCurrent();
+  const retire = (value: ReadAttempt) => {value.live = false; value.ready = false; value.target = undefined; if (attemptRef.current === value) attemptRef.current = undefined;};
+  const refresh = (value: ReadAttempt | undefined) => {if (!current(value)) return; retire(value); setRetry(count => count + 1);};
   useLayoutEffect(() => {
-    const manifest = detail.context === captured.context ? detail.manifest : undefined;
-    if (!manifest || sourceId !== manifest.sourceId) {setFactLease(undefined); return;}
-    const lease: ManifestFactLease = {context: captured.context, manifest, sourceId, live: true};
-    factLeaseRef.current = lease; setFactLease(lease);
-    return () => {lease.live = false; if (factLeaseRef.current === lease) factLeaseRef.current = undefined;};
-  }, [captured.context, detail.context, detail.manifest, sourceId]);
-  const captureTarget = useRef<((index: number) => ReaderContentsTarget) | undefined>(undefined);
+    const value: ReadAttempt = {context: captured.context, sourceId, retry, live: true, ready: false};
+    attemptRef.current = value; setAttempt(value);
+    return () => retire(value);
+  }, [captured.context, sourceId, retry]);
   const anchor = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    const bindings = createReadBindings(captured.context); let active = true;
+    if (!current(attempt)) return;
+    const original = attempt;
+    const bindings = createReadBindings(original.context);
+    let active = true;
+    const live = () => active && current(original) && bindings.authority.isCurrent();
     let publication: Awaited<ReturnType<typeof createReadingPublication>> | undefined;
-    publicationReady.current = false; captureTarget.current = undefined; setDetail({});
-    const off = bindings.authority.subscribe(() => {if (active) {publicationReady.current = false; setDetail({failed: true});}});
-    if (!sourceId) setDetail({failed: true});
+    const off = bindings.authority.subscribe(() => {if (active && attemptRef.current === original) {original.ready = false; original.target = undefined; setDetail({attempt: original, failed: true});}});
+    const requestedSource = original.sourceId;
+    if (!requestedSource) setDetail({attempt: original, failed: true});
     else void (async () => {
-      const session = await bindings.open({itemId: eligibility.itemId, sourceId});
+      const session = await bindings.open({itemId: eligibility.itemId, sourceId: requestedSource});
+      if (!live()) return;
       const progress = await session.progress();
+      if (!live()) return;
       publication = await createReadingPublication(session);
-      if (!active || !bindings.authority.isCurrent()) {publication.dispose(); return;}
-      if (active && bindings.authority.isCurrent()) {publicationReady.current = true;
-        captureTarget.current = index => {if (!active || !bindings.authority.isCurrent()) throw new Error('source_changed'); return publication!.contentsTarget(index);};
-        setDetail({context: captured.context, manifest: session.manifest, progress,
-        targets: session.manifest.format === 'epub' ? (session.manifest.contents ?? []).map((_, index) => publication!.contentsTarget(index)) : []});}
-    })().catch(error => {if (active && bindings.authority.isCurrent()) {errorSink.current(error); setDetail({failed: true});} void bindings.close().catch(() => {});});
-    return () => {active = false; publicationReady.current = false; publication?.dispose(); off(); void bindings.dispose().catch(() => {});};
-  }, [captured.context, eligibility.itemId, sourceId, retry]);
-  if (detail.failed) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
-    primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => setRetry(value => value + 1)}}/>;
-  const manifest = detail.context === captured.context ? detail.manifest : undefined, version = eligibility.versions.find(version => version.sourceId === sourceId);
+      if (!live()) {publication.dispose(); return;}
+      original.ready = true;
+      original.target = index => {if (!live() || !original.ready) throw new Error('source_changed'); return publication!.contentsTarget(index);};
+      setDetail({attempt: original, manifest: session.manifest, progress,
+        targets: session.manifest.format === 'epub' ? (session.manifest.contents ?? []).map((_, index) => publication!.contentsTarget(index)) : []});
+    })().catch(error => {if (live()) {errorSink.current(error); original.ready = false; original.target = undefined; setDetail({attempt: original, failed: true});} void bindings.close().catch(() => {});});
+    return () => {active = false; original.ready = false; original.target = undefined; publication?.dispose(); off(); void bindings.dispose().catch(() => {});};
+  }, [attempt, eligibility.itemId]);
+  if (current(attempt) && detail.attempt === attempt && detail.failed) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
+    primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => refresh(attempt)}}/>;
+  const manifest = current(attempt) && detail.attempt === attempt ? detail.manifest : undefined, version = eligibility.versions.find(version => version.sourceId === sourceId);
   if (!manifest || !version || manifest.sourceId !== sourceId) return <Skeleton height={480}/>;
   const title = manifest.metadata.title ?? '', author = manifest.metadata.author;
   const metadata = manifest.metadata, series = metadata.series;
-  const factsCurrent = () => factLease?.live === true && factLeaseRef.current === factLease && factLease.manifest === manifest && factLease.context === captured.context
-    && factsRender.current.manifest === manifest && factsRender.current.sourceId === sourceId && factsRender.current.context === captured.context
-    && publicationReady.current && captured.context.isCurrent();
+  const original = detail.attempt;
+  const factsCurrent = () => current(original) && original === attempt && original.ready && detail.manifest === manifest;
   const seriesPresentation = series ? {label: series.number === undefined ? series.name : t('next.reader.seriesPosition', {series: series.name, number: defaultI18n.number(series.number)}), onOpen: () => {
     if (!factsCurrent()) return;
     const publicationType = metadata.publicationType?.value;
@@ -87,13 +92,13 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const open = (index?: number) => {
     if (!factsCurrent()) return;
     let target: ReaderContentsTarget | undefined;
-    try {target = index === undefined ? undefined : captureTarget.current?.(index);}
+    try {target = index === undefined ? undefined : original?.target?.(index);}
     catch (error) {errorSink.current(error); return;}
     if (index !== undefined && !target) return;
     stageContentsTarget(captured.context, eligibility.itemId, manifest.sourceId, target);
     void router.navigate(readDestination(eligibility.itemId, manifest.sourceId)).catch(error => {
       retireContentsTarget(captured.context, target);
-      if (captured.context.isCurrent()) errorSink.current(error);
+      if (factsCurrent()) errorSink.current(error);
     });
   };
   /** No Version control with one file (notes/read-web.md); the details keep format and size. */
@@ -118,9 +123,9 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     under={<>{canEdit && <><Button ref={editorAnchor} size="small" variant="glass" icon="i-more" iconOnly aria-label={t('next.controls.more')} onClick={() => setMore(value => !value)}/><Menu open={more} onOpenChange={setMore} title={title} anchorRef={editorAnchor}><MenuItem onSelect={() => {if (context.isCurrent()) setEditing(true);}}>{t('entry.editMetadata')}</MenuItem></Menu></>}{chooseVersion ? <><Button ref={anchor} size="small" variant="glass" onClick={() => setMenu(value => !value)} aria-label={t('next.reader.version')}>
       {version.format.toUpperCase()}<Icon name="i-down" size={14}/></Button>
       <Menu open={menu} onOpenChange={setMenu} title={t('next.reader.version')} anchorRef={anchor}>{eligibility.versions.map(candidate => <MenuItem key={candidate.sourceId}
-        selected={candidate.sourceId === sourceId} disabled={!candidate.inventoryAvailable} onSelect={() => {if (!factsCurrent() || !factLease) return; factLease.live = false; if (factLeaseRef.current === factLease) factLeaseRef.current = undefined; setSourceId(candidate.sourceId);}} description={defaultI18n.bytes(candidate.size)}>
+        selected={candidate.sourceId === sourceId} disabled={!candidate.inventoryAvailable} onSelect={() => {if (candidate.sourceId === sourceId || !factsCurrent() || !original) return; retire(original); setSourceId(candidate.sourceId);}} description={defaultI18n.bytes(candidate.size)}>
         {candidate.format.toUpperCase()}</MenuItem>)}</Menu></> : null}</>}/>
-    {editing && canEdit && <ReadMetadata context={context} reading={captured.context} sourceId={manifest.sourceId} format={manifest.format} itemId={eligibility.itemId} anchor={editorAnchor} onClose={() => {setEditing(false); setRetry(value => value + 1);}}/>}
+    {editing && canEdit && <ReadMetadata context={context} reading={captured.context} sourceId={manifest.sourceId} format={manifest.format} itemId={eligibility.itemId} anchor={editorAnchor} onClose={() => {if (!current(original)) return; setEditing(false); refresh(original);}}/>}
     <ReadBookSections contents={detail.targets?.length ? <><h2>{t('next.reader.contents')}</h2><ReaderContents entries={detailContents(manifest.contents ?? [], index => open(index))}/></> : <span hidden/>} details={details}/></>;
 }
 
