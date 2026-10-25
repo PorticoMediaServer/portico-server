@@ -44,6 +44,7 @@ import (
 	"portico.local/server/internal/mounts"
 	"portico.local/server/internal/networking"
 	"portico.local/server/internal/operations"
+	"portico.local/server/internal/ownedcapture"
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/playbackruntime"
 	"portico.local/server/internal/playbackv1"
@@ -121,9 +122,12 @@ type Dependencies struct {
 	Reading           *reading.Service
 	Ingestion         *ingestion.Service
 	Playback          *playback.Service
-	Hosted            *hosted.Service
-	Metadata          *metadata.Service
-	Origins           []string
+	// DiscCaptures is private byte custody only. Composition supplies it before
+	// New copies Dependencies; it does not enable remote disc admission.
+	DiscCaptures *ownedcapture.Service
+	Hosted       *hosted.Service
+	Metadata     *metadata.Service
+	Origins      []string
 	// SetupHosts explicitly authorizes browser bootstrap authorities for custom
 	// DNS names/reverse proxies. Host/Origin agreement alone cannot prove one.
 	SetupHosts     []string
