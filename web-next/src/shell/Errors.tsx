@@ -37,6 +37,13 @@ function describeCrash(error: unknown): CrashDetails {
   });
 }
 
+/** Startup can fail before React mounts its error boundary. Keep the same
+ * recovery page and original failure facts without starting private services. */
+export function StartupFailure({error}: {error: unknown}) {
+  const [details] = useState(() => describeCrash(error));
+  return <LastResort details={details} />;
+}
+
 export function crashDetailsText(details: CrashDetails): string {
   const rows = [
     [t('next.states.when'), details.when],
