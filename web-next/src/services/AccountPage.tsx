@@ -1,5 +1,5 @@
-import {HostedError} from '../kit/accounts/ServicesAuth';
-import {useEffect, useMemo, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {HostedError, ServicesQuiet} from '../kit/accounts/ServicesAuth';
+import {useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode} from 'react';
 import type {HostedSession} from '@core/index.ts';
 import {ProfileAvatar} from '../kit/shell/AccountSurfaces';
 import {ServicesHeader, ServicesWorkspace, type ServicesSection} from '../kit/accounts/ServicesWorkspace';
@@ -9,7 +9,8 @@ import {FeedPanel} from './FeedPanel';
 import {ServersPanel} from './ServersPanel';
 import {SecurityPanel} from './SecurityPanel';
 import {ServicesFeed} from './feed';
-import {workspaceApi} from './workspace-api';
+import {workspaceApi, type WorkspaceApi} from './workspace-api';
+import {useAccountResource} from './use-account-resource';
 import {accountIdentity, type ServicesAccount} from './session';
 import {servicesI18n} from './i18n';
 
@@ -22,11 +23,20 @@ function BoundAccount({account, session, section, onDeleted}: {account: Services
   const accountId = session.account.id, familyId = session.familyId!;
   const identity = useMemo(() => ({accountId, familyId}), [accountId, familyId]);
   const api = useMemo(() => workspaceApi(account, identity), [account, identity]);
-  const feed = useMemo(() => new ServicesFeed(api.notifications), [api]);
+  const create = useCallback(() => new ServicesFeed(api.notifications), [api]), bound = useAccountResource(create);
+  return bound ? <ReadyAccount key={bound.id} account={account} session={session} section={section} onDeleted={onDeleted} api={api} feed={bound.value}/>
+    : <ServicesQuiet>{t('status.loading')}</ServicesQuiet>;
+}
+function ReadyAccount({account, session, section, onDeleted, api, feed}: {
+  account: ServicesAccount; session: Omit<HostedSession, 'refreshToken'>; section: ServicesSection; onDeleted?: () => void; api: WorkspaceApi; feed: ServicesFeed;
+}) {
+  const {t} = useMemo(servicesI18n, []);
+  const accountId = session.account.id, familyId = session.familyId!;
+  const identity = useMemo(() => ({accountId, familyId}), [accountId, familyId]);
   const state = useSyncExternalStore(feed.subscribe, feed.getSnapshot);
   const [error, setError] = useState<unknown>();
   const [contact, setContact] = useState<string>();
-  useEffect(() => { void feed.refresh(); return () => feed.dispose(); }, [feed]);
+  useEffect(() => { void feed.refresh(); }, [feed]);
   useEffect(() => {
     const controller = new AbortController();
     void api.security(controller.signal).then(value => { if (!controller.signal.aborted) setContact(value.contactAddress || undefined); }, () => {});

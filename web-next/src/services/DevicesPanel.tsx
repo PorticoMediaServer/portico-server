@@ -1,5 +1,5 @@
-import {HostedError} from '../kit/accounts/ServicesAuth';
-import {useEffect, useMemo, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {HostedError, ServicesQuiet, ServicesNotice} from '../kit/accounts/ServicesAuth';
+import {useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {ApiError} from '@core/index.ts';
 import type {AccountSessionReviewService} from '@core/account-sessions.ts';
 import {ServicesBadge, ServicesDangerAction, ServicesDeviceFacts, ServicesGroup, ServicesWorkspaceRow} from '../kit/accounts/ServicesWorkspace';
@@ -10,6 +10,7 @@ import {servicesI18n} from './i18n';
 import type {WorkspaceApi, WorkspaceDevices} from './workspace-api';
 import {servicesRelativeTime, servicesSignInDate} from './time';
 import styles from './services.module.css';
+import {useAccountResource} from './use-account-resource';
 
 /** A family is revoked only from a current canonical review; logout-all would end this browser. */
 export async function signOutOtherDevices(service: AccountSessionReviewService) {
@@ -27,8 +28,12 @@ export async function signOutOtherDevices(service: AccountSessionReviewService) 
 
 type Props = {api: WorkspaceApi; frame: (children: ReactNode, actions: ReactNode) => ReactNode};
 export function DevicesPanel({api, frame}: Props) {
+  const create = useCallback(() => api.sessions(), [api]), bound = useAccountResource(create);
+  return bound ? <BoundDevicesPanel key={bound.id} api={api} frame={frame} service={bound.value}/>
+    : frame(<ServicesQuiet>{servicesI18n().t('status.loading')}</ServicesQuiet>, null);
+}
+function BoundDevicesPanel({api, frame, service}: Props & {service: AccountSessionReviewService}) {
   const i18n = useMemo(servicesI18n, []), {t} = i18n;
-  const service = useMemo(() => api.sessions(), [api]);
   const state = useSyncExternalStore(service.subscribe, service.getSnapshot);
   const [devices, setDevices] = useState<WorkspaceDevices>(), [error, setError] = useState<unknown>();
   const [ending, setEnding] = useState<string>(), [all, setAll] = useState(false), [allBusy, setAllBusy] = useState(false);
@@ -36,11 +41,11 @@ export function DevicesPanel({api, frame}: Props) {
     const controller = new AbortController();
     void service.refresh();
     void api.devices(controller.signal).then(value => { if (!controller.signal.aborted) setDevices(value); }, value => { if (!controller.signal.aborted) setError(value); });
-    return () => { controller.abort(); service.dispose(); };
+    return () => { controller.abort(); };
   }, [api, service]);
   const active = state.items.filter(item => item.status === 'active');
   const metadata = new Map(devices?.items.map(item => [item.familyId, item]));
-  const name = (id: string) => metadata.get(id)?.name ?? '';
+  const name = (id: string) => metadata.get(id)?.name || t(state.items.find(row => row.id === id)?.mode === 'browser' ? 'web.hostedAccount.aBrowser' : 'web.hostedAccount.anApp');
   const busy = state.pending !== null || allBusy;
   const endOthers = async () => {
     setAll(false); setAllBusy(true); setError(undefined);
@@ -50,16 +55,16 @@ export function DevicesPanel({api, frame}: Props) {
   const actions = <Button size="small" disabled={busy || !active.some(item => !item.current) && !state.nextCursor} onClick={() => setAll(true)}>{t('web.hostedAccount.signOutOthers')}</Button>;
   return frame(<>
     {error ? <HostedError error={error} /> : null}{state.error ? <HostedError error={state.error} /> : null}{state.mutationError ? <HostedError error={state.mutationError} /> : null}
-    {devices && active.length > 0 && <ServicesGroup>{active.map(item => {
+    {state.notice && <ServicesNotice tone="info">{state.notice}</ServicesNotice>}
+    {active.length > 0 && <ServicesGroup>{active.map(item => {
       const device = metadata.get(item.id);
-      if (!device) return null;
-      const icon: IconName = device.platform === 'ios' || device.platform === 'android' ? 'i-phone' : device.platform === 'tvos' || device.platform === 'androidtv' ? 'i-tv' : 'i-laptop';
-      const app = device.platform === 'web' ? t('services.workspace.appWeb') : device.platform === 'tvos' ? t('services.workspace.appAppleTV') : device.platform === 'ios' ? t('services.workspace.appIPhone') : device.platform === 'androidtv' ? t('services.workspace.appAndroidTV') : device.app;
+      const icon: IconName | undefined = !device ? undefined : device.platform === 'ios' || device.platform === 'android' ? 'i-phone' : device.platform === 'tvos' || device.platform === 'androidtv' ? 'i-tv' : 'i-laptop';
+      const app = !device ? t(item.mode === 'browser' ? 'web.hostedAccount.aBrowser' : 'web.hostedAccount.anApp') : device.platform === 'web' ? t('services.workspace.appWeb') : device.platform === 'tvos' ? t('services.workspace.appAppleTV') : device.platform === 'ios' ? t('services.workspace.appIPhone') : device.platform === 'androidtv' ? t('services.workspace.appAndroidTV') : device.app;
       const signedIn = t('web.hostedAccount.signedInOn', {date: servicesSignInDate(i18n, item.createdAt)});
-      const lastUsed = device.lastSeenAt ? t('web.hostedAccount.lastUsed', {when: servicesRelativeTime(i18n, device.lastSeenAt)}) : '';
-      const phoneApp = device.platform === 'tvos' ? t('services.platform.tvos') : device.platform === 'androidtv' ? t('services.platform.androidtv') : device.platform === 'web' ? '' : app;
+      const lastUsed = device?.lastSeenAt ? t('web.hostedAccount.lastUsed', {when: servicesRelativeTime(i18n, device.lastSeenAt)}) : '';
+      const phoneApp = device?.platform === 'tvos' ? t('services.platform.tvos') : device?.platform === 'androidtv' ? t('services.platform.androidtv') : device?.platform === 'web' ? '' : app;
       const help = <ServicesDeviceFacts desktop={[app, signedIn, lastUsed]} phone={[item.current ? signedIn : phoneApp, lastUsed]} />;
-      return <ServicesWorkspaceRow key={item.id} icon={icon} title={device.name} help={help} badge={item.current ? <ServicesBadge tone="accent">{t('web.hostedAccount.thisBrowser')}</ServicesBadge> : undefined}>
+      return <ServicesWorkspaceRow key={item.id} icon={icon} title={name(item.id)} help={help} badge={item.current ? <ServicesBadge tone="accent">{t('web.hostedAccount.thisBrowser')}</ServicesBadge> : undefined}>
         {!item.current && <Button size="small" loading={state.pending === item.id} disabled={busy} onClick={() => setEnding(item.id)}>{t('action.signOut')}</Button>}
       </ServicesWorkspaceRow>;
     })}</ServicesGroup>}
