@@ -99,16 +99,17 @@ async function walk(page, viewportName) {
     // A signed-in account with more than one profile meets the drawn chooser;
     // choose the main one, then record the exact moment it was chosen so a
     // fast Settings entry can be measured against it.
+    // Either the shell opens directly or the drawn profile chooser appears at
+    // /profiles; in the second case choose the main profile and only then treat
+    // sign-in as finished.
+    await page.waitForFunction(() => location.pathname !== '/sign-in', null, {timeout: 30000}).catch(() => {});
     const main = page.getByText(/Main profile/i).first();
-    await Promise.race([
-      page.waitForFunction(() => !location.pathname.startsWith('/sign-in'), null, {timeout: 30000}),
-      main.waitFor({timeout: 30000}).catch(() => {}),
-    ]).catch(() => {});
-    if (await main.count()) {
+    if (page.url().includes('/profiles')) {
+      await main.waitFor({timeout: 30000});
       await main.click();
-      await page.waitForFunction(() => !location.pathname.startsWith('/sign-in'), null, {timeout: 30000});
       choseProfileAt = Date.now();
       chosenProfile = 'main';
+      await page.waitForFunction(() => location.pathname !== '/profiles' && location.pathname !== '/sign-in', null, {timeout: 30000});
     }
     await settle(1200);
   };
