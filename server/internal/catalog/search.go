@@ -44,6 +44,7 @@ var searchGroups = []searchGroupDefinition{
 	{"albums", "album", "Albums", "album", "catalog", catalogSorts},
 	{"songs", "song", "Songs", "item", "catalog", catalogSorts},
 	{"books", "book", "Books", "book", "catalog", catalogSorts},
+	{"reading", "reading", "Books", "item", "reading", catalogSorts},
 	{"collections", "collection", "Collections", "collection", "catalog", nameSorts},
 	{"authors", "author", "Authors", "author", "catalog", nameSorts},
 	{"people", "person", "People", "person", "people", nameSorts},
@@ -452,6 +453,11 @@ func (s *Service) searchCapabilities(ctx context.Context, r SearchRequest) Searc
 		}
 		capability := SearchGroupCapability{ID: g.id, LabelKey: searchGroupLabelKey(g.id), Title: g.label, EntityKind: g.kind, Available: true, Sorts: g.sorts}
 		switch g.source {
+		case "reading":
+			if !s.tableExists(ctx, "reading_publications") {
+				capability.Available = false
+				capability.Reason = "Reading publications are not installed on this server."
+			}
 		case "live":
 			if !live {
 				capability.Available = false
@@ -519,13 +525,29 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 	if err := s.compactSearchReady(); err != nil {
 		return err
 	}
+	readingGroup := g.source == "reading"
 	kind, err := compactcatalog.ParseKind(g.kind)
+	if readingGroup {
+		kind, err = compactcatalog.Ebook, nil
+	}
 	if err != nil {
 		return err
 	}
 	raw, _ := json.Marshal(r.Libraries)
-	where := ` AND e.kind=? AND (? OR l.library_id IN(SELECT value FROM json_each(?))) AND l.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=e.id)`
+	kindClause := `e.kind=?`
 	filterArgs := []any{kind, r.AllLibraries, string(raw)}
+	if readingGroup {
+		kindClause = `e.kind IN(20,21)`
+		filterArgs = []any{r.AllLibraries, string(raw)}
+	}
+	where := ` AND ` + kindClause + ` AND (? OR l.library_id IN(SELECT value FROM json_each(?))) AND l.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=e.id)`
+	if readingGroup {
+		where += ` AND e.retired=0 AND EXISTS(SELECT 1 FROM reading_publications reading_publication
+ JOIN catalog_asset_links reading_link ON reading_link.entity_id=reading_publication.item_id AND reading_link.asset_id=reading_publication.asset_id
+ JOIN libraries reading_library ON reading_library.id=l.library_id
+ WHERE reading_publication.item_id=e.id AND ((e.kind=20 AND reading_library.kind='book' AND reading_publication.format IN('epub','pdf')) OR (e.kind=21 AND reading_library.kind='comic' AND reading_publication.format IN('cbz','pdf'))))`
+	}
+
 	for _, word := range strings.Fields(facettext.SearchFold(r.Q)) {
 		if strings.ContainsFunc(word, facettext.CJK) {
 			where += ` AND instr(d.normalized,?)>0`
@@ -569,7 +591,11 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 		}
 		libraryScope = ` AND kind : (` + strings.Join(ids, " OR ") + `)`
 	}
-	match = `kind : k` + strconv.Itoa(int(kind)) + libraryScope + ` AND search : (` + match + `)`
+	kindMatch := `kind : k` + strconv.Itoa(int(kind))
+	if readingGroup {
+		kindMatch = `kind : (k20 OR k21)`
+	}
+	match = kindMatch + libraryScope + ` AND search : (` + match + `)`
 	sortID := resolveSearchSort(g, r.Sort)
 	// The full-text rank is computed for every match it is selected for; only
 	// relevance orders by it.
@@ -581,6 +607,11 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 	}
 	countTerms, countIndexed := facettext.IndexedSearchTerms(r.Q)
 	countGroup := func() error {
+		// No single-kind prefix counter describes this union; keep its bounded count honest.
+		if readingGroup {
+			out.TotalCount, out.TotalCountExact = len(out.Items), false
+			return nil
+		}
 		// One indexed word has a maintained count. Several words would count
 		// their whole intersection, so their total is the page's and is marked
 		// as not exact, as relevance search marks it.
@@ -610,7 +641,7 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 	args = append(args, filterArgs...)
 	ranked := `SELECT d.entity_id entity_id,d.entity_pid entity_pid,` + order.expr + ` ord FROM ` + candidates + orderJoin + ` WHERE 1` + where
 	prefixTerms, prefix := facettext.IndexedSearchTerms(r.Q)
-	prefix = prefix && sortID == "relevance"
+	prefix = prefix && sortID == "relevance" && !readingGroup
 	var prefixCursor *cursorValue
 	if r.Cursor != "" {
 		if c, err := s.decodeRevisionCursor(r.Cursor, s.groupCursorScope(r, g, scopeHash, "relevance_prefix"), rev); err == nil {
@@ -728,12 +759,13 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 	args = append(args, pageSize+1)
 	// MATERIALIZED fixes the limit boundary before the detail joins and asset
 	// subqueries. Those reads now run for at most pageSize+1 selected identities.
-	query := page + ` SELECT pid(e.public_id),l.library_id,COALESCE(e.year,0),d.title,` + subtitle + ` subtitle,COALESCE(detail.poster_url,'') poster_url,COALESCE(detail.overview,'') overview,COALESCE(detail.added_text,'') added_at,COALESCE((SELECT max(a.duration) FROM catalog_asset_links link JOIN catalog_assets a ON a.id=link.asset_id WHERE link.entity_id=e.id),0) duration,EXISTS(SELECT 1 FROM catalog_asset_links link JOIN catalog_assets a ON a.id=link.asset_id WHERE link.entity_id=e.id AND link.available=1) available,page.ord FROM page JOIN catalog_entities e ON e.id=page.entity_id JOIN catalog_libraries l ON l.id=e.library_id JOIN catalog_search_documents d ON d.entity_id=e.id LEFT JOIN catalog_item_details detail ON detail.entity_id=e.id ` + contextJoin + ` ORDER BY page.ord ` + r.Direction + `,page.` + tie + ` ` + r.Direction
+	query := page + ` SELECT pid(e.public_id),l.library_id,COALESCE(e.year,0),d.title,` + subtitle + ` subtitle,COALESCE(detail.poster_url,'') poster_url,COALESCE(detail.overview,'') overview,COALESCE(detail.added_text,'') added_at,COALESCE((SELECT max(a.duration) FROM catalog_asset_links link JOIN catalog_assets a ON a.id=link.asset_id WHERE link.entity_id=e.id),0) duration,EXISTS(SELECT 1 FROM catalog_asset_links link JOIN catalog_assets a ON a.id=link.asset_id WHERE link.entity_id=e.id AND link.available=1) available,page.ord,e.kind,e.id FROM page JOIN catalog_entities e ON e.id=page.entity_id JOIN catalog_libraries l ON l.id=e.library_id JOIN catalog_search_documents d ON d.entity_id=e.id LEFT JOIN catalog_item_details detail ON detail.entity_id=e.id ` + contextJoin + ` ORDER BY page.ord ` + r.Direction + `,page.` + tie + ` ` + r.Direction
 	rows, e := s.read().QueryContext(ctx, query, args...)
 	if e != nil {
 		return e
 	}
 	entries := []ContentEntry{}
+	readingIDs := []int64{}
 	orders := []string{}
 	for rows.Next() {
 		var entry ContentEntry
@@ -742,11 +774,21 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 		var available bool
 		var ord any
 		var year int
-		if e = rows.Scan(&entry.ID, &entry.LibraryID, &year, &entry.Title, &entry.Subtitle, &entry.PosterURL, &entry.Overview, &added, &duration, &available, &ord); e != nil {
+		var entryKind compactcatalog.Kind
+		var internalID int64
+		if e = rows.Scan(&entry.ID, &entry.LibraryID, &year, &entry.Title, &entry.Subtitle, &entry.PosterURL, &entry.Overview, &added, &duration, &available, &ord, &entryKind, &internalID); e != nil {
 			rows.Close()
 			return e
 		}
 		entry.Kind = g.kind
+		if readingGroup {
+			entry.Kind, err = entryKind.Name()
+			if err != nil || entry.Kind != "ebook" && entry.Kind != "comic" {
+				rows.Close()
+				return errors.New("invalid reading search projection")
+			}
+			readingIDs = append(readingIDs, internalID)
+		}
 		// A movie or show result says its year, so two titles of one name can be told apart.
 		if year > 0 && (g.kind == "movie" || g.kind == "show") {
 			entry.Year = &year
@@ -763,7 +805,7 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 		if added != "" {
 			entry.AddedAt = &added
 		}
-		if g.view == "item" {
+		if g.view == "item" && !readingGroup {
 			entry.Duration = &duration
 			entry.Available = &available
 			if available {
@@ -777,6 +819,11 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 	rows.Close()
 	if e != nil {
 		return e
+	}
+	if readingGroup {
+		if e = s.nameReadingSearch(ctx, entries, readingIDs); e != nil {
+			return e
+		}
 	}
 	// Search containers have no items.poster_url. Resolve the selected artwork
 	// for this bounded page in one query; an episode inherits season/show poster
