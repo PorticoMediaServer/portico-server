@@ -345,7 +345,11 @@ export class V1QueuePlayer implements QueueController {
       queue, highestSequence: '0', total:header.total, remainingCount:header.remainingCount, totalDurationMs:header.totalDurationMs, durationKnown:header.durationKnown,
       current: this.session ? Object.freeze({id: this.session.id, generation: this.session.presentation.generation, state: this.session.state}) : null,
       next,
-      items: Object.freeze(this.window.filter(e => e.itemId).map(e => Object.freeze({...e, libraryId: ''}))),
+      items: Object.freeze(this.window.filter(e => e.itemId).map(e => {
+        const {libraryId, ...item} = e;
+        // Only this exact accepted loaded occurrence can offer its own library.
+        return Object.freeze({...item, ...(projection && queueEntryFacts(e).available === true && libraryId ? {libraryId} : {})});
+      })),
       postPlay,
     });
     this.publish({view, error: null});

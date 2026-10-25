@@ -290,7 +290,7 @@ export type QueueHeader = Readonly<{
 
 /** A private preparation of the next entry's audio (spec §18.2): frame 0 only until committed. */
 export type PreparedNext = Readonly<{token: string; expiresAt: string; entryId: string; itemId: string; presentation: Presentation}>;
-export type QueueEntry = Readonly<{entryId: string; position: number; itemId: string; kind: string; title: string; durationMs?: number; available: boolean; segmentId?: string; album?: string; artistId?: string; artist?: string; showId?: string; seasonId?: string; episode?: Readonly<{seasonNumber: number; number: number}>; backdropUrl?: string;
+export type QueueEntry = Readonly<{entryId: string; position: number; itemId: string; libraryId?: string; kind: string; title: string; durationMs?: number; available: boolean; segmentId?: string; album?: string; artistId?: string; artist?: string; showId?: string; seasonId?: string; episode?: Readonly<{seasonNumber: number; number: number}>; backdropUrl?: string;
   /** A song's album (a book file's book), with its disc and track (spec §18.5); absent when unknown. */
   albumId?: string; disc?: number; track?: number;
   /** The title's poster (inherited from its season, show, album or book) and an episode's own still, when they exist. */
@@ -339,6 +339,7 @@ export function parseEntry(v: unknown): QueueEntry {
   // A placeholder carries no item: one that became unavailable, or (kind "pending") one still
   // being snapshotted in a large queue that fills in shortly (P16).
   const entry: QueueEntry = Object.freeze({entryId: id(v.entryId, 'entry id'), position: num(v.position), itemId: available ? id(v.itemId, 'item id') : typeof v.itemId === 'string' ? v.itemId : '', kind: str(v.kind, 'other'), title: str(v.title), durationMs: optNum(v.durationMs), available,
+    ...(v.available === true && typeof v.libraryId === 'string' && v.libraryId ? {libraryId: id(v.libraryId, 'library id')} : {}),
     ...(typeof v.segmentId === 'string' ? {segmentId: id(v.segmentId, 'segment id')} : {}),
     ...(typeof v.album === 'string' ? {album: v.album} : {}), ...(typeof v.artist === 'string' ? {artist: v.artist} : {}),
     ...(typeof v.artistId === 'string' && v.artistId ? {artistId: id(v.artistId, 'artist id')} : {}),

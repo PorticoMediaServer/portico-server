@@ -67,10 +67,12 @@ type SegmentView struct {
 
 // QueueEntry is one window entry (ARCH-MEDIA-03 delivery).
 type QueueEntry struct {
-	EntryID    string `json:"entryId"`
-	SegmentID  string `json:"segmentId"`
-	Position   int64  `json:"position"`
-	ItemID     string `json:"itemId"`
+	EntryID   string `json:"entryId"`
+	SegmentID string `json:"segmentId"`
+	Position  int64  `json:"position"`
+	ItemID    string `json:"itemId"`
+	// LibraryID is this visible item's own current library, never its container's.
+	LibraryID  string `json:"libraryId,omitempty"`
 	Kind       string `json:"kind"`
 	Title      string `json:"title"`
 	DurationMs int64  `json:"durationMs,omitempty"`
@@ -696,7 +698,7 @@ func (s *Service) window(ctx context.Context, l *layout, p identity.Principal, f
 	// Facts only (entities, songs, book files, links, assets): no wait.
 	type info struct {
 		entity                                     int64
-		kind, title, album, still                  string
+		kind, title, album, still, library         string
 		albumTitle, artistID, artist, show, season string
 		seasonNumber, episodeNumber                int
 		backdrop                                   bool
@@ -708,7 +710,7 @@ func (s *Service) window(ctx context.Context, l *layout, p identity.Principal, f
 	// Artwork is keyed lookups on the selection's primary key: the item's own
 	// still, and whether the poster the item art route would serve exists (its
 	// own, else its album's or book's cover, else its season's or show's).
-	rows, err := l.tx.QueryContext(ctx, `SELECT pid(i.public_id),i.id,k.name,i.title,
+	rows, err := l.tx.QueryContext(ctx, `SELECT pid(i.public_id),i.id,k.name,i.title,COALESCE(lib.library_id,''),
  COALESCE((SELECT a.duration FROM catalog_asset_links x JOIN catalog_assets a ON a.id=x.asset_id WHERE x.entity_id=i.id ORDER BY x.part_index,a.id LIMIT 1),0),
  COALESCE(pid(album.public_id),pid(book.public_id),''),COALESCE(s.disc_number,b.disc_number,0),COALESCE(s.track_number,b.part_number,0),
  COALESCE((SELECT a.role||'/'||a.digest FROM artwork_selections a JOIN artwork_objects o ON o.digest=a.digest AND o.status='ready' WHERE a.kind='item' AND a.entity_id=i.id AND a.role IN('still','thumbnail') AND a.subject='' ORDER BY a.role LIMIT 1),''),
@@ -720,6 +722,7 @@ func (s *Service) window(ctx context.Context, l *layout, p identity.Principal, f
  COALESCE(pid(show.public_id),''),COALESCE(pid(season.public_id),''),COALESCE(sn.number,0),COALESCE(ep.number,0),
  EXISTS(SELECT 1 FROM artwork_selections a JOIN artwork_objects o ON o.digest=a.digest AND o.status='ready' WHERE a.subject='' AND a.role='backdrop' AND ((a.kind='item' AND a.entity_id=i.id) OR (a.kind='show' AND a.entity_id=ep.show_id)))
 	FROM catalog_entities i JOIN catalog_kinds k ON k.id=i.kind AND k.playable=1
+ LEFT JOIN catalog_libraries lib ON lib.id=i.library_id AND lib.retired=0
 	LEFT JOIN catalog_songs s ON s.entity_id=i.id LEFT JOIN catalog_entities album ON album.id=s.album_id
 	LEFT JOIN catalog_book_files b ON b.entity_id=i.id LEFT JOIN catalog_entities book ON book.id=b.book_id
 	LEFT JOIN catalog_episodes ep ON ep.entity_id=i.id
@@ -733,7 +736,7 @@ func (s *Service) window(ctx context.Context, l *layout, p identity.Principal, f
 	for rows.Next() {
 		var id string
 		var v info
-		if err = rows.Scan(&id, &v.entity, &v.kind, &v.title, &v.duration, &v.album, &v.disc, &v.track, &v.still, &v.poster, &v.albumTitle, &v.artistID, &v.artist, &v.show, &v.season, &v.seasonNumber, &v.episodeNumber, &v.backdrop); err != nil {
+		if err = rows.Scan(&id, &v.entity, &v.kind, &v.title, &v.library, &v.duration, &v.album, &v.disc, &v.track, &v.still, &v.poster, &v.albumTitle, &v.artistID, &v.artist, &v.show, &v.season, &v.seasonNumber, &v.episodeNumber, &v.backdrop); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -771,6 +774,7 @@ func (s *Service) window(ctx context.Context, l *layout, p identity.Principal, f
 		v, ok := found[out[i].ItemID]
 		if ok && visible[out[i].ItemID] {
 			out[i].Kind, out[i].Title, out[i].DurationMs, out[i].Available = v1Kind(v.kind), v.title, lengths[durationKey{entity: v.entity}], true
+			out[i].LibraryID = v.library
 			out[i].Album, out[i].ArtistID, out[i].Artist = v.albumTitle, v.artistID, v.artist
 			out[i].ShowID, out[i].SeasonID = v.show, v.season
 			if v.kind == "episode" {
