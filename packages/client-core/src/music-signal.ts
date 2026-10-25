@@ -70,7 +70,11 @@ function codecName(codec:string):string{
 /** An explicit measured layout, or the one-channel/two-channel names a count does prove; a
  * larger count alone cannot tell 5.1 from 6.0, 7.1 from 8.0, so it names no layout. */
 function layout(f:MusicFormatFacts):string|undefined{
- return f.layout??({1:'mono',2:'stereo'} as Record<number,string>)[f.channels??0];
+ // These measured variants name a speaker family the drawn badge/wording already know.
+ // Every other layout label stays exactly as measured.
+ const measured=f.layout?.trim(),known=measured?.toLowerCase();
+ if(measured)return known==='5.1(side)'?'5.1':known==='7.1(wide)'||known==='7.1(wide-side)'?'7.1':measured;
+ return ({1:'mono',2:'stereo'} as Record<number,string>)[f.channels??0];
 }
 export function musicSignalSource(f:MusicFormatFacts,short=false):SignalText|string|undefined{
  if(f.atmos===true)return text(short?'player.signal.badge.atmos':'player.signal.source.atmos');
