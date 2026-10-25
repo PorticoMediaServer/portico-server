@@ -11,6 +11,7 @@ import {WatchVersionPresentationOwner} from './VersionPresentationOwner';
 import {useWatchPanels} from './use-watch-panels';
 import {useLiveChromePort} from '../live/use-live-chrome';
 import {watchEndCard} from './end-card';
+import {readCollectionNext, type WatchCollectionNext} from './collection-next';
 import {WatchEpisodesDrawer} from './EpisodesDrawer';
 import {watchEpisodes, type WatchEpisodeRow} from './episodes';
 import {router} from '../../router';
@@ -40,7 +41,7 @@ function RegisteredWatchPlayback({binding}: {binding: WatchBindings | undefined}
   const collection = detail?.data?.collections?.[0], finishKey = snapshot?.presentation?.finished ? `${collection?.id ?? ''}:${detail?.data?.item.id ?? ''}` : '';
   useEffect(() => {
     setCollectionNext(undefined);
-    const data = detail?.data, card = collection, api = captured?.api, playback = runtime;
+    const data = detail?.data, card = collection, api = captured?.context.api, playback = runtime;
     if (!data || !card || !api || !playback || !finishKey || card.position >= card.memberCount) return;
     const life = new AbortController(), run = playback.getSnapshot().playback.playbackRun;
     void readCollectionNext(api, card, data.item.id, id => {
@@ -48,7 +49,7 @@ function RegisteredWatchPlayback({binding}: {binding: WatchBindings | undefined}
       // The card belongs to the playback it was drawn for; a later title is never started by it.
       if (live.disposed || live.playback.playbackRun !== run) return Promise.reject(new DOMException('Playback changed', 'AbortError'));
       return playback.play(id);
-    }, life.signal).then(value => { if (!life.signal.aborted) setCollectionNext(value); }).catch(() => { if (!life.signal.aborted) setCollectionNext(undefined); });
+    }, life.signal).then((value: WatchCollectionNext | undefined) => { if (!life.signal.aborted) setCollectionNext(value); }).catch(() => { if (!life.signal.aborted) setCollectionNext(undefined); });
     return () => life.abort();
   }, [captured, runtime, collection?.id, detail?.data?.item.id, finishKey]);
   const end = held && binding && detailBinding && detail?.data

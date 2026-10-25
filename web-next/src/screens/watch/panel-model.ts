@@ -13,7 +13,7 @@ export type WatchRadioChoice=Readonly<{id:string;label:string;detail?:string;sel
 export type WatchPanelModel=Readonly<{
  fence:QueuePlaybackFence;audio:readonly TrackChoice[];subtitles:readonly TrackChoice[];subtitleAdditions:readonly TrackChoice[];
  quality:readonly WatchRadioChoice[];speed:readonly WatchRadioChoice[];
- qualityLabel?:string;qualityAccessibleLabel?:string;qualityNotes:readonly string[];audioNotes:readonly string[];automatic:boolean;audioLabel?:string;subtitleLabel?:string;
+ qualityLabel?:string;qualityAccessibleLabel?:string;qualityNotes:readonly string[];audioNotes:readonly string[];/** The one route line the retained panel binding still reads. */qualityNote?:string;automatic:boolean;audioLabel?:string;subtitleLabel?:string;
  subtitleTiming?:Readonly<{offsetSeconds:number;shift(deltaMs:number):Promise<void>}>;
  /** Draws the search row only when the server says why it cannot be used. */
  subtitleSearch?:Readonly<{reason:string}>;
@@ -124,7 +124,7 @@ export function watchPanelModel(runtime:WebShellPlaybackRuntime,snapshot:WebPlay
  const subtitleSearch=provider&&!provider.enabled?Object.freeze({reason:subtitleReason(provider.reason,t)}):undefined;
  let speeds:readonly number[]=[];try{speeds=runtime.speedChoices(fence);}catch{/* source changed */}
  const speed=Object.freeze(speeds.map(rate=>Object.freeze({id:String(rate),label:rate===1?t('player.opt.normalSpeed'):t('next.dock.rate',{rate}),selected:snapshot.presentation?.rate===rate,enabled:true})));
- return Object.freeze({fence,audio,subtitles:Object.freeze(subtitleRows),subtitleAdditions:Object.freeze(subtitleAdditions),quality:Object.freeze(qualityRows),speed,automatic:selected==='automatic',qualityLabel,qualityNotes,audioNotes,...(subtitleTiming?{subtitleTiming}:{}),...(subtitleSearch?{subtitleSearch}:{}),...(subtitleStyle?{subtitleStyle}:{}),...(sleepTimer?{sleepTimer}:{}),...(subtitleForced?{subtitleForced}:{}),
+ return Object.freeze({fence,audio,subtitles:Object.freeze(subtitleRows),subtitleAdditions:Object.freeze(subtitleAdditions),quality:Object.freeze(qualityRows),speed,automatic:selected==='automatic',qualityLabel,qualityNotes,audioNotes,qualityNote:routeNote,...(subtitleTiming?{subtitleTiming}:{}),...(subtitleSearch?{subtitleSearch}:{}),...(subtitleStyle?{subtitleStyle}:{}),...(sleepTimer?{sleepTimer}:{}),...(subtitleForced?{subtitleForced}:{}),
   qualityAccessibleLabel:qualityLabel?(selected==='automatic'?t('player.quality.automaticNow',{quality:qualityLabel}):qualityLabel):undefined,
   audioLabel:audio.find(r=>r.selected)?.primary,subtitleLabel:subtitleRows.find(r=>r.selected)?.primary,isCurrent,
   selectAudio:async id=>{check();if(!audio.some(r=>r.id===id&&!r.unavailable))throw new Error('playback_audio_unavailable');await runtime.selectAudio(fence,id);},
