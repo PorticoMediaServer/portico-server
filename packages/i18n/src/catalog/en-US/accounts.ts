@@ -1,6 +1,9 @@
 /** Canonical account/session language from design 14a9a19: auth, connect,
  * account and Settings spec. Names and counts always come from the live authority. */
 export const accountMessages = {
+  'accounts.tvOffline.title': 'Your servers aren’t answering',
+  'accounts.tvOffline.body': 'Portico keeps checking and opens one the moment it answers.',
+  'accounts.tvOffline.help': 'If one of these is your own server, check that its computer is on and connected. Your Portico Account is still signed in; its settings are in Settings.',
   'accounts.setup.approveTitle': 'Approve {server}?',
   'accounts.setup.ownerBody': '{account}, your Portico Account, becomes the owner of this server, with a main profile there named {account}.',
   'accounts.setup.approveSafety': 'Approve only if this is your own server. It then gets its secure connection by itself.',
