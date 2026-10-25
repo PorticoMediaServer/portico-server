@@ -18,6 +18,16 @@ export type SettingsSections = Readonly<{
 
 /** The parent supplies actual domain adapters. This layer owns no query resolver or key map. */
 export function createSettingsBindings(controller: SettingsController, options: SettingsControllerOptions, identity: ShellIdentity, sections: SettingsSections): SettingsBindings {
+  /** A switch row belongs to the direction its server is not already in. The
+   * local direction stays out until its own surface is mounted; a drawn action
+   * with no handler would be a dead control. */
+  const signInSwitch = (rowId: string): {present: boolean; disabled?: boolean} | undefined => {
+    if (!sections.signIn?.ownerSwitch) return undefined;
+    const want = rowId === 'signin.switchToPortico' || rowId === 'signin.startOverPortico' ? 'local' : undefined;
+    if (!want) return ['signin.switchToLocal', 'signin.startOverLocal'].includes(rowId) ? {present: false} : undefined;
+    const snapshot = sections.signIn.getSnapshot();
+    return {present: !!snapshot.document && snapshot.document.signIn === want, disabled: snapshot.loading};
+  };
   return {
     accountName: identity.profileName,
     serverName: identity.serverName,
@@ -30,16 +40,13 @@ export function createSettingsBindings(controller: SettingsController, options: 
     getSnapshot: section => section.scope === 'server' && section.id === 'signin' && sections.signIn ? sections.signIn.getSnapshot() : controller.getSnapshot(section),
     sectionVisible: controller.sectionVisible,
     eligible: (row, context) => {
-      const fact = ['signin.switchToPortico', 'signin.startOverPortico'].includes(row.id) && sections.signIn?.ownerSwitch
-        ? {present: !!sections.signIn.getSnapshot().document} : sections.signIn?.rowState(row.id);
+      const fact = signInSwitch(row.id) ?? sections.signIn?.rowState(row.id);
       return fact ? controller.sectionVisible(context.section) && fact.present : controller.eligible(row, context);
     },
     audience: section => ['dashboard', 'libraries', 'people'].includes(section.id) ? 'administrators' : 'owner',
     serverHealth: controller.serverHealth,
     serverFacts: controller.serverFacts,
-    rowState: (row, context) => ['signin.switchToPortico', 'signin.startOverPortico'].includes(row.id) && sections.signIn?.ownerSwitch
-      ? {present: !!sections.signIn.getSnapshot().document, disabled: sections.signIn.getSnapshot().loading}
-      : sections.signIn?.rowState(row.id) ?? controller.rowState(row, context),
+    rowState: (row, context) => signInSwitch(row.id) ?? sections.signIn?.rowState(row.id) ?? controller.rowState(row, context),
     change: (row, value, context) => {if (!sections.change?.(row, value, context)) controller.change(row, value, context);},
     reset: (row, context) => {if (!sections.reset?.(row, context)) controller.reset(row, context);},
     configurationMatches: controller.configurationMatches,

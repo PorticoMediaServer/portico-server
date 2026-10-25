@@ -63,6 +63,7 @@ import {RemoteSourcesPage} from './remote-sources/RemoteSourcesPage';
 import {ServerRemotePage} from './server-remote/ServerRemotePage';
 import {MetadataSettingsPage} from './metadata/MetadataSettingsPage';
 import {browserAccountOrigin} from '../../platform/account-origin';
+import {browserAppSessions} from '../../platform/app-sessions';
 import {SettingsInvitations} from './invitations';
 import {LibraryChannelsPage} from './server/channels/LibraryChannelsPage';
 import {libraryChannelAdmission} from '../live/owner/library-channel-admission';
@@ -172,9 +173,11 @@ export function SettingsEntry() {
         capabilities: () => ({manageAccount: identity.capabilities?.manageAccount === true, managePeople: identity.capabilities?.managePeople === true,
           manageServer: identity.capabilities?.manageServer === true, manageSignIn: current() && identity.capabilities?.manageSignIn === true}),
         onAuthorityChanged: () => {if (current()) void router.navigate({to: '/sign-in', replace: true});},
-        ownerSwitch: identity.signIn === 'local' ? new SettingsOwnerSwitch(context.api, {serverId: viewer.serverId,
-          isCurrent: () => current() && context.session().viewer.role === 'owner' && context.facts.identity.primaryProfile === true && context.facts.identity.capabilities?.manageSignIn === true && context.facts.identity.signIn === 'local',
+        ownerSwitch: identity.primaryProfile === true && role === 'owner' && identity.capabilities?.manageSignIn === true ? new SettingsOwnerSwitch(context.api, {serverId: viewer.serverId,
+          isCurrent: () => current() && context.session().viewer.role === 'owner' && context.facts.identity.primaryProfile === true && context.facts.identity.capabilities?.manageSignIn === true && context.facts.identity.signIn === identity.signIn,
           hostedOrigin: browserAccountOrigin(import.meta.env, globalThis.location),
+          // The app's saved-selection revision, captured for the local direction.
+          selectionRevision: async () => (await browserAppSessions().read()).revision,
         }) : undefined,
       }) : undefined;
     const session = context.session();

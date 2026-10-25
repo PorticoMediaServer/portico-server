@@ -3,6 +3,7 @@ import {ServerSignInProbe, parseServerSignIn, type ServerSignIn} from '@core/sig
 import {directSignIn, directSignInContinuation, shouldRetireAccountSession, completeDirectSignInChallenge, changeRequiredPassword, parseDirectSnapshot, type DirectSignIn, type DirectSnapshot} from '@core/profile-management.ts';
 import {inspectDirectServer, connectPairedServer, connectPairedPorticoServer, connectHostedServer, rememberNativeSession, type ConnectionEnvironment, type RememberedServer} from '@core/server-connections.ts';
 import {assertFirstContactIdentity, RouteError, sameServerPin, type ServerPin} from '@core/route-identity.ts';
+import type {LocalMoveCustody} from './local-move';
 import {knownServerRoutes, type AppSessionStore, type AppServerSession, type SignInKind} from '@core/app-sessions.ts';
 import {acceptPorticoInvitation, acceptShortPorticoInvitation, porticoSignIn, type HostedRequestApi} from '@core/portico-servers.ts';
 import type {JoinLink} from '@core/join-link.ts';
@@ -248,29 +249,38 @@ export class BrowserAccountEntry {
    this.watchAuthority();
   }catch(error){await this.retire(api,result.session);if(op.current()){api.setAccessToken('');this.watchAuthority();}throw error;}
  }
- /** Complete an owner-initiated move to local with the server's own grant. The
-  * server is inspected first through the ordinary entry guard, then admission is
-  * the same `accept` sign-in uses: revision, PIN challenge, remembered server and
-  * native remember all apply, and a challenge stays in this controller for its
-  * sign-in screen. Nothing here stores a session, sets an API token or shorts a
-  * guard; the Settings surface must not adopt the grant itself. */
- async completeLocalOwnerMove(origin: string, grant: DirectSignIn, expected: Readonly<{serverId: string; revision: number}>): Promise<boolean> {
-  if (grant.kind === 'signed-in' && grant.snapshot.serverId !== expected.serverId) throw new RouteError('identity_mismatch', 'The server identity changed.');
-  if (!Number.isSafeInteger(expected.revision) || expected.revision < 0) throw new CodedError('invalid_request', 'A move revision is required.');
-  const inspected = await this.inspect(origin);
-  if (!inspected?.current()) return false;
-  const state = this.state, api = inspected.api;
-  if (!api || !state.server || state.server.id !== expected.serverId) throw new RouteError('identity_mismatch', 'The server identity changed.');
+ /** Complete an owner-initiated move to local with the custody its confirmation
+  * produced. The origin, pin and app-selection revision are the captured issuer
+  * facts, not a caller-supplied guess; the grant is admitted by the same `accept`
+  * sign-in uses, so revision, PIN/two-step challenge, remembered-server and
+  * native-remember rules all run. Before that handoff the fresh grant is still
+  * ours, so every early exit retires exactly it through its original issuer; after
+  * `accept` is entered, accept owns cleanup. */
+ async completeLocalOwnerMove(custody: LocalMoveCustody): Promise<boolean> {
+  const {grant, issuer, serverId, selectionRevision, retire} = custody;
+  if (grant.snapshot.serverId !== serverId) {await retire().catch(() => {});throw new RouteError('identity_mismatch', 'The server identity changed.');}
+  const inspected = await this.inspect(issuer.origin);
+  if (!inspected?.current()) {await retire().catch(() => {});return false;}
+  const api = inspected.api, state = this.state;
+  const pin = api?.getRouteConnection()?.pin;
+  if (!api || !state.server || state.server.id !== serverId || state.server.signIn !== 'local' || !pin || !sameServerPin(pin, issuer.pin)) {
+   await retire().catch(() => {});return false;
+  }
   const op = this.operation();
+  let handed = false;
   try {
    const revision = (await this.ports.store.read()).revision;
-   if (!op.current()) return false;
-   if (revision !== expected.revision) throw new CodedError('cancelled', 'The server selection changed.');
+   if (!op.current()) {await retire().catch(() => {});return false;}
+   if (revision !== selectionRevision) {await retire().catch(() => {});throw new CodedError('cancelled', 'The server selection changed.');}
+   handed = true;
    await this.accept(grant, api, revision, op);
-   // A challenge (PIN or two-step) is a real continuation: the entry publishes it
-   // for its own sign-in screen; ready/profiles means admission is already durable.
    return ['challenge', 'profiles', 'ready', 'change-password'].includes(this.getSnapshot().phase);
-  } finally { /* accept owns the terminal publish; the entry stays usable for a challenge. */ }
+  } catch (error) {
+   // accept owns the grant once entered (it retires a failed admission itself);
+   // anything raised before that handoff leaves the fresh grant in our custody.
+   if (!handed) await retire().catch(() => {});
+   throw error;
+  }
  }
  /** The link code is not posted until the kind, private-key proof, link id and
   * all remembered ownership of this origin have passed the normal entry guard. */

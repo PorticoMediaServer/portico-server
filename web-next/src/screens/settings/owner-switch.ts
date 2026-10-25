@@ -2,6 +2,8 @@ import {AccountMoveClient, type AccountMove, type AccountMoveConfirmation, type 
 import {HttpLocalApi, type LocalSession} from '@core/index.ts';
 import type {DirectSignIn} from '@core/profile-management.ts';
 import type {SignInKind} from '@core/app-sessions.ts';
+import {passwordStrength} from '@core/password-strength.ts';
+import type {LocalMoveCustody} from '../../platform/local-move';
 import {routePath} from '../../../../packages/contracts/src/routes.ts';
 import {RouteError, routeOrigin} from '@core/route-identity.ts';
 import {createBrowserOwnerClaim, type BrowserOwnerClaim} from '../../platform/owner-claim';
@@ -12,6 +14,8 @@ type Snapshot = Readonly<{busy: boolean; preview?: AccountMove; confirmed: boole
 const empty: Snapshot = Object.freeze({busy: false, confirmed: false});
 export type OwnerSwitchOptions = Readonly<{
   serverId: string; hostedOrigin: string; isCurrent: () => boolean;
+  /** The app's saved-selection revision, read for the confirmed local move. */
+  selectionRevision?: () => Promise<number>;
   retireLateGrant?: MoveClientOptions['retireLateGrant'];
   secureContextAllowed?: () => boolean; createClaim?: () => Claim;
 }>;
@@ -72,21 +76,39 @@ export class SettingsOwnerSwitch {
     } finally {operation.finish();}
   }
   async preview(startOver: boolean): Promise<AccountMove> { return this.previewDirection('portico', startOver); }
-  /** A move to local ends in the server's own signed-in grant. This returns it to
-   * the caller for the app's real admission path; it never stores or adopts a
-   * session here, and it never skips the revision, PIN or remembered-server rules
-   * that admission already applies. */
-  async confirmLocal(confirmation: string): Promise<Extract<DirectSignIn, {kind: 'signed-in'}>> {
+  /** A move to local ends in the server's own signed-in grant. The new local
+   * owner's username and password are the caller's own draft (the server validates
+   * them against the canonical policy); none is synthesised here. The returned
+   * custody is the single-use grant plus the issuer facts captured at confirmation,
+   * and it is retired through that original issuer if any step before admission
+   * fails; this controller never stores or adopts a session. */
+  async confirmLocal(credentials: Readonly<{username: string; password: string}>, confirmation: string): Promise<LocalMoveCustody> {
     const preview = this.state.preview;
     if (!preview || preview.to !== 'local' || this.state.confirmed) throw new Error('A fresh local move preview is required.');
+    if (typeof credentials.username !== 'string' || !credentials.username.trim() || credentials.username.length > 64 || credentials.username !== credentials.username.trim()) throw new Error('Enter the local owner username.');
+    if (typeof credentials.password !== 'string' || credentials.password.length > 72 || !passwordStrength(credentials.password).acceptable) throw new Error('Choose a stronger local owner password.');
+    const pin = this.api.getRouteConnection()?.pin;
+    if (!pin) throw new Error('The server identity is not current.');
+    if (!this.options.selectionRevision) throw new Error('The saved server selection is unavailable.');
     const operation = this.operation();
+    let grant: Extract<DirectSignIn, {kind: 'signed-in'}> | undefined;
     try {
-      const result: AccountMoveConfirmation = await this.moves.confirm({moveId: preview.id, expectedRevision: preview.revision, confirmation, username: '', password: ''}, operation.signal);
+      const revision = await this.options.selectionRevision();
+      operation.check();
+      const result: AccountMoveConfirmation = await this.moves.confirm({moveId: preview.id, expectedRevision: preview.revision, confirmation, username: credentials.username, password: credentials.password}, operation.signal);
       operation.check();
       if (result.kind !== 'local' || result.signIn.kind !== 'signed-in') throw new Error('Unexpected owner move continuation.');
       if (result.signIn.snapshot.serverId !== preview.serverId) throw new Error('The owner move changed.');
+      grant = result.signIn;
+      if (await this.options.selectionRevision() !== revision) throw new Error('The server selection changed.');
+      const captured = grant;
       this.publish({busy: false, confirmed: false});
-      return result.signIn;
+      return Object.freeze({grant: captured, issuer: Object.freeze({origin: this.api.baseUrl, pin}), serverId: preview.serverId, selectionRevision: revision,
+        retire: () => this.retire(captured.session)});
+    } catch (error) {
+      // The fresh grant is ours until admission takes custody; revoke exactly it.
+      if (grant) await this.retire(grant.session).catch(() => {});
+      throw error;
     } finally {operation.finish();}
   }
   async confirmAndPrepare(confirmation: string): Promise<string> {
