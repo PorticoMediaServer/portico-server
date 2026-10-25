@@ -8,10 +8,10 @@ export type SettingsTarget = Readonly<{scope: 'account' | 'server'; section: str
  * than showing an empty control or a setting with no engine (ruling 3).
  */
 export const pendingServerRows: ReadonlySet<string> = new Set(['storage.networkNotice', 'storage.emptyCache',
-  'storage.downloads', 'storage.upgradeCopy', 'storage.backupKeysNote']);
+  'storage.upgradeCopy', 'storage.backupKeysNote']);
 
 /** The rows this page draws from its own owner-scoped producers. */
-export const factRows: ReadonlySet<string> = new Set(['storage.dataFolder', 'storage.usage']);
+export const factRows: ReadonlySet<string> = new Set(['storage.dataFolder', 'storage.usage', 'storage.downloads']);
 
 /** The Retention rows that name the page which owns their value. */
 export const sectionLinkRows: ReadonlySet<string> = new Set(['storage.keepHistory', 'storage.keepLogsLink']);
