@@ -240,7 +240,10 @@ type LinearDelivery interface {
 }
 
 type LinearWork struct {
-	ClientProfile ClientProfile
+	// MemberCeilings are private account policy, read with this producer's authority.
+	// A changed ceiling retires the old producer and timeshift generation.
+	MemberCeilings ReplanCeilings
+	ClientProfile  ClientProfile
 	// MPVProfile is the device's mpv engine when it plays channels and the
 	// viewer did not choose Native; EngineSetting is the viewer's setting.
 	MPVProfile                                                         *ClientProfile

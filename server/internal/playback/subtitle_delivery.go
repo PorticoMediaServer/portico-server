@@ -40,6 +40,14 @@ func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p id
 	if ceilings, ok := replanCeilingsFrom(ctx); ok {
 		current = &ceilings
 	}
+	if current != nil {
+		ceiling, err := memberAwayCeilingsTx(ctx, tx, p.AccountID, current.Remote || old.TargetReach != reachLocal)
+		if err != nil {
+			return err
+		}
+		current.MaxVideoBitrateBPS = narrowCeiling(current.MaxVideoBitrateBPS, ceiling.MaxVideoBitrateBPS)
+		current.MaxVideoHeight = narrowCeiling(current.MaxVideoHeight, ceiling.MaxVideoHeight)
+	}
 	target, replanned, err := replanTarget(old, cfg, current, true)
 	if err != nil {
 		return err
@@ -101,9 +109,11 @@ func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p id
 // turned off). Remote is admission's own view of the connection, not a hint
 // the client sent. MaxVideoBitrateBPS is the tightest video bitrate the member
 // and the server's upload budget allow there; zero is none.
+// MaxVideoHeight independently preserves the account's selected ladder height.
 type ReplanCeilings struct {
 	Remote             bool
 	MaxVideoBitrateBPS int
+	MaxVideoHeight     int
 }
 
 type replanCeilingsKey struct{}
@@ -154,6 +164,9 @@ func replanTarget(old *DeliveryPlan, cfg DeliveryConfiguration, current *ReplanC
 		remote, member = remote || current.Remote, current.MaxVideoBitrateBPS
 	}
 	target, reach := narrowTarget(*old.Target, remote, member, cfg), reachLocal
+	if current != nil {
+		target.MaxVideoHeight = narrowCeiling(target.MaxVideoHeight, current.MaxVideoHeight)
+	}
 	if remote {
 		reach = reachRemote
 	}

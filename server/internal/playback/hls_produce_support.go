@@ -184,7 +184,11 @@ func (h *HLS) fallbackCeilings(ctx context.Context, tx *sql.Tx, plan *DeliveryPl
 	if plan.TargetReach != reachRemote && (plan.Target == nil || plan.TargetReach == reachLocal) {
 		return nil, nil
 	}
-	current := &ReplanCeilings{Remote: true}
+	ceiling, err := memberAwayCeilingsTx(ctx, tx, account, true)
+	if err != nil {
+		return nil, err
+	}
+	current := &ceiling
 	if h.memberCeiling == nil {
 		return current, nil
 	}
@@ -192,7 +196,7 @@ func (h *HLS) fallbackCeilings(ctx context.Context, tx *sql.Tx, plan *DeliveryPl
 	if err != nil {
 		return nil, err
 	}
-	current.MaxVideoBitrateBPS = limit
+	current.MaxVideoBitrateBPS = narrowCeiling(current.MaxVideoBitrateBPS, limit)
 	return current, nil
 }
 

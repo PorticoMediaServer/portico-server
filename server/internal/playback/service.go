@@ -224,6 +224,20 @@ func (s *Service) planInputsTx(ctx context.Context, tx *sql.Tx, p identity.Princ
 			input.Target = original.target(policy, cfg)
 		}
 	}
+	if input.Source != nil && input.Source.Video != nil || !catalogued && video != "" {
+		ceiling, err := memberAwayCeilingsTx(ctx, tx, p.AccountID, v1.remote(policy))
+		if err != nil {
+			return planInputs{}, err
+		}
+		// Apply after same-as-source normalization, which may remove only the
+		// viewer's chosen rung, never an account's independent ceiling.
+		// STRM preflight currently has no trustworthy peak-rate evidence and
+		// its byte relay cannot convert. Never advertise an unprovable cap.
+		if remote && ceiling.MaxVideoBitrateBPS > 0 {
+			return planInputs{}, ErrQualityUnavailable
+		}
+		input.Target = narrowMemberTarget(input.Target, ceiling)
+	}
 	return planInputs{input: input, cfg: cfg, values: values, ownerTranscoding: ownerTranscoding}, nil
 }
 

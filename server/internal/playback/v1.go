@@ -168,6 +168,13 @@ func (s *Service) PlanV1(ctx context.Context, p identity.Principal, item string,
 		return DeliveryPlan{}, e
 	}
 	if container == "strm" {
+		ceiling, err := memberAwayCeilingsTx(ctx, tx, p.AccountID, choice.Remote || DeliveryContextFrom(ctx).NetworkClass == NetworkRemote)
+		if err != nil {
+			return DeliveryPlan{}, err
+		}
+		if ceiling.MaxVideoBitrateBPS > 0 {
+			return DeliveryPlan{}, ErrQualityUnavailable
+		}
 		// A remote source is played as-is once it has been prepared at start.
 		return DeliveryPlan{SourceID: aid, Mode: "remote", Strategy: DeliveryOriginal, VideoAction: "copy", AudioAction: "copy", AudioStream: -1, Duration: duration}, nil
 	}

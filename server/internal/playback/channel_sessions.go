@@ -174,6 +174,22 @@ func (c *ChannelSessions) linearWorkTx(ctx context.Context, tx *sql.Tx, id strin
 	if err = json.Unmarshal([]byte(transport), &w.Desired); err != nil {
 		return w, err
 	}
+	w.MemberCeilings, err = memberChannelCeilingsTx(ctx, tx, w.Principal.AccountID, id)
+	if err != nil {
+		return w, err
+	}
+	w.ClientProfile = memberChannelProfile(w.ClientProfile, w.MemberCeilings)
+	if w.MPVProfile != nil {
+		narrowed := memberChannelProfile(*w.MPVProfile, w.MemberCeilings)
+		w.MPVProfile = &narrowed
+	}
+	if w.MemberCeilings.MaxVideoHeight > 0 {
+		height := w.MemberCeilings.MaxVideoHeight
+		if w.Selection.Quality.MaxHeight != nil {
+			height = narrowCeiling(height, *w.Selection.Quality.MaxHeight)
+		}
+		w.Selection.Quality.MaxHeight = &height
+	}
 	if c.linear == nil {
 		return w, controlFault("channel_runtime_unavailable", 503)
 	}
@@ -296,7 +312,7 @@ func (c *ChannelSessions) AuthorizeLinearMedia(ctx context.Context, id string, b
 }
 func (c *ChannelSessions) CheckLinearProducer(ctx context.Context, w LinearWork) error {
 	return c.WithLinearWorkTx(ctx, w.PlaybackID, func(tx *sql.Tx, current LinearWork) error {
-		if current.SourceRevision != w.SourceRevision || current.BufferOrdinal != w.BufferOrdinal || current.ProducerOrdinal != w.ProducerOrdinal || current.PolicyRevision != w.PolicyRevision {
+		if current.SourceRevision != w.SourceRevision || current.BufferOrdinal != w.BufferOrdinal || current.ProducerOrdinal != w.ProducerOrdinal || current.PolicyRevision != w.PolicyRevision || current.MemberCeilings != w.MemberCeilings {
 			return controlFault("source_changed", 409)
 		}
 		selected, err := c.linear.ResolveTx(ctx, tx, current.Principal, current.Selection.Reference, current.PlaybackID, c.now())

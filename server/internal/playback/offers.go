@@ -121,6 +121,12 @@ func (s *Service) Offers(ctx context.Context, p identity.Principal, scope Offers
 	cfg := deliveryConfiguration(s.deliverySettings)
 	edge := DeliveryContextFrom(ctx)
 	policy := s.resolvePolicy(tx, p, edge, cfg)
+	ceiling, err := memberAwayCeilingsTx(ctx, tx, p.AccountID, edge.NetworkClass == NetworkRemote)
+	if err != nil {
+		return out, err
+	}
+	policy.MaxVideoBitrateBPS = narrowCeiling(policy.MaxVideoBitrateBPS, ceiling.MaxVideoBitrateBPS)
+	policy.MaxVideoHeight = narrowCeiling(policy.MaxVideoHeight, ceiling.MaxVideoHeight)
 	out.DeliveryPolicy = &policy
 	if e = tx.QueryRowContext(ctx, `SELECT transcoding_enabled FROM playback_owner_policy WHERE singleton=1`).Scan(&out.TranscodingOpen); e != nil && !errors.Is(e, sql.ErrNoRows) {
 		return out, e

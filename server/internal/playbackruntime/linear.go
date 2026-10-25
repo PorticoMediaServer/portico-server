@@ -337,6 +337,7 @@ func (l *LinearRuntime) runOccurrence(ctx context.Context, id string, entry *lin
 	retryRevision := work.RetryRevision
 	selectionKey := linearSelectionKey(work.Selection)
 	initialPolicy, initialLease, initialAuthority := work.PolicyRevision, work.LeaseGeneration, work.LeaseAuthorityRevision
+	initialMemberCeilings := work.MemberCeilings
 	for ctx.Err() == nil {
 		changed, refreshErr := l.owner.Linear.authority.RefreshLinearSelection(ctx, id)
 		if changed {
@@ -346,7 +347,7 @@ func (l *LinearRuntime) runOccurrence(ctx context.Context, id string, entry *lin
 		if e != nil {
 			return
 		}
-		if work.PolicyRevision != initialPolicy || work.LeaseGeneration != initialLease || work.LeaseAuthorityRevision != initialAuthority {
+		if work.PolicyRevision != initialPolicy || work.LeaseGeneration != initialLease || work.LeaseAuthorityRevision != initialAuthority || work.MemberCeilings != initialMemberCeilings {
 			return
 		}
 		entry.mu.Lock()
@@ -417,7 +418,7 @@ func (l *LinearRuntime) runOccurrence(ctx context.Context, id string, entry *lin
 			}
 			continue
 		}
-		if current.PolicyRevision != initialPolicy || current.LeaseGeneration != initialLease || current.LeaseAuthorityRevision != initialAuthority {
+		if current.PolicyRevision != initialPolicy || current.LeaseGeneration != initialLease || current.LeaseAuthorityRevision != initialAuthority || current.MemberCeilings != initialMemberCeilings {
 			return
 		}
 		attempts = linearFailureCount(attempts, entry.buffer.Produced()-before)
