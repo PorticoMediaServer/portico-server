@@ -103,7 +103,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
   }, [book.contentsTarget, publication, authority, controller]);
   const engineError = useCallback((code: ReaderErrorCode) => reportError({code}), [reportError]);
   const layout = readerBookPresentation(width, environment), {presentation} = layout;
-  useEffect(() => {if (!active) setPanel(undefined);}, [active]);
+  useEffect(() => {if (!active) {setPanel(undefined); setFixedMenu(undefined);}}, [active]);
   const navigate = (location: ReaderLocation) => {
     const current = controller.getSnapshot();
     if (!active || !authority.isCurrent() || publication.signal.aborted || current.status !== 'ready'
@@ -193,7 +193,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, e
           onPress: (element: HTMLButtonElement) => {const root = element.closest<HTMLElement>('[data-reader-root]'); void (document.fullscreenElement ? document.exitFullscreen() : root?.requestFullscreen())?.catch(reportError);}}] : []),
       ]})}/>
     {active && environment === 'web' && snapshot.status === 'ready' && <ReaderBrowserHint visible={presentation === 'phone' && !panel && !fixedMenu && !currentHit && snapshot.selection === null && !hint}/>}
-    {fixed && <FixedPageMenus controller={controller} authority={authority} format={publication.format} reportError={code => reportError({code})}
+    {active && fixed && <FixedPageMenus controller={controller} authority={authority} format={publication.format} reportError={code => reportError({code})}
       open={fixedMenu} onOpenChange={setFixedMenu} anchorRef={zoomAnchor} directionRef={directionAnchor}/>}
   </>;
 }
