@@ -48,7 +48,7 @@ export function DevicePage({account, initialCode = ''}: {account: ServicesAccoun
     setCode(''); setFromQR(false); setReview(undefined); setDone(undefined); setError(undefined);
   };
   if (!session || authenticating) return <ServicesAuthStage variant="deviceSignIn"><ServicesAuthForm account={account} onSignedIn={() => setAuthenticating(false)} embedded heading={t('web.device.title')} lead={t('web.device.lede')}
-    before={<>{initialCode && <ServicesCodeChip label={t('services.device.codeFromTV')} code={initialCode} />}<ServicesQuiet>{t('services.device.signedOut')}</ServicesQuiet></>} /></ServicesAuthStage>;
+    before={<>{fromQR && code && <ServicesCodeChip label={t('services.device.codeFromTV')} code={code} />}<ServicesQuiet>{t('services.device.signedOut')}</ServicesQuiet></>} /></ServicesAuthStage>;
   if (done && !stale) return <DeviceDecision decision={done.decision} onAnother={another} />;
   return <DeviceView name={session.account.displayName || session.account.username} code={code} fromQR={fromQR} preview={review && !stale ? review.preview : undefined}
     busy={busy} error={error} onCodeChange={setCode} onInspect={() => void inspect()} onDecision={decision => void decide(decision)} onAnother={another} onSignOut={() => void account.service.logout().catch(setError)} />;
