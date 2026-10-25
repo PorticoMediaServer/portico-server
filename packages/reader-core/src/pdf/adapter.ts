@@ -88,7 +88,7 @@ export function createPdfAdapter<P extends FixedPreferences>(options:PdfOptions=
           const view={...fixed,dispose(){life.abort();scope.dispose();style.remove();views.delete(view);return fixed.dispose();}};views.add(view);return view;
         },
         async *search(query,searchOptions){
-          if(closed)throw new PdfInputError('closed');const needle=query.trim().toLowerCase();if(!needle||needle.length>256)return;
+          if(closed)throw new PdfInputError('closed');const needle=query.trim().toLowerCase();if(!needle||needle.length>256)throw new PdfInputError('pdf_limit');
           if(searchOptions.limit!==undefined&&(!Number.isInteger(searchOptions.limit)||searchOptions.limit<1||searchOptions.limit>1000))throw new PdfInputError('pdf_limit');
           const limit=searchOptions.limit??100;let found=0;
           for(let index=0;index<engine.document.numPages&&found<limit;index++){
