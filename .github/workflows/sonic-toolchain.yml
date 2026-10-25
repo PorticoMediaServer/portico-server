@@ -39,7 +39,7 @@ jobs:
           printf '%s\n' "$output"
           if [ "$status" -eq 0 ]; then
             echo 'fetched=1' >> "$GITHUB_OUTPUT"
-          elif [[ "$output" == *'model export is not published yet'* ]]; then
+          elif [[ "$output" == *'model export release is absent'* ]]; then
             echo 'fetched=0' >> "$GITHUB_OUTPUT"
           else
             exit "$status"
