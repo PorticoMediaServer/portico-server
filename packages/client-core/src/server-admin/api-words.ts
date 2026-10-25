@@ -117,6 +117,9 @@ export function webhookEventLabel(t: Translate, has: Has, event: string): string
 
 /** What needs the owner's eye on a webhook, most serious first; nothing when all is well. */
 export function webhookTrouble(t: Translate, webhook: Webhook): {tone: WordTone; text: string} | undefined {
+  // The server's authoritative retirement fact comes first: ordinary delivery counts cannot say
+  // that the destination or signing secret needs the owner's review before it may be enabled.
+  if (webhook.requiresOwnerReview === true) return {tone: 'warning', text: t('api.webhooks.ownerReviewRequired')};
   if (webhook.failing > 0) return {tone: 'danger', text: t('api.webhooks.failing', {count: webhook.failing})};
   if (webhook.dropped > 0) return {tone: 'warning', text: t('api.webhooks.dropped', {count: webhook.dropped})};
   if (webhook.waiting > 0) return {tone: 'neutral', text: t('api.webhooks.waiting', {count: webhook.waiting})};
