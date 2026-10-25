@@ -242,9 +242,16 @@ func stageCB7Archive(ctx context.Context, reader archiveStagingSource, size int6
 			}
 			written += int64(read)
 		}
-		if readErr != nil && readErr != io.EOF {
+		if readErr != nil {
 			_ = file.Close()
-			return "", ErrArchiveFormat
+			if readErr == io.EOF {
+				// The extent ended before the declared size: a short archive,
+				// not a cancellation.
+				return "", ErrArchiveFormat
+			}
+			// The seam returns the cancellation/deadline itself; carry it out
+			// instead of relabelling a bounded-operation failure as format.
+			return "", readErr
 		}
 		if read == 0 {
 			_ = file.Close()
@@ -257,6 +264,11 @@ func stageCB7Archive(ctx context.Context, reader archiveStagingSource, size int6
 	}
 	if err := file.Close(); err != nil {
 		return "", ErrLimit
+	}
+	if err := ctx.Err(); err != nil {
+		// A copy that finished exactly at the deadline gives no bounded helper
+		// run, so it is refused rather than spawned.
+		return "", err
 	}
 	return path, nil
 }
