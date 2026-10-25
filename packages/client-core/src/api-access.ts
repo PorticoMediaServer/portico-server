@@ -172,7 +172,8 @@ export function parseWebhookDeliveryPage(raw:unknown):WebhookDeliveryPage{
 
 const WEBHOOKS=routePath("list_webhooks");
 export const listWebhooks=async(t:ApiAccessTransport,signal?:AbortSignal):Promise<WebhookList>=>parseWebhookList(await t.request<unknown>(WEBHOOKS,'GET',undefined,signal));
-export const createWebhook=async(t:ApiAccessTransport,q:NewWebhook,signal?:AbortSignal):Promise<IssuedWebhook>=>parseIssuedWebhook(await t.request<unknown>(WEBHOOKS,'POST',{...q,events:[...q.events]},signal));
+/** `operationId` makes one create retry-safe: the same id with the same request answers with the webhook it made (the secret was shown once), a different request under it is refused, and a webhook since deleted answers not found. Omitted, the create behaves as before. */
+export const createWebhook=async(t:ApiAccessTransport,q:NewWebhook,signal?:AbortSignal,operationId?:string):Promise<IssuedWebhook>=>parseIssuedWebhook(await t.request<unknown>(WEBHOOKS,'POST',{...q,events:[...q.events],...(operationId?{operationId}:{})},signal));
 /** A field left out of `change` is left as it is. */
 /** One webhook as the list shows it. */
 export const getWebhook=async(t:ApiAccessTransport,webhookId:string,signal?:AbortSignal):Promise<Webhook>=>parseWebhook(await t.request<unknown>(`${WEBHOOKS}/${id(webhookId)}`,'GET',undefined,signal));

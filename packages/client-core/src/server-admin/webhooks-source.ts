@@ -1,3 +1,5 @@
+import {webRouteCrypto} from '../route-identity.ts';
+import {storageOperationId} from './panel-logic.ts';
 import {ApiAccessError, createWebhook, deleteWebhook, listWebhooks, listWebhookDeliveries, sendWebhookTest, updateWebhook, type ApiAccessTransport, type IssuedWebhook, type NewWebhook, type Webhook, type WebhookChange, type WebhookDeliveryPage, type WebhookList} from '../api-access.ts';
 
 type Failure = 'read'|'write'|'deliveries';
@@ -8,12 +10,31 @@ const terminal = (error: unknown) => {
   return status === 401 || status === 403 || ['unauthorized','forbidden','not_permitted'].includes(code ?? '');
 };
 const eventsKey = (events: readonly string[]) => [...new Set(events)].sort().join(',');
+/** A bounded digest of the create body exactly as it will be sent: only the
+ * fields present, and never the request itself. It uses the same audited
+ * route crypto the web app registers, so a browser without WebCrypto still
+ * digests; where neither is available the caller fails closed rather than
+ * retrying under a fresh id. */
+async function webhookRequestFingerprint(intent: NewWebhook): Promise<string | undefined> {
+  const body = {
+    name: intent.name, url: intent.url, events: [...intent.events],
+    ...(intent.secret !== undefined ? {secret: intent.secret} : {}),
+    ...(intent.enabled !== undefined ? {enabled: intent.enabled} : {}),
+  };
+  try {
+    const digest = await webRouteCrypto.sha256(new TextEncoder().encode(JSON.stringify(body)));
+    return [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, '0')).join('');
+  } catch {return undefined;}
+}
 const matches = (hook: Webhook, input: WebhookChange) => (input.name === undefined || hook.name === input.name)
   && (input.url === undefined || hook.url === input.url) && (input.enabled === undefined || hook.enabled === input.enabled)
   && (input.events === undefined || eventsKey(hook.events) === eventsKey(input.events));
 
-/** One owner/server lifetime. No webhook write is replayed after an uncertain
- * response: these endpoints do not promise operation-id deduplication. */
+/** One owner/server lifetime. A webhook create keeps one operation id for its
+ * exact request, so an uncertain response is retried as the same create: the
+ * same webhook answers without its secret, a changed request is refused and a
+ * webhook since deleted answers not found. Edits, removals and tests are not
+ * replayed. */
 export class SettingsWebhooksSource {
   private state = empty;
   private readonly listeners = new Set<() => void>();
@@ -21,6 +42,7 @@ export class SettingsWebhooksSource {
   private read?: AbortController;
   private detail?: AbortController;
   private mutation?: AbortController;
+  private createAttempt?: Readonly<{fingerprint: string; operationId: string}>;
   constructor(private readonly api: ApiAccessTransport, private readonly isCurrent: () => boolean, private readonly reportError: (error: unknown) => void) {}
   private current = () => !this.lifetime.signal.aborted && this.isCurrent();
   private ownsRead = (read: AbortController) => this.current() && this.read === read && !read.signal.aborted && !this.mutation;
@@ -59,10 +81,11 @@ export class SettingsWebhooksSource {
     this.read?.abort();this.detail?.abort();const write = new AbortController();this.mutation = write;
     this.publish({busy: true, error: undefined});return write;
   }
-  private async write<T>(operation: (api: ApiAccessTransport, signal: AbortSignal) => Promise<T>, hook?: Webhook): Promise<T | undefined> {
+  private async write<T>(operation: (api: ApiAccessTransport, signal: AbortSignal, owns: () => boolean) => Promise<T>, hook?: Webhook): Promise<T | undefined> {
     const write = this.claim(hook);if (!write) return;
+    const owns = () => this.ownsWrite(write);
     let result: T | undefined;
-    try {if (!this.ownsWrite(write)) return;result = await operation(this.transport(() => this.ownsWrite(write)), write.signal);if (!this.ownsWrite(write)) return;}
+    try {if (!owns()) return;result = await operation(this.transport(owns), write.signal, owns);if (!owns()) return;}
     catch (error) {if (this.ownsWrite(write)) {this.publish({uncertain: true});this.failure(error, 'write');}}
     finally {if (this.mutation === write) {this.mutation = undefined;this.publish({busy: false});}}
     if (result !== undefined && this.current()) await this.load();
@@ -73,7 +96,34 @@ export class SettingsWebhooksSource {
     if (!name || name.length > 160 || !events.length || events.some(event => !this.state.list?.events.includes(event)) || this.state.list && this.state.list.items.length >= this.state.list.maximum) return;
     try {const parsed = new URL(url);if (!['http:','https:'].includes(parsed.protocol) || parsed.username || parsed.password) return;} catch {return;}
     const intent = Object.freeze({...input, name, url, events});
-    return this.write(async (api, signal) => {const issued = await createWebhook(api, intent, signal);if (!matches(issued.webhook, intent)) throw new ApiAccessError('invalid_document');return issued;});
+    return this.write(async (api, signal, owns) => {
+      // The attempt belongs to this claimed write: an ignored create never
+      // touches the id a pending uncertain one still needs.
+      // No digest means no safe retry identity: refuse rather than create
+      // something a retry could duplicate.
+      // No digest means no safe retry identity: refuse visibly, under this
+      // write, rather than create something a retry could silently duplicate.
+      const fingerprint = await webhookRequestFingerprint(intent);
+      if (!owns() || signal.aborted) return;
+      if (!fingerprint) throw new ApiAccessError('invalid_document');
+      const operationId = this.createAttempt?.fingerprint === fingerprint ? this.createAttempt.operationId : storageOperationId();
+      const attempt = Object.freeze({fingerprint, operationId});
+      this.createAttempt = attempt;
+      let issued: IssuedWebhook;
+      try {issued = await createWebhook(api, intent, signal, operationId);}
+      catch (error) {
+        // A refused identity or a webhook since deleted is definite: the next
+        // attempt is a new request, never this one repeated. Only this write's
+        // own attempt, while it is still owned, is retired.
+        const code = (error as {code?: string} | undefined)?.code;
+        if (owns() && !signal.aborted && this.createAttempt === attempt && (code === 'idempotency_key_reused' || code === 'not_found')) this.createAttempt = undefined;
+        throw error;
+      }
+      if (!owns() || signal.aborted) return;
+      if (!matches(issued.webhook, intent)) throw new ApiAccessError('invalid_document');
+      if (this.createAttempt === attempt) this.createAttempt = undefined;
+      return issued;
+    });
   };
   update = async (hook: Webhook, change: WebhookChange): Promise<IssuedWebhook | undefined> => {
     const intent = Object.freeze({...change, ...(change.events ? {events: Object.freeze([...change.events])} : {})});
@@ -81,5 +131,5 @@ export class SettingsWebhooksSource {
   };
   remove = (hook: Webhook) => this.write(async (api, signal) => {await deleteWebhook(api, hook.id, signal);return true;}, hook);
   test = (hook: Webhook) => this.write((api, signal) => sendWebhookTest(api, hook.id, signal), hook);
-  dispose = () => {this.read?.abort();this.detail?.abort();this.mutation?.abort();this.mutation = undefined;this.lifetime.abort();this.state = empty;this.listeners.clear();};
+  dispose = () => {this.read?.abort();this.detail?.abort();this.mutation?.abort();this.mutation = undefined;this.createAttempt = undefined;this.lifetime.abort();this.state = empty;this.listeners.clear();};
 }
