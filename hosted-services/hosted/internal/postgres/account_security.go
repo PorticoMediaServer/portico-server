@@ -56,7 +56,7 @@ func maskedContact(value string) string {
 	if p < 1 {
 		return "your contact email"
 	}
-	return string([]rune(value[:p])[0]) + "***" + value[p:]
+	return string([]rune(value[:p])[0]) + "•••" + value[p:]
 }
 func (s *AccountSecurity) Limit(ctx context.Context, kind, subject string, limit int, window time.Duration) error {
 	return s.limitWith(ctx, s.Store.DB, kind, subject, limit, window)

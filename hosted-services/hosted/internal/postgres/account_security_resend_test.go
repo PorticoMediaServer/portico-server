@@ -18,7 +18,7 @@ func TestEmailChangeResendPreservesOriginalAuthorityBudgetAndDeadline(t *testing
 	other := verifiedAccount(t, s, "resendother")
 	change := securityAction(t, s, a, "email_change", "new@example.test")
 	old := mailPayload(t, s, mailoutbox.EmailChange, change.ChallengeID).Code
-	if change.MaskedAddress != "n***@example.test" || change.ResendsRemaining == nil || *change.ResendsRemaining != 5 {
+	if change.MaskedAddress != "n•••@example.test" || change.ResendsRemaining == nil || *change.ResendsRemaining != 5 {
 		t.Fatal("initial challenge lacks its checked masked destination and resend budget")
 	}
 	// A new family of this same account cannot rotate the original family's code.
