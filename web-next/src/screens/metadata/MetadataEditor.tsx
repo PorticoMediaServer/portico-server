@@ -19,7 +19,7 @@ function tabsFor(data: RepairData | null | undefined): readonly Tab[] {
   // Only a type the server actually matches online has a Matching tab (frame 10); a local-only
   // book has none because there is nothing to match against (frame 13).
   // Frame 9: credits exist only where the type carries them; an empty list is not a tab.
-  if (data && data.snapshot.relationships.some(row => row.kind === 'credit')) tabs.push('people');
+  if (data && (data.snapshot.relationships.some(row => row.kind === 'credit') || Object.hasOwn(data.snapshot.relationshipLocks, 'credit'))) tabs.push('people');
   if (data && (data.snapshot.identity || data.candidates.length)) tabs.push('matching');
   tabs.push('history');
   return tabs;
@@ -51,7 +51,12 @@ export function MetadataEditor({api, scope, target, onClose}: {
     setError(undefined);
     await service.command({action: 'edit', fields});
   };
-  const run = async (command: RepairCommand) => {setError(undefined); if (!(await service.command(command))) setError(state.error ?? new Error(t('web.metadata.saveChanges')));};
+  const run = async (command: RepairCommand) => {
+    setError(undefined);
+    const saved = await service.command(command);
+    if (!saved) setError(service.getSnapshot().error ?? new Error(t('web.metadata.saveChanges')));
+    return saved;
+  };
   const set = (field: string, patch: Partial<{value: string; locked: boolean}>) => {
     const original = data?.snapshot.fields[field];
     setDraft(current => ({...current, [field]: {value: patch.value ?? current[field]?.value ?? original?.value ?? '', locked: patch.locked ?? current[field]?.locked ?? original?.locked ?? false}}));
@@ -80,7 +85,8 @@ export function MetadataEditor({api, scope, target, onClose}: {
       {shown === 'general' ? <General data={data} draft={draft} set={set} /> : null}
       {shown === 'tags' ? <Tags data={data} draft={draft} set={set} /> : null}
       {shown === 'people' ? <People data={data} target={target} busy={state.phase === 'saving'}
-        onCommit={rows => void run({action: 'edit_relationships', role: 'credit', confirm: true, relationships: rows})} /> : null}
+        onCommit={rows => run({action: 'edit_relationships', role: 'credit', confirm: true, relationships: rows})}
+        onLock={locked => void run({action: 'relationship_lock', role: 'credit', locked})} /> : null}
       {shown === 'matching' ? <Matching data={data} busy={state.phase === 'saving'} onSearch={query => void run({action: 'search', query})}
         onUse={(provider, candidateId, order) => void run({action: 'identify', provider, candidateId, ...(order ? {order} : {})})} /> : null}
       {shown === 'artwork' ? <Artwork data={data} busy={state.phase === 'saving'} onUse={(role, candidateId) => void run({action: 'select_artwork', role, candidateId})}
@@ -88,7 +94,7 @@ export function MetadataEditor({api, scope, target, onClose}: {
         onFindMore={role => void run({action: 'discover_artwork', role})} onRefetch={role => void run({action: 'repair_assets', role})} /> : null}
       {shown === 'history' ? <History data={data} busy={state.phase === 'saving'} onUndo={historyId => void run({action: 'undo', historyId})}
         onAll={locked => void run({action: locked ? 'lock_all' : 'unlock_all'})} /> : null}
-      {shown !== 'artwork' && shown !== 'history' ? <footer className={styles.editorFooter}>
+      {shown === 'general' || shown === 'tags' ? <footer className={styles.editorFooter}>
         <Button size="small" disabled={!changed.length || state.phase === 'saving'} onClick={() => setDraft({})}>{t('action.discard')}</Button>
         <Button size="small" variant="primary" loading={state.phase === 'saving'} disabled={!changed.length || invalid} onClick={save}>
           {t('web.metadata.saveChanges')}{changed.length ? ` (${changed.length})` : ''}</Button>
@@ -223,27 +229,29 @@ function Matching({data, busy, onSearch, onUse}: {
 /** Frame 9. Credits are replaced as one list through the real producer: existing rows keep
  * their recordId/provider/target tuple, and a name-only row is created by omitting recordId.
  * Only `credit` rows are sent, never genre or hierarchy families, and only for an item. */
-function People({data, target, busy, onCommit}: {
+function People({data, target, busy, onCommit, onLock}: {
   data: RepairData; target: RepairTarget; busy: boolean;
-  onCommit: (rows: RepairData['snapshot']['relationships']) => void;
+  onCommit: (rows: RepairData['snapshot']['relationships']) => Promise<boolean>; onLock: (locked: boolean) => void;
 }) {
   const credits = data.snapshot.relationships.filter(row => row.kind === 'credit');
   const [name, setName] = useState(''), [role, setRole] = useState(''), [department, setDepartment] = useState('');
   const clean = (value: string) => !/[\u0000-\u001f\u007f]/.test(value);
   const valid = target.kind === 'item' && credits.length < 100 && name.trim() !== '' && name.length <= 300 && role.length <= 500 && department.length <= 200 && clean(name) && clean(role) && clean(department);
   const remove = (index: number) => onCommit(credits.filter((_, at) => at !== index));
-  const add = () => {
+  const add = async () => {
     if (!valid) return;
-    onCommit([...credits, {
+    const saved = await onCommit([...credits, {
       kind: 'credit', targetKind: 'scoped_credit', targetId: '', label: name.trim(), role: role.trim(), department: department.trim(),
       ordinal: credits.reduce((top, row) => Math.max(top, row.ordinal), 0) + 1, source: 'manual', locked: true,
     } as RepairData['snapshot']['relationships'][number]]);
-    setName(''); setRole(''); setDepartment('');
+    if (saved) {setName(''); setRole(''); setDepartment('');}
   };
   return <div className={styles.fields}>
+    <button type="button" className={styles.lock} disabled={busy} aria-pressed={data.snapshot.relationshipLocks.credit === true}
+      onClick={() => onLock(data.snapshot.relationshipLocks.credit !== true)}>{t(data.snapshot.relationshipLocks.credit ? 'web.metadata.locked' : 'web.metadata.unlocked')}</button>
     {credits.map((row, index) => <div key={`${row.recordId ?? 'new'}:${row.targetId}:${row.ordinal}:${index}`} className={styles.candidate}>
       <div><b>{row.label}</b><small>{[row.department, row.role].filter(Boolean).join(' · ')}{row.locked ? ` · ${t('web.metadata.locked')}` : ''}</small></div>
-      <Button size="small" disabled={busy || row.locked} onClick={() => remove(index)}>{t('web.metadata.removeLabel', {label: row.label})}</Button>
+      <Button size="small" disabled={busy || row.locked} onClick={() => void remove(index)}>{t('web.metadata.removeLabel', {label: row.label})}</Button>
     </div>)}
     {target.kind === 'item' && credits.length < 100 ? <div className={styles.candidate}>
       <div className={styles.creditNew}>
@@ -251,7 +259,7 @@ function People({data, target, busy, onCommit}: {
         <TextField label={t('web.metadata.field.role')} value={role} onChange={event => setRole(event.currentTarget.value)} maxLength={500} />
         <TextField label={t('web.metadata.field.department')} value={department} onChange={event => setDepartment(event.currentTarget.value)} maxLength={200} />
       </div>
-      <Button size="small" disabled={busy || !valid} onClick={add}>{t('web.metadata.addPerson')}</Button>
+      <Button size="small" disabled={busy || !valid} onClick={() => void add()}>{t('web.metadata.addPerson')}</Button>
     </div> : null}
   </div>;
 }
