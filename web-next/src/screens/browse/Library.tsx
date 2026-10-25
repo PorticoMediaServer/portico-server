@@ -3,7 +3,7 @@ import {defaultI18n} from '@i18n';
 import type {BrowseNode, BrowseSortSelection} from '@core/browse.ts';
 import type {Library} from '@core/index.ts';
 import {browseNameId} from '@core/presentation/browse-toolbar.ts';
-import {appliedFilterParts, browseToolbarModel, type TextEnvironment} from '@portico/client-core/kit-model';
+import {appliedFilterParts, browseToolbarModel, type FactPart, type TextEnvironment} from '@portico/client-core/kit-model';
 import {LibraryHeader, LibrarySwitcher, StickyBrowseHeader, BrowseToolbar, type LibraryChoice, type BrowseLabels} from '../../kit/browse';
 import {Tabs} from '../../kit/controls';
 import {AmbientArt} from '../../kit/artwork';
@@ -79,10 +79,12 @@ export function LibraryScreen(bindings: LibraryBindings) {
     {state.phase === 'ready' && bindings.unmatchedHelp && state.predicates.some(node => 'field' in node && node.field === 'match' && node.operator === 'equals' && node.value === 'unmatched') ? <p className={styles.unmatchedHelp}>{bindings.unmatchedHelp}</p> : null}
   </div>;
 }
-export function LibraryIdentity({library, libraries, pivot, tabs, onPivot, onLibrary, onLibraries, libraryMenu, appearance: base, preferences, libraryViewOverride, artwork, wash}: Pick<LibraryBindings,
+export function LibraryIdentity({library, libraries, pivot, tabs, onPivot, onLibrary, onLibraries, libraryMenu, appearance: base, preferences, libraryViewOverride, artwork, wash, counts}: Pick<LibraryBindings,
   'library' | 'libraries' | 'pivot' | 'tabs' | 'onPivot' | 'onLibrary' | 'onLibraries' | 'libraryMenu' | 'appearance' | 'preferences' | 'libraryViewOverride' | 'artwork'> & Readonly<{
   /** A surface's own drawn wash, in place of the single latest-artwork ambient. */
   wash?: ReactNode;
+  /** The drawn count line under the library name; absent draws none. */
+  counts?: readonly FactPart[];
 }>) {
   const appearance = browsePresentation(base, preferences, libraryViewOverride);
   const compact = useShellWidth() < 600;
@@ -90,7 +92,7 @@ export function LibraryIdentity({library, libraries, pivot, tabs, onPivot, onLib
   const navigation = tabs.length && onPivot ? <Tabs className={compact ? styles.phoneTabs : styles.headerTabs} value={pivot} onValueChange={onPivot} items={tabs} phone={compact}/> : undefined;
   const ambient = appearance.backdrops ? wash ?? (library.latestArtwork ? <AmbientArt source={artwork.ambient(library.latestArtwork, {group: library.id, order: 0})} treatment="library" width="100%" height={560}/> : undefined) : undefined;
   return compact ? <StickyBrowseHeader name={library.name} switcher={switcher} menu={libraryMenu} onLibraries={onLibraries} topInset={0}>{navigation}</StickyBrowseHeader> :
-    <LibraryHeader name={library.name} switcher={switcher} menu={libraryMenu} ambient={ambient}>{navigation}</LibraryHeader>;
+    <LibraryHeader name={library.name} counts={counts} switcher={switcher} menu={libraryMenu} ambient={ambient}>{navigation}</LibraryHeader>;
 }
 export function LibraryBrowse(bindings: LibraryBrowseBindings) {
   const {controller, library, env, selection, reportError} = bindings;
