@@ -1,23 +1,8 @@
-import {CAST_NAMESPACE, parseCastEvent, type CastEvent, type CastTransport} from '@core/cast/index.ts';
+import {CAST_NAMESPACE, type CastEvent, type CastTransport} from '@core/cast/index.ts';
 import type {CastContext, CastFramework, CastMessageListener, CastSession, CastSessionEvent} from './sdk';
 
 export type ConfirmedCastDevice = Readonly<{name: string; id?: string}>;
 export type CastReceiverStatus = Extract<CastEvent, {type: 'status'}>;
-
-/** The controller tolerates missing status numbers as zero. A confirmed playback fact cannot. */
-function reportedStatus(raw: string): CastReceiverStatus | undefined {
-  if (raw.length > 65536) return undefined;
-  let payload: unknown;
-  try { payload = JSON.parse(raw); } catch { return undefined; }
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return undefined;
-  const fields = payload as Record<string, unknown>;
-  if (fields.type !== 'status' || typeof fields.itemId !== 'string' || !fields.itemId.trim()
-      || typeof fields.positionSeconds !== 'number' || !Number.isFinite(fields.positionSeconds) || fields.positionSeconds < 0
-      || typeof fields.durationSeconds !== 'number' || !Number.isFinite(fields.durationSeconds) || fields.durationSeconds < 0
-      || typeof fields.paused !== 'boolean') return undefined;
-  const event = parseCastEvent(payload);
-  return event?.type === 'status' ? event : undefined;
-}
 
 /** Only a selected SDK session supplies a receiver's name and id. */
 export function confirmedCastDevice(session: CastSession): ConfirmedCastDevice | undefined {
@@ -28,7 +13,7 @@ export function confirmedCastDevice(session: CastSession): ConfirmedCastDevice |
 }
 
 /** Portico's custom channel only. No CAF media load or media/grant URL is accepted here. */
-export function castTransportFor(session: CastSession, context: CastContext, framework: CastFramework, observeStatus?: (status: CastReceiverStatus) => void): CastTransport {
+export function castTransportFor(session: CastSession, context: CastContext, framework: CastFramework): CastTransport {
   const device = session.getCastDevice();
   const current=()=>context.getCurrentSession()===session;
   return {
@@ -38,8 +23,6 @@ export function castTransportFor(session: CastSession, context: CastContext, fra
     onMessage: receive => {
       const listener: CastMessageListener = (_namespace, raw) => {
         if(!current())return;
-        const status = reportedStatus(raw);
-        if (status) observeStatus?.(status);
         receive(raw);
       };
       session.addMessageListener(CAST_NAMESPACE, listener);

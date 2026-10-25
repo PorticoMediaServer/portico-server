@@ -66,6 +66,7 @@ export class PlayOnController {
   private disposed = false;
   private dismissing = false;
   private describedItem?: string;
+  private descriptionGeneration=0;
   constructor(private readonly options: PlayOnControllerOptions) {
     this.state = Object.freeze({cast: options.sender.getSnapshot(), airPlayAvailable: options.airPlay?.available() === true, panel: null, disposed: false});
     this.detach.push(options.sender.subscribe(this.senderChanged), options.runtime.subscribe(this.runtimeChanged), options.sender.prepareOnIdle());
@@ -117,6 +118,13 @@ export class PlayOnController {
     if(acceptedAttempt&&attempt&&!attempt.handedOff&&sameFence(this.options.runtime.getSnapshot().fence,attempt.source.fence)){
       attempt.handedOff=true;void this.options.runtime.stop(attempt.source.fence).catch(this.options.reportError);
     }
+    if(cast.disclosureRefused){
+      this.descriptionGeneration++;this.describedItem=undefined;this.clearExpiry();
+      // Keep an unresolved Root42 attempt private until its original receipt
+      // settles; never keep its title/clock as a redaction fallback.
+      if(!cast.transferPending&&(!attempt||attempt.handedOff))this.attempt=undefined;
+      this.publish({cast,remote:undefined,panel:null});return;
+    }
     const active = cast.phase !== 'off';
     if (!active && !previous && !acceptedAttempt && !cast.transferPending) { this.publish({cast}); return; }
     if (!active && previous && !previous.confirmed && !acceptedAttempt && !cast.transferPending) {
@@ -139,12 +147,13 @@ export class PlayOnController {
     this.publish({cast, remote, ...(phase === 'stopped' || phase === 'replaced' || phase === 'error' ? {panel: null} : {})});
     if (itemId && this.options.describeItem && this.describedItem !== itemId) {
       this.describedItem = itemId;
-      const id = remote.id;
+      const id = remote.id,generation=++this.descriptionGeneration,controlRevision=cast.controlRevision;
+      const currentDescription=()=>this.current()&&generation===this.descriptionGeneration&&!this.state.cast.disclosureRefused&&this.state.cast.controlRevision===controlRevision&&this.state.remote?.id===id&&this.state.remote.itemId===itemId;
       void this.options.describeItem(itemId).then(metadata => {
         const latest = this.state.remote;
-        if (!this.current() || !latest || latest.id !== id || latest.itemId !== itemId) return;
+        if (!latest||!currentDescription()||this.state.cast.title&&this.state.cast.title!==metadata.title) return;
         this.publish({remote: Object.freeze({...latest, title: metadata.title, metadata, sequence: ++this.sequence})});
-      }).catch(this.options.reportError);
+      }).catch(error=>{if(currentDescription())this.options.reportError(error);});
     }
     if (phase === 'stopped' || phase === 'replaced' || phase === 'error') this.terminal();
     else this.clearExpiry();

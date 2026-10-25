@@ -2611,3 +2611,13 @@ test('an audiobook stored resume reaches the server as intent while chapter and 
  assert.equal((chapter.body as any).startFrom,undefined);
  await assert.rejects(f.runtime.playFromScreen({libraryId:'library',itemId:'movie',startSeconds:0,storedResume:true},context),/invalid_playback_target/);
 });
+
+test('Root50 disclosure refusal clears Web remote caches and ignores a late metadata response without Stop',async t=>{
+ const f=setup(t),sender=new ControlledCastSender();let resolve!:(value:{title:string})=>void;
+ const metadata=new Promise<{title:string}>(done=>{resolve=done;});
+ const controller=new PlayOnController({sender,runtime:f.runtime,isCurrent:f.source.isCurrent,reportError:error=>{throw error;},describeItem:()=>metadata,now:f.clock.now,setTimer:f.clock.setTimer,clearTimer:f.clock.clearTimer});t.after(()=>controller.dispose());
+ sender.publish({phase:'casting',controlRevision:1,itemId:'movie',title:'Admitted title',receiver:{itemId:'movie',positionSeconds:9,durationSeconds:200,paused:false}});
+ assert.equal(controller.getSnapshot().remote?.itemId,'movie');
+ sender.publish({phase:'off',controlRevision:1,disclosureRefused:true,itemId:undefined,title:undefined,receiver:undefined});
+ resolve({title:'Late title'});await settle();assert.equal(controller.getSnapshot().remote,undefined);assert.equal(controller.getSnapshot().panel,null);assert.equal(sender.commands.some(command=>command[0]==='stop'),false);
+});

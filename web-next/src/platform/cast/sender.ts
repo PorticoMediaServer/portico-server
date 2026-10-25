@@ -5,6 +5,8 @@ import {castTransportFor, confirmedCastDevice, type ConfirmedCastDevice} from '.
 export type ConfirmedCastPlayback = Readonly<{itemId: string; positionSeconds: number; durationSeconds: number; paused: boolean}>;
 export type WebCastSnapshot = CastSnapshot & Readonly<{
   device?: ConfirmedCastDevice;
+  /** Caller lifetime only; never a server authority or media grant. */
+  controlRevision?:number;
   /** The latest receiver status, retained on stop/replacement for the continuation offer.
    * Absent before the receiver reports; a requested seek/start is not a confirmed position. */
   receiver?: ConfirmedCastPlayback;
@@ -71,12 +73,12 @@ export class WebCastSender {
     if (this.disposed) return;
     const state = this.controller?.getSnapshot() ?? unavailable;
     if(state.disclosureRefused){this.receiver=undefined;this.device=undefined;}
-    else if(state.reported)this.receiver=state.reported;
+    else if(state.phase==='casting'&&state.reported)this.receiver=state.reported;
     else if(state.phase!=='off'&&state.phase!=='replaced')this.receiver=undefined;
     const receiver = this.receiver;
     const samePlayback = receiver && (state.phase === 'off' || state.phase === 'replaced' || state.itemId === receiver.itemId);
     this.snapshot = Object.freeze({
-      ...state,
+      ...state,controlRevision:this.operation,
       ...(samePlayback ? {positionSeconds: receiver.positionSeconds, durationSeconds: receiver.durationSeconds} : {}),
       ...(receiver ? {receiver} : {}),
       ...(this.device && state.phase !== 'off' && state.phase !== 'replaced' ? {device: this.device} : {}),
@@ -144,9 +146,13 @@ export class WebCastSender {
     try {
       const session = context.getCurrentSession();
       if (!session) return;
-      this.device = confirmedCastDevice(session);
-      this.receiver = undefined;
-      void controller.adopt(this.transport(session, context, framework), this.options.describe).catch(() => false);
+      const operation=++this.operation,device=confirmedCastDevice(session);
+      this.device=undefined;this.receiver=undefined;
+      void controller.adopt(this.transport(session,context,framework),this.options.describe).then(ok=>{
+        if(this.disposed||operation!==this.operation)return;
+        if(ok)this.device=device;
+        this.changed();
+      },()=>{/* Failed automatic adoption leaves the receiver alone. */});
     } catch { /* A session no longer present cannot be adopted. */ }
   }
 
@@ -204,7 +210,7 @@ export class WebCastSender {
     this.cancelStart = undefined;
     this.controller?.stop();
   }
-  dismiss(): void { this.controller?.dismiss(); }
+  dismiss(): void { this.operation++;this.controller?.dismiss(); }
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
