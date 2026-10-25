@@ -1,5 +1,9 @@
 /** Reader controls from desktop-read 6/7, phone-read 6 and tablet-read 6b. */
 export const readerMessages = {
+  'next.reader.bookOrder': 'Book order',
+  'next.reader.volumeOrder': 'Volume order',
+  'next.reader.moveSeriesTitle': 'Move {title}, number {number}',
+  'next.reader.seriesOrderHelp': 'Drag to reorder. {title} starts at 1.',
   'next.reader.month': 'Month',
   'next.reader.yourArchive': 'Your archive',
   'next.reader.year': 'Year',
