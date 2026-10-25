@@ -5758,6 +5758,9 @@ export const schemas = {
                 "codec": {
                   "type": "string"
                 },
+                "layout": {
+                  "type": "string"
+                },
                 "lossless": {
                   "type": "boolean"
                 },
@@ -6092,6 +6095,9 @@ export const schemas = {
             "language": {
               "type": "string"
             },
+            "lastChanged": {
+              "type": "string"
+            },
             "latestEpisode": {
               "properties": {
                 "airDate": {
@@ -6210,6 +6216,9 @@ export const schemas = {
                       "type": "integer"
                     },
                     "codec": {
+                      "type": "string"
+                    },
+                    "layout": {
                       "type": "string"
                     },
                     "lossless": {
@@ -6542,6 +6551,9 @@ export const schemas = {
                 "language": {
                   "type": "string"
                 },
+                "lastChanged": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -6630,6 +6642,9 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "pinned": {
+                  "type": "boolean"
                 },
                 "playback": {
                   "properties": {
@@ -6880,6 +6895,9 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "pinned": {
+              "type": "boolean"
             },
             "playback": {
               "properties": {
@@ -7824,6 +7842,9 @@ export const schemas = {
                 "codec": {
                   "type": "string"
                 },
+                "layout": {
+                  "type": "string"
+                },
                 "lossless": {
                   "type": "boolean"
                 },
@@ -8158,6 +8179,9 @@ export const schemas = {
             "language": {
               "type": "string"
             },
+            "lastChanged": {
+              "type": "string"
+            },
             "latestEpisode": {
               "properties": {
                 "airDate": {
@@ -8276,6 +8300,9 @@ export const schemas = {
                       "type": "integer"
                     },
                     "codec": {
+                      "type": "string"
+                    },
+                    "layout": {
                       "type": "string"
                     },
                     "lossless": {
@@ -8608,6 +8635,9 @@ export const schemas = {
                 "language": {
                   "type": "string"
                 },
+                "lastChanged": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -8696,6 +8726,9 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "pinned": {
+                  "type": "boolean"
                 },
                 "playback": {
                   "properties": {
@@ -8946,6 +8979,9 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "pinned": {
+              "type": "boolean"
             },
             "playback": {
               "properties": {
@@ -28096,6 +28132,9 @@ export const schemas = {
           "roots": {
             "items": {
               "properties": {
+                "classification": {
+                  "type": "string"
+                },
                 "description": {
                   "type": "string"
                 },
@@ -34548,6 +34587,9 @@ export const schemas = {
                 "codec": {
                   "type": "string"
                 },
+                "layout": {
+                  "type": "string"
+                },
                 "lossless": {
                   "type": "boolean"
                 },
@@ -35333,6 +35375,9 @@ export const schemas = {
                   "type": "integer"
                 },
                 "codec": {
+                  "type": "string"
+                },
+                "layout": {
                   "type": "string"
                 },
                 "lossless": {
@@ -37384,6 +37429,9 @@ export const schemas = {
                   "type": "integer"
                 },
                 "codec": {
+                  "type": "string"
+                },
+                "layout": {
                   "type": "string"
                 },
                 "lossless": {
@@ -48638,6 +48686,9 @@ export const schemas = {
                                 "codec": {
                                   "type": "string"
                                 },
+                                "layout": {
+                                  "type": "string"
+                                },
                                 "lossless": {
                                   "type": "boolean"
                                 },
@@ -48972,6 +49023,9 @@ export const schemas = {
                             "language": {
                               "type": "string"
                             },
+                            "lastChanged": {
+                              "type": "string"
+                            },
                             "latestEpisode": {
                               "properties": {
                                 "airDate": {
@@ -49090,6 +49144,9 @@ export const schemas = {
                                       "type": "integer"
                                     },
                                     "codec": {
+                                      "type": "string"
+                                    },
+                                    "layout": {
                                       "type": "string"
                                     },
                                     "lossless": {
@@ -49422,6 +49479,9 @@ export const schemas = {
                                 "language": {
                                   "type": "string"
                                 },
+                                "lastChanged": {
+                                  "type": "string"
+                                },
                                 "latestEpisode": {
                                   "properties": {
                                     "airDate": {
@@ -49510,6 +49570,9 @@ export const schemas = {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "pinned": {
+                                  "type": "boolean"
                                 },
                                 "playback": {
                                   "properties": {
@@ -49760,6 +49823,9 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "pinned": {
+                              "type": "boolean"
                             },
                             "playback": {
                               "properties": {
@@ -50084,6 +50150,9 @@ export const schemas = {
                               "type": "integer"
                             },
                             "codec": {
+                              "type": "string"
+                            },
+                            "layout": {
                               "type": "string"
                             },
                             "lossless": {
@@ -50420,6 +50489,9 @@ export const schemas = {
                         "language": {
                           "type": "string"
                         },
+                        "lastChanged": {
+                          "type": "string"
+                        },
                         "latestEpisode": {
                           "properties": {
                             "airDate": {
@@ -50538,6 +50610,9 @@ export const schemas = {
                                   "type": "integer"
                                 },
                                 "codec": {
+                                  "type": "string"
+                                },
+                                "layout": {
                                   "type": "string"
                                 },
                                 "lossless": {
@@ -50870,6 +50945,9 @@ export const schemas = {
                             "language": {
                               "type": "string"
                             },
+                            "lastChanged": {
+                              "type": "string"
+                            },
                             "latestEpisode": {
                               "properties": {
                                 "airDate": {
@@ -50958,6 +51036,9 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "pinned": {
+                              "type": "boolean"
                             },
                             "playback": {
                               "properties": {
@@ -51208,6 +51289,9 @@ export const schemas = {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "pinned": {
+                          "type": "boolean"
                         },
                         "playback": {
                           "properties": {
@@ -51992,6 +52076,9 @@ export const schemas = {
                                 "codec": {
                                   "type": "string"
                                 },
+                                "layout": {
+                                  "type": "string"
+                                },
                                 "lossless": {
                                   "type": "boolean"
                                 },
@@ -52326,6 +52413,9 @@ export const schemas = {
                             "language": {
                               "type": "string"
                             },
+                            "lastChanged": {
+                              "type": "string"
+                            },
                             "latestEpisode": {
                               "properties": {
                                 "airDate": {
@@ -52444,6 +52534,9 @@ export const schemas = {
                                       "type": "integer"
                                     },
                                     "codec": {
+                                      "type": "string"
+                                    },
+                                    "layout": {
                                       "type": "string"
                                     },
                                     "lossless": {
@@ -52776,6 +52869,9 @@ export const schemas = {
                                 "language": {
                                   "type": "string"
                                 },
+                                "lastChanged": {
+                                  "type": "string"
+                                },
                                 "latestEpisode": {
                                   "properties": {
                                     "airDate": {
@@ -52864,6 +52960,9 @@ export const schemas = {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "pinned": {
+                                  "type": "boolean"
                                 },
                                 "playback": {
                                   "properties": {
@@ -53114,6 +53213,9 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "pinned": {
+                              "type": "boolean"
                             },
                             "playback": {
                               "properties": {
@@ -53996,6 +54098,9 @@ export const schemas = {
                           "codec": {
                             "type": "string"
                           },
+                          "layout": {
+                            "type": "string"
+                          },
                           "lossless": {
                             "type": "boolean"
                           },
@@ -54330,6 +54435,9 @@ export const schemas = {
                       "language": {
                         "type": "string"
                       },
+                      "lastChanged": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -54448,6 +54556,9 @@ export const schemas = {
                                 "type": "integer"
                               },
                               "codec": {
+                                "type": "string"
+                              },
+                              "layout": {
                                 "type": "string"
                               },
                               "lossless": {
@@ -54780,6 +54891,9 @@ export const schemas = {
                           "language": {
                             "type": "string"
                           },
+                          "lastChanged": {
+                            "type": "string"
+                          },
                           "latestEpisode": {
                             "properties": {
                               "airDate": {
@@ -54868,6 +54982,9 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "pinned": {
+                            "type": "boolean"
                           },
                           "playback": {
                             "properties": {
@@ -55118,6 +55235,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       },
                       "playback": {
                         "properties": {
@@ -55439,6 +55559,9 @@ export const schemas = {
                         "type": "integer"
                       },
                       "codec": {
+                        "type": "string"
+                      },
+                      "layout": {
                         "type": "string"
                       },
                       "lossless": {
@@ -55775,6 +55898,9 @@ export const schemas = {
                   "language": {
                     "type": "string"
                   },
+                  "lastChanged": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -55893,6 +56019,9 @@ export const schemas = {
                             "type": "integer"
                           },
                           "codec": {
+                            "type": "string"
+                          },
+                          "layout": {
                             "type": "string"
                           },
                           "lossless": {
@@ -56225,6 +56354,9 @@ export const schemas = {
                       "language": {
                         "type": "string"
                       },
+                      "lastChanged": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -56313,6 +56445,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       },
                       "playback": {
                         "properties": {
@@ -56563,6 +56698,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "pinned": {
+                    "type": "boolean"
                   },
                   "playback": {
                     "properties": {
@@ -57347,6 +57485,9 @@ export const schemas = {
                           "codec": {
                             "type": "string"
                           },
+                          "layout": {
+                            "type": "string"
+                          },
                           "lossless": {
                             "type": "boolean"
                           },
@@ -57681,6 +57822,9 @@ export const schemas = {
                       "language": {
                         "type": "string"
                       },
+                      "lastChanged": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -57799,6 +57943,9 @@ export const schemas = {
                                 "type": "integer"
                               },
                               "codec": {
+                                "type": "string"
+                              },
+                              "layout": {
                                 "type": "string"
                               },
                               "lossless": {
@@ -58131,6 +58278,9 @@ export const schemas = {
                           "language": {
                             "type": "string"
                           },
+                          "lastChanged": {
+                            "type": "string"
+                          },
                           "latestEpisode": {
                             "properties": {
                               "airDate": {
@@ -58219,6 +58369,9 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "pinned": {
+                            "type": "boolean"
                           },
                           "playback": {
                             "properties": {
@@ -58469,6 +58622,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       },
                       "playback": {
                         "properties": {
@@ -59147,6 +59303,9 @@ export const schemas = {
                     "codec": {
                       "type": "string"
                     },
+                    "layout": {
+                      "type": "string"
+                    },
                     "lossless": {
                       "type": "boolean"
                     },
@@ -59481,6 +59640,9 @@ export const schemas = {
                 "language": {
                   "type": "string"
                 },
+                "lastChanged": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -59599,6 +59761,9 @@ export const schemas = {
                           "type": "integer"
                         },
                         "codec": {
+                          "type": "string"
+                        },
+                        "layout": {
                           "type": "string"
                         },
                         "lossless": {
@@ -59931,6 +60096,9 @@ export const schemas = {
                     "language": {
                       "type": "string"
                     },
+                    "lastChanged": {
+                      "type": "string"
+                    },
                     "latestEpisode": {
                       "properties": {
                         "airDate": {
@@ -60019,6 +60187,9 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "pinned": {
+                      "type": "boolean"
                     },
                     "playback": {
                       "properties": {
@@ -60269,6 +60440,9 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "pinned": {
+                  "type": "boolean"
                 },
                 "playback": {
                   "properties": {
@@ -60600,6 +60774,9 @@ export const schemas = {
                     "codec": {
                       "type": "string"
                     },
+                    "layout": {
+                      "type": "string"
+                    },
                     "lossless": {
                       "type": "boolean"
                     },
@@ -60934,6 +61111,9 @@ export const schemas = {
                 "language": {
                   "type": "string"
                 },
+                "lastChanged": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -61052,6 +61232,9 @@ export const schemas = {
                           "type": "integer"
                         },
                         "codec": {
+                          "type": "string"
+                        },
+                        "layout": {
                           "type": "string"
                         },
                         "lossless": {
@@ -61384,6 +61567,9 @@ export const schemas = {
                     "language": {
                       "type": "string"
                     },
+                    "lastChanged": {
+                      "type": "string"
+                    },
                     "latestEpisode": {
                       "properties": {
                         "airDate": {
@@ -61472,6 +61658,9 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "pinned": {
+                      "type": "boolean"
                     },
                     "playback": {
                       "properties": {
@@ -61722,6 +61911,9 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "pinned": {
+                  "type": "boolean"
                 },
                 "playback": {
                   "properties": {
@@ -62269,6 +62461,9 @@ export const schemas = {
                           "codec": {
                             "type": "string"
                           },
+                          "layout": {
+                            "type": "string"
+                          },
                           "lossless": {
                             "type": "boolean"
                           },
@@ -62603,6 +62798,9 @@ export const schemas = {
                       "language": {
                         "type": "string"
                       },
+                      "lastChanged": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -62721,6 +62919,9 @@ export const schemas = {
                                 "type": "integer"
                               },
                               "codec": {
+                                "type": "string"
+                              },
+                              "layout": {
                                 "type": "string"
                               },
                               "lossless": {
@@ -63053,6 +63254,9 @@ export const schemas = {
                           "language": {
                             "type": "string"
                           },
+                          "lastChanged": {
+                            "type": "string"
+                          },
                           "latestEpisode": {
                             "properties": {
                               "airDate": {
@@ -63141,6 +63345,9 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "pinned": {
+                            "type": "boolean"
                           },
                           "playback": {
                             "properties": {
@@ -63391,6 +63598,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       },
                       "playback": {
                         "properties": {
@@ -63715,6 +63925,9 @@ export const schemas = {
                         "type": "integer"
                       },
                       "codec": {
+                        "type": "string"
+                      },
+                      "layout": {
                         "type": "string"
                       },
                       "lossless": {
@@ -64051,6 +64264,9 @@ export const schemas = {
                   "language": {
                     "type": "string"
                   },
+                  "lastChanged": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -64169,6 +64385,9 @@ export const schemas = {
                             "type": "integer"
                           },
                           "codec": {
+                            "type": "string"
+                          },
+                          "layout": {
                             "type": "string"
                           },
                           "lossless": {
@@ -64501,6 +64720,9 @@ export const schemas = {
                       "language": {
                         "type": "string"
                       },
+                      "lastChanged": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -64589,6 +64811,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       },
                       "playback": {
                         "properties": {
@@ -64839,6 +65064,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "pinned": {
+                    "type": "boolean"
                   },
                   "playback": {
                     "properties": {
@@ -65623,6 +65851,9 @@ export const schemas = {
                           "codec": {
                             "type": "string"
                           },
+                          "layout": {
+                            "type": "string"
+                          },
                           "lossless": {
                             "type": "boolean"
                           },
@@ -65957,6 +66188,9 @@ export const schemas = {
                       "language": {
                         "type": "string"
                       },
+                      "lastChanged": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -66075,6 +66309,9 @@ export const schemas = {
                                 "type": "integer"
                               },
                               "codec": {
+                                "type": "string"
+                              },
+                              "layout": {
                                 "type": "string"
                               },
                               "lossless": {
@@ -66407,6 +66644,9 @@ export const schemas = {
                           "language": {
                             "type": "string"
                           },
+                          "lastChanged": {
+                            "type": "string"
+                          },
                           "latestEpisode": {
                             "properties": {
                               "airDate": {
@@ -66495,6 +66735,9 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "pinned": {
+                            "type": "boolean"
                           },
                           "playback": {
                             "properties": {
@@ -66745,6 +66988,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       },
                       "playback": {
                         "properties": {
@@ -67627,6 +67873,9 @@ export const schemas = {
                     "codec": {
                       "type": "string"
                     },
+                    "layout": {
+                      "type": "string"
+                    },
                     "lossless": {
                       "type": "boolean"
                     },
@@ -67961,6 +68210,9 @@ export const schemas = {
                 "language": {
                   "type": "string"
                 },
+                "lastChanged": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -68079,6 +68331,9 @@ export const schemas = {
                           "type": "integer"
                         },
                         "codec": {
+                          "type": "string"
+                        },
+                        "layout": {
                           "type": "string"
                         },
                         "lossless": {
@@ -68411,6 +68666,9 @@ export const schemas = {
                     "language": {
                       "type": "string"
                     },
+                    "lastChanged": {
+                      "type": "string"
+                    },
                     "latestEpisode": {
                       "properties": {
                         "airDate": {
@@ -68499,6 +68757,9 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "pinned": {
+                      "type": "boolean"
                     },
                     "playback": {
                       "properties": {
@@ -68749,6 +69010,9 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "pinned": {
+                  "type": "boolean"
                 },
                 "playback": {
                   "properties": {
@@ -69070,6 +69334,9 @@ export const schemas = {
                   "type": "integer"
                 },
                 "codec": {
+                  "type": "string"
+                },
+                "layout": {
                   "type": "string"
                 },
                 "lossless": {
@@ -69406,6 +69673,9 @@ export const schemas = {
             "language": {
               "type": "string"
             },
+            "lastChanged": {
+              "type": "string"
+            },
             "latestEpisode": {
               "properties": {
                 "airDate": {
@@ -69524,6 +69794,9 @@ export const schemas = {
                       "type": "integer"
                     },
                     "codec": {
+                      "type": "string"
+                    },
+                    "layout": {
                       "type": "string"
                     },
                     "lossless": {
@@ -69856,6 +70129,9 @@ export const schemas = {
                 "language": {
                   "type": "string"
                 },
+                "lastChanged": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -69944,6 +70220,9 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "pinned": {
+                  "type": "boolean"
                 },
                 "playback": {
                   "properties": {
@@ -70194,6 +70473,9 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "pinned": {
+              "type": "boolean"
             },
             "playback": {
               "properties": {
@@ -70978,6 +71260,9 @@ export const schemas = {
                     "codec": {
                       "type": "string"
                     },
+                    "layout": {
+                      "type": "string"
+                    },
                     "lossless": {
                       "type": "boolean"
                     },
@@ -71312,6 +71597,9 @@ export const schemas = {
                 "language": {
                   "type": "string"
                 },
+                "lastChanged": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -71430,6 +71718,9 @@ export const schemas = {
                           "type": "integer"
                         },
                         "codec": {
+                          "type": "string"
+                        },
+                        "layout": {
                           "type": "string"
                         },
                         "lossless": {
@@ -71762,6 +72053,9 @@ export const schemas = {
                     "language": {
                       "type": "string"
                     },
+                    "lastChanged": {
+                      "type": "string"
+                    },
                     "latestEpisode": {
                       "properties": {
                         "airDate": {
@@ -71850,6 +72144,9 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "pinned": {
+                      "type": "boolean"
                     },
                     "playback": {
                       "properties": {
@@ -72100,6 +72397,9 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "pinned": {
+                  "type": "boolean"
                 },
                 "playback": {
                   "properties": {
@@ -73515,6 +73815,9 @@ export const schemas = {
                       "codec": {
                         "type": "string"
                       },
+                      "layout": {
+                        "type": "string"
+                      },
                       "lossless": {
                         "type": "boolean"
                       },
@@ -73849,6 +74152,9 @@ export const schemas = {
                   "language": {
                     "type": "string"
                   },
+                  "lastChanged": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -73967,6 +74273,9 @@ export const schemas = {
                             "type": "integer"
                           },
                           "codec": {
+                            "type": "string"
+                          },
+                          "layout": {
                             "type": "string"
                           },
                           "lossless": {
@@ -74299,6 +74608,9 @@ export const schemas = {
                       "language": {
                         "type": "string"
                       },
+                      "lastChanged": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -74387,6 +74699,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       },
                       "playback": {
                         "properties": {
@@ -74637,6 +74952,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "pinned": {
+                    "type": "boolean"
                   },
                   "playback": {
                     "properties": {
@@ -74900,6 +75218,9 @@ export const schemas = {
                 "type": "integer"
               },
               "codec": {
+                "type": "string"
+              },
+              "layout": {
                 "type": "string"
               },
               "lossless": {
@@ -75691,6 +76012,9 @@ export const schemas = {
                           "codec": {
                             "type": "string"
                           },
+                          "layout": {
+                            "type": "string"
+                          },
                           "lossless": {
                             "type": "boolean"
                           },
@@ -76025,6 +76349,9 @@ export const schemas = {
                       "language": {
                         "type": "string"
                       },
+                      "lastChanged": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -76143,6 +76470,9 @@ export const schemas = {
                                 "type": "integer"
                               },
                               "codec": {
+                                "type": "string"
+                              },
+                              "layout": {
                                 "type": "string"
                               },
                               "lossless": {
@@ -76475,6 +76805,9 @@ export const schemas = {
                           "language": {
                             "type": "string"
                           },
+                          "lastChanged": {
+                            "type": "string"
+                          },
                           "latestEpisode": {
                             "properties": {
                               "airDate": {
@@ -76563,6 +76896,9 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "pinned": {
+                            "type": "boolean"
                           },
                           "playback": {
                             "properties": {
@@ -76813,6 +77149,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       },
                       "playback": {
                         "properties": {
@@ -77247,6 +77586,41 @@ export const schemas = {
             },
             "container": {
               "type": "string"
+            },
+            "disc": {
+              "properties": {
+                "chapterCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "kind": {
+                  "enum": [
+                    "bluray",
+                    "dvd"
+                  ],
+                  "type": "string"
+                },
+                "packaging": {
+                  "enum": [
+                    "iso",
+                    "folder"
+                  ],
+                  "type": "string"
+                },
+                "titleNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind",
+                "packaging",
+                "titleNumber",
+                "chapterCount"
+              ],
+              "type": "object"
             },
             "durationMs": {
               "maximum": 9007199254740991,
@@ -81164,6 +81538,9 @@ export const schemas = {
                                 "codec": {
                                   "type": "string"
                                 },
+                                "layout": {
+                                  "type": "string"
+                                },
                                 "lossless": {
                                   "type": "boolean"
                                 },
@@ -81498,6 +81875,9 @@ export const schemas = {
                             "language": {
                               "type": "string"
                             },
+                            "lastChanged": {
+                              "type": "string"
+                            },
                             "latestEpisode": {
                               "properties": {
                                 "airDate": {
@@ -81616,6 +81996,9 @@ export const schemas = {
                                       "type": "integer"
                                     },
                                     "codec": {
+                                      "type": "string"
+                                    },
+                                    "layout": {
                                       "type": "string"
                                     },
                                     "lossless": {
@@ -81948,6 +82331,9 @@ export const schemas = {
                                 "language": {
                                   "type": "string"
                                 },
+                                "lastChanged": {
+                                  "type": "string"
+                                },
                                 "latestEpisode": {
                                   "properties": {
                                     "airDate": {
@@ -82036,6 +82422,9 @@ export const schemas = {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "pinned": {
+                                  "type": "boolean"
                                 },
                                 "playback": {
                                   "properties": {
@@ -82286,6 +82675,9 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "pinned": {
+                              "type": "boolean"
                             },
                             "playback": {
                               "properties": {
@@ -82610,6 +83002,9 @@ export const schemas = {
                               "type": "integer"
                             },
                             "codec": {
+                              "type": "string"
+                            },
+                            "layout": {
                               "type": "string"
                             },
                             "lossless": {
@@ -82946,6 +83341,9 @@ export const schemas = {
                         "language": {
                           "type": "string"
                         },
+                        "lastChanged": {
+                          "type": "string"
+                        },
                         "latestEpisode": {
                           "properties": {
                             "airDate": {
@@ -83064,6 +83462,9 @@ export const schemas = {
                                   "type": "integer"
                                 },
                                 "codec": {
+                                  "type": "string"
+                                },
+                                "layout": {
                                   "type": "string"
                                 },
                                 "lossless": {
@@ -83396,6 +83797,9 @@ export const schemas = {
                             "language": {
                               "type": "string"
                             },
+                            "lastChanged": {
+                              "type": "string"
+                            },
                             "latestEpisode": {
                               "properties": {
                                 "airDate": {
@@ -83484,6 +83888,9 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "pinned": {
+                              "type": "boolean"
                             },
                             "playback": {
                               "properties": {
@@ -83734,6 +84141,9 @@ export const schemas = {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "pinned": {
+                          "type": "boolean"
                         },
                         "playback": {
                           "properties": {
@@ -84518,6 +84928,9 @@ export const schemas = {
                                 "codec": {
                                   "type": "string"
                                 },
+                                "layout": {
+                                  "type": "string"
+                                },
                                 "lossless": {
                                   "type": "boolean"
                                 },
@@ -84852,6 +85265,9 @@ export const schemas = {
                             "language": {
                               "type": "string"
                             },
+                            "lastChanged": {
+                              "type": "string"
+                            },
                             "latestEpisode": {
                               "properties": {
                                 "airDate": {
@@ -84970,6 +85386,9 @@ export const schemas = {
                                       "type": "integer"
                                     },
                                     "codec": {
+                                      "type": "string"
+                                    },
+                                    "layout": {
                                       "type": "string"
                                     },
                                     "lossless": {
@@ -85302,6 +85721,9 @@ export const schemas = {
                                 "language": {
                                   "type": "string"
                                 },
+                                "lastChanged": {
+                                  "type": "string"
+                                },
                                 "latestEpisode": {
                                   "properties": {
                                     "airDate": {
@@ -85390,6 +85812,9 @@ export const schemas = {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "pinned": {
+                                  "type": "boolean"
                                 },
                                 "playback": {
                                   "properties": {
@@ -85640,6 +86065,9 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "pinned": {
+                              "type": "boolean"
                             },
                             "playback": {
                               "properties": {
@@ -86522,6 +86950,9 @@ export const schemas = {
                           "codec": {
                             "type": "string"
                           },
+                          "layout": {
+                            "type": "string"
+                          },
                           "lossless": {
                             "type": "boolean"
                           },
@@ -86856,6 +87287,9 @@ export const schemas = {
                       "language": {
                         "type": "string"
                       },
+                      "lastChanged": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -86974,6 +87408,9 @@ export const schemas = {
                                 "type": "integer"
                               },
                               "codec": {
+                                "type": "string"
+                              },
+                              "layout": {
                                 "type": "string"
                               },
                               "lossless": {
@@ -87306,6 +87743,9 @@ export const schemas = {
                           "language": {
                             "type": "string"
                           },
+                          "lastChanged": {
+                            "type": "string"
+                          },
                           "latestEpisode": {
                             "properties": {
                               "airDate": {
@@ -87394,6 +87834,9 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "pinned": {
+                            "type": "boolean"
                           },
                           "playback": {
                             "properties": {
@@ -87644,6 +88087,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       },
                       "playback": {
                         "properties": {
@@ -87965,6 +88411,9 @@ export const schemas = {
                         "type": "integer"
                       },
                       "codec": {
+                        "type": "string"
+                      },
+                      "layout": {
                         "type": "string"
                       },
                       "lossless": {
@@ -88301,6 +88750,9 @@ export const schemas = {
                   "language": {
                     "type": "string"
                   },
+                  "lastChanged": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -88419,6 +88871,9 @@ export const schemas = {
                             "type": "integer"
                           },
                           "codec": {
+                            "type": "string"
+                          },
+                          "layout": {
                             "type": "string"
                           },
                           "lossless": {
@@ -88751,6 +89206,9 @@ export const schemas = {
                       "language": {
                         "type": "string"
                       },
+                      "lastChanged": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -88839,6 +89297,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       },
                       "playback": {
                         "properties": {
@@ -89089,6 +89550,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "pinned": {
+                    "type": "boolean"
                   },
                   "playback": {
                     "properties": {
@@ -89873,6 +90337,9 @@ export const schemas = {
                           "codec": {
                             "type": "string"
                           },
+                          "layout": {
+                            "type": "string"
+                          },
                           "lossless": {
                             "type": "boolean"
                           },
@@ -90207,6 +90674,9 @@ export const schemas = {
                       "language": {
                         "type": "string"
                       },
+                      "lastChanged": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -90325,6 +90795,9 @@ export const schemas = {
                                 "type": "integer"
                               },
                               "codec": {
+                                "type": "string"
+                              },
+                              "layout": {
                                 "type": "string"
                               },
                               "lossless": {
@@ -90657,6 +91130,9 @@ export const schemas = {
                           "language": {
                             "type": "string"
                           },
+                          "lastChanged": {
+                            "type": "string"
+                          },
                           "latestEpisode": {
                             "properties": {
                               "airDate": {
@@ -90745,6 +91221,9 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "pinned": {
+                            "type": "boolean"
                           },
                           "playback": {
                             "properties": {
@@ -90995,6 +91474,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       },
                       "playback": {
                         "properties": {
@@ -91916,6 +92398,9 @@ export const schemas = {
                           "codec": {
                             "type": "string"
                           },
+                          "layout": {
+                            "type": "string"
+                          },
                           "lossless": {
                             "type": "boolean"
                           },
@@ -92250,6 +92735,9 @@ export const schemas = {
                       "language": {
                         "type": "string"
                       },
+                      "lastChanged": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -92368,6 +92856,9 @@ export const schemas = {
                                 "type": "integer"
                               },
                               "codec": {
+                                "type": "string"
+                              },
+                              "layout": {
                                 "type": "string"
                               },
                               "lossless": {
@@ -92700,6 +93191,9 @@ export const schemas = {
                           "language": {
                             "type": "string"
                           },
+                          "lastChanged": {
+                            "type": "string"
+                          },
                           "latestEpisode": {
                             "properties": {
                               "airDate": {
@@ -92788,6 +93282,9 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "pinned": {
+                            "type": "boolean"
                           },
                           "playback": {
                             "properties": {
@@ -93038,6 +93535,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       },
                       "playback": {
                         "properties": {
@@ -93362,6 +93862,9 @@ export const schemas = {
                         "type": "integer"
                       },
                       "codec": {
+                        "type": "string"
+                      },
+                      "layout": {
                         "type": "string"
                       },
                       "lossless": {
@@ -93698,6 +94201,9 @@ export const schemas = {
                   "language": {
                     "type": "string"
                   },
+                  "lastChanged": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -93816,6 +94322,9 @@ export const schemas = {
                             "type": "integer"
                           },
                           "codec": {
+                            "type": "string"
+                          },
+                          "layout": {
                             "type": "string"
                           },
                           "lossless": {
@@ -94148,6 +94657,9 @@ export const schemas = {
                       "language": {
                         "type": "string"
                       },
+                      "lastChanged": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -94236,6 +94748,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       },
                       "playback": {
                         "properties": {
@@ -94486,6 +95001,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "pinned": {
+                    "type": "boolean"
                   },
                   "playback": {
                     "properties": {
@@ -95270,6 +95788,9 @@ export const schemas = {
                           "codec": {
                             "type": "string"
                           },
+                          "layout": {
+                            "type": "string"
+                          },
                           "lossless": {
                             "type": "boolean"
                           },
@@ -95604,6 +96125,9 @@ export const schemas = {
                       "language": {
                         "type": "string"
                       },
+                      "lastChanged": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -95722,6 +96246,9 @@ export const schemas = {
                                 "type": "integer"
                               },
                               "codec": {
+                                "type": "string"
+                              },
+                              "layout": {
                                 "type": "string"
                               },
                               "lossless": {
@@ -96054,6 +96581,9 @@ export const schemas = {
                           "language": {
                             "type": "string"
                           },
+                          "lastChanged": {
+                            "type": "string"
+                          },
                           "latestEpisode": {
                             "properties": {
                               "airDate": {
@@ -96142,6 +96672,9 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "pinned": {
+                            "type": "boolean"
                           },
                           "playback": {
                             "properties": {
@@ -96392,6 +96925,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       },
                       "playback": {
                         "properties": {
@@ -97274,6 +97810,9 @@ export const schemas = {
                     "codec": {
                       "type": "string"
                     },
+                    "layout": {
+                      "type": "string"
+                    },
                     "lossless": {
                       "type": "boolean"
                     },
@@ -97608,6 +98147,9 @@ export const schemas = {
                 "language": {
                   "type": "string"
                 },
+                "lastChanged": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -97726,6 +98268,9 @@ export const schemas = {
                           "type": "integer"
                         },
                         "codec": {
+                          "type": "string"
+                        },
+                        "layout": {
                           "type": "string"
                         },
                         "lossless": {
@@ -98058,6 +98603,9 @@ export const schemas = {
                     "language": {
                       "type": "string"
                     },
+                    "lastChanged": {
+                      "type": "string"
+                    },
                     "latestEpisode": {
                       "properties": {
                         "airDate": {
@@ -98146,6 +98694,9 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "pinned": {
+                      "type": "boolean"
                     },
                     "playback": {
                       "properties": {
@@ -98396,6 +98947,9 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "pinned": {
+                  "type": "boolean"
                 },
                 "playback": {
                   "properties": {
@@ -98717,6 +99271,9 @@ export const schemas = {
                   "type": "integer"
                 },
                 "codec": {
+                  "type": "string"
+                },
+                "layout": {
                   "type": "string"
                 },
                 "lossless": {
@@ -99053,6 +99610,9 @@ export const schemas = {
             "language": {
               "type": "string"
             },
+            "lastChanged": {
+              "type": "string"
+            },
             "latestEpisode": {
               "properties": {
                 "airDate": {
@@ -99171,6 +99731,9 @@ export const schemas = {
                       "type": "integer"
                     },
                     "codec": {
+                      "type": "string"
+                    },
+                    "layout": {
                       "type": "string"
                     },
                     "lossless": {
@@ -99503,6 +100066,9 @@ export const schemas = {
                 "language": {
                   "type": "string"
                 },
+                "lastChanged": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -99591,6 +100157,9 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "pinned": {
+                  "type": "boolean"
                 },
                 "playback": {
                   "properties": {
@@ -99841,6 +100410,9 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "pinned": {
+              "type": "boolean"
             },
             "playback": {
               "properties": {
@@ -100625,6 +101197,9 @@ export const schemas = {
                     "codec": {
                       "type": "string"
                     },
+                    "layout": {
+                      "type": "string"
+                    },
                     "lossless": {
                       "type": "boolean"
                     },
@@ -100959,6 +101534,9 @@ export const schemas = {
                 "language": {
                   "type": "string"
                 },
+                "lastChanged": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -101077,6 +101655,9 @@ export const schemas = {
                           "type": "integer"
                         },
                         "codec": {
+                          "type": "string"
+                        },
+                        "layout": {
                           "type": "string"
                         },
                         "lossless": {
@@ -101409,6 +101990,9 @@ export const schemas = {
                     "language": {
                       "type": "string"
                     },
+                    "lastChanged": {
+                      "type": "string"
+                    },
                     "latestEpisode": {
                       "properties": {
                         "airDate": {
@@ -101497,6 +102081,9 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "pinned": {
+                      "type": "boolean"
                     },
                     "playback": {
                       "properties": {
@@ -101747,6 +102334,9 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "pinned": {
+                  "type": "boolean"
                 },
                 "playback": {
                   "properties": {
@@ -102355,6 +102945,9 @@ export const schemas = {
           "codec": {
             "type": "string"
           },
+          "layout": {
+            "type": "string"
+          },
           "lossless": {
             "type": "boolean"
           },
@@ -102826,6 +103419,9 @@ export const schemas = {
                     "codec": {
                       "type": "string"
                     },
+                    "layout": {
+                      "type": "string"
+                    },
                     "lossless": {
                       "type": "boolean"
                     },
@@ -103160,6 +103756,9 @@ export const schemas = {
                 "language": {
                   "type": "string"
                 },
+                "lastChanged": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -103278,6 +103877,9 @@ export const schemas = {
                           "type": "integer"
                         },
                         "codec": {
+                          "type": "string"
+                        },
+                        "layout": {
                           "type": "string"
                         },
                         "lossless": {
@@ -103610,6 +104212,9 @@ export const schemas = {
                     "language": {
                       "type": "string"
                     },
+                    "lastChanged": {
+                      "type": "string"
+                    },
                     "latestEpisode": {
                       "properties": {
                         "airDate": {
@@ -103698,6 +104303,9 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "pinned": {
+                      "type": "boolean"
                     },
                     "playback": {
                       "properties": {
@@ -103948,6 +104556,9 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "pinned": {
+                  "type": "boolean"
                 },
                 "playback": {
                   "properties": {
@@ -104604,6 +105215,9 @@ export const schemas = {
                   "type": "integer"
                 },
                 "codec": {
+                  "type": "string"
+                },
+                "layout": {
                   "type": "string"
                 },
                 "lossless": {
@@ -106593,6 +107207,9 @@ export const schemas = {
                 "codec": {
                   "type": "string"
                 },
+                "layout": {
+                  "type": "string"
+                },
                 "lossless": {
                   "type": "boolean"
                 },
@@ -107195,6 +107812,9 @@ export const schemas = {
               "codec": {
                 "type": "string"
               },
+              "layout": {
+                "type": "string"
+              },
               "lossless": {
                 "type": "boolean"
               },
@@ -107529,6 +108149,9 @@ export const schemas = {
           "language": {
             "type": "string"
           },
+          "lastChanged": {
+            "type": "string"
+          },
           "latestEpisode": {
             "properties": {
               "airDate": {
@@ -107647,6 +108270,9 @@ export const schemas = {
                     "type": "integer"
                   },
                   "codec": {
+                    "type": "string"
+                  },
+                  "layout": {
                     "type": "string"
                   },
                   "lossless": {
@@ -107979,6 +108605,9 @@ export const schemas = {
               "language": {
                 "type": "string"
               },
+              "lastChanged": {
+                "type": "string"
+              },
               "latestEpisode": {
                 "properties": {
                   "airDate": {
@@ -108067,6 +108696,9 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "pinned": {
+                "type": "boolean"
               },
               "playback": {
                 "properties": {
@@ -108317,6 +108949,9 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "pinned": {
+            "type": "boolean"
           },
           "playback": {
             "properties": {
@@ -108830,6 +109465,9 @@ export const schemas = {
                       "codec": {
                         "type": "string"
                       },
+                      "layout": {
+                        "type": "string"
+                      },
                       "lossless": {
                         "type": "boolean"
                       },
@@ -109164,6 +109802,9 @@ export const schemas = {
                   "language": {
                     "type": "string"
                   },
+                  "lastChanged": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -109282,6 +109923,9 @@ export const schemas = {
                             "type": "integer"
                           },
                           "codec": {
+                            "type": "string"
+                          },
+                          "layout": {
                             "type": "string"
                           },
                           "lossless": {
@@ -109614,6 +110258,9 @@ export const schemas = {
                       "language": {
                         "type": "string"
                       },
+                      "lastChanged": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -109702,6 +110349,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       },
                       "playback": {
                         "properties": {
@@ -109952,6 +110602,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "pinned": {
+                    "type": "boolean"
                   },
                   "playback": {
                     "properties": {
@@ -110506,6 +111159,9 @@ export const schemas = {
                       "codec": {
                         "type": "string"
                       },
+                      "layout": {
+                        "type": "string"
+                      },
                       "lossless": {
                         "type": "boolean"
                       },
@@ -110840,6 +111496,9 @@ export const schemas = {
                   "language": {
                     "type": "string"
                   },
+                  "lastChanged": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -110958,6 +111617,9 @@ export const schemas = {
                             "type": "integer"
                           },
                           "codec": {
+                            "type": "string"
+                          },
+                          "layout": {
                             "type": "string"
                           },
                           "lossless": {
@@ -111290,6 +111952,9 @@ export const schemas = {
                       "language": {
                         "type": "string"
                       },
+                      "lastChanged": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -111378,6 +112043,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       },
                       "playback": {
                         "properties": {
@@ -111628,6 +112296,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "pinned": {
+                    "type": "boolean"
                   },
                   "playback": {
                     "properties": {
@@ -112539,6 +113210,9 @@ export const schemas = {
                   "codec": {
                     "type": "string"
                   },
+                  "layout": {
+                    "type": "string"
+                  },
                   "lossless": {
                     "type": "boolean"
                   },
@@ -112873,6 +113547,9 @@ export const schemas = {
               "language": {
                 "type": "string"
               },
+              "lastChanged": {
+                "type": "string"
+              },
               "latestEpisode": {
                 "properties": {
                   "airDate": {
@@ -112991,6 +113668,9 @@ export const schemas = {
                         "type": "integer"
                       },
                       "codec": {
+                        "type": "string"
+                      },
+                      "layout": {
                         "type": "string"
                       },
                       "lossless": {
@@ -113323,6 +114003,9 @@ export const schemas = {
                   "language": {
                     "type": "string"
                   },
+                  "lastChanged": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -113411,6 +114094,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "pinned": {
+                    "type": "boolean"
                   },
                   "playback": {
                     "properties": {
@@ -113661,6 +114347,9 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "pinned": {
+                "type": "boolean"
               },
               "playback": {
                 "properties": {
@@ -114174,6 +114863,9 @@ export const schemas = {
                           "codec": {
                             "type": "string"
                           },
+                          "layout": {
+                            "type": "string"
+                          },
                           "lossless": {
                             "type": "boolean"
                           },
@@ -114508,6 +115200,9 @@ export const schemas = {
                       "language": {
                         "type": "string"
                       },
+                      "lastChanged": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -114626,6 +115321,9 @@ export const schemas = {
                                 "type": "integer"
                               },
                               "codec": {
+                                "type": "string"
+                              },
+                              "layout": {
                                 "type": "string"
                               },
                               "lossless": {
@@ -114958,6 +115656,9 @@ export const schemas = {
                           "language": {
                             "type": "string"
                           },
+                          "lastChanged": {
+                            "type": "string"
+                          },
                           "latestEpisode": {
                             "properties": {
                               "airDate": {
@@ -115046,6 +115747,9 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "pinned": {
+                            "type": "boolean"
                           },
                           "playback": {
                             "properties": {
@@ -115296,6 +116000,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       },
                       "playback": {
                         "properties": {
@@ -115757,6 +116464,9 @@ export const schemas = {
               "codec": {
                 "type": "string"
               },
+              "layout": {
+                "type": "string"
+              },
               "lossless": {
                 "type": "boolean"
               },
@@ -116091,6 +116801,9 @@ export const schemas = {
           "language": {
             "type": "string"
           },
+          "lastChanged": {
+            "type": "string"
+          },
           "latestEpisode": {
             "properties": {
               "airDate": {
@@ -116209,6 +116922,9 @@ export const schemas = {
                     "type": "integer"
                   },
                   "codec": {
+                    "type": "string"
+                  },
+                  "layout": {
                     "type": "string"
                   },
                   "lossless": {
@@ -116541,6 +117257,9 @@ export const schemas = {
               "language": {
                 "type": "string"
               },
+              "lastChanged": {
+                "type": "string"
+              },
               "latestEpisode": {
                 "properties": {
                   "airDate": {
@@ -116629,6 +117348,9 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "pinned": {
+                "type": "boolean"
               },
               "playback": {
                 "properties": {
@@ -116879,6 +117601,9 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "pinned": {
+            "type": "boolean"
           },
           "playback": {
             "properties": {
@@ -122040,6 +122765,9 @@ export const schemas = {
                     "codec": {
                       "type": "string"
                     },
+                    "layout": {
+                      "type": "string"
+                    },
                     "lossless": {
                       "type": "boolean"
                     },
@@ -122374,6 +123102,9 @@ export const schemas = {
                 "language": {
                   "type": "string"
                 },
+                "lastChanged": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -122492,6 +123223,9 @@ export const schemas = {
                           "type": "integer"
                         },
                         "codec": {
+                          "type": "string"
+                        },
+                        "layout": {
                           "type": "string"
                         },
                         "lossless": {
@@ -122824,6 +123558,9 @@ export const schemas = {
                     "language": {
                       "type": "string"
                     },
+                    "lastChanged": {
+                      "type": "string"
+                    },
                     "latestEpisode": {
                       "properties": {
                         "airDate": {
@@ -122912,6 +123649,9 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "pinned": {
+                      "type": "boolean"
                     },
                     "playback": {
                       "properties": {
@@ -123162,6 +123902,9 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "pinned": {
+                  "type": "boolean"
                 },
                 "playback": {
                   "properties": {
@@ -123540,6 +124283,9 @@ export const schemas = {
                     "codec": {
                       "type": "string"
                     },
+                    "layout": {
+                      "type": "string"
+                    },
                     "lossless": {
                       "type": "boolean"
                     },
@@ -123874,6 +124620,9 @@ export const schemas = {
                 "language": {
                   "type": "string"
                 },
+                "lastChanged": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -123992,6 +124741,9 @@ export const schemas = {
                           "type": "integer"
                         },
                         "codec": {
+                          "type": "string"
+                        },
+                        "layout": {
                           "type": "string"
                         },
                         "lossless": {
@@ -124324,6 +125076,9 @@ export const schemas = {
                     "language": {
                       "type": "string"
                     },
+                    "lastChanged": {
+                      "type": "string"
+                    },
                     "latestEpisode": {
                       "properties": {
                         "airDate": {
@@ -124412,6 +125167,9 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "pinned": {
+                      "type": "boolean"
                     },
                     "playback": {
                       "properties": {
@@ -124662,6 +125420,9 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "pinned": {
+                  "type": "boolean"
                 },
                 "playback": {
                   "properties": {
@@ -125122,6 +125883,9 @@ export const schemas = {
                     "codec": {
                       "type": "string"
                     },
+                    "layout": {
+                      "type": "string"
+                    },
                     "lossless": {
                       "type": "boolean"
                     },
@@ -125456,6 +126220,9 @@ export const schemas = {
                 "language": {
                   "type": "string"
                 },
+                "lastChanged": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -125574,6 +126341,9 @@ export const schemas = {
                           "type": "integer"
                         },
                         "codec": {
+                          "type": "string"
+                        },
+                        "layout": {
                           "type": "string"
                         },
                         "lossless": {
@@ -125906,6 +126676,9 @@ export const schemas = {
                     "language": {
                       "type": "string"
                     },
+                    "lastChanged": {
+                      "type": "string"
+                    },
                     "latestEpisode": {
                       "properties": {
                         "airDate": {
@@ -125994,6 +126767,9 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "pinned": {
+                      "type": "boolean"
                     },
                     "playback": {
                       "properties": {
@@ -126244,6 +127020,9 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "pinned": {
+                  "type": "boolean"
                 },
                 "playback": {
                   "properties": {
@@ -127086,6 +127865,41 @@ export const schemas = {
             },
             "container": {
               "type": "string"
+            },
+            "disc": {
+              "properties": {
+                "chapterCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "kind": {
+                  "enum": [
+                    "bluray",
+                    "dvd"
+                  ],
+                  "type": "string"
+                },
+                "packaging": {
+                  "enum": [
+                    "iso",
+                    "folder"
+                  ],
+                  "type": "string"
+                },
+                "titleNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind",
+                "packaging",
+                "titleNumber",
+                "chapterCount"
+              ],
+              "type": "object"
             },
             "durationMs": {
               "maximum": 9007199254740991,
@@ -128863,6 +129677,9 @@ export const schemas = {
               "codec": {
                 "type": "string"
               },
+              "layout": {
+                "type": "string"
+              },
               "lossless": {
                 "type": "boolean"
               },
@@ -129197,6 +130014,9 @@ export const schemas = {
           "language": {
             "type": "string"
           },
+          "lastChanged": {
+            "type": "string"
+          },
           "latestEpisode": {
             "properties": {
               "airDate": {
@@ -129315,6 +130135,9 @@ export const schemas = {
                     "type": "integer"
                   },
                   "codec": {
+                    "type": "string"
+                  },
+                  "layout": {
                     "type": "string"
                   },
                   "lossless": {
@@ -129647,6 +130470,9 @@ export const schemas = {
               "language": {
                 "type": "string"
               },
+              "lastChanged": {
+                "type": "string"
+              },
               "latestEpisode": {
                 "properties": {
                   "airDate": {
@@ -129735,6 +130561,9 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "pinned": {
+                "type": "boolean"
               },
               "playback": {
                 "properties": {
@@ -129985,6 +130814,9 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "pinned": {
+            "type": "boolean"
           },
           "playback": {
             "properties": {
@@ -130498,6 +131330,9 @@ export const schemas = {
                       "codec": {
                         "type": "string"
                       },
+                      "layout": {
+                        "type": "string"
+                      },
                       "lossless": {
                         "type": "boolean"
                       },
@@ -130832,6 +131667,9 @@ export const schemas = {
                   "language": {
                     "type": "string"
                   },
+                  "lastChanged": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -130950,6 +131788,9 @@ export const schemas = {
                             "type": "integer"
                           },
                           "codec": {
+                            "type": "string"
+                          },
+                          "layout": {
                             "type": "string"
                           },
                           "lossless": {
@@ -131282,6 +132123,9 @@ export const schemas = {
                       "language": {
                         "type": "string"
                       },
+                      "lastChanged": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -131370,6 +132214,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       },
                       "playback": {
                         "properties": {
@@ -131620,6 +132467,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "pinned": {
+                    "type": "boolean"
                   },
                   "playback": {
                     "properties": {
@@ -135419,6 +136269,9 @@ export const schemas = {
               "codec": {
                 "type": "string"
               },
+              "layout": {
+                "type": "string"
+              },
               "lossless": {
                 "type": "boolean"
               },
@@ -135753,6 +136606,9 @@ export const schemas = {
           "language": {
             "type": "string"
           },
+          "lastChanged": {
+            "type": "string"
+          },
           "latestEpisode": {
             "properties": {
               "airDate": {
@@ -135871,6 +136727,9 @@ export const schemas = {
                     "type": "integer"
                   },
                   "codec": {
+                    "type": "string"
+                  },
+                  "layout": {
                     "type": "string"
                   },
                   "lossless": {
@@ -136203,6 +137062,9 @@ export const schemas = {
               "language": {
                 "type": "string"
               },
+              "lastChanged": {
+                "type": "string"
+              },
               "latestEpisode": {
                 "properties": {
                   "airDate": {
@@ -136291,6 +137153,9 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "pinned": {
+                "type": "boolean"
               },
               "playback": {
                 "properties": {
@@ -136541,6 +137406,9 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "pinned": {
+            "type": "boolean"
           },
           "playback": {
             "properties": {
@@ -137061,6 +137929,9 @@ export const schemas = {
                           "codec": {
                             "type": "string"
                           },
+                          "layout": {
+                            "type": "string"
+                          },
                           "lossless": {
                             "type": "boolean"
                           },
@@ -137416,6 +138287,9 @@ export const schemas = {
                       "language": {
                         "type": "string"
                       },
+                      "lastChanged": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -137534,6 +138408,9 @@ export const schemas = {
                                 "type": "integer"
                               },
                               "codec": {
+                                "type": "string"
+                              },
+                              "layout": {
                                 "type": "string"
                               },
                               "lossless": {
@@ -137866,6 +138743,9 @@ export const schemas = {
                           "language": {
                             "type": "string"
                           },
+                          "lastChanged": {
+                            "type": "string"
+                          },
                           "latestEpisode": {
                             "properties": {
                               "airDate": {
@@ -137954,6 +138834,9 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "pinned": {
+                            "type": "boolean"
                           },
                           "playback": {
                             "properties": {
@@ -138204,6 +139087,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       },
                       "playback": {
                         "properties": {
@@ -139022,6 +139908,9 @@ export const schemas = {
                     "codec": {
                       "type": "string"
                     },
+                    "layout": {
+                      "type": "string"
+                    },
                     "lossless": {
                       "type": "boolean"
                     },
@@ -139356,6 +140245,9 @@ export const schemas = {
                 "language": {
                   "type": "string"
                 },
+                "lastChanged": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -139474,6 +140366,9 @@ export const schemas = {
                           "type": "integer"
                         },
                         "codec": {
+                          "type": "string"
+                        },
+                        "layout": {
                           "type": "string"
                         },
                         "lossless": {
@@ -139806,6 +140701,9 @@ export const schemas = {
                     "language": {
                       "type": "string"
                     },
+                    "lastChanged": {
+                      "type": "string"
+                    },
                     "latestEpisode": {
                       "properties": {
                         "airDate": {
@@ -139894,6 +140792,9 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "pinned": {
+                      "type": "boolean"
                     },
                     "playback": {
                       "properties": {
@@ -140144,6 +141045,9 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "pinned": {
+                  "type": "boolean"
                 },
                 "playback": {
                   "properties": {
@@ -140694,6 +141598,9 @@ export const schemas = {
                     "codec": {
                       "type": "string"
                     },
+                    "layout": {
+                      "type": "string"
+                    },
                     "lossless": {
                       "type": "boolean"
                     },
@@ -141028,6 +141935,9 @@ export const schemas = {
                 "language": {
                   "type": "string"
                 },
+                "lastChanged": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -141146,6 +142056,9 @@ export const schemas = {
                           "type": "integer"
                         },
                         "codec": {
+                          "type": "string"
+                        },
+                        "layout": {
                           "type": "string"
                         },
                         "lossless": {
@@ -141478,6 +142391,9 @@ export const schemas = {
                     "language": {
                       "type": "string"
                     },
+                    "lastChanged": {
+                      "type": "string"
+                    },
                     "latestEpisode": {
                       "properties": {
                         "airDate": {
@@ -141566,6 +142482,9 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "pinned": {
+                      "type": "boolean"
                     },
                     "playback": {
                       "properties": {
@@ -141816,6 +142735,9 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "pinned": {
+                  "type": "boolean"
                 },
                 "playback": {
                   "properties": {
@@ -142889,6 +143811,9 @@ export const schemas = {
                       "codec": {
                         "type": "string"
                       },
+                      "layout": {
+                        "type": "string"
+                      },
                       "lossless": {
                         "type": "boolean"
                       },
@@ -143223,6 +144148,9 @@ export const schemas = {
                   "language": {
                     "type": "string"
                   },
+                  "lastChanged": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -143341,6 +144269,9 @@ export const schemas = {
                             "type": "integer"
                           },
                           "codec": {
+                            "type": "string"
+                          },
+                          "layout": {
                             "type": "string"
                           },
                           "lossless": {
@@ -143673,6 +144604,9 @@ export const schemas = {
                       "language": {
                         "type": "string"
                       },
+                      "lastChanged": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -143761,6 +144695,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       },
                       "playback": {
                         "properties": {
@@ -144011,6 +144948,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "pinned": {
+                    "type": "boolean"
                   },
                   "playback": {
                     "properties": {
@@ -144556,6 +145496,9 @@ export const schemas = {
                   "type": "integer"
                 },
                 "codec": {
+                  "type": "string"
+                },
+                "layout": {
                   "type": "string"
                 },
                 "lossless": {
@@ -145313,6 +146256,9 @@ export const schemas = {
                   "type": "integer"
                 },
                 "codec": {
+                  "type": "string"
+                },
+                "layout": {
                   "type": "string"
                 },
                 "lossless": {
@@ -146174,6 +147120,9 @@ export const schemas = {
                                 "codec": {
                                   "type": "string"
                                 },
+                                "layout": {
+                                  "type": "string"
+                                },
                                 "lossless": {
                                   "type": "boolean"
                                 },
@@ -146508,6 +147457,9 @@ export const schemas = {
                             "language": {
                               "type": "string"
                             },
+                            "lastChanged": {
+                              "type": "string"
+                            },
                             "latestEpisode": {
                               "properties": {
                                 "airDate": {
@@ -146626,6 +147578,9 @@ export const schemas = {
                                       "type": "integer"
                                     },
                                     "codec": {
+                                      "type": "string"
+                                    },
+                                    "layout": {
                                       "type": "string"
                                     },
                                     "lossless": {
@@ -146958,6 +147913,9 @@ export const schemas = {
                                 "language": {
                                   "type": "string"
                                 },
+                                "lastChanged": {
+                                  "type": "string"
+                                },
                                 "latestEpisode": {
                                   "properties": {
                                     "airDate": {
@@ -147046,6 +148004,9 @@ export const schemas = {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "pinned": {
+                                  "type": "boolean"
                                 },
                                 "playback": {
                                   "properties": {
@@ -147296,6 +148257,9 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "pinned": {
+                              "type": "boolean"
                             },
                             "playback": {
                               "properties": {
@@ -147620,6 +148584,9 @@ export const schemas = {
                               "type": "integer"
                             },
                             "codec": {
+                              "type": "string"
+                            },
+                            "layout": {
                               "type": "string"
                             },
                             "lossless": {
@@ -147956,6 +148923,9 @@ export const schemas = {
                         "language": {
                           "type": "string"
                         },
+                        "lastChanged": {
+                          "type": "string"
+                        },
                         "latestEpisode": {
                           "properties": {
                             "airDate": {
@@ -148074,6 +149044,9 @@ export const schemas = {
                                   "type": "integer"
                                 },
                                 "codec": {
+                                  "type": "string"
+                                },
+                                "layout": {
                                   "type": "string"
                                 },
                                 "lossless": {
@@ -148406,6 +149379,9 @@ export const schemas = {
                             "language": {
                               "type": "string"
                             },
+                            "lastChanged": {
+                              "type": "string"
+                            },
                             "latestEpisode": {
                               "properties": {
                                 "airDate": {
@@ -148494,6 +149470,9 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "pinned": {
+                              "type": "boolean"
                             },
                             "playback": {
                               "properties": {
@@ -148744,6 +149723,9 @@ export const schemas = {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "pinned": {
+                          "type": "boolean"
                         },
                         "playback": {
                           "properties": {
@@ -149528,6 +150510,9 @@ export const schemas = {
                                 "codec": {
                                   "type": "string"
                                 },
+                                "layout": {
+                                  "type": "string"
+                                },
                                 "lossless": {
                                   "type": "boolean"
                                 },
@@ -149862,6 +150847,9 @@ export const schemas = {
                             "language": {
                               "type": "string"
                             },
+                            "lastChanged": {
+                              "type": "string"
+                            },
                             "latestEpisode": {
                               "properties": {
                                 "airDate": {
@@ -149980,6 +150968,9 @@ export const schemas = {
                                       "type": "integer"
                                     },
                                     "codec": {
+                                      "type": "string"
+                                    },
+                                    "layout": {
                                       "type": "string"
                                     },
                                     "lossless": {
@@ -150312,6 +151303,9 @@ export const schemas = {
                                 "language": {
                                   "type": "string"
                                 },
+                                "lastChanged": {
+                                  "type": "string"
+                                },
                                 "latestEpisode": {
                                   "properties": {
                                     "airDate": {
@@ -150400,6 +151394,9 @@ export const schemas = {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "pinned": {
+                                  "type": "boolean"
                                 },
                                 "playback": {
                                   "properties": {
@@ -150650,6 +151647,9 @@ export const schemas = {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "pinned": {
+                              "type": "boolean"
                             },
                             "playback": {
                               "properties": {
@@ -151532,6 +152532,9 @@ export const schemas = {
                           "codec": {
                             "type": "string"
                           },
+                          "layout": {
+                            "type": "string"
+                          },
                           "lossless": {
                             "type": "boolean"
                           },
@@ -151866,6 +152869,9 @@ export const schemas = {
                       "language": {
                         "type": "string"
                       },
+                      "lastChanged": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -151984,6 +152990,9 @@ export const schemas = {
                                 "type": "integer"
                               },
                               "codec": {
+                                "type": "string"
+                              },
+                              "layout": {
                                 "type": "string"
                               },
                               "lossless": {
@@ -152316,6 +153325,9 @@ export const schemas = {
                           "language": {
                             "type": "string"
                           },
+                          "lastChanged": {
+                            "type": "string"
+                          },
                           "latestEpisode": {
                             "properties": {
                               "airDate": {
@@ -152404,6 +153416,9 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "pinned": {
+                            "type": "boolean"
                           },
                           "playback": {
                             "properties": {
@@ -152654,6 +153669,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       },
                       "playback": {
                         "properties": {
@@ -152975,6 +153993,9 @@ export const schemas = {
                         "type": "integer"
                       },
                       "codec": {
+                        "type": "string"
+                      },
+                      "layout": {
                         "type": "string"
                       },
                       "lossless": {
@@ -153311,6 +154332,9 @@ export const schemas = {
                   "language": {
                     "type": "string"
                   },
+                  "lastChanged": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -153429,6 +154453,9 @@ export const schemas = {
                             "type": "integer"
                           },
                           "codec": {
+                            "type": "string"
+                          },
+                          "layout": {
                             "type": "string"
                           },
                           "lossless": {
@@ -153761,6 +154788,9 @@ export const schemas = {
                       "language": {
                         "type": "string"
                       },
+                      "lastChanged": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -153849,6 +154879,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       },
                       "playback": {
                         "properties": {
@@ -154099,6 +155132,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "pinned": {
+                    "type": "boolean"
                   },
                   "playback": {
                     "properties": {
@@ -154883,6 +155919,9 @@ export const schemas = {
                           "codec": {
                             "type": "string"
                           },
+                          "layout": {
+                            "type": "string"
+                          },
                           "lossless": {
                             "type": "boolean"
                           },
@@ -155217,6 +156256,9 @@ export const schemas = {
                       "language": {
                         "type": "string"
                       },
+                      "lastChanged": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -155335,6 +156377,9 @@ export const schemas = {
                                 "type": "integer"
                               },
                               "codec": {
+                                "type": "string"
+                              },
+                              "layout": {
                                 "type": "string"
                               },
                               "lossless": {
@@ -155667,6 +156712,9 @@ export const schemas = {
                           "language": {
                             "type": "string"
                           },
+                          "lastChanged": {
+                            "type": "string"
+                          },
                           "latestEpisode": {
                             "properties": {
                               "airDate": {
@@ -155755,6 +156803,9 @@ export const schemas = {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "pinned": {
+                            "type": "boolean"
                           },
                           "playback": {
                             "properties": {
@@ -156005,6 +157056,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       },
                       "playback": {
                         "properties": {
@@ -158932,6 +159986,11 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "serveOperationsInUse": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "sourceId": {
             "type": "string"
           },
@@ -159205,6 +160264,9 @@ export const schemas = {
                       "type": "integer"
                     },
                     "codec": {
+                      "type": "string"
+                    },
+                    "layout": {
                       "type": "string"
                     },
                     "lossless": {
@@ -159541,6 +160603,9 @@ export const schemas = {
                 "language": {
                   "type": "string"
                 },
+                "lastChanged": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -159659,6 +160724,9 @@ export const schemas = {
                           "type": "integer"
                         },
                         "codec": {
+                          "type": "string"
+                        },
+                        "layout": {
                           "type": "string"
                         },
                         "lossless": {
@@ -159991,6 +161059,9 @@ export const schemas = {
                     "language": {
                       "type": "string"
                     },
+                    "lastChanged": {
+                      "type": "string"
+                    },
                     "latestEpisode": {
                       "properties": {
                         "airDate": {
@@ -160079,6 +161150,9 @@ export const schemas = {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "pinned": {
+                      "type": "boolean"
                     },
                     "playback": {
                       "properties": {
@@ -160329,6 +161403,9 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "pinned": {
+                  "type": "boolean"
                 },
                 "playback": {
                   "properties": {
@@ -182529,6 +183606,9 @@ export const schemas = {
                       "codec": {
                         "type": "string"
                       },
+                      "layout": {
+                        "type": "string"
+                      },
                       "lossless": {
                         "type": "boolean"
                       },
@@ -182863,6 +183943,9 @@ export const schemas = {
                   "language": {
                     "type": "string"
                   },
+                  "lastChanged": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -182981,6 +184064,9 @@ export const schemas = {
                             "type": "integer"
                           },
                           "codec": {
+                            "type": "string"
+                          },
+                          "layout": {
                             "type": "string"
                           },
                           "lossless": {
@@ -183313,6 +184399,9 @@ export const schemas = {
                       "language": {
                         "type": "string"
                       },
+                      "lastChanged": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -183401,6 +184490,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       },
                       "playback": {
                         "properties": {
@@ -183651,6 +184743,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "pinned": {
+                    "type": "boolean"
                   },
                   "playback": {
                     "properties": {
@@ -184033,6 +185128,9 @@ export const schemas = {
                 "codec": {
                   "type": "string"
                 },
+                "layout": {
+                  "type": "string"
+                },
                 "lossless": {
                   "type": "boolean"
                 },
@@ -184367,6 +185465,9 @@ export const schemas = {
             "language": {
               "type": "string"
             },
+            "lastChanged": {
+              "type": "string"
+            },
             "latestEpisode": {
               "properties": {
                 "airDate": {
@@ -184485,6 +185586,9 @@ export const schemas = {
                       "type": "integer"
                     },
                     "codec": {
+                      "type": "string"
+                    },
+                    "layout": {
                       "type": "string"
                     },
                     "lossless": {
@@ -184817,6 +185921,9 @@ export const schemas = {
                 "language": {
                   "type": "string"
                 },
+                "lastChanged": {
+                  "type": "string"
+                },
                 "latestEpisode": {
                   "properties": {
                     "airDate": {
@@ -184905,6 +186012,9 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "pinned": {
+                  "type": "boolean"
                 },
                 "playback": {
                   "properties": {
@@ -185155,6 +186265,9 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "pinned": {
+              "type": "boolean"
             },
             "playback": {
               "properties": {
@@ -212781,6 +213894,9 @@ export const schemas = {
                       "codec": {
                         "type": "string"
                       },
+                      "layout": {
+                        "type": "string"
+                      },
                       "lossless": {
                         "type": "boolean"
                       },
@@ -213115,6 +214231,9 @@ export const schemas = {
                   "language": {
                     "type": "string"
                   },
+                  "lastChanged": {
+                    "type": "string"
+                  },
                   "latestEpisode": {
                     "properties": {
                       "airDate": {
@@ -213233,6 +214352,9 @@ export const schemas = {
                             "type": "integer"
                           },
                           "codec": {
+                            "type": "string"
+                          },
+                          "layout": {
                             "type": "string"
                           },
                           "lossless": {
@@ -213565,6 +214687,9 @@ export const schemas = {
                       "language": {
                         "type": "string"
                       },
+                      "lastChanged": {
+                        "type": "string"
+                      },
                       "latestEpisode": {
                         "properties": {
                           "airDate": {
@@ -213653,6 +214778,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "pinned": {
+                        "type": "boolean"
                       },
                       "playback": {
                         "properties": {
@@ -213903,6 +215031,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "pinned": {
+                    "type": "boolean"
                   },
                   "playback": {
                     "properties": {

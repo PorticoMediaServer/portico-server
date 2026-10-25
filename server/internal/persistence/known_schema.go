@@ -558,6 +558,7 @@ index reading_attribution_pending
 index reading_attribution_rule_version
 index reading_attribution_series_facet
 index reading_attribution_series_seek
+index reading_cover_inspections_inventory_object
 index reading_progress_publication
 index reading_progress_recent
 index reading_publication_types_inventory_object
@@ -1299,6 +1300,7 @@ table reading_annotation_sets
 table reading_annotations
 table reading_attribution_members
 table reading_attribution_state
+table reading_cover_inspections
 table reading_progress
 table reading_publication_types
 table reading_publications
