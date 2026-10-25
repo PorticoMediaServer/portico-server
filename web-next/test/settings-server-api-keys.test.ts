@@ -43,3 +43,11 @@ test('a token in the owner key list is refused whole and cannot be revoked here'
   const source = new SettingsApiKeysSource({request: async <T>(path: string, method?: string) => {if (method === 'DELETE') deletes++;return (path === routePath('get_api_access_options') ? options : {...page, items: [{...key, kind: 'token'}]}) as T;}}, () => true, error => errors.push(error));
   await source.load();assert.equal(source.getSnapshot().page, undefined);assert.equal(errors.length, 1);await source.revoke(key as never);assert.equal(deletes, 0);source.dispose();
 });
+
+
+test('synchronous retirement during busy publication cannot dispatch a credential command', async () => {
+  let writes = 0;
+  const source = new SettingsApiKeysSource({request: async <T>(path: string, method?: string) => {if (method === 'POST' || method === 'DELETE') writes++;return read(path) as T;}}, () => true, () => {});
+  await source.load();source.subscribe(() => {if (source.getSnapshot().busy) source.dispose();});
+  await source.create({name: 'Automation', scopes: ['read']});assert.equal(writes, 0);
+});
