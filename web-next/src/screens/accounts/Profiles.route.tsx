@@ -6,6 +6,7 @@ import {createBrowserAccountEntry, type BrowserAccountEntry} from '../../platfor
 import {browserAccount} from '../../platform/account';
 import {AuthError, AuthStage} from '../../kit/accounts';
 import {Button} from '../../kit/controls';
+import {AccountIdentityFailure} from './AccountIdentityFailure';
 import {AccountProfilesView, type ProfilePickerViewBinding} from './AccountProfilesView';
 
 function ProfilesScreen() {
@@ -45,6 +46,8 @@ function BoundProfiles({entry}: {entry: BrowserAccountEntry}) {
     },
   }), [entry]);
   const switchServer = () => {void router.navigate({to: '/servers'});};
+  const identityFailure = entry.serverIdentityFailure(switchServer);
+  if (identityFailure) return <AccountIdentityFailure binding={identityFailure}/>;
   if (state.error && !state.snapshot) return <AuthStage legal={false}><AuthError error={state.error} />
     <Button onClick={() => void entry.loadProfiles()}>{defaultI18n.t('action.tryAgain')}</Button>
     <Button onClick={switchServer}>{defaultI18n.t('settings.switchServer')}</Button></AuthStage>;

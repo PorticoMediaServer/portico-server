@@ -17,6 +17,7 @@ import {canOpenShortInvitation} from './short-invitation-join';
 import {initializeAccountSignIn} from './sign-in-start';
 import {RequiredFactorDialogs} from './RequiredSetup';
 import {LocalPasswordRecoveryFlow} from './LocalPasswordRecoveryFlow';
+import {AccountIdentityFailure} from './AccountIdentityFailure';
 import {MemberMoveForm} from './MemberMoveForm';
 
 type RecoveryTarget = Readonly<{entry: BrowserAccountEntry; origin: string; serverId: string; pin: NonNullable<ReturnType<BrowserAccountEntry['getSnapshot']>['pin']>}>;
@@ -97,6 +98,8 @@ export function AccountSignInView({entry, form, takeReturn, takeMove, initialize
       if (url && alive.current && form.getSnapshot().inputEpoch === epoch && current.phase === phase && current.server?.id === serverId && current.origin === origin && current.pin === pin) location.assign(url);
     }).catch(failure => {if (alive.current && form.getSnapshot().inputEpoch === epoch && entry.getSnapshot().origin === origin && entry.getSnapshot().pin === pin) setError(failure);});
   };
+  const identityFailure = entry.serverIdentityFailure(() => {void router.navigate({to: '/servers'});});
+  if (identityFailure) return <AccountIdentityFailure binding={identityFailure}/>;
   if (joining) return <ShortInvitationEntry onBack={leaveJoin} onJoined={destination => location.assign(destination.origin)} />;
   if (input.factor) return <RequiredFactorDialogs form={input.factor} error={failure} onCancel={cancel} onDone={() => {form.clear(); void router.navigate({to: '/profiles', replace: true});}} />;
   if (state.phase === 'password-change') return <RequiredPasswordDialog key={input.inputEpoch} busy={busy} error={failure}
