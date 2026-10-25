@@ -1239,7 +1239,16 @@ func run() (runErr error) {
 		invalidateCustomSource()
 	}, WebDirectory: os.Getenv("PORTICO_WEB_DIR"), Analysis: analysisService, Prepared: preparedVersions, Downloads: offlineDownloads, DVR: recordingStore, Subtitles: subtitleService, Lyrics: lyricService, LyricsBulk: lyricFetch, LyricsProbe: ffprobeTool, LibraryChannels: generatedChannels, Console: console, Scheduler: scheduler, Measurements: measurements, Networking: claimHandler, CustomCertificate: customCertificate, RouteIdentity: networking.NewRouteIdentityHandler(claimKeys, claimRunner, claimHandler.Certificates(), customCertificate), LiveChannels: liveSources, PlaybackRuntime: currentPlayback, AudioMedia: subtitleRenderer, Storage: storeIO, Mounts: managed, RemoteSources: sources, DB: db, Watchdog: watchdog, Identity: ident, Catalog: cat, Ingestion: scanner, Playback: player, Hosted: control, Metadata: meta, Origins: origins, SetupHosts: setupHosts}
 	readingService := httpapi.NewReadingService(apiDependencies)
-	readingService.AdoptCover = meta.AdoptReadingCover
+	// The worker distinguishes bytes the artwork pipeline refused as an image
+	// from transient acquisition failures, without the reading package
+	// depending on the metadata package.
+	readingService.AdoptCover = func(ctx context.Context, item, revision string, raw []byte, authorize func(*sql.Tx) error) error {
+		err := meta.AdoptReadingCover(ctx, item, revision, raw, authorize)
+		if errors.Is(err, metadata.ErrArtworkUpload) {
+			return fmt.Errorf("%w: %v", reading.ErrCoverInvalid, err)
+		}
+		return err
+	}
 	mobiConverter, mobiErr := configuredReadingMobi(storeIO, cache)
 	if mobiErr != nil {
 		log.Printf("warn: MOBI/AZW3 reading conversion is unavailable; the configured bundle was not admitted")
@@ -1259,6 +1268,18 @@ func run() (runErr error) {
 		unregister := dbwork.WakeOnTables(wake, "reading_publications", "inventory_objects", "library_sources", "catalog_assets")
 		defer unregister()
 		worker.Run(life, "cmd.reading-text-counts", wake, textCounts.Step)
+	})
+	// Unopened cover coverage: the same explicit EPUB cover item or first comic
+	// page an open adopts, under the registered background source authority and
+	// existing metadata admission. Determined outcomes are recorded per exact
+	// observation so coverless files are not reopened on every pass, and owner
+	// or other selected art is never replaced.
+	covers := &reading.CoverPreparation{DB: db, Prepare: readingService.PrepareCover, PrimaryPublicationSQL: readingService.PrimaryPublicationSQL, Admission: workAdmission.Admit}
+	supervise.Supervise(ctx, "cmd.reading-covers", func(life context.Context) {
+		wake := worker.NewSignal()
+		unregister := dbwork.WakeOnTables(wake, "reading_publications", "inventory_objects", "library_sources", "catalog_assets")
+		defer unregister()
+		worker.Run(life, "cmd.reading-covers", wake, covers.Step)
 	})
 	previousFamilyRevoked := ident.OnFamilyRevokedTx
 	ident.OnFamilyRevokedTx = func(ctx context.Context, tx *sql.Tx, family identity.FamilyState) error {

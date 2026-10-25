@@ -33,8 +33,8 @@ const (
 
 // The canonical object mirrors selectPublication's ORDER BY a.id,o.id LIMIT 1:
 // one asset has one selected inventory object, so the pending join and the
-// opener can never disagree about which row a count belongs to.
-const textCountCanonicalObject = `o.id=(SELECT o2.id FROM inventory_objects o2 INDEXED BY inventory_objects_asset WHERE o2.asset_id=a.token AND o2.retired=0 AND o2.state='available' AND o2.unsupported_reason='' AND o2.root_incarnation=s.incarnation AND o2.size=a.size AND o2.modified_ns=a.modified_ns ORDER BY o2.id LIMIT 1)`
+// opener can never disagree about which row a fact belongs to.
+const backgroundCanonicalObject = `o.id=(SELECT o2.id FROM inventory_objects o2 INDEXED BY inventory_objects_asset WHERE o2.asset_id=a.token AND o2.retired=0 AND o2.state='available' AND o2.unsupported_reason='' AND o2.root_incarnation=s.incarnation AND o2.size=a.size AND o2.modified_ns=a.modified_ns ORDER BY o2.id LIMIT 1)`
 
 // The worker's own domain, used by both the pending selection and the fresh
 // resolver/accepting transaction. It is narrower than a viewer selection: book
@@ -42,6 +42,10 @@ const textCountCanonicalObject = `o.id=(SELECT o2.id FROM inventory_objects o2 I
 // branch; this widening does not remove the approved EPUB branch. Enabled/
 // healthy/current inventory is still enforced by publicationEligible below.
 const textCountWorkerDomain = `e.kind=20 AND lib.kind='book' AND p.format IN('epub','pdf') AND s.kind='local'`
+
+// The leased source's registered background owner label. It is never a user or
+// owner principal; the opaque token keeps separate worker steps distinct.
+const textCountSourceAuthority = "reading-prepare"
 
 // Bounded, indexed order by item id. Remote sources are excluded rather than
 // approximating a full-file read through a viewer session: an unadmitted remote
@@ -62,7 +66,7 @@ func textCountPendingSQL(primary string) string {
  CROSS JOIN inventory_item_availability available ON available.item_id=e.id AND available.asset_id=a.token
  LEFT JOIN reading_text_counts c ON c.item_id=p.item_id AND c.asset_id=p.asset_id AND c.inventory_object_id=o.id AND c.source_revision=o.revision AND c.rule_version=? AND c.opening_rule_version=1 AND (p.format<>'pdf' OR (c.page_rule_version=1 AND c.page_count BETWEEN 1 AND 4096))
  WHERE e.retired=0 AND cl.retired=0 AND ` + textCountWorkerDomain + ` AND ` + publicationEligible + `
- AND ` + textCountCanonicalObject + `
+ AND ` + backgroundCanonicalObject + `
  AND c.item_id IS NULL AND e.id>? ORDER BY e.id LIMIT ?`
 }
 
@@ -185,9 +189,13 @@ func (p *TextCountPreparation) Step(ctx context.Context) time.Duration {
 
 // ResolveBackground selects the same canonical primary publication a viewer's
 // open would, without inventing a principal or borrowing an expired session.
-// The worker's scope is the catalog's own enabled, healthy local source and its
-// current inventory object; it passes through every publicationEligible fence.
+// It keeps the text-count worker's domain; another worker uses its own private
+// domain resolver over the same catalog fences.
 func (s *Service) ResolveBackground(ctx context.Context, library, item, asset string) (Selection, error) {
+	return s.resolveBackgroundDomain(ctx, textCountWorkerDomain, library, item, asset)
+}
+
+func (s *Service) resolveBackgroundDomain(ctx context.Context, domain, library, item, asset string) (Selection, error) {
 	if s == nil || s.DB == nil || s.Storage == nil {
 		return Selection{}, ErrUnavailable
 	}
@@ -196,14 +204,14 @@ func (s *Service) ResolveBackground(ctx context.Context, library, item, asset st
 		return Selection{}, err
 	}
 	defer g.Rollback()
-	return s.resolveBackgroundTx(ctx, g.Tx(), library, item, asset)
+	return s.resolveBackgroundTx(ctx, g.Tx(), domain, library, item, asset)
 }
 
-func (s *Service) resolveBackgroundTx(ctx context.Context, tx *sql.Tx, library, item, asset string) (Selection, error) {
+func (s *Service) resolveBackgroundTx(ctx context.Context, tx *sql.Tx, domain, library, item, asset string) (Selection, error) {
 	var v Selection
 	v.ItemID = item
 	err := tx.QueryRowContext(ctx, `SELECT `+publicationFields+` FROM catalog_entities e`+publicationJoins+`
- WHERE e.public_id=pid_blob(?) AND a.token=? AND cl.library_id=? AND p.asset_id=`+s.primaryPublicationSQL()+` AND `+textCountWorkerDomain+` AND `+publicationEligible+` ORDER BY a.id,o.id LIMIT 1`, item, asset, library).Scan(selectionColumns(&v)...)
+ WHERE e.public_id=pid_blob(?) AND a.token=? AND cl.library_id=? AND p.asset_id=`+s.primaryPublicationSQL()+` AND `+domain+` AND `+publicationEligible+` ORDER BY a.id,o.id LIMIT 1`, item, asset, library).Scan(selectionColumns(&v)...)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Selection{}, ErrUnavailable
 	}
@@ -219,14 +227,29 @@ func (s *Service) resolveBackgroundTx(ctx context.Context, tx *sql.Tx, library, 
 }
 
 // validateBackground rechecks the same catalog/fence tuple after bytes, and
-// during source extents, so a changed source cannot adopt a count read from
-// older bytes.
+// during source extents, so a changed source cannot adopt a fact read from
+// older bytes. It keeps the text-count worker's domain.
 func (s *Service) validateBackground(ctx context.Context, selected Selection) error {
-	now, err := s.ResolveBackground(ctx, selected.library, selected.ItemID, selected.SourceID)
+	return s.validateBackgroundDomain(ctx, textCountWorkerDomain, selected)
+}
+
+func (s *Service) validateBackgroundDomain(ctx context.Context, domain string, selected Selection) error {
+	g, err := dbwork.BeginSnapshot(ctx, s.DB)
 	if err != nil {
 		return err
 	}
-	if now.Revision != selected.Revision {
+	defer g.Rollback()
+	return s.validateBackgroundTx(ctx, g.Tx(), domain, selected)
+}
+
+// validateBackgroundTx is the same recheck inside a caller transaction, usable
+// as the accepting writer's own source guard.
+func (s *Service) validateBackgroundTx(ctx context.Context, tx *sql.Tx, domain string, selected Selection) error {
+	current, err := s.resolveBackgroundTx(ctx, tx, domain, selected.library, selected.ItemID, selected.SourceID)
+	if err != nil {
+		return err
+	}
+	if current.Revision != selected.Revision {
 		return ErrChanged
 	}
 	return nil
@@ -234,8 +257,13 @@ func (s *Service) validateBackground(ctx context.Context, selected Selection) er
 
 // OpenBackground owns a fresh source lease for the preparation worker. Its
 // lifetime is the worker step, never a viewer session; validation is the
-// catalog/fence tuple above.
+// catalog/fence tuple above. It keeps the text-count worker's domain and
+// registered background owner label.
 func (s *Service) OpenBackground(ctx context.Context, v Selection) (*Source, error) {
+	return s.openBackground(ctx, textCountWorkerDomain, textCountSourceAuthority, v)
+}
+
+func (s *Service) openBackground(ctx context.Context, domain, authority string, v Selection) (*Source, error) {
 	if s == nil || s.Storage == nil {
 		return nil, ErrUnavailable
 	}
@@ -251,8 +279,8 @@ func (s *Service) OpenBackground(ctx context.Context, v Selection) (*Source, err
 	} else {
 		roots = sourceaccess.New(s.Storage, s.Mounts)
 	}
-	validate := func(ctx context.Context) error { return s.validateBackground(ctx, v) }
-	lease, err := roots.Borrow(ctx, sourceaccess.Authority{OwnerID: "reading-prepare:" + identity.Token(), RootID: v.rootID, RootPath: v.root, RelativePath: v.relative, Revision: v.incarnation + ":" + strconv.FormatInt(v.generation, 10), Lifetime: ctx, Validate: validate})
+	validate := func(ctx context.Context) error { return s.validateBackgroundDomain(ctx, domain, v) }
+	lease, err := roots.Borrow(ctx, sourceaccess.Authority{OwnerID: authority + ":" + identity.Token(), RootID: v.rootID, RootPath: v.root, RelativePath: v.relative, Revision: v.incarnation + ":" + strconv.FormatInt(v.generation, 10), Lifetime: ctx, Validate: validate})
 	if err != nil {
 		roots.Close()
 		return nil, err
@@ -331,7 +359,7 @@ func (s *Service) PrepareTextCount(ctx context.Context, library, item, asset str
 		return err
 	}
 	defer gate.Rollback()
-	current, err := s.resolveBackgroundTx(ctx, gate.Tx(), library, item, asset)
+	current, err := s.resolveBackgroundTx(ctx, gate.Tx(), textCountWorkerDomain, library, item, asset)
 	if err != nil {
 		return err
 	}

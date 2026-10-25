@@ -239,6 +239,21 @@ CREATE TABLE reading_text_counts(
  PRIMARY KEY(item_id,asset_id),
  FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
 CREATE INDEX reading_text_counts_inventory_object ON reading_text_counts(inventory_object_id);
+-- One determined scan-time cover outcome for an exact publication observation.
+-- adopted: the automatic cover was written; absent: the package declares no
+-- explicit cover; invalid: declared bytes are not adoptable. Transient failures
+-- carry no row and are retried. Owner or other selected art is never replaced.
+CREATE TABLE reading_cover_inspections(
+ item_id INTEGER NOT NULL,
+ asset_id INTEGER NOT NULL,
+ inventory_object_id TEXT NOT NULL REFERENCES inventory_objects(id) ON DELETE CASCADE,
+ source_revision TEXT NOT NULL CHECK(length(source_revision)>0),
+ rule_version INTEGER NOT NULL CHECK(rule_version>0),
+ outcome TEXT NOT NULL CHECK(outcome IN('adopted','absent','invalid')),
+ attempted_at TEXT NOT NULL,
+ PRIMARY KEY(item_id,asset_id),
+ FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
+CREATE INDEX reading_cover_inspections_inventory_object ON reading_cover_inspections(inventory_object_id);
 CREATE TABLE reading_annotation_sets(
  owner_key TEXT NOT NULL,
  item_id INTEGER NOT NULL,
