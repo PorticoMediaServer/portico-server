@@ -45,8 +45,56 @@ test('429 Retry-After wins, exponential delay is bounded', () => {
   assert.equal(messageRetryMs(1, '90'), 90000);assert.equal(messageRetryMs(1, 'Thu, 01 Jan 1970 00:00:10 GMT', 0), 10000);assert.equal(messageRetryMs(50, null), 64000);
 });
 
-test('permission refusal stops live retries and preserves listed lines', async () => {
+test('permission refusal stops live retries and clears retired lines', async () => {
   const source = new SettingsMessagesSource(transport, {open: async () => new Response('', {status: 403})}, () => true);
   await source.load();source.setLive(true);for (let n = 0; n < 15; n++) await Promise.resolve();
-  assert.equal(source.getSnapshot().live, false);assert.equal(source.getSnapshot().phase, 'error');assert.equal(source.getSnapshot().lines.length, 2);source.dispose();
+  assert.equal(source.getSnapshot().live, false);assert.equal(source.getSnapshot().phase, 'idle');assert.equal(source.getSnapshot().lines.length, 0);source.dispose();
+});
+
+const flush = async () => {for (let i = 0; i < 30; i++) await Promise.resolve();};
+test('late filter reads and opens cannot replace the newest filter or duplicate a tail', async () => {
+  const reads: ((value: unknown) => void)[] = [], opens: ((value: Response) => void)[] = [];
+  let cancelled = 0;
+  const source = new SettingsMessagesSource({request: async <T>(path: string) => path.includes('/settings') ? settings as T : new Promise<T>(resolve => reads.push(value => resolve(value as T)))}, {open: () => new Promise(resolve => opens.push(resolve))}, () => true);
+  source.setLive(true);
+  const first = source.select('warn', 'network'), second = source.select('error', 'server');
+  reads[1]({...page, items: [line('latest')]});await second;
+  reads[0]({...page, items: [line('stale')]});await first;
+  assert.deepEqual(source.getSnapshot().lines.map(x => x.sequence), ['latest']);assert.equal(opens.length, 2);
+  opens[0](new Response(new ReadableStream({cancel() {cancelled++;}})));await flush();assert.equal(cancelled, 1);
+  source.pause();opens[1](new Response(''));await flush();assert.equal(source.getSnapshot().live, false);source.dispose();
+});
+
+test('pause fences an ignored-abort read and prevents a delayed select from restarting live', async () => {
+  let release!: (value: unknown) => void, opens = 0;
+  const source = new SettingsMessagesSource({request: async <T>(path: string) => path.includes('/settings') ? settings as T : new Promise<T>(resolve => {release = value => resolve(value as T);})}, {open: async () => {opens++;return new Response('');}}, () => true);
+  source.setLive(true);const pending = source.select('', 'network');source.pause();release(page);await pending;await flush();
+  assert.equal(opens, 1);assert.equal(source.getSnapshot().lines.length, 0);source.dispose();
+});
+
+test('terminal list and thrown-open errors retire authority and report once', async () => {
+  for (const lane of ['list', 'open']) {
+    const errors: unknown[] = [];let opens = 0;
+    const failure = Object.assign(new Error('Permission ended'), {code: 'not_permitted', status: 403});
+    const source = new SettingsMessagesSource({request: async <T>(path: string) => {if (lane === 'list') throw failure;return transport.request<T>(path);}}, {open: async () => {opens++;throw failure;}}, () => true, error => errors.push(error));
+    await source.load();source.setLive(true);await flush();await source.load();source.setLive(true);await flush();
+    assert.equal(errors.length, 1);assert.equal(source.getSnapshot().lines.length, 0);assert.equal(opens, lane === 'list' ? 0 : 1);source.dispose();
+  }
+});
+
+test('oversized streams cancel the underlying body before reconnect', async () => {
+  let cancelled = false;
+  const source = new SettingsMessagesSource(transport, {open: async () => new Response(new ReadableStream({start(controller) {controller.enqueue(new TextEncoder().encode('data: ' + 'x'.repeat(262145)));}, cancel() {cancelled = true;}}))}, () => true);
+  source.setLive(true);await flush();assert.equal(cancelled, true);assert.equal(source.getSnapshot().reconnecting, true);source.dispose();
+});
+
+test('uncertain debug write reconciles the immutable intent before accepting a changed toggle', async () => {
+  const writes: unknown[] = [];let reconcileFails = true;
+  const source = new SettingsMessagesSource({request: async <T>(path: string, method?: string, body?: unknown) => {
+    if (method === 'POST') {writes.push(body);throw new Error('Response lost');}
+    if (reconcileFails) throw new Error('Read unavailable');
+    return {...settings, debugWindowUntil: new Date(Date.now() + 60000).toISOString()} as T;
+  }}, undefined, () => true);
+  await assert.rejects(source.detail(true));await assert.rejects(source.detail(false));assert.equal(writes.length, 1);
+  reconcileFails = false;await source.detail(false);assert.equal(writes.length, 1);assert.equal(source.getSnapshot().changing, false);source.dispose();
 });

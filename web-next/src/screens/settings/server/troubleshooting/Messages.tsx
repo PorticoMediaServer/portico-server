@@ -8,7 +8,7 @@ const t = defaultI18n.t;
 const levelKey = (level: LogLevel) => `web.logs.level.${level}` as MessageId;
 const categoryKey = (category: LogCategory) => `web.logs.category.${category}` as MessageId;
 
-export function MessagesPanel({source, reportError}: Readonly<{source: SettingsMessagesSource; reportError: (error: unknown) => void}>) {
+export function MessagesPanel({source}: Readonly<{source: SettingsMessagesSource; reportError: (error: unknown) => void}>) {
   const state = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
   const box = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(Date.now());
@@ -19,7 +19,7 @@ export function MessagesPanel({source, reportError}: Readonly<{source: SettingsM
   return <div className={styles.reports}>
     {state.settings && <section className={styles.detailWindow}>
       <div><b>{t('settings.server.detailWindow')}</b><p className={styles.help}>{detailed ? t('settings.server.detailWindow.until', {time: defaultI18n.dateTime(until!)}) : t('settings.server.detailWindow.help')}</p></div>
-      <Button size="small" variant="glass" disabled={state.changing} onClick={() => {void source.detail(!detailed).catch(reportError);}}>{t(detailed ? 'settings.server.detailWindow.stop' : 'settings.server.detailWindow.start')}</Button>
+      <Button size="small" variant="glass" disabled={state.changing} onClick={() => {void source.detail(!detailed).catch(() => { /* The source reports through its captured owner. */ });}}>{t(detailed ? 'settings.server.detailWindow.stop' : 'settings.server.detailWindow.start')}</Button>
     </section>}
     <section className={styles.messages}>
       <div className={styles.panelHead}><h3>{t('web.logs.messages')}</h3><span className={styles.tag}>{t('web.logs.adminVisible')}</span></div>
