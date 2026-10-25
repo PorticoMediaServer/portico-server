@@ -17,17 +17,42 @@ async function capture(id){
  finally{await page.locator('[data-checkpoint-private]').evaluateAll(nodes=>nodes.forEach(node=>node.removeAttribute('data-checkpoint-private')));}
  fs.writeFileSync(path.join(out,'flow-'+id+'.log'),await page.evaluate(privacy,{kind:'dom',privateValues}));
 }
+async function readingMetrics(){
+ const rows=[];
+ for(const frame of page.frames().slice(0,16)){
+  try{rows.push(await frame.evaluate(()=>{
+   const rect=e=>{const r=e.getBoundingClientRect();return ['x','y','width','height'].map(k=>Math.round(Math.max(-100000,Math.min(100000,r[k]))));};
+   const measure=(e,kind)=>{const c=getComputedStyle(e);return {kind,rect:rect(e),display:['none','block','inline','inline-block','flex','inline-flex','grid','contents'].includes(c.display)?c.display:'other',visibility:['visible','hidden','collapse'].includes(c.visibility)?c.visibility:'other',opacity:Math.max(0,Math.min(1,Number(c.opacity)))};};
+   const elements=[],pending=[document];let visited=0,styleCount=0,nonceStyleCount=0,textNodes=0;
+   if(document.body){elements.push(measure(document.body,'body'));const w=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);while(w.nextNode()&&textNodes<100000)textNodes++;}
+   while(pending.length&&visited<5000){const root=pending.shift();for(const e of root.querySelectorAll('*')){
+    if(++visited>5000)break;if(e.shadowRoot)pending.push(e.shadowRoot);
+    if(e.tagName==='STYLE'){styleCount++;if(e.nonce)nonceStyleCount++;}
+    if(elements.length<32){if(e.tagName==='IFRAME')elements.push(measure(e,'iframe'));else if(e.tagName==='FOLIATE-PAGINATOR')elements.push(measure(e,'paginator'));else if(e.id==='container')elements.push(measure(e,'container'));}
+   }}
+   return {documentClass:location.protocol==='blob:'?'publication-blob':location.protocol==='about:'?'inert-document':'application',textNodes,elements,styleCount,nonceStyleCount,csp:window.__porticoCheckpointCsp??[]};
+  }));}catch{rows.push({unavailable:true});}
+ }
+ fs.writeFileSync(path.join(out,'reading-layout.log'),JSON.stringify(rows,null,2)+'\n');
+}
 async function flow(id,run){
  if(disabled.has(input.surface+':'+id)){flows.push({surface:input.surface,id,status:'dropped',manual:'Justin hands-on; flaky twice'});return false;}
  phase=id;const start=Date.now();let record;
  try{const facts=await run();record={surface:input.surface,id,status:'pass',facts:facts??{}};}
  catch(error){record={surface:input.surface,id,status:'fail',class:['TimeoutError','Error','TypeError','ReferenceError','SyntaxError'].includes(error.name)?error.name:'Other',timeout:error.name==='TimeoutError'};}
- record.durationMs=Date.now()-start;flows.push(record);try{await capture(id);}catch{record.screenshotUnavailable=true;}return record.status==='pass';
+ record.durationMs=Date.now()-start;flows.push(record);if(id==='reading-nonblank-no-egress')await readingMetrics();try{await capture(id);}catch{record.screenshotUnavailable=true;}return record.status==='pass';
 }
 async function home(){await page.goto(input.origin+'/',{waitUntil:'domcontentloaded'});await page.locator('[data-home-document]').waitFor();}
 try{
  browser=await chromium.launch({executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,headless:true,args:['--no-sandbox','--disable-dev-shm-usage','--disable-background-networking']});
- const context=await browser.newContext({viewport:{width:1440,height:900}});page=await context.newPage();page.setDefaultTimeout(12000);
+ const context=await browser.newContext({viewport:{width:1440,height:900}});
+ await context.addInitScript(()=>{window.__porticoCheckpointCsp=[];addEventListener('securitypolicyviolation',event=>{
+  const allowed=['default-src','style-src','style-src-elem','style-src-attr','script-src','script-src-elem','script-src-attr','font-src','connect-src','img-src','frame-src','media-src'];
+  if(!allowed.includes(event.effectiveDirective)||window.__porticoCheckpointCsp.length>=32)return;
+  let blockedClass=['inline','eval'].includes(event.blockedURI)?event.blockedURI:'other';
+  try{const u=new URL(event.blockedURI);blockedClass=['blob:','data:'].includes(u.protocol)?u.protocol.slice(0,-1):u.origin===location.origin?'same-origin':'foreign-origin';}catch{}
+  window.__porticoCheckpointCsp.push({directive:event.effectiveDirective,blockedClass});
+ });});page=await context.newPage();page.setDefaultTimeout(12000);
  page.on('pageerror',error=>{if(pageErrors.length>=12)return;const text=String(error.message??''),code=/dynamically imported module/i.test(text)?'import_failed':/play\(\).*user|user.*interact|play.*not allowed/i.test(text)?'play_not_allowed':/no supported source|source.*not supported/i.test(text)?'unsupported_source':/Cannot read properties of (?:null|undefined)/.test(text)?'null_property':/Minified React error #\d+/.test(text)?'react_error':'other';pageErrors.push({phase,class:errorClasses.includes(error.name)?error.name:'Other',code,coordinates:[...String(error.stack??'').matchAll(/:(\d+):(\d+)/g)].slice(0,6).map(x=>[Number(x[1]),Number(x[2])])});});
  page.on('response',async response=>{try{
   const url=new URL(response.url());if(![input.origin,input.apiOrigin].includes(url.origin)||network.length>=100)return;
