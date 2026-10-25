@@ -239,6 +239,8 @@ func adoptTextCountRow(ctx context.Context, tx *sql.Tx, current Selection, count
 // actor credential for background work. Cache only this row/revision/rule.
 func (s *Service) adoptTextCount(ctx context.Context, p identity.Principal, f *Source) error {
 	selected := f.Selection
+	// Viewer opens count EPUB only. Fixed-layout PDFs are covered by the
+	// preparation worker so opening one does not synchronously parse the file.
 	if selected.Format != "epub" {
 		return nil
 	}
@@ -278,7 +280,7 @@ func (s *Service) adoptTextCount(ctx context.Context, p identity.Principal, f *S
 // This cached file text is published only by a prepared, source-authorized
 // manifest. List/Search metadata never receives the body excerpt.
 func (s *Service) publicationTextFacts(ctx context.Context, p identity.Principal, selected Selection) (*int64, string, error) {
-	if selected.Format != "epub" {
+	if selected.Format != "epub" && selected.Format != "pdf" {
 		return nil, "", nil
 	}
 	gate, err := dbwork.BeginSnapshot(ctx, s.DB)
