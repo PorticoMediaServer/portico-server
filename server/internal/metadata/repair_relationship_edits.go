@@ -55,7 +55,11 @@ func setRelationshipLock(ctx context.Context, tx *sql.Tx, t RepairTarget, class 
 		if e != nil {
 			return e
 		}
-		if available {
+		normal, e := normalizedCreditFamily(ctx, tx, entity)
+		if e != nil {
+			return e
+		}
+		if available || normal {
 			return applyEffectiveCreditSet(ctx, tx, t, entity, kept, locked, actor, now, false)
 		}
 	}

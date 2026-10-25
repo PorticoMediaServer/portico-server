@@ -283,7 +283,17 @@ func repairRevision(ctx context.Context, tx *sql.Tx, t RepairTarget, snap Repair
 	}
 	var last int64
 	err = tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(id),0) FROM metadata_owner_history WHERE kind=? AND entity_id=?`, t.Kind, entity).Scan(&last)
-	return publicationDigest([]any{t, ent.library, ent.stamp, snap, last}), err
+	if err != nil {
+		return "", err
+	}
+	var creditFence []any
+	if t.Kind == "item" {
+		creditFence, err = creditRepairFence(ctx, tx, entity)
+		if err != nil {
+			return "", err
+		}
+	}
+	return publicationDigest([]any{t, ent.library, ent.stamp, snap, last, creditFence}), nil
 }
 func (s *Service) RepairState(ctx context.Context, t RepairTarget, authorize func(*sql.Tx) error) (RepairState, error) {
 	gated, err := dbwork.BeginSnapshot(ctx, s.db)
