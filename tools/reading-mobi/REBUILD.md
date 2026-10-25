@@ -101,3 +101,15 @@ static/transitive artifact closure, bubblewrap dynamic closure/options and resou
 profile at its checkpoint. These unresolved receipts are not fabricated here.
 
 Conversion staging uses ReadAtContext/ValidateContext with the actual conversion deadline through original DB authorization, local helper extent/observation and remote range acquisition/extent/check. It composes original source retirement, does not substitute leases or create sequential fallback, and parsing uses the same deadline-bound reader.
+
+## Explicit server configuration
+
+The source composition reads PORTICO_READING_MOBI_BUNDLE and
+PORTICO_READING_MOBI_MANIFEST_SHA256 together. Both absent means unavailable.
+Only the actual qualified delivery directory and its actual manifest digest may
+be configured. The source loader does no tool execution, download or global
+installation; constructor verifies exact ELF/helper bytes before enabling the
+Reading service's conversion-dependent source queries. Missing/mismatched or
+unsupported bundles fail closed with conversion unavailable. Request source
+acquisition still performs full actor/library/title/root/version authorization.
+This source wiring is not permission to set those variables or deploy a bundle.

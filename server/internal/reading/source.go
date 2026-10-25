@@ -66,16 +66,16 @@ const publicationObjectEligible = `o.retired=0 AND o.state='available' AND o.uns
  AND o.size=a.size AND o.modified_ns=a.modified_ns AND s.enabled=1 AND s.health NOT IN('offline','root_changed','removing')`
 
 const publicationEligible = `e.retired=0 AND cl.retired=0 AND e.kind IN(20,21)
- AND ((lib.kind='book' AND e.kind=20 AND p.format IN('epub','pdf')) OR (lib.kind='comic' AND e.kind=21 AND p.format IN('cbz','pdf'))) AND link.available=1 AND a.available=1 AND available.available=1
+ AND ((lib.kind='book' AND e.kind=20 AND p.format IN('epub','pdf','mobi','azw3')) OR (lib.kind='comic' AND e.kind=21 AND p.format IN('cbz','pdf'))) AND link.available=1 AND a.available=1 AND available.available=1
  AND ` + publicationObjectEligible
 
 const selectPublication = `SELECT ` + publicationFields + ` FROM catalog_entities e` + publicationJoins + `
- WHERE e.public_id=pid_blob(?) AND (?='' OR a.token=?) AND ` + publicationEligible + ` ORDER BY a.id,o.id LIMIT 1`
+ WHERE e.public_id=pid_blob(?) AND (?='' OR a.token=?) AND ` + publicationEligible + ` AND (p.format NOT IN('mobi','azw3') OR ?=1) ORDER BY a.id,o.id LIMIT 1`
 
 func (s *Service) selectTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item, sourceID string) (Selection, error) {
 	var v Selection
 	v.ItemID = item
-	err := tx.QueryRowContext(ctx, selectPublication, item, sourceID, sourceID).Scan(selectionColumns(&v)...)
+	err := tx.QueryRowContext(ctx, selectPublication, item, sourceID, sourceID, s.Mobi != nil).Scan(selectionColumns(&v)...)
 	if errors.Is(err, sql.ErrNoRows) {
 		return v, ErrUnavailable
 	}
@@ -91,7 +91,7 @@ func (s *Service) selectTx(ctx context.Context, tx *sql.Tx, p identity.Principal
 	if v.Size <= 0 || v.Size > MaxSource || !filepath.IsAbs(v.root) || !filepath.IsLocal(v.relative) || v.relative == "." || v.rootIdentity == "" {
 		return v, ErrInvalid
 	}
-	if v.Format != "epub" && v.Format != "pdf" && v.Format != "cbz" {
+	if v.Format != "epub" && v.Format != "pdf" && v.Format != "cbz" && v.Format != "mobi" && v.Format != "azw3" {
 		return v, ErrInvalid
 	}
 	if filepath.Clean(filepath.Join(v.root, v.relative)) != filepath.Clean(v.path) {

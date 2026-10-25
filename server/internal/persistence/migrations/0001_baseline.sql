@@ -191,7 +191,7 @@ CREATE INDEX retained_title_identities_state ON retained_title_identities(state_
 CREATE TABLE reading_publications(
  item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  asset_id INTEGER NOT NULL UNIQUE REFERENCES catalog_assets(id) ON DELETE CASCADE,
- format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz')),
+ format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz','mobi','azw3')),
  PRIMARY KEY(item_id,asset_id),
  FOREIGN KEY(item_id,asset_id) REFERENCES catalog_asset_links(entity_id,asset_id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
 CREATE TABLE reading_source_values(

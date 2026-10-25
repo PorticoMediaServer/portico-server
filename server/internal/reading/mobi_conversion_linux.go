@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 )
 
@@ -101,4 +102,20 @@ func (c *MobiConverter) run(ctx context.Context, input *os.File) ([]byte, error)
 		return nil, ErrInvalid
 	}
 	return output, nil
+}
+
+func validateMobiBundle(bundle MobiBundle) error {
+	if runtime.GOARCH != "amd64" {
+		return ErrUnavailable
+	}
+	sandbox, err := verifiedMobiExecutable(bundle.Sandbox, bundle.SandboxSHA256, false)
+	if err != nil {
+		return err
+	}
+	sandbox.Close()
+	worker, err := verifiedMobiExecutable(bundle.Worker, bundle.WorkerSHA256, true)
+	if err != nil {
+		return err
+	}
+	return worker.Close()
 }

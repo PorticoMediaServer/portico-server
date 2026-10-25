@@ -366,7 +366,7 @@ func DiscImage(path string) bool {
 func SupportedForKind(path, kind string) bool {
 	extension := strings.ToLower(filepath.Ext(path))
 	if kind == "book" {
-		return extension == ".epub" || extension == ".pdf"
+		return extension == ".epub" || extension == ".pdf" || extension == ".mobi" || extension == ".azw3"
 	}
 	if kind == "comic" {
 		return extension == ".cbz" || extension == ".pdf"

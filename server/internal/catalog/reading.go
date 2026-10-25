@@ -14,7 +14,7 @@ import (
 // actual package/PDF/image bytes before exposing a readable representation.
 func readingFormat(path, kind string) string {
 	ext := strings.ToLower(filepath.Ext(path))
-	if kind == "book" && (ext == ".epub" || ext == ".pdf") {
+	if kind == "book" && (ext == ".epub" || ext == ".pdf" || ext == ".mobi" || ext == ".azw3") {
 		return ext[1:]
 	}
 	if kind == "comic" && (ext == ".cbz" || ext == ".pdf") {
