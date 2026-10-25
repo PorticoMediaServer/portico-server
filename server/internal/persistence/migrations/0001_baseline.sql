@@ -2381,6 +2381,8 @@ CREATE TABLE lyric_fetch_runs (
  created_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL
 ) STRICT;
 CREATE TABLE metadata_runtime_settings(
+ artwork_preference TEXT NOT NULL DEFAULT 'folders' CHECK(artwork_preference IN('folders','online')),
+ artwork_policy_revision INTEGER NOT NULL DEFAULT 1 CHECK(artwork_policy_revision>0),
  online_lookups INTEGER NOT NULL DEFAULT 1 CHECK(online_lookups IN(0,1)),
  lookup_epoch INTEGER NOT NULL DEFAULT 1 CHECK(lookup_epoch>0),
  default_language TEXT NOT NULL DEFAULT 'en' CHECK(default_language IN('en','ja','fr','de','es','it','pt','nl','sv','no','da','fi','pl','cs','sk','hu','ro','el','tr','ru','uk','ar','he','hi','th','vi','ko','zh')),

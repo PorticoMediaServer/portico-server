@@ -73,8 +73,7 @@ func seedScreenArtwork(ctx context.Context, tx *sql.Tx, t RepairTarget, r metada
 		if err != nil {
 			return err
 		}
-		var occupied bool
-		err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM artwork_selections a JOIN artwork_candidates c ON c.id=a.candidate_id WHERE a.kind=? AND a.entity_id=? AND a.role=? AND a.subject='' AND (a.locked=1 OR c.provider='local' OR c.source_fence=?)) OR EXISTS(SELECT 1 FROM artwork_jobs WHERE kind=? AND entity_id=? AND role=? AND subject='' AND (actor<>'' OR provider='local') AND status IN('pending','running','retry'))`, t.Kind, entity, role, fence, t.Kind, entity, role).Scan(&occupied)
+		occupied, err := automaticArtworkOccupied(ctx, tx, t, entity, role, "", r.Identity.Provider, fence, true)
 		if err != nil {
 			return err
 		}
