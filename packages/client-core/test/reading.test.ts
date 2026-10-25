@@ -43,7 +43,7 @@ test('session contents retains only real EPUB spine targets and bounded labels',
   const f = setup('epub');
   f.manifest.contents = [{title: 'Publisher chapter', section: 'EPUB/chapter.xhtml', fragment: 'opening', depth: 0}];
   const session = await f.client.open({itemId: 'book', sourceId: 'asset'});
-  assert.deepEqual(session.manifest.contents, f.manifest.contents);
+  assert.deepEqual(session.manifest.contents?.map(entry => ({...entry})), f.manifest.contents);
   assert.ok(Object.isFrozen(session.manifest.contents));
   for (const change of [
     {section: 'EPUB/missing.xhtml'}, {section: '../private.xhtml'}, {title: '\nBad'}, {fragment: 'bad\n'}, {depth: 17},
