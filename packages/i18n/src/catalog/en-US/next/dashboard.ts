@@ -14,6 +14,7 @@ export const dashboardMessages = {
   'next.dashboard.format.ends': 'Ends {time}',
   'next.dashboard.unit.mbps': 'Mbps',
   'next.dashboard.unit.percent': '%',
+  'next.dashboard.unit.megabits': 'Mb/s',
   'next.dashboard.unit.running': 'running',
   'next.dashboard.hardwareCount': '{value} hardware',
   'next.dashboard.processorCount': '{value} processor',
@@ -187,4 +188,7 @@ export const dashboardMessages = {
   'next.dashboard.updatedNow': 'Updated a few seconds ago',
   'next.dashboard.calmStreamsBody': 'Streams appear here as they start, with who is watching, on what, and how it is being delivered.',
   'next.dashboard.healthLater': 'History appears after a few minutes of running.',
+  // The stream menu's Move to… bar names the device and current position.
+  'next.dashboard.moveBody': 'Playback on {viewer}’s {device} jumps to the point you choose.',
+  'next.dashboard.nowAt': 'Now at {position}',
 } as const;
