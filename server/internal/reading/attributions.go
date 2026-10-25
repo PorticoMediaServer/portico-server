@@ -25,6 +25,7 @@ func readingAttributionProjectionTx(ctx context.Context, tx *sql.Tx, items []Lib
 	for i := range items {
 		v := values[items[i].entity]
 		items[i].Author = v.Author
+		items[i].PublicationType = v.PublicationType
 		items[i].Series = nil
 		if v.Series != nil {
 			s := &SeriesValue{ID: compactcatalog.ReadingSeriesID(items[i].LibraryID, v.Series.Value), Name: v.Series.Value, Source: v.Series.Source}

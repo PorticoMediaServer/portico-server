@@ -3,6 +3,7 @@ package reading
 import (
 	"bytes"
 	"context"
+	"encoding/xml"
 	"image"
 	_ "image/jpeg"
 	"image/png"
@@ -62,11 +63,17 @@ func openComicArchive(ctx context.Context, a *archive) (*Comic, error) {
 		if err != nil {
 			return nil, err
 		}
-		var info struct{ Title, Writer, Manga, LanguageISO string }
+		var info struct {
+			XMLName                                   xml.Name
+			Title, Writer, Manga, LanguageISO, Format string
+		}
 		if err = decodeXML(b, &info); err != nil {
 			return nil, err
 		}
 		c.Metadata.Title, c.Metadata.Author, c.Metadata.Language = info.Title, info.Writer, info.LanguageISO
+		if info.XMLName.Space == "" && info.XMLName.Local == "ComicInfo" {
+			c.Metadata.ExplicitPublicationType = explicitPublicationType([]string{info.Format})
+		}
 		if len(c.Metadata.Title) > 4096 || len(c.Metadata.Author) > 4096 || len(c.Metadata.Language) > 64 {
 			return nil, ErrLimit
 		}

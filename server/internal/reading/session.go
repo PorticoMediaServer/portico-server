@@ -203,6 +203,9 @@ func (s *Service) Prepare(ctx context.Context, p identity.Principal, item, sourc
 	if err != nil {
 		return nil, Publication{}, f.StopAndRecheck(err)
 	}
+	if err = s.adoptPublicationType(ctx, p, document.Selection, document.Metadata.ExplicitPublicationType); err != nil {
+		return nil, Publication{}, err
+	}
 	// Catalogue identity is authoritative; do not resurrect package creators.
 	// This is a current authorized DB snapshot, with no added provider Stat or
 	// archive read and no positive eligibility cache.
@@ -211,6 +214,7 @@ func (s *Service) Prepare(ctx context.Context, p identity.Principal, item, sourc
 		return nil, Publication{}, err
 	}
 	document.Metadata.CoverURL = cover
+	document.PublicationType = values.PublicationType
 	if values.Author != nil {
 		document.Metadata.Author = values.Author.Value
 	}

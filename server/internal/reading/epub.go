@@ -15,7 +15,7 @@ type Resource struct {
 	MIME string
 	Size int64
 }
-type Metadata struct{ Title, Author, Language, Direction, CoverURL string }
+type Metadata struct{ Title, Author, Language, Direction, CoverURL, ExplicitPublicationType string }
 type EPUB struct {
 	archive    *archive
 	Resources  []Resource
@@ -34,9 +34,10 @@ type containerXML struct {
 }
 type packageXML struct {
 	Metadata struct {
-		Title    string `xml:"title"`
-		Author   string `xml:"creator"`
-		Language string `xml:"language"`
+		Title    string   `xml:"title"`
+		Author   string   `xml:"creator"`
+		Language string   `xml:"language"`
+		Types    []string `xml:"http://purl.org/dc/elements/1.1/ type"`
 	} `xml:"metadata"`
 	Manifest []struct {
 		ID         string `xml:"id,attr"`
@@ -119,7 +120,7 @@ func openEPUBArchive(ctx context.Context, a *archive) (*EPUB, error) {
 	if len(p.Manifest) > MaxEntries || len(p.Spine.Items) > MaxEntries {
 		return nil, ErrLimit
 	}
-	e := &EPUB{archive: a, Package: pkg, Metadata: Metadata{Title: p.Metadata.Title, Author: p.Metadata.Author, Language: p.Metadata.Language}, allowed: map[string]string{"mimetype": "text/plain", "META-INF/container.xml": "application/xml", pkg: "application/oebps-package+xml"}}
+	e := &EPUB{archive: a, Package: pkg, Metadata: Metadata{Title: p.Metadata.Title, Author: p.Metadata.Author, Language: p.Metadata.Language, ExplicitPublicationType: explicitPublicationType(p.Metadata.Types)}, allowed: map[string]string{"mimetype": "text/plain", "META-INF/container.xml": "application/xml", pkg: "application/oebps-package+xml"}}
 	if len(e.Metadata.Title) > 4096 || len(e.Metadata.Author) > 4096 || len(e.Metadata.Language) > 64 {
 		return nil, ErrLimit
 	}

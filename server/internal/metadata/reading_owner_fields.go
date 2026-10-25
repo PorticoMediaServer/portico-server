@@ -12,7 +12,7 @@ import (
 
 func readingRepairKind(kind string) bool { return kind == "ebook" || kind == "comic" }
 func readingAttributionField(field string) bool {
-	return field == "author" || field == "series" || field == "seriesNumber"
+	return field == "author" || field == "series" || field == "seriesNumber" || field == "publicationType"
 }
 
 func readingAttributionSpec(field, label string) RepairFieldSpec {
@@ -33,11 +33,11 @@ func readReadingOwnerFields(ctx context.Context, tx *sql.Tx, entity int64) (map[
 	if err != nil {
 		return nil, nil, err
 	}
-	out := map[string]string{"author": "", "series": "", "seriesNumber": ""}
+	out := map[string]string{"author": "", "series": "", "seriesNumber": "", "publicationType": ""}
 	for field, value := range automatic {
 		out[field] = value
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT field,value,locked FROM metadata_owner_fields WHERE kind='item' AND entity_id=? AND field IN('author','series','seriesNumber')`, entity)
+	rows, err := tx.QueryContext(ctx, `SELECT field,value,locked FROM metadata_owner_fields WHERE kind='item' AND entity_id=? AND field IN('author','series','seriesNumber','publicationType')`, entity)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -49,6 +49,9 @@ func readReadingOwnerFields(ctx context.Context, tx *sql.Tx, entity int64) (map[
 			return nil, nil, err
 		}
 		if locked && strings.TrimSpace(value) != "" {
+			if field == "publicationType" && !compactcatalog.ValidReadingPublicationType(value) {
+				return nil, nil, ErrRepairInput
+			}
 			out[field] = value
 		}
 	}
@@ -64,6 +67,9 @@ func readingAutomaticOwnerValues(ctx context.Context, tx *sql.Tx, entity int64) 
 		return nil, err
 	}
 	out := map[string]string{}
+	if values.PublicationType != nil {
+		out["publicationType"] = values.PublicationType.Value
+	}
 	if values.Author != nil {
 		out["author"] = values.Author.Value
 	}
@@ -84,6 +90,9 @@ func readingAttributionEdit(field string, current RepairField, edit RepairFieldE
 	if clear {
 		value, locked := current.Automatic, false
 		return RepairFieldEdit{Value: &value, Locked: &locked}, nil
+	}
+	if field == "publicationType" && edit.Value != nil && !compactcatalog.ValidReadingPublicationType(*edit.Value) {
+		return edit, ErrRepairInput
 	}
 	if field == "seriesNumber" && edit.Value != nil {
 		value := strings.TrimSpace(*edit.Value)
