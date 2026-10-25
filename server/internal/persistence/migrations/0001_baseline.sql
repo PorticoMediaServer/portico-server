@@ -222,6 +222,7 @@ CREATE TABLE reading_publication_types(
  CHECK(publication_type IS NULL OR evidence_complete=1),
  PRIMARY KEY(item_id,asset_id),
  FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
+CREATE INDEX reading_publication_types_inventory_object ON reading_publication_types(inventory_object_id);
 CREATE TABLE reading_progress(
  owner_key TEXT NOT NULL,
  item_id INTEGER NOT NULL,
