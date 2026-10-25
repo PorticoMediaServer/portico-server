@@ -188,7 +188,7 @@ func (s *Service) open(ctx context.Context, p identity.Principal, item, sourceID
 	// Remote reads use the retained interactive session resolver, never a
 	// playback/analysis scheduling pool as operation authority.
 	if s.Storage.IsRemote(v.path) {
-		if localOnly {
+		if localOnly || v.Format == "cb7" {
 			return nil, ErrUnavailable
 		}
 		return s.openRemote(ctx, p, v, nil)
@@ -476,4 +476,20 @@ func (f *Source) PDFRange(start, endExclusive int64) (io.Reader, error) {
 		return nil, ErrInvalid
 	}
 	return io.NewSectionReader(f, start, endExclusive-start), nil
+}
+
+// LocalArchiveStaging grants only bounded staging through an already acquired
+// local rooted reader. A remote range lease or a derived publication is not
+// authority to download and stage the entire source.
+func (f *Source) LocalArchiveStaging() bool {
+	return f != nil && f.reader != nil && f.validateCurrent != nil && f.derived == nil && f.remoteSession == nil && f.remoteRange == nil && !f.remoteRetained
+}
+
+// Recheck uses the actual opener's captured currentness callback and physical
+// observation, combining its retirement with the helper's remaining deadline.
+func (f *Source) Recheck(ctx context.Context) error {
+	if !f.LocalArchiveStaging() {
+		return ErrArchiveFormat
+	}
+	return f.ValidateContext(ctx)
 }

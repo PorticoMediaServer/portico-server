@@ -25,6 +25,11 @@ func (s *Session) liveFor(p identity.Principal, v Selection) error {
 // lifetime during inspection. It becomes public only after successful parsing
 // and final authority checks; failure closes its lease instead of orphaning it.
 func (s *Service) openRemote(ctx context.Context, p identity.Principal, v Selection, session *Session) (*Source, error) {
+	// Local-only archive staging must refuse before any remote controller,
+	// provider acquisition or version/manifest I/O, including session reopen.
+	if v.Format == "cb7" {
+		return nil, ErrArchiveFormat
+	}
 	if s.Remote == nil || p.ExpiresAt.IsZero() || !p.ExpiresAt.After(time.Now()) {
 		return nil, ErrUnavailable
 	}
@@ -180,6 +185,12 @@ func (f *Source) epub() (*EPUB, error) {
 	return OpenEPUB(f.ctx, f, f.Size)
 }
 func (f *Source) comic() (*Comic, error) {
+	if f.Format == "cb7" {
+		if !f.LocalArchiveStaging() {
+			return nil, ErrArchiveFormat
+		}
+		return OpenClassicComic(f.ctx, f.Format, f, f.Size)
+	}
 	if f.Sequential() {
 		return OpenSequentialComic(f.ctx, SequentialSource{Size: f.Size, Open: func(ctx context.Context) (io.ReadCloser, error) {
 			if err := ctx.Err(); err != nil {

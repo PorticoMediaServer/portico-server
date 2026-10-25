@@ -35,9 +35,8 @@ type memberArchive interface {
 }
 
 // openMembers maps the publication's format onto the same bounded reader the
-// ZIP publication already uses. A classic format is only read when its decoder
-// is linked in at Release's pinned version (build tag portico_rar7z); otherwise
-// the format is refused rather than recognised.
+// ZIP publication already uses. RAR requires its pinned build-tagged decoder;
+// CB7 requires the local-only bounded worker. Unsupported inputs are refused.
 func openMembers(ctx context.Context, format string, ra io.ReaderAt, size int64) (memberArchive, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
@@ -50,8 +49,14 @@ func openMembers(ctx context.Context, format string, ra io.ReaderAt, size int64)
 		// Ordinary CBZ keeps its canonical openArchive admission; this alternate
 		// reader must never become a weaker ZIP path.
 		return nil, archiveFormatError("cbz")
-	case "cbr", "cb7":
+	case "cbr":
 		return openClassicArchive(ctx, format, ra, size)
+	case "cb7":
+		members, err := cb7Members(ctx, ra, size)
+		if err != nil {
+			return nil, err
+		}
+		return &zipMembers{files: members}, nil
 	default:
 		return nil, ErrArchiveFormat
 	}
