@@ -135,7 +135,7 @@ export class SegmentIntrosSource {
     const generation = ++this.libraryGeneration;
     ++this.titleGeneration;
     this.publish({libraryId, titles: [], titlesCursor: '', titlesLoading: true, titlesError: undefined,
-      titleId: undefined, title: undefined, season: undefined, titleLoading: false, titleError: undefined, note: undefined, actionError: undefined});
+      titleId: undefined, title: undefined, season: undefined, titleLoading: false, titleError: undefined, busy: undefined, note: undefined, actionError: undefined});
     try {
       const page = await this.reads.titles(libraryId, '', new AbortController().signal);
       if (!this.current() || generation !== this.libraryGeneration) return;
@@ -166,7 +166,7 @@ export class SegmentIntrosSource {
   openTitle = async (id: string): Promise<void> => {
     if (!this.current() || !id) return;
     const generation = ++this.titleGeneration;
-    this.publish({titleId: id, title: undefined, season: undefined, titleLoading: true, titleError: undefined, note: undefined, actionError: undefined});
+    this.publish({titleId: id, title: undefined, season: undefined, titleLoading: true, titleError: undefined, busy: undefined, note: undefined, actionError: undefined});
     try {
       const title = await this.reads.title(id, new AbortController().signal);
       if (!this.current() || generation !== this.titleGeneration || this.state.titleId !== id) return;
@@ -181,7 +181,7 @@ export class SegmentIntrosSource {
   back = (): void => {
     if (!this.current()) return;
     ++this.titleGeneration;
-    this.publish({titleId: undefined, title: undefined, season: undefined, titleLoading: false, titleError: undefined, note: undefined, actionError: undefined});
+    this.publish({titleId: undefined, title: undefined, season: undefined, titleLoading: false, titleError: undefined, busy: undefined, note: undefined, actionError: undefined});
   };
   selectSeason = (season: number): void => {
     if (!this.current() || !this.state.title || this.state.title.kind !== 'show') return;
