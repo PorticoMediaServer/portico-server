@@ -80,6 +80,7 @@ export function remoteErrorText(error: unknown): string {
     case 'remote_invalid_configuration': case 'invalid_request': return t('next.remoteSources.error.invalid');
     case 'remote_range_unsupported': return t('next.remoteSources.problem.range_unsupported');
     case 'remote_rate_limited': return t('next.remoteSources.problem.rate_limited');
+    case 'remote_administration_unavailable': case 'administration_unavailable': return t('next.remoteSources.problem.administration_unavailable');
     case 'revision_mismatch': case 'storage_command_conflict': return t('next.remoteSources.error.changed');
     case 'idempotency_key_reused': return t('next.remoteSources.error.reused');
     case 'request_in_progress': return t('next.remoteSources.error.busy');
@@ -255,7 +256,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   const [finishBusy, setFinishBusy] = useState(false);
   const [finishError, setFinishError] = useState('');
   const [summary, setSummary] = useState<Readonly<{library?: string; folders: number}>>({folders: 0});
-  const [advancedValues, setAdvancedValues] = useState<SourceAdvanced>({scanIntervalSeconds: 21600, watchForChanges: false, scanOnStart: false, fullRecheckDays: 0, cacheBytes: 0, cacheFloorBytes: 0, seekPreviews: true, chapterImages: true, waveforms: true, loudness: true, checksums: true});
+  const [advancedValues, setAdvancedValues] = useState<SourceAdvanced>({scanIntervalSeconds: 21600, watchForChanges: false, scanOnStart: false, fullRecheckDays: 0, cacheBytes: 0, cacheFloorBytes: 0, seekPreviews: true, chapterImages: true, waveforms: true, loudness: true, checksums: true, introsMode: 'off', doubleCheckFolders: false, dirCacheSeconds: 60, readBufferBytes: 8 * 1024 * 1024, connectTimeoutSeconds: 10, idleTimeoutSeconds: 30, retries: 1, lowLevelRetries: 2});
   const [advancedTouched, setAdvancedTouched] = useState(false);
   const [leaving, setLeaving] = useState<'' | 'saved' | 'unsaved'>('');
   const [leaveChoice, setLeaveChoice] = useState<'keep' | 'remove'>('keep');
@@ -273,7 +274,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     setProfile(undefined); setValues(sourceReadPreset('once')); setBusy(false); setLoadingProfile(false);
     setChosen([]); setPicking(false); setAttachMode('new'); setLibraryName(''); setKind('movie'); setExistingId('');
     setFinishBusy(false); setFinishError(''); setSummary({folders: 0}); setLeaving(''); setLeaveRemove(false); setLeaveError(''); setLeaveChoice('keep');
-    setAdvancedValues({scanIntervalSeconds: 21600, watchForChanges: false, scanOnStart: false, fullRecheckDays: 0, cacheBytes: 0, cacheFloorBytes: 0, seekPreviews: true, chapterImages: true, waveforms: true, loudness: true, checksums: true});
+    setAdvancedValues({scanIntervalSeconds: 21600, watchForChanges: false, scanOnStart: false, fullRecheckDays: 0, cacheBytes: 0, cacheFloorBytes: 0, seekPreviews: true, chapterImages: true, waveforms: true, loudness: true, checksums: true, introsMode: 'off', doubleCheckFolders: false, dirCacheSeconds: 60, readBufferBytes: 8 * 1024 * 1024, connectTimeoutSeconds: 10, idleTimeoutSeconds: 30, retries: 1, lowLevelRetries: 2});
     setAdvancedTouched(false);
     testAttempt.current++; lifetime.current++; setFormToken(lifetime.current); pending.current = false;
   };
@@ -327,12 +328,13 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     if (next === 'rclone' && !program) void loadProgram();
     if (next === 'config' && !configView) void loadConfig();
   };
-  const driveReason = (reason: 'json'|'oauth'|'type'|'email'|'key'|'location'): MessageId => reason === 'json' ? 'next.remoteSources.driveKeyNotJson'
+  const driveReason = (reason: 'json'|'oauth'|'type'|'email'|'key'|'location'|'client'|'token'): MessageId => reason === 'json' ? 'next.remoteSources.driveKeyNotJson'
     : reason === 'oauth' ? 'next.remoteSources.driveKeyOAuth'
       : reason === 'type' ? 'next.remoteSources.driveKeyWrongType'
         : reason === 'email' ? 'next.remoteSources.driveKeyEmail'
           : reason === 'key' ? 'next.remoteSources.driveKeyUnreadable'
-            : 'next.remoteSources.driveLocationInvalid';
+            : reason === 'client' || reason === 'token' ? 'next.remoteSources.driveOAuthInvalid'
+              : 'next.remoteSources.driveLocationInvalid';
   // One rendered sign-in ticket owns Start/Paste/Status/Cancel and every phase.
   const oauthTicket = useRef<object | null>(null);
   const oauthPollPromise = useRef<Promise<void> | null>(null);
@@ -790,7 +792,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
           <Button size="small" variant={cloud.provider === 'dropbox' ? 'primary' : 'glass'} aria-pressed={cloud.provider === 'dropbox'} disabled={busy} onClick={() => updateCloud({provider: 'dropbox'})}>{t('next.remoteSources.cloudDropbox')}</Button>
         </div>
         <label className={styles.configField}><span className={styles.configLabel}>{t('next.remoteSources.cloudToken')}</span>
-          <textarea className={styles.config} aria-label={t('next.remoteSources.cloudToken')} value={cloud.token} placeholder={'{"access_token": "…", "refresh_token": "…"}'} maxLength={8192}
+          <textarea className={styles.config} aria-label={t('next.remoteSources.cloudToken')} value={cloud.token} placeholder={t('next.remoteSources.cloudTokenPlaceholder')} maxLength={8192}
             disabled={busy} spellCheck={false} rows={5} onChange={event => updateCloud({token: event.target.value})}/>
           <small className={styles.note}>{t('next.remoteSources.cloudTokenHelp')}</small>
         </label>
@@ -834,7 +836,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
         </>}
         {driveMode === 'service' && <>
         <label className={styles.configField}><span className={styles.configLabel}>{t('next.remoteSources.driveKey')}</span>
-          <textarea className={styles.config} aria-label={t('next.remoteSources.driveKey')} value={drive.keyJson} placeholder={'{"type": "service_account", …}'} maxLength={65536}
+          <textarea className={styles.config} aria-label={t('next.remoteSources.driveKey')} value={drive.keyJson} placeholder={t('next.remoteSources.driveKeyPlaceholder')} maxLength={65536}
             disabled={busy} spellCheck={false} rows={7} onChange={event => updateDrive({keyJson: event.target.value})}/>
           <small className={styles.note}>{t('next.remoteSources.driveKeyHelp')}</small>
         </label>
