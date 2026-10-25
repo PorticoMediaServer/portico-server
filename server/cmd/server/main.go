@@ -1227,6 +1227,7 @@ func run() (runErr error) {
 	} else {
 		readingService.Mobi = mobiConverter
 	}
+	cat.ConfigureReadingMobi(readingService.Mobi != nil)
 	defer readingService.Close()
 	apiDependencies.Reading = readingService
 	previousFamilyRevoked := ident.OnFamilyRevokedTx
