@@ -46,7 +46,7 @@ function NativeReading({guest}: {guest: ReadingGuest}) {
       reader = bindReadPreferences({adapters, preferences: guest.preferences, authority, reportError: () => {if (alive) setFailed(true);}});
       progress = bindReadingProgress({controller: reader.controller, session: guest.session, initial: guest.initialProgress, authority, reportError: () => {if (alive) setFailed(true);}});
       progressRef.current = progress;
-      setBook({publication, controller: reader.controller, authority, contentsTarget: guest.contentsTarget, location: publication.resumeLocation(guest.initialProgress) ?? undefined});
+      setBook({...(guest.session.manifest.canAnnotate === true && guest.session.annotations && guest.session.mutateAnnotation ? {annotations:{manifest:guest.session.manifest,signal:guest.session.signal,annotations:guest.session.annotations,mutateAnnotation:guest.session.mutateAnnotation}} : {}), publication, controller: reader.controller, authority, contentsTarget: guest.contentsTarget, location: publication.resumeLocation(guest.initialProgress) ?? undefined});
     })().catch(() => {if (alive) setFailed(true);});
     return () => {
       alive = false; offActive(); progressRef.current = undefined;
