@@ -12,6 +12,7 @@ import {mkdir, readFile, writeFile} from 'node:fs/promises';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {createHash} from 'node:crypto';
+import {readingResponsePath} from './reading-response-path.mjs';
 
 const base = process.env.PORTICO_FLOW_BASE;
 const output = process.env.PORTICO_FLOW_OUTPUT;
@@ -45,8 +46,9 @@ async function walk(page, viewportName) {
     const path = new URL(response.url()).pathname;
     // Only reading session page/source answers, and only their shape: status,
     // type, length, first eight magic bytes and a hash. Never the body itself.
-    if (!path.startsWith('/v1/reading/sessions/') || !/\/(pages|source)(\/|$)/.test(path)) return;
-    const shape = {path: path.replace(/[^/]+$/, ':id'), status: response.status(),
+    const retainedPath = readingResponsePath(path);
+    if (!retainedPath) return;
+    const shape = {path: retainedPath, status: response.status(),
       contentType: response.headers()['content-type'] ?? '', contentLength: response.headers()['content-length'] ?? ''};
     void response.body().then(async body => {
       // A matching magic proves nothing on its own: the page is only usable if
