@@ -206,6 +206,9 @@ func (s *Service) Prepare(ctx context.Context, p identity.Principal, item, sourc
 	if err = s.adoptPublicationType(ctx, p, document.Selection, document.Metadata); err != nil {
 		return nil, Publication{}, err
 	}
+	if err = s.adoptTextCount(ctx, p, f); err != nil {
+		return nil, Publication{}, err
+	}
 	// Catalogue identity is authoritative; do not resurrect package creators.
 	// This is a current authorized DB snapshot, with no added provider Stat or
 	// archive read and no positive eligibility cache.

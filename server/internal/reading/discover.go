@@ -11,15 +11,17 @@ import (
 type DiscoverLimits struct {
 	Recent int
 	// Series opts into the ready, single-library series composition.
-	Series int
+	Series     int
+	ShortReads int
 }
 
 // Discover composes real title rows and, when requested, exact series summaries
 // from the same authorized ready projection. Classification and reading-length
 // rows require their own real producers and are not inferred here.
 type Discover struct {
-	Recent []LibraryRow
-	Series []DiscoverSeries
+	Recent     []LibraryRow
+	Series     []DiscoverSeries
+	ShortReads []ShortRead
 }
 
 // Discover returns the bounded server-composed rows for one authorized library
@@ -27,6 +29,9 @@ type Discover struct {
 // profile/library/restriction predicate as List.
 func (s *Service) Discover(ctx context.Context, p identity.Principal, library string, limits DiscoverLimits) (Discover, error) {
 	out := Discover{Recent: []LibraryRow{}}
+	if limits.ShortReads < 0 || limits.ShortReads > 20 || limits.ShortReads > 0 && library == "" {
+		return out, ErrInvalid
+	}
 	if limits.Series < 0 || limits.Series > 20 || limits.Series > 0 && library == "" {
 		return out, ErrInvalid
 	}
@@ -91,6 +96,9 @@ func (s *Service) Discover(ctx context.Context, p identity.Principal, library st
 	}
 	if limits.Series > 0 {
 		out.Series, err = s.discoverSeriesTx(ctx, tx, p, library, limits.Series, filter, args)
+	}
+	if err == nil && limits.ShortReads > 0 {
+		out.ShortReads, err = s.discoverShortReadsTx(ctx, tx, library, limits.ShortReads, filter, args)
 	}
 	return out, err
 }
