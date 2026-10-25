@@ -373,7 +373,7 @@ func (s *Store) SaveRemote(ctx context.Context, a Authority, previewID, requestI
 func (s *Store) RemoteStatuses(ctx context.Context, a Authority) ([]RemoteStatus, error) {
 	out := []RemoteStatus{}
 	err := s.snapshot(ctx, a, true, func(tx *sql.Tx) error {
-		rows, e := tx.QueryContext(ctx, `SELECT source_id,state,error_code,next_due_ms,failures FROM live_remote_configs ORDER BY source_id`)
+		rows, e := tx.QueryContext(ctx, `SELECT c.source_id,c.state,c.error_code,c.next_due_ms,c.failures,s.state FROM live_remote_configs c JOIN live_sources s ON s.id=c.source_id WHERE NOT EXISTS(SELECT 1 FROM live_source_removals r WHERE r.source_id=c.source_id) ORDER BY c.source_id`)
 		if e != nil {
 			return ErrUnavailable
 		}
@@ -381,10 +381,15 @@ func (s *Store) RemoteStatuses(ctx context.Context, a Authority) ([]RemoteStatus
 		for rows.Next() {
 			var v RemoteStatus
 			var due int64
-			if rows.Scan(&v.SourceID, &v.State, &v.ErrorCode, &due, &v.Failures) != nil {
+			var sourceState string
+			if rows.Scan(&v.SourceID, &v.State, &v.ErrorCode, &due, &v.Failures, &sourceState) != nil {
 				return ErrUnavailable
 			}
-			v.NextRefresh = time.UnixMilli(due).UTC().Format(time.RFC3339)
+			// A manual refresh is due now (zero) and a paused source is never
+			// scheduled, so neither has a future refresh instant to report.
+			if due > 0 && sourceState == "active" {
+				v.NextRefresh = time.UnixMilli(due).UTC().Format(time.RFC3339)
+			}
 			out = append(out, v)
 		}
 		if rows.Err() != nil {
