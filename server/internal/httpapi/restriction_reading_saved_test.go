@@ -51,9 +51,9 @@ func readingSavedRestrictionCheck(t *testing.T) {
 				t.Fatal("actual Reading session", opened.Code, opened.Body.String())
 			}
 			page := int64(0)
-			saved := readingHTTP(t, h, "PUT", "/v1/reading/sessions/"+manifest.SessionID+"/progress", token, manifest.Revision, ReadingProgressRequest{Location: ReadingLocation{Format: format, PageIndex: &page, Progression: .25}})
-			if saved.Code != 200 {
-				t.Fatal("actual saved location", saved.Code, saved.Body.String())
+			savedLocation := readingHTTP(t, h, "PUT", "/v1/reading/sessions/"+manifest.SessionID+"/progress", token, manifest.Revision, ReadingProgressRequest{Location: ReadingLocation{Format: format, PageIndex: &page, Progression: .25}})
+			if savedLocation.Code != 200 {
+				t.Fatal("actual saved location", savedLocation.Code, savedLocation.Body.String())
 			}
 			before := readingRestrictionProgress(t, r)
 			if before == "null" || before == "[]" {
