@@ -61,6 +61,9 @@ func (s *Service) configure(ctx context.Context, actor, id, hash string, c Comma
 	if m.ControlRevision != c.ExpectedRevision || m.RemovalPending {
 		return zero, ErrCommandConflict
 	}
+	if c.sourceGeneration != 0 && m.BackendRevision != c.sourceGeneration {
+		return zero, ErrCommandConflict
+	}
 	b, err := s.Native(ctx, id)
 	if err != nil {
 		return zero, err
@@ -158,6 +161,15 @@ func (s *Service) configure(ctx context.Context, actor, id, hash string, c Comma
 	defer gated.Rollback()
 	if err = authorize(tx); err != nil {
 		return zero, err
+	}
+	if c.sourceGeneration != 0 {
+		control, err := importedSourceControlTx(ctx, tx, id, c.sourceGeneration)
+		if err != nil {
+			return zero, err
+		}
+		if control != c.ExpectedRevision {
+			return zero, ErrCommandConflict
+		}
 	}
 	result, err := tx.Exec(`UPDATE mount_controls SET revision=revision+1,restart_generation=restart_generation+1 WHERE mount_id=? AND revision=? AND removal_pending=0`, id, c.ExpectedRevision)
 	if err != nil {

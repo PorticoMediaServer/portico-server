@@ -19,10 +19,17 @@ func TestRcloneSourceRouteKeepsOwnerFirstAndNoSubsystemFacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, test := range []struct {
+		method string
+		path   string
 		token  string
 		status int
-	}{{"", 401}, {owner.AccessToken, 503}} {
-		r := httptest.NewRequest("POST", "/v1/storage/sources/rclone", bytes.NewBufferString(`{"operationId":"invalid","name":"Cloud","remote":"cloud:","config":"[cloud]\ntype=s3\nsecret_access_key=private-secret\n"}`))
+	}{{"POST", "/v1/storage/sources/rclone", "", 401}, {"POST", "/v1/storage/sources/rclone", owner.AccessToken, 503},
+		{"PUT", "/v1/storage/sources/rclone/source", "", 401}, {"PUT", "/v1/storage/sources/rclone/source", owner.AccessToken, 503}} {
+		body := `{"operationId":"invalid","name":"Cloud","remote":"cloud:","config":"[cloud]\ntype=s3\nsecret_access_key=private-secret\n"}`
+		if test.method == "PUT" {
+			body = `{"expectedGeneration":1,` + body[1:]
+		}
+		r := httptest.NewRequest(test.method, test.path, bytes.NewBufferString(body))
 		r.Header.Set("Content-Type", "application/json")
 		if test.token != "" {
 			r.Header.Set("Authorization", "Bearer "+test.token)
