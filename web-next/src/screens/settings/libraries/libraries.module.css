@@ -189,3 +189,8 @@
   align-items: center;
   gap: 8px;
 }
+
+.skippedList {list-style: none; padding: 0; margin: 18px 0 0;}
+.skippedList li {display: flex; flex-direction: column; gap: 6px; padding: 14px 18px; border-bottom: 1px solid var(--color-line-soft);}
+.skippedList code {overflow-wrap: anywhere;}
+.skippedList small {color: var(--color-text-secondary);}
