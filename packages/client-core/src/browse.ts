@@ -6,7 +6,7 @@ const readingPeriodicalRoute=routePattern('get_reading_periodical_groups');
  * every count; this module only parses what it publishes and refuses to send a
  * query the published capabilities cannot execute. No client-side filtering,
  * sorting or facet inference lives here. */
-import {validateContentEntry,type ContentEntry} from './library-content.ts';
+import {contentEntryKind,validateContentEntry,type ContentEntry} from './library-content.ts';
 import {firstOfEach,keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';
 
 export type BrowseValueType='string'|'enum'|'number'|'date'|'boolean'|'identity-set';
@@ -257,7 +257,6 @@ export function parseBrowseResult(raw:unknown):BrowseResult{
  * applied predicate and ordering. A descriptor for another view is stale, not useful. */
 export type WholeSelectionPage=Readonly<{revision:string;pivot:string;query:BrowseNode|null;sort:readonly BrowseSortSelection[]}>;
 
-const wholeSelectionKinds:readonly string[]=['movie','show','season','episode','artist','album','song','book','audiobook_file','collection','extra','disc','author'];
 const capabilityKeys:readonly string[]=['play','queue','playlist','myList','watched','collection','favorite','download','edit','refresh','delete'];
 const sameJson=(a:unknown,b:unknown)=>JSON.stringify(a)===JSON.stringify(b);
 
@@ -283,7 +282,7 @@ export function parseWholeSelection(raw:unknown,page?:WholeSelectionPage):Browse
   let summed=0;
   const types:BrowseSelectionType[]=[];
   for(const value of raw.types as unknown[]){
-   if(!obj(value)||!id(value.kind)||!wholeSelectionKinds.includes(value.kind)||seen.has(value.kind)||!count(value.count)||!obj(value.capabilityCounts)||!Array.isArray(value.libraries))return;
+   if(!obj(value)||!id(value.kind)||!contentEntryKind(value.kind)||seen.has(value.kind)||!count(value.count)||!obj(value.capabilityCounts)||!Array.isArray(value.libraries))return;
    seen.add(value.kind);
    const counts=value.capabilityCounts as Record<string,unknown>;
    if(Object.keys(counts).length!==capabilityKeys.length||Object.keys(counts).some(key=>!capabilityKeys.includes(key)))return;
