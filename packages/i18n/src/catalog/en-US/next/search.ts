@@ -3,4 +3,5 @@ export const searchMessages = {
   'next.search.browseInstead': 'Browse instead',
   'next.search.preferToTalk': 'Prefer to talk?',
   'next.search.remoteMicrophoneHelp': "Hold your remote's microphone button and say what you want.",
+  'next.search.tvShow': 'TV show',
 } as const;

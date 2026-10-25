@@ -1115,6 +1115,7 @@ export const webMessages = {
   'web.chooser.checkNow': 'Check now',
   'web.chooser.tryAgain': 'Try again',
   'web.chooser.lastSeen': 'Last seen {date}',
+  'web.chooser.lastSeenToday': 'Last seen {time} today',
   'web.chooser.neverSeen': 'Never seen',
   'web.chooser.unreachableTitle': 'Portico can’t reach {server}',
   'web.chooser.unreachableBody': 'It was last online {date}.',
