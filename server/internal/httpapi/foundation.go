@@ -665,6 +665,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	registerRcloneConnectionTest(registry, d)
 	registerRcloneConfigurationProviders(registry, d)
 	registerRcloneSourceSave(registry, d)
+	registerRcloneConfigSource(registry, d)
 	registerScreenMetadataReads(registry, d)
 	registerFreshnessRoutes(registry, d)
 	registerCapabilityReport(registry)
