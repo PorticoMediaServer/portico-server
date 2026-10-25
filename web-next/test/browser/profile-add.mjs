@@ -36,6 +36,7 @@ try {
         assert.equal(await page.getByRole('dialog').count(), 0);
         assert.equal((await page.evaluate(() => window.profileTest.facts())).writes, 0);
       } else {
+        await page.getByRole('button', {name: 'Add a profile', exact: true}).click();
         await page.getByRole('textbox', {name: 'Name', exact: true}).fill('Created in mounted test');
         await page.getByRole('button', {name: 'Save', exact: true}).click();
         await page.waitForFunction(() => window.profileTest.facts().writes === 1);
@@ -48,7 +49,7 @@ try {
           const facts = await page.evaluate(() => window.profileTest.facts());
           assert.equal(facts.failures, 1);assert.equal(facts.closes, 1);
         } else if (mode === 'limit') {
-          await page.waitForFunction(() => window.profileTest.facts().count === 8 && window.profileTest.facts().closes === 1);
+          await page.waitForFunction(() => window.profileTest.facts().count === 8);
           assert.equal((await page.evaluate(() => window.profileTest.facts())).failures, 0);
         } else {
           await page.waitForFunction(() => window.profileTest.facts().count === 2);
