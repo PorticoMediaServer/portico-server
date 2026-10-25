@@ -1,0 +1,24 @@
+/* Phone-web frame 7: the Music library's Recently played row is the app's two-column
+   quick grid — 52px art, 13px title, 11.5px artist — with the playing one marked. */
+.section { width: 100%; }
+.heading { margin: 0 0 8px; }
+.heading h2 { margin: 0; font-size: var(--type-row-heading-size); font-weight: var(--type-button-weight); letter-spacing: var(--type-row-heading-tracking); }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px 0 0; }
+.item { min-width: 0; }
+.tile { display: flex; width: 100%; align-items: center; gap: 10px; height: 52px; min-width: 0; padding: 0; border: 0; border-radius: 9px; overflow: hidden; background: color-mix(in srgb, var(--color-text) 8%, transparent); color: inherit; text-align: left; cursor: pointer; }
+.art { flex: none; width: 52px; height: 52px; overflow: hidden; }
+.copy { min-width: 0; padding-right: 8px; }
+.title { display: flex; align-items: center; min-width: 0; font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.artist { display: block; margin-top: 1px; font-size: 11.5px; color: var(--color-text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile[data-playing] .title { color: var(--color-accent-strong); }
+.levels { display: inline-flex; align-items: flex-end; gap: 2px; width: 13px; height: 11px; margin-right: 5px; flex: none; }
+.levels i { width: 2px; background: currentColor; }
+.levels i:nth-child(1) { height: 6px; }
+.levels i:nth-child(2) { height: 11px; }
+.levels i:nth-child(3) { height: 8px; }
+@media (prefers-reduced-motion: no-preference) {
+  .levels i { animation: levels 900ms ease-in-out infinite alternate; transform-origin: bottom; }
+  .levels i:nth-child(2) { animation-delay: 140ms; }
+  .levels i:nth-child(3) { animation-delay: 280ms; }
+}
+@keyframes levels { from { transform: scaleY(.45); } to { transform: scaleY(1); } }

@@ -25,6 +25,7 @@ import {AudiobookEntry} from '../detail/audiobooks/Entry';
 import {createShowBindings} from '../detail/show-bindings';
 import type {ScreenContext} from '../detail/context';
 import {screenLifetime} from '../detail/context';
+import type {WebPlaybackRuntimeSnapshot} from '../../platform/playback/types';
 import {BrowseController} from './controller';
 import {createLibraryPlaySelection} from './play-selection';
 import {createLibrarySelection} from './selection';
@@ -42,6 +43,8 @@ import {FacetPage, ReadLibraryEntry, useReadLibrarySummary, authorPredicate, typ
 import {isReadingLibrary} from './reading-library';
 
 const t = defaultI18n.t;
+const noPlaybackSubscribe = () => () => {};
+const noPlaybackSnapshot = () => undefined;
 type PeriodicalTab = Readonly<{id: 'magazines' | 'newspapers'; label: 'library.tab.magazines' | 'library.tab.newspapers'; pivot: 'magazines' | 'newspapers'; shows: 'periodicals'; publicationType: ReadingPeriodicalType}>;
 type ReadingTab = LibraryTab | PeriodicalTab;
 function readingTabs(capabilities: BrowseCapabilities | undefined, kind: string): readonly ReadingTab[] {
@@ -176,6 +179,26 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
     return () => {live = false;};
   }, [resources, library.id, library.kind, agentKey, context]);
   const href = useLocation({select: location => location.href}), runtime = captured.binding.playback?.runtime;
+  // Frame 7's Recently played mark belongs to the queue session this snapshot actually
+  // describes: the current entry is the queue's own currentEntryId, and the published
+  // presentation must be that same session and generation, still playing and not
+  // finished, with the runtime healthy and this screen still current. A local, channel
+  // or other session's playback is never substituted for it.
+  const playbackSnapshot = useSyncExternalStore<WebPlaybackRuntimeSnapshot | undefined>(runtime?.subscribe ?? noPlaybackSubscribe,
+    runtime?.getSnapshot ?? noPlaybackSnapshot, runtime?.getSnapshot ?? noPlaybackSnapshot);
+  const nowPlayingAlbumId = useMemo(() => {
+    const snapshot = playbackSnapshot;
+    if (!snapshot || snapshot.disposed || snapshot.problem || !context.isCurrent()) return undefined;
+    // A retained dock snapshot must not mark a remote (Cast/Play on) session as local playback.
+    if (snapshot.dock.remote?.phase === 'playing') return undefined;
+    const view = snapshot.queueView, current = view?.current, presentation = snapshot.presentation;
+    if (!view || !current || !presentation || presentation.fence.kind !== 'queue') return undefined;
+    if (presentation.fence.sessionId !== current.id || presentation.fence.generation !== current.generation) return undefined;
+    if (!presentation.playing || presentation.finished || snapshot.playback.phase !== 'ready') return undefined;
+    const entryId = view.queue.currentEntryId;
+    if (!entryId || presentation.fence.entryId !== entryId) return undefined;
+    return view.items.find(item => item.entryId === entryId)?.albumId;
+  }, [playbackSnapshot, context]);
   const runtimeRef = useRef(runtime);runtimeRef.current = runtime;
   const playSelection = useMemo(() => {
     const viewer = captured.context.session().viewer, queryRevision = state.queryRevision;
@@ -330,7 +353,7 @@ function BoundLibrary({captured, library, search, tabs: offered}: {captured: Pro
     : view === 'show' || view === 'season' ? <LibraryShow context={context} captured={captured} libraryId={library.id} search={search}/>
     : browse ? <LibraryScreen {...bindings}/> : <LibraryDiscoveryScreen service={resources.service} route={contentRoute} musicMixes={musicMixes} header={<LibraryIdentity {...header}/>} empty={empty}
       appearance={appearanceBase} preferences={appearance} reducedMotion={appearance.reducedMotion} artwork={context.artwork} env={bindings.env}
-      actions={(_section, entry) => actions(entry)} onSeeAll={section => {const target = section.seeAll;if (target) navigate({pivot: target.pivot, query: target.query, sort: target.sort});}}/>}
+      actions={(_section, entry) => actions(entry)} nowPlayingAlbumId={nowPlayingAlbumId} onSeeAll={section => {const target = section.seeAll;if (target) navigate({pivot: target.pivot, query: target.query, sort: target.sort});}}/>}
     {saving && <SaveView context={context} definition={saving} onClose={() => setSaving(undefined)}/>}</>;
 }
 function LibraryRouteScreen() {
