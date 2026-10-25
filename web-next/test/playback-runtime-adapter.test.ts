@@ -436,6 +436,30 @@ test('credits followed by a scene never auto-advance early and pausing freezes t
   assert.equal(paused.runtime.getSnapshot().playback.itemId, 'next');
 });
 
+test('Still watching Replay restarts the exact held occurrence at zero without advancing its queue', async t => {
+  const f = setup(t);policyFixture(f, [], {passoutCheckDue: true});
+  const fence = await policyQueue(f);
+  await assert.rejects(f.runtime.replay(fence), /playback_command_unavailable/);
+  f.video.finish();await settle();f.clock.advance(15000);await settle();
+  const held = f.runtime.getSnapshot();
+  assert.equal(held.presentation!.policy!.attention, 'still-watching');
+  assert.equal(held.presentation!.finished, false, 'the modal is not an ordinary finished card');
+  assert.equal(held.presentation!.controls.includes('replay'), true);
+  const queueId = held.queueView!.queue.id, versionId = held.session!.versionId;
+  await f.runtime.replay(fence);await f.arrive();
+  const restarted = f.runtime.getSnapshot();
+  assert.equal(restarted.playback.itemId, fence.itemId);
+  assert.equal(restarted.queueView!.queue.id, queueId);
+  assert.equal(restarted.queueView!.queue.currentEntryId, fence.entryId);
+  assert.notEqual(restarted.session!.id, fence.sessionId);
+  const start = f.log.filter(request => request.method === 'POST' && request.path === '/v1/playback/sessions').at(-1)!.body as {queue: {queueId: string; entryId: string}; startPositionMs: number; versionId: string};
+  assert.deepEqual(start.queue, {queueId, entryId: fence.entryId});
+  assert.equal(start.startPositionMs, 0);
+  assert.equal(start.versionId, versionId, 'the actual held version is retained');
+  assert.equal(f.log.filter(request => request.path.endsWith(':advance')).length, 0);
+  await assert.rejects(f.runtime.replay(fence), /stale_playback_command/);
+});
+
 test('Still watching waits for confirmed completion and only the explicit current response can continue', async t => {
   const f = setup(t); policyFixture(f, [], {passoutCheckDue: true}); const fence = await policyQueue(f);
   const next = playbackPolicyNext(f.runtime.getSnapshot(), fence)!;

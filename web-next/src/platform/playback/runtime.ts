@@ -1026,7 +1026,13 @@ export class WebShellPlaybackRuntime {
           }
         }
         const finished = !inGroup && !!(completion && !this.policyView?.attention && (!completion.nextAvailable || !completion.postPlay.autoplay || this.policyView?.replay) || listeningFinished);
-        const controls: WebPlaybackPresentation['controls'][number][] = finished ? ['replay'] : playback.phase === 'ended' || playback.phase === 'error' ? [] : [playback.intent === 'playing' ? 'pause' : 'play'];
+        // f6e Replay restarts this held occurrence; attention still owns the
+        // modal and must not be relabelled as the ordinary finished card.
+        const stillWatchingReplay = fence.kind === 'queue' && stack.subject.kind === 'video' && !!completion
+          && this.policyView?.attention === 'still-watching' && !this.group?.active()
+          && session?.kind === 'vod' && session.role === 'local' && !!session.versionId
+          && session.itemId === fence.itemId && session.queue?.queueId === queue?.queue.id && session.queue?.entryId === fence.entryId;
+        const controls: WebPlaybackPresentation['controls'][number][] = finished || stillWatchingReplay ? ['replay'] : playback.phase === 'ended' || playback.phase === 'error' ? [] : [playback.intent === 'playing' ? 'pause' : 'play'];
         if (!playback.ended && (finished || ['ready', 'starting'].includes(playback.phase))) controls.push('seek');
         if (fence.kind === 'queue' && queue?.next.available && !playback.ended) controls.push('next');
         if (fence.kind === 'queue' && queue && (queue.queue.entries.findIndex(entry => entry.id === fence.entryId) > 0 || playback.positionSeconds > 3) && !playback.ended) controls.push('previous');
@@ -1486,8 +1492,26 @@ export class WebShellPlaybackRuntime {
     await this.seek(fence, Math.max(0, position + seconds));
   }
   async replay(fence: PlaybackFence): Promise<void> {
-    if (fence.kind === 'channel') problem('playback_command_unavailable');const stack = this.offered(fence, 'replay');
-    if (fence.kind === 'local') await stack.local!.controller.replay(fence);else await stack.service.play(fence.itemId, 0);
+    if (fence.kind === 'channel') problem('playback_command_unavailable');
+    this.require(fence);this.sync();
+    const stack = this.offered(fence, 'replay');
+    if (fence.kind === 'queue' && this.snapshot.presentation?.policy?.attention === 'still-watching') {
+      const state = stack.service.getSnapshot(), queue = stack.queue.getSnapshot(), session = stack.queue.currentSession();
+      const view = currentPolicyQueue(this.snapshot, fence), held = queue.completion, receipt = stack.confirmedEnd;
+      if (this.group?.active() || !stack.expanded || state.phase !== 'ended' || state.ended || queue.phase !== 'ready' || queue.error
+        || !held || held.sessionId !== fence.sessionId || held.intentId !== state.intentId
+        || !receipt || receipt.sessionId !== fence.sessionId || receipt.generation !== fence.generation || receipt.intentId !== state.intentId
+        || !view || view === receipt.view || session?.id !== fence.sessionId || session.presentation.generation !== fence.generation
+        || session.kind !== 'vod' || session.role !== 'local' || !session.versionId || session.itemId !== fence.itemId
+        || session.queue?.queueId !== view.queue.id || session.queue.entryId !== fence.entryId) problem('playback_command_unavailable');
+      const choices = {...stack.service.playbackChoices(), versionId: session.versionId, ...(session.discTitle ? {discTitle: session.discTitle} : {})};
+      // The queue captures the original occurrence synchronously. Its own
+      // generation guards the old-to-restarted handoff; this caller lifetime
+      // survives that intended replacement, never another stack or room.
+      await stack.queue.playItem(fence.itemId, 0, undefined, undefined, undefined, choices,
+        {signal: AbortSignal.any([this.life.signal, stack.life.signal]), isCurrent: () => this.current(stack) && !this.group?.active(), propagateError: true});
+    } else if (fence.kind === 'local') await stack.local!.controller.replay(fence);
+    else await stack.service.play(fence.itemId, 0);
     if (this.current(stack)) this.sync();
   }
   async previous(fence: PlaybackFence): Promise<void> {
