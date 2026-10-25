@@ -166,7 +166,7 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
             if(!entry||typeof entry.section!=='string'||safeArchivePath(entry.section)!==entry.section||
               entry.fragment!==undefined&&(typeof entry.fragment!=='string'||entry.fragment.length>1024||/[\p{Cc}]/u.test(entry.fragment)))throw new ReaderError('invalid_location');
             const {section,fragment}=entry;
-            const target=b.resolveHref(section+(fragment?'#'+encodeURIComponent(fragment):''));
+            const target=b.resolveHref(section);
             if(!target||b.sections[target.index]?.id!==section)throw new ReaderError('invalid_location');
             // Reuse the engine's admitted source loader with the actual caller
             // signal; Section.createDocument only has the book-wide signal.
@@ -176,7 +176,11 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
             if(text===null)throw new ReaderError('invalid_location');
             const doc=new DOMParser().parseFromString(text,'application/xhtml+xml');
             if(doc.querySelector('parsererror'))throw new ReaderError('invalid_book');
-            const node=typeof target.anchor==='function'?target.anchor(doc):null;
+            // Manifest fragments are already decoded by the producer. The
+            // pinned engine keeps href hashes encoded, so use the decoded DOM
+            // identifier rather than encoding it into another URI here.
+            const node=fragment?(doc.getElementById(fragment)??doc.querySelector(`[name="${CSS.escape(fragment)}"]`)):
+              typeof target.anchor==='function'?target.anchor(doc):null;
             if(fragment&&!(node instanceof Node)&&!(node instanceof Range))throw new ReaderError('invalid_location');
             const range=doc.createRange();
             if(node instanceof Range)range.setStart(node.startContainer,node.startOffset);
