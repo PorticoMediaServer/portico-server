@@ -2,6 +2,30 @@ package httpapi
 
 import "portico.local/server/internal/reading"
 
+// Same fixed 250 words/minute estimate as the existing Short reads producer.
+type ReadingEstimatedSeconds int64
+
+func (ReadingEstimatedSeconds) JSONSchema() map[string]any {
+	return map[string]any{"type": "integer", "minimum": 0, "maximum": 16106128}
+}
+
+type ReadingManifestSeries struct {
+	ID        string                   `json:"id"`
+	Name      string                   `json:"name"`
+	Number    *float64                 `json:"number,omitempty"`
+	Source    ReadingAttributionSource `json:"source"`
+	LibraryID string                   `json:"libraryId"`
+}
+
+func (ReadingManifestSeries) JSONSchema() map[string]any {
+	shape := ReadingSeries{}.JSONSchema()
+	properties := shape["properties"].(map[string]any)
+	properties["id"] = map[string]any{"type": "string", "minLength": 43, "maxLength": 43, "pattern": "^[A-Za-z0-9_-]{43}$"}
+	properties["libraryId"] = map[string]any{"type": "string", "minLength": 1, "maxLength": 256}
+	shape["required"] = []string{"id", "name", "source", "libraryId"}
+	return shape
+}
+
 type ReadingWordCount int64
 
 func (ReadingWordCount) JSONSchema() map[string]any {
@@ -25,6 +49,10 @@ func (ReadingOpeningLines) JSONSchema() map[string]any {
 // Called only after Prepare's original source/principal admission. Versions and
 // catalogue lists do not receive this file-body excerpt through generic metadata.
 func readingManifestFactsProjection(out *ReadingMetadata, m reading.Metadata) {
+	if m.EstimatedSeconds != nil {
+		value := ReadingEstimatedSeconds(*m.EstimatedSeconds)
+		out.EstimatedSeconds = &value
+	}
 	if m.WordCount != nil {
 		value := ReadingWordCount(*m.WordCount)
 		out.WordCount = &value
@@ -35,6 +63,6 @@ func readingManifestFactsProjection(out *ReadingMetadata, m reading.Metadata) {
 	}
 	out.OpeningLines = ReadingOpeningLines(m.OpeningLines)
 	if m.Series != nil {
-		out.Series = &ReadingSeries{ID: m.Series.ID, Name: m.Series.Name, Number: m.Series.Number, Source: ReadingAttributionSource(m.Series.Source)}
+		out.Series = &ReadingManifestSeries{ID: m.Series.ID, Name: m.Series.Name, Number: m.Series.Number, Source: ReadingAttributionSource(m.Series.Source), LibraryID: m.SeriesLibraryID}
 	}
 }

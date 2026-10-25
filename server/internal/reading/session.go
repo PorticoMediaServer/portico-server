@@ -226,11 +226,16 @@ func (s *Service) Prepare(ctx context.Context, p identity.Principal, item, sourc
 	if err != nil {
 		return nil, Publication{}, err
 	}
+	if document.Metadata.WordCount != nil {
+		seconds := (*document.Metadata.WordCount*60 + 249) / 250
+		document.Metadata.EstimatedSeconds = &seconds
+	}
 	if document.Selection.Format == "cbz" && len(document.PageNames) > 0 {
 		count := int64(len(document.PageNames))
 		document.Metadata.PageCount = &count
 	}
 	if values.Series != nil {
+		document.Metadata.SeriesLibraryID = document.Selection.library
 		series := &SeriesValue{ID: compactcatalog.ReadingSeriesID(document.Selection.library, values.Series.Value), Name: values.Series.Value, Source: values.Series.Source}
 		if values.SeriesNumber != nil {
 			number := values.SeriesNumber.Value
