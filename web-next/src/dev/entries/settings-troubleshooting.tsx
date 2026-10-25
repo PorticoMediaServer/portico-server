@@ -5,6 +5,7 @@ import {IconSprite} from '../../kit/Icon';
 import {TroubleshootingPage} from '../../screens/settings/server/troubleshooting';
 import {SettingsFeedbackSource} from '../../screens/settings/server/troubleshooting/feedback-source';
 import {SettingsReportsSource} from '../../screens/settings/server/troubleshooting/reports-source';
+import {SettingsSupportSource} from '../../screens/settings/server/troubleshooting/support-source';
 import '../../kit/tokens.css';
 import '../../kit/fonts.css';
 import '../../bootstrap.css';
@@ -52,10 +53,21 @@ const setAside = {failures: [
   {domain: 1, title: 'Severance, season 1', reason: 'The provider answered too slowly to finish the match.', attempts: 3, failedAt: '2026-10-22T17:10:00Z'},
   {domain: 1, title: 'Neagley', reason: 'The artwork could not be read as an image.', attempts: 2, failedAt: '2026-10-22T17:10:00Z'},
 ], more: false};
+const capabilities = {items: [
+  {capability: 'live_tv', available: true, checkedAt: '2026-10-22T18:00:00Z'},
+  {capability: 'recording', available: true, checkedAt: '2026-10-22T18:00:00Z'},
+  {capability: 'prepared_media', available: true, checkedAt: '2026-10-22T18:00:00Z'},
+  {capability: 'hardware_encoding', available: false, code: 'hardware_unavailable', detail: 'Intel Quick Sync was requested but this processor has no usable encoder.', checkedAt: '2026-10-22T18:00:00Z'},
+  {capability: 'decoder_sandbox', available: false, code: 'decoder_confinement_unavailable', checkedAt: '2026-10-22T18:00:00Z'},
+  {capability: 'dolby_vision_conversion', available: true, checkedAt: '2026-10-22T18:00:00Z'},
+]};
+const alerts = [{id: 'permissions', code: 'state-permissions', status: 'open', severity: 'warning', firstAt: '2026-10-22T17:00:00Z', lastAt: '2026-10-22T18:00:00Z', occurrences: 3, revision: 1}];
 const request = async (path: string, method = 'GET'): Promise<unknown> => {
   if (path.includes('/console/diagnostics/')) return {scope: {serverId, viewerFence: fence}, data: {items: records, nextCursor: ''}};
   if (path.includes('/catalogue/failures')) return setAside;
   if (method === 'DELETE') return undefined;
+  if (path.includes('/diagnostics/capabilities')) return capabilities;
+  if (path.includes('/console/alerts')) return {scope: {serverId, viewerFence: fence}, data: alerts};
   if (path.includes('/admin/feedback/')) {
     const id = path.split('/').pop();
     return {scope: {serverId, viewerFence: fence}, data: feedback.find(item => item.id === id) ?? feedback[0]};
@@ -71,10 +83,12 @@ const request = async (path: string, method = 'GET'): Promise<unknown> => {
 const transport = {request: <T,>(path: string, method?: string) => request(path, method) as Promise<T>};
 const reports = new SettingsReportsSource(transport, serverId, 'specimen-viewer', () => true);
 const feedbackSource = new SettingsFeedbackSource(transport, serverId, 'specimen-viewer', () => true);
-const subscribe = (listener: () => void) => {const a = reports.subscribe(listener), b = feedbackSource.subscribe(listener);return () => {a();b();};};
+const supportSource = new SettingsSupportSource(transport, serverId, 'specimen-viewer', () => true);
+const subscribe = (listener: () => void) => {const offs = [reports.subscribe(listener), feedbackSource.subscribe(listener), supportSource.subscribe(listener)];return () => {for (const off of offs) off();};};
 
 createRoot(document.getElementById('root')!).render(<div style={{minHeight: '100vh', background: '#071018', padding: '40px 32px'}}>
   <div style={{maxWidth: 952, margin: '0 auto'}}><IconSprite />
-    <TroubleshootingPage reports={reports} feedback={feedbackSource} subscribe={subscribe} isCurrent={() => true} downloadBase="" reportError={() => {}} />
+    <TroubleshootingPage reports={reports} feedback={feedbackSource} support={supportSource} subscribe={subscribe} isCurrent={() => true} downloadBase="" reportError={() => {}}
+      initialView={params.get('view') === 'reports' ? 'reports' : params.get('view') === 'support' ? 'support' : 'feedback'} />
   </div>
 </div>);

@@ -67,3 +67,15 @@ li:first-child > .feedbackRow { border-top: 0; }
 .technical dl { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 4px 14px; margin: 10px 0 0; }
 .technical dt { font-weight: 700; }
 .technical dd { margin: 0; overflow-wrap: anywhere; }
+
+.fixed { margin-left: 12px; font-size: 13px; font-weight: 700; color: var(--color-healthy, #86cfb3); }
+.exportReady { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.exportReady b { font-size: 15px; color: var(--color-text); }
+.capabilityRow { display: flex; align-items: flex-start; gap: 14px; padding: 12px 0; border-top: 1px solid var(--color-line-soft, color-mix(in srgb, var(--color-text) 8%, transparent)); }
+.capabilityRow:first-child { border-top: 0; }
+.note code { font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace); font-size: 12px; }
+
+.exportRow { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid var(--color-line-soft, color-mix(in srgb, var(--color-text) 8%, transparent)); }
+.checks { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.check { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--color-text-secondary); }
+.capabilityRow > .status { margin-top: 1px; margin-left: auto; }
