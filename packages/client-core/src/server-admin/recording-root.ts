@@ -1,3 +1,4 @@
+import {routePath, routeBody} from '../../../contracts/src/routes.ts';
 import type {LibraryContentApi} from '../library-content.ts';
 
 export type RecordingRootStatus = Readonly<{revision: number; requested: string; effective: string; pendingRestart: boolean; operatorControlled: boolean}>;
@@ -15,10 +16,10 @@ export function parseRecordingRoot(raw: unknown): RecordingRootStatus {
   return Object.freeze({revision: v.revision, requested: v.requested, effective: v.effective, pendingRestart: v.pendingRestart, operatorControlled: v.operatorControlled});
 }
 export async function readRecordingRoot(api: LibraryContentApi, signal: AbortSignal) {
-  return parseRecordingRoot(await api.request('/v1/admin/dvr/recording-root', 'GET', undefined, signal));
+  return parseRecordingRoot(await api.request(routePath('get_admin_dvr_recording_root'), 'GET', undefined, signal));
 }
 export async function saveRecordingRoot(api: LibraryContentApi, intent: RecordingRootIntent, signal: AbortSignal) {
-  const saved = parseRecordingRoot(await api.request('/v1/admin/dvr/recording-root', 'PATCH', intent, signal));
+  const saved = parseRecordingRoot(await api.request(routePath('patch_admin_dvr_recording_root'), 'PATCH', routeBody('patch_admin_dvr_recording_root', intent), signal));
   if (saved.requested !== intent.path || saved.revision < intent.expectedRevision) return invalid();
   return saved;
 }
