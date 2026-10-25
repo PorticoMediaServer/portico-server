@@ -18,8 +18,15 @@ class Job:
         self.args=args;self.source=Path.cwd();self.tools=Path(os.environ['PORTICO_RUNNER_SECONDARY_SOURCE']);self.out=Path(os.environ['PORTICO_RUNNER_OUTPUT']);self.work=Path(os.environ['TMPDIR'])/'checkpoint';self.work.mkdir(mode=0o700);self.children=[];self.logs=[];self.mailboxes=[];self.process_env=dict(os.environ,GOMAXPROCS='2',GOMEMLIMIT='1400MiB');self.report={'serverMain':args.server,'privateMain':args.private,'surface':args.surface,'flows':[],'generated':[],'runtimeProfile':'isolated loopback QA; no public deployment or production-identity acceptance'}
     def run(self,name,argv,cwd=None,env=None,timeout=900):
         log=self.out/('build-'+name+'.log')
-        with log.open('wb') as f:r=subprocess.run(argv,cwd=cwd or self.source,env=env or self.process_env,stdout=f,stderr=subprocess.STDOUT,timeout=timeout)
-        if r.returncode:raise StepFailure(name)
+        with log.open('wb') as f:
+            process=subprocess.Popen(argv,cwd=cwd or self.source,env=env or self.process_env,stdout=f,stderr=subprocess.STDOUT,start_new_session=True);self.children.append(process)
+            try:code=process.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid,signal.SIGTERM)
+                try:process.wait(timeout=8)
+                except subprocess.TimeoutExpired:os.killpg(process.pid,signal.SIGKILL);process.wait()
+                raise StepFailure(name+'-timeout')
+        if code:raise StepFailure(name)
     def spawn(self,name,argv,cwd=None,env=None):
         f=(self.work/(name+'.private.log')).open('wb');self.logs.append(f);p=subprocess.Popen(argv,cwd=cwd or self.source,env=env or self.process_env,stdout=f,stderr=subprocess.STDOUT,start_new_session=True);self.children.append(p);return p
     def ready(self,url,process):
@@ -85,6 +92,7 @@ class Job:
         self.run('renderer-adversarial',['npm','run','test','--workspace','@portico/reader-core'],timeout=180)
         bind=port();base='http://127.0.0.1:'+str(bind);state=self.work/'server-state';state.mkdir(mode=0o700);runtime=self.args.fixtures/'runtime/bundle'
         if not all((runtime/x).is_file() for x in ['toolchain-manifest.json','bin/ffmpeg','bin/ffprobe']):raise StepFailure('qualified-runtime-unavailable')
+        self.run('runtime-manifest',['python3',str(self.source/'scripts/verify-ffmpeg-manifest.py'),str(runtime)])
         env=dict(self.process_env,PORTICO_BIND='127.0.0.1:'+str(bind),PORTICO_DATA_DIR=str(state),PORTICO_WEB_DIR=str(web),PORTICO_FFMPEG=str(runtime/'bin/ffmpeg'),PORTICO_FFPROBE=str(runtime/'bin/ffprobe'),PORTICO_SERVICE='1',PORTICO_DISCOVERY='0',XDG_CACHE_HOME=str(self.work/'cache'))
         app=self.spawn('server-runtime',[str(self.work/'server')],env=env);self.ready(base+'/health/ready',app)
         username='cp'+secrets.token_hex(5);password='Cp9!'+secrets.token_urlsafe(24);installation=secrets.token_urlsafe(32)
@@ -183,9 +191,12 @@ def main():
     if not all(re.fullmatch('[0-9a-f]{40}',x) for x in [a.server,a.private]) or not re.fullmatch('[a-z0-9-]{1,96}',a.run_id):p.error('exact sources and safe run id required')
     if a.fixtures!=Path('/home/runner/work/fixtures/portico-v3'):p.error('fixed owned fixture custody required')
     os.umask(0o077);job=Job(a)
+    def stop(*_):raise SystemExit(143)
+    signal.signal(signal.SIGTERM,stop);signal.signal(signal.SIGHUP,stop)
+    deadline=threading.Timer(1800,lambda:os.kill(os.getpid(),signal.SIGTERM));deadline.daemon=True;deadline.start()
     try:job.web_server() if a.surface=='web-server' else job.hosted()
     except StepFailure as error:job.report['flows'].append({'surface':a.surface,'id':error.step,'status':'fail','kind':'build' if error.step.startswith(('server','web','hosted','npm','api-generation','schema-generation')) else 'infrastructure'})
     except Exception as error:job.report['flows'].append({'surface':a.surface,'id':'runner','status':'fail','class':type(error).__name__})
-    finally:job.finish()
+    finally:deadline.cancel();job.finish()
     print(json.dumps({'run':a.run_id,'flows':job.report['flows'],'cleanup':job.report['cleanup']}));return int(any(x['status']=='fail' for x in job.report['flows']))
 if __name__=='__main__':raise SystemExit(main())

@@ -6,6 +6,7 @@ const {chromium}=await import(pathToFileURL(process.env.PORTICO_CHECKPOINT_BROWS
 const {privacy}=await import(pathToFileURL(process.env.PORTICO_RUNNER_SECONDARY_SOURCE+'/scripts/review-smoke-privacy.mjs'));
 const out=process.env.PORTICO_RUNNER_OUTPUT,flows=[],privateValues=[input.username,input.password];
 let browser,page,phase='startup',populatedCredentials=false;const external=[];
+process.on('SIGTERM',async()=>{await browser?.close();process.exit(143);});
 const disabled=new Set(input.disabled??[]);
 async function capture(id){
  const credentials=await page.locator('input[type="password"],input[name="username"]').count();
