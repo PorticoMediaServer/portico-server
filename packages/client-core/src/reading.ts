@@ -1,3 +1,5 @@
+import {readingFavoritePath, parseReadingFavorite, validReadingFavoriteCommand, type ReadingFavoriteCommand} from './reading-favorite.ts';
+export type {ReadingFavoriteFlag, ReadingFavoriteCommand} from './reading-favorite.ts';
 import {readingSavedPath, parseReadingSavedMembership, validReadingSavedCommand, type ReadingListCommand} from './reading-saved.ts';
 export type {ReadingListMembership, ReadingListCommand} from './reading-saved.ts';
 import {readingMarkPath, parseReadingMark, validReadingMarkCommand, type ReadingReadMarkCommand} from './reading-mark.ts';
@@ -343,6 +345,22 @@ export class ReadingClient {
       } catch (error) { check(); /* Never retain an untrusted error body. */ }
     }
     await discard(response); throw new ReadingError(code, response.status);
+  }
+  canFavorite(itemId: string): boolean {
+    const viewer = this.viewer;
+    return !!viewer.authority && !!viewer.accountId && !!viewer.profileId && ['owner', 'admin', 'member'].includes(viewer.role)
+      && readingFavoritePath('GET', itemId) !== undefined && readingFavoritePath('PUT', itemId) !== undefined;
+  }
+  async getFavorite(itemId: string, signal?: AbortSignal) {
+    const path = readingFavoritePath('GET', itemId);
+    if (!path) fail('unsupported');
+    return this.json(path, 'GET', undefined, signal, value => parseReadingFavorite(value, this.viewer.serverId, itemId), 4096);
+  }
+  async setFavorite(itemId: string, command: ReadingFavoriteCommand, signal?: AbortSignal) {
+    const path = readingFavoritePath('PUT', itemId);
+    if (!path || !validReadingFavoriteCommand(command)) fail('invalid_request');
+    const captured = Object.freeze({...command});
+    return this.json(path, 'PUT', captured, signal, value => parseReadingFavorite(value, this.viewer.serverId, itemId, captured.operationId), 4096);
   }
   canUseMyList(itemId: string): boolean {
     const viewer = this.viewer;
