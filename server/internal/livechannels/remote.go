@@ -603,6 +603,16 @@ func (s *Store) Remove(ctx context.Context, a Authority, sid string, revision in
 		if n != 0 {
 			return ErrDependencies
 		}
+		// Configurations written before guide dependencies were recorded still
+		// name this source directly; refuse those as well rather than leaving a
+		// dangling guide reference.
+		var guideDependent bool
+		if tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM admin_documents d WHERE d.scope LIKE 'live-source:%' AND d.scope<>('live-source:'||?) AND json_extract(d.body,'$.guideSourceId')=?)`, sid, sid).Scan(&guideDependent) != nil {
+			return ErrUnavailable
+		}
+		if guideDependent {
+			return ErrDependencies
+		}
 		res, e := tx.ExecContext(ctx, `UPDATE live_sources SET state='disabled',revision=revision+1 WHERE id=? AND revision=?`, sid, revision)
 		if e != nil {
 			return ErrUnavailable
