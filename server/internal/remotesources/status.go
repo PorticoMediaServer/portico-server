@@ -185,7 +185,10 @@ func (s *Service) ReadSourceStatus(ctx context.Context, identities *identity.Ser
 		out.Libraries = out.Libraries[:10]
 		out.LibrariesTruncated = true
 	}
-	if err = snapshot.Tx().QueryRowContext(ctx, `SELECT COALESCE(MIN(NULLIF(interval_seconds,0)),0) FROM library_sources WHERE remote_source_id=?`, row.ID).Scan(&out.ScanIntervalSecs); err != nil {
+	// The source's interval is the shortest non-zero interval of its enabled
+	// folders; a disabled folder is leaving and cannot set it. It is a stored
+	// folder fact, not a promise of when the next check runs.
+	if err = snapshot.Tx().QueryRowContext(ctx, `SELECT COALESCE(MIN(NULLIF(interval_seconds,0)),0) FROM library_sources WHERE remote_source_id=? AND enabled=1`, row.ID).Scan(&out.ScanIntervalSecs); err != nil {
 		return SourceStatus{}, err
 	}
 	var healthCount int
