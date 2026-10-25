@@ -43,6 +43,10 @@ export class SettingsWebhooksSource {
   private detail?: AbortController;
   private mutation?: AbortController;
   private createAttempt?: Readonly<{fingerprint: string; operationId: string}>;
+  // What this owner has done since a transfer, bound to the revision the
+  // server confirmed. The server keeps the authority; this only orders the
+  // existing surfaces a retired webhook needs.
+  private reviewProgress = new Map<string, Readonly<{urlEvents: boolean; secret: boolean; revision: number}>>();
   constructor(private readonly api: ApiAccessTransport, private readonly isCurrent: () => boolean, private readonly reportError: (error: unknown) => void) {}
   private current = () => !this.lifetime.signal.aborted && this.isCurrent();
   private ownsRead = (read: AbortController) => this.current() && this.read === read && !read.signal.aborted && !this.mutation;
@@ -60,7 +64,16 @@ export class SettingsWebhooksSource {
     this.read?.abort();this.detail?.abort();const read = new AbortController();this.read = read;
     this.publish({phase: 'loading', error: undefined, selected: undefined, deliveries: undefined});
     if (!this.ownsRead(read)) return;
-    try {const list = await listWebhooks(this.transport(() => this.ownsRead(read)), read.signal);if (this.ownsRead(read)) this.publish({phase: 'ready', list});}
+    try {
+      const list = await listWebhooks(this.transport(() => this.ownsRead(read)), read.signal);
+      if (!this.ownsRead(read)) return;
+      for (const id of [...this.reviewProgress.keys()]) {
+        const now = list.items.find(hook => hook.id === id);
+        const held = this.reviewProgress.get(id);
+        if (!now?.requiresOwnerReview || !held || now.revision !== held.revision) this.reviewProgress.delete(id);
+      }
+      this.publish({phase: 'ready', list});
+    }
     catch (error) {if (this.ownsRead(read)) this.failure(error, 'read');}
     finally {if (this.read === read) this.read = undefined;}
   };
@@ -125,11 +138,35 @@ export class SettingsWebhooksSource {
       return issued;
     });
   };
+  /** Which drawn step a retired webhook still needs here, for the revision the
+   * server last confirmed. A different revision starts the review again. */
+  reviewStep = (hook: Webhook): 'urlEvents'|'secret'|'done' => {
+    if (!hook.requiresOwnerReview) return 'done';
+    const held = this.reviewProgress.get(hook.id);
+    if (!held || held.revision !== hook.revision) return 'urlEvents';
+    return held.urlEvents ? held.secret ? 'done' : 'secret' : 'urlEvents';
+  };
+  /** Both review steps done here, so an enable may be offered; the server still decides. */
+  reviewed = (hook: Webhook): boolean => this.reviewStep(hook) === 'done';
   update = async (hook: Webhook, change: WebhookChange): Promise<IssuedWebhook | undefined> => {
     const intent = Object.freeze({...change, ...(change.events ? {events: Object.freeze([...change.events])} : {})});
-    return this.write(async (api, signal) => {const issued = await updateWebhook(api, hook.id, hook.revision, intent, signal);if (issued.webhook.id !== hook.id || !matches(issued.webhook, intent)) throw new ApiAccessError('invalid_document');return issued;}, hook);
+    return this.write(async (api, signal, owns) => {
+      const issued = await updateWebhook(api, hook.id, hook.revision, intent, signal);
+      // Nothing is recorded or compared once this exact write is no longer the
+      // source's current one: a retired writer cannot repopulate progress.
+      if (!owns() || signal.aborted) return;
+      if (issued.webhook.id !== hook.id || !matches(issued.webhook, intent)) throw new ApiAccessError('invalid_document');
+      // Progress carries only from the revision this write was accepted
+      // against; the answer already carries the next one. A refused review no
+      // longer asks for one, so nothing is kept for it.
+      const held = this.reviewProgress.get(hook.id);
+      const previous = held && held.revision === hook.revision ? held : {urlEvents: false, secret: false};
+      if (!issued.webhook.requiresOwnerReview) this.reviewProgress.delete(hook.id);
+      else this.reviewProgress.set(hook.id, {urlEvents: previous.urlEvents || (intent.url !== undefined && intent.events !== undefined), secret: previous.secret || intent.secret !== undefined || intent.rotateSecret === true, revision: issued.webhook.revision});
+      return issued;
+    }, hook);
   };
   remove = (hook: Webhook) => this.write(async (api, signal) => {await deleteWebhook(api, hook.id, signal);return true;}, hook);
   test = (hook: Webhook) => this.write((api, signal) => sendWebhookTest(api, hook.id, signal), hook);
-  dispose = () => {this.read?.abort();this.detail?.abort();this.mutation?.abort();this.mutation = undefined;this.createAttempt = undefined;this.lifetime.abort();this.state = empty;this.listeners.clear();};
+  dispose = () => {this.read?.abort();this.detail?.abort();this.mutation?.abort();this.mutation = undefined;this.createAttempt = undefined;this.reviewProgress.clear();this.lifetime.abort();this.state = empty;this.listeners.clear();};
 }
