@@ -1,3 +1,5 @@
+import {serviceI18n} from '@core/presentation/service-text.ts';
+import {musicFormatBadges, formatSignalText} from '@core/music-signal.ts';
 import {activateCard, useSelectionRangePreview} from '../../kit/cards';
 import {useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
@@ -107,13 +109,14 @@ export function BrowseResults(props: BrowseResultsProps) {
 function BrowseListRow({member, index, artwork, env, actions, reading}: BrowseResultsProps & {member: BrowseMember; index: number; reading: boolean}) {
   const source = useRef<'pointer' | 'keyboard'>('pointer');
   const {entry} = member, title = entry.displayTitle ?? entry.title, action = actions(member, index), progress = timelineFacts(entry.duration, entry.progressSeconds).progress;
+  const badges = entry.kind === 'song' && entry.audioFacts ? musicFormatBadges(entry.audioFacts).map(badge => typeof badge === 'string' ? badge : formatSignalText(badge, serviceI18n().t)) : [];
   const range = useSelectionRangePreview(action.selection);
   const art = artwork.foreground(entry.posterUrl, 72 * devicePixelRatio, 2 / 3, {group: entry.libraryId, order: index});
   const added = entry.addedAt && Number.isFinite(Date.parse(entry.addedAt)) ? new Intl.DateTimeFormat(env.locale ?? 'en-US', {month: 'short', day: 'numeric', year: 'numeric'}).format(new Date(entry.addedAt)) : undefined;
   const resolution = entry.resolution === '4k' ? t('quality.4k') : entry.resolution === '1080p' ? t('downloads.quality.1080p') : entry.resolution === '720p' ? t('downloads.quality.720p') : entry.resolution === 'sd' ? t('quality.sd') : undefined;
   return <div className={styles.listRow} data-browse-entry={entry.id} data-selected={action.selection?.checked || undefined} data-preview={action.selection?.preview || undefined} {...range} onKeyDown={event => {range.onKeyDown(event);if (event.key === 'Escape' && action.selection?.active) {event.preventDefault();action.selection.onExit();}}}>
     <div className={styles.listTitle}>{action.selection && <SelectionCircle selected={action.selection.checked} selecting={action.selection.active} onSelectedChange={(_next, intent) => action.selection?.onToggle({range: intent.intent === 'range' || intent.shiftKey === true, source: source.current})} onKeyDownCapture={() => {source.current = 'keyboard';}} onPointerDownCapture={() => {source.current = 'pointer';}} accessibilityLabel={t('next.selection.select')} variant="row"/>}
-      <button type="button" data-layout-primary onClick={event => activateCard(action.onOpen, action.selection, {range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'})}><span className={styles.listArt}><Artwork source={art} visible alt="" fallback={<GeneratedArt glyph={Array.from(title)[0] ?? ''}/>}/></span><span>{title}</span></button></div>
+      <button type="button" data-layout-primary onClick={event => activateCard(action.onOpen, action.selection, {range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'})}><span className={styles.listArt}><Artwork source={art} visible alt="" fallback={<GeneratedArt glyph={Array.from(title)[0] ?? ''}/>}/></span><span className={styles.listName}>{title}</span>{badges.map(badge => <span key={badge} className={styles.songBadge}>{badge}</span>)}</button></div>
     {reading ? <>
       <span className={styles.listAuthor}>{entry.author}</span>
       {/* A finished mark draws the drawn state. An explicit unread mark only says the mark was

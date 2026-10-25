@@ -1,104 +1,124 @@
-import {useEffect, useMemo, useState, useSyncExternalStore} from 'react';
-import {t} from './text';
-import type {FactPart} from '@core/presentation/kit-model';
-import {LibraryContentService, readListeningSimilar, type ContentEntry, type ContentProjection} from '@core/library-content.ts';
-import {albumMusicFormatBadges, formatSignalText} from '@core/music-signal.ts';
+import {useEffect, useRef, useState} from 'react';
+import {t, environment as env} from './text';
+import {cardText, type FactPart} from '@core/presentation/kit-model';
+import {LibraryContentService, readListeningSimilar, type ContentEntry, type ContentProjection, type LibraryContentSnapshot} from '@core/library-content.ts';
+import {albumBadgeText} from '@core/music-badges.ts';
+import {formatSignalText} from '@core/music-signal.ts';
 import {defaultI18n} from '@i18n';
-import {clockText} from '@core/presentation/kit-model/text.ts';
 import {AmbientArt, Artwork} from '../../kit/artwork';
 import {Button} from '../../kit/controls';
 import {Lockup} from '../../kit/layout';
+import {TrackTable} from '../../kit/browse';
+import {Menu} from '../../kit/overlays';
 import {TitleFactsLine} from '../../kit/title/TitleParts';
-import {StateView} from '../../kit/states';
 import {useShellWidth} from '../../shell/viewport';
-import {runScreenCommand, type ScreenContext} from './context';
+import {runScreenCommand, screenLifetime, type ScreenContext} from './context';
+import {entrySubject} from './model';
+import {ScreenProblem} from './ScreenProblem';
+import {MusicEntryMenu} from './MusicEntryMenu';
 import {TitleRow} from './Detail';
 import styles from './album.module.css';
 
 export type AlbumActions = (entry: ContentEntry) => Readonly<{onOpen: () => void; onPlay?: () => void}>;
 export type AlbumScreenProps = Readonly<{context: ScreenContext; libraryId: string; albumId: string; actions: AlbumActions; onBack?: () => void}>;
-type Snapshot = Readonly<{phase: 'idle' | 'loading' | 'ready' | 'error'; projection?: ContentProjection; songs: readonly ContentEntry[]}>;
-const noSongs: readonly ContentEntry[] = Object.freeze([]);
+type Page = Readonly<{context: ScreenContext; libraryId: string; albumId: string; life: ReturnType<typeof screenLifetime>; service: LibraryContentService; snapshot: LibraryContentSnapshot}>;
+type Similar = Readonly<{life: Page['life']; projection: ContentProjection; bySound: boolean; entries: readonly ContentEntry[]}>;
+type OpenMenu = Readonly<{page: Page; projection: ContentProjection; seed: ContentEntry; anchor: HTMLButtonElement}>;
 
-/** desktop-listen's album page on its canonical library route (`?view=album&entityId=`): the album's
- * own content read supplies the cover, artist and real song list, and only those songs' measured
- * facts become the album's format badges. Per-song play uses the existing item effect; the album
- * container's Play/Shuffle waits for the queue-source seam named in the handoff. */
-export function AlbumScreen({context, libraryId, albumId, actions, onBack}: AlbumScreenProps) {
-  const phone = useShellWidth() < 1024;
-  const [snapshot, setSnapshot] = useState<Snapshot>({phase: 'idle', songs: noSongs});
-  const [similar, setSimilar] = useState<Readonly<{albumId: string; bySound: boolean; entries: readonly ContentEntry[]}>>();
-  // One lease per album page: its own service and captured scope; retiring it cancels the read.
-  const service = useMemo(() => new LibraryContentService({api: context.api, scope: {serverId: context.scope.serverId, viewerId: context.scope.viewerId}}), [context]);
-  // One admission lifetime for this page's Play/Shuffle; retiring it cancels the start.
-  const life = useMemo(() => new AbortController(), [service]);
-  useEffect(() => () => life.abort(), [life]);
+/** The canonical album route owns a fresh service/lease on each effect setup,
+ * including Strict Mode replay. The server's entity supplies complete header
+ * facts; track pages are read only when the person asks for the next page. */
+export function AlbumScreen({context, libraryId, albumId, onBack}: AlbumScreenProps) {
+  const phone = useShellWidth() < 1024, more = useRef<HTMLButtonElement>(null);
+  const [page, setPage] = useState<Page>(), [retry, setRetry] = useState(0);
+  const [similar, setSimilar] = useState<Similar>(), [menu, setMenu] = useState<OpenMenu>();
   useEffect(() => {
-    const request = new AbortController();
-    setSnapshot({phase: 'loading', songs: noSongs}); setSimilar(undefined);
-    void service.select({libraryId, view: 'album', entityId: albumId}).then(() => {
-      if (request.signal.aborted || !context.isCurrent()) return;
-      const value = service.getSnapshot(), projection = value.projection, entity = projection?.entity;
-      if (value.phase !== 'ready' || !projection || !entity || entity.id !== albumId || projection.scope.libraryId !== libraryId) {
-        setSnapshot({phase: value.phase === 'ready' ? 'error' : value.phase, songs: noSongs});
-        return;
-      }
-      setSnapshot({phase: 'ready', projection, songs: projection.sections.flatMap(section => section.entries).filter(entry => entry.kind === 'song')});
-    }, error => { if (!request.signal.aborted && context.isCurrent()) { setSnapshot({phase: 'error', songs: noSongs}); context.effects.reportError(error); } });
-    return () => { request.abort(); service.cancel(); };
-  }, [service, libraryId, albumId, context]);
+    const life = screenLifetime(context), service = new LibraryContentService({api: life.api, scope: context.scope});
+    const publish = () => {if (life.current()) setPage({context, libraryId, albumId, life, service, snapshot: service.getSnapshot()});};
+    const off = service.subscribe(publish);
+    publish();
+    void service.select({libraryId, view: 'album', entityId: albumId}).catch(error => {if (life.current()) context.effects.reportError(error);});
+    return () => {life.dispose(); off(); service.dispose();};
+  }, [context, libraryId, albumId, retry]);
+  const active = page?.context === context && page.libraryId === libraryId && page.albumId === albumId && page.life.current() ? page : undefined;
+  const projection = active?.snapshot.projection;
   useEffect(() => {
-    if (snapshot.phase !== 'ready') return;
-    const request = new AbortController(), viewer = context.identity?.viewer;
+    setSimilar(undefined);
+    if (!active || active.snapshot.phase !== 'ready' || !projection) return;
+    const viewer = context.identity?.viewer;
     if (!viewer || (viewer.authority !== 'local' && viewer.authority !== 'hosted')) return;
-    void readListeningSimilar(context.api, {serverId: context.scope.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId,
-      controllerId: 'v1', controllerEpoch: 'v1', commandLaneId: 'v1'}, albumId, {limit: 12, by: 'sound', signal: request.signal})
-      .then(value => { if (!request.signal.aborted && context.isCurrent() && value.itemId === albumId && value.libraryId === libraryId) setSimilar({albumId, bySound: value.bySound, entries: value.entries}); }, () => undefined);
+    const request = new AbortController(), {life, service} = active;
+    void readListeningSimilar(life.api, {serverId: context.scope.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId,
+      controllerId: 'v1', controllerEpoch: 'v1', commandLaneId: 'v1'}, albumId, {limit: 12, by: 'sound', signal: life.signal(request.signal)})
+      .then(value => {
+        if (!request.signal.aborted && life.current() && service.getSnapshot().projection === projection
+          && value.itemId === albumId && value.libraryId === libraryId
+          && value.revision.catalog === projection.revision.catalog && value.revision.viewer === projection.revision.viewer)
+          setSimilar({life, projection, bySound: value.bySound, entries: value.entries});
+      }, error => {if (!request.signal.aborted && life.current()) context.effects.reportError(error);});
     return () => request.abort();
-  }, [snapshot.phase, context, libraryId, albumId]);
-  useEffect(() => () => service.dispose(), [service]);
-  const projection = snapshot.projection, album = projection?.entity, playAlbum = context.effects.playAlbum;
-  // The caller's own witness: this admitted album projection, still the one this page drew.
-  const callerCurrent = (captured: ContentProjection) => () => context.isCurrent() && service.getSnapshot().projection === captured;
-  const badges = useMemo(() => albumMusicFormatBadges(snapshot.songs.flatMap(song => song.audioFacts ? [song.audioFacts] : [])), [snapshot]);
-  if (snapshot.phase === 'idle' || snapshot.phase === 'loading') return <p className={styles.loading} role="status">{t('music.loading')}</p>;
-  if (snapshot.phase === 'error' || !projection || !album) return <StateView title={t('title.nothingHere')} />;
+  }, [active?.life, active?.snapshot.phase, projection, context, libraryId, albumId]);
+  const snapshot = active?.snapshot, album = projection?.entity;
+  if (!active || !snapshot || !projection || !album || album.id !== albumId || album.kind !== 'album' || album.libraryId !== libraryId) {
+    if (snapshot?.phase === 'error' || snapshot?.phase === 'refresh-required') return <ScreenProblem context={context} error={snapshot.error} retry={() => setRetry(value => value + 1)}/>;
+    return <p className={styles.loading} role="status">{t('music.loading')}</p>;
+  }
+  const {life, service} = active;
+  const current = () => life.current() && service.getSnapshot().phase === 'ready' && service.getSnapshot().projection === projection;
+  const songs = snapshot.appended.flatMap(section => section.entries).filter(entry => entry.kind === 'song');
+  const songCurrent = (song: ContentEntry) => () => current() && service.getSnapshot().appended.some(section => section.entries.includes(song));
+  const play = (song: ContentEntry) => {
+    const witness = songCurrent(song);
+    if (!witness() || !song.playback || song.available === false || song.missing || song.libraryId !== libraryId) return;
+    runScreenCommand(context, () => context.effects.play({libraryId, itemId: song.playback!.itemId, startSeconds: song.playback!.startSeconds ?? 0}, life.signal(), witness));
+  };
+  const badges = albumBadgeText(album.badges);
   const parts: FactPart[] = [
-    ...(album.year && album.year > 0 ? [{id: 'year', text: defaultI18n.number(album.year, {useGrouping: false})}] : []),
-    {id: 'songs', text: t('lib.count', {count: snapshot.songs.length, pivot: 'songs'})},
+    ...(album.year && album.year > 0 ? [{id: 'year', role: 'supplement' as const, text: defaultI18n.number(album.year, {useGrouping: false})}] : []),
+    ...(album.count === undefined ? [] : [{id: 'songs', role: 'supplement' as const, text: t('lib.count', {count: album.count, pivot: 'songs'})}]),
   ];
+  const open = (seed: ContentEntry, anchor: HTMLButtonElement) => {if (current()) setMenu({page: active, projection, seed, anchor});};
+  const menuCurrent = () => !!menu && menu.page.life === life && menu.projection === projection && current()
+    && (menu.seed === album || songs.includes(menu.seed));
+  const menuAnchor = {current: menu?.anchor ?? null};
+  const recommendations = similar?.life === life && similar.projection === projection ? similar : undefined;
   return <div className={styles.page}>
     <div className={styles.bar}>
-      {onBack && <Button variant="icon" icon="i-left" iconOnly aria-label={t('next.states.back')} onClick={() => runScreenCommand(context, () => onBack())} />}
+      {onBack && <Button variant="icon" icon="i-left" iconOnly aria-label={t('next.states.back')} onClick={() => runScreenCommand(context, () => {if (life.current()) onBack();})}/>}
       <span className={styles.barTitle}>{album.title}</span>
     </div>
     <header className={styles.hero}>
-      <span className={styles.art}><AmbientArt className={styles.ambient} treatment="phone" source={context.artwork.ambient(album.posterUrl)} foreground={context.artwork.foreground(album.posterUrl, 760, 1)} /><Artwork source={context.artwork.foreground(album.posterUrl, 760, 1)} alt="" /></span>
+      <span className={styles.art}><AmbientArt className={styles.ambient} treatment="phone" source={context.artwork.ambient(album.posterUrl)} foreground={context.artwork.foreground(album.posterUrl, 760, 1)}/><Artwork source={context.artwork.foreground(album.posterUrl, 760, 1)} alt=""/></span>
       <div className={styles.copy}>
-        <Lockup title={album.title} platform={phone ? 'phone-web' : 'desktop'} />
+        <Lockup title={album.title} platform={phone ? 'phone-web' : 'desktop'}/>
         {album.artist?.name && <p className={styles.artist}>{album.artist.name}</p>}
-        <TitleFactsLine parts={parts} />
-        {badges.length > 0 && <p className={styles.badges}>{badges.map(badge => {
-          const text = typeof badge === 'string' ? badge : formatSignalText(badge, t);
-          return <span key={text} className={styles.badge}>{text}</span>;
-        })}</p>}
-        {playAlbum && <div className={styles.actions}>
-          <Button variant="primary" icon="i-play" onClick={() => runScreenCommand(context, () => playAlbum(albumId, false, life.signal, callerCurrent(projection)))}>{t('next.controls.play')}</Button>
-          <Button variant="glass" icon="i-shuffle" onClick={() => runScreenCommand(context, () => playAlbum(albumId, true, life.signal, callerCurrent(projection)))}>{t('title.shuffle')}</Button>
-        </div>}
+        <div className={styles.meta}><TitleFactsLine parts={parts}/>
+          {badges.length > 0 && <span className={styles.badges}>{badges.map(badge => {
+            const label = typeof badge === 'string' ? badge : formatSignalText(badge, t);
+            return <span key={label} className={styles.badge}>{label}</span>;
+          })}</span>}
+        </div>
+        <div className={styles.actions}>
+          {context.effects.playAlbum && <>
+            <Button variant="primary" icon="i-play" disabled={!current()} onClick={() => runScreenCommand(context, () => context.effects.playAlbum!(albumId, false, life.signal(), current))}>{t('next.controls.play')}</Button>
+            <Button variant="glass" icon="i-shuffle" disabled={!current()} onClick={() => runScreenCommand(context, () => context.effects.playAlbum!(albumId, true, life.signal(), current))}>{t('title.shuffle')}</Button>
+          </>}
+          {context.effects.playRadio && <Button ref={more} variant="glass" icon="i-more" iconOnly disabled={!current()} aria-label={t('card.more', {title: album.title})} onClick={event => open(album, event.currentTarget)}/>}
+        </div>
       </div>
     </header>
-    <ol className={styles.songs} aria-label={t('music.allSongs')}>
-      {snapshot.songs.map((song, index) => {
-        const act = actions(song), title = song.displayTitle ?? song.title;
-        return <li key={song.id} className={styles.song}>
-          <span className={styles.index}>{defaultI18n.number(index + 1)}</span>
-          <button type="button" className={styles.songTitle} disabled={!act.onPlay} aria-label={t('next.browse.play', {title})} onClick={() => act.onPlay?.()}>{title}</button>
-          <span className={styles.length}>{clockText(song.duration)}</span>
-        </li>;
-      })}
-    </ol>
-    {similar?.albumId === albumId && similar.entries.length > 0 && <TitleRow heading={t('music.moreLikeThis')}
-      subtitle={t(similar.bySound ? 'music.moreLikeThisBySound' : 'music.moreLikeThisHint')} entries={similar.entries} binding={{context}} />}
+    <TrackTable variant="album" platform={phone ? 'phone' : 'desktop'} label={t('music.allSongs')} totalCount={songs.length}
+      columns={context.effects.playRadio ? undefined : [{id: 'number', width: '44px'}, {id: 'title', width: 'minmax(0,1fr)'}, {id: 'plays', width: '90px'}, {id: 'duration', width: '80px'}]}
+      rows={songs.map((song, index) => ({id: song.id, number: song.trackNumber ?? index + 1, plays: song.plays, playable: current() && !!song.playback && song.available !== false && !song.missing && song.libraryId === libraryId, text: cardText(entrySubject(song), 'song-row', env)}))}
+      onPlay={id => {const song = songs.find(song => song.id === id); if (song) play(song);}}
+      onMore={(id, anchor) => {const song = songs.find(song => song.id === id); if (song && anchor) open(song, anchor);}}/>
+    {snapshot.appended.filter(section => section.nextCursor).map(section => <Button key={section.id} variant="glass" disabled={snapshot.phase !== 'ready'} onClick={() => runScreenCommand(context, () => {if (current()) return service.next(section.id);})}>{t('next.settings.loadMore')}</Button>)}
+    {snapshot.phase === 'loading' && <p role="status">{t('music.loading')}</p>}
+    {(snapshot.phase === 'error' || snapshot.phase === 'refresh-required') && <ScreenProblem context={context} error={snapshot.error} retry={() => setRetry(value => value + 1)}/>}
+    {recommendations && recommendations.entries.length > 0 && <TitleRow heading={t('music.moreLikeThis')}
+      subtitle={t(recommendations.bySound ? 'music.moreLikeThisBySound' : 'music.moreLikeThisHint')} entries={recommendations.entries} binding={{context}}/>}
+    {menu && <Menu open={menuCurrent()} onOpenChange={open => {if (!open) setMenu(undefined);}} anchorRef={menuAnchor} returnFocusRef={menuAnchor} title={menu.seed.title} placement="bottom-end">
+      <MusicEntryMenu context={context} seed={menu.seed} signal={menu.page.life.signal()} current={menuCurrent}/>
+    </Menu>}
   </div>;
 }

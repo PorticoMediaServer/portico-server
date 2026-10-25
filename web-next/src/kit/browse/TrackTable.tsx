@@ -11,13 +11,13 @@ const t = defaultI18n.t;
 export type TrackRowData = Readonly<{
   id: string; text: CardTextModel; number?: number; plays?: number; addedAt?: string; duration?: FactPart;
   artwork?: ReactNode; favorite?: boolean; playing?: boolean; done?: boolean; current?: boolean; progress?: number;
-  remaining?: FactPart;
+  remaining?: FactPart; playable?: boolean;
 }>;
 export type TrackColumnId = 'number' | 'title' | 'artist' | 'album' | 'plays' | 'duration' | 'added' | 'actions';
 export type TrackColumn = Readonly<{id: TrackColumnId; label?: ReactNode; width?: string; sort?: string}>;
 type TrackRowAttributes = HTMLAttributes<HTMLDivElement>;
 export type TrackActions = Readonly<{
-  onPlay: (id: string) => void; onMore: (id: string) => void; onFavorite?: (id: string, favorite: boolean) => void;
+  onPlay: (id: string) => void; onMore: (id: string, anchor?: HTMLButtonElement) => void; onFavorite?: (id: string, favorite: boolean) => void;
   onAddPlaylist?: (id: string) => void; renderSelection?: (row: TrackRowData) => ReactNode;
   getRowProps?: (row: TrackRowData) => TrackRowAttributes;
 }>;
@@ -42,7 +42,7 @@ function RowActions({row, onMore, onFavorite, onAddPlaylist, compact = false}: P
     {onFavorite && !compact && <Button variant="icon" size="xs" icon={row.favorite ? 'i-heart-f' : 'i-heart'} iconOnly aria-pressed={!!row.favorite}
       className={styles.favoriteAction} aria-label={t(row.favorite ? 'next.browse.unfavorite' : 'next.browse.favorite', {title: row.text.title})} onClick={() => onFavorite(row.id, !row.favorite)}/>}
     {onAddPlaylist && !compact && <Button variant="icon" size="xs" icon="i-listadd" iconOnly aria-label={t('next.browse.addPlaylist', {title: row.text.title})} onClick={() => onAddPlaylist(row.id)}/>}
-    <Button variant="icon" size="xs" icon="i-more" iconOnly aria-label={t('next.browse.moreFor', {title: row.text.title})} onClick={() => onMore(row.id)}/>
+    <Button variant="icon" size="xs" icon="i-more" iconOnly aria-label={t('next.browse.moreFor', {title: row.text.title})} onClick={event => onMore(row.id, event.currentTarget)}/>
   </div>;
 }
 export function TrackTable({rows, variant, label, platform = 'desktop', columns: suppliedColumns, sort, onSort, startIndex = 0, totalCount = rows.length, height, onWindowChange, className, discNumber, ...actions}: TrackTableProps) {
@@ -61,10 +61,10 @@ export function TrackTable({rows, variant, label, platform = 'desktop', columns:
   const cell = (row: TrackRowData, column: TrackColumn) => {
     switch (column.id) {
       case 'number': return <span className={styles.trackNumber}>{actions.renderSelection && <span className={styles.trackSelection}>{actions.renderSelection(row)}</span>}
-        <button type="button" className={styles.trackPlay} onClick={() => actions.onPlay(row.id)} aria-label={t('next.browse.play', {title: row.text.title})}>
+        <button type="button" className={styles.trackPlay} disabled={row.playable === false} onClick={() => actions.onPlay(row.id)} aria-label={t('next.browse.play', {title: row.text.title})}>
           {row.playing ? <Levels/> : row.done ? <Icon name="i-check" size={18}/> : <><span className={styles.trackOrdinal}>{row.number === undefined ? undefined : defaultI18n.number(row.number)}</span><Icon name="i-play" size={16} className={styles.ordinalPlay}/></>}
         </button></span>;
-      case 'title': return <button type="button" className={styles.trackTitle} onClick={() => actions.onPlay(row.id)}>
+      case 'title': return <button type="button" className={styles.trackTitle} disabled={row.playable === false} onClick={() => actions.onPlay(row.id)}>
         {row.artwork && <span className={styles.trackArtwork}>{row.artwork}</span>}<span className={styles.trackText}><b>{row.text.title}</b>
           {variant === 'top-songs' && row.text.caption.some(part => part.id === 'album') && <small><Parts parts={row.text.caption.filter(part => part.id === 'album')}/></small>}
           {row.current && row.progress !== undefined && <span className={styles.chapterTimeline}><span className={styles.chapterProgress} aria-hidden="true"><i style={{width: `${Math.max(0, Math.min(1, row.progress)) * 100}%`}}/></span>{row.remaining && <small>{row.remaining.text}</small>}</span>}
