@@ -21,7 +21,7 @@ export function FolderPicker({open, onOpenChange, api, onChoose, onChooseMany, i
     const next = {}; activeAttempt.current = next; setAttempt(next);
     setChosen([...new Set(initialPaths ?? [])].slice(0, 64)); setTyping(false); setPage(undefined);
     return () => {if (activeAttempt.current === next) activeAttempt.current = undefined; request.current?.abort();};
-  }, [open, api, onChoose, onChooseMany]);
+  }, [open, api, onChoose, onChooseMany, initialPaths]);
   const current = () => open && !!attempt && activeAttempt.current === attempt;
   const [page, setPage] = useState<Awaited<ReturnType<typeof browseServerFilesystem>>>();
   const [typed, setTyped] = useState(''), [failed, setFailed] = useState(false), [busy, setBusy] = useState(false);
@@ -66,9 +66,9 @@ export function FolderPicker({open, onOpenChange, api, onChoose, onChooseMany, i
     }
   }, [api]);
   useEffect(() => {
-    if (open) { setShowHidden(false); void read(undefined); }
+    if (open && attempt && activeAttempt.current === attempt) { setShowHidden(false); void read(undefined); }
     return () => { request.current?.abort(); request.current = undefined; };
-  }, [open, read]);
+  }, [open, read, attempt]);
   const changeOpen = (next: boolean) => {
     if (!current()) return;
     if (!next) { activeAttempt.current = undefined; request.current?.abort(); request.current = undefined; }
