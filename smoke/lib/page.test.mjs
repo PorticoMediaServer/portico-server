@@ -32,3 +32,16 @@ test('decoded, ready, unpaused advancing video retains measured playback values'
   assert.equal(verdict.duration, 10);
   assert.deepEqual(verdict.readings, readings);
 });
+
+for (const [name, readings, ok] of [
+  ['no samples', [], false],
+  ['one decoded instant', [{...frame}], false],
+  ['below half-second advance', [{...frame, currentTime: 0}, {...frame, currentTime: 0.49}], false],
+  ['half-second advance', [{...frame, currentTime: 0}, {...frame, currentTime: 0.5}], true],
+]) {
+  test(`checkpoint playback threshold: ${name}`, () => {
+    const verdict = playbackEvidence(readings);
+    assert.equal(verdict.ok, ok);
+    if (ok) assert.equal(verdict.advanced, 0.5);
+  });
+}
