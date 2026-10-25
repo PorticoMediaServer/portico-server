@@ -7,7 +7,8 @@ export const defaultAudiobookPreferences:AudiobookPreferences=Object.freeze({ski
  * unsupported value is refused, never silently turned into another choice. */
 export function audiobookPreferences(snapshot:PreferenceSnapshot):AudiobookPreferences {
  const read=(key:string,fallback:number,choices:readonly number[])=>{
-  const value=snapshot.effective[key]??snapshot.registry.fields.find(field=>field.key===key)?.default??fallback;
+  const field=snapshot.registry.fields.find(field=>field.key===key);
+  const value=Object.hasOwn(snapshot.effective,key)?snapshot.effective[key]:field!==undefined?field.default:fallback;
   if(typeof value!=='number'||!choices.includes(value))throw new Error('invalid_audiobook_preference');
   return value;
  };
