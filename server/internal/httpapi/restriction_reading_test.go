@@ -52,6 +52,17 @@ func readingRestrictionCheck(pattern string) func(*testing.T) {
 			return manifest
 		}
 		manifest := open()
+		const annotationID, annotationNote = "matrix-annotation", "Private matrix annotation note"
+		annotationBody := func(revision int64) map[string]any {
+			return map[string]any{"expectedRevision": revision, "operation": "upsert", "id": annotationID,
+				"kind": "bookmark", "location": map[string]any{"format": "pdf", "pageIndex": 0, "progression": .25}, "note": annotationNote}
+		}
+		if pattern == "GET /v1/reading/sessions/{sessionId}/annotations" {
+			w := readingHTTP(t, h, "PUT", "/v1/reading/sessions/"+manifest.SessionID+"/annotations", token, manifest.Revision, annotationBody(0))
+			if w.Code != 200 {
+				t.Fatal("seed actual private annotation", w.Code, w.Body.String())
+			}
+		}
 		// The prepare route is also exercised as an ordinary member, without
 		// an Owner/main-profile or Hosted grant. Its lifecycle is not shared
 		// with the restricted profile used for the rest of this probe.
@@ -91,6 +102,10 @@ func readingRestrictionCheck(pattern string) func(*testing.T) {
 			path := strings.NewReplacer("{itemId}", r.item, "{sessionId}", m.SessionID, "{pageIndex}", "0").Replace(template)
 			var body any
 			switch {
+			case strings.HasSuffix(template, "/annotations") && method == "PUT":
+				body = annotationBody(expectedRevision)
+			case strings.HasSuffix(template, "/file-save"):
+				body = ReadingFileSaveRequest{OperationID: "3f5a1f1c-1cb4-4c72-a063-bd00dc16b36e"}
 			case strings.HasSuffix(template, "/assets"):
 				if len(m.Spine) == 0 {
 					t.Fatal("actual EPUB spine is absent")
@@ -130,7 +145,7 @@ func readingRestrictionCheck(pattern string) func(*testing.T) {
 		}
 		assertPrivate := func(w *httptest.ResponseRecorder) {
 			t.Helper()
-			for _, hidden := range []string{r.item, r.source, r.library, manifest.SessionID, r.path, manifest.Metadata.Title} {
+			for _, hidden := range []string{r.item, r.source, r.library, manifest.SessionID, r.path, manifest.Metadata.Title, annotationID, annotationNote} {
 				if hidden != "" && strings.Contains(w.Body.String(), hidden) {
 					t.Errorf("refusal leaked hidden Reading identity %q: %s", hidden, w.Body.String())
 				}
@@ -176,6 +191,12 @@ func readingRestrictionCheck(pattern string) func(*testing.T) {
 			if w.Code != want {
 				t.Fatalf("visible Reading control: %d %s", w.Code, w.Body.String())
 			}
+			if template == "/v1/reading/sessions/{sessionId}/annotations" && method == "GET" && !strings.Contains(w.Body.String(), annotationNote) {
+				t.Fatal("visible annotation control omitted its actual private note")
+			}
+			if strings.HasSuffix(template, "/file-save") && (w.Body.Len() == 0 || w.Header().Get("X-Reading-Item") != r.item || w.Header().Get("X-Reading-Source") != r.source) {
+				t.Fatal("visible file-save control omitted the original publication")
+			}
 			if isList || strings.Contains(template, "{itemId}") {
 				if !strings.Contains(w.Body.String(), r.source) {
 					t.Fatal("visible list/version omitted actual source")
@@ -219,7 +240,7 @@ func readingRestrictionCheck(pattern string) func(*testing.T) {
 			case strings.Contains(template, "{itemId}"):
 				path := "/v1/items/" + r.item + "/reading/versions"
 				assertSameRefusal(readingHTTP(t, h, method, path, token, "", nil), readingHTTP(t, h, method, strings.Replace(path, r.item, absentTwin(r.item), 1), token, "", nil))
-			case method == "POST":
+			case method == "POST" && template == "/v1/reading/sessions":
 				for _, absent := range []ReadingSessionRequest{{absentTwin(r.item), r.source}, {r.item, absentTwin(r.source)}} {
 					assertSameRefusal(request(token, manifest), readingHTTP(t, h, method, template, token, "", absent))
 				}
@@ -276,25 +297,44 @@ func readingRestrictionCheck(pattern string) func(*testing.T) {
 
 func readingRestrictionProgress(t *testing.T, r *readingFixture) string {
 	t.Helper()
-	rows, err := r.f.db.Query(`SELECT owner_key,item_id,asset_id,source_revision,format,cfi,section,page_index,progression,revision,observed_at FROM reading_progress ORDER BY owner_key,item_id,asset_id`)
-	if err != nil {
-		t.Fatal(err)
+	// Keep the original progress oracle and also prove that refused annotation
+	// requests cannot change a private set, entry, or PDF geometry.
+	queries := []string{
+		`SELECT owner_key,item_id,asset_id,source_revision,format,cfi,section,page_index,progression,revision,observed_at FROM reading_progress ORDER BY owner_key,item_id,asset_id`,
+		`SELECT * FROM reading_annotation_sets ORDER BY owner_key,item_id,asset_id,source_revision`,
+		`SELECT * FROM reading_annotations ORDER BY owner_key,item_id,asset_id,source_revision,id`,
+		`SELECT * FROM reading_annotation_rects ORDER BY owner_key,item_id,asset_id,source_revision,annotation_id,ordinal`,
 	}
-	defer rows.Close()
-	var state [][]any
-	for rows.Next() {
-		values := make([]any, 11)
-		pointers := make([]any, len(values))
-		for i := range values {
-			pointers[i] = &values[i]
-		}
-		if err = rows.Scan(pointers...); err != nil {
+	var state [][][]any
+	for _, query := range queries {
+		rows, err := r.f.db.Query(query)
+		if err != nil {
 			t.Fatal(err)
 		}
-		state = append(state, values)
-	}
-	if err = rows.Err(); err != nil {
-		t.Fatal(err)
+		columns, err := rows.Columns()
+		if err != nil {
+			rows.Close()
+			t.Fatal(err)
+		}
+		var table [][]any
+		for rows.Next() {
+			values := make([]any, len(columns))
+			pointers := make([]any, len(values))
+			for i := range values {
+				pointers[i] = &values[i]
+			}
+			if err = rows.Scan(pointers...); err != nil {
+				rows.Close()
+				t.Fatal(err)
+			}
+			table = append(table, values)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		state = append(state, table)
 	}
 	raw, err := json.Marshal(state)
 	if err != nil {
