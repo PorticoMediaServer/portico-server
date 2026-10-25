@@ -14,4 +14,6 @@
 .seriesHeading span { font-size: 14px; font-weight: 600; color: var(--color-text-tertiary); }
 @media (max-width: 1023px) { .seriesHeading { margin-inline: 20px; } }
 
-.dateFilter { display: flex; align-items: center; gap: 12px; margin: 20px var(--shell-gutter, var(--gutter-desktop)); }
+.dateFilter { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 20px var(--shell-gutter, var(--gutter-desktop)); }
+
+.dateFilter > div { flex: 1 1 180px; min-width: 0; max-width: 320px; }
