@@ -1,0 +1,306 @@
+package reading
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"log"
+	"strconv"
+	"time"
+
+	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/identity"
+	"portico.local/server/internal/sourceaccess"
+)
+
+// Text count preparation covers unopened EPUB publications. It is the same
+// complete-text counter and the same reading_text_counts row/revision/rule
+// custody as a viewer's own open; it is not a second estimator, a sample or a
+// learned pace. Only the opener's authority differs: a registered background
+// worker instead of a viewer session.
+//
+// The pending set is the canonical primary EPUB of an authorized, enabled local
+// source whose exact inventory object/revision has no count row yet. That makes
+// the pass resumable from derived state: adopted rows disappear, so a restart
+// or a later pass continues where the last one stopped without a queue table.
+// A source change makes the row's inventory object or revision differ, so the
+// publication becomes pending again and the new bytes are counted afresh.
+const (
+	defaultTextCountWindow = 64
+	defaultTextCountRest   = 10 * time.Minute
+	textCountBudget        = 2 * time.Minute
+)
+
+// The canonical object mirrors selectPublication's ORDER BY a.id,o.id LIMIT 1:
+// one asset has one selected inventory object, so the pending join and the
+// opener can never disagree about which row a count belongs to.
+const textCountCanonicalObject = `o.id=(SELECT o2.id FROM inventory_objects o2 INDEXED BY inventory_objects_asset WHERE o2.asset_id=a.token AND o2.retired=0 AND o2.state='available' AND o2.unsupported_reason='' AND o2.root_incarnation=s.incarnation AND o2.size=a.size AND o2.modified_ns=a.modified_ns ORDER BY o2.id LIMIT 1)`
+
+// Bounded, indexed order by item id. Remote sources are excluded rather than
+// approximating a full-file read through a viewer session: an unadmitted remote
+// publication simply stays unknown. The reader and Discover queries already
+// exclude unknown or stale facts.
+const textCountPendingSQL = `SELECT e.id,pid(e.public_id),cl.library_id,a.token
+ FROM catalog_entities e
+ CROSS JOIN catalog_libraries cl ON cl.id=e.library_id
+ CROSS JOIN libraries lib ON lib.id=cl.library_id
+ CROSS JOIN reading_publications p ON p.item_id=e.id AND p.asset_id=` + primaryPublicationSQL + `
+ CROSS JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id
+ CROSS JOIN catalog_assets a ON a.id=link.asset_id
+ CROSS JOIN inventory_objects o ON o.asset_id=a.token
+ CROSS JOIN library_sources s ON s.id=o.source_id AND s.library_id=cl.library_id
+ CROSS JOIN inventory_item_availability available ON available.item_id=e.id AND available.asset_id=a.token
+ LEFT JOIN reading_text_counts c ON c.item_id=p.item_id AND c.asset_id=p.asset_id AND c.inventory_object_id=o.id AND c.source_revision=o.revision AND c.rule_version=?
+ WHERE e.retired=0 AND cl.retired=0 AND e.kind=20 AND lib.kind='book' AND p.format='epub'
+ AND s.kind='local' AND ` + publicationEligible + `
+ AND ` + textCountCanonicalObject + `
+ AND c.item_id IS NULL AND e.id>? ORDER BY e.id LIMIT ?`
+
+// TextCountPreparation is one worker.Run step over the pending canonical EPUBs.
+// It is woken by catalog/source writes and rests after a complete pass, so an
+// unreadable book cannot spin the worker or block another library's queue.
+type TextCountPreparation struct {
+	DB      *sql.DB
+	Prepare func(context.Context, string, string, string) error
+	// Admission is the existing background policy (pause and maintenance
+	// windows). Preparation is descriptive metadata work, so it uses the
+	// metadata-refresh task rather than adding a policy name.
+	Admission func(context.Context, *sql.Tx, string) (bool, error)
+	Window    int
+	Rest      time.Duration
+
+	cursor   int64
+	passing  bool
+	finished time.Time
+	logged   int
+}
+
+type textCountCandidate struct {
+	id                 int64
+	item, libraryToken string
+	asset              string
+}
+
+// Step processes at most one indexed window and reports the delay before the
+// next step. Every item is attempted once per pass; failures stay unknown and
+// are retried after the pass rest, never cached as a zero or a permanent NULL.
+func (p *TextCountPreparation) Step(ctx context.Context) time.Duration {
+	if p == nil || p.DB == nil || p.Prepare == nil {
+		return 0
+	}
+	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
+	if p.Admission != nil {
+		allowed, err := p.Admission(ctx, nil, "metadata-refresh")
+		if err != nil {
+			log.Printf("Reading text counts: admission: %v", err)
+			return time.Minute
+		}
+		if !allowed {
+			return time.Minute
+		}
+	}
+	window, rest := p.Window, p.Rest
+	if window <= 0 {
+		window = defaultTextCountWindow
+	}
+	if rest <= 0 {
+		rest = defaultTextCountRest
+	}
+	if !p.passing {
+		if !p.finished.IsZero() && time.Since(p.finished) < rest {
+			return rest - time.Since(p.finished)
+		}
+		p.passing, p.cursor, p.logged = true, 0, 0
+	}
+	rows, err := p.DB.QueryContext(ctx, textCountPendingSQL, readingTextRuleVersion, p.cursor, window)
+	if err != nil {
+		log.Printf("Reading text counts: %v", err)
+		return time.Minute
+	}
+	todo := []textCountCandidate{}
+	for rows.Next() {
+		var candidate textCountCandidate
+		if err = rows.Scan(&candidate.id, &candidate.item, &candidate.libraryToken, &candidate.asset); err != nil {
+			break
+		}
+		todo = append(todo, candidate)
+	}
+	if err == nil {
+		err = rows.Err()
+	}
+	rows.Close()
+	if err != nil {
+		log.Printf("Reading text counts: %v", err)
+		return time.Minute
+	}
+	for _, candidate := range todo {
+		if ctx.Err() != nil {
+			return 0
+		}
+		if !dbwork.WaitBackground(ctx) {
+			return 0
+		}
+		p.cursor = candidate.id
+		bounded, cancel := context.WithTimeout(ctx, textCountBudget)
+		err = p.Prepare(bounded, candidate.libraryToken, candidate.item, candidate.asset)
+		cancel()
+		if err != nil {
+			if ctx.Err() != nil {
+				return 0
+			}
+			if p.logged < 5 {
+				p.logged++
+				log.Printf("Reading text counts: %s/%s not prepared: %v", candidate.libraryToken, candidate.item, err)
+			}
+		}
+	}
+	if len(todo) < window {
+		p.passing, p.finished = false, time.Now()
+		return 0
+	}
+	return time.Millisecond
+}
+
+// ResolveBackground selects the same canonical primary publication a viewer's
+// open would, without inventing a principal or borrowing an expired session.
+// The worker's scope is the catalog's own enabled, healthy local source and its
+// current inventory object; it passes through every publicationEligible fence.
+func (s *Service) ResolveBackground(ctx context.Context, library, item, asset string) (Selection, error) {
+	if s == nil || s.DB == nil || s.Storage == nil {
+		return Selection{}, ErrUnavailable
+	}
+	g, err := dbwork.BeginSnapshot(ctx, s.DB)
+	if err != nil {
+		return Selection{}, err
+	}
+	defer g.Rollback()
+	return s.resolveBackgroundTx(ctx, g.Tx(), library, item, asset)
+}
+
+func (s *Service) resolveBackgroundTx(ctx context.Context, tx *sql.Tx, library, item, asset string) (Selection, error) {
+	var v Selection
+	v.ItemID = item
+	err := tx.QueryRowContext(ctx, `SELECT `+publicationFields+` FROM catalog_entities e`+publicationJoins+`
+ WHERE e.public_id=pid_blob(?) AND a.token=? AND cl.library_id=? AND p.asset_id=`+primaryPublicationSQL+` AND `+publicationEligible+` ORDER BY a.id,o.id LIMIT 1`, item, asset, library).Scan(selectionColumns(&v)...)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Selection{}, ErrUnavailable
+	}
+	if err != nil {
+		return Selection{}, err
+	}
+	if err = s.selectionValid(v); err != nil {
+		return Selection{}, err
+	}
+	v.SourceID = v.token
+	v.Revision = v.fence()
+	return v, nil
+}
+
+// validateBackground rechecks the same catalog/fence tuple after bytes, and
+// during source extents, so a changed source cannot adopt a count read from
+// older bytes.
+func (s *Service) validateBackground(ctx context.Context, selected Selection) error {
+	now, err := s.ResolveBackground(ctx, selected.library, selected.ItemID, selected.SourceID)
+	if err != nil {
+		return err
+	}
+	if now.Revision != selected.Revision {
+		return ErrChanged
+	}
+	return nil
+}
+
+// OpenBackground owns a fresh source lease for the preparation worker. Its
+// lifetime is the worker step, never a viewer session; validation is the
+// catalog/fence tuple above.
+func (s *Service) OpenBackground(ctx context.Context, v Selection) (*Source, error) {
+	if s == nil || s.Storage == nil {
+		return nil, ErrUnavailable
+	}
+	// Full-file counts through a viewer-bound remote session are not admitted
+	// here. The publication stays unknown unless an authorized remote read path
+	// is added for the worker.
+	if s.Storage.IsRemote(v.path) {
+		return nil, ErrUnavailable
+	}
+	var roots *sourceaccess.Registry
+	if s.Mounts == nil {
+		roots = sourceaccess.New(s.Storage, nil)
+	} else {
+		roots = sourceaccess.New(s.Storage, s.Mounts)
+	}
+	validate := func(ctx context.Context) error { return s.validateBackground(ctx, v) }
+	lease, err := roots.Borrow(ctx, sourceaccess.Authority{OwnerID: "reading-prepare:" + identity.Token(), RootID: v.rootID, RootPath: v.root, RelativePath: v.relative, Revision: v.incarnation + ":" + strconv.FormatInt(v.generation, 10), Lifetime: ctx, Validate: validate})
+	if err != nil {
+		roots.Close()
+		return nil, err
+	}
+	r, err := s.Storage.OpenObservedPlayback(ctx, lease)
+	if err != nil {
+		roots.Close()
+		return nil, err
+	}
+	f := &Source{Selection: v, ctx: ctx, service: s, reader: r, roots: roots, validateCurrent: validate}
+	o, err := r.Observe(ctx)
+	if err == nil {
+		err = f.matchInventory(o)
+	}
+	if err == nil {
+		err = validate(ctx)
+	}
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	f.observed = o
+	return f, nil
+}
+
+// PrepareTextCount counts one canonical unopened EPUB with the existing
+// complete counter and adopts it under the same row/revision/rule custody as an
+// open. It never writes a count for bytes it could not read completely.
+func (s *Service) PrepareTextCount(ctx context.Context, library, item, asset string) error {
+	v, err := s.ResolveBackground(ctx, library, item, asset)
+	if err != nil {
+		return err
+	}
+	if v.Format != "epub" {
+		return nil
+	}
+	cached, err := s.textCountCached(ctx, v)
+	if err != nil || cached {
+		return err
+	}
+	f, err := s.OpenBackground(ctx, v)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	e, err := f.epub()
+	if err != nil {
+		return err
+	}
+	count, err := countEPUBText(ctx, e)
+	if err != nil {
+		return err
+	}
+	if err = f.Validate(); err != nil {
+		return err
+	}
+	gate, err := dbwork.Begin(ctx, s.DB, dbwork.ClassBackgroundMedia)
+	if err != nil {
+		return err
+	}
+	defer gate.Rollback()
+	current, err := s.resolveBackgroundTx(ctx, gate.Tx(), library, item, asset)
+	if err != nil {
+		return err
+	}
+	if current.Revision != v.Revision || current.inventoryRow != v.inventoryRow || current.object != v.object || current.inventory != v.inventory {
+		return ErrChanged
+	}
+	if err = adoptTextCountRow(ctx, gate.Tx(), current, count); err != nil {
+		return err
+	}
+	return gate.Commit()
+}
