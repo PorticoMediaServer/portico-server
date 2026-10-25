@@ -11,6 +11,10 @@
 .option { margin: 0 0 12px; padding: 20px 22px; border-radius: 14px; background: rgba(7,16,24,.5); box-shadow: inset 0 0 0 1px var(--color-line); }
 .option p { margin: 0 0 14px; font-size: 14.5px; line-height: 1.5; color: var(--color-text-secondary); overflow-wrap: anywhere; }
 .continueRow { display: flex; margin: 20px 0 0; }
+/* A real long server name in "Continue to {server}" wraps and grows the button;
+   short names keep the drawn size. */
+.continueRow .continueButton { height: auto; min-height: var(--control-height); padding-top: 10px; padding-bottom: 10px; }
+.continueRow .continueButton > span { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
 .optionButton { display: block; width: 100%; margin: 26px 0 0; padding: 20px 22px; border: 0; border-radius: 14px; background: rgba(7,16,24,.5); box-shadow: inset 0 0 0 1px var(--color-line); color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .optionButton b { display: block; margin-bottom: 4px; font-size: 17px; font-weight: 700; }
 .optionButton span { display: block; font-size: 14.5px; line-height: 1.5; color: var(--color-text-secondary); overflow-wrap: anywhere; }

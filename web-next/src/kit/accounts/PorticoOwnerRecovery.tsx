@@ -63,7 +63,7 @@ export function PorticoOwnerRecoveryDone({serverName, busy = false, error, onCha
       <p>{t('accounts.recovery.switchToLocalBody')}</p>
       <Button size="compact" disabled={busy} onClick={onSwitchToLocal}>{t('accounts.recovery.switchToLocal')}</Button>
     </div>
-    <div className={styles.continueRow}><Button variant="primary" loading={busy} disabled={busy} onClick={onContinue}>{t('accounts.recovery.continueServer', {server: serverName})}</Button></div>
+    <div className={styles.continueRow}><Button variant="primary" className={styles.continueButton} loading={busy} disabled={busy} onClick={onContinue}>{t('accounts.recovery.continueServer', {server: serverName})}</Button></div>
     <p className={styles.quiet}>{t('accounts.recovery.ownerSessionLater')}</p>
   </section></PorticoOwnerRecoveryStage>;
 }
