@@ -80,7 +80,14 @@ func TestShowWorkspaceHTTPPermissionAndParentResolution(t *testing.T) {
 	if e = json.Unmarshal(w.Body.Bytes(), &out); e != nil || out.Show.ID != showA.Public || out.Scope.LibraryID != "a" || out.Selected.SeasonID == nil || *out.Selected.SeasonID != seasonA.Public || out.Scope.ViewerFence == "" {
 		t.Fatal(out, e)
 	}
-	for _, bad := range []string{"/v1/libraries/b/show-workspace?showId=" + showB.Public, "/v1/libraries/a/show-workspace?showId=" + showA.Public + "&seasonId=" + seasonB.Public, path + "&seasonId=" + seasonB.Public, path + "&limit=1000", path + "&unknown=1"} {
+	for _, direction := range []string{"asc", "desc"} {
+		ordered := read(path+"&episodeDirection="+direction, session.AccessToken)
+		var workspace catalog.ShowWorkspace
+		if ordered.Code != 200 || json.Unmarshal(ordered.Body.Bytes(), &workspace) != nil || workspace.Episodes.Query.Direction != direction {
+			t.Fatalf("HTTP order not propagated: %d %s", ordered.Code, ordered.Body.String())
+		}
+	}
+	for _, bad := range []string{"/v1/libraries/b/show-workspace?showId=" + showB.Public, "/v1/libraries/a/show-workspace?showId=" + showA.Public + "&seasonId=" + seasonB.Public, path + "&seasonId=" + seasonB.Public, path + "&limit=1000", path + "&unknown=1", path + "&episodeDirection=sideways", path + "&episodeDirection=asc&episodeDirection=desc", path + "&episodeSort=title"} {
 		if w = read(bad, session.AccessToken); w.Code == 200 {
 			t.Fatal("unauthorized/invalid context accepted", bad)
 		}
