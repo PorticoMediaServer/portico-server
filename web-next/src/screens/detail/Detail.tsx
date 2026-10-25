@@ -1,5 +1,5 @@
 import {t, locale, environment as env} from './text';
-import {useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject} from 'react';
+import {useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject} from 'react';
 import type {DetailProjection, FileInfoProjection} from '@core/detail.ts';
 import type {ContentEntry} from '@core/library-content.ts';
 import type {DownloadOptionsView} from '@core/downloads.ts';
@@ -178,9 +178,18 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
   const [files, setFiles] = useState<FileInfoProjection>(), [failed, setFailed] = useState(false);
   const [manage, setManage] = useState<FileInfoAction>(), [rating, setRating] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null), fileRead = useRef<AbortController | undefined>(undefined), width = useShellWidth(), phone = width < 1024;
-  // music-plus: Start radio belongs to this exact title page's own lifetime.
-  const radioLife = useMemo(() => new AbortController(), []);
-  useEffect(() => () => radioLife.abort(), [radioLife]);
+  // music-plus: Start radio's admission lease belongs to this exact menu for this binding and
+  // page, owned by a layout effect so a replayed setup gets a fresh, live lease.
+  type RadioLease = Readonly<{signal: AbortSignal; seedId: string}>;
+  const radioActive = useRef<RadioLease | undefined>(undefined);
+  const [radioLease, setRadioLease] = useState<RadioLease>();
+  useLayoutEffect(() => {
+    const life = new AbortController(), lease: RadioLease = Object.freeze({signal: life.signal, seedId: data.item.id});
+    radioActive.current = lease;
+    setRadioLease(lease);
+    // Synchronous retirement: this lease ends here, and a successor is untouched.
+    return () => {life.abort();if (radioActive.current === lease) radioActive.current = undefined;setRadioLease(current => current === lease ? undefined : current);};
+  }, [binding, data]);
   const versionRead = useRef<AbortController | undefined>(undefined), versionChoice = useRef<AbortController | undefined>(undefined);
   const [versions, setVersions] = useState<Readonly<{data: DetailProjection; options: PlaybackOptions; request: AbortController}>>();
   const downloadAvailable = !!binding.context.effects.download && data.item.available && ['movie', 'episode', 'song', 'audiobook_file'].includes(data.item.kind)
@@ -281,8 +290,8 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
           order — personal first, then playlist, collection and Download — before the version and
           File info block and the owner's own section, with Delete last and destructive. The sheet
           draws each block as its own card, so its separators are the gaps the frame shows. */}
-      {radioSeed && <MenuGroup><StartRadioMenuItem context={binding.context} seed={radioSeed} signal={radioLife.signal}
-        current={() => binding.context.isCurrent() && binding.service.getSnapshot().phase === 'ready' && binding.service.getSnapshot().data === data} /></MenuGroup>}
+      {radioSeed && radioLease && radioLease.seedId === data.item.id && <MenuGroup><StartRadioMenuItem context={binding.context} seed={radioSeed} signal={radioLease.signal}
+        current={() => radioActive.current === radioLease && !radioLease.signal.aborted && binding.context.isCurrent() && binding.service.getSnapshot().phase === 'ready' && binding.service.getSnapshot().data === data} /></MenuGroup>}
       {everyoneRows && <MenuGroup>
         {phone && offered('watched') && <MenuItem icon="i-check" selected={data.personal.watched} onSelect={() => { void binding.mutate(data, {action: 'watched', value: !data.personal.watched}).catch(binding.context.effects.reportError); }}>{t(data.personal.watched ? 'title.markUnwatched' : 'title.markWatched')}</MenuItem>}
         {offered('favorite') && <MenuItem icon="i-heart" selected={data.personal.favorite} onSelect={() => { void binding.mutate(data, {action: 'favorite', value: !data.personal.favorite}).catch(binding.context.effects.reportError); }}>{t(data.personal.favorite ? 'entry.removeFromFavorites' : 'entry.addToFavorites')}</MenuItem>}
