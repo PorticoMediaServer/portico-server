@@ -30,7 +30,7 @@ export function MissingTitles({source, isCurrent, artwork}: Readonly<{source: Se
   };
   return <section id="storage.missingNow" className={styles.section}>
     <h3>{t('next.settingsSpec.server.libraries.groups.1.rows.1.label')}</h3>
-    {state.phase === 'error' && <p role="alert">{t('error.unavailable')} <Button size="xs" disabled={busy} onClick={() => {if (isCurrent()) void source.refresh();}}>{t('action.refresh')}</Button></p>}
+    {state.error && <p role="alert">{t(state.removed ? 'error.unavailable' : 'error.unconfirmedChange')} <Button size="xs" disabled={busy} onClick={() => {if (isCurrent()) void source.refresh();}}>{t('action.refresh')}</Button></p>}
     {state.removed && <p role="status" className={styles.note}>{t('web.missingTitles.removed', {count: state.removed.titles})}</p>}
     {!page && busy && <p role="status">{t('next.settings.loading')}</p>}
     {page && <div className={styles.box}><ul className={styles.list}>{page.items.map(entry => <li key={entry.id} className={styles.row}>

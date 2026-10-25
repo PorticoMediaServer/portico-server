@@ -1,7 +1,7 @@
 import {listMissingTitles, parseMissingEmptied, type MissingTitlesPage, type MissingEmptied, type TitleIdentityApi} from '@core/title-identity.ts';
 import {routePath} from '../../../../../packages/contracts/src/routes.ts';
 
-export type MissingSnapshot = Readonly<{phase: 'idle'|'loading'|'ready'|'error'; page?: MissingTitlesPage; busy: boolean; removed?: MissingEmptied}>;
+export type MissingSnapshot = Readonly<{phase: 'idle'|'loading'|'ready'|'error'; page?: MissingTitlesPage; busy: boolean; removed?: MissingEmptied; error?: boolean}>;
 const empty: MissingSnapshot = Object.freeze({phase: 'idle', busy: false});
 const terminal = (error: unknown) => {
   const {status, code} = (error && typeof error === 'object' ? error : {}) as {status?: number; code?: string};
@@ -24,20 +24,19 @@ export class SettingsMissingSource {
   subscribe = (listener: () => void) => {this.listeners.add(listener);return () => {this.listeners.delete(listener);};};
   private publish(patch: Partial<MissingSnapshot>) {if (this.current()) {this.state = Object.freeze({...this.state, ...patch});for (const listener of this.listeners) listener();}}
   private failure(error: unknown) {
-    if (terminal(error)) {this.read?.abort();this.lifetime.abort();this.state = empty;for (const listener of this.listeners) listener();}
-    this.reportError(error);
+    if (terminal(error)) {this.read?.abort();this.lifetime.abort();this.state = empty;for (const listener of this.listeners) listener();this.reportError(error);}
   }
-  load = async (cursor = ''): Promise<void> => {
+  load = async (cursor = '', keepError = false): Promise<void> => {
     if (!this.current() || this.removing) return;
     this.read?.abort();const read = new AbortController();this.read = read;
-    this.publish({phase: 'loading'});
+    this.publish({phase: 'loading', error: keepError});
     if (!this.ownsRead(read)) return;
     try {
       const page = await listMissingTitles(this.api, {cursor: cursor || undefined, limit: 100}, read.signal);
       if (!this.ownsRead(read)) return;
       this.cursor = cursor;this.publish({phase: 'ready', page});
     } catch (error) {
-      if (this.ownsRead(read)) {this.publish({phase: 'error'});this.failure(error);}
+      if (this.ownsRead(read)) {this.publish({phase: 'error', error: true});this.failure(error);}
     }
   };
   refresh = () => this.load(this.cursor);
@@ -45,7 +44,7 @@ export class SettingsMissingSource {
    * that confirmation; the owner must inspect and confirm its new count. */
   remove = async (page: MissingTitlesPage, typed: string): Promise<void> => {
     if (!this.current() || this.removing || this.state.phase !== 'ready' || this.state.page !== page || !page.total || typed !== String(page.total)) return;
-    this.removing = true;this.read?.abort();this.read = undefined;this.publish({busy: true, removed: undefined});
+    this.removing = true;this.read?.abort();this.read = undefined;this.publish({busy: true, removed: undefined, error: false});
     try {
       if (!this.current() || !this.removing) return;
       const removed = parseMissingEmptied(await this.api.request(routePath('empty_missing_titles'), 'POST', {}, this.lifetime.signal));
@@ -54,9 +53,9 @@ export class SettingsMissingSource {
       // explicit typed confirmation for any remaining work.
       this.publish({removed, page: undefined, phase: 'idle'});
     } catch (error) {
-      if (this.current()) {this.publish({page: undefined, phase: 'error'});this.failure(error);}
+      if (this.current()) {this.publish({page: undefined, phase: 'error', error: true});this.failure(error);}
     } finally {this.removing = false;this.publish({busy: false});}
-    if (this.current()) await this.load();
+    if (this.current()) await this.load('', this.state.error);
   };
   dispose = () => {this.read?.abort();this.lifetime.abort();this.state = empty;this.listeners.clear();};
 }
