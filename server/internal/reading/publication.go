@@ -15,6 +15,7 @@ import (
 )
 
 type Publication struct {
+	cover      func() ([]byte, error)
 	Conversion *MobiProvenance
 	Sequential bool
 	Selection  Selection
@@ -44,6 +45,9 @@ func Inspect(f *Source) (Publication, error) {
 		out.Metadata.ExplicitPublicationType = e.Metadata.ExplicitPublicationType
 		out.Metadata.PublicationTypeField, out.Metadata.PublicationTypeRaw, out.Metadata.PublicationTypeComplete = e.Metadata.PublicationTypeField, e.Metadata.PublicationTypeRaw, e.Metadata.PublicationTypeComplete
 		out.EmbeddedAuthor = acceptedEmbeddedAuthor(e.Metadata.Author)
+		if e.CoverResource != "" {
+			out.cover = func() ([]byte, error) { return e.archive.read(f.ctx, e.CoverResource, maxAutomaticCover) }
+		}
 		out.Resources = e.Resources
 		out.Spine = e.Spine
 		out.Contents, err = e.Contents(f.ctx)
@@ -59,6 +63,9 @@ func Inspect(f *Source) (Publication, error) {
 		out.Metadata.ExplicitPublicationType = c.Metadata.ExplicitPublicationType
 		out.Metadata.PublicationTypeField, out.Metadata.PublicationTypeRaw, out.Metadata.PublicationTypeComplete = c.Metadata.PublicationTypeField, c.Metadata.PublicationTypeRaw, c.Metadata.PublicationTypeComplete
 		out.EmbeddedAuthor = acceptedEmbeddedAuthor(c.Metadata.Author)
+		if len(c.Names) > 0 {
+			out.cover = func() ([]byte, error) { return c.readMember(f.ctx, c.Names[0], maxAutomaticCover) }
+		}
 		out.PageNames = c.Names
 	case "pdf":
 		if err := f.CheckPDF(); err != nil {

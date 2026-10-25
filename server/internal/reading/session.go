@@ -240,6 +240,15 @@ func (s *Service) Prepare(ctx context.Context, p identity.Principal, item, sourc
 	if err != nil {
 		return nil, Publication{}, err
 	}
+	if cover == "" && s.AdoptCover != nil && document.cover != nil {
+		if err = s.adoptPublicationCover(f, document); err != nil {
+			return nil, Publication{}, err
+		}
+		values, cover, err = s.publicationAttributions(ctx, p, f.Selection)
+		if err != nil {
+			return nil, Publication{}, err
+		}
+	}
 	document.Metadata.CoverURL = cover
 	document.PublicationType = values.PublicationType
 	if values.Author != nil {

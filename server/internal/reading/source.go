@@ -36,6 +36,7 @@ type Service struct {
 	Visible     Visibility
 	SeriesScope SeriesScopeResolver
 	Mobi        *MobiConverter
+	AdoptCover  CoverAdopter
 	// Changed queues metadata inventory for the actual captured folder source.
 	// It runs only outside source/DB locks, never as content-read authority.
 	Changed        func(library, folderSource string)

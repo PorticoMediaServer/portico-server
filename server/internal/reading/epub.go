@@ -25,14 +25,15 @@ type Metadata struct {
 	PublicationTypeComplete                                               bool
 }
 type EPUB struct {
-	archive    *archive
-	Resources  []Resource
-	Metadata   Metadata
-	Package    string
-	Spine      []string
-	allowed    map[string]string
-	navigation []string
-	ncx        string
+	CoverResource string
+	archive       *archive
+	Resources     []Resource
+	Metadata      Metadata
+	Package       string
+	Spine         []string
+	allowed       map[string]string
+	navigation    []string
+	ncx           string
 }
 
 type containerXML struct {
@@ -47,7 +48,11 @@ type packageXML struct {
 		Title    string        `xml:"title"`
 		Creators []epubCreator `xml:"http://purl.org/dc/elements/1.1/ creator"`
 		Language string        `xml:"language"`
-		Types    []struct {
+		Meta     []struct {
+			Name    string `xml:"name,attr"`
+			Content string `xml:"content,attr"`
+		} `xml:"http://www.idpf.org/2007/opf meta"`
+		Types []struct {
 			Value string `xml:",chardata"`
 			Inner string `xml:",innerxml"`
 		} `xml:"http://purl.org/dc/elements/1.1/ type"`
@@ -217,6 +222,7 @@ func openEPUBArchive(ctx context.Context, a *archive) (*EPUB, error) {
 			}
 		}
 	}
+	e.CoverResource = epubCover(p, ids, e.allowed)
 	for _, item := range p.Spine.Items {
 		name := ids[item.ID]
 		if name == "" || e.allowed[name] != "application/xhtml+xml" {
