@@ -32,7 +32,7 @@ export class WatchReceivers implements PlayOnReceiversPort {
     // the rows stay hidden from a send rather than inventing a device identity.
     this.deviceId = identity?.installationId ?? '';
     this.handoff = new HandoffController({
-      api: {request: async (path, method, body, signal) => {
+      api: {request: async <T,>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T> => {
         const run = (): void => {
           const flight = this.flight;
           if (!flight || !this.options.isCurrent()) throw new DOMException('Playback run retired', 'AbortError');
@@ -43,16 +43,16 @@ export class WatchReceivers implements PlayOnReceiversPort {
         // rolled back after its flight retired. Neither grants, creates or commits.
         if (path === DIRECTORY_PATH) {
           if (!this.options.isCurrent()) throw new DOMException('Playback run retired', 'AbortError');
-          return options.api.request(path, method, body, signal);
+          return options.api.request<T>(path, method, body, signal);
         }
         if (ROLLBACK.test(path)) {
           if (!this.options.isCurrent()) throw new DOMException('Playback run retired', 'AbortError');
-          return options.api.request(path, method, body, signal);
+          return options.api.request<T>(path, method, body, signal);
         }
         // Grant, create, poll and commit belong to one captured flight only.
         run();
         const flight = this.flight;
-        const value = await options.api.request(path, method, body, signal);
+        const value = await options.api.request<T>(path, method, body, signal);
         // The same flight and the same run must still be current before any result is
         // published or committed downstream.
         if (!flight || this.flight !== flight) throw new DOMException('Playback run retired', 'AbortError');
