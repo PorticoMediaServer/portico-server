@@ -279,8 +279,8 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   };
   const updateDraft = (patch: Partial<WebDavDraft>) => {testAttempt.current++;setResult(undefined);setError('');setDraft(current => ({...current, ...patch}));};
   const updateRclone = (patch: Partial<RcloneDraft>) => {testAttempt.current++;setRcloneResult(undefined);setError('');setRclone(current => ({...current, ...patch}));};
-  useEffect(() => {active.current=open;if(open)reset();else{retireOAuthRef.current();lifetime.current++;pending.current=false;setDraft(emptyDraft);setRclone(emptyRclone);setResult(undefined);setRcloneResult(undefined);setError('');}}, [open]);
-  useEffect(() => () => {active.current=false;lifetime.current++;retireOAuthRef.current();}, []);
+  useEffect(() => {active.current=open;if(open)reset();else{retireOAuthCurrentRef.current();lifetime.current++;pending.current=false;setDraft(emptyDraft);setRclone(emptyRclone);setResult(undefined);setRcloneResult(undefined);setError('');}}, [open]);
+  useEffect(() => () => {active.current=false;lifetime.current++;retireOAuthCurrentRef.current();}, []);
   const test = async () => {
     const guard = attemptGuard();
     if (pending.current || !guard()) return;
@@ -323,7 +323,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   };
   const chooseSourceKind = (next: SourceKind) => {
     if (next === sourceKind) return;
-    testAttempt.current++;retireOAuthRef.current();setResult(undefined);setRcloneResult(undefined);setS3Tested(undefined);setDriveTested(undefined);setCloudTested(undefined);invalidateS3();invalidateDrive();invalidateCloud();setError('');setSourceKind(next);
+    testAttempt.current++;retireOAuthCurrentRef.current();setResult(undefined);setRcloneResult(undefined);setS3Tested(undefined);setDriveTested(undefined);setCloudTested(undefined);invalidateS3();invalidateDrive();invalidateCloud();setError('');setSourceKind(next);
     if (next === 'rclone' && !program) void loadProgram();
     if (next === 'config' && !configView) void loadConfig();
   };
@@ -335,29 +335,33 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
             : 'next.remoteSources.driveLocationInvalid';
   // One rendered sign-in ticket owns Start/Paste/Status/Cancel and every phase.
   const oauthTicket = useRef<object | null>(null);
-  const oauthPolling = useRef(false);
-  const retireOAuth = () => {
+  const oauthPollPromise = useRef<Promise<void> | null>(null);
+  const oauthClientRef = useRef({id: '', secret: ''});
+  const oauthRenderTicket = oauthTicket.current;
+  const oauthRenderLease = oauthLease.current;
+  const oauthRenderClient = {id: oauthClientId, secret: oauthClientSecret};
+  oauthClientRef.current = oauthRenderClient;
+  const retireOAuth = (ticket: object | null) => {
+    // Only the exact opening may retire itself; it cannot retire a successor.
+    if (ticket !== oauthTicket.current) return;
     oauthGeneration.current++;
-    const ticket = oauthTicket.current;
     oauthTicket.current = null;
     const lease = oauthLease.current;
     oauthLease.current = null;
     if (ticket && lease) void service.driveOAuthCancel(lease.state);
     setOauthState('');setOauthToken('');setOauthClientSecret('');setOauthPhase('idle');setOauthAddress('');setOauthError('');
   };
-  const retireOAuthRef = useRef<() => void>(() => {}); retireOAuthRef.current = retireOAuth;
+  const retireOAuthCurrentRef = useRef<() => void>(() => {});
+  retireOAuthCurrentRef.current = () => retireOAuth(oauthTicket.current);
   const updateOAuthClient = (patch: {clientId?: string; clientSecret?: string}) => {
     // A new client is a new authorization: cancel the old lease at once.
-    retireOAuthRef.current();
+    retireOAuthCurrentRef.current();
     invalidateDrive();setDriveTested(undefined);setRcloneResult(undefined);setError('');
     if (patch.clientId !== undefined) setOauthClientId(patch.clientId);
     if (patch.clientSecret !== undefined) setOauthClientSecret(patch.clientSecret);
   };
   const updatePasteAddress = (value: string) => {setOauthAddress(value);};
   const pollOAuth = async (state: string, ticket: object, guard: () => boolean, revision: number, generation: number) => {
-    if (oauthPolling.current) return;
-    oauthPolling.current = true;
-    try {
     for (let attempt = 0; attempt < 150; attempt++) {
       await new Promise(resolve => setTimeout(resolve, 2000));
       if (!guard() || oauthTicket.current !== ticket || oauthGeneration.current !== generation || driveRevisionRef.current !== revision) return;
@@ -370,26 +374,30 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
       } catch { if (guard() && oauthTicket.current === ticket) setOauthPhase('error'); return; }
     }
     if (oauthTicket.current === ticket) setOauthPhase('expired');
-    } finally {oauthPolling.current = false;}
   };
   const startOAuth = async () => {
     const guard = attemptGuard();
+    const frozen = oauthRenderClient, revision = driveRevision;
     if (pending.current || !guard()) return;
-    if (!oauthClientId.trim() || !oauthClientSecret) {setOauthError(t('next.remoteSources.driveOAuthInvalid'));return;}
-    retireOAuthRef.current();
+    if (oauthClientRef.current.id !== frozen.id || oauthClientRef.current.secret !== frozen.secret || revision !== driveRevisionRef.current) return;
+    if (!frozen.id.trim() || !frozen.secret) {setOauthError(t('next.remoteSources.driveOAuthInvalid'));return;}
+    retireOAuth(oauthRenderTicket);
     const ticket = {};oauthTicket.current = ticket;
-    const revision = driveRevision;
     pending.current = true;setOauthError('');setOauthPhase('starting');
     try {
-      const started = await service.startDriveOAuth(oauthClientId.trim(), oauthClientSecret, guard);
+      const started = await service.startDriveOAuth(frozen.id.trim(), frozen.secret, guard);
       if (!guard() || oauthTicket.current !== ticket) {void service.driveOAuthCancel(started.state);return;}
       oauthLease.current = {state: started.state};setOauthState(started.state);setOauthPhase('waiting');
       window.open(started.authorizationUrl, '_blank', 'noopener,noreferrer');
-      // One status owner at a time: wait for a retiring poll to finish, then this ticket's.
-      void (async () => {
-        for (let wait = 0; wait < 25 && oauthPolling.current; wait++) await new Promise(resolve => setTimeout(resolve, 200));
-        if (guard() && oauthTicket.current === ticket) void pollOAuth(started.state, ticket, guard, revision, ++oauthGeneration.current);
+      // One status owner: await the retiring flight's settlement, then start this ticket's.
+      const prior = oauthPollPromise.current;
+      const run = (async () => {
+        if (prior) await prior;
+        if (!guard() || oauthTicket.current !== ticket) return;
+        await pollOAuth(started.state, ticket, guard, revision, ++oauthGeneration.current);
       })();
+      oauthPollPromise.current = run;
+      void run.finally(() => {if (oauthPollPromise.current === run) oauthPollPromise.current = null;});
     } catch (value) {
       if (!guard() || oauthTicket.current !== ticket) return;
       if (authFailure(value)) {refuse(value);return;}
@@ -398,15 +406,15 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
   };
   const pasteOAuth = async () => {
     const guard = attemptGuard();
-    const ticket = oauthTicket.current, lease = oauthLease.current;
+    const ticket = oauthRenderTicket, lease = oauthRenderLease;
     if (pending.current || !guard() || !ticket || !lease || !oauthAddress.trim()) return;
+    if (oauthTicket.current !== ticket || oauthLease.current !== lease) return;
     pending.current = true;setOauthError('');
     try {
       await service.driveOAuthPaste(lease.state, oauthAddress, guard);
-      if (!guard() || oauthTicket.current !== ticket) return;
-      // The pasted address is spent; one status owner exchanges it.
+      if (!guard() || oauthTicket.current !== ticket || oauthLease.current !== lease) return;
+      // The pasted address is spent; the running poll is the only status owner.
       setOauthAddress('');
-      if (!oauthPolling.current) void pollOAuth(lease.state, ticket, guard, driveRevisionRef.current, ++oauthGeneration.current);
     } catch (value) {
       if (!guard() || oauthTicket.current !== ticket) return;
       if (authFailure(value)) {refuse(value);return;}
@@ -459,6 +467,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
     const built = result.draft;
     // The submitted tuple is captured; the key leaves the form and this witness is spent.
     setDrive(current => ({...current, keyJson: ''}));setDriveTested(undefined);invalidateDrive();
+    if (driveMode === 'oauth') {setOauthClientSecret('');setOauthToken('');retireOAuth(oauthRenderTicket);}
     try {
       const receipt = await service.configureRclone(null, {name, remote: built.remote, config: built.config}, undefined, guard);
       if (!guard()) return;
@@ -703,6 +712,7 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
       else {setLeaving('unsaved');setLeaveError('');return;}
     }
     if (busy || pending.current) return;
+    retireOAuthCurrentRef.current();
     active.current=false;pending.current=false;lifetime.current++;setDraft(emptyDraft);setResult(undefined);setError('');setChosen([]);setLeaving('');onClose();
   };
   const removeAndLeave = async () => {
@@ -785,9 +795,9 @@ export function AddSourceDialog({service, api, serverId, viewerId, open, isCurre
         <div className={styles.lab2}>{t('next.remoteSources.driveSignIn')}</div>
         <div className={styles.kindTiles} role="radiogroup" aria-label={t('next.remoteSources.driveSignIn')}>
           <button type="button" role="radio" aria-checked={driveMode === 'service'} className={styles.kindTile} data-picked={driveMode === 'service' || undefined} disabled={busy}
-            onClick={() => {retireOAuth();setDriveMode('service');}}><Icon name="i-key" size={22}/>{t('next.remoteSources.driveServiceAccount')}</button>
+            onClick={() => {retireOAuth(oauthRenderTicket);invalidateDrive();setDriveTested(undefined);setDriveMode('service');}}><Icon name="i-key" size={22}/>{t('next.remoteSources.driveServiceAccount')}</button>
           <button type="button" role="radio" aria-checked={driveMode === 'oauth'} className={styles.kindTile} data-picked={driveMode === 'oauth' || undefined} disabled={busy}
-            onClick={() => {retireOAuthRef.current();invalidateDrive();setDriveTested(undefined);setDriveMode('oauth');}}><Icon name="i-google" size={22}/>{t('next.remoteSources.driveOAuth')}</button>
+            onClick={() => {retireOAuth(oauthRenderTicket);invalidateDrive();setDriveTested(undefined);setDriveMode('oauth');}}><Icon name="i-google" size={22}/>{t('next.remoteSources.driveOAuth')}</button>
         </div>
         {driveMode === 'service' ? <>
           <p className={styles.note}>{t('next.remoteSources.driveServiceAccountHint')}</p>

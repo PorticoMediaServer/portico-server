@@ -409,8 +409,13 @@ export class RemoteSourceService{
  }
  async driveOAuthPaste(state:string,redirectUrl:string,guard?:()=>boolean):Promise<DriveOAuthStatus>{
   if(!this.live()||(guard&&!guard())||!text(state,128)||!state||!text(redirectUrl,8192)||!redirectUrl.trim())throw new Error('Invalid sign-in address.');
-  await this.request('/v1/storage/sources/rclone/drive/oauth/paste','POST',{state,redirectUrl:redirectUrl.trim()},guard);
-  return await this.driveOAuthStatus(state,guard);
+  // This only records the address's code; the single status owner exchanges it.
+  const epoch=this.epoch;
+  const raw=await this.request('/v1/storage/sources/rclone/drive/oauth/paste','POST',{state,redirectUrl:redirectUrl.trim()},guard);
+  if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
+  this.fence(raw);
+  if(!record(raw)||typeof raw.phase!=='string'||!['pending','ready','expired','denied'].includes(raw.phase))invalid();
+  return Object.freeze({phase:raw.phase as DriveOAuthPhase,token:''});
  }
  async driveOAuthCancel(state:string):Promise<void>{
   if(!this.live()||!text(state,128)||!state)return;
