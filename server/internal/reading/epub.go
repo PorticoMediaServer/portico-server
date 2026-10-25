@@ -16,6 +16,9 @@ type Resource struct {
 	Size int64
 }
 type Metadata struct {
+	WordCount, PageCount, EstimatedSeconds                                *int64
+	SeriesLibraryID, OpeningLines                                         string
+	Series                                                                *SeriesValue
 	Title, Author, Language, Direction, CoverURL, ExplicitPublicationType string
 	PublicationTypeField                                                  string
 	PublicationTypeRaw                                                    []string

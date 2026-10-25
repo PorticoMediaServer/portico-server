@@ -33,12 +33,17 @@ type ReadingPublicationTypeValue struct {
 }
 
 type ReadingMetadata struct {
-	PublicationType *ReadingPublicationTypeValue `json:"publicationType,omitempty"`
-	CoverURL        string                       `json:"coverUrl,omitempty"`
-	Title           string                       `json:"title,omitempty"`
-	Author          string                       `json:"author,omitempty"`
-	Language        string                       `json:"language,omitempty"`
-	Direction       ReadingDirection             `json:"direction,omitempty"`
+	EstimatedSeconds *ReadingEstimatedSeconds     `json:"estimatedSeconds,omitempty"`
+	WordCount        *ReadingWordCount            `json:"wordCount,omitempty"`
+	PageCount        *ReadingPageCount            `json:"pageCount,omitempty"`
+	OpeningLines     ReadingOpeningLines          `json:"openingLines,omitempty"`
+	Series           *ReadingManifestSeries       `json:"series,omitempty"`
+	PublicationType  *ReadingPublicationTypeValue `json:"publicationType,omitempty"`
+	CoverURL         string                       `json:"coverUrl,omitempty"`
+	Title            string                       `json:"title,omitempty"`
+	Author           string                       `json:"author,omitempty"`
+	Language         string                       `json:"language,omitempty"`
+	Direction        ReadingDirection             `json:"direction,omitempty"`
 }
 type ReadingResource struct {
 	Path string `json:"path"`

@@ -22,6 +22,11 @@ export const readerMessages = {
   'next.reader.copySelection': 'Copy',
   'next.reader.searchSelection': 'Search in this book',
   'next.reader.selectionActions': 'Selected text',
+  'next.reader.wordsLabel': 'Words',
+  'next.reader.wordCount': '{count, plural, one {# word} other {# words}}',
+  'next.reader.pageCount': '{count, plural, one {# page} other {# pages}}',
+  'next.reader.openingLines': 'Opening lines',
+  'next.reader.seriesPosition': '{series} · {number}',
 
   'next.reader.month': 'Month',
   'next.reader.yourArchive': 'Your archive',
