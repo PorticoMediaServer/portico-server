@@ -17,11 +17,52 @@ type LiveDefaults struct {
 	RetryWindowMs  int          `json:"retryWindowMs"`
 	UserAgent      string       `json:"userAgent"`
 	GuideDays      int          `json:"guideDays"`
+	// TimeshiftMinutes is the live rewind window. Nil is the historical
+	// 30-minute default; a save that omits it keeps the current value.
+	TimeshiftMinutes *int `json:"timeshiftMinutes,omitempty"`
 	// LogoImport turns on fetching channel logos the source advertises.
 	LogoImport bool `json:"logoImport"`
 	// DiscoveryEnabled allows the HDHomeRun search to send packets on the LAN.
 	DiscoveryEnabled bool `json:"discoveryEnabled"`
 }
+
+// Live rewind is a closed owner choice. The engine budget is about 150 MB per
+// minute of window, capped at 16 GiB so the linear buffer stays bounded.
+const (
+	DefaultTimeshiftMinutes = 30
+	timeshiftBytesPerMinute = 150000000
+	timeshiftMaxBytes       = 16 << 30
+)
+
+var timeshiftMinuteChoices = [...]int{10, 30, 60, 120}
+
+func ValidTimeshiftMinutes(v int) bool {
+	for _, choice := range timeshiftMinuteChoices {
+		if v == choice {
+			return true
+		}
+	}
+	return false
+}
+
+// TimeshiftLimits is the pure engine projection of the owner's rewind choice.
+// Nil means the historical 30-minute default; any other value must be one of
+// the closed choices. It names no document and performs no IO.
+func TimeshiftLimits(minutes *int) (time.Duration, int64, error) {
+	chosen := DefaultTimeshiftMinutes
+	if minutes != nil {
+		if !ValidTimeshiftMinutes(*minutes) {
+			return 0, 0, ErrInvalid
+		}
+		chosen = *minutes
+	}
+	maxBytes := int64(chosen) * timeshiftBytesPerMinute
+	if maxBytes > timeshiftMaxBytes {
+		maxBytes = timeshiftMaxBytes
+	}
+	return time.Duration(chosen) * time.Minute, maxBytes, nil
+}
+
 type FilterRule struct {
 	Mode   string   `json:"mode"`
 	Values []string `json:"values"`

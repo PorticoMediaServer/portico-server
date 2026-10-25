@@ -400,22 +400,17 @@ func loadDocument[T any](ctx context.Context, s *Service, auth Authorize, scope 
 	return out, err
 }
 
-// saveDocument is the shared write path: validate, fence on expectedRevision,
-// store, and return the document the caller should now hold.
-func saveDocument[T any](ctx context.Context, s *Service, auth Authorize, scope string, defaults T, change Change[T], validate func(*T) error, normalize func(*T)) (Document[T], error) {
+// saveDocument is the shared write path: fence on expectedRevision, merge any
+// preserved fields inside the accepting transaction, validate, store, and
+// return the document the caller should now hold. The receipt identity is the
+// caller's request and expected revision, before the current-state merge, so a
+// replay returns the first result rather than recomputing it.
+func saveDocument[T any](ctx context.Context, s *Service, auth Authorize, scope string, defaults T, change Change[T], validate func(*T) error, normalize func(*T), merge func(current, incoming *T)) (Document[T], error) {
 	out := Document[T]{Scope: scope}
 	if !validOperationID(change.OperationID) {
 		return out, ErrInput
 	}
 	value := change.Settings
-	if normalize != nil {
-		normalize(&value)
-	}
-	if validate != nil {
-		if err := validate(&value); err != nil {
-			return out, err
-		}
-	}
 	digest := digestOf(struct {
 		Expected int64 `json:"expected"`
 		Settings T     `json:"settings"`
@@ -433,9 +428,19 @@ func saveDocument[T any](ctx context.Context, s *Service, auth Authorize, scope 
 		if err != nil {
 			return err
 		}
-		_ = current
 		if revision != change.ExpectedRevision {
 			return ErrConflict
+		}
+		if merge != nil {
+			merge(&current, &value)
+		}
+		if normalize != nil {
+			normalize(&value)
+		}
+		if validate != nil {
+			if err := validate(&value); err != nil {
+				return err
+			}
 		}
 		at := s.milliseconds()
 		if err = writeDocument(ctx, tx, scope, revision+1, value, at); err != nil {

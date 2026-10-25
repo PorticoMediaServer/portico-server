@@ -25,9 +25,34 @@ func DefaultLiveDefaults() LiveDefaults {
 	return LiveDefaults{ImportLimits: livechannels.ImportLimits{Bytes: livechannels.MaxUploadBytes, Channels: livechannels.MaxChannels, Programmes: livechannels.MaxProgrammes}, StreamBufferMs: 8000, RetryWindowMs: 60000, UserAgent: "Portico/1.0", GuideDays: 7, LogoImport: true, DiscoveryEnabled: true}
 }
 
+// normalizeLiveDefaults makes a stored document readable and always returns a
+// closed choice. It is not used on a write, where an invalid value must be
+// refused rather than repaired.
+func normalizeLiveDefaults(v *LiveDefaults) {
+	if v.TimeshiftMinutes == nil || !livechannels.ValidTimeshiftMinutes(*v.TimeshiftMinutes) {
+		minutes := livechannels.DefaultTimeshiftMinutes
+		v.TimeshiftMinutes = &minutes
+	}
+}
+
+// preserveLiveDefaults runs inside the accepting transaction. An old client
+// omits timeshiftMinutes, so copy the current choice rather than resetting it.
+func preserveLiveDefaults(current, incoming *LiveDefaults) {
+	if incoming.TimeshiftMinutes == nil {
+		if current.TimeshiftMinutes != nil {
+			minutes := *current.TimeshiftMinutes
+			incoming.TimeshiftMinutes = &minutes
+		} else {
+			minutes := livechannels.DefaultTimeshiftMinutes
+			incoming.TimeshiftMinutes = &minutes
+		}
+	}
+}
+
 func validateLiveDefaults(v *LiveDefaults) error {
+	fields := []string{}
 	if !safeText(v.UserAgent, 200) || strings.ContainsAny(v.UserAgent, "\r\n") {
-		return invalid("settings.userAgent")
+		fields = append(fields, "settings.userAgent")
 	}
 	clampInt(&v.StreamBufferMs, 0, 120000)
 	clampInt(&v.RetryWindowMs, 5000, 3600000)
@@ -44,6 +69,12 @@ func validateLiveDefaults(v *LiveDefaults) error {
 	clampInt(&v.ImportLimits.Bytes, 1<<20, 1<<30)
 	clampInt(&v.ImportLimits.Channels, 1, 100000)
 	clampInt(&v.ImportLimits.Programmes, 1, 10000000)
+	if v.TimeshiftMinutes != nil && !livechannels.ValidTimeshiftMinutes(*v.TimeshiftMinutes) {
+		fields = append(fields, "settings.timeshiftMinutes")
+	}
+	if len(fields) > 0 {
+		return invalid(fields...)
+	}
 	return nil
 }
 
@@ -189,12 +220,12 @@ func liveSourceScope(id string) string { return scopeFor("live-source", id) }
 
 // LiveDefaultsDocument reads the server-wide live settings.
 func (s *Service) LiveDefaultsDocument(ctx context.Context, auth Authorize) (Document[LiveDefaults], error) {
-	return loadDocument(ctx, s, auth, liveScope, DefaultLiveDefaults(), nil)
+	return loadDocument(ctx, s, auth, liveScope, DefaultLiveDefaults(), normalizeLiveDefaults)
 }
 
 // SaveLiveDefaults writes the server-wide live settings.
 func (s *Service) SaveLiveDefaults(ctx context.Context, auth Authorize, change Change[LiveDefaults]) (Document[LiveDefaults], error) {
-	return saveDocument(ctx, s, auth, liveScope, DefaultLiveDefaults(), change, validateLiveDefaults, nil)
+	return saveDocument(ctx, s, auth, liveScope, DefaultLiveDefaults(), change, validateLiveDefaults, nil, preserveLiveDefaults)
 }
 
 // LiveSourceDocument is one source's configuration plus the effective values
@@ -236,6 +267,7 @@ func (s *Service) liveSourceDocument(ctx context.Context, tx *sql.Tx, id string)
 	if err != nil {
 		return out, err
 	}
+	normalizeLiveDefaults(&defaults)
 	settings, revision, err := readDocument(ctx, tx, liveSourceScope(id), DefaultLiveSourceSettings())
 	if err != nil {
 		return out, err
