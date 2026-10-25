@@ -62,6 +62,7 @@ const MUSIC_CONTAINERS = ['album', 'artist', 'disc'];
 
 export type V1Viewer = Readonly<{serverId: string; authority: 'local' | 'hosted'; accountId: string; profileId: string}>;
 /** Captured by the player while this exact output is still selected. */
+export type V1QueuedEntrySelection = Readonly<{queueId: string; expectedRevision: string; entryId: string}>;
 export type V1QueueEditIntent = Readonly<{action: 'remove'; entryId: string} | {action: 'reorder'; entryIds: readonly string[]}>;
 export type V1QueuePolicyIntent = Readonly<{action: 'repeat'; repeat: 'off' | 'one' | 'all'} | {action: 'shuffle'; shuffled: boolean}>;
 export type V1PlaybackTarget = Readonly<{sessionId: string; generation: number; playbackRun: number; itemId: string; versionId: string; queueId: string; entryId: string}>;
@@ -100,6 +101,8 @@ export type V1QueuePlayerOptions = Readonly<{
   retainQueueIds?: () => readonly string[];
   playback: PlaybackService;
   viewer: V1Viewer;
+  /** Original-principal cleanup when a received selection retires before installation. */
+  retireQueuedSelection?: (session: Session) => void;
   key?: () => string;
   /** Poll interval while a start waits for its snapshot (tests shorten it). */
   pendingPollMs?: number;
@@ -155,6 +158,7 @@ export class V1QueuePlayer implements QueueController {
   readonly listening: ListeningService;
   private readonly client: QueueClient;
   private readonly api: QueueSessionTransport;
+  private readonly retireQueuedSelection?: V1QueuePlayerOptions['retireQueuedSelection'];
   private readonly defaultQuality?: () => QualityRequest | undefined;
   private readonly retainQueueIds?: () => readonly string[];
   /** The quality chosen in the player for this viewing: it stays while the queue plays on. */
@@ -215,6 +219,7 @@ export class V1QueuePlayer implements QueueController {
     this.nativeFor = options.nativeFor ?? (() => false);
     this.http = options.http;
     this.api = options.api;
+    this.retireQueuedSelection = options.retireQueuedSelection;
     // A session re-planned behind the queue (a player failure the service recovered from) is the
     // same session with a new presentation: keep the copy the queue commands read in step.
     this.unlistenChanged = this.api.onSessionChanged?.(session => { if (this.session?.id === session.id) this.session = session; });
@@ -827,6 +832,138 @@ export class V1QueuePlayer implements QueueController {
     }
   }
 
+  /** A retained row chooses only its actual loaded VOD occurrence. The caller's
+   * route lifetime must survive this operation's own accepted output replacement;
+   * the core, not that predicate, binds the old output until the handoff. */
+  async selectQueuedEntry(expected: V1PlaybackTarget, request: V1QueuedEntrySelection, context: SessionChangeContext): Promise<void> {
+    requireSessionChangeCurrent(context);
+    const target = Object.freeze({...expected});
+    const lifetime: SessionChangeContext = Object.freeze({signal: context.signal, isCurrent: context.isCurrent});
+    const command = Object.freeze({queueId: id(request.queueId, 'queue selection'), revision: request.expectedRevision,
+      body: Object.freeze({reason: 'entry' as const, entryId: id(request.entryId, 'queue selection entry')})});
+    const openingGeneration = this.generation, openingEpoch = this.epoch, changes = this.changeSequence;
+    const openingPlayback = this.playback.getSnapshot(), opening = this.header;
+    const retired = () => new DOMException('Queue selection retired', 'AbortError');
+    const ownsOpeningOutput = () => {
+      const p = this.playback.getSnapshot(), session = this.session;
+      return p.playbackRun === target.playbackRun && p.itemId === target.itemId && p.intentId === openingPlayback.intentId
+        && p.session?.id === target.sessionId && p.session.generation === target.generation
+        && session?.id === target.sessionId && session.presentation.generation === target.generation
+        && session.kind === 'vod' && session.role === 'local' && !p.nativeListening && !p.channel
+        && session.itemId === target.itemId && session.versionId === target.versionId
+        && session.queue?.queueId === target.queueId && session.queue.entryId === target.entryId;
+    };
+    const openingCurrent = () => !this.disposed && openingGeneration === this.generation && openingEpoch === this.epoch
+      && changes === this.changeSequence && sessionChangeCurrent(lifetime) && ownsOpeningOutput()
+      && ['starting', 'ready'].includes(this.playback.getSnapshot().phase)
+      && this.header?.id === command.queueId && command.queueId === target.queueId
+      && this.header.revision === command.revision && this.header.current?.entryId === target.entryId
+      && this.header.current.position === opening?.current?.position && !this.nativeOwns() && !this.playback.hasNativeOwner();
+    if (!openingCurrent()) throw retired();
+    if (!opening || this.session?.kind !== 'vod' || this.session.role !== 'local' || openingPlayback.nativeListening
+      || !['starting', 'ready'].includes(openingPlayback.phase) || command.body.entryId === target.entryId) throw new ContractError('queue selection output');
+    const selected = queueEditWindow(opening, this.window, target).get(command.body.entryId);
+    if (!selected?.available || !selected.itemId || !queueVideoKind(selected.kind)) throw new ContractError('queue selection entry');
+    const selectedCurrent = () => {
+      const matches = this.window.filter(entry => entry.entryId === command.body.entryId);
+      return matches.length === 1 && matches[0]!.available && matches[0]!.itemId === selected.itemId
+        && matches[0]!.position === selected.position && queueVideoKind(matches[0]!.kind);
+    };
+    const run = async () => {
+      if (!selectedCurrent() || !openingCurrent() || this.playback.getSnapshot().intent !== openingPlayback.intent) throw retired();
+      const generation = ++this.generation; ++this.epoch; ++this.policySequence; ++this.refreshSequence;
+      const current = () => !this.disposed && generation === this.generation && changes === this.changeSequence
+        && sessionChangeCurrent(lifetime) && !this.nativeOwns() && !this.playback.hasNativeOwner();
+      let acceptedRevision: string | undefined, admitted: Session | undefined, installedIntent: number | undefined;
+      const headerCurrent = () => this.header?.id === command.queueId
+        && (this.header.revision === command.revision && this.header.current?.entryId === target.entryId && this.header.current.position === opening.current?.position
+          || acceptedRevision !== undefined && this.header.revision === acceptedRevision && this.header.current?.entryId === command.body.entryId && this.header.current.position === selected.position);
+      let handedOff = false, replacing = false;
+      const oldCurrent = () => current() && ownsOpeningOutput() && headerCurrent() && selectedCurrent()
+        && this.playback.getSnapshot().intent === (replacing ? 'playing' : openingPlayback.intent);
+      const checkOld = () => {if (!oldCurrent()) throw retired();};
+      try {
+        this.listening.interact();
+        checkOld();
+        // These opening values are frozen before this command enters the serial lane.
+        const result = await this.client.advance(command.queueId, command.revision, command.body.reason, command.body.entryId, lifetime.signal);
+        if (result.session && result.session.id !== target.sessionId && result.session.role === 'local'
+          && result.session.queue?.queueId === command.queueId && result.session.queue.entryId === command.body.entryId) admitted = result.session;
+        if (!admitted || admitted.kind !== 'vod' || admitted.role !== 'local' || admitted.state !== 'playing'
+          || admitted.queue?.queueId !== command.queueId || admitted.queue.entryId !== command.body.entryId
+          || admitted.itemId !== selected.itemId || !admitted.versionId) throw new ContractError('queue selection session');
+        const session = admitted, versionId = admitted.versionId;
+        acceptedRevision = result.queue.revision;
+        const accepted = (header: QueueHeader) => header.id === command.queueId && header.revision === acceptedRevision
+          && header.current?.entryId === command.body.entryId && header.current.position === selected.position && header.total === opening.total;
+        checkOld();
+        if (acceptedRevision === command.revision || !accepted(result.queue)) throw new ContractError('queue selection result');
+        const window = await this.client.window(command.queueId, WINDOW_BEFORE, WINDOW_AFTER, lifetime.signal); checkOld();
+        const header = await this.client.header(command.queueId, lifetime.signal); checkOld();
+        if (!accepted(header)) throw retired();
+        const nextTarget = Object.freeze({...target, sessionId: session.id, generation: session.presentation.generation,
+          itemId: selected.itemId, versionId, entryId: command.body.entryId});
+        queueEditWindow(header, window, nextTarget);
+        const duration = await this.api.duration(selected.itemId, versionId, lifetime.signal); checkOld();
+        if (!Number.isFinite(duration) || duration < 0) throw new ContractError('queue selection duration');
+        const acceptedSession = () => {
+          const active = this.session;
+          return active?.id === session.id && active.presentation.generation === session.presentation.generation
+            && active.kind === 'vod' && active.role === 'local' && active.itemId === selected.itemId && active.versionId === session.versionId
+            && active.queue?.queueId === command.queueId && active.queue.entryId === command.body.entryId;
+        };
+        const nextOutput = () => {
+          const p = this.playback.getSnapshot();
+          return current() && !p.nativeListening && !p.channel && p.playbackRun === target.playbackRun && p.session?.id === session.id
+            && p.session.generation === session.presentation.generation && p.itemId === selected.itemId && acceptedSession()
+            && this.header?.id === command.queueId && this.header.revision === acceptedRevision && this.header.current?.entryId === command.body.entryId;
+        };
+        // During synchronous installation only this admitted session may replace
+        // the old metadata. After installation, only the new exact output owns it.
+        const installing = () => {
+          const p = this.playback.getSnapshot();
+          return current() && headerCurrent() && (ownsOpeningOutput()
+            || acceptedSession() && p.session?.id === target.sessionId && p.session.generation === target.generation
+              && p.itemId === target.itemId && p.intentId === openingPlayback.intentId && p.intent === 'playing' && p.playbackRun === target.playbackRun
+            || nextOutput());
+        };
+        const playback = this.api.adopt(session, duration); checkOld();
+        this.invalidateAudioPreparation(); checkOld();
+        replacing = true;
+        const intent = this.playback.beginQueueIntent(selected.itemId); checkOld();
+        this.header = header; this.window = window; ++this.refreshSequence;
+        const adoption = this.adoptPlayback(session, playback, intent, installing);
+        // adoptPlayback installs synchronously before its persistence await. Once
+        // installed, PlaybackService owns cleanup; a late callback cannot stop its successor.
+        if (nextOutput()) {installedIntent = this.playback.getSnapshot().intentId; handedOff = true; ++this.epoch;}
+        await adoption;
+        if (!handedOff || !nextOutput() || this.playback.getSnapshot().intentId !== installedIntent) throw retired();
+        this.publish({phase: 'ready'});
+      } catch (error) {
+        if (admitted && !handedOff) {
+          const live = this.playback.getSnapshot();
+          const newer = live.session?.id === admitted.id && live.session.generation !== admitted.presentation.generation
+            || this.session?.id === admitted.id && this.session.presentation.generation !== admitted.presentation.generation;
+          if (!newer) {
+            if (generation === this.generation && live.session?.id === admitted.id && live.session.generation === admitted.presentation.generation
+              && live.itemId === admitted.itemId && live.playbackRun === target.playbackRun) this.playback.leave(false);
+            if (this.session?.id === admitted.id && generation === this.generation) this.session = undefined;
+            // Cleanup is deliberately not canceled by the retired caller's signal.
+            if (this.retireQueuedSelection) {
+              try {this.retireQueuedSelection(admitted);} catch {await this.api.stopPlayback(admitted.id).catch(() => {});}
+            } else await this.api.stopPlayback(admitted.id).catch(() => {});
+            this.api.forget(admitted.id);
+          }
+        }
+        if (oldCurrent()) this.publish({phase: 'ready', error: message(error, serviceText('queuePlayer.moveFailed'))});
+        throw error;
+      }
+    };
+    const pending = this.moves.then(run, run);
+    this.moves = pending.catch(() => {});
+    return pending;
+  }
+
   async playEntry(queueId: string, entryId: string, expectedRevision: string): Promise<void> {
     this.listening.interact();
     if (queueId !== this.header?.id || expectedRevision !== this.header.revision) throw new Error('Refresh the queue before selecting an item.');
@@ -1255,6 +1392,11 @@ export class V1QueuePlayer implements QueueController {
     this.prepared = undefined; this.audioReadyToken = undefined;
     if(!this.playback.fallbackAudioRender())this.playback.fail(p.intentId, message);
   }
+}
+
+/** Known VOD row kinds; the selection port separately proves local output ownership. */
+export function queueVideoKind(kind: string): boolean {
+  return ['movie', 'episode', 'video', 'musicVideo', 'extra', 'recording'].includes(kind);
 }
 
 /** The raw window must retain placeholders and positions: filtering hidden rows

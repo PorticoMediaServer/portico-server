@@ -147,8 +147,8 @@ export class QueueClient {
     return this.command(id, revision, 'PATCH', encodedRoutePath("update_queue", {"id": enc(id)}), change, signal);
   }
   /** Completion, Next, Previous or jump to an entry. Returns the next session when one starts. */
-  advance(id: string, revision: string, reason: 'completion' | 'next' | 'previous' | 'entry', entryId?: string) {
-    return this.command(id, revision, 'POST', encodedRoutePath("advance_queue", {"id": enc(id)}), {reason, ...(entryId ? {entryId} : {})});
+  advance(id: string, revision: string, reason: 'completion' | 'next' | 'previous' | 'entry', entryId?: string, signal?: AbortSignal) {
+    return this.command(id, revision, 'POST', encodedRoutePath("advance_queue", {"id": enc(id)}), Object.freeze({reason, ...(entryId ? {entryId} : {})}), signal);
   }
   /** Prepares the next entry's audio before the current one ends (spec §18.2): private, frame 0
    * only, expiring after 60 s, canceled by any other queue or session command. */
