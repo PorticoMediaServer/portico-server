@@ -208,6 +208,54 @@ func offlineKeys(raw json.RawMessage, keys ...string) bool {
 	return true
 }
 
+// Presence is independent of zero/false. Optional scalar omission is allowed;
+// a supplied scalar null never supplies evidence. Only top-level progress is nullable.
+func offlinePresent(raw json.RawMessage, nullable string, required ...string) bool {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) != nil {
+		return false
+	}
+	for _, key := range required {
+		if _, ok := fields[key]; !ok {
+			return false
+		}
+	}
+	for key, value := range fields {
+		if bytes.Equal(bytes.TrimSpace(value), []byte("null")) && key != nullable {
+			return false
+		}
+	}
+	return true
+}
+func ParseOfflineLocation(raw []byte) (OfflineLocation, error) {
+	var out OfflineLocation
+	if !offlinePresent(raw, "", "format", "progression") {
+		return out, ErrInvalid
+	}
+	if _, err := apikit.CanonicalJSON(raw); err != nil {
+		return out, ErrInvalid
+	}
+	if json.Unmarshal(raw, &out) != nil {
+		return out, ErrInvalid
+	}
+	switch out.Format {
+	case "epub":
+		if !offlineKeys(raw, "format", "cfi", "section", "progression") || !offlinePresent(raw, "", "format", "cfi", "progression") {
+			return out, ErrInvalid
+		}
+	case "pdf", "cbz":
+		if !offlineKeys(raw, "format", "pageIndex", "progression") || !offlinePresent(raw, "", "format", "pageIndex", "progression") {
+			return out, ErrInvalid
+		}
+	default:
+		return out, ErrInvalid
+	}
+	if err := (Location{Format: out.Format, CFI: out.CFI, Section: out.Section, PageIndex: out.PageIndex, Progression: out.Progression}).Validate(); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
 // ParseOfflineDocument validates literal stored bytes without rewriting them.
 // It is used before signing, renewing or delivering any persisted descriptor.
 func ParseOfflineDocument(raw string) (OfflineDocument, error) {
@@ -231,6 +279,9 @@ func ParseOfflineDocument(raw string) (OfflineDocument, error) {
 	if json.Unmarshal([]byte(raw), &fields) != nil || !offlineKeys([]byte(raw), "itemId", "sourceId", "revision", "format", "size", "metadata", "resources", "spine", "pageNames", "contents", "progress") {
 		return out, ErrInvalid
 	}
+	if !offlinePresent([]byte(raw), "progress", "itemId", "sourceId", "revision", "format", "size", "metadata", "resources", "spine", "pageNames", "contents", "progress") {
+		return out, ErrInvalid
+	}
 	if !offlineID.MatchString(out.ItemID) || !offlineID.MatchString(out.SourceID) || !offlineDigest.MatchString(out.Revision) || out.Size < 1 || out.Size > MaxSource {
 		return out, ErrInvalid
 	}
@@ -239,7 +290,7 @@ func ParseOfflineDocument(raw string) (OfflineDocument, error) {
 			return out, ErrInvalid
 		}
 	}
-	if !offlineKeys(fields["metadata"], "title", "author", "language", "direction") || len(out.Metadata.Title) > 4096 || len(out.Metadata.Author) > 4096 || len(out.Metadata.Language) > 128 {
+	if !offlinePresent(fields["metadata"], "", "title") || !offlineKeys(fields["metadata"], "title", "author", "language", "direction") || len(out.Metadata.Title) > 4096 || len(out.Metadata.Author) > 4096 || len(out.Metadata.Language) > 128 {
 		return out, ErrInvalid
 	}
 	if out.Metadata.Direction != "" && out.Metadata.Direction != "ltr" && out.Metadata.Direction != "rtl" && out.Metadata.Direction != "vertical" {
@@ -253,7 +304,7 @@ func ParseOfflineDocument(raw string) (OfflineDocument, error) {
 	known := map[string]bool{}
 	var total int64
 	for index, r := range out.Resources {
-		if !offlineKeys(resourceFields[index], "offset", "compressedSize", "compression", "path", "mime", "size", "sha256") || !safePath(r.Path) || len(r.Path) > 4096 || known[r.Path] || !offlineMIME.MatchString(r.MIME) || len(r.MIME) > 128 || !offlineDigest.MatchString(r.SHA256) {
+		if !offlinePresent(resourceFields[index], "", "offset", "compressedSize", "compression", "path", "mime", "size", "sha256") || !offlineKeys(resourceFields[index], "offset", "compressedSize", "compression", "path", "mime", "size", "sha256") || !safePath(r.Path) || len(r.Path) > 4096 || known[r.Path] || !offlineMIME.MatchString(r.MIME) || len(r.MIME) > 128 || !offlineDigest.MatchString(r.SHA256) {
 			return out, ErrInvalid
 		}
 		if r.Offset < 0 || r.CompressedSize < 0 || r.CompressedSize > out.Size || r.Offset > out.Size-r.CompressedSize || r.Size < 0 || r.Size > MaxMember || (r.Compression != 0 && r.Compression != 8) || (r.Compression == 0 && r.CompressedSize != r.Size) {
@@ -298,7 +349,7 @@ func ParseOfflineDocument(raw string) (OfflineDocument, error) {
 	var contentsFields []json.RawMessage
 	json.Unmarshal(fields["contents"], &contentsFields)
 	for index, c := range out.Contents {
-		if !offlineKeys(contentsFields[index], "title", "section", "fragment", "depth") || len(c.Title) < 1 || len(c.Title) > 4096 || !known[c.Section] || len(c.Fragment) > 1024 || c.Depth < 0 || c.Depth > 16 {
+		if !offlinePresent(contentsFields[index], "", "title", "section", "depth") || !offlineKeys(contentsFields[index], "title", "section", "fragment", "depth") || len(c.Title) < 1 || len(c.Title) > 4096 || !known[c.Section] || len(c.Fragment) > 1024 || c.Depth < 0 || c.Depth > 16 {
 			return out, ErrInvalid
 		}
 	}
@@ -308,11 +359,14 @@ func ParseOfflineDocument(raw string) (OfflineDocument, error) {
 	}
 	if out.Progress != nil {
 		p := out.Progress
-		if !offlineKeys(progressRaw, "sourceId", "sourceRevision", "location", "revision", "observedAt", "stale") || p.SourceID != out.SourceID || !offlineDigest.MatchString(p.SourceRevision) || p.Revision < 0 || p.Revision > offlineSafeInteger || p.ObservedAt < 1 || p.ObservedAt > offlineSafeInteger {
+		if !offlinePresent(progressRaw, "", "sourceId", "sourceRevision", "location", "revision", "observedAt", "stale") || !offlineKeys(progressRaw, "sourceId", "sourceRevision", "location", "revision", "observedAt", "stale") || p.SourceID != out.SourceID || !offlineDigest.MatchString(p.SourceRevision) || p.Revision < 0 || p.Revision > offlineSafeInteger || p.ObservedAt < 1 || p.ObservedAt > offlineSafeInteger {
 			return out, ErrInvalid
 		}
 		var progressFields map[string]json.RawMessage
 		json.Unmarshal(progressRaw, &progressFields)
+		if _, err := ParseOfflineLocation(progressFields["location"]); err != nil {
+			return out, err
+		}
 		if !offlineKeys(progressFields["location"], "format", "cfi", "section", "pageIndex", "progression") {
 			return out, ErrInvalid
 		}

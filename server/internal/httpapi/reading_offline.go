@@ -19,6 +19,15 @@ type ReadingOfflineLocation struct {
 	Progression *float64      `json:"progression"`
 }
 
+func (l *ReadingOfflineLocation) UnmarshalJSON(raw []byte) error {
+	parsed, err := reading.ParseOfflineLocation(raw)
+	if err != nil {
+		return err
+	}
+	progression := parsed.Progression
+	*l = ReadingOfflineLocation{Format: ReadingFormat(parsed.Format), CFI: parsed.CFI, Section: parsed.Section, PageIndex: parsed.PageIndex, Progression: &progression}
+	return nil
+}
 func readingOfflineInteger(minimum int64) map[string]any {
 	return map[string]any{"type": "integer", "minimum": minimum, "maximum": readingOfflineMaxInteger}
 }
@@ -32,7 +41,7 @@ func (ReadingOfflineLocation) JSONSchema() map[string]any {
 			properties["section"] = map[string]any{"type": "string", "maxLength": 1024}
 			required = append(required, "cfi")
 		} else {
-			properties["pageIndex"] = readingOfflineInteger(0)
+			properties["pageIndex"] = map[string]any{"type": "integer", "minimum": 0, "maximum": 1000000}
 			required = append(required, "pageIndex")
 		}
 		variants = append(variants, map[string]any{"type": "object", "additionalProperties": false, "properties": properties, "required": required})
