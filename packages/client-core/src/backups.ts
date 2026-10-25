@@ -134,7 +134,7 @@ export async function waitForServerAnswer(get:()=>Promise<BackupsDocument>,optio
   try{
    return await get();
   }catch(e){
-   if(authenticationFailure(e))throw e;
+   if(authenticationFailure(e)||(e as {name?:unknown})?.name==='AbortError'||options.signal?.aborted)throw e;
    if(Date.now()-started>timeoutMs)throw Object.assign(new Error('The server has not answered yet.'),{code:'server_restart_timeout'});
    await delay(intervalMs,options.signal);
   }
