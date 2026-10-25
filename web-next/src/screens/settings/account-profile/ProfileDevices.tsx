@@ -13,14 +13,15 @@ export function ProfileDevices({source, isCurrent, onFailure, signOut}: {source:
   const active = useRef<Device | undefined>(undefined), pending = useRef(false), live = useRef(true), trigger = useRef<HTMLElement | null>(null);
   useEffect(() => {live.current = true;void source.load();return () => {live.current = false;active.current = undefined;};}, [source]);
   useEffect(() => {if (state.error && isCurrent()) onFailure();}, [state.error, isCurrent, onFailure]);
-  const close = () => {active.current = undefined;setTarget(undefined);};
+  const finish = () => {active.current = undefined;setTarget(undefined);};
+  const close = () => {if (!pending.current) finish();};
   const run = async (captured: Device) => {
     if (!live.current || !isCurrent() || active.current !== captured || pending.current) return;
     pending.current = true;
     try {
       await source.signOut(captured);
-      if (live.current && isCurrent() && active.current === captured) {close();if (captured.current) signOut();}
-    } catch {if (live.current && isCurrent()) {close();if (!source.getSnapshot().error) onFailure();}}
+      if (live.current && isCurrent() && active.current === captured) {finish();if (captured.current) signOut();}
+    } catch {if (live.current && isCurrent()) {finish();if (!source.getSnapshot().error) onFailure();}}
     finally {pending.current = false;}
   };
   if (!isCurrent() || !state.devices) return null;
