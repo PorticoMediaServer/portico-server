@@ -705,3 +705,17 @@ test('Root51 standard and cloud status fit a complete UTF-8 envelope and keep on
   const bounded=h.interceptors[type](raw);assert(envelopeSize(bounded,type)<=48*1024);assert.equal(bounded.media.metadata.images,undefined);assert.equal(bounded.media.metadata.title,'曲'.repeat(200));
  }
 });
+
+test('private status reports the actual controller/occurrence and targeted Stop cannot become a room Stop',async()=>{
+ const h=await harness({direct:true});await h.message('phone',{type:'pair',code:'ABC123',origin:'https://server.test'});
+ await h.message('phone',{type:'load',itemId:'movie',title:'Film'});await h.message('phone',{type:'status'});
+ const status=h.sent.filter(x=>x.id==='phone'&&x.body.type==='status'&&x.body.occurrence).at(-1).body;
+ assert.equal(status.controller.bindingId,'cct_current');assert.equal(status.occurrence.sessionId,'ps_1');assert.equal(status.occurrence.generation,1);assert.equal(status.occurrence.itemId,'movie');
+ const target={controller:status.controller,occurrence:status.occurrence},before=h.calls.filter(x=>x.method==='DELETE').length;
+ await h.message('observer',{type:'stop',target,requestId:'old-observer'});assert.equal(h.receiver.state().playbackId,'ps_1');
+ await h.message('phone',{type:'stop',target:{...target,occurrence:{...target.occurrence,generation:2}},requestId:'wrong-occurrence'});
+ assert.equal(h.receiver.state().playbackId,'ps_1');assert.equal(h.calls.filter(x=>x.method==='DELETE').length,before);
+ await h.message('phone',{type:'stop',target,requestId:'actual-stop'});await settle0();
+ const ack=h.sent.find(x=>x.body.type==='stopped'&&x.body.requestId==='actual-stop').body;
+ assert.equal(ack.target.occurrence.sessionId,'ps_1');assert.equal(ack.target.occurrence.generation,1);assert.equal(h.receiver.state().playbackId,null);
+});

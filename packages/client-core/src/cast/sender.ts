@@ -1,3 +1,4 @@
+import {sameCastController,sameCastRemote,type CastControllerStamp,type CastRemoteIdentity} from './remote-identity.ts';
 import {castBinding,castContext,castScopeEqual,castProofKey,readCastProof,type CastControllerContext,type CastControllerBinding,type CastControllerProof} from './controller-proof.ts';
 import {encodedRoutePath,routeBody} from "../../../contracts/src/routes.ts";
 import {routePath} from "../../../contracts/src/routes.ts";
@@ -40,6 +41,10 @@ export type CastSnapshot = Readonly<{
   transferPending?:boolean;
   phase: CastPhase;
   disclosureRefused?:boolean;
+  /** View-only facts from the currently validated private receiver channel. */
+  remoteIdentity?:CastRemoteIdentity;
+  remoteStopped?:boolean;
+  controlPending?:boolean;
   /** Published only after current authority and content checks. */
   reported?:Readonly<{itemId:string;positionSeconds:number;durationSeconds:number;paused:boolean}>;
   deviceName?: string;
@@ -54,7 +59,7 @@ export type CastSnapshot = Readonly<{
   error?: string;
   errorId?: MessageId;
   /** Someone else asked the TV to play; this controller answers (30 s without an answer is no). */
-  takeover?: Readonly<{requester: string}>;
+  takeover?: Readonly<{requester:string;controller?:CastControllerStamp;requestId?:string}>;
 }>;
 
 export type CastControllerOptions = Readonly<{
@@ -106,6 +111,9 @@ export class CastController {
   private readonly callerCurrent:()=>boolean;
   private readonly describe?:(itemId:string)=>Promise<string|undefined>;
   private statusRevision=0;
+  private acceptedController?:CastControllerStamp;
+  private expectedPairId?:string;
+  private stopping?:{requestId:string;target:CastRemoteIdentity;transport:CastTransport;generation:number;timer:unknown};
   private current(){return !this.disposed&&this.callerCurrent();}
   private proof(transport:CastTransport){
     const context=this.proofContext;if(!context||!transport.deviceId||!this.current())return;
@@ -146,7 +154,7 @@ export class CastController {
   /** The platform's verdict on whether Cast can be offered here. */
   setAvailable(available: boolean) { this.publish({available}); }
   /** The platform's device picker is open ("Choose a device…"). */
-  connecting(title?: string) { this.publish({phase: 'connecting', acceptedSource:undefined,title, error: undefined, errorId: undefined, takeover: undefined}); }
+  connecting(title?: string) { this.publish({phase: 'connecting', remoteIdentity:undefined,remoteStopped:undefined,controlPending:false,acceptedSource:undefined,title, error: undefined, errorId: undefined, takeover: undefined}); }
   /** The picker closed without a device: not an error. */
   cancelConnecting() { if (this.state.phase === 'connecting') this.publish({phase: 'off'}); }
 
@@ -170,7 +178,7 @@ export class CastController {
     this.detach.push(transport.onMessage(raw => { const e = parseCastEvent(raw); if (e) this.receive(e); }));
     this.detach.push(transport.onSessionEnd(() => this.sessionEnded()));
     let loading = false;
-    this.publish({phase: 'pairing', disclosureRefused:false,reported:undefined,acceptedSource:undefined,transferPending:!!flight,deviceName: transport.deviceName, title: meta.title, itemId: undefined, error: undefined, errorId: undefined, takeover: undefined, audioTracks: [], textTracks: []});
+    this.publish({phase: 'pairing', disclosureRefused:false,remoteIdentity:undefined,remoteStopped:undefined,controlPending:false,reported:undefined,acceptedSource:undefined,transferPending:!!flight,deviceName: transport.deviceName, title: meta.title, itemId: undefined, error: undefined, errorId: undefined, takeover: undefined, audioTracks: [], textTracks: []});
     try {
       const displayName = transport.deviceName.trim().slice(0, 64);
       const bootstrapBody={protocolVersion:CAST_PROTOCOL_VERSION,...(transport.deviceId?{receiverId:transport.deviceId}:{}),...(displayName?{displayName}:{}),...(choices?.source?{source:choices.source}:{})};
@@ -181,6 +189,7 @@ export class CastController {
         flight.id=id;choices=Object.freeze({...choices,queue:Object.freeze({...choices!.queue!,transferId:id})});
       }
       if (generation !== this.startGeneration) {if(flight)await this.cancelTransfer(flight);return false;}
+      this.expectedPairId=typeof issued?.bootstrap?.id==='string'?issued.bootstrap.id:undefined;
       const code = issued?.bootstrap?.code;
       if (typeof code !== 'string' || !code) throw new CastFailure('cast.error.noCode');
       await this.exchange({type: 'pair', code, origin: this.origin, displayName: this.displayName});
@@ -258,13 +267,16 @@ export class CastController {
         const e=parseCastEvent(raw);if(!e)return;
         if(!this.adopting){if(this.current())this.receive(e);return;}
         if(e.type==='status'&&e.attemptId===attemptId&&e.itemId){
+          if(!e.controller||e.controller.bindingId!==proof.binding.id||!e.occurrence){refuse();return;}
+          const remoteIdentity=Object.freeze({controller:e.controller,occurrence:e.occurrence});
           const revision=++this.statusRevision;
           void describe(e.itemId).then(async title=>{
             if(!current()){refuse();return;}if(revision!==this.statusRevision)return;
             if(!title){refuse();return;}
             try{await this.validate(proof.binding,attemptId);}catch{refuse();return;}
             if(!current()||revision!==this.statusRevision)return;
-            this.publish({phase:'casting',disclosureRefused:false,acceptedSource:undefined,deviceName:transport.deviceName,itemId:e.itemId,title,error:undefined,errorId:undefined,takeover:undefined,
+            this.acceptedController=e.controller;
+            this.publish({phase:'casting',disclosureRefused:false,remoteIdentity,remoteStopped:false,controlPending:false,acceptedSource:undefined,deviceName:transport.deviceName,itemId:e.itemId,title,error:undefined,errorId:undefined,takeover:undefined,
               positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused,audioTracks:e.audioTracks,textTracks:e.textTracks,reported:e.clockKnown?Object.freeze({itemId:e.itemId,positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused}):undefined});
             give(true);
           },refuse);
@@ -331,11 +343,15 @@ export class CastController {
     if(!this.current())return;
     switch (e.type) {
       case 'paired': {
+        if(!this.waiting)return;
+        const waiting=this.waiting;
         const transport=this.transport,generation=this.startGeneration,context=this.proofContext;
-        if(!e.binding||!e.controlToken||!context||!transport?.deviceId){this.waiting?.resolve();this.waiting=undefined;return;}
+        if(!context){this.waiting?.resolve();this.waiting=undefined;return;}
+        if(!e.binding||!e.controlToken||!transport?.deviceId||!this.expectedPairId||e.binding.bootstrapId!==this.expectedPairId||!e.controller||e.controller.bindingId!==e.binding.id){this.waiting?.reject(new CastFailure('cast.error.refused'));this.waiting=undefined;return;}
         const binding=e.binding,controlToken=e.controlToken;
         void this.validate(binding,'pair-'+(++this.requestSequence)+'-'+Date.now().toString(36)).then(()=>{
-          if(!this.current()||generation!==this.startGeneration||this.transport!==transport)return;
+          if(!this.current()||generation!==this.startGeneration||this.transport!==transport||this.waiting!==waiting)return;
+          this.acceptedController=e.controller;
           const proof:CastControllerProof=Object.freeze({version:2,context,binding,controlToken});
           try{this.controllerStorage?.set(castProofKey(context,transport.deviceId!),JSON.stringify(proof));}catch{}
           this.waiting?.resolve();this.waiting=undefined;
@@ -345,12 +361,13 @@ export class CastController {
       case 'pair-pending': if (this.state.phase === 'pairing') this.publish({phase: 'waiting'}); return;
       case 'pair-failed': this.waiting?.reject(new CastFailure(e.code === 'tv_busy' ? 'cast.error.tvBusy' : 'cast.error.refused')); this.waiting = undefined; return;
       case 'busy': this.fail('cast.error.busy'); return;
-      case 'pair-required': this.release(false,false);this.publish({phase:'off',disclosureRefused:true,itemId:undefined,title:undefined,reported:undefined,audioTracks:[],textTracks:[],positionSeconds:0,durationSeconds:0});return;
+      case 'pair-required': this.release(false,false);this.publish({phase:'off',disclosureRefused:true,remoteIdentity:undefined,remoteStopped:undefined,controlPending:false,itemId:undefined,title:undefined,reported:undefined,audioTracks:[],textTracks:[],positionSeconds:0,durationSeconds:0});return;
       case 'loaded': this.loads.get(e.requestId)?.resolve(e.itemId); return;
       case 'load-failed': if (e.requestId) this.loads.get(e.requestId)?.reject(new CastFailure('cast.error.loadFailed')); else this.fail('cast.error.loadFailed'); return;
       case 'takeover-requested': {
         this.clearTimer(this.takeoverTimer);
-        this.publish({takeover: Object.freeze({requester: e.requester || serviceText('cast.someone')})});
+        if(this.acceptedController&&(!sameCastController(e.controller,this.acceptedController)||!e.requestId))return;
+        this.publish({takeover:Object.freeze({requester:e.requester||serviceText('cast.someone'),controller:e.controller,requestId:e.requestId})});
         // The TV treats 30 s without an answer as no; drop the prompt with it.
         this.takeoverTimer = this.setTimer(() => this.publish({takeover: undefined}), CAST_TAKEOVER_WINDOW_MS);
         return;
@@ -358,12 +375,34 @@ export class CastController {
       case 'replaced':
         this.clearTimer(this.takeoverTimer);
         this.release(false);
-        this.publish({phase: 'replaced', takeover: undefined});
+        this.publish({phase:'replaced',remoteIdentity:undefined,remoteStopped:undefined,controlPending:false,takeover:undefined});
         return;
+      case 'stopped': case 'control-failed': {
+        const pending=this.stopping;
+        if(!pending||e.requestId!==pending.requestId||!sameCastRemote(e.target,pending.target)||this.transport!==pending.transport||this.startGeneration!==pending.generation)return;
+        this.clearTimer(pending.timer);this.stopping=undefined;this.statusRevision++;
+        if(e.type==='control-failed'){this.redacted(pending.transport,pending.generation,this.statusRevision);return;}
+        // Only the correlated actual receiver Stop receipt keeps a stopped view.
+        // It grants no media, queue, or local engine occurrence.
+        this.publish({phase:'off',remoteStopped:true,controlPending:false,paused:true,remoteIdentity:pending.target,audioTracks:[],textTracks:[],
+          positionSeconds:e.positionSeconds??this.state.positionSeconds,durationSeconds:e.durationSeconds??this.state.durationSeconds,
+          reported:e.positionSeconds!==undefined&&e.durationSeconds!==undefined?Object.freeze({itemId:pending.target.occurrence.itemId,positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:true}):undefined});
+        return;
+      }
       case 'status': {
-        if(this.state.phase!=='casting'||!this.current())return;
+        if(this.state.phase!=='casting'&&!this.state.remoteStopped||!this.current())return;
+        if(this.acceptedController&&!sameCastController(e.controller,this.acceptedController))return;
+        if(this.proofContext&&(!e.controller||e.itemId&&!e.occurrence))return;
+        if(this.stopping){
+          // Empty status is not a Stop receipt. A different actual occurrence
+          // retires that pending action; its late ACK cannot stop the new view.
+          if(!e.occurrence||sameCastRemote({controller:e.controller!,occurrence:e.occurrence},this.stopping.target))return;
+          this.clearTimer(this.stopping.timer);this.stopping=undefined;
+        }
+        if(this.state.remoteStopped&&(!e.occurrence||sameCastRemote({controller:e.controller!,occurrence:e.occurrence},this.state.remoteIdentity)))return;
+        const remoteIdentity=e.controller&&e.occurrence?Object.freeze({controller:e.controller,occurrence:e.occurrence}):undefined;
         const transport=this.transport,generation=this.startGeneration,revision=++this.statusRevision;
-        const publish=(title?:string)=>{if(this.current()&&this.transport===transport&&this.startGeneration===generation&&this.statusRevision===revision&&this.state.phase==='casting')this.publish({phase:e.itemId?'casting':'off',itemId:e.itemId||undefined,title,positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused,audioTracks:e.audioTracks,textTracks:e.textTracks,reported:e.itemId&&e.clockKnown?Object.freeze({itemId:e.itemId,positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused}):undefined});};
+        const publish=(title?:string)=>{if(this.current()&&this.transport===transport&&this.startGeneration===generation&&this.statusRevision===revision&&(this.state.phase==='casting'||this.state.remoteStopped))this.publish({phase:e.itemId?'casting':'off',remoteIdentity,remoteStopped:false,controlPending:false,itemId:e.itemId||undefined,title,positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused,audioTracks:e.audioTracks,textTracks:e.textTracks,reported:e.itemId&&e.clockKnown?Object.freeze({itemId:e.itemId,positionSeconds:e.positionSeconds,durationSeconds:e.durationSeconds,paused:e.paused}):undefined});};
         if(!e.itemId){publish();return;}
         if(this.describe)void this.describe(e.itemId).then(title=>{if(title)publish(title);else this.redacted(transport,generation,revision);},()=>this.redacted(transport,generation,revision));
         else publish(this.state.itemId===e.itemId?this.state.title:undefined);
@@ -374,18 +413,19 @@ export class CastController {
 
   private redacted(transport:CastTransport|undefined,generation:number,revision:number){
     if(!this.current()||this.transport!==transport||generation!==this.startGeneration||revision!==this.statusRevision)return;
-    this.release(false,false);this.publish({phase:'off',disclosureRefused:true,itemId:undefined,title:undefined,reported:undefined,audioTracks:[],textTracks:[],positionSeconds:0,durationSeconds:0});
+    this.release(false,false);this.publish({phase:'off',disclosureRefused:true,remoteIdentity:undefined,remoteStopped:undefined,controlPending:false,itemId:undefined,title:undefined,reported:undefined,audioTracks:[],textTracks:[],positionSeconds:0,durationSeconds:0});
   }
   private fail(id: MessageId) { this.publish({phase: 'error', errorId: id, error: serviceText(id)}); }
 
   private sessionEnded() {
     this.release(false, false);
-    if (this.state.phase !== 'error' && this.state.phase !== 'replaced') this.publish({phase: 'off', itemId: undefined, title: undefined, deviceName: undefined, takeover: undefined});
+    if (this.state.phase !== 'error' && this.state.phase !== 'replaced') this.publish({phase:'off',remoteIdentity:undefined,remoteStopped:undefined,controlPending:false,itemId:undefined,title:undefined,deviceName:undefined,takeover:undefined});
   }
 
   /** Detach from the transport; `stopReceiver` closes Portico on the TV. */
   private release(stopReceiver: boolean, end = true) {
     this.startGeneration++;this.statusRevision++;
+    if(this.stopping)this.clearTimer(this.stopping.timer);this.stopping=undefined;this.acceptedController=undefined;this.expectedPairId=undefined;
     this.clearTimer(this.adoptTimer);this.settleAdoption?.(false);
     const flight=this.transferFlight;this.transferFlight=undefined;const released=this.startGeneration;
     if(flight?.id)this.recoveryTransfer=flight;
@@ -406,20 +446,23 @@ export class CastController {
   private send(message: CastCommand) { if(this.current())void this.transport?.send(message).catch(() => {}); }
 
   /** The controller's answer to `takeover-requested`. */
-  answerTakeover(allow: boolean) {
-    if(!this.state.takeover)return;
+  answerTakeover(allow:boolean,expected=this.state.takeover) {
+    if(!expected||expected!==this.state.takeover)return;
     this.clearTimer(this.takeoverTimer);
-    this.send({type: 'takeover', allow});
-    this.publish({takeover: undefined});
+    this.send({type:'takeover',allow,...(expected.controller?{controller:expected.controller}:{}),...(expected.requestId?{requestId:expected.requestId}:{})});
+    this.publish({takeover:undefined});
   }
-  play() { if(this.state.phase!=='casting')return;this.send({type: 'play'}); this.publish({paused: false}); }
-  pause() { if(this.state.phase!=='casting')return;this.send({type: 'pause'}); this.publish({paused: true}); }
-  toggle() { if (this.state.paused) this.play(); else this.pause(); }
-  seek(positionSeconds: number) { if(this.state.phase!=='casting')return;const p = Math.max(0, positionSeconds); this.send({type: 'seek', positionSeconds: p}); this.publish({positionSeconds: p}); }
-  setAudioTrack(trackId: number) { if (this.state.phase==='casting'&&Number.isSafeInteger(trackId)) this.send({type: 'audio', trackId}); }
+  private controlTarget(expected:CastRemoteIdentity|undefined){return this.current()&&this.state.phase==='casting'&&!this.stopping&&(!expected||sameCastRemote(expected,this.state.remoteIdentity));}
+  private targetFields(expected?:CastRemoteIdentity){const target=expected??this.state.remoteIdentity;return target?{target}:{};}
+  play(expected?:CastRemoteIdentity) { if(!this.controlTarget(expected))return;this.send({type:'play',...this.targetFields(expected)});if(!this.state.remoteIdentity)this.publish({paused:false}); }
+  pause(expected?:CastRemoteIdentity) { if(!this.controlTarget(expected))return;this.send({type:'pause',...this.targetFields(expected)});if(!this.state.remoteIdentity)this.publish({paused:true}); }
+  toggle(expected?:CastRemoteIdentity) { if(this.state.paused)this.play(expected);else this.pause(expected); }
+  seek(positionSeconds:number,expected?:CastRemoteIdentity) { if(!this.controlTarget(expected)||!Number.isFinite(positionSeconds))return;this.send({type:'seek',positionSeconds:Math.max(0,positionSeconds),...this.targetFields(expected)}); }
+  setAudioTrack(trackId:number,expected?:CastRemoteIdentity) { if(this.controlTarget(expected)&&Number.isSafeInteger(trackId))this.send({type:'audio',trackId,...this.targetFields(expected)}); }
   /** `null` turns subtitles off. */
-  setSubtitleTrack(trackId: number | null) { if(this.state.phase!=='casting')return;this.send({type: 'subtitles', trackIds: trackId === null ? [] : [trackId]}); }
-  stop() {
+  setSubtitleTrack(trackId:number|null,expected?:CastRemoteIdentity) { if(this.controlTarget(expected))this.send({type:'subtitles',trackIds:trackId===null?[]:[trackId],...this.targetFields(expected)}); }
+  stop(expected?:CastRemoteIdentity) {
+    if(expected&&!sameCastRemote(expected,this.state.remoteIdentity))return;
     if(this.adopting){this.release(false,false);return;}
     this.clearTimer(this.takeoverTimer);
     const flight=this.transferFlight??this.recoveryTransfer;
@@ -433,10 +476,20 @@ export class CastController {
       },()=>{if(!this.disposed&&generation===this.startGeneration){this.recoveryTransfer=flight;this.release(false);this.fail('cast.error.unreachable');}});
       return;
     }
+    const target=expected??this.state.remoteIdentity,transport=this.transport;
+    if(target&&transport&&this.controlTarget(target)){
+      const generation=this.startGeneration,requestId='stop-'+(++this.requestSequence);
+      const refuse=()=>{if(this.stopping?.requestId!==requestId)return;this.redacted(transport,generation,this.statusRevision);};
+      this.statusRevision++;
+      this.stopping={requestId,target,transport,generation,timer:this.setTimer(refuse,35_000)};
+      this.publish({controlPending:true});
+      void transport.send({type:'stop',requestId,target}).catch(refuse);return;
+    }
+    if(target||this.stopping)return;
     this.send({type: 'stop'});
     this.release(true);
     this.publish({phase: 'off', transferPending:false,itemId: undefined, title: undefined, deviceName: undefined, error: undefined, errorId: undefined, takeover: undefined});
   }
-  dismiss() { if(this.state.transferPending){this.stop();return;}this.publish({phase: 'off', error: undefined, errorId: undefined}); }
+  dismiss() { if(this.state.transferPending){this.stop();return;}this.publish({phase:'off',remoteIdentity:undefined,remoteStopped:undefined,controlPending:false,error:undefined,errorId:undefined}); }
   dispose() { const adopting=this.adopting;this.clearTimer(this.takeoverTimer); this.settleAdoption?.(false); this.release(false,!adopting); this.disposed = true; this.listeners.clear(); }
 }

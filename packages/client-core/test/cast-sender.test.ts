@@ -161,6 +161,8 @@ test('receiver messages are validated; HTTP origins are refused', () => {
 
 const scope={serverId:'server',authority:'local',accountId:'account',profileId:'profile',senderDeviceId:'device',senderFamilyId:'family'};
 const context:CastControllerContext={...scope,origin:'https://server.test',publicKey:'a'.repeat(43)};
+const controllerStamp={bindingId:'cct_test',controllerGeneration:2,connectionGeneration:3};
+const occurrence={sessionId:'playback-original',generation:7,itemId:'movie'};
 const binding={id:'cct_test',bootstrapId:'cbs_test',receiverId:'tv-a',targetId:'cdv_target',targetFamilyId:'target-family',targetGeneration:'1',scope};
 function returning(options:{context?:CastControllerContext;legacy?:boolean;validate?:()=>Promise<void>;describe?:()=>Promise<string|undefined>}={}){
  const saved=new Map([[castProofKey(context,'tv-a'),options.legacy?'a'.repeat(48):JSON.stringify({version:2,context,binding,controlToken:'a'.repeat(48)})]]);
@@ -181,7 +183,7 @@ test('Root50: fresh sender validation precedes proof disclosure, correlated rece
  const h=returning({validate:()=>new Promise<void>(r=>{release=r;}),describe:()=>new Promise<string>(r=>{describe=()=>r('Film');})}),tv=receiver('TV','tv-a');
  const adopted=h.controller.adopt(tv.transport);assert.equal(h.requests.length,1);assert.deepEqual(tv.sent,[]);release();await settle();
  const command=tv.sent[0];assert.equal(command.type,'adopt');if(command.type!=='adopt')throw new Error('no adoption');
- const status={type:'status',itemId:'movie',positionSeconds:80,durationSeconds:600,paused:false,audioTracks:[],textTracks:[]};
+ const status={type:'status',controller:controllerStamp,occurrence,itemId:'movie',positionSeconds:80,durationSeconds:600,paused:false,audioTracks:[],textTracks:[]};
  tv.reply({...status,attemptId:'other-attempt'});assert.equal(h.controller.getSnapshot().phase,'off');
  tv.reply({...status,attemptId:command.attemptId});assert.equal(h.controller.getSnapshot().itemId,undefined);describe();assert.equal(await adopted,true);
  assert.equal(h.controller.getSnapshot().title,'Film');assert.equal(h.controller.getSnapshot().acceptedSource,undefined);assert.equal(tv.sent.some(m=>m.type==='load'||m.type==='pair'),false);h.controller.dispose();
@@ -189,7 +191,7 @@ test('Root50: fresh sender validation precedes proof disclosure, correlated rece
 test('Root50: validation refusal, caller replacement and late redacted descriptions never stop or populate another caller',async()=>{
  const refused=returning({validate:async()=>{throw new Error('revoked');}}),tv=receiver('TV','tv-a');assert.equal(await refused.controller.adopt(tv.transport),false);assert.deepEqual(tv.sent,[]);assert.equal(tv.ended,undefined);
  let release!:()=>void;const h=returning({validate:()=>new Promise<void>(r=>{release=r;})}),other=receiver('TV','tv-a');const pending=h.controller.adopt(other.transport);h.retire();release();assert.equal(await pending,false);await settle();assert.deepEqual(other.sent,[]);assert.equal(other.ended,undefined);
- const hidden=returning({describe:async()=>undefined}),target=receiver('TV','tv-a'),adopting=hidden.controller.adopt(target.transport);await settle();const command=target.sent[0];if(command.type!=='adopt')throw new Error('no adoption');target.reply({type:'status',attemptId:command.attemptId,itemId:'hidden',positionSeconds:9});assert.equal(await adopting,false);assert.equal(hidden.controller.getSnapshot().itemId,undefined);assert.equal(target.ended,undefined);
+ const hidden=returning({describe:async()=>undefined}),target=receiver('TV','tv-a'),adopting=hidden.controller.adopt(target.transport);await settle();const command=target.sent[0];if(command.type!=='adopt')throw new Error('no adoption');target.reply({type:'status',controller:controllerStamp,occurrence:{...occurrence,itemId:'hidden'},attemptId:command.attemptId,itemId:'hidden',positionSeconds:9});assert.equal(await adopting,false);assert.equal(hidden.controller.getSnapshot().itemId,undefined);assert.equal(target.ended,undefined);
 });
 
 test('load acknowledgement is correlated and a missing/rejected load never claims playback', async () => {
@@ -212,4 +214,29 @@ test('a queue load carries only bounded server queue and entry identities', asyn
   const h=harness(),r=receiver();const started=h.controller.start(r.transport,'song',meta,0,{queue:{queueId:'q-1',entryId:'entry-2'}});
   await settle();r.reply({type:'paired'});assert.equal(await started,true);
   const load=r.sent.find(m=>m.type==='load');assert.deepEqual(load?.queue,{queueId:'q-1',entryId:'entry-2'});
+});
+
+
+test('returning dock uses real occurrence facts; stale commands and Stop receipts cannot cross occurrences',async()=>{
+ const h=returning(),tv=receiver('TV','tv-a');const adopted=h.controller.adopt(tv.transport);await settle();
+ const command=tv.sent[0];if(command.type!=='adopt')throw new Error('no adoption');
+ const status={type:'status',controller:controllerStamp,occurrence,itemId:'movie',positionSeconds:80,durationSeconds:600,paused:false};
+ tv.reply({...status,attemptId:command.attemptId});assert.equal(await adopted,true);
+ const original=h.controller.getSnapshot().remoteIdentity;assert.ok(original);
+ h.controller.stop(original);const stop=tv.sent.at(-1);assert.equal(stop?.type,'stop');if(stop?.type!=='stop')throw new Error('no Stop');
+ assert.equal(h.controller.getSnapshot().controlPending,true);assert.equal(tv.ended,undefined);
+ tv.reply({...status,itemId:'',occurrence:undefined});assert.equal(h.controller.getSnapshot().remoteStopped,false);
+ const successor={...occurrence,sessionId:'playback-successor',generation:8};
+ tv.reply({...status,occurrence:successor});await settle();
+ tv.reply({type:'stopped',requestId:stop.requestId,target:original,positionSeconds:81,durationSeconds:600});
+ assert.equal(h.controller.getSnapshot().remoteIdentity?.occurrence.sessionId,'playback-successor');assert.equal(h.controller.getSnapshot().remoteStopped,false);
+ const count=tv.sent.length;h.controller.pause(original);h.controller.seek(40,original);h.controller.stop(original);assert.equal(tv.sent.length,count);
+ h.controller.stop(h.controller.getSnapshot().remoteIdentity);const next=tv.sent.at(-1);if(next?.type!=='stop')throw new Error('no successor Stop');
+ tv.reply({type:'stopped',requestId:next.requestId,target:next.target,positionSeconds:82,durationSeconds:600});
+ assert.equal(h.controller.getSnapshot().remoteStopped,true);assert.equal(h.controller.getSnapshot().reported?.positionSeconds,82);assert.equal(tv.ended,undefined);h.controller.dispose();
+});
+test('private occurrence parser refuses malformed stamps instead of downgrading to unscoped status',()=>{
+ assert.equal(parseCastEvent({type:'status',controller:controllerStamp,occurrence:{...occurrence,generation:0},itemId:'movie'}),undefined);
+ assert.equal(parseCastEvent({type:'status',controller:controllerStamp,occurrence,itemId:'other'}),undefined);
+ assert.equal(parseCastEvent({type:'status',controller:{...controllerStamp,connectionGeneration:NaN},itemId:'movie'}),undefined);
 });

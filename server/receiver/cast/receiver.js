@@ -296,6 +296,16 @@
   function leaseCurrent(lease){return !lease||!shuttingDown&&lease.origin===base&&!!session&&lease.session===session&&lease.bearer===session.accessToken&&lease.scope===scope&&lease.binding===controllerBinding&&lease.proof===controllerToken&&
     lease.connection===connectionGeneration(lease.senderId)&&lease.controllerGeneration===controllerGeneration&&
     (lease.adoption?lease.adoptionGeneration===adoptionGeneration&&lease.owner===controllerSender:controllerPresent&&lease.senderId===controllerSender);}
+  function controllerStamp(lease){return lease&&lease.binding?{bindingId:lease.binding.id,controllerGeneration:lease.controllerGeneration,connectionGeneration:lease.connection}:null;}
+  function occurrenceFact(owner){return owner?{sessionId:owner.id,generation:owner.generation,itemId:owner.itemId}:null;}
+  function remoteIdentity(lease,owner){var controller=controllerStamp(lease),occurrence=occurrenceFact(owner);return controller&&occurrence?{controller:controller,occurrence:occurrence}:null;}
+  function readRemoteIdentity(value){
+    var c=value&&value.controller,o=value&&value.occurrence,id=function(v){return typeof v==='string'&&/^[A-Za-z0-9._:-]{1,128}$/.test(v);},generation=function(v){return Number.isSafeInteger(v)&&v>0;};
+    if(!c||!o||!id(c.bindingId)||!generation(c.controllerGeneration)||!generation(c.connectionGeneration)||!id(o.sessionId)||!id(o.itemId)||!generation(o.generation))return null;
+    return {controller:{bindingId:c.bindingId,controllerGeneration:c.controllerGeneration,connectionGeneration:c.connectionGeneration},occurrence:{sessionId:o.sessionId,generation:o.generation,itemId:o.itemId}};
+  }
+  function sameControllerStamp(a,b){return !!a&&!!b&&a.bindingId===b.bindingId&&a.controllerGeneration===b.controllerGeneration&&a.connectionGeneration===b.connectionGeneration;}
+  function sameRemoteIdentity(a,b){return !!a&&!!b&&sameControllerStamp(a.controller,b.controller)&&!!a.occurrence&&!!b.occurrence&&a.occurrence.sessionId===b.occurrence.sessionId&&a.occurrence.generation===b.occurrence.generation&&a.occurrence.itemId===b.occurrence.itemId;}
   function requireLease(lease){if(!leaseCurrent(lease)){var e=new Error('controller_retired');e.retired=true;throw e;}}
   function commandQueue(lease,work){return serial(function(){requireLease(lease);if(lease&&playback!==lease.occurrence)throw new Error('occurrence_replaced');return work();});}
   async function cleanupOccurrence(id,lease){
@@ -726,13 +736,14 @@
     requireLease(lease);if(expected&&playback!==expected)return;
     clearTimeout(reportTimer); clearTimeout(bufferingTimer);
     if (!playback) return;
-    var id = playback.id, at = Math.round(position() * 1000);
+    var stoppedClock=clockFacts(),id = playback.id, at = Math.round(position() * 1000);
     playback = null; meta = null;cafOccurrence=null;platformOccurrence=null;
     if (manager) mediaCommand('STOP');
     mediaAddresses.clear();
     showIdle();
     // A session that has already ended (404, 410) is simply gone.
-    await api(sessionPath(id), {method: 'DELETE', body: ended ? undefined : {positionMs: at}},lease).catch(function (e) { if (!e.status || e.status >= 500) throw e; });
+    await api(sessionPath(id), {method: 'DELETE', body: ended ? undefined : {positionMs: at}},lease).catch(function (e) { if (!e.status || e.status >= 500 || lease&&e.status!==404&&e.status!==410) throw e; });
+    return stoppedClock;
   }
   /** Starts a v1 session for the item and answers CAF's load request for it. A session already
    * playing here is replaced in the same request, so this TV holds one playback slot. */
@@ -976,7 +987,7 @@
     if(owner)await api(sessionPath(owner.id),{method:'GET'},lease);
     requireLease(lease);
     if(owner!==playback||!isController(senderId))return;
-    send(senderId,Object.assign(statusBody(),attemptId?{attemptId:attemptId}:{}));
+    send(senderId,Object.assign(statusBody(lease),attemptId?{attemptId:attemptId}:{}));
   }
   async function takeControl(senderId, origin, result,connection) {
     try{
@@ -993,7 +1004,7 @@
       requirePairInstallation(installation,true);
       controllerToken=proof;controllerBinding=binding;controllerSender=senderId;controllerPresent=true;
       if(previous&&previous!==senderId)send(previous,{type:'replaced'});
-      send(senderId,{type:'paired',controlToken:proof,binding:binding});
+      send(senderId,{type:'paired',controlToken:proof,binding:binding,controller:controllerStamp(captureController(senderId,false))});
     }catch(error){discardPair({origin:origin,result:result});throw error;}
   }
   /** A pair request: redeem first (keeping the current pairing), then decide whether to switch now or ask. */
@@ -1014,7 +1025,7 @@
       var here = !!controllerSender && controllerPresent;
       askTakeover(requester, here);
       if (here) {
-        send(controllerSender, {type: 'takeover-requested', requester: requester});
+        send(controllerSender,{type:'takeover-requested',requester:requester,controller:controllerStamp(captureController(controllerSender,false)),requestId:result.controllerBootstrapId});
         pendingPair.timer = setTimeout(function () { denyPending('tv_busy'); }, TAKEOVER_ASK_MS);
       } else {
         pendingPair.timer = setTimeout(allowPending, TAKEOVER_ABSENT_MS);
@@ -1035,9 +1046,9 @@
     else if (event.key === 'Escape' || event.key === 'Backspace' || event.key === 'GoBack' || event.key === 'BrowserBack') denyPending('tv_busy');
   });
   function isController(senderId) { return !!controllerSender && controllerPresent && senderId === controllerSender; }
-  function statusBody() {
+  function statusBody(lease) {
     var status = {
-      type: 'status', paired: !!session, itemId: playback ? playback.itemId || '' : '',
+      type:'status',...(controllerStamp(lease)?{controller:controllerStamp(lease)}:{}),...(playback?{occurrence:occurrenceFact(playback)}:{}),paired:!!session,itemId: playback ? playback.itemId || '' : '',
       audioTracks: manager ? manager.getAudioTracksManager().getTracks().map(function(t){return {id:t.trackId,language:t.language||'',name:t.name||''};}) : [],
       textTracks: manager ? manager.getTextTracksManager().getTracks().map(function(t){return {id:t.trackId,language:t.language||'',name:t.name||''};}) : [],
       paused: paused(), state: recovering?'recovering':playback?(paused()?'paused':'playing'):'idle'
@@ -1179,17 +1190,21 @@
           if(adoptionOwner)await api(sessionPath(adoptionOwner.id),{method:'GET'},adoptionLease);
           requireLease(adoptionLease);if(playback!==adoptionOwner)throw new Error('occurrence_replaced');
           controllerGeneration++;controllerSender=senderId;controllerPresent=true;controllerAttempt=message.attemptId;
-          send(senderId,Object.assign(statusBody(),{attemptId:message.attemptId}));
+          send(senderId,Object.assign(statusBody(captureController(senderId,false)),{attemptId:message.attemptId}));
         }catch(e){if(leaseCurrent(adoptionLease))reply({type:'pair-required'});}
         return;
       }
       if (message.type === 'pair') { var pairConnection=capturePairConnection(senderId);handlePair(senderId, message,pairConnection); return; }
       if (message.type === 'takeover') {
-        var takeoverLease=captureController(senderId,false);try{await controllerAuthority(senderId,undefined,takeoverLease);requireLease(takeoverLease);}catch(e){if(leaseCurrent(takeoverLease))reply({type:'pair-required'});return;}
+        var offered=pendingPair,takeoverLease=captureController(senderId,false);try{await controllerAuthority(senderId,undefined,takeoverLease);requireLease(takeoverLease);}catch(e){if(leaseCurrent(takeoverLease))reply({type:'pair-required'});return;}
+        if(message.controller!==undefined&&!sameControllerStamp(message.controller,controllerStamp(takeoverLease)))return;
+        if(!offered||pendingPair!==offered||message.requestId!==undefined&&message.requestId!==offered.result.controllerBootstrapId)return;
         if (isController(senderId) && pendingPair) { if (message.allow === true) allowPending(); else denyPending('tv_busy'); }
         return;
       }
       if (!isController(senderId)) {
+        // An occurrence-scoped private command never becomes a room command.
+        if(message.target!==undefined){reply({type:'pair-required'});return;}
         // Nothing about what's playing, and no control, for a sender that didn't pair.
         if (message.type === 'pause' && playback) { mediaCommand('PAUSE'); return; }
         if (message.type === 'stop' && playback) { serial(stopPlayback).catch(function(){}); return; }
@@ -1197,6 +1212,11 @@
         return;
       }
       var commandLease=captureController(senderId,false);try{await controllerAuthority(senderId,undefined,commandLease);requireLease(commandLease);}catch(e){if(leaseCurrent(commandLease))reply({type:'pair-required'});return;}
+      var requestedTarget=readRemoteIdentity(message.target);
+      if(message.target!==undefined&&(!requestedTarget||!sameRemoteIdentity(requestedTarget,remoteIdentity(commandLease,playback)))){
+        if(requestedTarget&&typeof message.requestId==='string'&&/^[A-Za-z0-9._:-]{1,128}$/.test(message.requestId))reply({type:'control-failed',requestId:message.requestId,target:requestedTarget});
+        return;
+      }
       switch (message.type) {
         case 'load':
           if(message.queue!==undefined&&!queueRef(message.queue)){reply({type:'load-failed',requestId:message.requestId});break;}
@@ -1214,7 +1234,15 @@
         case 'seek': if(Number.isFinite(message.positionSeconds)) seekTo(message.positionSeconds,commandLease).catch(function(){if(leaseCurrent(commandLease))notice(copy('notice.seekFailed'), 5000);}); break;
         case 'audio': if(Number.isSafeInteger(message.trackId)) manager.getAudioTracksManager().setActiveById(message.trackId); break;
         case 'subtitles': if(Array.isArray(message.trackIds)&&message.trackIds.length<=1&&message.trackIds.every(Number.isSafeInteger)) manager.getTextTracksManager().setActiveByIds(message.trackIds); break;
-        case 'stop': var stopOwner=playback;commandQueue(commandLease,function(){return stopPlayback(false,commandLease,stopOwner);}).catch(function(){if(leaseCurrent(commandLease))notice(copy('notice.stopFailed'), 5000);}); break;
+        case 'stop': {
+          var stopOwner=playback,stoppedTarget=remoteIdentity(commandLease,stopOwner);
+          commandQueue(commandLease,function(){return stopPlayback(false,commandLease,stopOwner);}).then(function(stopClock){
+            requireLease(commandLease);
+            if(stoppedTarget&&typeof message.requestId==='string'&&/^[A-Za-z0-9._:-]{1,128}$/.test(message.requestId))reply(Object.assign({type:'stopped',requestId:message.requestId,target:stoppedTarget},stopClock));
+            broadcast();
+          }).catch(function(){if(leaseCurrent(commandLease)){notice(copy('notice.stopFailed'),5000);if(stoppedTarget&&typeof message.requestId==='string')reply({type:'control-failed',requestId:message.requestId,target:stoppedTarget});}});
+          break;
+        }
         case 'status': controllerStatus(senderId,controllerAttempt,commandLease).catch(function(){if(leaseCurrent(commandLease))reply({type:'pair-required'});});return;
         default: return;
       }
