@@ -58,6 +58,7 @@ export function signalGain(db:number):string{
  const n=Math.round(Math.abs(db)*10)/10;
  return `${db<0&&n!==0?'−':'+'}${n.toFixed(1)}`;
 }
+const dsdCodec=(codec:string|undefined):boolean=>codec!==undefined&&(codec.toLowerCase()==='dsd'||codec.toLowerCase().startsWith('dsd_'));
 function codecName(codec:string):string{
  const name=codec.toLowerCase();
  // The probe reports a family member for these two: pcm_s24le, dsd_lsbf and so on. The
@@ -84,7 +85,7 @@ export function musicSignalSource(f:MusicFormatFacts,short=false):SignalText|str
 export function musicFormatBadges(f:MusicFormatFacts):readonly (SignalText|string)[]{
  const out:(SignalText|string)[]=[];
  if(f.atmos===true)out.push(text('player.signal.badge.atmos'));
- else if(positive(f.dsdMultiple))out.push(text('player.signal.badge.dsd'));
+ else if(positive(f.dsdMultiple)||dsdCodec(f.codec))out.push(text('player.signal.badge.dsd'));
  else if(f.lossless===true&&positive(f.bitDepth)&&f.bitDepth>16&&positive(f.sampleRate)&&f.codec)out.push(text('player.signal.badge.lossless',{codec:codecName(f.codec),bits:f.bitDepth,khz:f.sampleRate/1000}));
  const channels=layout(f);if(channels==='5.1'||channels==='7.1')out.push(channels);
  return Object.freeze(out.slice(0,2));
