@@ -285,12 +285,13 @@ func disabledAt(ms int64) string {
 	return time.UnixMilli(ms).UTC().Format(time.RFC3339)
 }
 
-// PeopleDevice adds the display trio and network class without exposing an IP.
+// PeopleDevice adds public display facts without exposing addresses or session identifiers.
 type PeopleDevice struct {
 	identity.MemberDevice
-	ProfileName string `json:"profileName,omitempty"`
-	LastNetwork string `json:"lastNetwork"`
-	LiveState   string `json:"liveState"`
+	ProfileName  string `json:"profileName,omitempty"`
+	LastNetwork  string `json:"lastNetwork"`
+	LiveState    string `json:"liveState"`
+	SessionCount *int   `json:"sessionCount,omitempty"`
 }
 type PeopleDevicePage struct {
 	Limit      int            `json:"limit"`
@@ -301,13 +302,18 @@ type PeopleDeviceQuery struct{ Cursor, Limit, Account, Sort string }
 
 const peopleDeviceColumns = `d.id,d.account_id,a.username,d.last_profile_id,d.name,d.platform,d.app,d.app_version,d.first_seen,d.last_seen,d.revision,COALESCE(p.name,''),d.ip,
  CASE WHEN EXISTS(SELECT 1 FROM playback_v1_sessions v WHERE v.device_id=d.id AND v.ended_ms=0 AND v.lease_expires_ms>unixepoch('subsec')*1000 AND v.kind NOT IN('music','audiobook','audio')) THEN 'watching'
- WHEN EXISTS(SELECT 1 FROM playback_v1_sessions v WHERE v.device_id=d.id AND v.ended_ms=0 AND v.lease_expires_ms>unixepoch('subsec')*1000 AND v.kind IN('music','audiobook','audio')) THEN 'listening' ELSE 'idle' END`
+ WHEN EXISTS(SELECT 1 FROM playback_v1_sessions v WHERE v.device_id=d.id AND v.ended_ms=0 AND v.lease_expires_ms>unixepoch('subsec')*1000 AND v.kind IN('music','audiobook','audio')) THEN 'listening' ELSE 'idle' END,
+ (SELECT count(*) FROM identity_device_families f JOIN authorization_session_families a ON a.id=f.family_id AND a.revoked=0 AND a.authorization_horizon>? WHERE f.device_id=d.id)`
 const peopleDeviceTables = `identity_devices d JOIN accounts a ON a.id=d.account_id JOIN direct_memberships m ON m.account_id=a.id LEFT JOIN direct_profiles p ON p.id=d.last_profile_id AND p.account_id=d.account_id AND p.deleted=0`
 
 func scanPeopleDevice(row interface{ Scan(...any) error }, networks []netip.Prefix) (PeopleDevice, error) {
 	var v PeopleDevice
 	var ip string
-	e := row.Scan(&v.ID, &v.AccountID, &v.Username, &v.ProfileID, &v.Name, &v.Platform, &v.App, &v.AppVersion, &v.FirstSeen, &v.LastSeen, &v.Revision, &v.ProfileName, &ip, &v.LiveState)
+	var sessions int
+	e := row.Scan(&v.ID, &v.AccountID, &v.Username, &v.ProfileID, &v.Name, &v.Platform, &v.App, &v.AppVersion, &v.FirstSeen, &v.LastSeen, &v.Revision, &v.ProfileName, &ip, &v.LiveState, &sessions)
+	if e == nil {
+		v.SessionCount = &sessions
+	}
 	v.LastNetwork = "away"
 	addr, _ := netip.ParseAddr(ip)
 	if networkpolicy.Contains(networks, addr) {
@@ -355,7 +361,7 @@ func (s *Store) PeopleDevices(ctx context.Context, auth Authorize, actor identit
 			return identity.ErrForbidden
 		}
 		query := `SELECT ` + peopleDeviceColumns + ` FROM ` + peopleDeviceTables + ` WHERE d.authority='local' AND (?='' OR d.account_id=?) AND (? OR (m.role='member' AND d.account_id<>?)) AND (?='' OR (` + column + `,d.id)` + comparison + `(?,?)) ORDER BY ` + column + ` ` + direction + `,d.id ` + direction + ` LIMIT ?`
-		rows, e := tx.QueryContext(ctx, query, q.Account, q.Account, owner, actor.AccountID, id, key, id, limit+1)
+		rows, e := tx.QueryContext(ctx, query, s.Now().UTC().Format(time.RFC3339), q.Account, q.Account, owner, actor.AccountID, id, key, id, limit+1)
 		if e != nil {
 			return e
 		}
@@ -400,7 +406,7 @@ func (s *Store) PeopleDevice(ctx context.Context, auth Authorize, actor identity
 			return identity.ErrForbidden
 		}
 		owner := live == identity.TierOwner && actor.Role == identity.TierOwner
-		out, e = scanPeopleDevice(tx.QueryRowContext(ctx, `SELECT `+peopleDeviceColumns+` FROM `+peopleDeviceTables+` WHERE d.id=? AND d.authority='local' AND (? OR (m.role='member' AND d.account_id<>?))`, id, owner, actor.AccountID), networks)
+		out, e = scanPeopleDevice(tx.QueryRowContext(ctx, `SELECT `+peopleDeviceColumns+` FROM `+peopleDeviceTables+` WHERE d.id=? AND d.authority='local' AND (? OR (m.role='member' AND d.account_id<>?))`, s.Now().UTC().Format(time.RFC3339), id, owner, actor.AccountID), networks)
 		return e
 	})
 	return
