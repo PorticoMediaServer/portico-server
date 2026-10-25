@@ -1,7 +1,7 @@
 import type {ReadingAnnotationPort} from '@core/reading-annotations.ts';
 import {randomId} from '@core/random-id.ts';
 import {readingLocationFromReader} from '@portico/reader-core';
-import {ReaderAnnotationActions, ReaderAnnotationList, useReaderAnnotations} from './ReaderAnnotations';
+import {ReaderAnnotationActions, ReaderAnnotationList, useReaderAnnotations, useAnnotationLease} from './ReaderAnnotations';
 import {readingSearchStepIndex} from './search-step';
 import {useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
@@ -72,12 +72,19 @@ export type ReaderBookState = Readonly<{publication: ReadingPublication; control
 export function ReaderBook({book, active, reportError, onBack, onOpenSettings, onSearchAll, environment = 'web', crease}: {environment?: ReaderEnvironment; book: ReaderBookState; active: boolean; reportError: (error: unknown) => void; onBack: () => void; onOpenSettings: () => void; onSearchAll?: (query: string) => void; /** Actual vertical book fold for this window, or absent. */ crease?: Readonly<{left: number; right: number}>}) {
   const {controller, publication, authority} = book;
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot), width = useShellWidth();
-  const [panel, setPanel] = useState<'display' | 'contents' | 'search'>(), [query, setQuery] = useState('');
+  const [panel, updatePanel] = useState<'display' | 'contents' | 'search'>(), [query, setQuery] = useState('');
   const [fixedMenu, setFixedMenu] = useState<'zoom' | 'direction'>();
-  const [fixedPane, setFixedPane] = useState<'contents' | 'pages' | 'bookmarks' | 'highlights'>('contents');
+  const [fixedPane, updateFixedPane] = useState<'contents' | 'pages' | 'bookmarks' | 'highlights'>('contents');
+  const annotationPanel=useRef(new AbortController());
+  const setPanel=(next:typeof panel)=>{annotationPanel.current.abort();annotationPanel.current=new AbortController();updatePanel(next);};
+  const setFixedPane=(next:typeof fixedPane)=>{annotationPanel.current.abort();annotationPanel.current=new AbortController();updateFixedPane(next);};
   const zoomAnchor = useRef<HTMLButtonElement>(null), directionAnchor = useRef<HTMLButtonElement>(null);
   const fixed = publication.format !== 'epub';
   const notes = useReaderAnnotations(book.annotations, controller, authority, active, snapshot.status === 'ready');
+  const annotationLease=useAnnotationLease(notes.service);
+  const listSignal=annotationPanel.current.signal;
+  if(!active)annotationPanel.current.abort();
+  useLayoutEffect(()=>{const original=annotationPanel.current;return()=>original.abort();},[]);
   const [hits, setHits] = useState<readonly ReaderSearchResult[]>([]), [searching, setSearching] = useState(false), [searchComplete, setSearchComplete] = useState(false), [currentHit, setCurrentHit] = useState<string>();
   // phone-read 14: taught once per browser, never re-shown after Got it.
   const hintKey = 'portico.reader.tapZonesHint.v1';
@@ -190,7 +197,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, o
       ...(notes.service ? [{id:'bookmarks',label:t('next.reader.bookmarks')},{id:'highlights',label:t('next.reader.highlights')}] : [])]}
     selected={annotationPane ?? (fixed && !snapshot.toc.length ? 'pages' : fixedPane === 'pages' ? 'pages' : 'contents')}
     onSelect={selected => {if (selected === 'bookmarks' || selected === 'highlights' || selected === 'pages' || selected === 'contents') setFixedPane(selected);}} onClose={() => setPanel(undefined)}>
-    {annotationPane && notes.service ? <ReaderAnnotationList kind={annotationPane === 'bookmarks' ? 'bookmark' : 'highlight'} service={notes.service} state={notes.state} controller={controller} reportError={reportError}/>
+    {annotationPane && notes.service ? <ReaderAnnotationList key={fixedPane} signal={listSignal} kind={annotationPane === 'bookmarks' ? 'bookmark' : 'highlight'} service={notes.service} state={notes.state} controller={controller} reportError={reportError}/>
       : !fixed || snapshot.toc.length > 0 && fixedPane === 'contents' ? <ReaderContents entries={contents(snapshot.toc)}/>
         : <FixedPagesPanel controller={controller} authority={authority} format={publication.format} reportError={code => reportError({code})} onNavigate={() => {if (presentation === 'phone') setPanel(undefined);}}/>}
   </ReaderPanel>
@@ -232,7 +239,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, o
         ...(notes.service ? [{id:'bookmark',label:t('next.reader.addBookmark'),icon:'i-bookmark' as const,
           disabled:notes.state.loading || notes.state.saving || notes.state.revision === undefined || !value.location,
           onPress:()=>{if (!notes.service?.current() || controller.getSnapshot() !== value || !value.location) return;
-            void notes.service.write({id:randomId(),kind:'bookmark',location:readingLocationFromReader(value.location),text:'',note:'',colour:''});}}] : []),
+            if(annotationLease&&!annotationLease.retired)void notes.service.write({id:randomId(),kind:'bookmark',location:readingLocationFromReader(value.location),text:'',note:'',colour:''},{revision:notes.state.revision,signal:annotationLease.life.signal,isCurrent:()=>!annotationLease.retired&&authority.isCurrent()&&controller.getSnapshot()===value});}}] : []),
         {id: 'contents', label: t('next.reader.contents'), icon: 'i-chapters', expanded: panel === 'contents', onPress: () => setPanel(panel === 'contents' ? undefined : 'contents')},
         ...(publication.format !== 'cbz' ? [{id: 'search', label: t('next.reader.search'), icon: 'i-search' as const, expanded: panel === 'search', onPress: () => setPanel(panel === 'search' ? undefined : 'search')}] : []),
         ...(publication.format === 'epub' ? [{id: 'display', label: t('next.reader.displayAction'), text: <ReaderDisplayMark sample={t('next.reader.sample')}/>, expanded: panel === 'display', onPress: (element: HTMLButtonElement) => {anchor.current = element; setPanel(panel === 'display' ? undefined : 'display');}}] : []),
