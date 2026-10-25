@@ -136,11 +136,11 @@ export class QueueClient {
   addSegment(id: string, revision: string, placement: Placement, segment: SegmentInput) {
     return this.command(id, revision, 'POST', encodedRoutePath("add_queue_segment", {"id": enc(id)}), {placement, ...segment});
   }
-  remove(id: string, revision: string, entryId: string) {
-    return this.command(id, revision, 'DELETE', encodedRoutePath("remove_queue_entry", {"id": enc(id), "entryId": enc(entryId)}));
+  remove(id: string, revision: string, entryId: string, signal?: AbortSignal) {
+    return this.command(id, revision, 'DELETE', encodedRoutePath("remove_queue_entry", {"id": enc(id), "entryId": enc(entryId)}), undefined, signal);
   }
-  move(id: string, revision: string, entryId: string, to: Readonly<{before: string} | {after: string}>) {
-    return this.command(id, revision, 'POST', encodedRoutePath("move_queue_entry", {"id": enc(id), "entryId": enc(entryId)}), to);
+  move(id: string, revision: string, entryId: string, to: Readonly<{before: string} | {after: string}>, signal?: AbortSignal) {
+    return this.command(id, revision, 'POST', encodedRoutePath("move_queue_entry", {"id": enc(id), "entryId": enc(entryId)}), to, signal);
   }
   /** Repeat and shuffle. Shuffle on makes the current entry position 0 of a new seeded order. */
   update(id: string, revision: string, change: Readonly<{repeat?: 'off' | 'one' | 'all'; shuffle?: Readonly<{on: boolean; seed?: string}>}>, signal?: AbortSignal) {

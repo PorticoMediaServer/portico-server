@@ -62,6 +62,7 @@ const MUSIC_CONTAINERS = ['album', 'artist', 'disc'];
 
 export type V1Viewer = Readonly<{serverId: string; authority: 'local' | 'hosted'; accountId: string; profileId: string}>;
 /** Captured by the player while this exact output is still selected. */
+export type V1QueueEditIntent = Readonly<{action: 'remove'; entryId: string} | {action: 'reorder'; entryIds: readonly string[]}>;
 export type V1QueuePolicyIntent = Readonly<{action: 'repeat'; repeat: 'off' | 'one' | 'all'} | {action: 'shuffle'; shuffled: boolean}>;
 export type V1PlaybackTarget = Readonly<{sessionId: string; generation: number; playbackRun: number; itemId: string; versionId: string; queueId: string; entryId: string}>;
 /** Captured caller lifetime; its predicate must remain current across this start's own output change. */
@@ -909,6 +910,80 @@ export class V1QueuePlayer implements QueueController {
     check(); ++this.refreshSequence; this.accept(header, window);
   }
 
+  /** Retained Up Next controls edit only their drawn, loaded upcoming rows.
+   * Reorder supplies one contiguous block in its new order, with one real move.
+   * The command and readback keep the opening output, revision and caller lifetime. */
+  async editQueue(expected: V1PlaybackTarget, expectedRevision: string, intent: V1QueueEditIntent, context: SessionChangeContext): Promise<void> {
+    requireSessionChangeCurrent(context);
+    const target = Object.freeze({...expected});
+    const lifetime: SessionChangeContext = Object.freeze({signal: context.signal, isCurrent: context.isCurrent});
+    let edit: V1QueueEditIntent;
+    if (intent?.action === 'remove') edit = Object.freeze({action: 'remove', entryId: id(intent.entryId, 'queue edit entry')});
+    else if (intent?.action === 'reorder' && Array.isArray(intent.entryIds) && intent.entryIds.length >= 2 && intent.entryIds.length <= QUEUE_WINDOW_MAX) {
+      const entryIds = Object.freeze(intent.entryIds.map(value => id(value, 'queue edit entry')));
+      if (new Set(entryIds).size !== entryIds.length) throw new ContractError('queue edit membership');
+      edit = Object.freeze({action: 'reorder', entryIds});
+    } else throw new ContractError('queue edit');
+    const generation = this.generation, opening = this.header, drawn = this.window;
+    let sequence = this.policySequence, acceptedRevision: string | undefined;
+    const current = () => {
+      const p = this.playback.getSnapshot(), session = this.session, header = this.header;
+      return !this.disposed && generation === this.generation && sequence === this.policySequence && sessionChangeCurrent(lifetime)
+        && p.playbackRun === target.playbackRun && p.itemId === target.itemId
+        && p.session?.id === target.sessionId && p.session.generation === target.generation
+        && session?.id === target.sessionId && session.presentation.generation === target.generation
+        && session.versionId === target.versionId && session.itemId === target.itemId
+        && session.queue?.queueId === target.queueId && session.queue.entryId === target.entryId
+        && header?.id === target.queueId && header.current?.entryId === target.entryId
+        && header.current.position === opening?.current?.position
+        && (header.revision === expectedRevision || acceptedRevision !== undefined && header.revision === acceptedRevision);
+    };
+    const check = () => {if (!current()) throw new DOMException('Queue edit retired', 'AbortError');};
+    check();
+    if (!opening?.current || opening.revision !== expectedRevision) throw new ContractError('queue edit revision');
+    const rows = queueEditWindow(opening, drawn, target);
+    const currentIndex = drawn.findIndex(entry => entry.entryId === target.entryId);
+    const upcoming = (entry: QueueEntry | undefined): entry is QueueEntry => !!entry && entry.available && !!entry.itemId && entry.position > opening.current!.position;
+    let moved: ReturnType<typeof movedEntry>, block: readonly QueueEntry[] = [];
+    if (edit.action === 'remove') {
+      if (!upcoming(rows.get(edit.entryId))) throw new ContractError('queue edit entry');
+    } else {
+      const membership = new Set(edit.entryIds);
+      block = drawn.filter(entry => membership.has(entry.entryId));
+      if (block.length !== edit.entryIds.length || block.some((entry, index) => !upcoming(entry) || entry.position !== block[0]!.position + index)) throw new ContractError('queue edit block');
+      moved = movedEntry(block.map(entry => entry.entryId), edit.entryIds);
+      if (!moved) throw new ContractError('queue edit move');
+    }
+    check(); sequence = ++this.policySequence; ++this.refreshSequence;
+    const result = edit.action === 'remove'
+      ? await this.client.remove(target.queueId, expectedRevision, edit.entryId, lifetime.signal)
+      : await this.client.move(target.queueId, expectedRevision, moved!.entryId, moved!.after ? {after: moved!.after} : {before: moved!.before!}, lifetime.signal);
+    acceptedRevision = result.queue.revision; check();
+    const total = opening.total - (edit.action === 'remove' ? 1 : 0);
+    const accepted = (header: QueueHeader) => header.id === target.queueId && header.revision === acceptedRevision
+      && header.current?.entryId === target.entryId && header.current.position === opening.current!.position && header.total === total;
+    if (result.session || acceptedRevision === expectedRevision || !accepted(result.queue)) throw new ContractError('queue edit result');
+    // Read exactly this loaded span, then prove the window belonged to the accepted revision.
+    const window = await this.client.window(target.queueId, currentIndex, drawn.length - currentIndex - 1, lifetime.signal); check();
+    const header = await this.client.header(target.queueId, lifetime.signal); check();
+    if (!accepted(header)) throw new DOMException('Queue edit changed', 'AbortError');
+    const finalRows = queueEditWindow(header, window, target);
+    if (edit.action === 'remove') {
+      if (finalRows.has(edit.entryId)) throw new ContractError('queue edit removal');
+    } else {
+      const order = edit.entryIds;
+      const after = window.filter(entry => entry.position >= block[0]!.position && entry.position <= block[block.length - 1]!.position);
+      if (after.length !== order.length || after.some((entry, index) => {
+        const wanted = order[index]!;
+        if (wanted !== moved!.entryId) return entry.entryId !== wanted;
+        // A source-order move remints this occurrence; adopt only its actual readback ID.
+        return !entry.available || entry.itemId !== rows.get(wanted)!.itemId || (entry.entryId !== wanted && rows.has(entry.entryId));
+      })) throw new ContractError('queue edit order');
+    }
+    check(); this.invalidateAudioPreparation();
+    check(); ++this.refreshSequence; this.accept(header, window);
+  }
+
   /** The workspace's edits (Up Next): remove, reorder (one moved entry), repeat, shuffle, add. */
   private async mutate(intent: QueueIntent): Promise<void> {
     const h = this.header;
@@ -1169,6 +1244,22 @@ export class V1QueuePlayer implements QueueController {
     this.prepared = undefined; this.audioReadyToken = undefined;
     if(!this.playback.fallbackAudioRender())this.playback.fail(p.intentId, message);
   }
+}
+
+/** The raw window must retain placeholders and positions: filtering hidden rows
+ * first would let a drag jump an unavailable or unloaded occurrence. */
+function queueEditWindow(header: QueueHeader, window: readonly QueueEntry[], target: V1PlaybackTarget): ReadonlyMap<string, QueueEntry> {
+  if (!window.length || window.length > QUEUE_WINDOW_MAX || !header.current) throw new ContractError('queue edit window');
+  const rows = new Map<string, QueueEntry>();
+  let previous: number | undefined;
+  for (const entry of window) {
+    if (rows.has(entry.entryId) || !Number.isSafeInteger(entry.position) || entry.position < 0 || entry.position >= header.total
+      || previous !== undefined && entry.position !== previous + 1) throw new ContractError('queue edit window');
+    rows.set(entry.entryId, entry); previous = entry.position;
+  }
+  const current = rows.get(target.entryId);
+  if (!current?.available || current.itemId !== target.itemId || current.position !== header.current.position) throw new ContractError('queue edit current');
+  return rows;
 }
 
 /**
