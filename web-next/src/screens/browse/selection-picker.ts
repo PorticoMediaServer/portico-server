@@ -4,7 +4,7 @@ import {parseHomeDestinationPicker} from '@core/home-selection/destination-picke
 import {DetailService} from '@core/detail.ts';
 import {HomeSelectionDestinations} from '@core/home-selection/destinations.ts';
 import type {HomeSelectionPicker} from '@core/home-selection/types.ts';
-import type {SelectionItem, SelectedItem, SelectionTarget, QuerySelectionTarget, BrowseSelectionContext} from '@core/selection-model/index.ts';
+import type {CatalogueSelectionIdentity, SelectionItem, SelectedItem, SelectionTarget, QuerySelectionTarget, BrowseSelectionContext} from '@core/selection-model/index.ts';
 import type {EntryActionPorts, EntryDestination} from '../../shell/entry-actions';
 
 export type LibraryPickerTarget = readonly SelectionItem[] | QuerySelectionTarget<BrowseSelectionContext>;
@@ -63,11 +63,14 @@ export class LibraryPickerProducer {
         this.lifetime.signal, this.current, this.update);
       await this.session.load();return;
     }
-    if (!this.targets.length || this.targets.length > 256 || new Set(this.targets.map(item => item.id)).size !== this.targets.length) throw new Error('picker-target-required');
+    const targets = this.targets;
+    if (!targets.length || targets.length > 256) throw new Error('picker-target-required');
+    if (!targets.every((item): item is SelectionItem & CatalogueSelectionIdentity => 'libraryId' in item && item.kind !== 'channel' && item.kind !== 'person')) throw new Error('picker-action-not-permitted');
+    if (new Set(targets.map(item => item.id)).size !== targets.length) throw new Error('picker-target-required');
     const picks: SelectedItem[] = [];
     let parents = false;
     let captured: {fence: string; catalog: number; viewer: number} | undefined;
-    for (const selected of this.targets) {
+    for (const selected of targets) {
       if (!('libraryId' in selected) || selected.capabilities[this.kind] !== true) throw new Error('picker-action-not-permitted');
       if (['show', 'season', 'album', 'artist', 'book', 'collection'].includes(selected.kind)) {
         parents = true;
