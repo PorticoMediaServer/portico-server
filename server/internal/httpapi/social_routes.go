@@ -54,6 +54,11 @@ func socialFailure(w http.ResponseWriter, e error) {
 		return
 	}
 	if status, code, ok := identity.Refusal(e); ok && status != 401 {
+		// Identity's internal classification is shared by older edges; this
+		// registry declares the canonical API vocabulary, with the same status.
+		if code == "forbidden" {
+			code = "not_permitted"
+		}
 		write(w, status, map[string]any{"protocolVersion": social.Protocol, "error": map[string]any{"code": code, "message": e.Error(), "retryable": false}})
 		return
 	}
@@ -69,7 +74,7 @@ func socialFailure(w http.ResponseWriter, e error) {
 		write(w, 404, map[string]any{"protocolVersion": social.Protocol, "error": map[string]any{"code": "not_found", "message": "No such resource.", "retryable": false}})
 		return
 	}
-	write(w, 500, map[string]any{"protocolVersion": social.Protocol, "error": map[string]any{"code": "internal_error", "message": "The request could not be completed.", "retryable": true}})
+	write(w, 500, map[string]any{"protocolVersion": social.Protocol, "error": map[string]any{"code": "internal", "message": "The request could not be completed.", "retryable": true}})
 }
 
 // socialBody decodes a bounded JSON request body.

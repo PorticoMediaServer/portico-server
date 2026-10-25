@@ -173,7 +173,7 @@
   function showPlaying() { clearTimeout(errorTimer); if (window.porticoCastView && typeof window.porticoCastView.playing === 'function') { playingView(); return; } show('playing'); }
   function errorKind(code) {
     code = String(code || '');
-    if (/not_found|unavailable|forbidden|permission/.test(code)) return 'unavailable';
+    if (/not_found|unavailable|forbidden|not_permitted|permission/.test(code)) return 'unavailable';
     if (/busy|capacity|cap$|occupied|timeout/.test(code)) return 'busy';
     if (/network|fetch|http_5|unreach|abort/.test(code)) return 'unreachable';
     if (/decode|stalled|playback_failed/.test(code)) return 'decode';
