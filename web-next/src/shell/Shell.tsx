@@ -101,9 +101,10 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, onSignOu
       <span className={styles.profileText}><b>{identity.username || t('next.shell.usernameUnavailable')}</b><small>{identity.serverName}</small></span><Icon name="i-updown" size={18} />
     </button> : <ProfileAvatar className={styles.avatar} name={identity.profileName} initial={current.initial} art={identity.profileArt} size={desktop ? 34 : 30}
       notificationDot={compact && identity.showNotificationDot && identity.unread > 0} aria-label={t('next.home.shell.profileMenu', {name: identity.profileName})} />} />;
+  const captionRenderer = windowChrome ?? chrome.renderer;
   return <div className={styles.shell} data-desktop={desktop} data-size-class={sizeClass} data-pointer={coarsePointer ? 'coarse' : 'fine'} data-navigation={navigation} data-has-dock={dockVisible} data-window-os={chrome.os} data-window-fullscreen={chrome.fullscreen}>
     <a className={styles.skip} href="#portico-content">{t('next.home.shell.skip')}</a>
-    {windowChrome && <div data-window-chrome-host data-window-no-drag>{windowChrome}</div>}
+    {captionRenderer && <div data-window-chrome-host data-window-no-drag>{captionRenderer}</div>}
     <div className={styles.navigation} data-shell-navigation>
       {desktop ? <nav className={styles.topnav} data-solid={scrolled || (!heroPage && !settingsArea)} data-window-drag-region="page-topbar" aria-label={t('next.home.shell.main')}>
         <Link className={styles.brand} to="/" data-window-no-drag aria-label={t('next.platform.appName')}><img src={wordmark} alt="" /></Link>
