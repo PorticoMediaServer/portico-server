@@ -4,11 +4,15 @@ import {captureReadingAnnotationMutation, parseReadingAnnotations, parseReadingA
 import {ReadingError, parseReadingManifest, validateReadingLocation} from './reading.ts';
 import {parsePreferenceSnapshot, type PreferenceSnapshot} from './preferences.ts';
 import {decodeGetReadingSessionsSessionIdProgressResponse, decodePutReadingSessionsSessionIdProgressResponse} from '../../contracts/src/index.ts';
+import {validReadingIndexedSearchQuery} from './reading-indexed-search.ts';
 
 /** Local trusted-app bridge only. No HTTP path, origin, credential or fetch port. */
 export type ReadingHostSession = Pick<ReadingSession, 'manifest' | 'signal' | 'headPDF' | 'readRange' | 'readAsset' | 'page' | 'progress' | 'saveProgress'> & Partial<Pick<ReadingSession, 'openSequential' | 'annotations' | 'mutateAnnotation'>>;
 export type ReadingHostTransport = Readonly<{send: (message: string) => void; subscribe: (listener: (message: string) => void) => () => void}>;
 export type ReadingHostContentsTarget = Readonly<{sourceId: string; sourceRevision: string; index: number}>;
+/** Trusted native navigation only. True means that this original navigation was
+ * accepted; it conveys no search result, source permission or reader location. */
+export type ReadingHostSearchAll = (query: string, signal: AbortSignal, isCurrent: () => boolean) => boolean | Promise<boolean>;
 /** Window-local vertical hinge band from the real platform posture, when reported. */
 export type ReadingHostCrease = Readonly<{left: number; right: number}>;
 type RecordValue = Record<string, unknown>;
@@ -68,10 +72,11 @@ function contentsTarget(value: unknown, manifest: ReadingManifest): ReadingHostC
 /** RN retains the actual captured facade. Its caller still owns session.close().
  * Binary messages are pulled in <=48KiB chunks; just one original member/page is
  * retained, with an idle deadline, never a book/archive cache. */
-export function createReadingHost({session, channel, preferences, initialProgress, initialContentsTarget, crease, current, send, onBack, onSettings, onUnavailable, saveHighlights}: Readonly<{
+export function createReadingHost({session, channel, preferences, initialProgress, initialContentsTarget, crease, current, send, onBack, onSettings, onSearchAll, onUnavailable, saveHighlights}: Readonly<{
   saveHighlights?: (file: ReadingHighlightsFile, signal: AbortSignal, isCurrent: () => boolean) => Promise<'saved' | 'cancelled'>;
   session: ReadingHostSession; channel: string; preferences: () => PreferenceSnapshot; initialProgress: ReadingProgress;
   initialContentsTarget?: ReadingHostContentsTarget; crease?: ReadingHostCrease; onUnavailable?: () => void;
+  onSearchAll?: ReadingHostSearchAll;
   current: () => boolean; send: (message: string) => void; onBack: () => void; onSettings: () => void;
 }>) {
   if (!/^[A-Za-z0-9_-]{16,128}$/.test(channel)) fail();
@@ -83,7 +88,8 @@ export function createReadingHost({session, channel, preferences, initialProgres
   type Sequential = {id: number; life: AbortController; reader?: Pick<ReadableStreamDefaultReader<Uint8Array>, 'read' | 'cancel' | 'releaseLock'>; total: number; pulling: boolean; timer?: ReturnType<typeof setTimeout>};
   let sequential: Sequential | undefined;
   let highlightsRequest: AbortController | undefined;
-  const valid = () => !life.signal.aborted && !session.signal.aborted && current() && session.manifest === manifest;
+  let searchAllRequest: AbortController | undefined;
+  const valid = () => {try {return !life.signal.aborted && !session.signal.aborted && current() && session.manifest === manifest;} catch {return false;}};
   const check = () => {if (!valid()) fail('cancelled');};
   const post = (value: RecordValue) => {if (valid()) send(JSON.stringify({v: 1, channel, ...value}));};
   const release = () => {if (transfer) clearTimeout(transfer.timer); transfer = undefined;};
@@ -120,12 +126,17 @@ export function createReadingHost({session, channel, preferences, initialProgres
       if (data.kind === 'request' && data.method === 'annotation-save') {
         if (Object.keys(data).some(key => !['v','kind','channel','id','method','args'].includes(key)) || !record(data.args)
           || new TextEncoder().encode(JSON.stringify(data.args)).byteLength > 32768) fail();
+      } else if (data.kind === 'request' && data.method === 'search-all') {
+        if (message.length > 16384 || Object.keys(data).length !== 6
+          || Object.keys(data).some(key => !['v','kind','channel','id','method','args'].includes(key))
+          || !record(data.args) || Object.keys(data.args).length !== 1 || !Object.hasOwn(data.args, 'query')
+          || !validReadingIndexedSearchQuery(data.args.query)) fail();
       } else if (message.length > 16384) fail();
     } catch {return;}
     if (data.kind === 'ready') {
       if (started || !valid()) return;
       if (capturedContentsTarget && data.contentsTarget !== true) {dispose(); onUnavailable?.(); return;}
-      started = true; post({kind: 'initial', canSaveHighlights: !!saveHighlights && manifest.canAnnotate === true && !!session.annotations && !!session.mutateAnnotation, manifest: {...manifest, canAnnotate:manifest.canAnnotate === true && !!session.annotations && !!session.mutateAnnotation ? true : undefined}, preferences: preferences(), progress: initialProgress, active,
+      started = true; post({kind: 'initial', canSaveHighlights: !!saveHighlights && manifest.canAnnotate === true && !!session.annotations && !!session.mutateAnnotation, canSearchAll: typeof onSearchAll === 'function', manifest: {...manifest, canAnnotate:manifest.canAnnotate === true && !!session.annotations && !!session.mutateAnnotation ? true : undefined}, preferences: preferences(), progress: initialProgress, active,
         ...(capturedContentsTarget ? {contentsTarget: capturedContentsTarget} : {}), ...(capturedCrease ? {crease: capturedCrease} : {})}); return;
     }
     if (!started || data.channel !== channel || !valid()) return;
@@ -140,7 +151,17 @@ export function createReadingHost({session, channel, preferences, initialProgres
     void (async () => {
       check(); let value: unknown;
       if (method === 'range' || method === 'asset' || method === 'page') {if (binaryRequest || transfer) fail('bridge_busy'); binaryRequest = true; ownsBinary = true;}
-      if (method === 'highlights-export') {
+      if (method === 'search-all') {
+        if (!active || !onSearchAll) fail('not_permitted');
+        if (!validReadingIndexedSearchQuery(args.query)) fail();
+        if (searchAllRequest) fail('bridge_busy');
+        searchAllRequest = request;
+        const live = () => valid() && active && !request.signal.aborted;
+        if (!live()) fail('cancelled');
+        const accepted = await onSearchAll(args.query, request.signal, live);
+        if (!live() || accepted !== true) fail('cancelled');
+        value = true;
+      } else if (method === 'highlights-export') {
         if (!active || !saveHighlights || manifest.canAnnotate !== true || !session.annotations || !session.mutateAnnotation || Object.keys(args).some(key => key !== 'revision') || !integer(args.revision, 0, Number.MAX_SAFE_INTEGER)) fail('not_permitted');
         if (highlightsRequest) fail('bridge_busy');
         highlightsRequest = request;
@@ -223,10 +244,10 @@ export function createReadingHost({session, channel, preferences, initialProgres
       if (ownsBinary) {binaryRequest = false; ownsBinary = false;}
       post({kind: 'reply', id, value});
     })().catch(error => {if (transfer?.id === id) release(); post({kind: 'reply', id, error: errorInfo(error)});})
-      .finally(() => {if (highlightsRequest === request) highlightsRequest = undefined; clearTimeout(deadline); if (ownsBinary) binaryRequest = false; requests.delete(id);});
+      .finally(() => {if (highlightsRequest === request) highlightsRequest = undefined; if (searchAllRequest === request) searchAllRequest = undefined; clearTimeout(deadline); if (ownsBinary) binaryRequest = false; requests.delete(id);});
   };
   return Object.freeze({receive, dispose, confirm: () => {if (started) post({kind: 'preferences', preferences: preferences()});},
-    setActive: (value: boolean) => {active = value; if (!active) highlightsRequest?.abort(); if (started) post({kind: 'active', active});},
+    setActive: (value: boolean) => {active = value; if (!active) {highlightsRequest?.abort(); searchAllRequest?.abort();} if (started) post({kind: 'active', active});},
     setCrease: (value: ReadingHostCrease | undefined) => {
       try {capturedCrease = creaseOf(value);} catch {capturedCrease = undefined;}
       if (started) post({kind: 'layout', ...(capturedCrease ? {crease: capturedCrease} : {})});
@@ -240,6 +261,8 @@ export type ReadingGuest = Readonly<{
   preferences: Readonly<{getSnapshot: () => PreferenceSnapshot; subscribe: (listener: () => void) => () => void}>;
   onActive: (listener: (active: boolean) => void) => () => void;
   saveHighlights?: (revision: number, signal: AbortSignal) => Promise<'saved' | 'cancelled'>;
+  /** Present only when the original native host supplies the navigation port. */
+  searchAll?: (query: string, signal?: AbortSignal) => Promise<void>;
   back: () => Promise<void>; openSettings: () => Promise<void>; dispose: () => void;
 }>;
 /** Bundled browser side: structural source ports only, no selected-server API. */
@@ -349,6 +372,7 @@ export function connectReadingHost(transport: ReadingHostTransport): Readonly<{r
         // Older trusted app hosts omit this optional v1 state. New hosts retain
         // activity through Settings even before the guest has finished loading.
         if (data.active !== undefined && typeof data.active !== 'boolean') fail();
+        if (data.canSearchAll !== undefined && typeof data.canSearchAll !== 'boolean') fail();
         active = typeof data.active === 'boolean' ? data.active : true;
         channel = data.channel; initialized = true; clearTimeout(startDeadline);
         const session: ReadingHostSession = Object.freeze({manifest, signal: life.signal,
@@ -373,6 +397,13 @@ export function connectReadingHost(transport: ReadingHostTransport): Readonly<{r
           saveProgress: async (request, signal): Promise<ReadingSavedProgress> => decodePutReadingSessionsSessionIdProgressResponse(await call('save', request, signal)),
         });
         resolveReady(Object.freeze({session, initialProgress,
+          ...(data.canSearchAll === true ? {searchAll: async (query: string, signal?: AbortSignal): Promise<void> => {
+            if (!active || life.signal.aborted || signal?.aborted) fail('cancelled');
+            if (!validReadingIndexedSearchQuery(query)) fail('invalid_request');
+            const accepted = await call('search-all', {query}, signal);
+            if (!active || life.signal.aborted || signal?.aborted) fail('cancelled');
+            if (accepted !== true) fail('invalid_bridge');
+          }} : {}),
           ...(data.canSaveHighlights === true && manifest.canAnnotate === true ? {saveHighlights: async (revision: number, signal: AbortSignal): Promise<'saved' | 'cancelled'> => {
             if (!integer(revision, 0, Number.MAX_SAFE_INTEGER)) fail();
             const result = await call('highlights-export', {revision}, signal);

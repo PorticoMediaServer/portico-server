@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {createReadingHost, connectReadingHost, type ReadingHostSession} from '../src/reading-host.ts';
+import {createReadingHost, connectReadingHost, type ReadingHostSession, type ReadingHostSearchAll} from '../src/reading-host.ts';
 import {parsePreferenceSnapshot} from '../src/preferences.ts';
 import {ReadingError, type ReadingManifest} from '../src/reading.ts';
 const preferences = parsePreferenceSnapshot(JSON.parse(readFileSync(new URL('../../../server/testdata/contracts/get-bootstrap.json', import.meta.url), 'utf8')).response.preferences);
-function pair(format: 'pdf' | 'epub' | 'cbz' = 'pdf', beforeConnect?: (host: ReturnType<typeof createReadingHost>) => void) {
+function pair(format: 'pdf' | 'epub' | 'cbz' = 'pdf', beforeConnect?: (host: ReturnType<typeof createReadingHost>) => void, onSearchAll?: ReadingHostSearchAll) {
   const life = new AbortController(), sent: string[] = [], calls: string[] = [];
   const payload = Uint8Array.from({length: 170003}, (_, i) => i % 251);
   const manifest: ReadingManifest = Object.freeze({sessionId: 'session', sourceId: 'asset', itemId: 'item', revision: 'a'.repeat(64), size: payload.length, format, metadata: {title: 'Actual title'},
@@ -19,7 +19,7 @@ function pair(format: 'pdf' | 'epub' | 'cbz' = 'pdf', beforeConnect?: (host: Ret
     async progress() {return {progress: null};}, async saveProgress() {calls.push('save'); return {progress: null, saved: false};},
   };
   const host = createReadingHost({session: facade, channel: 'captured_unique_channel', preferences: () => preferences, initialProgress: {progress: null}, current: () => current,
-    send(message) {sent.push(message); input?.(message);}, onBack() {back++;}, onSettings() {settings++;}});
+    send(message) {sent.push(message); input?.(message);}, onBack() {back++;}, onSettings() {settings++;}, ...(onSearchAll ? {onSearchAll} : {})});
   beforeConnect?.(host);
   const connection = connectReadingHost({send: host.receive, subscribe(listener) {input = listener; return () => {input = undefined;};}});
   return {connection, host, life, calls, payload, sent, facade, deliver(message: string) {input?.(message);}, get back() {return back;}, get settings() {return settings;}, retire() {current = false; host.dispose();}};
@@ -84,4 +84,87 @@ test('activity received before a guest subscribes is replayed without accepting 
   f.host.setActive(true); assert.deepEqual(states, [false, true]);
   f.retire(); f.host.setActive(false); guest.onActive(active => states.push(active));
   assert.equal(guest.session.signal.aborted, true); assert.deepEqual(states, [false, true]);
+});
+
+const nextTurn = () => new Promise<void>(resolve => setImmediate(resolve));
+const searchPacket = (id: number, query: string, extra: Record<string, unknown> = {}) => JSON.stringify({
+  v: 1, channel: 'captured_unique_channel', kind: 'request', id, method: 'search-all', args: {query}, ...extra,
+});
+
+test('search-all is optional and accepts only the original literal query after native acceptance', async t => {
+  const old = pair('epub'), oldGuest = await old.connection.ready;
+  t.after(() => {oldGuest.dispose(); old.host.dispose();});
+  assert.equal(oldGuest.searchAll, undefined);
+  const queries: string[] = [];
+  const f = pair('epub', undefined, async (query, signal, current) => {
+    assert.equal(signal.aborted, false); assert.equal(current(), true); queries.push(query); return true;
+  }), guest = await f.connection.ready;
+  t.after(() => {guest.dispose(); f.host.dispose();});
+  const query = '"literal: ' + 'a'.repeat(1000) + '"';
+  await guest.searchAll!(query);
+  assert.deepEqual(queries, [query]);
+  assert.deepEqual(f.calls, [], 'navigation does not read bytes, results or progress');
+  const replies = f.sent.map(message => JSON.parse(message)).filter(message => message.kind === 'reply');
+  assert.equal(replies.length, 1); assert.equal(replies[0].value, true);
+  assert.equal(f.sent.some(message => message.includes(query)), false, 'the acknowledgement does not echo search words');
+  for (const invalid of ['a'.repeat(1025), '\uD800', '?!.,']) await assert.rejects(guest.searchAll!(invalid), /invalid_request/);
+  assert.equal(queries.length, 1);
+});
+
+test('search-all requires started/active host, exact packet/args, channel and fresh request id', async t => {
+  let calls = 0;
+  const f = pair('epub', host => {host.receive(searchPacket(1, 'before ready'));}, () => {calls++; return true;}), guest = await f.connection.ready;
+  t.after(() => {guest.dispose(); f.host.dispose();});
+  assert.equal(calls, 0);
+  f.host.receive(searchPacket(1, 'wrong channel', {channel: 'another_valid_channel'}));
+  f.host.receive(searchPacket(2, 'extra packet', {url: 'https://untrusted.example'}));
+  f.host.receive(searchPacket(3, 'extra args', {args: {query: 'words', location: 'epubcfi(/fake)'}}));
+  f.host.receive(searchPacket(4, 'bad argument', {args: {query: 42}}));
+  await nextTurn(); assert.equal(calls, 0);
+  f.host.setActive(false);
+  await assert.rejects(guest.searchAll!('inactive words'), /cancelled/);
+  f.host.receive(searchPacket(5, 'raw inactive words'));
+  await nextTurn(); assert.equal(calls, 0);
+  f.host.setActive(true);
+  f.host.receive(searchPacket(6, 'accepted words'));
+  await nextTurn(); assert.equal(calls, 1);
+  f.host.receive(searchPacket(6, 'replayed words'));
+  await nextTurn(); assert.equal(calls, 1);
+});
+
+test('search-all refuses rejected navigation and cannot acknowledge cancellation or inactivity', async t => {
+  const refused = pair('epub', undefined, () => false), refusedGuest = await refused.connection.ready;
+  t.after(() => {refusedGuest.dispose(); refused.host.dispose();});
+  await assert.rejects(refusedGuest.searchAll!('words'), /cancelled/);
+  assert.equal(refused.sent.some(message => JSON.parse(message).value === true), false);
+  for (const retirement of ['caller', 'inactive', 'host'] as const) {
+    let complete!: (accepted: boolean) => void, observed!: AbortSignal, isCurrent!: () => boolean;
+    const f = pair('epub', undefined, (_query, signal, current) => {
+      observed = signal; isCurrent = current; return new Promise(resolve => {complete = resolve;});
+    }), guest = await f.connection.ready, caller = new AbortController();
+    const pending = guest.searchAll!('held words', caller.signal);
+    const rejected = assert.rejects(pending, /cancelled/);
+    if (retirement === 'caller') caller.abort();
+    else if (retirement === 'inactive') f.host.setActive(false);
+    else f.retire();
+    assert.equal(observed.aborted, true); assert.equal(isCurrent(), false);
+    complete(true); await rejected; await nextTurn();
+    assert.equal(f.sent.some(message => JSON.parse(message).value === true), false);
+    guest.dispose(); f.host.dispose();
+  }
+});
+
+test('search-all uses the existing bounded request deadline and refuses late acceptance', async t => {
+  t.mock.timers.enable({apis: ['setTimeout']});
+  let complete!: (accepted: boolean) => void, signal!: AbortSignal;
+  const f = pair('epub', undefined, (_query, currentSignal) => {signal = currentSignal; return new Promise(resolve => {complete = resolve;});});
+  const guest = await f.connection.ready;
+  try {
+    const pending = guest.searchAll!('deadline words');
+    const rejected = assert.rejects(pending, /cancelled/);
+    t.mock.timers.tick(30000); await rejected;
+    assert.equal(signal.aborted, true);
+    complete(true); await nextTurn();
+    assert.equal(f.sent.some(message => JSON.parse(message).value === true), false);
+  } finally {guest.dispose(); f.host.dispose(); t.mock.timers.reset();}
 });
