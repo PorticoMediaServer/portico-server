@@ -1,7 +1,7 @@
 import {useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties} from 'react';
 import {defaultI18n} from '@i18n';
 import {channelTint, programmeFactParts, type ChannelMarkModel} from '@portico/client-core/kit-model';
-import type {GuideChannelRow, GuideProgram} from '@core/guide/index.ts';
+import {legacyProgramme, type GuideChannelRow, type GuideProgram} from '@core/guide/index.ts';
 import {Button, Segmented, Select} from '../../kit/controls';
 import type {SelectOption} from '../../kit/controls';
 import {ChannelMark} from '../../kit/artwork';
@@ -14,6 +14,7 @@ import {readReminders, subscribeReminders, toggleReminder} from './reminders';
 import styles from './live.module.css';
 
 const t = defaultI18n.t;
+const supportsNewEpisodes = (programme?: GuideProgram) => !!programme && ['new', 'repeat'].includes(legacyProgramme(programme)?.newEvidence ?? '');
 const KEEPS = ['all', '1', '3', '5', '10', '20'] as const;
 const PADDINGS = [0, 1, 2, 5, 10, 15] as const;
 const keepLabel = (value: string) => value === 'all' ? t('recordings.keepAll') : value === '1' ? t('next.live.keepLatest') : t('next.live.keepLatestCount', {count: Number(value)});
@@ -137,7 +138,7 @@ export function ProgrammePanelView({channel, programme, now, timezone, snapshot,
         <span>{snapshot.preview ? t('next.live.matchCount', {count: snapshot.preview.matches}) : snapshot.previewLoading ? t('recordings.loading') : ''}</span></div>
       <Segmented className={styles.seriesSegment} aria-label={t('guide.recordSeriesTitle')} value={choice.episodes} disabled={busy}
         onValueChange={value => {if (value === 'new' || value === 'all') onChoice({episodes: value});}}
-        items={[{value: 'new', label: t('guide.newOnly')}, {value: 'all', label: t('guide.allEpisodes')}]}/>
+        items={[{value: 'new', label: t('guide.newOnly'), disabled: !supportsNewEpisodes(programme)}, {value: 'all', label: t('guide.allEpisodes')}]}/>
       <Segmented className={styles.seriesSegment} aria-label={t('guide.channelColumn')} value={choice.anyChannel ? 'any' : 'this'} disabled={busy}
         onValueChange={value => {if (value === 'this' || value === 'any') onChoice({anyChannel: value === 'any'});}}
         items={[{value: 'this', label: t('guide.thisChannel')}, {value: 'any', label: t('guide.anyChannel'), disabled: titleMatch}]}/>
@@ -188,7 +189,7 @@ export function ProgrammePanel({captured, channel, programme, now, timezone, ope
   const snapshot = useSyncExternalStore(binding.subscribe, binding.getSnapshot, binding.getSnapshot);
   const reminders = useSyncExternalStore(subscribeReminders, reminderIds, reminderIds);
   const [seriesOpen, setSeriesOpen] = useState(false);
-  const [choice, setChoice] = useState<SeriesChoice>(defaultSeriesChoice);
+  const [choice, setChoice] = useState<SeriesChoice>(() => ({...defaultSeriesChoice, episodes: supportsNewEpisodes(programme) ? 'new' : 'all'}));
   const previewTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const change = (patch: Partial<SeriesChoice>) => {
     const next = {...choice, ...patch};
