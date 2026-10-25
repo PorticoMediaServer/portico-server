@@ -1,3 +1,4 @@
+import type {MusicTechnicalFacts} from './music-facts.ts';
 import {routeBody} from "../../contracts/src/routes.ts";
 import {ReadingClient, type ReadingScope} from './reading.ts';
 export * from './reading.ts';
@@ -27,6 +28,7 @@ import {playableAudio,type AudioRenderV2} from './playback-v1/audio-render.ts';
 export * from './audio-effects.ts';
 export * from './music-preferences.ts';
 export * from './music-signal.ts';
+export * from './music-facts.ts';
 export * from './music-mixes.ts';
 export * from './music-mixes-controller.ts';
 import {sessionEndMessage} from './session-end.ts';
@@ -85,6 +87,7 @@ export type AuthRecovery = Readonly<{
 }>;
 export type Library = { id: string; name: string; kind: string; defaultView?: import('./library-content.ts').ContentView; /** Pinned by this viewer: pinned libraries come first, in the viewer's order. */ pinned?: boolean };
 export type MediaItem = {
+  audioFacts?: MusicTechnicalFacts;
   id: string;
   libraryId: string;
   title: string;

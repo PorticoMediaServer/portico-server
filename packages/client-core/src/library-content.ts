@@ -1,3 +1,4 @@
+import {parseMusicTechnicalFacts, type MusicTechnicalFacts} from './music-facts.ts';
 import type {RouteResponse} from "../../contracts/src/routes.ts";
 import {encodedRoutePath} from "../../contracts/src/routes.ts";
 import {wireDurations,wireDisplayDurations} from './wire-units.ts';
@@ -16,6 +17,7 @@ export type ContentEntryKind = 'ebook' | 'comic' | 'movie' | 'show' | 'season' |
 /** `params` fill a parameterised heading (a Discover personal row: "{genre} for you"); name it with `serverTextLabel`. */
 export type ContentHeading = Readonly<{ key: string; fallback: string; params?: Readonly<Record<string, string>> }>;
 export type ContentEntry = Readonly<{
+  audioFacts?: MusicTechnicalFacts;
   publicationType?: 'book' | 'magazine' | 'newspaper';
   dateBased?:boolean;special?:boolean;new?:boolean; show?:Readonly<{id:string;name:string}>;
   favorite?:boolean;releaseDate?:string;artistType?:'Group'|'Person';albumCount?:number;displayTitle?:string;narrators?:readonly string[];series?:readonly Readonly<{name:string;position?:string}>[];publisher?:string;language?:string;edition?:string;publishedYear?:number;bookProgress?:BookProgress;
@@ -165,6 +167,10 @@ function entry(v: unknown): ContentEntry {
   if ((v.kind==='ebook'||v.kind==='comic') && (v.playback!=null||v.durationMs!=null||v.duration!=null)) invalid();
   const row: { -readonly [K in keyof ContentEntry]: ContentEntry[K] } = { id: v.id, kind: v.kind as ContentEntryKind, title: (v.title ?? '') as string };
   if ((v.kind === 'ebook' || v.kind === 'comic') && (v.publicationType === 'book' || v.publicationType === 'magazine' || v.publicationType === 'newspaper')) row.publicationType = v.publicationType;
+  if (v.audioFacts !== undefined && v.kind === 'song') {
+    const facts = parseMusicTechnicalFacts(v.audioFacts);
+    if (facts) row.audioFacts = facts; else left('entry.audioFacts', v.audioFacts);
+  }
   if (v.libraryId !== undefined) { if (!id(v.libraryId)) invalid(); row.libraryId = v.libraryId; }
   if (synopsis(v.overview)) row.overview = v.overview; else left('entry.overview', v.overview);
   for (const field of ['subtitle', 'posterUrl', 'backdropUrl', 'stillUrl'] as const) {

@@ -38,6 +38,9 @@ func contentItem(item Item) ContentEntry {
 		overview = string(runes)
 	}
 	entry := ContentEntry{Missing: item.Missing, Watched: item.Watched, LibraryID: item.LibraryID, Overview: overview, BackdropURL: item.BackdropURL, StillURL: item.StillURL, ID: item.ID, Kind: item.Kind, Title: item.Title, PosterURL: item.PosterURL, Available: &item.Available, Duration: &item.Duration, ProgressSeconds: &item.ProgressSeconds, AddedAt: item.AddedAt, Navigation: &ContentNavigation{View: "item", EntityID: item.ID}, Playback: &ContentPlayback{ItemID: item.ID}}
+	if item.Kind == "song" {
+		entry.AudioFacts = item.AudioFacts
+	}
 	if !item.Available {
 		entry.Playback = nil
 	}
