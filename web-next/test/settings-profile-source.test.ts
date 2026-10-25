@@ -4,7 +4,7 @@ import {ProfileSettingsSource} from '../src/screens/settings/account-profile/sou
 
 function fixture() {
   let current = true, hold: Promise<void> | undefined, release!: () => void, fail = false;
-  let document = {
+  const document = {
     authority: 'local', serverId: 'server', canManage: true,
     capabilities: {manageAccount: true, managePeople: true, manageServer: true, manageSignIn: true},
     account: {id: 'account', username: 'actual', primaryProfileId: 'main', role: 'owner', revision: 1, disabled: false, allowedLibraries: []},
@@ -29,7 +29,7 @@ test('profile source reads checked account data once and edits selected revision
   f.source.select('child');await f.source.rename('New name');
   assert.equal(f.calls[1].path, '/v1/direct/profiles/child');
   assert.deepEqual(f.calls[1].body, {name: 'New name', expectedRevision: 7});
-  assert.equal(f.calls[2].path, '/v1/direct/account');
+  assert.equal(f.calls[2].path, '/v1/direct');
   assert.equal(f.source.getSnapshot().busy, false);f.source.dispose();
 });
 test('order writes the entire actual revision-bound list', async () => {
@@ -42,9 +42,10 @@ test('a profile without current management cannot select another profile or writ
   await assert.rejects(f.source.rename('Denied'), {code: 'forbidden'});assert.equal(f.calls.length, 1);f.source.dispose();
 });
 test('wrong account or server, missing viewer and disabled account expose no profile document', async () => {
+  type Document = Parameters<ReturnType<typeof fixture>['change']>[0] extends (value: infer T) => void ? T : never;
   for (const corrupt of [
-    (d: any) => {d.account.id = 'other';}, (d: any) => {d.serverId = 'other';},
-    (d: any) => {d.profiles[0].id = 'other';d.account.primaryProfileId = 'other';}, (d: any) => {d.account.disabled = true;},
+    (d: Document) => {d.account.id = 'other';}, (d: Document) => {d.serverId = 'other';},
+    (d: Document) => {d.profiles[0].id = 'other';d.account.primaryProfileId = 'other';}, (d: Document) => {d.account.disabled = true;},
   ]) {
     const f = fixture();f.change(corrupt);await f.source.load();assert.equal(f.source.getSnapshot().document, undefined);assert.ok(f.source.getSnapshot().error);f.source.dispose();
   }
