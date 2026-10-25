@@ -10,6 +10,7 @@ export const detailMessages = {
   'next.detail.seasonYears': '{first, number, ::group-off} to {last, number, ::group-off}',
   'next.detail.jumpSeason': 'Season',
   'next.detail.seasonNumberRange': '{first, number, ::group-off} to {last, number, ::group-off}',
+  'next.detail.downloadAction': 'Download…',
   'next.detail.download': 'Download',
   'next.detail.downloadQuality': 'Quality',
   'next.detail.downloadOriginalFile': 'The file as it is',

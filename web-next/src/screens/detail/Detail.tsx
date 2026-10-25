@@ -2,6 +2,9 @@ import {t, locale, environment as env} from './text';
 import {useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject} from 'react';
 import type {DetailProjection, FileInfoProjection} from '@core/detail.ts';
 import type {ContentEntry} from '@core/library-content.ts';
+import type {DownloadOptionsView} from '@core/downloads.ts';
+import type {BrowserDownloadTarget} from '../../platform/browser-download';
+import {DownloadNotice} from './DownloadNotice';
 import type {PlaybackOptions} from '@core/playback-v1/types.ts';
 import {detailActions} from '@core/presentation/detail-actions.ts';
 import {refreshMetadataPath} from '@core/presentation/entry-actions.ts';
@@ -162,6 +165,47 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
   const trigger = useRef<HTMLButtonElement>(null), fileRead = useRef<AbortController | undefined>(undefined), width = useShellWidth(), phone = width < 1024;
   const versionRead = useRef<AbortController | undefined>(undefined), versionChoice = useRef<AbortController | undefined>(undefined);
   const [versions, setVersions] = useState<Readonly<{data: DetailProjection; options: PlaybackOptions; request: AbortController}>>();
+  const downloadAvailable = !!binding.context.effects.download && data.item.available && ['movie', 'episode', 'song', 'audiobook_file'].includes(data.item.kind)
+    && detailActions(data, {platform: 'web'}).more.some(group => group.actions.some(action => action.id === 'download'));
+  type ActiveDownload = Readonly<{target: BrowserDownloadTarget; data: DetailProjection; request: AbortController; current: () => boolean; port: NonNullable<typeof binding.context.effects.download>}>;
+  const downloadRef = useRef<ActiveDownload | undefined>(undefined);
+  const [downloadView, setDownloadView] = useState<Readonly<{active: ActiveDownload; options?: DownloadOptionsView; busy: boolean; failed: boolean}>>();
+  const closeDownload = () => { downloadRef.current?.request.abort(); downloadRef.current = undefined; setDownloadView(undefined); };
+  const loadDownload = async (active: ActiveDownload) => {
+    if (!active.current()) return;
+    setDownloadView({active, busy: true, failed: false});
+    try {
+      const options = await active.port.options(active.target, active.request.signal, active.current);
+      if (active.current()) setDownloadView({active, options, busy: false, failed: false});
+    } catch (error) {
+      if (active.current()) { setDownloadView({active, busy: false, failed: true}); binding.context.effects.reportError(error); }
+    }
+  };
+  const openDownload = () => {
+    binding.current(data);
+    const port = binding.context.effects.download;
+    if (!port || !downloadAvailable) return;
+    closeDownload();
+    const target: BrowserDownloadTarget = Object.freeze({libraryId: data.scope.libraryId, itemId: data.item.id}), request = new AbortController();
+    const active: ActiveDownload = {target, data, request, port, current: () => !request.signal.aborted && binding.context.isCurrent()
+      && downloadRef.current === active && binding.service.getSnapshot().phase === 'ready' && binding.service.getSnapshot().data === data};
+    downloadRef.current = active;
+    void loadDownload(active);
+  };
+  const saveDownload = async (active: ActiveDownload, quality: string) => {
+    if (!active.current() || downloadView?.busy || !downloadView?.options?.policy.allowDownloads
+      || !downloadView.options.options.some(option => option.quality === quality && option.available)) return;
+    setDownloadView(previous => previous?.active === active ? {...previous, busy: true} : previous);
+    try {
+      await active.port.save(active.target, quality, active.request.signal, active.current);
+      // The promise acknowledges browser handoff, never a completed local transfer.
+      if (active.current()) closeDownload();
+    } catch (error) {
+      if (active.current()) { setDownloadView(previous => previous?.active === active ? {...previous, busy: false} : previous); binding.context.effects.reportError(error); }
+    }
+  };
+  useEffect(() => { setDownloadView(undefined); return () => { downloadRef.current?.request.abort(); downloadRef.current = undefined; }; }, [data]);
+
   useEffect(() => { setOpen(false); setFileOpen(false); setFiles(undefined); setManage(undefined); }, [data]);
   useEffect(() => () => {fileRead.current?.abort();versionRead.current?.abort();versionChoice.current?.abort();}, [data]);
   useEffect(() => {
@@ -202,9 +246,17 @@ function TitleMore({binding, data}: {binding: DetailBindings; data: DetailProjec
       {offered('rating') && <MenuItem icon="i-star" onSelect={() => setRating(true)}>{t('entry.rate')}</MenuItem>}
       {personal && <MenuSeparator />}
       {differentVersion && <MenuItem icon="i-film" onSelect={chooseVersion}>{t('next.overlays.differentVersion')}</MenuItem>}
+      {downloadAvailable && <MenuItem icon="i-download" onSelect={() => runScreenCommand(binding.context, openDownload)}>{t('next.detail.downloadAction')}</MenuItem>}
       <MenuItem icon="i-info" onSelect={loadFiles}>{t('next.overlays.fileInfo')}</MenuItem>
       {refreshPath && <><MenuSeparator /><MenuGroup label={t('next.overlays.owner')} ownerOnly><MenuItem icon="i-refresh" onSelect={refresh}>{t('entry.refreshMetadata')}</MenuItem></MenuGroup></>}
     </Menu>
+    {downloadView && downloadView.active.data === data && (downloadView.options?.policy.allowDownloads
+      ? <DownloadNotice open onOpenChange={value => { if (!value) closeDownload(); }} title={data.item.title} artwork={binding.context.artwork.foreground(data.item.posterUrl, 88, 2 / 3)} options={downloadView.options} busy={downloadView.busy}
+          onChoose={quality => { void saveDownload(downloadView.active, quality); }} returnFocusRef={trigger} />
+      : <Dialog open onOpenChange={value => { if (!value) closeDownload(); }} title={t('next.detail.download')} description={data.item.title} returnFocusRef={trigger}>
+          {downloadView.options ? <StateView title={t('web.downloads.offTitle')} body={t('web.downloads.offMember')} />
+            : downloadView.failed ? <ScreenFailure retry={() => { void loadDownload(downloadView.active); }} /> : <DetailLoading shape="panel" />}
+        </Dialog>)}
     {rating && <TitleRating binding={binding} data={data} returnFocusRef={trigger} onClose={() => setRating(false)} />}
     {fileOpen && model && <FileInfo model={model} subject={data.item.title} layout={phone ? 'phone' : 'desktop'} open onOpenChange={closeFiles} returnFocusRef={trigger} onManage={action => runScreenCommand(binding.context, () => { binding.current(data); closeFiles(false); setManage(action); })} />}
     {fileOpen && !model && <Dialog open onOpenChange={closeFiles} title={t('next.overlays.fileInfo')} returnFocusRef={trigger}>{failed ? <ScreenFailure retry={loadFiles} /> : <DetailLoading shape="panel" />}</Dialog>}
