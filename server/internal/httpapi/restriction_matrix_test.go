@@ -42,8 +42,8 @@ import (
 
 // SEC-02 / BE-SRV-01: a restricted profile sees nothing restricted on ANY route.
 //
-// The matrix walks the router's own route table (routeLanes, which the
-// admission test proves complete). Every GET route must appear in
+// The matrix walks this fixture's actual registered API metadata plus the
+// non-API infrastructure inventory. Every GET route must appear in
 // restrictionRoutes, either with the concrete requests that reach catalogue
 // content, or with the reason it cannot carry a title. A new GET route without
 // an entry fails this test, so adding a route means deciding its restriction
@@ -60,6 +60,7 @@ import (
 // test cannot pass vacuously.
 func TestRestrictedProfileRouteMatrix(t *testing.T) {
 	m := buildRestrictionMatrix(t)
+	routeLanes := m.routeInventory
 	routes := restrictionRoutes()
 
 	// 1. Exhaustive: every GET route is classified, and nothing stale is.
@@ -794,6 +795,8 @@ func prefixed(prefix string, ids []string, suffix ...string) []string {
 }
 
 type restrictionEnv struct {
+	routeInventory map[string]string
+
 	downloads  *downloads.Service
 	db         *sql.DB
 	catalog    *catalog.Service
@@ -1082,6 +1085,7 @@ func buildRestrictionMatrix(t *testing.T) *restrictionEnv {
 	catalogFixtures.Drain()
 
 	m := &restrictionEnv{downloads: offline, db: db, catalog: cat, fixtures: catalogFixtures, names: catalogtest.Names{}, itemsByID: map[string]catalogtest.Item{}, principals: principals, bulkAccess: (Dependencies{DB: db, Identity: ident, Hosted: host}).bulkAccess, statuses: map[string][]int{}, libraries: all, hiddenItems: map[string][]string{}, hiddenEntities: map[string][]string{}, visibleEntities: map[string][]string{}}
+	m.routeInventory = restrictionRouteInventory(t, deps.self.registry, routeLanes)
 	rows, err := db.Query(`SELECT e.id,pid(e.public_id),k.name,i.source_key FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind JOIN catalog_identities i ON i.public_id=e.public_id WHERE k.playable=1 ORDER BY e.id`)
 	if err != nil {
 		t.Fatal(err)

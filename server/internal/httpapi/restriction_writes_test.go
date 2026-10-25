@@ -16,8 +16,8 @@ import (
 // TestRestrictedProfileRouteMatrix proves that no GET route shows a restricted
 // profile a hidden identifier. Three things it can't see are proven here:
 //
-//  1. Every non-GET route is classified. The walk is over routeLanes (which
-//     TestEveryRegisteredRouteHasALane proves complete), so a new write route
+//  1. Every non-GET route is classified. The walk uses the actual fixture's API
+//     registrations and non-API infrastructure, so a new write route
 //     fails until someone decides its restriction story. Owner administration
 //     (/v1/admin/…) is not listed by hand: every such route is called as the
 //     restricted member and must refuse.
@@ -31,6 +31,7 @@ import (
 //     anywhere in the database references a hidden id that didn't before.
 func TestRestrictedProfileWriteRouteMatrix(t *testing.T) {
 	m := buildRestrictionMatrix(t)
+	routeLanes := m.routeInventory
 	routes := restrictionWriteRoutes()
 
 	// 1. Exhaustive classification of the non-GET routes.
