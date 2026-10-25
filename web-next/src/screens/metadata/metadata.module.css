@@ -157,3 +157,6 @@
 .choices[data-shape='square'] img, .choices[data-shape='square'] .placeholder { aspect-ratio: 1; }
 .choices[data-shape='landscape'] img, .choices[data-shape='landscape'] .placeholder { aspect-ratio: 16 / 9; }
 .choices[data-shape='banner'] img, .choices[data-shape='banner'] .placeholder { aspect-ratio: 3 / 1; }
+
+.matchDetails { flex: 1; min-width: 0; }
+.matchCurrent { flex: none; font-size: var(--type-caption-size); color: var(--color-text-secondary); }

@@ -325,12 +325,15 @@ function Matching({data, target, busy, onSearch, onUse, onRetry, onLock}: {
     </form>
     {data.candidates.map(candidate => {
       const key = `${candidate.provider}:${candidate.id}`;
-      const chosen = candidate.orders?.find(item => item.id === orders[key])?.id ?? candidate.orders?.[0]?.id;
+      const currentIdentity = identity?.provider === candidate.provider && identity.id === candidate.id;
+      const chosen = candidate.orders?.find(item => item.id === (orders[key] ?? (currentIdentity ? identity?.order : undefined)))?.id ?? candidate.orders?.[0]?.id;
+      const current = currentIdentity && (!candidate.orders?.length || chosen === identity?.order);
       return <div key={key} className={styles.candidate}>
-        <div><b>{candidate.title}{candidate.year ? ` (${candidate.year})` : ''}</b><small>{providerName(candidate.provider)}{candidate.subtitle ? ` · ${candidate.subtitle}` : ''}</small>
+        {candidate.previewUrl ? <span className={styles.candidatePoster}><img src={candidate.previewUrl} alt="" loading="lazy"/></span> : null}
+        <div className={styles.matchDetails}><b>{candidate.title}{candidate.year ? ` (${candidate.year})` : ''}</b><small>{providerName(candidate.provider)}{candidate.subtitle ? ` · ${candidate.subtitle}` : ''}</small>
           {candidate.orders && candidate.orders.length > 1 ? <label className={styles.order}>{t('metadata.attention.episodeOrder')}
             <select value={chosen} onChange={event => {const value = event.currentTarget.value; setOrders(current => ({...current, [key]: value}));}}>{candidate.orders.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : null}</div>
-        <Button size="small" disabled={busy} onClick={() => onUse(candidate.provider, candidate.id, candidate.orders?.length ? chosen : undefined)}>{t('web.liveSource.useThis')}</Button>
+        {current ? <span className={styles.matchCurrent}>{t('web.metadata.currentMatch')}</span> : <Button size="small" disabled={busy} onClick={() => onUse(candidate.provider, candidate.id, candidate.orders?.length ? chosen : undefined)}>{t('web.liveSource.useThis')}</Button>}
       </div>;
     })}
   </div>;
