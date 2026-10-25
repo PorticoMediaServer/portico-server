@@ -66,7 +66,7 @@ import {RemoteSourcesPage} from './remote-sources/RemoteSourcesPage';
 import {ServerRemotePage} from './server-remote/ServerRemotePage';
 import {MetadataSettingsPage} from './metadata/MetadataSettingsPage';
 import {browserAccountOrigin} from '../../platform/account-origin';
-import {browserAppSessions} from '../../platform/app-sessions';
+import {browserAppSessions} from '../../platform/server-connections';
 import {SettingsInvitations} from './invitations';
 import {LibraryChannelsPage} from './server/channels/LibraryChannelsPage';
 import {libraryChannelAdmission} from '../live/owner/library-channel-admission';
