@@ -139,7 +139,15 @@ func (h *Handler) Routes() http.Handler {
 			}
 			items = visible
 		}
-		write(w, 200, ServerList{Items: items, Version: version, Watch: h.Directory.WatchToken(v.Account.ID)})
+		var ending *directory.MembershipEndingNotice
+		if len(items) == 0 {
+			ending, e = h.Directory.MembershipEndingNotice(r.Context(), v.Account.ID)
+			if e != nil {
+				failure(w, e)
+				return
+			}
+		}
+		write(w, 200, ServerList{Items: items, Version: version, Watch: h.Directory.WatchToken(v.Account.ID), MembershipEnding: ending})
 	}))
 
 	mux.HandleFunc("POST /v1/servers/{id}/heartbeat", h.server(func(w http.ResponseWriter, r *http.Request, authority directory.ServerAuthority) {

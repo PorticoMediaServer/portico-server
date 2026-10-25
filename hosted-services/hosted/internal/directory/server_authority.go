@@ -2,6 +2,7 @@ package directory
 
 import (
 	"context"
+	"regexp"
 	"time"
 
 	"portico.local/hosted/internal/security"
@@ -101,6 +102,15 @@ func (s *Service) PushMembers(ctx context.Context, a ServerAuthority, p MemberPu
 		if m.AccountID == "" || len(m.AccountID) > 128 || seen[m.AccountID] || (m.Active && !memberRole(m.Role)) || (!m.Active && m.Role != "" && !memberRole(m.Role)) {
 			return MemberPushResult{}, ErrInvalid
 		}
+		if m.MembershipID != "" && !membershipIncarnation.MatchString(m.MembershipID) {
+			return MemberPushResult{}, ErrInvalid
+		}
+		if m.Ending != nil {
+			e := m.Ending
+			if m.Active || !membershipIncarnation.MatchString(m.MembershipID) || e.Sequence < 1 || e.Sequence > p.Through || e.Sequence > 9007199254740991 || e.Cause != "owner_removed" || e.EndedAt.IsZero() || e.EndedAt.After(time.Now().Add(5*time.Minute)) || !e.ExpiresAt.Equal(e.EndedAt.Add(30*24*time.Hour)) {
+				return MemberPushResult{}, ErrInvalid
+			}
+		}
 		seen[m.AccountID] = true
 	}
 	for i := range p.Members {
@@ -118,6 +128,8 @@ func (s *Service) PushMembers(ctx context.Context, a ServerAuthority, p MemberPu
 	}
 	return result, e
 }
+
+var membershipIncarnation = regexp.MustCompile(`^[0-9a-f]{32}$`)
 
 func memberRole(role string) bool { return role == "owner" || role == "admin" || role == "member" }
 

@@ -44,10 +44,12 @@ func pushDigest(push directory.MemberPush) []byte {
 	type wire struct {
 		AccountID, Role string
 		Active          bool
+		MembershipID    string                      `json:",omitempty"`
+		Ending          *directory.MembershipEnding `json:",omitempty"`
 	}
 	lines := make([]wire, len(push.Members))
 	for i, m := range push.Members {
-		lines[i] = wire{m.AccountID, m.Role, m.Active}
+		lines[i] = wire{m.AccountID, m.Role, m.Active, m.MembershipID, m.Ending}
 	}
 	raw, _ := json.Marshal(struct {
 		After, Through int64
@@ -170,7 +172,25 @@ func (s *Store) PushMembers(ctx context.Context, authority directory.ServerAutho
 		if e = tx.QueryRowContext(ctx, `SELECT role FROM server_members WHERE server_id=$1 AND account_id=$2`, server, m.AccountID).Scan(&role); e != nil && !errors.Is(e, sql.ErrNoRows) {
 			return directory.MemberPushResult{}, e
 		}
+		retired, e := membershipStandingRetiredTx(ctx, tx, server, m, push.Through)
+		if e != nil {
+			return directory.MemberPushResult{}, e
+		}
+		if retired {
+			skipped = append(skipped, m.AccountID)
+			continue
+		}
 		if !m.Active {
+			newEnding, e := acceptMembershipEndingTx(ctx, tx, server, m, push.Through)
+			if e != nil {
+				return directory.MemberPushResult{}, e
+			}
+			if newEnding {
+				changed = append(changed, m.AccountID)
+			}
+			if e = retireMembershipIncarnationTx(ctx, tx, server, m, push.Through); e != nil {
+				return directory.MemberPushResult{}, e
+			}
 			if role.Valid {
 				if _, e = tx.ExecContext(ctx, `DELETE FROM server_members WHERE server_id=$1 AND account_id=$2`, server, m.AccountID); e != nil {
 					return directory.MemberPushResult{}, e
@@ -184,6 +204,9 @@ func (s *Store) PushMembers(ctx context.Context, authority directory.ServerAutho
 			continue
 		}
 		if role.Valid && role.String == m.Role {
+			if e = admitMembershipIncarnationTx(ctx, tx, server, m, push.Through); e != nil {
+				return directory.MemberPushResult{}, e
+			}
 			continue
 		}
 		if !role.Valid && m.AccountID != custodian.String {
@@ -206,6 +229,9 @@ func (s *Store) PushMembers(ctx context.Context, authority directory.ServerAutho
 			skipped = append(skipped, m.AccountID)
 			continue
 		}
+		if e = admitMembershipIncarnationTx(ctx, tx, server, m, push.Through); e != nil {
+			return directory.MemberPushResult{}, e
+		}
 		changed = append(changed, m.AccountID)
 		if _, e = tx.ExecContext(ctx, `DELETE FROM server_member_departures WHERE server_id=$1 AND account_id=$2`, server, m.AccountID); e != nil {
 			return directory.MemberPushResult{}, e
@@ -225,6 +251,9 @@ func (s *Store) PushMembers(ctx context.Context, authority directory.ServerAutho
 		return directory.MemberPushResult{Sequence: stored, Applied: true, Skipped: skipped, Custodian: holder}, tx.Commit()
 	}
 	if push.Full {
+		if _, e = tx.ExecContext(ctx, `UPDATE server_member_incarnations SET retained_until=clock_timestamp()+interval '720 hours' WHERE server_id=$1 AND account_id IN(SELECT account_id FROM server_member_full_prior WHERE server_id=$1)`, server); e != nil {
+			return directory.MemberPushResult{}, e
+		}
 		rows, e := tx.QueryContext(ctx, `DELETE FROM server_members WHERE server_id=$1 AND account_id IN(SELECT account_id FROM server_member_full_prior WHERE server_id=$1) RETURNING account_id`, server)
 		if e != nil {
 			return directory.MemberPushResult{}, e

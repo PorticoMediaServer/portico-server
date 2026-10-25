@@ -52,7 +52,8 @@ type AppStoreReceipt struct {
 
 // ServerList is the account's server directory.
 type ServerList struct {
-	Items []directory.Server `json:"items"`
+	MembershipEnding *directory.MembershipEndingNotice `json:"membershipEnding,omitempty"`
+	Items            []directory.Server                `json:"items"`
 	// Version is the account's server-list version, also sent as the ETag. A
 	// device keeps it and asks GET /v1/server-list/{watch} whether it moved.
 	Version string `json:"version"`

@@ -111,10 +111,28 @@ type CheckInReport struct {
 
 // MemberStanding is one Portico Account's standing on a server, as the server
 // reports it. Hosted indexes it for discovery and decides nothing with it.
+// MembershipEnding is explicit server-authoritative evidence, not a grant.
+// No invitation-ended cause exists until a real expiring access grant exists.
+type MembershipEnding struct {
+	Sequence  int64     `json:"sequence"`
+	Cause     string    `json:"cause"`
+	EndedAt   time.Time `json:"endedAt"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
+type MembershipEndingNotice struct {
+	Cause        string    `json:"cause"`
+	ServerID     string    `json:"serverId"`
+	MembershipID string    `json:"membershipId"`
+	Sequence     int64     `json:"sequence"`
+	ServerName   string    `json:"serverName,omitempty"`
+	ExpiresAt    time.Time `json:"expiresAt"`
+}
 type MemberStanding struct {
-	AccountID string `json:"accountId"`
-	Role      string `json:"role"`
-	Active    bool   `json:"active"`
+	MembershipID string            `json:"membershipId,omitempty"`
+	Ending       *MembershipEnding `json:"ending,omitempty"`
+	AccountID    string            `json:"accountId"`
+	Role         string            `json:"role"`
+	Active       bool              `json:"active"`
 	// Consent is the account's own identity assertion for this server, which
 	// the server kept when the account signed in or accepted an invitation.
 	Consent json.RawMessage `json:"consent,omitempty"`
@@ -224,4 +242,16 @@ func (s *Service) KeyCertificates() []*trust.Certificate {
 
 func (s *Service) TrustRoot() string {
 	return base64.RawURLEncoding.EncodeToString(s.keys.RootPublicKey)
+}
+
+// The optional port returns no cause when the repository has no explicit evidence.
+type MembershipEndingRepository interface {
+	MembershipEndingNotice(context.Context, string) (*MembershipEndingNotice, error)
+}
+
+func (s *Service) MembershipEndingNotice(ctx context.Context, account string) (*MembershipEndingNotice, error) {
+	if repo, ok := s.repo.(MembershipEndingRepository); ok {
+		return repo.MembershipEndingNotice(ctx, account)
+	}
+	return nil, nil
 }

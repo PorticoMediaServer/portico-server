@@ -1702,7 +1702,7 @@ ALTER TABLE ONLY wake_state
 INSERT INTO account_identity_schema VALUES (true, 1);
 INSERT INTO account_security_schema VALUES (true, 1);
 INSERT INTO apple_notification_schema VALUES (true, 1);
-INSERT INTO hosted_schema_contract VALUES (true, 'portico-hosted', 27);
+INSERT INTO hosted_schema_contract VALUES (true, 'portico-hosted', 28);
 INSERT INTO hosted_signing_state VALUES (true, 0, '\x', false, '', '\x');
 INSERT INTO identity_protocol_policy VALUES (true, 1, false, NULL, clock_timestamp());
 
@@ -1824,3 +1824,30 @@ CREATE TABLE setup_claim_starts (
 CREATE INDEX setup_claim_starts_expiry ON setup_claim_starts(expires_at);
 CREATE INDEX setup_claim_starts_account ON setup_claim_starts(approved_account_id);
 CREATE INDEX setup_claim_starts_server ON setup_claim_starts(server_id);
+
+-- Root31: only a previously admitted exact membership can acquire ending evidence.
+CREATE TABLE server_member_incarnations (
+ server_id text NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+ account_id text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+ membership_id text NOT NULL CHECK(membership_id ~ '^[0-9a-f]{32}$'),
+ standing_sequence bigint NOT NULL CHECK(standing_sequence>=0),
+ ending_sequence bigint NOT NULL DEFAULT 0 CHECK(ending_sequence>=0),
+ server_name text NOT NULL,
+ retained_until timestamptz NOT NULL,
+ PRIMARY KEY(server_id,account_id)
+);
+CREATE INDEX server_member_incarnations_retention ON server_member_incarnations(retained_until);
+CREATE TABLE server_member_endings (
+ server_id text NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+ account_id text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+ membership_id text NOT NULL CHECK(membership_id ~ '^[0-9a-f]{32}$'),
+ sequence bigint NOT NULL CHECK(sequence>0 AND sequence<=9007199254740991),
+ cause text NOT NULL CHECK(cause='owner_removed'),
+ server_name text NOT NULL,
+ ended_at timestamptz NOT NULL,
+ expires_at timestamptz NOT NULL CHECK(expires_at=ended_at+interval '720 hours'),
+ superseded_at timestamptz,
+ PRIMARY KEY(server_id,account_id), UNIQUE(server_id,sequence)
+);
+CREATE INDEX server_member_endings_account ON server_member_endings(account_id,ended_at DESC);
+CREATE INDEX server_member_endings_retention ON server_member_endings(expires_at);
