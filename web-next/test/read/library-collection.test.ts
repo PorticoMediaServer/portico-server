@@ -126,7 +126,7 @@ function seriesFixture(wrongSeries = false) {
     const items = Array.from({length: start === 0 ? 60 : 2}, (_, index) => ({
       id: `unit-${100 - start - index}`, sourceId: `source-${start + index}`, libraryId: 'unit-library',
       title: `Title ${100 - start - index}`, format: 'epub', inventoryAvailable: true,
-      series: {id: wrongSeries ? 'x'.repeat(43) : seriesId, name: 'Accepted series'},
+      series: {id: wrongSeries ? 'x'.repeat(43) : seriesId, name: 'Accepted series', source: 'owner'},
     }));
     return new Response(JSON.stringify({items, ...(start === 0 ? {nextCursor: signedCursor} : {})}),
       {headers: {'Content-Type': 'application/json'}});
