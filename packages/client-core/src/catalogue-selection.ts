@@ -13,7 +13,7 @@ import {selectionCapabilities} from './selection-model/capabilities.ts';
 export type CatalogueSelectionLifetime = Readonly<{signal: AbortSignal; isCurrent(): boolean}>;
 export type CatalogueSelectionOptions = Readonly<{api: DetailApi; scope: DetailScope; requestId(): Promise<string>}> & CatalogueSelectionLifetime;
 /** Actual caller execution ports, never role-derived grants. Missing means unavailable. */
-export type CatalogueSelectionPorts = Readonly<Partial<Pick<SelectionCapabilities, 'play' | 'myList' | 'favorite' | 'watched'>>>;
+export type CatalogueSelectionPorts = Readonly<Partial<Pick<SelectionCapabilities, 'play' | 'queue' | 'myList' | 'favorite' | 'watched'>>>;
 const unavailable = () => Object.assign(new Error('catalogue-selection-unavailable'), {code: 'catalogue-selection-unavailable'});
 function requireCurrent(lifetime: CatalogueSelectionLifetime): void {
   if (lifetime.signal.aborted || !lifetime.isCurrent()) throw Object.assign(new Error('cancelled'), {name: 'AbortError', code: 'cancelled'});
@@ -48,6 +48,8 @@ export async function readCatalogueSelectionItem(options: CatalogueSelectionOpti
     const play = data.actions.some(action => action.enabled && (action.id === 'play' || action.id === 'resume') && action.playback?.itemId === entry.id);
     return checkedItem({kind: entry.kind, id: entry.id, libraryId: target.libraryId, capabilities: selectionCapabilities(entry.kind, {
       play: availablePorts.play === true && data.item.available === true && play,
+      queue: availablePorts.queue === true && data.item.available === true && data.actions.some(action =>
+        action.id === 'enqueue' && action.enabled && action.playback?.itemId === entry.id),
       myList: availablePorts.myList === true && enabled('watchlist'),
       favorite: availablePorts.favorite === true && enabled('favorite'),
       watched: availablePorts.watched === true && enabled('watched'),
@@ -111,6 +113,26 @@ export async function playCatalogueSelection(player: Pick<V1QueuePlayer, 'playSe
   requireCurrent(captured);
   const segments = catalogueSelectionSegments(items);
   const result = await player.playSegments(segments, captured);
+  requireCurrent(captured);
+  return result;
+}
+
+/** An authority-local queue port, supplied only while the caller controls its
+ * current queue/group. The same lifetime must survive the actual append. */
+export type CatalogueSelectionQueuePort = Readonly<{
+  enqueueSegments(segments: readonly SegmentInput[], placement: 'next' | 'end', lifetime: CatalogueSelectionLifetime): Promise<QueueHeader>;
+}>;
+
+/** Explicit bounded picks in pick order. No query or parent expansion is
+ * performed here; each item must carry the independent Detail enqueue grant. */
+export async function enqueueCatalogueSelection(player: CatalogueSelectionQueuePort, items: readonly SelectionItem[],
+  placement: 'next' | 'end', lifetime: CatalogueSelectionLifetime): Promise<QueueHeader> {
+  const captured = Object.freeze({signal: lifetime.signal, isCurrent: lifetime.isCurrent});
+  requireCurrent(captured);
+  if (!['next', 'end'].includes(placement) || !items.length || items.length > 256
+    || items.some(item => !['movie', 'episode', 'song', 'audiobook_file'].includes(item.kind))) throw unavailable();
+  const segments = catalogueSelectionSegments(items, 'queue');
+  const result = await player.enqueueSegments(segments, placement, captured);
   requireCurrent(captured);
   return result;
 }
