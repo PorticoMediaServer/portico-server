@@ -15,7 +15,7 @@ import {createDesktopDownloadsHost} from './downloads-host.ts';
 import {createDesktopAppLifetime} from './app-lifetime.ts';
 import {installDesktopCloseHost} from './close-host.ts';
 import {browserViewerStorage} from '../../../web-next/src/platform/viewer-selection-storage.ts';
-import {installOfflineDownloads} from '../../../web-next/src/shell/offline-downloads.ts';
+import {installOfflineDownloads, watchSelectionReplaced} from '../../../web-next/src/shell/offline-downloads.ts';
 import {offlineDownloadScope} from './offline-scope.ts';
 
 const lifetime=createDesktopAppLifetime();
@@ -73,6 +73,8 @@ async function startDesktop(){
         publish(items.length?{phase:'ready',items}:{phase:'unavailable',items:[]});
       };
       void refresh();
+      // Another window replacing the selection retires this list at once, without waiting for a read.
+      lifetime.retain(watchSelectionReplaced(retire));
       lifetime.retain(installOfflineDownloads({
         subscribe:listener=>{listeners.add(listener);return()=>{listeners.delete(listener);};},
         snapshot:()=>{if(!live()){void Promise.resolve().then(retire);return unavailable;}return snapshot;},

@@ -2,7 +2,7 @@ import {parseSelectedViewerRecord,selectedViewerRecord,type SelectedViewerRecord
 import {BrowserProtectedStore,browserAppSessions} from './server-connections';
 import type {AppSessionStore} from '@core/app-sessions.ts';
 import {forgetAllShells, forgetShell} from '../shell/last-known';
-import {clearOfflineDownloads} from '../shell/offline-downloads';
+import {announceSelectionReplaced, clearOfflineDownloads} from '../shell/offline-downloads';
 
 
 /** Signing in lasts: the selected viewer is kept for this browser, not for one tab, so closing
@@ -38,11 +38,13 @@ return {
    const json=JSON.stringify(record);
    await store.change(()=>JSON.parse(json) as SelectedViewerRecord);
    if(JSON.stringify(await store.read())!==json)throw new Error('Server credentials could not be read back from this browser.');
+   announceSelectionReplaced();
   }else{
    forgetAllShells();
    clearOfflineDownloads();
    await store.change(()=>undefined);
    if((await store.read())!==undefined)throw new Error('The old server credential could not be removed from this browser.');
+   announceSelectionReplaced();
   }
  },
  async clearIfFamily(sessionFamilyId){
@@ -81,6 +83,6 @@ const selectionLease=(record:SelectedViewerRecord|null)=>record
 const noteSelection=(record:SelectedViewerRecord|null)=>{const next=selectionLease(record);if(observedSelection!==undefined&&observedSelection!==next)clearOfflineDownloads();observedSelection=next;};
 export const browserViewerStorage:SelectedViewerStorage = {
  read:async()=>{const record=await createAppViewerStorage(browserAppSessions()).read();noteSelection(record);return record;},
- write:async record=>{noteSelection(record);await createAppViewerStorage(browserAppSessions()).write(record);},
+ write:async record=>{noteSelection(record);await createAppViewerStorage(browserAppSessions()).write(record);announceSelectionReplaced();},
  clearIfFamily:async family=>{clearOfflineDownloads();observedSelection=undefined;return createAppViewerStorage(browserAppSessions()).clearIfFamily!(family);},
 };
