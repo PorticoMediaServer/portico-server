@@ -1,5 +1,6 @@
 import {createRoot} from 'react-dom/client';
-import {createI18n, deviceRegion, resolveRegion} from '@i18n';
+import {createI18n, deviceRegion, resolveRegion, formatMessage} from '@i18n';
+import {troubleshootingFixtureMessages} from '../../../../packages/i18n/src/catalog/en-US/next/dev/troubleshooting-fixtures';
 import {setServiceI18n} from '@core/presentation/service-text.ts';
 import {IconSprite} from '../../kit/Icon';
 import {TroubleshootingPage} from '../../screens/settings/server/troubleshooting';
@@ -15,6 +16,7 @@ import '../../bootstrap.css';
 // It mounts the production Reports screen; every row is owner-server.html frame 5's own state.
 if (!import.meta.env.DEV) throw new Error('Settings specimens require development.');
 
+const fixture = (key: keyof typeof troubleshootingFixtureMessages) => formatMessage(troubleshootingFixtureMessages[key], {}, {locale: 'en-US'});
 const params = new URLSearchParams(location.search);
 if (params.get('clock') === 'fixed') {
   const fixed = Date.parse('2026-10-22T19:00:00Z'), RealDate = Date;
@@ -43,98 +45,98 @@ const messageRecords = [
     "at": "2026-10-22T18:58:02Z",
     "level": "info",
     "category": "server",
-    "message": "Backup finished. 18 MB written, 7 backups kept."
+    "message": fixture('next.troubleshooting.fixture.message1')
   },
   {
     "sequence": "2",
     "at": "2026-10-22T18:58:40Z",
     "level": "info",
     "category": "scan",
-    "message": "Scan of Movies started."
+    "message": fixture('next.troubleshooting.fixture.message2')
   },
   {
     "sequence": "3",
     "at": "2026-10-22T19:01:17Z",
     "level": "info",
     "category": "scan",
-    "message": "Scan of Movies finished: 80 titles checked, 0 added, 0 changed."
+    "message": fixture('next.troubleshooting.fixture.message3')
   },
   {
     "sequence": "4",
     "at": "2026-10-22T19:03:05Z",
     "level": "info",
     "category": "playback",
-    "message": "Started The Last of Us on Living room TV as the original file."
+    "message": fixture('next.troubleshooting.fixture.message4')
   },
   {
     "sequence": "5",
     "at": "2026-10-22T19:03:22Z",
     "level": "warn",
     "category": "network",
-    "message": "The router didn’t answer the port mapping request. Trying again in 5 minutes."
+    "message": fixture('next.troubleshooting.fixture.message5')
   },
   {
     "sequence": "6",
     "at": "2026-10-22T19:05:48Z",
     "level": "info",
     "category": "playback",
-    "message": "Started converting Spirited Away to 1080p for an iPhone away from home."
+    "message": fixture('next.troubleshooting.fixture.message6')
   },
   {
     "sequence": "7",
     "at": "2026-10-22T19:07:31Z",
     "level": "error",
     "category": "playback",
-    "message": "The video encoder stopped while converting Spirited Away. Playback went on with the processor."
+    "message": fixture('next.troubleshooting.fixture.message7')
   },
   {
     "sequence": "8",
     "at": "2026-10-22T19:07:32Z",
     "level": "info",
     "category": "playback",
-    "message": "Converting Spirited Away again, this time with the processor."
+    "message": fixture('next.troubleshooting.fixture.message8')
   },
   {
     "sequence": "9",
     "at": "2026-10-22T19:09:10Z",
     "level": "info",
     "category": "client",
-    "message": "A report came in from an iPhone running 1.4.2."
+    "message": fixture('next.troubleshooting.fixture.message9')
   },
   {
     "sequence": "10",
     "at": "2026-10-22T19:11:02Z",
     "level": "warn",
     "category": "server",
-    "message": "Free space on the disk that holds backups is below 15 percent."
+    "message": fixture('next.troubleshooting.fixture.message10')
   },
   {
     "sequence": "11",
     "at": "2026-10-22T19:12:40Z",
     "level": "info",
     "category": "playback",
-    "message": "Playback of The Last of Us ended after 41 minutes."
+    "message": fixture('next.troubleshooting.fixture.message11')
   },
   {
     "sequence": "12",
     "at": "2026-10-22T19:14:03Z",
     "level": "info",
     "category": "network",
-    "message": "Certificate check passed. The certificate is valid until Jan 19, 2027."
+    "message": fixture('next.troubleshooting.fixture.message12')
   },
   {
     "sequence": "13",
     "at": "2026-10-22T19:14:55Z",
     "level": "info",
     "category": "scan",
-    "message": "Watching TV Shows: 1 new file found."
+    "message": fixture('next.troubleshooting.fixture.message13')
   },
   {
     "sequence": "14",
     "at": "2026-10-22T19:15:00Z",
     "level": "info",
     "category": "scan",
-    "message": "Scan of TV Shows started."
+    "message": fixture('next.troubleshooting.fixture.message14')
   }
 ];
 const records = [
@@ -143,23 +145,23 @@ const records = [
 ];
 const feedback = [
   {id: 'feedback-1', createdAt: '2026-10-22T18:20:00Z', updatedAt: '2026-10-22T18:20:00Z', revision: 1, status: 'open', category: 'playback',
-   message: 'Playback stopped twice during the second episode.', itemId: 'item-1', contextAvailable: true, diagnostic: {platform: 'ios', state: 'playing', online: true}},
+   message: fixture('next.troubleshooting.fixture.message15'), itemId: 'item-1', contextAvailable: true, diagnostic: {platform: 'ios', state: 'playing', online: true}},
   {id: 'feedback-2', createdAt: '2026-10-21T23:05:00Z', updatedAt: '2026-10-22T17:00:00Z', revision: 2, status: 'in-progress', category: 'subtitles',
-   message: 'The subtitles are about a second ahead of the picture.', contextAvailable: true, diagnostic: {platform: 'tvos', state: 'playing', online: false}},
+   message: fixture('next.troubleshooting.fixture.message16'), contextAvailable: true, diagnostic: {platform: 'tvos', state: 'playing', online: false}},
   {id: 'feedback-3', createdAt: '2026-10-20T20:15:00Z', updatedAt: '2026-10-21T09:00:00Z', revision: 3, status: 'resolved', category: 'metadata',
-   message: 'The poster for this film is wrong.', itemId: 'item-2', contextAvailable: false},
+   message: fixture('next.troubleshooting.fixture.message17'), itemId: 'item-2', contextAvailable: false},
   {id: 'feedback-4', createdAt: '2026-10-19T18:40:00Z', updatedAt: '2026-10-20T10:00:00Z', revision: 2, status: 'closed', category: 'other',
-   message: 'Thanks for the update.', contextAvailable: false},
+   message: fixture('next.troubleshooting.fixture.message18'), contextAvailable: false},
 ];
 const setAside = {failures: [
-  {domain: 1, title: 'Severance, season 1', reason: 'The provider answered too slowly to finish the match.', attempts: 3, failedAt: '2026-10-22T17:10:00Z'},
-  {domain: 1, title: 'Neagley', reason: 'The artwork could not be read as an image.', attempts: 2, failedAt: '2026-10-22T17:10:00Z'},
+  {domain: 1, title: fixture('next.troubleshooting.fixture.title1'), reason: fixture('next.troubleshooting.fixture.reason1'), attempts: 3, failedAt: '2026-10-22T17:10:00Z'},
+  {domain: 1, title: fixture('next.troubleshooting.fixture.title2'), reason: fixture('next.troubleshooting.fixture.reason2'), attempts: 2, failedAt: '2026-10-22T17:10:00Z'},
 ], more: false};
 const capabilities = {items: [
   {capability: 'live_tv', available: true, checkedAt: '2026-10-22T18:00:00Z'},
   {capability: 'recording', available: true, checkedAt: '2026-10-22T18:00:00Z'},
   {capability: 'prepared_media', available: true, checkedAt: '2026-10-22T18:00:00Z'},
-  {capability: 'hardware_encoding', available: false, code: 'hardware_unavailable', detail: 'Intel Quick Sync was requested but this processor has no usable encoder.', checkedAt: '2026-10-22T18:00:00Z'},
+  {capability: 'hardware_encoding', available: false, code: 'hardware_unavailable', detail: fixture('next.troubleshooting.fixture.detail1'), checkedAt: '2026-10-22T18:00:00Z'},
   {capability: 'decoder_sandbox', available: false, code: 'decoder_confinement_unavailable', checkedAt: '2026-10-22T18:00:00Z'},
   {capability: 'dolby_vision_conversion', available: true, checkedAt: '2026-10-22T18:00:00Z'},
 ]};
@@ -177,7 +179,7 @@ const request = async (path: string, method = 'GET'): Promise<unknown> => {
     return {scope: {serverId, viewerFence: fence}, data: feedback.find(item => item.id === id) ?? feedback[0]};
   }
   if (path.includes('/admin/feedback')) return {scope: {serverId, viewerFence: fence}, data: {items: feedback, nextCursor: ''}};
-  if (path.includes('client-logs/')) return envelope({...report('one', 'iPhone', 'phone', '1.4.2', '2026-10-21T22:44:00Z', 38912), body: 'The app closed while opening a title.'});
+  if (path.includes('client-logs/')) return envelope({...report('one', 'iPhone', 'phone', '1.4.2', '2026-10-21T22:44:00Z', 38912), body: fixture('next.troubleshooting.fixture.body1')});
   return envelope({items: [
     report('one', 'iPhone', 'phone', '1.4.2', '2026-10-21T22:44:00Z', 38912),
     report('two', 'Android TV', 'tv', '1.4.1', '2026-10-20T21:10:00Z', 114688),
@@ -192,7 +194,7 @@ const feedbackSource = new SettingsFeedbackSource(transport, serverId, 'specimen
 const supportSource = new SettingsSupportSource(transport, serverId, 'specimen-viewer', () => true);
 const subscribe = (listener: () => void) => {const offs = [reports.subscribe(listener), feedbackSource.subscribe(listener), supportSource.subscribe(listener)];return () => {for (const off of offs) off();};};
 
-createRoot(document.getElementById('root')!).render(<div style={{minHeight: '100vh', background: '#071018', padding: '40px 32px'}}>
+createRoot(document.getElementById('root')!).render(<div style={{minHeight: '100vh', background: 'var(--color-ink)', padding: '40px 32px'}}>
   <div style={{maxWidth: 952, margin: '0 auto'}}><IconSprite />
     <TroubleshootingPage messages={messages} reports={reports} feedback={feedbackSource} support={supportSource} subscribe={subscribe} isCurrent={() => true} downloadBase="" reportError={() => {}}
       initialView={params.get('view') === 'messages' ? 'messages' : params.get('view') === 'reports' ? 'reports' : params.get('view') === 'support' ? 'support' : 'feedback'} />
