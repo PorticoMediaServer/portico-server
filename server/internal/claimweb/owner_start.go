@@ -19,9 +19,9 @@ import (
 )
 
 const OwnerStartKind = "portico.owner-start.v1"
-// OwnerStartKindV2 adds the signed transition mode. The claim stays v2 and binds
-// this start by ClaimHash, so the mode cannot be altered without breaking both
-// signatures. v1 stays ordinary switch only.
+// OwnerStartKindV2 adds the signed transition mode. ClaimHash binds the original
+// claim this start belongs to; the mode itself is covered by the start signature,
+// so altering it invalidates that signature. v1 stays ordinary switch only.
 const OwnerStartKindV2 = "portico.owner-start.v2"
 const OwnerStartLifetime = 5 * time.Minute
 
