@@ -38,6 +38,25 @@ func (ReadingMarkResponse) JSONSchema() map[string]any {
 
 func (d Dependencies) readingMarkAuthorize(ctx context.Context, p identity.Principal, item string, fence *string) func(*sql.Tx) error {
 	return func(tx *sql.Tx) error {
+		if !identity.CanUsePersonalState(p) {
+			return identity.ErrForbidden
+		}
+		if d.Identity == nil {
+			return identity.ErrUnauthorized
+		}
+		live, err := d.Identity.PrincipalByDigestTx(ctx, tx, p.Hash)
+		if err != nil {
+			return err
+		}
+		if live.Viewer != p.Viewer {
+			return identity.ErrUnauthorized
+		}
+		if !identity.CanUsePersonalState(live) {
+			return identity.ErrForbidden
+		}
+		if err = live.PermitsRequest(ctx); err != nil {
+			return err
+		}
 		var library string
 		if err := tx.QueryRowContext(ctx, `SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.public_id=pid_blob(?) AND e.retired=0 AND cl.retired=0`, item).Scan(&library); err != nil {
 			return err
@@ -59,6 +78,9 @@ func (d Dependencies) readingMarkAuthorize(ctx context.Context, p identity.Princ
 }
 
 func (d Dependencies) readingMarkView(ctx context.Context, p identity.Principal, item string) (ReadingMarkResponse, error) {
+	if !identity.CanUsePersonalState(p) {
+		return ReadingMarkResponse{}, identity.ErrForbidden
+	}
 	var fence string
 	state, err := d.Catalog.WithContext(ctx).ReadingMark(identity.PersonalKey(p.Viewer), item, d.readingMarkAuthorize(ctx, p, item, &fence))
 	if err != nil {
@@ -84,6 +106,10 @@ func (d Dependencies) readingSetMark(rate *personalLimiter) http.HandlerFunc {
 		if !ok {
 			return
 		}
+		if !identity.CanUsePersonalState(p) {
+			readingFailure(w, identity.ErrForbidden)
+			return
+		}
 		if !rate.allow(viewerScope(p)) {
 			w.Header().Set("Retry-After", "60")
 			policyError(w, "rate_limited")
@@ -99,7 +125,7 @@ func (d Dependencies) readingSetMark(rate *personalLimiter) http.HandlerFunc {
 			return
 		}
 		var fence string
-		_, err := d.Catalog.WithContext(r.Context()).SetReadingMark(p.Authority+":"+p.AccountID, identity.PersonalKey(p.Viewer), r.PathValue("itemId"), in.OperationID, in.ExpectedRevision, *in.Read, d.readingMarkAuthorize(r.Context(), p, r.PathValue("itemId"), &fence))
+		applied, err := d.Catalog.WithContext(r.Context()).SetReadingMark(p.Authority+":"+p.AccountID, identity.PersonalKey(p.Viewer), r.PathValue("itemId"), in.OperationID, in.ExpectedRevision, *in.Read, d.readingMarkAuthorize(r.Context(), p, r.PathValue("itemId"), &fence))
 		if err != nil {
 			failure(w, err)
 			return
@@ -113,6 +139,8 @@ func (d Dependencies) readingSetMark(rate *personalLimiter) http.HandlerFunc {
 			failure(w, catalog.ErrStaleContinuation)
 			return
 		}
+		// Fresh state proves admission only; the old operation retains its stored result.
+		out.ItemID, out.Read, out.Revision = applied.ItemID, applied.Read, applied.Revision
 		out.OperationID = in.OperationID
 		write(w, 200, out)
 	}
