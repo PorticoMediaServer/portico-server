@@ -279,7 +279,7 @@ const accountPages: readonly AuthoredPage[] = [
   },
   {
     id: 'music', title: 'settings.page.music', icon: 'music', sections: [
-      {id: 'sound', rows: [
+      {id: 'sound', title: 'next.settingsSpec.account.music.groups.0.title', rows: [
         pref('music.audioNormalization', 'settings.row.volumeLeveling', {type: 'choice', choices: (['off', 'track', 'album'] as const).map(value => ({value, label: `pref.value.music.audioNormalization.${value}` as MessageId}))}, {help: 'settings.help.volumeLeveling', needs: c => c.audioEffects !== false}),
         pref('music.crossfadeMs', 'pref.label.music.crossfadeMs', {type: 'choice', choices: [{value: 0, label: 'pref.value.music.crossfadeMs.0'}, ...seconds(2, 4, 6, 8, 10, 12)]}, {help: 'pref.help.music.crossfadeMs', needs: c => c.audioEffects !== false}),
         toggle('music.gapless', 'pref.label.music.gapless', {help: 'settings.help.gapless', needs: c => c.audioEffects !== false}),

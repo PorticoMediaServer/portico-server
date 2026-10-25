@@ -7,6 +7,7 @@ test('audiobook jump choices remain independent profile settings on every platfo
     const structure = settingsStructure({platform, owner: false, capabilities: {}} as Parameters<typeof settingsStructure>[0]);
     const music = structure.headings.find(heading => heading.id === 'account')!.pages.find(page => page.id === 'music')!;
     assert.deepEqual(music.sections.slice(0, 3).map(section => section.id), ['sound', 'lyrics', 'audiobooks']);
+    assert.equal(music.sections[0].title, 'next.settingsSpec.account.music.groups.0.title');
     const audiobooks = music.sections.find(section => section.id === 'audiobooks')!;
     assert.equal(audiobooks.title, 'next.settingsSpec.account.music.groups.2.title');
     const rows = audiobooks.rows.filter(row => row.kind === 'preference' && row.key !== 'audiobooks.defaultSpeed');
