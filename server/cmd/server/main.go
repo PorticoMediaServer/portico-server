@@ -1036,7 +1036,7 @@ func run() (runErr error) {
 	})
 	doneConsole := reporter.step("console", "Open the operations console")
 	console, scheduler, e := initializeConsole(db, scanner, player, hls, cat, lyricFetch, state, configurationStore)
-	if console != nil {
+	if console != nil && e == nil {
 		console.FFmpegValidation = operations.FFmpegValidator(ffmpegTool)
 		console.AppliedTemporaryDirectory = &appliedConversionSetting
 		console.AppliedFFmpegPath = &startupMedia.FFmpegPath
