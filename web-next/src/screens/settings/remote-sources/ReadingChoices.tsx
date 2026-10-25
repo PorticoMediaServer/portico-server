@@ -37,8 +37,9 @@ export function sourceOnHomeNetwork(origin: string | undefined): boolean {
 /** The four choices as the frames draw them (remote-sources.html#4, #4d): plain
  * radio cards with the real facts of each choice. Whole-file choices say what
  * they cost on the storage that is actually connected, and a storage that cannot
- * skip ahead never offers one. Per-source cache figures are not drawn because
- * the server keeps no per-source cache setting; the row is left off, not invented. */
+ * skip ahead never offers one. The drawn Caching fact is left off: a choice sets
+ * no cache figure here; the read cache is the source's own Advanced setting, so
+ * the card does not guess one. */
 export function ReadingChoices({values, origin, rangeSupport, disabled, onChange}: Readonly<{
   values: SourceReadValues; origin?: string; rangeSupport: string; disabled: boolean;
   onChange: (values: SourceReadValues) => void;
