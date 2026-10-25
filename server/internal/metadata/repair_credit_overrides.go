@@ -38,6 +38,16 @@ func creditOverridesAvailable(ctx context.Context, tx *sql.Tx, entity int64) (bo
 		return false, err
 	}
 	for _, provider := range providers {
+		if provider == "nfo" {
+			reference, _, e := legacyCreditNFOReference(ctx, tx, entity)
+			if e != nil {
+				return false, e
+			}
+			if reference == "" {
+				return false, nil
+			}
+			continue
+		}
 		ok, e := compactcatalog.CanCaptureCreditProviderTx(ctx, tx, entity, provider)
 		if e != nil {
 			return false, e
@@ -54,6 +64,13 @@ func creditRelationshipKey(row RepairRelationship) string {
 func applyEffectiveCreditSet(ctx context.Context, tx *sql.Tx, t RepairTarget, entity int64, values []RepairRelationship, locked bool, actor, now string, restore bool) error {
 	if len(values) > 100 {
 		return ErrRepairInput
+	}
+	if reference, _, e := legacyCreditNFOReference(ctx, tx, entity); e != nil {
+		return e
+	} else if reference != "" {
+		if e = compactcatalog.CaptureCreditProviderFromReferenceTx(ctx, tx, entity, "nfo", reference, now); e != nil {
+			return e
+		}
 	}
 	if err := compactcatalog.CaptureLegacyCreditSourcesTx(ctx, tx, entity, now); err != nil {
 		return err
@@ -286,5 +303,51 @@ func creditRepairFence(ctx context.Context, tx *sql.Tx, entity int64) ([]any, er
 		return nil, err
 	}
 	out = append(out, revision)
+	if reference, fence, e := legacyCreditNFOReference(ctx, tx, entity); e != nil {
+		return nil, e
+	} else if reference != "" {
+		out = append(out, []any{reference, fence})
+	}
 	return out, nil
+}
+
+// Only the canonical local-source reader decides whether an NFO observation is
+// current, locally allowed and coordinate-valid. Equal display names never do.
+func legacyCreditNFOReference(ctx context.Context, tx *sql.Tx, entity int64) (string, string, error) {
+	var needed bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_credits WHERE entity_id=? AND provider='nfo' AND source_row_id IS NULL AND owner_entry_id IS NULL)`, entity).Scan(&needed); err != nil {
+		return "", "", err
+	}
+	if !needed {
+		return "", "", nil
+	}
+	var public, accepted string
+	if err := tx.QueryRowContext(ctx, `SELECT pid(public_id) FROM catalog_entities WHERE id=?`, entity).Scan(&public); err != nil {
+		return "", "", err
+	}
+	b, err := readScreenBase(ctx, tx, "item", public)
+	if err != nil {
+		return "", "", err
+	}
+	if !b.LocalAllowed {
+		return "", "", nil
+	}
+	err = tx.QueryRowContext(ctx, `SELECT value FROM screen_metadata_fields WHERE target_kind='item' AND target_id=? AND field='credits' AND source_kind='nfo'`, entity).Scan(&accepted)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", nil
+	}
+	if err != nil {
+		return "", "", err
+	}
+	reference := ""
+	for _, n := range b.NFO {
+		candidate := "nfo:" + n.Locator
+		if n.Locator != "" && len(candidate) <= compactcatalog.CreditSourceRecordReferenceMax && screenRaw(n.Credits) == accepted && (reference == "" || candidate < reference) {
+			reference = candidate
+		}
+	}
+	if reference == "" {
+		return "", "", nil
+	}
+	return reference, screenFence(b), nil
 }
