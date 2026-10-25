@@ -626,7 +626,13 @@ func registerPlaybackV1Queues(r *apikit.Registry, d Dependencies) {
 			if err != nil {
 				return playbackv1.QueueReply{}, err
 			}
-			out, err := d.playbackV1().CreateQueue(ctx, caller(ctx, q), q.Header.Get("Idempotency-Key"), in)
+			c := caller(ctx, q)
+			out, err := d.playbackV1().CreateQueue(ctx, c, q.Header.Get("Idempotency-Key"), in)
+			if errors.Is(err, playback.ErrOwnerAccountCap) {
+				if detail, e := d.playbackV1().AccountStreamLimit(ctx, c); e == nil {
+					return out, &apierror.Error{Code: "stream_limit_reached", Reason: "owner_account_cap", Current: detail, Cause: err}
+				}
+			}
 			return reply(ctx, out, err)
 		})
 	v1Route(r, apikit.Metadata{Admission: laneBrowsing, ID: "get_queue", Method: "GET", Path: "/v1/queues/{id}", Summary: "Read a queue's header",
