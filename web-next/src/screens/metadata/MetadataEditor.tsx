@@ -174,14 +174,14 @@ function Artwork({data, busy, onUse, onLock, onFindMore, onRefetch}: {
     const candidates = data.artwork.candidates.filter(candidate => candidate.role === role);
     const chosen = data.snapshot.artwork.find(choice => choice.role === role);
     return <section key={role} className={styles.role}>
-      <header><b>{role}</b>
+      <header><b>{t('web.metadata.artRole', {role})}</b>
         {chosen ? <Button size="small" disabled={busy} aria-pressed={chosen.locked} onClick={() => onLock(role, chosen.subject, !chosen.locked)}>{t(chosen.locked ? 'web.metadata.unlock' : 'web.metadata.lock')}</Button> : null}
         <Button size="small" onClick={() => onFindMore(role)} disabled={busy}>{t('web.metadata.findMore')}</Button>
         <Button size="small" onClick={() => onRefetch(role)} disabled={busy}>{t('web.metadata.refetchChosen')}</Button>
       </header>
       {candidates.length ? <div className={styles.choices}>{candidates.map(candidate => <figure key={candidate.id} data-current={candidate.current || undefined}>
         {candidate.previewUrl ? <img src={candidate.previewUrl} alt="" loading="lazy" /> : <div className={styles.placeholder} />}
-        <figcaption><small>{candidate.provider}{candidate.locale ? ` · ${candidate.locale}` : ''}{candidate.votes ? ` · ${candidate.votes}` : ''}</small></figcaption>
+        <figcaption><small>{providerName(candidate.provider)}{candidate.locale ? ` · ${candidate.locale}` : ''}{candidate.votes != null ? ` · ${t('web.metadata.votes', {count: candidate.votes})}` : ''}</small></figcaption>
         {candidate.current ? <span className={styles.badge}>{t('web.metadata.inUse')}</span>
           : <Button size="small" disabled={busy} onClick={() => onUse(role, candidate.id)}>{t('web.liveSource.useThis')}</Button>}
       </figure>)}</div> : <p className={styles.working}>{t('web.metadata.noCandidates')}</p>}
@@ -193,9 +193,10 @@ function History({data, busy, onUndo, onAll}: {data: RepairData; busy: boolean; 
   return <div className={styles.fields}>
     <div className={styles.editorFooter}><Button size="small" disabled={busy} onClick={() => onAll(true)}>{t('web.metadata.lockEverything')}</Button>
       <Button size="small" disabled={busy} onClick={() => onAll(false)}>{t('web.metadata.unlockEverything')}</Button></div>
+    <h3>{t('web.metadata.recentChanges')}</h3>
     {data.history.length ? data.history.map(row => <div key={row.id} className={styles.historyRow}>
-      <span>{row.trigger}</span><small>{row.observedAt}</small>
-      <Button size="small" disabled={busy} onClick={() => onUndo(row.id)}>{t('web.metadata.undo')}</Button>
+      <div><b>{t('web.metadata.history', {trigger: row.trigger})}</b>{row.observedAt ? <small>{defaultI18n.dateTime(row.observedAt)}</small> : null}</div>
+      <Button size="small" disabled={busy} onClick={() => onUndo(row.id)}>{t('web.metadata.undoToHere')}</Button>
     </div>) : <p className={styles.working}>{t('web.metadata.noHistory')}</p>}
   </div>;
 }
@@ -208,11 +209,15 @@ function Matching({data, target, busy, onSearch, onUse, onRetry, onLock}: {
 }) {
   const [query, setQuery] = useState(''), [orders, setOrders] = useState<Readonly<Record<string, string>>>({});
   const identity = data.snapshot.identity;
+  const statusKey = `web.metadata.matchStatus.${identity?.status.replace(/_([a-z])/g, (_, char: string) => char.toUpperCase()) ?? 'unmatched'}`;
+  const status = identity?.status === 'needs_selection' ? t('web.metadata.moreThanOneMatch') : defaultI18n.has(statusKey) ? t(statusKey) : t('web.metadata.matchStatus.unknown');
+  const typeKey = `metadata.attention.kind.${identity?.type === 'movie' ? 'film' : identity?.type ?? ''}`;
+  const type = defaultI18n.has(typeKey) ? t(typeKey) : '';
   const scannedMatch = target.kind === 'album';
   return <div className={styles.fields}>
     <section className={styles.candidate}>
       <div><b>{t('web.metadata.currentMatch')}</b>
-        <small>{identity ? `${providerName(identity.provider)} · ${identity.type} · ${identity.id} · ${identity.status}` : t('web.metadata.matchStatus.unmatched')}</small></div>
+        <small>{identity ? [providerName(identity.provider), type, identity.id, status].filter(Boolean).join(' · ') : t('web.metadata.matchStatus.unmatched')}</small></div>
       <button type="button" className={styles.lock} disabled={busy} aria-pressed={identity?.locked === true}
         onClick={() => onLock(identity?.locked !== true)}>{t(identity?.locked ? 'web.metadata.identityLocked' : 'web.metadata.identityUnlocked')}</button>
     </section>
