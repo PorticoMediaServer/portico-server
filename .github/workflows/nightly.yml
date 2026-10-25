@@ -1,6 +1,12 @@
 name: Full checkpoint
 on:
   workflow_dispatch:
+    inputs:
+      scope:
+        description: Full checkpoint, or only a previously failed server module
+        type: choice
+        options: [all, server]
+        default: all
 permissions:
   contents: read
   security-events: write
@@ -13,6 +19,7 @@ env:
   PORTICO_TEST_TIER: default
 jobs:
   repository:
+    if: ${{ inputs.scope != 'server' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -23,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        module: [apikit, server]
+        module: ${{ fromJSON(inputs.scope == 'server' && '["server"]' || '["apikit","server"]') }}
     services:
       postgres:
         image: postgres:17
@@ -60,7 +67,13 @@ jobs:
             if [ -r "$path" ]; then printf '%s\n' "$path"; cat "$path"; fi
           done
       - name: Test module
-        run: ../scripts/test-go-module.sh '${{ matrix.module }}'
+        run: |
+          mkdir -p "$RUNNER_TEMP/checkpoint-go"
+          status=0
+          ../scripts/test-go-module.sh '${{ matrix.module }}' > "$RUNNER_TEMP/checkpoint-go/tests.log" 2>&1 || status=$?
+          echo "exit=$status"
+          tail -n 20 "$RUNNER_TEMP/checkpoint-go/tests.log"
+          exit "$status
         working-directory: ${{ matrix.module }}
       - name: Go test capacity after tests
         if: ${{ !cancelled() }}
@@ -79,7 +92,16 @@ jobs:
         run: |
           ../scripts/vet-go.sh
 
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ always() }}
+        with:
+          name: checkpoint-go-${{ matrix.module }}-${{ github.sha }}
+          path: ${{ runner.temp }}/checkpoint-go/
+          if-no-files-found: ignore
+          retention-days: 14
+
   clients:
+    if: ${{ inputs.scope != 'server' }}
     timeout-minutes: 60
     runs-on: ubuntu-latest
     steps:
@@ -120,6 +142,7 @@ jobs:
         run: npm run check --workspace portico-web-next
 
   security:
+    if: ${{ inputs.scope != 'server' }}
     uses: ./.github/workflows/security.yml
     with: {nightly: true}
 
