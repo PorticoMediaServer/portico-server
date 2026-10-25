@@ -59,14 +59,14 @@ export function OwnerSignInSwitch({source, isCurrent, onError, startOver = false
         <h3>{t('next.settingsSpec.server.signin.panels.startOverPortico.groups.1.title')}</h3>
         <dl>
           <dt>{t('next.settingsSpec.server.signin.panels.startOverPortico.groups.1.rows.0.label')}</dt><dd>{defaultI18n.number(preview.people)}<p>{t('next.settingsSpec.server.signin.panels.startOverPortico.groups.1.rows.0.help')}</p></dd>
-          <dt>{t('next.settingsSpec.server.signin.panels.startOverPortico.groups.1.rows.1.label')}</dt><dd>{t('next.settingsSpec.server.signin.panels.startOverPortico.groups.1.rows.1.help')}</dd>
+          <dt>{t('next.settingsSpec.server.signin.panels.startOverPortico.groups.1.rows.1.label')}</dt><dd>{preview.removedProfiles !== undefined && defaultI18n.number(preview.removedProfiles)}<p>{t('next.settingsSpec.server.signin.panels.startOverPortico.groups.1.rows.1.help')}</p></dd>
           <dt>{t('next.settingsSpec.server.signin.panels.startOverPortico.groups.1.rows.2.label')}</dt><dd>{t('next.settingsSpec.server.signin.panels.startOverPortico.groups.1.rows.2.help')}</dd>
           <dt>{t('next.settingsSpec.server.signin.panels.startOverPortico.groups.1.rows.3.label')}</dt><dd>{defaultI18n.number(preview.invitations)}</dd>
           <dt>{t('next.settingsSpec.server.signin.panels.startOverPortico.groups.1.rows.4.label')}</dt><dd>{t('next.settingsSpec.server.signin.panels.startOverPortico.groups.1.rows.4.help')}</dd>
           <dt>{t('next.settingsSpec.server.signin.panels.startOverPortico.groups.1.rows.5.label')}</dt><dd>{t('next.settingsSpec.server.signin.panels.startOverPortico.groups.1.rows.5.help')}</dd>
         </dl>
         <h3>{t('next.settingsSpec.server.signin.panels.startOverPortico.groups.2.title')}</h3>
-        <dl><dt>{t('next.settingsSpec.server.signin.panels.startOverPortico.groups.2.rows.0.label')}</dt><dd>{t('next.settingsSpec.server.signin.panels.startOverPortico.groups.2.rows.0.help')}</dd>
+        <dl><dt>{t('next.settingsSpec.server.signin.panels.startOverPortico.groups.2.rows.0.label')}</dt><dd>{preview.retainedProfiles !== undefined && defaultI18n.number(preview.retainedProfiles)}<p>{t('next.settingsSpec.server.signin.panels.startOverPortico.groups.2.rows.0.help')}</p></dd>
           <dt>{t('next.settingsSpec.server.signin.panels.startOverPortico.groups.2.rows.1.label')}</dt><dd>{t('next.settingsSpec.server.signin.panels.startOverPortico.groups.2.rows.1.help')}</dd></dl>
         <TextField label={t('next.settingsSpec.server.signin.panels.startOverPortico.groups.3.rows.0.label')} value={confirmation} disabled={busy || state.confirmed}
           onChange={event => setConfirmation(event.currentTarget.value)}/>
