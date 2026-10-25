@@ -1,5 +1,6 @@
 import {playbackFailurePermanent} from '@core/playback-messages.ts';
 import {captureAppLogRecorder, type AppLogRecorder} from '../app-log';
+import {advancePendingChoice, takePendingTrackChoice, type PendingChoiceProgress} from '@core/pending-track-choice.ts';
 import {PlaybackService, type PlaybackSnapshot} from '@core/index.ts';
 import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
 import type {GetItemsIdResponse} from '../../../../packages/contracts/src/types.ts';
@@ -62,6 +63,7 @@ type OfferBinding = {
   detailFence?: string;
 };
 type Stack = {
+  preplay?: Readonly<{versionId: string; progress: PendingChoiceProgress}>;
   mode: 'server' | 'local'; local?: Readonly<{controller: WebLocalQueue; lease: LocalQueueLease}>;
   capabilityRejected?: boolean;
   web: WebPlayback; service: PlaybackService; queue: V1QueuePlayer; http: V1Http;
@@ -423,10 +425,22 @@ export class WebShellPlaybackRuntime {
     check();
     if (!this.current(previous) || serial !== this.operation) problem('stale_selection_context');
     if (options.itemId !== item.id || !options.versions.length || captured.versionId !== undefined && !options.versions.some(version => version.id === captured.versionId)) problem('playback_version_unavailable');
+    // A title-page choice names its actual offered version. Consume it only
+    // after this original screen has passed fresh item/options admission.
+    const pending = takePendingTrackChoice(item.id);
+    const versionId = captured.versionId ?? pending?.versionId ?? (pending ? options.preferred?.versionId : undefined);
+    const version = options.versions.find(candidate => candidate.id === versionId);
+    if (pending?.versionId && pending.versionId !== versionId || pending && !version) problem('playback_version_unavailable');
+    const audio = pending?.audioStreamIndex === undefined ? undefined : version?.audio.find(track => audioStreamIndex(track.id) === pending.audioStreamIndex);
+    if (pending?.audioStreamIndex !== undefined && !audio) problem('playback_audio_unavailable');
+    const subtitle = pending?.subtitle;
+    if (subtitle && subtitle !== 'off' && subtitle.resourceId
+      && !version?.subtitles.some(track => track.id === subtitle.resourceId)) problem('playback_subtitle_unavailable');
     // Explicit version choice never remembers a caller's old resume position (§21).
     const startSeconds = captured.storedResume ? undefined : captured.versionId === undefined ? captured.startSeconds : (options.resume?.positionMs ?? 0) / 1000;
     if (startSeconds !== undefined && !validSeconds(startSeconds)) problem('invalid_playback_position');
     const stack = this.replace();
+    if (pending?.subtitle !== undefined && version) stack.preplay = {versionId: version.id, progress: {choice: {...pending, audioStreamIndex: undefined}}};
     stack.itemId = item.id; stack.libraryId = item.libraryId; stack.subject = subject;
     stack.posterUrl = item.posterUrl; stack.backdropUrl = item.backdropUrl; stack.expanded = subject.kind !== 'music';
     const lifetime = AbortSignal.any([context.signal, stack.life.signal, this.life.signal]);
@@ -440,11 +454,11 @@ export class WebShellPlaybackRuntime {
     lifetime.addEventListener('abort', cancel, {once: true});
     try {
       await stack.queue.playItem(item.id, startSeconds, undefined, undefined, undefined,
-        captured.versionId === undefined ? undefined : {versionId: captured.versionId}, {signal: lifetime, isCurrent: current});
+        {...(versionId ? {versionId} : {}), ...(audio ? {audioTrackId: audio.id} : {})}, {signal: lifetime, isCurrent: current});
       if (!current()) problem('stale_selection_context');
       const session = stack.queue.currentSession();
       if (stack.service.getSnapshot().phase === 'error' || session?.itemId !== item.id
-        || captured.versionId !== undefined && session.versionId !== captured.versionId) problem('playback_start_failed');
+        || versionId !== undefined && session.versionId !== versionId) problem('playback_start_failed');
       this.sync();
     } catch (error) {cancel();throw error;}
     finally {lifetime.removeEventListener('abort', cancel);}
@@ -981,6 +995,7 @@ export class WebShellPlaybackRuntime {
         this.renderSubtitles(stack);
       }
       this.snapshot = Object.freeze({nativeVideoSurfaceActive: !!fence && stack.subject?.kind === 'video' && stack.web.slot.nativeSurfaceActive, authority: this.authority, sequence: ++this.sequence, playback, dock: this.dock.getSnapshot(), fence, subject: stack.subject, presentation, presentations: this.presentations(presentation), queueView: stack.queue.getSnapshot().view, session, offers, options: stack.options, problem: this.runtimeProblem, disposed: false});
+      this.advancePreplay(stack, playback, fence);
       this.rememberCurrent();
       for (const listener of [...this.listeners]) listener();
       this.schedulePolicy();
@@ -990,6 +1005,34 @@ export class WebShellPlaybackRuntime {
       }
     } while (this.again && !this.disposed); } finally { this.syncing = false; }
   };
+
+  /** Audio was part of the initial start. Advance only this stack's exact
+   * subtitle choice once its standing session has published a real plan. */
+  private advancePreplay(stack: Stack, playback: PlaybackSnapshot, fence: PlaybackFence | undefined): void {
+    const pending = stack.preplay;
+    if (!pending || !this.current(stack) || !fence || fence.kind !== 'queue' || !playback.session) return;
+    if (pending.progress.choice?.itemId !== playback.itemId || this.snapshot.session?.versionId !== pending.versionId) {stack.preplay = undefined;return;}
+    const subtitles = stack.subtitles?.getSnapshot(), plan = subtitles?.plan;
+    if (!plan || plan.sessionId !== fence.sessionId || plan.generation !== fence.generation || plan.sourceId !== fence.sourceId) return;
+    const progress = advancePendingChoice(pending.progress, {
+      sessionId: fence.sessionId, audio: {availability: 'unavailable'},
+      subtitles: {mode: plan.mode, selectedId: plan.selected?.id, busy: subtitles?.busy ?? true, resources: plan.resources},
+    }, {
+      // Audio is already the verified start track, never a second asynchronous restart.
+      selectRendition: () => {problem('playback_audio_unavailable');},
+      selectTrack: () => {problem('playback_audio_unavailable');},
+      chooseSubtitle: trackId => {
+        const original = fence;
+        queueMicrotask(() => {
+          if (!this.current(stack) || !this.matches(original)) return;
+          void this.selectSubtitle(original, trackId).catch(() => {
+            if (this.current(stack) && this.matches(original)) {this.runtimeProblem = 'playback_subtitles_failed';this.sync();}
+          });
+        });
+      },
+    });
+    stack.preplay = progress.choice ? {versionId: pending.versionId, progress} : undefined;
+  }
 
   private selectSource(stack: Stack, playback: PlaybackSnapshot, session: Session | undefined): void {
     if (playback.channel || !playback.session || !playback.itemId || !session || session.id !== playback.session.id || session.presentation.generation !== playback.session.generation || session.itemId !== playback.itemId) { if (stack.sessionKey) this.clearSourceResources(stack); return; }
