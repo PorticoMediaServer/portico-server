@@ -91,7 +91,7 @@ export type SettingsControl =
   | Readonly<{type: 'locale'}>;
 
 export type CompositeId =
-  | 'playbackMethod' | 'cardSize'
+  | 'playbackMethod' | 'cardSize' | 'playback.stillWatching'
   // Kept by the device and published in its capability document (`withViewerSettings`).
   | 'playerEngine' | 'forceStereo' | 'disablePassthrough' | 'disableHdr' | 'tvHdr' | 'tvSurround' | 'tvSupports' | 'music.sampleRateMatching'
   | 'libraryView' | 'reduceMotion' | 'textSize' | 'receiveFromDevices'
@@ -224,8 +224,20 @@ const accountPages: readonly AuthoredPage[] = [
         toggle('playback.autoplayNext', 'settings.row.autoplayNext', {help: 'pref.help.playback.autoplayNext'}),
         pref('playback.upNextCountdownMs', 'settings.row.countdown', {type: 'choice', choices: [{value: 0, label: 'pref.value.playback.upNextCountdownMs.0'}, ...seconds(5, 10, 15)]}, {when: {key: 'playback.autoplayNext', equals: true}}),
         toggle('playback.startNextDuringCredits', 'settings.row.startNextDuringCredits', {help: 'pref.help.playback.startNextDuringCredits', when: {key: 'playback.autoplayNext', equals: true}}),
-        toggle('playback.passoutProtection', 'settings.row.stillWatching', {help: 'settings.help.stillWatching'}),
-        pref('playback.passoutAfterEpisodes', 'settings.row.stillWatchingAfter', {type: 'choice', choices: [2, 3, 4, 5].map(value => ({value, label: 'pref.unit.episodes' as MessageId, labelValues: {count: value}}))}, {when: {key: 'playback.passoutProtection', equals: true}}),
+        // TV frame 8 composes these existing preferences into one picker; Off
+        // keeps the remembered count, so enabling it again needs no new default.
+        {kind: 'composite', id: 'playback.stillWatching', storage: 'registry', platforms: ['tv'],
+          needs: c => !c.preferenceKeys || c.preferenceKeys.has('playback.passoutProtection') && c.preferenceKeys.has('playback.passoutAfterEpisodes'),
+          label: 'next.settingsSpec.account.playback.groups.0.rows.1.label',
+          control: {type: 'choice', choices: [
+            {value: '0', label: 'next.settingsSpec.account.playback.groups.0.rows.1.control.options.0.label'},
+            {value: '2', label: 'next.settingsSpec.account.playback.groups.0.rows.1.control.options.1.label'},
+            {value: '3', label: 'next.settingsSpec.account.playback.groups.0.rows.1.control.options.2.label'},
+            {value: '4', label: 'next.settingsSpec.account.playback.groups.0.rows.1.control.options.3.label'},
+            {value: '5', label: 'next.settingsSpec.account.playback.groups.0.rows.1.control.options.4.label'},
+          ]}},
+        toggle('playback.passoutProtection', 'settings.row.stillWatching', {help: 'settings.help.stillWatching', platforms: ['web', 'phone']}),
+        pref('playback.passoutAfterEpisodes', 'settings.row.stillWatchingAfter', {type: 'choice', choices: [2, 3, 4, 5].map(value => ({value, label: 'pref.unit.episodes' as MessageId, labelValues: {count: value}}))}, {when: {key: 'playback.passoutProtection', equals: true}, platforms: ['web', 'phone']}),
       ]},
       {id: 'skipping', title: 'settings.section.skipping', rows: [
         pref('playback.introSkip', 'pref.label.playback.introSkip', {type: 'choice', choices: skipChoices('playback.introSkip')}),
@@ -922,7 +934,7 @@ const METHODS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
 
 /** Composites whose value lives in the registry (the rest are the device's own). */
 export function registryComposite(id: CompositeId): boolean {
-  return id === 'playbackMethod' || id === 'cardSize';
+  return id === 'playbackMethod' || id === 'cardSize' || id === 'playback.stillWatching';
 }
 
 /**
@@ -931,6 +943,11 @@ export function registryComposite(id: CompositeId): boolean {
  */
 export function readComposite(id: CompositeId, read: Read): string | boolean {
   switch (id) {
+    case 'playback.stillWatching': {
+      const enabled = read('playback.passoutProtection'), episodes = read('playback.passoutAfterEpisodes');
+      if (enabled === false) return '0';
+      return enabled === true && typeof episodes === 'number' && Number.isInteger(episodes) && episodes >= 2 && episodes <= 5 ? String(episodes) : '';
+    }
     case 'playbackMethod': {
       if (read('delivery.directPlay') === 'never') return 'convert';
       if (read('delivery.transcode') === 'never') return 'original';
@@ -947,6 +964,11 @@ export function readComposite(id: CompositeId, read: Read): string | boolean {
 /** The keys a choice writes: one consistent combination, never a contradictory one. */
 export function compositePatch(id: CompositeId, choice: string | boolean): PreferencePatch {
   switch (id) {
+    case 'playback.stillWatching': {
+      if (choice === '0') return {'playback.passoutProtection': false};
+      if (typeof choice !== 'string' || !['2', '3', '4', '5'].includes(choice)) throw new Error('Invalid episode count.');
+      return {'playback.passoutProtection': true, 'playback.passoutAfterEpisodes': Number(choice)};
+    }
     case 'playbackMethod': return {...(METHODS[String(choice)] ?? METHODS.automatic!)};
     case 'cardSize': return {'appearance.cardSizePercent': CARD_SIZE[String(choice)] ?? 100};
     default: return {};
