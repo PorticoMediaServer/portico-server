@@ -6,6 +6,7 @@ import {apiRoot} from '../../../contracts/src/routes.ts';
 import {parseObservedPlayback, type ObservedPlayback} from './observed-playback.ts';
 import {parsePlaybackInfo, type PlaybackInfo} from './playback-info.ts';
 import {parseDiscMediaFacts, type DiscMediaFacts} from '../disc-media-facts.ts';
+import {capacityChangedEventType, parseCapacityChangedEvent} from '../account-capacity.ts';
 /**
  * Playback v1 resource shapes and tolerant readers (style guide amendment 3): unknown fields are
  * ignored, unknown open-enum values map to a fallback, absent arrays read as empty. Strict only
@@ -380,6 +381,7 @@ export function parseAdminSession(v: unknown): AdminSession {
 // ── Events (style guide amendment 8; Public API ARCH-API-07) ────────
 export type ServerEvent = Readonly<{id: string; type: string; at?: string; resource?: Readonly<{kind: string; id: string}>; revision?: string; data?: unknown}>;
 export function parseEvent(v: unknown): ServerEvent | undefined {
+  if (obj(v) && v.type === capacityChangedEventType) return parseCapacityChangedEvent(v);
   if (!obj(v) || typeof v.id !== 'string' || !v.id || v.id.length > 128 || typeof v.type !== 'string' || !v.type) return undefined;
   return Object.freeze({id: v.id, type: v.type, at: typeof v.at === 'string' ? v.at : undefined, resource: obj(v.resource) && typeof v.resource.kind === 'string' && typeof v.resource.id === 'string' ? Object.freeze({kind: v.resource.kind, id: v.resource.id}) : undefined, revision: typeof v.revision === 'string' ? v.revision : undefined, data: v.data});
 }

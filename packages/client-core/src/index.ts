@@ -16,6 +16,7 @@ export * from './route-identity.ts';
 export * from './identity-restrictions.ts';
 export * from './identity-devices.ts';
 export * from './account-notifications.ts';
+export * from './account-capacity.ts';
 export * from './owner-claim-client.ts';
 export * from './route-connection.ts';
 export * from './known-servers.ts';
