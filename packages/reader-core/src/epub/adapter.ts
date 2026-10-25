@@ -278,14 +278,26 @@ async function mountEpub<P extends EpubDisplayPreferences>(book:Book,mount:Reade
       mount.onSelection({text:range.toString().slice(0,65536),location:{format:'epub',cfi:cfiAt(book,index,range),section:book.sections[index].id,progression:location?.progression??0},rects});
     };
     doc.addEventListener('selectionchange',selection,opts);
-    let down:{x:number;y:number;at:number}|null=null;
-    doc.addEventListener('pointerdown',event=>{if(event.button===0)down={x:event.clientX,y:event.clientY,at:performance.now()};},opts);
-    doc.addEventListener('pointerup',event=>{
-      mount.onSurfaceInput?.({kind:'activity'});
-      if(!down||Math.hypot(event.clientX-down.x,event.clientY-down.y)>10||performance.now()-down.at>400||doc.defaultView?.getSelection()?.toString())return;
-      mount.onSurfaceInput?.({kind:'tap',fraction:Math.max(0,Math.min(1,event.clientX/(doc.defaultView?.innerWidth??viewport.width)))});down=null;
+    let down:{id:number;x:number;y:number;at:number}|null=null;
+    doc.addEventListener('pointerdown',event=>{
+      const target=event.target as Element|null;
+      if(!event.isPrimary||target?.nodeType===1&&target.closest('a[href],button,input,textarea,select,[contenteditable="true"]')){down=null;return;}
+      if(event.button===0)down={id:event.pointerId,x:event.clientX,y:event.clientY,at:performance.now()};
     },opts);
-    doc.addEventListener('pointermove',()=>mount.onSurfaceInput?.({kind:'activity'}),opts);
+    doc.addEventListener('pointercancel',()=>{down=null;},opts);
+    doc.addEventListener('pointerup',event=>{
+      const start=down;down=null;
+      if(!start||start.id!==event.pointerId||doc.defaultView?.getSelection()?.toString())return;
+      const dx=event.clientX-start.x,dy=event.clientY-start.y,elapsed=performance.now()-start.at;
+      // One physical gesture emits one intent. A preceding activity wake would
+      // turn a centre tap's toggle into an unconditional hide.
+      if(preferences.layout==='pages'&&elapsed<=600&&Math.abs(dx)>=48&&Math.abs(dx)>Math.abs(dy)*1.5) {
+        mount.onSurfaceInput?.({kind:'swipe',direction:dx<0?'left':'right'});return;
+      }
+      if(Math.hypot(dx,dy)>10||elapsed>400)return;
+      mount.onSurfaceInput?.({kind:'tap',fraction:Math.max(0,Math.min(1,event.clientX/(doc.defaultView?.innerWidth??viewport.width)))});
+    },opts);
+    doc.addEventListener('pointermove',event=>{if(event.pointerType==='mouse')mount.onSurfaceInput?.({kind:'activity'});},opts);
     doc.addEventListener('keydown',event=>mount.onSurfaceInput?.({kind:'key',key:event.key,shift:event.shiftKey,alt:event.altKey,ctrl:event.ctrlKey,meta:event.metaKey,
       editable:(event.target as Element|null)?.nodeType===1&&!!(event.target as Element).closest('input,textarea,[contenteditable="true"]'),preventDefault:()=>event.preventDefault()}),opts);
     doc.addEventListener('click',event=>{
