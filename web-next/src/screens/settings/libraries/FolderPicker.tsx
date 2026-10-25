@@ -63,10 +63,18 @@ export function FolderPicker({open, onOpenChange, api, onChoose}: Readonly<{
           setShowHidden(next); void read(page?.path, next);
         }} /> {t('next.settings.hiddenFolders')}
       </label>
-      {failed && <p role="alert" className={styles.pickerNote}>{t('next.ownerLibraries.explorer.failed')}</p>}
+      {failed && <div role="alert" className={styles.pickerNote}>
+        <p>{t('next.ownerLibraries.explorer.failed')}</p>
+        <p>{t('next.ownerLibraries.explorer.failedHelp')}</p>
+      </div>}
       {busy && !page && <p role="status">{t('next.ownerLibraries.explorer.reading')}</p>}
-      {page && !page.path && <ul className={styles.pickerList}>{page.roots.map(root => <li key={root.path}>
-        <button type="button" className={styles.pickerRow} onClick={() => go(root.path)}><span>{root.name}</span><small>{root.path}</small></button></li>)}</ul>}
+      {page && page.roots.length > 0 && <nav aria-label={t('next.ownerLibraries.explorer.places')}>
+        <p className={styles.pickerNote}>{t('next.ownerLibraries.explorer.places')}</p>
+        <ul className={styles.pickerList}>{page.roots.map(root => <li key={root.path}>
+          <button type="button" className={styles.pickerRow} disabled={busy} aria-current={page.path === root.path ? 'location' : undefined}
+            onClick={() => go(root.path)}><span>{root.name}</span><small>{root.path}</small></button>
+        </li>)}</ul>
+      </nav>}
       {page && page.path && (page.entries.length
         ? <ul className={styles.pickerList}>{page.entries.filter(entry => entry.kind === 'directory').map(entry => <li key={entry.path}>
           <button type="button" className={styles.pickerRow} disabled={!entry.readable} onClick={() => go(entry.path)}>
