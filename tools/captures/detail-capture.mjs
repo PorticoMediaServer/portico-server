@@ -84,7 +84,7 @@ try {
       if (!await choices.nth(1).evaluate(row => row === document.activeElement)) throw new Error('Episode order keyboard navigation failed');
       await page.keyboard.press('Escape');
       await page.waitForFunction(() => !document.querySelector('[role="menuitemradio"]'));
-      if (!await trigger.evaluate(button => button === document.activeElement)) throw new Error('Episode order focus did not return');
+      await page.waitForFunction(button => button === document.activeElement, await trigger.elementHandle(), {timeout: 2000});
       await trigger.click();
       await page.getByRole('menuitemradio', {name: 'Episode order', exact: true}).click();
       await page.waitForFunction(() => !document.querySelector('[role="menuitemradio"]'));
