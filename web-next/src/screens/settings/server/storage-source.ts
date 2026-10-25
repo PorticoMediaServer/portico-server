@@ -38,6 +38,7 @@ export class SettingsStorageSource {
     if (!this.current() || this.reading || this.state.phase === 'ready') return this.reading ?? Promise.resolve();
     const task = Promise.resolve().then(async () => {
       this.publish({phase: 'loading'});
+      if (!this.current()) return;
       try {
         const value = await this.transport.request<unknown>(routePath('get_admin_storage_usage'), 'GET', undefined, this.lifetime.signal);
         if (!this.current()) return;
