@@ -15,7 +15,7 @@ import styles from './settings.module.css';
 
 const t = defaultI18n.t;
 export type SettingPresentation = Readonly<{
-  present: boolean; value?: SettingsValue; defaultValue?: SettingsValue; changed?: boolean; displayValue?: string; defaultLabel?: string;
+  present: boolean; control?: ReactNode; value?: SettingsValue; defaultValue?: SettingsValue; changed?: boolean; displayValue?: string; defaultLabel?: string;
   disabled?: boolean; saving?: boolean; readOnly?: boolean; error?: string; statusTone?: 'quiet' | 'ok' | 'warn' | 'bad';
   /** Static copy is translated once; dynamic names are genuine producer values. */
   choices?: readonly (Omit<SettingsOption, 'label' | 'hint'> & {label: string; hint?: string})[]; label?: string; help?: string;
@@ -62,7 +62,8 @@ function Row({row, flat, dependent = false, inheritedDisabled = false, ...props}
   let control: ReactNode;
   const change = (value: SettingsValue) => {if (!disabled) props.change(row, value);};
   const option = (text: string) => options.find(option => String(option.value) === text)?.value;
-  if (state.readOnly && (state.displayValue !== undefined || state.value !== undefined)) control = <span className={c.mono ? styles.readonlyMono : styles.readonly}>{state.displayValue ?? String(state.value)}</span>;
+  if (state.control !== undefined) control = state.control;
+  else if (state.readOnly && (state.displayValue !== undefined || state.value !== undefined)) control = <span className={c.mono ? styles.readonlyMono : styles.readonly}>{state.displayValue ?? String(state.value)}</span>;
   else if (c.type === 'toggle' && typeof state.value === 'boolean') control = <Switch aria-label={label} checked={state.value} disabled={disabled} onCheckedChange={change} />;
   else if (c.type === 'select' && state.value !== undefined) {
     const preset = options.some(option => option.sets);
