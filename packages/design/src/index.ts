@@ -42,6 +42,8 @@ export const colors = {
   accent: "#409fd4",
   accentStrong: "#5cb3e2",
   accentDeep: "#2f86bb",
+  /** owner-server feedback inbox: open-report text, distinct from the action blue. */
+  feedbackOpen: "#8cc6ea",
   text: "#edf5fa",
   textSecondary: "#bdccd6",
   textTertiary: "#96a9b5",
@@ -91,6 +93,7 @@ export const spacingGrid = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15
 
 export const typography = {
   regular: 'Manrope-Regular', medium: 'Manrope-Medium', semibold: 'Manrope-SemiBold', bold: 'Manrope-Bold', extraBold: 'Manrope-ExtraBold',
+  monoFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
   webFamily: 'Manrope, system-ui, sans-serif', mobileBody: 16, tvBody: 24,
 } as const;
 
@@ -123,6 +126,11 @@ const handheldType = {
   reportMeta: type(13.5, 'normal', 600), reportDetail: type(12.5, 'normal', 600), reportDevice: type(12.5, 'normal', 700),
   reportHardware: type(11, 'normal', 700), reportValue: type(32, 33.6, 800, -.03), reportPerson: type(14.5, 'normal', 700),
   reportAvatar: type(12.5, 'normal', 800), reportRank: type(128, 102.4, 800, -.07),
+  // owner-server frames 3–7: exact type metrics of the drawn Troubleshooting panels.
+  troubleshootingHeading: type(18, 'normal', 800, -.02), troubleshootingLede: type(14, 20.3, 400),
+  troubleshootingLog: type(13, 19.5, 400), troubleshootingReason: type(13, 18.2, 400),
+  troubleshootingMessage: type(15, 22.5, 400), troubleshootingCheck: type(15, 18, 400),
+  troubleshootingLevel: type(12, 'normal', 800, .02),
   stopBody: type(15, 23.25, 500), stopField: type(16, 'normal', 600), stopHelp: type(13.5, 'normal', 400),
 };
 export type TypeRole = keyof typeof handheldType;
