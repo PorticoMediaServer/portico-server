@@ -484,23 +484,15 @@ func (s *Service) SaveChannelMap(ctx context.Context, auth Authorize, id string,
 	if !validOperationID(change.OperationID) || len(change.Overrides) > MaxPageSize {
 		return out, ErrInput
 	}
-	numbers := map[string]bool{}
-	numbersList := []string{}
-	replacedIDs := []string{}
+	seen := map[string]bool{}
 	for _, o := range change.Overrides {
 		if o.ChannelID == "" || !safeText(o.ChannelID, 200) || !validChannelNumber(o.Number) || !safeText(o.GuideChannelID, 200) {
 			return out, invalid("overrides")
 		}
-		if o.Number != "" {
-			if !o.Hidden {
-				if numbers[o.Number] {
-					return out, invalid("overrides.number")
-				}
-				numbers[o.Number] = true
-				numbersList = append(numbersList, o.Number)
-			}
-			replacedIDs = append(replacedIDs, o.ChannelID)
+		if seen[o.ChannelID] {
+			return out, invalid("overrides")
 		}
+		seen[o.ChannelID] = true
 	}
 	scope := liveSourceScope(id)
 	digest := digestOf(change)
@@ -516,14 +508,68 @@ func (s *Service) SaveChannelMap(ctx context.Context, auth Authorize, id string,
 		if _, _, err = liveSourceExists(ctx, tx, id); err != nil {
 			return err
 		}
-		if len(numbersList) > 0 {
+		_, revision, err := readDocument(ctx, tx, scope, DefaultLiveSourceSettings())
+		if err != nil {
+			return err
+		}
+		if revision != change.ExpectedRevision {
+			return ErrConflict
+		}
+		if len(change.Overrides) > 0 {
 			var generation string
 			if err = tx.QueryRowContext(ctx, `SELECT active_generation FROM live_sources WHERE id=?`, id).Scan(&generation); err != nil {
 				return err
 			}
+			batchIDs := make([]string, 0, len(change.Overrides))
+			for _, o := range change.Overrides {
+				batchIDs = append(batchIDs, o.ChannelID)
+			}
+			storedNumbers := map[string]string{}
 			if generation != "" {
-				idsJSON, _ := json.Marshal(replacedIDs)
-				numbersJSON, _ := json.Marshal(numbersList)
+				idsJSON, _ := json.Marshal(batchIDs)
+				rows, rowErr := tx.QueryContext(ctx, `SELECT channel_id,number FROM live_channel_versions WHERE generation_id=? AND channel_id IN (SELECT value FROM json_each(?))`, generation, string(idsJSON))
+				if rowErr != nil {
+					return rowErr
+				}
+				for rows.Next() {
+					var channelID, number string
+					if rowErr = rows.Scan(&channelID, &number); rowErr != nil {
+						rows.Close()
+						return rowErr
+					}
+					storedNumbers[channelID] = number
+				}
+				rowErr = rows.Err()
+				rows.Close()
+				if rowErr != nil {
+					return rowErr
+				}
+			}
+			// Validate the final served number of every affected visible channel,
+			// including reset and unhide overrides whose number comes from the
+			// accepted generation. Hidden rows are not served and free their number.
+			final := map[string]bool{}
+			finalNumbers := []string{}
+			for _, o := range change.Overrides {
+				if o.Hidden {
+					continue
+				}
+				number := o.Number
+				if number == "" {
+					number = storedNumbers[o.ChannelID]
+				}
+				if number == "" {
+					continue
+				}
+				if final[number] {
+					return invalid("overrides.number")
+				}
+				final[number] = true
+				finalNumbers = append(finalNumbers, number)
+			}
+			if len(finalNumbers) > 0 && generation != "" {
+				idsJSON, _ := json.Marshal(batchIDs)
+				numbersJSON, _ := json.Marshal(finalNumbers)
 				var conflict int
 				if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM live_channel_versions v LEFT JOIN admin_channel_numbers n ON n.source_id=? AND n.channel_id=v.channel_id WHERE v.generation_id=? AND v.channel_id NOT IN (SELECT value FROM json_each(?)) AND COALESCE(n.hidden,0)=0 AND COALESCE(NULLIF(n.number,''),v.number) IN (SELECT value FROM json_each(?)))`, id, generation, string(idsJSON), string(numbersJSON)).Scan(&conflict); err != nil {
 					return err
@@ -532,13 +578,6 @@ func (s *Service) SaveChannelMap(ctx context.Context, auth Authorize, id string,
 					return invalid("overrides.number")
 				}
 			}
-		}
-		_, revision, err := readDocument(ctx, tx, scope, DefaultLiveSourceSettings())
-		if err != nil {
-			return err
-		}
-		if revision != change.ExpectedRevision {
-			return ErrConflict
 		}
 		at := s.milliseconds()
 		for _, o := range change.Overrides {

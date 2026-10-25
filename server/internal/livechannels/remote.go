@@ -604,10 +604,11 @@ func (s *Store) Remove(ctx context.Context, a Authority, sid string, revision in
 			return ErrDependencies
 		}
 		// Configurations written before guide dependencies were recorded still
-		// name this source directly; refuse those as well rather than leaving a
-		// dangling guide reference.
+		// name this source directly. Bind the document scope to a real source and
+		// ignore removed consumers, so a deleted consumer cannot block its guide
+		// forever.
 		var guideDependent bool
-		if tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM admin_documents d WHERE d.scope LIKE 'live-source:%' AND d.scope<>('live-source:'||?) AND json_extract(d.body,'$.guideSourceId')=?)`, sid, sid).Scan(&guideDependent) != nil {
+		if tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM admin_documents d JOIN live_sources s ON d.scope='live-source:'||s.id WHERE d.scope LIKE 'live-source:%' AND d.scope<>('live-source:'||?) AND json_extract(d.body,'$.guideSourceId')=? AND NOT EXISTS(SELECT 1 FROM live_source_removals r WHERE r.source_id=s.id))`, sid, sid).Scan(&guideDependent) != nil {
 			return ErrUnavailable
 		}
 		if guideDependent {
