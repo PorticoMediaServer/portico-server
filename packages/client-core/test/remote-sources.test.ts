@@ -277,13 +277,14 @@ test('retiring the captured scope during a held operation id sends zero mutation
  await assert.rejects(save);assert.equal(writes,0);saveService.dispose();
 });
 
-test('a confirmed save whose fallback read refuses auth keeps the receipt and reports the refusal',async()=>{
+test('a confirmed save whose fallback read refuses auth reports the refusal and retires the capability',async()=>{
  const before={sourceId:'dav',generation:'1',revision:1,saved:true,values:{scanDepth:'basic' as const,wholeFileReads:false,connections:4,requestsPerSecond:4,bytesPerSecond:0}};
  for(const code of ['unauthorized','forbidden']){
   let puts=0;
   const service=new RemoteSourceService(api(async(_path,method)=>{if(method==='PUT'){puts++;return {scope:wire,receipt:{operationId:op,accepted:true,removed:false,source:source()}};}throw Object.assign(new Error('secret https://private-user:private-password@private.example/'),{code});}),scope,async()=>op);
   await assert.rejects(service.saveProfile(before,before.values),error=>(error as {code?:string}).code===code);
-  assert.equal(puts,1);assert.equal(service.getSnapshot().ambiguous,false);assert.equal(service.getSnapshot().errorCode,code);assert.equal(service.getSnapshot().receipt?.operationId,op);
+  // A refusal retires the capability, so the receipt is deliberately not kept; no replay happens either.
+  assert.equal(puts,1);assert.equal(service.getSnapshot().ambiguous,false);assert.equal(service.getSnapshot().errorCode,code);assert.equal(service.getSnapshot().receipt,null);
   assert(!JSON.stringify(service.getSnapshot()).includes('private-password'));service.dispose();
  }
  const foreign={sourceId:'dav',generation:'9',revision:2,saved:true,values:before.values};
@@ -371,7 +372,7 @@ test('an imported source test refuses secrets in the reply and keeps only the ve
 test('an imported source edit never replays itself onto a changed generation',async()=>{
  const puts:any[]=[];let rows=[rcloneSource()];
  const service=new RemoteSourceService(api(async(path,method,body)=>{
-  if(method==='PUT'){puts.push({path,body});rows=[rcloneSource({generation:2})];throw Object.assign(new Error('conflict'),{code:'storage_command_conflict'});}
+  if(method==='PUT'){puts.push({path,body});if(puts.length===1){rows=[rcloneSource({generation:2})];throw Object.assign(new Error('conflict'),{code:'storage_command_conflict'});}return rcloneReceipt({generation:2});}
   return list(rows);
  }),scope,async()=>op);
  await service.load();
@@ -546,7 +547,7 @@ test('a malformed account configuration read fails closed',async()=>{
  }
  const absent=new RemoteSourceService(api(async()=>({scope:wire,path:'',remotes:[],truncated:false})),scope,async()=>op);
  assert.deepEqual(await absent.rcloneConfig(),{path:'',remotes:[],truncated:false});
- const trimmed=new RemoteSourceService(api(async()=>({scope:wire,path:'/config',remotes,truncated:true})),scope,async()=>op);
+ const trimmed=new RemoteSourceService(api(async()=>({scope:wire,path:'/config',remotes:[],truncated:true})),scope,async()=>op);
  assert.equal((await trimmed.rcloneConfig()).truncated,true);trimmed.dispose();
  absent.dispose();
 });
