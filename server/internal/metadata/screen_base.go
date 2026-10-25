@@ -36,6 +36,7 @@ type screenEdition struct {
 	Source  string `json:"source"`
 }
 type screenBase struct {
+	CreditRecordReference                                                      string
 	LookupEpoch                                                                int64
 	ForceRefresh                                                               bool
 	IdentityLocked                                                             bool

@@ -199,6 +199,13 @@ func (s *Service) applyScreenRecord(ctx context.Context, tx *sql.Tx, p *screenCl
 				if e != nil {
 					return e
 				}
+				if locked && class == "credit" {
+					normal, e := normalizedCreditFamily(ctx, tx, b.Entity)
+					if e != nil {
+						return e
+					}
+					locked = !normal
+				}
 				if locked {
 					continue
 				}
@@ -239,6 +246,7 @@ func (s *Service) applyScreenRecord(ctx context.Context, tx *sql.Tx, p *screenCl
 			return err
 		}
 	}
+	b.CreditRecordReference = id.Provider + ":" + id.Type + ":" + id.ID
 	for field, value := range fields {
 		provider := id.Provider
 		fieldBase := b
@@ -506,6 +514,13 @@ func (s *Service) screenCatalogField(ctx context.Context, tx *sql.Tx, b screenBa
 		if err != nil {
 			return err
 		}
+		if locked && class == "credit" && b.TargetKind == "item" {
+			normal, e := normalizedCreditFamily(ctx, tx, b.Entity)
+			if e != nil {
+				return e
+			}
+			locked = !normal
+		}
 		if locked {
 			return nil
 		}
@@ -551,6 +566,9 @@ func (s *Service) screenCatalogField(ctx context.Context, tx *sql.Tx, b screenBa
 		credits, ok := value.([]metadataprovider.ScreenCredit)
 		if !ok {
 			return errors.New("invalid normalized credits")
+		}
+		if b.CreditRecordReference != "" {
+			return compactcatalog.SetCreditsFromRecordTx(ctx, tx, b.Entity, provider, b.CreditRecordReference, stamp, screenCatalogCredits(provider, credits))
 		}
 		return compactcatalog.SetCreditsTx(ctx, tx, b.Entity, provider, screenCatalogCredits(provider, credits))
 	case "tags":
@@ -641,8 +659,19 @@ func (s *Service) screenCreditsBesideLocal(ctx context.Context, tx *sql.Tx, b sc
 		_, err = tx.ExecContext(ctx, `DELETE FROM screen_metadata_fields WHERE target_kind=? AND target_id=? AND field='creditsOnline'`, b.TargetKind, b.Entity)
 		return err
 	}
-	if locked, err := relationshipClassLocked(ctx, tx, b.TargetID, "credit"); err != nil || locked {
+	locked, err := relationshipClassLocked(ctx, tx, b.TargetID, "credit")
+	if err != nil {
 		return err
+	}
+	if locked && b.TargetKind == "item" {
+		normal, e := normalizedCreditFamily(ctx, tx, b.Entity)
+		if e != nil {
+			return e
+		}
+		locked = !normal
+	}
+	if locked {
+		return nil
 	}
 	var listed []metadataprovider.ScreenCredit
 	if err = json.Unmarshal([]byte(local), &listed); err != nil {
@@ -667,6 +696,9 @@ func (s *Service) screenCreditsBesideLocal(ctx context.Context, tx *sql.Tx, b sc
 		}
 	}
 	if b.TargetKind == "item" {
+		if b.CreditRecordReference != "" {
+			return compactcatalog.SetCreditsFromRecordTx(ctx, tx, b.Entity, provider, b.CreditRecordReference, stamp, screenCatalogCredits(provider, share))
+		}
 		return compactcatalog.SetCreditsTx(ctx, tx, b.Entity, provider, screenCatalogCredits(provider, share))
 	}
 	if len(share) == 0 {
@@ -699,6 +731,7 @@ func (s *Service) screenAcceptedCreditsBesideLocal(ctx context.Context, tx *sql.
 	if err = json.Unmarshal([]byte(payload), &record); err != nil {
 		return nil
 	}
+	b.CreditRecordReference = record.Identity.Provider + ":" + record.Identity.Type + ":" + record.Identity.ID
 	return s.screenCreditsBesideLocal(ctx, tx, b, provider, sourceKind, "", record.Credits, stamp, b.Accepted)
 }
 
@@ -774,6 +807,13 @@ func screenRetireEpisodeFactsTx(ctx context.Context, tx *sql.Tx, show int64, kee
 			locked, lockErr := relationshipClassLocked(ctx, tx, e.public, class)
 			if lockErr != nil {
 				return lockErr
+			}
+			if locked && class == "credit" {
+				normal, e2 := normalizedCreditFamily(ctx, tx, e.id)
+				if e2 != nil {
+					return e2
+				}
+				locked = !normal
 			}
 			if locked {
 				continue
@@ -886,6 +926,7 @@ func (s *Service) screenSupersedeTypedFacts(ctx context.Context, tx *sql.Tx, b s
 }
 
 func (s *Service) applyScreenLocal(ctx context.Context, tx *sql.Tx, b screenBase) error {
+	b.CreditRecordReference = ""
 	// Per-field unanimity is required across duplicate sidecars. Conflicts stay
 	// evidence; arrival order does not decide an identity or title.
 	values := map[string]any{}
@@ -934,6 +975,10 @@ func (s *Service) applyScreenLocal(ctx context.Context, tx *sql.Tx, b screenBase
 			put("genres", genres)
 		}
 		if len(n.Credits) > 0 {
+			reference := "nfo:" + n.Locator
+			if n.Locator != "" && len(reference) <= 256 && (b.CreditRecordReference == "" || reference < b.CreditRecordReference) {
+				b.CreditRecordReference = reference
+			}
 			put("credits", n.Credits)
 		}
 		if len(n.Studios) > 0 {
@@ -971,7 +1016,14 @@ func (s *Service) applyScreenLocal(ctx context.Context, tx *sql.Tx, b screenBase
 	}
 	for _, field := range retired {
 		class := map[string]string{"genres": "genre", "credits": "credit"}[field]
-		if class != "" && retirementLocks[class] {
+		creditNormalized := false
+		if class == "credit" && b.TargetKind == "item" {
+			creditNormalized, err = normalizedCreditFamily(ctx, tx, b.Entity)
+			if err != nil {
+				return err
+			}
+		}
+		if class != "" && retirementLocks[class] && !creditNormalized {
 			continue
 		}
 		if _, err = tx.ExecContext(ctx, `DELETE FROM screen_metadata_fields WHERE target_kind=? AND target_id=? AND field=? AND source_kind='nfo'`, b.TargetKind, b.Entity, field); err != nil {

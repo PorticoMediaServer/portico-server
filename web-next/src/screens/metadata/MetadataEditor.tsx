@@ -389,16 +389,17 @@ function Matching({data, target, busy, onSearch, onUse, onRetry, onLock}: {
 }
 
 
-/** Frame 9: draft edits preserve every existing identity tuple. The current producer only
- * writes manual credits; provider rows stay read-only until its owner override is available. */
+/** Frame 9: provider presentation edits retain exact captured source references. */
 function People({data, target, busy, onCommit, onLock}: {
   data: RepairData; target: RepairTarget; busy: boolean;
   onCommit: (rows: RepairData['snapshot']['relationships']) => Promise<boolean>; onLock: (locked: boolean) => void;
 }) {
   const credits = data.snapshot.relationships.filter(row => row.kind === 'credit');
-  const [draft, setDraft] = useState<RepairData['snapshot']['relationships'] | null>(null);
+  const [ownedDraft, setOwnedDraft] = useState<{owner: RepairData; rows: RepairData['snapshot']['relationships']} | null>(null);
+  const draft = ownedDraft?.owner === data ? ownedDraft.rows : null;
+  const setDraft = (next: RepairData['snapshot']['relationships'] | null) => setOwnedDraft(next === null ? null : {owner: data, rows: next});
   const rows = draft ?? credits;
-  const editable = (row: RepairData['snapshot']['relationships'][number]) => row.provider === 'manual' && (!row.recordId || !row.locked);
+  const editable = (row: RepairData['snapshot']['relationships'][number]) => data.snapshot.canEditProviderCredits === true || row.provider === 'manual' && (!row.recordId || !row.locked);
   const clean = (value: string) => !/[\u0000-\u001f\u007f]/.test(value);
   const valid = rows.length <= 100 && rows.every(row => row.label.trim() !== '' && row.label.length <= 300 &&
     (row.role?.length ?? 0) <= 500 && (row.department?.length ?? 0) <= 200 && clean(row.label) && clean(row.role ?? '') && clean(row.department ?? ''));
@@ -429,6 +430,7 @@ function People({data, target, busy, onCommit, onLock}: {
       <TextField label={t('web.metadata.field.name')} value={row.label} disabled={busy || !editable(row)} maxLength={300} onChange={event => change(index, {label: event.currentTarget.value})}/>
       <TextField label={t('web.metadata.field.department')} value={row.department ?? ''} disabled={busy || !editable(row)} maxLength={200} onChange={event => change(index, {department: event.currentTarget.value})}/>
       <TextField label={t(row.department?.toLowerCase() === 'acting' ? 'web.metadata.creditCharacter' : 'web.metadata.creditRole')} value={row.role ?? ''} disabled={busy || !editable(row)} maxLength={500} onChange={event => change(index, {role: event.currentTarget.value})}/>
+      {row.sourceStatus === 'missing' || row.sourceStatus === 'replaced' ? <small>{t(row.sourceStatus === 'missing' ? 'web.metadata.creditSourceMissing' : 'web.metadata.creditSourceReplaced')}</small> : null}
       <Button size="small" disabled={busy || !editable(row)} onClick={() => remove(index)}>{t('web.metadata.removeLabel', {label: row.label})}</Button>
     </div>)}
     <footer className={styles.editorFooter}>
