@@ -25,6 +25,7 @@ import {SettingsBackupSource} from './backup-source';
 type DocumentForm = Readonly<{
   load: () => Promise<void>; dispose: () => void;
   value: () => Readonly<Record<string, unknown>> | undefined;
+  status: () => Readonly<Record<string, unknown>> | undefined;
   error: () => unknown;
   patch: (values: Readonly<Record<string, unknown>>) => Promise<void>;
 }>;
@@ -38,6 +39,10 @@ function documentForm<T extends object, S>(form: DraftForm<T, S>): DocumentForm 
   return {
     load: form.load.bind(form), dispose: form.dispose.bind(form),
     value: () => form.getSnapshot().saved as Readonly<Record<string, unknown>> | undefined,
+    status: () => {
+      const status = form.getSnapshot().status;
+      return status && typeof status === 'object' && !Array.isArray(status) ? status as Readonly<Record<string, unknown>> : undefined;
+    },
     error: () => form.getSnapshot().loadError,
     patch: async values => {
       const state = form.getSnapshot();
@@ -151,7 +156,8 @@ export class SettingsController {
   private sources(): SettingsBindingSources {
     return {configuration: this.configuration, preferences: this.preferences,
       device: this.options.device?.getSnapshot().document?.values, deviceDefaults: this.options.device?.getSnapshot().document?.defaults,
-      forms: Object.fromEntries(Object.entries(this.forms).map(([name, form]) => [name, form.value()]))};
+      forms: {...Object.fromEntries(Object.entries(this.forms).map(([name, form]) => [name, form.value()])),
+        connectivityStatus: this.forms.connectivity?.status()}};
   }
   private read(row: SettingsRow, context?: SettingsContext): SettingsBindingValue | undefined {
     if (!this.eligible(row, context)) return undefined;
@@ -201,7 +207,9 @@ export class SettingsController {
       this.publish({});
     })();
     const formIds = new Set([...settingsRowIndex.values()].filter(location => location.section === section && this.eligible(location.row))
-      .map(location => settingsBinding(location.row.id)?.form).filter((id): id is SettingsBindingForm => !!id && !!this.forms[id]));
+      .map(location => settingsBinding(location.row.id)?.form)
+      .map(id => id === 'connectivityStatus' ? 'connectivity' : id)
+      .filter((id): id is SettingsBindingForm => !!id && !!this.forms[id]));
     const reads = [...formIds].map(id => ({id: `form/${id}`, load: async () => {const form = this.forms[id]!;await form.load();if (form.error()) throw form.error();}}));
     if (section.scope === 'server' && this.forms.runtime) reads.push({id: 'configuration', load: this.readConfiguration});
     if (section.scope === 'server' && section.id === 'storage' && this.forms.runtime) reads.push({id: 'backups', load: this.backups.load});
