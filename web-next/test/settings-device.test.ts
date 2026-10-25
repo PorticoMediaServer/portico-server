@@ -16,7 +16,9 @@ test('the Device section owns only its route and address rows beyond the value r
   assert.equal(isDeviceSyntheticRow('device.server'), true);
   assert.equal(isDeviceSyntheticRow('device.serverVersion'), true);
   assert.equal(isDeviceSyntheticRow('device.help'), true);
-  for (const id of ['device.name', 'device.appVersion', 'device.lossNotices', 'playback.window', 'general.name'])
+  // The merged About row opens from the app version, so that row is a route row now.
+  assert.equal(isDeviceSyntheticRow('device.appVersion'), true);
+  for (const id of ['device.name', 'device.lossNotices', 'playback.window', 'general.name'])
     assert.equal(isDeviceSyntheticRow(id), false, id);
 });
 
@@ -40,7 +42,7 @@ test('the Help row is present and opens the drawn address externally', () => {
 
 test('rows outside the Device section are never given a synthetic state', () => {
   assert.equal(deviceRowState(row('device.name'), {serverName: 'Portico demo', serverVersion: '0.1.0'}), undefined);
-  assert.equal(deviceRowState(row('device.appVersion'), {serverName: 'Portico demo'}), undefined);
+  assert.deepEqual(deviceRowState(row('device.appVersion'), {serverName: 'Portico demo'}), {present: true});
   assert.equal(deviceRowState(row('general.name'), {serverName: 'Portico demo'}), undefined);
 });
 
@@ -53,7 +55,10 @@ test('the web device facade reports the real installation name and version, read
     const device = platform.device;
     assert.ok(device);
     assert.deepEqual(device.getSnapshot().facts, {name: {value: 'Safari on Mac', readOnly: true}, appVersion: '0.1.0'});
-    assert.equal(device.apply, undefined);
-    assert.equal(device.getSnapshot().document, undefined);
+    // The browser owns only the drawn device settings a web session can keep; the
+    // installation name and version stay read-only facts.
+    assert.equal(typeof device.apply, 'function');
+    assert.deepEqual(device.getSnapshot().document?.defaults, {lossNotices: true});
+    assert.deepEqual(device.getSnapshot().document?.values, {});
   } finally { setInstallationIdentity(undefined); }
 });
