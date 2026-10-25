@@ -15,7 +15,7 @@ test('inherited zero never becomes unlimited; the actual effective stream fact g
 test('unknown email and activity remain absent while the actual username drives identity/gradient', () => {
   const row = peopleTableRow(person, actor), identity = row.cells.person as {title: string; meta?: string; avatarKey: string};
   assert.equal(identity.title, person.username); assert.equal(identity.avatarKey, person.username); assert.equal(identity.meta, undefined);
-  assert.deepEqual(row.cells.active, {title: ''}); assert.equal(row.cells.profiles, person.profileNames.join(', '));
+  assert.deepEqual(row.cells.active, {title: ''}); assert.equal(row.cells.profiles, defaultI18n.list(person.profileNames));
 });
 test('selection keeps self/owner/admin authority fences, independently of current table pages', () => {
   assert.equal(peopleTableRow(person, {accountId: person.accountId, role: 'owner'}).selectable, false);
