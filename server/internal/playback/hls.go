@@ -559,14 +559,27 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 	}
 	run := func(plan *DeliveryPlan) (error, string) {
 		if remoteInput != nil {
+			// The remote-input runner starts and reaps the converter itself, and
+			// Run returns only once that child is gone, so the reservation is taken
+			// in the command builder and released after Run returns.
+			releaseRemote := func() {}
 			err := remoteInput.Run(processCtx, dir, func(url string) (subtitles.WindowCommand, error) {
 				path = url
 				args, stages, err := build(plan)
 				if err == nil {
 					h.recordStages(ctx, id, plan, stages)
 				}
+				if err == nil && plan != nil && hardwareEncodeStage(stages) {
+					cell := decoder.PermitCell{Identity: decoder.PermitIdentity(h.binary), Backend: decoder.HardwareBackend(plan.HardwareBackend), Device: plan.HardwareDevice}
+					release, reserved := decoder.HardwarePermits().Reserve(cell)
+					if !reserved {
+						return subtitles.WindowCommand{}, errHardwarePermitUnavailable
+					}
+					releaseRemote = release
+				}
 				return subtitles.WindowCommand{Args: args, Hardware: conversionJobHardware(plan, stages)}, err
 			})
+			releaseRemote()
 			return err, windowConverterDiagnostic(err, path, h.root)
 		}
 
