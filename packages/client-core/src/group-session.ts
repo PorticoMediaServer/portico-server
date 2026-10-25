@@ -19,6 +19,7 @@ import {
  * steers a local player through `GroupFollower`. A dropped stream never empties the room: what
  * was last known stays on screen while it reconnects. */
 
+export type GroupEnterLifetime=Readonly<{signal:AbortSignal;isCurrent():boolean}>;
 export type GroupApi=Readonly<{baseUrl:string;request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>}>;
 /** Opens the authenticated event stream; the app supplies it because only it knows the bearer. */
 export type GroupStreamOpener=(path:string,lastEventId:string,signal:AbortSignal)=>Promise<Response>;
@@ -55,6 +56,7 @@ const path=(id:string,rest='')=>encodedRoutePath("social_get_v1_groups_id", {"id
 export class GroupSessionService{
  private api:GroupApi;private stream:GroupStreamOpener;private key:()=>string;private now:()=>number;private heartbeatMs:number;
  private state:GroupSessionSnapshot=Object.freeze<GroupSessionSnapshot>({directory:[],directoryPhase:'idle',phase:'idle',busy:false,clockOffsetMs:0});
+ private entering?:AbortController;
  private listeners=new Set<()=>void>();private disposed=false;private lastCode='';private clock:ClockSample[]=[];
  private room?:{id:string;abort:AbortController;lastEventId:string;beat?:ReturnType<typeof setInterval>;heartbeat?:AbortController;heartbeatRetryAt?:number;heartbeatFailures?:number;retry?:ReturnType<typeof setTimeout>;watchdog?:ReturnType<typeof setTimeout>;rereading?:Promise<void>;queueReading?:Promise<void>};
  constructor(options:Options){this.api=options.api;this.stream=options.stream;this.key=options.key??(()=>randomId());this.now=options.now??(()=>Date.now());this.heartbeatMs=options.heartbeatMs??HEARTBEAT_MS;this.ownI18n=options.i18n;}
@@ -84,26 +86,32 @@ export class GroupSessionService{
   catch(e){this.publish({directoryPhase:this.state.directory.length?'ready':'error',...(status(e)===404||status(e)===503?this.problem('together.error.unavailable','directoryError'):this.problem(this.say(e,'together.error.load'),'directoryError'))});}
  }
 
- async create(input:{name:string;displayName:string;hostAuthority:GroupHostAuthority}):Promise<boolean>{
+ async create(input:{name:string;displayName:string;hostAuthority:GroupHostAuthority},lifetime?:GroupEnterLifetime):Promise<boolean>{
   // The server binds the group to this signed-in device (B8a): hosting needs no playback authority.
-  return this.enter(async()=>parseGroupSnapshot(await this.api.request<RouteResponse<"social_post_v1_groups">>(routePath("social_post_v1_groups"),'POST',routeBody("social_post_v1_groups", {protocolVersion:SOCIAL_PROTOCOL,name:input.name.trim(),displayName:input.displayName.trim(),hostAuthority:input.hostAuthority}))),'together.error.create');
+  return this.enter(async signal=>parseGroupSnapshot(await this.api.request<RouteResponse<"social_post_v1_groups">>(routePath("social_post_v1_groups"),'POST',routeBody("social_post_v1_groups", {protocolVersion:SOCIAL_PROTOCOL,name:input.name.trim(),displayName:input.displayName.trim(),hostAuthority:input.hostAuthority}),signal)),'together.error.create',lifetime);
  }
- async join(inviteCode:string,displayName:string):Promise<boolean>{
+ async join(inviteCode:string,displayName:string,lifetime?:GroupEnterLifetime):Promise<boolean>{
   const tidy=inviteCode.replace(/[\s-]/g,'').toUpperCase();
-  return this.enter(async()=>parseGroupSnapshot(await this.api.request<RouteResponse<"social_post_v1_groups_join">>(routePath("social_post_v1_groups_join"),'POST',routeBody("social_post_v1_groups_join", {protocolVersion:SOCIAL_PROTOCOL,code:tidy,displayName:displayName.trim()}))),'together.error.join');
+  return this.enter(async signal=>parseGroupSnapshot(await this.api.request<RouteResponse<"social_post_v1_groups_join">>(routePath("social_post_v1_groups_join"),'POST',routeBody("social_post_v1_groups_join", {protocolVersion:SOCIAL_PROTOCOL,code:tidy,displayName:displayName.trim()}),signal)),'together.error.join',lifetime);
  }
  /** Re-enters a group this viewer already belongs to. */
- async open(groupId:string):Promise<boolean>{
+ async open(groupId:string,lifetime?:GroupEnterLifetime):Promise<boolean>{
+  if(lifetime?.signal.aborted||lifetime?.isCurrent()===false)return false;
   if(this.room?.id===groupId&&this.state.group)return true;
-  return this.enter(async()=>parseGroupSnapshot(await this.api.request<unknown>(path(groupId))),'together.error.open');
+  return this.enter(async signal=>parseGroupSnapshot(await this.api.request<unknown>(path(groupId),'GET',undefined,signal)),'together.error.open',lifetime);
  }
- private async enter(read:()=>Promise<{serverTime:string;group:Group}>,fallback:MessageId):Promise<boolean>{
-  this.close('joining');this.publish({busy:true,error:undefined,invite:undefined,queue:undefined});
+ private async enter(read:(signal:AbortSignal)=>Promise<{serverTime:string;group:Group}>,fallback:MessageId,lifetime?:GroupEnterLifetime):Promise<boolean>{
+  if(this.disposed||lifetime?.signal.aborted||lifetime?.isCurrent()===false)return false;
+  this.close('joining');const turn=new AbortController();this.entering=turn;
+  const current=()=>!this.disposed&&this.entering===turn&&!turn.signal.aborted&&!lifetime?.signal.aborted&&lifetime?.isCurrent()!==false;
+  const cancel=()=>{turn.abort();if(this.entering===turn){this.entering=undefined;this.publish({phase:'idle',busy:false,error:undefined});}};
+  lifetime?.signal.addEventListener('abort',cancel,{once:true});
+  this.publish({busy:true,error:undefined,invite:undefined,queue:undefined});
   try{
-   const sent=this.now();const snapshot=await read();if(this.disposed)return false;
-   this.adopt(snapshot,{sent,received:this.now()});this.follow(snapshot.group.id);return true;
-  }catch(e){this.publish({phase:'idle',...this.problem(this.say(e,fallback))});return false;}
-  finally{this.publish({busy:false});}
+   const sent=this.now();const snapshot=await read(turn.signal);if(!current())return false;
+   this.adopt(snapshot,{sent,received:this.now()});if(this.state.phase!=='ended')this.follow(snapshot.group.id);return true;
+  }catch(e){if(current())this.publish({phase:'idle',...this.problem(this.say(e,fallback))});return false;}
+  finally{lifetime?.signal.removeEventListener('abort',cancel);if(this.entering===turn){const valid=current();this.entering=undefined;this.publish({busy:false,...(!valid&&!this.room?{phase:'idle' as const}:{})});}}
  }
  /** `timing`: when the request that brought this snapshot was sent and answered (absent for pushed frames). */
  private adopt(snapshot:{serverTime:string;group:Group},timing?:{sent:number;received:number}){
@@ -218,22 +226,24 @@ export class GroupSessionService{
  }
  refreshQueue(){return this.room?this.readQueue(this.room):Promise.resolve();}
  private close(phase:GroupRoomPhase){
+  this.entering?.abort();this.entering=undefined;
   const room=this.room;this.room=undefined;
   if(room){room.abort.abort();clearInterval(room.beat);clearTimeout(room.retry);clearTimeout(room.watchdog);}
-  if(phase==='idle'||phase==='joining'||phase==='left')this.publish({phase,group:undefined,queue:undefined,invite:undefined});else this.publish({phase});
+  if(phase==='idle'||phase==='joining'||phase==='left')this.publish({phase,busy:false,group:undefined,queue:undefined,invite:undefined});else this.publish({phase,busy:false});
  }
 
  private async act<T>(work:(group:Group)=>Promise<T>,fallback:MessageId):Promise<T|undefined>{
   const group=this.state.group,room=this.room;if(!group||!room)return undefined;
   this.publish({busy:true,error:undefined,refused:undefined});this.lastCode='';
-  try{return await work(group);}
+  try{const value=await work(group);return this.room===room&&!room.abort.signal.aborted&&!this.disposed?value:undefined;}
   catch(e){
+   if(this.room!==room||room.abort.signal.aborted||this.disposed)return undefined;
    // A stale revision means somebody else moved the group first. Show what it is now and let the
    // person decide again; resending blindly is how a retried Play undoes someone's Pause.
-   if(code(e)==='revision_conflict'){await this.reread(room);this.publish({...this.problem('together.error.changed')});}
+   if(code(e)==='revision_conflict'){await this.reread(room);if(this.room===room)this.publish({...this.problem('together.error.changed')});}
    else this.publish({...this.problem(this.say(e,fallback))});
    this.lastCode=code(e);return undefined;
-  }finally{this.publish({busy:false});}
+  }finally{if(this.room===room)this.publish({busy:false});}
  }
  async transport(command:GroupTransportCommand,input:{positionUs?:string;entryId?:string;queuePosition?:number;allowUnavailable?:boolean}={}):Promise<boolean>{
   const receipt=await this.act(async group=>parseGroupTransportReceipt(await this.api.request<unknown>(path(group.id,'/transport'),'POST',{protocolVersion:SOCIAL_PROTOCOL,idempotencyKey:this.key(),expectedRevision:group.playbackRevision,command,...(input.positionUs!==undefined?{positionUs:input.positionUs}:{}),...(input.entryId?{entryId:input.entryId}:{}),...(input.queuePosition!==undefined?{queuePosition:input.queuePosition}:{}),...(input.allowUnavailable?{allowUnavailable:true}:{})})),'together.error.notReached');
@@ -284,7 +294,9 @@ export class GroupSessionService{
    const body={protocolVersion:SOCIAL_PROTOCOL,memberId,expectedRevision:group.governanceRevision};
    // Claiming binds this device at once; handing over leaves the incoming host's heartbeat to bind its own.
    const sent=this.now();
-   this.adopt(parseGroupSnapshot(await this.api.request<unknown>(path(group.id,'/host-transfer'),'POST',body)),{sent,received:this.now()});
+   const room=this.room,snapshot=parseGroupSnapshot(await this.api.request<unknown>(path(group.id,'/host-transfer'),'POST',body,room?.abort.signal));
+   if(this.room!==room||room?.abort.signal.aborted)return false;
+   this.adopt(snapshot,{sent,received:this.now()});
    return true;
   },'together.error.host');
   return !!done;
