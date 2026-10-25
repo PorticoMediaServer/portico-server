@@ -33210,11 +33210,17 @@ export const schemas = {
           },
           "temporaryDirectory": {
             "properties": {
+              "fallback": {
+                "type": "boolean"
+              },
               "freeBytes": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "nullable": true,
                 "type": "integer"
+              },
+              "memoryPath": {
+                "type": "string"
               },
               "path": {
                 "type": "string"
@@ -33226,7 +33232,9 @@ export const schemas = {
             "required": [
               "path",
               "ready",
-              "freeBytes"
+              "freeBytes",
+              "fallback",
+              "memoryPath"
             ],
             "type": "object"
           },
@@ -212909,11 +212917,17 @@ export const schemas = {
           },
           "temporaryDirectory": {
             "properties": {
+              "fallback": {
+                "type": "boolean"
+              },
               "freeBytes": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "nullable": true,
                 "type": "integer"
+              },
+              "memoryPath": {
+                "type": "string"
               },
               "path": {
                 "type": "string"
@@ -212925,7 +212939,9 @@ export const schemas = {
             "required": [
               "path",
               "ready",
-              "freeBytes"
+              "freeBytes",
+              "fallback",
+              "memoryPath"
             ],
             "type": "object"
           },

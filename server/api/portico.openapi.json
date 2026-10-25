@@ -35488,6 +35488,9 @@
               },
               "temporaryDirectory": {
                 "properties": {
+                  "fallback": {
+                    "type": "boolean"
+                  },
                   "freeBytes": {
                     "anyOf": [
                       {
@@ -35500,6 +35503,9 @@
                       }
                     ]
                   },
+                  "memoryPath": {
+                    "type": "string"
+                  },
                   "path": {
                     "type": "string"
                   },
@@ -35510,7 +35516,9 @@
                 "required": [
                   "path",
                   "ready",
-                  "freeBytes"
+                  "freeBytes",
+                  "fallback",
+                  "memoryPath"
                 ],
                 "type": "object"
               },
@@ -232419,6 +232427,9 @@
               },
               "temporaryDirectory": {
                 "properties": {
+                  "fallback": {
+                    "type": "boolean"
+                  },
                   "freeBytes": {
                     "anyOf": [
                       {
@@ -232431,6 +232442,9 @@
                       }
                     ]
                   },
+                  "memoryPath": {
+                    "type": "string"
+                  },
                   "path": {
                     "type": "string"
                   },
@@ -232441,7 +232455,9 @@
                 "required": [
                   "path",
                   "ready",
-                  "freeBytes"
+                  "freeBytes",
+                  "fallback",
+                  "memoryPath"
                 ],
                 "type": "object"
               },
@@ -284667,6 +284683,9 @@
                         },
                         "temporaryDirectory": {
                           "properties": {
+                            "fallback": {
+                              "type": "boolean"
+                            },
                             "freeBytes": {
                               "anyOf": [
                                 {
@@ -284679,6 +284698,9 @@
                                 }
                               ]
                             },
+                            "memoryPath": {
+                              "type": "string"
+                            },
                             "path": {
                               "type": "string"
                             },
@@ -284689,7 +284711,9 @@
                           "required": [
                             "path",
                             "ready",
-                            "freeBytes"
+                            "freeBytes",
+                            "fallback",
+                            "memoryPath"
                           ],
                           "type": "object"
                         },
@@ -285210,6 +285234,9 @@
                         },
                         "temporaryDirectory": {
                           "properties": {
+                            "fallback": {
+                              "type": "boolean"
+                            },
                             "freeBytes": {
                               "anyOf": [
                                 {
@@ -285222,6 +285249,9 @@
                                 }
                               ]
                             },
+                            "memoryPath": {
+                              "type": "string"
+                            },
                             "path": {
                               "type": "string"
                             },
@@ -285232,7 +285262,9 @@
                           "required": [
                             "path",
                             "ready",
-                            "freeBytes"
+                            "freeBytes",
+                            "fallback",
+                            "memoryPath"
                           ],
                           "type": "object"
                         },

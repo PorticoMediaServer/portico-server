@@ -126,35 +126,44 @@ func (s *Service) openRangeCache(ctx context.Context, b binding, generation stri
 	return &rangeCache{service: s, source: b.ID, key: key, file: handle, size: snapshot.Size, configured: bytes, floor: floor, guard: guard, generation: generation, binding: b}, nil
 }
 
-// append fills the cache from the current end to end, from a stream positioned
-// at the current end. Growth is reserved against this source's own budget and
-// the host floor before a byte is copied; a failed or short read releases the
-// reservation and leaves the committed prefix as it was.
+// append fills the cache from the current end to end. Growth is checked
+// against the settings in force right now, reclaimed from this source's least
+// recently used entries when the budget is full, and reserved against both the
+// source budget and the host's outstanding growth before a byte is copied.
 func (c *rangeCache) append(ctx context.Context, stream io.Reader, end int64) error {
 	if c == nil || c.file == nil || end <= c.guard.cached || end > c.size {
 		return nil
 	}
-	if c.configured > 0 && end > c.configured {
-		// The cache never grows past the size the owner set for this source;
-		// reads beyond that prefix go to the provider instead.
+	var configured, floor int64
+	if err := c.service.db.QueryRowContext(ctx, `SELECT cache_bytes,cache_floor_bytes FROM remote_source_settings WHERE source_id=?`, c.source).Scan(&configured, &floor); err != nil || configured <= 0 {
+		return storage.ErrRemoteLimit
+	}
+	if c.guard.cached+(end-c.guard.cached) > configured {
 		return storage.ErrRemoteLimit
 	}
 	growth := end - c.guard.cached
-	if !mounts.CacheSpaceFor(c.service.private, c.floor, growth) {
+	if !reserveDiskGrowth(c.service.private, floor, growth) {
 		return storage.ErrRemoteLimit
 	}
 	budget := c.service.budgetFor(c.source)
-	if err := budget.load(ctx, c.service, c.source, c.configured); err != nil {
+	if err := budget.load(ctx, c.service, c.source, configured); err != nil {
+		releaseDiskGrowth(c.service.private, growth)
 		return err
 	}
-	if !budget.reserve(c.configured, c.floor, growth) {
-		return storage.ErrRemoteLimit
+	if !budget.reserve(configured, floor, growth) {
+		c.service.evictSourceCache(ctx, c.source, configured, c.key, growth)
+		if !budget.reserve(configured, floor, growth) {
+			releaseDiskGrowth(c.service.private, growth)
+			return storage.ErrRemoteLimit
+		}
 	}
 	if _, err := c.file.Seek(c.guard.cached, io.SeekStart); err != nil {
 		budget.release(growth)
+		releaseDiskGrowth(c.service.private, growth)
 		return err
 	}
 	n, err := io.CopyN(c.file, stream, growth)
+	releaseDiskGrowth(c.service.private, growth)
 	if err != nil || n != growth {
 		budget.release(growth)
 		_ = c.file.Truncate(c.guard.cached)
@@ -164,6 +173,36 @@ func (c *rangeCache) append(ctx context.Context, stream io.Reader, end int64) er
 	c.guard.cached = end
 	c.reservedBytes += growth
 	return nil
+}
+
+// Disk growth reservations are fleet-wide for one private directory, so two
+// sources cannot each pass a floor check and then cross it together.
+var diskGrowth = struct {
+	sync.Mutex
+	byPath map[string]int64
+}{byPath: map[string]int64{}}
+
+func reserveDiskGrowth(path string, floor, growth int64) bool {
+	if growth <= 0 {
+		return false
+	}
+	diskGrowth.Lock()
+	defer diskGrowth.Unlock()
+	pending := diskGrowth.byPath[path]
+	if !mounts.CacheSpaceFor(path, floor, growth+pending) {
+		return false
+	}
+	diskGrowth.byPath[path] = pending + growth
+	return true
+}
+
+func releaseDiskGrowth(path string, growth int64) {
+	diskGrowth.Lock()
+	defer diskGrowth.Unlock()
+	diskGrowth.byPath[path] -= growth
+	if diskGrowth.byPath[path] <= 0 {
+		delete(diskGrowth.byPath, path)
+	}
 }
 
 // commit publishes the prefix only inside one statement that also checks the
@@ -200,7 +239,7 @@ ON CONFLICT(source_id,cache_key) DO UPDATE SET used_bytes=excluded.used_bytes,ob
 	if n, _ := result.RowsAffected(); n == 0 {
 		return c.discard(name)
 	}
-	return c.service.evictSourceCache(ctx, c.source, c.configured, c.key)
+	return c.service.evictSourceCache(ctx, c.source, c.configured, c.key, 0)
 }
 
 func (c *rangeCache) discard(name string) error {
@@ -243,7 +282,7 @@ func (s *Service) cacheKeyBusy(source, key string) bool {
 // evictSourceCache deletes the least recently used entries of one source,
 // except the entry just read, until their total is at or below the configured
 // size. Rows are removed first, files after, and only inside this source.
-func (s *Service) evictSourceCache(ctx context.Context, source string, limit int64, keep string) error {
+func (s *Service) evictSourceCache(ctx context.Context, source string, limit int64, keep string, need int64) error {
 	if limit <= 0 {
 		return nil
 	}
@@ -251,7 +290,7 @@ func (s *Service) evictSourceCache(ctx context.Context, source string, limit int
 	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(used_bytes),0) FROM remote_source_cache_entries WHERE source_id=?`, source).Scan(&total); err != nil {
 		return err
 	}
-	if total <= limit {
+	if total+need <= limit {
 		return nil
 	}
 	rows, err := s.db.QueryContext(ctx, `SELECT cache_key,file_name,used_bytes FROM remote_source_cache_entries WHERE source_id=? AND cache_key<>? ORDER BY accessed_ms, cache_key LIMIT 64`, source, keep)
@@ -263,7 +302,7 @@ func (s *Service) evictSourceCache(ctx context.Context, source string, limit int
 		bytes     int64
 	}
 	victims := []victim{}
-	for rows.Next() && total > limit {
+	for rows.Next() && total+need > limit {
 		var v victim
 		if err = rows.Scan(&v.key, &v.file, &v.bytes); err != nil {
 			break
