@@ -17,7 +17,7 @@ export type SegmentKind = 'intro' | 'recap' | 'credits' | 'commercial' | 'outro'
 export const segmentEditKinds: readonly SegmentKind[] = ['intro', 'recap', 'credits', 'commercial', 'outro'];
 export type SegmentEdit = Readonly<{id: string; opening: number; start: number; end: number; kind: SegmentKind}>;
 export type SegmentWindowsProps = {
-  duration: number; opening: readonly SegmentMark[]; ending: readonly SegmentMark[]; edit?: SegmentEdit;
+  duration: number; opening: readonly SegmentMark[]; ending: readonly SegmentMark[]; edit?: SegmentEdit; context?: string;
   onEdit: (mark: SegmentMark) => void; onChange: (draft: SegmentEdit) => void; onSave: (draft: SegmentEdit) => void; onCancel: (opening: number) => void;
   onPreview: (mark: SegmentMark, start: number) => void; onApprove: (mark: SegmentMark) => void; onDismiss: (mark: SegmentMark) => void; t?: ShellTranslate;
 };
@@ -58,7 +58,7 @@ type AdjustLease = {
   onPreview: (mark: SegmentMark, start: number) => void;
 };
 
-function AdjustSheet({opening, ending, duration, edit, onChange, onSave, onCancel, onDismiss, onPreview, t = tDefault}: SegmentWindowsProps & {t?: ShellTranslate}) {
+function AdjustSheet({opening, ending, duration, edit, context, onChange, onSave, onCancel, onDismiss, onPreview, t = tDefault}: SegmentWindowsProps & {t?: ShellTranslate}) {
   const live = useRef<AdjustLease | undefined>(undefined);
   const [lease, setLease] = useState<AdjustLease | undefined>(undefined);
   const token = edit?.opening;
@@ -131,6 +131,7 @@ function AdjustSheet({opening, ending, duration, edit, onChange, onSave, onCance
     footer={<><Button variant="glass" size="compact" onClick={cancel}>{t('next.shell.cancel')}</Button><Button variant="primary" size="compact" disabled={!valid.start || !valid.end} onClick={save}>{t('next.shell.save')}</Button></>}>
     <div className={styles.adjustSheet}>
       <Select label={t('web.segments.kindLabel')} value={edit.kind} options={segmentEditKinds.map(kind => ({value: kind, label: t('web.segments.kind', {kind})}))} onValueChange={chooseKind} />
+      {context ? <p className={styles.sheetContext}>{context}</p> : null}
       <div className={styles.timeline}>
         <span className={styles.segment} data-kind={edit.kind} data-editing style={{left: `${percent(edit.start)}%`, width: `${percent(edit.end) - percent(edit.start)}%`}} />
         <SegmentHandle label={t('next.shell.segmentStart', {kind: mark.label})} value={edit.start} min={0} max={edit.end - .1} range={range} onChange={value => apply('start', value)} />

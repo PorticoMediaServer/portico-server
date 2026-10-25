@@ -1515,6 +1515,7 @@ export const webMessages = {
   'web.segments.dismiss': 'Dismiss',
   'web.segments.adjust': 'Adjust',
   'web.segments.adjustTitle': 'Adjust marker',
+  'web.segments.inEpisode': 'In {title}, {count} min',
   'web.segments.addTitle': 'Add a marker',
   'web.segments.kindLabel': 'Type',
   'web.segments.start': 'Starts at',

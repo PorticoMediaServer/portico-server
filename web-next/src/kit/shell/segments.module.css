@@ -56,3 +56,6 @@
 .sheetDismiss > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .sheetDismiss b { font-weight: 700; }
 .sheetDismiss small { color: var(--color-text-tertiary); font-size: var(--type-caption-size); line-height: 1.4; }
+
+/* owner-libraries#23b: the episode the adjusted marker belongs to. */
+.sheetContext { margin: -8px 0 0; font-size: var(--type-caption-size); font-weight: 600; color: var(--color-text-tertiary); }

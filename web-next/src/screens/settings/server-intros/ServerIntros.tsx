@@ -287,7 +287,7 @@ function Episode({entry, title, edit, busy, onEdit, onChange, onSave, onCancel, 
       {phone ? <EpisodeMenu entry={entry} title={entry.title || t('web.segments.untitled')} onAdd={onAdd} t={t} /> : null}
     </header>
     {duration > 0 && (opening.length || ending.length)
-      ? <SegmentWindows duration={duration} opening={opening} ending={ending} edit={edit ? {id: edit.marker.id, opening: edit.opening, start: edit.start, end: edit.end, kind: edit.kind} : undefined}
+      ? <SegmentWindows duration={duration} opening={opening} ending={ending} context={entry.title && duration > 0 ? t('web.segments.inEpisode', {title: entry.title, count: Math.round(duration / 60)}) : undefined} edit={edit ? {id: edit.marker.id, opening: edit.opening, start: edit.start, end: edit.end, kind: edit.kind} : undefined}
           onPreview={(_mark, start) => onPreview(title.libraryId, entry.itemId, start)}
           onEdit={value => {const marker = entry.markers.find(candidate => candidate.id === value.id); if (marker) onEdit(entry, marker);}}
           onChange={value => onChange(entry, value)} onSave={draft => onSave(entry, draft)} onCancel={onCancel}
