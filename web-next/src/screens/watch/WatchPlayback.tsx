@@ -6,6 +6,7 @@ import {itemSubject} from '../../platform/playback/subject';
 import type {WebPlaybackRuntimeSnapshot, WebShellPlaybackRuntime} from '../../platform/playback';
 import type {PlayOnSnapshot} from '../../platform/playback/play-on';
 import {CastPlayback} from '../../kit/player';
+import {ListeningNotice} from '../../kit/media/ListeningNotice';
 import {DockHost, DockNotice, MediaSurface, type DockBinding, type DockNoticeData, type DockPresentation} from '../../kit/dock';
 import {WatchScreen} from './WatchScreen';
 import {WatchSkipPrompt} from './SkipPrompt';
@@ -123,6 +124,19 @@ export function createPictureInPictureOperations(input: Readonly<{
 }
 
 
+/** Retain the producer sequence at the actual notice edge, not on every clock update.
+ * The parent remounts this presentation for each runtime and full playback identity. */
+function CurrentListeningNotice({snapshot, phone}: {snapshot: WebPlaybackRuntimeSnapshot; phone: boolean}) {
+  const code = snapshot.playback.listeningNotice;
+  const retained = useRef<{code: NonNullable<typeof code>; sequence: number} | undefined>(undefined);
+  if (!code) retained.current = undefined;
+  else if (retained.current?.code !== code) retained.current = {code, sequence: snapshot.sequence};
+  return <ListeningNotice notice={retained.current} paused={snapshot.playback.intent === 'paused'}
+    stopped={snapshot.disposed || snapshot.playback.phase === 'idle' || snapshot.playback.phase === 'ended'}
+    errorShown={snapshot.playback.phase === 'error' || !!snapshot.playback.error || !!snapshot.problem}
+    expanded={false} layout={phone ? 'phone' : 'desktop'} translate={defaultI18n.t}/>;
+}
+
 /** This parent and its one video stay mounted through routes AND authority handovers. */
 export function WatchPlayback({binding, context, surfaces, geometry, live}: WatchPlaybackProps) {
   const runtime = binding?.runtime;
@@ -162,6 +176,11 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
     },
   } : undefined, [runtime, binding, cast, castAvailable]);
   const expanded = !!snapshot?.dock.local?.expanded;
+  // A reused sequence from another runtime/session must never inherit an expiry.
+  const noticeRuntime = useRef<{runtime?: WebShellPlaybackRuntime; epoch: number}>({epoch: 0});
+  if (noticeRuntime.current.runtime !== runtime) noticeRuntime.current = {runtime, epoch: noticeRuntime.current.epoch + 1};
+  const noticeIdentity = snapshot?.fence ? JSON.stringify([noticeRuntime.current.epoch, fenceKey(snapshot.fence),
+    snapshot.playback.intentId, snapshot.playback.playbackRun]) : undefined;
   const activeVideo = localVideoSurfaceActive(snapshot) && !remotePlaying;
   const fullscreen = useSyncExternalStore(subscribeFullscreen, fullscreenSnapshot, noFullscreen);
   const [pipActive, setPipActive] = useState(false);
@@ -288,6 +307,7 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
   } : undefined;
   return <div ref={host} className={styles.dock} data-phone={phone} data-shell-dock data-watch-playback-host>
     {snapshot && dockBinding && <div className={styles.localDock} data-covered={!!remote}><DockHost state={snapshot.dock} presentations={presentations} binding={dockBinding} layout={phone ? 'phone' : 'desktop'} artSlotRef={dockSlot} videoSurface={!!activeVideo} />
+      {!expanded && !remote && noticeIdentity && <CurrentListeningNotice key={noticeIdentity} snapshot={snapshot} phone={phone}/>}
       <DockNotice notice={currentNotice} nowMs={now} binding={dockBinding} phone={phone} /></div>}
     <MediaSurface finished={snapshot?.presentation?.finished} expanded={expanded} dockSlot={dockSlot} expandedSlot={expandedSlot} hidden={!activeVideo} nativeRenderActive={snapshot?.nativeVideoSurfaceActive} className={styles.surface}>
       <video ref={video} playsInline preload="none" aria-label={playbackIdentityLabel(presentations, snapshot?.fence && fenceKey(snapshot.fence))} />
