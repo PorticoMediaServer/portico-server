@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/reading"
 )
 
@@ -14,6 +15,11 @@ func (d Dependencies) readingImageFolderCover(w http.ResponseWriter, r *http.Req
 	p, err := d.strictPrincipalFor(r)
 	if err != nil {
 		readingFailure(w, err)
+		return
+	}
+	item := r.PathValue("itemId")
+	if _, valid := entityid.Decode(item); !valid {
+		readingFailure(w, reading.ErrUnavailable)
 		return
 	}
 	source, revision := r.URL.Query().Get("sourceId"), r.URL.Query().Get("sourceRevision")
@@ -43,7 +49,7 @@ func (d Dependencies) readingImageFolderCover(w http.ResponseWriter, r *http.Req
 			return
 		}
 	}
-	f, err := d.readingService().Open(r.Context(), p, r.PathValue("itemId"), source, revision)
+	f, err := d.readingService().Open(r.Context(), p, item, source, revision)
 	if err != nil {
 		readingFailure(w, err)
 		return
