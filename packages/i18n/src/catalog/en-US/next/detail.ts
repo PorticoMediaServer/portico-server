@@ -10,5 +10,7 @@ export const detailMessages = {
   'next.detail.seasonYears': '{first, number, ::group-off} to {last, number, ::group-off}',
   'next.detail.jumpSeason': 'Season',
   'next.detail.seasonNumberRange': '{first, number, ::group-off} to {last, number, ::group-off}',
+  'next.detail.episodeOrder': 'Episode order',
+  'next.detail.reverseEpisodeOrder': 'Reverse episode order',
   'next.detail.watched': 'Watched',
 };

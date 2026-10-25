@@ -1,11 +1,12 @@
 package catalog
 
 import (
+	"encoding/json"
 	"strconv"
 	"time"
 )
 
-func (s *Service) workspaceEpisodes(r ShowWorkspaceRequest, w ShowWorkspace, targetNumber, seasonNumber int, revision ContentRevision) (ContentEnvelope, error) {
+func (s *Service) workspaceEpisodes(r ShowWorkspaceRequest, w ShowWorkspace, _ int, seasonNumber int, revision ContentRevision) (ContentEnvelope, error) {
 	show := w.Show.ID
 	season := ""
 	view, entity, section, title := "show", show, "unassigned_absolute", "Unassigned absolute episodes"
@@ -13,21 +14,25 @@ func (s *Service) workspaceEpisodes(r ShowWorkspaceRequest, w ShowWorkspace, tar
 		season = *w.Selected.SeasonID
 		view, entity, section, title = "season", season, "episodes", seasonTitle(seasonNumber)
 	}
-	out := ContentEnvelope{Scope: ContentScope{r.ServerID, r.Library, w.Show.LibraryKind, view, entity, r.ViewerFence}, Revision: revision, Heading: ContentHeading{Key: "entity.title", Fallback: w.Show.Title + " · " + title}, Navigation: []ContentTab{{"discover", "library.discover", "discover"}, {"browse", "library.shows", "browse"}}, Query: ContentQuery{"episode", "asc", "", "", r.Limit, "none"}, Sorts: []ContentSort{{"episode", "sort.episode", []string{"asc"}}}, Filters: []ContentFilter{}, Sections: []ContentSection{}}
-	scope := cursorScope{Library: r.Library, Viewer: r.ViewerFence, Profile: r.Profile, View: "show_workspace_episodes", Entity: show, Section: section + ":" + season + ":" + r.PlayState, Search: r.EpisodeID, Sort: "episode", Direction: "asc", Limit: r.Limit}
-	after := 0
-	if r.EpisodeID != "" {
-		after = targetNumber - 1
+	out := ContentEnvelope{Scope: ContentScope{r.ServerID, r.Library, w.Show.LibraryKind, view, entity, r.ViewerFence}, Revision: revision, Heading: ContentHeading{Key: "entity.title", Fallback: w.Show.Title + " · " + title}, Navigation: []ContentTab{{"discover", "library.discover", "discover"}, {"browse", "library.shows", "browse"}}, Query: ContentQuery{"episode", r.EpisodeDirection, "", "", r.Limit, "none"}, Sorts: []ContentSort{{"episode", "sort.episode", []string{"asc", "desc"}}}, Filters: []ContentFilter{}, Sections: []ContentSection{}}
+	scope := cursorScope{Library: r.Library, Viewer: r.ViewerFence, Profile: r.Profile, View: "show_workspace_episodes", Entity: show, Section: section + ":" + season + ":" + r.PlayState, Search: r.EpisodeID, Sort: "episode", Direction: r.EpisodeDirection, Limit: r.Limit}
+	// A full (episode number, public ID) tuple prevents tied numbers from
+	// disappearing at a page boundary. Desc reverses both tuple components.
+	type episodePosition struct {
+		Number int    `json:"number"`
+		ID     string `json:"id"`
 	}
+	var after *episodePosition
 	if r.Cursor != "" {
 		c, e := s.decodeDetailCursor(r.Cursor, scope, revision)
 		if e != nil {
 			return out, e
 		}
-		after, e = strconv.Atoi(c.Value)
-		if e != nil || after < 0 {
+		var position episodePosition
+		if json.Unmarshal([]byte(c.Value), &position) != nil || position.Number < 0 || position.ID == "" {
 			return out, ErrCursor
 		}
+		after = &position
 	}
 	where := `sh.public_id=pid_blob(?) AND ep.season_id IS NULL AND ep.numbering='absolute'`
 	args := []any{show}
@@ -50,8 +55,21 @@ func (s *Service) workspaceEpisodes(r ShowWorkspaceRequest, w ShowWorkspace, tar
 	if e := s.read().QueryRow(`SELECT count(*)`+from+where, args...).Scan(&count); e != nil {
 		return out, e
 	}
-	pageArgs := append(append([]any{}, args...), after, r.Limit+1)
-	rows, e := s.read().Query(`SELECT pid(item.public_id),ep.number`+from+where+` AND ep.number>? ORDER BY ep.number LIMIT ?`, pageArgs...)
+	pageWhere := where
+	pageArgs := append([]any{}, args...)
+	comparison, direction := ">", "ASC"
+	if r.EpisodeDirection == "desc" {
+		comparison, direction = "<", "DESC"
+	}
+	if after != nil {
+		pageWhere += ` AND (ep.number,item.public_id) ` + comparison + ` (?,pid_blob(?))`
+		pageArgs = append(pageArgs, after.Number, after.ID)
+	} else if r.EpisodeID != "" {
+		pageWhere += ` AND (ep.number,item.public_id) ` + comparison + `= (SELECT target.number,target_item.public_id FROM catalog_episodes target JOIN catalog_entities target_item ON target_item.id=target.entity_id WHERE target_item.public_id=pid_blob(?))`
+		pageArgs = append(pageArgs, r.EpisodeID)
+	}
+	pageArgs = append(pageArgs, r.Limit+1)
+	rows, e := s.read().Query(`SELECT pid(item.public_id),ep.number`+from+pageWhere+` ORDER BY ep.number `+direction+`,item.public_id `+direction+` LIMIT ?`, pageArgs...)
 	if e != nil {
 		return out, e
 	}
@@ -94,7 +112,11 @@ func (s *Service) workspaceEpisodes(r ShowWorkspaceRequest, w ShowWorkspace, tar
 	}
 	next := ""
 	if more {
-		next, e = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: strconv.Itoa(numbers[ids[len(ids)-1]]), Expires: time.Now().Add(30 * time.Minute).Unix()}, revision)
+		position, err := json.Marshal(episodePosition{Number: numbers[ids[len(ids)-1]], ID: ids[len(ids)-1]})
+		if err != nil {
+			return out, err
+		}
+		next, e = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: string(position), Expires: time.Now().Add(30 * time.Minute).Unix()}, revision)
 		if e != nil {
 			return out, e
 		}

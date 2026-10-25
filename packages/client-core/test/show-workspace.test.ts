@@ -75,3 +75,20 @@ test('M32: server-sent hero facts and nextUp parse additively; malformed extras 
   await broken.select(route);const b=broken.getSnapshot().data!;
   assert.equal(b.show.network,undefined);assert.equal(b.show.genres,undefined);assert.equal(b.show.logoUrl,undefined);assert.equal(b.nextUp,undefined);assert.equal(broken.getSnapshot().phase,'ready');
 });
+
+
+test('workspace order resets cursor histories, retains selected season/filter, and validates actual response order', async()=>{
+ const calls:string[]=[];
+ const s=setup(async p=>{calls.push(p);const q=new URL(p,'https://test').searchParams;const reverse=q.get('episodeDirection')==='desc';const d=dto({season:q.get('selectedSeasonId')??'season1',entries:reverse?['ep9','ep8']:q.has('cursor')?['ep3','ep4']:['ep1','ep2'],next:'next'});d.episodes.query.direction=reverse?'desc':'asc';d.episodes.sorts[0].directions=['asc','desc'];return d;});
+ await s.select({...route,selectedSeasonId:'season1',playState:'unplayed'});await s.nextEpisodes();
+ assert.equal(s.getSnapshot().pagination.canPrevious,true);
+ await s.selectEpisodeDirection('desc');
+ const q=new URL(calls.at(-1)!,'https://test').searchParams;
+ assert.equal(q.get('episodeDirection'),'desc');assert.equal(q.get('selectedSeasonId'),'season1');assert.equal(q.get('playState'),'unplayed');assert.equal(q.has('cursor'),false);assert.equal(q.has('episodeId'),false);
+ assert.equal(s.getSnapshot().pagination.canPrevious,false);assert.deepEqual(s.getSnapshot().pagination.history,[]);assert.equal(s.getSnapshot().data!.episodes.query.direction,'desc');
+ await s.nextEpisodes();assert.match(calls.at(-1)!,/episodeDirection=desc/);assert.match(calls.at(-1)!,/cursor=next/);
+ await s.selectSeason('specials');assert.equal(s.getSnapshot().route!.episodeDirection,'desc');assert.equal(s.getSnapshot().route!.playState,'unplayed');
+ s.dispose();
+ const wrong=setup(async()=>dto());await wrong.select({...route,episodeDirection:'desc'});assert.equal(wrong.getSnapshot().phase,'error');assert.equal(wrong.getSnapshot().data,null);wrong.dispose();
+ assert.throws(()=>validateShowWorkspaceRoute({...route,episodeDirection:'sideways'} as any));
+});

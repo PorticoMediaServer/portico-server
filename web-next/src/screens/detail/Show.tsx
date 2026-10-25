@@ -57,7 +57,7 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
   const personal = useSyncExternalStore(binding.personal.subscribe, binding.personal.getSnapshot, binding.personal.getSnapshot);
   const busy = useSyncExternalStore(binding.personal.subscribe, binding.personal.getBusy, binding.personal.getBusy);
   const primary = useSyncExternalStore(binding.primary.service.subscribe, binding.primary.service.getSnapshot, binding.primary.service.getSnapshot);
-  const {tab, layout} = useSyncExternalStore(binding.view.subscribe, binding.view.getSnapshot, binding.view.getSnapshot), [seasonMenu, setSeasonMenu] = useState(false), [filterMenu, setFilterMenu] = useState(false);
+  const {tab, layout} = useSyncExternalStore(binding.view.subscribe, binding.view.getSnapshot, binding.view.getSnapshot), [seasonMenu, setSeasonMenu] = useState(false), [filterMenu, setFilterMenu] = useState(false), [orderMenu, setOrderMenu] = useState(false);
   const width = useShellWidth(), phone = width < 1024, data = snapshot.data;
   const recommendations = useSyncExternalStore(binding.recommendations.subscribe, binding.recommendations.getSnapshot, binding.recommendations.getSnapshot);
   useEffect(() => { if (data && tab === 'related') void binding.recommendations.select(data, () => binding.service.getSnapshot().data === data); }, [binding, data, tab]);
@@ -119,6 +119,10 @@ export function ShowBody({binding, compact = false}: {binding: ShowBindings; com
         {selectedSeason?.episodeCount !== undefined && <span className={styles.progress}>{t('count.episodes', {count: selectedSeason.episodeCount})}</span>}
         {selectedProgress ? <><span className={styles.progressDivider} aria-hidden="true" /><span className={styles.watchedProgress}><span className={styles.watchedMeter} aria-hidden="true"><i style={{width: `${selectedProgress.total > 0 ? 100 * selectedProgress.watched / selectedProgress.total : 0}%`}} /></span>{t('title.seasonProgress', {watched: selectedProgress.watched, total: selectedProgress.total})}</span></>
           : null}
+        <Menu open={orderMenu} onOpenChange={setOrderMenu} title={t('next.detail.episodeOrder')} trigger={<Chip variant="toolbar" icon="i-sort" trailingIcon="i-down">{t('next.detail.episodeOrder')}</Chip>}>
+          <MenuItem selected={(snapshot.route?.episodeDirection ?? 'asc') === 'asc'} onSelect={() => runScreenCommand(binding.context, () => { binding.current(data); setOrderMenu(false); return binding.service.selectEpisodeDirection('asc'); })}>{t('next.detail.episodeOrder')}</MenuItem>
+          <MenuItem selected={snapshot.route?.episodeDirection === 'desc'} onSelect={() => runScreenCommand(binding.context, () => { binding.current(data); setOrderMenu(false); return binding.service.selectEpisodeDirection('desc'); })}>{t('next.detail.reverseEpisodeOrder')}</MenuItem>
+        </Menu>
         <Menu open={filterMenu} onOpenChange={setFilterMenu} title={t('next.controls.filters')} trigger={<Chip variant="toolbar" icon="i-filter">{t('next.controls.filters')}</Chip>}>
           <MenuItem selected={!snapshot.route?.playState} onSelect={() => setPlayState('all')}>{t('next.controls.all')}</MenuItem>
           <MenuItem selected={snapshot.route?.playState === 'unplayed'} onSelect={() => setPlayState('unplayed')}>{t('filter.quick.unplayed')}</MenuItem>

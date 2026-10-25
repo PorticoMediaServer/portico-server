@@ -3,7 +3,7 @@ package catalog
 // ShowWorkspace resolves hard links into one bounded server-owned show view.
 // Cursor fields are opaque and valid only with the same principal/query/revision.
 type ShowWorkspaceRequest struct {
-	PlayState                                                                  string
+	PlayState, EpisodeDirection                                                string
 	Viewer                                                                     Viewer
 	ServerID, Library, Profile, ViewerFence                                    string
 	ShowID, SeasonID, EpisodeID, SelectedSeasonID, Group, Cursor, SeasonCursor string
