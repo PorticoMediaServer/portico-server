@@ -1,3 +1,4 @@
+import {playbackFailurePermanent} from '@core/playback-messages.ts';
 import {PlaybackService, type PlaybackSnapshot} from '@core/index.ts';
 import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
 import type {GetItemsIdResponse} from '../../../../packages/contracts/src/types.ts';
@@ -1167,6 +1168,17 @@ export class WebShellPlaybackRuntime {
     const stack = this.offered(fence, 'play');
     if (fence.kind === 'local') stack.local!.controller.resume(fence);
     else if (!await this.groupTransport('play', fence)) stack.service.resume();
+  }
+  /** Explicit UI recovery only; the existing service retains position and intent. */
+  canRetryFailure(fence: PlaybackFence): boolean {
+    const playback = this.snapshot.playback;
+    return this.current() && this.matches(fence) && fence.kind === 'queue' && this.stack.mode === 'server' && !this.group
+      && playback.phase === 'error' && !playback.ended && !playbackFailurePermanent(playback.error);
+  }
+  async retryFailure(fence: PlaybackFence): Promise<void> {
+    if (!this.canRetryFailure(fence)) problem('playback_command_unavailable');
+    const stack = this.require(fence);
+    await stack.service.retry();
   }
   async toggle(fence: PlaybackFence): Promise<void> {this.require(fence);if (this.snapshot.presentation?.playing) await this.pause(fence);else await this.resume(fence);}
   /** The existing channel service's Go Live intent. No seek-to-zero, no second controller and
