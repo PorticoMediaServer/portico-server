@@ -87,7 +87,7 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
     if(pointers.size>1||tap?.moved)options.onSurfaceInput?.({kind:'activity'});
     pointers.set(event.pointerId,{x:event.clientX,y:event.clientY});const nextDistance=distance();
     if(pinch&&nextDistance){const next=Math.max(.05,Math.min(8,scale*nextDistance/pinch));pinch=nextDistance;gestureZoom({kind:'scale',value:next});}
-    else if(drag){host.scrollLeft=drag.left+drag.x-event.clientX;host.scrollTop=drag.top+drag.y-event.clientY;}
+    else if(drag&&tap?.moved){host.scrollLeft=drag.left+drag.x-event.clientX;host.scrollTop=drag.top+drag.y-event.clientY;}
   };
   const onUp=(event:PointerEvent)=>{
     pointers.delete(event.pointerId);pinch=undefined;drag=undefined;
