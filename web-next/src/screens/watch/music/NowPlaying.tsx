@@ -8,6 +8,7 @@ import {ListeningNotice, SignalLine, SignalPath} from '../../../kit/media';
 import {dispatchWatch, watchClock, watchSeek, watchSeekBounds, type WatchIntent} from '../model';
 import {watchQueueNeighbours} from '../queue-neighbours';
 import {watchMusicSignal} from './signal';
+import {readWatchMusicAudioFacts} from './audio-facts';
 import type {WatchBindings, WatchScreenProps} from '../types';
 import styles from './now-playing.module.css';
 
@@ -26,7 +27,7 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
   useEffect(() => { if (!equalizer) return; return equalizer.start(); }, [equalizer]);
   const [signalOpen, setSignalOpen] = useState(false);
   const signalAnchor = useRef<HTMLButtonElement>(null);
-  const signal = watchMusicSignal(snapshot, settings);
+  const signal = watchMusicSignal(snapshot, settings, readWatchMusicAudioFacts(binding.runtime, snapshot));
   const identity = presentation ? playbackIdentity(presentation.subject, 'full', environment) : undefined;
   const artworkSource = presentation ? binding.artwork.foreground(presentation.posterUrl ?? presentation.backdropUrl, 560, 1, {group: 'playback', priority: 'high'}) : undefined;
   const open = expanded && presentation?.kind === 'music' && !!identity;
