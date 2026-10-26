@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {ApiError} from '@core/index.ts';
-import {ServicesAuthStage, ServicesCodeChip, ServicesQuiet} from '../kit/accounts/ServicesAuth';
+import {ServicesAccountLine, ServicesAuthStage, ServicesCodeChip} from '../kit/accounts/ServicesAuth';
 import {ServicesAuthForm} from './AuthForm';
 import {accountIdentity, sameAccount, type AccountIdentity, type ServicesAccount} from './session';
 import {decideHostedDevice, reviewHostedDevice, type DeviceReview} from './device-approval';
@@ -66,7 +66,7 @@ export function DevicePage({account, initialCode = ''}: {account: ServicesAccoun
     setCode(''); setFromQR(false); setReview(undefined); setDone(undefined); setError(undefined);
   };
   if (!session || authenticating) return <ServicesAuthStage variant="deviceSignIn"><ServicesAuthForm account={account} onSignedIn={() => setAuthenticating(false)} embedded heading={t('web.device.title')} lead={t('web.device.lede')}
-    before={<>{fromQR && code && <ServicesCodeChip label={t('services.device.codeFromTV')} code={code} />}<ServicesQuiet>{t('services.device.signedOut')}</ServicesQuiet></>} /></ServicesAuthStage>;
+    before={<>{fromQR && code && <ServicesCodeChip label={t('services.device.codeFromTV')} code={code} />}<ServicesAccountLine>{t('services.device.signedOut')}</ServicesAccountLine></>} /></ServicesAuthStage>;
   if (done && !stale) return <DeviceDecision decision={done.decision} onAnother={another} />;
   return <DeviceView name={session.account.displayName || session.account.username} code={code} fromQR={fromQR} preview={review && !stale ? review.preview : undefined}
     busy={busy} error={error} onCodeChange={setCode} onInspect={() => void inspect()} onDecision={decision => void decide(decision)} onAnother={another} onSignOut={() => void account.service.logout().catch(setError)} />;
