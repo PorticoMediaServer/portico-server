@@ -14,21 +14,21 @@ import {useAccountResource} from './use-account-resource';
 import {accountIdentity, type ServicesAccount} from './session';
 import {servicesI18n} from './i18n';
 
-export function AccountPage({account, session, section, onDeleted, onSecurityEnded}: {account: ServicesAccount; session: Omit<HostedSession, 'refreshToken'>; section: ServicesSection; onDeleted?: () => void; onSecurityEnded?: (codes?: readonly string[]) => void}) {
+export function AccountPage({account, session, section, identityTransaction, onDeleted, onSecurityEnded}: {account: ServicesAccount; session: Omit<HostedSession, 'refreshToken'>; section: ServicesSection; identityTransaction?: string; onDeleted?: () => void; onSecurityEnded?: (codes?: readonly string[]) => void}) {
   const identity = accountIdentity(session);
-  return <BoundAccount key={identity.accountId + '/' + identity.familyId} account={account} session={session} section={section} onDeleted={onDeleted} onSecurityEnded={onSecurityEnded} />;
+  return <BoundAccount key={identity.accountId + '/' + identity.familyId} account={account} session={session} section={section} identityTransaction={identityTransaction} onDeleted={onDeleted} onSecurityEnded={onSecurityEnded} />;
 }
-function BoundAccount({account, session, section, onDeleted, onSecurityEnded}: {account: ServicesAccount; session: Omit<HostedSession, 'refreshToken'>; section: ServicesSection; onDeleted?: () => void; onSecurityEnded?: (codes?: readonly string[]) => void}) {
+function BoundAccount({account, session, section, identityTransaction, onDeleted, onSecurityEnded}: {account: ServicesAccount; session: Omit<HostedSession, 'refreshToken'>; section: ServicesSection; identityTransaction?: string; onDeleted?: () => void; onSecurityEnded?: (codes?: readonly string[]) => void}) {
   const {t} = useMemo(servicesI18n, []);
   const accountId = session.account.id, familyId = session.familyId!;
   const identity = useMemo(() => ({accountId, familyId}), [accountId, familyId]);
   const api = useMemo(() => workspaceApi(account, identity), [account, identity]);
   const create = useCallback(() => new ServicesFeed(api.notifications), [api]), bound = useAccountResource(create);
-  return bound ? <ReadyAccount key={bound.id} account={account} session={session} section={section} onDeleted={onDeleted} onSecurityEnded={onSecurityEnded} api={api} feed={bound.value}/>
+  return bound ? <ReadyAccount key={bound.id} account={account} session={session} section={section} identityTransaction={identityTransaction} onDeleted={onDeleted} onSecurityEnded={onSecurityEnded} api={api} feed={bound.value}/>
     : <ServicesQuiet>{t('status.loading')}</ServicesQuiet>;
 }
-function ReadyAccount({account, session, section, onDeleted, onSecurityEnded, api, feed}: {
-  account: ServicesAccount; session: Omit<HostedSession, 'refreshToken'>; section: ServicesSection; onDeleted?: () => void; onSecurityEnded?: (codes?: readonly string[]) => void; api: WorkspaceApi; feed: ServicesFeed;
+function ReadyAccount({account, session, section, identityTransaction, onDeleted, onSecurityEnded, api, feed}: {
+  account: ServicesAccount; session: Omit<HostedSession, 'refreshToken'>; section: ServicesSection; identityTransaction?: string; onDeleted?: () => void; onSecurityEnded?: (codes?: readonly string[]) => void; api: WorkspaceApi; feed: ServicesFeed;
 }) {
   const {t} = useMemo(servicesI18n, []);
   const accountId = session.account.id, familyId = session.familyId!;
@@ -51,7 +51,7 @@ function ReadyAccount({account, session, section, onDeleted, onSecurityEnded, ap
   if (section === 'devices') return <DevicesPanel api={api} frame={(children, actions) => frame(children, actions, t('services.workspace.devicesBody'))} />;
   if (section === 'notifications') return frame(<FeedPanel feed={feed} onReviewDevices={() => select('devices')} />,
     <Button size="small" icon="i-check" disabled={state.busy || !state.unread} onClick={() => void feed.markRead('all')}>{t('web.account.notif.markAll')}</Button>);
-  if (section === 'security') return frame(<SecurityPanel account={account} api={api} identity={identity} username={session.account.username} onDeleted={onDeleted} onSecurityEnded={onSecurityEnded} />,
+  if (section === 'security') return frame(<SecurityPanel identityTransaction={identityTransaction} account={account} api={api} identity={identity} username={session.account.username} onDeleted={onDeleted} onSecurityEnded={onSecurityEnded} />,
     undefined, t('services.workspace.securityBody'));
   return frame(<ServersPanel api={api} />, undefined, t('web.hostedAccount.serversHelp'));
 }

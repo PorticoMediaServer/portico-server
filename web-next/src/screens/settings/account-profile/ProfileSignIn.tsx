@@ -13,6 +13,7 @@ import {AuthCodeBoxes} from '../../../kit/accounts';
 import {HostedError, ServicesQuiet} from '../../../kit/accounts/ServicesAuth';
 import {ServicesAuthenticator, ServicesRecoveryCodes} from '../../../kit/accounts/ServicesWorkspace';
 import {servicesAccount, accountIdentity, currentAccountWork, sameAccount, type AccountIdentity, type ServicesAccount} from '../../../services/session';
+import {ProviderSecurityStartDialog} from '../../../services/ProviderSecurityStartDialog';
 import {HostedSecurityTask, type HostedSecurityTaskKind} from '../../../services/SecurityPanel';
 import type {ProfileSettingsSource} from './source';
 import {AccountPasswordFields} from './AccountPasswordFields';
@@ -95,7 +96,7 @@ export function ProfileSignIn({profiles,api,commandApi,signIn,isCurrent,onEnded,
  const intentCurrent=(value:LocalIntent|undefined)=>!!held&&!!value&&value.live&&value.owner===held&&localIntentRef.current===value&&held.current();
  const close=()=>{if(!held||held.busy||!intentCurrent(intent))return;intent!.live=false;intent!.enrolPassword=undefined;localIntentRef.current=undefined;setTask(undefined);setEnrolment(undefined);setCodes(undefined);clearSecrets();setError(undefined);};
  const openHosted=(kind:HostedSecurityTaskKind)=>{
-  if(!held||held.busy||localIntentRef.current||hostedIntentRef.current||!hostedCurrent()||!hostedState?.hasPassword)return;
+  if(!held||held.busy||localIntentRef.current||hostedIntentRef.current||!hostedCurrent()||!hostedState||!hostedState.hasPassword&&!hostedState.providers.some(v=>v.revision))return;
   const next:HostedIntent={owner:held,kind,id:++sequence.current,current:()=>hostedIntentRef.current===next&&held.current()};
   hostedIntentRef.current=next;setHostedTask(next);
  };
@@ -138,7 +139,7 @@ export function ProfileSignIn({profiles,api,commandApi,signIn,isCurrent,onEnded,
  const mfa=signIn==='local'?factor?.enabled:hostedState?.mfaEnabled;
  const remaining=signIn==='local'?factor?.recoveryCodesRemaining:hostedState?.recoveryCodesRemaining;
  useLayoutEffect(()=>{if(held?.current())onFacts?.({mfa,remaining,email:hostedState?.contactAddress});},[held,mfa,remaining,hostedState?.contactAddress,onFacts]);
- const available=!!held&&(signIn==='local'?!!factor:!!hostedState&&hostedCurrent()&&hostedState.hasPassword);
+ const available=!!held&&(signIn==='local'?!!factor:!!hostedState&&hostedCurrent()&&(hostedState.hasPassword||hostedState.providers.some(v=>v.revision)));
  const guardField=(change:(value:string)=>void)=>(value:string)=>{if(intentCurrent(intent)&&!held!.busy)change(value);};
  const ready=!!held&&!busy&&(task==='password'?!!password&&passwordStrength(next).acceptable&&(!factor?.enabled||!!code.trim()):task==='enrol'?enrolment?!!intent?.enrolPassword&&code.length===6:!!password:!!password&&!!code.trim());
  const title=t(task==='password'?'account.changePasswordTitle':task==='disable'?'web.twoStep.turnOffConfirmTitle':task==='codes'||codes?'web.hostedSecurity.newCodesTitle':enrolment?'web.hostedSecurity.addToAuthenticator':'web.twoStep.turnOnTitle');
@@ -150,7 +151,7 @@ export function ProfileSignIn({profiles,api,commandApi,signIn,isCurrent,onEnded,
    <HostedSecurityAction label={t('next.settingsSpec.account.profile.groups.5.rows.0.control.label')} disabled={!available||busy} onOpen={()=>{openHosted('email_change');}}/>
   </SettingsRow>}
   <SettingsRow id="profile.password" label={t('next.settingsSpec.account.profile.groups.5.rows.1.label')}>
-   <HostedSecurityAction label={t('next.settingsSpec.account.profile.groups.5.rows.1.control.label')} disabled={!available||busy} onOpen={()=>open('password')}/>
+   <HostedSecurityAction label={t(signIn==='portico'&&hostedState?.hasPassword===false?'account.setPassword':'next.settingsSpec.account.profile.groups.5.rows.1.control.label')} disabled={!available||busy} onOpen={()=>open('password')}/>
   </SettingsRow>
   <SettingsRow id="profile.twoStep" label={t('next.settingsSpec.account.profile.groups.5.rows.2.label')} help={t('next.settingsSpec.account.profile.groups.5.rows.2.help')}>
    {mfa===undefined?<span role="status">{t('web.claim.loading')}</span>:<Switch aria-label={t('next.settingsSpec.account.profile.groups.5.rows.2.label')} checked={mfa===true} disabled={!available||busy} onCheckedChange={()=>open(mfa?'disable':'enrol')}/>}
@@ -159,7 +160,8 @@ export function ProfileSignIn({profiles,api,commandApi,signIn,isCurrent,onEnded,
    <HostedSecurityAction label={t('next.settingsSpec.account.profile.groups.5.rows.2.children.0.control.label')} disabled={!available||busy} onOpen={()=>open('codes')}/>
   </SettingsRow>}
   {hostedState&&!hostedState.hasPassword&&<ServicesQuiet>{t('web.hostedSecurity.providerOnly')}</ServicesQuiet>}
-  {held&&held.hosted&&held.identity&&hostedState&&hostedTask&&hostedTask.current()&&<HostedSecurityTask key={hostedTask.id} account={held.hosted} identity={held.identity} state={hostedState} task={hostedTask.kind} isCurrent={hostedTask.current}
+  {held&&held.hosted&&held.identity&&hostedState&&!hostedState.hasPassword&&hostedTask&&hostedTask.current()&&<ProviderSecurityStartDialog key={hostedTask.id} account={held.hosted} identity={held.identity} state={hostedState} task={hostedTask.kind} isCurrent={hostedTask.current} server={{accountId:held.accountId,profileId:profiles.getSnapshot().inUseId??''}} onClose={()=>{if(hostedTask.current()){hostedIntentRef.current=undefined;setHostedTask(undefined);setRetry(value=>value+1);}}}/>}
+  {held&&held.hosted&&held.identity&&hostedState&&hostedState.hasPassword&&hostedTask&&hostedTask.current()&&<HostedSecurityTask key={hostedTask.id} account={held.hosted} identity={held.identity} state={hostedState} task={hostedTask.kind} isCurrent={hostedTask.current}
    onClose={()=>{if(hostedTask.current()){hostedIntentRef.current=undefined;setHostedTask(undefined);setRetry(value=>value+1);}}}
    onSecurityEnded={values=>{if(hostedTask.current()){
     hostedIntentRef.current=undefined;setHostedTask(undefined);setHostedState(undefined);
