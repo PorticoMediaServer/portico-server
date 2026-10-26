@@ -19,6 +19,7 @@ import {DriveKeyPane, DriveModePane, DriveOAuthPane} from './DrivePanes';
 import {RemoteFolderPicker} from './RemoteFolderPicker';
 import {ProgramPicker} from './ProgramPicker';
 import {SourceHeader} from './SourceHeader';
+import {WizardStepHeader} from './WizardStepHeader';
 import {SourceDone} from './SourceDone';
 import {SourceReadingDialog, SourceReadingFields} from './SourceReadingDialog';
 import {ReadingProfileOpening} from './reading-profile-opening';
