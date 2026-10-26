@@ -189,7 +189,7 @@ export class V1ChannelControl implements ChannelPlayback {
         signal: a.startAbort.signal, isCurrent: () => this.current(a) && starting(), capturePreparing,
         onPreparing: (_wait, preparation) => {if (this.current(a) && starting()) sink.preparation?.(preparation);},
       });
-      if (!this.current(a) || !starting()) {void this.stop(result.session.id);cancel();return;}
+      if (!this.current(a) || !starting()) {void this.stop(result.id);cancel();return;}
       const s = parseChannelSession(result.body, this.now);
       if (!this.current(a) || !starting()) {void this.stop(s.id);cancel();return;}
       sink.preparation?.(undefined);

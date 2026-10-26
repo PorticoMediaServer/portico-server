@@ -109,8 +109,7 @@ test('a bridge start forwards every real preparation notice before it adopts or 
   const adopted = await started;
   assert.equal(starts, 1, 'every 202 asked for the same original start');
   assert.equal(adopts, 1); assert.equal(durations, 1);
-  const sessionEvents = server.eventLog().filter(event => event.resource?.kind === 'session');
-  assert.ok(sessionEvents.some(event => event.resource?.id === adopted.session.id));
+  assert.equal(server.session(adopted.session.id)?.itemId, 'movie', 'the final response names a real created session');
   assert.equal(api.selectionRegistration(adopted.session.id, adopted.playback)!.current(), true);
 });
 

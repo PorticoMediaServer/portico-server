@@ -8,7 +8,7 @@ import {PlaybackApiError, type V1Http, type V1Request} from '../src/playback-v1/
 // Regression source for the actual start wire and supplied clock; deliberately UNRUN.
 const real = () => ({id: 'original_session', revision: '1', kind: 'vod', role: 'local', state: 'paused', itemId: 'movie',
   lease: {expiresAt: '2030-01-01T00:00:00Z', reportEveryMs: 10_000},
-  presentation: {generation: 1, mode: 'stream', engine: 'native', url: '/media/original.m3u8', startPositionMs: 0,
+  presentation: {generation: 1, mode: 'stream', engine: 'native', url: '/v1/media/original.m3u8', startPositionMs: 0,
     quality: {mode: 'original'}, subtitles: [], decision: {video: {action: 'copy', reasons: []}, audio: {action: 'copy', reasons: []}}}});
 const reply = (body: unknown, status = 202) => ({status, headers: {}, body});
 const settle = async () => {for (let i = 0; i < 12; i++) await Promise.resolve();};

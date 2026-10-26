@@ -21,7 +21,7 @@ import type {MediaPlayer, PlayerEvent, PlayerObservation} from './port.ts';
 import type {QualityRequest} from './quality.ts';
 import type {PlayerFailureCode} from '../client-profile.ts';
 import {TimelineReporter, type TimelineReport, type TimelineReporterOptions} from './timeline.ts';
-import {ContractError, parseDiscTitleRef, parseSession, parseSessionEnd, type DiscTitleRef, type Session, type SessionEnd} from './types.ts';
+import {ContractError, id, parseDiscTitleRef, parseSession, parseSessionEnd, type DiscTitleRef, type Session, type SessionEnd} from './types.ts';
 import {requireSessionChangeCurrent, sessionChangeCurrent, type SessionChangeContext} from './change-context.ts';
 export type {SessionChangeContext} from './change-context.ts';
 
@@ -91,6 +91,14 @@ export type StartContext = Readonly<{
   capturePreparing?: (session: PreparingSessionView) => (() => void | Promise<void>) | undefined;
 }>;
 const startRetired = () => Object.assign(new Error('Playback start retired'), {name: 'AbortError'});
+const startIdentity = (value: unknown): Readonly<{id: string; generation: number}> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ContractError('start response');
+  const sessionId = id(Reflect.get(value, 'id'), 'session id'), presentation = Reflect.get(value, 'presentation');
+  if (!presentation || typeof presentation !== 'object' || Array.isArray(presentation)) throw new ContractError('start presentation');
+  const generation: unknown = Reflect.get(presentation, 'generation');
+  if (typeof generation !== 'number' || !Number.isSafeInteger(generation) || generation < 0) throw new ContractError('generation');
+  return {id: sessionId, generation};
+};
 const freezeWire = <T,>(value: T): T => {
   if (value !== null && typeof value === 'object') {
     for (const child of Object.values(value)) freezeWire(child);
@@ -124,13 +132,18 @@ export class SessionsClient {
    * request waiting until success, a real refusal or caller retirement. Server
    * preparation/authority deadlines remain server-owned and are never renewed. */
   async start(target: StartTarget, options: StartOptions, key: string, extra: StartContext = {}): Promise<Session> {
-    return (await this.startResponse(target, options, key, extra)).session;
+    return this.startOriginal(target, options, key, extra, parseSession);
   }
 
   /** The channel adapter retains the actual declared linear projection beside
-   * the checked final Session. Both use this same status/retry/lifetime path;
+   * its final response identity. Both use this same status/retry/lifetime path;
+   * an existing channel may have no media URL until its ordinary join/read.
    * a retry-only body can never be returned as a completed start. */
-  async startResponse(target: StartTarget, options: StartOptions, key: string, extra: StartContext = {}): Promise<Readonly<{session: Session; body: unknown}>> {
+  async startResponse(target: StartTarget, options: StartOptions, key: string, extra: StartContext = {}): Promise<Readonly<{id: string; generation: number; body: unknown}>> {
+    return this.startOriginal(target, options, key, extra, body => ({...startIdentity(body), body}));
+  }
+
+  private async startOriginal<T>(target: StartTarget, options: StartOptions, key: string, extra: StartContext, read: (body: unknown) => T): Promise<T> {
     // Capture the original wire and lifetime once, before callbacks or asynchronous work.
     const http = this.http, signal = extra.signal, isCurrent = extra.isCurrent;
     const onPreparing = extra.onPreparing, capturePreparing = extra.capturePreparing;
@@ -155,10 +168,11 @@ export class SessionsClient {
         const r = await call(http, request, [201, 200, 202]);
         // A late real success must reach the existing caller's unowned-session cleanup.
         if (r.status !== 202) {
-          const session = parseSession(r.body);
-          if (prepared && (prepared.id !== session.id || prepared.presentation.generation !== session.presentation.generation))
+          const result = read(r.body);
+          const actual = startIdentity(r.body);
+          if (prepared && (prepared.id !== actual.id || prepared.presentation.generation !== actual.generation))
             throw new ContractError('preparation session changed');
-          return {session, body: r.body};
+          return result;
         }
         const preparing = parseStartPreparation(r.body);
         if (preparing.session) {
