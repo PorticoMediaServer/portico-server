@@ -331,8 +331,10 @@ test('only an actually accepted ordered book part carries the boundary',async t=
  await f.service.setTimer('book');
  assert.deepEqual(f.service.getSnapshot().timer?.bookBoundary?.items,['song','mid','last']);
  assert.deepEqual(f.engine.policies.at(-1).timer.bookBoundary,{revision:{catalog:1,viewer:1},items:['song','mid','last']});
- entry='entry-2';
+ // The source callback derives the queue from the immutable CURRENT session, so the original
+ // entry must still be current when the acceptance arrives; the new one follows the handoff.
  f.service.acceptAutomaticTransition({id:'mid-session',itemId:'mid',presentation:{generation:2},queue:{queueId:'queue',entryId:'entry-2'}});
+ entry='entry-2';
  f.engine.update({itemId:'mid',session:{id:'mid-session',generation:2}});await settle();
  assert.equal(f.service.getSnapshot().timer?.choice,'book');
  assert.deepEqual(f.service.getSnapshot().timer?.occurrence,{sessionId:'mid-session',generation:2,itemId:'mid',playbackRun:1,queue:{queueId:'queue',entryId:'entry-2'}});
@@ -357,8 +359,8 @@ test('a misordered part, a new playback run or another native owner clears the b
  let entry='entry-1';
  const g=setup(t,{context:audiobookContext,queue:()=>({queueId:'queue',entryId:entry})});await settle();
  await g.service.setTimer('book');
- entry='entry-2';
  g.service.acceptAutomaticTransition({id:'next-session',itemId:'mid',presentation:{generation:1},queue:{queueId:'queue',entryId:'entry-2'}});
+ entry='entry-2';
  g.engine.update({itemId:'mid',session:{id:'next-session',generation:1}});
  assert.equal(g.service.getSnapshot().timer,null,'a part that is not the immediate next one is refused');
  const r=setup(t,{context:audiobookContext});await settle();
@@ -448,8 +450,19 @@ test('a part whose own listening context belongs to another book never carries t
  const context=(id:string)=>id==='last'?{...audiobookContext(id),bookId:'other-book'}:audiobookContext(id);
  const f=setup(t,{context,queue:()=>({queueId:'queue',entryId:entry})});await settle();
  await f.service.setTimer('book');
- entry='entry-2';
  f.service.acceptAutomaticTransition({id:'next-session',itemId:'last',presentation:{generation:1},queue:{queueId:'queue',entryId:'entry-2'}});
+ entry='entry-2';
  f.engine.update({itemId:'last',session:{id:'next-session',generation:1}});await settle();
  assert.equal(f.service.getSnapshot().timer,null,'the next part reported another book');
+});
+test('a queue occurrence that moved before acceptance cannot carry or revive the boundary',async t=>{
+ let entry='entry-1';
+ const f=setup(t,{context:audiobookContext,queue:()=>({queueId:'queue',entryId:entry})});await settle();
+ await f.service.setTimer('book');
+ // The engine's own current occurrence is no longer the one the timer captured, so the real
+ // sameOccurrence guard refuses the acceptance instead of carrying it.
+ entry='entry-2';
+ f.service.acceptAutomaticTransition({id:'next-session',itemId:'last',presentation:{generation:1},queue:{queueId:'queue',entryId:'entry-2'}});
+ f.engine.update({itemId:'last',session:{id:'next-session',generation:1}});
+ assert.equal(f.service.getSnapshot().timer,null,'a moved original occurrence is not an accepted handoff');
 });
