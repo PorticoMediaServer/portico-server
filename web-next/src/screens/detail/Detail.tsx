@@ -29,7 +29,8 @@ import {dependsOn, titlesWithPersonalState} from '@core/freshness-hub.ts';
 import {useFreshDocument} from '../../platform/freshness';
 import {TitleProse, TitleFactsLine} from '../../kit/title/TitleParts';
 import {TitlePeople, CreditLine, CreditNames} from './People';
-import {takeTitleArtworkClaim, useTitleArtworkClaim, useTitleCopyEntrance} from './title-artwork-motion';
+import {useTitleArtworkClaim, useTitleCopyEntrance} from './title-artwork-motion';
+import type {SourceArtClaim} from '../../kit/cards/source-art-transition';
 import motionStyles from './title-hero-motion.module.css';
 import {FileManagement} from './FileManagement';
 import {TitleTabs} from './TitleTabs';
@@ -41,15 +42,15 @@ import {PreplayChoices} from './PreplayChoices';
 import {StartRadioMenuItem} from './StartRadio';
 export {DetailLoading} from './Loading';
 
-export type DetailScreenProps = {binding: DetailBindings; itemId: string; libraryId?: string};
-export function DetailScreen({binding, itemId, libraryId}: DetailScreenProps) {
+export type DetailScreenProps = {binding: DetailBindings; itemId: string; libraryId?: string; artworkClaim?: SourceArtClaim};
+export function DetailScreen({binding, itemId, libraryId, artworkClaim}: DetailScreenProps) {
   const [failure, setFailure] = useState<unknown>(), [attempt, setAttempt] = useState(0);
   useEffect(() => { const request = new AbortController(); setFailure(undefined); void binding.select(libraryId ? {itemId, libraryId} : {itemId}, request.signal).catch(error => { if (!request.signal.aborted) setFailure(error); }); return () => { request.abort(); binding.cancel(); }; }, [binding, itemId, libraryId, attempt]);
-  return failure ? <ScreenProblem context={binding.context} error={failure} retry={() => setAttempt(value => value + 1)} /> : <TitleBody binding={binding} />;
+  return failure ? <ScreenProblem context={binding.context} error={failure} retry={() => setAttempt(value => value + 1)} /> : <TitleBody binding={binding} artworkClaim={artworkClaim} />;
 }
 
 /** Also mounted under the retained phone/tablet Watch surface. It owns no route or video. */
-export function TitleBody({binding, compact = false}: {binding: DetailBindings; compact?: boolean}) {
+export function TitleBody({binding, compact = false, artworkClaim}: {binding: DetailBindings; compact?: boolean; artworkClaim?: SourceArtClaim}) {
   const snapshot = useSyncExternalStore(binding.service.subscribe, binding.service.getSnapshot, binding.service.getSnapshot);
   useFreshDocument(() => [dependsOn.libraries, ...titlesWithPersonalState(binding.service.getSnapshot().target?.libraryId), dependsOn.event('stream.resync')], refresh => binding.service.revalidate(refresh), () => binding.service.getSnapshot().phase === 'ready');
   const preferences = useSyncExternalStore(binding.context.preferences.subscribe, binding.context.preferences.getSnapshot, binding.context.preferences.getSnapshot);
@@ -72,7 +73,7 @@ export function TitleBody({binding, compact = false}: {binding: DetailBindings; 
   const tabs = [{value: 'related', label: t('next.controls.moreLikeThis')}, {value: 'details', label: t('next.controls.details')}, ...(data.extras?.some(extra => extra.items.length) ? [{value: 'extras', label: t('next.controls.extras')}] : [])];
   return <article className={styles.page} data-compact={compact || undefined} data-title-id={data.scope.itemId}>
     {standalonePhone && !compact && <div className={styles.phoneTopBar}>{binding.context.effects.back && <Button variant="icon" icon="i-left" iconOnly aria-label={t('next.states.back')} onClick={() => runScreenCommand(binding.context, () => { binding.current(data); binding.context.effects.back?.(); })} />}</div>}
-    {!compact && <TitleHero binding={binding} data={data} showBackdrops={preferenceValue<boolean>(preferences, 'appearance.showBackdrops')} />}
+    {!compact && <TitleHero binding={binding} data={data} artworkClaim={artworkClaim} showBackdrops={preferenceValue<boolean>(preferences, 'appearance.showBackdrops')} />}
     {compact && <div className={styles.compactHeader}><h1>{data.item.title}</h1><TitleActions binding={binding} data={data} /></div>}
     <TitleTabs title={data.item.title} compact={compact} onBack={binding.context.effects.back ? () => runScreenCommand(binding.context, () => { binding.current(data); binding.context.effects.back?.(); }) : undefined} actions={!compact && <TitlePinnedActions binding={binding} data={data} />}><Tabs className={styles.tabStrip} aria-label={t('next.controls.details')} value={tab} onValueChange={value => runScreenCommand(binding.context, () => { binding.current(data); if (value === 'related' || value === 'details' || value === 'extras') binding.view.tab(value); })} items={tabs} /></TitleTabs>
     {snapshot.phase === 'error' && <ScreenFailure retry={() => { void binding.service.retry(); }} />}
@@ -84,12 +85,11 @@ export function TitleBody({binding, compact = false}: {binding: DetailBindings; 
   </article>;
 }
 
-function TitleHero({binding, data, showBackdrops}: {binding: DetailBindings; data: DetailProjection; showBackdrops: boolean}) {
+function TitleHero({binding, data, artworkClaim, showBackdrops}: {binding: DetailBindings; data: DetailProjection; artworkClaim?: SourceArtClaim; showBackdrops: boolean}) {
   const width = useShellWidth(), phone = width < 1024, {item, facts, metadata} = data, art = binding.context.artwork;
   const artworkRef = useRef<HTMLDivElement>(null), copyRef = useRef<HTMLDivElement>(null);
-  // One claim per committed title presentation; the route owner supplies its name.
-  const claim = useMemo(() => takeTitleArtworkClaim(), [item.id]);
-  useTitleArtworkClaim(artworkRef, claim, item.id);
+  // The route owner supplies the one claim; nothing is taken during render.
+  useTitleArtworkClaim(artworkRef, artworkClaim, item.id);
   useTitleCopyEntrance(copyRef, item.id);
   const directed = metadata.credits.filter(credit => credit.role.toLowerCase() === 'director');
   const starring = metadata.credits.filter(credit => credit.department.toLowerCase() === 'acting' || credit.role.toLowerCase() === 'cast').slice(0, 4);
