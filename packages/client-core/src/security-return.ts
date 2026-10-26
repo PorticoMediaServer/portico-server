@@ -66,7 +66,11 @@ export async function verifySecurityConfirmation(raw:unknown,pin:ServerPin,conte
  const signed=parseSecuritySigned(raw),bytes=routeBytes(signed.payload,undefined,6144),crypto=options.crypto??webRouteCrypto,now=options.now??Date.now();
  let value:unknown;try{value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}catch{throw invalid();}
  if(!object(value)||Object.keys(value).join(',')!=='kind,contextDigest,transactionId,codeDigest,issuedAt,expiresAt'||goJSON(value)!==new TextDecoder().decode(bytes)||value.kind!=='portico.security-return-confirm.v1'||value.transactionId!==returned.transactionId||typeof value.issuedAt!=='string'||typeof value.expiresAt!=='string'||!utc(value.issuedAt)||!utc(value.expiresAt))throw invalid();
+ const original=parseSecuritySigned(context),originalBytes=routeBytes(original.payload,undefined,6144);
+ let source:unknown;try{source=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(originalBytes));}catch{throw invalid();}
+ if(!object(source)||source.kind!=='portico.security-return-prepare.v1'||source.settingsScope!=='account'||source.settingsSection!=='profile'||typeof source.expiresAt!=='string'||typeof source.authorityExpiresAt!=='string'||!utc(source.expiresAt)||!utc(source.authorityExpiresAt))throw invalid();
  const issued=Date.parse(value.issuedAt),expires=Date.parse(value.expiresAt);
+ if(expires>Date.parse(source.expiresAt)||expires>Date.parse(source.authorityExpiresAt)||!await crypto.verify(routeBytes(pin.publicKey,32),routeBytes(original.signature,64),originalBytes))throw invalid();
  if(!Number.isSafeInteger(now)||issued>now+60000||expires<=now||expires<=issued||expires-issued>60000||value.contextDigest!==routeBase64(await crypto.sha256(routeBytes(context.payload,undefined,6144)))||value.codeDigest!==routeBase64(await crypto.sha256(new TextEncoder().encode(returned.code))))throw invalid();
  if(!await crypto.verify(routeBytes(pin.publicKey,32),routeBytes(signed.signature,64),bytes))throw invalid();
  return signed;
