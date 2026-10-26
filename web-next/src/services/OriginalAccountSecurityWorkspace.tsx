@@ -34,7 +34,7 @@ async function hostedReadView(proof: OriginalProviderSecurity, signal: AbortSign
     save: async () => ended(),
   });
   const client = new HostedAccountClient(original.hostedOrigin, 'browser', (path, method, body, input, token) => api.send(path, method, body, input, token));
-  await service.synchronize();signal.throwIfAborted();
+  await proof.withUIRead(() => service.synchronize(), signal);signal.throwIfAborted();
   return {api, service, client};
 }
 

@@ -33,9 +33,10 @@ export function ProviderSecurityStartDialog({account, identity, state, task, ena
   const close = async () => {
     const original = current.current;
     if (!original || !active(original) || original.busy) return;
+    const originalPage=location.href;
     original.busy = true;original.live = false;original.leaving = true; setBusy(true);setEmail('');
     if (original.record) await cancelOriginalAccountSecurity(original.record).catch(() => undefined);
-    if (current.current === original) onClose();
+    if (current.current === original && isCurrent() && location.href===originalPage) onClose();
   };
   const choose = async (providerId: string) => {
     const original = current.current;

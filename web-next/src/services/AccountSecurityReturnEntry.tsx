@@ -24,7 +24,7 @@ export function AccountSecurityReturnEntry({arrival}: {arrival: AccountSecurityE
   const [pending, setPending] = useState<AccountSecurityPending>(), [proof, setProof] = useState<OriginalProviderSecurity>();
   const [factor, setFactor] = useState(''), [busy, setBusy] = useState(true), [error, setError] = useState<unknown>();
   const [ordinary, setOrdinary] = useState<{identityTransaction?: string}>(), [ended, setEnded] = useState<{codes?: readonly string[]}>();
-  type Opening = {live: boolean; busy: boolean; closed?: boolean; retired?: boolean; handedOff?: boolean; abort: AbortController; record?: AccountSecurityPending; bridge?: HostedSecurityBridge; retryFactor?: string};
+  type Opening = {live: boolean; mounted: boolean; busy: boolean; closed?: boolean; retired?: boolean; cancelTicket?: symbol; handedOff?: boolean; abort: AbortController; record?: AccountSecurityPending; bridge?: HostedSecurityBridge; retryFactor?: string};
   const life = useRef<Opening | undefined>(undefined);
   const originalDestination = () => arrival.kind === 'server' ? '/settings?scope=account&section=profile' : '/account?tab=security';
   const back = () => location.assign(originalDestination());
@@ -49,7 +49,7 @@ export function AccountSecurityReturnEntry({arrival}: {arrival: AccountSecurityE
     } finally {original.busy = false; if (current(original)) setBusy(false);}
   };
   useLayoutEffect(() => {
-    const original: Opening = {live: true, busy: true, abort: new AbortController()}; life.current = original;
+    const original: Opening = {live: true, mounted: true, busy: true, abort: new AbortController()}; life.current = original;
     void (async () => {
       const signal = original.abort.signal, journal = browserSecurityJournal();
       if (arrival.kind === 'server') {
@@ -82,23 +82,31 @@ export function AccountSecurityReturnEntry({arrival}: {arrival: AccountSecurityE
         }
       }
     })().catch(value => {if (current(original)) {original.handedOff=false;setError(value);}}).finally(() => {original.busy = false; if (current(original)) setBusy(false);});
-    return () => {original.live = false; original.abort.abort(); if (!original.closed && !original.handedOff) {if (original.record) void cancelOriginalAccountSecurity(original.record).catch(()=>undefined); if (original.bridge) void cancelHostedSecurityBridge(original.bridge).catch(()=>undefined);} if (life.current === original) life.current = undefined;};
+    return () => {original.mounted = false;original.cancelTicket=undefined;original.live = false; original.abort.abort(); if (!original.closed && !original.handedOff) {if (original.record) void cancelOriginalAccountSecurity(original.record).catch(()=>undefined); if (original.bridge) void cancelHostedSecurityBridge(original.bridge).catch(()=>undefined);} if (life.current === original) life.current = undefined;};
   }, [arrival]);
   const cancel = async () => {
     const original = life.current;
     if (!original || !original.live || life.current!==original || original.busy) return;
+    const ticket=Symbol('original account cancellation'), originalPage=location.href, destination=originalDestination();
+    original.cancelTicket=ticket;
+    const moved=()=>{original.cancelTicket=undefined;original.retired=true;};
+    addEventListener('popstate',moved);addEventListener('pagehide',moved);
     original.closed = true;original.busy = true;original.live = false; original.abort.abort(); setBusy(true);setFactor('');
-    if (original.record) await cancelOriginalAccountSecurity(original.record).catch(() => undefined);
-    if (original.bridge) await cancelHostedSecurityBridge(original.bridge).catch(() => undefined);
-    back();
+    try {
+      if (original.record) await cancelOriginalAccountSecurity(original.record).catch(() => undefined);
+      if (original.bridge) await cancelHostedSecurityBridge(original.bridge).catch(() => undefined);
+      // live=false/abort above deliberately retire the operation, not its page.
+      // Only this still-mounted close ticket can navigate that original page.
+      if(life.current===original&&original.mounted&&!original.retired&&original.cancelTicket===ticket&&location.href===originalPage)location.assign(destination);
+    } finally {removeEventListener('popstate',moved);removeEventListener('pagehide',moved);if(original.cancelTicket===ticket)original.cancelTicket=undefined;}
   };
+  const opening = life.current;
   if (ordinary) return <ServicesApp identityTransaction={ordinary.identityTransaction}/>;
   if (ended?.codes?.length) return <SignedOutRecoveryCodes codes={ended.codes} onDone={back}/>;
   if (ended) return <AccountSecurityReturnFrame title={t('auth.welcomeHome')} busy={false} onCancel={back}><ServicesNotice>{t('services.signin.ended')}</ServicesNotice></AccountSecurityReturnFrame>;
-  if (proof) return <OriginalAccountSecurityWorkspace proof={proof} onRetired={() => {const opening=life.current;if(!opening||opening.closed||opening.retired)return;opening.retired=true;opening.abort.abort();setProof(undefined);setPending(undefined);setBusy(false);setError(invalid());void proof.close().catch(()=>undefined);}}><HostedSecurityTask provider={proof} identity={{accountId: proof.original.session.account.id, familyId: proof.original.session.familyId!}} state={proof.original.state} task={proof.original.intent.purpose}
-    isCurrent={proof.current} onClose={() => {if(life.current)life.current.closed=true;back();}} onSecurityEnded={codes => {if(life.current)life.current.closed=true;setProof(undefined); setEnded({...(codes ? {codes: Object.freeze([...codes])} : {})});}}/></OriginalAccountSecurityWorkspace>;
+  if (proof) return <OriginalAccountSecurityWorkspace proof={proof} onRetired={() => {if(!opening||life.current!==opening||!opening.mounted||opening.retired)return;opening.retired=true;opening.cancelTicket=undefined;opening.abort.abort();setProof(undefined);setPending(undefined);setBusy(false);setError(invalid());if(!opening.closed)void proof.close().catch(()=>undefined);}}><HostedSecurityTask provider={proof} identity={{accountId: proof.original.session.account.id, familyId: proof.original.session.familyId!}} state={proof.original.state} task={proof.original.intent.purpose}
+    isCurrent={proof.current} onClose={() => {if(!opening||life.current!==opening||!opening.mounted||!opening.live||opening.retired||!proof.acceptsUIURL(location.href))return;opening.closed=true;back();}} onSecurityEnded={codes => {if(!opening||life.current!==opening||!opening.mounted||opening.retired)return;opening.closed=true;setProof(undefined); setEnded({...(codes ? {codes: Object.freeze([...codes])} : {})});}}/></OriginalAccountSecurityWorkspace>;
   const needsFactor = pending?.original.state.mfaEnabled === true;
-  const opening = life.current;
   return <AccountSecurityReturnFrame title={pending ? credentialTaskTitle(pending.original.intent.purpose) : t('web.claim.loading')} error={error} busy={busy} onCancel={() => void cancel()}
     onContinue={pending ? () => {const original = life.current; if (original && current(original) && !original.busy) void complete(original, pending, factor);} : undefined}
     continueLabel={opening?.retryFactor !== undefined ? t('next.states.tryAgain') : t('action.continue')} continueDisabled={needsFactor && !opening?.retryFactor && !factor.trim()}>

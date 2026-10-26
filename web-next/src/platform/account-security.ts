@@ -45,7 +45,9 @@ async function originalServer(pending: AccountSecurityPending, signal?: AbortSig
     const {message, request} = accountSecurityRequest(input, init, pageOrigin, Boolean(beforeRead));
     if (signal) request.signal = request.signal ? AbortSignal.any([signal, request.signal]) : signal;
     if (beforeRead) await beforeRead();signal?.throwIfAborted();
-    return (environment.fetcher ?? fetch)(message, request);
+    const response = await (environment.fetcher ?? fetch)(message, request);
+    if (beforeRead) await beforeRead();signal?.throwIfAborted();
+    return response;
   };
   const restored = await restoreExactNativeSession({...environment, fetcher: scopedFetch, discover: undefined, storage: {
     read: async () => {
@@ -166,21 +168,36 @@ export class OriginalProviderSecurity {
   }
   /** The original page may read its existing authority while its credential
    * dialog is open. This never renews, persists, or authorizes a mutation. */
-  async withUIRead<T>(work: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  private async assertUIOriginal(signal?: AbortSignal) {
     if (!this.current()) ended();checkDeadline(this.original);signal?.throwIfAborted();
     await this.journal.assertOriginal(this.pending);
     if (this.original.server) {
       const expected = this.original.server, selected = await browserAppSessions().read();
-      const record = selected.servers.find(v => v.connection.pin.serverId === expected.pin.serverId)?.connection;
-      if (selected.revision !== expected.revision || selected.selectedServerId !== expected.pin.serverId || !record || record.selectionId !== expected.selectionId || record.session.accessToken !== expected.session.accessToken || record.session.tokenGeneration !== expected.session.tokenGeneration) ended();
+      const entry = selected.servers.find(v => v.connection.pin.serverId === expected.pin.serverId), record = entry?.connection;
+      if (selected.revision !== expected.revision || selected.selectedServerId !== expected.pin.serverId || entry?.signIn !== 'portico' || !record || record.selectionId !== expected.selectionId || record.pendingRefresh || record.hosted?.origin !== this.original.hostedOrigin || record.hosted.accountId !== this.original.session.account.id || record.pin.publicKey !== expected.pin.publicKey || record.pin.fingerprint !== expected.pin.fingerprint || record.session.accessToken !== expected.session.accessToken || record.session.tokenGeneration !== expected.session.tokenGeneration || record.session.sessionFamilyId !== expected.session.sessionFamilyId || JSON.stringify(record.session.viewer) !== JSON.stringify(expected.session.viewer) || record.session.expiresAt !== expected.session.expiresAt || record.session.authorizationHorizon !== expected.session.authorizationHorizon) ended();
     }
     if (!this.current()) ended();checkDeadline(this.original);signal?.throwIfAborted();
-    return work();
+  }
+  async withUIRead<T>(work: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    await this.assertUIOriginal(signal);
+    const result = await work();
+    await this.assertUIOriginal(signal);
+    return result;
   }
   async openServerUI(signal: AbortSignal) {
     if (!this.original.server) ended();
     await this.assertOriginal(signal);
     const api = await originalServer(this.pending, signal, () => this.withUIRead(async () => undefined, signal));
+    const read = api.request.bind(api);
+    // Check after the complete JSON/body read too, not only after fetch headers.
+    // This API belongs only to the readonly original workspace; credential ACKs
+    // use the independent mutation client and are never post-filtered here.
+    api.request = <T>(path: string, method = 'GET', body?: unknown, input?: AbortSignal): Promise<T> => {
+      const capturedBody = body === undefined ? undefined : JSON.parse(JSON.stringify(body));
+      const scoped = input ? AbortSignal.any([signal, input]) : signal;
+      return this.withUIRead(() => read<T>(path, method, capturedBody, scoped), scoped);
+    };
+    try {await this.assertUIOriginal(signal);} catch (error) {api.getRouteConnection()?.dispose();throw error;}
     return {api, session: this.original.server.session};
   }
   async withToken<T>(work: (token: string) => Promise<T>, signal?: AbortSignal): Promise<T> {

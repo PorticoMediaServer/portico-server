@@ -135,7 +135,19 @@ function SecurityTask({account, provider, identity, state, task, onClose, onSecu
   const assertCurrent = () => {if (!current()) throw new DOMException('Account security opening ended', 'AbortError');};
   const codes = result?.recoveryCodes, confirm = result?.challengeId;
   const edit = (write:(value:string)=>void,value:string) => {if(current()&&!flight?.pending)write(value);};
-  const close = () => {if(!flight||life.current!==flight||flight.controller.signal.aborted||flight.pending)return;setPassword('');setFactor('');setValue('');setCode('');setResult(undefined);if(provider){setBusy(true);void provider.close().catch(()=>undefined).finally(onClose);}else onClose();};
+  const close = () => {
+    if(!flight||life.current!==flight||flight.controller.signal.aborted||flight.pending)return;
+    const originalFlight=flight, originalPage=location.href;
+    setPassword('');setFactor('');setValue('');setCode('');setResult(undefined);
+    if(provider){
+      originalFlight.pending=true;setBusy(true);
+      void provider.close().catch(()=>undefined).finally(()=>{
+        // close deliberately retires proof.live. The mounted original flight
+        // and its fixed UI page still have to own this completion callback.
+        if(life.current===originalFlight&&!originalFlight.controller.signal.aborted&&location.href===originalPage&&provider.acceptsUIURL(originalPage))onClose();
+      });
+    }else onClose();
+  };
   const title = t(codes ? 'web.hostedSecurity.newCodesTitle' : confirm ? task === 'mfa_enroll' ? 'web.hostedSecurity.addToAuthenticator' : 'web.hostedSecurity.checkEmail' : task === 'password_set_or_change' ? provider ? 'account.setPassword' : 'account.changePasswordTitle' : task === 'email_change' ? 'web.hostedSecurity.changeEmailTitle' : task === 'mfa_disable' ? 'web.twoStep.turnOffConfirmTitle' : task === 'mfa_enroll' ? 'web.twoStep.turnOnTitle' : 'web.hostedSecurity.newCodesTitle');
   const submit = async () => {
     if (!flight || !current() || flight.pending) return;
