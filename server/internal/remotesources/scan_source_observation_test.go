@@ -59,7 +59,9 @@ func TestScanProducerCurrentJobPolicyRootAndABAFences(t *testing.T) {
 			case "generation":
 				_, err = writer.Tx().Exec(`UPDATE remote_sources SET generation=2`)
 			case "profile":
-				_, err = writer.Tx().Exec(`INSERT INTO remote_source_read_profiles VALUES('remote',1,'file_list_only',0,1,2,0)`)
+				// The consent column postdates this fixture; list its original columns so
+				// the row keeps its stored default rather than shifting positionally.
+				_, err = writer.Tx().Exec(`INSERT INTO remote_source_read_profiles(source_id,revision,scan_depth,whole_file_reads,connections,requests_per_second,bytes_per_second) VALUES('remote',1,'file_list_only',0,1,2,0)`)
 			case "library_policy":
 				_, err = writer.Tx().Exec(`UPDATE library_scan_policies SET revision=revision+1`)
 			}
