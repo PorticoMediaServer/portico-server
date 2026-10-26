@@ -80,12 +80,13 @@ export function useTitleCopyEntrance(node: HTMLElement | null, titleKey: string,
   const active = useRef(new Map<HTMLElement, Animation>());
   const played = useRef(new WeakSet<HTMLElement>());
   const effective = titleMotionReduced(reduced);
-  const start = (frames: readonly Readonly<{element: HTMLElement; from: Readonly<{opacity: number; transform: string}>}>[], timing: ReturnType<typeof titleCopyTiming>) => {
+  const start = (frames: readonly Readonly<{element: HTMLElement; from: Readonly<{opacity: number; transform: string}>; fresh: boolean}>[], timing: ReturnType<typeof titleCopyTiming>) => {
     for (const [index, frame] of frames.entries()) {
       if (!frame.element.animate) continue;
-      const from = timing.risePx > 0
-        ? {opacity: frame.from.opacity, transform: frame.from.transform === 'none' ? `translateY(${timing.risePx}px)` : frame.from.transform}
-        : {opacity: frame.from.opacity};
+      // Only a genuinely fresh child gets the initial rise; an owned frame keeps
+      // its sampled transform verbatim, including none.
+      const transform = timing.risePx > 0 && frame.fresh && frame.from.transform === 'none' ? `translateY(${timing.risePx}px)` : frame.from.transform;
+      const from = timing.risePx > 0 ? {opacity: frame.from.opacity, transform} : {opacity: frame.from.opacity};
       const to = timing.risePx > 0 ? {opacity: 1, transform: 'none'} : {opacity: 1};
       const animation = frame.element.animate([from, to], {
         duration: timing.duration, delay: timing.risePx > 0 ? timing.staggerMs * index : 0, easing: timing.easing, fill: 'backwards'
@@ -107,7 +108,7 @@ export function useTitleCopyEntrance(node: HTMLElement | null, titleKey: string,
     for (const element of active.current.keys()) interrupted.set(element, painted(element));
     for (const animation of active.current.values()) animation.cancel();
     active.current.clear();
-    start(children.map(element => ({element, from: interrupted.get(element) ?? {opacity: 0, transform: 'none'}})),
+    start(children.map(element => ({element, fresh: !interrupted.has(element), from: interrupted.get(element) ?? {opacity: 0, transform: 'none'}})),
       titleCopyTiming(effective));
   }, [node, titleKey]);
   const lastEffective = useRef(effective);
@@ -121,7 +122,7 @@ export function useTitleCopyEntrance(node: HTMLElement | null, titleKey: string,
     }
     const owned = Array.from(active.current.keys());
     if (!owned.length) return; // settled entries keep their played identity
-    const frames = owned.map(element => ({element, from: painted(element)}));
+    const frames = owned.map(element => ({element, fresh: false, from: painted(element)}));
     for (const animation of active.current.values()) animation.cancel();
     active.current.clear();
     start(frames, titleCopyTiming(effective));
