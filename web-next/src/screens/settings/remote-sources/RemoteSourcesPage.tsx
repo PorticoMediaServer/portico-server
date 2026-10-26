@@ -232,6 +232,8 @@ const libraryKinds: readonly {id: LibraryKind; icon: IconName; label: MessageId;
   {id: 'comic', icon: 'i-page', label: 'next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.6.label', hint: 'next.settingsSpec.server.libraries.panels.newLibrary.tabs.0.groups.0.rows.1.control.options.6.hint'},
 ];
 const SIX_HOURS = 21_600;
+/** Google's own console, opened by the owner; Portico never navigates there itself. */
+const DRIVE_CONSOLE = 'https://console.cloud.google.com';
 
 type AddSourceProps = Readonly<{
   service: RemoteSourceService; api: LibraryContentApi; serverId: string; viewerId: string; open: boolean;
@@ -980,8 +982,10 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
         </div>
         {driveMode === 'service' ? <>
           <p className={styles.note}>{t('next.remoteSources.driveServiceAccountHint')}</p>
+          <a className={styles.consoleLink} href={DRIVE_CONSOLE} target="_blank" rel="noopener noreferrer">{t('next.remoteSources.driveConsole')}</a>
         </> : <>
           <p className={styles.note}>{t('next.remoteSources.driveOAuthHint')}</p>
+          <a className={styles.consoleLink} href={DRIVE_CONSOLE} target="_blank" rel="noopener noreferrer">{t('next.remoteSources.driveConsole')}</a>
           <TextField label={t('next.remoteSources.driveClientId')} value={oauthClientId} maxLength={512} disabled={busy}
             autoCapitalize="off" spellCheck={false} className={styles.monoInput} onChange={event => updateOAuthClient({clientId: event.target.value})}/>
           <TextField label={t('next.remoteSources.driveClientSecret')} type="password" value={oauthClientSecret} maxLength={2048} disabled={busy} onChange={event => updateOAuthClient({clientSecret: event.target.value})}/>
@@ -991,6 +995,8 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
             {oauthPhase === 'ready' && <span className={styles.testCard} data-tone="good"><Icon name="i-check" size={18}/>{t('next.remoteSources.driveOAuthReady')}</span>}
             {oauthPhase === 'expired' && <span className={styles.note} role="status">{t('next.remoteSources.driveOAuthExpired')}</span>}
           </div>
+          {oauthPhase === 'denied' && <p className={styles.error} role="alert">{t('next.remoteSources.driveOAuthDenied')}</p>}
+          <p className={styles.note}>{t('next.remoteSources.driveOAuthTestingNote')}</p>
           {oauthPhase === 'waiting' && <>
             <TextField label={t('next.remoteSources.driveOAuthPaste')} value={oauthAddress} maxLength={8192} disabled={busy}
               autoCapitalize="off" spellCheck={false} className={styles.monoInput} onChange={event => updatePasteAddress(event.target.value)}/>
@@ -1011,7 +1017,9 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
             onChange={event => {const file = event.target.files?.[0];void readKeyFile(file);event.target.value = '';}}/>
         </div>
         {!drive.keyJson.trim() ? <p className={styles.note}>{t('next.remoteSources.driveKeyEmptyHint')}</p>
-          : !driveResult.ok ? <p className={styles.error} role="alert">{t(driveReason(driveResult.reason))}</p>
+          : !driveResult.ok ? <div className={styles.testRow}><p className={styles.error} role="alert">{t(driveReason(driveResult.reason))}</p>
+            {driveResult.reason === 'oauth' && <Button size="xs" variant="glass" disabled={busy}
+              onClick={() => {retireOAuth(oauthRenderTicket);invalidateDrive();setDriveTested(undefined);setDriveMode('oauth');}}>{t('next.remoteSources.driveOAuth')}</Button>}</div>
             : <div className={styles.testCard} data-tone="good"><Icon name="i-check" size={18}/><span>{driveResult.draft.email}</span>
                 <Button size="xs" variant="text" onClick={() => copyEmail(driveResult.draft.email)}>{t('next.remoteSources.driveCopy')}</Button></div>}
         {driveResult.ok && <p className={styles.note}>{t('next.remoteSources.driveEmailHeading')} {t('next.remoteSources.driveEmailHelp')}</p>}

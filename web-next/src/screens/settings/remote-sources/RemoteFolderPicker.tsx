@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useRef, useState} from 'react';
+import {useCallback, useEffect, useId, useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import type {RemoteFolder, RemoteFolderPage, RemoteSourceService} from '@core/remote-sources.ts';
 import {Button, Switch, TextField} from '../../../kit/controls';
@@ -25,6 +25,9 @@ export function RemoteFolderPicker({service, sourceId, sourceName, open, onOpenC
   const [showHidden, setShowHidden] = useState(false);
   const [chosen, setChosen] = useState<readonly RemoteFolder[]>([]);
   const request = useRef<AbortController | undefined>(undefined);
+  // Completion offers only the folders this page already listed: no extra read,
+  // no guess at a path the storage has not shown.
+  const pathsId = useId();
   const read = useCallback(async (relative?: string, hidden = showHidden, cursor?: string) => {
     request.current?.abort();
     const active = new AbortController();
@@ -113,6 +116,7 @@ export function RemoteFolderPicker({service, sourceId, sourceName, open, onOpenC
       </div>
       {!failed && <p className={styles.explorerNote}><Icon name="i-info" size={18}/>{t('next.remoteSources.foldersNote')}</p>}
       <TextField label={t('next.remoteSources.folderPath')} value={typed} disabled={busy} autoCapitalize="off" spellCheck={false}
+        list={pathsId} autoComplete="off"
         className={styles.monoInput} onChange={event => setTyped(event.currentTarget.value)}
         onKeyDown={event => {
           if (event.key === 'Enter' && !event.nativeEvent.isComposing && !busy) {
@@ -120,6 +124,7 @@ export function RemoteFolderPicker({service, sourceId, sourceName, open, onOpenC
             void read(cleanPath(typed) || undefined, showHidden);
           }
         }}/>
+      <datalist id={pathsId}>{page?.entries.map(entry => <option key={entry.relative} value={entry.relative}/>)}</datalist>
       {failed && <div className={styles.explorerError} role="alert"><Icon name="i-warn" size={20}/>
         <div><b>{t('next.remoteSources.folderListFailedTitle', {name: folderName})}</b>
           <p>{t('next.remoteSources.folderListFailedHelp')}</p>

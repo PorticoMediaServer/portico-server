@@ -227,3 +227,5 @@
   .folderPhoneChosen .chosenList { margin: 0; justify-content: flex-start; }
   .folderPickerBodyPhone .explorer { flex: 1; min-height: 0; overflow: auto; padding: 0 14px calc(14px + env(safe-area-inset-bottom)); }
 }
+
+.consoleLink { align-self: flex-start; color: var(--color-accent); font-size: var(--type-caption-size); text-decoration: underline; }
