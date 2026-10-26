@@ -13,6 +13,7 @@ import {AuthCodeBoxes} from '../../../kit/accounts';
 import {HostedError, ServicesQuiet} from '../../../kit/accounts/ServicesAuth';
 import {ServicesAuthenticator, ServicesRecoveryCodes} from '../../../kit/accounts/ServicesWorkspace';
 import {servicesAccount, accountIdentity, currentAccountWork, sameAccount, type AccountIdentity, type ServicesAccount} from '../../../services/session';
+import {useOriginalAccountSecurity} from '../../../platform/account-security-context';
 import {ProviderSecurityStartDialog} from '../../../services/ProviderSecurityStartDialog';
 import {HostedSecurityTask, type HostedSecurityTaskKind} from '../../../services/SecurityPanel';
 import type {ProfileSettingsSource} from './source';
@@ -38,6 +39,7 @@ const ended=()=>new DOMException('The original account security opening ended.',
 export function ProfileSignIn({profiles,api,commandApi,signIn,isCurrent,onEnded,onFacts}:{
   profiles:ProfileSettingsSource;api:ProfileAPI;commandApi:ProfileAPI;signIn:'local'|'portico';isCurrent:()=>boolean;onEnded:()=>void;onFacts?:(facts:ProfileSecurityFacts)=>void;
 }){
+ const providerReturn=useOriginalAccountSecurity();
  const document=useSyncExternalStore(profiles.subscribe,profiles.getSnapshot).document;
  const account=document?.account;
  const scope=document?.canManage&&document.capabilities.manageAccount&&account&&!account.disabled?
@@ -72,6 +74,11 @@ export function ProfileSignIn({profiles,api,commandApi,signIn,isCurrent,onEnded,
     const value=await new IdentityClient(api).twoFactor(abort.signal);
     if(held.current())setFactor(value);
    }else{
+    if(providerReturn){
+     const original=providerReturn.original;
+     if(!providerReturn.current()||!original.server||original.server.session.viewer.accountId!==expected.accountId||original.server.session.viewer.profileId!==expected.profileId||original.session.account.id!==expected.link)throw ended();
+     held.identity=Object.freeze({accountId:original.session.account.id,familyId:original.session.familyId!});setHostedState(original.state);return;
+    }
     // This branch alone touches Hosted. A local account performs zero Hosted IO.
     const hosted=servicesAccount();held.hosted=hosted;
     const result=await currentAccountWork(hosted,async session=>{
@@ -86,7 +93,7 @@ export function ProfileSignIn({profiles,api,commandApi,signIn,isCurrent,onEnded,
    }
   })().catch(failure=>{if(held.current())setError(failure);});
   return()=>{held.live=false;const intent=localIntentRef.current;if(intent?.owner===held){intent.live=false;intent.enrolPassword=undefined;localIntentRef.current=undefined;}if(hostedIntentRef.current?.owner===held)hostedIntentRef.current=undefined;abort.abort();if(active.current===held)active.current=undefined;};
- },[api,commandApi,profiles,scope,signIn,isCurrent,retry]);
+ },[api,commandApi,profiles,scope,signIn,isCurrent,retry,providerReturn]);
  const held=opening&&active.current===opening&&opening.current()?opening:undefined;
  const hostedCurrent=()=>{
   const identity=held?.identity,current=held?.hosted?.service.getSnapshot().session;
@@ -159,7 +166,7 @@ export function ProfileSignIn({profiles,api,commandApi,signIn,isCurrent,onEnded,
   {mfa&&<SettingsRow id="profile.recoveryCodes" dependent label={t('next.settingsSpec.account.profile.groups.5.rows.2.children.0.label')} help={remaining===undefined?undefined:t('web.hostedSecurity.codesLeft',{count:remaining})}>
    <HostedSecurityAction label={t('next.settingsSpec.account.profile.groups.5.rows.2.children.0.control.label')} disabled={!available||busy} onOpen={()=>open('codes')}/>
   </SettingsRow>}
-  {hostedState&&!hostedState.hasPassword&&<ServicesQuiet>{t('web.hostedSecurity.providerOnly')}</ServicesQuiet>}
+  {hostedState&&!hostedState.hasPassword&&<ServicesQuiet>{t(hostedState.providers.some(v=>v.revision)?'web.hostedSecurity.providerConfirm':'web.hostedSecurity.providerOnly')}</ServicesQuiet>}
   {held&&held.hosted&&held.identity&&hostedState&&!hostedState.hasPassword&&hostedTask&&hostedTask.current()&&<ProviderSecurityStartDialog key={hostedTask.id} account={held.hosted} identity={held.identity} state={hostedState} task={hostedTask.kind} isCurrent={hostedTask.current} server={{accountId:held.accountId,profileId:profiles.getSnapshot().inUseId??''}} onClose={()=>{if(hostedTask.current()){hostedIntentRef.current=undefined;setHostedTask(undefined);setRetry(value=>value+1);}}}/>}
   {held&&held.hosted&&held.identity&&hostedState&&hostedState.hasPassword&&hostedTask&&hostedTask.current()&&<HostedSecurityTask key={hostedTask.id} account={held.hosted} identity={held.identity} state={hostedState} task={hostedTask.kind} isCurrent={hostedTask.current}
    onClose={()=>{if(hostedTask.current()){hostedIntentRef.current=undefined;setHostedTask(undefined);setRetry(value=>value+1);}}}
