@@ -40,9 +40,6 @@ func (SourceReadSettings) JSONSchema() map[string]any {
 	properties["sourceId"].(map[string]any)["minLength"] = 1
 	properties["generation"].(map[string]any)["minLength"] = 1
 	properties["revision"].(map[string]any)["minimum"] = 0
-	values := (SourceReadValues{}).JSONSchema()
-	values["required"] = append(values["required"].([]string), "allowAdvancedMediaAnalysis")
-	properties["values"] = values
 	return schema
 }
 
