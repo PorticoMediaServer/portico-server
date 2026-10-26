@@ -9,6 +9,11 @@ import {NotFoundScreen} from './shell/NotFound';
 import {useShellBindings} from './shell/bindings';
 import {HomeScreen} from './screens/home/Home';
 import {librarySearch, searchQuery} from './shell/navigation';
+import {localDeviceHint} from './platform/local-device-entry';
+
+// Local approval links are hints, not grants. Scrub before Router parses/stores
+// the initial history entry; account return/Security paths are never captured.
+if (typeof location !== 'undefined' && typeof history !== 'undefined') localDeviceHint.capture(location, history);
 
 function BoundHome() { const binding = useShellBindings(); return binding ? <HomeScreen {...binding.home} /> : null; }
 
@@ -40,12 +45,19 @@ export const aboutRoute = createRoute({getParentRoute: () => rootRoute, componen
 export const helpRoute = createRoute({getParentRoute: () => rootRoute, component: screen('help'), path: '/help', validateSearch: screenSearch('help')});
 export const personRoute = createRoute({getParentRoute: () => rootRoute, component: screen('person'), path: '/person/$personId', validateSearch: screenSearch('person')});
 export const readRoute = createRoute({getParentRoute: () => rootRoute, component: screen('read'), path: '/read/$itemId', validateSearch: screenSearch('read')});
+export const deviceRoute = createRoute({getParentRoute: () => rootRoute, component: screen('device'), path: '/device', validateSearch: screenSearch('device'), beforeLoad: ({location: entry, preload}) => {
+  if (preload || !entry.hash) return;
+  const url = new URL(entry.href, window.location.origin);
+  if (url.origin !== window.location.origin) throw new Error('Invalid local device entry');
+  localDeviceHint.capture(url, history);
+  throw redirect({to: '/device', search: {}, hash: '', replace: true});
+}});
 // §31 uses this existing public web address. It is navigation, never proof.
 export const profileSettingsAliasRoute = createRoute({getParentRoute: () => rootRoute, path: profileSettingsAliasPath, beforeLoad: () => {
   browserEntryDestination.rememberProfileSettings();
   throw redirect({...profileSettingsDestination, replace: true});
 }});
-const destinations = [homeRoute, searchRoute, readingSearchRoute, librariesRoute, libraryRoute, liveRoute, savedRoute, itemRoute, homeRowRoute, playerRoute, settingsRoute, dashboardRoute, notificationsRoute, profilesRoute, serversRoute, accountRoute, setupRoute, signInRoute, accountReturnRoute, togetherRoute, helpRoute, aboutRoute, personRoute, readRoute, profileSettingsAliasRoute];
+const destinations = [homeRoute, searchRoute, readingSearchRoute, librariesRoute, libraryRoute, liveRoute, savedRoute, itemRoute, homeRowRoute, playerRoute, settingsRoute, dashboardRoute, notificationsRoute, profilesRoute, serversRoute, accountRoute, setupRoute, signInRoute, accountReturnRoute, togetherRoute, helpRoute, aboutRoute, personRoute, readRoute, deviceRoute, profileSettingsAliasRoute];
 const devRoutes = import.meta.env.DEV ? [createRoute({
   getParentRoute: () => rootRoute, path: '/dev/kit', validateSearch: gallerySearch,
   component: lazyRouteComponent(() => import('./dev/KitGallery'), 'KitGallery'),
