@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {PlaybackSessionController, SessionsClient, parseStartPreparation, type PreparingSessionView, type StartOptions, type Timers} from '../src/playback-v1/sessions.ts';
+import {PlaybackSessionController, SessionsClient, parseStartPreparation, type PreparingSessionView, type StartOptions, type StartPreparation, type Timers} from '../src/playback-v1/sessions.ts';
 import type {MediaPlayer, PlayerSource} from '../src/playback-v1/port.ts';
 import {ContractError} from '../src/playback-v1/types.ts';
 import {PlaybackApiError, type V1Http, type V1Request} from '../src/playback-v1/http.ts';
@@ -120,21 +120,28 @@ test('Root67 invalid timing cannot poison the budget or fall back to a header', 
   }
 });
 
-test('Root67 preparation keeps the existing finite 120000ms budget', async () => {
-  const c = clock(); let calls = 0;
-  const pending = new SessionsClient({send: async () => {calls++; return reply({retryAfterMs: 10_000});}}, c.timers)
-    .start({itemId: 'movie'}, {}, 'original_key_0000006');
-  const rejected = assert.rejects(pending, error => error instanceof PlaybackApiError && error.code === 'preparation_timeout');
-  for (let i = 0; i < 12; i++) {await settle(); c.fire();}
-  await rejected; assert.equal(calls, 13); assert.equal(c.jobs.size, 0);
+test('Root69 a valid 202 keeps retrying beyond the retired 120000ms client budget', async () => {
+  const c = clock(); let calls = 0; const notices: StartPreparation[] = [];
+  const pending = new SessionsClient({send: async () => {calls++; return calls <= 15 ? reply({retryAfterMs: 10_000}) : reply(real(), 201);}}, c.timers)
+    .start({itemId: 'movie'}, {}, 'original_key_0000006', {onPreparing: (_ms, notice) => {notices.push(notice);}});
+  for (let i = 0; i < 15; i++) {await settle(); assert.equal(c.jobs.size, 1); c.fire();}
+  const session = await pending;
+  assert.equal(session.id, 'original_session'); assert.equal(calls, 16); assert.equal(c.jobs.size, 0);
+  assert.equal(notices.length, 15);
+  for (const notice of notices) {assert.deepEqual(notice, {messageId: 'player.preparing.slowStart', retryAfterMs: 10_000}); assert.ok(Object.isFrozen(notice));}
 });
 
-test('Root67 slow I/O cannot renew the original preparation horizon', async () => {
-  const c = clock(); let calls = 0;
-  const http: V1Http = {send: async () => {calls++; c.jump(120_001); return reply({retryAfterMs: 500});}};
-  await assert.rejects(new SessionsClient(http, c.timers).start({itemId: 'movie'}, {}, 'original_key_0000007'),
-    error => error instanceof PlaybackApiError && error.code === 'preparation_timeout');
-  assert.equal(calls, 1); assert.equal(c.jobs.size, 0);
+test('Root69 slow I/O and repeated real 202s keep one original request until success', async () => {
+  const c = clock(); let calls = 0; const requests: V1Request[] = [];
+  const http: V1Http = {send: async request => {requests.push(request); calls++; c.jump(60_000); return calls <= 3 ? reply({...real(), retryAfterMs: 500}) : reply(real(), 201);}};
+  const pending = new SessionsClient(http, c.timers).start({itemId: 'movie'}, {}, 'original_key_0000007');
+  for (let i = 0; i < 3; i++) {await settle(); c.fire();}
+  const session = await pending;
+  assert.equal(session.id, 'original_session'); assert.equal(calls, 4); assert.equal(c.jobs.size, 0);
+  for (const request of requests) {
+    assert.equal(request, requests[0]); assert.equal(request.headers?.['Idempotency-Key'], 'original_key_0000007');
+    assert.deepEqual(request.body, {itemId: 'movie'});
+  }
 });
 
 test('Root67 capacity refusal is never preparation POST polling', async () => {
@@ -296,5 +303,130 @@ test('Root67 an opening retired during a real 201 reaches cleanup instead of ado
     assert.equal(await controller.start({itemId: 'movie'}, {}, undefined, {isCurrent: () => current}), undefined);
     assert.deepEqual(methods, ['POST', 'DELETE']); assert.equal(engine.loads.length, 0);
     assert.equal(controller.getSnapshot().session, undefined);
+  } finally {controller.dispose();}
+});
+
+test('Root69 a terminal reply is never replayed as preparation', async () => {
+  for (const status of [400, 404, 500]) {
+    const c = clock(); let calls = 0;
+    const http: V1Http = {send: async () => {calls++; return {status, headers: {}, body: {error: {code: 'terminal'}}};}};
+    await assert.rejects(new SessionsClient(http, c.timers).start({itemId: 'movie'}, {}, 'original_key_0000024'));
+    assert.equal(calls, 1, `status ${status}`); assert.equal(c.jobs.size, 0);
+  }
+});
+
+test('Root69 caller retirement during a past-budget wait clears its timer and sends nothing new', async () => {
+  const c = clock(), caller = new AbortController(); let calls = 0;
+  const pending = new SessionsClient({send: async () => {calls++; return reply({retryAfterMs: 10_000});}}, c.timers)
+    .start({itemId: 'movie'}, {}, 'original_key_0000025', {signal: caller.signal});
+  for (let i = 0; i < 13; i++) {await settle(); c.fire();}
+  await settle(); assert.equal(c.jobs.size, 1);
+  caller.abort(); await assert.rejects(pending, {name: 'AbortError'});
+  assert.equal(calls, 14); assert.equal(c.jobs.size, 0); assert.equal(c.cleared.length, 14);
+});
+
+test('Root69 ordinary item, channel and queue starts replay only their own original body', async () => {
+  const targets = [{itemId: 'movie'}, {channelId: 'channel'}, {queue: {queueId: 'queue', entryId: 'entry'}}];
+  for (const target of targets) {
+    const c = clock(), requests: V1Request[] = [];
+    const http: V1Http = {send: async request => {requests.push(request); return requests.length <= 2 ? reply({retryAfterMs: 1_000}) : reply(real(), 201);}};
+    const pending = new SessionsClient(http, c.timers).start(target, {}, 'original_key_0000026');
+    await settle(); c.fire(); await settle(); c.fire();
+    const session = await pending;
+    assert.equal(session.id, 'original_session'); assert.equal(requests.length, 3);
+    for (const request of requests) {assert.equal(request, requests[0]); assert.deepEqual(request.body, target);}
+  }
+});
+
+test('Root69 a real-session 202 past the old budget keeps one original ownership receipt', async () => {
+  const c = clock(); let calls = 0, captures = 0, abandoned = 0;
+  const http: V1Http = {send: async () => {calls++; return calls <= 13 ? reply({...real(), retryAfterMs: 10_000}) : reply(real(), 201);}};
+  const pending = new SessionsClient(http, c.timers).start({itemId: 'movie'}, {}, 'original_key_0000027',
+    {capturePreparing: held => {captures++; assert.equal(held.id, 'original_session'); return () => {abandoned++;};}});
+  for (let i = 0; i < 13; i++) {await settle(); c.fire();}
+  const session = await pending;
+  assert.equal(session.id, 'original_session'); assert.equal(calls, 14); assert.equal(captures, 1); assert.equal(abandoned, 0);
+});
+
+test('Root69 the controller exposes real preparation before any session exists', async () => {
+  const c = clock(), engine = player(); let calls = 0;
+  const controller = new PlaybackSessionController({timers: c.timers, player: engine.port, key: () => 'original_key_0000028',
+    http: {send: async () => ++calls === 1 ? reply({retryAfterMs: 500}) : reply(real(), 201)}});
+  try {
+    const pending = controller.start({itemId: 'movie'});
+    await settle();
+    let snapshot = controller.getSnapshot();
+    assert.equal(snapshot.phase, 'preparing');
+    assert.deepEqual(snapshot.preparation, {messageId: 'player.preparing.slowStart', retryAfterMs: 500});
+    assert.ok(Object.isFrozen(snapshot.preparation));
+    assert.equal(snapshot.session, undefined); assert.equal(engine.loads.length, 0);
+    c.fire(); await pending;
+    snapshot = controller.getSnapshot();
+    assert.equal(snapshot.phase, 'active'); assert.equal(snapshot.preparation, undefined);
+    assert.equal(engine.loads.length, 1);
+  } finally {controller.dispose();}
+});
+
+test('Root69 repeated accepted retries keep preparation current until a terminal reply clears it', async () => {
+  const c = clock(), engine = player(); let calls = 0;
+  const http: V1Http = {send: async () => ++calls === 1 ? reply({retryAfterMs: 500}) : calls === 2 ? reply({retryAfterMs: 2_000}) : {status: 400, headers: {}, body: {error: {code: 'terminal'}}}};
+  const controller = new PlaybackSessionController({timers: c.timers, player: engine.port, key: () => 'original_key_0000029', http});
+  try {
+    const pending = controller.start({itemId: 'movie'});
+    await settle();
+    assert.equal(controller.getSnapshot().preparation?.retryAfterMs, 500);
+    c.fire(); await settle();
+    assert.equal(controller.getSnapshot().preparation?.retryAfterMs, 2_000);
+    c.fire(); await assert.rejects(pending);
+    const snapshot = controller.getSnapshot();
+    assert.equal(snapshot.phase, 'error'); assert.equal(snapshot.preparation, undefined);
+  } finally {controller.dispose();}
+});
+
+test('Root69 detaching a waiting start clears its preparation', async () => {
+  const c = clock(), engine = player();
+  const controller = new PlaybackSessionController({timers: c.timers, player: engine.port, key: () => 'original_key_0000030',
+    http: {send: async () => reply({retryAfterMs: 500})}});
+  try {
+    const pending = controller.start({itemId: 'movie'});
+    await settle();
+    assert.equal(controller.getSnapshot().phase, 'preparing');
+    controller.detach();
+    assert.equal(controller.getSnapshot().phase, 'idle');
+    assert.equal(controller.getSnapshot().preparation, undefined);
+    c.fire(); await assert.rejects(pending, {name: 'AbortError'});
+    assert.equal(controller.getSnapshot().phase, 'idle'); assert.equal(controller.getSnapshot().preparation, undefined);
+  } finally {controller.dispose();}
+});
+
+test('Root69 a retired older start cannot publish preparation over its successor', async () => {
+  const c = clock(), engine = player(); let calls = 0;
+  const controller = new PlaybackSessionController({timers: c.timers, player: engine.port, key: () => `original_key_00000${31 + calls}`,
+    http: {send: async request => {calls++; const itemId = (request.body as {itemId: string}).itemId;
+      return itemId === 'old' ? reply({retryAfterMs: 500}) : reply({...real(), itemId: 'new'}, 201);}}});
+  try {
+    const oldStart = controller.start({itemId: 'old'});
+    await settle();
+    assert.equal(controller.getSnapshot().preparation?.retryAfterMs, 500);
+    await controller.start({itemId: 'new'});
+    assert.equal(controller.getSnapshot().session?.itemId, 'new');
+    assert.equal(controller.getSnapshot().preparation, undefined);
+    c.fire();
+    await assert.rejects(oldStart, {name: 'AbortError'});
+    assert.equal(controller.getSnapshot().session?.itemId, 'new');
+    assert.equal(controller.getSnapshot().preparation, undefined);
+  } finally {controller.dispose();}
+});
+
+test('Root69 the controller forwards each preparation notice to its original caller', async () => {
+  const c = clock(), engine = player(); let calls = 0; const waits: number[] = [], notices: StartPreparation[] = [];
+  const controller = new PlaybackSessionController({timers: c.timers, player: engine.port, key: () => 'original_key_0000032',
+    http: {send: async () => ++calls === 1 ? reply({retryAfterMs: 500}) : reply(real(), 201)}});
+  try {
+    const pending = controller.start({itemId: 'movie'}, {}, undefined, {onPreparing: (wait, notice) => {waits.push(wait); notices.push(notice);}});
+    await settle(); c.fire(); await pending;
+    assert.deepEqual(waits, [500]);
+    assert.deepEqual(notices, [{messageId: 'player.preparing.slowStart', retryAfterMs: 500}]);
+    assert.ok(Object.isFrozen(notices[0]));
   } finally {controller.dispose();}
 });
