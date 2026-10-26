@@ -9,6 +9,7 @@ export * from './SettingsRows';
 export * from './SettingsWorkspace';
 export * from './search';
 export * from './SettingsAction';
+export * from './MemberResetCodeSheet';
 export * from './SettingsGrid';
 export * from './SettingsHours';
 export * from './SettingsPageFailure';

@@ -16094,6 +16094,16 @@ export const settingsSpec: readonly SettingsSection[] = [
   }
 ];
 
+/** Held descriptor shape for the authored People Sign-in reset action (auth19/21).
+ * It is deliberately not inserted into settingsSpec yet: the current People action
+ * renderer maps an unrecognised action row to bulk disable/enable. Placement is the
+ * first row of the person Account tab's Sign-in group, before Turn off account. */
+export const personMemberResetCodeRow: SettingsRow = Object.freeze({
+  id: 'people.resetCode', scope: 'account', key: 'account.reset_code',
+  label: 'next.settings.people.resetCode',
+  control: Object.freeze({type: 'action', style: 'glass', label: 'next.settings.people.resetCode'}),
+});
+
 export type SettingsRowLocation = Readonly<{section: SettingsSection; row: SettingsRow; group: SettingsGroup; advanced: boolean; ancestors: readonly SettingsRow[]; panelId?: string; tabId?: string}>;
 /** One index for rendering, links and search; panel rows never leak into page groups. */
 export function indexSettingsSpec(sections: readonly SettingsSection[] = settingsSpec): ReadonlyMap<string, SettingsRowLocation> {
