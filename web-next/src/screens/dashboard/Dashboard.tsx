@@ -16,6 +16,7 @@ import type {ChartSeries} from './Chart';
 import {Chart} from './Chart';
 import {SessionCard} from './SessionCard';
 import {PhoneHealth} from './PhoneHealth';
+import {DashboardQuiet} from './DashboardQuiet';
 import {Analytics} from './Analytics';
 import {useDashboardReport, type DashboardReportController} from './use-report';
 import {readNowPlaying} from './pages';
@@ -157,6 +158,7 @@ const alertDestinations: Record<string, {section: string; label: MessageId}> = {
 };
 type StatusState = ReadState<DashboardStatus> & {refresh: () => void};
 function Status({bindings: b, status, phone = false}: {bindings: DashboardBindings; status: StatusState; phone?: boolean}) {
+  const quiet = !status.loading && !status.failed && !!status.value && status.value.alerts.length === 0;
   const alerts = status.value?.alerts.filter(alert => alertCopy[alert.code] && (alert.code !== 'update_available' || !!alert.params.latest) && (alert.code !== 'upload_budget_exhausted' || alert.count !== undefined)) ?? [];
   const [busy, setBusy] = useState<string | undefined>();
   const retry = async (alert: DashboardAlert) => {if (!b.effects.retryCertificate || busy) return; setBusy(alert.code); try {await b.effects.retryCertificate(); if (b.isCurrent()) status.refresh();} catch (error) {b.effects.reportError(error);} finally {setBusy(undefined);}};
@@ -167,7 +169,7 @@ function Status({bindings: b, status, phone = false}: {bindings: DashboardBindin
   if (phone) return <>{status.loading || status.failed || !!status.value ? <div data-dashboard-section="updates">
     <Section phone title={t('next.dashboard.alerts')} extra={alerts.length ? <span>{defaultI18n.number(alerts.length)}</span> : undefined}>
       <ReadFeedback height={56} openHome={b.effects.openHome} state={status} />
-      {!!status.value && !alerts.length && <div className={styles.phoneCalm}><span className={styles.phoneCalmLead} data-good><Icon name="i-check" size={18} /></span><b>{t('web.overview.noAlerts')}</b></div>}
+      {quiet && <DashboardQuiet kind="alerts" phone />}
       {!!alerts.length && <div className={styles.phoneAlerts}>{alerts.map((alert, index) => {
         const update = alert.action.kind === 'update', destination = alertDestinations[alert.action.kind] ?? {section: 'troubleshooting', label: 'next.dashboard.troubleshooting' as const}, text = t(alertCopy[alert.code], {version: alert.params.latest ?? '', count: alert.count ?? 0});
         const severity = alert.severity.toLowerCase(), severityKey = ['warning', 'critical', 'error', 'info', 'notice'].includes(severity) ? severity : 'info';
@@ -178,7 +180,7 @@ function Status({bindings: b, status, phone = false}: {bindings: DashboardBindin
         </article>;
       })}</div>}
     </Section></div> : null}</>;
-  return <>{(status.loading || status.failed || !!alerts.length) && <div data-dashboard-section="updates"><ReadFeedback height={56} openHome={b.effects.openHome} state={status} />{!!alerts.length && <section className={styles.alerts} aria-label={t('next.dashboard.alerts')}>{alerts.map((alert, index) => {
+  return <>{(status.loading || status.failed || !!alerts.length || quiet) && <div data-dashboard-section="updates">{quiet && <Section title={t('next.dashboard.alerts')}><DashboardQuiet kind="alerts" /></Section>}<ReadFeedback height={56} openHome={b.effects.openHome} state={status} />{!!alerts.length && <section className={styles.alerts} aria-label={t('next.dashboard.alerts')}>{alerts.map((alert, index) => {
     const update = alert.action.kind === 'update', destination = alertDestinations[alert.action.kind] ?? {section: 'troubleshooting', label: 'next.dashboard.troubleshooting' as const}, text = t(alertCopy[alert.code], {version: alert.params.latest ?? '', count: alert.count ?? 0});
     return <div className={styles.alert} key={`${alert.code}-${index}`} data-major={alert.major || undefined}><span className={styles.alertIcon} data-info={update || undefined}><Icon name={update ? 'i-arrow-up' : 'i-alert'} size={18} /></span><b>{text}</b>{alert.params.reason && <span>{alert.params.reason}</span>}{alert.params.subject && <span>{alert.params.subject}</span>}
       {action(alert, update, destination)}
@@ -188,9 +190,13 @@ function Status({bindings: b, status, phone = false}: {bindings: DashboardBindin
 }
 
 function Tasks({status, phone = false}: {status: StatusState; phone?: boolean}) {
+  const quiet = !status.loading && !status.failed && !!status.value && status.value.scans.length === 0
+    && status.value.tasks.items.length === 0 && status.value.tasks.count === 0;
   const tasks = status.value?.tasks.items.filter(task => task.state === 'running' && defaultI18n.has(`server.job.${task.kind}`)) ?? [];
-  if (!tasks.length && !status.value?.scans.length) return phone
-    ? <Section phone title={t('next.dashboard.backgroundActivity')}><p className={styles.phoneQuietLine}>{t('next.dashboard.nothingRunning')}</p></Section>
+  if (!tasks.length && !status.value?.scans.length) return quiet
+    ? phone
+      ? <Section phone title={t('next.dashboard.backgroundActivity')}><p className={styles.phoneQuietLine}><DashboardQuiet kind="tasks" phone /></p></Section>
+      : <Section title={t('next.dashboard.backgroundActivity')} extra={<DashboardQuiet kind="tasks" />}><></></Section>
     : null;
   if (phone) {
     const scan = (scan: NonNullable<StatusState['value']>['scans'][number]) => {
