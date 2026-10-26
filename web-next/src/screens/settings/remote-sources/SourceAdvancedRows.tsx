@@ -2,6 +2,9 @@ import {defaultI18n} from '@i18n';
 import type {SourceAdvanced} from '@core/remote-sources.ts';
 import {RichSelect, Switch} from '../../../kit/controls';
 import {SettingNumber} from '../../../kit/settings';
+import type {ReactNode} from 'react';
+import type {SourceChoiceField} from '@core/remote-source-choice.ts';
+import markerStyles from './source-advanced-markers.module.css';
 import styles from './remote-sources.module.css';
 
 const t = defaultI18n.t;
@@ -13,11 +16,33 @@ const formatBytes = (bytes: number) => bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 
  * stages that run only under the source's own advanced-analysis consent, which
  * the single consent control above already states in its canonical words. Rows
  * the server cannot honour are not drawn. */
-export function SourceAdvancedRows({values, cacheSupported, transportSupported, cacheApplied, cacheError, cacheUsedBytes, observedInterval, disabled, onChange}: Readonly<{
+export type SourceAdvancedMarkers = Readonly<{
+  /** Only fields the current projection publishes, intersected with the controls this group draws. */
+  applicable: readonly SourceChoiceField[]; changed: readonly SourceChoiceField[];
+  /** The caller-formatted baseline (preset) value for that field, from the owner's coherent pair;
+   *  absent draws no line. This is not read from the live form. */
+  value: (field: SourceChoiceField) => string | undefined;
+  onReset?: (field: SourceChoiceField) => void;
+}>;
+export function SourceAdvancedRows({values, cacheSupported, transportSupported, cacheApplied, cacheError, cacheUsedBytes, observedInterval, disabled, onChange, markers}: Readonly<{
   values: SourceAdvanced; cacheSupported: boolean; transportSupported: boolean; cacheApplied: boolean; cacheError?: string;
   cacheUsedBytes?: number; observedInterval: number; disabled: boolean; onChange: (values: SourceAdvanced) => void;
+  /** Absent keeps today's rows exactly: same controls, visibility and layout. */
+  markers?: SourceAdvancedMarkers;
 }>) {
   const set = <K extends keyof SourceAdvanced,>(key: K, value: SourceAdvanced[K]) => onChange({...values, [key]: value});
+  /** A marked row is the same node, wrapped only when markers exist. No control ring is drawn:
+   *  no single control element is proved for these rows, so the tint, bar and preset line stand
+   *  alone rather than a guessed descendant selector. */
+  const row = (field: SourceChoiceField, node: ReactNode) => {
+    if (!markers) return node;
+    if (!markers.applicable.includes(field)) return null;
+    const isChanged = markers.changed.includes(field), preset = isChanged ? markers.value(field) : undefined;
+    return <div key={field} className={markerStyles.row} data-changed={isChanged || undefined}>{node}
+      {isChanged && preset !== undefined && <span className={markerStyles.preset}><span>{t('next.remoteSources.presetValue', {value: preset})}</span>
+        {markers.onReset && <button type="button" className={markerStyles.reset} disabled={disabled} onClick={() => markers.onReset?.(field)}>{t('action.reset')}</button>}</span>}
+    </div>;
+  };
   const intervals = [
     {value: '900', label: 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.0.control.options.0.label'},
     {value: '3600', label: 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.0.control.options.1.label'},
@@ -50,22 +75,22 @@ export function SourceAdvancedRows({values, cacheSupported, transportSupported, 
   ];
   return <>
     <p className={styles.advTitle}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.title')}</p>
-    <RichSelect disabled={disabled} aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.0.label')}
+    {row('scanIntervalSeconds', <RichSelect disabled={disabled} aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.0.label')}
       value={intervalValue}
       options={intervalOptions}
-      onValueChange={value => set('scanIntervalSeconds', Number(value))}/>
+      onValueChange={value => set('scanIntervalSeconds', Number(value))}/>)}
     {observedUnknown && <p className={styles.note}>{t('next.remoteSources.advObservedHelp')}</p>}
-    <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.1.label')}<small className={styles.note}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.1.help')}</small></span>
-      <Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.1.label')} checked={values.watchForChanges} disabled={disabled} onCheckedChange={value => set('watchForChanges', value)}/></label>
-    <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.2.label')}<small className={styles.note}>{t('next.remoteSources.advStartHint')}</small></span>
-      <Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.2.label')} checked={values.scanOnStart} disabled={disabled} onCheckedChange={value => set('scanOnStart', value)}/></label>
-    <RichSelect disabled={disabled} aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.3.label')}
+    {row('watchForChanges', <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.1.label')}<small className={styles.note}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.1.help')}</small></span>
+      <Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.1.label')} checked={values.watchForChanges} disabled={disabled} onCheckedChange={value => set('watchForChanges', value)}/></label>)}
+    {row('scanOnStart', <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.2.label')}<small className={styles.note}>{t('next.remoteSources.advStartHint')}</small></span>
+      <Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.2.label')} checked={values.scanOnStart} disabled={disabled} onCheckedChange={value => set('scanOnStart', value)}/></label>)}
+    {row('fullRecheckDays', <RichSelect disabled={disabled} aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.3.label')}
       value={String(values.fullRecheckDays)}
       options={fullRechecks.map(option => ({value: option.value, label: t(option.label), description: t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.3.help')}))}
-      onValueChange={value => set('fullRecheckDays', Number(value))}/>
+      onValueChange={value => set('fullRecheckDays', Number(value))}/>)}
 
-    <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.4.label')}<small className={styles.note}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.4.help')}</small></span>
-      <Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.4.label')} checked={values.doubleCheckFolders} disabled={disabled} onCheckedChange={value => set('doubleCheckFolders', value)}/></label>
+    {row('doubleCheckFolders', <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.4.label')}<small className={styles.note}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.4.help')}</small></span>
+      <Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.4.label')} checked={values.doubleCheckFolders} disabled={disabled} onCheckedChange={value => set('doubleCheckFolders', value)}/></label>)}
 
     <p className={styles.advTitle}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.title')}</p>
     <div className={styles.runSkip} role="group" aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.label')}>
@@ -80,28 +105,29 @@ export function SourceAdvancedRows({values, cacheSupported, transportSupported, 
         ['waveforms', 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.2.label', 'Waveforms'],
         ['loudness', 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.3.label', 'Loudness'],
         ['checksums', 'next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.items.4.label', 'Checksums and fingerprints'],
-      ] as const).map(([key, label, name]) => <div key={key} className={styles.runSkipRow}>
+      ] as const).map(([key, label, name]) => row(key, <div key={key} className={[styles.runSkipRow,
+        markers?.applicable.includes(key) && markers.changed.includes(key) ? markerStyles.analysisChanged : undefined].filter(Boolean).join(' ')}>
         <span>{t(label)}</span>
         <button type="button" role="radio" aria-checked={values[key]} aria-label={`${name}: ${t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.columns.0.label')}`}
           className={styles.runSkipChoice} data-picked={values[key] || undefined} disabled={disabled} onClick={() => set(key, true)}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.columns.0.label')}</button>
         <button type="button" role="radio" aria-checked={!values[key]} aria-label={`${name}: ${t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.columns.1.label')}`}
           className={styles.runSkipChoice} data-picked={!values[key] || undefined} disabled={disabled} onClick={() => set(key, false)}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.control.columns.1.label')}</button>
-      </div>)}
+      </div>))}
     </div>
-    <RichSelect disabled={disabled} aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.3.label')}
+    {row('introsMode', <RichSelect disabled={disabled} aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.3.label')}
       value={values.introsMode} options={introsOptions.map(option => ({value: option.value, label: t(option.label), description: t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.3.help')}))}
-      onValueChange={value => set('introsMode', value as SourceAdvanced['introsMode'])}/>
+      onValueChange={value => set('introsMode', value as SourceAdvanced['introsMode'])}/>)}
 
     {cacheSupported && <>
       <p className={styles.advTitle}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.2.title')}</p>
-      <RichSelect disabled={disabled} aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.1.label')}
+      {row('cacheBytes', <RichSelect disabled={disabled} aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.1.label')}
         value={String(values.cacheBytes / (1024 * 1024 * 1024))}
         options={cacheSizes.map((size, index) => ({value: size, label: t(`next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.1.control.options.${index}.label` as never)}))}
-        onValueChange={value => set('cacheBytes', gb(value))}/>
-      <RichSelect disabled={disabled} aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.2.rows.0.label')}
+        onValueChange={value => set('cacheBytes', gb(value))}/>)}
+      {row('cacheFloorBytes', <RichSelect disabled={disabled} aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.2.rows.0.label')}
         value={String(values.cacheFloorBytes / (1024 * 1024 * 1024))}
         options={floors.map((size, index) => ({value: size, label: t(`next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.2.rows.0.control.options.${index}.label` as never)}))}
-        onValueChange={value => set('cacheFloorBytes', gb(value))}/>
+        onValueChange={value => set('cacheFloorBytes', gb(value))}/>)}
       {cacheUsedBytes !== undefined && <p className={styles.note} role="status">{t('next.remoteSources.advCacheUsed', {used: formatBytes(cacheUsedBytes)})}</p>}
       {!cacheApplied && <p className={styles.note} role="status">{t('next.remoteSources.advCachePending')}</p>}
       {cacheError && <p className={styles.error} role="alert">{t(cacheError === 'source_changed' ? 'next.remoteSources.advCacheChanged'
@@ -112,18 +138,18 @@ export function SourceAdvancedRows({values, cacheSupported, transportSupported, 
       <p className={styles.advTitle}>{t('next.remoteSources.advRcloneSettings')}</p>
       <p className={styles.note}>{t('next.remoteSources.advRcloneHelp')}</p>
       <div className={styles.transportGrid}>
-        <SettingNumber label={t('next.remoteSources.advKeepFolderLists')} value={Math.round(values.dirCacheSeconds / 60)} min={0} max={1440}
-          unit={t('next.remoteSources.advMinutesUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('dirCacheSeconds', Math.round(value) * 60);}}/>
-        <SettingNumber label={t('next.remoteSources.advReadBuffer')} value={Math.round(values.readBufferBytes / (1024 * 1024))} min={0} max={1024}
-          unit={t('next.remoteSources.advMegabytesUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('readBufferBytes', Math.round(value) * 1024 * 1024);}}/>
-        <SettingNumber label={t('next.remoteSources.advConnectTimeout')} value={values.connectTimeoutSeconds} min={0} max={600}
-          unit={t('next.remoteSources.advSecondsUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('connectTimeoutSeconds', Math.round(value));}}/>
-        <SettingNumber label={t('next.remoteSources.advIdleTimeout')} value={values.idleTimeoutSeconds} min={0} max={3600}
-          unit={t('next.remoteSources.advSecondsUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('idleTimeoutSeconds', Math.round(value));}}/>
-        <SettingNumber label={t('next.remoteSources.advRetries')} value={values.retries} min={0} max={10}
-          unit={t('next.remoteSources.advTimesUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('retries', Math.round(value));}}/>
-        <SettingNumber label={t('next.remoteSources.advLowRetries')} value={values.lowLevelRetries} min={0} max={10}
-          unit={t('next.remoteSources.advTimesUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('lowLevelRetries', Math.round(value));}}/>
+        {row('dirCacheSeconds', <SettingNumber label={t('next.remoteSources.advKeepFolderLists')} value={Math.round(values.dirCacheSeconds / 60)} min={0} max={1440}
+          unit={t('next.remoteSources.advMinutesUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('dirCacheSeconds', Math.round(value) * 60);}}/> )}
+        {row('readBufferBytes', <SettingNumber label={t('next.remoteSources.advReadBuffer')} value={Math.round(values.readBufferBytes / (1024 * 1024))} min={0} max={1024}
+          unit={t('next.remoteSources.advMegabytesUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('readBufferBytes', Math.round(value) * 1024 * 1024);}}/> )}
+        {row('connectTimeoutSeconds', <SettingNumber label={t('next.remoteSources.advConnectTimeout')} value={values.connectTimeoutSeconds} min={0} max={600}
+          unit={t('next.remoteSources.advSecondsUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('connectTimeoutSeconds', Math.round(value));}}/> )}
+        {row('idleTimeoutSeconds', <SettingNumber label={t('next.remoteSources.advIdleTimeout')} value={values.idleTimeoutSeconds} min={0} max={3600}
+          unit={t('next.remoteSources.advSecondsUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('idleTimeoutSeconds', Math.round(value));}}/> )}
+        {row('retries', <SettingNumber label={t('next.remoteSources.advRetries')} value={values.retries} min={0} max={10}
+          unit={t('next.remoteSources.advTimesUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('retries', Math.round(value));}}/> )}
+        {row('lowLevelRetries', <SettingNumber label={t('next.remoteSources.advLowRetries')} value={values.lowLevelRetries} min={0} max={10}
+          unit={t('next.remoteSources.advTimesUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('lowLevelRetries', Math.round(value));}}/> )}
       </div>
     </>}
   </>;
