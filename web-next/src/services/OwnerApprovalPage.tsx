@@ -1,4 +1,4 @@
-import {useEffect, useState, useSyncExternalStore, type ReactNode} from 'react';
+import {useEffect, useLayoutEffect, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {ApiError} from '@core/index.ts';
 import type {MessageId} from '@i18n';
 import {HostedError, ServicesActions, ServicesAuthStage, ServicesFacts, ServicesHeading, ServicesLead, ServicesNotice, ServicesQuiet} from '../kit/accounts/ServicesAuth';
@@ -73,7 +73,7 @@ export function OwnerApprovalPage({account, bootstrap}: {account: ServicesAccoun
   const [instance, setInstance] = useState<Instance>();
   const active = instance?.scope === scope ? instance : undefined, flow = active?.flow;
   const state = useSyncExternalStore(flow?.subscribe ?? noSubscription, flow?.getSnapshot ?? emptySnapshot);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!scope) return;
     let created: OwnerApprovalFlow | undefined;
     try {
