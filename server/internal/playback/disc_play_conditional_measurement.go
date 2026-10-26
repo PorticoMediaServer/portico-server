@@ -241,7 +241,7 @@ func discPlayPreparationContext(ctx context.Context) error {
 		return err
 	}
 	deadline, finite := ctx.Deadline()
-	if !finite || deadline.After(time.Now().Add(120*time.Second)) {
+	if !finite || deadline.After(time.Now().Add(playbackdisc.MaxPreparationLifetime)) {
 		return disc.ErrProtocol
 	}
 	return nil

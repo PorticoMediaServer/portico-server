@@ -234,6 +234,9 @@ func quiesceConditionalDiscInput(check context.Context, owner *conditionalDiscPi
 			return active.err
 		}
 	}
+	if err := checkSource(check); err != nil {
+		return err
+	}
 	actual, err := owner.object.Observe(check)
 	if err != nil {
 		owner.cancel()
