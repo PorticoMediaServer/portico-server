@@ -121,7 +121,7 @@ func namingFixture(t *testing.T, kind, relative string) namingFixture {
 // with no technical fact written and no byte of the image read.
 func TestCommitInventoryNamingPublishesRemoteDiscImageFromItsName(t *testing.T) {
 	f := namingFixture(t, "movie", "Heat (1995).iso")
-	if err := f.service.CommitInventoryNaming(context.Background(), f.job, f.object, f.revision, f.policy, assets.Facts{}); err != nil {
+	if err := f.service.CommitInventoryNaming(context.Background(), f.job, f.object, f.revision, f.policy, assets.Facts{ObservedSize: 734003200, ObservedModifiedNS: 1700000000000000000}); err != nil {
 		t.Fatal(err)
 	}
 	var title, kind string
@@ -177,7 +177,7 @@ func TestCommitInventoryNamingPublishesRemoteDiscImageFromItsName(t *testing.T) 
 // episode, still from naming alone.
 func TestCommitInventoryNamingFollowsTheLibraryKind(t *testing.T) {
 	f := namingFixture(t, "tv", "Show Name/Season 01/Show Name - s01e02 - Episode Title.iso")
-	if err := f.service.CommitInventoryNaming(context.Background(), f.job, f.object, f.revision, f.policy, assets.Facts{}); err != nil {
+	if err := f.service.CommitInventoryNaming(context.Background(), f.job, f.object, f.revision, f.policy, assets.Facts{ObservedSize: 734003200, ObservedModifiedNS: 1700000000000000000}); err != nil {
 		t.Fatal(err)
 	}
 	var show, episode string
@@ -204,15 +204,65 @@ func TestCommitInventoryNamingRefusesOtherObjects(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if err := f.service.CommitInventoryNaming(context.Background(), f.job, f.object, f.revision, f.policy, assets.Facts{}); err == nil {
+			if err := f.service.CommitInventoryNaming(context.Background(), f.job, f.object, f.revision, f.policy, assets.Facts{ObservedSize: 734003200, ObservedModifiedNS: 1700000000000000000}); err == nil {
 				t.Fatal("naming-only publication accepted an object it must refuse")
 			}
 		})
 	}
 	t.Run("ordinary file", func(t *testing.T) {
 		f := namingFixture(t, "movie", "Heat (1995).mkv")
-		if err := f.service.CommitInventoryNaming(context.Background(), f.job, f.object, f.revision, f.policy, assets.Facts{}); err == nil {
+		if err := f.service.CommitInventoryNaming(context.Background(), f.job, f.object, f.revision, f.policy, assets.Facts{ObservedSize: 734003200, ObservedModifiedNS: 1700000000000000000}); err == nil {
 			t.Fatal("naming-only publication accepted a non-disc file")
 		}
 	})
+}
+
+// (3) The naming commit reproves the accepted queue invocation and the exact
+// observation it read, so it can never publish an unqueued, changed or
+// unavailable object.
+func TestCommitInventoryNamingReprovesQueueAndObservation(t *testing.T) {
+	observed := assets.Facts{ObservedSize: 734003200, ObservedModifiedNS: 1700000000000000000}
+	cases := []struct {
+		name   string
+		break_ func(t *testing.T, f namingFixture)
+		facts  assets.Facts
+	}{
+		{"missing queue row", func(t *testing.T, f namingFixture) {
+			if _, err := f.db.Exec(`DELETE FROM inventory_analysis_queue WHERE job_id=? AND object_id=?`, f.job, f.object); err != nil {
+				t.Fatal(err)
+			}
+		}, observed},
+		{"queue no longer pending", func(t *testing.T, f namingFixture) {
+			if _, err := f.db.Exec(`UPDATE inventory_analysis_queue SET state='done' WHERE job_id=? AND object_id=?`, f.job, f.object); err != nil {
+				t.Fatal(err)
+			}
+		}, observed},
+		{"changed observation", func(t *testing.T, f namingFixture) {}, assets.Facts{ObservedSize: 1, ObservedModifiedNS: 1700000000000000000}},
+		{"unsupported reason", func(t *testing.T, f namingFixture) {
+			if _, err := f.db.Exec(`UPDATE inventory_objects SET unsupported_reason='unsupported_remote_disc' WHERE id=?`, f.object); err != nil {
+				t.Fatal(err)
+			}
+		}, observed},
+		{"unavailable asset", func(t *testing.T, f namingFixture) {
+			if _, err := f.db.Exec(`UPDATE catalog_assets SET available=0 WHERE token='naming-asset'`); err != nil {
+				t.Fatal(err)
+			}
+		}, observed},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := namingFixture(t, "movie", "Heat (1995).iso")
+			tc.break_(t, f)
+			if err := f.service.CommitInventoryNaming(context.Background(), f.job, f.object, f.revision, f.policy, tc.facts); err == nil {
+				t.Fatal("naming-only publication accepted an unqueued, changed or unavailable object")
+			}
+			var linked int
+			if err := f.db.QueryRow(`SELECT count(*) FROM catalog_asset_links`).Scan(&linked); err != nil {
+				t.Fatal(err)
+			}
+			if linked != 0 {
+				t.Fatal("a refused naming publication still linked a title")
+			}
+		})
+	}
 }

@@ -284,7 +284,7 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 		if !supported {
 			continue
 		}
-		// Root64: a remote disc image is an ordinary film for discovery. A scan
+		// Root64: a remote disc image is an ordinary title for discovery. A scan
 		// reads nothing from it and the naming-only analysis publishes it from its
 		// name, so it is no longer tagged as an unsupported remote disc. Folders
 		// that carry a disc layout keep their explicit reason above.
@@ -1015,10 +1015,27 @@ func (s *Service) CommitInventoryNaming(ctx context.Context, job, object, revisi
 	if policy.Revision != policyRevision {
 		return context.Canceled
 	}
-	var asset, relative string
-	err = tx.QueryRowContext(ctx, `SELECT asset_id,relative_path FROM inventory_objects WHERE id=? AND source_id=? AND revision=? AND retired=0 AND state='available'`, object, source.ID, revision).Scan(&asset, &relative)
-	if err != nil {
+	// Never become an unqueued or unavailable naming publisher: the exact
+	// accepted queue invocation, the current observation and live availability
+	// must still hold in the transaction that publishes.
+	var queued int
+	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM inventory_analysis_queue WHERE job_id=? AND object_id=? AND revision=? AND policy_revision=? AND state='pending'`, job, object, revision, policyRevision).Scan(&queued); err != nil {
 		return err
+	}
+	if queued != 1 {
+		return context.Canceled
+	}
+	var asset, relative, incarnation, unsupported, objectState string
+	var size, modified int64
+	var available int
+	if err = tx.QueryRowContext(ctx, `SELECT o.asset_id,o.relative_path,o.size,o.modified_ns,o.root_incarnation,o.unsupported_reason,o.state,a.available FROM inventory_objects o JOIN catalog_assets a ON a.token=o.asset_id WHERE o.id=? AND o.source_id=? AND o.revision=? AND o.retired=0`, object, source.ID, revision).Scan(&asset, &relative, &size, &modified, &incarnation, &unsupported, &objectState, &available); err != nil {
+		return err
+	}
+	if objectState != "available" || available != 1 || unsupported != "" || incarnation != source.Incarnation {
+		return errors.New("naming-only publication needs a live, observed, supported object")
+	}
+	if f.ObservedSize != size || f.ObservedModifiedNS != modified {
+		return errors.New("naming-only publication needs the exact observation it read")
 	}
 	if !assets.DiscImage(relative) {
 		return errors.New("naming-only publication is for a disc image")
