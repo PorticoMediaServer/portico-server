@@ -37,7 +37,7 @@ function fixture(reduced = false, start: 0 | 1 = 0) {
   const owner = new VideoGestureOwner({current: () => current, nodes, expanded: () => expanded, reduced: () => quiet, state: (preview, active) => {states.push(active);}, commit: next => {actions.push(next);expanded = next;return true;}});
   const jobs = () => [surface, screen, bar, chrome].flatMap(node => node.jobs).filter(job => !job.cancelled);
   return {owner, screen, full, surface, bar, dock, picture, chrome, actions, states, jobs, nodes,
-    retire: () => {current = false;}, reduce: () => {quiet = true;owner.motionChanged();}, resumeCount: () => resumed,
+    retire: () => {current = false;}, allow: () => {current = true;}, reduce: () => {quiet = true;owner.motionChanged();}, resumeCount: () => resumed,
     replacePort: () => {paint = {...paint};}, expandElsewhere: () => {expanded = !expanded;}, acknowledge: () => owner.committed(expanded)};
 }
 async function finish(jobs: Job[]) {jobs.forEach(job => job.done());await Promise.all(jobs.map(job => job.finished));await Promise.resolve();await Promise.resolve();}
@@ -121,4 +121,10 @@ test('turning on quiet motion cancels the old spring jobs and cannot renew their
   assert.ok(springs.every(job => job.cancelled));const fades = f.jobs();assert.ok(fades.every(job => Number(job.options.duration) <= 80));
   assert.ok(fades.every(job => job.frames.every(frame => !('transform' in frame))));
   await finish(springs);assert.deepEqual(f.actions, []);f.owner.dispose();
+});
+
+test('a temporary presentation gate cancels old paint but can admit a fresh same-source pointer', async () => {
+  const f = fixture();drag(f, 0, 0, 300);const held = f.jobs();f.retire();f.owner.cancel();f.allow();
+  assert.equal(f.owner.begin(pointer(0, 9, 2000), html(f.picture), 0), true);
+  await finish(held);assert.deepEqual(f.actions, []);f.owner.dispose();
 });

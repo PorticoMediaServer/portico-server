@@ -298,7 +298,8 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   </>;
   const stillWatching = surfaces?.modal === 'still-watching';
   useLayoutEffect(() => {gestureGate.current = valid && mobile && !panel && !externalPanel && !more && !shortcuts
-    && !liveGuideOpen && !scrubDrag.current && !stillWatching && !presentation?.finished && snapshot.playback.phase !== 'error';});
+    && !liveGuideOpen && !scrubDrag.current && !stillWatching && !presentation?.finished && snapshot.playback.phase !== 'error';
+    if (!gestureGate.current) videoGesture?.port?.cancel();});
   useLayoutEffect(() => videoGesture?.admit(() => gestureGate.current), [videoGesture?.admit, binding, sourceKey]);
 
   const promptSource = useMemo<Omit<PromptFocusHost, 'source' | 'seekPresent' | 'focusAllowed' | 'controlsVisible'> | undefined>(() => {

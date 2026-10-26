@@ -20,9 +20,9 @@ export function useVideoGesture(binding: WatchBindings | undefined, snapshot: We
     if (!ready || !binding || !fence || !snapshot || !localCurrent()) return;
     const runtime = binding.runtime, original = snapshot;
     let owner: VideoGestureOwner;
-    const current = () => {
+    const scopeCurrent = () => {
       try {
-      if (holder.current !== owner || !localCurrent() || !gate.current() || document.fullscreenElement || document.pictureInPictureElement) return false;
+      if (holder.current !== owner || !localCurrent() || document.fullscreenElement || document.pictureInPictureElement) return false;
       const live = runtime.getSnapshot();
       return !live.disposed && live.authority === authority && !!live.fence && fenceKey(live.fence) === fenceKey(fence)
         && live.playback.intentId === original.playback.intentId && live.playback.playbackRun === original.playback.playbackRun
@@ -30,13 +30,14 @@ export function useVideoGesture(binding: WatchBindings | undefined, snapshot: We
         && !!live.presentation && fenceKey(live.presentation.fence) === fenceKey(fence);
       } catch {return false;}
     };
+    const current = () => scopeCurrent() && gate.current();
     owner = new VideoGestureOwner({current, nodes: () => paint.current && dock.current && full.current && screen.current && bar.current
       ? {surface: paint.current, dock: dock.current, full: full.current, screen: screen.current, bar: bar.current,
         copies: [...screen.current.querySelectorAll<HTMLElement>('[data-video-gesture-copy]')]} : undefined,
       reduced: () => reduction.current || document.documentElement.dataset.reduceMotion === 'true' || document.body.dataset.reduceMotion === 'true'
         || !!screen.current?.closest('[data-reduce-motion="true"]') || matchMedia('(prefers-reduced-motion: reduce)').matches,
       expanded: () => !!runtime.getSnapshot().dock.local?.expanded,
-      state: (preview, active) => {if (holder.current === owner) setPublished(value => value?.owner === owner ? {...value, preview, active} : value);},
+      state: (preview, active) => {if (holder.current === owner) setPublished(value => value?.owner === owner && (value.preview !== preview || value.active !== active) ? {...value, preview, active} : value);},
       commit: expanded => {
         if (!current()) return false;
         try {
@@ -45,7 +46,7 @@ export function useVideoGesture(binding: WatchBindings | undefined, snapshot: We
         } catch (error) {if (current()) binding.reportError(error);return false;}
       }});
     holder.current = owner;setPublished({owner, binding, key, preview: false, active: false});
-    const changed = () => {if (!current()) owner.dispose();};
+    const changed = () => {if (!scopeCurrent()) owner.dispose();else if (!gate.current()) owner.cancel();};
     const off = runtime.subscribe(changed);
     const layout = () => owner.cancel();window.addEventListener('resize', layout);window.addEventListener('scroll', layout, true);
     return () => {off();window.removeEventListener('resize', layout);window.removeEventListener('scroll', layout, true);owner.dispose();if (holder.current === owner) holder.current = undefined;};
