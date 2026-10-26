@@ -187,7 +187,7 @@ func (a *privateSubtitleAcceptance) AcceptTx(ctx context.Context, tx *sql.Tx, pl
 	if err = a.CheckTx(ctx, tx); err != nil {
 		return err
 	}
-	r.state, r.request, r.presentation, r.mediaGeneration, r.position, r.startPosition, r.bandwidth, r.updated = state, string(request), string(presentation), plan.Generation, r.generation, position, view.StartPositionMs, bandwidth, now.UnixMilli()
+	r.state, r.request, r.presentation, r.mediaGeneration, r.position, r.startPosition, r.bandwidth, r.updated = state, string(request), string(presentation), plan.Generation, position, view.StartPositionMs, bandwidth, now.UnixMilli()
 	r.revision++
 	if err = a.service.sessionEventsTx(ctx, tx, r, now, false); err != nil {
 		return err

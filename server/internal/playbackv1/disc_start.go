@@ -201,10 +201,17 @@ func (s *Service) discStartCheck(c Caller, key, body string, base row, asset, ca
 			}
 		}
 		admit := ctx
+		pendingMedia := ""
+		if !own {
+			pendingMedia, err = s.Playback.PendingDiscPlayMediaTx(ctx, tx, candidate)
+			if err != nil {
+				return err
+			}
+		}
 		if own {
 			admit = WithReplan(ctx, candidate, "")
-		} else if replaces != "" {
-			admit = WithReplan(ctx, replaces, "")
+		} else if replaces != "" || pendingMedia != "" {
+			admit = WithReplan(ctx, replaces, pendingMedia)
 		}
 		limit, e := c.Admit(admit, base.item)
 		if e != nil {
