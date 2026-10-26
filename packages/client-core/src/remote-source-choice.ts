@@ -30,7 +30,7 @@ export type SourceChoiceComparison=Readonly<{name:SourceChoiceName;definitionRev
 const record=(value:unknown):value is Record<string,unknown>=>typeof value==='object'&&value!==null&&!Array.isArray(value);
 const integer=(value:unknown,low=0):value is number=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=low;
 const generation=(value:unknown):value is string=>typeof value==='string'&&/^[1-9][0-9]{0,18}$/.test(value)&&value.length<=19;
-const bad=():never=>{throw new Error('Invalid remote source response.');};
+function bad(): never { throw new Error('Invalid remote source response.'); }
 const definitionReadingKeys=['scanDepth','wholeFileReads','connections','requestsPerSecond','bytesPerSecond'] as const;
 const advancedKeys=['scanIntervalSeconds','watchForChanges','scanOnStart','fullRecheckDays','cacheBytes','cacheFloorBytes','seekPreviews','chapterImages','waveforms','loudness','checksums','introsMode','doubleCheckFolders','dirCacheSeconds','readBufferBytes','connectTimeoutSeconds','idleTimeoutSeconds','retries','lowLevelRetries'] as const;
 const closed=new Set<string>(sourceChoiceFields);
