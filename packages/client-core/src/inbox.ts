@@ -11,7 +11,7 @@ import {randomId} from './random-id.ts';
  * and are put back if the server refuses them. */
 import {
  mergeNotifications,parseFeedbackCapabilities,parseFeedbackSubmission,parseNotificationBatchResult,parseNotificationInbox,parseNotificationSummary,
- type FeedbackCapabilities,type FeedbackSubmissionResult,type Notification,type NotificationAudience,type NotificationCounts,type NotificationDelta,
+ type FeedbackCapabilities,type FeedbackSubmissionResult,type Notification,type NotificationAudience,type NotificationCounts,type NotificationDelta,type NotificationInbox,
 } from './notifications.ts';
 import {serviceProblem,serviceText} from './presentation/service-text.ts';
 import type {MessageId} from '../../i18n/src/index.ts';
@@ -44,38 +44,47 @@ const data=(raw:unknown):unknown=>raw&&typeof raw==='object'&&'data' in (raw as 
 const message=(e:unknown,fallback:MessageId,context:'notifications'|'feedback'='notifications',operation:'load'|'save'|'action'='load')=>serviceProblem(e,context,fallback,operation);
 // A refusal the server stated is definite: it did not act, so nothing is waiting
 // on it. A 5xx, a timeout or a transport failure leaves the outcome unknown and
-// the write keeps the key it was sent with.
+// the write keeps its exact intent.
 const definiteRefusal=(e:unknown):boolean=>{
  const status=(e as {status?:unknown}|undefined)?.status;
  return typeof status==='number'&&[400,404,409,410,412,428,429].includes(status);
 };
+const conflict=(e:unknown):boolean=>(e as {status?:unknown}|undefined)?.status===409;
+// One write is one immutable intent: the audience and revision the page on
+// screen was read at, the exact operations, and the operation id the server's
+// receipt is stored under. Each dispatch of that intent carries its own token as
+// well, so a late answer from an older dispatch cannot settle a newer one.
+type InboxOperation=Readonly<{action:string;ids?:readonly string[]}>;
+type InboxIntent=Readonly<{operationId:string;expectedRevision:number;audience:NotificationAudience;operations:readonly InboxOperation[]}>;
+type InboxFlight=Readonly<{token:number;intent:InboxIntent;controller:AbortController;generation:number;audience:NotificationAudience;view:InboxView;page:string}>;
 
 export class InboxService{
  private api:InboxApi;private operationId:()=>string;
  private state:InboxSnapshot=Object.freeze<InboxSnapshot>({phase:'idle',audience:'profile',audiences:['profile'],view:'unread',items:[],counts:noCounts,unread:0,revision:0,more:false,busy:false});
  private listeners=new Set<()=>void>();private cursor='';private generation=0;private controller?:AbortController;private disposed=false;
  private unreadFlight?:Promise<number>;private unreadController?:AbortController;private unreadDirty=false;private options:InboxServiceOptions;
- // One write intent at a time, with the exact body and key it was sent under, so
- // a repeat after an unanswered attempt asks the server's receipt about the same
- // change instead of making a second one.
- private pending?:Readonly<{body:string;key:string}>;
+ // The one write this view owns. 'inflight' means its answer is still out and no
+ // other change is dispatched; 'unresolved' means the attempt ended without a
+ // definite answer and only the same change may resume it.
+ private flight?:Readonly<{flight:InboxFlight;phase:'inflight'|'unresolved'}>;
+ private writeToken=0;
  constructor(api:InboxApi,operationId:()=>string=()=>randomId(),options:InboxServiceOptions={}){this.api=api;this.operationId=operationId;this.options=options;}
  getSnapshot=()=>this.state;
  subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
  private publish(patch:Partial<InboxSnapshot>){if(this.disposed)return;this.state=Object.freeze({...this.state,...patch});this.listeners.forEach(f=>f());}
- dispose(){this.disposed=true;this.generation++;this.controller?.abort();this.unreadController?.abort();this.listeners.clear();this.pending=undefined;}
+ dispose(){this.disposed=true;this.generation++;this.controller?.abort();this.unreadController?.abort();this.retireFlight();this.listeners.clear();}
 
  /** Loads the first page of a view. What is on screen stays until the new page arrives. */
  async load(audience:NotificationAudience=this.state.audience,view:InboxView=this.state.view):Promise<void>{
+  // A load is a new page: any write claimed against the old one retires with it.
+  this.retireFlight();
   const generation=++this.generation;this.controller?.abort();const controller=this.controller=new AbortController();
   const same=audience===this.state.audience&&view===this.state.view;
   this.publish({phase:this.state.items.length&&same?'ready':'loading',audience,view,error:undefined,...(same?{}:{items:[],more:false})});
   try{
    const inbox=parseNotificationInbox(data(await this.api.request<RouteResponse<"get_notifications_inbox">>(routePath("get_notifications_inbox") + "?audience=" + (encodeURIComponent(audience)) + "&state=" + (view) + "&limit=50",'GET',undefined,controller.signal)));
    if(generation!==this.generation)return;
-   this.cursor=inbox.nextCursor;
-   const audiences=(inbox.audiences.filter(a=>a==='profile'||a==='account-admin') as NotificationAudience[]);
-   this.publish({phase:'ready',items:inbox.items,counts:inbox.counts,revision:inbox.revision,more:!!inbox.nextCursor,audiences:audiences.length?audiences:['profile']});
+   this.adopt(inbox);
    void this.refreshUnread();
   }catch(e){
    if(generation!==this.generation||controller.signal.aborted)return;
@@ -104,39 +113,109 @@ export class InboxService{
  }
  /** Optimistic: the row changes at once and is put back if the server refuses. */
  async apply(action:InboxAction,ids:readonly string[]):Promise<void>{
-  if(!ids.length)return;const before=this.state,chosen=new Set(ids),now=Date.now();
+  if(!ids.length)return;
+  // The write flight is claimed before the rows change, synchronously, so a
+  // listener woken by the optimistic patch cannot dispatch a second write.
+  const flight=this.begin([{action,ids:[...ids]}]);
+  if(!flight)return;
+  const before=this.state,chosen=new Set(ids),now=Date.now();
   const next=before.items.map(n=>!chosen.has(n.id)?n:action==='read'?{...n,read:true,readAt:n.readAt??now}:action==='unread'?{...n,read:false,readAt:null}:action==='archive'?{...n,archived:true,archivedAt:now}:{...n,archived:false,archivedAt:null});
   this.publish({items:this.visible(next),error:undefined});
-  await this.send([{action,ids:[...ids]}],before);
+  await this.dispatch(flight,before);
  }
  async readAll():Promise<void>{
+  const flight=this.begin([{action:'read-all'}]);
+  if(!flight)return;
   const before=this.state,now=Date.now();
   this.publish({items:this.visible(before.items.map(n=>n.read?n:{...n,read:true,readAt:now})),error:undefined});
-  await this.send([{action:'read-all'}],before);
+  await this.dispatch(flight,before);
  }
- private async send(operations:{action:string;ids?:string[]}[],before:InboxSnapshot){
-  const generation=this.generation;
-  // The revision the page on screen was read at fences this write, so a server
-  // that moved in between refuses it instead of applying it to a document the
-  // owner never saw. The refusal is shown; it is never replayed.
-  const intent={expectedRevision:before.revision,audience:before.audience,operations},serialized=JSON.stringify(intent);
-  // A repeat of the exact same change while its outcome is unknown is that
-  // attempt, not a second one: it keeps its operation id, so the server's stored
-  // receipt answers it.
-  const key=this.pending?.body===serialized?this.pending.key:this.operationId();
-  this.pending=Object.freeze({body:serialized,key});
+ /**
+  * Claims the view's one write flight. Undefined means nothing is sent: a
+  * dispatch is still out, or an unanswered attempt holds the document and this
+  * is a different change. The same change may resume that exact attempt.
+  */
+ private begin(operations:{action:string;ids?:string[]}[]):InboxFlight|undefined{
+  const held=this.flight;
+  // A dispatch still owns the next change; its own answer settles the rows it
+  // already drew, so repeats send nothing, whatever they would have changed.
+  if(held?.phase==='inflight')return undefined;
+  let intent:InboxIntent;
+  if(held){
+   // The unanswered attempt keeps its exact audience, revision, operations and
+   // operation id. Only that same change may resume it; a different action is
+   // refused rather than replacing what the server may already have applied.
+   if(JSON.stringify(held.flight.intent.operations)!==JSON.stringify(operations)){
+    this.publish({error:message(new Error('an inbox change is unresolved'),'notifications.error.change','notifications','save')});
+    return undefined;
+   }
+   intent=held.flight.intent;
+  }else{
+   const audience=this.state.audience;
+   intent=Object.freeze({operationId:this.operationId(),expectedRevision:this.state.revision,audience,
+    operations:Object.freeze(operations.map(operation=>Object.freeze(operation.ids?{action:operation.action,ids:Object.freeze([...operation.ids])}:{action:operation.action})))});
+  }
+  return this.launch(intent);
+ }
+ private launch(intent:InboxIntent):InboxFlight{
+  const controller=new AbortController();
+  const flight=Object.freeze({token:++this.writeToken,intent,controller,generation:this.generation,audience:this.state.audience,view:this.state.view,page:this.cursor});
+  this.flight=Object.freeze({flight,phase:'inflight'});
+  return flight;
+ }
+ /** True while this exact dispatch is still the view's one write. An older
+  * dispatch's late answer may settle nothing, not the rows nor a successor. */
+ private owns(token:number):boolean{return this.flight?.flight.token===token;}
+ /** The page the write was claimed against is still the page on screen. */
+ private current(flight:InboxFlight):boolean{
+  return !this.disposed&&this.generation===flight.generation&&this.state.audience===flight.audience&&this.state.view===flight.view&&this.cursor===flight.page;
+ }
+ private retireFlight(){
+  const held=this.flight;
+  this.flight=undefined;
+  held?.flight.controller.abort();
+ }
+ private async dispatch(flight:InboxFlight,before:InboxSnapshot):Promise<void>{
+  const {token,intent}=flight;
+  // The wire body is derived from the immutable intent alone: no later
+  // revision, audience or operations can be substituted into this dispatch.
+  const body={operationId:intent.operationId,expectedRevision:intent.expectedRevision,audience:intent.audience,
+   operations:intent.operations.map(operation=>({action:operation.action,...(operation.ids?{ids:[...operation.ids]}:{})}))};
   try{
-   const result=parseNotificationBatchResult(data(await this.api.request<RouteResponse<"post_notifications_inbox_actions">>(routePath("post_notifications_inbox_actions"),'POST',routeBody("post_notifications_inbox_actions", {operationId:key,...intent}))));
-   if(this.pending?.key===key)this.pending=undefined;
-   if(generation!==this.generation)return;
+   const result=parseNotificationBatchResult(data(await this.api.request<RouteResponse<"post_notifications_inbox_actions">>(routePath("post_notifications_inbox_actions"),'POST',routeBody("post_notifications_inbox_actions", body),flight.controller.signal)));
+   if(!this.owns(token))return;
+   this.flight=undefined;
+   if(!this.current(flight))return;
    this.publish({counts:result.counts,revision:result.revision});this.unreadDirty=true;void this.refreshUnread();
   }catch(e){
-   // A refusal is definite: the server did not act, so the intent is finished.
-   // An unanswered attempt keeps its key and body until the same change repeats.
-   if(definiteRefusal(e)&&this.pending?.key===key)this.pending=undefined;
-   if(generation!==this.generation)return;
-   this.publish({items:before.items,counts:before.counts,error:message(e,'notifications.error.change','notifications','save')});
+   if(!this.owns(token))return;
+   // A stated refusal is finished. An unanswered attempt stays unresolved with
+   // its original intent until the same change explicitly resumes it.
+   if(definiteRefusal(e))this.flight=undefined;
+   else this.flight=Object.freeze({flight,phase:'unresolved'});
+   if(!this.current(flight))return;
+   const notice=message(e,'notifications.error.change','notifications','save');
+   this.publish({items:before.items,counts:before.counts,error:notice});
+   // A revision conflict means the server moved: one fresh read keeps the page
+   // honest and keeps this copy visible. It never resends the change.
+   if(conflict(e))await this.reread(notice);
   }
+ }
+ /** One fresh first page after a conflict, with the conflict copy kept visible. */
+ private async reread(notice:string):Promise<void>{
+  const generation=++this.generation;this.controller?.abort();const controller=this.controller=new AbortController();
+  const {audience,view}=this.state;
+  try{
+   const inbox=parseNotificationInbox(data(await this.api.request<RouteResponse<"get_notifications_inbox">>(routePath("get_notifications_inbox") + "?audience=" + (encodeURIComponent(audience)) + "&state=" + (view) + "&limit=50",'GET',undefined,controller.signal)));
+   if(generation!==this.generation||controller.signal.aborted||this.disposed)return;
+   this.adopt(inbox,notice);
+   void this.refreshUnread();
+  }catch{/* the rows and the conflict copy stay as they are */}
+ }
+ private adopt(inbox:NotificationInbox,notice?:string){
+  this.cursor=inbox.nextCursor;
+  const audiences=(inbox.audiences.filter(a=>a==='profile'||a==='account-admin') as NotificationAudience[]);
+  this.publish({phase:'ready',items:inbox.items,counts:inbox.counts,revision:inbox.revision,more:!!inbox.nextCursor,audiences:audiences.length?audiences:['profile'],error:notice});
  }
  /** The badge. Failure leaves the last known number in place. */
  refreshUnread():Promise<number>{

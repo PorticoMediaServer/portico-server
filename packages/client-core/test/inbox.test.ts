@@ -27,6 +27,28 @@ function server(){
  return {api,calls,failWith:(e?:Error)=>{fail=e;},set:(next:any[])=>{items=next;}};
 }
 
+/** A stub whose POSTs can be held open, failed once, or answered at once, so a
+ * dispatch's lifetime is visible to the test. */
+function flightServer(){
+ const calls:{path:string;method:string;body?:any;signal?:AbortSignal}[]=[];
+ const posts:{resolve:(value:any)=>void;signal?:AbortSignal}[]=[];
+ let immediate:Error|undefined,defer=false,revision=7;
+ let items:any[]=[notification(),notification({id:'n-2',cursor:'4'})];
+ const api={request:<T,>(path:string,method='GET',body?:unknown,signal?:AbortSignal):Promise<T>=>{
+  calls.push({path,method,body,signal});
+  if(path.startsWith('/v1/notifications/unread-count'))return Promise.resolve({data:{revision,audience:'profile',counts:counts(items.length),observedAt:at(2)}} as T);
+  if(path.startsWith('/v1/notifications/inbox/actions')){
+   if(immediate){const failure=immediate;immediate=undefined;return Promise.reject(failure);}
+   if(defer)return new Promise<T>(resolve=>posts.push({resolve,signal}));
+   return Promise.resolve({data:{revision:++revision,audience:'profile',applied:1,receipts:[],counts:counts(0)}} as T);
+  }
+  return Promise.resolve({scope:{serverId:'s',viewerFence:'f'},data:{revision,audience:'profile',audiences:['profile'],state:'unread',
+   counts:counts(items.length),items,nextCursor:'',observedAt:at(2),retentionDays:180}} as T);
+ }};
+ return {api,calls,posts,setImmediate:(e:Error)=>{immediate=e;},setDefer:(value:boolean)=>{defer=value;},
+  setRevision:(value:number)=>{revision=value;},setItems:(next:any[])=>{items=next;}};
+}
+
 test('the inbox loads a view, and the badge counts every audience the viewer has',async()=>{
  const s=server(),service=new InboxService(s.api,()=>'op');
  await service.load();await new Promise(r=>setTimeout(r,5));
@@ -90,6 +112,92 @@ test('a definite refusal finishes the intent, so asking again is a new attempt',
  assert.equal(attempts[0].body.operationId,'op-1');
  assert.equal(attempts[1].body.operationId,'op-2');
  assert.equal(service.getSnapshot().revision,8);
+ service.dispose();
+});
+
+test('one write owns the page: a repeat or another change sends nothing while it is out',async()=>{
+ const s=flightServer();const service=new InboxService(s.api,()=>'op');await service.load();
+ s.setDefer(true);
+ const first=service.apply('read',['n-1']);
+ const repeat=service.apply('read',['n-1']);
+ const other=service.apply('archive',['n-2']);
+ assert.equal(s.posts.length,1,'one dispatch, claimed before the rows changed');
+ assert.deepEqual(service.getSnapshot().items.map(n=>n.id),['n-2'],'only the claimed change is drawn');
+ s.posts[0].resolve({data:{revision:8,audience:'profile',applied:1,receipts:[],counts:counts(1)}});
+ await Promise.all([first,repeat,other]);
+ assert.equal(s.calls.filter(c=>c.method==='POST').length,1);
+ assert.equal(service.getSnapshot().revision,8);
+ service.dispose();
+});
+
+test('an unanswered attempt keeps its intent; a different change is refused until it retries',async()=>{
+ const s=flightServer();let issued=0;const service=new InboxService(s.api,()=>'op-'+(++issued));await service.load();
+ s.setImmediate(Object.assign(new Error('The server is busy.'),{status:503}));
+ await service.apply('read',['n-1']);                       // POST 1: outcome unknown
+ assert.equal(s.calls.filter(c=>c.method==='POST').length,1);
+ assert.ok(service.getSnapshot().error);
+ const rows=service.getSnapshot().items.map(n=>n.id);
+ await service.apply('archive',['n-2']);                    // a different action: refused, nothing sent
+ assert.equal(s.calls.filter(c=>c.method==='POST').length,1);
+ assert.deepEqual(service.getSnapshot().items.map(n=>n.id),rows);
+ assert.ok(service.getSnapshot().error,'the refusal is shown, not silent');
+ // The same change resumes that exact attempt: same body, same operation id.
+ await service.apply('read',['n-1']);
+ const sent=s.calls.filter(c=>c.method==='POST');
+ assert.equal(sent.length,2);
+ assert.deepEqual(sent[1].body,sent[0].body);
+ assert.equal(sent[0].body.expectedRevision,7,'the revision the page was read at');
+ assert.equal(service.getSnapshot().revision,8);
+ service.dispose();
+});
+
+test('a late answer from an older dispatch settles nothing and cannot clear its successor',async()=>{
+ const s=flightServer();let issued=0;const service=new InboxService(s.api,()=>'op-'+(++issued));await service.load();
+ s.setDefer(true);
+ const older=service.apply('read',['n-1']);
+ assert.equal(s.posts.length,1);
+ const olderSignal=s.posts[0].signal!;
+ // A new page retires the write with its original signal.
+ await service.load();
+ assert.equal(olderSignal.aborted,true,'load retires the mutation lifetime');
+ // A successor settles normally on the new page.
+ s.setDefer(false);s.setRevision(10);
+ await service.apply('archive',['n-2']);
+ assert.equal(service.getSnapshot().revision,11);
+ const rows=service.getSnapshot().items.map(n=>n.id);
+ // The older answer arrives after the successor: it may not publish or clear it.
+ s.posts[0].resolve({data:{revision:8,audience:'profile',applied:1,receipts:[],counts:counts(0)}});
+ await older;
+ assert.equal(service.getSnapshot().revision,11,'the late answer did not publish');
+ assert.deepEqual(service.getSnapshot().items.map(n=>n.id),rows);
+ assert.equal(service.getSnapshot().error,undefined);
+ service.dispose();
+});
+
+test('dispose retires the write with its original signal',async()=>{
+ const s=flightServer();const service=new InboxService(s.api,()=>'op');await service.load();
+ s.setDefer(true);
+ const writing=service.apply('read',['n-1']);
+ const signal=s.posts[0].signal!;
+ assert.equal(signal.aborted,false);
+ service.dispose();
+ assert.equal(signal.aborted,true);
+ s.posts[0].resolve({data:{revision:8,audience:'profile',applied:1,receipts:[],counts:counts(0)}});
+ await writing;
+ assert.equal(service.getSnapshot().revision,7,'a retired write publishes nothing');
+});
+
+test('a revision conflict re-reads once, keeps its copy, and never resends',async()=>{
+ const s=flightServer();const service=new InboxService(s.api,()=>'op');await service.load();
+ s.setRevision(10);s.setItems([notification({id:'n-1',read:true})]);
+ s.setImmediate(Object.assign(new Error('The document moved.'),{status:409,code:'revision_mismatch'}));
+ await service.apply('read',['n-1']);
+ assert.equal(s.calls.filter(c=>c.method==='POST').length,1,'the change is never resent');
+ assert.equal(s.calls.filter(c=>c.method==='GET'&&c.path.startsWith('/v1/notifications/inbox?')).length,2,'the load and the one conflict read');
+ const error=service.getSnapshot().error;
+ assert.ok(error,'the copy stays visible');
+ assert.equal(service.getSnapshot().revision,10,'the fresh page is adopted');
+ assert.deepEqual(service.getSnapshot().items.map(n=>n.id),['n-1']);
  service.dispose();
 });
 
