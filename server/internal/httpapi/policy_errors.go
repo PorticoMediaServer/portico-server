@@ -9,6 +9,7 @@ import (
 
 func policyErrorDefinitions() []apierror.Definition {
 	return []apierror.Definition{
+		{Code: "profile_changed", Status: 409, Message: publicErrorMessage("profile_changed"), Retry: apierror.Never},
 		{Code: "search_busy", Status: 429, Message: "Too many searches are already running. Try again in a moment.", Retry: apierror.SameRequest},
 		{Code: "recording_root_request_expired", Status: 410, Message: publicErrorMessage("console_expired"), Retry: apierror.Never},
 		{Code: "invalid_query", Status: 400, Message: publicErrorMessage("invalid_request"), Retry: apierror.Never},

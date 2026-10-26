@@ -136,7 +136,9 @@ func registerResetFileHTTPContracts(registry *apikit.Registry) error {
 	if e := apikit.RegisterHTTP[identity.OwnerResetVerify, ownerResetResponse](registry, meta("post_auth_owner_reset_verify", "/v1/auth/owner-reset/verify", apikit.Public)); e != nil {
 		return e
 	}
-	if e := apikit.RegisterHTTP[identity.MemberResetRequest, identity.MemberResetCode](registry, meta("post_direct_members_id_reset_code", "/v1/direct/members/{id}/reset-code", apikit.Device)); e != nil {
+	memberReset := meta("post_direct_members_id_reset_code", "/v1/direct/members/{id}/reset-code", apikit.Device)
+	memberReset.Errors = append(memberReset.Errors, "profile_changed")
+	if e := apikit.RegisterHTTP[identity.MemberResetRequest, identity.MemberResetCode](registry, memberReset); e != nil {
 		return e
 	}
 	return apikit.RegisterHTTP[identity.MemberResetVerify, passwordResetResponse](registry, meta("post_direct_password_reset", "/v1/direct/password/reset", apikit.Public))
