@@ -273,6 +273,15 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 				slot.cancel()
 			}
 			s.serveMu.Unlock()
+			if idle {
+				// No body has opened and no physical epoch was lent to this
+				// caller. Join the idle process before reserving the same slot
+				// in the new mode, within the original caller's deadline.
+				if err := process.Wait(ctx); err != nil && !errors.Is(err, rcloneprogram.ErrServeStopped) {
+					return nil, err
+				}
+				return s.ensureSourceServe(ctx, binding, expectedEpoch)
+			}
 			return nil, storage.ErrBusy
 		}
 		if !same {
