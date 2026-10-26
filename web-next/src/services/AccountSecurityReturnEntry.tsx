@@ -7,7 +7,8 @@ import {ServicesApp} from './ServicesApp';
 import {HostedSecurityTask, SignedOutRecoveryCodes} from './SecurityPanel';
 import {ProviderSecurityFactorFields} from '../screens/settings/account-profile/ProviderSecurityFactorFields';
 import {AccountSecurityReturnFrame} from './AccountSecurityReturnFrame';
-import {ServicesAuthStage, ServicesNotice} from '../kit/accounts/ServicesAuth';
+import {ServicesNotice} from '../kit/accounts/ServicesAuth';
+import {OriginalAccountSecurityWorkspace} from './OriginalAccountSecurityWorkspace';
 import {credentialTaskTitle} from './ProviderSecurityStartDialog';
 import {servicesI18n} from './i18n';
 import {beginHostedSecurityBridge, finishHostedSecurityBridge, cancelHostedSecurityBridge, type HostedSecurityArrival} from './account-security-return';
@@ -94,8 +95,8 @@ export function AccountSecurityReturnEntry({arrival}: {arrival: AccountSecurityE
   if (ordinary) return <ServicesApp identityTransaction={ordinary.identityTransaction}/>;
   if (ended?.codes?.length) return <SignedOutRecoveryCodes codes={ended.codes} onDone={back}/>;
   if (ended) return <AccountSecurityReturnFrame title={t('auth.welcomeHome')} busy={false} onCancel={back}><ServicesNotice>{t('services.signin.ended')}</ServicesNotice></AccountSecurityReturnFrame>;
-  if (proof) return <ServicesAuthStage><HostedSecurityTask provider={proof} identity={{accountId: proof.original.session.account.id, familyId: proof.original.session.familyId!}} state={proof.original.state} task={proof.original.intent.purpose}
-    isCurrent={proof.current} onClose={back} onSecurityEnded={codes => {setProof(undefined); setEnded({...(codes ? {codes: Object.freeze([...codes])} : {})});}}/></ServicesAuthStage>;
+  if (proof) return <OriginalAccountSecurityWorkspace proof={proof}><HostedSecurityTask provider={proof} identity={{accountId: proof.original.session.account.id, familyId: proof.original.session.familyId!}} state={proof.original.state} task={proof.original.intent.purpose}
+    isCurrent={proof.current} onClose={back} onSecurityEnded={codes => {setProof(undefined); setEnded({...(codes ? {codes: Object.freeze([...codes])} : {})});}}/></OriginalAccountSecurityWorkspace>;
   const needsFactor = pending?.original.state.mfaEnabled === true;
   const opening = life.current;
   return <AccountSecurityReturnFrame title={pending ? credentialTaskTitle(pending.original.intent.purpose) : t('web.claim.loading')} error={error} busy={busy} onCancel={() => void cancel()}

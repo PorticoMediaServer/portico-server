@@ -27,7 +27,7 @@ export function originalSecurityClient(origin: string) {
 }
 const identity = (o: OriginalSecurityAccount): AccountScope => ({accountId: o.session.account.id, familyId: o.session.familyId!});
 
-async function originalServer(pending: AccountSecurityPending, signal?: AbortSignal) {
+async function originalServer(pending: AccountSecurityPending, signal?: AbortSignal, beforeRead?: () => Promise<void>) {
   const original = pending.original, expected = original.server;
   if (!expected) ended();
   checkDeadline(original);
@@ -40,7 +40,14 @@ async function originalServer(pending: AccountSecurityPending, signal?: AbortSig
   // The registered browser origin is the only return target and the only
   // transport candidate for this UI continuation. A faster LAN/discovered route
   // cannot change its Origin/Host context, and no route hint is persisted.
-  const restored = await restoreExactNativeSession({...environment, discover: undefined, storage: {
+  const readonlyFetch: typeof fetch | undefined = beforeRead ? async (input, init) => {
+    const target = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+    const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase();
+    if (target.origin !== pageOrigin || method !== 'GET' && !(method === 'POST' && target.pathname === routePath('prove_network_identity'))) ended();
+    await beforeRead();signal?.throwIfAborted();
+    return (environment.fetcher ?? fetch)(input, init);
+  } : environment.fetcher;
+  const restored = await restoreExactNativeSession({...environment, fetcher: readonlyFetch, discover: undefined, storage: {
     read: async () => {
       const actual = await storage.read();
       if (!actual || actual.selectionId !== expected.selectionId || actual.pin.serverId !== expected.pin.serverId || actual.session.accessToken !== expected.session.accessToken || actual.session.tokenGeneration !== expected.session.tokenGeneration) ended();
@@ -150,6 +157,25 @@ export class OriginalProviderSecurity {
       finally {api.getRouteConnection()?.dispose();}
     }
     if (!this.current()) ended(); checkDeadline(this.original);
+  }
+  /** The original page may read its existing authority while its credential
+   * dialog is open. This never renews, persists, or authorizes a mutation. */
+  async withUIRead<T>(work: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    if (!this.current()) ended();checkDeadline(this.original);signal?.throwIfAborted();
+    await this.journal.assertOriginal(this.pending);
+    if (this.original.server) {
+      const expected = this.original.server, selected = await browserAppSessions().read();
+      const record = selected.servers.find(v => v.connection.pin.serverId === expected.pin.serverId)?.connection;
+      if (selected.revision !== expected.revision || selected.selectedServerId !== expected.pin.serverId || !record || record.selectionId !== expected.selectionId || record.session.accessToken !== expected.session.accessToken || record.session.tokenGeneration !== expected.session.tokenGeneration) ended();
+    }
+    if (!this.current()) ended();checkDeadline(this.original);signal?.throwIfAborted();
+    return work();
+  }
+  async openServerUI(signal: AbortSignal) {
+    if (!this.original.server) ended();
+    await this.assertOriginal(signal);
+    const api = await originalServer(this.pending, signal, () => this.withUIRead(async () => undefined, signal));
+    return {api, session: this.original.server.session};
   }
   async withToken<T>(work: (token: string) => Promise<T>, signal?: AbortSignal): Promise<T> {
     await this.assertOriginal(signal);

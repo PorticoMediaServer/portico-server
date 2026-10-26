@@ -3,9 +3,6 @@ import {createRoot} from 'react-dom/client';
 import './kit/tokens.css';
 import './kit/fonts.css';
 import './bootstrap.css';
-import {App} from './App';
-import {ShellBootstrap} from './shell/bootstrap';
-import {assembleShellBindings} from './shell/assembly';
 import {initializeAppInstallation} from './platform/installation-provider';
 import {captureWebAccountArrival} from './route-registry-arrival';
 import {browserSecurityJournal, retireOrdinarySecurityOpening} from './platform/account-security-journal';
@@ -38,9 +35,11 @@ async function start() {
   if (capturedReturn) {
     let protectedSecurity = false;
     try {protectedSecurity = Boolean(await browserSecurityJournal().read(true));} catch {protectedSecurity = securityHint || globalThis.isSecureContext === true && Boolean(navigator.locks);}
+    if (lifetime.signal.aborted) return;
     if (securityHint || protectedSecurity) {securityEntry = Object.freeze({kind: 'server', captured: capturedReturn});capturedReturn=undefined;}
   }
   let failure: {error: unknown} | undefined;
+  let normal: {App: typeof import('./App')['App']; Bootstrap: typeof import('./shell/bootstrap')['ShellBootstrap']; assemble: typeof import('./shell/assembly')['assembleShellBindings']} | undefined;
   return lifetime.start(async signal => {
     if (securityEntry) return;
     const page = new URL(location.href);
@@ -48,15 +47,22 @@ async function start() {
     signal.throwIfAborted();
     try { await initializeAppInstallation(import.meta.env.VITE_APP_VERSION ?? '', signal); }
     catch (error) { signal.throwIfAborted(); failure = {error}; }
+    if (!failure) {
+      try {
+        const [app, bootstrap, assembly] = await Promise.all([import('./App'), import('./shell/bootstrap'), import('./shell/assembly')]);
+        signal.throwIfAborted();normal = {App: app.App, Bootstrap: bootstrap.ShellBootstrap, assemble: assembly.assembleShellBindings};
+      } catch (error) {signal.throwIfAborted();failure = {error};}
+    }
   }, () => {
-    const bootstrap = securityEntry || failure || (import.meta.env.DEV && location.pathname.startsWith('/dev/')) ? undefined : new ShellBootstrap(assembleShellBindings);
+    const bootstrap = !normal || securityEntry || failure || (import.meta.env.DEV && location.pathname.startsWith('/dev/')) ? undefined : new normal.Bootstrap(normal.assemble);
+    const AppComponent = normal?.App;
     let root: ReturnType<typeof createRoot> | undefined;
     const unmount = () => {try { bootstrap?.dispose(); } finally { root?.unmount(); root = undefined; }};
     try {
       root = createRoot(document.getElementById('root')!);
       root.render(securityEntry ? <><IconSprite/><LastResortBoundary><AccountSecurityReturnEntry arrival={securityEntry}/></LastResortBoundary></> : failure
         ? <><IconSprite /><LastResortBoundary><StartupFailure error={failure.error} /></LastResortBoundary></>
-        : <App bootstrap={bootstrap} takeAccountReturn={takeOrdinaryReturn} takeAccountMove={accountArrival.takeAccountMove} />);
+        : AppComponent ? <AppComponent bootstrap={bootstrap} takeAccountReturn={takeOrdinaryReturn} takeAccountMove={accountArrival.takeAccountMove} /> : <><IconSprite/><StartupFailure error={new Error('The app did not initialize.')}/></>);
       return unmount;
     } catch (error) { unmount(); throw error; }
   });
