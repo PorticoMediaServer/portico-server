@@ -73,6 +73,8 @@ export function comparePair(design,app,{citation:cite,appSelector,strictText=fal
   if(Number.isFinite(a)&&Number.isFinite(b)&&Math.abs(a-b)>TOLERANCE.box)add(field,a,b,b-a,!data);
  }
  for(const [field,name] of [['text','text'],['name','accessible name']]){
+  // Real titles/account labels are explicitly data-mapped, never diff output.
+  if(data)continue;
   const expected=String(design[field]??''),actual=String(app[field]??'');
   if(expected===actual)continue;
   const fidelity=(data||!mapped)?false:(expected&&!actual)||(strictText&&expected&&actual);

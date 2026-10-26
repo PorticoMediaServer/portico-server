@@ -74,7 +74,7 @@ export async function requireManrope(page){
 export function checkStorageState(file){
  if(!file)return undefined;
  let stat;
- try{stat=fs.statSync(file);}catch{throw new ToolError('storage-state-missing');}
- if(stat.isSymbolicLink()||!stat.isFile()||(stat.mode&0o077)!==0)throw new ToolError('storage-state-permissions');
+ try{stat=fs.lstatSync(file);}catch{throw new ToolError('storage-state-missing');}
+ if(stat.isSymbolicLink()||!stat.isFile()||stat.uid!==process.getuid()||(stat.mode&0o077)!==0)throw new ToolError('storage-state-permissions');
  return file;
 }
