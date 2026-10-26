@@ -17,6 +17,7 @@ import {InviteAttempts, defaultInviteChoices, inviteBody, type InviteAttempt, ty
 import {PeopleInviteForm} from './people-invite-form';
 import {PeopleInvitations} from './PeopleInvitations';
 import type {ServerInvitation} from '@core/direct-account.ts';
+import type {MemberResetCodeSource} from './member-reset-code';
 
 const invitationStates = ['pending', 'accepted', 'revoked', 'expired'] as const;
 const invitationState = (value: string) => invitationStates.find(state => state === value);
@@ -36,6 +37,7 @@ export type PeopleStreamLimits = Readonly<{
   patchBulk: (access: SettingsBulkAccess | undefined, choice: SettingsValue) => SettingsBulkAccess;
 }>;
 export type PeopleBindings = Readonly<{
+  memberResetCodes?: MemberResetCodeSource;
   client: SettingsPeopleClient; serverName: string; libraries: readonly {id: string; name: string}[]; actor: {accountId: string; role: AccessTier};
   authority: Readonly<{scope: SettingsViewerScope; isCurrent: () => boolean; subscribe: (listener: () => void) => () => void; onAuthorityChanged: () => void}>;
   /** The owner's invitation expiry in hours, read from the loaded runtime
