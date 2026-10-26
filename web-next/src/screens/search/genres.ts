@@ -1,4 +1,4 @@
-import {readSearchGenres, searchGenreBrowseRequest, type SearchGenre} from '@core/search-genres.ts';
+import {readSearchGenres, searchGenreBrowseRequest, type SearchGenre, type SearchGenrePage} from '@core/search-genres.ts';
 import type {LibraryContentApi} from '@core/library-content.ts';
 import type {QueueBrowseSelector} from '@core/playback-v1/types.ts';
 
@@ -9,6 +9,7 @@ export type SearchGenresSnapshot = Readonly<{
   revision?: string;
   nextCursor?: string;
   canContinue: boolean;
+  all?: boolean;
   error?: unknown;
 }>;
 const empty = (): SearchGenresSnapshot => Object.freeze({phase: 'idle', genres: Object.freeze([]), canContinue: false});
@@ -31,6 +32,8 @@ export class SearchGenresController {
   private pending?: Promise<void>;
   private cursors: string[] = [];
   private disposed = false;
+  private page?: SearchGenrePage;
+  private all = false;
   constructor(input: Readonly<{api: LibraryContentApi; isCurrent: () => boolean; signal: AbortSignal; slot: SearchGenreSlot; limit: number}>) {
     if (!['backdrop', 'covers'].includes(input.slot) || !Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 50) throw new Error('Invalid Search genre window');
     this.api = input.api;this.current = input.isCurrent;this.signal = input.signal;this.slot = input.slot;this.limit = input.limit;
@@ -53,6 +56,14 @@ export class SearchGenresController {
     const request = searchGenreBrowseRequest(genre.value);
     return Object.freeze({libraryId: '*', pivot: request.pivot, query: request.query, sort: request.sort});
   }
+  /** Expand only the original authorized page already read for this preview.
+   * Further pages replace this bounded50-genre window, only on explicit Next. */
+  showAll = (original: SearchGenresSnapshot): void | Promise<void> => {
+    if (!this.active() || this.state !== original || original.phase !== 'ready' || !this.page || this.page.revision !== original.revision) throw cancelled();
+    if (this.cursors.length) {this.cancel(); this.all = true; return this.read();}
+    this.all = true;
+    this.publish({...original, all: true, genres: this.page.genres, canContinue: !!this.page.nextCursor});
+  };
   /** One page per request. Continue only while the actual cursor remains and
    * this prefix still needs art; never scan the library or invent an end. */
   load = (): Promise<void> => {
@@ -76,13 +87,14 @@ export class SearchGenresController {
         const page = await readSearchGenres(this.api, {limit: 50, ...(cursor ? {cursor} : {})}, signal);
         if (!this.active() || generation !== this.generation || signal.aborted) throw cancelled();
         if (cursor && page.revision !== before.revision || page.nextCursor && (page.nextCursor === cursor || this.cursors.includes(page.nextCursor))) throw stale();
-        const prior = cursor ? before.genres : [], seen = new Set(prior.map(genre => genre.value));
+        const prior = cursor && !this.all ? before.genres : [], seen = new Set((cursor ? before.genres : []).map(genre => genre.value));
         if (page.genres.some(genre => seen.has(genre.value))) throw stale();
-        const eligible = page.genres.filter(genre => this.slot === 'backdrop' ? !!genre.backdrop : genre.covers.length === 2);
-        const genres = Object.freeze([...prior, ...eligible].slice(0, this.limit));
+        const eligible = this.all ? page.genres : page.genres.filter(genre => this.slot === 'backdrop' ? !!genre.backdrop : genre.covers.length === 2);
+        const genres = Object.freeze([...prior, ...eligible].slice(0, this.all ? 50 : this.limit));
+        this.page = page;
         this.cursors = cursor ? [...this.cursors, cursor].slice(-64) : [];
         this.publish({phase: 'ready', genres, revision: page.revision, ...(page.nextCursor ? {nextCursor: page.nextCursor} : {}),
-          canContinue: genres.length < this.limit && !!page.nextCursor});
+          ...(this.all ? {all: true} : {}), canContinue: (this.all || genres.length < this.limit) && !!page.nextCursor});
       } catch (error) {
         if (generation === this.generation) this.publish({...empty(), phase: this.active() ? 'error' : 'idle', ...(this.active() ? {error} : {})});
         throw error;
@@ -93,7 +105,7 @@ export class SearchGenresController {
     this.pending = task;return task;
   }
   cancel = () => {
-    this.generation++;this.controller?.abort();this.controller = undefined;this.pending = undefined;this.cursors = [];
+    this.generation++;this.controller?.abort();this.controller = undefined;this.pending = undefined;this.cursors = [];this.page = undefined;this.all = false;
     this.publish(empty());
   };
   dispose = () => {

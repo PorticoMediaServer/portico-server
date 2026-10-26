@@ -186,18 +186,22 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
     t('web.libraryKind.plural', {kind: 'movie'}), t('web.libraryKind.plural', {kind: 'tv'}), t('web.libraryKind.plural', {kind: 'anime'})]);
   const liveSourceCount = new Set(onNow.cards.map(card => card.channel.sourceId)).size;
   const genreTiles = <div className={styles.genres}>{genres.genres.flatMap((genre, index) => {
-    if (!genre.backdrop) return [];
-    const art = context.artwork.foreground(genre.backdrop.path, 632, 16 / 9, {group: 'search-genres', order: index});
-    if (!art) return [];
+    const art = genre.backdrop ? context.artwork.foreground(genre.backdrop.path, 632, 16 / 9, {group: 'search-genres', order: index}) : undefined;
+    if (!art && !genres.all) return [];
     return [<GenreTile key={genre.value} variant="video" context="search" artwork={art} visible
       model={{title: genre.label, caption: [{id: 'count', role: 'supplement', text: t('next.selection.titles', {count: genre.count})}]}}
       onNavigate={() => runScreenCommand(context, () => {const browse = context.effects.openBrowse;if (browse) browse(binding.genres.browseTarget(genre));})} />];
   })}</div>;
+  const allGenres = !genres.all && <Button variant="text" size="xs" icon="i-right" className={styles.trailingLink}
+    onClick={() => runScreenCommand(context, () => binding.genres.showAll(genres))}>{t('next.search.allGenres')}</Button>;
+  const nextGenres = genres.all && genres.canContinue && <Button variant="glass" size="small" onClick={() => runScreenCommand(context, () => {
+    if (binding.genres.getSnapshot() === genres) return binding.genres.next();
+  })}>{t('web.pager.next')}</Button>;
   const genreSection = genres.phase === 'ready' && genres.genres.length > 0 && <section className={styles.emptySection} aria-labelledby="search-genres">
-    <header><h2 id="search-genres">{t('next.search.browseByGenre')}</h2><span>{videoKinds}</span></header>{genreTiles}</section>;
+    <header><h2 id="search-genres">{t('next.search.browseByGenre')}</h2><span>{videoKinds}</span>{allGenres}</header>{genreTiles}{nextGenres}</section>;
   // Frame 5: a no-match answer keeps the same genre browsing, so it is not a dead end.
   const browseInstead = genres.phase === 'ready' && genres.genres.length > 0 && <section className={styles.emptySection} aria-labelledby="search-browse-instead">
-    <header><h2 id="search-browse-instead">{t('next.search.browseInstead')}</h2></header>{genreTiles}</section>;
+    <header><h2 id="search-browse-instead">{t('next.search.browseInstead')}</h2>{allGenres}</header>{genreTiles}{nextGenres}</section>;
   const beforeTyping = <div className={styles.empty}>
     {recentBlock}
     {genreSection}

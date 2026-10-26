@@ -103,3 +103,23 @@ test('only the current actual facet can capture the canonical video-title browse
     owner.controller.cancel();assert.throws(() => owner.controller.browseTarget(actual), {name: 'AbortError'});
   } finally {owner.controller.dispose();}
 });
+
+
+test('All genres uses the original authorized page, includes art-less genres, and does not scan', async () => {
+  const pages = [page([genre('first', 10), genre('without-art', 4, false)], 'next'), page([genre('later', 2, false)], 'more')];
+  const owner = setup(async () => pages.shift(), 'backdrop', 1);
+  try {
+    await owner.controller.load(); const original = owner.controller.getSnapshot();
+    assert.deepEqual(original.genres.map(x => x.value), ['first']);
+    owner.controller.showAll(original);
+    assert.equal(owner.requests(), 1, 'the checked first page is already in hand');
+    assert.deepEqual(owner.controller.getSnapshot().genres.map(x => x.value), ['first', 'without-art']);
+    assert.equal(owner.controller.getSnapshot().canContinue, true);
+    assert.throws(() => owner.controller.showAll(original), {name: 'AbortError'}, 'stale preview cannot borrow a later window');
+    await owner.controller.next();
+    assert.equal(owner.requests(), 2, 'only the explicit Next reads the next bounded page');
+    assert.deepEqual(owner.controller.getSnapshot().genres.map(x => x.value), ['later'], 'directory pages replace rather than accumulate');
+    assert.equal(owner.controller.getSnapshot().all, true);
+    owner.retire(); assert.throws(() => owner.controller.showAll(owner.controller.getSnapshot()), {name: 'AbortError'});
+  } finally {owner.controller.dispose();}
+});
