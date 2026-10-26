@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useLayoutEffect, useId, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {passwordStrength} from '@core/password-strength.ts';
-import type {ResetFileLocation} from '@core/account-reset.ts';
+import {ownerResetFailure, type OwnerResetFailure, type ResetFileLocation} from '@core/account-reset.ts';
 import type {BrowserAccountEntry} from '../../platform/account-entry';
 import type {AccountSignInForm} from './sign-in-form';
 import {AuthError, AuthLinks, AuthPasswordField, AuthStage, LocalPasswordRecovery} from '../../kit/accounts';
@@ -21,17 +21,8 @@ export type LocalPasswordRecoveryFlowProps = Readonly<{
  * saves a code, constructs an API, or admits an authenticated session itself. */
 type RecoveryOpening = {live:boolean;pending:boolean;ownerPending:boolean;readonly onBack:()=>void};
 type FileOffer = {readonly opening:RecoveryOpening;readonly location:ResetFileLocation;readonly id:number;live:boolean};
-export type OwnerResetNoticeKind='invalid'|'expired'|'limited'|'write';
-/** Codes are interpreted only after the original owner-reset operation supplied
- * the error. A generic 401 from another sign-in is never a reset-file outcome. */
-export function ownerResetNotice(error:unknown,purpose:'request'|'verify'|undefined):OwnerResetNoticeKind|undefined{
- const code=error&&typeof error==='object'?(error as {code?:unknown}).code:undefined;
- if(purpose==='request'&&code==='owner_reset_file_unavailable')return 'write';
- if(purpose==='verify'&&code==='owner_reset_expired')return 'expired';
- if(purpose&&code==='rate_limited')return 'limited';
- if(purpose==='verify'&&code==='unauthorized')return 'invalid';
- return undefined;
-}
+export type OwnerResetNoticeKind=OwnerResetFailure;
+export {ownerResetFailure as ownerResetNotice};
 export function LocalPasswordRecoveryFlow({entry, form, onBack}: LocalPasswordRecoveryFlowProps) {
  const state=useSyncExternalStore(entry.subscribe,entry.getSnapshot),input=useSyncExternalStore(form.subscribe,form.getSnapshot);
  const captured=useRef({entry,origin:state.origin,serverId:state.server?.id,pin:state.pin}).current;
@@ -90,7 +81,7 @@ export function LocalPasswordRecoveryFlow({entry, form, onBack}: LocalPasswordRe
   }catch(failure){if(current())setError(failure);}finally{finish();}
  };
  if(!current()||state.phase!=='password'&&state.phase!=='owner-reset-password')return null;
- const busy=working||state.busy||input.busy,failure=state.error??error,notice=ownerResetNotice(failure,purpose);
+ const busy=working||state.busy||input.busy,failure=state.error??error,notice=ownerResetFailure(failure,purpose);
  if(state.phase==='owner-reset-password'&&state.ownerReset)return <OwnerPassword serverName={state.server!.name} username={state.ownerReset.username} twoStepEnabled={state.ownerReset.twoStepEnabled} busy={busy} error={failure} onSubmit={finishOwner} onBack={back}/>;
  if(file&&ownsFile(file))return <OwnerFile key={file.id} serverName={state.server!.name} location={file.location} busy={busy} error={failure} notice={notice}
   onVerify={code=>verifyFile(file,code)} onRewrite={()=>{void requestFile(owner,file);}} onBack={back}/>;
