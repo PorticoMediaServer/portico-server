@@ -4,12 +4,14 @@ import type {CardInteractionAdmission} from './interaction-admission';
 import type {CardSelection} from './types';
 
 type Entry = {receipt?: CardInteractionAdmission; legacyPaint?: (enabled: boolean) => void; active: boolean; live: boolean; preview: boolean; detach?: () => void};
+const legacyIdentity = Object.freeze({});
 
 /** Paint intent only; original selection authority remains with its producer. */
 export function useSelectionRangePreview(selection?: CardSelection, disabled = false) {
   const retained = useRetainedLayoutPaint(), inactive = disabled || retained;
   const source = selection?.interaction, receipt = source && selection?.admission?.source === source ? selection.admission : undefined;
-  const identity = source ? receipt : selection?.onPreview, eligible = !inactive && (!source || !!receipt?.live);
+  const identity = source ? receipt : legacyIdentity, eligible = !inactive && (!source || !!receipt?.live);
+  const legacyAvailable = !source && !!selection?.onPreview;
   const [hover, setHover] = useState(false), [entry, setEntry] = useState<Entry | null>(null);
   const committed = useRef<Entry | null>(null);
   const legacyPreview = useRef<{paint: (enabled: boolean) => void; shown: boolean} | null>(null);
@@ -30,6 +32,12 @@ export function useSelectionRangePreview(selection?: CardSelection, disabled = f
       if (clearOriginal) original.receipt?.preview(false);
     };
   }, [identity, eligible, inactive, selection?.active, receipt, source]);
+  // A legacy descriptor can publish a new callback every render. Update only the
+  // committed port, without replacing the admission or its hovered listeners.
+  useLayoutEffect(() => {
+    const original = committed.current;
+    if (!source && original?.live && !original.receipt) original.legacyPaint = selection?.onPreview;
+  });
   const current = eligible && entry?.live && committed.current === entry && entry.receipt === receipt ? entry : null;
   const owns = (candidate: Entry | null) => !!candidate && candidate.live && committed.current === candidate
     && (!candidate.receipt || candidate.receipt.current()) && candidate.live && committed.current === candidate;
@@ -49,7 +57,7 @@ export function useSelectionRangePreview(selection?: CardSelection, disabled = f
     original.detach = detach;
     const off = original.receipt?.onRetire(detach);
     return () => {off?.(); detach();};
-  }, [current, hover]);
+  }, [current, hover, legacyAvailable]);
   const leave = () => {if (!owns(current)) return; setHover(false); paint(current, false);};
   return {
     onPointerEnter: (event: PointerEvent<HTMLElement>) => {if (!owns(current) || !current) return; if (current.receipt && !current.receipt.node.contains(event.currentTarget)) return; setHover(event.pointerType === 'mouse'); paint(current, current.active && event.pointerType === 'mouse' && event.shiftKey);},

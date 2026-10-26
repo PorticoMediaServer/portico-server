@@ -13,6 +13,10 @@ export async function checkBoundCardHooks(page, origin) {
     window.cardCapturedListeners = captured; window.restoreCardListeners = () => {window.addEventListener = windowAdd; document.addEventListener = documentAdd; window.removeEventListener = windowRemove; document.removeEventListener = documentRemove;};
   });
   try {
+    const mountedRenders = await page.evaluate(() => window.cardBoundHooks.renders());
+    assert.ok(mountedRenders < 20, 'volatile legacy callback settles at mount');
+    await page.evaluate(() => window.cardBoundHooks.publishLegacy());
+    assert.ok((await page.evaluate(() => window.cardBoundHooks.renders())) - mountedRenders < 10, 'ordinary legacy publication does not remint repeatedly');
     await page.evaluate(() => {
       const h = window.cardBoundHooks; h.capture();
       const timer = window.setTimeout, raf = window.requestAnimationFrame;
@@ -50,8 +54,10 @@ export async function checkBoundCardHooks(page, origin) {
     await page.evaluate(() => {const h = window.cardBoundHooks; h.missing(false); h.current().move(); h.previewActive(false);});
     assert.equal((await page.evaluate(() => window.cardBoundHooks.observations())).preview.at(-1), false, 'inactive selection clears original preview');
     await page.evaluate(() => {const h = window.cardBoundHooks; h.previewActive(true); h.legacyMove();});
+    const beforeLegacy = await page.evaluate(() => window.cardBoundHooks.renders());
     await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keyup', {key: 'Shift'})));
     assert.equal((await page.evaluate(() => window.cardBoundHooks.legacyEvents())).at(-1), false, 'volatile legacy callback renewal retains Shift keyup');
+    assert.ok((await page.evaluate(() => window.cardBoundHooks.renders())) - beforeLegacy < 10, 'legacy preview publication settles');
     await page.evaluate(() => {const h = window.cardBoundHooks; h.holdActive(false); h.current().down(); h.invalidate(); h.current().key(); h.validate(); h.revive(); h.current().down();});
     await page.waitForTimeout(550);
     assert.equal((await page.evaluate(() => window.cardBoundHooks.observations())).toggles, 2, 'reentrant retirement cannot cancel fresh successor hold');
