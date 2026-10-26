@@ -110,9 +110,11 @@ def _setup(client, port, credentials, fixtures, commit):
 
 def _conversion(client, token, installation):
     document = _call(client, 'GET', '/v1/admin/console/settings', token=token, installation=installation)
-    if not isinstance(document, dict) or not isinstance(document.get('revision'), int):
+    if not isinstance(document, dict):
         raise StateError('settings-shape')
     data = document.get('data')
+    if not isinstance(data, dict) or not isinstance(data.get('revision'), int):
+        raise StateError('settings-shape')
     requested = data.get('requested') if isinstance(data, dict) else None
     effective = data.get('effective') if isinstance(data, dict) else None
     if not isinstance(requested, dict) or not isinstance(effective, dict):
@@ -121,7 +123,7 @@ def _conversion(client, token, installation):
     values['conversionMode'] = 'all'
     if requested.get('conversionMode') != 'all' or effective.get('conversionMode') != 'all':
         changed = _call(client, 'PATCH', '/v1/admin/console/settings', {
-            'expectedRevision': document['revision'],
+            'expectedRevision': data['revision'],
             'idempotencyKey': str(uuid.uuid4()),
             'values': values,
         }, token=token, installation=installation)

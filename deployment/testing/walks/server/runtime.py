@@ -189,6 +189,7 @@ def _wait_ready(port, process=None):
     raise RuntimeFailure('runtime-readiness')
 
 def start(build, state, port, paths, runtime_bundle):
+    build = build.directory
     bwrap = shutil.which('bwrap')
     if not bwrap:
         raise RuntimeFailure('runtime-bwrap')
