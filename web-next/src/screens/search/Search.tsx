@@ -254,20 +254,39 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
           const entries = result.items.filter(entry => entry !== top?.entry), cap = result.id === 'episodes' || result.id === 'songs' ? 4 : result.id === 'movies' || result.id === 'shows' ? 7 : 4;
           if (!entries.length) return null;
           const shown = entries.slice(0, cap);
+          // desktop-read 11: a mixed Reading answer draws its two shapes in two card rows under
+          // the group's one heading, count, Select all and See all.
+          const parts = result.id === 'reading' ? readingRows(shown) : [];
           return <section key={result.id} className={styles.section} data-group={result.id}>
             <header><h2>{t(searchGroupLabel(result.id))}</h2>{result.totalCountExact && <span>{result.totalCount > cap ? t('web.search.someOf', {shown: Math.min(cap, entries.length), total: result.totalCount}) : result.totalCount}</span>}
               <div className={styles.sectionActions}>
                 {selection?.canSelectGroup(result, shown) && <Button variant="text" size="small" className={styles.selectGroup} onClick={() => {try {selection.selectGroup(result, shown);} catch (error) {context.effects.reportError(error);}}}>{t('next.selection.selectAll', {count: shown.length})}</Button>}
                 {(result.hasMore || entries.length > cap) && <Button variant="text" size="small" onClick={() => setChip(result.id)}><span className={styles.seeAll}>{t('web.search.seeAll')}<Icon name="i-right" size={18} /></span></Button>}
               </div></header>
-            <div className={styles.cards}>{shown.map((entry, position) => <SearchResult key={keyOf(entry)} entry={entry} binding={binding} selection={selection} position={groupIndex * 1000 + position} onCommit={commit}
-              albumArt={entry.kind === 'artist' ? artistAlbumArt(entry, groups) : undefined} />)}</div>
+            {parts.length > 1
+              ? parts.map(part => <div key={part.id} className={styles.cards}>{part.items.map(({entry, index}) => <SearchResult key={keyOf(entry)} entry={entry} binding={binding} selection={selection} position={groupIndex * 1000 + index} onCommit={commit}
+                albumArt={entry.kind === 'artist' ? artistAlbumArt(entry, groups) : undefined} />)}</div>)
+              : <div className={styles.cards}>{shown.map((entry, position) => <SearchResult key={keyOf(entry)} entry={entry} binding={binding} selection={selection} position={groupIndex * 1000 + position} onCommit={commit}
+                albumArt={entry.kind === 'artist' ? artistAlbumArt(entry, groups) : undefined} />)}</div>}
           </section>;
         })}
     </div>
   </div>;
 }
 
+/** desktop-read 11: books and comics (2:3) and magazines/newspapers (3:4) are drawn as separate
+ *  rows when a Reading answer carries both. Order inside each part is the result's own order, and
+ *  an answer with only one shape keeps the single drawn row and its own heading. */
+function readingRows(entries: readonly SearchEntry[]): readonly Readonly<{id: string; items: readonly Readonly<{entry: SearchEntry; index: number}>[]}>[] {
+  const indexed = entries.map((entry, index) => ({entry, index}));
+  const periodical = (entry: SearchEntry) => entry.kind === 'ebook' || entry.kind === 'comic'
+    ? entry.publicationType === 'magazine' || entry.publicationType === 'newspaper' : false;
+  const papers = indexed.filter(({entry}) => periodical(entry)), books = indexed.filter(({entry}) => !periodical(entry));
+  if (!papers.length || !books.length) return [];
+  // Only magazines and newspapers are drawn as issues; a mixed answer of both keeps the one
+  // drawn heading, so no part is labelled with a kind it may not contain.
+  return [{id: 'books', items: books}, {id: 'issues', items: papers}];
+}
 function SearchLoading() {
   const elapsed = useLoadingClock();
   return <div className={styles.skeleton} role="status" aria-label={t('next.states.loading')}>{elapsed >= 300 && Array.from({length: 7}, (_, index) => <Skeleton className={styles.skeletonBlock} sheen={index === 2} key={index} />)}{elapsed >= 8000 && <Banner variant="quiet">{t('next.states.stillLoading')}</Banner>}</div>;
