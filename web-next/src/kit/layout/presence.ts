@@ -1,40 +1,49 @@
 import {useLayoutEffect, useRef, useState} from 'react';
 import {easings, reducedMotion} from '@design';
+import {retainLayout, type LayoutRetention, type LayoutRetentionPolicy} from './retention';
 
 /** Bounded shelf/section presence only. Sparse grids never enumerate or retain their collection here. */
-export function useLayoutPresence<T>(items: readonly T[], getKey: (item: T) => string, reduced: boolean, exitMs: number, moveMs: number) {
-  const root = useRef<HTMLDivElement>(null), [present, setPresent] = useState(items), [leaving, setLeaving] = useState<ReadonlySet<string>>(new Set());
-  const current = useRef(present), latest = useRef(items), keyOf = useRef(getKey), deadlines = useRef(new Map<string, number>());
-  current.current = present; latest.current = items; keyOf.current = getKey;
+export function useLayoutPresence<T>(items: readonly T[], getKey: (item: T) => string, reduced: boolean, exitMs: number, moveMs: number, policy?: LayoutRetentionPolicy) {
+  const root = useRef<HTMLDivElement>(null);
+  const [state, setState] = useState<LayoutRetention<T>>({live: items, present: items, exits: new Map(), scope: policy?.scope});
+  const current = useRef(state), owner = useRef<object | null>(null);
   const previousRects = useRef(new Map<string, DOMRect>()), animations = useRef(new Map<Element, Animation>());
-  const capture = () => {
-    previousRects.current.clear();
-    for (const element of root.current?.children ?? []) {
-      const key = (element as HTMLElement).dataset.layoutItem;
-      if (key) previousRects.current.set(key, element.getBoundingClientRect());
-    }
-  };
+  // A replacement original scope can never render the previous scope's paint.
+  const present = state.scope === policy?.scope ? state.present : items;
+  const incoming = new Set(items.map(getKey));
+  const leaving = new Set(present.flatMap(item => incoming.has(getKey(item)) ? [] : [getKey(item)]));
+  const max = policy?.maxRetained, stagger = policy?.staggerMs, visibleOnly = policy?.visibleOnly, scope = policy?.scope;
+  useLayoutEffect(() => {current.current = state;}, [state]);
   useLayoutEffect(() => {
+    const identity = {};owner.current = identity;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const reconcile = () => {
-      capture();
-      const now = performance.now(), incoming = latest.current, ids = new Set(incoming.map(keyOf.current)), previous = current.current;
-      for (const key of deadlines.current.keys()) if (ids.has(key)) deadlines.current.delete(key);
-      const retained = previous.filter(item => {
-        const key = keyOf.current(item); if (ids.has(key)) return false;
-        if (!deadlines.current.has(key)) deadlines.current.set(key, now + (reduced ? reducedMotion.durationMs : exitMs));
-        return deadlines.current.get(key)! > now;
-      });
-      const merged = [...incoming];
-      for (const item of retained) merged.splice(Math.min(previous.indexOf(item), merged.length), 0, item);
-      setLeaving(new Set(retained.map(keyOf.current))); setPresent(merged);
-      if (retained.length) timer = setTimeout(reconcile, Math.max(1, Math.min(...retained.map(item => deadlines.current.get(keyOf.current(item))! - now))));
-      else deadlines.current.clear();
+      if (owner.current !== identity) return;
+      previousRects.current.clear();
+      const visible = new Set<string>();
+      if (current.current.scope !== scope) {
+        for (const animation of animations.current.values()) animation.cancel();
+        animations.current.clear();
+      } else for (const element of root.current?.children ?? []) {
+        const node = element as HTMLElement, key = node.dataset.layoutItem;
+        if (!key) continue;
+        const bounds = node.getBoundingClientRect();previousRects.current.set(key, bounds);
+        if (visibleOnly) {
+          const view = node.ownerDocument.defaultView;
+          if (view && bounds.width > 0 && bounds.height > 0 && bounds.right > 0 && bounds.bottom > 0 && bounds.left < view.innerWidth && bounds.top < view.innerHeight) visible.add(key);
+        }
+      }
+      const now = performance.now();
+      const next = retainLayout(current.current, items, getKey, now, reduced, exitMs, reducedMotion.durationMs, {maxRetained: max, staggerMs: stagger, visibleOnly, scope}, visible);
+      current.current = next;setState(next);
+      if (next.exits.size) timer = setTimeout(reconcile, Math.max(1, Math.min(...[...next.exits.values()].map(exit => exit.retireAt - now))));
     };
     reconcile();
-    return () => { if (timer !== undefined) clearTimeout(timer); };
-  }, [items, getKey, reduced, exitMs]);
+    return () => {if (owner.current === identity) owner.current = null;if (timer !== undefined) clearTimeout(timer);};
+  }, [items, getKey, reduced, exitMs, max, stagger, visibleOnly, scope]);
   useLayoutEffect(() => {
+    const attached = new Set(Array.from(root.current?.children ?? []));
+    for (const [element, animation] of animations.current) if (!attached.has(element)) {animations.current.delete(element);animation.cancel();}
     for (const element of root.current?.children ?? []) {
       const node = element as HTMLElement, key = node.dataset.layoutItem;
       const previous = animations.current.get(element);
@@ -48,7 +57,8 @@ export function useLayoutPresence<T>(items: readonly T[], getKey: (item: T) => s
       const release = () => { if (animations.current.get(element) === animation) animations.current.delete(element); };
       void animation.finished.then(release, release);
     }
-  }, [present, leaving, reduced, moveMs]);
+  }, [state, reduced, moveMs]);
   useLayoutEffect(() => () => { for (const animation of animations.current.values()) animation.cancel(); animations.current.clear(); }, []);
-  return {root, present, leaving};
+  const exits = state.scope === scope ? state.exits : new Map<string, never>();
+  return {root, present, leaving, exits, delays: new Map([...exits].map(([key, exit]) => [key, exit.delay]))};
 }
