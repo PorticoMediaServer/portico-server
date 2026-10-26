@@ -1,14 +1,16 @@
-import {useCallback, useEffect, useState, useSyncExternalStore} from 'react';
+import {useCallback, useLayoutEffect, useState, useSyncExternalStore} from 'react';
 import type {DashboardBindings} from './bindings';
 import {readDashboardAccounts} from './pages';
 export type ReadState<T> = Readonly<{value?: T; loading: boolean; failed: boolean}>;
 const defaultChanges = ['admin.sessions', 'session.updated', 'playback.history', 'library.scan', 'job.updated', 'stream.resync'];
 const accountChanges = ['playback.history', 'stream.resync'];
-/** One read in flight, cancellation and identity fence on every completion. Events coalesce. */
+/** One read in flight, cancellation and identity fence on every completion. Events coalesce.
+ * Layout cleanup withdraws the original loader before a new range/owner commits;
+ * a held old response cannot publish or report through the passive-cleanup gap. */
 export function useDashboardRead<T>(bindings: DashboardBindings, load: (signal: AbortSignal) => Promise<T>, enabled: boolean, everyMs = 0, changes: readonly string[] = defaultChanges) {
   const [version, setVersion] = useState(0), [state, setState] = useState<ReadState<T> & {loader?: typeof load}>({loading: true, failed: false});
   const refresh = useCallback(() => setVersion(v => v + 1), []);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!enabled || !bindings.isCurrent()) return;
     const controller = new AbortController(); let running = false, queued = false;
     setState(previous => previous.loader === load ? {...previous, loading: true, failed: false} : {loader: load, loading: true, failed: false});

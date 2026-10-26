@@ -15,6 +15,7 @@ import {Range, ReadFeedback, Section, t} from './shared';
 import type {ChartSeries} from './Chart';
 import {Chart} from './Chart';
 import {SessionCard} from './SessionCard';
+import {PhoneHealth} from './PhoneHealth';
 import {Analytics} from './Analytics';
 import {useDashboardReport, type DashboardReportController} from './use-report';
 import {readNowPlaying} from './pages';
@@ -44,7 +45,10 @@ function DashboardView({bindings: b, embedded = false, initialSection, phone = f
   const sessionsLoad = useCallback((signal: AbortSignal) => readNowPlaying(b, signal), [b]);
   const sessions = useDashboardRead(b, sessionsLoad, allowed, 10000);
   const liveLoad = useCallback((signal: AbortSignal) => b.read.telemetry('live', signal), [b]);
-  const live = useDashboardRead(b, liveLoad, allowed && b.role === 'owner', 2000);
+  const live = useDashboardRead(b, liveLoad, allowed && b.role === 'owner' && !phone, 2000);
+  const [healthRange, setHealthRange] = useState<'10m' | '1h' | '24h'>('1h');
+  const healthLoad = useCallback((signal: AbortSignal) => b.read.telemetry(healthRange, signal), [b, healthRange]);
+  const health = useDashboardRead(b, healthLoad, allowed && b.role === 'owner' && phone, 2000);
   const serverLoad = useCallback((signal: AbortSignal) => b.read.server(signal), [b]);
   const server = useDashboardRead<DashboardServerHeader>(b, serverLoad, allowed && b.role === 'owner' && phone, 60000);
   const report = useDashboardReport(b, allowed && b.role === 'owner');
@@ -53,11 +57,11 @@ function DashboardView({bindings: b, embedded = false, initialSection, phone = f
   useEffect(() => {if (sessions.value && !sessions.loading) setUpdatedAt(Date.now());}, [sessions.value, sessions.loading]);
   useEffect(() => {if (!phone && initialSection) ref.current?.querySelector(`[data-dashboard-section="${initialSection}"]`)?.scrollIntoView({block: 'start'});}, [initialSection, phone]);
   if (!allowed) return null;
-  const failed = sessions.failed || b.role === 'owner' && (status.failed || live.failed || report.state.failed || accounts.failed);
-  const retry = () => {sessions.refresh(); if (b.role === 'owner') {status.refresh(); live.refresh(); report.state.refresh(); accounts.refresh(); server.refresh();}};
+  const failed = sessions.failed || b.role === 'owner' && (status.failed || (phone ? health.failed : live.failed || accounts.failed) || report.state.failed);
+  const retry = () => {sessions.refresh(); if (b.role === 'owner') {status.refresh(); if (phone) health.refresh(); else live.refresh(); report.state.refresh(); accounts.refresh(); server.refresh();}};
   const sections = phone
     ? <><div data-dashboard-section="streams"><NowPlaying bindings={b} state={sessions} phone /></div>
-        {b.role === 'owner' && <><Status bindings={b} status={status} phone /><Tasks status={status} phone /><Load bindings={b} report={report} live={live} phone /><div data-dashboard-section="activity"><PhoneStatistics bindings={b} report={report} /></div></>}</>
+        {b.role === 'owner' && <><Status bindings={b} status={status} phone /><Tasks status={status} phone /><PhoneHealth reading={health.value} loading={health.loading} failed={health.failed} range={healthRange} onRangeChange={range => {if (b.isCurrent()) setHealthRange(range);}} onRetry={health.refresh} /><div data-dashboard-section="activity"><PhoneStatistics bindings={b} report={report} /></div></>}</>
     : <>{b.role === 'owner' && <Status bindings={b} status={status} />}
         <div data-dashboard-section="streams"><NowPlaying bindings={b} state={sessions} /></div>
         {b.role === 'owner' && <><Load bindings={b} report={report} live={live} /><div data-dashboard-section="activity"><Analytics bindings={b} report={report} accounts={accounts} /></div><Tasks status={status} /></>}</>;

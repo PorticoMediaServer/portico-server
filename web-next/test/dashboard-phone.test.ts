@@ -62,7 +62,7 @@ test('the phone Dashboard is a page: its own bar, band and server header before 
   assert.match(html, /Portico demo/);
   assert.match(html, />Updated a few seconds ago</);
   assert.match(html, />Refresh<\/button>/);
-  assert.deepEqual(headings(html).slice(0, 5), ['>Now playing<', '>Alerts<', '>Background activity<', '>Server load<', '>Viewing statistics<']);
+  assert.deepEqual(headings(html).slice(0, 5), ['>Now playing<', '>Alerts<', '>Background activity<', '>Health<', '>Viewing statistics<']);
   assert.doesNotMatch(html, /class="dashboard"/);
   for (const label of ['Plays', 'People', 'Hours watched', 'Converted', '15% of plays', 'Most played', 'Most active', 'Play history']) assert.match(html, new RegExp('>' + label + '<'), label);
   assert.match(html, />31</);

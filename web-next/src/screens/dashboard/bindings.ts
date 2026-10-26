@@ -39,8 +39,8 @@ export type DashboardBindings = Readonly<{
     status: (signal?: AbortSignal) => Promise<DashboardStatus>;
     /** Canonical session-specific permission/revision receipt, read only while its menu is open. */
     controls?: (id: string, signal: AbortSignal) => Promise<SessionControls>;
-    /** Moving Live only. Every historical load panel comes from the common report. */
-    telemetry: (range: 'live', signal?: AbortSignal) => Promise<TelemetryReading>;
+    /** Live desktop load or the phone Health panel's canonical finite windows. */
+    telemetry: (range: 'live' | '10m' | '1h' | '24h', signal?: AbortSignal) => Promise<TelemetryReading>;
     report: (filters: DashboardReportQuery, signal?: AbortSignal) => Promise<DashboardReport>;
     people: (filters: DashboardFilters, cursor?: string, signal?: AbortSignal) => Promise<DashboardPeople>;
     plays: (filters: DashboardFilters, cursor?: string, signal?: AbortSignal) => Promise<PlayHistoryPage>;
