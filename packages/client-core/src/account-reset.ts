@@ -18,11 +18,30 @@ export async function verifyOwnerResetFile(api:ProfileAPI,code:string,turnOffTwo
  return out;
 }
 export type MemberResetCode=Readonly<{code:string;expiresAt:string;serverId?:string}>;
-export async function makeMemberResetCode(api:ProfileAPI,id:string,expectedRevision:number,turnOffTwoStep=false,signal?:AbortSignal):Promise<MemberResetCode>{
- const raw=await api.request<{code?:unknown;expiresAt?:unknown;serverId?:unknown}>(routePath('post_direct_members_id_reset_code',{id}),'POST',routeBody('post_direct_members_id_reset_code',{expectedRevision,turnOffTwoStep}),signal);
- if(typeof raw?.code!=='string'||!/^[-_A-Za-z0-9]{43}$/.test(raw.code)||typeof raw.expiresAt!=='string'||!Number.isFinite(Date.parse(raw.expiresAt)))throw new Error('The member reset response was invalid.');
+/** The one-use reset code's exact opaque spelling: one ASCII base64url token,
+ * never trimmed, coerced or replaced by a freshly made code. */
+const resetCodePattern=/^[A-Za-z0-9_-]{43}$/;
+/** `$` can match before a final line terminator, so the exact length is checked
+ * separately; controls and separators are then outside the ASCII token. */
+const resetCode=(value:unknown):value is string=>typeof value==='string'&&value.length===43&&resetCodePattern.test(value);
+function memberResetCode(raw:{code?:unknown;expiresAt?:unknown;serverId?:unknown}):MemberResetCode {
+ const code=raw?.code,expiresAt=raw?.expiresAt;
+ if(!resetCode(code)||typeof expiresAt!=='string'||!Number.isFinite(Date.parse(expiresAt)))throw new Error('The member reset response was invalid.');
  if(raw.serverId!==undefined){if(typeof raw.serverId!=='string')throw new Error('The member reset response was invalid.');identityCode(raw.serverId);}
- return Object.freeze({code:raw.code,expiresAt:raw.expiresAt,...(raw.serverId===undefined?{}:{serverId:raw.serverId as string})});
+ return Object.freeze({code,expiresAt,...(raw.serverId===undefined?{}:{serverId:raw.serverId as string})});
+}
+export async function makeMemberResetCode(api:ProfileAPI,id:string,expectedRevision:number,turnOffTwoStep=false,signal?:AbortSignal):Promise<MemberResetCode>{
+ return memberResetCode(await api.request<{code?:unknown;expiresAt?:unknown;serverId?:unknown}>(routePath('post_direct_members_id_reset_code',{id}),'POST',routeBody('post_direct_members_id_reset_code',{expectedRevision,turnOffTwoStep}),signal));
+}
+/** Replaces a member's reset code using the original one-use code as the proof.
+ * A missing or malformed proof, or an unstated two-step choice, sends nothing:
+ * the proof is never trimmed, coerced, replaced by a fresh code or retried. */
+export async function replaceMemberResetCode(api:ProfileAPI,id:string,expectedRevision:number,originalResetCode:string,turnOffTwoStep:boolean,signal?:AbortSignal):Promise<MemberResetCode>{
+ if(!resetCode(originalResetCode))throw new Error('The original reset code is invalid.');
+ if(typeof turnOffTwoStep!=='boolean')throw new Error('The two-step choice is invalid.');
+ const body:Readonly<{expectedRevision:number;turnOffTwoStep:boolean;originalResetCode:string}>={expectedRevision,turnOffTwoStep,originalResetCode};
+ const raw=await api.request<{code?:unknown;expiresAt?:unknown;serverId?:unknown}>(routePath('post_direct_members_id_reset_code',{id}),'POST',routeBody('post_direct_members_id_reset_code',body),signal);
+ return memberResetCode(raw);
 }
 export async function verifyMemberResetCode(api:ProfileAPI,username:string,code:string,signal?:AbortSignal):Promise<DirectSignIn>{
  const out=parseDirectSignIn(await api.request(routePath('post_direct_password_reset'),'POST',routeBody('post_direct_password_reset',{username,code:code.trim()}),signal));
