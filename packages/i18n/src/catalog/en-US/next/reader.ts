@@ -31,6 +31,8 @@ export const readerMessages = {
   'next.reader.pageCount': '{count, plural, one {# page} other {# pages}}',
   'next.reader.openingLines': 'Opening lines',
   'next.reader.seriesPosition': '{series} · {number}',
+  'next.reader.restOfSeries': 'The rest of the series',
+  'next.reader.seriesInOrder': '{series}, in order',
 
   'next.reader.bookOrder': 'Book order',
   'next.reader.volumeOrder': 'Volume order',
