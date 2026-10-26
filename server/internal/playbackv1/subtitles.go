@@ -105,6 +105,13 @@ func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item
 			out.replaced = plan.Presentation
 		}
 	}
+	return subtitlePlanResult(plan, out), nil
+}
+
+// Shared metadata projection only: it performs no source/cache/helper work.
+// Private disc starts call it after their exact snapshot activation in the
+// actual V1 writer, retaining the original borrow until outer COMMIT.
+func subtitlePlanResult(plan subtitles.PlaybackPlan, out subtitleResult) subtitleResult {
 	if plan.Selected != nil {
 		out.language = plan.Selected.Language
 		switch {
@@ -124,5 +131,5 @@ func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item
 			out.shown = &PresentationSubtitle{TrackID: plan.Selected.ID, Kind: subtitleKindOf(plan.Selected.Format), Delivery: "burn"}
 		}
 	}
-	return out, nil
+	return out
 }

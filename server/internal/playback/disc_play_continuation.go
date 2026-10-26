@@ -3,6 +3,7 @@ package playback
 import (
 	"context"
 	"database/sql"
+	"sync"
 	"sync/atomic"
 
 	"portico.local/server/internal/dbwork"
@@ -14,12 +15,15 @@ import (
 // process-private measurement through both accepting writers and the OUTERMOST
 // final commit. It never upgrades worker proof into current-request admission.
 type discPlayBorrow struct {
-	owner       *discPlayPreparation
-	measurement *discPlayMeasurement
-	claim       playbackdisc.PreparationClaim
-	caller      context.Context
-	current     playbackdisc.PreparationContinuationCheck
-	released    atomic.Bool
+	owner        *discPlayPreparation
+	measurement  *discPlayMeasurement
+	claim        playbackdisc.PreparationClaim
+	caller       context.Context
+	current      playbackdisc.PreparationContinuationCheck
+	released     atomic.Bool
+	acceptMu     sync.Mutex
+	activationTx *sql.Tx
+	activated    playbackdisc.PreparationAccepted
 }
 
 func (p *discPlayPreparation) borrowPrepared(ctx context.Context, current playbackdisc.PreparationContinuationCheck) (*discPlayBorrow, error) {
@@ -102,24 +106,51 @@ func (b *discPlayBorrow) bindPendingTx(ctx context.Context, tx *sql.Tx, key play
 	return b.measurement.BindPendingTx(ctx, tx, b.owner.store, key, b.checkContinuationTx)
 }
 
-// activateAndAcceptTx belongs to the actual final v1 accepting writer, after
-// ordinary session/queue/idempotency/capacity proofs and actual V1 insertion.
-// Background measurement never receives this borrow or this current callback.
-// Readers launch only after the caller's outer COMMIT, with ordinary active
-// presentation authority; neither the prepared input nor its 120s scope is an
-// active-reader authority.
-func (b *discPlayBorrow) activateAndAcceptTx(ctx context.Context, tx *sql.Tx, result playbackdisc.PreparationAccepted) error {
+// activateTx belongs to the final V1 accepting writer after it has inserted
+// the REAL V1 row and repeated original queue/capacity/idempotency admission.
+// It leaves the preparation claim unconsumed so metadata/subtitle projection
+// can still repeat the live continuation proof in this SAME transaction.
+func (b *discPlayBorrow) activateTx(ctx context.Context, tx *sql.Tx, result playbackdisc.PreparationAccepted) error {
 	if err := b.checkContinuationTx(ctx, tx); err != nil {
 		return err
+	}
+	if err := dbwork.RequireGatedWriteTx(tx); err != nil {
+		return err
+	}
+	b.acceptMu.Lock()
+	defer b.acceptMu.Unlock()
+	if b.activationTx != nil {
+		return playbackdisc.ErrCurrent
 	}
 	b.measurement.mu.Lock()
 	snapshot := b.measurement.snapshot
 	bound := b.measurement.bound && snapshot.ID == result.SnapshotID && snapshot.SessionID == result.Legacy.SessionID && snapshot.Generation == result.Legacy.Generation
 	b.measurement.mu.Unlock()
-	if !bound {
+	if !bound || result.SessionID == "" {
 		return playbackdisc.ErrCurrent
 	}
 	if err := b.measurement.ActivateTx(ctx, tx, b.owner.store, result.Legacy, b.checkContinuationTx); err != nil {
+		return err
+	}
+	b.activationTx, b.activated = tx, result
+	return nil
+}
+
+// acceptTx is LAST in that accepting writer, after normal presentation,
+// subtitle and queue publication. Neither a different writer nor a rolled-back
+// activation can consume the claim. Every failure rolls back the outer writer;
+// readers launch only after its COMMIT with independent active authority.
+func (b *discPlayBorrow) acceptTx(ctx context.Context, tx *sql.Tx, result playbackdisc.PreparationAccepted) error {
+	if err := b.checkContinuationTx(ctx, tx); err != nil {
+		return err
+	}
+	b.acceptMu.Lock()
+	exact := b.activationTx == tx && b.activated == result
+	b.acceptMu.Unlock()
+	if !exact {
+		return playbackdisc.ErrCurrent
+	}
+	if _, err := b.owner.store.ResolveTx(ctx, tx, result.Legacy, result.SnapshotID, b.measurement.acceptingCheck(b.checkContinuationTx)); err != nil {
 		return err
 	}
 	if err := b.owner.store.AcceptPreparationTx(ctx, tx, b.claim, result, b.checkWorkerTx, b.checkCurrentTx); err != nil {

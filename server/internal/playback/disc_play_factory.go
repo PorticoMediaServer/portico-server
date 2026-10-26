@@ -25,6 +25,7 @@ type discPlayStart struct {
 	BodyDigest      string
 	ItemID, AssetID string
 	PartIndex       int
+	CandidateID     string // process-private future V1 id, never a session before acceptance
 	LegacyRequestID string // raw original v1.<private candidate>.1; scoped below
 	Queue           playbackdisc.Operation
 	Replaces        playbackdisc.Key
@@ -73,7 +74,7 @@ func newDiscPlayFactory(o discPlayFactoryOptions) (*discPlayFactory, error) {
 func sameDiscPlayStart(a, b discPlayStart) bool {
 	// Check closures are not authority and are never swapped on an attachment.
 	// The original closure remains the one captured by the first invocation.
-	return sameDiscPlayPrincipal(a.Principal, b.Principal) && a.Key == b.Key && a.BodyDigest == b.BodyDigest && a.ItemID == b.ItemID && a.AssetID == b.AssetID && a.PartIndex == b.PartIndex && a.LegacyRequestID == b.LegacyRequestID && a.Queue == b.Queue && a.Replaces == b.Replaces && a.TitleKey == b.TitleKey
+	return sameDiscPlayPrincipal(a.Principal, b.Principal) && a.Key == b.Key && a.BodyDigest == b.BodyDigest && a.ItemID == b.ItemID && a.AssetID == b.AssetID && a.PartIndex == b.PartIndex && a.CandidateID == b.CandidateID && a.LegacyRequestID == b.LegacyRequestID && a.Queue == b.Queue && a.Replaces == b.Replaces && a.TitleKey == b.TitleKey
 }
 
 func sameDiscPlayPrincipal(a, b identity.Principal) bool {
@@ -85,7 +86,7 @@ func sameDiscPlayPrincipal(a, b identity.Principal) bool {
 // supplied context is the original finite admitted scope, not a renewed poll.
 // A source with a qualified conditional adapter must use the range factory.
 func (f *discPlayFactory) beginCaptured(ctx context.Context, seed discPlayStart) (*discPlayFactoryEntry, error) {
-	if ctx == nil || dbwork.Snapshot(ctx) != nil || seed.Check == nil || seed.Principal.Hash == "" || seed.Principal.ExpiresAt.IsZero() || seed.Key.DeviceID == "" || seed.LegacyRequestID == "" {
+	if ctx == nil || dbwork.Snapshot(ctx) != nil || seed.Check == nil || seed.Principal.Hash == "" || seed.Principal.ExpiresAt.IsZero() || seed.Key.DeviceID == "" || seed.CandidateID == "" || seed.LegacyRequestID != "v1."+seed.CandidateID+".1" {
 		return nil, disc.ErrProtocol
 	}
 	if err := discPlayPreparationContext(ctx); err != nil {
@@ -389,6 +390,7 @@ func (f *discPlayFactory) initializeCaptured(ctx context.Context, e *discPlayFac
 		return err
 	}
 	started = true
+	e.operation.start = seed
 	supervise.Go("playback.disc-play-prepare", func() {
 		defer close(e.done)
 		defer func() { <-f.o.ProbeSlots }()

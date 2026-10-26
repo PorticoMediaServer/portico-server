@@ -48,25 +48,16 @@ func (b *discPlayBorrow) bindSubtitleResourcesTx(ctx context.Context, tx *sql.Tx
 	if !bound || snapshot.ID == "" {
 		return playbackdisc.ErrCurrent
 	}
-	tracks := []subtitles.Track{}
-	for _, stream := range snapshot.Media.Streams {
-		if stream.Type != "subtitle" {
-			continue
-		}
-		format := subtitles.CodecFormat(stream.Codec)
-		if format == "" {
-			return subtitles.ErrUnsupported
-		}
-		tracks = append(tracks, subtitles.Track{Origin: "embedded", StreamIndex: stream.Index, Format: format, Language: stream.Language, Title: stream.Title, Default: stream.Default, Forced: stream.Forced, HearingImpaired: stream.HearingImpaired})
-	}
 	if service.Subtitles == nil {
-		if len(tracks) > 0 {
-			return subtitles.ErrUnavailable
+		for _, stream := range snapshot.Media.Streams {
+			if stream.Type == "subtitle" {
+				return subtitles.ErrUnavailable
+			}
 		}
 		return nil
 	}
 	if service.Subtitles.DiscPresentations != service {
 		return subtitles.ErrUnavailable
 	}
-	return subtitles.PersistPrivateDiscResourcesTx(ctx, tx, principal, discSubtitlePresentation(snapshot, item), tracks, automatic, b.checkContinuationTx)
+	return subtitles.PersistPrivateDiscResourcesTx(ctx, tx, principal, discSubtitlePresentation(snapshot, item), automatic, b.checkContinuationTx)
 }

@@ -26,6 +26,7 @@ type discPlayPreparation struct {
 	captures *ownedcapture.Service
 	ticket   *ownedcapture.PlayCaptureTicket
 	original playbackdisc.PreparationCheck
+	start    discPlayStart // immutable first invocation; never replaced on a retry
 
 	mu          sync.Mutex
 	operation   playbackdisc.Preparation

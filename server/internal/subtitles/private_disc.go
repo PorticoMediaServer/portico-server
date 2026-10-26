@@ -185,12 +185,9 @@ func (s *Service) listPrivateDiscTx(ctx context.Context, tx *sql.Tx, p identity.
 // PersistPrivateDiscResourcesTx runs AFTER PublishPendingTx sealed the graph,
 // in the SAME original legacy writer. The mandatory check belongs to its
 // current POST borrow, not to a worker or a row-reconstructed measurement.
-func PersistPrivateDiscResourcesTx(ctx context.Context, tx *sql.Tx, p identity.Principal, v PrivateDiscPresentation, tracks []Track, choice AutoChoice, check func(context.Context, *sql.Tx) error) error {
+func PersistPrivateDiscResourcesTx(ctx context.Context, tx *sql.Tx, p identity.Principal, v PrivateDiscPresentation, choice AutoChoice, check func(context.Context, *sql.Tx) error) error {
 	if ctx == nil || tx == nil || check == nil || v.Owner != actor(p) || !validID(v.SnapshotID) {
 		return ErrInput
-	}
-	if len(tracks) > MaxTracks || len(tracks) > medialimits.SubtitleTracks() {
-		return ErrCapacity
 	}
 	if err := dbwork.RequireGatedWriteTx(tx); err != nil {
 		return err
@@ -210,9 +207,39 @@ func PersistPrivateDiscResourcesTx(ctx context.Context, tx *sql.Tx, p identity.P
  WHERE d.id=? AND d.session_id=? AND d.generation=? AND life.state='pending' AND life.sealed=1
  AND actor.server_id=? AND actor.authority=? AND actor.account_id=? AND actor.profile_id=? AND actor.session_hash=? AND actor.device_id=? AND actor.epoch=?
  AND pid(item.public_id)=? AND source.asset_id=? AND source.inventory_object_id=? AND source.size=? AND source.modified_ns=?
- AND disc.selected_title_key=? AND disc.facts_revision=? AND media.duration_ms=? AND media.origin_us=? AND media.timing_known=?`,
+ AND disc.selected_title_key=? AND disc.facts_revision=? AND media.duration_ms=? AND media.origin_us=? AND media.timing_known=? AND media.container=?`,
 		v.SnapshotID, v.SessionID, v.Generation, p.ServerID, p.Authority, p.AccountID, p.ProfileID, p.Hash, p.DeviceID, p.Epoch,
-		v.ItemID, v.AssetID, v.ObjectID, v.Size, v.ModifiedNS, v.TitleKey, v.FactsRevision, v.DurationMS, v.OriginUS, v.TimingKnown).Scan(&item)
+		v.ItemID, v.AssetID, v.ObjectID, v.Size, v.ModifiedNS, v.TitleKey, v.FactsRevision, v.DurationMS, v.OriginUS, v.TimingKnown, v.Container).Scan(&item)
+	if err != nil {
+		return err
+	}
+	// Derive every resource scalar from the exact sealed stream graph. The
+	// caller supplies no replacement codec, language, disposition or title.
+	rows, err := tx.QueryContext(ctx, `SELECT stream_index,codec,language,title,is_default,is_forced,hearing_impaired FROM playback_disc_snapshot_streams WHERE snapshot_id=? AND type='subtitle' ORDER BY stream_order LIMIT 129`, v.SnapshotID)
+	if err != nil {
+		return err
+	}
+	tracks := []Track{}
+	for rows.Next() {
+		var track Track
+		var codec string
+		if err = rows.Scan(&track.StreamIndex, &codec, &track.Language, &track.Title, &track.Default, &track.Forced, &track.HearingImpaired); err != nil {
+			rows.Close()
+			return err
+		}
+		track.Format, track.Origin = CodecFormat(codec), "embedded"
+		if track.StreamIndex < 0 || !validFormat(track.Format) {
+			rows.Close()
+			return ErrUnsupported
+		}
+		tracks = append(tracks, track)
+		if len(tracks) > MaxTracks || len(tracks) > medialimits.SubtitleTracks() {
+			rows.Close()
+			return ErrCapacity
+		}
+	}
+	err = rows.Err()
+	rows.Close()
 	if err != nil {
 		return err
 	}
@@ -226,13 +253,6 @@ func PersistPrivateDiscResourcesTx(ctx context.Context, tx *sql.Tx, p identity.P
 	for _, track := range tracks {
 		if track.StreamIndex < 0 || track.Reason != "" || !validFormat(track.Format) {
 			return ErrUnsupported
-		}
-		var measured bool
-		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM playback_disc_snapshot_streams WHERE snapshot_id=? AND stream_index=? AND type='subtitle')`, v.SnapshotID, track.StreamIndex).Scan(&measured); err != nil {
-			return err
-		}
-		if !measured {
-			return ErrConflict
 		}
 		id := stable("private-disc-subtitle-v1:" + v.SnapshotID + ":" + strconv.Itoa(track.StreamIndex))
 		language, err := Language(track.Language)

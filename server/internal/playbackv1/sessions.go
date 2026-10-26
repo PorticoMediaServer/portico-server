@@ -587,6 +587,7 @@ func validateTracks(a *AudioRequest, sub *SubtitleRequest) error {
 
 // presentationTarget is one media start: what to play and how.
 type presentationTarget struct {
+	disc              *playback.DiscPlayContinuation // opaque live original POST; never a wire field
 	pendingActivation bool
 	useStoredResume   bool
 	item, version     string
@@ -722,7 +723,7 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	base := playback.V1Choice{AdminMaxVideoBitrateBPS: c.AdminMaxVideoBitrateBPS, Remote: c.Remote, PrivateFor: t.privateFor, PrivateUntilMs: t.privateUntilMs, PendingActivation: t.pendingActivation, UseStoredResume: t.useStoredResume && request.DiscTitle == nil, DiscTitle: discTitle}
 	request.Quality.apply(&base)
 	version := t.version
-	if version == "" && video && t.part == 0 {
+	if t.disc == nil && version == "" && video && t.part == 0 {
 		version = s.bestVersion(ctx, c.Principal, t.item, base, t.throughputKbps)
 	}
 	asset, err := s.partAsset(ctx, t.item, version, t.part)
@@ -751,12 +752,18 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	} else if carry != nil {
 		choice.CarriedAudioLanguage = carry.AudioLanguage
 	}
+	// A private resource is not a shared catalogue track. Initial automatic
+	// text selection is initialized from sealed streams by the legacy writer;
+	// explicit/carry selection needs the separate accepted private transition.
+	if t.disc != nil && (!video || t.part != 0 || request.Subtitles != nil || request.SubtitleOffsetMs != 0 || carry != nil && carry.SubtitleMode == "on") {
+		return playback.Session{}, Presentation{}, playback.ErrIncompatible
+	}
 	// The subtitle track, known before planning: a styled or image track an
 	// engine cannot draw itself costs a converted picture, which decides the
 	// engine.
 	subtitle := request.Subtitles
 	var resources []subtitles.Resource
-	if video && asset != "" && (subtitle != nil && subtitle.TrackID != TrackOff && subtitle.TrackID != "" || subtitle == nil && carry != nil && carry.SubtitleMode == "on") {
+	if t.disc == nil && video && asset != "" && (subtitle != nil && subtitle.TrackID != TrackOff && subtitle.TrackID != "" || subtitle == nil && carry != nil && carry.SubtitleMode == "on") {
 		resources = s.subtitleResources(ctx, c.Principal, t.item, asset, discTitle)
 	}
 	if subtitle == nil {
@@ -784,7 +791,12 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 		}
 	}
 
-	media, err := s.Playback.CreateV1(ctx, c.Principal, t.item, t.requestID, choice, t.replacing)
+	var media playback.Session
+	if t.disc != nil {
+		media, err = t.disc.CreateV1(ctx, c.Principal, t.item, t.requestID, choice, t.replacing)
+	} else {
+		media, err = s.Playback.CreateV1(ctx, c.Principal, t.item, t.requestID, choice, t.replacing)
+	}
 	if errors.Is(err, sql.ErrNoRows) && t.version != "" {
 		return media, Presentation{}, &FieldError{Path: "versionId"}
 	}
@@ -813,6 +825,12 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 		// The chosen track doesn't exist in this version.
 		_ = s.Playback.StopV1(context.WithoutCancel(ctx), media.ID)
 		return media, Presentation{}, &FieldError{Path: "audio.trackId"}
+	}
+	if t.disc != nil {
+		// No readiness/source/cache/helper work before final acceptance. The
+		// ordinary plan is real metadata; exact private subtitle URLs are added
+		// only after activation in the final V1 writer below.
+		return media, view, nil
 	}
 	// Whether the engine the plan named draws the chosen track itself.
 	draws := false
@@ -1097,7 +1115,37 @@ func (s *Service) startItem(ctx context.Context, c Caller, key, startDigest stri
 func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDigest string, req StartRequest, base row, stored storedRequest) (SessionView, bool, error) {
 	release := s.admission.hold(c.Principal.AccountID)
 	defer release()
-	id := newID("ps_")
+	var continuation *playback.DiscPlayContinuation
+	if s.Playback != nil {
+		var err error
+		continuation, err = s.Playback.DiscPlayContinuation(ctx)
+		if err != nil {
+			return SessionView{}, false, err
+		}
+	}
+	id := ""
+	originalRequest := ""
+	if continuation != nil {
+		defer continuation.Close(context.WithoutCancel(ctx))
+		// This is the same local video start, not a transfer/group surrogate or
+		// permission inferred from nil admission. The original factory retains
+		// separate worker and current-POST proofs throughout the writers.
+		if base.kind != "vod" || base.partIndex != 0 || c.Admit == nil || c.Principal.Grant == identity.GrantCastTarget || req.TransferID != "" || req.CastTransferID != "" {
+			return SessionView{}, false, playback.ErrIncompatible
+		}
+		var asset string
+		var err error
+		id, asset, originalRequest, err = continuation.OriginalStart(c.Principal, c.DeviceID, key, startDigest, base.item, base.partIndex)
+		if err != nil {
+			return SessionView{}, false, err
+		}
+		if base.version != "" && base.version != asset {
+			return SessionView{}, false, playback.ErrStaleOffer
+		}
+		base.version = asset
+	} else {
+		id = newID("ps_")
+	}
 	var replacing *playback.SessionReplacement
 	var old row
 	if req.ReplacesSessionID != "" {
@@ -1126,6 +1174,9 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 	}
 	target := presentationTarget{pendingActivation: true, useStoredResume: req.StartPositionMs == nil && (req.StartFrom == "" || req.StartFrom == "resume"), item: base.item, version: base.version, part: base.partIndex, request: stored, startMs: startMs, replacing: replacing, requestID: "v1." + id + ".1", subtitleOp: "v1-" + id + "-1",
 		throughputKbps: req.ThroughputKbps}
+	if continuation != nil {
+		target.disc, target.requestID = continuation, originalRequest
+	}
 	media, view, err := s.present(ctx, c, target)
 
 	if err != nil {
@@ -1137,7 +1188,10 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 	if req.StartPositionMs == nil && (req.StartFrom == "" || req.StartFrom == "resume") {
 		view.StartPositionMs = int64(media.ResumeSeconds * 1000)
 	}
-	ready, err := s.ready(ctx, media)
+	ready := false
+	if continuation == nil {
+		ready, err = s.ready(ctx, media)
+	}
 	if err != nil {
 		_ = s.Playback.StopV1(context.WithoutCancel(ctx), media.ID)
 		return SessionView{}, false, err
@@ -1155,7 +1209,7 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 		stored.Quality = *view.Quality
 	}
 	stored.State = req.State
-	if base.kind == "vod" && stored.DiscTitle == nil {
+	if continuation == nil && base.kind == "vod" && stored.DiscTitle == nil {
 		// A track picked with the start is carried to the queue's next entry.
 		stored.Carry = s.carryChoice(ctx, c.Principal, base.item, media.ID, view, req.Audio != nil, req.Subtitles != nil, stored.Carry)
 	}
@@ -1237,6 +1291,27 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 		if err := s.Playback.PublishPresentationTx(ctx, tx, c.Principal, media.ID, view.StartPositionMs, replacing, false); err != nil {
 			return err
 		}
+		if continuation != nil {
+			if err := continuation.ActivateTx(ctx, tx, r.id, media); err != nil {
+				return err
+			}
+			if s.Subtitles != nil {
+				plan, err := s.Subtitles.PlanTx(ctx, tx, c.Principal, base.item, media.ID)
+				if err != nil {
+					return err
+				}
+				result := subtitlePlanResult(plan, subtitleResult{files: []SubtitleFile{}})
+				view.Subtitles, view.Subtitle = result.files, result.shown
+			}
+			acceptedView, err := json.Marshal(view)
+			if err != nil {
+				return err
+			}
+			r.presentation = string(acceptedView)
+			if _, err = tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET presentation=? WHERE id=? AND media_session_id=? AND media_generation=?`, r.presentation, r.id, media.ID, media.Generation); err != nil {
+				return err
+			}
+		}
 		if err := s.recordRadioStartTx(ctx, tx, c, r); err != nil {
 			return err
 		}
@@ -1245,7 +1320,13 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 				return err
 			}
 		}
-		return s.sessionEventsTx(ctx, tx, r, now, true)
+		if err := s.sessionEventsTx(ctx, tx, r, now, true); err != nil {
+			return err
+		}
+		if continuation != nil {
+			return continuation.AcceptTx(ctx, tx, r.id, media)
+		}
+		return nil
 	})
 	if err != nil {
 		_ = s.Playback.StopV1(context.WithoutCancel(ctx), media.ID)
