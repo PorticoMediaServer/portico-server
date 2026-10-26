@@ -233,7 +233,11 @@ def read_claims(path):
     stop=re.search(r'(?m)^## ',body)
     if stop:body=body[:stop.start()]
     body=body.strip('\n')
-    if body.strip().startswith('- (none yet'):
+    # Only a placeholder-only section is empty. Once any real claim or released
+    # history follows the placeholder, the whole body is kept byte-for-byte,
+    # placeholder included, so a locked regeneration can never drop claims.
+    lines=[line for line in body.splitlines() if line.strip()]
+    if len(lines)==1 and lines[0].strip().startswith('- (none yet'):
         return ''
     return body
 
