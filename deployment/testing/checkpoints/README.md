@@ -158,3 +158,48 @@ gone: the launch no longer calls `adb shell am start`.
 
 Existing `native-state.json` dropped ids are read into the result **unchanged**; history
 and counters are never rewritten by this gate. Agent-session retirement stays unproven.
+
+## Transcode environment check (one owned session)
+
+`transcode-check.py` answers one question on an existing walk server: does an ordinary
+authenticated start actually convert, and what bytes does it deliver? It reads
+`GET /v1/admin/transcode/capacity` (owner context only; no synthetic re-probe operation) and
+`/v1/playback/delivery-policy`, starts **one** session on the named fixture item with
+`quality: {mode: limit, maxVideoBitrateKbps: 400, maxHeight: 480}`, and replays that same
+body and idempotency key while the server answers `202`, inside the whole remaining budget.
+
+A `202` that already carries a real session view (id plus positive presentation generation) is
+**owned immediately** and stopped in `finally`; dropping it would leak a resource the server
+already created. The id and generation must stay identical from that `202` to the `201`; a
+change is a closed `session-identity-changed` failure, and the owned session is still stopped.
+A pure retry-only `202` with no view owns nothing. The retry hint is one strict integer
+`1..10000` ms (absent means 1000); anything else is a closed failure, and no wait is taken
+beyond the remaining budget.
+
+The check then re-reads the session for its **final observed state**, takes
+`presentation.url` — the same-origin `/v1/media/<grant>` capability path — fetches a bounded
+sample (4 MiB cap, one playlist hop at most) through the admitted loopback origin with no
+redirects and no other host, and probes that sample with an **explicit absolute `ffprobe`
+path** (`--ffprobe`, never a PATH search) using an owned, private scratch child and `TMPDIR`
+under the existing owned 0700 nonsymlink `--scratch` root, removed in `finally`; HOME is preserved. Custody of the admitted runtime is rechecked before
+and after every fetch, and every request and probe timeout is capped by the same remaining
+budget.
+
+`passed` requires all of: mode `stream`, route `converted`, a fetched sample with an accepted
+status, a probe that identified a real video codec, a probe height of at least 1 and at most
+480, **and** the owned session stopped with an ended readback. A plan, a capacity report or a
+converted route with any video at all is not enough. Cleanup runs in `finally`; a failed or
+unconfirmed stop is `failed`, and a read or probe error still stops the session it created.
+A member context skips the owner-only capacity read with `unavailable — owner-required`. A
+direct-play session is `unavailable`.
+
+Any unexpected body or transport shape is a closed `unexpected-shape` failure that still
+writes a receipt and still runs cleanup; nothing escapes without one. The check is called from
+the runner owner's Job runtime with a private `0600` context, `--ffprobe`, `--scratch`,
+`--item`, `--budget-seconds` (default 90). It does not edit `runner.py`, start a server, build,
+scan or read runtime logs.
+
+Synthetic tests: `python3 test_transcode_check.py` (15 cases, no network or process); they
+drive the production check with a fake client, a fake delivered-media reader and a fake
+prober, including the 202 ownership, identity-change, retry-exhaustion, strict-hint,
+custody-rebind, budget, cleanup-failure and probe-gate seams.
