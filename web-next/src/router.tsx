@@ -53,5 +53,5 @@ const devRoutes = import.meta.env.DEV ? [createRoute({
 export const routeTree = rootRoute.addChildren([...destinations, ...devRoutes]);
 // The initial route must paint before there is a document snapshot to animate.
 // The shell's real-render listener enables native transitions for later routes.
-export const router = createRouter({routeTree, defaultViewTransition: false});
+export const router = createRouter({routeTree, defaultViewTransition: false, scrollRestorationBehavior: 'instant'});
 declare module '@tanstack/react-router' { interface Register { router: typeof router } }

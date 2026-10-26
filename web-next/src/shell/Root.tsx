@@ -1,6 +1,6 @@
 import {useLayoutEffect, useMemo, useRef} from 'react';
-import {Outlet, useRouterState} from '@tanstack/react-router';
-import {useRouteFade} from '../platform/route-motion';
+import {Outlet, useRouter, useRouterState} from '@tanstack/react-router';
+import {useRouteFade, type RouteFadeCommits} from '../platform/route-motion';
 import {Shell} from './Shell';
 import {GlobalShortcuts} from './GlobalShortcuts';
 import {useShellBindings} from './bindings';
@@ -13,9 +13,18 @@ import {useServerAway} from './ConnectionAway';
 
 function RouteContent() {
   const content = useRef<HTMLDivElement>(null);
-  const routeKey = useRouterState({select: state => state.location.href});
+  const router = useRouter();
+  const owner = useShellBindings();
+  const routeKey = useRouterState({select: state => {
+    const entry = state.location.state.__TSR_key;
+    return typeof entry === 'string' && entry.length ? JSON.stringify([state.location.href, entry]) : undefined;
+  }});
+  const commits = useMemo<RouteFadeCommits>(() => ({subscribe: listener => router.subscribe('onRendered', event => {
+    const entry = event.toLocation.state.__TSR_key;
+    if (typeof entry === 'string' && entry.length) listener(JSON.stringify([event.toLocation.href, entry]));
+  })}), [router, owner]);
   const target = useMemo(() => ({get current() { return routeMotionOwnedByBrowser() ? null : content.current; }}), []);
-  useRouteFade(target, routeKey);
+  useRouteFade(target, routeKey, commits);
   useLayoutEffect(() => { finishRouteMotion(); }, [routeKey]);
   return <main id="portico-content" ref={content} data-route-content data-shell-page tabIndex={-1}><BootstrapContent><Outlet /></BootstrapContent></main>;
 }
