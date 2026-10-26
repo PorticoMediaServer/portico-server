@@ -114,7 +114,17 @@ export async function rememberNativeSession(api:HttpLocalApi,session:LocalSessio
  * renewal). Not offline and not a reset: say so once, keep the credential, don't retry. */
 export const ACCESS_REFUSED='access_refused';
 export async function restoreNativeSession(env:ConnectionEnvironment,source?:(record:RememberedServer)=>HostedConnectionSource|undefined,expected?:LocalSession):Promise<{api:HttpLocalApi;session:LocalSession}|undefined>{
+ return restoreStoredSession(env,source,expected,false);
+}
+/** Closed Security continuations may inspect only their exact original saved
+ * family/token generation. They never renew, adopt a newer token, contact Hosted
+ * for routes, or publish route persistence into another opening. */
+export async function restoreExactNativeSession(env:ConnectionEnvironment,expected:LocalSession):Promise<{api:HttpLocalApi;session:LocalSession}|undefined>{
+ return restoreStoredSession(env,undefined,expected,true);
+}
+async function restoreStoredSession(env:ConnectionEnvironment,source:((record:RememberedServer)=>HostedConnectionSource|undefined)|undefined,expected:LocalSession|undefined,exact:boolean):Promise<{api:HttpLocalApi;session:LocalSession}|undefined>{
  const record=parseRememberedServer(await env.storage.read());if(!record)return;
+ if(exact&&(!expected||record.pendingRefresh||record.session.tokenGeneration!==expected.tokenGeneration||record.session.accessToken!==expected.accessToken||Date.parse(record.session.expiresAt)<=Date.now()))return;
  // The protected store may hold a newer rotation of the same family than the caller's copy.
  if(expected&&(record.session.sessionFamilyId!==expected.sessionFamilyId||BigInt(record.session.tokenGeneration)<BigInt(expected.tokenGeneration)||(record.session.tokenGeneration===expected.tokenGeneration&&record.session.accessToken!==expected.accessToken)||record.session.viewer.serverId!==expected.viewer.serverId||record.session.viewer.accountId!==expected.viewer.accountId||record.session.viewer.profileId!==expected.viewer.profileId))return;
  const pin=await serverPin(record.pin.serverId,record.pin.publicKey,record.pin.fingerprint,env.crypto??webRouteCrypto);
@@ -129,7 +139,7 @@ export async function restoreNativeSession(env:ConnectionEnvironment,source?:(re
   if(!sameSelection(selected,record)||selected!.session.accessToken!==record.session.accessToken)throw new RouteError('cancelled','The saved selection changed during reconnect.');
   const api=new HttpLocalApi(record.logicalOrigin,'',env.fetcher);api.useRoutes(connection);api.setAccessToken(record.session.accessToken);let renewedNow=false;
   // A sign-in saved more than a few minutes ago has an expired access token: renew it first.
-  if(record.session.refreshToken&&(record.pendingRefresh||Date.parse(record.session.expiresAt)-Date.now()<REFRESH_MIN_VALID_MS)){
+  if(!exact&&record.session.refreshToken&&(record.pendingRefresh||Date.parse(record.session.expiresAt)-Date.now()<REFRESH_MIN_VALID_MS)){
    bindSessionRoute(record.session.accessToken,connection);
    const renewed=await refreshStoredSession({env,api,family:{sessionFamilyId:record.session.sessionFamilyId,serverId:record.pin.serverId}});
    record.session=renewed;record.pendingRefresh=undefined;api.setAccessToken(renewed.accessToken);renewedNow=true;
@@ -160,7 +170,7 @@ export async function restoreNativeSession(env:ConnectionEnvironment,source?:(re
   catch(e){
    const status=statusOf(e);
    if(status===403||(status===401&&renewedNow))throw refusedAccess();
-   if(!record.session.refreshToken||status!==401)throw e;
+   if(exact||!record.session.refreshToken||status!==401)throw e;
    bindSessionRoute(record.session.accessToken,connection);
    const renewed=await refreshStoredSession({env,api,family:{sessionFamilyId:record.session.sessionFamilyId,serverId:record.pin.serverId},rejected:record.session.accessToken});
    record.session=renewed;record.pendingRefresh=undefined;api.setAccessToken(renewed.accessToken);
@@ -169,7 +179,7 @@ export async function restoreNativeSession(env:ConnectionEnvironment,source?:(re
   }
   const selectedAfter=await env.storage.read();
   if(!sameSelection(selectedAfter,record)||selectedAfter!.session.accessToken!==record.session.accessToken)throw new RouteError('cancelled','The saved selection changed during reconnect.');
-  attachPersistence(connection,env,record,hosted);bindSessionRoute(record.session.accessToken,connection);return {api,session:record.session};
+  if(!exact){attachPersistence(connection,env,record,hosted);bindSessionRoute(record.session.accessToken,connection);}return {api,session:record.session};
  }catch(e){connection.dispose();throw e;}
 }
 export async function forgetNativeSession(env:ConnectionEnvironment,session:LocalSession):Promise<void>{

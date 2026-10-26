@@ -9945,7 +9945,9 @@ CREATE TABLE identity_security_return_openings(
  transaction_id TEXT NOT NULL DEFAULT '',
  code_digest TEXT NOT NULL DEFAULT '',
  confirmation_payload TEXT NOT NULL DEFAULT '',
- confirmation_signature TEXT NOT NULL DEFAULT ''
+ confirmation_signature TEXT NOT NULL DEFAULT '',
+ CHECK(phase<>'prepared' OR (transaction_id='' AND code_digest='' AND confirmation_payload='' AND confirmation_signature='')),
+ CHECK(phase<>'confirmed' OR (length(transaction_id)>=20 AND length(code_digest)=43 AND confirmation_payload<>'' AND confirmation_signature<>''))
 ) STRICT;
 CREATE INDEX identity_security_return_actor ON identity_security_return_openings(actor_binding,phase);
 CREATE TRIGGER identity_security_return_original_immutable BEFORE UPDATE ON identity_security_return_openings
