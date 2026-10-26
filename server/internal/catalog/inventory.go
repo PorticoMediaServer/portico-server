@@ -992,8 +992,9 @@ func (s *Service) persistScanArtworkTx(ctx context.Context, tx *sql.Tx, source L
 // its name and local metadata only. Root64: a scan never reads the image, so this
 // records the naming work done for this revision and leaves technical analysis
 // explicitly deferred; it writes no codec, duration, stream, chapter or disc
-// fact and infers none. A later advanced-analysis decision, when a source
-// consents to it, is what may observe technical facts.
+// fact and infers none. Its disc bytes are acquired only when someone plays it,
+// through the ordinary playback path; any analysis of those owned playback bytes
+// is a separate decision and never inherits this naming work.
 func (s *Service) CommitInventoryNaming(ctx context.Context, job, object, revision string, policyRevision int64, f assets.Facts) error {
 	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
 	if err != nil {
@@ -1056,7 +1057,7 @@ func (s *Service) CommitInventoryNaming(ctx context.Context, job, object, revisi
 	if kind != "movie" && kind != "tv" && kind != "anime" {
 		return errors.New("naming-only publication is for a video library")
 	}
-	if s.storage == nil {
+	if s.storage == nil || s.storage.Remote == nil {
 		return storage.ErrRemoteConfig
 	}
 	if err = s.storage.Remote.RecordReference(ctx, tx, filepath.Join(source.ResolvedPath, relative), f.ObservedRevision); err != nil {
