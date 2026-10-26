@@ -434,8 +434,9 @@ test('a chapter timer keeps its exact occurrence and stops only at the verified 
  const f=setup(t);await settle();await f.service.setTimer('chapter');
  assert.deepEqual(f.service.getSnapshot().timer?.occurrence,{sessionId:'session',generation:1,itemId:'song',playbackRun:1,queue:{queueId:'queue',entryId:'entry-1'}});
  f.engine.update({positionSeconds:10,pendingSeek:{revision:1}});assert.equal(f.engine.pauses,0,'an unsettled seek is not the chapter edge');
- f.engine.update({positionSeconds:29});assert.equal(f.engine.pauses,0);
- f.engine.update({positionSeconds:30});assert.equal(f.engine.pauses,1);
+ f.engine.update({positionSeconds:45});assert.equal(f.engine.pauses,0,'even past the edge an unsettled seek does not stop playback');
+ f.engine.update({positionSeconds:29,pendingSeek:undefined});assert.equal(f.engine.pauses,0);
+ f.engine.update({positionSeconds:30,pendingSeek:undefined});assert.equal(f.engine.pauses,1);
 });
 test('an acceptance after the engine already moved cannot resurrect a cleared boundary',async t=>{
  const f=setup(t,{context:audiobookContext,queue:()=>({queueId:'queue',entryId:'entry-2'})});await settle();
