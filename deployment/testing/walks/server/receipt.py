@@ -13,6 +13,18 @@ from pathlib import Path
 
 from .config import CREDENTIALS, now_iso
 
+# The coordinator's closed operation vocabulary. A receipt may name only these
+# values, so a failed ordinary setup/read call is identifiable without copying
+# a raw path, identifier, query or message into the private output.
+OPERATIONS = frozenset({
+    'setup-browser', 'setup-owner', 'setup-state', 'setup-finish',
+    'device-retire', 'system-read', 'console-settings-read', 'console-settings-write',
+    'library-create', 'library-scan', 'scan-job-read', 'libraries-read',
+    'reading-items-read', 'reading-session-open', 'periodicals-read',
+    'reading-session-close', 'home-read', 'library-content-read',
+    'member-create', 'member-sign-in', 'unclassified',
+})
+
 def write_json(path, document, mode=0o600):
     path = Path(path)
     descriptor, name = tempfile.mkstemp(prefix='.tmp-', dir=path.parent)
@@ -48,10 +60,12 @@ def write_text(path, text, mode=0o644):
         if os.path.exists(name):
             os.unlink(name)
 
-def receipt(paths, name, code, status=None, facts=None):
+def receipt(paths, name, code, status=None, facts=None, operation=None):
     document = {'name': name, 'code': code, 'at': now_iso()}
     if isinstance(status, int):
         document['status'] = status
+    if operation in OPERATIONS:
+        document['operation'] = operation
     if facts:
         document['facts'] = {key: value for key, value in facts.items()
                              if isinstance(value, (bool, int))}

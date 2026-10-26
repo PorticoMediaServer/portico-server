@@ -219,7 +219,7 @@ def _restart_active(paths, args, fx, access):
              'active' if entry_ok else 'private entry not verified', notice)
     return runtime_object, active, entry_ok
 
-def _deploy_once(paths, args, fx, creds, access):
+def _deploy_once(paths, args, fx, creds, access, failure=None):
     old = receipt.read_json(paths.active, {})
     try:
         commit = source.fetch_main(args.repo)
@@ -257,7 +257,12 @@ def _deploy_once(paths, args, fx, creds, access):
     except (source.SourceError, buildmod.BuildError, state.StateError, runtime.RuntimeFailure,
             fixtures.FixtureError, credentials.CredentialsError) as error:
         code = _code(error)
-        receipt.receipt(paths, 'deploy-failed', code, status=getattr(error, 'status', None))
+        operation = getattr(error, 'operation', None)
+        receipt.receipt(paths, 'deploy-failed', code, status=getattr(error, 'status', None),
+                        operation=operation)
+        if failure is not None:
+            failure.update({'code': code, 'status': getattr(error, 'status', None),
+                            'operation': operation})
         if isinstance(old, dict) and old and not _active_runtime(old, paths):
             try:
                 _restart_active(paths, args, fx, access)
@@ -266,6 +271,8 @@ def _deploy_once(paths, args, fx, creds, access):
         return None
     except Exception:
         receipt.receipt(paths, 'deploy-failed', 'unclassified')
+        if failure is not None:
+            failure['code'] = 'unclassified'
         if isinstance(old, dict) and old and not _active_runtime(old, paths):
             try:
                 _restart_active(paths, args, fx, access)
@@ -324,11 +331,19 @@ def _deploy(paths, args, fx, creds, access):
         print(json.dumps({'event': 'busy'}))
         return 0
     try:
-        result = _deploy_once(paths, args, fx, creds, access)
-        print(json.dumps({'event': 'deploy', 'ok': bool(result),
-                          'commit': result['commit'] if result else None,
-                          'continuity': result['continuity'] if result else None,
-                          'identityRetired': result['identityRetired'] if result else None}))
+        failure = {}
+        result = _deploy_once(paths, args, fx, creds, access, failure)
+        document = {'event': 'deploy', 'ok': bool(result),
+                    'commit': result['commit'] if result else None,
+                    'continuity': result['continuity'] if result else None,
+                    'identityRetired': result['identityRetired'] if result else None}
+        if not result and failure:
+            document['code'] = failure.get('code')
+            if isinstance(failure.get('status'), int):
+                document['status'] = failure['status']
+            if failure.get('operation') in receipt.OPERATIONS:
+                document['operation'] = failure['operation']
+        print(json.dumps(document))
         return 0 if result else 1
     finally:
         _unlock(lock)

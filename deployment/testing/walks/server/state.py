@@ -7,6 +7,7 @@ stopped; the portable state is activated later on the owned walk port.
 """
 from __future__ import annotations
 
+import re
 import secrets
 import socket
 import time
@@ -18,13 +19,45 @@ from pathlib import Path
 from .api import ApiError, Client
 from .config import SCAN_TIMEOUT, now_iso, safe_component
 from .credentials import digest as credential_digest
-from .receipt import read_json, write_json
+from .receipt import OPERATIONS, read_json, write_json
 from .runtime import RuntimeFailure, start as start_runtime, stop as stop_runtime
 
 class StateError(Exception):
-    def __init__(self, code, status=None):
+    def __init__(self, code, status=None, operation='unclassified'):
         self.code = code
         self.status = status
+        self.operation = operation if operation in OPERATIONS else 'unclassified'
+
+# A finite allowlist for the coordinator's ordinary calls. Only the label leaves
+# the coordinator; the method and path are matched here and never published.
+_OPERATIONS = (
+    ('POST', r'/v1/setup/browser', 'setup-browser'),
+    ('POST', r'/v1/setup', 'setup-owner'),
+    ('GET', r'/v1/setup/state', 'setup-state'),
+    ('POST', r'/v1/setup/finish', 'setup-finish'),
+    ('DELETE', r'/v1/devices/[A-Za-z0-9._~-]{1,4096}', 'device-retire'),
+    ('GET', r'/v1/system', 'system-read'),
+    ('GET', r'/v1/admin/console/settings', 'console-settings-read'),
+    ('PATCH', r'/v1/admin/console/settings', 'console-settings-write'),
+    ('POST', r'/v1/libraries', 'library-create'),
+    ('POST', r'/v1/libraries/[A-Za-z0-9._~-]{1,4096}/scans', 'library-scan'),
+    ('GET', r'/v1/admin/ingestion/jobs/[A-Za-z0-9._~-]{1,4096}', 'scan-job-read'),
+    ('GET', r'/v1/libraries', 'libraries-read'),
+    ('GET', r'/v1/reading/items', 'reading-items-read'),
+    ('POST', r'/v1/reading/sessions', 'reading-session-open'),
+    ('GET', r'/v1/libraries/[A-Za-z0-9._~-]{1,4096}/reading/periodicals', 'periodicals-read'),
+    ('DELETE', r'/v1/reading/sessions/[A-Za-z0-9._~-]{1,4096}', 'reading-session-close'),
+    ('GET', r'/v1/home', 'home-read'),
+    ('GET', r'/v1/libraries/[A-Za-z0-9._~-]{1,4096}/content', 'library-content-read'),
+    ('POST', r'/v1/direct/members', 'member-create'),
+    ('POST', r'/v1/direct/sign-in', 'member-sign-in'),
+)
+
+def _operation(method, path):
+    for verb, pattern, label in _OPERATIONS:
+        if verb == method and isinstance(path, str) and re.fullmatch(pattern, path):
+            return label
+    return 'unclassified'
 
 @dataclass(frozen=True)
 class PreparedState:
@@ -54,7 +87,7 @@ def _call(client, method, path, body=None, **kwargs):
     try:
         return client.call(method, path, body=body, **kwargs)
     except ApiError as error:
-        raise StateError(error.code, error.status) from None
+        raise StateError(error.code, error.status, _operation(method, path)) from None
 
 def _free_port(exclude):
     for _ in range(20):
