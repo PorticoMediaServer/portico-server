@@ -40,6 +40,9 @@ class Build:
     runtime_sha256: str
     built_at: str
     manifest: Path
+    rclone_version: str = ''
+    rclone_manifest_sha256: str = ''
+    rclone_files: tuple[tuple[str, str], ...] = ()
 
 def _run(argv, cwd, log, timeout, env):
     return run_process(argv, cwd, log, timeout, env)
@@ -65,6 +68,55 @@ def _tree_hash(root):
         digest.update(str(path.relative_to(root)).encode() + b'\0')
         digest.update(_file_hash(path).encode() + b'\n')
     return digest.hexdigest()
+
+# The walk server runs on linux/amd64, and the source's bundle lock pins that target.
+RCLONE_TARGET = 'linux-amd64'
+RCLONE_RELATIVE = 'third_party/rclone'
+RCLONE_TIMEOUT = 600
+_HELPER_MAX_FILES = 32
+_HELPER_MAX_FILE_BYTES = 160 * 1024 * 1024
+_HELPER_MAX_TOTAL_BYTES = 256 * 1024 * 1024
+_HELPER_NAME = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z')
+_HEX40 = re.compile(r'[0-9a-f]{40}\Z')
+_HEX64 = re.compile(r'[0-9a-f]{64}\Z')
+
+def _helper_inventory(bundle):
+    """Every actual file in a prepared helper, as a bounded name->sha256 map.
+
+    The directory and its parent must be real, not links; the walk stops at the
+    thirty-third entry before reading it, and each file is size-checked before it
+    is hashed so an oversized payload is refused rather than read.
+    """
+    bundle = Path(bundle)
+    if bundle.is_symlink():
+        raise BuildError('rclone-inventory')
+    parent = bundle.parent
+    if parent.is_symlink() or (parent.exists() and not parent.is_dir()):
+        raise BuildError('rclone-inventory')
+    if not bundle.exists():
+        raise BuildError('rclone-missing')
+    if not bundle.is_dir():
+        raise BuildError('rclone-inventory')
+    files = {}
+    total = 0
+    with os.scandir(bundle) as entries:
+        for entry in entries:
+            if len(files) >= _HELPER_MAX_FILES:
+                raise BuildError('rclone-inventory')
+            if not _HELPER_NAME.fullmatch(entry.name):
+                raise BuildError('rclone-inventory')
+            if entry.is_symlink() or not entry.is_file(follow_symlinks=False):
+                raise BuildError('rclone-inventory')
+            size = entry.stat(follow_symlinks=False).st_size
+            if size > _HELPER_MAX_FILE_BYTES:
+                raise BuildError('rclone-inventory')
+            total += size
+            if total > _HELPER_MAX_TOTAL_BYTES:
+                raise BuildError('rclone-inventory')
+            files[entry.name] = _file_hash(Path(entry.path))
+    if not files:
+        raise BuildError('rclone-inventory')
+    return files
 
 _SCHEMA = (
     'server/api/portico.openapi.json',
@@ -171,6 +223,33 @@ def build(source, build_dir, fixtures, paths):
         raise BuildError('web-incomplete')
     write_json(web / 'portico-build.json',
                {'commit': source.commit, 'client': 'web-next', 'purpose': 'walk'}, 0o644)
+    # The source needs a newer rclone than the host's; a bare walk build has no
+    # system install and no PATH override, so the pinned bundle is prepared from
+    # the same source with an owned cache and executed once to prove its version.
+    rclone_dir = build_dir / RCLONE_RELATIVE
+    if rclone_dir.exists():
+        raise BuildError('rclone-present')
+    rclone_cache = Path(paths.work) / 'rclone-cache'
+    if _run(['python3', 'scripts/rclone-bundle.py', 'prepare', str(rclone_dir),
+             '--target', RCLONE_TARGET, '--cache', str(rclone_cache)],
+            tree, log, RCLONE_TIMEOUT, env):
+        raise BuildError('rclone-prepare')
+    if _run(['python3', 'scripts/rclone-bundle.py', 'verify', str(rclone_dir),
+             '--target', RCLONE_TARGET, '--execute-version'], tree, log, 120, env):
+        raise BuildError('rclone-verify')
+    helper_manifest_path = rclone_dir / 'bundle-manifest.json'
+    try:
+        helper_manifest = json.loads(helper_manifest_path.read_text())
+    except (OSError, ValueError):
+        raise BuildError('rclone-manifest') from None
+    rclone_version = helper_manifest.get('version')
+    rclone_revision = helper_manifest.get('revision')
+    if (not isinstance(rclone_version, str) or not rclone_version
+            or not isinstance(rclone_revision, str) or not rclone_revision
+            or helper_manifest.get('target') != RCLONE_TARGET):
+        raise BuildError('rclone-manifest')
+    rclone_files = _helper_inventory(rclone_dir)
+    rclone_manifest_sha = _file_hash(helper_manifest_path)
     binary_sha = _file_hash(binary)
     web_sha = _tree_hash(web)
     manifest = {
@@ -189,6 +268,9 @@ def build(source, build_dir, fixtures, paths):
         'runtimeSHA256': fixtures.runtime_sha256,
         'goVersion': go_version,
         'nodeVersion': node_version,
+        'rclone': {'target': RCLONE_TARGET, 'version': rclone_version,
+                   'revision': rclone_revision, 'path': RCLONE_RELATIVE,
+                   'manifestSHA256': rclone_manifest_sha, 'files': rclone_files},
         'state': 'built',
         'runtimeVerified': False,
         'usable': False,
@@ -203,7 +285,9 @@ def build(source, build_dir, fixtures, paths):
                  schema_digest=schema_digest,
                  fixtures_manifest_sha256=fixtures.manifest_sha256,
                  runtime_sha256=fixtures.runtime_sha256, built_at=manifest['builtAt'],
-                 manifest=manifest_path)
+                 manifest=manifest_path, rclone_version=rclone_version,
+                 rclone_manifest_sha256=rclone_manifest_sha,
+                 rclone_files=tuple(sorted(rclone_files.items())))
 
 def load(directory):
     directory = Path(directory)
@@ -231,6 +315,50 @@ def load(directory):
             raise BuildError('generation-patch-mismatch')
     elif patch_hash:
         raise BuildError('generation-patch-mismatch')
+    rclone_version, rclone_manifest_sha, rclone_files = '', '', ()
+    recorded = document.get('rclone')
+    if recorded is not None:
+        # A build that records the helper must still match it exactly. A manifest
+        # from before the helper existed simply has no entry and stays that way.
+        if not isinstance(recorded, dict):
+            raise BuildError('rclone-manifest')
+        target, relative = recorded.get('target'), recorded.get('path')
+        version, revision = recorded.get('version'), recorded.get('revision')
+        manifest_sha, files = recorded.get('manifestSHA256'), recorded.get('files')
+        if target != RCLONE_TARGET or relative != RCLONE_RELATIVE:
+            raise BuildError('rclone-manifest')
+        if not isinstance(version, str) or not version:
+            raise BuildError('rclone-manifest')
+        if not isinstance(revision, str) or not _HEX40.fullmatch(revision):
+            raise BuildError('rclone-manifest')
+        if not isinstance(manifest_sha, str) or not _HEX64.fullmatch(manifest_sha):
+            raise BuildError('rclone-manifest')
+        if not isinstance(files, dict) or not files or len(files) > _HELPER_MAX_FILES:
+            raise BuildError('rclone-manifest')
+        expected = {}
+        for name, digest in files.items():
+            # No coercion: a key or digest that is not exactly a safe flat name or
+            # a 64-hex string refuses the build instead of being stringified in.
+            if not isinstance(name, str) or not _HELPER_NAME.fullmatch(name):
+                raise BuildError('rclone-manifest')
+            if not isinstance(digest, str) or not _HEX64.fullmatch(digest):
+                raise BuildError('rclone-manifest')
+            expected[name] = digest
+        bundle = directory / relative
+        on_disk = _helper_inventory(bundle)
+        if _file_hash(bundle / 'bundle-manifest.json') != manifest_sha:
+            raise BuildError('rclone-hash-mismatch')
+        if on_disk != expected:
+            raise BuildError('rclone-hash-mismatch')
+        try:
+            helper = json.loads((bundle / 'bundle-manifest.json').read_text())
+        except (OSError, ValueError):
+            raise BuildError('rclone-manifest') from None
+        if (not isinstance(helper, dict) or helper.get('target') != RCLONE_TARGET
+                or helper.get('version') != version or helper.get('revision') != revision):
+            raise BuildError('rclone-manifest')
+        rclone_version, rclone_manifest_sha = version, manifest_sha
+        rclone_files = tuple(sorted(on_disk.items()))
     return Build(commit=document['commit'], directory=directory, binary=binary, web=web,
                  binary_sha256=binary_hash, web_sha256=web_hash,
                  official_root_sha256=document['officialRootSHA256'],
@@ -240,4 +368,6 @@ def load(directory):
                  schema_digest=schema,
                  fixtures_manifest_sha256=document.get('fixturesManifestSHA256', ''),
                  runtime_sha256=document.get('runtimeSHA256', ''),
-                 built_at=document.get('builtAt', ''), manifest=directory / 'manifest.json')
+                 built_at=document.get('builtAt', ''), manifest=directory / 'manifest.json',
+                 rclone_version=rclone_version, rclone_manifest_sha256=rclone_manifest_sha,
+                 rclone_files=rclone_files)
