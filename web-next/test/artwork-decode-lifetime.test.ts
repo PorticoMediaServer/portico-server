@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createArtworkDecodeLifetime, createArtworkVisualLifetime, type ArtworkDecodeElement} from '../src/kit/artwork/decode-lifetime.ts';
+import {createArtworkDecodeLifetime, createArtworkPaintLifetime, createArtworkVisualLifetime, type ArtworkDecodeElement, type ArtworkPaintElement} from '../src/kit/artwork/decode-lifetime.ts';
 import {createPaintAdmission} from '../src/kit/artwork/visual-admission.ts';
 
 function pending() {
@@ -60,17 +60,10 @@ test('synchronous decode refusal reports the original failure rather than succee
 });
 
 function visibleGroup() {
-  let now = 0;
-  const timers = new Map<object, {run: () => void; at: number}>(), scope = {};
-  const admissions = createPaintAdmission({now: () => now, setTimer: (run, wait) => {const token = {}; timers.set(token, {run, at: now + wait}); return token;}, clearTimer: token => timers.delete(token as object)});
+  const scope = {}, admissions = createPaintAdmission();
   return {
     art: (order: number) => createArtworkVisualLifetime<object, object>(() => admissions.mount({scope, group: 'actual-row', order})),
-    advance(ms: number) {
-      now += ms;
-      for (const [token, task] of [...timers]) if (task.at <= now) {timers.delete(token); task.run();}
-    },
     pending: () => admissions.size(),
-    waits: () => timers.size,
   };
 }
 
@@ -81,8 +74,8 @@ test('loading to the first image preserves its mounted predecessor until genuine
   assert.equal(seen.length, 0);
   first.begin({}, a); assert.equal(seen.length, 0, 'receiving bytes is not decode success or predecessor retirement');
   first.decoded(a, false, () => true, () => seen.push('first'));
-  assert.deepEqual(seen, ['first']); row.advance(40); assert.deepEqual(seen, ['first', 'next']);
-  assert.equal(row.pending(), 0); assert.equal(row.waits(), 0);
+  assert.deepEqual(seen, ['first', 'next']);
+  assert.equal(row.pending(), 0);
 });
 
 test('a genuine cached decode bypasses both a pending predecessor and unknown visibility', () => {
@@ -91,7 +84,7 @@ test('a genuine cached decode bypasses both a pending predecessor and unknown vi
   assert.equal(seen.length, 0, 'a cache flag alone never paints before decode');
   cached.decoded(owner, true, () => true, () => seen.push('cached'));
   assert.deepEqual(seen, ['cached']); assert.equal(row.pending(), 1);
-  pending.retire(); cached.retire(); assert.equal(row.pending(), 0); assert.equal(row.waits(), 0);
+  pending.retire(); cached.retire(); assert.equal(row.pending(), 0);
 });
 
 test('an offscreen or failed predecessor releases ready siblings without borrowing its callback', () => {
@@ -102,7 +95,7 @@ test('an offscreen or failed predecessor releases ready siblings without borrowi
     if (retire === 'offscreen') first.change(false); else first.fail();
     assert.deepEqual(seen, ['next']);
     first.decoded(a, false, () => true, () => seen.push('old'));
-    row.advance(80); assert.deepEqual(seen, ['next']);
+    assert.deepEqual(seen, ['next']);
     first.retire(); next.retire(); assert.equal(row.pending(), 0);
   }
 });
@@ -111,22 +104,55 @@ test('a same-image new decode generation replaces the queued paint before retiri
   const row = visibleGroup(), anchor = row.art(0), first = row.art(1), next = row.art(2), image = {}, a = {}, old = {}, fresh = {}, b = {}, seen: string[] = [];
   anchor.change(true); first.change(true); next.change(true);
   anchor.begin({}, a); first.begin(image, old); next.begin({}, b);
-  anchor.decoded(a, false, () => true, () => seen.push('anchor'));
   first.decoded(old, false, () => true, () => seen.push('old'));
   next.decoded(b, false, () => true, () => seen.push('next'));
-  first.begin(image, fresh); row.advance(40);
+  first.begin(image, fresh); anchor.decoded(a, false, () => true, () => seen.push('anchor'));
   assert.deepEqual(seen, ['anchor'], 'the later sibling cannot steal the replacement predecessor turn');
   first.decoded(old, false, () => true, () => seen.push('borrowed'));
   first.decoded(fresh, false, () => true, () => seen.push('fresh'));
-  assert.deepEqual(seen, ['anchor', 'fresh']); row.advance(40);
-  assert.deepEqual(seen, ['anchor', 'fresh', 'next']); assert.equal(row.waits(), 0);
+  assert.deepEqual(seen, ['anchor', 'fresh', 'next']);
 });
 
 test('retirement withdraws an already-decoded paint callback and ignores late ready/visibility', () => {
   const row = visibleGroup(), first = row.art(0), next = row.art(1), a = {}, b = {}, seen: string[] = [];
   first.change(true); next.change(true); first.begin({}, a); next.begin({}, b);
-  first.decoded(a, false, () => true, () => seen.push('first'));
   next.decoded(b, false, () => true, () => seen.push('retired'));
   next.retire(); next.change(true); next.decoded(b, true, () => true, () => seen.push('late-cache'));
-  row.advance(80); assert.deepEqual(seen, ['first']); assert.equal(row.waits(), 0); assert.equal(row.pending(), 0);
+  first.decoded(a, false, () => true, () => seen.push('first')); assert.deepEqual(seen, ['first']); assert.equal(row.pending(), 0);
+});
+
+
+function imageNode() {
+  const attributes = new Map<string, string>();
+  const node: ArtworkPaintElement = {isConnected: true,
+    setAttribute: (name, value) => {attributes.set(name, value);},
+    removeAttribute: name => {attributes.delete(name);},
+  };
+  return {node, admitted: () => attributes.has('data-artwork-admitted')};
+}
+
+test('admitted paint is published on the owned original node without a later React commit', () => {
+  const {node, admitted} = imageNode(); let current = true;
+  const original = createArtworkPaintLifetime(node, () => current);
+  assert.equal(admitted(), false); original.reveal(); assert.equal(admitted(), true);
+  current = false; original.retire(); assert.equal(admitted(), false);
+  original.reveal(); assert.equal(admitted(), false);
+});
+
+test('a same-node replacement withdraws original paint and refuses stale reveal or cleanup', () => {
+  const {node, admitted} = imageNode();
+  const original = createArtworkPaintLifetime(node, () => true); original.reveal();
+  const replacement = createArtworkPaintLifetime(node, () => true);
+  assert.equal(admitted(), false, 'an actual replacement still needs its own decode/admission');
+  original.reveal(); assert.equal(admitted(), false);
+  replacement.reveal(); original.retire(); assert.equal(admitted(), true, 'old cleanup cannot erase successor paint');
+  replacement.retire(); assert.equal(admitted(), false);
+});
+
+test('disconnected or no-longer-current paint nodes never publish a visual fact', () => {
+  for (const connected of [false, true]) {
+    const {node, admitted} = imageNode(); Object.assign(node, {isConnected: connected});
+    const paint = createArtworkPaintLifetime(node, () => !connected); paint.reveal();
+    assert.equal(admitted(), false); paint.retire();
+  }
 });

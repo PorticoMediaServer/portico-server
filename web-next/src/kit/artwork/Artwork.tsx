@@ -1,6 +1,6 @@
 import {useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties} from 'react';
 import {observeArtwork, type ArtworkRead} from './source';
-import {createArtworkDecodeLifetime, createArtworkVisualLifetime} from './decode-lifetime';
+import {createArtworkDecodeLifetime, createArtworkPaintLifetime, createArtworkVisualLifetime} from './decode-lifetime';
 import {createPaintAdmission} from './visual-admission';
 import {observeVisibleArtwork} from './visible-artwork';
 import type {ArtworkImage, ArtworkProps, ArtworkSource, ArtworkStatus} from './types';
@@ -48,7 +48,7 @@ type ImageMount = {id: number; image?: ArtworkImage; lease?: OriginalArtwork; ow
 type VisualOwner = ReturnType<typeof createArtworkVisualLifetime<ArtworkImage, DecodeOwner>> & {lease: OriginalArtwork};
 let imageMountSequence = 0;
 // Only live intersecting mounts enter this registry. The helper prunes each
-// scheduler/group and its own timer when the last registration leaves.
+// scheduler/group when the last registration leaves.
 const paintAdmission = createPaintAdmission();
 
 export function Artwork({source, alt, fit = 'cover', position, zoom = 1, saturation = 1, brightness = 1, visible = true, arrivalDurationMs, fallback, className, style, width, height, onStatusChange, onReady, onError}: ArtworkProps) {
@@ -61,7 +61,6 @@ export function Artwork({source, alt, fit = 'cover', position, zoom = 1, saturat
   const delivered = useRef<{image: typeof read.image; key: string; scheduler: ArtworkSource['scheduler']} | undefined>(undefined);
   const reportedError = useRef<{key: string; scheduler: ArtworkSource['scheduler']} | undefined>(undefined);
   const [decoded, setDecoded] = useState<{mount?: ImageMount; owner?: DecodeOwner; failed: boolean}>({failed: false});
-  const [painted, setPainted] = useState<DecodeOwner>();
   const currentDecode = !!read.image && decoded.mount === mount && decoded.owner === mount.owner && mount.owner?.live === true && read.lease?.live === true;
   const failed = currentDecode && decoded.failed;
   const ready = currentDecode && !decoded.failed;
@@ -94,19 +93,23 @@ export function Artwork({source, alt, fit = 'cover', position, zoom = 1, saturat
     if (!visual || visual.lease !== lease) return;
     const current = () => owner.live && lease.live && currentMount.current === mount && mount.owner === owner
       && element.current === imageElement && imageElement.isConnected && imageElement.getAttribute('src') === image.src;
+    const paint = createArtworkPaintLifetime(imageElement, current);
+    // Establish this committed node's real hidden CSS start before a fast decode
+    // resolves; admission can then start the native fade without a React commit.
+    void imageElement.ownerDocument.defaultView?.getComputedStyle(imageElement).opacity;
     const owner: DecodeOwner = {live: true, decoder: createArtworkDecodeLifetime<ArtworkImage>({
       isCurrent: decode => current() && decode.image === image && decode.element === imageElement,
       receive: (_decode, failed) => {
         setDecoded({mount, owner, failed});
-        if (failed) visual.fail();
-        else visual.decoded(owner, read.cached === true, current, () => setPainted(owner));
+        if (failed) {paint.retire(); visual.fail();}
+        else visual.decoded(owner, read.cached === true, current, paint.reveal);
       },
     })};
     mount.owner = owner; visual.begin(image, owner);
     // decode() waits for this actual mounted src, including cache hits and
     // Strict replay. No complete/naturalWidth guess can force decode success.
     owner.decoder.decode(image, imageElement);
-    return () => {owner.live = false; owner.decoder.retire(); if (mount.owner === owner) mount.owner = undefined;};
+    return () => {owner.live = false; paint.retire(); owner.decoder.retire(); if (mount.owner === owner) mount.owner = undefined;};
   }, [mount, read.cached]);
   useEffect(() => {
     const lease = read.lease;
@@ -131,7 +134,7 @@ export function Artwork({source, alt, fit = 'cover', position, zoom = 1, saturat
   // old target cannot be adopted by its replacement, even with coarse clocks.
   return <span key={read.lease?.id ?? 'empty'} ref={container} className={artClass(styles.artwork, className)} style={artSize({width, height, style: {...arrivalStyle, ...style}})} data-artwork-status={status} data-artwork-cached={read.cached || undefined} role={alt ? 'img' : undefined} aria-label={alt || undefined} aria-hidden={alt ? undefined : true}>
     {fallback != null && <span className={styles.artworkFallback}>{fallback}</span>}
-    {read.image && !failed && <img ref={element} key={mount.id} src={read.image.src} alt="" draggable={false} className={artClass(styles.image, ready && painted === decoded.owner && styles.decoded)}
+    {read.image && !failed && <img ref={element} key={mount.id} src={read.image.src} alt="" draggable={false} className={styles.image}
       style={{objectFit: fit, objectPosition: position, transform: zoom === 1 ? undefined : `scale(${zoom})`, filter: saturation === 1 && brightness === 1 ? undefined : `saturate(${saturation}) brightness(${brightness})`}}
       onError={event => {if (mount.image) mount.owner?.decoder.fail(mount.image, event.currentTarget);}} />}
   </span>;

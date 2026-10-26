@@ -78,3 +78,28 @@ export function createArtworkVisualLifetime<I, O extends object>(mount: () => Ad
     retire() {mountSlot = undefined; decoded = undefined; generation = undefined; image = undefined; slot?.retire(); slot = undefined;},
   };
 }
+
+/** The visual admission callback publishes on this exact original image node,
+ * rather than asking React for another commit before the native fade can start.
+ * Status/callback publication remains owned by the separate real decode record.
+ */
+export type ArtworkPaintElement = Pick<HTMLImageElement, 'isConnected' | 'setAttribute' | 'removeAttribute'>;
+const paintOwners = new WeakMap<ArtworkPaintElement, object>();
+export function createArtworkPaintLifetime(element: ArtworkPaintElement, current: () => boolean) {
+  const owner = {};
+  let target: ArtworkPaintElement | undefined = element, accepts: (() => boolean) | undefined = current;
+  paintOwners.set(element, owner);
+  element.removeAttribute('data-artwork-admitted');
+  return {
+    reveal() {
+      const original = target;
+      if (original?.isConnected && accepts?.() && target === original && paintOwners.get(original) === owner) original.setAttribute('data-artwork-admitted', '');
+    },
+    retire() {
+      const original = target; target = undefined; accepts = undefined;
+      if (original && paintOwners.get(original) === owner) {
+        paintOwners.delete(original); original.removeAttribute('data-artwork-admitted');
+      }
+    },
+  };
+}
