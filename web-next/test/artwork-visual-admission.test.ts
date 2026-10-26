@@ -143,6 +143,7 @@ test('a stale queued timer callback cannot clear a replacement wait', () => {
   const c = paint.mount({scope: scopeA, group: 'row', order: 3});
   a.ready(() => seen.push('a'));
   b.ready(() => seen.push('b'));            // issues the paced wait T for B
+  c.ready(() => seen.push('c'));            // C is already mounted and ready behind B
   const stale = time.all()[0];
   assert.ok(stale, 'the paced wait was issued');
   // A real pending predecessor arrives and becomes the head: flush retires T.
