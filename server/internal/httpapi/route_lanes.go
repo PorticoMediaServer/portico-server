@@ -568,6 +568,7 @@ var routeLanes = map[string]string{
 	"POST /v1/direct/sessions/sign-out-everywhere":                                "auth",
 	"POST /v1/direct/sign-in":                                                     "auth",
 	"POST /v1/direct/two-factor/enrol":                                            "security-fence",
+	"POST /v1/direct/two-factor/recovery-codes":                                   "security-fence",
 	"POST /v1/direct/two-factor/verify":                                           "security-fence",
 	"POST /v1/downloads/options":                                                  "browsing",
 	"POST /v1/downloads/preparations":                                             "default",

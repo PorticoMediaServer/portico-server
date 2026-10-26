@@ -1039,7 +1039,7 @@ export type PostDirectMembersRequest = { "allowedLibraries": Array<string>; "nam
 export type PostDirectMembersResponse = { "allowedLibraries": Array<string>; "disabled": boolean; "disabledAt"?: string; "disabledReason"?: string; "hostedAccountId"?: string; "id": string; "primaryProfileId": string; "revision": number; "role": string; "username": string };
 export type PostDirectMembersIdResetCodeRequest = { "expectedRevision": number; "originalResetCode"?: string; "turnOffTwoStep"?: boolean };
 export type PostDirectMembersIdResetCodeResponse = { "code": string; "expiresAt": string; "serverId"?: string };
-export type PostDirectOwnershipRequest = { "accountId": string; "currentPassword": string; "expectedRevision": number; "porticoIdentity"?: { "certificate"?: { "keyId": string; "notAfter": string; "notBefore": string; "publicKey": string; "purpose": string; "revision": number; "revoked": Array<string>; "signature": string }; "keyId": string; "payload": string; "signature": string } };
+export type PostDirectOwnershipRequest = { "accountId": string; "currentPassword": string; "expectedRevision": number; "newAccount"?: { "name": string; "password": string; "username": string }; "porticoIdentity"?: { "certificate"?: { "keyId": string; "notAfter": string; "notBefore": string; "publicKey": string; "purpose": string; "revision": number; "revoked": Array<string>; "signature": string }; "keyId": string; "payload": string; "signature": string } };
 export type PostDirectOwnershipResponse = {  };
 export type PostDirectOwnershipCustodyRequest = { "porticoIdentity": { "certificate"?: { "keyId": string; "notAfter": string; "notBefore": string; "publicKey": string; "purpose": string; "revision": number; "revoked": Array<string>; "signature": string }; "keyId": string; "payload": string; "signature": string } | null };
 export type PostDirectOwnershipCustodyResponse = {  };
@@ -1067,6 +1067,8 @@ export type PostDirectSignOutEverywhereRequest = {  };
 export type PostDirectSignOutEverywhereResponse = {  };
 export type PostDirectTwoFactorEnrolRequest = { "password": string };
 export type PostDirectTwoFactorEnrolResponse = { "recoveryCodes": Array<string>; "secret": string; "uri": string };
+export type PostDirectTwoFactorRecoveryCodesRequest = { "code": string; "password": string };
+export type PostDirectTwoFactorRecoveryCodesResponse = { "codes": Array<string> };
 export type PostDirectTwoFactorVerifyRequest = { "code": string; "password": string };
 export type PostDirectTwoFactorVerifyResponse = { "enabled": boolean; "pendingEnrolment": boolean; "recoveryCodesRemaining": number };
 export type PostDvrRecordingsRequest = { "occurrence": { "channelId": string; "generation": string; "programmeId": string; "sourceId": string }; "options": { "afterMs": number; "beforeMs": number; "episodeLimit": number; "priority": number; "retentionDays": number } | null; "requestId": string; "useDefaults": boolean };
@@ -2096,6 +2098,7 @@ export type RouteContracts = {
 "post_direct_sign_in": { request: PostDirectSignInRequest; response: PostDirectSignInResponse };
 "post_direct_sign_out_everywhere": { request: PostDirectSignOutEverywhereRequest; response: PostDirectSignOutEverywhereResponse };
 "post_direct_two_factor_enrol": { request: PostDirectTwoFactorEnrolRequest; response: PostDirectTwoFactorEnrolResponse };
+"post_direct_two_factor_recovery_codes": { request: PostDirectTwoFactorRecoveryCodesRequest; response: PostDirectTwoFactorRecoveryCodesResponse };
 "post_direct_two_factor_verify": { request: PostDirectTwoFactorVerifyRequest; response: PostDirectTwoFactorVerifyResponse };
 "post_dvr_recordings": { request: PostDvrRecordingsRequest; response: PostDvrRecordingsResponse };
 "post_dvr_recordings_id_cancel": { request: PostDvrRecordingsIdCancelRequest; response: PostDvrRecordingsIdCancelResponse };

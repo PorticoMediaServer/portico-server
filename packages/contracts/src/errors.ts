@@ -13,6 +13,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "account_locked",
+    "status": 429,
+    "message": "The request could not be completed.",
+    "retry": "never"
+  },
+  {
     "code": "account_move_waiting",
     "status": 403,
     "message": "This account is waiting to move. Use its move link or code.",
@@ -46,6 +52,12 @@ export const errors = [
     "code": "artwork_pending",
     "status": 404,
     "message": "Artwork is not available yet.",
+    "retry": "same_request"
+  },
+  {
+    "code": "authentication_busy",
+    "status": 503,
+    "message": "The request could not be completed.",
     "retry": "same_request"
   },
   {
@@ -166,6 +178,12 @@ export const errors = [
     "code": "credential_unavailable",
     "status": 403,
     "message": "API keys and access tokens are not available for this sign-in.",
+    "retry": "never"
+  },
+  {
+    "code": "current_password_incorrect",
+    "status": 403,
+    "message": "The request could not be completed.",
     "retry": "never"
   },
   {
@@ -520,6 +538,18 @@ export const errors = [
     "code": "operation_expired",
     "status": 409,
     "message": "The time to undo this change has passed.",
+    "retry": "never"
+  },
+  {
+    "code": "owner_reset_expired",
+    "status": 410,
+    "message": "This code has expired. Codes last 15 minutes. Write a new file to get another.",
+    "retry": "never"
+  },
+  {
+    "code": "owner_reset_file_unavailable",
+    "status": 503,
+    "message": "Portico could not write the reset file. Check that the server's data folder can be written to, then try again.",
     "retry": "never"
   },
   {
@@ -940,6 +970,24 @@ export const errors = [
     "code": "transcode_not_allowed",
     "status": 403,
     "message": "This title needs converting, and converting is turned off for this account.",
+    "retry": "never"
+  },
+  {
+    "code": "two_factor_invalid",
+    "status": 403,
+    "message": "The request could not be completed.",
+    "retry": "never"
+  },
+  {
+    "code": "two_factor_missing",
+    "status": 409,
+    "message": "The request could not be completed.",
+    "retry": "never"
+  },
+  {
+    "code": "two_factor_required",
+    "status": 401,
+    "message": "Authentication is required.",
     "retry": "never"
   },
   {

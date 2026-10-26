@@ -219567,6 +219567,25 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "newAccount": {
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "password": {
+                "type": "string"
+              },
+              "username": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "username",
+              "name",
+              "password"
+            ],
+            "type": "object"
+          },
           "porticoIdentity": {
             "properties": {
               "certificate": {
@@ -220983,6 +221002,35 @@
           "secret",
           "uri",
           "recoveryCodes"
+        ],
+        "type": "object"
+      },
+      "PostDirectTwoFactorRecoveryCodesRequest": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "password",
+          "code"
+        ],
+        "type": "object"
+      },
+      "PostDirectTwoFactorRecoveryCodesResponse": {
+        "properties": {
+          "codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "codes"
         ],
         "type": "object"
       },
@@ -327860,7 +327908,8 @@
           "not_permitted",
           "not_found",
           "internal",
-          "rate_limited"
+          "rate_limited",
+          "owner_reset_file_unavailable"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -328456,7 +328505,8 @@
           "not_permitted",
           "not_found",
           "internal",
-          "rate_limited"
+          "rate_limited",
+          "owner_reset_expired"
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
@@ -345331,6 +345381,25 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "newAccount": {
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "password": {
+                        "type": "string"
+                      },
+                      "username": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "username",
+                      "name",
+                      "password"
+                    ],
+                    "type": "object"
+                  },
                   "porticoIdentity": {
                     "properties": {
                       "certificate": {
@@ -349624,6 +349693,109 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "internal"
+        ],
+        "x-lane": "security",
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
+      }
+    },
+    "/v1/direct/two-factor/recovery-codes": {
+      "post": {
+        "operationId": "post_direct_two_factor_recovery_codes",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "password",
+                  "code"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "codes": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "codes"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Replace account recovery codes",
+        "x-access": "device",
+        "x-admission": "security-fence",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "current_password_incorrect",
+          "account_locked",
+          "two_factor_missing",
+          "two_factor_required",
+          "two_factor_invalid",
+          "sign_in_kind_portico",
+          "password_change_required",
+          "factor_setup_required",
+          "authentication_busy",
           "internal"
         ],
         "x-lane": "security",
