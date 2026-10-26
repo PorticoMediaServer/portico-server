@@ -48,6 +48,7 @@ export const webMessages = {
   'web.connectivity.advertiseUrl': 'External address',
   'web.account.fallbackName': 'This server’s account',
   'web.account.profileLine': 'Profile · {name}',
+  'web.account.profilesOnServer': 'Profiles on {server}',
   'web.account.switchProfileOrServer': 'Switch profile or server',
   'web.account.profilesHelp': 'Each profile keeps its own history, My List and preferences.',
   'web.account.profilesHostedHelp': 'Each profile keeps its own history, My List and preferences. Add, rename and remove them in your Portico Account.',

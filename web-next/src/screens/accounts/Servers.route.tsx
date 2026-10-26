@@ -255,7 +255,7 @@ function BoundServers({entry, form}: {entry: BrowserAccountEntry; form: AccountS
   const account = browserAccount(), accountState = useSyncExternalStore(account.service.subscribe, account.service.getSnapshot);
   const narrow = useNarrowViewport();
   const [choices, setChoices] = useState<readonly SavedServerChoice[]>([]), [busy, setBusy] = useState(false), [working, setWorking] = useState(false), [error, setError] = useState<unknown>();
-  const [mode, setMode] = useState<'chooser' | 'address' | 'entry'>('chooser'), [origin, setOrigin] = useState<string>();
+  const [mode, setMode] = useState<'chooser' | 'address' | 'entry'>(() => router.state.location.search.local === true ? 'address' : 'chooser'), [origin, setOrigin] = useState<string>();
   const [attempt, setAttempt] = useState<MobileChooserAttempt>();
   const [directory, setDirectory] = useState<readonly DirectoryFacts[]>([]);
   const alive = useRef(true), loading = useRef<AbortController>(undefined), record = useRef<AppSessionRecord>(undefined), currentChoices = useRef(choices);
@@ -399,4 +399,4 @@ function BoundServers({entry, form}: {entry: BrowserAccountEntry; form: AccountS
   return <ServerSwitcher choices={choices} busy={busy || working} error={error} onChoose={choice => void openServer(choice)} onRefresh={() => void refresh()}
     onLocal={() => {form.clear(); entry.cancel(); setError(undefined); setMode('address');}} onClose={close} />;
 }
-export default defineWebScreen({id: 'servers', component: ServersScreen, chrome: 'standalone'});
+export default defineWebScreen({id: 'servers', component: ServersScreen, chrome: 'standalone', validateSearch: raw => raw.local === true || raw.local === 'true' ? {local: true} : {}});
