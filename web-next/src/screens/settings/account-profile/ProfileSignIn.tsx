@@ -145,7 +145,7 @@ export function ProfileSignIn({profiles,api,commandApi,signIn,isCurrent,onEnded,
  if(!scope||!document?.canManage)return null;
  return <SettingsGroup title={t('next.settingsSpec.account.profile.groups.5.title')}>
   {error&&!task&&!hostedTask&&!codes?<HostedError error={error}/>:null}
-  {error&&!task&&!hostedTask&&<Button size="small" onClick={()=>{if(held?.current())setRetry(value=>value+1);}}>{t('next.states.tryAgain')}</Button>}
+  {Boolean(error)&&!task&&!hostedTask&&<Button size="small" onClick={()=>{if(held?.current())setRetry(value=>value+1);}}>{t('next.states.tryAgain')}</Button>}
   {signIn==='portico'&&<SettingsRow id="profile.email" label={t('next.settingsSpec.account.profile.groups.5.rows.0.label')} help={<>{hostedState?.contactAddress}<br/>{t('services.security.emailHelp')}</>}>
    <HostedSecurityAction label={t('next.settingsSpec.account.profile.groups.5.rows.0.control.label')} disabled={!available||busy} onOpen={()=>{openHosted('email_change');}}/>
   </SettingsRow>}
