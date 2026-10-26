@@ -330,21 +330,42 @@ var quantumPoll = 300 * time.Millisecond
 // with the titles it found (compactcatalog.AwaitTitles).
 var titleCatchUp = time.Second
 
+// Focused lifecycle seams. Production keeps the real monitor, the real quantum
+// and a no-op iteration hook; tests use them to prove a Run owns its children so
+// an iteration panic can reach the outer supervisor only after every child of
+// this generation has stopped.
+var (
+	monitorRun = func(s *Service, ctx context.Context) { s.runMonitor(ctx) }
+	quantumRun = func(s *Service, ctx context.Context, id, library string) bool {
+		return s.processQuantum(ctx, id, library)
+	}
+	iterationHook = func(context.Context) {}
+)
+
 func (s *Service) Run(ctx context.Context) {
+	// This Run owns a cancellable generation: the monitor, the worker loop and
+	// every quantum derive from it. An iteration panic must stop all of them
+	// before the outer supervisor restarts the scanner, so the supplied parent
+	// is never cancelled and no child is detached.
+	life, stopLife := context.WithCancel(ctx)
 	// Everything this loop writes is bulk catalogue work, so it queues behind
 	// playback, authentication and interactive edits at the write gate.
-	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
+	life = dbwork.WithClass(life, dbwork.ClassBackgroundMedia)
 	monitorDone := make(chan struct{})
-	supervise.Go("ingestion.monitor", func() { defer close(monitorDone); s.runMonitor(ctx) })
-	defer func() { <-monitorDone }()
+	supervise.Go("ingestion.monitor", func() { defer close(monitorDone); monitorRun(s, life) })
 	var workers sync.WaitGroup
-	defer workers.Wait()
 	defer func() {
+		// One cleanup, in order: cancel this generation (which also releases the
+		// monitor and the worker loop), cancel the active quantums, then join
+		// both. A panic continues to the supervisor only after this returns.
+		stopLife()
 		s.mu.Lock()
 		for _, cancel := range s.active {
 			cancel()
 		}
 		s.mu.Unlock()
+		workers.Wait()
+		<-monitorDone
 	}()
 	// A scan is enqueued by a write, so the loop is woken by one. With nothing
 	// queued it asked the database three times a second for the life of the
@@ -359,7 +380,8 @@ func (s *Service) Run(ctx context.Context) {
 	advanced := workerloop.NewSignal()
 	pruneAfter := ""
 	nextPrune := time.Time{}
-	workerloop.RunWith(ctx, "ingestion.scan", advanced, wake, func(ctx context.Context) time.Duration {
+	workerloop.RunWith(life, "ingestion.scan", advanced, wake, func(ctx context.Context) time.Duration {
+		iterationHook(ctx)
 		pending := false
 		{
 			ctx = dbwork.WithBackgroundSpeed(ctx, dbwork.ReadBackgroundSpeed(ctx, s.db))
@@ -426,7 +448,7 @@ func (s *Service) Run(ctx context.Context) {
 							}
 						}()
 						started := time.Now()
-						more = s.processQuantum(work, c.id, c.library)
+						more = quantumRun(s, work, c.id, c.library)
 						// The next step follows at once only when nothing in the
 						// foreground is in flight. Otherwise the scan first gives
 						// way, for the bounded pause every continuous bulk loop
