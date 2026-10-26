@@ -83,8 +83,10 @@ export function BrowseResults(props: BrowseResultsProps) {
   const range = useCallback((first: number, last: number) => {setVisible(before => before.first === first && before.last === last ? before : {first, last});onVisibleRange?.(first, last);}, [onVisibleRange]);
   const anchors = Object.entries(snapshot.positionIndex ?? {}).map(([key, index]) => ({key, index}));
   const list = view === 'list', ratio = shape === 'poster' ? 2 / 3 : shape === 'collection' ? 16 / 9 : 1;
-  const music = state.capabilities?.library.kind === 'music';
-  const musicGenres = music && controller.source.pivot === 'genres';
+  const musicLibrary = state.capabilities?.library.kind === 'music';
+  // The canonical Songs tab maps its pivot to 'songs' (library-tabs.ts); only that tab is the song table.
+  const music = musicLibrary && controller.source.pivot === 'songs';
+  const musicGenres = musicLibrary && controller.source.pivot === 'genres';
   const reading = state.capabilities?.library.kind === 'book' || state.capabilities?.library.kind === 'comic';
   const drawnColumns = reading ? readingColumns : music ? musicColumns : columns;
   // Frame #collections draws three 16:9 series tiles at 24px: a page of about ten groups reads as
@@ -119,7 +121,7 @@ function BrowseListRow({member, index, artwork, env, actions, reading, music}: B
   const {entry} = member, title = entry.displayTitle ?? entry.title, action = actions(member, index), progress = timelineFacts(entry.duration, entry.progressSeconds).progress;
   const badges = entry.kind === 'song' && entry.audioFacts ? musicFormatBadges(entry.audioFacts).map(badge => typeof badge === 'string' ? badge : formatSignalText(badge, serviceI18n().t)) : [];
   const range = useSelectionRangePreview(action.selection);
-  const art = artwork.foreground(entry.posterUrl, music ? 84 : 72 * devicePixelRatio, music ? 1 : 2 / 3, {group: entry.libraryId, order: index});
+  const art = artwork.foreground(entry.posterUrl, music ? 42 * devicePixelRatio : 72 * devicePixelRatio, music ? 1 : 2 / 3, {group: entry.libraryId, order: index});
   const added = entry.addedAt && Number.isFinite(Date.parse(entry.addedAt)) ? new Intl.DateTimeFormat(env.locale ?? 'en-US', {month: 'short', day: 'numeric', year: 'numeric'}).format(new Date(entry.addedAt)) : undefined;
   const duration = durationText(entry.duration, env.t);
   const resolution = entry.resolution === '4k' ? t('quality.4k') : entry.resolution === '1080p' ? t('downloads.quality.1080p') : entry.resolution === '720p' ? t('downloads.quality.720p') : entry.resolution === 'sd' ? t('quality.sd') : undefined;
