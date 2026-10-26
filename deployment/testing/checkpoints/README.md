@@ -32,6 +32,16 @@ and geometry counts, never URLs, bodies, nonces or account identifiers.
 
 Android automation is the next rollout stage, reusing the existing qualified
 APK/Reader packaging and private native metadata checks. Apple runs only after the other automated flows are stable.
+
+Native Reader reuse verifies the entire guest inventory against the exact
+official producer receipt, including missing/extra files, hashes, byte bounds
+and symlink refusals. A legacy `source`/file-list receipt is preserved; it is not
+silently treated as the newer `serverMain`/file-map producer proof. If an actual
+producer result matches every retained guest byte, a separate
+`producer-receipt.json` records that proof so later ordinary builds can reuse it.
+Different bytes refuse without replacing either guest or original receipt.
+This is packaging provenance only, not Reader runtime qualification or a SDK
+mirror update. `test_native_reader_reuse.py` exercises this with scratch fixtures.
 `Portico_CertTest_API36` is never a target. All child processes, emulators and
 scratch started by a run are retired in `finally` paths.
 
