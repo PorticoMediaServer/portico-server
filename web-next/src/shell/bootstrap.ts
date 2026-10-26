@@ -33,7 +33,7 @@ export type ShellAssemblyContext = Readonly<{
   api: HttpLocalApi; session: () => LocalSession; auth: LocalSessionRefresher; events: EventsClient;
   freshness: FreshnessRuntime; home: HomeService; inbox: InboxService; artwork: ShellArtwork;
   facts: ShellFacts; preferences?: PreferencesReader; epoch: number; viewerFence?: string; isCurrent: () => boolean;
-  signOut: () => void; signOutPorticoAccount?: () => void; switchProfile:(profileId:string,pin:string,signal:AbortSignal)=>Promise<void>; switchServer:(serverId:string)=>Promise<void>; savedServers:readonly {id:string;label:string}[];
+  signOut: () => void; signOutPorticoAccount?: () => void; switchProfile:(profileId:string,pin:string,signal:AbortSignal)=>Promise<void>; switchServer:(serverId:string,expectedRevision?:number)=>Promise<void>; savedServers:readonly {id:string;label:string}[];
 }>;
 export type ShellAssembly = Readonly<{
   getBinding: () => ShellBindings;
@@ -353,6 +353,6 @@ export class ShellBootstrap {
     void home.load();
     publishBinding();
   }
-  selectServer = async (serverId:string) => {if(this.disposed)return;this.clearWait();this.fence();const epoch=this.epoch;this.publish({phase:'restoring'});try{await (this.environment.actions?.()??browserAppSessionActions()).switchServer(serverId);if(!this.disposed&&this.epoch===epoch)await this.start();}catch(error){if(!this.disposed&&this.epoch===epoch)this.publish({phase:'error',error});}};
+  selectServer = async (serverId:string,expectedRevision?:number) => {if(this.disposed)return;this.clearWait();this.fence();const epoch=this.epoch;this.publish({phase:'restoring'});try{await (this.environment.actions?.()??browserAppSessionActions()).switchServer(serverId,()=>!this.disposed&&this.epoch===epoch,expectedRevision);if(!this.disposed&&this.epoch===epoch)await this.start();}catch(error){if(!this.disposed&&this.epoch===epoch)this.publish({phase:'error',error});}};
   dispose = () => { if (this.disposed) return; this.disposed = true; this.clearWait(); this.fence(); this.publish({phase: 'signed-out'}); this.listeners.clear(); };
 }

@@ -35,7 +35,7 @@ export type ShellProps = Readonly<{
   dockVisible: boolean;
   /** The verified connection reports the server away; the native desktop host draws one quiet line. */
   serverAway?: boolean;
-  onSignOut: () => void; onSignOutPorticoAccount?: () => void; onSwitchProfile?:(profileId:string,pin:string,signal:AbortSignal)=>Promise<void>; onSwitchServer?:(serverId:string)=>Promise<void>; savedServers?:readonly {id:string;label:string}[];
+  onSignOut: () => void; onSignOutPorticoAccount?: () => void; onSwitchProfile?:(profileId:string,pin:string,signal:AbortSignal)=>Promise<void>; onSwitchServer?:(serverId:string,expectedRevision?:number)=>Promise<void>; savedServers?:readonly {id:string;label:string}[];
   onFeedback?: () => void;
   overlays?: ReactNode;
   windowChrome?: ReactNode;

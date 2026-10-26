@@ -16,12 +16,12 @@ import {AccountSignInView} from '../screens/accounts/AccountSignInView';
 import {AccountSignInForm} from '../screens/accounts/sign-in-form';
 
 const t = defaultI18n.t;
-export type HostedSwitchSelection = Readonly<{server: HostedDirectoryServer; access: AccountServerAccess}>;
+export type HostedSwitchSelection = Readonly<{server: HostedDirectoryServer; access: AccountServerAccess; revision: number}>;
 export type SwitchProfileServerOpening = Readonly<{
   current: () => boolean; serverId: string; serverName: string; portico: boolean;
   profiles: readonly ProfileIdentity[]; profileId: string;
   selectProfile: (profile: ProfileIdentity) => void;
-  selectServer?: (id: string) => Promise<void>;
+  selectServer?: (id: string, expectedRevision: number) => Promise<void>;
   selectHosted: (selection: HostedSwitchSelection) => void;
   useLocal: () => void;
 }>;
@@ -75,7 +75,7 @@ export function SwitchProfileServerHost({opening, close}: {opening: SwitchProfil
       const directoryAccess = access;
       const servers: Choice[] = [], locals: Choice[] = [];
       const shown = new Set<string>();
-      const selectSaved = (id: string) => opening.selectServer ? async () => {await opening.selectServer!(id);} : undefined;
+      const selectSaved = (id: string) => opening.selectServer ? async () => {await opening.selectServer!(id, record.revision);} : undefined;
       for (const server of [...(directory?.items ?? [])].sort((a, b) => Number(b.status === 'active') - Number(a.status === 'active'))) {
         const isCurrent = server.id === opening.serverId;
         const detail = isCurrent ? t('web.servers.current') : server.status === 'active' ? t('web.servers.online')
@@ -86,7 +86,7 @@ export function SwitchProfileServerHost({opening, close}: {opening: SwitchProfil
           detailTone: server.status === 'active' && !isCurrent ? 'online' : undefined, dimmed: server.status !== 'active', available: true}),
           select: saved && opening.selectServer ? selectSaved(server.id) : directoryAccess ? async () => {
             if (!directoryAccess.isCurrent()) throw new DOMException('Account changed', 'AbortError');
-            opening.selectHosted(Object.freeze({server: immutable, access: directoryAccess}));
+            opening.selectHosted(Object.freeze({server: immutable, access: directoryAccess, revision: record.revision}));
           } : undefined}));
         shown.add(server.id);
       }
@@ -141,7 +141,7 @@ export function HostedServerOpening({selection, cancel}: {selection: HostedSwitc
   const [instance, setInstance] = useState<Readonly<{entry: ReturnType<typeof createBrowserAccountEntry>; form: AccountSignInForm}>>();
   useEffect(() => {
     const entry = createBrowserAccountEntry(), form = new AccountSignInForm(entry);
-    setInstance({entry, form}); void entry.openHostedServer(selection.server, selection.access);
+    setInstance({entry, form}); void entry.openHostedServer(selection.server, selection.access, selection.revision);
     return () => {form.dispose(); entry.dispose();};
   }, [selection]);
   return instance ? <AccountSignInView {...instance} initialize={false} onCancel={cancel} /> : null;
