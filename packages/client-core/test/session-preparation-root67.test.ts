@@ -326,15 +326,23 @@ test('Root69 caller retirement during a past-budget wait clears its timer and se
 });
 
 test('Root69 ordinary item, channel and queue starts replay only their own original body', async () => {
-  const targets = [{itemId: 'movie'}, {channelId: 'channel'}, {queue: {queueId: 'queue', entryId: 'entry'}}];
-  for (const target of targets) {
+  const queue = {queueId: 'queue', entryId: 'entry'};
+  const cases: {target: {itemId: string} | {channelId: string} | {queue: typeof queue}; offered: Record<string, unknown>}[] = [
+    {target: {itemId: 'movie'}, offered: real()},
+    {target: {channelId: 'channel'}, offered: {...real(), kind: 'channel', itemId: 'channel'}},
+    {target: {queue}, offered: {...real(), itemId: 'entry-item', queue}}
+  ];
+  for (const {target, offered} of cases) {
     const c = clock(), requests: V1Request[] = [];
-    const http: V1Http = {send: async request => {requests.push(request); return requests.length <= 2 ? reply({retryAfterMs: 1_000}) : reply(real(), 201);}};
+    const http: V1Http = {send: async request => {requests.push(request); return requests.length <= 2 ? reply({retryAfterMs: 1_000}) : reply(offered, 201);}};
     const pending = new SessionsClient(http, c.timers).start(target, {}, 'original_key_0000026');
     await settle(); c.fire(); await settle(); c.fire();
     const session = await pending;
     assert.equal(session.id, 'original_session'); assert.equal(requests.length, 3);
     for (const request of requests) {assert.equal(request, requests[0]); assert.deepEqual(request.body, target);}
+    if ('itemId' in target) {assert.equal(session.kind, 'vod'); assert.equal(session.itemId, 'movie');}
+    if ('channelId' in target) {assert.equal(session.kind, 'channel'); assert.equal(session.itemId, 'channel');}
+    if ('queue' in target) {assert.deepEqual(session.queue, target.queue);}
   }
 });
 
