@@ -4,6 +4,30 @@ import argparse,datetime,fcntl,hashlib,importlib.util,json,os,re,signal,stat,sub
 from pathlib import Path,PurePosixPath
 ROOT=Path('/home/justin/projects/Portico');LANE=ROOT/'.worktrees/ui-2026/v3-release';PROGRAM=ROOT/'.worktrees/ui-2026/_program'
 REPORT=None;RUN_OUT=None
+CLOSED_REASONS=frozenset({'bounded-build-timeout','existing-reader-differs','matching-source-map-unavailable',
+ 'reader-budget','reader-evidence-unavailable','reader-hash','reader-member','reader-receipt',
+ 'native-lane-busy','native-source-dirty','native-unpublished-work','pinned-node-unavailable','gradle-busy'})
+BUILD_FAILED=re.compile(r'build-command-failed-([1-9][0-9]{0,2})\Z')
+def receipt_for(error):
+    status='unavailable' if isinstance(error,(Unavailable,SystemExit,KeyboardInterrupt)) else 'fail'
+    receipt={'surface':'android','id':'published-main-package','status':status,'class':type(error).__name__}
+    reason=closed_reason(error)
+    if reason:receipt['reason']=reason
+    return receipt
+
+def closed_reason(error):
+    try:
+        first=error.args[0] if error.args else None
+    except Exception:
+        return None
+    if not isinstance(first,str) or len(first)>64:
+        return None
+    if first in CLOSED_REASONS:
+        return first
+    match=BUILD_FAILED.fullmatch(first)
+    if match and 1<=int(match.group(1))<=255:
+        return first
+    return None
 class Unavailable(Exception):pass
 READER_LIMIT=64*1024*1024
 def reader_files(data,source):
@@ -162,7 +186,7 @@ def main():
                         spec=importlib.util.spec_from_file_location('fire_artifact',Path(__file__).with_name('firetv-artifact.py'));module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);proof=module.audit(Path(summary['apk']),native/'apps/native/licences/android-firetv.txt');(destination/'firetv-platform-proof.json').write_text(json.dumps(proof,indent=2)+'\n')
                         report['flows'].append({'surface':'fire-os-tv','id':'no-gms-cast-artifact','status':proof['status']})
                     packages[flavour]=summary;report['flows'].append({'surface':'android-google' if flavour=='google' else 'fire-os-tv','id':'published-main-package','status':'pass','variant':variant})
-                except RuntimeError as error:report['flows'].append({'surface':'android-google' if flavour=='google' else 'fire-os-tv','id':'published-main-package','status':'fail','class':type(error).__name__,'variant':variant})
+                except RuntimeError as error:report['flows'].append(dict(receipt_for(error),surface='android-google' if flavour=='google' else 'fire-os-tv',variant=variant))
         report.update(artifact=str(artifact),reader=str(reader),packages=packages)
         if 'google' in packages:report['package']=packages['google']
         (out/'result.json').write_text(json.dumps(report,indent=2)+'\n');(ROOT/'.private/v3-checkpoints/native-candidate.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps({'status':'BUILT' if packages else 'FAILED','nativeMain':pin,'serverMirror':source,'artifact':str(artifact),'reader':str(reader),'flavours':list(packages)}))
@@ -172,9 +196,7 @@ if __name__=='__main__':
     signal.signal(signal.SIGTERM,interrupt)
     try:main()
     except BaseException as e:
-        status='unavailable' if isinstance(e,(Unavailable,SystemExit,KeyboardInterrupt)) else 'fail'
-        receipt={'surface':'android','id':'published-main-package','status':status,'class':type(e).__name__}
-        if isinstance(e,Unavailable):receipt['reason']=str(e)
+        receipt=receipt_for(e);status=receipt['status']
         if REPORT is not None:
             REPORT['flows'].append(receipt);(RUN_OUT/'result.json').write_text(json.dumps(REPORT,indent=2)+'\n')
         print(json.dumps(receipt));raise SystemExit(75 if status=='unavailable' else 1)
