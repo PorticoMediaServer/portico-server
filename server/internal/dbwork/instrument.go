@@ -290,20 +290,24 @@ func observeTransaction(ctx context.Context) {
 type observedDriver struct{ inner driver.Driver }
 
 func (d observedDriver) Open(name string) (driver.Conn, error) {
+	readers := acquireReaderScope(name)
+	generation := readers.plannerGeneration.Load()
 	inner, err := d.inner.Open(name)
 	if err != nil {
+		releaseReaderScope(readers)
 		return nil, err
 	}
-	return &observedConn{inner: inner, readers: acquireReaderScope(name)}, nil
+	return &observedConn{inner: inner, readers: readers, plannerGeneration: generation}, nil
 }
 
 type observedConn struct {
-	inner      driver.Conn
-	inTx       bool
-	changes    *changeSet
-	statements statementCache
-	readers    *readerScope
-	readerTx   *readerLease
+	inner             driver.Conn
+	inTx              bool
+	changes           *changeSet
+	statements        statementCache
+	readers           *readerScope
+	readerTx          *readerLease
+	plannerGeneration uint64
 	// authorityDirty is transaction-local: a reader may reauthorize against
 	// the old snapshot after a statement bump and before its commit. Only an
 	// authority-writing transaction needs a second bump when it commits.
@@ -433,6 +437,12 @@ func (c *observedConn) ResetSession(ctx context.Context) error {
 	c.finishReadTransaction()
 	c.inTx = false
 	c.authorityDirty = false
+	// SQLite caches statistics and prepared plans per physical connection.
+	// Retire an idle connection only when it is borrowed again; a snapshot
+	// already using it keeps its original transaction until it finishes.
+	if c.readers != nil && c.plannerGeneration != c.readers.plannerGeneration.Load() {
+		return driver.ErrBadConn
+	}
 	if resetter, ok := c.inner.(driver.SessionResetter); ok {
 		return resetter.ResetSession(ctx)
 	}

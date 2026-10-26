@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -27,6 +28,7 @@ type ReaderLifetimeStats struct {
 }
 
 type readerScope struct {
+	plannerGeneration        atomic.Uint64
 	mu                       sync.Mutex
 	key                      string
 	connections              int // guarded by readerScopes.mu

@@ -34,7 +34,8 @@ import (
 
 const (
 	// integrityIntervalDefault is how often the opt-in structural check runs.
-	integrityIntervalDefault = 24 * time.Hour
+	integrityIntervalDefault  = 24 * time.Hour
+	plannerStatisticsInterval = 5 * time.Minute
 )
 
 // integritySchedule reads the owner's choice. Off unless asked for, because on a
@@ -60,7 +61,8 @@ func integritySchedule() (time.Duration, bool) {
 }
 
 // runDatabaseHousekeeping is the recurring half of the database's care: the
-// checkpoint every start needs, and the structural check an owner asked for.
+// checkpoint and planner refresh every start needs, and the structural check
+// an owner asked for.
 func runDatabaseHousekeeping(ctx context.Context, db *sql.DB) {
 	if db == nil {
 		return
@@ -83,6 +85,7 @@ func runDatabaseHousekeeping(ctx context.Context, db *sql.DB) {
 	lastIntegrity := time.Time{}
 	lastReceiptSweep := time.Now()
 	lastUnknownSweep := time.Now()
+	lastPlannerRefresh := time.Now()
 	receipts := idempotency.Store{SweepBegin: func(ctx context.Context) (idempotency.Transaction, error) {
 		return dbwork.Begin(ctx, db, dbwork.ClassMaintenance)
 	}}
@@ -118,6 +121,15 @@ func runDatabaseHousekeeping(ctx context.Context, db *sql.DB) {
 		// cadence for backlog draining, receipt pruning and structural checks.
 		if !ancillary.due(time.Now()) {
 			continue
+		}
+		if time.Since(lastPlannerRefresh) >= plannerStatisticsInterval {
+			// A startup-only refresh freezes one-row bootstrap estimates while
+			// sessions and catalogues grow. Reuse the yielding, short-writer
+			// refresh; it counts only stale tables and samples index keys.
+			lastPlannerRefresh = time.Now()
+			if err := persistence.RefreshPlannerStatistics(ctx, db); err != nil && ctx.Err() == nil {
+				log.Printf("Planner statistics refresh will retry: %v", err)
+			}
 		}
 		if err := persistence.ReclaimSpace(ctx, db); err != nil {
 			log.Printf("warn: Database space reclamation: %v", err)

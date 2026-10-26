@@ -94,7 +94,7 @@ func OpenHandle(path string, policy Policy) (*sql.DB, error) {
 	background.SetMaxIdleConns(2)
 	background.SetConnMaxLifetime(policy.ConnMaxLifetime)
 	// The gate owns admission; readers never borrow this connection.
-	db := sql.OpenDB(&splitConnector{dsn: dsn, driver: &splitDriver{Driver: writer.Driver(), writer: writer, background: background}})
+	db := sql.OpenDB(&splitConnector{dsn: dsn, driver: &splitDriver{Driver: writer.Driver(), dsn: dsn, writer: writer, background: background}})
 	if err = policy.Apply(db); err != nil {
 		db.Close()
 		return nil, err

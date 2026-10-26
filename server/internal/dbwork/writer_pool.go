@@ -14,6 +14,7 @@ type splitConnector struct {
 }
 type splitDriver struct {
 	driver.Driver
+	dsn        string
 	writer     *sql.DB
 	background *sql.DB
 }

@@ -48,6 +48,13 @@ func RefreshPlannerStatistics(ctx context.Context, db *sql.DB) error {
 		return err
 	}
 	changed := false
+	defer func() {
+		if changed {
+			// Earlier tables may already have committed even if a later read
+			// is cancelled. Never leave pooled plans on those old statistics.
+			dbwork.PlannerStatisticsChanged(db)
+		}
+	}()
 	for _, table := range tables {
 		if !dbwork.Yield(ctx) {
 			return ctx.Err()
