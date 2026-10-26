@@ -89,12 +89,14 @@
 /* Cleared history: outgoing rows keep their authored exit in the existing bounded
    layout-presence layer; surviving sections close the gap by transform. */
 .historyRoster { position: relative; }
-.historyItem { transition: opacity 180ms linear; }
-.historyItem[data-leaving='true'] { opacity: 0; }
+.historyItem { padding: 0 var(--shell-gutter, var(--gutter-desktop)); transition: opacity 180ms linear; }
+.historyHeading { padding: 30px var(--shell-gutter, var(--gutter-desktop)) 0; transition: opacity 180ms linear; }
+.historyHeading h2 { margin: 0 0 8px; font-size: var(--type-body-size); font-weight: var(--type-row-heading-weight); color: var(--color-text-tertiary); }
+.historyItem[data-leaving='true'], .historyHeading[data-leaving='true'] { opacity: 0; }
 .historyLive { animation: historyIn 180ms linear both; }
 @keyframes historyIn { from { opacity: 0; } to { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .historyItem { transition-duration: 160ms; } .historyLive { animation-duration: 160ms; } }
-[data-reduced-motion='true'] .historyItem { transition-duration: var(--motion-reduced, 160ms); }
+@media (prefers-reduced-motion: reduce) { .historyItem, .historyHeading { transition-duration: 160ms; } .historyLive { animation-duration: 160ms; } }
+[data-reduced-motion='true'] .historyItem, [data-reduced-motion='true'] .historyHeading { transition-duration: var(--motion-reduced, 160ms); }
 [data-reduced-motion='true'] .historyLive { animation-duration: var(--motion-reduced, 160ms); }
 .historyArt { position: relative; width: 160px; height: 90px; border-radius: 8px; overflow: hidden; padding: 0; }
 .historyArt > * { width: 100%; height: 100%; }
@@ -212,7 +214,7 @@
   .resourceHeader { display: block; padding: 20px; }
   .resourceCover { width: 180px; margin: 0 auto 24px; }
   .resourceHeader h1 { font-size: var(--type-display-size); }
-  .personalRows, .historyDay { padding-right: 20px; padding-left: 20px; }
+  .personalRows, .historyDay, .historyItem, .historyHeading { padding-right: 20px; padding-left: 20px; }
   .historyRow { grid-template-columns: 90px minmax(0, 1fr); gap: 14px; }
   .historyArt { width: 90px; height: 54px; }
   .historyRow time { grid-column: 2; text-align: left; }

@@ -157,8 +157,8 @@ function historyDayLabel(date: Date): string {
 export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
   const service = bindings.runtime.personal, snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot), [confirm, setConfirm] = useState(false), [busy, setBusy] = useState(false), cancel = useRef<HTMLButtonElement>(null);
   // A new service or route is a new timeline: the presence layer never carries rows across it.
-  const scope = useRef<{token: number; service: typeof service; route: typeof bindings.route}>({token: 0, service, route: bindings.route});
-  if (scope.current.service !== service || scope.current.route !== bindings.route) scope.current = {token: scope.current.token + 1, service, route: bindings.route};
+  const [lifetime, setLifetime] = useState<{token: number; service: typeof service; route: typeof bindings.route}>({token: 0, service, route: bindings.route});
+  if (lifetime.service !== service || lifetime.route !== bindings.route) setLifetime({token: lifetime.token + 1, service, route: bindings.route});
   // The same canonical library wash, fed by the first titles the timeline shows.
   const wash = useMemo(() => {
     if (!bindings.presentation.backdrops) return [];
@@ -176,12 +176,9 @@ export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
       const key = date.toDateString(); let group = grouped.get(key); if (!group) { group = {day: date, entries: []}; grouped.set(key, group); } group.entries.push(entry);
     }
     const out: HistorySection[] = [];
-    let retained = 0;
     for (const group of grouped.values()) {
-      const entries = group.entries.filter(entry => entry.media).slice(0, Math.max(0, 40 - retained)).map(entry => ({entry, media: entry.media!}));
-      retained += entries.length;
+      const entries = group.entries.filter(entry => entry.media).map(entry => ({entry, media: entry.media!}));
       if (entries.length) out.push({key: group.day.toDateString(), day: group.day, entries});
-      if (retained >= 40) break;
     }
     return out;
   }, [snapshot.entries]);
@@ -200,7 +197,7 @@ export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
       </div>
       <div className={styles.toolbarEnd}><Button variant="text" size="small" onClick={() => setConfirm(true)}>{t('web.saved.clearHistory')}</Button></div>
     </div>
-    <HistoryTimeline key={scope.current.token} bindings={bindings} sections={sections} reduced={bindings.reducedMotion === true} empty={empty}
+    <HistoryTimeline key={lifetime.token} bindings={bindings} sections={sections} reduced={bindings.reducedMotion === true} empty={empty}
       more={snapshot.nextCursor ? <Button className={styles.showMore} size="small" loading={snapshot.loading} onClick={() => { void service.next(); }}>{t('action.showMore')}</Button> : null} />
     <Dialog open={confirm} onOpenChange={open => { if (!busy) setConfirm(open); }} title={t('web.saved.clearHistoryTitle')} description={t('web.saved.clearHistoryBody')} initialFocusRef={cancel}
       footer={<><Button ref={cancel} size="small" disabled={busy} onClick={() => setConfirm(false)}>{t('action.cancel')}</Button><Button size="small" className={styles.destructive} loading={busy} onClick={() => {
@@ -210,30 +207,52 @@ export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
   </>;
 }
 type HistorySection = Readonly<{key: string; day: Date; entries: readonly Readonly<{entry: PersonalResourceEntry; media: ContentEntry}>[]}>;
-const historySectionKey = (section: HistorySection) => section.key;
-/** The accepted snapshot transition is the presence source: cleared sections stay for
- * their authored exit, and surviving sections close the gap through the shared layout
- * FLIP. Outgoing paint is inert, so no row action or registration can run from it. */
+type HistoryItem = Readonly<{kind: 'day'; key: string; day: Date}> | Readonly<{kind: 'row'; key: string; entry: PersonalResourceEntry; media: ContentEntry}>;
+const historyItemKey = (item: HistoryItem) => item.key;
+/** The accepted snapshot transition is the presence source. Presence is bounded to the
+ * first 40 rows (outgoing paint only); every later live row renders without it. */
 function HistoryTimeline({bindings, sections, reduced, empty, more}: {bindings: SavedViewBindings; sections: readonly HistorySection[]; reduced: boolean; empty: ReactNode; more: ReactNode}) {
-  const presence = useLayoutPresence(sections, historySectionKey, reduced, 180, 320);
+  const {items, rest} = useMemo(() => {
+    const items: HistoryItem[] = [], rest: HistorySection[] = [];
+    let rows = 0;
+    for (const section of sections) {
+      if (rows >= 40) { rest.push(section); continue; }
+      const keep = section.entries.slice(0, 40 - rows);
+      items.push({kind: 'day', key: `day:${section.key}`, day: section.day});
+      for (const row of keep) items.push({kind: 'row', key: `row:${row.entry.id}`, entry: row.entry, media: row.media});
+      rows += keep.length;
+      if (keep.length < section.entries.length) rest.push({...section, entries: section.entries.slice(keep.length)});
+    }
+    return {items, rest};
+  }, [sections]);
+  const [lastRows, setLastRows] = useState(0);
+  const liveRows = items.reduce((count, item) => count + (item.kind === 'row' ? 1 : 0), 0);
+  useEffect(() => {if (liveRows) setLastRows(liveRows);}, [liveRows]);
+  // Retention covers only this transition's bounded stagger tail, so the last leaving row
+  // finishes its fade and the retained layout is not held past it.
+  const leavingRows = Math.min(40, Math.max(0, lastRows - liveRows));
+  const exit = reduced ? 160 : 180 + 40 * Math.max(0, leavingRows - 1);
+  const presence = useLayoutPresence(items, historyItemKey, reduced, exit, 320);
   const delays = new Map<string, number>();
   let next = 0;
-  for (const section of presence.present) if (presence.leaving.has(section.key)) for (const row of section.entries) delays.set(row.entry.id, next++ * 40);
+  for (const item of presence.present) if (item.kind === 'row' && presence.leaving.has(item.key)) delays.set(item.key, reduced ? 0 : next++ * 40);
   return <div ref={presence.root} className={styles.historyRoster} data-reduced-motion={reduced || undefined}>
-    {presence.present.map(section => {
-      const leaving = presence.leaving.has(section.key);
-      return <section key={section.key} className={styles.historyDay} data-layout-item={section.key} data-leaving={leaving || undefined} inert={leaving} aria-hidden={leaving || undefined}>
-        <h2>{historyDayLabel(section.day)}</h2>
-        {section.entries.map(({entry, media}) => <div key={entry.id} className={styles.historyItem} data-leaving={leaving || undefined}
-          style={leaving ? {transitionDelay: `${delays.get(entry.id) ?? 0}ms`} : undefined}><HistoryRow bindings={bindings} entry={entry} media={media} /></div>)}
-      </section>;
+    {presence.present.map(item => {
+      const leaving = presence.leaving.has(item.key);
+      if (item.kind === 'day') return <div key={item.key} className={styles.historyHeading} data-layout-item={item.key}
+        data-leaving={leaving || undefined} inert={leaving} aria-hidden={leaving || undefined}><h2>{historyDayLabel(item.day)}</h2></div>;
+      return <div key={item.key} className={styles.historyItem} data-layout-item={item.key} data-leaving={leaving || undefined}
+        inert={leaving} aria-hidden={leaving || undefined} style={leaving && delays.get(item.key) ? {transitionDelay: `${delays.get(item.key)}ms`} : undefined}>
+        <HistoryRow bindings={bindings} entry={item.entry} media={item.media} paintOnly={leaving} />
+      </div>;
     })}
+    {rest.map(section => <section key={`rest:${section.key}`} className={styles.historyDay}><h2>{historyDayLabel(section.day)}</h2>
+      {section.entries.map(({entry, media}) => <HistoryRow key={entry.id} bindings={bindings} entry={entry} media={media} />)}
+    </section>)}
     {empty}
     {more}
   </div>;
 }
-/** The drawn row names what was played: an episode leads with its code and title,
- * a song with its artist and album, a film with its kind and year, a book with its author. */
 function historySubtitle(media: ContentEntry): readonly string[] {
   if (media.kind === 'episode' && media.episodeNumber !== undefined) {
     const code = episodeLabel(homeCardSubject(media).episode, 'ordinary', {t, locale: defaultI18n.region.formatLocale})?.text;
@@ -244,7 +263,7 @@ function historySubtitle(media: ContentEntry): readonly string[] {
   if (media.kind === 'movie') return [t('next.browse.kind.movie'), ...(media.year === undefined ? [] : [String(media.year)])];
   return media.year === undefined ? [] : [String(media.year)];
 }
-function HistoryRow({bindings, entry, media}: {bindings: SavedViewBindings; entry: PersonalResourceEntry; media: ContentEntry}) {
+function HistoryRow({bindings, entry, media, paintOnly = false}: {bindings: SavedViewBindings; entry: PersonalResourceEntry; media: ContentEntry; paintOnly?: boolean}) {
   // The row names the show for an episode, the title itself otherwise.
   const title = media.kind === 'episode' ? media.show?.name ?? media.displayTitle ?? media.title : media.displayTitle ?? media.title;
   const subtitles = historySubtitle(media), position = entry.positionSeconds ?? 0, duration = media.duration;
@@ -253,9 +272,11 @@ function HistoryRow({bindings, entry, media}: {bindings: SavedViewBindings; entr
   const remaining = left === undefined ? undefined : left >= 60 ? t(left % 60 ? 'next.kit.duration.hoursMinutes' : 'next.kit.duration.hours', {hours: Math.floor(left / 60), minutes: left % 60}) : t('next.kit.duration.minutes', {minutes: left});
   const square = shapeFor(media.kind) === 'square', source = bindings.artwork.foreground(square ? media.posterUrl : media.backdropUrl ?? media.posterUrl, 320, square ? 1 : 16 / 9);
   return <div className={styles.historyRow} data-shape={square ? 'square' : 'wide'}>
-    <button className={styles.historyArt} data-shape={square ? 'square' : 'wide'} onClick={() => bindings.effects.openEntry(media)} aria-label={title}>
+    {paintOnly ? <span className={styles.historyArt} data-shape={square ? 'square' : 'wide'} aria-hidden="true">
       {square ? <><span className={styles.historyBackdrop}><Artwork source={source} alt="" /></span><span className={styles.historyCover}><Artwork source={source} alt="" /></span></> : <Artwork source={source} alt="" />}
-    </button>
+    </span> : <button className={styles.historyArt} data-shape={square ? 'square' : 'wide'} onClick={() => bindings.effects.openEntry(media)} aria-label={title}>
+      {square ? <><span className={styles.historyBackdrop}><Artwork source={source} alt="" /></span><span className={styles.historyCover}><Artwork source={source} alt="" /></span></> : <Artwork source={source} alt="" />}
+    </button>}
     <div className={styles.historyCopy}><b>{title}</b>{subtitles.length ? <small>{subtitles.map((part, index) => <span key={`${index}:${part}`}>{part}</span>)}</small> : null}</div>
     <div className={styles.historyState}>
       {entry.completed ? <small>{t(media.kind === 'song' || media.kind === 'album' ? 'next.kit.browse.played' : 'next.cards.finished')}</small>
