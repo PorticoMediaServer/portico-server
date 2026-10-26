@@ -36,13 +36,17 @@ function admission() {
   return {time, paint: createPaintAdmission({stepMs: 40, now: time.now, setTimer: time.setTimer, clearTimer: time.clearTimer})};
 }
 
+// The owning consumer supplies its own scheduler identity; these are two different
+// consumers that happen to use the same group name.
+const scopeA = {}, scopeB = {};
+
 test('a mounted predecessor blocks its later sibling even when the sibling decodes first', () => {
   const {time, paint} = admission();
   const seen: string[] = [];
   // The row mounts C, A, B (visibility order) before any of them decodes.
-  const c = paint.mount({group: 'row', order: 3});
-  const a = paint.mount({group: 'row', order: 1});
-  const b = paint.mount({group: 'row', order: 2});
+  const c = paint.mount({scope: scopeA, group: 'row', order: 3});
+  const a = paint.mount({scope: scopeA, group: 'row', order: 1});
+  const b = paint.mount({scope: scopeA, group: 'row', order: 2});
   c.ready(() => seen.push('c'));
   assert.deepEqual(seen, [], 'C decoded first but its mounted predecessors are still pending');
   assert.equal(time.pending(), 0, 'waiting for a mounted predecessor is not a timer fact');
@@ -61,8 +65,8 @@ test('a mounted predecessor blocks its later sibling even when the sibling decod
 test('a retired mounted predecessor is skipped immediately, never inferred', () => {
   const {paint} = admission();
   const seen: string[] = [];
-  const first = paint.mount({group: 'row', order: 1});
-  const second = paint.mount({group: 'row', order: 2});
+  const first = paint.mount({scope: scopeA, group: 'row', order: 1});
+  const second = paint.mount({scope: scopeA, group: 'row', order: 2});
   first.retire();                       // failed, offscreen, replaced or unmounted
   second.ready(() => seen.push('second'));
   assert.deepEqual(seen, ['second'], 'the next ready slot paints without waiting for a retired one');
@@ -72,20 +76,34 @@ test('a retired mounted predecessor is skipped immediately, never inferred', () 
 test('a slot with no real group paints independently and never joins a row', () => {
   const {paint} = admission();
   const seen: string[] = [];
-  const rowHead = paint.mount({group: 'row', order: 1});
+  const rowHead = paint.mount({scope: scopeA, group: 'row', order: 1});
   const loose = paint.mount({order: 1});     // no group metadata: no invented global group
   loose.ready(() => seen.push('loose'));
-  assert.deepEqual(seen, ['loose'], 'an ungrouped slot paints on its own');
+  unscoped.ready(() => seen.push('unscoped'));
+  assert.deepEqual(seen, ['loose', 'unscoped'], 'a group without the owning scope never joins a queue');
   rowHead.ready(() => seen.push('row'));
-  assert.deepEqual(seen, ['loose', 'row']);
+  assert.deepEqual(seen, ['loose', 'unscoped', 'row']);
   assert.equal(paint.size(), 0);
+});
+
+test('two consumers with the same group name never share a queue or a pace', () => {
+  const {time, paint} = admission();
+  const seen: string[] = [];
+  paint.mount({scope: scopeA, group: 'row', order: 1}).ready(() => seen.push('a-first'));
+  // A second scheduler's same-named row is a different run: it starts its own pace.
+  paint.mount({scope: scopeB, group: 'row', order: 1}).ready(() => seen.push('b-first'));
+  assert.deepEqual(seen, ['a-first', 'b-first'], 'the scopes are isolated, not merged into one FIFO');
+  paint.mount({scope: scopeB, group: 'row', order: 2}).ready(() => seen.push('b-second'));
+  assert.deepEqual(seen, ['a-first', 'b-first'], 'scope B has its own pacing step');
+  time.advance(40);
+  assert.deepEqual(seen, ['a-first', 'b-first', 'b-second']);
 });
 
 test('admissions in one group are paced by exactly one 40 ms step', () => {
   const {time, paint} = admission();
   const seen: string[] = [];
-  paint.mount({group: 'row', order: 1}).ready(() => seen.push('first'));
-  const second = paint.mount({group: 'row', order: 2});
+  paint.mount({scope: scopeA, group: 'row', order: 1}).ready(() => seen.push('first'));
+  const second = paint.mount({scope: scopeA, group: 'row', order: 2});
   second.ready(() => seen.push('second'));
   assert.deepEqual(seen, ['first']);
   assert.equal(time.pending(), 1, 'the paced sibling holds one bounded wait');
@@ -98,9 +116,9 @@ test('admissions in one group are paced by exactly one 40 ms step', () => {
 test('a re-created slot cannot paint from a stale ready callback', () => {
   const {paint} = admission();
   const seen: string[] = [];
-  const stale = paint.mount({group: 'row', order: 1});
+  const stale = paint.mount({scope: scopeA, group: 'row', order: 1});
   stale.retire();                        // same-key image replaced, or the slot unmounted
-  const fresh = paint.mount({group: 'row', order: 1});
+  const fresh = paint.mount({scope: scopeA, group: 'row', order: 1});
   stale.ready(() => seen.push('stale'));
   assert.deepEqual(seen, [], 'a retired slot never paints in a successor slot');
   fresh.ready(() => seen.push('fresh'));
@@ -110,8 +128,8 @@ test('a re-created slot cannot paint from a stale ready callback', () => {
 test('a slot reports at most one paint even if ready is called twice', () => {
   const {time, paint} = admission();
   const seen: string[] = [];
-  paint.mount({group: 'row', order: 1}).ready(() => seen.push('first'));
-  const slot = paint.mount({group: 'row', order: 2});
+  paint.mount({scope: scopeA, group: 'row', order: 1}).ready(() => seen.push('first'));
+  const slot = paint.mount({scope: scopeA, group: 'row', order: 2});
   slot.ready(() => seen.push('second'));
   slot.ready(() => seen.push('second-again'));
   time.advance(40);
@@ -121,14 +139,14 @@ test('a slot reports at most one paint even if ready is called twice', () => {
 test('an emptied group is pruned and a later slot starts a fresh group', () => {
   const {time, paint} = admission();
   const seen: string[] = [];
-  paint.mount({group: 'row', order: 1}).ready(() => seen.push('first'));
-  const second = paint.mount({group: 'row', order: 2});
+  paint.mount({scope: scopeA, group: 'row', order: 1}).ready(() => seen.push('first'));
+  const second = paint.mount({scope: scopeA, group: 'row', order: 2});
   second.ready(() => seen.push('second'));
   assert.equal(time.pending(), 1);
   second.retire();                       // the whole row empties before its paced admission
   assert.equal(time.pending(), 0, 'the retired wait is cleared');
   assert.equal(paint.size(), 0);
-  const later = paint.mount({group: 'row', order: 1});
+  const later = paint.mount({scope: scopeA, group: 'row', order: 1});
   later.ready(() => seen.push('later'));
   assert.deepEqual(seen, ['first', 'later'], 'a recreated group is not paced by the old timer');
   assert.equal(time.pending(), 0);
@@ -137,8 +155,8 @@ test('an emptied group is pruned and a later slot starts a fresh group', () => {
 test('dispose invalidates every mounted slot and clears every wait', () => {
   const {time, paint} = admission();
   const seen: string[] = [];
-  paint.mount({group: 'row', order: 1}).ready(() => seen.push('first'));
-  const queued = paint.mount({group: 'row', order: 2});
+  paint.mount({scope: scopeA, group: 'row', order: 1}).ready(() => seen.push('first'));
+  const queued = paint.mount({scope: scopeA, group: 'row', order: 2});
   queued.ready(() => seen.push('second'));
   const independent = paint.mount({order: 1});
   assert.equal(time.pending(), 1);
