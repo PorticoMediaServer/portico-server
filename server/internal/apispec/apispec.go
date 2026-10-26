@@ -181,7 +181,8 @@ func (d Document) resolve(v map[string]any) map[string]any {
 
 // Validate checks a decoded JSON value against a schema and lists every
 // mismatch (empty when it conforms). Supported: $ref, allOf, oneOf/anyOf,
-// type (single or list), required, properties, items, maxItems, minLength/maxLength, enum, const.
+// type (single or list), required, properties, closed objects, items, maxItems,
+// minLength/maxLength, numeric bounds, enum, const.
 func (d Document) Validate(schema map[string]any, value any) []string {
 	var out []string
 	d.validate(schema, value, "$", &out)
@@ -214,18 +215,20 @@ func (d Document) validate(schema map[string]any, v any, at string, out *[]strin
 	}
 	for _, key := range []string{"oneOf", "anyOf"} {
 		if list, ok := schema[key].([]any); ok {
-			matched := false
+			matched := 0
 			for _, s := range list {
 				m, _ := s.(map[string]any)
 				var sub []string
 				d.validate(m, v, at, &sub)
 				if len(sub) == 0 {
-					matched = true
-					break
+					matched++
+					if key == "anyOf" {
+						break
+					}
 				}
 			}
-			if !matched {
-				*out = append(*out, at+": matches none of "+key)
+			if matched == 0 || key == "oneOf" && matched != 1 {
+				*out = append(*out, fmt.Sprintf("%s: matches %d alternatives of %s", at, matched, key))
 			}
 		}
 	}
@@ -248,6 +251,13 @@ func (d Document) validate(schema map[string]any, v any, at string, out *[]strin
 		}
 	}
 	switch t := v.(type) {
+	case float64:
+		if min, ok := schemaNumber(schema["minimum"]); ok && t < min {
+			*out = append(*out, fmt.Sprintf("%s: %v is below %v", at, t, min))
+		}
+		if max, ok := schemaNumber(schema["maximum"]); ok && t > max {
+			*out = append(*out, fmt.Sprintf("%s: %v exceeds %v", at, t, max))
+		}
 	case string:
 		n := utf8.RuneCountInString(t)
 		if min, ok := schema["minLength"].(int); ok && n < min {
@@ -257,17 +267,17 @@ func (d Document) validate(schema map[string]any, v any, at string, out *[]strin
 			*out = append(*out, fmt.Sprintf("%s: %d code points exceeds %d", at, n, max))
 		}
 	case map[string]any:
-		if req, ok := schema["required"].([]any); ok {
-			for _, r := range req {
-				if _, present := t[fmt.Sprint(r)]; !present {
-					*out = append(*out, at+": missing required "+fmt.Sprint(r))
-				}
+		for _, r := range requiredFields(schema["required"]) {
+			if _, present := t[r]; !present {
+				*out = append(*out, at+": missing required "+r)
 			}
 		}
 		props, _ := schema["properties"].(map[string]any)
 		for k, e := range t {
 			if p, ok := props[k].(map[string]any); ok {
 				d.validate(p, e, at+"."+k, out)
+			} else if closed, ok := schema["additionalProperties"].(bool); ok && !closed {
+				*out = append(*out, at+": unknown property "+k)
 			}
 		}
 	case []any:
@@ -279,6 +289,34 @@ func (d Document) validate(schema map[string]any, v any, at string, out *[]strin
 				d.validate(items, e, fmt.Sprintf("%s[%d]", at, i), out)
 			}
 		}
+	}
+}
+
+func requiredFields(raw any) []string {
+	switch fields := raw.(type) {
+	case []string:
+		return fields
+	case []any:
+		out := make([]string, 0, len(fields))
+		for _, field := range fields {
+			out = append(out, fmt.Sprint(field))
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func schemaNumber(raw any) (float64, bool) {
+	switch n := raw.(type) {
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case float64:
+		return n, true
+	default:
+		return 0, false
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"portico.local/server/internal/storage"
 )
@@ -35,6 +36,30 @@ type PlaybackInput struct {
 	MountPath string
 	Validate  func(context.Context) error
 	Extra     []*os.File
+	// Lifetime is the original retained source's revocable lifetime. A converter
+	// borrows it as well as its own operation context; possession of File does not
+	// extend source or actor authority.
+	Lifetime context.Context
+	// ReleaseSource, when present, owns File and its source/reader pins together.
+	// Close must call it instead of closing only the descriptor. Extra remains
+	// owned by this input. It must not release another presentation's reference.
+	ReleaseSource func() error
+	closeOnce     sync.Once
+	closeErr      error
+}
+
+// BorrowContext cancels an operation when either its caller or the retained
+// source retires. The returned release must run after the child has exited.
+func (p *PlaybackInput) BorrowContext(ctx context.Context) (context.Context, func()) {
+	if p == nil || p.Lifetime == nil {
+		return ctx, func() {}
+	}
+	run, cancel := context.WithCancel(ctx)
+	stop := context.AfterFunc(p.Lifetime, cancel)
+	if p.Lifetime.Err() != nil {
+		cancel()
+	}
+	return run, func() { stop(); cancel() }
 }
 
 // ExtraFiles is the slice to assign to exec.Cmd.ExtraFiles: the descriptor on
@@ -59,16 +84,25 @@ func (p *PlaybackInput) ReadPaths() []string {
 // Close releases the source. It is safe on a nil input, so a caller can defer it
 // before checking the error.
 func (p *PlaybackInput) Close() error {
-	if p == nil || p.File == nil {
+	if p == nil {
 		return nil
 	}
-	err := p.File.Close()
-	for _, f := range p.Extra {
-		if e := f.Close(); err == nil {
-			err = e
+	p.closeOnce.Do(func() {
+		if p.ReleaseSource != nil {
+			p.closeErr = p.ReleaseSource()
+		} else if p.File != nil {
+			p.closeErr = p.File.Close()
 		}
-	}
-	return err
+		for _, f := range p.Extra {
+			if f == nil {
+				continue
+			}
+			if e := f.Close(); p.closeErr == nil {
+				p.closeErr = e
+			}
+		}
+	})
+	return p.closeErr
 }
 
 // OpenPlaybackInput resolves a session's pinned source and opens it the way this

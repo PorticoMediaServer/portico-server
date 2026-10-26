@@ -168,7 +168,7 @@ func conversionSettingsError(err error) error {
 	return &apierror.Error{Code: "internal", Cause: err}
 }
 func consoleTypedReply[T any](d Dependencies, p identity.Principal, data T) ConsoleReply[T] {
-	return ConsoleReply[T]{ConsoleReplyScope{d.Identity.ID(), fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", p.Hash, p.Epoch))))}, data}
+	return ConsoleReply[T]{ConsoleReplyScope{d.Identity.ID(), fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", presentationIdentity(p), p.Epoch))))}, data}
 }
 func registerConversionSettings(registry *apikit.Registry, d Dependencies) error {
 	begin := conversionSettingsAdmission(d)

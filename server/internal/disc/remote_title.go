@@ -21,7 +21,7 @@ import (
 // and caller lifetime. The caller owns object until the returned stream closes.
 // Inventory/playback admission remains closed until the complete remote path
 // is composed and qualified. DVD and folder streaming are not supplied here.
-func (t Tool) StreamRemoteBluRay(ctx context.Context, object storage.RemoteObject, original Probe, title Title, ms int64, current func(context.Context) error) (io.ReadCloser, Seek, error) {
+func (t Tool) StreamRemoteBluRay(ctx context.Context, object storage.RemoteObject, original Probe, title Title, ms int64, current func(context.Context) error) (RemoteTitleReader, Seek, error) {
 	if current == nil || original.Kind != "bluray" || original.Packaging != "iso" {
 		return nil, Seek{}, ErrRemoteUnqualified
 	}
@@ -132,6 +132,14 @@ func (t Tool) StreamRemoteBluRay(ctx context.Context, object storage.RemoteObjec
 	return s, landing, nil
 }
 
+// RemoteTitleReader keeps the guarded read surface even when the consumer is
+// back-pressured. Check reports an already-known helper/final-observation
+// failure without requiring a further Read. It never exposes the helper FD.
+type RemoteTitleReader interface {
+	io.ReadCloser
+	Check(context.Context) error
+}
+
 type remoteTitleStream struct {
 	ctx      context.Context
 	file     io.ReadCloser
@@ -143,6 +151,26 @@ type remoteTitleStream struct {
 	close    sync.Once
 	closeErr error
 	buffer   [64 << 10]byte
+}
+
+func (s *remoteTitleStream) Check(ctx context.Context) error {
+	check, cancel := context.WithCancel(ctx)
+	stop := context.AfterFunc(s.ctx, cancel)
+	defer func() { stop(); cancel() }()
+	if s.ctx.Err() != nil {
+		cancel()
+	}
+	if err := s.guard(check); err != nil {
+		return err
+	}
+	select {
+	case <-s.done:
+		if s.waitErr != nil {
+			return ErrProtocol
+		}
+	default:
+	}
+	return check.Err()
 }
 
 func (s *remoteTitleStream) Read(p []byte) (int, error) {

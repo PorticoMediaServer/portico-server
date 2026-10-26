@@ -12,6 +12,49 @@ import (
 	"portico.local/server/internal/operations"
 )
 
+// Settings loads the legacy header and typed configuration through one retained
+// ConsoleClient. Both envelopes must describe the same original viewer.
+func TestSettingsConfigurationSharesLegacyConsoleViewerFence(t *testing.T) {
+	f := administrationFixtureNew(t)
+	readScope := func(path, token string) ConsoleReplyScope {
+		t.Helper()
+		response := f.call("GET", path, token, "")
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", path, response.Code, response.Body)
+		}
+		var envelope ConsoleReply[json.RawMessage]
+		if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+			t.Fatal(err)
+		}
+		if envelope.Scope.ServerID != f.deps.Identity.ID() || len(envelope.Scope.ViewerFence) != 64 {
+			t.Fatalf("%s omitted the selected viewer scope", path)
+		}
+		return envelope.Scope
+	}
+	want := readScope("/v1/preferences", f.owner)
+	for _, path := range []string{
+		"/v1/console/registry",
+		"/v1/admin/console/settings",
+		"/v1/admin/settings/configuration",
+	} {
+		if got := readScope(path, f.owner); got != want {
+			t.Fatalf("%s changed the console viewer between responses", path)
+		}
+	}
+	// A different valid credential for the same viewer must not mint a new
+	// presentation identity. Each route still performs its normal authorization.
+	successor, err := f.deps.Identity.Issue("owner", "owner-profile", "local", "owner", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := readScope("/v1/admin/settings/configuration", successor.AccessToken); got != want {
+		t.Fatal("a same-viewer credential changed the configuration fence")
+	}
+	if got := readScope("/v1/preferences", f.member); got == want {
+		t.Fatal("another viewer inherited the owner's console fence")
+	}
+}
+
 func TestSettingsConfigurationOwnerReadAndCommittedRuntimeRefresh(t *testing.T) {
 	f := administrationFixtureNew(t)
 	ctx := context.Background()

@@ -85,6 +85,8 @@ func (w *packetTimelineWriter) timeline() (*copyTimeline, error) {
 	return buildCopyTimeline(w.duration, w.times, w.valid)
 }
 func probePacketTimeline(ctx context.Context, ffprobe string, input *assets.PlaybackInput, start, duration float64) (*copyTimeline, error) {
+	ctx, releaseInput := input.BorrowContext(ctx)
+	defer releaseInput()
 	if !hlsDurationSupported(duration) {
 		return nil, errCopyTimeline
 	}
