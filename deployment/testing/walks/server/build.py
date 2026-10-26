@@ -20,6 +20,11 @@ from .process import capture, run as run_process
 from .receipt import write_json
 from .source import SourceError, generate
 
+# The sprint exercises the existing bounded local CB7 reader on Linux. This
+# changes packaging only; the source lease, helper limits and format guards
+# remain the server's. Old artifacts still load for rollback, never as CB7 proof.
+BUILD_TAGS = ('release', 'portico_cb7')
+
 class BuildError(Exception):
     """A closed build refusal."""
 
@@ -43,6 +48,7 @@ class Build:
     rclone_version: str = ''
     rclone_manifest_sha256: str = ''
     rclone_files: tuple[tuple[str, str], ...] = ()
+    build_tags: tuple[str, ...] = ()
 
 def _run(argv, cwd, log, timeout, env):
     return run_process(argv, cwd, log, timeout, env)
@@ -204,7 +210,7 @@ def build(source, build_dir, fixtures, paths):
              + ' -X portico.local/server/internal/buildinfo.BuildID=' + source.commit
              + ' -X portico.local/server/internal/hostedtrust.OfficialRoot=' + key)
     binary = build_dir / 'portico-server'
-    if _run(['go', 'build', '-p=2', '-tags', 'release', '-trimpath', '-buildvcs=false',
+    if _run(['go', 'build', '-p=2', '-tags', ','.join(BUILD_TAGS), '-trimpath', '-buildvcs=false',
              '-ldflags', flags, '-o', str(binary), './cmd/server'],
             tree / 'server', log, BUILD_TIMEOUT, env):
         raise BuildError('server-build')
@@ -254,6 +260,7 @@ def build(source, build_dir, fixtures, paths):
     web_sha = _tree_hash(web)
     manifest = {
         'commit': source.commit,
+        'buildTags': list(BUILD_TAGS),
         'builtAt': now_iso(),
         'binarySHA256': binary_sha,
         'webSHA256': web_sha,
@@ -287,13 +294,16 @@ def build(source, build_dir, fixtures, paths):
                  runtime_sha256=fixtures.runtime_sha256, built_at=manifest['builtAt'],
                  manifest=manifest_path, rclone_version=rclone_version,
                  rclone_manifest_sha256=rclone_manifest_sha,
-                 rclone_files=tuple(sorted(rclone_files.items())))
+                 rclone_files=tuple(sorted(rclone_files.items())), build_tags=BUILD_TAGS)
 
 def load(directory):
     directory = Path(directory)
     document = json.loads((directory / 'manifest.json').read_text())
     if not isinstance(document, dict):
         raise BuildError('manifest-missing')
+    tags = document.get('buildTags', [])
+    if not isinstance(tags, list) or (tags and tags != list(BUILD_TAGS)):
+        raise BuildError('build-tags-mismatch')
     binary = directory / 'portico-server'
     web = directory / 'web'
     if not binary.is_file() or not (web / 'index.html').is_file():
@@ -370,4 +380,4 @@ def load(directory):
                  runtime_sha256=document.get('runtimeSHA256', ''),
                  built_at=document.get('builtAt', ''), manifest=directory / 'manifest.json',
                  rclone_version=rclone_version, rclone_manifest_sha256=rclone_manifest_sha,
-                 rclone_files=rclone_files)
+                 rclone_files=rclone_files, build_tags=tuple(tags))

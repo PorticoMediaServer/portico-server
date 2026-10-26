@@ -90,7 +90,9 @@ def _existing_build(paths, commit):
         if not isinstance(document, dict) or document.get('commit') != commit:
             continue
         try:
-            return buildmod.load(directory)
+            candidate = buildmod.load(directory)
+            if candidate.build_tags == buildmod.BUILD_TAGS:
+                return candidate
         except Exception:
             continue
     return None
@@ -238,6 +240,7 @@ def _deploy_once(paths, args, fx, creds, access, failure=None):
                 active_state = None
         reuse = (active_build is not None and active_state is not None
                  and active_build.schema_digest == build.schema_digest
+                 and active_build.build_tags == build.build_tags
                  and active_state.credentials_digest == credentials.digest(creds)
                  and active_state.fixtures_manifest_sha256 == fx.manifest_sha256
                  and active_state.runtime_sha256 == fx.runtime_sha256)
