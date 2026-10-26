@@ -675,7 +675,7 @@ func run() (runErr error) {
 		return e
 	}
 	defer subtitleRenderer.Close()
-	subtitleRenderer.RemoteStorage = subtitlevideo.RemoteStorageAdapter{Match: sources.Handles, Selected: sources.OpenSubtitlePlaybackInput, Acquire: func(ctx context.Context, path, purpose string) (subtitlevideo.RemoteObject, error) {
+	subtitleRenderer.RemoteStorage = subtitlevideo.RemoteStorageAdapter{Match: sources.Handles, Selected: sources.OpenSubtitlePlaybackInput, Analysis: sources.OpenMediaAnalysisInput, Acquire: func(ctx context.Context, path, purpose string) (subtitlevideo.RemoteObject, error) {
 		return sources.Acquire(ctx, path, purpose)
 	}}
 	doneAnalysis := reporter.step("analysis", "Open media analysis storage")

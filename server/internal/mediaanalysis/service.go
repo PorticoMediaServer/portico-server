@@ -126,6 +126,8 @@ type Request struct {
 type binding struct {
 	Request
 	Source                                                            catalog.LibrarySource
+	Consent                                                           catalog.SourceAnalysisConsent
+	SourceSize, SourceModifiedNS                                      int64
 	AssetID, ItemID, Container, AudioCodec, VideoCodec, BasicRevision string
 	DurationUS, MarkerRevision                                        int64
 	ProbeEvidence, SourceBinding, WorkAlgorithm                       string
@@ -141,6 +143,10 @@ func (s *Service) bindingTx(ctx context.Context, tx *sql.Tx, r Request) (b bindi
 	if err != nil {
 		return
 	}
+	b.Consent, err = catalog.SourceAnalysisConsentTx(ctx, tx, b.Source.ID)
+	if err != nil {
+		return
+	}
 	p, err := catalog.ScanPolicyTx(ctx, tx, b.Source.LibraryID)
 	if err != nil {
 		return b, err
@@ -150,7 +156,7 @@ func (s *Service) bindingTx(ctx context.Context, tx *sql.Tx, r Request) (b bindi
 	}
 	b.Trickplay = p.Trickplay.Normalized()
 	var duration float64
-	err = tx.QueryRowContext(ctx, `SELECT o.asset_id,a.container,a.audio_codec,a.video_codec,a.duration,o.analysis_revision FROM inventory_objects o JOIN catalog_assets a ON a.token=o.asset_id WHERE o.id=? AND o.source_id=? AND o.revision=? AND o.root_incarnation=? AND o.retired=0 AND o.state='available' AND a.available=1`, r.ObjectID, b.Source.ID, r.SourceRevision, b.Source.Incarnation).Scan(&b.AssetID, &b.Container, &b.AudioCodec, &b.VideoCodec, &duration, &b.BasicRevision)
+	err = tx.QueryRowContext(ctx, `SELECT o.asset_id,a.container,a.audio_codec,a.video_codec,a.duration,o.analysis_revision,o.size,o.modified_ns FROM inventory_objects o JOIN catalog_assets a ON a.token=o.asset_id WHERE o.id=? AND o.source_id=? AND o.revision=? AND o.root_incarnation=? AND o.retired=0 AND o.state='available' AND a.available=1`, r.ObjectID, b.Source.ID, r.SourceRevision, b.Source.Incarnation).Scan(&b.AssetID, &b.Container, &b.AudioCodec, &b.VideoCodec, &duration, &b.BasicRevision, &b.SourceSize, &b.SourceModifiedNS)
 	if err != nil {
 		return
 	}

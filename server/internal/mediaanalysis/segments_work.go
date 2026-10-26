@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/livechannels"
@@ -51,7 +52,7 @@ const (
 func (s *Service) RunSegments(ctx context.Context) {
 	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
 	wake := worker.NewSignal()
-	unregister := dbwork.WakeOnTables(wake, "inventory_changes", "server_settings", "console_settings_revision", "admin_documents", "remote_source_settings", "segment_*")
+	unregister := dbwork.WakeOnTables(wake, "inventory_changes", "server_settings", "console_settings_revision", "admin_documents", "remote_source_settings", "remote_source_read_profiles", "segment_*")
 	defer unregister()
 	worker.Run(ctx, "mediaanalysis.segments", wake, func(ctx context.Context) time.Duration {
 		if !dbwork.Yield(ctx) || !dbwork.WaitBackground(ctx) {
@@ -263,6 +264,14 @@ func (s *Service) segmentConsider(ctx context.Context, tx *sql.Tx, object string
 	if !ok || strings.HasSuffix(strings.ToLower(relative), ".strm") || analyzed != revision {
 		return nil
 	}
+	consent, err := catalog.SourceAnalysisConsentTx(ctx, tx, source)
+	if err != nil {
+		return err
+	}
+	if !consent.Allowed {
+		_, err = tx.ExecContext(ctx, `DELETE FROM segment_files WHERE object_id=? AND state='pending'`, object)
+		return err
+	}
 	// The source's own page can switch intro and credit detection off for the
 	// files found through it, or choose the listening or picture mode.
 	var sourceMode string
@@ -302,6 +311,7 @@ func (s *Service) segmentConsider(ctx context.Context, tx *sql.Tx, object string
 
 // segmentFile is everything one measurement needs to know about a file.
 type segmentFile struct {
+	ReadFacts                           ReadFacts
 	Planning                            segmentPlanning
 	ObjectID, Revision, LibraryID, Mode string
 	AssetID, SourceID, Incarnation      string
@@ -328,6 +338,10 @@ func segmentFileTx(ctx context.Context, tx *sql.Tx, object, revision string) (se
 	if f.Revision != revision || analyzed != revision {
 		return f, sql.ErrNoRows
 	}
+	f.ReadFacts, err = readFactsTx(ctx, tx, f.SourceID, object, revision, "", f.AssetID)
+	if err != nil {
+		return f, err
+	}
 	if f.DurationUS, err = exactUS(duration); err != nil {
 		return f, ErrUnsupported
 	}
@@ -335,6 +349,7 @@ func segmentFileTx(ctx context.Context, tx *sql.Tx, object, revision string) (se
 	if err != nil {
 		return f, err
 	}
+	f.ReadFacts.ItemID = f.ItemID
 	if f.VideoCodec != "" {
 		var detail string
 		e := tx.QueryRowContext(ctx, `SELECT st.detail_json FROM asset_streams st JOIN catalog_assets a ON a.id=st.asset_id WHERE a.token=? AND st.type='video' ORDER BY st.stream_index LIMIT 1`, f.AssetID).Scan(&detail)
@@ -410,6 +425,8 @@ func (s *Service) segmentFileStep(ctx context.Context) (bool, time.Duration, err
 		return true, 0, s.segmentFailure(ctx, object, revision, attempt, err)
 	}
 	f.Mode = mode
+	ctx, read := s.segmentReadContext(ctx, f, attempt)
+	defer read.Close()
 	// The source's own intro choice applies to work already queued: a file whose
 	// source was switched off is dropped, and one whose mode changed is queued
 	// again under the new mode instead of being measured with the old one.
@@ -439,6 +456,7 @@ func (s *Service) segmentFileStep(ctx context.Context) (bool, time.Duration, err
 			return true, 0, s.segmentFailure(ctx, object, revision, attempt, err)
 		}
 		defer input.Close()
+		input = &authorityInput{Input: input, invocation: read}
 		if err = input.Validate(ctx); err != nil {
 			return true, 0, s.segmentFailure(ctx, object, revision, attempt, err)
 		}

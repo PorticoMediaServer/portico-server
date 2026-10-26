@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/mediaanalysis"
 	"portico.local/server/internal/mediasource"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/subtitles"
@@ -30,10 +31,18 @@ type RemoteStorageAdapter struct {
 	// Selected continues a real Select invocation with its retained source
 	// admission. Refusal never falls back to a generic path acquisition.
 	Selected func(context.Context, string, string, string, int64, int64) (subtitles.RenderInput, error)
+	// Analysis never falls through to a generic playback acquisition.
+	Analysis func(context.Context, string, string, string, int64, int64) (subtitles.RenderInput, error)
 }
 
 func (a RemoteStorageAdapter) Handles(path string) bool { return a.Match != nil && a.Match(path) }
 func (a RemoteStorageAdapter) Open(ctx context.Context, item, source, path string, size, modified int64) (subtitles.RenderInput, error) {
+	if _, analysis := mediaanalysis.ReadInvocationFromContext(ctx); analysis {
+		if a.Analysis == nil {
+			return nil, subtitles.ErrUnavailable
+		}
+		return a.Analysis(ctx, item, source, path, size, modified)
+	}
 	if _, selected := subtitles.PlaybackSourceInvocationFromContext(ctx); selected {
 		if a.Selected == nil {
 			return nil, subtitles.ErrUnavailable

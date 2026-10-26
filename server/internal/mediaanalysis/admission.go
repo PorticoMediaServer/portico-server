@@ -12,7 +12,7 @@ import (
 // ingestion worker calls it from its EXISTING policy/cancel watcher; no second
 // timer, work window or background scheduler is introduced here.
 func (s *Service) ContinueAdmission(ctx context.Context, job, object string) (bool, error) {
-	if s == nil || s.Admission == nil {
+	if s == nil {
 		return true, nil
 	}
 	tx, closeRead, err := dbwork.BeginRead(ctx, s.db)
@@ -45,6 +45,9 @@ func (s *Service) ContinueAdmission(ctx context.Context, job, object string) (bo
 	task := "analysis"
 	if stage == "trickplay" {
 		task = "trickplay"
+	}
+	if s.Admission == nil {
+		return true, nil
 	}
 	return s.Admission(ctx, tx, task)
 }

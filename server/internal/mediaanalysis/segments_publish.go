@@ -60,8 +60,11 @@ func (s *Service) publishSegmentEvidence(ctx context.Context, f segmentFile, e s
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
+	if err = checkReadPublicationTx(ctx, tx); err != nil {
+		return err
+	}
 	current, err := segmentFileTx(ctx, tx, f.ObjectID, f.Revision)
-	if errors.Is(err, sql.ErrNoRows) || err == nil && (current.AssetID != f.AssetID || current.Incarnation != f.Incarnation || current.Generation != f.Generation || current.DurationUS != f.DurationUS) {
+	if errors.Is(err, sql.ErrNoRows) || err == nil && (current.ReadFacts != f.ReadFacts || current.AssetID != f.AssetID || current.Incarnation != f.Incarnation || current.Generation != f.Generation || current.DurationUS != f.DurationUS) {
 		// The file changed while it was measured; the catch-up queues the new one.
 		if _, err = tx.ExecContext(ctx, `DELETE FROM segment_files WHERE object_id=? AND source_revision=?`, f.ObjectID, f.Revision); err != nil {
 			return err
