@@ -221,12 +221,13 @@ export class ListeningService {
   if(choice==='item'){check();await this.installTimer(Object.freeze({choice,label:'End of this item',itemId:c.itemId,libraryId:c.libraryId,occurrence:original}),context);return;}
   if(choice==='book'){
    if(!c.bookId||!c.lastBookItemId||c.bookEndAvailable!==true)throw new Error('The final book part is unavailable. Choose a minute, item or verified chapter timer instead.');
+   const bookId=c.bookId;
    const occurrence=original,revision=this.timerGeneration;
    if(!occurrence?.queue)throw new Error('Start the ordered book queue before choosing its end.');
    const items:string[]=[],seen=new Set<string>(),cursors=new Set<string>();let cursor='',timeline:BookTimeline|undefined;
    this.publish({timerLoading:true});
    try{do{
-    check();const page=await listeningRead([this.abort.signal,context?.signal],signal=>readBookTimeline(this.request,this.scope,c.bookId,{cursor,limit:100,signal}));check();
+    check();const page=await listeningRead([this.abort.signal,context?.signal],signal=>readBookTimeline(this.request,this.scope,bookId,{cursor,limit:100,signal}));check();
     if(this.disposed||revision!==this.timerGeneration)return;
     if(!this.sameOccurrence(occurrence,this.occurrence())){this.clearTimer();throw new Error('The playback source changed. Choose the timer again.');}
     if(page.libraryId!==c.libraryId||page.totalCount>1000||timeline&&(page.revision.catalog!==timeline.revision.catalog||page.revision.viewer!==timeline.revision.viewer||page.totalCount!==timeline.totalCount))throw new Error('Book order changed. Choose the timer again.');
