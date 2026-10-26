@@ -6,13 +6,13 @@ const freeze = <T,>(value: T): T => {
   if (value && typeof value === 'object') {for (const child of Object.values(value)) freeze(child);Object.freeze(value);}
   return value;
 };
-type Flight = {seen: Set<string>; denied: boolean; session?: Readonly<{id: string; generation: number}>; cleanup?: AbortController; cancel(): void};
+type Flight = {seen: Set<string>; denied: boolean; stopping?: boolean; session?: Readonly<{id: string; generation: number}>; cleanup?: AbortController; cancel(): void};
 export type OriginalWebStart = Readonly<{
   /** The exact JSON body is passed to the canonical SDK, which owns its wire validation. */
   body: StartTarget & StartOptions; key: string; context: StartContext; finish(): void;
 }>;
 export type WebStartRegistration = Readonly<{
-  remember(id: string): void; forget(id: string): void; dispose(): void;
+  remember(id: string): boolean; forget(id: string): void; dispose(): void;
   begin(target: StartTarget, options: StartOptions, key: string, signal: AbortSignal | undefined, isCurrent: () => boolean): OriginalWebStart;
 }>;
 
@@ -27,13 +27,17 @@ export class WebPreparingStarts {
   private readonly requests = new Map<string, Flight>();
   private disposed = false;
   constructor(private readonly owner: Readonly<{isCurrent(): boolean;
-    stop(session: PreparingSessionView, signal: AbortSignal, uninstalled: () => boolean): Promise<void>}>) {}
+    stop(session: PreparingSessionView, signal: AbortSignal, uninstalled: () => boolean, claimStop: () => boolean): Promise<void>}>) {}
   private current = () => !this.disposed && valid(this.owner.isCurrent);
   attach(installed: (id: string) => boolean = () => false): WebStartRegistration {
     const ids = new Set<string>(), registration = Object.freeze({ids, installed});this.registrations.add(registration);
     let live = true;
     return Object.freeze({
       remember: (id: string) => {
+        // After the exact GET, cleanup may synchronously claim the never-installed
+        // resource before DELETE. A later local adopter cannot install it while
+        // that bounded original stop is settling (or make abort unsend a DELETE).
+        if ([...this.flights].some(flight => flight.stopping && flight.session?.id === id)) return false;
         // A late real 201 is still registered by its original core cleanup path.
         // It must also deny any other pending preparation receipt for this id.
         for (const flight of this.flights) {
@@ -42,6 +46,7 @@ export class WebPreparingStarts {
           if (flight.session?.id === id) {flight.denied = true;flight.cleanup?.abort();}
         }
         if (live) ids.add(id);
+        return true;
       },
       forget: (id: string) => {ids.delete(id);},
       dispose: () => {live = false;this.registrations.delete(registration);ids.clear();},
@@ -89,7 +94,10 @@ export class WebPreparingStarts {
                 if (!uninstalled()) return;
                 // The original owner supplies its authenticated, bounded stop.
                 // No installation, forget, navigation or successor publication.
-                await this.owner.stop(offered, cleanup.signal, uninstalled);
+                await this.owner.stop(offered, cleanup.signal, uninstalled, () => {
+                  if (flight.stopping || !uninstalled()) return false;
+                  flight.stopping = true;return true;
+                });
               } finally {
                 cleaning = false;flight.cleanup = undefined;release();
               }

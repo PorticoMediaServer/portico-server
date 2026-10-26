@@ -790,7 +790,7 @@ export class WebPlayback implements PlaybackAdapter {
   // ── PlaybackApi and the queue player's transport ────────────────────────
 
   private remember(session: Session): Session {
-    this.startRegistration?.remember(session.id);
+    if (this.startRegistration?.remember(session.id) === false) throw new DOMException('Original preparation cleanup is settling', 'AbortError');
     this.registrations.changed(session.id);
     this.known.set(session.id, session);
     // Bounded: sessions leave by retire, forget and stop; this is the backstop.

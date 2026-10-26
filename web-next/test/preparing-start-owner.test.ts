@@ -4,6 +4,7 @@ import {setImmediate as settle} from 'node:timers/promises';
 import type {HttpLocalApi, LocalSession} from '../../packages/client-core/src/index.ts';
 import {SessionsClient, parseStartPreparation, type StartOptions, type Timers} from '../../packages/client-core/src/playback-v1/sessions.ts';
 import type {V1Request} from '../../packages/client-core/src/playback-v1/http.ts';
+import {parseSession} from '../../packages/client-core/src/playback-v1/types.ts';
 import {WebPreparingStarts} from '../src/platform/playback/preparing-start.ts';
 import {createWebPreparingStarts} from '../src/platform/playback/start-owner.ts';
 import {WebPlayback} from '../src/platform/playback/web-playback.ts';
@@ -186,14 +187,14 @@ function principalFixture() {
     tokenGeneration: '1', sessionFamilyId: 'family', deviceId: 'device', installationId: 'installation',
     viewer: {serverId: 'server', authority: 'local', accountId: 'account', profileId: 'profile', role: 'owner'}};
   let current = true, phase = 'ready', route = {pin: {serverId: 'server', publicKey: 'original-pin'}, getSnapshot: () => ({phase})};
-  const calls: {path: string; method: string; signal?: AbortSignal}[] = [], reads: Promise<unknown>[] = [];
+  const calls: {path: string; method: string; signal?: AbortSignal}[] = [], reads: Promise<unknown>[] = [], deletes: Promise<unknown>[] = [];
   const api = {baseUrl: 'https://original.invalid', getRouteConnection: () => route,
     requestRaw: async (path: string, method: string, options: {signal?: AbortSignal}) => {
       calls.push({path, method, signal: options.signal});
-      return response(method === 'GET' ? await (reads.shift() ?? Promise.resolve(real())) : undefined, method === 'GET' ? 200 : 204);
+      return response(method === 'GET' ? await (reads.shift() ?? Promise.resolve(real())) : await (deletes.shift() ?? Promise.resolve(undefined)), method === 'GET' ? 200 : 204);
     }} as unknown as HttpLocalApi;
   const original = now;
-  return {api, original, calls, reads, read: () => now, current: () => current, retire: () => {current = false;},
+  return {api, original, calls, reads, deletes, read: () => now, current: () => current, retire: () => {current = false;},
     change: (patch: Partial<LocalSession>) => {now = {...now, ...patch};},
     pin: () => {route.pin.publicKey = 'successor-pin';}, replaceRoute: () => {route = {...route};}, unready: () => {phase = 'recovering';}};
 }
@@ -261,4 +262,21 @@ test('installation during the exact read aborts its cleanup and cannot stop the 
     successor.remember('original_session');assert.equal(f.calls[0]!.signal?.aborted, true);read.resolve(real());await rejected;start.finish();
     assert.deepEqual(f.calls.map(call => call.method), ['GET']);
   } finally {successor.dispose();reg.dispose();owner.dispose();}
+});
+
+test('after exact read, the original stop claim refuses a successor installation until its bounded settlement', async () => {
+  const f = principalFixture(), stopped = deferred<unknown>();f.deletes.push(stopped.promise);
+  const owner = createWebPreparingStarts(f.api, f.original, f.read, f.current)!, reg = owner.attach(), successor = owner.attach();
+  const web = new WebPlayback({preparingStarts: owner, http: {send: async () => {assert.fail('adoption performs no transport');}}, mediaUrl: path => path});
+  try {
+    const start = reg.begin({itemId: 'movie'}, {}, 'original-key', undefined, () => true), cleanup = start.context.capturePreparing!(preparing())!;
+    const pending = Promise.resolve(cleanup());await settle();
+    assert.deepEqual(f.calls.map(call => call.method), ['GET', 'DELETE']);
+    assert.equal(successor.remember('original_session'), false, 'a new local owner must not install a resource already claimed for retirement');
+    assert.throws(() => web.transport.adopt(parseSession(real()), 60), {name: 'AbortError'});
+    assert.equal(web.session('original_session'), undefined);
+    assert.equal(f.calls[1]!.signal?.aborted, false, 'an adoption attempt cannot unsend the original stop');
+    stopped.resolve(undefined);await pending;start.finish();
+    assert.equal(successor.remember('different_session'), true);
+  } finally {web.dispose();successor.dispose();reg.dispose();owner.dispose();}
 });

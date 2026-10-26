@@ -26,7 +26,7 @@ export function createWebPreparingStarts(api: HttpLocalApi, session: LocalSessio
   };
   if (!current()) return undefined;
   const original = localV1Http(api);
-  return new WebPreparingStarts({isCurrent: current, stop: async (session, signal, uninstalled) => {
+  return new WebPreparingStarts({isCurrent: current, stop: async (session, signal, uninstalled, claimStop) => {
     // HttpLocalApi retains its original authentication/route guards and request
     // deadline. This task has its own cancellation, never the aborted Play signal.
     const http = {send: async (request: Parameters<typeof original.send>[0]) => {
@@ -42,6 +42,7 @@ export function createWebPreparingStarts(api: HttpLocalApi, session: LocalSessio
       observed.state === 'ended' || observed.itemId !== session.itemId || observed.versionId !== session.versionId ||
       observed.queue?.queueId !== session.queue?.queueId || observed.queue?.entryId !== session.queue?.entryId ||
       observed.discTitle?.id !== session.discTitle?.id || observed.discTitle?.revision !== session.discTitle?.revision) return;
+    if (!claimStop()) return;
     await client.stop(session.id, undefined, signal);
   }});
 }
