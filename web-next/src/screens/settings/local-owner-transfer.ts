@@ -41,6 +41,8 @@ export class LocalOwnerTransferSource {
   private readonly profileId: string;
   private readonly parentCurrent: () => boolean;
   private readonly onTransferred: () => void | Promise<void>;
+  /** Used only to keep the existing sign-in move command mutually exclusive. */
+  get inFlight() {return this.admission?.busy === true;}
   constructor(private readonly api: ProfileAPI, options: LocalOwnerTransferOptions) {
     this.accountId = options.accountId; this.profileId = options.profileId;
     this.parentCurrent = options.isCurrent; this.onTransferred = options.onTransferred;
