@@ -443,6 +443,279 @@
         "caption": "46. Phone, See all: Recommended for you.",
         "markup": "screen trio, .phone"
       }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-REA-DB25D43",
+      "frame": "phone-read#1",
+      "action": "exclude",
+      "reason": "screener frame is native phone only; no mobile-web column in this section",
+      "evidence": {
+        "file": "phone-read.html",
+        "label": "screener r1",
+        "caption": "no per-frame caption; section has .phone columns only, no .saf or .wv",
+        "markup": "columns: .phone x3, saf=0, wv=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-REA-0E5422A",
+      "frame": "phone-read#2",
+      "action": "exclude",
+      "reason": "screener frame is native phone only; no mobile-web column in this section",
+      "evidence": {
+        "file": "phone-read.html",
+        "label": "screener r2",
+        "caption": "no per-frame caption; section has .phone columns only, no .saf or .wv",
+        "markup": "columns: .phone x3, saf=0, wv=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-REA-E604F4A",
+      "frame": "phone-read#3",
+      "action": "exclude",
+      "reason": "screener frame is native phone only; no mobile-web column in this section",
+      "evidence": {
+        "file": "phone-read.html",
+        "label": "screener r3",
+        "caption": "no per-frame caption; section has .phone columns only, no .saf or .wv",
+        "markup": "columns: .phone x3, saf=0, wv=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-REA-5A47E75",
+      "frame": "phone-read#3b",
+      "action": "exclude",
+      "reason": "screener frame is native phone only; no mobile-web column in this section",
+      "evidence": {
+        "file": "phone-read.html",
+        "label": "screener r3b",
+        "caption": "no per-frame caption; section has .phone columns only, no .saf or .wv",
+        "markup": "columns: .phone x3, saf=0, wv=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-REA-F437BAD",
+      "frame": "phone-read#4",
+      "action": "exclude",
+      "reason": "screener frame is native phone only; no mobile-web column in this section",
+      "evidence": {
+        "file": "phone-read.html",
+        "label": "screener r4",
+        "caption": "no per-frame caption; section has .phone columns only, no .saf or .wv",
+        "markup": "columns: .phone x3, saf=0, wv=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-REA-28847B7",
+      "frame": "phone-read#5",
+      "action": "exclude",
+      "reason": "screener frame is native phone only; no mobile-web column in this section",
+      "evidence": {
+        "file": "phone-read.html",
+        "label": "screener r5",
+        "caption": "no per-frame caption; section has .phone columns only, no .saf or .wv",
+        "markup": "columns: .phone x3, saf=0, wv=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-REA-9639F07",
+      "frame": "phone-read#6",
+      "action": "exclude",
+      "reason": "screener frame is native phone only; no mobile-web column in this section",
+      "evidence": {
+        "file": "phone-read.html",
+        "label": "screener r6",
+        "caption": "no per-frame caption; section has .phone columns only, no .saf or .wv",
+        "markup": "columns: .phone x3, saf=0, wv=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-REA-D8B5676",
+      "frame": "phone-read#7",
+      "action": "exclude",
+      "reason": "screener frame is native phone only; no mobile-web column in this section",
+      "evidence": {
+        "file": "phone-read.html",
+        "label": "screener r7",
+        "caption": "no per-frame caption; section has .phone columns only, no .saf or .wv",
+        "markup": "columns: .phone x3, saf=0, wv=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-REA-85E668F",
+      "frame": "phone-read#8",
+      "action": "exclude",
+      "reason": "screener frame is native phone only; no mobile-web column in this section",
+      "evidence": {
+        "file": "phone-read.html",
+        "label": "screener r8",
+        "caption": "no per-frame caption; section has .phone columns only, no .saf or .wv",
+        "markup": "columns: .phone x3, saf=0, wv=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-REA-9C0F91E",
+      "frame": "phone-read#9",
+      "action": "exclude",
+      "reason": "screener frame is native phone only; no mobile-web column in this section",
+      "evidence": {
+        "file": "phone-read.html",
+        "label": "screener r9",
+        "caption": "no per-frame caption; section has .phone columns only, no .saf or .wv",
+        "markup": "columns: .phone x3, saf=0, wv=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-REA-E08F4F5",
+      "frame": "phone-read#10",
+      "action": "exclude",
+      "reason": "screener frame is native phone only; no mobile-web column in this section",
+      "evidence": {
+        "file": "phone-read.html",
+        "label": "screener r10",
+        "caption": "no per-frame caption; section has .phone columns only, no .saf or .wv",
+        "markup": "columns: .phone x3, saf=0, wv=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-REA-A7F7FE2",
+      "frame": "phone-read#12",
+      "action": "include",
+      "reason": "the file's only mobile-web reader section: Safari/Chrome columns",
+      "evidence": {
+        "file": "phone-read.html",
+        "label": "screener r12",
+        "caption": "Mobile web: the same reader in Safari or Chrome",
+        "markup": "columns: .phone saf x2 with .wv x2"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-VID-46848BF",
+      "frame": "phone-player#1",
+      "action": "exclude",
+      "reason": "player frame is the native app player; this file has no mobile-web column",
+      "evidence": {
+        "file": "phone-player.html",
+        "label": "#1",
+        "caption": "1. Full screen, turned sideways: Portico's own player. On iPhone and on Android the app draws it",
+        "markup": "columns: .phone only, saf=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-VID-7ED8709",
+      "frame": "phone-player#2",
+      "action": "exclude",
+      "reason": "player frame is the native app player; this file has no mobile-web column",
+      "evidence": {
+        "file": "phone-player.html",
+        "label": "#2",
+        "caption": "1. Full screen, turned sideways: Portico's own player. On iPhone and on Android the app draws it",
+        "markup": "columns: .phone only, saf=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-VID-4E8C064",
+      "frame": "phone-player#3",
+      "action": "exclude",
+      "reason": "player frame is the native app player; this file has no mobile-web column",
+      "evidence": {
+        "file": "phone-player.html",
+        "label": "#3",
+        "caption": "1. Full screen, turned sideways: Portico's own player. On iPhone and on Android the app draws it",
+        "markup": "columns: .phone only, saf=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-VID-322DE3F",
+      "frame": "phone-player#4",
+      "action": "exclude",
+      "reason": "player frame is the native app player; this file has no mobile-web column",
+      "evidence": {
+        "file": "phone-player.html",
+        "label": "#4",
+        "caption": "1. Full screen, turned sideways: Portico's own player. On iPhone and on Android the app draws it",
+        "markup": "columns: .phone only, saf=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-VID-B330882",
+      "frame": "phone-player#5",
+      "action": "exclude",
+      "reason": "player frame is the native app player; this file has no mobile-web column",
+      "evidence": {
+        "file": "phone-player.html",
+        "label": "#5",
+        "caption": "1. Full screen, turned sideways: Portico's own player. On iPhone and on Android the app draws it",
+        "markup": "columns: .phone only, saf=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-VID-E09AD4D",
+      "frame": "phone-player#6",
+      "action": "exclude",
+      "reason": "player frame is the native app player; this file has no mobile-web column",
+      "evidence": {
+        "file": "phone-player.html",
+        "label": "#6",
+        "caption": "1. Full screen, turned sideways: Portico's own player. On iPhone and on Android the app draws it",
+        "markup": "columns: .phone only, saf=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-VID-34F9E84",
+      "frame": "phone-player#7",
+      "action": "exclude",
+      "reason": "player frame is the native app player; this file has no mobile-web column",
+      "evidence": {
+        "file": "phone-player.html",
+        "label": "#7",
+        "caption": "1. Full screen, turned sideways: Portico's own player. On iPhone and on Android the app draws it",
+        "markup": "columns: .phone only, saf=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-VID-40E4144",
+      "frame": "phone-player#8",
+      "action": "exclude",
+      "reason": "player frame is the native app player; this file has no mobile-web column",
+      "evidence": {
+        "file": "phone-player.html",
+        "label": "#8",
+        "caption": "1. Full screen, turned sideways: Portico's own player. On iPhone and on Android the app draws it",
+        "markup": "columns: .phone only, saf=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-VID-5E1A55D",
+      "frame": "phone-player#9",
+      "action": "exclude",
+      "reason": "player frame is the native app player; this file has no mobile-web column",
+      "evidence": {
+        "file": "phone-player.html",
+        "label": "#9",
+        "caption": "1. Full screen, turned sideways: Portico's own player. On iPhone and on Android the app draws it",
+        "markup": "columns: .phone only, saf=0"
+      }
     }
   ]
 }

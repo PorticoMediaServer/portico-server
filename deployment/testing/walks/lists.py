@@ -22,40 +22,64 @@ DEFAULT_PROGRAM=ROOT/'.worktrees/ui-2026/_program'
 SURFACES=['web-desktop','web-phone','ios-phone','ipad','android-phone','tvos','android-tv','fire-os','vega']
 OVERRIDES=Path(__file__).with_name('surface-overrides.json')
 
-def overrides(surface):
-    '''Per-surface eligibility overrides, proven from the frame caption and markup.
+class OverrideError(Exception):
+    '''A closed refusal from the published override source.'''
+    def __init__(self,code,subject=''):
+        super().__init__(code)
+        self.code=code;self.subject=subject
 
-    A record names a surface, a row id, the frame it was audited against, an
-    action (include or exclude) and the caption evidence. Nothing here changes a
-    ledger row's canonical status, its other surfaces or the ledger itself, and a
-    row with no record stays exactly as generated.
+def load_overrides():
+    '''Load the published per-surface override source, refusing anything malformed.
+
+    A missing or malformed file stops list generation instead of silently
+    resurrecting a mapping the audit already denied. Every record needs a known
+    surface, a row id, an include or exclude action, the audited frame, a reason
+    and caption evidence from the mock-up; duplicate surface+id records are
+    refused rather than resolved by order.
     '''
-    if not OVERRIDES.is_file():return {}
-    try:
-        document=json.loads(OVERRIDES.read_text())
-    except (OSError,ValueError):
-        return {}
-    if not isinstance(document,dict) or document.get('schema')!=1:return {}
+    if not OVERRIDES.is_file():raise OverrideError('missing')
+    try:document=json.loads(OVERRIDES.read_text(encoding='utf-8'))
+    except (OSError,ValueError):raise OverrideError('unreadable')
+    if not isinstance(document,dict) or document.get('schema')!=1:raise OverrideError('schema')
     records=document.get('overrides')
-    if not isinstance(records,list):return {}
-    kept={}
-    for record in records:
-        if not isinstance(record,dict) or record.get('surface')!=surface:continue
-        identifier,action=record.get('id'),record.get('action')
-        if not isinstance(identifier,str) or action not in ('include','exclude'):continue
-        evidence=record.get('evidence') if isinstance(record.get('evidence'),dict) else {}
-        kept[identifier]={'action':action,'frame':str(record.get('frame') or ''),
-                          'reason':str(record.get('reason') or ''),
-                          'caption':str(evidence.get('caption') or ''),
-                          'file':str(evidence.get('file') or ''),'label':str(evidence.get('label') or '')}
-    return kept
+    if not isinstance(records,list):raise OverrideError('schema')
+    loaded={surface:{} for surface in SURFACES}
+    for index,record in enumerate(records):
+        if not isinstance(record,dict):raise OverrideError('record','#%d'%index)
+        surface,identifier=record.get('surface'),record.get('id')
+        if surface not in SURFACES:raise OverrideError('surface','#%d'%index)
+        if not isinstance(identifier,str) or not identifier.strip():raise OverrideError('record','#%d'%index)
+        subject=surface+':'+identifier
+        if record.get('action') not in ('include','exclude'):raise OverrideError('action',subject)
+        frame,reason=record.get('frame'),record.get('reason')
+        if not isinstance(frame,str) or not frame.strip():raise OverrideError('frame',subject)
+        if not isinstance(reason,str) or not reason.strip():raise OverrideError('reason',subject)
+        evidence=record.get('evidence')
+        if not isinstance(evidence,dict):raise OverrideError('evidence',subject)
+        for key in ('file','label','caption'):
+            if not isinstance(evidence.get(key),str) or not evidence[key].strip():
+                raise OverrideError('evidence',subject)
+        if identifier in loaded[surface]:raise OverrideError('duplicate',subject)
+        loaded[surface][identifier]={'action':record['action'],'frame':frame.strip(),'reason':reason.strip(),
+            'file':evidence['file'].strip(),'label':evidence['label'].strip(),'caption':evidence['caption'].strip()}
+    return loaded
 
-def audit_notes(surface, rows, applied):
+def validate_overrides(loaded,indexed):
+    '''Every record must name a real in-scope row and that row's own frame group.'''
+    for surface in SURFACES:
+        for identifier,record in loaded[surface].items():
+            row=indexed.get(identifier)
+            subject=surface+':'+identifier
+            if row is None:raise OverrideError('unknown-id',subject)
+            if row['group']!=record['frame']:raise OverrideError('frame-mismatch',subject)
+
+def audit_notes(surface, indexed, applied):
+    '''One line per applied record, including rows this surface no longer carries.'''
     lines=[]
-    for row in sorted(rows,key=lambda r:r['id']):
-        record=applied.get(row['id'])
-        if not record:continue
-        lines.append('- `%s` %s `%s` — %s · %s %s' % (row['id'],record['action'],record['frame'],
+    for identifier in sorted(applied):
+        record=applied[identifier]
+        if identifier not in indexed:continue
+        lines.append('- `%s` %s `%s` — %s · %s %s' % (identifier,record['action'],record['frame'],
                      record['file'],record['label'],record['caption']))
     if not lines:return []
     return ['','## Audit notes','',
@@ -203,7 +227,12 @@ def read_claims(path):
     match=re.search(r'(?m)^## Claims\n',text)
     if not match:
         return ''
-    body=text[match.end():].strip('\n')
+    body=text[match.end():]
+    # Claims end at the next top-level heading, so later sections such as audit
+    # notes never leak into the claim body on the next regeneration.
+    stop=re.search(r'(?m)^## ',body)
+    if stop:body=body[:stop.start()]
+    body=body.strip('\n')
     if body.strip().startswith('- (none yet'):
         return ''
     return body
@@ -221,8 +250,12 @@ def main():
     for row in rows:
         for surface in surfaces_for(row['platform'],row['pointer'],row['group']):
             by_surface[surface].append(row)
-    applied_by_surface={surface:overrides(surface) for surface in SURFACES}
     indexed={row['id']:row for row in rows}
+    try:
+        applied_by_surface=load_overrides();validate_overrides(applied_by_surface,indexed)
+    except OverrideError as error:
+        print('lists: overrides-%s %s'%(error.code,error.subject),file=sys.stderr)
+        return 2
     for surface in SURFACES:
         by_surface[surface]=list({row['id']:row for row in by_surface[surface]}.values())
         applied=applied_by_surface[surface]
@@ -238,7 +271,7 @@ def main():
         target=out/(surface+'.md')
         content=render(surface,by_surface[surface],read_claims(target))
         applied=applied_by_surface[surface]
-        notes=audit_notes(surface,by_surface[surface],applied) if applied else []
+        notes=audit_notes(surface,indexed,applied) if applied else []
         if notes:content=content.rstrip('\n')+'\n'+'\n'.join(notes)+'\n'
         summary['surfaces'][surface]={'rows':len(by_surface[surface]),'groups':len({row['group'] for row in by_surface[surface]})}
         if args.check:continue
