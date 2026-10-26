@@ -80,3 +80,41 @@ test('MS5: accepted baked gain is measured, not called off, when the current mod
  const renderer=step({...base,server:{route:'original'},normalization:'track',levelingApplied:true,levelingGainDb:-3.2});
  assert.equal(typeof renderer==='object'&&renderer.key,'player.signal.leveling.applied');
 });
+
+test('MS-MUSIC-07: a raw passthrough flag cannot hide actual EQ or loudness processing',()=>{
+ const output={...base.output,passthrough:true};
+ const eq=musicSignal({...base,output,eqOn:true,eqApplied:true});
+ assert.equal(eq.state?.key,'player.signal.line.eqOn');
+ const eqStep=eq.steps.find(s=>s.id==='eq')!;
+ assert.equal(eqStep.changed,true);assert.equal(typeof eqStep.value==='object'&&eqStep.value.key,'player.signal.eq.on');
+ assert.notEqual((eq.steps.find(s=>s.id==='output')?.value as {key?:string}|undefined)?.key,'player.signal.line.passthrough');
+ const leveled=musicSignal({...base,output,normalization:'track',levelingApplied:true,levelingGainDb:-3.2});
+ const leveling=leveled.steps.find(s=>s.id==='leveling')!;
+ assert.equal(leveling.changed,true);assert.equal(typeof leveling.value==='object'&&leveling.value.key,'player.signal.leveling.applied');
+ assert.notEqual((leveled.steps.find(s=>s.id==='output')?.value as {key?:string}|undefined)?.key,'player.signal.line.passthrough');
+ const baked=musicSignal({...base,output,server:{route:'original',loudnessAppliedDb:-12}});
+ const bakedStep=baked.steps.find(s=>s.id==='leveling')!;
+ assert.equal(typeof bakedStep.value==='object'&&bakedStep.value.key,'player.signal.line.loudness');
+ assert.notEqual((baked.steps.find(s=>s.id==='output')?.value as {key?:string}|undefined)?.key,'player.signal.line.passthrough');
+});
+test('MS-MUSIC-07: a genuinely untouched raw passthrough still says passed through',()=>{
+ const output={...base.output,passthrough:true};
+ const model=musicSignal({...base,output});
+ assert.equal(model.state?.key,'player.signal.line.passthrough');
+ assert.equal((model.steps.find(s=>s.id==='output')?.value as {key?:string}|undefined)?.key,'player.signal.line.passthrough');
+ assert.equal(model.steps.find(s=>s.id==='leveling')?.changed,false);
+ assert.equal(model.steps.find(s=>s.id==='eq')?.changed,false);
+ assert.equal(typeof model.steps.find(s=>s.id==='leveling')?.value,'object');
+ assert.equal(typeof model.steps.find(s=>s.id==='eq')?.value,'object');
+ assert.equal((model.steps.find(s=>s.id==='leveling')?.value as {key?:string}).key,'player.signal.notApplied');
+ assert.equal((model.steps.find(s=>s.id==='eq')?.value as {key?:string}).key,'player.signal.notApplied');
+});
+test('MS-MUSIC-07: lost object audio is an actual output fact even when the raw flag says passthrough',()=>{
+ const output={...base.output,passthrough:true,atmosLost:true,decodedLayout:'7.1'};
+ const model=musicSignal({...base,output});
+ assert.equal(model.rule,4);
+ assert.equal(model.state?.key,'player.signal.output.decoded');
+ const out=model.steps.find(s=>s.id==='output')!;
+ assert.equal(typeof out.value==='object'&&out.value.key,'player.signal.output.decoded');
+ assert.notEqual((out.value as {key?:string}).key,'player.signal.line.passthrough');
+});
