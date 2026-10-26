@@ -20,6 +20,7 @@ import type {HomeSelection} from '../screens/home/Home';
 import type {ShellPlaybackBinding} from './Playback';
 import {HomeDocumentResources} from './home-resources';
 import {openAppLogContext} from '../platform/app-log';
+import {createWebPreparingStarts} from '../platform/playback/start-owner';
 
 /** Concrete protected-session assembly. Every command uses the actual current service/engine. */
 export const assembleShellBindings: ShellAssembler = async context => {
@@ -36,6 +37,8 @@ export const assembleShellBindings: ShellAssembler = async context => {
     hourCycle: language.region.hour12 === true ? 'h12' as const : language.region.hour12 === false ? 'h23' as const : undefined};
   const feedback = new ShellFeedback(language, current), life = new AbortController();
   const resources: (() => void)[] = [feedback.dispose, () => life.abort(), openAppLogContext(current)];
+  const preparingStarts = createWebPreparingStarts(context.api, captured, context.session, current);
+  if (preparingStarts) resources.push(preparingStarts.dispose);
   const dispose = () => { if (!active) return; active = false; for (const cleanup of resources.splice(0).reverse()) { try { cleanup(); } catch { /* Continue fencing every other private owner. */ } } };
   try {
   const listeners = new Set<() => void>();
@@ -52,7 +55,7 @@ export const assembleShellBindings: ShellAssembler = async context => {
   playerResources = new HomeDocumentResources(context.home, {isCurrent: current, changed, failed: feedback.reportError, create: document => {
     const owned: (() => void)[] = [], close = () => {for (const cleanup of owned.splice(0).reverse()) {try {cleanup();} catch { /* Retire every owned resource. */ }}};
     try {
-      const runtime = new WebShellPlaybackRuntime({api: context.api, authority: {...viewer, authority, epoch: context.epoch, viewerFence: document.viewerFence},
+      const runtime = new WebShellPlaybackRuntime({api: context.api, preparingStarts, authority: {...viewer, authority, epoch: context.epoch, viewerFence: document.viewerFence},
         localScope: {serverId: viewer.serverId, authority, accountId: viewer.accountId, profileId: viewer.profileId, sessionFamilyId: captured.sessionFamilyId},
         contentScope: scope, events: context.events,
         isCurrent: () => current() && context.home.getSnapshot().document?.viewerFence === document.viewerFence, settings: shellPlaybackSettings(currentPreferences)});
