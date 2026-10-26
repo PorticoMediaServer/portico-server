@@ -69,6 +69,13 @@ func SourceReadProfileTx(ctx context.Context, tx *sql.Tx, source string) (Source
 	if _, err := observationGenerationTx(ctx, tx, source); err != nil {
 		return SourceReadProfile{}, err
 	}
+	return storedSourceReadProfileTx(ctx, tx, source)
+}
+
+// Owner configuration projection may retain stored facts when effective mount
+// authority is unavailable. Call only after resolving the live source row.
+// This does not admit reads: those must use SourceReadProfileTx above.
+func storedSourceReadProfileTx(ctx context.Context, tx *sql.Tx, source string) (SourceReadProfile, error) {
 	p := SourceReadProfile{SourceID: source, Saved: true}
 	err := tx.QueryRowContext(ctx, `SELECT revision,scan_depth,whole_file_reads,connections,requests_per_second,bytes_per_second,allow_advanced_media_analysis FROM remote_source_read_profiles WHERE source_id=?`, source).Scan(&p.Revision, &p.ScanDepth, &p.WholeFileReads, &p.Limits.Connections, &p.Limits.RequestsPerSecond, &p.Limits.BytesPerSecond, &p.AllowAdvancedMediaAnalysis)
 	if errors.Is(err, sql.ErrNoRows) {

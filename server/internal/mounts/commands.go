@@ -46,6 +46,9 @@ type Command struct {
 	// Nil means the request omitted a program choice and configure preserves the
 	// saved selection; never decoded from a wire body.
 	UseIncluded *bool `json:"-"`
+	// Only ConfigureReadCache binds this non-wire configuration precondition;
+	// its accepting callback travels through the private command call, not JSON.
+	readCacheGeneration int64
 }
 type Receipt struct {
 	OperationID     string `json:"operationId"`
@@ -91,11 +94,12 @@ func (s *Service) fingerprint(actor, id string, c Command) string {
 	// distinct hashes. A pre-upgrade custom retry that carried no tri-state may
 	// fail closed as a conflict rather than replay under a guessed presence.
 	raw, _ := json.Marshal(struct {
-		Actor, ID        string
-		Command          Command
-		SourceGeneration int64 `json:"sourceGeneration,omitempty"`
-		Included         *bool `json:"included,omitempty"`
-	}{actor, id, c, c.sourceGeneration, c.UseIncluded})
+		Actor, ID           string
+		Command             Command
+		SourceGeneration    int64 `json:"sourceGeneration,omitempty"`
+		Included            *bool `json:"included,omitempty"`
+		ReadCacheGeneration int64 `json:"readCacheGeneration,omitempty"`
+	}{actor, id, c, c.sourceGeneration, c.UseIncluded, c.readCacheGeneration})
 	defer clear(raw)
 	mac := hmac.New(sha256.New, s.fpKey[:])
 	mac.Write(raw)
@@ -142,6 +146,10 @@ func (s *Service) record(tx *sql.Tx, actor, hash string, r Receipt) error {
 	return e
 }
 func (s *Service) Command(ctx context.Context, actor, id string, c Command, authorize func(*sql.Tx) error) (Receipt, error) {
+	return s.command(ctx, actor, id, c, authorize, nil)
+}
+
+func (s *Service) command(ctx context.Context, actor, id string, c Command, authorize func(*sql.Tx) error, readCacheAccepted func(context.Context, *sql.Tx, Mount, Mount) error) (Receipt, error) {
 	s.commands.Lock()
 	defer s.commands.Unlock()
 	var zero Receipt
@@ -213,7 +221,7 @@ func (s *Service) Command(ctx context.Context, actor, id string, c Command, auth
 		}
 	}
 	if c.Action == "configure" {
-		return s.configure(ctx, actor, id, hash, c, authorize)
+		return s.configure(ctx, actor, id, hash, c, authorize, readCacheAccepted)
 	}
 	if c.Action == "create" {
 		if id != "" || c.ExpectedRevision != 0 || c.CacheBytes != nil || c.CacheFloor != nil {

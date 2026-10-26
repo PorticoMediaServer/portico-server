@@ -33,16 +33,6 @@ func (SourceReadValues) JSONSchema() map[string]any {
 	}
 }
 
-func (SourceReadSettings) JSONSchema() map[string]any {
-	type wire SourceReadSettings
-	schema := readSettingsWireSchema[wire]()
-	properties := schema["properties"].(map[string]any)
-	properties["sourceId"].(map[string]any)["minLength"] = 1
-	properties["generation"].(map[string]any)["minLength"] = 1
-	properties["revision"].(map[string]any)["minimum"] = 0
-	return schema
-}
-
 func (SourceReadSettingsChange) JSONSchema() map[string]any {
 	type wire SourceReadSettingsChange
 	schema := readSettingsWireSchema[wire]()
