@@ -9679,6 +9679,7 @@ CREATE TRIGGER playback_disc_snapshot_delete BEFORE DELETE ON playback_disc_snap
 WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=OLD.id AND state='retired')
  OR EXISTS(SELECT 1 FROM playback_disc_reader_pins WHERE snapshot_id=OLD.id)
  OR EXISTS(SELECT 1 FROM owned_capture_presentation_refs WHERE snapshot_id=OLD.id)
+ OR EXISTS(SELECT 1 FROM playback_disc_subtitle_resources WHERE snapshot_id=OLD.id)
 BEGIN SELECT RAISE(ABORT,'private disc snapshot still owns references'); END;
 CREATE TRIGGER playback_disc_lifecycle_insert BEFORE INSERT ON playback_disc_lifecycle
 WHEN NEW.state!='pending' OR NEW.sealed!=0 OR NEW.retired_ms!=0
@@ -9890,3 +9891,42 @@ CREATE TRIGGER playback_start_preparation_result_immutable BEFORE UPDATE ON play
 BEGIN SELECT RAISE(ABORT,'preparation accepted result is immutable'); END;
 CREATE TRIGGER playback_start_preparation_result_delete BEFORE DELETE ON playback_start_preparation_results
 BEGIN SELECT RAISE(ABORT,'preparation accepted result cannot be replaced'); END;
+
+-- Private measured subtitles attach after PublishPendingTx seals the original
+-- facts, before that pending presentation is activated. The relation itself is
+-- not admission: the subtitle writer re-proves the original personal owner and
+-- exact accepting presentation. No inventory/global disc facts are referenced.
+CREATE TABLE playback_disc_subtitle_resources(
+ snapshot_id TEXT NOT NULL REFERENCES playback_disc_snapshots(id),
+ resource_id TEXT PRIMARY KEY REFERENCES subtitle_resources(id),
+ stream_index INTEGER NOT NULL CHECK(stream_index>=0),
+ UNIQUE(snapshot_id,stream_index),
+ FOREIGN KEY(snapshot_id,stream_index) REFERENCES playback_disc_snapshot_streams(snapshot_id,stream_index)
+) WITHOUT ROWID,STRICT;
+CREATE INDEX playback_subtitle_pins_resource ON playback_subtitle_pins(resource_id,resource_revision);
+CREATE TRIGGER playback_disc_subtitle_resource_insert BEFORE INSERT ON playback_disc_subtitle_resources
+WHEN NOT EXISTS(
+ SELECT 1 FROM playback_disc_snapshots snapshot
+ JOIN playback_disc_lifecycle life ON life.snapshot_id=snapshot.id
+ JOIN playback_disc_snapshot_source source ON source.snapshot_id=snapshot.id
+ JOIN playback_disc_snapshot_streams stream ON stream.snapshot_id=snapshot.id AND stream.stream_index=NEW.stream_index
+ JOIN playback_sessions session ON session.id=snapshot.session_id
+ JOIN subtitle_resources resource ON resource.id=NEW.resource_id
+ WHERE snapshot.id=NEW.snapshot_id AND life.state='pending' AND life.sealed=1
+ AND stream.type='subtitle' AND resource.scope='personal' AND resource.deleted=0
+ AND resource.source_id=source.asset_id AND resource.item_id=session.item_id
+)
+BEGIN SELECT RAISE(ABORT,'private disc subtitle is not an original pending measured stream'); END;
+CREATE TRIGGER playback_disc_subtitle_resource_immutable BEFORE UPDATE ON playback_disc_subtitle_resources
+BEGIN SELECT RAISE(ABORT,'private disc subtitle relation is immutable'); END;
+CREATE TRIGGER playback_disc_subtitle_resource_identity BEFORE UPDATE OF item_id,source_id,scope,owner ON subtitle_resources
+WHEN (NEW.item_id!=OLD.item_id OR NEW.source_id!=OLD.source_id OR NEW.scope!=OLD.scope OR NEW.owner!=OLD.owner)
+ AND EXISTS(SELECT 1 FROM playback_disc_subtitle_resources WHERE resource_id=OLD.id)
+BEGIN SELECT RAISE(ABORT,'private disc subtitle identity is immutable'); END;
+CREATE TRIGGER playback_disc_subtitle_resource_delete BEFORE DELETE ON playback_disc_subtitle_resources
+WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=OLD.snapshot_id AND state='retired')
+ OR EXISTS(SELECT 1 FROM playback_disc_reader_pins WHERE snapshot_id=OLD.snapshot_id)
+ OR EXISTS(SELECT 1 FROM playback_subtitle_pins WHERE resource_id=OLD.resource_id)
+BEGIN SELECT RAISE(ABORT,'private disc subtitle is still retained'); END;
+CREATE TRIGGER playback_disc_subtitle_resource_retire AFTER DELETE ON playback_disc_subtitle_resources
+BEGIN UPDATE subtitle_resources SET deleted=1 WHERE id=OLD.resource_id AND scope='personal'; END;

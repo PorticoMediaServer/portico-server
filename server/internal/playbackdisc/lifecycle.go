@@ -141,7 +141,24 @@ func (s *Store) CollectTx(ctx context.Context, tx *sql.Tx, after string, limit i
 		if live > 0 {
 			continue
 		}
+		// Subtitle resources are private children of this exact measured input.
+		// Existing subtitle cleanup releases ended session pins; until then the
+		// resource, snapshot and any owned input remain together. The resource
+		// index makes this an existence check per bounded measured stream.
+		var subtitlePinned bool
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM playback_disc_subtitle_resources r JOIN playback_subtitle_pins p ON p.resource_id=r.resource_id WHERE r.snapshot_id=?)`, t.id).Scan(&subtitlePinned); err != nil {
+			return
+		}
+		if subtitlePinned {
+			continue
+		}
 		if _, err = tx.ExecContext(ctx, `DELETE FROM playback_disc_reader_pins WHERE snapshot_id=?`, t.id); err != nil {
+			return
+		}
+		// The mapping's delete trigger soft-deletes only its own personal
+		// resource before it can lose the private scope discriminator. Revision
+		// and artifact cleanup remains owned by the existing subtitle collector.
+		if _, err = tx.ExecContext(ctx, `DELETE FROM playback_disc_subtitle_resources WHERE snapshot_id=?`, t.id); err != nil {
 			return
 		}
 		if _, err = tx.ExecContext(ctx, `DELETE FROM owned_capture_presentation_refs WHERE snapshot_id=?`, t.id); err != nil {
