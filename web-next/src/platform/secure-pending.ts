@@ -30,8 +30,8 @@ export class SecurePendingStorage<T> {
   /** Check before creating even a tab locator or issuing a preparation request. */
   assertAvailable() {this.requireSecure();}
   async read() {const value = await this.store().read(); this.requireSecure(); return value;}
-  async change(update: (current: T | undefined) => T | undefined) {
-    await this.store().change(current => {this.requireSecure(); return update(current);});
+  async change(update: (current: T | undefined) => T | undefined, beforeCommit?: () => void) {
+    await this.store().change(current => {this.requireSecure(); return update(current);}, () => {this.requireSecure(); beforeCommit?.();});
     this.requireSecure();
   }
 }

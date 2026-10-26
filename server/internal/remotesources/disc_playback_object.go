@@ -58,7 +58,12 @@ func (l *SourceReadLease) OpenDiscConditional(ctx context.Context) (_ storage.Re
 	// actual source network/pacing/connection/cache guards and legacy references.
 	// No alternate lane or relaxed reference predicate is used for this handoff.
 	call, release := l.bound(ctx)
-	base, err = l.service.Acquire(call, l.binding.Path, "playback")
+	base, err = l.service.acquireBinding(call, l.binding.Path, "playback", b, relative, func(current context.Context, generation string) error {
+		if generation != l.binding.Observation.Generation {
+			return storage.ErrRemoteChanged
+		}
+		return l.Check(current)
+	})
 	release()
 	if err != nil {
 		return nil, err

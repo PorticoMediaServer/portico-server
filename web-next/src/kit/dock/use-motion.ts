@@ -1,4 +1,5 @@
 import {useLayoutEffect, useRef, useState, type RefObject} from 'react';
+import {dockWordsOwner} from './dock-words';
 
 export function useDockReducedMotion(ref: RefObject<HTMLElement | null>) {
   const [reduced, setReduced] = useState(false);
@@ -16,12 +17,21 @@ export function useDockHandover(ref: RefObject<HTMLElement | null>, identity: st
   const reduced = useDockReducedMotion(ref), previous = useRef({identity, reduced}), animation = useRef<Animation | null>(null);
   useLayoutEffect(() => {
     if ((previous.current.identity === identity && previous.current.reduced === reduced) || !ref.current) return;
+    const motionChange = previous.current.identity === identity;
     previous.current = {identity, reduced};
     const content = ref.current.querySelector<HTMLElement>('[data-dock-identity]'); if (!content) return;
-    const current = animation.current?.playState === 'running' ? getComputedStyle(content) : null;
-    const opacity = current?.opacity ?? '0', transform = current?.transform ?? 'translateY(6px)';
+    // The entry paint owns the words while it runs; it retargets from its own painted state.
+    if (dockWordsOwner(content)) return;
+    const running = animation.current?.playState === 'running';
+    const current = getComputedStyle(content);
+    // A motion-preference change starts from the real painted opacity and pose, even when
+    // this hook has no running animation; it retargets 160ms linear opacity only.
+    const opacity = motionChange || running ? current.opacity : '0';
+    const transform = motionChange ? 'none' : running ? current.transform : 'translateY(6px)';
     animation.current?.cancel();
-    animation.current = content.animate(reduced ? [{opacity}, {opacity: 1}] : [{opacity, transform}, {opacity: 1, transform: 'none'}], {duration: reduced ? 160 : 180, easing: 'ease-out'});
+    animation.current = content.animate(
+      motionChange || reduced ? [{opacity}, {opacity: 1}] : [{opacity, transform}, {opacity: 1, transform: 'none'}],
+      {duration: motionChange || reduced ? 160 : 180, easing: motionChange || reduced ? 'linear' : 'ease-out', fill: 'both'});
   }, [identity, reduced, ref]);
   useLayoutEffect(() => () => animation.current?.cancel(), []);
 }
