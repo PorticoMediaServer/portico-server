@@ -1,0 +1,79 @@
+import test, {type TestContext} from 'node:test';
+import assert from 'node:assert/strict';
+import {RemovalFocusOwner, captureListFocusReturn} from '../src/kit/layout/removal-focus-owner.ts';
+
+// UNRUN. Exercises the production DOM owner with structural element/event fixtures.
+// Real React/Radix focus timing is covered separately by the browser regression source.
+class ElementFixture extends EventTarget {
+  children: ElementFixture[] = [];
+  parentElement: ElementFixture | null = null;
+  dataset: {layoutItem?: string} = {};
+  isConnected = true; inert = false; hidden = false; button = false; tabIndex = false; keyboard = true;
+  ownerDocument: {activeElement: ElementFixture | null; body: ElementFixture};
+  constructor(document: ElementFixture['ownerDocument']) {super();this.ownerDocument = document;}
+  append(...children: ElementFixture[]) {for (const child of children) {child.parentElement = this;this.children.push(child);}}
+  contains(node: unknown): boolean {return node === this || this.children.some(child => child.contains(node));}
+  matches(selector: string) {return selector === ':focus-visible' ? this.keyboard : selector === ':disabled' ? false : this.button;}
+  hasAttribute(name: string) {return name === 'tabindex' ? this.tabIndex : name === 'inert' ? this.inert : false;}
+  getAttribute(name: string) {return name === 'aria-hidden' && this.hidden ? 'true' : null;}
+  closest() {for (let node: ElementFixture | null = this;node;node = node.parentElement) if (node.inert || node.hidden) return node;return null;}
+  querySelectorAll(): ElementFixture[] {return this.children.flatMap(child => [...(child.button ? [child] : []), ...child.querySelectorAll()]);}
+  getClientRects() {return this.isConnected ? [{}] : [];}
+  focus() {if (!this.closest()) this.ownerDocument.activeElement = this;}
+}
+const dom = (node: ElementFixture) => node as unknown as HTMLElement;
+function fixture(t: TestContext) {
+  const overrides = {getComputedStyle: () => ({visibility: 'visible'}), HTMLElement: ElementFixture, Node: ElementFixture};
+  for (const [name, value] of Object.entries(overrides)) {
+    const original = Object.getOwnPropertyDescriptor(globalThis, name);
+    Object.defineProperty(globalThis, name, {configurable: true, writable: true, value});
+    t.after(() => {if (original) Object.defineProperty(globalThis, name, original);else Reflect.deleteProperty(globalThis, name);});
+  }
+  const document = {activeElement: null, body: undefined} as unknown as ElementFixture['ownerDocument'];
+  document.body = new ElementFixture(document);
+  const root = new ElementFixture(document);root.tabIndex = true;
+  const rows = ['a','b','c'].map(key => {const row = new ElementFixture(document);row.dataset.layoutItem = key;const button = new ElementFixture(document);button.button = true;row.append(button);return row;});
+  root.append(...rows);
+  const owner = new RemovalFocusOwner();owner.activate();owner.commit(dom(root));t.after(() => owner.dispose());
+  const key = () => root.dispatchEvent(new Event('keydown'));
+  const active = (index: number) => {rows[index].children[0].focus();key();};
+  return {owner, root, rows, document, active, key};
+}
+
+test('beforeLeave moves keyboard focus before the caller makes the row inert', t => {
+  const f = fixture(t);f.active(0);f.owner.beforeLeave(new Set(['b','c']));
+  assert.equal(f.document.activeElement, f.rows[1].children[0]);assert.equal(f.rows[0].inert, false);
+});
+test('simultaneous removal skips another outgoing node and uses the original previous neighbour', t => {
+  const f = fixture(t);f.active(2);f.owner.beforeLeave(new Set(['a']));
+  assert.equal(f.document.activeElement, f.rows[0].children[0]);
+});
+test('pointer-only and unrelated removal leave the actual active control alone', t => {
+  const f = fixture(t);f.active(0);f.root.dispatchEvent(new Event('pointerdown'));f.owner.beforeLeave(new Set(['b','c']));
+  assert.equal(f.document.activeElement, f.rows[0].children[0]);f.active(1);f.owner.beforeLeave(new Set(['b','c']));assert.equal(f.document.activeElement, f.rows[1].children[0]);
+});
+test('a real portalled opening hands off from its original row and cannot restore that withdrawn opener', t => {
+  const f = fixture(t);f.active(0);const receipt = captureListFocusReturn(dom(f.rows[0].children[0]))!;
+  const portal = new ElementFixture(f.document), button = new ElementFixture(f.document);button.button = true;portal.append(button);receipt.attach(dom(portal));button.focus();portal.dispatchEvent(new Event('keydown'));
+  f.owner.beforeLeave(new Set(['b','c']));assert.equal(f.document.activeElement, f.rows[1].children[0]);receipt.restore();assert.equal(f.document.activeElement, f.rows[1].children[0]);receipt.dispose();
+});
+test('modal isolation defers only the captured handoff until close and refuses focus theft', t => {
+  const f = fixture(t);f.active(0);const receipt = captureListFocusReturn(dom(f.rows[0].children[0]))!;
+  const portal = new ElementFixture(f.document), button = new ElementFixture(f.document);button.button = true;portal.append(button);receipt.attach(dom(portal));button.focus();portal.dispatchEvent(new Event('keydown'));
+  f.root.hidden = true;f.owner.beforeLeave(new Set(['b','c']));assert.equal(f.document.activeElement, button);
+  f.root.hidden = false;f.document.activeElement = f.document.body;receipt.restore();assert.equal(f.document.activeElement, f.rows[1].children[0]);receipt.dispose();
+});
+test('an unrelated focus change between modal retirement and close cancels its fallback', t => {
+  const f = fixture(t);f.active(0);const receipt = captureListFocusReturn(dom(f.rows[0].children[0]))!;
+  const portal = new ElementFixture(f.document);receipt.attach(dom(portal));f.document.activeElement = portal;f.key();f.root.hidden = true;f.owner.beforeLeave(new Set(['b','c']));
+  f.root.hidden = false;const outside = new ElementFixture(f.document);outside.button = true;outside.focus();receipt.restore();assert.equal(f.document.activeElement, outside);receipt.dispose();
+});
+test('same-key replacement and a strict-effect replay never receive an old opening return', t => {
+  const f = fixture(t);f.active(0);const receipt = captureListFocusReturn(dom(f.rows[0].children[0]))!;
+  f.owner.activate();f.owner.commit(dom(f.root));f.document.activeElement = f.document.body;receipt.restore();assert.equal(f.document.activeElement, f.document.body);receipt.dispose();
+});
+test('root replacement invalidates both a queued portal return and its nested provenance', t => {
+  const f = fixture(t);f.active(0);const receipt = captureListFocusReturn(dom(f.rows[0].children[0]))!;
+  const portal = new ElementFixture(f.document), button = new ElementFixture(f.document);portal.append(button);receipt.attach(dom(portal));
+  f.owner.commit(dom(new ElementFixture(f.document)));f.document.activeElement = f.document.body;receipt.restore();assert.equal(f.document.activeElement, f.document.body);assert.equal(captureListFocusReturn(dom(button)), undefined);receipt.dispose();
+});

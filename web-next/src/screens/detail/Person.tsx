@@ -82,7 +82,7 @@ export function PersonScreen({binding, personId}: PersonScreenProps) {
 
 function PhoneKnownFor({binding, page}: {binding: PersonBindings; page: PersonPage}) {
   const open = (entry: ContentEntry) => runScreenCommand(binding.context, () => binding.openKnownFor(page, entry));
-  return <div data-person-knownfor><Shelf heading={t('web.person.knownFor')} items={page.person.knownFor} getKey={entry => entry.id} platform="phone-web" style={{marginTop: 18}}
+  return <div data-person-knownfor><Shelf focusScope={binding} heading={t('web.person.knownFor')} items={page.person.knownFor} getKey={entry => entry.id} platform="phone-web" style={{marginTop: 18}}
     renderItem={entry => <PosterCard className={styles.knownCard} model={entryCard(entry, {t, locale: locale()})} context="detail"
       artwork={binding.context.artwork.foreground(entry.posterUrl, 380, 2 / 3)} watched={entry.watched} onNavigate={() => open(entry)} />} /></div>;
 }

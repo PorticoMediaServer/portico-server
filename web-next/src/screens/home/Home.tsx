@@ -185,7 +185,7 @@ export function HomeView({service, customization, document, nowMs, onMore, refre
       </>} /></div>}
     {selection.toolbar}
     <div className={styles.rows} data-with-hero={candidates.length > 0}>
-      {rows.map((row, index) => <Fragment key={row.id}><HomeRowView row={row} rowIndex={index} platform={platform} nowMs={nowMs} refreshLive={refreshLive} onMore={() => onMore(row.id)}
+      {rows.map((row, index) => <Fragment key={row.id}><HomeRowView focusScope={service} row={row} rowIndex={index} platform={platform} nowMs={nowMs} refreshLive={refreshLive} onMore={() => onMore(row.id)}
         artwork={artwork} effects={effects} selection={selection} time={time} appearance={appearance} reducedMotion={appearance?.reducedMotion ?? reducedMotion} />{index === mixesAfter && mixes}</Fragment>)}
       {mixesAfter < 0 && mixes}
       {customization && <HomeCustomizeEntry service={service} binding={customization}/>}
@@ -193,7 +193,7 @@ export function HomeView({service, customization, document, nowMs, onMore, refre
   </div>;
 }
 
-type HomeRowProps = HomePresentation & {row: HomeRow; rowIndex: number; platform: LayoutPlatform; nowMs: number; onMore: () => void; refreshLive: () => void};
+type HomeRowProps = HomePresentation & {focusScope: object; row: HomeRow; rowIndex: number; platform: LayoutPlatform; nowMs: number; onMore: () => void; refreshLive: () => void};
 function HomeRowView(props: HomeRowProps) {
   const {row, rowIndex, selection, refreshLive} = props;
   const interest = useVisible(), [range, setRange] = useState<readonly [number, number]>(props.row.collection ? [0, 0] : [-1, -1]);
@@ -208,7 +208,7 @@ function HomeRowView(props: HomeRowProps) {
   }, [interest.visible, liveCurrent, refreshLive, selection, row, rowIndex, range]);
   return <div ref={interest.ref} className={styles.rowSlot} data-home-row={props.row.id}><HomeRowContents {...props} nowMs={props.row.live ? nowMs : props.nowMs} onRange={onRange} /></div>;
 }
-function HomeRowContents({row, rowIndex, platform, nowMs, onMore, onRange, ...bindings}: HomeRowProps & {onRange: (first: number, last: number) => void}) {
+function HomeRowContents({row, rowIndex, platform, nowMs, onMore, onRange, focusScope, ...bindings}: HomeRowProps & {onRange: (first: number, last: number) => void}) {
   const env = {t, locale: bindings.time.locale};
   const phone = platform !== 'desktop';
   // The On now row's drawn trailing link is "Guide", not "See all", and it stays visible
@@ -229,7 +229,7 @@ function HomeRowContents({row, rowIndex, platform, nowMs, onMore, onRange, ...bi
     if (!live) return null;
     const marks = channelMonograms({kind: 'authoritative', channels: live.channels.map(({channel}) => ({sourceId: channel.sourceId, id: channel.id, mark: channel.mark}))});
     const liveWidth = (platform === 'desktop' ? 316 : 244) * scale, liveHeight = (platform === 'desktop' ? 178 : 140) * scale;
-    return <PagedShelf {...header} items={live.channels} hasMore={!!row.nextCursor} continuation={row.nextCursor} onMore={onMore} cardWidth={liveWidth} artworkRatio={liveWidth / liveHeight} getKey={value => JSON.stringify([value.channel.sourceId, value.channel.id])} reducedMotion={bindings.reducedMotion}
+    return <PagedShelf {...header} focusScope={focusScope} items={live.channels} hasMore={!!row.nextCursor} continuation={row.nextCursor} onMore={onMore} cardWidth={liveWidth} artworkRatio={liveWidth / liveHeight} getKey={value => JSON.stringify([value.channel.sourceId, value.channel.id])} reducedMotion={bindings.reducedMotion}
       onVisibleRange={onRange}
       renderItem={(item, context) => <VisibleLive item={item} mark={marks.get(item.channel.sourceId)!.get(item.channel.id)!} nowMs={nowMs} order={rowIndex * 1000 + context.index} row={row} {...bindings} />} />;
   }
@@ -237,7 +237,7 @@ function HomeRowContents({row, rowIndex, platform, nowMs, onMore, onRange, ...bi
     return <VisibleCollection row={row} rowIndex={rowIndex} {...bindings} />;
   }
   if (!row.entries.length) return null;
-  return <PagedShelf {...header} items={row.entries} hasMore={!!row.nextCursor} continuation={row.nextCursor} onMore={onMore} cardWidth={cardWidth} artworkRatio={ranked ? cardWidth / ((platform === 'desktop' ? 255 : 174) * scale) : wide ? 16 / 9 : square ? 1 : 2 / 3} getKey={entry => entry.id} reducedMotion={bindings.reducedMotion} onVisibleRange={onRange}
+  return <PagedShelf {...header} focusScope={focusScope} items={row.entries} hasMore={!!row.nextCursor} continuation={row.nextCursor} onMore={onMore} cardWidth={cardWidth} artworkRatio={ranked ? cardWidth / ((platform === 'desktop' ? 255 : 174) * scale) : wide ? 16 / 9 : square ? 1 : 2 / 3} getKey={entry => entry.id} reducedMotion={bindings.reducedMotion} onVisibleRange={onRange}
     renderItem={(entry, context) => <VisibleCard entry={entry} row={row} rowIndex={rowIndex} index={context.index} platform={platform} {...bindings} />} />;
 }
 
