@@ -44,11 +44,19 @@ func (s *Store) sessionTx(ctx context.Context, tx *sql.Tx, v Snapshot) (int64, e
 	if v.Actor.ServerID != s.serverID {
 		return 0, ErrCurrent
 	}
-	var expires string
-	err := tx.QueryRowContext(ctx, `SELECT ps.expires_at FROM playback_sessions ps JOIN catalog_entities item ON item.id=ps.item_id JOIN catalog_libraries cl ON cl.id=item.library_id
- WHERE ps.id=? AND ps.generation=? AND ps.session_hash=? AND ps.account_id=? AND ps.profile_id=? AND ps.asset_id=? AND ps.request_id=? AND ps.state NOT IN('stopped','ended','failed') AND item.retired=0 AND cl.library_id=?`, v.SessionID, v.Generation, v.Actor.SessionHash, v.Actor.AccountID, v.Actor.ProfileID, v.Source.AssetID, v.Operation.LegacyRequestID, v.Source.LibraryID).Scan(&expires)
+	var expires, currentHash string
+	err := tx.QueryRowContext(ctx, `SELECT ps.expires_at,ps.session_hash FROM playback_sessions ps JOIN catalog_entities item ON item.id=ps.item_id JOIN catalog_libraries cl ON cl.id=item.library_id
+ WHERE ps.id=? AND ps.generation=? AND ps.account_id=? AND ps.profile_id=? AND ps.asset_id=? AND ps.request_id=? AND ps.state NOT IN('stopped','ended','failed') AND item.retired=0 AND cl.library_id=?`, v.SessionID, v.Generation, v.Actor.AccountID, v.Actor.ProfileID, v.Source.AssetID, v.Operation.LegacyRequestID, v.Source.LibraryID).Scan(&expires, &currentHash)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, ErrCurrent
+		}
 		return 0, err
+	}
+	if currentHash != v.Actor.SessionHash {
+		if err = s.activeFamilySessionTx(ctx, tx, v, currentHash); err != nil {
+			return 0, err
+		}
 	}
 	end, err := time.Parse(time.RFC3339Nano, expires)
 	if err != nil {
@@ -76,6 +84,42 @@ func (s *Store) sessionTx(ctx context.Context, tx *sql.Tx, v Snapshot) (int64, e
 		return 0, ErrCurrent
 	}
 	return until, nil
+}
+
+// activeFamilySessionTx follows the existing playback session-family relation
+// only for an already-active immutable presentation. Pending publication and
+// activation keep the exact original token hash. This does not select a latest
+// actor: the actual legacy row must name the current token in this stored
+// original family/generation/device/viewer tuple. The mandatory Check still
+// proves current ordinary presentation/content/source authority separately.
+func (s *Store) activeFamilySessionTx(ctx context.Context, tx *sql.Tx, v Snapshot, currentHash string) error {
+	var horizon, tokenExpiry string
+	err := tx.QueryRowContext(ctx, `SELECT family.authorization_horizon,current.expires_at
+ FROM authorization_family_tokens original
+ JOIN authorization_family_tokens current ON current.family_id=original.family_id
+ JOIN authorization_session_families family ON family.id=current.family_id
+ JOIN identity_device_families device ON device.family_id=family.id
+ WHERE original.token_hash=? AND original.generation=? AND original.family_id=?
+ AND current.token_hash=? AND current.retired=0 AND current.generation=family.current_generation AND current.generation>=original.generation
+ AND family.revoked=0 AND family.server_id=? AND family.account_id=? AND family.profile_id=? AND family.authority=? AND family.epoch=? AND device.device_id=?
+ AND EXISTS(SELECT 1 FROM playback_disc_snapshots d JOIN playback_disc_lifecycle l ON l.snapshot_id=d.id
+ WHERE d.id=? AND d.session_id=? AND d.generation=? AND l.state='active' AND l.sealed=1)`,
+		v.Actor.SessionHash, v.Actor.TokenGeneration, v.Actor.FamilyID, currentHash, v.Actor.ServerID, v.Actor.AccountID, v.Actor.ProfileID, v.Actor.Authority, v.Actor.Epoch, v.Actor.DeviceID,
+		v.ID, v.SessionID, v.Generation).Scan(&horizon, &tokenExpiry)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrCurrent
+		}
+		return err
+	}
+	now := time.Now()
+	for _, raw := range []string{horizon, tokenExpiry} {
+		expires, err := time.Parse(time.RFC3339Nano, raw)
+		if err != nil || !expires.After(now) {
+			return ErrCurrent
+		}
+	}
+	return nil
 }
 func (s *Store) checkTx(ctx context.Context, tx *sql.Tx, v Snapshot, check Check) (int64, error) {
 	if s == nil || s.serverID == "" || check == nil {
