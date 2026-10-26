@@ -3,6 +3,7 @@ package playback
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"reflect"
@@ -99,25 +100,22 @@ func conditionalDiscInput(ctx context.Context, tool disc.Tool, object storage.Re
 			return mediasource.ErrSourceChanged
 		}
 		if active != nil {
-			select {
-			case <-active.readDone:
-				if active.err != nil {
-					return active.err
-				}
-			default:
-				if err := active.source.Check(check); err != nil {
-					// A successful EOF may have completed and closed its helper
-					// during Check. Its final observation was already accepted.
-					select {
-					case <-active.readDone:
-						if active.err == nil {
-							return life.Err()
-						}
-						return active.err
-					default:
-					}
+			refresh := func(ctx context.Context) error {
+				// An early consumer stop has no accepted helper EOF/final
+				// observation. Reprove this same conditional object rather
+				// than promoting the abandoned stream to successful EOF.
+				actual, err := object.Observe(ctx)
+				if err != nil {
 					return err
 				}
+				if actual != snapshot {
+					return mediasource.ErrSourceChanged
+				}
+				return checkSource(ctx)
+			}
+			if err := checkConditionalDiscAttempt(check, active, refresh); err != nil {
+				cancel()
+				return err
 			}
 		}
 		return life.Err()
@@ -185,7 +183,7 @@ func conditionalDiscInput(ctx context.Context, tool disc.Tool, object storage.Re
 		owner.mu.Unlock()
 		supervise.Go("playback.disc.conditional-pipe", func() {
 			defer close(attempt.done)
-			attempt.err = copyConditionalDisc(readCtx, writer, stream)
+			attempt.complete, attempt.err = copyConditionalDisc(readCtx, writer, stream)
 			close(attempt.readDone)
 			if attempt.err != nil && !attempt.stopping.Load() {
 				cancel()
@@ -240,35 +238,77 @@ type conditionalDiscAttempt struct {
 	readDone     chan struct{}
 	done         chan struct{}
 	err          error // published by closing readDone
+	complete     bool  // true only for fully checked EOF, never pipe abandonment
 	once         sync.Once
 	stopping     atomic.Bool
 }
 
-func copyConditionalDisc(ctx context.Context, writer io.Writer, source disc.RemoteTitleReader) error {
+func copyConditionalDisc(ctx context.Context, writer io.Writer, source disc.RemoteTitleReader) (bool, error) {
 	buffer := make([]byte, 64<<10)
 	for {
 		n, err := source.Read(buffer)
+		if err != nil && err != io.EOF {
+			return false, err
+		}
 		if n > 0 {
 			if e := source.Check(ctx); e != nil {
-				return e
+				return false, e
 			}
 			written, e := writer.Write(buffer[:n])
 			if e != nil || written != n {
 				// The converter may stop or refuse an encoder without proving
-				// source failure. Its own exit determines retry/failure; closing
-				// this attempt must not retire the underlying conditional object.
-				return nil
+				// source failure. Preserve any failure that became known while
+				// Write was blocked BEFORE closing/cancelling the helper can
+				// obscure that outcome. A benign stop still is not checked EOF.
+				return false, source.Check(ctx)
 			}
 		}
 		if err == io.EOF {
-			return nil // Read already checked the helper's exit/final observation.
-		}
-		if err != nil {
-			return err
+			return true, nil // Read checked helper exit and final observation.
 		}
 		if err = ctx.Err(); err != nil {
+			return false, err
+		}
+	}
+}
+
+// checkConditionalDiscAttempt distinguishes a fully checked helper EOF from an
+// early consumer stop. In the latter case the closed helper cannot be checked
+// as live: a fresh check of the same retained conditional object is mandatory.
+func checkConditionalDiscAttempt(ctx context.Context, active *conditionalDiscAttempt, refresh func(context.Context) error) error {
+	completed := func() error {
+		if err := ctx.Err(); err != nil {
 			return err
 		}
+		if active.err != nil {
+			return active.err
+		}
+		if !active.complete {
+			if refresh == nil {
+				return disc.ErrRemoteUnqualified
+			}
+			return refresh(ctx)
+		}
+		return ctx.Err()
+	}
+	select {
+	case <-active.readDone:
+		return completed()
+	default:
+	}
+	err := active.source.Check(ctx)
+	if err != nil && !errors.Is(err, context.Canceled) {
+		// In particular, a known helper/final-observation failure must not be
+		// replaced by a concurrent benign consumer-stop completion.
+		return err
+	}
+	// Completion may have closed the original helper during Check; consult
+	// its actual result rather than treating cancellation as source failure.
+	select {
+	case <-active.readDone:
+		return completed()
+	default:
+		return err
 	}
 }
 
