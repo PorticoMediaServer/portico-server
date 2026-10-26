@@ -14,6 +14,13 @@ export type ListeningPolicy=Readonly<{
 }>;
 export type NativeListeningPolicy=ListeningPolicy&Readonly<{revision:number;effects:AudioEffectsSettings}>;
 export type ListeningAction='pause'|'resume'|'seek'|'rate'|'retry'|'next'|'previous';
+/** Captured at the caller's original output, never rebuilt after credentials/snapshot awaits.
+ * The owner repeats this comparison on its own native queue before accepting a command. */
+export type NativeListeningCommandTarget=Readonly<{
+ binding:NonNullable<NativeListeningStatus['binding']>;
+ commandRevision:number;
+ queue:Readonly<{queueId:string;entryId:string}>|null;
+}>;
 /** What every native listening snapshot says. The player UI, the engine coordinator and the
  * listening policy read only this. */
 export type NativeListeningStatus=Readonly<{
@@ -84,7 +91,7 @@ export type NativeListeningV1Event=NativeListeningStatus&Readonly<{
 export type NativeQueueAdvance='next'|'previous'|'entry';
 export interface NativeListeningV1Control {
  adopt(context:NativeListeningV1Context,sink:(event:NativeListeningV1Event)=>void):Promise<void>;
- action(action:ListeningAction,value?:number):Promise<void>;
+ action(action:ListeningAction,value?:number,expected?:NativeListeningCommandTarget):Promise<void>;
  /** A queue move the viewer asked for; the owner sends the `:advance` and plays its session. */
  advance(reason:NativeQueueAdvance,entryId?:string):Promise<void>;
  refresh():Promise<void>;
