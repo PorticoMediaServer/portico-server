@@ -88,11 +88,12 @@ export function TitleBody({binding, compact = false, artworkClaim}: {binding: De
 
 function TitleHero({binding, data, artworkClaim, showBackdrops}: {binding: DetailBindings; data: DetailProjection; artworkClaim?: SourceArtClaim; showBackdrops: boolean}) {
   const width = useShellWidth(), phone = width < 1024, {item, facts, metadata} = data, art = binding.context.artwork;
-  const artworkRef = useRef<HTMLDivElement>(null), copyRef = useRef<HTMLDivElement>(null);
+  const [artworkNode, setArtworkNode] = useState<HTMLDivElement | null>(null);
+  const [copyNode, setCopyNode] = useState<HTMLDivElement | null>(null);
   const {reduced} = useLayoutMotion();
   // The route owner supplies the one claim; nothing is taken during render.
-  useTitleArtworkClaim(artworkRef, artworkClaim, item.id, reduced);
-  useTitleCopyEntrance(copyRef, item.id, reduced);
+  useTitleArtworkClaim(artworkNode, artworkClaim, item.id, reduced);
+  useTitleCopyEntrance(copyNode, item.id, reduced);
   const directed = metadata.credits.filter(credit => credit.role.toLowerCase() === 'director');
   const starring = metadata.credits.filter(credit => credit.department.toLowerCase() === 'acting' || credit.role.toLowerCase() === 'cast').slice(0, 4);
   const parts = titlePageFacts({year: item.year, durationSeconds: item.duration, genres: metadata.genres.map(genre => genre.name), contentRating: facts?.contentRating}, env);
@@ -101,8 +102,8 @@ function TitleHero({binding, data, artworkClaim, showBackdrops}: {binding: Detai
     const phoneParts = [...parts.filter(part => part.id === 'year' || part.id === 'genres'), ...parts.filter(part => part.id !== 'year' && part.id !== 'genres')];
     return <header className={styles.phoneHero}>
       <div className={styles.phonePicture}>
-        {showBackdrops && <div className={motionStyles.art} ref={artworkRef}><AmbientArt className={styles.phoneHeroArt} treatment="phone" source={art.ambient(item.backdropUrl ?? item.posterUrl)} foreground={art.foreground(item.backdropUrl ?? item.posterUrl, 800, 16 / 9)} position="22% 30%" /></div>}
-        <div className={styles.phoneCopy} ref={copyRef}><Lockup title={item.title} long platform="phone-web" /><TitleFactsLine parts={phoneParts} genres={genres} /></div>
+        {showBackdrops && <div className={motionStyles.art} ref={setArtworkNode}><AmbientArt className={styles.phoneHeroArt} treatment="phone" source={art.ambient(item.backdropUrl ?? item.posterUrl)} foreground={art.foreground(item.backdropUrl ?? item.posterUrl, 800, 16 / 9)} position="22% 30%" /></div>}
+        <div className={styles.phoneCopy} ref={setCopyNode}><Lockup title={item.title} long platform="phone-web" /><TitleFactsLine parts={phoneParts} genres={genres} /></div>
       </div>
       <TitleActions binding={binding} data={data} />
       {item.overview && <TitleProse variant="hero" className={styles.phoneSynopsis} markup={item.overview}/>}
@@ -110,8 +111,8 @@ function TitleHero({binding, data, artworkClaim, showBackdrops}: {binding: Detai
     </header>;
   }
   return <header className={styles.hero}>
-    {showBackdrops && <div className={motionStyles.art} ref={artworkRef}><AmbientArt className={styles.heroArt} treatment={phone ? 'phone' : 'title'} source={art.ambient(item.backdropUrl ?? item.posterUrl)} foreground={art.foreground(item.backdropUrl ?? item.posterUrl, phone ? 800 : 1920, 16 / 9)} /></div>}
-    <div className={styles.copy} ref={copyRef}>
+    {showBackdrops && <div className={motionStyles.art} ref={setArtworkNode}><AmbientArt className={styles.heroArt} treatment={phone ? 'phone' : 'title'} source={art.ambient(item.backdropUrl ?? item.posterUrl)} foreground={art.foreground(item.backdropUrl ?? item.posterUrl, phone ? 800 : 1920, 16 / 9)} /></div>}
+    <div className={styles.copy} ref={setCopyNode}>
       {data.collections?.[0] && <CollectionLink collection={data.collections[0]} onOpen={() => runScreenCommand(binding.context, () => { binding.current(data); binding.context.effects.openEntry({id: data.collections![0].id, libraryId: data.scope.libraryId, kind: 'collection', title: data.collections![0].name, navigation: {view: 'collection', entityId: data.collections![0].id}}); })} />}
       <Lockup title={item.title} platform={phone ? 'phone-web' : 'desktop'} />
       <TitleFactsLine parts={parts} genres={genres} />
