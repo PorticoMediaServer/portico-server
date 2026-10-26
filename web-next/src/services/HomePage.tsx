@@ -14,6 +14,21 @@ import {useMembershipEnding} from './use-membership-ending';
 import {accountIdentity, type ServicesAccount} from './session';
 import {workspaceApi, type WorkspaceServers} from './workspace-api';
 
+/** The only section anchors Home accepts as intent; every other fragment stays inert. */
+export function sectionIntent(hash: string): 'join' | 'setup' | undefined {
+  return hash === '#join' ? 'join' : hash === '#setup' ? 'setup' : undefined;
+}
+
+/** Consume a supported anchor once, preserving the query, history state and any
+ * unrelated fragment handling. Refuses once the original Home path or account is
+ * replaced, so a retired page can never consume or navigate. */
+function takeSectionIntent(original: Readonly<{pathname: string; current: () => boolean}>): 'join' | 'setup' | undefined {
+  if (typeof location === 'undefined' || !original.current() || location.pathname !== original.pathname) return;
+  const intent = sectionIntent(location.hash);
+  if (intent) history.replaceState(history.state, '', location.pathname + location.search);
+  return intent;
+}
+
 /** An empty directory is the drawn welcome, with no Server or library bootstrap. */
 export function ServicesHomePage({account, session}: {account: ServicesAccount; session: Omit<HostedSession, 'refreshToken'>}) {
   const identity = accountIdentity(session);
@@ -27,7 +42,32 @@ function BoundHome({account, session}: {account: ServicesAccount; session: Omit<
   const [loaded, setLoaded] = useState<Read>(), [error, setError] = useState<unknown>(), [attempt, retry] = useState(0);
   const live = useRef<Read | null>(null);
   const [intent,setIntent]=useState<'join'|'setup'|'local'>();
+  const [reveal,setReveal]=useState(0);
   const reload=useCallback(()=>{setIntent(undefined);retry(value=>value+1);},[]);
+  // Same-document anchor navigation keeps working without remounting Home; only the
+  // two supported sections become intent, and each is consumed once.
+  useLayoutEffect(() => {
+    // This exact home instance only: a replayed or retired page never consumes the
+    // anchor, and the check is rebuilt from the captured original scalars.
+    let alive = true;
+    const pathname = location.pathname;
+    const original = {pathname, current: () => {
+      if (!alive) return false;
+      if (location.pathname !== pathname) return false;
+      const current = account.service.getSnapshot().session;
+      return Boolean(current?.familyId && current.account.id === accountId && current.familyId === familyId);
+    }};
+    const consume = () => {
+      const next = takeSectionIntent(original);
+      // The URL may have been replaced while scrubbing; do not publish intent from a
+      // page or family that is no longer the original one.
+      if (!next || !original.current()) return;
+      setIntent(next); setReveal(value => value + 1);
+    };
+    consume(); // cold load: only after the original family/path is confirmed
+    addEventListener('hashchange', consume);
+    return () => {alive = false; removeEventListener('hashchange', consume);};
+  }, [account, accountId, familyId]);
   useLayoutEffect(() => {
     const read: Read = {api, attempt, active: true, controller: new AbortController()}; live.current = read; setError(undefined);
     void api.servers(read.controller.signal).then(value => {
@@ -42,7 +82,7 @@ function BoundHome({account, session}: {account: ServicesAccount; session: Omit<
     primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => retry(value => value + 1)}} />;
   if (!servers) return <ServicesAuthStage><></></ServicesAuthStage>;
   if(intent==='local')return <ServicesLocalServerPage current={localCurrent} onBack={()=>setIntent(undefined)} />;
-  if(!servers.items.length||intent==='join'||intent==='setup')return <Start account={account} session={session} servers={servers} sourceCurrent={sourceCurrent} initialSection={intent} />;
+  if(!servers.items.length||intent==='join'||intent==='setup')return <Start account={account} session={session} servers={servers} sourceCurrent={sourceCurrent} initialSection={intent} reveal={reveal} />;
   const name=session.account.displayName||session.account.username;
   const header=<ServicesHeader notifications={false} avatar={<ServerlessAccountMenu username={session.account.username} name={name} t={t}
     onAccount={()=>location.assign('/account')} onJoin={()=>setIntent('join')} onSetup={()=>setIntent('setup')} onApps={()=>location.assign(distributionPage)}
@@ -51,7 +91,7 @@ function BoundHome({account, session}: {account: ServicesAccount; session: Omit<
   return <ServicesDirectoryPage account={account} session={session} api={api} initial={servers} sourceCurrent={sourceCurrent} header={header}
     onEmpty={reload} onJoin={()=>setIntent('join')} onSetup={()=>setIntent('setup')} onLocal={()=>setIntent('local')} />;
 }
-function Start({account, session, servers, sourceCurrent, initialSection}: {account: ServicesAccount; session: Omit<HostedSession, 'refreshToken'>; servers: WorkspaceServers; sourceCurrent: () => boolean; initialSection?: 'join'|'setup'}) {
+function Start({account, session, servers, sourceCurrent, initialSection, reveal = 0}: {account: ServicesAccount; session: Omit<HostedSession, 'refreshToken'>; servers: WorkspaceServers; sourceCurrent: () => boolean; initialSection?: 'join'|'setup'; reveal?: number}) {
   const {t} = useMemo(servicesI18n, []);
   const showEnding = useMembershipEnding(account, accountIdentity(session), servers.membershipEnding, sourceCurrent);
   type InvitationOpening = Readonly<{link: JoinLink; pasted: string}>;
@@ -71,7 +111,9 @@ function Start({account, session, servers, sourceCurrent, initialSection}: {acco
     const visible = id === 'setup' && !target?.getClientRects().length ? document.getElementById('setup-details') : target;
     visible?.scrollIntoView({block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
   };
-  useLayoutEffect(()=>{if(initialSection)scrollToCard(initialSection);},[initialSection]);
+  // One effect: a new supported anchor and a repeated same anchor both scroll the
+  // authored card; the bounded witness never remounts Start, so its drafts survive.
+  useLayoutEffect(()=>{if(initialSection)scrollToCard(initialSection);},[initialSection, reveal]);
   if (shortJoin !== undefined) return <ShortJoinPage account={account} initialCode={shortJoin} onBack={() => setShortJoin(undefined)} />;
   const name = session.account.displayName || session.account.username;
   const ending = servers.membershipEnding;
