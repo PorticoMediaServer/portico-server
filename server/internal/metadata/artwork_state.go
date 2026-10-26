@@ -181,7 +181,16 @@ func artworkFence(ctx context.Context, tx *sql.Tx, t RepairTarget) (string, erro
 	}
 	parts := []any{t, ent.library, authority, online, epoch, artworkPolicyRevision}
 	var head string
-	if err = tx.QueryRowContext(ctx, `SELECT incarnation||':'||revision FROM artwork_entity_heads WHERE kind=? AND entity_id=?`, t.Kind, entity).Scan(&head); err != nil {
+	reading := t.Kind == "item" && readingRepairKind(ent.itemKind)
+	if reading {
+		// Ebook/comic entities deliberately have neither AV publication heads
+		// nor automatic provider artwork heads. Use their real source lineage;
+		// reading an editor must not create an unrelated publication engine.
+		head, err = readingArtworkSourceFence(ctx, tx, entity)
+	} else {
+		err = tx.QueryRowContext(ctx, `SELECT incarnation||':'||revision FROM artwork_entity_heads WHERE kind=? AND entity_id=?`, t.Kind, entity).Scan(&head)
+	}
+	if err != nil {
 		return "", err
 	}
 	parts = append(parts, head)
@@ -194,7 +203,7 @@ func artworkFence(ctx context.Context, tx *sql.Tx, t RepairTarget) (string, erro
 		parts = append(parts, policy.table, value)
 	}
 	var stamp string
-	if t.Kind == "item" {
+	if t.Kind == "item" && !reading {
 		err = tx.QueryRowContext(ctx, `SELECT h.incarnation||':'||h.source_revision||':'||h.identity_revision||':'||COALESCE((SELECT selected_id||':'||generation FROM mb_jobs WHERE kind='song' AND entity_id=h.item_id),'')||':'||COALESCE((SELECT j.provider_id||':'||j.generation FROM catalog_episodes ep JOIN tvdb_jobs j ON j.show_id=ep.show_id WHERE ep.entity_id=h.item_id),'') FROM metadata_publication_heads h WHERE h.item_id=?`, entity).Scan(&stamp)
 	} else if t.Kind == "album" {
 		err = tx.QueryRowContext(ctx, `SELECT al.local_key||':'||e.title||':'||COALESCE(a.title,'')||':'||COALESCE(j.selected_id,'')||':'||COALESCE(j.generation,0)||':'||COALESCE(l.release_revision,'') FROM catalog_albums al JOIN catalog_entities e ON e.id=al.entity_id LEFT JOIN catalog_entities a ON a.id=al.artist_id LEFT JOIN mb_jobs j ON j.kind='album' AND j.entity_id=al.entity_id LEFT JOIN mb_album_links l ON l.album_id=al.entity_id WHERE al.entity_id=?`, entity).Scan(&stamp)
