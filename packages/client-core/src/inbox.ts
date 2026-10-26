@@ -42,17 +42,28 @@ const data=(raw:unknown):unknown=>raw&&typeof raw==='object'&&'data' in (raw as 
 // words are.
 // X-04: what the viewer reads comes from the catalogue, never from `error.message`.
 const message=(e:unknown,fallback:MessageId,context:'notifications'|'feedback'='notifications',operation:'load'|'save'|'action'='load')=>serviceProblem(e,context,fallback,operation);
+// A refusal the server stated is definite: it did not act, so nothing is waiting
+// on it. A 5xx, a timeout or a transport failure leaves the outcome unknown and
+// the write keeps the key it was sent with.
+const definiteRefusal=(e:unknown):boolean=>{
+ const status=(e as {status?:unknown}|undefined)?.status;
+ return typeof status==='number'&&[400,404,409,410,412,428,429].includes(status);
+};
 
 export class InboxService{
  private api:InboxApi;private operationId:()=>string;
  private state:InboxSnapshot=Object.freeze<InboxSnapshot>({phase:'idle',audience:'profile',audiences:['profile'],view:'unread',items:[],counts:noCounts,unread:0,revision:0,more:false,busy:false});
  private listeners=new Set<()=>void>();private cursor='';private generation=0;private controller?:AbortController;private disposed=false;
  private unreadFlight?:Promise<number>;private unreadController?:AbortController;private unreadDirty=false;private options:InboxServiceOptions;
+ // One write intent at a time, with the exact body and key it was sent under, so
+ // a repeat after an unanswered attempt asks the server's receipt about the same
+ // change instead of making a second one.
+ private pending?:Readonly<{body:string;key:string}>;
  constructor(api:InboxApi,operationId:()=>string=()=>randomId(),options:InboxServiceOptions={}){this.api=api;this.operationId=operationId;this.options=options;}
  getSnapshot=()=>this.state;
  subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
  private publish(patch:Partial<InboxSnapshot>){if(this.disposed)return;this.state=Object.freeze({...this.state,...patch});this.listeners.forEach(f=>f());}
- dispose(){this.disposed=true;this.generation++;this.controller?.abort();this.unreadController?.abort();this.listeners.clear();}
+ dispose(){this.disposed=true;this.generation++;this.controller?.abort();this.unreadController?.abort();this.listeners.clear();this.pending=undefined;}
 
  /** Loads the first page of a view. What is on screen stays until the new page arrives. */
  async load(audience:NotificationAudience=this.state.audience,view:InboxView=this.state.view):Promise<void>{
@@ -105,11 +116,24 @@ export class InboxService{
  }
  private async send(operations:{action:string;ids?:string[]}[],before:InboxSnapshot){
   const generation=this.generation;
+  // The revision the page on screen was read at fences this write, so a server
+  // that moved in between refuses it instead of applying it to a document the
+  // owner never saw. The refusal is shown; it is never replayed.
+  const intent={expectedRevision:before.revision,audience:before.audience,operations},serialized=JSON.stringify(intent);
+  // A repeat of the exact same change while its outcome is unknown is that
+  // attempt, not a second one: it keeps its operation id, so the server's stored
+  // receipt answers it.
+  const key=this.pending?.body===serialized?this.pending.key:this.operationId();
+  this.pending=Object.freeze({body:serialized,key});
   try{
-   const result=parseNotificationBatchResult(data(await this.api.request<RouteResponse<"post_notifications_inbox_actions">>(routePath("post_notifications_inbox_actions"),'POST',routeBody("post_notifications_inbox_actions", {operationId:this.operationId(),expectedRevision:0,audience:before.audience,operations}))));
+   const result=parseNotificationBatchResult(data(await this.api.request<RouteResponse<"post_notifications_inbox_actions">>(routePath("post_notifications_inbox_actions"),'POST',routeBody("post_notifications_inbox_actions", {operationId:key,...intent}))));
+   if(this.pending?.key===key)this.pending=undefined;
    if(generation!==this.generation)return;
    this.publish({counts:result.counts,revision:result.revision});this.unreadDirty=true;void this.refreshUnread();
   }catch(e){
+   // A refusal is definite: the server did not act, so the intent is finished.
+   // An unanswered attempt keeps its key and body until the same change repeats.
+   if(definiteRefusal(e)&&this.pending?.key===key)this.pending=undefined;
    if(generation!==this.generation)return;
    this.publish({items:before.items,counts:before.counts,error:message(e,'notifications.error.change','notifications','save')});
   }

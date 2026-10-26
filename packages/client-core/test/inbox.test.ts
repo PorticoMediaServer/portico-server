@@ -50,11 +50,47 @@ test('marking read is immediate, leaves the unread view, and is put back if the 
  await service.apply('read',['n-1']);
  assert.deepEqual(service.getSnapshot().items.map(n=>n.id),['n-2']);
  const sent=s.calls.find(c=>c.path==='/v1/notifications/inbox/actions')!;
- assert.deepEqual(sent.body,{operationId:'op-1',expectedRevision:0,audience:'profile',operations:[{action:'read',ids:['n-1']}]});
+ assert.deepEqual(sent.body,{operationId:'op-1',expectedRevision:7,audience:'profile',operations:[{action:'read',ids:['n-1']}]});
  assert.equal(service.getSnapshot().revision,8);
  s.failWith(new Error('The server is busy.'));await service.apply('archive',['n-2']);
  const state=service.getSnapshot();
  assert.deepEqual(state.items.map(n=>n.id),['n-2'],'the row comes back');assert.equal(state.error,'That change couldn’t be saved.','catalogue text, never the server message');
+});
+
+test('a change is fenced by the page revision, and an unanswered attempt keeps its key',async()=>{
+ const s=server();let issued=0;const service=new InboxService(s.api,()=>'op-'+(++issued));
+ await service.load();
+ await service.apply('read',['n-1']);
+ const sent=s.calls.filter(c=>c.path==='/v1/notifications/inbox/actions');
+ assert.deepEqual(sent[0].body,{operationId:'op-1',expectedRevision:7,audience:'profile',
+  operations:[{action:'read',ids:['n-1']}]},'the revision the page on screen was read at fences it');
+ // The answer to the next change never arrives, so its outcome is unknown.
+ s.failWith(new TypeError('Failed to fetch'));
+ await service.apply('read',['n-2']);
+ s.failWith(undefined);
+ // The same change again is that attempt, not a second one: same key, same body.
+ await service.apply('read',['n-2']);
+ const attempts=s.calls.filter(c=>c.path==='/v1/notifications/inbox/actions');
+ assert.equal(attempts[1].body.operationId,'op-2');
+ assert.deepEqual(attempts[2].body,attempts[1].body);
+ assert.equal(attempts[2].body.expectedRevision,8,'the revision the page was read at after the first change');
+ service.dispose();
+});
+
+test('a definite refusal finishes the intent, so asking again is a new attempt',async()=>{
+ const s=server();let issued=0;const service=new InboxService(s.api,()=>'op-'+(++issued));
+ await service.load();
+ // A stated refusal means the server did not act: nothing is left to answer for.
+ s.failWith(Object.assign(new Error('The notification changed.'),{status:409,code:'revision_mismatch'}));
+ await service.apply('read',['n-1']);
+ s.failWith(undefined);
+ await service.apply('read',['n-1']);
+ const attempts=s.calls.filter(c=>c.path==='/v1/notifications/inbox/actions');
+ assert.equal(attempts.length,2);
+ assert.equal(attempts[0].body.operationId,'op-1');
+ assert.equal(attempts[1].body.operationId,'op-2');
+ assert.equal(service.getSnapshot().revision,8);
+ service.dispose();
 });
 
 test('a pushed change merges in; an old revision is ignored; a resync reloads',async()=>{

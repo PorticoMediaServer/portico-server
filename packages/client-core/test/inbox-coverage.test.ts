@@ -67,7 +67,7 @@ test('read-all marks every row at once and is put back if refused', async () => 
   assert.equal(service.getSnapshot().items.length, 2);
   await service.readAll();
   const sent = s.calls.find((c) => c.path === '/v1/notifications/inbox/actions')!;
-  assert.deepEqual(sent.body, {operationId: 'op-2', expectedRevision: 0, audience: 'profile', operations: [{action: 'read-all'}]});
+  assert.deepEqual(sent.body, {operationId: 'op-2', expectedRevision: 7, audience: 'profile', operations: [{action: 'read-all'}]});
   s.failWith(new Error('The server is busy.'));
   // Reload to get rows back, then refuse a read-all to see the rollback.
   s.failWith(undefined);
