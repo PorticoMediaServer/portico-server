@@ -1,5 +1,6 @@
-import {useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent} from 'react';
+import {useCallback, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent} from 'react';
 import type {CardSelection} from './types';
+import {useRetainedLayoutPaint} from '../layout/retained-paint';
 
 export type CardHold = Readonly<{x: number; y: number; progress: number}>;
 
@@ -19,6 +20,7 @@ type Gesture = Readonly<{admission: Admission; selection: CardSelection}>;
  * same row's selection change but a retired row's callback cannot consume a
  * successor's suppression. */
 export function useCardHold({selection, disabled = false, row}: {selection?: CardSelection; disabled?: boolean; row: unknown}) {
+  const retained = useRetainedLayoutPaint(), inactive = disabled || retained;
   const [hold, setHold] = useState<CardHold>();
   const committed = useRef<Admission | null>(null);
   const [admission, setAdmission] = useState<Admission | null>(null);
@@ -37,23 +39,14 @@ export function useCardHold({selection, disabled = false, row}: {selection?: Car
   useLayoutEffect(() => {
     // A hold's suppression never crosses to another physical row; within this
     // row it survives selection/menu publication until the click consumes it.
-    if (suppressed.current !== null && suppressed.current !== row) suppressed.current = null;
-    const entry: Admission = {selection, disabled, row, live: true};
+    if (inactive || (suppressed.current !== null && suppressed.current !== row)) suppressed.current = null;
+    const entry: Admission = {selection, disabled: inactive, row, live: true};
     committed.current = entry;
     setAdmission(entry);
-    return () => {
-      // Retire this exact admission, and cancel the work it scheduled, in place.
-      entry.live = false;
-      if (gesture.current?.admission === entry) stop();
-      if (committed.current === entry) committed.current = null;
+    const interrupt = () => {
+      if (!entry.live || committed.current !== entry) return;
+      stop(); suppressed.current = null;
     };
-  }, [selection, disabled, row, stop]);
-  const active = admission && admission.live && committed.current === admission
-    && admission.selection === selection && admission.disabled === disabled && admission.row === row ? admission : null;
-  const owns = (entry: Admission | null) => !!entry && entry.live && committed.current === entry;
-  useLayoutEffect(() => () => { stop(); suppressed.current = null; }, [stop]);
-  useEffect(() => {
-    const interrupt = () => { stop(); suppressed.current = null; };
     window.addEventListener('blur', interrupt);
     window.addEventListener('scroll', interrupt, true);
     document.addEventListener('visibilitychange', interrupt);
@@ -61,8 +54,16 @@ export function useCardHold({selection, disabled = false, row}: {selection?: Car
       window.removeEventListener('blur', interrupt);
       window.removeEventListener('scroll', interrupt, true);
       document.removeEventListener('visibilitychange', interrupt);
+      // Retire this exact admission, and cancel the work it scheduled, in place.
+      entry.live = false;
+      if (gesture.current?.admission === entry) stop();
+      if (committed.current === entry) committed.current = null;
     };
-  }, [stop]);
+  }, [selection, inactive, row, stop]);
+  const active = admission && admission.live && committed.current === admission
+    && !inactive && admission.selection === selection && admission.disabled === inactive && admission.row === row ? admission : null;
+  const owns = (entry: Admission | null) => !!entry && entry.live && committed.current === entry;
+  useLayoutEffect(() => () => { stop(); suppressed.current = null; }, [stop]);
   /** Consumes the click only for this exact committed admission and its row: a
    * retired handler of the same row cannot spend a successor's suppression. */
   const consumeClick = useCallback(() => {
