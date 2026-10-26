@@ -334,6 +334,10 @@ func (s *Service) Run(ctx context.Context) {
 	// Everything this loop writes is bulk catalogue work, so it queues behind
 	// playback, authentication and interactive edits at the write gate.
 	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
+	if err := s.recoverCaptureExecutions(ctx); err != nil {
+		log.Printf("inventory execution recovery failed: %v", err)
+		return
+	}
 	monitorDone := make(chan struct{})
 	supervise.Go("ingestion.monitor", func() { defer close(monitorDone); s.runMonitor(ctx) })
 	defer func() { <-monitorDone }()

@@ -2340,6 +2340,35 @@ CREATE TABLE inventory_analysis_queue (
  revision TEXT NOT NULL, policy_revision INTEGER NOT NULL, state TEXT NOT NULL DEFAULT 'pending',
  PRIMARY KEY(job_id,object_id)
 ) STRICT;
+-- One original analysis invocation, not a job timestamp or ambient authority.
+-- A successor gets a new identity and a strictly increasing per-job revision.
+CREATE TABLE inventory_capture_executions (
+ job_id TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+ execution_id TEXT NOT NULL UNIQUE,
+ revision INTEGER NOT NULL CHECK(revision>0),
+ object_id TEXT NOT NULL REFERENCES inventory_objects(id),
+ object_revision TEXT NOT NULL,
+ policy_revision INTEGER NOT NULL CHECK(policy_revision>0),
+ state TEXT NOT NULL CHECK(state IN('active','retired'))
+) STRICT;
+CREATE INDEX inventory_capture_executions_active ON inventory_capture_executions(job_id) WHERE state='active';
+CREATE TRIGGER inventory_capture_execution_job_retired AFTER UPDATE OF status ON jobs WHEN NEW.status!='running'
+BEGIN UPDATE inventory_capture_executions SET state='retired' WHERE job_id=NEW.id AND state='active'; END;
+CREATE TRIGGER inventory_capture_execution_source_replaced AFTER UPDATE OF job_id ON inventory_source_active WHEN OLD.job_id!=NEW.job_id
+BEGIN UPDATE inventory_capture_executions SET state='retired' WHERE job_id=OLD.job_id AND state='active'; END;
+CREATE TRIGGER inventory_capture_execution_source_removed AFTER DELETE ON inventory_source_active
+BEGIN UPDATE inventory_capture_executions SET state='retired' WHERE job_id=OLD.job_id AND state='active'; END;
+CREATE TRIGGER inventory_capture_execution_run_changed AFTER UPDATE OF source_id,source_generation,root_incarnation,root_identity,policy_revision ON inventory_runs
+WHEN OLD.source_id IS NOT NEW.source_id OR OLD.source_generation IS NOT NEW.source_generation OR OLD.root_incarnation IS NOT NEW.root_incarnation OR OLD.root_identity IS NOT NEW.root_identity OR OLD.policy_revision IS NOT NEW.policy_revision
+BEGIN UPDATE inventory_capture_executions SET state='retired' WHERE job_id=NEW.job_id AND state='active'; END;
+CREATE TRIGGER inventory_capture_execution_queue_changed AFTER UPDATE ON inventory_analysis_queue
+WHEN NEW.state!='pending' OR OLD.revision IS NOT NEW.revision OR OLD.policy_revision IS NOT NEW.policy_revision
+BEGIN UPDATE inventory_capture_executions SET state='retired' WHERE job_id=NEW.job_id AND object_id=NEW.object_id AND state='active'; END;
+CREATE TRIGGER inventory_capture_execution_queue_removed AFTER DELETE ON inventory_analysis_queue
+BEGIN UPDATE inventory_capture_executions SET state='retired' WHERE job_id=OLD.job_id AND object_id=OLD.object_id AND state='active'; END;
+CREATE TRIGGER inventory_capture_execution_object_changed AFTER UPDATE OF source_id,asset_id,root_incarnation,relative_path,object_identity,revision,size,modified_ns,state,retired,unsupported_reason ON inventory_objects
+WHEN OLD.source_id IS NOT NEW.source_id OR OLD.asset_id IS NOT NEW.asset_id OR OLD.root_incarnation IS NOT NEW.root_incarnation OR OLD.relative_path IS NOT NEW.relative_path OR OLD.object_identity IS NOT NEW.object_identity OR OLD.revision IS NOT NEW.revision OR OLD.size IS NOT NEW.size OR OLD.modified_ns IS NOT NEW.modified_ns OR OLD.state IS NOT NEW.state OR OLD.retired IS NOT NEW.retired OR OLD.unsupported_reason IS NOT NEW.unsupported_reason
+BEGIN UPDATE inventory_capture_executions SET state='retired' WHERE object_id=NEW.id AND state='active'; END;
 CREATE TABLE inventory_version_links (
  library_id TEXT NOT NULL, asset_id TEXT NOT NULL, item_id INTEGER NOT NULL,
  PRIMARY KEY(library_id,asset_id),FOREIGN KEY(item_id) REFERENCES catalog_entities(id) ON DELETE CASCADE) STRICT;

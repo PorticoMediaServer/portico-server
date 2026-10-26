@@ -195,6 +195,16 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 	if queuedPolicy != policy.Revision || policy.Tier == "file_list_only" {
 		return s.phase(parent, job, "analysis_enqueue", true)
 	}
+	// A private capture consumer must retain this actual invocation before any
+	// stat/byte work. The claim is not owner authority and does not admit capture.
+	var execution analysisExecution
+	if source.Kind == "remote" && assets.DiscImage(relative) {
+		execution, err = s.claimAnalysisExecution(parent, job, object, revision, queuedPolicy, source)
+		if err != nil {
+			return err
+		}
+		defer s.releaseAnalysisExecution(parent, execution)
+	}
 	busy, err := s.playbackBusy(parent, source.ID)
 	if err != nil {
 		return err
