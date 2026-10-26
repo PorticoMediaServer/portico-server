@@ -92,23 +92,28 @@ func (v *SourceReadValues) UnmarshalJSON(raw []byte) error {
 }
 
 type SourceReadSettings struct {
-	SourceID   string           `json:"sourceId"`
-	Generation string           `json:"generation"`
-	Revision   int64            `json:"revision"`
-	Saved      bool             `json:"saved"`
-	Values     SourceReadValues `json:"values"`
+	SourceID                string                   `json:"sourceId"`
+	Generation              string                   `json:"generation"`
+	ConfigurationGeneration string                   `json:"configurationGeneration,omitempty"`
+	Revision                int64                    `json:"revision"`
+	Saved                   bool                     `json:"saved"`
+	Values                  SourceReadValues         `json:"values"`
+	ChoiceDefinitions       []SourceChoiceDefinition `json:"choiceDefinitions,omitempty"`
+	ChoiceApplicableFields  []string                 `json:"choiceApplicableFields,omitempty"`
+	ChoiceBaseline          *SourceChoiceBaseline    `json:"choiceBaseline,omitempty"`
 }
 
 type SourceReadSettingsChange struct {
-	OperationID        string           `json:"operationId"`
-	ExpectedGeneration string           `json:"expectedGeneration"`
-	ExpectedRevision   int64            `json:"expectedRevision"`
-	Values             SourceReadValues `json:"values"`
+	OperationID        string             `json:"operationId"`
+	ExpectedGeneration string             `json:"expectedGeneration"`
+	ExpectedRevision   int64              `json:"expectedRevision"`
+	Values             SourceReadValues   `json:"values"`
+	StartChoice        *SourceStartChoice `json:"startChoice,omitempty"`
 }
 
 func (v *SourceReadSettingsChange) UnmarshalJSON(raw []byte) error {
 	fields, err := readSettingsFields(raw)
-	if err != nil || len(fields) != 4 {
+	if err != nil || len(fields) < 4 || len(fields) > 5 {
 		return storage.ErrRemoteConfig
 	}
 	for _, name := range []string{"operationId", "expectedGeneration", "expectedRevision", "values"} {
@@ -117,13 +122,53 @@ func (v *SourceReadSettingsChange) UnmarshalJSON(raw []byte) error {
 			return storage.ErrRemoteConfig
 		}
 	}
+	for name, value := range fields {
+		if name != "operationId" && name != "expectedGeneration" && name != "expectedRevision" && name != "values" && name != "startChoice" {
+			return storage.ErrRemoteConfig
+		}
+		if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return storage.ErrRemoteConfig
+		}
+	}
 	type plain SourceReadSettingsChange
 	var decoded plain
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		return storage.ErrRemoteConfig
 	}
+	if rawChoice, ok := fields["startChoice"]; ok {
+		choice, valid := decodeSourceStartChoice(rawChoice)
+		if !valid {
+			return storage.ErrRemoteConfig
+		}
+		decoded.StartChoice = &choice
+	} else {
+		decoded.StartChoice = nil
+	}
 	*v = SourceReadSettingsChange(decoded)
 	return nil
+}
+
+func decodeSourceStartChoice(raw json.RawMessage) (SourceStartChoice, bool) {
+	fields, err := readSettingsFields(raw)
+	if err != nil || len(fields) != 4 {
+		return SourceStartChoice{}, false
+	}
+	for _, name := range []string{"name", "definitionRevision", "expectedAdvancedRevision", "expectedConfigurationGeneration"} {
+		value, ok := fields[name]
+		if !ok || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return SourceStartChoice{}, false
+		}
+	}
+	for name := range fields {
+		if name != "name" && name != "definitionRevision" && name != "expectedAdvancedRevision" && name != "expectedConfigurationGeneration" {
+			return SourceStartChoice{}, false
+		}
+	}
+	var out SourceStartChoice
+	if json.Unmarshal(raw, &out) != nil {
+		return SourceStartChoice{}, false
+	}
+	return out, true
 }
 
 func sourceReadValues(p SourceReadProfile) SourceReadValues {
@@ -142,7 +187,14 @@ func readSettingsTx(ctx context.Context, tx *sql.Tx, source string) (Source, Sou
 		return row, SourceReadSettings{}, err
 	}
 	profile, err := SourceReadProfileTx(ctx, tx, source)
-	return row, SourceReadSettings{SourceID: source, Generation: strconv.FormatInt(row.Generation, 10), Revision: profile.Revision, Saved: profile.Saved, Values: sourceReadValues(profile)}, err
+	if err != nil {
+		return row, SourceReadSettings{}, err
+	}
+	settings := SourceReadSettings{SourceID: source, Generation: strconv.FormatInt(row.Generation, 10), Revision: profile.Revision, Saved: profile.Saved, Values: sourceReadValues(profile)}
+	if configuration, e := observationGenerationTx(ctx, tx, source); e == nil {
+		settings.ConfigurationGeneration = configuration
+	}
+	return row, settings, nil
 }
 
 func (s *Service) ReadSourceReadSettings(ctx context.Context, identities *identity.Service, owner identity.Principal, source string) (SourceReadSettings, error) {
@@ -157,7 +209,7 @@ func (s *Service) ReadSourceReadSettings(ctx context.Context, identities *identi
 	if err = currentLocalOwnerTx(ctx, snapshot.Tx(), identities, owner); err != nil {
 		return SourceReadSettings{}, err
 	}
-	_, out, err := readSettingsTx(ctx, snapshot.Tx(), source)
+	_, out, err := s.readSourceReadSettingsProjectionTx(ctx, snapshot.Tx(), source)
 	return out, err
 }
 
@@ -171,6 +223,10 @@ func (s *Service) SaveSourceReadSettings(ctx context.Context, identities *identi
 	if in.Values.AllowAdvancedMediaAnalysis != nil {
 		consent := *in.Values.AllowAdvancedMediaAnalysis
 		in.Values.AllowAdvancedMediaAnalysis = &consent
+	}
+	if in.StartChoice != nil {
+		choice := *in.StartChoice
+		in.StartChoice = &choice
 	}
 	s.commands.Lock()
 	defer s.commands.Unlock()
@@ -205,24 +261,28 @@ func (s *Service) SaveSourceReadSettings(ctx context.Context, identities *identi
 	if err = authorize(writer.Tx()); err != nil {
 		return Receipt{}, err
 	}
-	// The public legacy generation is the source row's generation; the lower
-	// lease/profile writer checks the effective mount observation authority.
-	rowBefore, _, err := readSettingsTx(ctx, writer.Tx(), source)
-	if err != nil {
-		return Receipt{}, err
+	var row Source
+	var settings SourceReadSettings
+	var apply sourceChoiceApply
+	if in.StartChoice != nil {
+		row, settings, apply, err = s.applySourceChoiceTx(ctx, writer.Tx(), identities, owner, source, in)
+	} else {
+		var rowBefore Source
+		rowBefore, _, err = readSettingsTx(ctx, writer.Tx(), source)
+		if err == nil && strconv.FormatInt(rowBefore.Generation, 10) != in.ExpectedGeneration {
+			err = storage.ErrRemoteChanged
+		}
+		var configuration string
+		if err == nil {
+			configuration, err = observationGenerationTx(ctx, writer.Tx(), source)
+		}
+		if err == nil {
+			_, err = s.ApplySourceReadProfileTx(ctx, writer.Tx(), identities, owner, SourceReadProfileChange{SourceID: source, Generation: configuration, ExpectedRevision: in.ExpectedRevision, Profile: in.Values.profile(source), AdvancedMediaAnalysis: in.Values.AllowAdvancedMediaAnalysis})
+		}
+		if err == nil {
+			row, settings, err = readSettingsTx(ctx, writer.Tx(), source)
+		}
 	}
-	if strconv.FormatInt(rowBefore.Generation, 10) != in.ExpectedGeneration {
-		return Receipt{}, storage.ErrRemoteChanged
-	}
-	configuration, err := observationGenerationTx(ctx, writer.Tx(), source)
-	if err != nil {
-		return Receipt{}, err
-	}
-	_, err = s.ApplySourceReadProfileTx(ctx, writer.Tx(), identities, owner, SourceReadProfileChange{SourceID: source, Generation: configuration, ExpectedRevision: in.ExpectedRevision, Profile: in.Values.profile(source), AdvancedMediaAnalysis: in.Values.AllowAdvancedMediaAnalysis})
-	if err != nil {
-		return Receipt{}, err
-	}
-	row, settings, err := readSettingsTx(ctx, writer.Tx(), source)
 	if err != nil {
 		return Receipt{}, err
 	}
@@ -236,6 +296,9 @@ func (s *Service) SaveSourceReadSettings(ctx context.Context, identities *identi
 	}
 	if err = writer.Commit(); err != nil {
 		return Receipt{}, err
+	}
+	if in.StartChoice != nil {
+		s.finishSourceChoice(ctx, identities, owner, apply)
 	}
 	return receipt, s.finishReadSettings(ctx, source, settings.Revision)
 }

@@ -606,8 +606,10 @@ func (s *Service) fail(ctx context.Context, job, source string, cause error) {
 
 // Every due timestamp is persisted. A paused source claim suppresses scheduled
 // duplicates; fairness and admission are handled by the same scan worker pool.
+// A saved manual remote policy also gates folders added/re-enabled later. The
+// explicit owner scan path is separate and is not blocked by this scheduler gate.
 func (s *Service) schedule(ctx context.Context) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id FROM library_sources WHERE enabled=1 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries d WHERE d.library_id=library_sources.library_id) AND interval_seconds>0 AND next_scan_at!='' AND next_scan_at<=? ORDER BY next_scan_at,id LIMIT 8`, time.Now().UTC().Format(time.RFC3339Nano))
+	rows, err := s.db.QueryContext(ctx, `SELECT id FROM library_sources WHERE enabled=1 AND NOT EXISTS(SELECT 1 FROM remote_source_settings r WHERE r.source_id=library_sources.remote_source_id AND r.scan_interval_seconds=0) AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries d WHERE d.library_id=library_sources.library_id) AND interval_seconds>0 AND next_scan_at!='' AND next_scan_at<=? ORDER BY next_scan_at,id LIMIT 8`, time.Now().UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return
 	}
@@ -636,7 +638,7 @@ func (s *Service) schedule(ctx context.Context) {
 		tx := gated7.Tx()
 		var interval int64
 		var due string
-		e = tx.QueryRowContext(ctx, `SELECT interval_seconds,next_scan_at FROM library_sources WHERE id=? AND enabled=1`, id).Scan(&interval, &due)
+		e = tx.QueryRowContext(ctx, `SELECT interval_seconds,next_scan_at FROM library_sources WHERE id=? AND enabled=1 AND NOT EXISTS(SELECT 1 FROM remote_source_settings r WHERE r.source_id=library_sources.remote_source_id AND r.scan_interval_seconds=0)`, id).Scan(&interval, &due)
 		now := time.Now().UTC()
 		if e == nil && interval > 0 && due != "" && due <= now.Format(time.RFC3339Nano) {
 			_, e = queueSourceTx(ctx, tx, id, false)
@@ -683,7 +685,7 @@ func (s *Service) reconciliationBatch(source catalog.LibrarySource) int {
 // configuration wake Run; a configured source supplies its own due timestamp.
 func (s *Service) nextScheduledScan(ctx context.Context) time.Duration {
 	var stamp sql.NullString
-	if e := s.db.QueryRowContext(ctx, `SELECT min(next_scan_at) FROM library_sources WHERE enabled=1 AND interval_seconds>0 AND next_scan_at<>'' AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries d WHERE d.library_id=library_sources.library_id)`).Scan(&stamp); e != nil {
+	if e := s.db.QueryRowContext(ctx, `SELECT min(next_scan_at) FROM library_sources WHERE enabled=1 AND NOT EXISTS(SELECT 1 FROM remote_source_settings r WHERE r.source_id=library_sources.remote_source_id AND r.scan_interval_seconds=0) AND interval_seconds>0 AND next_scan_at<>'' AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries d WHERE d.library_id=library_sources.library_id)`).Scan(&stamp); e != nil {
 		return time.Minute
 	}
 	if !stamp.Valid {
