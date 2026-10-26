@@ -55,6 +55,7 @@ import {hasWebPreferenceEffect} from './effects';
 import {createPrivacySettingsSurfaces} from './privacy-controls';
 import {PeopleScreen, type PeopleBindings} from './People';
 import {SignInSettingsSource} from './signin-source';
+import {LocalOwnerTransferSource} from './local-owner-transfer';
 import {SettingsStorageSource} from './server/storage-source';
 import {StorageDataFolder} from './server/StorageUsage';
 import {SettingsOwnerSwitch} from './owner-switch';
@@ -261,9 +262,37 @@ export function SettingsEntry() {
       eligibility: {library: () => undefined, hasEngine: row => privacy.eligible(row) ? true : presetEnginesAvailable(row, engine) ?? engine(row)},
     };
     const controller = new SettingsController(options);
+    const session = context.session(), transferOrigin = originalApi.baseUrl, transferRoute = originalApi.getRouteConnection();
+    const transferPrincipal = Object.freeze({...viewer, family: session.sessionFamilyId});
+    const localOwnerCurrent = () => {
+      if (!current() || route.scope !== 'server' || route.section !== 'signin' || identity.signIn !== 'local' || viewer.authority !== 'local' ||
+        !transferRoute || transferRoute.pin.serverId !== transferPrincipal.serverId || transferRoute.getSnapshot().phase !== 'ready' ||
+        originalApi.baseUrl !== transferOrigin || originalApi.getRouteConnection() !== transferRoute) return false;
+      const now = context.session(), facts = context.facts.identity;
+      return now.sessionFamilyId === transferPrincipal.family && now.viewer.serverId === transferPrincipal.serverId && now.viewer.authority === transferPrincipal.authority &&
+        now.viewer.accountId === transferPrincipal.accountId && now.viewer.profileId === transferPrincipal.profileId && now.viewer.role === 'owner' &&
+        facts.primaryProfile === true && facts.signIn === 'local' && facts.capabilities?.manageAccount === true &&
+        facts.capabilities?.managePeople === true && facts.capabilities?.manageSignIn === true;
+    };
+    const localOwnerTransfer = localOwnerCurrent() ? new LocalOwnerTransferSource(api, {
+      accountId: viewer.accountId, profileId: viewer.profileId, isCurrent: localOwnerCurrent,
+      onTransferred: async () => {
+        if (!localOwnerCurrent()) return;
+        // A confirmed write spends this exact owner Settings build immediately.
+        // Only the existing session reader may publish the actual retier.
+        active = false; lifetime.abort();
+        for (const listener of authorityListeners) {try {listener();} catch { /* Retire every captured command. */ }}
+        authorityListeners.clear();
+        setOwned(held => held?.current === current ? undefined : held);
+        const reconcile = context.auth.permissionDenied();
+        void router.navigate({to: '/', replace: true}).catch(() => {});
+        await reconcile;
+      },
+    }) : undefined;
     const signIn = identity.primaryProfile === true && role === 'owner' && identity.capabilities?.manageSignIn === true &&
       (identity.signIn === 'local' || identity.signIn === 'portico') ? new SignInSettingsSource(api, {
         serverId: viewer.serverId, signIn: identity.signIn, isCurrent: current,
+        localOwnerTransfer,
         capabilities: () => ({manageAccount: identity.capabilities?.manageAccount === true, managePeople: identity.capabilities?.managePeople === true,
           manageServer: identity.capabilities?.manageServer === true, manageSignIn: current() && identity.capabilities?.manageSignIn === true}),
         onAuthorityChanged: () => {if (current()) void router.navigate({to: '/sign-in', replace: true});},
@@ -274,7 +303,6 @@ export function SettingsEntry() {
           selectionRevision: async () => (await browserAppSessions().read()).revision,
         }) : undefined,
       }) : undefined;
-    const session = context.session();
     const people: PeopleBindings | undefined = route.section === 'people' && identity.primaryProfile === true && identity.capabilities?.managePeople === true &&
       (role === 'owner' || role === 'admin') && (viewer.authority === 'local' || viewer.authority === 'hosted') ? {
         client: new SettingsPeopleClient(api, current), serverName: context.facts.serverName, libraries: identity.libraries,
