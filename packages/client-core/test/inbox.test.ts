@@ -27,13 +27,16 @@ function server(){
  return {api,calls,failWith:(e?:Error)=>{fail=e;},set:(next:any[])=>{items=next;}};
 }
 
-/** A stub whose POSTs can be held open, failed once, or answered at once, so a
- * dispatch's lifetime is visible to the test. */
+/** A stub whose POSTs and first-page reads can be held open, failed once, or
+ * answered at once, so a dispatch's lifetime and the admitted page are visible. */
 function flightServer(){
  const calls:{path:string;method:string;body?:any;signal?:AbortSignal}[]=[];
  const posts:{resolve:(value:any)=>void;signal?:AbortSignal}[]=[];
- let immediate:Error|undefined,defer=false,revision=7;
+ const reads:{resolve:(value:any)=>void}[]=[];
+ let immediate:Error|undefined,defer=false,holdRead=false,revision=7,nextCursor='';
  let items:any[]=[notification(),notification({id:'n-2',cursor:'4'})];
+ const page=(atRevision=revision,list=items)=>({scope:{serverId:'s',viewerFence:'f'},data:{revision:atRevision,audience:'profile',
+  audiences:['profile'],state:'unread',counts:counts(list.length),items:list,nextCursor,observedAt:at(2),retentionDays:180}});
  const api={request:<T,>(path:string,method='GET',body?:unknown,signal?:AbortSignal):Promise<T>=>{
   calls.push({path,method,body,signal});
   if(path.startsWith('/v1/notifications/unread-count'))return Promise.resolve({data:{revision,audience:'profile',counts:counts(items.length),observedAt:at(2)}} as T);
@@ -42,11 +45,12 @@ function flightServer(){
    if(defer)return new Promise<T>(resolve=>posts.push({resolve,signal}));
    return Promise.resolve({data:{revision:++revision,audience:'profile',applied:1,receipts:[],counts:counts(0)}} as T);
   }
-  return Promise.resolve({scope:{serverId:'s',viewerFence:'f'},data:{revision,audience:'profile',audiences:['profile'],state:'unread',
-   counts:counts(items.length),items,nextCursor:'',observedAt:at(2),retentionDays:180}} as T);
+  if(holdRead)return new Promise<T>(resolve=>reads.push({resolve}));
+  return Promise.resolve(page() as T);
  }};
- return {api,calls,posts,setImmediate:(e:Error)=>{immediate=e;},setDefer:(value:boolean)=>{defer=value;},
-  setRevision:(value:number)=>{revision=value;},setItems:(next:any[])=>{items=next;}};
+ return {api,calls,posts,reads,page,setImmediate:(e:Error)=>{immediate=e;},setDefer:(value:boolean)=>{defer=value;},
+  setHoldRead:(value:boolean)=>{holdRead=value;},setRevision:(value:number)=>{revision=value;},setItems:(next:any[])=>{items=next;},
+  setNextCursor:(value:string)=>{nextCursor=value;}};
 }
 
 test('the inbox loads a view, and the badge counts every audience the viewer has',async()=>{
@@ -106,6 +110,9 @@ test('a definite refusal finishes the intent, so asking again is a new attempt',
  s.failWith(Object.assign(new Error('The notification changed.'),{status:409,code:'revision_mismatch'}));
  await service.apply('read',['n-1']);
  s.failWith(undefined);
+ // The refused change retired the page with the read it could not finish; a
+ // successful re-read admits the page again before another write.
+ await service.load();
  await service.apply('read',['n-1']);
  const attempts=s.calls.filter(c=>c.path==='/v1/notifications/inbox/actions');
  assert.equal(attempts.length,2);
@@ -198,6 +205,78 @@ test('a revision conflict re-reads once, keeps its copy, and never resends',asyn
  assert.ok(error,'the copy stays visible');
  assert.equal(service.getSnapshot().revision,10,'the fresh page is adopted');
  assert.deepEqual(service.getSnapshot().items.map(n=>n.id),['n-1']);
+ service.dispose();
+});
+
+test('a write needs an admitted page, and a closed service sends nothing',async()=>{
+ const s=flightServer();const service=new InboxService(s.api,()=>'op');
+ await service.apply('read',['n-1']);await service.readAll();
+ assert.equal(s.calls.length,0,'no page has been read: no request at all');
+ // The server's revision 0 means no records and is unfenced, so it cannot carry a write.
+ s.setRevision(0);await service.load();
+ await service.apply('read',['n-1']);
+ assert.equal(s.calls.filter(c=>c.method==='POST').length,0,'revision 0 is not a fence');
+ service.dispose();
+ const before=s.calls.length;
+ await service.apply('read',['n-1']);await service.readAll();await service.more();await service.load();
+ assert.equal(s.calls.length,before,'a closed service sends nothing');
+});
+
+test('a same-view load keeps the rows but admits no write until it succeeds',async()=>{
+ const s=flightServer();const service=new InboxService(s.api,()=>'op');await service.load();
+ const visible=service.getSnapshot().items.map(n=>n.id);
+ s.setHoldRead(true);
+ const reload=service.load();
+ assert.deepEqual(service.getSnapshot().items.map(n=>n.id),visible,'the old rows stay on screen');
+ await service.apply('read',['n-1']);
+ assert.equal(s.calls.filter(c=>c.method==='POST').length,0,'no write borrows the read that has not landed');
+ s.setHoldRead(false);
+ s.reads[0].resolve(s.page(9));
+ await reload;
+ await service.apply('read',['n-1']);
+ const sent=s.calls.filter(c=>c.method==='POST');
+ assert.equal(sent.length,1);
+ assert.equal(sent[0].body.expectedRevision,9,'the revision the page was actually read at');
+ service.dispose();
+});
+
+test('a listener that reloads or closes on the optimistic rows stops the POST',async()=>{
+ for(const retire of ['load','dispose'] as const){
+  const s=flightServer();const service=new InboxService(s.api,()=>'op');await service.load();
+  let fired=false;
+  service.subscribe(()=>{
+   const state=service.getSnapshot();
+   if(fired||state.items.length!==1||state.error!==undefined)return;
+   fired=true;
+   if(retire==='load')void service.load();else service.dispose();
+  });
+  await service.apply('read',['n-1']);
+  assert.equal(fired,true,retire);
+  assert.equal(s.calls.filter(c=>c.method==='POST').length,0,retire);
+  await new Promise(r=>setTimeout(r,0));
+ }
+});
+
+test('more waits for an outbound write, and a pushed revision keeps its own counts',async()=>{
+ const s=flightServer();const service=new InboxService(s.api,()=>'op');await service.load();
+ s.setNextCursor('c2');await service.load();
+ s.setDefer(true);
+ const writing=service.apply('read',['n-1']);
+ await service.more();
+ assert.equal(s.calls.filter(c=>c.path.includes('cursor=c2')).length,0,'no appended page during a write');
+ s.posts[0].resolve({data:{revision:8,audience:'profile',applied:1,receipts:[],counts:counts(1)}});
+ await writing;
+ assert.equal(service.getSnapshot().revision,8);
+ // A pushed revision replaces the page while the next write is out: its late
+ // counts must not downgrade the page that is now on screen.
+ s.setDefer(true);
+ const later=service.apply('archive',['n-2']);
+ service.accept({revision:9,since:8,resync:false,items:[],counts:{unread:5,read:0,archived:0,total:5}});
+ assert.equal(service.getSnapshot().revision,9);
+ s.posts[1].resolve({data:{revision:8,audience:'profile',applied:1,receipts:[],counts:counts(0)}});
+ await later;
+ assert.equal(service.getSnapshot().revision,9,'the late counts do not replace the current page');
+ assert.equal(service.getSnapshot().counts.unread,5);
  service.dispose();
 });
 

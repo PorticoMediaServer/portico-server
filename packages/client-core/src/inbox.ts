@@ -56,7 +56,11 @@ const conflict=(e:unknown):boolean=>(e as {status?:unknown}|undefined)?.status==
 // well, so a late answer from an older dispatch cannot settle a newer one.
 type InboxOperation=Readonly<{action:string;ids?:readonly string[]}>;
 type InboxIntent=Readonly<{operationId:string;expectedRevision:number;audience:NotificationAudience;operations:readonly InboxOperation[]}>;
-type InboxFlight=Readonly<{token:number;intent:InboxIntent;controller:AbortController;generation:number;audience:NotificationAudience;view:InboxView;page:string}>;
+// The one page this service actually read and still shows. Its token is the
+// page identity a write is aimed at; a cursor string is not one, because the
+// same or an empty cursor can recur across reads.
+type InboxPage=Readonly<{token:number;revision:number;audience:NotificationAudience;view:InboxView}>;
+type InboxFlight=Readonly<{token:number;intent:InboxIntent;controller:AbortController;pageToken:number}>;
 
 export class InboxService{
  private api:InboxApi;private operationId:()=>string;
@@ -68,34 +72,48 @@ export class InboxService{
  // definite answer and only the same change may resume it.
  private flight?:Readonly<{flight:InboxFlight;phase:'inflight'|'unresolved'}>;
  private writeToken=0;
+ // The admitted page: installed only by a successful first-page adoption and
+ // retired synchronously by the next read or by dispose. A write needs one.
+ private page?:InboxPage;
+ private pageToken=0;
+ private reading=false;
  constructor(api:InboxApi,operationId:()=>string=()=>randomId(),options:InboxServiceOptions={}){this.api=api;this.operationId=operationId;this.options=options;}
  getSnapshot=()=>this.state;
  subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
  private publish(patch:Partial<InboxSnapshot>){if(this.disposed)return;this.state=Object.freeze({...this.state,...patch});this.listeners.forEach(f=>f());}
- dispose(){this.disposed=true;this.generation++;this.controller?.abort();this.unreadController?.abort();this.retireFlight();this.listeners.clear();}
+ dispose(){this.disposed=true;this.generation++;this.controller?.abort();this.unreadController?.abort();this.retireFlight();this.retirePage();this.listeners.clear();}
 
  /** Loads the first page of a view. What is on screen stays until the new page arrives. */
  async load(audience:NotificationAudience=this.state.audience,view:InboxView=this.state.view):Promise<void>{
-  // A load is a new page: any write claimed against the old one retires with it.
-  this.retireFlight();
+  if(this.disposed)return;
+  // A new page retires the write and the admitted page identity at once. The
+  // rows stay on screen, but nothing is admitted to write against until this
+  // read succeeds and installs its own page.
+  this.retireFlight();this.retirePage();this.reading=true;
   const generation=++this.generation;this.controller?.abort();const controller=this.controller=new AbortController();
   const same=audience===this.state.audience&&view===this.state.view;
   this.publish({phase:this.state.items.length&&same?'ready':'loading',audience,view,error:undefined,...(same?{}:{items:[],more:false})});
   try{
    const inbox=parseNotificationInbox(data(await this.api.request<RouteResponse<"get_notifications_inbox">>(routePath("get_notifications_inbox") + "?audience=" + (encodeURIComponent(audience)) + "&state=" + (view) + "&limit=50",'GET',undefined,controller.signal)));
    if(generation!==this.generation)return;
-   this.adopt(inbox);
+   this.adopt(inbox,audience,view);
    void this.refreshUnread();
   }catch(e){
    if(generation!==this.generation||controller.signal.aborted)return;
    this.publish({phase:this.state.items.length?'ready':'error',error:message(e,'notifications.error.load')});
-  }
+  }finally{if(generation===this.generation)this.reading=false;}
  }
  async more():Promise<void>{
+  // An appended page is not dispatched while a write owns the document or a
+  // first page is being read; either would replace the rows it is aimed at.
+  if(this.disposed||this.reading||this.flight||!this.page)return;
   if(!this.cursor||this.state.busy)return;const generation=this.generation,{audience,view}=this.state;this.publish({busy:true});
   try{
    const inbox=parseNotificationInbox(data(await this.api.request<RouteResponse<"get_notifications_inbox">>(routePath("get_notifications_inbox") + "?audience=" + (encodeURIComponent(audience)) + "&state=" + (view) + "&limit=50&cursor=" + (encodeURIComponent(this.cursor)))));
    if(generation!==this.generation)return;this.cursor=inbox.nextCursor;
+   // The server answers a page with the document's current revision, so the
+   // appended page is a newly admitted page in its own right.
+   this.admit(inbox.revision,audience,view);
    const held=new Set(this.state.items.map(n=>n.id));
    this.publish({items:[...this.state.items,...inbox.items.filter(n=>!held.has(n.id))],counts:inbox.counts,revision:inbox.revision,more:!!inbox.nextCursor,busy:false,error:undefined});
   }catch(e){if(generation===this.generation)this.publish({busy:false,error:message(e,'notifications.error.more')});}
@@ -104,6 +122,12 @@ export class InboxService{
  accept(delta:NotificationDelta){
   if(delta.resync){void this.load();return;}
   if(delta.revision<=this.state.revision)return;
+  // While a first page is being read, its answer already carries this change;
+  // merging a delta into retained rows would admit a partial page.
+  if(this.reading)return;
+  // The revision moved, so any write aimed at the previous page must not publish
+  // its late counts over this one.
+  if(this.page)this.admit(delta.revision,this.state.audience,this.state.view);
   this.publish({items:this.visible(mergeNotifications(this.state.items,delta)),counts:delta.counts,revision:delta.revision});
   this.unreadDirty=true;void this.refreshUnread();
  }
@@ -113,7 +137,7 @@ export class InboxService{
  }
  /** Optimistic: the row changes at once and is put back if the server refuses. */
  async apply(action:InboxAction,ids:readonly string[]):Promise<void>{
-  if(!ids.length)return;
+  if(this.disposed||!ids.length)return;
   // The write flight is claimed before the rows change, synchronously, so a
   // listener woken by the optimistic patch cannot dispatch a second write.
   const flight=this.begin([{action,ids:[...ids]}]);
@@ -124,6 +148,7 @@ export class InboxService{
   await this.dispatch(flight,before);
  }
  async readAll():Promise<void>{
+  if(this.disposed)return;
   const flight=this.begin([{action:'read-all'}]);
   if(!flight)return;
   const before=this.state,now=Date.now();
@@ -131,11 +156,19 @@ export class InboxService{
   await this.dispatch(flight,before);
  }
  /**
-  * Claims the view's one write flight. Undefined means nothing is sent: a
-  * dispatch is still out, or an unanswered attempt holds the document and this
-  * is a different change. The same change may resume that exact attempt.
+  * Claims the view's one write flight. Undefined means nothing is sent: no page
+  * is admitted, a first page is being read, the service is closed, a dispatch is
+  * still out, or an unanswered attempt holds the document and this is a
+  * different change. Only the same change may resume that exact attempt.
   */
  private begin(operations:{action:string;ids?:string[]}[]):InboxFlight|undefined{
+  if(this.disposed||this.reading)return undefined;
+  const page=this.page;
+  // A write is aimed at a page this service read and still shows. Before the
+  // first successful load there is no page, and the server's revision 0 means
+  // "no records" and is the one value its CAS treats as unfenced; neither may
+  // carry a change the owner never saw.
+  if(!page||page.revision<1)return undefined;
   const held=this.flight;
   // A dispatch still owns the next change; its own answer settles the rows it
   // already drew, so repeats send nothing, whatever they would have changed.
@@ -151,29 +184,31 @@ export class InboxService{
    }
    intent=held.flight.intent;
   }else{
-   const audience=this.state.audience;
-   intent=Object.freeze({operationId:this.operationId(),expectedRevision:this.state.revision,audience,
+   intent=Object.freeze({operationId:this.operationId(),expectedRevision:page.revision,audience:page.audience,
     operations:Object.freeze(operations.map(operation=>Object.freeze(operation.ids?{action:operation.action,ids:Object.freeze([...operation.ids])}:{action:operation.action})))});
   }
   return this.launch(intent);
  }
  private launch(intent:InboxIntent):InboxFlight{
   const controller=new AbortController();
-  const flight=Object.freeze({token:++this.writeToken,intent,controller,generation:this.generation,audience:this.state.audience,view:this.state.view,page:this.cursor});
+  const flight=Object.freeze({token:++this.writeToken,intent,controller,pageToken:this.page!.token});
   this.flight=Object.freeze({flight,phase:'inflight'});
   return flight;
  }
  /** True while this exact dispatch is still the view's one write. An older
   * dispatch's late answer may settle nothing, not the rows nor a successor. */
  private owns(token:number):boolean{return this.flight?.flight.token===token;}
- /** The page the write was claimed against is still the page on screen. */
- private current(flight:InboxFlight):boolean{
-  return !this.disposed&&this.generation===flight.generation&&this.state.audience===flight.audience&&this.state.view===flight.view&&this.cursor===flight.page;
- }
+ /** The exact admitted page this dispatch was aimed at is still the page on
+  * screen. A cursor is not an identity: the same or an empty cursor recurs. */
+ private current(flight:InboxFlight):boolean{return !this.disposed&&this.page?.token===flight.pageToken;}
  private retireFlight(){
   const held=this.flight;
   this.flight=undefined;
   held?.flight.controller.abort();
+ }
+ private retirePage(){this.page=undefined;}
+ private admit(revision:number,audience:NotificationAudience,view:InboxView){
+  this.page=Object.freeze({token:++this.pageToken,revision,audience,view});
  }
  private async dispatch(flight:InboxFlight,before:InboxSnapshot):Promise<void>{
   const {token,intent}=flight;
@@ -181,11 +216,18 @@ export class InboxService{
   // revision, audience or operations can be substituted into this dispatch.
   const body={operationId:intent.operationId,expectedRevision:intent.expectedRevision,audience:intent.audience,
    operations:intent.operations.map(operation=>({action:operation.action,...(operation.ids?{ids:[...operation.ids]}:{})}))};
+  // A listener woken by the optimistic rows may synchronously load, reread or
+  // dispose this service. Those retire the flight and its signal, so nothing is
+  // sent for a page that is no longer admitted.
+  if(!this.owns(token)||!this.current(flight)||flight.controller.signal.aborted)return;
   try{
    const result=parseNotificationBatchResult(data(await this.api.request<RouteResponse<"post_notifications_inbox_actions">>(routePath("post_notifications_inbox_actions"),'POST',routeBody("post_notifications_inbox_actions", body),flight.controller.signal)));
    if(!this.owns(token))return;
    this.flight=undefined;
    if(!this.current(flight))return;
+   // The confirmed change is now part of this page: a later write fences at the
+   // revision the server just returned, never at the one it replaced.
+   this.admit(result.revision,intent.audience,this.state.view);
    this.publish({counts:result.counts,revision:result.revision});this.unreadDirty=true;void this.refreshUnread();
   }catch(e){
    if(!this.owns(token))return;
@@ -193,8 +235,10 @@ export class InboxService{
    // its original intent until the same change explicitly resumes it.
    if(definiteRefusal(e))this.flight=undefined;
    else this.flight=Object.freeze({flight,phase:'unresolved'});
-   if(!this.current(flight))return;
    const notice=message(e,'notifications.error.change','notifications','save');
+   // A page replaced while this attempt was out keeps its own rows and counts;
+   // only the failure itself is shown.
+   if(!this.current(flight)){this.publish({error:notice});return;}
    this.publish({items:before.items,counts:before.counts,error:notice});
    // A revision conflict means the server moved: one fresh read keeps the page
    // honest and keeps this copy visible. It never resends the change.
@@ -203,16 +247,19 @@ export class InboxService{
  }
  /** One fresh first page after a conflict, with the conflict copy kept visible. */
  private async reread(notice:string):Promise<void>{
+  this.retirePage();this.reading=true;
   const generation=++this.generation;this.controller?.abort();const controller=this.controller=new AbortController();
   const {audience,view}=this.state;
   try{
    const inbox=parseNotificationInbox(data(await this.api.request<RouteResponse<"get_notifications_inbox">>(routePath("get_notifications_inbox") + "?audience=" + (encodeURIComponent(audience)) + "&state=" + (view) + "&limit=50",'GET',undefined,controller.signal)));
    if(generation!==this.generation||controller.signal.aborted||this.disposed)return;
-   this.adopt(inbox,notice);
+   this.adopt(inbox,audience,view,notice);
    void this.refreshUnread();
   }catch{/* the rows and the conflict copy stay as they are */}
+  finally{if(generation===this.generation)this.reading=false;}
  }
- private adopt(inbox:NotificationInbox,notice?:string){
+ private adopt(inbox:NotificationInbox,audience:NotificationAudience,view:InboxView,notice?:string){
+  this.admit(inbox.revision,audience,view);
   this.cursor=inbox.nextCursor;
   const audiences=(inbox.audiences.filter(a=>a==='profile'||a==='account-admin') as NotificationAudience[]);
   this.publish({phase:'ready',items:inbox.items,counts:inbox.counts,revision:inbox.revision,more:!!inbox.nextCursor,audiences:audiences.length?audiences:['profile'],error:notice});
