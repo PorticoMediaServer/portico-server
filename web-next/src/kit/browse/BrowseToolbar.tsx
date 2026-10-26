@@ -98,6 +98,8 @@ export type BrowseToolbarProps = Readonly<{
   onSortChange: (value: BrowseSortSelection) => void; onReshuffle?: () => void; view?: BrowseView; cardSize?: CardSizeControl;
   save?: SaveViewControl; applied?: readonly AppliedChip[]; onRemoveFilter?: (id: string) => void; onClearFilters?: () => void;
   onJump?: () => void; selection?: ReactNode; actions?: ReactNode; className?: string;
+  /** Actual selection mode; a mounted host may render no pixels while retaining keyboard/dialog ownership. */
+  selectionActive?: boolean;
   /** A surface that names its one sort itself (a row's own order reads "Best match"). */
   sortLabel?: string;
   /** The quick filters this surface draws, in the model's order; absent draws all offered. */
@@ -112,7 +114,7 @@ function ResultCount({children, accepted, source, className}: {children: ReactNo
   return <span ref={ref} className={className}>{children}</span>;
 }
 export function BrowseToolbar({model, labels, resultCount, platform = 'desktop', sticky = false, topInset = 76, onQuickChange, onFilters, filtersOpen,
-  onSortChange, onReshuffle, view, cardSize, save, applied = [], onRemoveFilter, onClearFilters, onJump, selection, actions, className, sortLabel, quickIds, accepted, acceptedSource}: BrowseToolbarProps) {
+  onSortChange, onReshuffle, view, cardSize, save, applied = [], onRemoveFilter, onClearFilters, onJump, selection, actions, className, sortLabel, quickIds, accepted, acceptedSource, selectionActive}: BrowseToolbarProps) {
   const sortLabels: BrowseLabels = sortLabel === undefined ? labels : {...labels, sort: (value: BrowseSortCapability) => value.id === model.sort.field ? sortLabel : labels.sort(value)};
   const quick = quickIds === undefined ? model.quick : model.quick.filter(item => quickIds.includes(item.id));
   const sort = <SortMenu sorts={model.sorts} value={model.sort} onValueChange={onSortChange} label={sortLabels.sort} onReshuffle={onReshuffle} showOrder={sortLabel === undefined}/>;
@@ -121,7 +123,7 @@ export function BrowseToolbar({model, labels, resultCount, platform = 'desktop',
   // order on the count row instead, so a surface that supplies sortLabel keeps that one.
   const sortInFirstRow = platform === 'phone' && sortLabel === undefined;
   return <div className={[styles.toolbar, className].filter(Boolean).join(' ')} data-platform={platform} data-sticky={sticky || undefined} style={{top: topInset}}>
-    {selection ?? <><div className={styles.toolbarMain}>
+    {selection}{!(selectionActive ?? selection != null) && <><div className={styles.toolbarMain}>
       {platform === 'tv' ? <>{sort}{filters}{onJump && <Chip onClick={onJump}>{t('next.browse.jump')}<Icon name="i-down" size={16}/></Chip>}</> : filters}
       <span className={styles.separator} aria-hidden="true"/>
       {sortInFirstRow && sort}
