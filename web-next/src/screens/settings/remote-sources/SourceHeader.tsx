@@ -1,4 +1,5 @@
 import type {ReactNode} from 'react';
+import {Icon} from '../../../kit/Icon';
 import styles from './source-header.module.css';
 
 export type SourceHeaderProps = Readonly<{
@@ -33,7 +34,7 @@ export function SourceHeader({status, label, name, origin, notice, actions, phon
       {origin && <span className={styles.origin}>{origin}</span>}
       {actions && <span className={styles.actions}>{actions}</span>}
     </div>
-    {notice && <p className={styles.notice}>{notice}</p>}
+    {notice && <p className={styles.notice}><Icon name="i-warn" size={20}/><span>{notice}</span></p>}
     {children}
   </section>;
 }

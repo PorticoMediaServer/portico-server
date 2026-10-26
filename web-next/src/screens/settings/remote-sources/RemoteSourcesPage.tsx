@@ -1183,6 +1183,7 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
   // for. A replaced source or status retires it whole.
   const [savedTestLease, setSavedTestLease] = useState<SavedTestLease | null>(null);
   const [savedTest, setSavedTest] = useState<Readonly<{result: SavedSourceTest; generation: string}> | null>(null);
+  const phone = usePhone();
   const [savedTesting, setSavedTesting] = useState(false);
   const savedTestOwner = useRef<object | null>(null);
   const savedTestLeaseRef = useRef<SavedTestLease | null>(null);
@@ -1330,7 +1331,7 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
   };
   return <Dialog open onOpenChange={value => {if (!value) close();}} title={source.name} width={760} footer={<Button size="compact" variant="glass" disabled={busy} onClick={close}>{t('next.remoteSources.cancel')}</Button>}>
     {error && <p className={styles.error} role="alert">{error}</p>}
-    <SourceHeader label={t('next.remoteSources.status')} status={<SourceStatus source={source}/>} origin={source.origin}
+    <SourceHeader label={t('next.remoteSources.status')} phone={phone} status={<SourceStatus source={source}/>} origin={source.origin}
       notice={problemId(source) ? t(problemId(source)!) : undefined}>
       <dl className={styles.statusRows}>
         <div><dt>{t('next.remoteSources.rightNow')}</dt><dd>{!status ? '—'
