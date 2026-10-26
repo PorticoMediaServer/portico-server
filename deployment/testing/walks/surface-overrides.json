@@ -716,6 +716,136 @@
         "caption": "1. Full screen, turned sideways: Portico's own player. On iPhone and on Android the app draws it",
         "markup": "columns: .phone only, saf=0"
       }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-10E997F",
+      "frame": "phone-detail#1",
+      "action": "exclude",
+      "reason": "movie page frame is the native phone app",
+      "evidence": {
+        "file": "phone-detail.html",
+        "label": "d1",
+        "caption": "Movie pages. The approved title page laid out for a phone, part for part like the Slow Horses page in phone-app.html",
+        "markup": "columns: .phone x3, saf=0, wv=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-B1010E2",
+      "frame": "phone-detail#2",
+      "action": "exclude",
+      "reason": "episodes frame is the native phone app",
+      "evidence": {
+        "file": "phone-detail.html",
+        "label": "d2",
+        "caption": "Episodes and seasons. An episode opens in place, under its row",
+        "markup": "columns: .phone x3, saf=0, wv=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-56F6ECF",
+      "frame": "phone-detail#3",
+      "action": "exclude",
+      "reason": "people and More frame is the native phone app",
+      "evidence": {
+        "file": "phone-detail.html",
+        "label": "d3",
+        "caption": "People, collections and the More menu. The demo has no photos of people",
+        "markup": "columns: .phone x3, saf=0, wv=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-E807214",
+      "frame": "phone-detail#9b",
+      "action": "exclude",
+      "reason": "version sheet frame is the native phone app",
+      "evidence": {
+        "file": "phone-detail.html",
+        "label": "d3b",
+        "caption": "9b. Play a different version. What the More menu opens: a bottom sheet over the dimmed page",
+        "markup": "columns: .phone x1, saf=0, wv=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-0D50D25",
+      "frame": "phone-detail#10",
+      "action": "exclude",
+      "reason": "More menu and File info frames are the native phone app",
+      "evidence": {
+        "file": "phone-detail.html",
+        "label": "d5",
+        "caption": "The More menu and File info. File details never sit on a page, for owners or members",
+        "markup": "columns: .phone x3, saf=0, wv=0; caption data-f=10-12"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-ADEC19D",
+      "frame": "phone-guide#1",
+      "action": "exclude",
+      "reason": "List and Guide frame is the native phone app",
+      "evidence": {
+        "file": "phone-guide.html",
+        "label": "g1",
+        "caption": "Live TV on a phone: List and Guide. A List / Guide switch sits beside the title",
+        "markup": "columns: .phone x3, saf=0, wv=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-4B789F5",
+      "frame": "phone-guide#2",
+      "action": "exclude",
+      "reason": "landscape guide frame is the native phone app",
+      "evidence": {
+        "file": "phone-guide.html",
+        "label": "g2",
+        "caption": "Landscape, and the list for comparison. Turned sideways, it is the same guide",
+        "markup": "columns: .phone x3, saf=0, wv=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-A864820",
+      "frame": "phone-web#1",
+      "action": "include",
+      "reason": "authored mobile web frame in Safari",
+      "evidence": {
+        "file": "phone-web.html",
+        "label": "f1",
+        "caption": "Mobile web: the same web app at phone width, inside Safari",
+        "markup": "columns: .phone saf with .wv"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-83B0448",
+      "frame": "phone-web#2",
+      "action": "include",
+      "reason": "authored mobile web frame in Safari",
+      "evidence": {
+        "file": "phone-web.html",
+        "label": "f2",
+        "caption": "Search, the player and the Home Screen. Search is the same as the app",
+        "markup": "columns: .phone saf with .wv"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-7D3F31E",
+      "frame": "phone-web#3",
+      "action": "include",
+      "reason": "authored mobile web frame in Safari",
+      "evidence": {
+        "file": "phone-web.html",
+        "label": "f3",
+        "caption": "Music, Now playing and Settings in the browser",
+        "markup": "columns: .phone saf with .wv"
+      }
     }
   ]
 }
