@@ -17,6 +17,7 @@ import {watchStillWatching} from './still-watching';
 import {WatchMusicNowPlaying} from './music/NowPlaying';
 import {WatchCapacityWait} from './CapacityWait';
 import {WatchStartFailure} from './StartFailure';
+import {StartPreparationNotice} from './StartPreparationNotice';
 import type {WatchBindings, WatchSurfaces, WatchGeometry} from './types';
 import type {WatchDockPanelOffer} from './dock-panel-opening';
 import type {LiveChromePort} from '../live/live-chrome-types';
@@ -69,6 +70,15 @@ export function pictureInPictureReady(runtime: WebShellPlaybackRuntime | undefin
 export function pictureInPictureCurrent(runtime: WebShellPlaybackRuntime, fence: PlaybackFence): boolean {
   const live = runtime.getSnapshot();
   return !!live.fence && sameFence(live.fence, fence) && pictureInPictureReady(runtime,live);
+}
+
+/** The current original snapshot's genuine slow-start state. Presentation only: disposed,
+ * terminal, error and remote-owned surfaces withhold it, and the SDK clears it on settlement. */
+export function currentStartPreparation(snapshot: WebPlaybackRuntimeSnapshot | undefined, remotePlaying: boolean) {
+  if (!snapshot || snapshot.disposed || remotePlaying || snapshot.problem) return undefined;
+  const playback = snapshot.playback;
+  if (playback.phase === 'idle' || playback.phase === 'error' || playback.phase === 'ended' || playback.error) return undefined;
+  return playback.preparation;
 }
 
 /** While the picture floats, a source that retires or turns native/remote, or a track that the
@@ -355,6 +365,7 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
       <video ref={video} playsInline preload="none" aria-label={playbackIdentityLabel(presentations, snapshot?.fence && fenceKey(snapshot.fence))} />
     </MediaSurface>
     {snapshot?.capacityWait && <WatchCapacityWait wait={snapshot.capacityWait} />}
+    {snapshot && <StartPreparationNotice preparation={currentStartPreparation(snapshot, remotePlaying)} />}
     {binding && snapshot?.startFailure && <WatchStartFailure failure={snapshot.startFailure} authority={snapshot.authority} context={context} reportError={binding.reportError}/>}
     {binding && snapshot && <WatchMusicNowPlaying binding={binding} snapshot={snapshot} expanded={expanded && !remotePlaying} onCollapse={collapse} phone={phone} />}
     {binding && snapshot && <WatchScreen binding={binding} snapshot={snapshot} expanded={expanded && !remotePlaying} onCollapse={collapse} surfaceSlotRef={expandedSlot} onControlsVisibleChange={setControlsVisible}
