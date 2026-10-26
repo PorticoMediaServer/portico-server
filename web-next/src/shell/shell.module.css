@@ -106,3 +106,8 @@
 .dashboardText b { display: block; font-size: var(--type-subheading-size); font-weight: var(--type-lockup-weight); letter-spacing: calc(var(--type-episode-title-tracking) * 2); margin-top: 1px; }
 .dashboardCard > span > svg { color: var(--color-text-tertiary); flex: none; }
 .dashboardCard:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 2px; }
+
+/* desktop-app#5: the Windows caption buttons sit over the page at medium width, so a
+   scrolled page keeps the drawn 52 px shade along its top. */
+.captionShade { position: fixed; inset: 0 0 auto var(--shell-nav-width); height: 52px; z-index: var(--layer-navigation); pointer-events: none; opacity: 0; background: linear-gradient(180deg, color-mix(in srgb, var(--color-ink) 88%, transparent), transparent); transition: opacity 120ms ease; }
+.captionShade[data-on] { opacity: 1; }

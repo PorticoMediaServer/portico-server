@@ -120,6 +120,9 @@ function ShellFrame({identity, OwnerActivity, dockVisible, serverAway, onSignOut
   const captionRenderer = windowChrome ?? chrome.renderer;
   return <div className={styles.shell} data-desktop={desktop} data-size-class={sizeClass} data-pointer={coarsePointer ? 'coarse' : 'fine'} data-navigation={navigation} data-has-dock={dockVisible} data-window-os={chrome.os} data-window-fullscreen={chrome.fullscreen}>
     <a className={styles.skip} href="#portico-content">{t('next.home.shell.skip')}</a>
+    {/* desktop-app#5: at medium width the Windows caption buttons sit over the page,
+        so a scrolled page keeps a 52 px ink shade under them. */}
+    {chrome.os === 'windows' && !chrome.fullscreen && sizeClass === 'medium' && <div className={styles.captionShade} data-on={scrolled || undefined} aria-hidden="true" />}
     {captionRenderer && <div data-window-chrome-host data-window-no-drag>{captionRenderer}</div>}
     <div className={styles.navigation} data-shell-navigation>
       {desktop ? <nav className={styles.topnav} data-solid={scrolled || (!heroPage && !settingsArea)} data-window-drag-region="page-topbar" aria-label={t('next.home.shell.main')}>
