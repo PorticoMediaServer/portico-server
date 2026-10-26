@@ -21,8 +21,9 @@ export async function launch(){
 }
 
 /** One isolated context. The design side allows only local files; the app side
- * allows its own origin and reports how many other requests it refused, without
- * ever recording their URLs. */
+ * filters page requests by origin without recording URLs. When normal app service
+ * workers are enabled, their requests are outside this page-route observation;
+ * the style tool never presents it as an egress qualification. */
 export async function openContext(browser,{width,height,allowOrigin=null,storageState,serviceWorkers='block'}){
  let context;
  try{
