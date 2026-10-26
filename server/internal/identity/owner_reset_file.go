@@ -433,6 +433,16 @@ func (s *Service) MakeMemberResetCode(ctx context.Context, bearer, target string
 	if !validFamilyID(target) || q.ExpectedRevision < 1 {
 		return MemberResetCode{}, ErrDirectInput
 	}
+	if q.OriginalResetCode != nil {
+		if len(*q.OriginalResetCode) != 43 {
+			return MemberResetCode{}, ErrDirectInput
+		}
+		for _, b := range []byte(*q.OriginalResetCode) {
+			if !(b >= 'A' && b <= 'Z' || b >= 'a' && b <= 'z' || b >= '0' && b <= '9' || b == '-' || b == '_') {
+				return MemberResetCode{}, ErrDirectInput
+			}
+		}
+	}
 	out := MemberResetCode{Code: Token()}
 	err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
 		if e := RequireSignInKindTx(ctx, tx, SignInLocal); e != nil {
@@ -459,6 +469,9 @@ func (s *Service) MakeMemberResetCode(ctx context.Context, bearer, target string
 		if linked {
 			return ErrForbidden
 		}
+		if q.OriginalResetCode != nil {
+			return s.replaceMemberResetCodeTx(ctx, tx, c, member, *q.OriginalResetCode, q.TurnOffTwoStep, &out)
+		}
 		out.ServerID, e = LocalLinkServerIDTx(ctx, tx)
 		if e != nil {
 			return e
@@ -484,6 +497,46 @@ func (s *Service) MakeMemberResetCode(ctx context.Context, bearer, target string
 	}
 	return out, nil
 }
+
+// A result-sheet switch replaces only its still-pending reset. It is never a
+// second credential reset, and cannot fall through to the fresh Make path.
+func (s *Service) replaceMemberResetCodeTx(ctx context.Context, tx *sql.Tx, issuer, member directCaller, original string, turnOff bool, out *MemberResetCode) error {
+	var hash, issuerID string
+	var epoch, issuerEpoch, tries int
+	var revision, expires int64
+	err := tx.QueryRowContext(ctx, `SELECT code_hash,epoch,expires_at,failed_attempts,membership_revision,issuer_id,issuer_epoch FROM member_password_resets WHERE account_id=?`, member.account.ID).Scan(&hash, &epoch, &expires, &tries, &revision, &issuerID, &issuerEpoch)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrProfileChanged
+	}
+	if err != nil {
+		return err
+	}
+	if subtle.ConstantTimeCompare([]byte(hash), []byte(s.setupHash("member-reset", original))) != 1 || len(hash) != 43 ||
+		epoch != member.epoch || revision != member.account.Revision || issuerID != issuer.account.ID || issuerEpoch != issuer.epoch ||
+		expires <= time.Now().Unix() || tries < 0 || tries >= 5 {
+		return ErrProfileChanged
+	}
+	// Both accounts and the strict managing relationship were re-admitted by the
+	// caller in this same accepting writer, before reaching this exact-row CAS.
+	out.ServerID, err = LocalLinkServerIDTx(ctx, tx)
+	if err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE member_password_resets SET code_hash=?,turn_off_two_step=? WHERE account_id=? AND code_hash=? AND epoch=? AND membership_revision=? AND issuer_id=? AND issuer_epoch=? AND expires_at=? AND expires_at>? AND failed_attempts=?`, s.setupHash("member-reset", out.Code), turnOff, member.account.ID, hash, epoch, revision, issuerID, issuerEpoch, expires, time.Now().Unix(), tries)
+	if err != nil {
+		return err
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if changed != 1 {
+		return ErrProfileChanged
+	}
+	out.ExpiresAt = time.Unix(expires, 0).UTC().Format(time.RFC3339)
+	return nil
+}
+
 func (s *Service) VerifyMemberReset(ctx context.Context, q MemberResetVerify) (DirectSignIn, error) {
 	if e := s.RequireSignInKind(ctx, SignInLocal); e != nil {
 		return DirectSignIn{}, e
