@@ -30,6 +30,11 @@ func TestPlaybackDiagnosticsOwnerScopeAndFreshness(t *testing.T) {
 	if w.Code != 200 || w.Header().Get("Cache-Control") != "no-store" || w.Body.Len() > 8192 || !strings.Contains(w.Body.String(), `"recentFailures":[]`) {
 		t.Fatal(w.Code, w.Body.String())
 	}
+	for _, field := range []string{"probes", "devices", "formats"} {
+		if !strings.Contains(w.Body.String(), `"`+field+`":[]`) {
+			t.Fatalf("unavailable hardware omitted its declared %s list", field)
+		}
+	}
 	if e := contract.Record("../../testdata/contracts/get-admin-playback-diagnostics.json", "GetAdminPlaybackDiagnosticsResponse", "GET", path, nil, w, "owner"); e != nil {
 		t.Fatal(e)
 	}

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"net/http"
+	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/operations"
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/telemetry"
@@ -55,7 +56,9 @@ type playbackThroughput struct {
 // built leaves the added sections at their empty shapes rather than failing the
 // diagnostic, which must stay readable when subsystems are struggling.
 func (d Dependencies) overview(ctx context.Context, diagnostics playback.DeliveryDiagnostics, capacity func(context.Context) (telemetry.Report, error)) playbackOverview {
-	out := playbackOverview{DeliveryDiagnostics: diagnostics}
+	out := playbackOverview{DeliveryDiagnostics: diagnostics, Hardware: telemetry.HardwareStatus{
+		Probes: []telemetry.HardwareProbe{}, Devices: []decoder.HardwareFactDevice{}, Formats: []decoder.HardwareFactFormat{},
+	}}
 	out.Sessions.Active = diagnostics.ActiveConversionSessions
 	out.Throughput.Detail = "The delivery service does not yet publish converted media progress, so no rate can be reported."
 	if capacity == nil {

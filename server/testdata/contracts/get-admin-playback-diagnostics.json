@@ -23,9 +23,9 @@
         "configured": "",
         "effective": "",
         "device": "",
-        "probes": null,
-        "devices": null,
-        "formats": null,
+        "probes": [],
+        "devices": [],
+        "formats": [],
         "lastError": null,
         "lastTest": 0
       },
@@ -46,11 +46,11 @@
         "detail": "The delivery service does not yet publish converted media progress, so no rate can be reported."
       }
     },
-    "freshUntil": "2026-10-26T23:38:56.574586392Z",
-    "observedAt": "2026-10-26T23:38:26.574586392Z",
+    "freshUntil": "2026-10-26T23:50:52.290287608Z",
+    "observedAt": "2026-10-26T23:50:22.290287608Z",
     "scope": {
-      "serverId": "7e8nhbPlALsv7LihQgQ8fZe9hf8-zzJQcEMxfrBfTZE",
-      "viewerFence": "38f34022491196d83bfef1ce10362ca19dc432e5cf2bfaded31db18229866ec0"
+      "serverId": "DdwK09Zv1p8IMI46gltQ7yiQnoFRXjp2Ry-1FNxqbs8",
+      "viewerFence": "074cde11142f447e4e3f46cc24ad903391d71fe589d845e8c41576e64435cf88"
     }
   }
 }
