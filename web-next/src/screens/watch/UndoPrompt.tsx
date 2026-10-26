@@ -6,7 +6,7 @@ import {dispatchWatchMarker, watchUndoOffer, type WatchPolicyBinding} from './po
 import corner from './skip-prompt.module.css';
 import styles from './undo-prompt.module.css';
 import motion from './prompt-motion.module.css';
-import {promptScope, promptSnapStyle, usePromptPresence, usePromptReducedMotion} from './prompt-motion';
+import {promptScope, promptSnapStyle, usePromptMotion, usePromptPresence, usePromptReducedMotion} from './prompt-motion';
 
 /** desktop-player f2 automatic skip / phone-player 2b. The real policy supplies every tick. */
 export function WatchUndoPrompt({binding, snapshot, expanded, controlsVisible, layout, style}: {
@@ -16,10 +16,11 @@ export function WatchUndoPrompt({binding, snapshot, expanded, controlsVisible, l
   const offer = watchUndoOffer(binding, snapshot), reduced = usePromptReducedMotion();
   const displayed = expanded && offer ? {offer, snapshot, binding} : undefined;
   const presence = usePromptPresence(displayed, displayed?.offer.marker.id, promptScope(snapshot, expanded, binding), reduced);
+  const motionRef = usePromptMotion(presence.phase, presence.paintKey, reduced);
   const shown = presence.present;
   if (!shown) return null;
   const undo = shown.offer;
-  return <div key={presence.paintKey} className={`${corner.corner} ${motion.prompt}`} data-watch-undo data-layout={layout} data-controls-visible={controlsVisible}
+  return <div key={presence.paintKey} ref={motionRef} className={`${corner.corner} ${motion.prompt}`} data-watch-undo data-layout={layout} data-controls-visible={controlsVisible}
     data-prompt-phase={presence.phase} inert={presence.phase === 'out'} aria-hidden={presence.phase === 'out' || undefined}
     style={{...promptSnapStyle, ...style}} role="status">
     <span className={styles.notice} data-layout={layout}>

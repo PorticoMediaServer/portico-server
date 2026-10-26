@@ -10,7 +10,7 @@ import {dispatchWatchMarker} from './policy';
 import {dispatchWatchNext, watchUpNextOffer, type WatchNextBinding} from './up-next';
 import styles from './up-next.module.css';
 import motion from './prompt-motion.module.css';
-import {promptScope, promptSnapStyle, usePromptPresence, usePromptReducedMotion} from './prompt-motion';
+import {promptScope, promptSnapStyle, usePromptMotion, usePromptPresence, usePromptReducedMotion} from './prompt-motion';
 
 /** desktop-player f4/f4s. Actual policy ticks and queue-window facts are the only inputs. */
 export function WatchUpNextPrompt({binding, snapshot, artwork, environment, expanded, controlsVisible, layout}: {
@@ -23,6 +23,7 @@ export function WatchUpNextPrompt({binding, snapshot, artwork, environment, expa
   const displayed = expanded && offer ? {offer, snapshot, binding, artwork: offeredArt, environment} : undefined;
   const key = displayed ? `${displayed.offer.prompt.offer.id}|${displayed.offer.next.entryId}|${displayed.offer.next.queueRevision}` : undefined;
   const presence = usePromptPresence(displayed, key, promptScope(snapshot, expanded, binding), reduced);
+  const motionRef = usePromptMotion(presence.phase, presence.paintKey, reduced);
   const shown = presence.present, next = shown?.offer.next;
   // A missing still stays unknown. No backdrop, trickplay or fixture image stands in for it.
   // desktop-player f4/f4s and phone-player f6: the same offer, compact on a phone.
@@ -35,7 +36,7 @@ export function WatchUpNextPrompt({binding, snapshot, artwork, environment, expa
     : t(prompt.sceneAfterCredits ? 'player.upNext.startsAfterScene' : 'player.upNext.startsIn', {time: watchClock(countdown.seconds)}) : undefined;
   const act = (kind: 'play-now' | 'watch-credits') => {void dispatchWatchNext(shownBinding, shownSnapshot, kind).catch(shownBinding.reportError);};
   const skip = () => {if (marker) void dispatchWatchMarker(shownBinding, shownSnapshot, {kind: 'skip', markerId: marker.id}).catch(shownBinding.reportError);};
-  return <div key={presence.paintKey} role="group" aria-label={t('player.upNext.duringCredits')} className={`${styles.card} ${motion.prompt}`} data-layout={layout} data-controls-visible={controlsVisible} data-watch-up-next data-scene-after={prompt.sceneAfterCredits}
+  return <div key={presence.paintKey} ref={motionRef} role="group" aria-label={t('player.upNext.duringCredits')} className={`${styles.card} ${motion.prompt}`} data-layout={layout} data-controls-visible={controlsVisible} data-watch-up-next data-scene-after={prompt.sceneAfterCredits}
     data-prompt-phase={presence.phase} inert={presence.phase === 'out'} aria-hidden={presence.phase === 'out' || undefined} style={promptSnapStyle}>
     <div className={styles.row}>
       <div className={styles.still}><Artwork source={source} alt="" /></div>

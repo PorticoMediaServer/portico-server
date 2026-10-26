@@ -6,7 +6,7 @@ import {currentWatchPolicy, dispatchWatchMarker, type WatchPolicyBinding} from '
 import {WatchPromptGlyph} from './PromptGlyph';
 import styles from './skip-prompt.module.css';
 import motion from './prompt-motion.module.css';
-import {promptScope, promptSnapStyle, usePromptPresence, usePromptReducedMotion} from './prompt-motion';
+import {promptScope, promptSnapStyle, usePromptMotion, usePromptPresence, usePromptReducedMotion} from './prompt-motion';
 
 /** desktop-player f2, phone-player r2 and tablet-play f1. No engine, skip clock or timer. */
 export function WatchSkipPrompt({binding, snapshot, expanded, controlsVisible, layout, style}: {
@@ -21,10 +21,11 @@ export function WatchSkipPrompt({binding, snapshot, expanded, controlsVisible, l
   const reduced = usePromptReducedMotion();
   const displayed = open && skipPrompt ? {marker: skipPrompt.marker, snapshot, binding} : undefined;
   const presence = usePromptPresence(displayed, displayed?.marker.id, promptScope(snapshot, expanded, binding), reduced);
+  const motionRef = usePromptMotion(presence.phase, presence.paintKey, reduced);
   const shown = presence.present;
   if (!shown) return null;
   const act = (kind: 'skip' | 'dismiss') => { void dispatchWatchMarker(shown.binding, shown.snapshot, {kind, markerId: shown.marker.id}).catch(shown.binding.reportError); };
-  return <div key={presence.paintKey} className={`${styles.corner} ${motion.prompt}`} data-watch-skip data-layout={layout} data-controls-visible={controlsVisible}
+  return <div key={presence.paintKey} ref={motionRef} className={`${styles.corner} ${motion.prompt}`} data-watch-skip data-layout={layout} data-controls-visible={controlsVisible}
     data-prompt-phase={presence.phase} inert={presence.phase === 'out'} aria-hidden={presence.phase === 'out' || undefined}
     style={{...promptSnapStyle, ...style}}>
     {layout !== 'phone' && <button className={styles.dismiss} type="button" aria-label={defaultI18n.t('action.dismiss')} onClick={() => act('dismiss')}><WatchPromptGlyph kind="dismiss" className={styles.glyph} /></button>}

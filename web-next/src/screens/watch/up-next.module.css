@@ -30,7 +30,9 @@
 .card[data-layout='phone'][data-scene-after='true'] .still { width: 112px; }
 .card[data-layout='phone'] .actions { margin-top: 12px; }
 .card[data-layout='phone'] .actions button { height: 40px; padding: 0 16px; border-radius: 10px; }
-@media (prefers-reduced-motion: reduce) { .actions button { transition: none; }.actions button:active { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .actions button { transition: opacity var(--motion-reduced) linear; } .actions button:active { transform: none; opacity: .85; } }
+:global([data-reduce-motion='true']) .actions button { transition: opacity var(--motion-reduced) linear; }
+:global([data-reduce-motion='true']) .actions button:active { transform: none; opacity: .85; }
 
 /* phone-player f6c: with the controls up the card rises above them; the scene
    variant's 424 px width stays bounded by the authored right inset. */

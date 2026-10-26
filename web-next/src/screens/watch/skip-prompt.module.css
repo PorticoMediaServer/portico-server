@@ -13,4 +13,6 @@
 .corner[data-layout='phone'] { --skip-text-size: 15px; --skip-text-weight: 700; right: 60px; bottom: 26px; }
 .corner[data-layout='phone'][data-controls-visible='true'] { --prompt-lift: 74px; }
 .corner[data-layout='phone'] .skip { height: 44px; padding: 0 16px 0 18px; border-radius: 10px; gap: 8px; box-shadow: 0 14px 30px -12px color-mix(in srgb, var(--color-shadow) 80%, transparent); }
-@media (prefers-reduced-motion: reduce) { .skip { transition: none; } .skip:active { transform: none; } }
+@media (prefers-reduced-motion: reduce) { .skip { transition: opacity var(--motion-reduced) linear; } .skip:active { transform: none; opacity: .85; } }
+:global([data-reduce-motion='true']) .skip { transition: opacity var(--motion-reduced) linear; }
+:global([data-reduce-motion='true']) .skip:active { transform: none; opacity: .85; }

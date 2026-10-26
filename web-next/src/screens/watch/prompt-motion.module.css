@@ -1,19 +1,7 @@
-/* Shared prompt-only presence and snap reposition. The caller owns its offer. */
+/* Shared prompt-only presence and snap reposition. The caller owns its offer.
+   The rise/fade itself is retargeted imperatively from the painted pose, so an
+   interrupted entrance leaves or returns without snapping back to a keyframe. */
 .prompt { transition: transform var(--prompt-snap-ms, 0ms) var(--prompt-spring, var(--ease-out)); }
-.prompt[data-prompt-phase='in'] { animation: promptIn 180ms var(--ease-out); }
-.prompt[data-prompt-phase='out'] { animation: promptOut var(--prompt-exit-ms, 120ms) var(--ease-out) forwards; pointer-events: none; }
-@keyframes promptIn {
-  from { opacity: 0; transform: translateY(calc(var(--prompt-lift, 0px) * -1 + 12px)); }
-  to { opacity: 1; transform: translateY(calc(var(--prompt-lift, 0px) * -1)); }
-}
-@keyframes promptOut { from { opacity: 1; } to { opacity: 0; } }
-@keyframes promptInReduced { from { opacity: 0; } to { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) {
-  .prompt { transition: none; }
-  .prompt[data-prompt-phase='in'] { animation: promptInReduced 160ms linear; }
-  .prompt[data-prompt-phase='out'] { animation: promptOut 160ms linear forwards; }
-}
-
+.prompt[data-prompt-phase='out'] { pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .prompt { transition: none; } }
 :global([data-reduce-motion='true']) .prompt { transition: none; }
-:global([data-reduce-motion='true']) .prompt[data-prompt-phase='in'] { animation: promptInReduced 160ms linear; }
-:global([data-reduce-motion='true']) .prompt[data-prompt-phase='out'] { animation: promptOut 160ms linear forwards; }
