@@ -1,9 +1,9 @@
-import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
+import {Fragment, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {t} from './text';
 import {defaultI18n} from '@i18n';
 import type {FactPart} from '@core/presentation/kit-model';
 import {clockText} from '@core/presentation/kit-model/text.ts';
-import {LibraryContentService, type ContentEntry, type ContentProjection, type ContentSection} from '@core/library-content.ts';
+import {LibraryContentService, readListeningSimilar, type ContentEntry, type ContentProjection, type ContentSection, type LibraryContentApi} from '@core/library-content.ts';
 import {dependsOn} from '@core/freshness-hub.ts';
 import {useFreshDocument} from '../../platform/freshness';
 import {AmbientArt, CircleArt} from '../../kit/artwork';
@@ -25,8 +25,9 @@ export type ArtistScreenProps = Readonly<{context: ScreenContext; libraryId: str
 
 /** One page's own content lease: a fresh guarded service, admission signal and lifetime, owned by a
  * layout effect so a replayed setup never reuses a disposed one. */
-type Lease = Readonly<{service: LibraryContentService; signal: AbortSignal; isCurrent: () => boolean; dispose: () => void}>;
+type Lease = Readonly<{service: LibraryContentService; api: LibraryContentApi; signal: AbortSignal; isCurrent: () => boolean; dispose: () => void}>;
 type Witness = () => boolean;
+type Similar = Readonly<{bySound: boolean; entries: readonly ContentEntry[]}>;
 
 /** desktop-listen's artist page on its canonical library route (`?view=artist&entityId=`): the
  * artist's circle, the facts the view publishes, Play/Shuffle of the whole server-side artist
@@ -36,7 +37,7 @@ export function ArtistScreen({context, libraryId, artistId}: ArtistScreenProps) 
   useLayoutEffect(() => {
     const scope = screenLifetime(context), life = new AbortController();
     const service = new LibraryContentService({api: scope.api, scope: {serverId: context.scope.serverId, viewerId: context.scope.viewerId}});
-    const next: Lease = Object.freeze({service, signal: life.signal,
+    const next: Lease = Object.freeze({service, api: scope.api, signal: life.signal,
       isCurrent: () => !life.signal.aborted && scope.current() && context.isCurrent(),
       dispose: () => { life.abort(); service.cancel(); service.dispose(); scope.dispose(); }});
     setLease(next);
@@ -48,6 +49,7 @@ export function ArtistScreen({context, libraryId, artistId}: ArtistScreenProps) 
 
 function ArtistBody({context, libraryId, artistId, lease}: {context: ScreenContext; libraryId: string; artistId: string; lease: Lease}) {
   const phone = useShellWidth() < 1024, {service} = lease;
+  const [menu, setMenu] = useState<{anchor: HTMLButtonElement}>(), more = useRef<HTMLButtonElement>(null);
   const content = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -66,6 +68,21 @@ function ArtistBody({context, libraryId, artistId, lease}: {context: ScreenConte
   const admitted = !!projection && !!artist && artist.kind === 'artist' && artist.id === artistId
     && projection.scope.libraryId === libraryId && projection.scope.view === 'artist' && projection.scope.entityId === artistId
     ? {catalog: projection.revision.catalog, viewer: projection.revision.viewer} : undefined;
+  const [similar, setSimilar] = useState<Similar>();
+  useEffect(() => {
+    setSimilar(undefined);
+    const viewer = context.identity?.viewer;
+    if (!admitted || !viewer || (viewer.authority !== 'local' && viewer.authority !== 'hosted')) return;
+    const request = new AbortController();
+    void readListeningSimilar(lease.api, {serverId: context.scope.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId,
+      controllerId: 'v1', controllerEpoch: 'v1', commandLaneId: 'v1'}, artistId, {limit: 12, by: 'sound', signal: AbortSignal.any([lease.signal, request.signal])})
+      .then(value => {
+        if (request.signal.aborted || !lease.isCurrent() || !admitted || value.itemId !== artistId || value.libraryId !== libraryId
+          || value.revision.catalog !== admitted.catalog || value.revision.viewer !== admitted.viewer) return;
+        setSimilar({bySound: value.bySound, entries: value.entries});
+      }, error => {if (!request.signal.aborted && lease.isCurrent()) context.effects.reportError(error);});
+    return () => request.abort();
+  }, [lease, artistId, libraryId, context, projection, admitted?.catalog, admitted?.viewer]);
   const section = (id: string): ContentSection | undefined => projection && admitted
     ? (content.appended.find(value => value.id === id) ?? projection.sections.find(value => value.id === id)) : undefined;
   if (!projection || !artist || !admitted) return failed || content.phase === 'error' || content.phase === 'refresh-required'
@@ -89,32 +106,53 @@ function ArtistBody({context, libraryId, artistId, lease}: {context: ScreenConte
     ...(artist.genres && artist.genres.length > 0 ? [{id: 'genres', role: 'context' as const, text: artist.genres.slice(0, 3).join(', ')}] : []),
     ...(total === undefined ? [] : [{id: 'albums', role: 'supplement' as const, text: t('lib.count', {count: total, pivot: 'albums'})}]),
   ];
+  const long = artist.title.length > 24, details: [string, string][] = [];
+  if (artist.artistType) details.push([t('title.albumType'), artist.artistType]);
+  if (artist.genres?.length) details.push([t('title.genres'), artist.genres.filter(Boolean).join(', ')]);
   return <div className={styles.page} data-layout={phone ? 'phone' : 'desktop'}>
     <header className={styles.hero}>
       <span className={styles.disc}><AmbientArt className={styles.ambient} treatment="phone" source={context.artwork.ambient(cover)} foreground={discArt} />
         <CircleArt covers={discArt ? [discArt] : []} initials={artist.title.split(/\s+/).filter(Boolean).slice(0, 2).map(word => Array.from(word)[0]).join('')} alt="" /></span>
       <div className={styles.copy}>
         <p className={styles.kind}>{t('filter.field.artist')}</p>
-        <Lockup title={artist.title} platform={phone ? 'phone-web' : 'desktop'} />
-        <TitleFactsLine parts={facts} />
-        {playArtist && <div className={styles.actions}>
-          <Button variant="primary" icon="i-play" onClick={() => runScreenCommand(context, () => {
-            if (!witness()) throw new DOMException('Artist playback changed', 'AbortError');
-            return playArtist(artistId, lease.signal, witness);
-          })}>{t('next.controls.play')}</Button>
-          <Button variant="glass" icon="i-shuffle" onClick={() => runScreenCommand(context, () => {
-            if (!witness()) throw new DOMException('Artist playback changed', 'AbortError');
-            return playArtist(artistId, lease.signal, witness, true);
-          })}>{t('title.shuffle')}</Button>
-        </div>}
+        <Lockup title={artist.title} long={long} platform={phone ? 'phone-web' : 'desktop'} className={styles.title}
+          style={{fontSize: phone ? (long ? 42 : 56) : (long ? 68 : 104), lineHeight: .98}}/>
+        <div className={styles.meta}><TitleFactsLine parts={facts}/></div>
+        <div className={styles.actions}>
+          {playArtist && <>
+            <Button variant="primary" icon="i-play" onClick={() => runScreenCommand(context, () => {
+              if (!witness()) throw new DOMException('Artist playback changed', 'AbortError');
+              return playArtist(artistId, lease.signal, witness);
+            })}>{t('next.controls.play')}</Button>
+            <Button variant="glass" icon="i-shuffle" onClick={() => runScreenCommand(context, () => {
+              if (!witness()) throw new DOMException('Artist playback changed', 'AbortError');
+              return playArtist(artistId, lease.signal, witness, true);
+            })}>{t('title.shuffle')}</Button>
+          </>}
+          {context.effects.playRadio && <Button ref={more} variant="glass" icon="i-more" iconOnly aria-label={t('card.more', {title: artist.title})}
+            onClick={event => setMenu({anchor: event.currentTarget})}/>}
+        </div>
       </div>
     </header>
+    {menu && <Menu open onOpenChange={open => {if (!open) setMenu(undefined);}} anchorRef={{current: menu.anchor}} returnFocusRef={{current: menu.anchor}} title={artist.title}>
+      <MusicEntryMenu context={context} seed={{id: artist.id, title: artist.title}} signal={lease.signal} current={witness}/>
+    </Menu>}
     {top && <ArtistTopSongs context={context} lease={lease} libraryId={libraryId} top={top} witness={witness} phone={phone} />}
-    {albums.length > 0 && <TitleRow heading={t('music.albums')} entries={albums} binding={{context}} />}
-    {albumsSection?.nextCursor && <div className={styles.more}><Button size="small" onClick={() => runScreenCommand(context, () => {
-      if (!witness()) throw new DOMException('Artist page changed', 'AbortError');
-      return service.next('items');
-    })}>{t('title.nextPage')}</Button></div>}
+    <section className={details.length > 0 ? styles.split : styles.full}>
+      <div className={styles.albums}>
+        {albums.length > 0 && <TitleRow heading={t('music.albums')} entries={albums} binding={{context}} />}
+        {albumsSection?.nextCursor && <div className={styles.more}><Button size="small" onClick={() => runScreenCommand(context, () => {
+          if (!witness()) throw new DOMException('Artist page changed', 'AbortError');
+          return service.next('items');
+        })}>{t('title.nextPage')}</Button></div>}
+      </div>
+      {details.length > 0 && <aside className={styles.aside}>
+        <h2 className={styles.detailsTitle}>{t('title.details')}</h2>
+        <dl className={styles.facts}>{details.map(([label, value]) => <Fragment key={label}><dt>{label}</dt><dd>{value}</dd></Fragment>)}</dl>
+      </aside>}
+    </section>
+    {similar && similar.entries.length > 0 && <TitleRow heading={t('music.similarArtists')} subtitle={t(similar.bySound ? 'music.moreLikeThisBySound' : 'music.moreLikeThisHint')}
+      entries={similar.entries} binding={{context}}/>}
   </div>;
 }
 
