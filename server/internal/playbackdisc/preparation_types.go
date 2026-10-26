@@ -67,6 +67,12 @@ const (
 // Rows alone cannot reconstruct that process proof after restart.
 type PreparationCheck func(context.Context, *sql.Tx, Preparation) error
 
+// PreparationContinuationCheck belongs to the currently admitted original POST
+// continuation, not the background worker. It repeats that request's exact
+// body/key/device/token and normal actor/content/queue/idempotency/capacity
+// admission. A worker's retained input proof alone cannot accept a session.
+type PreparationContinuationCheck func(context.Context, *sql.Tx, Preparation) error
+
 // AcceptedPreparationCheck is ordinary accepted-session authority, independent
 // of the expired preparation wait. It must reprove the exact accepted result;
 // the original preparation rows are never a renewed preparation or byte grant.

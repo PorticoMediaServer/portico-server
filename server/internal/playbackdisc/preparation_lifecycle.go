@@ -89,9 +89,9 @@ func (s *Store) MarkPreparationPreparedTx(ctx context.Context, tx *sql.Tx, claim
 	return PreparationClaim{OperationID: v.ID, ExecutionID: claim.ExecutionID, Revision: revision}, nil
 }
 
-// CheckPreparedClaimTx must run in the actual legacy/final accepting writer.
-// Media's checker holds its original sealed measurement and exact borrow until
-// outer commit; a successful read before this writer is insufficient.
+// CheckPreparedClaimTx reproves the original ready claim inside a gated writer.
+// It is not current-request admission: legacy/final publication must also pass
+// CheckPreparedContinuationTx. Keep the exact sealed borrow through commit.
 func (s *Store) CheckPreparedClaimTx(ctx context.Context, tx *sql.Tx, claim PreparationClaim, check PreparationCheck) (Preparation, error) {
 	if err := writeTx(ctx, tx); err != nil {
 		return Preparation{}, err
@@ -101,6 +101,29 @@ func (s *Store) CheckPreparedClaimTx(ctx context.Context, tx *sql.Tx, claim Prep
 		return Preparation{}, err
 	}
 	if v.State != "prepared" {
+		return Preparation{}, ErrCurrent
+	}
+	return v, nil
+}
+
+// CheckPreparedContinuationTx is required before the original continuation's
+// legacy insert/binding and again before final activation/acceptance. The live
+// continuation proof is separate from a worker's retained measurement proof.
+func (s *Store) CheckPreparedContinuationTx(ctx context.Context, tx *sql.Tx, claim PreparationClaim, check PreparationCheck, continuation PreparationContinuationCheck) (Preparation, error) {
+	if continuation == nil {
+		return Preparation{}, ErrInput
+	}
+	v, err := s.CheckPreparedClaimTx(ctx, tx, claim, check)
+	if err != nil {
+		return Preparation{}, err
+	}
+	if err = continuation(ctx, tx, v); err != nil {
+		return Preparation{}, err
+	}
+	if err = ctx.Err(); err != nil {
+		return Preparation{}, err
+	}
+	if v.Binding.DeadlineMs <= time.Now().UnixMilli() {
 		return Preparation{}, ErrCurrent
 	}
 	return v, nil
@@ -150,8 +173,8 @@ func (s *Store) acceptedPreparationResultTx(ctx context.Context, tx *sql.Tx, v P
 // actor/source/content/queue/custody/idempotency/capacity proof, real legacy/v1
 // inserts and exact snapshot activation. No background worker may call it.
 // The process borrow/custody transfers only on outer commit, never this return.
-func (s *Store) AcceptPreparationTx(ctx context.Context, tx *sql.Tx, claim PreparationClaim, out PreparationAccepted, check PreparationCheck) error {
-	v, err := s.CheckPreparedClaimTx(ctx, tx, claim, check)
+func (s *Store) AcceptPreparationTx(ctx context.Context, tx *sql.Tx, claim PreparationClaim, out PreparationAccepted, check PreparationCheck, continuation PreparationContinuationCheck) error {
+	v, err := s.CheckPreparedContinuationTx(ctx, tx, claim, check, continuation)
 	if err != nil {
 		return err
 	}
@@ -166,7 +189,7 @@ func (s *Store) AcceptPreparationTx(ctx context.Context, tx *sql.Tx, claim Prepa
 		return err
 	}
 	// Repeat the original live proof immediately before consuming this claim.
-	if err = s.checkPreparationTx(ctx, tx, v, check); err != nil {
+	if _, err = s.CheckPreparedContinuationTx(ctx, tx, claim, check, continuation); err != nil {
 		return err
 	}
 	return affectedOne(tx.ExecContext(ctx, `UPDATE playback_start_preparation_lifecycle SET state='accepted',revision=? WHERE operation_id=? AND state='prepared' AND revision=? AND execution_id=? AND sealed=1`, revision, v.ID, claim.Revision, claim.ExecutionID))
