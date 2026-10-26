@@ -9,6 +9,7 @@ import type {ArtworkSource} from '../../kit/artwork/types';
 import type {LiveChromePort} from '../live/live-chrome-types';
 import type {WatchEndCard} from './end-card';
 import type {PlaybackLossNotice} from '../../kit/media';
+import type {WatchDockPanelOffer} from './dock-panel-opening';
 
 /** Structurally matches the parent's binding. The screen never creates or mounts media. */
 export type WatchBindings = Readonly<{
@@ -91,6 +92,10 @@ export type WatchScreenProps = Readonly<{
   expanded: boolean;
   onCollapse: () => void;
   onControlsVisibleChange?: (visible: boolean) => void;
+  /** The existing panel owner publishes one offer per committed collapsed view. */
+  publishDockPanels?: (offer: WatchDockPanelOffer) => () => void;
+  dockPanelsCurrent?: () => boolean;
+  subscribeDockPanels?: (changed: () => void) => () => void;
   /** Empty bounds target for the SAME MediaSurface the parent already owns. */
   surfaceSlotRef: Ref<HTMLDivElement>;
   surfaces?: WatchSurfaces;
