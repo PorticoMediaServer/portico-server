@@ -129,21 +129,22 @@ type captureActorRow struct {
 }
 
 type capturePolicyRow struct {
-	captureID             string
-	profileRevision       int64
-	profileScanDepth      string
-	profileWholeFileReads int
-	profileConnections    int
-	profileRequests       int
-	profileBytes          int64
-	settingsRevision      int64
-	cacheBytes            int64
-	cacheFloorBytes       int64
-	appliedBytes          int64
-	appliedFloorBytes     int64
-	applied               bool
-	configDigest          string
-	policyWitness         string
+	captureID              string
+	profileRevision        int64
+	profileScanDepth       string
+	profileWholeFileReads  int
+	profileAnalysisConsent bool
+	profileConnections     int
+	profileRequests        int
+	profileBytes           int64
+	settingsRevision       int64
+	cacheBytes             int64
+	cacheFloorBytes        int64
+	appliedBytes           int64
+	appliedFloorBytes      int64
+	applied                bool
+	configDigest           string
+	policyWitness          string
 }
 
 type captureChargeRow struct {
@@ -178,6 +179,9 @@ func capturePolicyWitness(t *captureTarget) string {
 		t.configDigest, strconv.FormatInt(t.sourceGeneration, 10), t.libraryRoot, t.remoteRoot, t.networkWitness, t.itemID, strconv.FormatBool(t.profile.Saved), strconv.FormatInt(t.settings.revision, 10), strconv.FormatInt(t.settings.values.CacheBytes, 10),
 		strconv.FormatInt(t.settings.values.CacheFloorBytes, 10), strconv.FormatInt(t.settings.appliedBytes, 10),
 		strconv.FormatInt(t.settings.appliedFloor, 10), strconv.FormatBool(t.applied),
+	}
+	if t.profile.AllowAdvancedMediaAnalysis {
+		parts = append(parts, "portico.remote-capture.analysis-consent.v1", "true")
 	}
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 	return hex.EncodeToString(sum[:])
@@ -433,8 +437,8 @@ func captureRowTx(ctx context.Context, tx *sql.Tx, captureID string) (captureRow
 	if err != nil {
 		return out, err
 	}
-	err = tx.QueryRowContext(ctx, `SELECT capture_id,profile_revision,profile_scan_depth,profile_whole_file_reads,profile_connections,profile_requests_per_second,profile_bytes_per_second,cache_settings_revision,cache_bytes,cache_floor_bytes,applied_bytes,applied_floor_bytes,applied,config_digest,policy_witness FROM remote_source_capture_policy WHERE capture_id=?`, captureID).Scan(
-		&out.policy.captureID, &out.policy.profileRevision, &out.policy.profileScanDepth, &out.policy.profileWholeFileReads, &out.policy.profileConnections, &out.policy.profileRequests, &out.policy.profileBytes, &out.policy.settingsRevision, &out.policy.cacheBytes, &out.policy.cacheFloorBytes, &out.policy.appliedBytes, &out.policy.appliedFloorBytes, &out.policy.applied, &out.policy.configDigest, &out.policy.policyWitness)
+	err = tx.QueryRowContext(ctx, `SELECT capture_id,profile_revision,profile_scan_depth,profile_whole_file_reads,profile_allow_advanced_media_analysis,profile_connections,profile_requests_per_second,profile_bytes_per_second,cache_settings_revision,cache_bytes,cache_floor_bytes,applied_bytes,applied_floor_bytes,applied,config_digest,policy_witness FROM remote_source_capture_policy WHERE capture_id=?`, captureID).Scan(
+		&out.policy.captureID, &out.policy.profileRevision, &out.policy.profileScanDepth, &out.policy.profileWholeFileReads, &out.policy.profileAnalysisConsent, &out.policy.profileConnections, &out.policy.profileRequests, &out.policy.profileBytes, &out.policy.settingsRevision, &out.policy.cacheBytes, &out.policy.cacheFloorBytes, &out.policy.appliedBytes, &out.policy.appliedFloorBytes, &out.policy.applied, &out.policy.configDigest, &out.policy.policyWitness)
 	return out, err
 }
 
@@ -511,7 +515,7 @@ func (p *captureProducer) checkBindingTx(ctx context.Context, tx *sql.Tx, b owne
 		observation:  ObservationRef{SourceID: rows.physical.observationSource, Generation: rows.physical.observationGeneration, Object: rows.physical.observationObject, Revision: rows.physical.observationRevision},
 		scanRevision: rows.physical.scanRevision, size: rows.physical.size, sequential: rows.physical.sequential,
 		profile: SourceReadProfile{SourceID: rows.physical.sourceID, Saved: rows.policy.profileRevision > 0, Revision: rows.policy.profileRevision, ScanDepth: rows.policy.profileScanDepth,
-			WholeFileReads: rows.policy.profileWholeFileReads == 1, Limits: ReadLimits{Connections: rows.policy.profileConnections, RequestsPerSecond: rows.policy.profileRequests, BytesPerSecond: rows.policy.profileBytes}},
+			WholeFileReads: rows.policy.profileWholeFileReads == 1, AllowAdvancedMediaAnalysis: rows.policy.profileAnalysisConsent, Limits: ReadLimits{Connections: rows.policy.profileConnections, RequestsPerSecond: rows.policy.profileRequests, BytesPerSecond: rows.policy.profileBytes}},
 		settings: advancedRow{saved: true, revision: rows.policy.settingsRevision, values: SourceAdvanced{CacheBytes: rows.policy.cacheBytes, CacheFloorBytes: rows.policy.cacheFloorBytes}, appliedBytes: rows.policy.appliedBytes, appliedFloor: rows.policy.appliedFloorBytes},
 		applied:  rows.policy.applied, floor: rows.policy.cacheFloorBytes,
 	}
@@ -868,7 +872,7 @@ func (p *captureProducer) Lease(ctx context.Context, b ownedcapture.Binding) (ow
 		return nil, err
 	}
 	life, cancel := context.WithDeadline(ctx, time.UnixMilli(rows.charge.expiresMs))
-	profile := SourceReadProfile{SourceID: rows.physical.sourceID, Saved: rows.policy.profileRevision > 0, Revision: rows.policy.profileRevision, ScanDepth: rows.policy.profileScanDepth, WholeFileReads: rows.policy.profileWholeFileReads == 1, Limits: ReadLimits{Connections: rows.policy.profileConnections, RequestsPerSecond: rows.policy.profileRequests, BytesPerSecond: rows.policy.profileBytes}}
+	profile := SourceReadProfile{SourceID: rows.physical.sourceID, Saved: rows.policy.profileRevision > 0, Revision: rows.policy.profileRevision, ScanDepth: rows.policy.profileScanDepth, WholeFileReads: rows.policy.profileWholeFileReads == 1, AllowAdvancedMediaAnalysis: rows.policy.profileAnalysisConsent, Limits: ReadLimits{Connections: rows.policy.profileConnections, RequestsPerSecond: rows.policy.profileRequests, BytesPerSecond: rows.policy.profileBytes}}
 	if err = p.sources.trackCaptureLife(b.SourceID, profile, rows.policy.settingsRevision, life, cancel); err != nil {
 		return nil, err
 	}
@@ -1099,8 +1103,8 @@ func (p *captureProducer) Admit(ctx context.Context, captureID string, request o
 		captureID, target.principal.ServerID, target.principal.AccountID, target.principal.ProfileID, family.ID, family.DeviceID, target.principal.Authority, target.principal.Role, target.principal.Grant, target.principal.Epoch, target.itemID, target.assetID, captureID); err != nil {
 		return nil, err
 	}
-	if _, err = gated.Tx().ExecContext(ctx, `INSERT INTO remote_source_capture_policy(capture_id,profile_revision,profile_scan_depth,profile_whole_file_reads,profile_connections,profile_requests_per_second,profile_bytes_per_second,cache_settings_revision,cache_bytes,cache_floor_bytes,applied_bytes,applied_floor_bytes,applied,config_digest,policy_witness) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		captureID, target.profile.Revision, target.profile.ScanDepth, boolInt(target.profile.WholeFileReads), target.profile.Limits.Connections, target.profile.Limits.RequestsPerSecond, target.profile.Limits.BytesPerSecond,
+	if _, err = gated.Tx().ExecContext(ctx, `INSERT INTO remote_source_capture_policy(capture_id,profile_revision,profile_scan_depth,profile_whole_file_reads,profile_allow_advanced_media_analysis,profile_connections,profile_requests_per_second,profile_bytes_per_second,cache_settings_revision,cache_bytes,cache_floor_bytes,applied_bytes,applied_floor_bytes,applied,config_digest,policy_witness) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		captureID, target.profile.Revision, target.profile.ScanDepth, boolInt(target.profile.WholeFileReads), target.profile.AllowAdvancedMediaAnalysis, target.profile.Limits.Connections, target.profile.Limits.RequestsPerSecond, target.profile.Limits.BytesPerSecond,
 		target.settings.revision, target.settings.values.CacheBytes, target.settings.values.CacheFloorBytes, target.settings.appliedBytes, target.settings.appliedFloor, boolInt(target.applied), target.configDigest, binding.PolicyWitness); err != nil {
 		return nil, err
 	}

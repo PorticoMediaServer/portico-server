@@ -3,6 +3,7 @@ package remotesources
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"io"
 	"path/filepath"
 	"strings"
@@ -36,7 +37,7 @@ func (r EpisodeAuthorityResolver) ResolveEpisodeReadSourceTx(ctx context.Context
 		return nil, ErrEpisodeAuthority
 	}
 	policy, err := r.ResolveEpisodeAuthorityTx(ctx, tx, request)
-	if err == ErrEpisodeAutomaticSourceTier && request.Purpose == EpisodeAutomatic {
+	if request.Purpose == EpisodeAutomatic && (err == ErrEpisodeAutomaticSourceTier || errors.Is(err, storage.ErrRemoteAnalysisDisabled)) {
 		return nil, nil
 	}
 	if err != nil {
