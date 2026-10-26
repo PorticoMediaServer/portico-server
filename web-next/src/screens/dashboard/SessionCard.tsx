@@ -1,3 +1,4 @@
+import {useSessionMove} from './use-session-move';
 import {useId, useRef, useState, type CSSProperties} from 'react';
 import {defaultI18n} from '@i18n';
 import type {DashboardSession as AdminSession} from './bindings';
@@ -39,13 +40,15 @@ export function SessionCard({session: s, bindings: b, refresh, layout = 'desktop
   const state = s.state === 'playing' ? t('next.dashboard.playing') : s.state === 'paused' ? t('next.dashboard.paused') : s.state === 'buffering' ? t('next.dashboard.buffering') : s.state === 'preparing' ? t('next.dashboard.preparing') : undefined;
   const title = sessionTitle(s), stopTitle = sessionStopTitle(s);
   const runtime = s.durationMs ? fmtDur(s.durationMs / 3_600_000) : undefined;
+  const move = useSessionMove(b, s, title, menu, retained, () => refresh());
   const episode = item?.showTitle && s.title !== item.showTitle;
   const tracks = sessionTracks(s), current = s.currentBitrateKbps;
   const menuItems = [
+    ...(move.canMove ? [{id: 'move', icon: 'i-clock' as const, label: t('web.nowPlaying.moveTo'), onSelect: move.open}] : []),
     ...(['paused', 'playing'].includes(s.state) ? [{id: 'transport', icon: s.state === 'paused' ? 'i-play' as const : 'i-pause' as const, label: s.state === 'paused' ? t('next.dashboard.resume') : t('next.dashboard.pause'), onSelect: () => {void act(() => b.effects.transport(s.id, s.state === 'paused' ? 'resume' : 'pause'));}}] : []),
     ...(b.role === 'owner' && stopTitle ? [{id: 'stop', icon: 'i-stop' as const, label: t('next.dashboard.stop'), destructive: true, onSelect: () => {setMessage(''); setStop(true);}}] : []),
   ];
-  const sessionMenu = <Menu open={menu} onOpenChange={setMenu} title={t('next.dashboard.sessionMenu', {user: s.user})} trigger={<Button ref={opener} data-session-menu icon="i-more" iconOnly size="xs" disabled={busy} aria-label={t('next.dashboard.sessionMenu', {user: s.user})} />} items={menuItems} />;
+  const sessionMenu = <><Menu open={menu} onOpenChange={setMenu} title={t('next.dashboard.sessionMenu', {user: s.user})} trigger={<Button ref={opener} data-session-menu icon="i-more" iconOnly size="xs" disabled={busy} aria-label={t('next.dashboard.sessionMenu', {user: s.user})} />} items={menuItems} />{move.dialog}</>;
   const stopDialog = <Dialog open={stop} onOpenChange={value => {if (!busy) setStop(value);}} title={t('next.dashboard.stopTitle', {title: stopTitle})} description={s.user && s.device ? t('next.dashboard.stopDetail', {user: s.user, device: s.device}) : undefined} returnFocusRef={opener} initialFocusRef={cancel} width={560} showCloseButton={false} className={styles.stopDialog} bodyClassName={styles.stopBody} footerClassName={styles.stopFooter}
     footer={<><Button ref={cancel} size="small" disabled={busy} onClick={() => setStop(false)}>{t('next.dashboard.cancel')}</Button><Button size="small" className={styles.stopButton} loading={busy} onClick={() => {void act(() => b.effects.stop(s.id, message.trim() || undefined), true);}}>{t('next.dashboard.stopPlayback')}</Button></>}>
     <div className={styles.viewerMessage}><label htmlFor={messageId}>{t('next.dashboard.message')}</label><textarea id={messageId} value={message} maxLength={500} placeholder={t('next.dashboard.messagePlaceholder')} aria-describedby={`${messageId}-help`} disabled={busy} onChange={event => setMessage(event.target.value)} /><small id={`${messageId}-help`}><span>{t('next.dashboard.messageHelp')}</span><span aria-hidden="true">{defaultI18n.number(message.length)}</span></small></div>

@@ -73,3 +73,24 @@ test('the certificate alert retries through the canonical owner route and refuse
   current = false;
   await assert.rejects(async () => late.effects.retryCertificate!());
 });
+
+// FX114 regression source, UNRUN: a held canonical receipt cannot lend a write to a retired dialog.
+test('retiring the original Move opening between GET and POST refuses the command', async () => {
+  let release!: (value: never) => void; const calls: string[] = [], life = new AbortController();
+  const receipt = {sessionId: 'original', revision: '7', state: 'playing', positionMs: 1000, durationMs: 60000, actions: ['seek']};
+  const b = createDashboardBindings(options({api: {...options().api, request: async (path, method) => {
+    calls.push(`${method ?? 'GET'} ${path}`);
+    return new Promise(resolve => {release = resolve;});
+  }}}));
+  const pending = b.effects.seek!('original', 25000, life.signal);
+  life.abort(); release(receipt as never); await assert.rejects(pending);
+  assert.equal(calls.length, 1); assert.match(calls[0], /^GET /); b.dispose();
+});
+test('Move keeps the real session revision and absolute target on the canonical route', async () => {
+  const calls: {path: string; method?: string; body?: unknown}[] = [];
+  const receipt = {sessionId: 'original', revision: '7', state: 'playing', positionMs: 1000, durationMs: 60000, actions: ['seek']};
+  const b = createDashboardBindings(options({api: {...options().api, request: async (path, method, body) => {calls.push({path, method, body}); return receipt as never;}}}));
+  await b.effects.seek!('original', 25000, new AbortController().signal);
+  assert.equal(calls.length, 2); assert.equal(calls[0].path, calls[1].path);
+  assert.deepEqual(calls[1].body, {action: 'seek', expectedRevision: '7', positionMs: 25000}); b.dispose();
+});

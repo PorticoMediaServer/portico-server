@@ -1,3 +1,4 @@
+import type {SessionControls} from '@core/playback-controls.ts';
 import type {HttpLocalApi} from '@core/index.ts';
 import {ConsoleClient, type ConsoleScope} from '@core/console.ts';
 import {DashboardDataClient, type DashboardReport as WireDashboardReport, type DashboardReportFilters, type DashboardPeople, type DashboardStatus} from '@core/admin/dashboard.ts';
@@ -10,7 +11,7 @@ import {routePath} from '../../../../packages/contracts/src/routes.ts';
 import {AdminSessionsClient} from '@core/playback-v1/admin-sessions.ts';
 import {localV1Http} from '@core/playback-v1/local-http.ts';
 import {playbackControlsService} from '@core/playback-controls.ts';
-import {sendTransport} from '@core/server-admin/now-playing.ts';
+import {sendSeekTo, sendTransport} from '@core/server-admin/now-playing.ts';
 import {fetchPlayHistory, type PlayHistoryApi, type PlayHistoryFilters, type PlayHistoryPage} from '@core/play-history.ts';
 import {parseTelemetryReading, type TelemetryReading} from '@core/telemetry.ts';
 import {retryCertificate, type CertificateAction, type CertificateApi} from '@core/certificates.ts';
@@ -36,6 +37,8 @@ export type DashboardBindings = Readonly<{
   read: Readonly<{
     sessions: (cursor?: string, signal?: AbortSignal) => Promise<DashboardSessions>;
     status: (signal?: AbortSignal) => Promise<DashboardStatus>;
+    /** Canonical session-specific permission/revision receipt, read only while its menu is open. */
+    controls?: (id: string, signal: AbortSignal) => Promise<SessionControls>;
     /** Moving Live only. Every historical load panel comes from the common report. */
     telemetry: (range: 'live', signal?: AbortSignal) => Promise<TelemetryReading>;
     report: (filters: DashboardReportQuery, signal?: AbortSignal) => Promise<DashboardReport>;
@@ -47,6 +50,8 @@ export type DashboardBindings = Readonly<{
   effects: Readonly<{
     transport: (id: string, command: 'pause' | 'resume') => Promise<void>;
     stop: (id: string, message?: string) => Promise<void>;
+    /** The original timeline opening owns cancellation through every canonical control read/retry/write. */
+    seek?: (id: string, positionMs: number, signal: AbortSignal) => Promise<void>;
     openHistory: () => void; openHome: () => void; openSettings: (section: string) => void;
     /** Supplied by the action owner; mutation must retain its existing revision/idempotency guard. */
     retryCertificate?: () => Promise<void>;
@@ -82,6 +87,11 @@ export function createDashboardBindings(options: DashboardBindingOptions): Dashb
     const path = routePath(action === 'status' ? 'get_networking_certificate' : action === 'config' ? 'post_networking_certificate_config' : 'post_networking_certificate_retry');
     return options.api.request<T>(path, action === 'status' ? 'GET' : 'POST', body, signal ? AbortSignal.any([signal, life.signal]) : life.signal).then(value => {assert(); return value;});
   }};
+  const operationControls = (signal: AbortSignal) => playbackControlsService(async <T>(path: string, method?: string, body?: unknown): Promise<T> => {
+    assert(); signal.throwIfAborted();
+    const value = await api.request<T>(path, method, body, signal);
+    assert(); signal.throwIfAborted(); return value;
+  });
   let fence: string | undefined;
   let observed: string | undefined;
   const ownerRead = async <T>(work: () => Promise<T>) => {assert(true); const value = await work(); assert(true); return value;};
@@ -96,6 +106,7 @@ export function createDashboardBindings(options: DashboardBindingOptions): Dashb
         return {items: raw.items.map(item => ({...parseAdminSession(item), channel: item.channel, programme: item.programme})), nextCursor: raw.page.nextCursor ?? '', scope: raw.scope, totals: raw.totals};
       },
       status: signal => ownerRead(() => data.status(signal)),
+      controls: async (id, signal) => {assert(); signal.throwIfAborted(); const value = await operationControls(signal).readAdmin(id); assert(); signal.throwIfAborted(); return value;},
       telemetry: (range, signal) => ownerRead(async () => {if (signal?.aborted) throw signal.reason; const value = await consoleClient.telemetry(range, context); if (signal?.aborted) throw signal.reason; return value;}),
       report: (filters, signal) => ownerRead(async () => {const value = await data.report({...filters, ...context}, signal); return {...value, load: parseTelemetryReading(value.load)};}),
       people: (filters, cursor, signal) => ownerRead(() => data.people({...filters, ...context}, cursor, 100, signal)),
@@ -110,6 +121,7 @@ export function createDashboardBindings(options: DashboardBindingOptions): Dashb
       openHistory: () => {assert(true); options.effects.openHistory(context);},
       openHome: () => {assert(); options.effects.openHome();},
       transport: async (id, command) => {assert(); await sendTransport(controls, id, command); assert();},
+      seek: async (id, positionMs, signal) => {assert(); signal.throwIfAborted(); await sendSeekTo(operationControls(signal), id, positionMs); assert(); signal.throwIfAborted();},
       stop: async (id, message) => {assert(true); await sessions.terminate(id, message); assert(true);},
       retryCertificate: async () => {assert(true); await retryCertificate(certificates, AbortSignal.timeout(15000)); assert(true);},
     },
