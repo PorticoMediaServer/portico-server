@@ -42,6 +42,20 @@ producer result matches every retained guest byte, a separate
 Different bytes refuse without replacing either guest or original receipt.
 This is packaging provenance only, not Reader runtime qualification or a SDK
 mirror update. `test_native_reader_reuse.py` exercises this with scratch fixtures.
+
+`cb7-reading.py` is a bounded server-resource check for one explicit fixture,
+not a frame or app walk. After an actual `release,portico_cb7` artifact is live:
+
+```
+python3 cb7-reading.py --context <owned-0600-context.json> --origin <admitted-loopback-origin> --run-id <original-run> --library <exact-library> --item <exact-cb7-item> --width 800 --output <private-receipt.json>
+```
+
+It uses the original runtime, exact library/item/source and publication revision,
+fetches only page0 with a bounded body and original deadline, records image magic,
+and closes only its acknowledged Reading session. No catalog CBR admission,
+app rendering, complete-image decode or fidelity is established. An ordinary
+build without the existing CB7 tag can refuse `cb7-not-admitted` without creating
+a session. The helper has not itself qualified any deployed artifact.
 `Portico_CertTest_API36` is never a target. All child processes, emulators and
 scratch started by a run are retired in `finally` paths.
 
