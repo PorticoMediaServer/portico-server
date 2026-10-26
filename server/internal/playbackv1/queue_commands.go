@@ -1236,19 +1236,17 @@ func (s *Service) Advance(ctx context.Context, c Caller, id, ifMatch string, req
 				return false, identity.ErrForbidden
 			}
 		}
+		var completionPolicy QueuePostPlay
+		var completingEpisode bool
 		if req.Reason == "completion" {
-			policy, err := s.postPlayPolicy(ctx, tx, c, l)
+			// Read the old occurrence's policy before selecting a target, but only
+			// gate it once an actual playable successor has been admitted below.
+			var err error
+			completionPolicy, err = s.postPlayPolicy(ctx, tx, c, l, true)
 			if err != nil {
 				return false, err
 			}
-			if policy.PassoutCheckDue {
-				return false, &TransitionError{Err: ErrPrepareNotAllowed, Reason: "passout_check_required"}
-			}
-			if currentEpisode(ctx, tx, l) {
-				l.q.automatic = min(l.q.automatic+1, 1000000)
-			} else {
-				l.q.automatic = 0
-			}
+			completingEpisode = currentEpisode(ctx, tx, l)
 		} else {
 			l.q.automatic = 0
 		}
@@ -1307,6 +1305,16 @@ func (s *Service) Advance(ctx context.Context, c Caller, id, ifMatch string, req
 				return false, err
 			}
 			if len(allowed) == 1 {
+				if req.Reason == "completion" {
+					if completionPolicy.PassoutCheckDue {
+						return false, &TransitionError{Err: ErrPrepareNotAllowed, Reason: "passout_check_required"}
+					}
+					if completingEpisode {
+						l.q.automatic = min(l.q.automatic+1, 1000000)
+					} else {
+						l.q.automatic = 0
+					}
+				}
 				return true, nil
 			}
 			if fixed || walked >= advanceSkipMax {

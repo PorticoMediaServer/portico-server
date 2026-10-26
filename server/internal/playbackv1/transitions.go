@@ -511,7 +511,7 @@ func (s *Service) withNext(ctx context.Context, c Caller, v *QueueView, q queueR
 			}
 		}
 
-		if policy, err := s.postPlayPolicy(ctx, tx, c, l); err == nil {
+		if policy, err := s.postPlayPolicy(ctx, tx, c, l, next.Available); err == nil {
 			v.PostPlay = &policy
 		}
 		return nil
@@ -619,7 +619,7 @@ type PostPlayPolicy struct {
 	Episodes           int
 }
 
-func (s *Service) postPlayPolicy(ctx context.Context, tx *sql.Tx, c Caller, l *layout) (QueuePostPlay, error) {
+func (s *Service) postPlayPolicy(ctx context.Context, tx *sql.Tx, c Caller, l *layout, nextAvailable bool) (QueuePostPlay, error) {
 	out := QueuePostPlay{Autoplay: true, CountdownMs: 10000, AutomaticAdvances: l.q.automatic}
 	if currentListeningItem(ctx, tx, l) {
 		out.CountdownMs = 0
@@ -633,7 +633,9 @@ func (s *Service) postPlayPolicy(ctx context.Context, tx *sql.Tx, c Caller, l *l
 		return out, err
 	}
 	out.Autoplay, out.CountdownMs, out.StartDuringCredits = policy.Autoplay, policy.CountdownMs, policy.StartDuringCredits
-	out.PassoutCheckDue = currentEpisode(ctx, tx, l) && policy.Protection && policy.Episodes > 0 && l.q.automatic+1 >= policy.Episodes
+	// Attention protects an actual unattended edge. An unavailable/end-of-queue
+	// completion has no next offer or confirmation action and stays ordinarily ended.
+	out.PassoutCheckDue = nextAvailable && policy.Autoplay && currentEpisode(ctx, tx, l) && policy.Protection && policy.Episodes > 0 && l.q.automatic+1 >= policy.Episodes
 	return out, nil
 }
 
