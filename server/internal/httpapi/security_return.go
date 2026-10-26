@@ -5,11 +5,13 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"time"
 
 	"portico.local/apikit"
+	"portico.local/server/internal/hosted"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/networking"
 	"portico.local/server/internal/networkpolicy"
@@ -54,6 +56,19 @@ func securityReturnRequestOrigin(r *http.Request, q serverreturn.SecuritySigned)
 	return e == nil && networkpolicy.HostsMatch(u.Host, r.Host)
 }
 
+func securityReturnFailure(w http.ResponseWriter, e error) {
+	switch {
+	case errors.Is(e, networking.ErrInvalid):
+		failure(w, identity.ErrDirectInput)
+	case errors.Is(e, networking.ErrStale), errors.Is(e, networking.ErrCancelled):
+		failure(w, identity.ErrUnauthorized)
+	case errors.Is(e, networking.ErrUnavailable):
+		failure(w, hosted.ErrServicesUnavailable)
+	default:
+		failure(w, e)
+	}
+}
+
 func (d Dependencies) securityReturnRoutes(mux *http.ServeMux) {
 	actor := func(r *http.Request) networking.SecurityActorReader {
 		bearer := directBearer(r)
@@ -64,7 +79,7 @@ func (d Dependencies) securityReturnRoutes(mux *http.ServeMux) {
 	d.httpHandle(mux, "POST /v1/direct/security-return/prepare", func(w http.ResponseWriter, r *http.Request) {
 		var q securityReturnPrepareRequest
 		if e := decode(w, r, &q); e != nil {
-			failure(w, e)
+			securityReturnFailure(w, e)
 			return
 		}
 		u, e := url.Parse(q.Origin)
@@ -79,12 +94,12 @@ func (d Dependencies) securityReturnRoutes(mux *http.ServeMux) {
 		}
 		prepared, e := d.Hosted.PrepareRegisteredReturn(r.Context(), q.Origin)
 		if e != nil {
-			failure(w, e)
+			securityReturnFailure(w, e)
 			return
 		}
 		out, e := signer.SignSecurityReturn(r.Context(), serverreturn.SecurityContext{ServerID: prepared.ServerID, RegistrationID: prepared.Registration.ID, Origin: prepared.Registration.Origin, HostedOrigin: prepared.HostedOrigin, ClaimOperationID: prepared.ClaimOperationID, OpeningID: q.OpeningID, TaskID: q.TaskID, OperationID: q.OperationID, ProviderIdentityID: q.ProviderIdentityID, ProviderRevision: q.ProviderRevision, Nonce: q.Nonce, ExpiresAt: q.ExpiresAt}, actor(r))
 		if e != nil {
-			failure(w, e)
+			securityReturnFailure(w, e)
 			return
 		}
 		w.Header().Set("Cache-Control", "no-store")
@@ -93,7 +108,7 @@ func (d Dependencies) securityReturnRoutes(mux *http.ServeMux) {
 	d.httpHandle(mux, "POST /v1/direct/security-return/confirm", func(w http.ResponseWriter, r *http.Request) {
 		var q securityReturnConfirmRequest
 		if e := decode(w, r, &q); e != nil {
-			failure(w, e)
+			securityReturnFailure(w, e)
 			return
 		}
 		if !securityReturnRequestOrigin(r, q.Context) {
@@ -107,7 +122,7 @@ func (d Dependencies) securityReturnRoutes(mux *http.ServeMux) {
 		}
 		out, e := signer.ConfirmSecurityReturn(r.Context(), q.Context, q.TransactionID, q.Code, actor(r))
 		if e != nil {
-			failure(w, e)
+			securityReturnFailure(w, e)
 			return
 		}
 		w.Header().Set("Cache-Control", "no-store")
@@ -116,7 +131,7 @@ func (d Dependencies) securityReturnRoutes(mux *http.ServeMux) {
 	d.httpHandle(mux, "POST /v1/direct/security-return/cancel", func(w http.ResponseWriter, r *http.Request) {
 		var q securityReturnCancelRequest
 		if e := decode(w, r, &q); e != nil {
-			failure(w, e)
+			securityReturnFailure(w, e)
 			return
 		}
 		if !securityReturnRequestOrigin(r, q.Context) {
@@ -129,7 +144,7 @@ func (d Dependencies) securityReturnRoutes(mux *http.ServeMux) {
 			return
 		}
 		if e := signer.CancelSecurityReturn(r.Context(), q.Context, actor(r)); e != nil {
-			failure(w, e)
+			securityReturnFailure(w, e)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -138,7 +153,7 @@ func (d Dependencies) securityReturnRoutes(mux *http.ServeMux) {
 
 func registerSecurityReturnHTTPContracts(registry *apikit.Registry) error {
 	meta := func(id, path, summary string, status int) apikit.Metadata {
-		return apikit.Metadata{ID: id, Method: "POST", Path: path, Summary: summary, Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.Constant, BodyLimit: 65536, Status: status, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "sign_in_kind_local", "password_change_required", "factor_setup_required", "internal"}}
+		return apikit.Metadata{ID: id, Method: "POST", Path: path, Summary: summary, Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.Constant, BodyLimit: 65536, Status: status, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "sign_in_kind_local", "portico_services_unavailable", "password_change_required", "factor_setup_required", "internal"}}
 	}
 	if e := apikit.RegisterHTTP[securityReturnPrepareRequest, serverreturn.SecuritySigned](registry, meta("post_direct_security_return_prepare", "/v1/direct/security-return/prepare", "Prepare only the original provider Security opening", 200)); e != nil {
 		return e
