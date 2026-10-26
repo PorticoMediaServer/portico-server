@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {ownArrivalPaint, takeArrivalPaint} from '../src/kit/browse/arrival-paint.ts';
+import {hasExitPaint, ownArrivalPaint, takeArrivalPaint} from '../src/kit/browse/arrival-paint.ts';
 
 // UNRUN exact-node/source ownership vectors; no browser or elapsed-time claim.
 test('another source cannot take the original opacity lease', () => {
@@ -26,4 +26,12 @@ test('unknown opacity is never normalised into invented paint', () => {
     const node = {} as HTMLElement, source = {};ownArrivalPaint(node, source, () => value);
     assert.equal(takeArrivalPaint(node, source), undefined);
   }
+});
+test('only the same original source can observe and consume a returned exit lease', () => {
+  const node = {} as HTMLElement, source = {};let lease = {release() {}, current: () => false};
+  assert.equal(hasExitPaint(node, undefined), false);
+  lease = ownArrivalPaint(node, source, () => {assert.equal(lease.current(), false);return .42;}, 'exit');
+  assert.equal(hasExitPaint(node, {}), false);assert.equal(hasExitPaint(node, source), true);
+  assert.equal(takeArrivalPaint(node, source), .42);assert.equal(hasExitPaint(node, source), false);
+  ownArrivalPaint(node, source, () => .7);assert.equal(hasExitPaint(node, source), false);
 });

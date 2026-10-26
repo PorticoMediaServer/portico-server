@@ -3,7 +3,7 @@ import {easings} from '@design';
 import {ownArrivalPaint, takeArrivalPaint, type ArrivalPaintLease} from '../browse/arrival-paint';
 import type {LayoutExit} from './retention';
 
-type Job = {node: HTMLElement; exit: object; animation: Animation; lease?: ArrivalPaintLease; reduced: boolean};
+type Job = {node: HTMLElement; root: HTMLDivElement; exit: object; animation: Animation; lease?: ArrivalPaintLease; reduced: boolean};
 /** Exact original mounted slots only. Retirement never searches or cancels another animation. */
 export function useGridExitPaint<T>(root: RefObject<HTMLDivElement | null>, exits: ReadonlyMap<string, LayoutExit<T>>, source: object, reduced: boolean) {
   const jobs = useRef(new Map<string, Job>());
@@ -13,15 +13,16 @@ export function useGridExitPaint<T>(root: RefObject<HTMLDivElement | null>, exit
   };
   useLayoutEffect(() => {
     const element = root.current;
+    if (!element) {for (const [key, job] of [...jobs.current]) stop(key, job);return;}
     const nodes = new Map([...element?.children ?? []].flatMap(child => {
       const node = child as HTMLElement, key = node.dataset.layoutItem;
       return key !== undefined && node.hasAttribute('data-grid-leaving') ? [[key, node] as const] : [];
     }));
     for (const [key, job] of [...jobs.current]) {
-      if (nodes.get(key) !== job.node || exits.get(key)?.token !== job.exit) {
+      if (job.root !== element || nodes.get(key) !== job.node || exits.get(key)?.token !== job.exit) {
         // A returning original node lends its exact current opacity to the new arrival
         // before that owner cancels this job. Removed nodes simply retire below.
-        if (job.node.isConnected && element?.contains(job.node) && !job.node.hasAttribute('data-grid-leaving')) continue;
+        if (job.root === element && job.node.isConnected && element.contains(job.node) && !job.node.hasAttribute('data-grid-leaving')) continue;
         stop(key, job);
       }
     }
@@ -37,12 +38,12 @@ export function useGridExitPaint<T>(root: RefObject<HTMLDivElement | null>, exit
       const delay = still ? 0 : Math.max(0, exit.admittedAt + exit.delay - now);
       const duration = Math.max(0, Math.min(still ? 160 : 180, Math.min(exit.retireAt, exit.deadline) - now - delay));
       const animation = node.animate([{opacity: from}, {opacity: 0}], {duration, delay, easing: still ? 'linear' : easings.out, fill: 'both'});
-      const original: Job = {node, exit: exit.token, animation, reduced: still};
+      const original: Job = {node, root: element, exit: exit.token, animation, reduced: still};
       jobs.current.set(key, original);
       original.lease = ownArrivalPaint(node, source, () => {
         if (jobs.current.get(key) !== original || !node.isConnected || root.current !== element) return;
         const opacity = Number(getComputedStyle(node).opacity);stop(key, original);return opacity;
-      });
+      }, 'exit');
     }
   }, [root, exits, source, reduced]);
   useLayoutEffect(() => () => {for (const [key, job] of [...jobs.current]) stop(key, job);}, [source]);

@@ -1,5 +1,5 @@
 import {useLayoutEffect, useRef, type RefObject} from 'react';
-import {ownArrivalPaint, takeArrivalPaint, type ArrivalPaintLease} from './arrival-paint';
+import {hasExitPaint, ownArrivalPaint, takeArrivalPaint, type ArrivalPaintLease} from './arrival-paint';
 import {easings, motion, reducedMotion} from '@design';
 import {useReducedMotion} from '../overlays/shared';
 
@@ -69,11 +69,12 @@ export function useAcceptedArrival(element: RefObject<HTMLElement | null>, answe
       const original: Job = {animation, reduced};
       jobs.current.set(node, original);
       original.lease = ownArrivalPaint(node, source, () => {
-        if (jobs.current.get(node) !== original || !original.lease?.current() || !node.isConnected) return;
+        // The taker has removed this lease before invoking its captured callback.
+        if (jobs.current.get(node) !== original || element.current !== root || !node.isConnected || !root.contains(node)) return;
         const opacity = Number(getComputedStyle(node).opacity);stop(node, original);return opacity;
       });
       animation.onfinish = () => {
-        if (jobs.current.get(node) !== original || !node.isConnected) return;
+        if (jobs.current.get(node) !== original || !original.lease?.current() || element.current !== root || !node.isConnected || !root.contains(node)) return;
         node.style.opacity = '1';stop(node, original);
       };
     };
@@ -82,7 +83,16 @@ export function useAcceptedArrival(element: RefObject<HTMLElement | null>, answe
       const reduced = reducedNow(node, prefersReduced);
       if (reduced !== job.reduced) draw(node, takeArrivalPaint(node, source) ?? Number(getComputedStyle(node).opacity), reduced, true);
     }
-    if (!accepted(answer) || remembered.generation === answer.generation) return;
+    if (!accepted(answer)) return;
+    if (remembered.generation === answer.generation) {
+      // A newly loaded page can return a key during its previous exit without
+      // changing the accepted generation. Restore only that exact exit lease.
+      for (const node of nodes) if (hasExitPaint(node, source)) {
+        const from = takeArrivalPaint(node, source);if (from !== undefined) draw(node, from, reducedNow(node, prefersReduced));
+      }
+      return;
+    }
+    if (!nodes.length) return;
     shown.current = {source, node: root, generation: answer.generation};
     for (const node of nodes) draw(node, takeArrivalPaint(node, source) ?? 0, reducedNow(node, prefersReduced));
   }, [element, answer, source, prefersReduced, select]);

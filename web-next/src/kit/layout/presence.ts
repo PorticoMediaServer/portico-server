@@ -9,6 +9,7 @@ export function useLayoutPresence<T>(items: readonly T[], getKey: (item: T) => s
   const current = useRef(state), owner = useRef<object | null>(null);
   const previousRects = useRef(new Map<string, DOMRect>()), animations = useRef(new Map<Element, Animation>());
   const targets = useRef(new Map<Element, readonly number[]>());
+  const visibility = useRef<{scope: unknown; keys: ReadonlySet<string>}>({scope: policy?.scope, keys: new Set()});
   // A replacement original scope can never render the previous scope's paint.
   const present = state.scope === policy?.scope ? state.present : items;
   const incoming = new Set(items.map(getKey));
@@ -44,6 +45,7 @@ export function useLayoutPresence<T>(items: readonly T[], getKey: (item: T) => s
         }
       }
       const now = performance.now();
+      visibility.current = {scope, keys: visible};
       const next = retainLayout(current.current, items, getKey, now, reduced, exitMs, reducedMotion.durationMs, {maxRetained: max, staggerMs: stagger, visibleOnly, scope, admitNew}, visible);
       const remaining = new Set(items.map(getKey));
       if (beforeLeave && current.current.scope === scope && current.current.live.some(item => !remaining.has(getKey(item)))) beforeLeave(remaining);
@@ -84,5 +86,6 @@ export function useLayoutPresence<T>(items: readonly T[], getKey: (item: T) => s
   }, [state, reduced, moveMs]);
   useLayoutEffect(() => () => { for (const animation of animations.current.values()) animation.cancel(); animations.current.clear(); targets.current.clear(); }, []);
   const exits = state.scope === scope ? state.exits : new Map<string, never>();
-  return {root, present, leaving, exits, ready: state.scope === scope && state.live === items, delays: new Map([...exits].map(([key, exit]) => [key, exit.delay]))};
+  return {root, present, leaving, exits, visible: visibility.current.scope === scope ? visibility.current.keys : new Set<string>(),
+    ready: state.scope === scope && state.live === items, delays: new Map([...exits].map(([key, exit]) => [key, exit.delay]))};
 }

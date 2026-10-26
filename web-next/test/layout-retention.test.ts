@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {retainLayout, type LayoutRetention} from '../src/kit/layout/retention.ts';
+import {boundedOutgoingPaint, retainLayout, type LayoutRetention} from '../src/kit/layout/retention.ts';
 const keyOf = (item: {id: string}) => item.id;
 const rows = (...ids: string[]) => ids.map(id => Object.freeze({id}));
 const initial = (live = rows()): LayoutRetention<{id: string}> => ({live, present: live, exits: new Map()});
@@ -45,4 +45,22 @@ test('the sparse outgoing cap never caps the accepted live answer', () => {
   const next = retainLayout(initial(old), live, keyOf, 0, false, 180, 160, {...policy, visibleOnly: true}, new Set(old.slice(0, 60).map(keyOf)));
   assert.equal(next.exits.size, 40);assert.equal(next.live.length, 200);assert.equal(next.present.length, 240);
   assert.equal(next.exits.get('old-39')!.delay, 1560);assert.equal(next.exits.has('old-40'), false);
+});
+
+test('first replacement render caps original outgoing DOM while accepted live rows stay uncapped', () => {
+  const old = rows(...Array.from({length: 100}, (_, i) => `old-${i}`));
+  const incoming = rows(...Array.from({length: 120}, (_, i) => `live-${i}`)), keys = new Set(incoming.map(keyOf));
+  const visible = new Set(old.slice(20, 80).map(keyOf));
+  const present = boundedOutgoingPaint([...old, ...incoming], keys, keyOf, new Map(), visible, 40);
+  assert.equal(present.filter(item => !keys.has(item.id)).length, 40);
+  assert.ok(present.includes(old[20]));assert.equal(present.includes(old[0]), false);
+  assert.ok(incoming.every(item => present.includes(item)));
+});
+
+test('existing outgoing cohorts keep priority at the render bound without borrowing live capacity', () => {
+  const old = rows(...Array.from({length: 60}, (_, i) => `old-${i}`)), incoming = rows('live');
+  const exits = new Map(old.slice(40, 60).map(item => [item.id, {}]));
+  const present = boundedOutgoingPaint([...old, ...incoming], new Set(['live']), keyOf, exits, new Set(old.map(keyOf)), 40);
+  assert.equal(present.length, 41);assert.ok(old.slice(40, 60).every(item => present.includes(item)));
+  assert.equal(present.includes(old[30]), false);
 });

@@ -121,13 +121,22 @@ export function BrowseResults(props: BrowseResultsProps) {
 function BrowseListRow({member, index, artwork, env, actions, reading, music}: BrowseResultsProps & {member: BrowseMember; index: number; reading: boolean; music: boolean}) {
   const interactionRoot = useRef<HTMLDivElement>(null), retained = useRetainedLayoutPaint();
   const source = useRef<'pointer' | 'keyboard'>('pointer');
-  const originalAction = useMemo(() => actions(member, index), [actions, member, index]);
-  const selection = useCardInteractionAdmission(originalAction.selection, interactionRoot, retained);
-  const action = {...originalAction, selection};
+  const committed = useRef<{member: BrowseMember; index: number; actions: BrowseResultsProps['actions']; value: BrowseItemActions} | undefined>(undefined);
+  // Live descriptors must still reflect ordinary selected/preview publications.
+  // Only outgoing paint keeps the last committed original action descriptor.
+  const liveAction = retained ? undefined : actions(member, index);
+  const previous = committed.current;
+  const originalAction = retained
+    ? previous?.member === member && previous.index === index && previous.actions === actions ? previous.value : undefined
+    : liveAction;
+  useLayoutEffect(() => {if (liveAction) committed.current = {member, index, actions, value: liveAction};}, [liveAction, member, index, actions]);
+  const selection = useCardInteractionAdmission(originalAction?.selection, interactionRoot, retained);
   const {entry} = member, title = entry.displayTitle ?? entry.title, progress = timelineFacts(entry.duration, entry.progressSeconds).progress;
   const badges = entry.kind === 'song' && entry.audioFacts ? musicFormatBadges(entry.audioFacts).map(badge => typeof badge === 'string' ? badge : formatSignalText(badge, serviceI18n().t)) : [];
-  const range = useSelectionRangePreview(action.selection);
+  const range = useSelectionRangePreview(selection);
   const art = useMemo(() => artwork.foreground(entry.posterUrl, music ? 42 * devicePixelRatio : 72 * devicePixelRatio, music ? 1 : 2 / 3, {group: entry.libraryId, order: index}), [artwork, entry.posterUrl, entry.libraryId, music, index]);
+  if (!originalAction) return null;
+  const action = {...originalAction, selection};
   const added = entry.addedAt && Number.isFinite(Date.parse(entry.addedAt)) ? new Intl.DateTimeFormat(env.locale ?? 'en-US', {month: 'short', day: 'numeric', year: 'numeric'}).format(new Date(entry.addedAt)) : undefined;
   const duration = durationText(entry.duration, env.t);
   const resolution = entry.resolution === '4k' ? t('quality.4k') : entry.resolution === '1080p' ? t('downloads.quality.1080p') : entry.resolution === '720p' ? t('downloads.quality.720p') : entry.resolution === 'sd' ? t('quality.sd') : undefined;

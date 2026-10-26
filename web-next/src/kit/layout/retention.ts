@@ -15,6 +15,20 @@ export type LayoutRetentionPolicy = Readonly<{
   beforeLeave?: (remaining: ReadonlySet<string>) => void;
 }>;
 
+/** Render boundary, including the first accepted replacement before layout
+ * admission. Live rows are uncapped; existing exits have priority over new ones. */
+export function boundedOutgoingPaint<T>(present: readonly T[], incoming: ReadonlySet<string>, keyOf: (item: T) => string,
+  exits: ReadonlyMap<string, unknown>, visible: ReadonlySet<string>, limit: number): readonly T[] {
+  const max = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 0;
+  const retained = new Set<string>();
+  for (const key of exits.keys()) if (!incoming.has(key) && retained.size < max) retained.add(key);
+  for (const item of present) {
+    const key = keyOf(item);
+    if (!incoming.has(key) && visible.has(key) && retained.size < max) retained.add(key);
+  }
+  return present.filter(item => incoming.has(keyOf(item)) || retained.has(keyOf(item)));
+}
+
 export function retainLayout<T>(previous: LayoutRetention<T>, incoming: readonly T[], keyOf: (item: T) => string,
   now: number, reduced: boolean, exitMs: number, reducedMs: number, policy?: LayoutRetentionPolicy,
   visible?: ReadonlySet<string>): LayoutRetention<T> {

@@ -6,6 +6,7 @@ import {RemovalFocusOwner} from './removal-focus-owner';
 import {GridRemovalFocus} from './GridRemovalFocus';
 import {useLayoutPresence} from './presence';
 import {useGridExitPaint} from './grid-exit-paint';
+import {boundedOutgoingPaint} from './retention';
 import {RetainedLayoutPaint} from './retained-paint';
 import {useAcceptedArrival} from '../browse/use-arrival';
 import styles from './layout.module.css';
@@ -29,7 +30,7 @@ type SlotProps = HTMLAttributes<HTMLDivElement> & {'data-grid-leaving'?: boolean
 type PaintSlot = Readonly<{key: string; node: ReactElement<SlotProps>; content: ReactNode}>;
 const paintKey = (slot: PaintSlot) => slot.key;
 const livePaintSlots = (root: HTMLElement): readonly HTMLElement[] => [...root.children].filter((node): node is HTMLElement => node instanceof HTMLElement && !!node.dataset.layoutItem && !node.hasAttribute('data-grid-leaving'));
-const emptyPaint = (root: HTMLElement): readonly HTMLElement[] => root.childElementCount ? [root] : [];
+const emptyPaint = (root: HTMLElement): readonly HTMLElement[] => root.hasChildNodes() ? [root] : [];
 const reducedAt = (node: HTMLElement | null) => typeof document !== 'undefined' && (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
   || !!node?.closest('[data-reduce-motion="true"]') || document.documentElement.dataset.reduceMotion === 'true' || document.body.dataset.reduceMotion === 'true');
 export function WindowedGrid<T>({collection, renderItem, renderPlaceholder, label, height, cardWidth, rowHeight, gap = 20, rowGap = 30, overscanRows = 1, stickyOffset = 0,
@@ -109,22 +110,25 @@ export function WindowedGrid<T>({collection, renderItem, renderPlaceholder, labe
   const paintWindow = useMemo(() => ({owner: paintOwner, width: viewport.width, height: viewport.height, top: viewport.top, cardWidth, rowHeight, gap, rowGap, stickyOffset}),
     [paintOwner, viewport.width, viewport.height, viewport.top, cardWidth, rowHeight, gap, rowGap, stickyOffset]);
   const accepted = snapshot.status === 'ready' && !snapshot.refreshing && snapshot.total !== undefined;
-  const previousAnswer = useRef<{window: object; generation: number} | undefined>(undefined);
+  const previousAnswer = useRef<{window: object; generation: number; extent: number} | undefined>(undefined);
   const reduced = motion.reduced || reducedAt(root.current);
   const presence = useLayoutPresence(items, paintKey, reduced, 180, retainRemovals ? 320 : 0, {scope: paintWindow, maxRetained: retainRemovals ? 40 : 0, staggerMs: 40, visibleOnly: true,
     admitNew: retainRemovals && accepted && previousAnswer.current?.window === paintWindow && previousAnswer.current.generation !== snapshot.generation}, root);
-  useGridExitPaint(presence.root, presence.exits, paintWindow, reduced);
+  useGridExitPaint(presence.root, presence.exits, paintOwner, reduced);
   // Only the incoming slots fade. The old generation's outgoing paint has its own lease.
   // Waiting for the retained tree's live answer prevents consuming a generation before its DOM.
   const arrival = retainRemovals && presence.ready ? snapshot : undefined;
-  useAcceptedArrival(presence.root, arrival, paintWindow, livePaintSlots);
+  useAcceptedArrival(presence.root, arrival, paintOwner, livePaintSlots);
   const emptyRoot = useRef<HTMLDivElement | null>(null);
-  useAcceptedArrival(emptyRoot, arrival, paintWindow, emptyPaint);
-  useLayoutEffect(() => {if (accepted) previousAnswer.current = {window: paintWindow, generation: snapshot.generation};}, [accepted, paintWindow, snapshot.generation]);
-  const painted = retainRemovals ? presence.present : items;
+  useAcceptedArrival(emptyRoot, arrival, paintOwner, emptyPaint);
+  const oldExtent = presence.leaving.size && previousAnswer.current?.window === paintWindow ? previousAnswer.current.extent : 0;
+  useLayoutEffect(() => {if (accepted) previousAnswer.current = {window: paintWindow, generation: snapshot.generation, extent: Math.max(scrollHeight + stickyOffset, oldExtent)};},
+    [accepted, paintWindow, snapshot.generation, scrollHeight, stickyOffset, oldExtent]);
   const incomingPaintKeys = new Set(items.map(paintKey));
+  const incomingSlots = new Map(items.map(slot => [slot.key, slot]));
+  const painted = retainRemovals ? boundedOutgoingPaint(presence.present, incomingPaintKeys, paintKey, presence.exits, presence.visible, 40) : items;
   // Keep the original viewport while its bounded outgoing rows fade, including total→0.
-  const extentHeight = Math.max(scrollHeight + stickyOffset, ...(retainRemovals ? painted.map(slot => {
+  const extentHeight = Math.max(scrollHeight + stickyOffset, retainRemovals ? oldExtent : 0, ...(retainRemovals ? painted.map(slot => {
     const box = slot.node.props.style;return Number(box?.top ?? 0) + Number(box?.height ?? 0);
   }) : []), retainRemovals && presence.leaving.size ? viewport.top + viewport.height : 0);
   return <GridRemovalFocus owner={focusOwner} root={root} generation={snapshot.generation} accepted={accepted} keys={keys} viewport={viewport}>
@@ -141,9 +145,13 @@ export function WindowedGrid<T>({collection, renderItem, renderPlaceholder, labe
       if (target < 0 || target >= total) return;
       event.preventDefault(); jump(target, true, event.repeat);
     }}><div key={focusOwner.lifetime} ref={presence.root} className={styles.gridExtent} style={{height: extentHeight, minWidth: columns * cardWidth + (columns - 1) * gap}}>{painted.map(slot => {
-        if (!retainRemovals || incomingPaintKeys.has(slot.key)) return slot.node;
+        const incoming = incomingSlots.get(slot.key);
+        if (!retainRemovals) return slot.node;
+        // Surviving/returning rows expose only the real incoming props. Keep the
+        // old position for this measurement commit, then FLIP to the new layout.
+        if (incoming) return presence.ready ? incoming.node : cloneElement(incoming.node, {style: slot.node.props.style});
         return cloneElement(slot.node, {inert: true, 'aria-hidden': true, 'data-grid-leaving': true, onFocusCapture: undefined,
           children: <RetainedLayoutPaint.Provider value>{slot.content}</RetainedLayoutPaint.Provider>});
-      })}</div>{retainRemovals && <div ref={emptyRoot} className={styles.gridEmpty} style={{top: viewport.top + stickyOffset}}>{snapshot.total === 0 ? empty : null}</div>}</div>
+      })}</div>{retainRemovals && <div ref={emptyRoot} className={styles.gridEmpty} style={{top: viewport.top + stickyOffset}}>{snapshot.total === 0 && !presence.leaving.size ? empty : null}</div>}</div>
   </GridRemovalFocus>;
 }
