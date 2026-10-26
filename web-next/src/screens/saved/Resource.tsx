@@ -1,5 +1,5 @@
 import {CatalogueSelectionEntry} from '../browse/document-selection';
-import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import type {ContentEntry} from '@core/library-content.ts';
 import type {PersonalSavedIntent, PersonalResourceEntry} from '@core/personal-saved.ts';
@@ -10,6 +10,7 @@ import {shapeFor, shapeAspect} from '@core/presentation/card-shape.ts';
 import {AmbientArt, Artwork, CoverMosaic, type ArtworkSource} from '../../kit/artwork';
 import {Button, Chip, Select, Switch} from '../../kit/controls';
 import {ViewToggle} from '../../kit/browse';
+import {useLayoutPresence} from '../../kit/layout/presence';
 import {Dialog, Menu} from '../../kit/overlays';
 import {Skeleton, StateView} from '../../kit/states';
 import {CircleCard, PosterCard, SquareCard} from '../../kit/cards';
@@ -155,6 +156,9 @@ function historyDayLabel(date: Date): string {
 }
 export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
   const service = bindings.runtime.personal, snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot), [confirm, setConfirm] = useState(false), [busy, setBusy] = useState(false), cancel = useRef<HTMLButtonElement>(null);
+  // A new service or route is a new timeline: the presence layer never carries rows across it.
+  const scope = useRef<{token: number; service: typeof service; route: typeof bindings.route}>({token: 0, service, route: bindings.route});
+  if (scope.current.service !== service || scope.current.route !== bindings.route) scope.current = {token: scope.current.token + 1, service, route: bindings.route};
   // The same canonical library wash, fed by the first titles the timeline shows.
   const wash = useMemo(() => {
     if (!bindings.presentation.backdrops) return [];
@@ -162,30 +166,32 @@ export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
     const urls = snapshot.entries.flatMap(entry => { const media = entry.media, url = media && (media.backdropUrl ?? media.posterUrl); return url ? [url] : []; });
     return [...new Set(urls)].slice(0, 3).flatMap(url => { const source = bindings.artwork.ambient(url); return source ? [source] : []; });
   }, [bindings.presentation.backdrops, bindings.presentation.backdrop, bindings.artwork, snapshot.entries]);
-  // The confirmed clear keeps the outgoing rows for their authored exit in a bounded
-  // presence layer above the live layout, so the gap closes by transform and the live
-  // empty/error state owns focus immediately. Outgoing paint is noninteractive.
-  const [leaving, setLeaving] = useState<Readonly<{groups: readonly {day: Date; entries: PersonalResourceEntry[]}[]; collapse: number}>>();
-  const confirmedClear = useRef(false), collapseAtClear = useRef(0), previousGroups = useRef<readonly {day: Date; entries: PersonalResourceEntry[]}[]>([]), roster = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!confirmedClear.current || snapshot.entries.length) return;
-    const previous = previousGroups.current; confirmedClear.current = false;
-    if (!previous.length) return;
-    const collapse = collapseAtClear.current || roster.current?.getBoundingClientRect().height || 0;
-    setLeaving({groups: previous, collapse});
-    const rows = Math.min(40, previous.reduce((count, group) => count + group.entries.length, 0));
-    const timer = setTimeout(() => setLeaving(undefined), 320 + 180 + 40 * Math.max(0, rows - 1));
-    return () => clearTimeout(timer);
-  }, [snapshot.entries.length]);
+  // One bounded window of rows across all days, memoized so the presence hook sees a
+  // stable item list until the accepted snapshot itself changes.
+  const sections = useMemo<HistorySection[]>(() => {
+    const grouped = new Map<string, {day: Date; entries: PersonalResourceEntry[]}>();
+    for (const entry of snapshot.entries) {
+      if (!entry.updatedAt) continue;
+      const date = new Date(entry.updatedAt); if (!Number.isFinite(date.getTime())) continue;
+      const key = date.toDateString(); let group = grouped.get(key); if (!group) { group = {day: date, entries: []}; grouped.set(key, group); } group.entries.push(entry);
+    }
+    const out: HistorySection[] = [];
+    let retained = 0;
+    for (const group of grouped.values()) {
+      const entries = group.entries.filter(entry => entry.media).slice(0, Math.max(0, 40 - retained)).map(entry => ({entry, media: entry.media!}));
+      retained += entries.length;
+      if (entries.length) out.push({key: group.day.toDateString(), day: group.day, entries});
+      if (retained >= 40) break;
+    }
+    return out;
+  }, [snapshot.entries]);
   if (!sameSavedRoute(snapshot.route, bindings.route)) return null;
   const period = bindings.route.view === 'history' ? bindings.route.period ?? '30d' : '30d';
-  const groups = new Map<string, {day: Date; entries: PersonalResourceEntry[]}>();
-  for (const entry of snapshot.entries) {
-    if (!entry.updatedAt) continue;
-    const date = new Date(entry.updatedAt); if (!Number.isFinite(date.getTime())) continue;
-    const key = date.toDateString(); let group = groups.get(key); if (!group) { group = {day: date, entries: []}; groups.set(key, group); } group.entries.push(entry);
-  }
-  if (groups.size) previousGroups.current = [...groups.values()];
+  const empty = snapshot.error && !snapshot.entries.length
+    ? <div className={styles.historyLive}><StateView title={t('saved.historyLoadFailed')} primary={{id: 'retry', label: t('action.tryAgain'), onPress: () => { void service.retryRead(); }}} /></div>
+    : !snapshot.loading && !snapshot.error && !snapshot.entries.length
+      ? <div className={styles.historyLive}><StateView title={t('web.saved.empty.history')} body={t('web.saved.empty.historyBody')} /></div>
+      : null;
   return <>
     {wash.length ? <div className={styles.wash} aria-hidden="true"><AmbientArt sources={wash} treatment="library" height={640} /></div> : null}
     <div className={styles.toolbar}>
@@ -194,28 +200,37 @@ export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
       </div>
       <div className={styles.toolbarEnd}><Button variant="text" size="small" onClick={() => setConfirm(true)}>{t('web.saved.clearHistory')}</Button></div>
     </div>
-    <div className={styles.historyRoster} ref={roster}>
-      {leaving ? <div className={styles.historyLeaving} aria-hidden="true" {...({inert: ''} as Record<string, string>)}
-        style={{'--history-collapse': `${leaving.collapse}px`} as CSSProperties}>
-        {leaving.groups.map(group => <section className={styles.historyDay} key={`leaving:${group.day.toDateString()}`}><h2>{historyDayLabel(group.day)}</h2>
-          {group.entries.slice(0, 40).map((entry, index) => entry.media && <div key={`leaving:${entry.id}`} className={styles.historyLeavingRow} style={{animationDelay: `${index * 40}ms`}}><HistoryRow bindings={bindings} entry={entry} media={entry.media} /></div>)}
-        </section>)}
-      </div> : null}
-      {snapshot.error && !snapshot.entries.length && <div className={styles.historyLive}><StateView title={t('saved.historyLoadFailed')} primary={{id: 'retry', label: t('action.tryAgain'), onPress: () => { void service.retryRead(); }}} /></div>}
-      {!snapshot.loading && !snapshot.error && !snapshot.entries.length && <div className={styles.historyLive}><StateView title={t('web.saved.empty.history')} body={t('web.saved.empty.historyBody')} /></div>}
-      {[...groups.values()].map(group => <section className={styles.historyDay} data-history-day="" key={group.day.toDateString()}><h2>{historyDayLabel(group.day)}</h2>
-        {group.entries.map(entry => entry.media && <HistoryRow key={entry.id} bindings={bindings} entry={entry} media={entry.media} />)}
-      </section>)}
-      {snapshot.nextCursor && <Button className={styles.showMore} size="small" loading={snapshot.loading} onClick={() => { void service.next(); }}>{t('action.showMore')}</Button>}
-    </div>
+    <HistoryTimeline key={scope.current.token} bindings={bindings} sections={sections} reduced={bindings.reducedMotion === true} empty={empty}
+      more={snapshot.nextCursor ? <Button className={styles.showMore} size="small" loading={snapshot.loading} onClick={() => { void service.next(); }}>{t('action.showMore')}</Button> : null} />
     <Dialog open={confirm} onOpenChange={open => { if (!busy) setConfirm(open); }} title={t('web.saved.clearHistoryTitle')} description={t('web.saved.clearHistoryBody')} initialFocusRef={cancel}
       footer={<><Button ref={cancel} size="small" disabled={busy} onClick={() => setConfirm(false)}>{t('action.cancel')}</Button><Button size="small" className={styles.destructive} loading={busy} onClick={() => {
         if (busy || !bindings.operations.current) return;
-        collapseAtClear.current = [...(roster.current?.querySelectorAll<HTMLElement>('[data-history-day]') ?? [])]
-          .reduce((height, day) => height + day.getBoundingClientRect().height, 0);
-        setBusy(true); void bindings.operations.run(async () => { if (!await service.mutate({action: 'clear-history'})) throw service.getSnapshot().mutationError; confirmedClear.current = true; }, () => { setBusy(false); setConfirm(false); }).catch(error => { setBusy(false); bindings.effects.reportError(error); });
+        setBusy(true); void bindings.operations.run(async () => { if (!await service.mutate({action: 'clear-history'})) throw service.getSnapshot().mutationError; }, () => { setBusy(false); setConfirm(false); }).catch(error => { setBusy(false); bindings.effects.reportError(error); });
       }}>{t('web.saved.clearHistoryAction')}</Button></>}><span /></Dialog>
   </>;
+}
+type HistorySection = Readonly<{key: string; day: Date; entries: readonly Readonly<{entry: PersonalResourceEntry; media: ContentEntry}>[]}>;
+const historySectionKey = (section: HistorySection) => section.key;
+/** The accepted snapshot transition is the presence source: cleared sections stay for
+ * their authored exit, and surviving sections close the gap through the shared layout
+ * FLIP. Outgoing paint is inert, so no row action or registration can run from it. */
+function HistoryTimeline({bindings, sections, reduced, empty, more}: {bindings: SavedViewBindings; sections: readonly HistorySection[]; reduced: boolean; empty: ReactNode; more: ReactNode}) {
+  const presence = useLayoutPresence(sections, historySectionKey, reduced, 180, 320);
+  const delays = new Map<string, number>();
+  let next = 0;
+  for (const section of presence.present) if (presence.leaving.has(section.key)) for (const row of section.entries) delays.set(row.entry.id, next++ * 40);
+  return <div ref={presence.root} className={styles.historyRoster} data-reduced-motion={reduced || undefined}>
+    {presence.present.map(section => {
+      const leaving = presence.leaving.has(section.key);
+      return <section key={section.key} className={styles.historyDay} data-layout-item={section.key} data-leaving={leaving || undefined} inert={leaving} aria-hidden={leaving || undefined}>
+        <h2>{historyDayLabel(section.day)}</h2>
+        {section.entries.map(({entry, media}) => <div key={entry.id} className={styles.historyItem} data-leaving={leaving || undefined}
+          style={leaving ? {transitionDelay: `${delays.get(entry.id) ?? 0}ms`} : undefined}><HistoryRow bindings={bindings} entry={entry} media={media} /></div>)}
+      </section>;
+    })}
+    {empty}
+    {more}
+  </div>;
 }
 /** The drawn row names what was played: an episode leads with its code and title,
  * a song with its artist and album, a film with its kind and year, a book with its author. */
