@@ -338,3 +338,61 @@ test('channel anchors preserve the complete actual source mapping without guessi
  const entries=await read({...base,...tuple,token:'private',url:'https://private.invalid'});
  assert.deepEqual(entries[0].navigation,{...base,...tuple});
 });
+
+test('offered group continuations preserve parent All facts and never record another history intent',async()=>{
+ const paths:string[]=[];
+ const s=service(async path=>{
+  paths.push(path);const raw=result(path),cursor=new URL(path,'https://fixture.invalid').searchParams.get('cursor');
+  raw.groups=raw.groups.map((value:any)=>group(value.id,[cursor?'continued':'first'],cursor||value.id==='live-tv'?'':value.id+'-next'));
+  return raw;
+ });
+ let child:SearchService|undefined;
+ try{
+  assert.equal(s.forkContinuation('movies'),undefined);
+  await s.select('harbor',{record:true});const shown=s.getSnapshot();
+  assert.equal(s.forkContinuation('live-tv'),undefined);
+  child=s.forkContinuation('movies');assert.ok(child);
+  await child.next('movies');
+  assert.equal(s.getSnapshot(),shown);
+  assert.equal(child.getSnapshot().pagination.cursor,'movies-next');
+  assert.equal(child.getSnapshot().groups[0].items[0].id,'continued');
+  assert.equal(new URL(paths[0],'https://fixture.invalid').searchParams.get('record'),'1');
+  assert.equal(new URL(paths[1],'https://fixture.invalid').searchParams.get('record'),null);
+  assert.equal(new URL(paths[1],'https://fixture.invalid').searchParams.get('group'),'movies');
+ }finally{child?.dispose();s.dispose();}
+});
+
+test('continuation children own independent cancellation and keep the original viewer fence',async()=>{
+ const pending=new Map<string,{resolve:(value:unknown)=>void;path:string;signal?:AbortSignal}>();
+ const s=service(async(path,signal)=>{
+  const url=new URL(path,'https://fixture.invalid');
+  if(url.searchParams.has('cursor'))return new Promise(resolve=>pending.set(url.searchParams.get('group')!,{resolve,path,signal}));
+  const raw=result(path);raw.groups=raw.groups.map((value:any)=>group(value.id,['first'],value.id+'-next'));return raw;
+ });
+ let movies:SearchService|undefined,shows:SearchService|undefined;
+ try{
+  await s.select('harbor');const shown=s.getSnapshot();movies=s.forkContinuation('movies');shows=s.forkContinuation('shows');assert.ok(movies);assert.ok(shows);
+  const first=movies.next('movies'),second=shows.next('shows');
+  movies.dispose();assert.equal(pending.get('movies')?.signal?.aborted,true);assert.equal(pending.get('shows')?.signal?.aborted,false);
+  const movie=pending.get('movies')!,show=pending.get('shows')!;
+  movie.resolve(result(movie.path,{groups:[group('movies',['late'])]}));
+  show.resolve(result(show.path,{groups:[group('shows',['arrived'])]}));
+  await Promise.all([first,second]);assert.equal(s.getSnapshot(),shown);assert.equal(shows.getSnapshot().groups[0].items[0].id,'arrived');
+ }finally{movies?.dispose();shows?.dispose();s.dispose();}
+});
+
+test('continuation forks reject unoffered cursors and revalidate a changed viewer fence',async()=>{
+ const paths:string[]=[];
+ const s=service(async path=>{
+  paths.push(path);const raw=result(path),cursor=new URL(path,'https://fixture.invalid').searchParams.has('cursor');
+  raw.groups=raw.groups.map((value:any)=>group(value.id,['one'],value.id==='movies'?'movies-next':''));
+  if(cursor)raw.scope.viewerFence='changed-fence';return raw;
+ });
+ let child:SearchService|undefined;
+ try{
+  await s.select('harbor');const shown=s.getSnapshot();assert.equal(s.forkContinuation('shows'),undefined);
+  child=s.forkContinuation('movies');assert.ok(child);await child.next('movies');
+  assert.equal(paths.length,3);assert.equal(new URL(paths[2],'https://fixture.invalid').searchParams.has('cursor'),false);
+  assert.equal(s.getSnapshot(),shown);assert.equal(child.getSnapshot().pagination.cursor,null);
+ }finally{child?.dispose();s.dispose();}
+});
