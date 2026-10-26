@@ -283,3 +283,18 @@ test('Root67 currentness reentrancy immediately before dispatch keeps the succes
     assert.deepEqual(sent, ['successor']); assert.equal(controller.getSnapshot().session?.itemId, 'successor');
   } finally {controller.dispose();}
 });
+
+test('Root67 an opening retired during a real 201 reaches cleanup instead of adoption', async () => {
+  const c = clock(), engine = player(), methods: string[] = []; let current = true;
+  const controller = new PlaybackSessionController({timers: c.timers, player: engine.port, key: () => 'original_key_0000023',
+    http: {send: async request => {
+      methods.push(request.method);
+      if (request.method === 'DELETE') return {status: 204, headers: {}};
+      current = false; return reply(real(), 201);
+    }}});
+  try {
+    assert.equal(await controller.start({itemId: 'movie'}, {}, undefined, {isCurrent: () => current}), undefined);
+    assert.deepEqual(methods, ['POST', 'DELETE']); assert.equal(engine.loads.length, 0);
+    assert.equal(controller.getSnapshot().session, undefined);
+  } finally {controller.dispose();}
+});

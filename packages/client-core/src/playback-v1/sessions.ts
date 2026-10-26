@@ -349,9 +349,9 @@ export class PlaybackSessionController {
     try {
       const session = await this.client.start(originalTarget, body, this.key(), {signal,
         isCurrent: () => admitted() && token === this.startToken && !this.disposed,
-        onPreparing: () => { if (token === this.startToken) this.publish({phase: 'preparing'}); },
+        onPreparing: () => { if (admitted() && token === this.startToken && !this.disposed) this.publish({phase: 'preparing'}); },
         capturePreparing});
-      if (token !== this.startToken || this.disposed || signal?.aborted) {
+      if (!admitted() || token !== this.startToken || this.disposed) {
         // The request may have created a session even though its caller moved on.
         if (this.state.session?.id !== session.id || this.disposed) await this.client.stop(session.id).catch(() => {});
         return undefined;
@@ -363,7 +363,7 @@ export class PlaybackSessionController {
       this.adopt(session, originalOptions.state !== 'paused');
       return session;
     } catch (e) {
-      if (token === this.startToken) this.publish({phase: 'error', error: e as Error});
+      if (admitted() && token === this.startToken && !this.disposed) this.publish({phase: 'error', error: e as Error});
       throw e;
     }
   }
