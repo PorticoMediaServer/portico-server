@@ -5,6 +5,7 @@ import {Button, TextField} from '../../kit/controls';
 import {AuthStage} from '../../kit/accounts/AuthStage';
 import {ServicesStrength} from '../../kit/accounts/ServicesAuth';
 import {Icon} from '../../kit/Icon';
+import {addressSetupFailure, unavailableSetupFailure} from '../../platform/setup-failure.ts';
 import {SetupFlow, type SetupPorts, type SetupSnapshot} from './setup-flow';
 import {libraryKindDescription, localPasswordValid, setupLibraryKinds, setupNameValid, setupSteps, validLocalUsername} from './setup-model';
 import styles from './setup.module.css';
@@ -29,16 +30,41 @@ export function SetupScreen({ports}: {ports: SetupPorts}) {
 function SetupBody({flow}: {flow: SetupFlow}) {
   const state = useSyncExternalStore(flow.subscribe, flow.getSnapshot);
   const local = state.mode === 'local';
+  // The panel belongs to the exact failure this render shows, never a later one.
+  const errorFailure = state.phase === 'error' ? state.failure : undefined;
+  const addressFailure = errorFailure && addressSetupFailure(errorFailure) ? errorFailure : undefined;
+  const servicesFailure = errorFailure && unavailableSetupFailure(errorFailure) ? errorFailure : undefined;
   const steps = setupSteps({serverName: state.serverName, mode: state.mode, phase: state.phase === 'library' ? 'library' : 'form', local});
   return <div className={styles.host}>
     {state.phase === 'library' ? <FirstLibrary flow={flow} state={state}/> : <AuthStage legal={false} contentClassName={state.phase === 'form' ? styles.content : styles.contentLibrary}>
       {state.phase === 'loading' && <p className={styles.lede} role="status">{t('web.setup.preparing')}</p>}
       {state.phase === 'waiting' && <p className={styles.lede} role="status">{t('web.setup.preparing')}</p>}
-      {state.phase === 'error' && <>
+      {state.phase === 'error' && (addressFailure ? <>
+        <p className={styles.error} role="alert"><Icon name="i-warn" size={20}/>{t('web.setup.notOnNetwork')}</p>
+        <div className={styles.field}><TextField variant="auth" label={t('web.general.serverName')} value={state.name || state.serverName} readOnly/></div>
+        <Button variant="primary" size="hero" disabled>{t('accounts.signIn.handoff')}</Button>
+      </> : servicesFailure ? <>
+        <p className={styles.error} role="alert"><Icon name="i-clock" size={20}/>{t('web.setup.servicesUnavailableBody')}</p>
+        <div className={styles.btnRow}>
+          {servicesFailure.retry && <Button variant="primary" size="hero" loading={state.busy} disabled={state.busy}
+            onClick={() => void flow.retryFailure(servicesFailure)}>{t('action.tryAgain')}</Button>}
+          {servicesFailure.useLocal && <Button variant="glass" size="hero" disabled={state.busy}
+            onClick={() => void flow.useLocalFailure(servicesFailure)}>{t('web.setup.localSignIn')}</Button>}
+        </div>
+      </> : errorFailure ? <>
+        <h1>{t('web.setup.welcome')}</h1>
+        {state.error && <p className={styles.error} role="alert"><Icon name="i-warn" size={20}/>{state.error}</p>}
+        {(errorFailure.retry || errorFailure.useLocal) && <div className={styles.btnRow}>
+          {errorFailure.retry && <Button variant="primary" size="hero" loading={state.busy} disabled={state.busy}
+            onClick={() => void flow.retryFailure(errorFailure)}>{t('action.tryAgain')}</Button>}
+          {errorFailure.useLocal && <Button variant="glass" size="hero" disabled={state.busy}
+            onClick={() => void flow.useLocalFailure(errorFailure)}>{t('web.setup.localSignIn')}</Button>}
+        </div>}
+      </> : <>
         <h1>{t('web.setup.welcome')}</h1>
         {state.error && <p className={styles.error} role="alert"><Icon name="i-warn" size={20}/>{state.error}</p>}
         <Button variant="primary" size="hero" onClick={() => void flow.retry()}>{t('action.tryAgain')}</Button>
-      </>}
+      </>)}
       {state.phase === 'form' && <SetupForm flow={flow} state={state} local={local}/>}
     </AuthStage>}
     {state.phase === 'form' || state.phase === 'library' ? <SetupSteps steps={steps} label={t('web.setup.stepsLabel')}/> : null}

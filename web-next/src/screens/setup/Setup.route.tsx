@@ -20,7 +20,7 @@ function SetupRoute() {
     const current = () => live && opening.pathname === '/setup' && router.state.location === opening;
     if (!current()) return;
     const origin = location.origin;
-    const lifetime = new BrowserSetupComposition(browserAccountOrigin(import.meta.env, location));
+    const lifetime = new BrowserSetupComposition(browserAccountOrigin(import.meta.env, location), undefined, undefined, current);
     const base = createBrowserSetupPorts({origin: () => origin, draft: browserSetupDraft, acceptLocal: lifetime.acceptLocal,
       continueHosted: lifetime.continueHosted, resumeHosted: lifetime.resumeHosted, addLibrary: lifetime.addLibrary, libraryFolders: lifetime.libraryFolders,
       complete: () => {if (current()) void router.navigate({to: '/', replace: true});}});

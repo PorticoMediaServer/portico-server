@@ -2,7 +2,7 @@ import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createPrivateKey, randomUUID, sign} from 'node:crypto';
-import {BrowserSetupClaim} from '../src/platform/setup-claim.ts';
+import {BrowserSetupClaim, type SetupClaimRecovery} from '../src/platform/setup-claim.ts';
 import {HttpLocalApi, transportJSON, type LocalSession} from '@core/index.ts';
 import {AppSessionStore, type AppSessionRecord} from '@core/app-sessions.ts';
 import {setInstallationIdentity} from '@core/installation.ts';
@@ -43,7 +43,7 @@ async function fixture(t: TestContext, origin = original.address) {
     ...(prepared ? {operation: {...expected, revision: installed ? '5' : expected.revision}, accountId: 'account-unbound',
       approvalRequest: {purpose: 'setup', currentOwnerAccountId: '', previousOwnerRole: '', returnRegistrationId: '', operationId: expected.operationId, serverId: pin.serverId,
         publicKey: pin.publicKey, localGeneration: expected.localGeneration, name: original.name, expectedRevision: expected.revision}} : {}),
-    installationAcknowledged: installed, approvalRequired: !installed, actions: prepared ? ['cancel', installed ? 'continue' : 'approve'] : ['prepare'],
+    installationAcknowledged: installed, approvalRequired: prepared && !installed, actions: prepared ? ['cancel', installed ? 'continue' : 'approve'] : ['prepare'],
     ...(installed ? {setupContinuation: {transactionId, phase: cancelled ? 'cancelled' : 'installed', expiresAt: handoff!.expiresAt, returnRegistration: registration}} : {})});
   const fetcher: typeof fetch = async (input, init) => {
     const path = new URL(String(input)).pathname, body = init?.body ? JSON.parse(String(init.body)) : undefined;
@@ -148,4 +148,40 @@ test('setup admission expiry removes only its new family',async t=>{
  const f=await fixture(t);await f.prepare();f.install();
  const flow=new BrowserSetupClaim({...f.ports,remember:async(...args)=>{await rememberNativeSession(...args);f.expire();}});
  await assert.rejects(flow.finish(f.callback));assert.deepEqual(f.retired,[f.nextSession.sessionFamilyId]);assert.equal(await f.sessions.selected(),undefined);assert.ok(f.draft());
+});
+
+// Auth1d accepting-recovery source vectors; intentionally not run per item.
+async function recovery(t: TestContext) {
+ const f=await fixture(t);let receipt:SetupClaimRecovery|undefined,live=true;
+ const abort=new AbortController(),draft=f.draft()!;
+ await f.flow.prepare(f.api,original.audience,{
+  setup:{serverId:draft.serverId,requestId:draft.requestId,authMode:'hosted',claimRequired:true,revision:'2'},
+  signal:abort.signal,isCurrent:()=>live,assertOriginal:async()=>{if(!live)throw new Error('retired original opening');},capture:value=>{receipt=value;},
+ });
+ assert.ok(receipt);
+ return {...f,receipt,retire:()=>{live=false;abort.abort();}};
+}
+test('local recovery cancels only the original prepared claim and keeps its setup proof',async t=>{
+ const f=await recovery(t),draft=f.draft();
+ await f.receipt.useLocal();
+ const commands=f.sent.filter(value=>value.path.endsWith('/cancel'));
+ assert.equal(commands.length,1);assert.deepEqual(commands[0].body,{expected:f.expected});
+ assert.equal(commands[0].authorization,'Bearer actual-protected-setup-secret');
+ assert.equal(f.pending(),undefined);assert.deepEqual(f.draft(),draft);
+ const before=f.sent.length;await assert.rejects(f.receipt.useLocal());assert.equal(f.sent.length,before);
+});
+for(const replacement of ['draft','selection','expiry','opening','installed'] as const) test('local recovery refuses '+replacement+' without cancelling a successor',async t=>{
+ const f=await recovery(t);
+ if(replacement==='draft')f.replaceDraft();if(replacement==='selection')f.replaceSelection();if(replacement==='expiry')f.expire();
+ if(replacement==='opening')f.retire();if(replacement==='installed')f.install();
+ const pending=f.pending();await assert.rejects(f.receipt.useLocal());
+ assert.equal(f.sent.some(value=>value.path.endsWith('/cancel')),false);assert.equal(f.pending(),pending);assert.ok(f.draft());
+});
+test('a lost cancel response never clears the private receipt or borrows a new cancel target',async t=>{
+ const f=await recovery(t),pending=f.pending(),draft=f.draft();
+ f.hook(async path=>{if(path.endsWith('/cancel'))throw new Error('lost original cancel result');});
+ await assert.rejects(f.receipt.useLocal());
+ assert.equal(f.pending(),pending);assert.deepEqual(f.draft(),draft);
+ await assert.rejects(f.receipt.useLocal());
+ assert.equal(f.sent.filter(value=>value.path.endsWith('/cancel')).length,1);assert.equal(f.pending(),pending);
 });
