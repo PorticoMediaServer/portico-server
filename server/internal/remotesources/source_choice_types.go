@@ -86,6 +86,12 @@ func sourceChoiceSchema(t reflect.Type) map[string]any {
 	if _, ok := props["reading"]; ok {
 		reading, _ := apikit.Schema(reflect.TypeFor[SourceReadValues]())
 		if values, ok := reading["properties"].(map[string]any); ok {
+			// Consent is not a preset value. The retained legacy field is inert
+			// compatibility data in this definition, never an editable row.
+			delete(values, "allowAdvancedMediaAnalysis")
+			if legacy, ok := values["wholeFileReads"].(map[string]any); ok {
+				legacy["const"] = false
+			}
 			if depth, ok := values["scanDepth"].(map[string]any); ok {
 				depth["enum"] = []string{"file_list_only", "basic", "complete"}
 			}
