@@ -5,6 +5,7 @@ import type {QueueAdvanceMode, QueuePostPlay} from './post-play.ts';
 import type {PreparedChoice} from './prepared-media.ts';
 import type {PlaybackChoices} from './playback-v1/choices.ts';
 import type {QueueIntent, QueueItemInput, QueueSnapshot, QueueState} from './queues.ts';
+import type {StartPreparation} from './playback-v1/sessions.ts';
 
 /** Wire-authored facts for one accepted loaded window. Missing facts stay
  * unknown; positions are never indexes in a filtered or gapped row array. */
@@ -20,7 +21,7 @@ export type QueuePlaybackView=Readonly<{window?:QueuePlaybackWindow;queue:QueueS
 /** A completion the player holds for the post-play card instead of advancing. */
 export type HeldCompletion=Readonly<{sessionId:string;intentId:number;nextEntryId:string|null;nextAvailable:boolean;reason:'ready'|'end'|'unavailable';postPlay:QueuePostPlay}>;
 export type CompletionPolicy=(context:Readonly<{kind:string;itemId:string}>)=>'advance'|'hold';
-export type QueuePlayerState=Readonly<{phase:'loading'|'ready'|'preparing'|'recovery-required'|'error'|'disposed';view:QueuePlaybackView|null;error:string|null;completion:HeldCompletion|null}>;
+export type QueuePlayerState=Readonly<{phase:'loading'|'ready'|'preparing'|'recovery-required'|'error'|'disposed';view:QueuePlaybackView|null;error:string|null;completion:HeldCompletion|null;preparation?:StartPreparation}>;
 /** The Up Next edits a player accepts (a queue workspace). */
 export type QueueWorkspaceService=Readonly<{getSnapshot():QueueState;subscribe(listener:()=>void):()=>void;mutate(intent:QueueIntent):Promise<void>}>;
 

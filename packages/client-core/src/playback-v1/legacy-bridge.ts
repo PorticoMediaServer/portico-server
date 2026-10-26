@@ -71,7 +71,7 @@ export class V1PlaybackApi implements PlaybackApi {
 
   /** Starts a session and returns it in the service's shape; the session is then tracked. */
   async start(target: StartTarget, options: StartOptions, key: string = this.key(), durationSeconds?: number, signal?: AbortSignal,
-    context: Pick<StartContext, 'isCurrent' | 'capturePreparing'> = {}): Promise<{session: Session; playback: PlaybackSession}> {
+    context: Pick<StartContext, 'isCurrent' | 'capturePreparing' | 'onPreparing'> = {}): Promise<{session: Session; playback: PlaybackSession}> {
     const session = await this.sessions.start(target, options, key, {...context, signal});
     return {session, playback: this.adopt(session, session.discTitle
       ? await this.duration(session.itemId ?? '', session.versionId, signal, session.discTitle)
