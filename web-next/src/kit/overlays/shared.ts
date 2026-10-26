@@ -117,17 +117,52 @@ export function useSurfaceMotion(open: boolean, kind: 'dialog' | 'menu' | 'panel
     const reduced = prefersReduced || window.matchMedia('(prefers-reduced-motion: reduce)').matches || !!element.closest('[data-reduce-motion="true"]') || document.documentElement.dataset.reduceMotion === 'true';
     const style = getComputedStyle(element), entering = open;
     const initialTransform = kind === 'dialog' ? 'scale(.98)' : kind === 'menu' ? 'translateY(-4px) scale(.98)' : kind === 'panel' ? 'translateX(24px)' : kind === 'toast' ? 'translateY(24px)' : 'none';
-    const from = {opacity: first.current && entering ? 0 : Number(style.opacity), transform: reduced ? 'none' : first.current && entering ? initialTransform : style.transform};
+    // A menu enters from the side the content currently reports. Radix writes data-side when the
+    // positioner resolves, so the first frame may still carry the requested side; the observation
+    // below retargets the entrance if the resolved pose arrives different.
+    const menuEntry = () => element.dataset.side === 'top' ? 'translateY(4px) scale(.98)' : 'translateY(-4px) scale(.98)';
+    const entryTransform = kind === 'menu' ? menuEntry() : initialTransform;
+    const from = {opacity: first.current && entering ? 0 : Number(style.opacity), transform: reduced ? 'none' : first.current && entering ? entryTransform : style.transform};
     animation.current?.cancel(); first.current = false;
-    const targetTransform = reduced || entering ? 'none' : exitTransform?.current ?? (kind === 'panel' ? initialTransform : from.transform);
+    // Menus and side panels leave from their settled pose on opacity alone. A caller that
+    // publishes its own exit target (toasts, banners) still wins; the rest keep their painted one.
+    const targetTransform = reduced || entering ? 'none' : exitTransform?.current ?? from.transform;
     const current = element.animate([from, {opacity: entering ? 1 : 0, transform: targetTransform}], {duration: reduced ? reducedMotion.durationMs : entering ? motion.standard : motion.quick, easing: entering ? easings.out : easings.in, fill: 'both'});
     animation.current = current;
+    // The entry pose is normalised to the two poses a menu can actually occupy: a missing
+    // data-side is the default bottom pose, so the first resolution to bottom is not a change.
+    const pose = () => element.dataset.side === 'top' ? 'top' : 'bottom';
+    const entryPose = pose();
+    let sideObserver: MutationObserver | undefined;
     current.onfinish = () => {
       if (animation.current !== current) return;
+      sideObserver?.disconnect();
       element.style.opacity = entering ? '1' : '0'; element.style.transform = targetTransform;
       current.cancel(); animation.current = null;
     };
-    return () => { /* The next run reads the painted value before cancelling. */ };
+    // Only a menu whose resolved pose arrives after its first frame is retargeted, and only when
+    // the pose really changed; nothing here infers a side from the viewport, and focus and pointer
+    // behaviour are untouched. The observation ends with the entry, the retarget or the cleanup.
+    if (kind === 'menu' && entering) {
+      sideObserver = new MutationObserver(() => {
+        if (animation.current !== current || pose() === entryPose) return;
+        sideObserver?.disconnect();
+        // Read what is actually painted before cancelling, so the late flip continues from the
+        // current frame instead of restarting from transparent.
+        const painted = getComputedStyle(element);
+        const fromPose = {opacity: Number(painted.opacity), transform: reduced ? 'none' : painted.transform};
+        current.cancel();
+        const replay = element.animate([fromPose, {opacity: 1, transform: 'none'}],
+          {duration: reduced ? reducedMotion.durationMs : motion.standard, easing: easings.out, fill: 'both'});
+        animation.current = replay;
+        replay.onfinish = () => {
+          if (animation.current !== replay) return;
+          element.style.opacity = '1'; element.style.transform = 'none'; replay.cancel(); animation.current = null;
+        };
+      });
+      sideObserver.observe(element, {attributes: true, attributeFilter: ['data-side']});
+    }
+    return () => {sideObserver?.disconnect(); /* The next run reads the painted value before cancelling. */};
   }, [element, open, kind, exitTransform, prefersReduced]);
   useEffect(() => () => animation.current?.cancel(), []);
   return setElement;
