@@ -1,4 +1,4 @@
-import {type ReactNode, useEffect, useState, useSyncExternalStore} from 'react';
+import {type ReactNode, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import type {LibraryContentApi} from '@core/library-content.ts';
 import {ConsoleClient} from '@core/console.ts';
@@ -8,11 +8,10 @@ import {errorMessage} from '@core/presentation/errors.ts';
 import {Button, Tabs} from '../../../kit/controls';
 import {Dialog} from '../../../kit/overlays';
 import {LiveSourceController, type OwnerLiveSource} from './source-controller';
-import {RemoteSourceController} from './remote-source-controller';
-import {UploadSourceController} from './upload-source-controller';
 import {RemoteSourceDialog} from './RemoteSourceDialog';
 import {UploadSourceDialog} from './UploadSourceDialog';
 import {DiscoverTuners} from './DiscoverTuners';
+import {openingActionAllowed, sourceAdmissionAllowed} from './dialog-lifetime';
 import {SourceList} from './SourceList';
 import {LiveDefaults} from './LiveDefaults';
 import {SourceSettingsController} from '../../settings/server-livetv/source-settings-controller';
@@ -29,9 +28,14 @@ import {RecordingRootController} from '../../settings/server-livetv/recording/ro
 import {RecordingPage} from '../../settings/server-livetv/recording/RecordingPage';
 import styles from './owner.module.css';
 const t = defaultI18n.t;
-type Modal = {kind: 'remote'; controller: RemoteSourceController} | {kind: 'upload'; controller: UploadSourceController} | {kind: 'discover'} |
+type OpeningToken = {live: boolean};
+type OpeningModal = {kind: 'remote'; id: string; token: OpeningToken; tuner?: string; close: () => void; saved: () => void} |
+  {kind: 'upload'; id: string; token: OpeningToken; close: () => void; saved: () => void} |
+  {kind: 'discover'; id: string; token: OpeningToken; close: () => void; useTuner: (tuner: string) => void};
+type Modal = OpeningModal |
   {kind: 'settings'; source: OwnerLiveSource; controller: SourceSettingsController; choices: {groups: SourceChoicesController; channels: SourceChoicesController}} |
   {kind: 'channels'; source: OwnerLiveSource; controller: ChannelMapController} | {kind: 'remove'; source: OwnerLiveSource};
+const isOpening = (modal: Modal | undefined): modal is OpeningModal => modal?.kind === 'remote' || modal?.kind === 'upload' || modal?.kind === 'discover';
 export type OwnerSourcesOptions = Readonly<{api: LibraryContentApi; serverId: string; viewerId: string; isCurrent: () => boolean; reportError: (error: unknown) => void}>;
 /** Constructed only by the mounted owner admission. Every child captures that
  * same lifetime; replacing the identity retires all reads and private drafts. */
@@ -65,43 +69,111 @@ export function OwnerSourcesPage({source, libraryChannels}: {source: OwnerSource
   const defaults = useSyncExternalStore(source.defaults.subscribe, source.defaults.getSnapshot, source.defaults.getSnapshot);
   const active = useSyncExternalStore(source.subscribe, source.current, () => false);
   const [modal, setModal] = useState<Modal>(), [tab, setTab] = useState('sources');
-  useEffect(() => {void source.sources.load();void source.defaults.load();return () => source.dispose();}, [source]);
+  // Every actual selection is its own opening: a same-tick cancel/reopen of the same kind must not
+  // reuse the spent layout effect, so the id keys each dialog and travels with its lease. The
+  // parent mints the live token in the event and retires it synchronously before the child can act.
+  const openings = useRef(0), modalRef = useRef<Modal | undefined>(undefined), loadedSource = useRef<object | undefined>(undefined);
+  const [sourceAdmission, setSourceAdmission] = useState<Readonly<{token: object; source: OwnerSources}>>();
+  const sourceToken = useRef<object | undefined>(undefined);
+  const nextOpening = () => `live-source-opening-${++openings.current}`;
+  const admittedSource = sourceAdmission && sourceAdmission.source === source && sourceToken.current === sourceAdmission.token ? sourceAdmission : undefined;
+  const sourceCurrent = () => sourceAdmissionAllowed(admittedSource, sourceToken.current, source) && source.current();
+  useLayoutEffect(() => {
+    const token = {};
+    sourceToken.current = token;
+    setSourceAdmission({token, source});
+    return () => {
+      const current = modalRef.current;
+      if (current && isOpening(current)) current.token.live = false;
+      modalRef.current = undefined;setModal(undefined);
+      if (sourceToken.current === token) sourceToken.current = undefined;
+      setSourceAdmission(current => current?.token === token ? undefined : current);
+    };
+  }, [source]);
+  const retireOpening = (value: Modal | undefined) => {if (isOpening(value)) value.token.live = false;};
+  const replaceModal = (next: Modal | undefined) => {
+    if (!sourceCurrent()) return;
+    retireOpening(modalRef.current);modalRef.current = next;setModal(next);
+  };
+  const closeExact = (original: Modal) => {
+    if (!sourceCurrent() || modalRef.current !== original || (isOpening(original) && !original.token.live)) return;
+    retireOpening(original);modalRef.current = undefined;setModal(undefined);
+  };
   useEffect(() => {
-    if (!snapshot.document?.refresh.some(row => row.state === 'refreshing')) return;
-    const timer = setTimeout(() => {if (source.current() && document.visibilityState !== 'hidden') void source.sources.load();}, 5000);
+    // The borrowed source is owned and disposed by Settings.route's layout cleanup, never here.
+    const token = admittedSource?.token;
+    if (!token || !sourceCurrent() || loadedSource.current === token) return;
+    loadedSource.current = token;
+    void source.sources.load();void source.defaults.load();
+  }, [source, admittedSource?.token]);
+  useEffect(() => {
+    const exact = admittedSource;
+    const current = () => sourceAdmissionAllowed(exact, sourceToken.current, source) && source.current();
+    if (!exact || !current() || !snapshot.document?.refresh.some(row => row.state === 'refreshing')) return;
+    const timer = setTimeout(() => {if (current() && document.visibilityState !== 'hidden') void source.sources.load();}, 5000);
     return () => clearTimeout(timer);
-  }, [source, snapshot.document]);
-  useEffect(() => () => {if (modal && 'controller' in modal) source.release(modal.controller);if (modal?.kind === 'settings') {source.release(modal.choices.groups);source.release(modal.choices.channels);}}, [modal, source]);
-  if (!active || !source.current()) return null;
-  const close = () => {if (source.current()) setModal(undefined);};
-  const remote = (tuner?: string) => {if (source.current()) setModal({kind: 'remote', controller: source.track(new RemoteSourceController(source.api, source.serverId, source.current, source.reportError, channelRequestID, tuner))});};
-  const saved = () => {if (source.current()) {setModal(undefined);void source.sources.load();}};
+  }, [source, snapshot.document, admittedSource?.token]);
+  useEffect(() => () => {
+    if (modal?.kind === 'settings') {source.release(modal.controller);source.release(modal.choices.groups);source.release(modal.choices.channels);}
+    else if (modal?.kind === 'channels') source.release(modal.controller);
+  }, [modal, source]);
+  if (!active || !sourceCurrent()) return null;
+  const close = () => {if (modal && sourceCurrent()) closeExact(modal);};
+  const openRemote = (tuner?: string) => {
+    if (!sourceCurrent()) return;
+    const token: OpeningToken = {live: true};let opening: Extract<OpeningModal, {kind: 'remote'}>;
+    const closeRemote = () => closeExact(opening);
+    const savedRemote = () => {if (!sourceCurrent() || !openingActionAllowed(opening, modalRef.current)) return;opening.token.live = false;modalRef.current = undefined;setModal(undefined);void source.sources.load();};
+    opening = {kind: 'remote', id: nextOpening(), token, ...(tuner === undefined ? {} : {tuner}), close: closeRemote, saved: savedRemote};
+    replaceModal(opening);
+  };
+  const openUpload = () => {
+    if (!sourceCurrent()) return;
+    const token: OpeningToken = {live: true};let opening: Extract<OpeningModal, {kind: 'upload'}>;
+    const closeUpload = () => closeExact(opening);
+    const savedUpload = () => {if (!sourceCurrent() || !openingActionAllowed(opening, modalRef.current)) return;opening.token.live = false;modalRef.current = undefined;setModal(undefined);void source.sources.load();};
+    opening = {kind: 'upload', id: nextOpening(), token, close: closeUpload, saved: savedUpload};
+    replaceModal(opening);
+  };
+  const openDiscover = () => {
+    if (!sourceCurrent()) return;
+    const token: OpeningToken = {live: true};let opening: Extract<OpeningModal, {kind: 'discover'}>;
+    const closeDiscover = () => closeExact(opening);
+    const useTuner = (tuner: string) => {
+      // The use must belong to this exact discovery opening; open the remote as a new opening.
+      if (!sourceCurrent() || !openingActionAllowed(opening, modalRef.current)) return;
+      opening.token.live = false;modalRef.current = undefined;
+      openRemote(tuner);
+    };
+    opening = {kind: 'discover', id: nextOpening(), token, close: closeDiscover, useTuner};
+    replaceModal(opening);
+  };
   return <>
-    <Tabs value={tab} onValueChange={value => {if (source.current()) {setModal(undefined);setTab(value);}}} aria-label={t('next.settingsSpec.server.live.title')} items={[
+    <Tabs value={tab} onValueChange={value => {if (sourceCurrent()) {replaceModal(undefined);setTab(value);}}} aria-label={t('next.settingsSpec.server.live.title')} items={[
       {value: 'sources', label: t('web.liveTv.sources')}, {value: 'recording', label: t('settings.server.recording')}, ...(libraryChannels ? [{value: 'library-channels', label: t('channels.custom.name')}] : []),
     ]}/>
     {tab === 'library-channels' && libraryChannels ? libraryChannels : tab === 'recording' ? <RecordingPage source={source} sources={snapshot.document?.sources ?? []}/> : <>
     {!!snapshot.error && <p role="alert" className={styles.error}>{errorMessage(snapshot.error)}</p>}
-    <SourceList snapshot={snapshot} refresh={() => void source.sources.load()} add={kind => {
-      if (!source.current()) return;
-      if (kind === 'remote') remote();else if (kind === 'discover') setModal({kind});else setModal({kind, controller: source.track(new UploadSourceController(source.api, source.serverId, source.current, source.reportError))});
+    <SourceList snapshot={snapshot} refresh={() => {if (sourceCurrent()) void source.sources.load();}} add={kind => {
+      if (!sourceCurrent()) return;
+      if (kind === 'remote') openRemote();else if (kind === 'discover') openDiscover();else openUpload();
     }} configure={selected => {
-      if (!source.current()) return;
-      setModal({kind: 'settings', source: selected, controller: source.track(new SourceSettingsController(source.api, source.serverId, selected.id, source.current, source.reportError)), choices: {
+      if (!sourceCurrent()) return;
+      replaceModal({kind: 'settings', source: selected, controller: source.track(new SourceSettingsController(source.api, source.serverId, selected.id, source.current, source.reportError)), choices: {
         groups: source.track(new SourceChoicesController(source.api, selected.id, 'groups', source.current, source.reportError)), channels: source.track(new SourceChoicesController(source.api, selected.id, 'channels', source.current, source.reportError)),
       }});
-    }} channels={selected => {if (source.current()) setModal({kind: 'channels', source: selected, controller: source.track(new ChannelMapController(source.api, source.serverId, selected.id, source.current, source.reportError))});}}
-      act={(selected, action) => {if (!source.current()) return;if (action === 'remove') setModal({kind: 'remove', source: selected});else void source.sources.act(selected, action);}}/>
-    {!!defaults.loadError && <p role="alert" className={styles.error}>{errorMessage(defaults.loadError)}<Button size="small" onClick={() => {if (source.current()) void source.defaults.load();}}>{t('action.tryAgain')}</Button></p>}
+    }} channels={selected => {if (sourceCurrent()) replaceModal({kind: 'channels', source: selected, controller: source.track(new ChannelMapController(source.api, source.serverId, selected.id, source.current, source.reportError))});}}
+      act={(selected, action) => {if (!sourceCurrent()) return;if (action === 'remove') replaceModal({kind: 'remove', source: selected});else void source.sources.act(selected, action);}}/>
+    {!!defaults.loadError && <p role="alert" className={styles.error}>{errorMessage(defaults.loadError)}<Button size="small" onClick={() => {if (sourceCurrent()) void source.defaults.load();}}>{t('action.tryAgain')}</Button></p>}
     {!!defaults.saveError && <p role="alert" className={styles.error}>{errorMessage(defaults.saveError)}</p>}
-    <LiveDefaults form={source.defaults} isCurrent={source.current} failure={source.reportError}/>
+    <LiveDefaults form={source.defaults} isCurrent={sourceCurrent} failure={source.reportError}/>
     </>}
-    {modal?.kind === 'remote' && <RemoteSourceDialog controller={modal.controller} close={close} saved={saved}/>}
-    {modal?.kind === 'upload' && <UploadSourceDialog controller={modal.controller} close={close} saved={saved}/>}
-    {modal?.kind === 'discover' && <DiscoverTuners api={source.api} serverId={source.serverId} isCurrent={source.current} reportError={source.reportError} close={close} onUseTuner={remote}/>}
-    {modal?.kind === 'settings' && <SourceSettingsDialog controller={modal.controller} choices={modal.choices} name={modal.source.name} guides={snapshot.document?.sources ?? []} acquisition={modal.source.acquisition} close={close} changed={() => {if (source.current()) void source.sources.load();}}/>}
+    {modal?.kind === 'remote' && <RemoteSourceDialog key={modal.id} openingId={modal.id} opening={modal.token} api={source.api} serverId={source.serverId} isCurrent={source.current} reportError={source.reportError} tuner={modal.tuner} close={modal.close} saved={modal.saved}/>}
+    {modal?.kind === 'upload' && <UploadSourceDialog key={modal.id} openingId={modal.id} opening={modal.token} api={source.api} serverId={source.serverId} isCurrent={source.current} reportError={source.reportError} close={modal.close} saved={modal.saved}/>}
+    {modal?.kind === 'discover' && <DiscoverTuners key={modal.id} openingId={modal.id} opening={modal.token} api={source.api} serverId={source.serverId} isCurrent={source.current} reportError={source.reportError} close={modal.close} onUseTuner={modal.useTuner}/>}
+    {modal?.kind === 'settings' && <SourceSettingsDialog controller={modal.controller} choices={modal.choices} name={modal.source.name} guides={snapshot.document?.sources ?? []} acquisition={modal.source.acquisition} close={close} changed={() => {if (sourceCurrent() && modalRef.current === modal) void source.sources.load();}}/>}
     {modal?.kind === 'channels' && <ChannelMapDialog controller={modal.controller} name={modal.source.name} close={close}/>}
     {modal?.kind === 'remove' && <Dialog open title={t('web.liveTv.removeTitle', {name: modal.source.name})} description={t('web.liveTv.removeBody')} onOpenChange={open => {if (!open) close();}}
-      footer={<><Button size="small" variant="text" onClick={close}>{t('action.cancel')}</Button><Button size="small" variant="primary" loading={!!snapshot.busy} onClick={() => {if (source.current()) void source.sources.act(modal.source, 'remove').then(ok => {if (ok && source.current()) setModal(value => value === modal ? undefined : value);});}}>{t('web.liveTv.removeSource')}</Button></>}><></></Dialog>}
+      footer={<><Button size="small" variant="text" onClick={close}>{t('action.cancel')}</Button><Button size="small" variant="primary" loading={!!snapshot.busy} onClick={() => {if (sourceCurrent()) void source.sources.act(modal.source, 'remove').then(ok => {if (ok && sourceCurrent()) closeExact(modal);});}}>{t('web.liveTv.removeSource')}</Button></>}><></></Dialog>}
   </>;
 }
