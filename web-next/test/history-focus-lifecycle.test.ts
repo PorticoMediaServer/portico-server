@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {retainLayout} from '../src/kit/layout/retention.ts';
-import {resolveRemovalFocus} from '../src/kit/layout/focus-context.ts';
+import {retainLayout, type LayoutExit, type LayoutRetention} from '../src/kit/layout/retention.ts';
+import {resolveRemovalFocus, type RemovalFocusContext} from '../src/kit/layout/focus-context.ts';
 
 // UNRUN source regression against the public History composition 4af76987.
 // Helper coverage only: the real retention helper and the real removal-focus
@@ -15,8 +15,8 @@ type Row = Readonly<{id: string; label: string}>;
 const row = (id: string, label = id): Row => ({id, label});
 const keyOf = (item: Row) => item.id;
 const scope = Object.freeze({surface: 'history'});
-const base = (live: readonly Row[], exits: ReadonlyMap<string, unknown> = new Map()) =>
-  ({live, present: live, exits, scope} as never);
+const base = (live: readonly Row[], exits: ReadonlyMap<string, LayoutExit<Row>> = new Map()): LayoutRetention<Row> =>
+  ({live, present: live, exits, scope});
 
 test('retention keeps every live row even when more than forty are outgoing', () => {
   const live = Array.from({length: 60}, (_, index) => row('live-' + index));
@@ -69,10 +69,9 @@ test('a cohort keeps its layout slot until the final stagger finishes', () => {
   assert.equal(next.exits.get('b')!.delay, 40);
   assert.equal(next.exits.get('b')!.cohortDeadline, 220, '180 plus one 40 ms stagger');
   assert.deepEqual(next.present.map(item => item.id), ['a', 'b'], 'faded predecessors keep their slots');
-  // After the first row's own deadline but before the cohort finishes, its slot is still present.
   const kept = retainLayout(next, [], keyOf, 200, false, 180, 160,
     {maxRetained: 40, staggerMs: 40, scope});
-  assert.deepEqual(kept.present.map(item => item.id), ['a', 'b']);
+  assert.deepEqual(kept.present.map(item => item.id), ['a', 'b'], 'the slot survives past the first row deadline');
 });
 
 test('a new source scope drops the old paint instead of inheriting it', () => {
@@ -84,68 +83,80 @@ test('a new source scope drops the old paint instead of inheriting it', () => {
   assert.equal(replaced.exits.size, 0, 'a replaced source drops the previous row paint');
 });
 
-// Minimal element fixture: exactly the DOM facts the resolver reads.
+// Element fixture. The object is structural and is cast exactly once at the
+// HTMLElement boundary; the helper API keeps its real types above this line.
 const primary = '[data-layout-primary],button:not(:disabled),a[href],[tabindex="0"]';
-type Node = ReturnType<typeof node>;
-function node(id: string, options: {rects?: number; visibility?: string; disabled?: boolean; tabindex?: boolean; connected?: boolean} = {}) {
+type Fixture = Readonly<{element: HTMLElement; state: {focused: boolean; isConnected: boolean; visibility: string}}>;
+const members = new Set<object>();
+let rootElement: HTMLElement;
+
+function node(id: string, options: {rects?: number; visibility?: string; disabled?: boolean; tabindex?: boolean; connected?: boolean; inRoot?: boolean} = {}): Fixture {
+  const state = {focused: false, isConnected: options.connected ?? true, visibility: options.visibility ?? 'visible'};
   const value = {
-    id, focused: false, isConnected: options.connected ?? true,
-    visibility: options.visibility ?? 'visible',
-    matches: (selector: string) => selector === primary && options.disabled !== true ? true : selector === primary ? false : false,
+    id, state,
+    get isConnected() {return state.isConnected;},
+    matches: (selector: string) => selector === primary && options.disabled !== true,
     hasAttribute: (name: string) => name === 'tabindex' && options.tabindex !== false,
     querySelectorAll: () => [] as unknown[],
     closest: () => null,
     getClientRects: () => Array(options.rects ?? 1).fill({}),
     getAttribute: (name: string) => name === 'aria-disabled' && options.disabled ? 'true' : null,
-    contains: (candidate: {isConnected?: boolean}) => candidate.isConnected !== false,
-    focus() {value.focused = true;},
+    focus() {state.focused = true;},
   };
-  return value;
+  if (options.inRoot !== false) members.add(value);
+  const element = value as unknown as HTMLElement;
+  (value as unknown as {element: HTMLElement}).element = element;
+  return {element, state};
 }
 
 const root = node('root');
+rootElement = root.element;
+Object.defineProperty(root.element, 'contains', {value: (candidate: object) => members.has(candidate as object)});
+
 const originalStyle = (globalThis as unknown as {getComputedStyle?: unknown}).getComputedStyle;
 test.after(() => {
   if (originalStyle === undefined) delete (globalThis as unknown as {getComputedStyle?: unknown}).getComputedStyle;
   else (globalThis as unknown as {getComputedStyle: unknown}).getComputedStyle = originalStyle;
 });
+(globalThis as unknown as {getComputedStyle: (value: {state?: {visibility?: string}}) => {visibility: string}}).getComputedStyle =
+  value => ({visibility: value?.state?.visibility ?? 'visible'});
 
-function context(order: Node[], surviving: Node[], sectionStarts: Node[] = []) {
-  (globalThis as unknown as {getComputedStyle: (value: {visibility?: string}) => {visibility: string}}).getComputedStyle =
-    value => ({visibility: value.visibility ?? 'visible'});
-  return {root, order, surviving, sectionStarts} as never;
-}
+const focusContext = (order: Fixture[], surviving: Fixture[], sectionStarts: Fixture[] = []): RemovalFocusContext =>
+  ({root: rootElement, order: order.map(item => item.element), surviving: surviving.map(item => item.element),
+    sectionStarts: sectionStarts.map(item => item.element)});
 
 test('removal focus goes to the next surviving row, then the previous one', () => {
   const [a, b, c] = [node('a'), node('b'), node('c')];
-  assert.equal(resolveRemovalFocus(context([a, b, c], [a, c]), b as never).element, c, 'next surviving row');
-  assert.equal(resolveRemovalFocus(context([a, b, c], [a, b]), c as never).element, b, 'previous when the last row goes');
+  assert.equal(resolveRemovalFocus(focusContext([a, b, c], [a, c]), b.element).element, c.element, 'next surviving row');
+  assert.equal(resolveRemovalFocus(focusContext([a, b, c], [a, b]), c.element).element, b.element, 'previous when the last row goes');
 });
 
 test('an outgoing row is never a legal target, and a same-key successor is not confused with it', () => {
   const [a, b] = [node('a'), node('b')];
   const successor = node('b');
-  const target = resolveRemovalFocus(context([a, b, successor], [a, successor]), b as never);
-  assert.equal(target.element, successor, 'the captured identity decides, not the key');
-  assert.notEqual(target.element, b);
+  const target = resolveRemovalFocus(focusContext([a, b, successor], [a, successor]), b.element);
+  assert.equal(target.element, successor.element, 'the captured identity decides, not the key');
+  assert.notEqual(target.element, b.element);
+});
+
+test('a connected node outside the captured root is refused by the root bound', () => {
+  const a = node('a');
+  const foreign = node('foreign', {inRoot: false});
+  assert.equal(resolveRemovalFocus(focusContext([a, foreign], [foreign]), a.element).kind, 'region');
 });
 
 test('a surviving section start is used before any region fallback, and an empty context returns none', () => {
   const a = node('a');
   const section = node('section');
-  assert.equal(resolveRemovalFocus(context([a], [], [section]), a as never).kind, 'section');
-  assert.equal(resolveRemovalFocus(context([a], [], []), a as never).kind, 'region');
-  assert.equal(resolveRemovalFocus({root, order: [], surviving: [], sectionStarts: []} as never, node('detached') as never).kind, 'none');
+  assert.equal(resolveRemovalFocus(focusContext([a], [], [section]), a.element).kind, 'section');
+  assert.equal(resolveRemovalFocus(focusContext([a], []), a.element).kind, 'region');
+  assert.equal(resolveRemovalFocus({root: rootElement, order: [], surviving: [], sectionStarts: []}, node('detached').element).kind, 'none');
 });
 
-test('a non-eligible survivor is skipped instead of stealing focus', () => {
+test('a disconnected or hidden survivor is skipped instead of stealing focus', () => {
   const a = node('a');
-  const hidden = node('hidden', {connected: false});
-  assert.equal(resolveRemovalFocus(context([a, hidden], [hidden]), a as never).kind, 'region');
-});
-
-test('a hidden-but-connected survivor is skipped by its own visibility fact', () => {
-  const a = node('a');
+  const gone = node('gone', {connected: false});
   const invisible = node('invisible', {visibility: 'hidden'});
-  assert.equal(resolveRemovalFocus(context([a, invisible], [invisible]), a as never).kind, 'region');
+  assert.equal(resolveRemovalFocus(focusContext([a, gone], [gone]), a.element).kind, 'region');
+  assert.equal(resolveRemovalFocus(focusContext([a, invisible], [invisible]), a.element).kind, 'region');
 });
