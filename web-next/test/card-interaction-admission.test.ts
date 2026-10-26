@@ -120,3 +120,13 @@ test('committed owner replacement withholds the old receipt before successor cap
   assert.equal(first.live, false);assert.notEqual(second.source.owner, first.source.owner);
   assert.equal(second.current(), true);assert.deepEqual(f.paint, [true, false]);binding.release();f.owner.dispose();otherOwner.dispose();
 });
+
+test('subtree retirement snapshots original receipts before any reentrant replacement', () => {
+  const f = fixture(), root = new Node(), other = new Node();root.children.push(f.node, other);
+  const first = f.source.capture(f.node.element)!, oldOther = f.source.capture(other.element)!;
+  let successor: ReturnType<typeof f.source.capture>;
+  first.onRetire(() => {successor = f.source.capture(other.element);});
+  retireCardInteractions(root.element);
+  assert.equal(first.live, false);assert.equal(oldOther.live, false);
+  assert.equal(successor!.live, true);assert.equal(successor!.current(), true);f.owner.dispose();
+});

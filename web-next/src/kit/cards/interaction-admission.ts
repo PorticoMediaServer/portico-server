@@ -51,7 +51,8 @@ export function createCardInteractionBinding() {
  * Only actual registered nodes below this captured DOM root are considered. */
 export function retireCardInteractions(root: HTMLElement): void {
   const nodes = [root, ...root.querySelectorAll<HTMLElement>(`[${marker}]`)];
-  for (const node of nodes) mounted.get(node)?.admission.retire();
+  const originals = nodes.map(node => mounted.get(node)?.admission);
+  for (const original of originals) original?.retire();
 }
 
 /** One real selection producer owns preview arbitration. A stale row or old
