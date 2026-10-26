@@ -150,7 +150,7 @@ function ReadEntryBody({captured, itemId, sourceId, active = true, onClose, rece
       if (publication.format === 'epub') fonts = await loadReadFonts({document, signal: life.signal});
       if (!alive || !receiver.current()) return;
       const adapters = publication.format === 'epub' ? [createEpubAdapter({fonts: fonts!.fonts})]
-        : publication.format === 'pdf' ? [createPdfAdapter(readerPdfAdapterOptions)] : [createComicAdapter({pages: publication.comicPages!})];
+        : publication.format === 'pdf' ? [createPdfAdapter(readerPdfAdapterOptions)] : [createComicAdapter({format: publication.format, pages: publication.comicPages!})];
       reader = bindReadPreferences({adapters, preferences: bindings.preferences, authority: bindings.authority, reportError: code => reportError({code})});
       progress = bindReadingProgress({controller: reader.controller, session, initial: saved, authority: bindings.authority, reportError});
       setState({book: {session, publication, controller: reader.controller, authority: bindings.authority, location, contentsTarget, ...(session.manifest.canAnnotate === true ? {annotations:session} : {})}});
