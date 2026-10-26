@@ -7,6 +7,7 @@ import {Menu} from '../kit/overlays';
 import {desktopLibraryLimit} from './model';
 import {desktopLibraryCount} from './desktop-library-fit';
 import styles from './shell.module.css';
+import {DesktopNavigationUnderline} from './DesktopNavigationUnderline';
 
 const t = defaultI18n.t;
 export function DesktopNavigation({libraries, liveAvailable, activeLibraryId, moreOpen, onMoreOpenChange}: {
@@ -48,5 +49,6 @@ export function DesktopNavigation({libraries, liveAvailable, activeLibraryId, mo
       <span className={styles.destinationMeasure}>{t('next.home.shell.live')}</span>
       {libraries.map(library => <span className={styles.destinationMeasure} key={library.id}>{library.name}</span>)}
     </li>
+    <DesktopNavigationUnderline list={destinations} />
   </ul>;
 }
