@@ -3833,6 +3833,7 @@ CREATE TABLE remote_source_capture_policy(
  profile_revision INTEGER NOT NULL,
  profile_scan_depth TEXT NOT NULL,
  profile_whole_file_reads INTEGER NOT NULL CHECK(profile_whole_file_reads IN(0,1)),
+ profile_allow_advanced_media_analysis INTEGER NOT NULL DEFAULT 0 CHECK(profile_allow_advanced_media_analysis IN(0,1)),
  profile_connections INTEGER NOT NULL,
  profile_requests_per_second INTEGER NOT NULL,
  profile_bytes_per_second INTEGER NOT NULL,
@@ -3868,7 +3869,9 @@ CREATE TABLE remote_object_refs(path TEXT PRIMARY KEY,revision TEXT NOT NULL) ST
 CREATE TABLE remote_source_read_profiles(
  source_id TEXT PRIMARY KEY REFERENCES remote_sources(id) ON DELETE CASCADE,
  revision INTEGER NOT NULL CHECK(revision>0),scan_depth TEXT NOT NULL CHECK(scan_depth IN('file_list_only','basic','complete')),
- whole_file_reads INTEGER NOT NULL CHECK(whole_file_reads IN(0,1)),connections INTEGER NOT NULL CHECK(connections BETWEEN 1 AND 32),
+ whole_file_reads INTEGER NOT NULL CHECK(whole_file_reads IN(0,1)),
+ allow_advanced_media_analysis INTEGER NOT NULL DEFAULT 0 CHECK(allow_advanced_media_analysis IN(0,1)),
+ connections INTEGER NOT NULL CHECK(connections BETWEEN 1 AND 32),
  requests_per_second INTEGER NOT NULL CHECK(requests_per_second BETWEEN 1 AND 50),
  bytes_per_second INTEGER NOT NULL CHECK(bytes_per_second=0 OR (bytes_per_second BETWEEN 1000000 AND 1000000000 AND bytes_per_second%1000000=0))) STRICT;
 CREATE TABLE remote_source_settings(

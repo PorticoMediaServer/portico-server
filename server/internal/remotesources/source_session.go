@@ -19,6 +19,7 @@ type SourceReadPurpose string
 const (
 	SourceReading          SourceReadPurpose = "reading"
 	SourcePlayback         SourceReadPurpose = "playback"
+	SourceMediaAnalysis    SourceReadPurpose = "media_analysis"
 	SourceInventory        SourceReadPurpose = "inventory"
 	SourceEpisodeAutomatic SourceReadPurpose = "automatic_episode_thumbnail"
 	SourceEpisodeExplicit  SourceReadPurpose = "explicit_episode_thumbnail"
@@ -68,7 +69,7 @@ func (s *Service) CaptureReadSourceTx(ctx context.Context, tx *sql.Tx, admission
 		return nil, storage.ErrRemoteConfig
 	}
 	switch admission.Purpose {
-	case SourceReading, SourcePlayback, SourceEpisodeAutomatic, SourceEpisodeExplicit:
+	case SourceReading, SourcePlayback, SourceMediaAnalysis, SourceEpisodeAutomatic, SourceEpisodeExplicit:
 	default:
 		return nil, storage.ErrRemoteConfig
 	}
@@ -86,6 +87,9 @@ func (s *Service) CaptureReadSourceTx(ctx context.Context, tx *sql.Tx, admission
 	profile, err := SourceReadProfileTx(ctx, tx, ref.SourceID)
 	if err != nil {
 		return nil, err
+	}
+	if (admission.Purpose == SourceMediaAnalysis || admission.Purpose == SourceEpisodeAutomatic || admission.Purpose == SourceEpisodeExplicit) && !profile.AllowAdvancedMediaAnalysis {
+		return nil, storage.ErrRemoteAnalysisDisabled
 	}
 	scan, err := readScanObservationTx(ctx, tx, ref.SourceID, ref.Object)
 	if err != nil {
@@ -447,7 +451,7 @@ func (l *SourceReadLease) OpenSequential(ctx context.Context) (*SourceSequential
 	if err := l.canOpen(); err != nil {
 		return nil, err
 	}
-	if l.binding.Purpose != SourceReading && l.binding.Purpose != SourcePlayback {
+	if l.binding.Purpose != SourceReading && l.binding.Purpose != SourcePlayback && l.binding.Purpose != SourceMediaAnalysis {
 		return nil, storage.ErrRemoteRange
 	}
 	if err := l.Check(ctx); err != nil {

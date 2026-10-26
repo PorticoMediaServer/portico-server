@@ -13,6 +13,7 @@ import (
 
 	"portico.local/apikit"
 
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/mounts"
@@ -90,11 +91,12 @@ func (t SourceTransport) Effective() SourceTransport {
 // AnalysisSwitches is the analysis subset the scan pipeline consults for one
 // run. It is the only part of the page the analysis path needs.
 type AnalysisSwitches struct {
-	SeekPreviews  bool
-	ChapterImages bool
-	Waveforms     bool
-	Loudness      bool
-	Checksums     bool
+	advancedMediaAnalysis bool
+	SeekPreviews          bool
+	ChapterImages         bool
+	Waveforms             bool
+	Loudness              bool
+	Checksums             bool
 }
 
 type SourceAdvancedSettings struct {
@@ -769,11 +771,18 @@ func (s *Service) MarkSourceScans(ctx context.Context, tasks []SourceScanTask) e
 // AnalysisSwitchesTx reads the analysis switches for the remote source that
 // holds a library source's root. `ok` is false for an ordinary local folder.
 func AnalysisSwitchesTx(ctx context.Context, tx *sql.Tx, librarySource string) (AnalysisSwitches, bool, error) {
-	var s AnalysisSwitches
-	var scanInterval int
-	err := tx.QueryRowContext(ctx, `SELECT st.scan_interval_seconds,st.seek_previews,st.chapter_images,st.waveforms,st.loudness,st.checksums FROM remote_source_settings st JOIN library_sources s ON s.remote_source_id=st.source_id WHERE s.id=? LIMIT 1`, librarySource).Scan(&scanInterval, &s.SeekPreviews, &s.ChapterImages, &s.Waveforms, &s.Loudness, &s.Checksums)
-	if errors.Is(err, sql.ErrNoRows) {
+	consent, err := catalog.SourceAnalysisConsentTx(ctx, tx, librarySource)
+	if err != nil {
+		return AnalysisSwitches{}, false, err
+	}
+	if !consent.Remote {
 		return AnalysisSwitches{}, false, nil
+	}
+	s := defaultAdvanced().analysis()
+	s.advancedMediaAnalysis = consent.Allowed
+	err = tx.QueryRowContext(ctx, `SELECT st.seek_previews,st.chapter_images,st.waveforms,st.loudness,st.checksums FROM remote_source_settings st WHERE st.source_id=?`, consent.SourceID).Scan(&s.SeekPreviews, &s.ChapterImages, &s.Waveforms, &s.Loudness, &s.Checksums)
+	if errors.Is(err, sql.ErrNoRows) {
+		return s, true, nil
 	}
 	if err != nil {
 		return AnalysisSwitches{}, false, err
@@ -781,12 +790,20 @@ func AnalysisSwitchesTx(ctx context.Context, tx *sql.Tx, librarySource string) (
 	return s, true, nil
 }
 
-// FilterAnalysisOperations removes the whole-file analysis stages this source
-// switched off. Basic steps and playback probing are not whole-file analysis
-// and are never removed here.
+// Filter removes remote heavy analysis without independent explicit consent,
+// including ranged stages. Basic metadata and ordinary playback stay separate.
 func (s AnalysisSwitches) Filter(operations []string) []string {
 	kept := make([]string, 0, len(operations))
 	for _, op := range operations {
+		if !s.advancedMediaAnalysis {
+			heavy := false
+			for _, stage := range catalog.DeepScanOperations {
+				heavy = heavy || op == stage
+			}
+			if heavy {
+				continue
+			}
+		}
 		switch op {
 		case "trickplay":
 			if !s.SeekPreviews {

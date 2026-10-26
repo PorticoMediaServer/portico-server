@@ -20,10 +20,11 @@ func (SourceReadValues) JSONSchema() map[string]any {
 		"type": "object", "additionalProperties": false,
 		"required": []string{"scanDepth", "wholeFileReads", "connections", "requestsPerSecond", "bytesPerSecond"},
 		"properties": map[string]any{
-			"scanDepth":         map[string]any{"type": "string", "enum": []string{"file_list_only", "basic", "complete"}},
-			"wholeFileReads":    map[string]any{"type": "boolean"},
-			"connections":       map[string]any{"type": "integer", "minimum": 1, "maximum": 32},
-			"requestsPerSecond": map[string]any{"type": "integer", "minimum": 1, "maximum": 50},
+			"scanDepth":                  map[string]any{"type": "string", "enum": []string{"file_list_only", "basic", "complete"}},
+			"wholeFileReads":             map[string]any{"type": "boolean"},
+			"allowAdvancedMediaAnalysis": map[string]any{"type": "boolean"},
+			"connections":                map[string]any{"type": "integer", "minimum": 1, "maximum": 32},
+			"requestsPerSecond":          map[string]any{"type": "integer", "minimum": 1, "maximum": 50},
 			"bytesPerSecond": map[string]any{"anyOf": []any{
 				map[string]any{"type": "integer", "const": 0},
 				map[string]any{"type": "integer", "minimum": 1_000_000, "maximum": 1_000_000_000, "multipleOf": 1_000_000},
@@ -39,6 +40,9 @@ func (SourceReadSettings) JSONSchema() map[string]any {
 	properties["sourceId"].(map[string]any)["minLength"] = 1
 	properties["generation"].(map[string]any)["minLength"] = 1
 	properties["revision"].(map[string]any)["minimum"] = 0
+	values := (SourceReadValues{}).JSONSchema()
+	values["required"] = append(values["required"].([]string), "allowAdvancedMediaAnalysis")
+	properties["values"] = values
 	return schema
 }
 
