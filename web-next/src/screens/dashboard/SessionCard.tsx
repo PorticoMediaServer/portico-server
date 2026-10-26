@@ -30,12 +30,12 @@ function DeviceGlyph({platform, device}: Pick<AdminSession, 'platform' | 'device
 function phoneRoute(tracks: readonly Track[]): Track | undefined {
   return tracks.find(track => track.kind === 'video') ?? tracks[0];
 }
-export function SessionCard({session: s, bindings: b, refresh, layout = 'desktop'}: {session: AdminSession; bindings: DashboardBindings; refresh: (removedId?: string) => void; layout?: 'desktop' | 'phone'}) {
-  const [menu, setMenu] = useState(false), [stop, setStop] = useState(false), [message, setMessage] = useState(''), [busy, setBusy] = useState(false), [leaving, setLeaving] = useState(false);
+export function SessionCard({session: s, bindings: b, refresh, layout = 'desktop', retained = false}: {session: AdminSession; bindings: DashboardBindings; refresh: (removedId?: string) => void; layout?: 'desktop' | 'phone'; retained?: boolean}) {
+  const [menu, setMenu] = useState(false), [stop, setStop] = useState(false), [message, setMessage] = useState(''), [busy, setBusy] = useState(false);
   const messageId = useId(), cancel = useRef<HTMLButtonElement>(null), opener = useRef<HTMLButtonElement>(null), item = s.item, square = s.kind === 'audio' || item?.kind === 'audiobook_file';
   const art = s.itemId ? b.artwork(s.itemId, square ? 'square' : 'poster', item?.art.find(a => a.role === (square ? 'square' : 'poster'))?.revision) : undefined;
   const backdrop = s.itemId ? b.artwork(s.itemId, 'backdrop', item?.art.find(a => a.role === 'backdrop')?.revision) : undefined;
-  const act = async (action: () => Promise<void>, depart = false) => {if (!b.isCurrent() || busy) return; setBusy(true); try {await action(); if (b.isCurrent()) {setStop(false); if (depart && !matchMedia('(prefers-reduced-motion: reduce)').matches) {setLeaving(true); await new Promise(resolve => setTimeout(resolve, 230));} if (b.isCurrent()) refresh(depart ? s.id : undefined);}} catch (error) {if (b.isCurrent()) {setLeaving(false); b.effects.reportError(error);}} finally {if (b.isCurrent()) setBusy(false);}};
+  const act = async (action: () => Promise<void>, depart = false) => {if (!b.isCurrent() || busy) return; setBusy(true); try {await action(); if (b.isCurrent()) {setStop(false); refresh(depart ? s.id : undefined);}} catch (error) {if (b.isCurrent()) b.effects.reportError(error);} finally {if (b.isCurrent()) setBusy(false);}};
   const state = s.state === 'playing' ? t('next.dashboard.playing') : s.state === 'paused' ? t('next.dashboard.paused') : s.state === 'buffering' ? t('next.dashboard.buffering') : s.state === 'preparing' ? t('next.dashboard.preparing') : undefined;
   const title = sessionTitle(s), stopTitle = sessionStopTitle(s);
   const runtime = s.durationMs ? fmtDur(s.durationMs / 3_600_000) : undefined;
@@ -57,7 +57,7 @@ export function SessionCard({session: s, bindings: b, refresh, layout = 'desktop
       routeLabel && <span className={styles.phoneFact} key="route" data-route={route!.route}>{routeLabel}</span>,
       current != null && <span className={styles.phoneFact} key="rate">{formatStreamRate(current)}</span>,
     ].filter(Boolean);
-    return <article className={styles.phoneSession} data-state={s.state} data-leaving={leaving || undefined}
+    return <article className={styles.phoneSession} data-state={s.state}
       aria-label={[title, s.user, s.profile && s.profile !== s.user ? s.profile : undefined, s.device].filter(Boolean).join(', ')}>
       <div className={styles.phoneSessionRow}>
         <div className={styles.phoneArt} data-kind={s.live ? 'live' : square ? 'square' : 'video'}>
@@ -80,13 +80,13 @@ export function SessionCard({session: s, bindings: b, refresh, layout = 'desktop
         <span className={styles.phonePosition}>{s.live ? (s.startedAt ? t('next.dashboard.started', {time: defaultI18n.time(Date.parse(s.startedAt))}) : undefined)
           : s.durationMs ? t('next.kit.session.position', {position: t('next.kit.session.positionOf', {position: clock(s.positionMs), duration: clock(s.durationMs)})}) : clock(s.positionMs)}</span>
         {b.role === 'owner' && stopTitle && <Button size="xs" variant="glass" icon="i-stop" className={styles.phoneStop} onClick={() => {setMessage(''); setStop(true);}}>{t('next.dashboard.stop')}</Button>}
-        {sessionMenu}
+        {!retained && sessionMenu}
       </div>
       {!s.live && !!s.durationMs && <div className={styles.phoneProgress} aria-hidden="true"><i style={{width: `${Math.min(100, Math.max(0, s.positionMs / s.durationMs * 100))}%`}} /></div>}
-      {stopDialog}
+      {!retained && stopDialog}
     </article>;
   }
-  return <article className={styles.session} data-state={s.state} data-leaving={leaving || undefined} aria-label={title}>
+  return <article className={styles.session} data-state={s.state} aria-label={title}>
     {backdrop && <div className={styles.ambient} aria-hidden="true"><Artwork source={backdrop} alt="" width="100%" height="100%" /></div>}
     <div className={styles.art} data-square={square || undefined}>{art ? <Artwork source={art} alt="" width="100%" height="100%" /> : <Icon name={square ? 'i-music' : s.live ? 'i-live' : 'i-play'} size={28} />}</div>
     <div className={styles.info}>{title && <h4>{title}</h4>}{episode ? <><p>{item?.seasonNumber !== undefined && item?.episodeNumber !== undefined && <b>{t('title.episodeCode', {season: item.seasonNumber, episode: item.episodeNumber})}</b>}{s.title}</p>{s.durationMs && <p className={styles.secondaryMeta}>{t('next.dashboard.format.runtimeMinutes', {minutes: Math.round(s.durationMs / 60000)})}</p>}</>
@@ -102,8 +102,8 @@ export function SessionCard({session: s, bindings: b, refresh, layout = 'desktop
     })}</div>
     <div className={styles.device}><span className={styles.appIcon}><DeviceGlyph platform={s.platform} device={s.device} /></span><div>{s.app && <b>{s.app}</b>}{s.device && <span>{s.device}</span>}{(s.location === 'local' || s.location === 'remote' || current != null) && <strong className={styles.network}>{(s.location === 'local' || s.location === 'remote') && <><i data-series={s.location === 'remote' ? 'away' : 'home'} />{t(s.location === 'local' ? 'next.dashboard.home' : 'next.dashboard.away')}</>}{current != null && <em>{formatStreamRate(current)}</em>}</strong>}{s.address && <small>{s.address}</small>}</div></div>
     <div className={styles.who}><span className={styles.avatar} style={accountAvatarStyle(s.user)} aria-hidden="true">{s.user.slice(0, 1).toUpperCase()}</span><b>{s.user}{s.profile && s.profile !== s.user && <small>{s.profile}</small>}</b>
-      {sessionMenu}
+      {!retained && sessionMenu}
     </div>
-    {stopDialog}
+    {!retained && stopDialog}
   </article>;
 }

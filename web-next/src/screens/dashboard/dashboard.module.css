@@ -14,8 +14,9 @@
 .sessionStack { display: flex; flex-direction: column; gap: 12px; }
 .session { position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr) 410px 188px; grid-template-rows: 34px auto; column-gap: 16px; align-items: center; min-height: 156px; padding: 12px 16px 16px; border-radius: var(--radius-overlay); background: var(--color-raised); }
 .session > * { position: relative; }
-.session { transition: opacity 220ms var(--ease-out), transform 220ms var(--ease-out); }
-.session[data-leaving] { opacity: 0; transform: scale(.98); }
+.sessionSlot { min-width: 0; animation: session-arrive var(--motion-standard) linear backwards; transition: opacity var(--motion-standard) var(--ease-in), transform var(--motion-standard) var(--ease-in); }
+.sessionSlot[data-leaving] { opacity: 0; transform: scale(.98); }
+@keyframes session-arrive { from { opacity: 0; } to { opacity: 1; } }
 .stopButton.stopButton { background: color-mix(in srgb, var(--color-danger) 12%, transparent); color: var(--color-danger); }
 .stopButton.stopButton:hover:not(:disabled) { background: color-mix(in srgb, var(--color-danger) 20%, transparent); }
 .ambient { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; pointer-events: none; }
@@ -204,7 +205,7 @@
   .alert > b { flex-basis: 100%; }
   .task { grid-template-columns: 36px minmax(0, 1fr) 70px 36px; gap: 8px; }
 }
-@media (prefers-reduced-motion: reduce) { .dashboard { scroll-behavior: auto; } .session { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .dashboard { scroll-behavior: auto; } .sessionSlot { animation-duration: var(--motion-reduced); transition-duration: var(--motion-reduced); transition-timing-function: linear; } .sessionSlot[data-leaving] { transform: none; } }
 
 .rankedShelf { position: relative; isolation: isolate; }
 .shelfAmbient { position: absolute; pointer-events: none; inset: -24px 0 -16px; overflow: hidden; mask-image: linear-gradient(transparent, black 30%, black 62%, transparent); opacity: .34; }
@@ -291,8 +292,7 @@
 .dotSep { width: 3px; height: 3px; flex: none; align-self: center; border-radius: 50%; background: currentColor; }
 .phoneSessionStack { display: grid; gap: 12px; }
 .phoneSession { position: relative; padding: 12px 12px 14px; border-radius: 14px; background: var(--color-raised); overflow: hidden; }
-.phoneSession[data-leaving] { opacity: 0; transform: scale(.98); }
-.phoneSession { transition: opacity 220ms var(--ease-out), transform 220ms var(--ease-out); }
+
 .phoneSessionRow { display: grid; grid-template-columns: 124px minmax(0, 1fr); gap: 14px; }
 .phoneArt { position: relative; width: 124px; aspect-ratio: 16 / 9; display: grid; place-items: center; border-radius: 9px; overflow: hidden; background: var(--color-raised-high); color: var(--color-text-tertiary); }
 .phoneArt img { width: 100%; height: 100%; object-fit: cover; }
@@ -382,3 +382,5 @@
 .phoneCalmLink { margin-left: auto; flex: none; border: 0; background: none; padding: 6px 2px; color: var(--color-accent-strong); font-family: var(--font); font-size: var(--type-report-meta-size); font-weight: var(--type-button-weight); cursor: pointer; }
 .phoneCalmLink:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 2px; }
 .phoneQuietLine { margin: 0 4px; font-size: var(--type-caption-size); font-weight: var(--type-body-strong-weight); color: var(--color-text-tertiary); }
+:global([data-reduce-motion=true]) .sessionSlot { animation-duration: var(--motion-reduced); transition-duration: var(--motion-reduced); transition-timing-function: linear; }
+:global([data-reduce-motion=true]) .sessionSlot[data-leaving] { transform: none; }
