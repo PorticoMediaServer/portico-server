@@ -178,7 +178,7 @@ beyond the remaining budget.
 
 The check then re-reads the session for its **final observed state**, takes
 `presentation.url` — the same-origin `/v1/media/<grant>` capability path — fetches a bounded
-sample (4 MiB cap, one playlist hop at most) through the admitted loopback origin with no
+sample (4 MiB cap, at most three playlist hops at most) through the admitted loopback origin with no
 redirects and no other host, and probes that sample with an **explicit absolute `ffprobe`
 path** (`--ffprobe`, never a PATH search) using an owned, private scratch child and `TMPDIR`
 under the existing owned 0700 nonsymlink `--scratch` root, removed in `finally`; HOME is preserved. Custody of the admitted runtime is rechecked before

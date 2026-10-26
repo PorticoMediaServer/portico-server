@@ -38,7 +38,7 @@ class Boundaries(unittest.TestCase):
         calls = []
         context = SimpleNamespace(host='127.0.0.1', port=1, access_token='synthetic', installation_id='synthetic')
         check = media.LoopbackMedia(context, FakeDeadline(), verify=lambda ctx: calls.append(ctx))
-        bodies = [b'#EXTM3U\n/v1/media/fixture-segment\n', b'G' + b'x' * 188 * 8]
+        bodies = [b'#EXTM3U\nvariant.m3u8\n', b'#EXTM3U\nfixture-segment\n', b'G' + b'x' * 188 * 8]
         class Response:
             status = 200
             def __init__(self):
@@ -56,8 +56,36 @@ class Boundaries(unittest.TestCase):
         with patch.object(media.http.client, 'HTTPConnection', Connection):
             result = check.fetch('/v1/media/fixture-list')
         self.assertEqual(result['via'], 'segment')
-        self.assertEqual(len(calls), 6)
+        self.assertEqual(result['playlistHops'], 2)
+        self.assertEqual(len(calls), 8)
         self.assertTrue(all(x is context for x in calls))
+
+    def test_completed_content_length_body_is_not_a_transport_failure(self):
+        context = SimpleNamespace(host='127.0.0.1', port=1, access_token='synthetic', installation_id='synthetic')
+        check = media.LoopbackMedia(context, FakeDeadline(), verify=lambda _: None)
+        class Sock:
+            def settimeout(self, timeout): pass
+        class Response:
+            status = 200
+            def __init__(self):
+                self.closed = False
+                self.fp = SimpleNamespace(raw=SimpleNamespace(_sock=Sock()))
+            def getheader(self, name): return 'video/mp2t'
+            def isclosed(self): return self.closed
+            def read1(self, limit):
+                self.closed = True
+                self.fp = None
+                return b'G' + b'x' * 1503
+        class Connection:
+            sock = None
+            def __init__(self, *args, **kwargs): pass
+            def request(self, *args, **kwargs): pass
+            def getresponse(self): return Response()
+            def close(self): pass
+        with patch.object(media.http.client, 'HTTPConnection', Connection):
+            result = check.fetch('/v1/media/fixture-segment')
+        self.assertEqual(result['bytes'], 1504)
+        self.assertEqual(result['status'], 200)
 
     def test_probe_timeout_and_output_cap_reap_only_own_process(self):
         # These are tiny synthetic child scripts, never an installed media tool.

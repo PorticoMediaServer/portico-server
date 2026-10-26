@@ -2,7 +2,7 @@
 
 The session view publishes `presentation.url` as a same-origin capability path
 (`/v1/media/<grant>`). This module fetches a small bounded sample of that URL
-through the admitted loopback origin only, follows at most one playlist hop to a
+through the admitted loopback origin only, follows at most three playlist hops to a
 real segment, and probes the sample bytes with an explicitly named `ffprobe`
 (never a PATH lookup).
 
@@ -130,14 +130,17 @@ class LoopbackMedia:
         admitted = admit_media_path(path)
         self._custody()
         status, sample, content = self._get(admitted, limit)
-        if classify(sample) == 'playlist':
+        hops = 0
+        while classify(sample) == 'playlist':
+            if hops >= 3 or len(sample) > 65536:
+                raise MediaError('playlist-limit')
             segment = first_segment(sample.decode('utf-8', 'replace'), admitted)
             if segment is None:
                 raise MediaError('playlist-segment-absent')
             status, sample, content = self._get(segment, limit)
-            via = 'segment'
-        else:
-            via = 'direct'
+            admitted = segment
+            hops += 1
+        via = 'segment' if hops else 'direct'
         self._custody()
         if status not in (200, 206):
             raise MediaError('media-status')
@@ -145,7 +148,7 @@ class LoopbackMedia:
             raise MediaError('media-short')
         return {'sample': sample, 'bytes': len(sample), 'status': status,
                 'content': content_class(content), 'via': via,
-                'container': classify(sample)}
+                'container': classify(sample), 'playlistHops': hops}
 
     def _get(self, path, limit):
         self._custody()

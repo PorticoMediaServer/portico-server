@@ -337,6 +337,7 @@ class Check:
             'status': sample['status'],
             'content': sample['content'],
             'via': sample['via'],
+            'playlistHops': sample.get('playlistHops', 0),
             'container': sample['container'],
             'format': probe.get('format'),
             'probeAvailable': probe.get('available') is True,
