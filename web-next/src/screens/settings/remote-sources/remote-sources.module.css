@@ -101,17 +101,17 @@
 .driveModeRadio { width: 22px; height: 22px; margin-top: 2px; border-radius: 50%; box-shadow: inset 0 0 0 2px var(--color-line-strong); flex: none; }
 .driveMode[data-picked] .driveModeRadio { box-shadow: inset 0 0 0 2px var(--color-accent-strong); background: radial-gradient(circle, var(--color-text) 0 4.6px, transparent 5.2px); }
 .driveModeBody { display: grid; gap: 5px; min-width: 0; }
-.driveModeTitle { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; font-size: 16px; font-weight: 700; letter-spacing: -.005em; color: var(--color-text); }
-.driveModeTag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; font-size: 11.5px; font-weight: 700; letter-spacing: 0; color: var(--color-accent-strong); background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
-.driveModeHint { max-width: 540px; font-size: 14px; line-height: 1.5; color: var(--color-text-tertiary); }
+.driveModeTitle { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; font-size: var(--type-fixed-size-16px); font-weight: var(--type-fixed-weight-700); letter-spacing: var(--type-fixed-tracking-minus-point-005em); color: var(--color-text); }
+.driveModeTag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; font-size: var(--type-fixed-size-11point-5px); font-weight: var(--type-fixed-weight-700); letter-spacing: var(--type-fixed-tracking-0); color: var(--color-accent-strong); background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
+.driveModeHint { max-width: 540px; font-size: var(--type-fixed-size-14px); line-height: var(--type-fixed-line-1point-5); color: var(--color-text-tertiary); }
 @media (max-width: 720px) {
   .driveModes { margin-top: 16px; background: var(--color-raised); box-shadow: none; }
   .driveMode { gap: 14px; padding: 14px; border-top: 0; }
   .driveMode + .driveMode { box-shadow: inset 0 1px 0 var(--color-line-soft); }
   .driveMode[data-picked] { background: linear-gradient(90deg, color-mix(in srgb, var(--color-accent) 14%, transparent), transparent 72%); }
   .driveMode[data-picked]::before { display: none; }
-  .driveModeTitle { gap: 4px 8px; font-size: 15.5px; }
-  .driveModeHint { font-size: 13px; line-height: 1.45; }
+  .driveModeTitle { gap: 4px 8px; font-size: var(--type-fixed-size-15point-5px); }
+  .driveModeHint { font-size: var(--type-fixed-size-13px); line-height: var(--type-fixed-line-1point-45); }
 }
 .driveOAuthCard, .driveOAuthReady { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 12px; background: var(--color-raised); box-shadow: inset 0 0 0 1px var(--color-line-soft); color: var(--color-text-secondary); font-size: var(--type-caption-size); line-height: var(--type-troubleshooting-log-line); }
 .driveOAuthCard svg, .driveOAuthReady svg { flex: none; margin-top: 1px; color: var(--color-accent-strong); }
@@ -123,9 +123,9 @@
 .driveKeyValid { display: grid; gap: 10px; padding: 14px 16px; border-radius: 14px; background: var(--color-raised); box-shadow: inset 0 0 0 1px var(--color-line-soft); }
 .driveKeyHead { display: flex; align-items: flex-start; gap: 12px; color: var(--color-healthy); }
 .driveKeyHead > div { display: grid; gap: 2px; min-width: 0; }
-.driveKeyHead b { font-size: 15px; line-height: normal; font-weight: 700; color: var(--color-text); }
-.driveKeyHead small { font-size: 13px; line-height: 1.45; color: var(--color-text-tertiary); }
-.driveKeyEmail { font-family: var(--font-mono); font-size: 12px; font-weight: 500; color: var(--color-text); word-break: break-all; }
+.driveKeyHead b { font-size: var(--type-fixed-size-15px); line-height: normal; font-weight: var(--type-fixed-weight-700); color: var(--color-text); }
+.driveKeyHead small { font-size: var(--type-fixed-size-13px); line-height: var(--type-fixed-line-1point-45); color: var(--color-text-tertiary); }
+.driveKeyEmail { font-family: var(--font-mono); font-size: var(--type-fixed-size-12px); font-weight: var(--type-fixed-weight-500); color: var(--color-text); word-break: break-all; }
 .staticValue { font-size: var(--type-row-subtitle-size); font-weight: var(--type-body-strong-weight); color: var(--color-text-tertiary); }
 .doneList { display: grid; gap: 14px; }
 .doneHead { display: flex; align-items: center; gap: 14px; }
@@ -194,9 +194,9 @@
 .readingSummary b { font-size: var(--type-row-subtitle-size); font-weight: var(--type-body-strong-weight); color: var(--color-text); }
 .readingSummary small { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: var(--type-caption-size); font-weight: normal; color: var(--color-text-tertiary); line-height: var(--type-troubleshooting-log-line); }
 .configField {display: block; min-width: 0;}
-.configLabel {display: block; margin-bottom: 8px; font-size: 13.5px; line-height: normal; font-weight: 700; color: var(--color-text-secondary);}
-.config {display: block; width: 100%; min-width: 0; padding: 12px 14px; border: 0; border-radius: 12px; outline: 0; resize: vertical; background: color-mix(in srgb, var(--color-ink) 70%, transparent); box-shadow: inset 0 0 0 1px var(--color-line-strong); color: var(--color-text); font-family: var(--font-mono); font-size: 13px; font-weight: 600; line-height: 1.55; white-space: pre; overflow-wrap: normal; overflow-x: auto;}
-.config::placeholder {color: var(--color-text-tertiary); font-weight: 500; opacity: 1;}
+.configLabel {display: block; margin-bottom: 8px; font-size: var(--type-fixed-size-13point-5px); line-height: normal; font-weight: var(--type-fixed-weight-700); color: var(--color-text-secondary);}
+.config {display: block; width: 100%; min-width: 0; padding: 12px 14px; border: 0; border-radius: 12px; outline: 0; resize: vertical; background: color-mix(in srgb, var(--color-ink) 70%, transparent); box-shadow: inset 0 0 0 1px var(--color-line-strong); color: var(--color-text); font-family: var(--font-mono); font-size: var(--type-fixed-size-13px); font-weight: var(--type-fixed-weight-600); line-height: var(--type-fixed-line-1point-55); white-space: pre; overflow-wrap: normal; overflow-x: auto;}
+.config::placeholder {color: var(--color-text-tertiary); font-weight: var(--type-fixed-weight-500); opacity: 1;}
 .config:focus-visible {box-shadow: inset 0 0 0 1px var(--color-line-strong), 0 0 0 3px var(--color-focus);}
 .configField small {display: block; margin-top: 8px;}
 .notice {margin: 0; padding: 10px 12px; border-radius: 9px; color: var(--color-amber); background: color-mix(in srgb, var(--color-amber) 10%, transparent); font-size: var(--type-caption-size); line-height: var(--type-troubleshooting-log-line);}
@@ -248,9 +248,9 @@
   .folderPickerPhone.folderPickerPhone > header, .folderPickerPhone.folderPickerPhone > p { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); }
   .folderPickerBodyPhone { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 0; overflow: hidden; }
   .folderPhoneTop { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--color-line-soft); }
-  .folderPhoneTop b { flex: 1; min-width: 0; text-align: center; font-size: 17px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .folderPhoneAction, .folderPhoneDone { flex: none; border: 0; padding: 6px; background: none; font: inherit; font-size: 16px; font-weight: 600; color: var(--color-text-secondary); cursor: pointer; }
-  .folderPhoneDone { color: var(--color-accent-strong); font-weight: 700; }
+  .folderPhoneTop b { flex: 1; min-width: 0; text-align: center; font-size: var(--type-fixed-size-17px); font-weight: var(--type-fixed-weight-700); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .folderPhoneAction, .folderPhoneDone { flex: none; border: 0; padding: 6px; background: none; font: inherit; font-size: var(--type-fixed-size-16px); font-weight: var(--type-fixed-weight-600); color: var(--color-text-secondary); cursor: pointer; }
+  .folderPhoneDone { color: var(--color-accent-strong); font-weight: var(--type-fixed-weight-700); }
   .folderPhoneDone:disabled { color: var(--color-text-tertiary); opacity: .6; cursor: default; }
   .folderPhoneChosen { padding: 10px 14px 0; }
   .folderPhoneChosen .chosenList { margin: 0; justify-content: flex-start; }

@@ -51,7 +51,7 @@
 .optionFoot { display: grid; gap: 2px; margin: 14px 12px 2px; color: var(--color-text-tertiary); font-size: var(--type-chip-size); line-height: calc(var(--type-chip-size) * 1.45); }
 .timing { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 12px 12px 2px; color: var(--color-text-secondary); font-size: var(--type-body-size); font-weight: var(--type-body-strong-weight); }
 .timingStep { display: inline-flex; align-items: center; gap: 8px; }
-.timingStep button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--color-line-control); border-radius: 8px; background: none; color: var(--color-text); font: inherit; font-size: 18px; line-height: 1; cursor: pointer; }
+.timingStep button { display: grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid var(--color-line-control); border-radius: 8px; background: none; color: var(--color-text); font: inherit; font-size: var(--type-fixed-size-18px); line-height: var(--type-fixed-line-1); cursor: pointer; }
 .timingStep button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
 .timingStep b { min-width: 54px; text-align: center; font-variant-numeric: tabular-nums; font-weight: var(--type-body-strong-weight); }
 .additions { margin-top: 6px; }

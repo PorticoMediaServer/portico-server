@@ -1,3 +1,4 @@
+import {presentError} from '@core/presentation/errors.ts';
 import {createRoot} from 'react-dom/client';
 import {FreshnessProvider} from '../../platform/freshness';
 import {useEffect} from 'react';
@@ -72,7 +73,7 @@ const home: HomeBindings = {
   effects: {
     play: async () => { specimen.record('play'); }, playChannel: async () => {}, openEntry: () => {},
     openSeeAll: () => {}, openMore: () => {}, setMyList: async () => {},
-    reportError: error => { specimen.record('report-error', String(error)); },
+    reportError: error => { specimen.record('report-error', presentError(error)); },
   },
 };
 const contextBase = {

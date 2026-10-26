@@ -2,15 +2,15 @@
    two-ended step line. The dialog uses the same header at every width. */
 .header { display: grid; gap: 10px; }
 .steps { display: flex; gap: 4px; }
-.steps i { flex: 1; height: 4px; border-radius: 2px; background: rgba(237, 245, 250, .14); }
+.steps i { flex: 1; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--color-text) 14%, transparent); }
 .steps i[data-on] { background: var(--color-accent-strong); }
 .label {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: var(--type-fixed-size-13px);
+  font-weight: var(--type-fixed-weight-700);
   color: var(--color-text-tertiary);
 }
-.label b { color: var(--color-text-secondary); font-weight: 700; }
+.label b { color: var(--color-text-secondary); font-weight: var(--type-fixed-weight-700); }

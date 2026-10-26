@@ -424,6 +424,15 @@ const (
 // administration (/v1/admin/…), which is probed by rule.
 func restrictionWriteRoutes() map[string]writeRoute {
 	return map[string]writeRoute{
+		"POST /v1/direct/security-return/prepare":                                     writeExempt("original provider credential-change opening only; no catalogue content or title lookup"),
+		"POST /v1/direct/security-return/confirm":                                     writeExempt("original provider credential-change confirmation only; no catalogue content or title lookup"),
+		"POST /v1/direct/security-return/check":                                       writeExempt("original Account Settings opening scope check only; no catalogue content or title lookup"),
+		"POST /v1/direct/security-return/cancel":                                      writeExempt("cancels only the original provider credential-change opening; no catalogue content or title lookup"),
+		"DELETE /v1/cast/bootstrap/{id}":                                              writeExempt("retires the caller's own bootstrap continuation; no catalogue lookup or content payload"),
+		"POST /v1/items/{itemId}/reading/reread":                                      perHidden("POST", "/v1/items/ID/reading/reread", `{"sourceId":"matrix-source","expectedSourceRevision":"`+strings.Repeat("a", 64)+`","expectedMetadataRevision":"`+strings.Repeat("b", 64)+`"}`, "item"),
+		"PUT /v1/items/{id}/main-title":                                               perHidden("PUT", "/v1/items/ID/main-title", `{"versionId":"matrix-version","revision":"`+strings.Repeat("a", 64)+`","titleId":"matrix-title"}`, "item"),
+		"POST /v1/items/{id}/disc-titles/prepare":                                     perHidden("POST", "/v1/items/ID/disc-titles/prepare", `{"versionId":"matrix-version","revision":"`+strings.Repeat("a", 64)+`","titleId":"matrix-title"}`, "item"),
+		"POST /v1/libraries/{libraryId}/reading/mark-all":                             perHidden("POST", "/v1/libraries/ID/reading/mark-all", `{"operationId":"matrix-mark-all","viewerFence":"`+strings.Repeat("0", 64)+`","expectedRevision":{"catalog":0,"viewer":0}}`, "library"),
 		"PUT /v1/libraries/{libraryId}/reading/groups/{groupKind}/{seriesId}/my-list": {check: readingSavedGroupRestrictionCheck},
 		"DELETE /v1/reading/saved-groups/{referenceId}":                               {check: readingSavedGroupRestrictionCheck},
 		"PUT /v1/items/{itemId}/reading/favorite":                                     {check: readingFavoriteRestrictionCheck},
