@@ -45,7 +45,15 @@ def _tree_hash(root):
     digest = hashlib.sha256()
     for path in sorted(root.rglob('*')):
         if path.is_symlink():
-            raise FixtureError('fixture-symlink')
+            # Qualified shared-library bundles contain SONAME links. Bind both
+            # the link spelling and actual target bytes, never an external path.
+            target = path.resolve()
+            if not target.is_relative_to(root.resolve()) or not target.is_file():
+                raise FixtureError('fixture-symlink')
+            digest.update(str(path.relative_to(root)).encode() + b'\0link\0')
+            digest.update(os.readlink(path).encode() + b'\0')
+            digest.update(_file_hash(target).encode() + b'\n')
+            continue
         if not path.is_file():
             continue
         relative = str(path.relative_to(root))
