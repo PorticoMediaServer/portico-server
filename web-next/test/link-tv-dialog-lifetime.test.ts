@@ -44,7 +44,13 @@ async function mount() {
   });
   const {returnFocusRef} = {returnFocusRef: {current: null}};
   const api = {request: async () => undefined};
-  const show: any = (open: boolean, target = api) => tree(h.render(() => app.LinkTvDialog({open, onOpenChange: (value: boolean) => opened.push(value), api: target, returnFocusRef})));
+  // A layout-committed admission re-renders before paint: show() models that synchronous second
+  // pass, so the returned tree carries the callbacks bound to the committed opening.
+  const show: any = (open: boolean, target = api) => {
+    const paint = () => tree(h.render(() => app.LinkTvDialog({open, onOpenChange: (value: boolean) => opened.push(value), api: target, returnFocusRef})));
+    paint();
+    return paint();
+  };
   return {h, api, opened, ports, show};
 }
 
@@ -136,6 +142,52 @@ test('duplicate reviews issue one request', async () => {
   form(v).onReview();
   form(v).onReview();
   assert.equal(ports[0].previews.length, 1);
+});
+
+test('callbacks rendered for a closed opening cannot act on its successor', async () => {
+  const {opened, ports, show} = await mount();
+  let v = show(true);
+  form(v).onCodeChange('ABCD');
+  v = show(true);
+  const stale = form(v), staleDialog = one(v, 'Dialog').props;
+  one(v, 'Dialog').props.onOpenChange(false);
+  v = show(false);
+  v = show(true);
+  v = show(true);
+  assert.equal(ports.length, 2);
+  const successorCode = form(v).code, successorPhase = form(v).phase;
+  stale.onCodeChange('ZZZZ');
+  stale.onReview();
+  stale.onDecide('approve');
+  staleDialog.onOpenChange(false);
+  v = show(true);
+  assert.equal(ports[1].previews.length, 0, 'a stale review never starts a successor request');
+  assert.equal(ports[1].decisions.length, 0);
+  assert.equal(form(v).code, successorCode);
+  assert.equal(form(v).phase, successorPhase);
+  assert.deepEqual(opened, [false], 'the stale dialog close does not close the successor');
+});
+
+test('callbacks rendered before an api replacement cannot touch the new opening', async () => {
+  const {opened, ports, show} = await mount();
+  const secondApi = {request: async () => undefined};
+  let v = show(true);
+  form(v).onCodeChange('ABCD');
+  v = show(true);
+  form(v).onReview();
+  const stale = form(v), staleDialog = one(v, 'Dialog').props;
+  v = show(true, secondApi);
+  v = show(true, secondApi);
+  assert.equal(ports.length, 2);
+  assert.equal(ports[0].previews[0].life.signal.aborted, true, 'the replaced opening is retired in layout');
+  stale.onCodeChange('WXYZ');
+  stale.onReview();
+  stale.onDecide('approve');
+  staleDialog.onOpenChange(false);
+  v = show(true, secondApi);
+  assert.equal(ports[1].previews.length, 0, 'the old opening cannot reach the successor port');
+  assert.equal(form(v).code, '');
+  assert.deepEqual(opened, [], 'the stale close is ignored');
 });
 
 test('a current review approves once with its captured requestId and reviewed userCode', async () => {
