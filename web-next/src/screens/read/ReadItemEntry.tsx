@@ -2,6 +2,7 @@ import {useReadingFavorite} from './useReadingFavorite';
 import {ReadSavedAction} from './ReadSavedAction';
 import {ReadMarkAction} from './ReadMarkAction';
 import {useEffect, useLayoutEffect, useRef, useState, type CSSProperties} from 'react';
+import {useLocation} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
 import {generatedCoverTint} from '@design';
 import {ApiError} from '@core/index.ts';
@@ -27,7 +28,7 @@ import {useLibraryScreenContext} from '../browse/screen-context';
 import {ReadMetadata} from './ReadMetadata';
 import {createReadBindings} from './bindings';
 import {readDestination, type ReadItemEligibility} from './navigation';
-import {readBackDestination, readRouteEntry, readSameRouteEntry, readVersionCanChoose, readVersionRecovery, type ReadRouteEntry, type ReadVersion, type ReadVersionSource} from './read-version-choice';
+import {readBackCommit, readRetireAttempt, readRouteEntry, readVersionCanChoose, readVersionRecovery, type ReadRouteEntry, type ReadVersion, type ReadVersionSource} from './read-version-choice';
 import styles from './read-item.module.css';
 
 type Captured = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
@@ -41,9 +42,11 @@ export function ReadItemEntry({itemId, eligibility}: {itemId: string; eligibilit
 function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility: ReadItemEligibility}) {
   const context = useLibraryScreenContext(captured);
   const phone = usePhone();
-  // The actual router entry this screen was mounted on. Both Back and the version
-  // chooser must still be on it; `context.isCurrent()` alone is not a route witness.
-  const [originalEntry] = useState<ReadRouteEntry | undefined>(() => readRouteEntry(router.state.location));
+  // The entry this render was produced on, committed by layout. A reused component with
+  // a new __TSR_key renders new callbacks; callbacks from the old entry refuse.
+  const routeEntry = readRouteEntry(useLocation());
+  const committedEntry = useRef<ReadRouteEntry | undefined>(undefined);
+  useLayoutEffect(() => {committedEntry.current = routeEntry;}, [routeEntry?.href, routeEntry?.key]);
   const [editing, setEditing] = useState(false), [more, setMore] = useState(false);
   const editorAnchor = useRef<HTMLButtonElement>(null);
   const errorSink = useRef(captured.binding.home.effects.reportError); errorSink.current = captured.binding.home.effects.reportError;
@@ -59,7 +62,8 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const [detail, setDetail] = useState<Readonly<{attempt?: ReadAttempt; manifest?: ReadingManifest; progress?: ReadingProgress; client?: ReturnType<typeof createReadBindings>['client']; targets?: readonly ReaderContentsTarget[]; failed?: boolean}>>({});
   const current = (value: ReadAttempt | undefined): value is ReadAttempt => !!value && value.live && attemptRef.current === value
     && renderIdentity.current.context === value.context && renderIdentity.current.sourceId === value.sourceId && renderIdentity.current.retry === value.retry && value.context.isCurrent();
-  const retire = (value: ReadAttempt) => {value.fileLife.abort(); value.live = false; value.ready = false; value.rereading = false; value.target = undefined; if (attemptRef.current === value) attemptRef.current = undefined;};
+  const retire = (value: ReadAttempt) => readRetireAttempt(value,
+    () => {if (attemptRef.current === value) attemptRef.current = undefined;}, () => value.fileLife.abort());
   const refresh = (value: ReadAttempt | undefined) => {if (!current(value)) return; retire(value); setRetry(count => count + 1);};
   const favorite = useReadingFavorite({
     client: current(detail.attempt) && detail.attempt.ready && detail.manifest?.sourceId === sourceId ? detail.client : undefined,
@@ -106,10 +110,10 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     <Button className={styles.phoneBack} size="small" variant="icon" icon="i-left" iconOnly aria-label={t('next.states.back')}
       onClick={() => runScreenCommand(context, () => {
         if (!context.isCurrent()) return;
-        // Only the original entry may navigate: a later route makes this callback stale.
-        if (!readSameRouteEntry(originalEntry, readRouteEntry(router.state.location))) return;
-        if (readBackDestination(router.history.canGoBack()) === 'back') context.effects.back?.();
-        else context.effects.openHome?.();
+        // The callback's own entry must still be committed and live; then choose Back or Home.
+        const destination = readBackCommit(routeEntry, committedEntry.current, readRouteEntry(router.state.location), router.history.canGoBack());
+        if (destination === 'back') context.effects.back?.();
+        else if (destination === 'home') context.effects.openHome?.();
       })}/>
   </div> : null;
   const version = eligibility.versions.find(candidate => candidate.sourceId === sourceId);
@@ -122,7 +126,8 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     if (!renderedAttempt) return;
     const admitted = readVersionRecovery({
       liveRoute: context.isCurrent(),
-      route: originalEntry,
+      route: routeEntry,
+      committedRoute: committedEntry.current,
       currentRoute: readRouteEntry(router.state.location),
       rendered: {context: captured.context, sourceId: renderedSourceId, versions: eligibility.versions, attempt: renderedAttempt},
       committed: committed.current,
@@ -130,8 +135,8 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
       attemptLive: renderedAttempt.live && !renderedAttempt.fileLife.signal.aborted,
       candidate,
       retire: attempt => {if (attempt === renderedAttempt) retire(renderedAttempt);},
-      afterRetire: () => ({liveRoute: context.isCurrent(), currentRoute: readRouteEntry(router.state.location),
-        successor: attemptRef.current, committed: committed.current}),
+      afterRetire: () => ({liveRoute: context.isCurrent(), committedRoute: committedEntry.current,
+        currentRoute: readRouteEntry(router.state.location), successor: attemptRef.current, committed: committed.current}),
     });
     if (!admitted) return;
     setDetail({});
