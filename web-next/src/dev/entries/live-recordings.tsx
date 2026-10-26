@@ -98,7 +98,7 @@ function Specimen() {
       </button>
     </div>
     {view === 'upcoming' ? <UpcomingView context={context} controller={controller} snapshot={snapshot} now={NOW} onResolve={() => {}} conflictDetails={details}/>
-      : <RecordedView context={context} controller={controller} snapshot={snapshot}/>}
+      : <RecordedView context={context} controller={controller} current={context.isCurrent} snapshot={snapshot}/>}
   </RecordingsLayout>;
 }
 
