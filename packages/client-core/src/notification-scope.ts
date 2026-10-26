@@ -1,6 +1,6 @@
 import {routePath} from '../../contracts/src/routes.ts';
 import type {InboxApi} from './inbox.ts';
-import {parseNotificationVocabulary, type NotificationVocabulary} from './notifications.ts';
+import {parseNotificationBatchResult, parseNotificationInbox, parseNotificationSummary, parseNotificationVocabulary, type NotificationVocabulary} from './notifications.ts';
 import {consoleUTF8Size} from './console-transport.ts';
 
 export type NotificationScopeLifetime = Readonly<{
@@ -89,8 +89,13 @@ export function createNotificationScope(api: InboxApi, lifetime: NotificationSco
    if (typeof scope.viewerFence !== 'string' || !/^[a-f0-9]{64}$/.test(scope.viewerFence)) throw invalid();
    if (fence !== undefined && fence !== scope.viewerFence) throw retire();
    if (requestedAudience !== undefined && raw.data.audience !== requestedAudience) throw invalid();
-   // Pin only a fully admitted envelope; the payload parsers keep their own
-   // tolerant-item/strict-document policy and receive this original response.
+   // A malformed first payload cannot admit its viewer fence. Keep each
+   // canonical parser's tolerant-item/strict-document policy, then return the
+   // original envelope for the service's normal adoption.
+   if(inbox)parseNotificationInbox(raw.data);
+   else if(unread)parseNotificationSummary(raw.data);
+   else if(action)parseNotificationBatchResult(raw.data);
+   else parseNotificationVocabulary(raw.data);
    fence = scope.viewerFence;
    check();owned.signal.throwIfAborted();
    return raw as T;

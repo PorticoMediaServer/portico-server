@@ -32,7 +32,7 @@ function server(){
 function flightServer(){
  const calls:{path:string;method:string;body?:any;signal?:AbortSignal}[]=[];
  const posts:{resolve:(value:any)=>void;reject:(reason:any)=>void;signal?:AbortSignal}[]=[];
- const reads:{resolve:(value:any)=>void}[]=[];
+ const reads:{resolve:(value:any)=>void;reject:(reason:any)=>void;signal?:AbortSignal}[]=[];
  let immediate:Error|undefined,defer=false,holdRead=false,revision=7,nextCursor='';
  let items:any[]=[notification(),notification({id:'n-2',cursor:'4'})];
  const page=(atRevision=revision,list=items)=>({scope:{serverId:'s',viewerFence:'f'},data:{revision:atRevision,audience:'profile',
@@ -45,7 +45,7 @@ function flightServer(){
    if(defer)return new Promise<T>((resolve,reject)=>posts.push({resolve,reject,signal}));
    return Promise.resolve({data:{revision:++revision,audience:'profile',applied:1,receipts:[],counts:counts(0)}} as T);
   }
-  if(holdRead)return new Promise<T>(resolve=>reads.push({resolve}));
+  if(holdRead)return new Promise<T>((resolve,reject)=>reads.push({resolve,reject,signal}));
   return Promise.resolve(page() as T);
  }};
  return {api,calls,posts,reads,page,setImmediate:(e:Error)=>{immediate=e;},setDefer:(value:boolean)=>{defer=value;},
@@ -304,6 +304,80 @@ test('a late failure after a pushed page leaves the successor untouched',async()
  assert.equal(s.calls.filter(c=>c.method==='POST').length,2,'nothing new is sent');
  assert.equal(service.getSnapshot().revision,9);
  assert.equal(service.getSnapshot().counts.unread,5);
+ service.dispose();
+});
+
+test('first-page and continuation publishes cannot dispatch a retired read',async()=>{
+ for(const boundary of ['first','more'] as const){
+  for(const retire of ['load','dispose'] as const){
+   const s=flightServer();const service=new InboxService(s.api,()=>'op');
+   if(boundary==='more'){s.setNextCursor('c2');await service.load();}
+   const before=s.calls.length;let fired=false;let successor:Promise<void>|undefined;
+   service.subscribe(()=>{
+    if(fired||(boundary==='more'&&!service.getSnapshot().busy))return;
+    fired=true;
+    if(retire==='dispose')service.dispose();else successor=service.load('profile','all');
+   });
+   if(boundary==='first')await service.load();else await service.more();
+   await successor;
+   const reads=s.calls.slice(before).filter(c=>c.path.startsWith('/v1/notifications/inbox?'));
+   assert.equal(fired,true);
+   assert.equal(reads.length,retire==='load'?1:0,`${boundary}/${retire}`);
+   if(retire==='load')assert.match(reads[0].path,/state=all/,'only the successor read dispatches');
+   service.dispose();
+  }
+ }
+});
+
+test('a replaced continuation cannot append, publish its error, or clear successor busy',async()=>{
+ for(const fail of [false,true]){
+  const s=flightServer();const service=new InboxService(s.api,()=>'op');
+  s.setNextCursor('c2');await service.load();s.setHoldRead(true);
+  const old=service.more();const duplicate=service.more();
+  assert.equal(s.reads.length,1,'continuations claim synchronously');
+  await service.apply('read',['n-1']);
+  assert.equal(s.calls.filter(c=>c.method==='POST').length,0,'no write against a page being appended');
+  service.accept({revision:9,since:7,resync:false,items:[],counts:counts(5)});
+  assert.equal(s.reads[0].signal!.aborted,true);
+  const successor=service.more();assert.equal(s.reads.length,2);
+  if(fail)s.reads[0].reject(new Error('old failure'));
+  else s.reads[0].resolve(s.page(8,[notification({id:'stale'})]));
+  await Promise.all([old,duplicate]);
+  assert.equal(service.getSnapshot().revision,9);
+  assert.equal(service.getSnapshot().counts.unread,5);
+  assert.equal(service.getSnapshot().busy,true,'only the successor may settle its busy state');
+  assert.equal(service.getSnapshot().error,undefined);
+  assert.ok(!service.getSnapshot().items.some(n=>n.id==='stale'));
+  s.setNextCursor('');s.reads[1].resolve(s.page(10,[notification({id:'current'})]));await successor;
+  assert.equal(service.getSnapshot().revision,10);assert.equal(service.getSnapshot().busy,false);
+  assert.ok(service.getSnapshot().items.some(n=>n.id==='current'));
+  service.dispose();
+ }
+});
+
+test('a conflict copy cannot reacquire or reread a listener replacement',async()=>{
+ const s=flightServer();const service=new InboxService(s.api,()=>'op');await service.load();
+ let fired=false;let replacement:Promise<void>|undefined;
+ service.subscribe(()=>{
+  if(fired||!service.getSnapshot().error)return;
+  fired=true;replacement=service.load('profile','archived');
+ });
+ s.setImmediate(Object.assign(new Error('moved'),{status:409,code:'revision_mismatch'}));
+ await service.apply('read',['n-1']);await replacement;
+ const reads=s.calls.filter(c=>c.path.startsWith('/v1/notifications/inbox?'));
+ assert.equal(reads.length,2,'initial page and listener replacement only');
+ assert.match(reads[1].path,/state=archived/);
+ assert.equal(service.getSnapshot().view,'archived');assert.equal(service.getSnapshot().error,undefined);
+ service.dispose();
+});
+
+test('an operation-id callback cannot lend a replacement page to the old action',async()=>{
+ const s=flightServer();let replace=false,reload:Promise<void>|undefined;
+ const service=new InboxService(s.api,()=>{if(replace){replace=false;reload=service.load();}return 'op';});
+ await service.load();replace=true;
+ await service.apply('read',['n-1']);await reload;
+ assert.equal(s.calls.filter(c=>c.method==='POST').length,0);
+ assert.equal(service.getSnapshot().items.length,2);
  service.dispose();
 });
 
