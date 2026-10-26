@@ -102,6 +102,8 @@
 .historyRow time { font-size: calc(var(--type-caption-size) * 14 / 13); color: var(--color-text-secondary); text-align: right; font-variant-numeric: tabular-nums; }
 .header { position: relative; z-index: var(--layer-content); padding: 116px var(--shell-gutter, var(--gutter-desktop)) 0; }
 .header h1 { margin: 0; font-size: calc(var(--type-lockup-size) * 28 / 23); line-height: calc(var(--type-lockup-size) * 28 / 23); font-weight: var(--type-lockup-weight); letter-spacing: var(--type-lockup-tracking); }
+/* collections.html .dw .phd h1: 56px, line-height 1 and the authored -.045em, desktop only. */
+@media (min-width: 1024px) { .header h1 { font-size: 56px; line-height: 1; letter-spacing: -.045em; } }
 .tabs { position: relative; z-index: var(--layer-content); margin-top: 28px; }
 .tabsList { gap: 34px; padding: 0 var(--shell-gutter, var(--gutter-desktop)); }
 .downloadColumns { position: relative; z-index: var(--layer-content); display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 0 48px; padding: 0 var(--shell-gutter, var(--gutter-desktop)); }
@@ -241,3 +243,14 @@
 .phonePreviewRail { display: flex; gap: 12px; overflow-x: auto; padding: 8px 20px 10px; scrollbar-width: none; }
 .phonePreviewRail::-webkit-scrollbar { display: none; }
 .phonePreviewRail > * { width: 118px; flex: none; }
+
+/* collections.html .dw .pans / .duo: the drawn desktop page gutter is 64, desktop only. */
+@media (min-width: 1024px) { .empty { padding-inline: 64px; } }
+/* collections.html .dw .chip.sm over kit.css:174 .chip, as the app's own tokens. The element and
+   attribute in the selector outrank .button[data-size="small"] and .button[data-variant="glass"],
+   so the drawn height, inset, text size and background actually win. Desktop only. */
+@media (min-width: 1024px) {
+  button.newPlaylist[data-size="small"] { --control-height: 40px; --control-inset: 15px; --control-radius: 10px; --control-gap: 8px;
+    font-size: 14.5px; white-space: nowrap; background: var(--color-raised-high); }
+  button.newPlaylist[data-size="small"]:hover:not(:disabled) { background: var(--color-raised-bright); }
+}

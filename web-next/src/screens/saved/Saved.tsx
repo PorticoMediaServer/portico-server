@@ -185,11 +185,11 @@ function SavedLists(bindings: SavedViewBindings & {onCreate: () => void}) {
           {bindings.catalogueSelection?.toolbar ?? bindings.selection?.toolbar}
           <div className={styles.toolbarEnd}>
             {total !== undefined && <span>{t('web.saved.playlists', {count: total})}</span>}
-            {projection?.actions?.includes('create_playlist') && <Button icon="i-plus" size="small" onClick={bindings.onCreate}>{t('web.saved.newPlaylist')}</Button>}
+            {projection?.actions?.includes('create_playlist') && <Button className={styles.newPlaylist} icon="i-plus" size="small" onClick={bindings.onCreate}>{t('web.saved.newPlaylist')}</Button>}
           </div>
         </div>
       : <SavedListToolbar bindings={bindings} projection={projection} total={total} />}
-    {!hasContent && primary.phase === 'ready' && (!split || squares.phase === 'ready') ? <StateView title={t(`web.saved.empty.${list}`)} body={t(`web.saved.empty.${list}Body`)} /> : null}
+    {!hasContent && primary.phase === 'ready' && (!split || squares.phase === 'ready') ? <div className={styles.empty}><StateView title={t(`web.saved.empty.${list}`)} body={t(`web.saved.empty.${list}Body`)} /></div> : null}
     {primary.projection?.sections.map(section => <SavedSection key={`posters:${section.id}`} {...bindings} service={first} section={section} />)}
     {split && squares.projection?.sections.map(section => <SavedSection key={`squares:${section.id}`} {...bindings} service={runtime.squares} section={section} heading={{label: s('next.saved.musicAndAudiobooks'), count: section.totalCount}} />)}
     {list === 'playlists' && projection?.actions?.includes('create_playlist') && <div className={styles.newTile}><NewPlaylistCard model={{title: t('web.saved.newPlaylist'), caption: []}} onCreate={bindings.onCreate} /></div>}
