@@ -1,7 +1,9 @@
-import {useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode, type Ref} from 'react';
+import {useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode, type Ref} from 'react';
 import type {WindowedCollection} from '@core/collections/windowed';
 import {gridColumns, gridWindow} from './geometry';
 import {cancelLayoutScroll, scrollLayout, useLayoutMotion} from './motion';
+import {RemovalFocusOwner} from './removal-focus-owner';
+import {GridRemovalFocus} from './GridRemovalFocus';
 import styles from './layout.module.css';
 
 export type WindowedGridHandle = {scrollToIndex: (index: number, options?: {focus?: boolean}) => void};
@@ -22,6 +24,8 @@ export function WindowedGrid<T>({collection, renderItem, renderPlaceholder, labe
   const initialPosition = useRef<WindowedCollection<T> | undefined>(undefined);
   const root = useRef<HTMLDivElement>(null), pendingFocus = useRef<number | null>(null), [viewport, setViewport] = useState({width: 0, height: 0, top: 0});
   const [focused, setFocused] = useState<string | null>(null), motion = useLayoutMotion(reducedMotion);
+  const focusOwner = useMemo(() => new RemovalFocusOwner(), [collection]);
+  useLayoutEffect(() => {pendingFocus.current = null;setFocused(null);}, [focusOwner]);
   const snapshot = useSyncExternalStore(collection.subscribe, collection.getSnapshot, collection.getSnapshot);
   const total = snapshot.total ?? collection.pageSize, columns = gridColumns(viewport.width, cardWidth, gap), pitch = rowHeight + rowGap;
   const logicalHeight = Math.max(0, Math.ceil(total / columns) * pitch - rowGap), scrollHeight = Math.min(MAX_SCROLL_HEIGHT, logicalHeight);
@@ -69,18 +73,20 @@ export function WindowedGrid<T>({collection, renderItem, renderPlaceholder, labe
     const target = slot.querySelector<HTMLElement>('[data-layout-primary],button:not(:disabled),a[href],[tabindex="0"]') ?? slot;
     target.focus({preventScroll: true}); pendingFocus.current = null;
   }, [range.renderFirst, range.renderLast, pages, viewport]);
-  const rendered: ReactNode[] = [];
+  const rendered: ReactNode[] = [], keys = new Set<string>();
   for (let index = range.renderFirst; index <= range.renderLast; index++) {
     const slot = collection.slotAt(index), row = Math.floor(index / columns), column = index % columns;
+    if (slot.kind === 'item') keys.add(slot.key);
     // An unloaded slot's coordinate key never stands in for an entity ID or selection ID.
     rendered.push(<div key={slot.key} className={styles.gridItem} role="listitem" aria-posinset={index + 1} aria-setsize={snapshot.total ?? -1}
-      tabIndex={-1} data-grid-index={index} data-item-id={slot.kind === 'item' ? slot.key : undefined}
+      tabIndex={-1} data-grid-index={index} data-item-id={slot.kind === 'item' ? slot.key : undefined} data-layout-item={slot.kind === 'item' ? slot.key : undefined}
       style={{width: cardWidth, height: rowHeight, left: column * (cardWidth + gap), top: row * pitch - logicalTop + viewport.top + stickyOffset}}
       onFocusCapture={() => { if (slot.kind === 'item') { setFocused(slot.key); onItemFocus?.(slot.item, index); } }}>
       {slot.kind === 'item' ? renderItem(slot.item, {index, key: slot.key, focused: slot.key === focused}) : renderPlaceholder(index)}
     </div>);
   }
-  return <div ref={root} tabIndex={-1} className={[styles.grid, className].filter(Boolean).join(' ')} style={{height, ...style}} role="list" aria-label={label} aria-busy={snapshot.status === 'loading'}
+  return <GridRemovalFocus owner={focusOwner} root={root} generation={snapshot.generation} accepted={snapshot.status === 'ready' && !snapshot.refreshing && snapshot.total !== undefined} keys={keys} viewport={viewport}>
+    <div ref={root} tabIndex={-1} className={[styles.grid, className].filter(Boolean).join(' ')} style={{height, ...style}} role="list" aria-label={label} aria-busy={snapshot.status === 'loading'}
     onScroll={event => { const element = event.currentTarget; setViewport({width: element.clientWidth, height: element.clientHeight, top: element.scrollTop}); }}
     onBlurCapture={event => { const next = event.relatedTarget as HTMLElement | null; if (!next || !event.currentTarget.contains(next) || !next.closest('[data-item-id]')) setFocused(null); }}
     onKeyDown={event => {
@@ -92,5 +98,6 @@ export function WindowedGrid<T>({collection, renderItem, renderPlaceholder, labe
       if (!delta && event.key !== 'Home' && event.key !== 'End') return;
       if (target < 0 || target >= total) return;
       event.preventDefault(); jump(target, true, event.repeat);
-    }}><div className={styles.gridExtent} style={{height: scrollHeight + stickyOffset, minWidth: columns * cardWidth + (columns - 1) * gap}}>{rendered}</div></div>;
+    }}><div key={focusOwner.lifetime} className={styles.gridExtent} style={{height: scrollHeight + stickyOffset, minWidth: columns * cardWidth + (columns - 1) * gap}}>{rendered}</div></div>
+  </GridRemovalFocus>;
 }
