@@ -816,7 +816,7 @@
       "reason": "authored mobile web frame in Safari",
       "evidence": {
         "file": "phone-web.html",
-        "label": "f1",
+        "label": "w1",
         "caption": "Mobile web: the same web app at phone width, inside Safari",
         "markup": "columns: .phone saf with .wv"
       }
@@ -829,7 +829,7 @@
       "reason": "authored mobile web frame in Safari",
       "evidence": {
         "file": "phone-web.html",
-        "label": "f2",
+        "label": "w2",
         "caption": "Search, the player and the Home Screen. Search is the same as the app",
         "markup": "columns: .phone saf with .wv"
       }
@@ -842,7 +842,7 @@
       "reason": "authored mobile web frame in Safari",
       "evidence": {
         "file": "phone-web.html",
-        "label": "f3",
+        "label": "w3",
         "caption": "Music, Now playing and Settings in the browser",
         "markup": "columns: .phone saf with .wv"
       }
