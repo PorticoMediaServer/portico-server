@@ -153,7 +153,7 @@ function LibraryRows({resources, libraryId, name, comic, view, onMore, onRetry, 
    *  authorized row exists there is nothing to draw on Discover, so the list stays reachable. */
   const showGrid = view === 'books' || rows.length === 0 && !newspaper;
   return <div className={styles.library}>
-    <ReadDiscovery rows={view === 'books' ? [] : rows} platform={platform} reducedMotion={reducedMotion}
+    <ReadDiscovery focusScope={resources} rows={view === 'books' ? [] : rows} platform={platform} reducedMotion={reducedMotion}
       newspaper={view !== 'books' && newspaper ? <Row heading={t('library.tab.newspapers')} subtitle={t('next.reader.yourArchive')} platform={platform}>
         {/* desktop-read 1b/phone-read 1b: the approved collection banner, drawn from the archive's
             own latest issue: its front page, its date and the archive's issue count. The drawn

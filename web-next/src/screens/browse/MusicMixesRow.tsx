@@ -38,7 +38,7 @@ export function MusicMixesRow({binding, artwork, more, empty, target = false, re
     void (action === 'save' ? binding.save(row) : binding.play(row, action === 'shuffle')).catch(reportError);
   };
   return <div ref={root} className={styles.target} data-music-mixes>
-    <Shelf heading={t('music.mixesForYou')} subtitle={platform === 'desktop' ? t('music.mixesFromListening') : undefined}
+    <Shelf focusScope={binding} heading={t('music.mixesForYou')} subtitle={platform === 'desktop' ? t('music.mixesFromListening') : undefined}
       actions={more} platform={platform} reducedMotion={reducedMotion} itemWidth={cardWidth} items={snapshot.rows} getKey={row => row.mix.id}
       renderItem={(row, position) => {
         const artists = row.mix.artists.map(artist => artist.name.replace(/ /g, '\u00a0')).join(', ') + (row.mix.more ? ` ${t('music.mixesAndMore')}` : '');

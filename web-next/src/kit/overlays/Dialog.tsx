@@ -1,5 +1,5 @@
 import {useOverlayPortalTarget} from './portal-target';
-import {useId} from 'react';
+import {useCallback, useId} from 'react';
 import {Dialog as RadixDialog} from 'radix-ui';
 import {defaultI18n} from '@i18n';
 import {Button} from '../controls/Button';
@@ -33,12 +33,13 @@ function DesktopDialog({open, onOpenChange, title, headerAction, children, descr
   const portalTarget = useOverlayPortalTarget();
   const id = useId(), reason = useDismissReason(), focus = useSurfaceFocus(open, initialFocusRef, returnFocusRef);
   const present = usePresence(open, 160), contentRef = useSurfaceMotion(open, placement === 'right' ? 'panel' : 'dialog'), scrimRef = useSurfaceMotion(open, 'fade');
+  const attachContent = useCallback((element: HTMLDivElement | null) => {contentRef(element);focus.contentRef(element);}, [contentRef, focus.contentRef]);
   useOverlayKeys(open, onOpenChange, false, dismissOnBack);
   const change = (value: boolean) => { if (value === open) return; onOpenChange(value, reason.current); reason.current = 'action'; };
   return <RadixDialog.Root open={open} onOpenChange={change} modal>
     {present && <RadixDialog.Portal forceMount container={portalTarget}>
       <RadixDialog.Overlay forceMount ref={scrimRef} className={styles.scrim} data-state={open ? 'open' : 'closed'} />
-      <RadixDialog.Content forceMount ref={contentRef} className={classes(styles.dialog, className)} data-size={size} data-placement={placement} data-testid={testID}
+      <RadixDialog.Content forceMount ref={attachContent} className={classes(styles.dialog, className)} data-size={size} data-placement={placement} data-testid={testID}
         data-state={open ? 'open' : 'closed'} role={role} aria-modal={open || undefined} aria-label={accessibilityLabel} aria-describedby={description === undefined ? undefined : `${id}-description`}
         style={width === undefined ? undefined : {'--overlay-width': `${width}px`} as OverlayStyle}
         onOpenAutoFocus={focus.onOpenAutoFocus} onCloseAutoFocus={focus.onCloseAutoFocus}

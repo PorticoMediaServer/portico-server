@@ -61,13 +61,13 @@ const resumeKey = (item: ReadResumeItem) => item.id;
 const seriesKey = (item: ReadSeriesItem) => item.id;
 
 /** Actual card models/effects come from the viewer-bound adapter; missing rows are not fabricated. */
-export function ReadDiscovery({rows, platform, reducedMotion, newspaper, children, onVisibleRange}: Readonly<{
-  rows: readonly ReadDiscoveryRow[]; platform: LayoutPlatform; reducedMotion: boolean; newspaper?: ReactNode; children?: ReactNode;
+export function ReadDiscovery({rows, focusScope, platform, reducedMotion, newspaper, children, onVisibleRange}: Readonly<{
+  rows: readonly ReadDiscoveryRow[]; focusScope: object; platform: LayoutPlatform; reducedMotion: boolean; newspaper?: ReactNode; children?: ReactNode;
   /** The library's own bounded content follows the drawn rows, in the same rhythm. */
   onVisibleRange?: (row: ReadDiscoveryRow, range: Readonly<{first: number; last: number}>) => void;
 }>) {
   return <div className={styles.rows}>{rows.map(row => {
-    const common = {key: row.id, heading: row.heading, subtitle: row.subtitle, onSeeAll: row.onSeeAll,
+    const common = {key: row.id, focusScope, heading: row.heading, subtitle: row.subtitle, onSeeAll: row.onSeeAll,
       onVisibleRange: (first: number, last: number) => {row.onVisibleRange?.(first, last);onVisibleRange?.(row, {first, last});}, platform, reducedMotion};
     if (row.kind === 'resume') return <ReadShelf {...common} items={row.items} getKey={resumeKey} renderItem={item => <ReadResumeCard {...item.card} />} />;
     if (row.kind === 'series') return <ReadShelf {...common} items={row.items} getKey={seriesKey} renderItem={item => <SeriesTile {...item.card} />} />;
