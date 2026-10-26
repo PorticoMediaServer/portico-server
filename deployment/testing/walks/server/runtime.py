@@ -87,15 +87,20 @@ def exe_path(pid):
 
 def _children(pid):
     try:
-        text = Path('/proc/%d/task/%d/children' % (pid, pid)).read_text()
+        tasks = sorted(Path('/proc/%d/task' % pid).iterdir(), key=lambda p: int(p.name))[:256]
     except OSError:
         return []
     result = []
-    for value in text.split():
+    # Go's accepting child may be spawned by a non-leader OS thread. Linux
+    # exposes children per task, not the complete process, in this file.
+    for task in tasks:
         try:
-            result.append(int(value))
-        except ValueError:
+            values = (task / 'children').read_text().split()
+        except OSError:
             continue
+        for value in values:
+            if value.isdigit() and int(value) not in result:
+                result.append(int(value))
     return result
 
 def descendants(pid, limit=64):

@@ -11,6 +11,7 @@ import secrets
 import socket
 import time
 import uuid
+from urllib.parse import quote
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -44,9 +45,14 @@ class PreparedState:
     fixtures_manifest_sha256: str
     runtime_sha256: str
 
-def _call(client, method, path, **kwargs):
+def segment(value):
+    if not isinstance(value, str) or not 1 <= len(value) <= 4096 or any(ord(c) < 32 or ord(c) == 127 for c in value):
+        raise StateError('api-reference')
+    return quote(value, safe='')
+
+def _call(client, method, path, body=None, **kwargs):
     try:
-        return client.call(method, path, **kwargs)
+        return client.call(method, path, body=body, **kwargs)
     except ApiError as error:
         raise StateError(error.code, error.status) from None
 
@@ -92,7 +98,7 @@ def _setup(client, port, credentials, fixtures, commit):
     home_rows = _verify_home(client, owner_token, installation)
     reading_items = _verify_reading(client, owner_token, installation, libraries['Books'])
     member_count = _members(client, owner_token, installation, credentials, libraries)
-    _call(client, 'DELETE', '/v1/devices/' + safe_component(owner_device),
+    _call(client, 'DELETE', '/v1/devices/' + segment(owner_device),
           token=owner_token, installation=installation, expect=(204,))
     system = _call(client, 'GET', '/v1/system')
     if not isinstance(system, dict) or system.get('setupRequired') is not False or system.get('signIn') != 'local':
@@ -144,14 +150,16 @@ def _library(client, token, installation, name, kind, path):
     library = created.get('library', created) if isinstance(created, dict) else None
     if not isinstance(library, dict) or not isinstance(library.get('id'), str):
         raise StateError('library-shape')
-    library_id = safe_component(library['id'])
-    job = _call(client, 'POST', '/v1/libraries/' + library_id + '/scans', {},
+    library_id = library['id']
+    segment(library_id)
+    job = _call(client, 'POST', '/v1/libraries/' + segment(library_id) + '/scans', {},
                 token=token, installation=installation, expect=(200, 201, 202))
     job_doc = job.get('job', job) if isinstance(job, dict) else None
     job_id = job_doc.get('jobId', job_doc.get('id')) if isinstance(job_doc, dict) else None
     if not isinstance(job_id, str):
         raise StateError('scan-shape')
-    return library_id, safe_component(job_id)
+    segment(job_id)
+    return library_id, job_id
 
 def _libraries(client, token, installation, fixtures):
     media = fixtures.media
@@ -169,7 +177,7 @@ def _libraries(client, token, installation, fixtures):
     while time.monotonic() < deadline:
         states = []
         for job in jobs:
-            document = _call(client, 'GET', '/v1/admin/ingestion/jobs/' + job,
+            document = _call(client, 'GET', '/v1/admin/ingestion/jobs/' + segment(job),
                              token=token, installation=installation)
             item = document.get('job', document) if isinstance(document, dict) else None
             states.append(item.get('status') if isinstance(item, dict) else None)
@@ -209,7 +217,7 @@ def _verify_member_browse(client, token, installation, libraries):
     visible = {item.get('id') for item in items if isinstance(item, dict)}
     if not {libraries['Movies'], libraries['Music'], libraries['Books']} <= visible:
         raise StateError('member-library-access')
-    content = _call(client, 'GET', '/v1/libraries/' + libraries['Movies'] + '/content',
+    content = _call(client, 'GET', '/v1/libraries/' + segment(libraries['Movies']) + '/content',
                     query={'limit': 5}, token=token, installation=installation)
     sections = content.get('sections') if isinstance(content, dict) else None
     if not isinstance(sections, list) or not any(isinstance(section, dict) and section.get('entries')
@@ -245,7 +253,7 @@ def _members(client, token, installation, credentials, libraries):
         if not isinstance(member_token, str) or not isinstance(member_device, str):
             raise StateError('member-sign-in')
         _verify_member_browse(client, member_token, member_installation, libraries)
-        _call(client, 'DELETE', '/v1/devices/' + safe_component(member_device),
+        _call(client, 'DELETE', '/v1/devices/' + segment(member_device),
               token=member_token, installation=member_installation, expect=(204,))
         count += 1
     return count

@@ -12,7 +12,7 @@ import re
 import socket
 from urllib.parse import urlencode
 
-_PATH = re.compile(r'/[A-Za-z0-9._~/-]{0,2048}\Z')
+_PATH = re.compile(r'/(?:[A-Za-z0-9._~/-]|%[0-9A-Fa-f]{2}){0,8192}\Z')
 _MAX = 8 * 1024 * 1024
 
 class ApiError(Exception):
