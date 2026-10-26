@@ -38,6 +38,7 @@ export type SwitchProfileServerDialogProps = Readonly<{
   error?: ReactNode;
   disabled?: boolean;
   busy?: boolean;
+  refreshing?: boolean;
   t?: ShellTranslate;
 }>;
 
@@ -45,7 +46,7 @@ export type SwitchProfileServerDialogProps = Readonly<{
  * The frame draws no phone variant, so this presenter is the authored desktop
  * surface and its invocation stays with the caller. */
 export function SwitchProfileServerDialog({open, onClose, profilesLabel, profiles, serversLabel, servers, localLabel, localServers,
-  onSelectProfile, onSelectServer, onRefreshServers, onUseLocalServer, error, disabled = false, busy = false, t = tDefault}: SwitchProfileServerDialogProps) {
+  onSelectProfile, onSelectServer, onRefreshServers, onUseLocalServer, error, disabled = false, busy = false, refreshing = false, t = tDefault}: SwitchProfileServerDialogProps) {
   const locked = disabled || busy;
   const profileRow = (profile: SwitchProfileServerProfile) => {
     const face = <ProfileAvatarFace initial={profile.initial} art={profile.art} size={48} locked={profile.pinRequired} t={t} />;
@@ -71,7 +72,7 @@ export function SwitchProfileServerDialog({open, onClose, profilesLabel, profile
     {servers?.length ? <><p className={styles.groupTitle}>{serversLabel ?? t('web.servers.accountServers')}</p><div>{servers.map(serverRow)}</div></> : null}
     {localServers?.length ? <><p className={styles.groupTitle}>{localLabel ?? t('accounts.servers.local')}</p><div>{localServers.map(serverRow)}</div></> : null}
     {hasActions && <div className={styles.actions}>
-      {onRefreshServers && <Button variant="ghost" size="small" icon="i-refresh" disabled={locked} loading={busy} onClick={onRefreshServers}>{t('accounts.servers.refresh')}</Button>}
+      {onRefreshServers && <Button variant="ghost" size="small" icon="i-refresh" disabled={locked || refreshing} loading={busy || refreshing} onClick={onRefreshServers}>{t('accounts.servers.refresh')}</Button>}
       {onUseLocalServer && <Button variant="glass" size="small" disabled={locked} loading={busy} onClick={onUseLocalServer}>{t('web.chooser.localServer')}</Button>}
     </div>}
   </Dialog>;

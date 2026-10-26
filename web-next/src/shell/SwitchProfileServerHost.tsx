@@ -111,15 +111,15 @@ export function SwitchProfileServerHost({opening, close}: {opening: SwitchProfil
   };
   const profiles: readonly SwitchProfileServerProfile[] = Object.freeze(opening.profiles.map(profile => Object.freeze({...profile, current: profile.id === opening.profileId})));
   return <SwitchProfileServerDialog open onClose={dismiss} profilesLabel={t('web.account.profilesOnServer', {server: opening.serverName})}
-    profiles={profiles} servers={published?.servers.map(row => row.view)} localServers={published?.locals.map(row => row.view)} busy={busy}
+    profiles={profiles} servers={published?.servers.map(row => row.view)} localServers={published?.locals.map(row => row.view)} busy={busy && claimed.current} refreshing={busy && !claimed.current}
     error={error ? <AuthError error={error} /> : undefined}
     onSelectProfile={profile => {
-      if (!current() || busy || claimed.current) return;
+      if (!current() || claimed.current) return;
       const index = profiles.indexOf(profile), original = opening.profiles[index];
       if (!original || profile.current) return;
       claimed.current = true; opening.selectProfile(original); dismiss();
     }} onSelectServer={entry => {void choose(entry);}}
-    onRefreshServers={() => {void refresh();}} onUseLocalServer={() => {if (current() && !busy && !claimed.current) {claimed.current = true; opening.useLocal(); dismiss();}}} />;
+    onRefreshServers={() => {void refresh();}} onUseLocalServer={() => {if (current() && !claimed.current) {claimed.current = true; opening.useLocal(); dismiss();}}} />;
 }
 
 /** Transfer a captured Hosted row to the existing canonical sign-in state
