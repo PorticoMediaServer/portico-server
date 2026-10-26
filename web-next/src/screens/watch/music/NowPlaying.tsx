@@ -43,7 +43,7 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
   const notice = code ? {code, sequence: snapshot.sequence} : undefined;
   const seek = (seconds: number) => { const value = watchSeek(snapshot, seconds); if (value !== null) send({kind: 'seek', seconds: value}); };
   return <section className={styles.frame} aria-label={t('next.music.nowPlaying')} data-watch-music>
-    <header className={styles.top}>
+    <header className={`${styles.top} ${styles.riseTop}`}>
       <button type="button" className={styles.round} aria-label={t('player.minimize')} onClick={onCollapse}><Icon name="i-down" size={22} /></button>
       <span className={styles.from}>{t('next.music.playingFrom', {source: from})}</span>
       <ListeningNotice notice={notice} paused={snapshot.playback.intent === 'paused'}
@@ -54,7 +54,7 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
       {can('pause') || can('play') ? <button type="button" className={styles.glass} onClick={() => send({kind: presentation.playing ? 'pause' : 'play'})}>
         <Icon name={presentation.playing ? 'i-pause' : 'i-play'} size={18} />{presentation.playing ? t('next.dock.pause') : t('next.dock.play')}</button> : null}
     </header>
-    <div className={styles.main}>
+    <div className={`${styles.main} ${styles.riseMain}`}>
       <div className={styles.cover}><Artwork source={artworkSource} alt={identity.title} /></div>
       <div className={styles.info}>
         <div><h1>{identity.title}</h1><p>{artist}</p></div>
@@ -80,7 +80,7 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
           <Slider min={0} max={1} step={.01} value={presentation.muted ? 0 : presentation.volume} aria-label={t('player.volume')} onValueChange={volume => send({kind: 'volume', volume})} /></div>}
       </div>
     </div>
-    <aside className={styles.side} aria-label={t('next.music.upNext')}>
+    <aside className={`${styles.side} ${styles.riseSide}`} aria-label={t('next.music.upNext')}>
         <h2>{t('next.music.upNext')}</h2>
         <p className={styles.section}>{t('next.music.nowPlaying')}</p>
         <div className={styles.queueRow}><span className={styles.eq} aria-hidden="true"><i /><i /><i /></span><span><b>{identity.title}</b><small>{artist}</small></span><span className={styles.duration}>{watchClock(duration)}</span></div>
