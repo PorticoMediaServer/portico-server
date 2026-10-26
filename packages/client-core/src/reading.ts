@@ -197,7 +197,8 @@ function readingSeriesOverview(value: unknown, series: string, pageLength: numbe
   return Object.freeze({id: series, title: value.name, total: value.count, completed: value.readCount, ...(author ? {author: Object.freeze(author)} : {})});
 }
 
-const engineFormat = (s: string) => s === 'epub' || s === 'pdf' || s === 'cbz';
+const comicFormat = (s: string) => s === 'cbz' || s === 'cbr';
+const engineFormat = (s: string) => s === 'epub' || s === 'pdf' || comicFormat(s);
 const convertedSource = (s:string) => s==='mobi'||s==='azw3';
 const sourceFormat = (s:string) => engineFormat(s)||convertedSource(s);
 const mime = (s: string | null) => s?.split(';', 1)[0].trim().toLowerCase();
@@ -347,7 +348,7 @@ function validateManifest(m: ReadingManifest, request: PostReadingSessionsReques
     paths.add(entry.path);
   }
   if (spine.some(path => !paths.has(path)) || pages.some(path => !member(path)) || new Set(pages).size !== pages.length) fail('invalid_manifest');
-  if (m.format === 'epub' ? resources.length === 0 || spine.length === 0 || pages.length !== 0 : m.format === 'cbz' ? pages.length === 0 || resources.length !== 0 || spine.length !== 0 : resources.length !== 0 || spine.length !== 0 || pages.length !== 0) fail('invalid_manifest');
+  if (m.format === 'epub' ? resources.length === 0 || spine.length === 0 || pages.length !== 0 : comicFormat(m.format) ? pages.length === 0 || resources.length !== 0 || spine.length !== 0 : resources.length !== 0 || spine.length !== 0 || pages.length !== 0) fail('invalid_manifest');
   if (m.contents !== undefined) {
     if (m.format !== 'epub' || m.contents.length > 512) fail('invalid_manifest');
     for (const entry of m.contents) {
@@ -364,7 +365,7 @@ function validateLocation(location: ReadingLocation, manifest: ReadingManifest, 
   if (location.format === 'epub') {
     if (location.pageIndex !== undefined || !location.cfi?.startsWith('epubcfi(/') || !location.cfi.endsWith(')') || new TextEncoder().encode(location.cfi).length > 4096 || /[\p{Cc}<>]/u.test(location.cfi)) fail('invalid_location');
     if (location.section !== undefined && (!member(location.section) || (!stale && !manifest.spine?.includes(location.section)))) fail('invalid_location');
-  } else if (location.cfi !== undefined || location.section !== undefined || !integer(location.pageIndex ?? -1, 0, 2147483647) || (!stale && location.format === 'cbz' && location.pageIndex! >= manifest.pageNames!.length)) fail('invalid_location');
+  } else if (location.cfi !== undefined || location.section !== undefined || !integer(location.pageIndex ?? -1, 0, 2147483647) || (!stale && comicFormat(location.format) && location.pageIndex! >= manifest.pageNames!.length)) fail('invalid_location');
 }
 function validateProgress(value: ReadingProgress, manifest: ReadingManifest) {
   const p = value.progress;
@@ -829,7 +830,7 @@ export class ReadingSession {
     } finally { this.#savingFile = false; }
   };
   page = async (index: number, options: Readonly<{width: number; signal?: AbortSignal}>): Promise<ReadingPage> => {
-    if (this.manifest.format !== 'cbz') fail('invalid_format');
+    if (!comicFormat(this.manifest.format)) fail('invalid_format');
     if (!integer(index, 0, this.manifest.pageNames!.length - 1) || !integer(options.width, 32, 2048)) fail('invalid_page');
     return this.#binary(query(routePath('get_reading_sessions_sessionId_pages_pageIndex', {sessionId: this.manifest.sessionId, pageIndex: index}), {width: options.width}), {method: 'GET'}, options.signal, async (r, active, check) => {
       if (r.status !== 200) return this.#client.error(r, active, check);

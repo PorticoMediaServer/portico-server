@@ -10,7 +10,7 @@ export type FixedPageLoader=(page:number,options:{width:number;signal:AbortSigna
 type Zoom={kind:'scale';value:number}|{kind:'fit';value:'page'|'width'|'height'|'spread'};
 
 /** Both fixed formats use the common spread planner and their own real page renderer. */
-export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',pageCount:number,fileDirection:'ltr'|'rtl'|'vertical',load:FixedPageLoader,options:Parameters<ReaderDocument<P>['mount']>[0]):Promise<ReaderView<P>>{
+export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz'|'cbr',pageCount:number,fileDirection:'ltr'|'rtl'|'vertical',load:FixedPageLoader,options:Parameters<ReaderDocument<P>['mount']>[0]):Promise<ReaderView<P>>{
   const document=options.container.ownerDocument,host=document.createElement('div');
   const paneStyle=document.createElement('style');paneStyle.textContent='[data-reader-fixed] [data-reader-page]{scrollbar-width:none}[data-reader-fixed] [data-reader-page]::-webkit-scrollbar{display:none}';document.head.append(paneStyle);
   host.tabIndex=0;host.setAttribute('role','document');
@@ -22,7 +22,7 @@ export async function mountFixed<P extends FixedPreferences>(format:'pdf'|'cbz',
   const scrollTo=(left:number,top:number,at=gesturePage??page)=>{const pane=foldPanes?.get(at);if(pane){pane.clip.scrollLeft=Math.max(0,left);pane.clip.scrollTop=Math.max(0,top);}else{host.scrollLeft=Math.max(0,left);host.scrollTop=Math.max(0,top);}};
   const surfacesByPage=new Map<number,PageSurface>();
   const lifetime=new AbortController(),scope=abortScope([lifetime.signal,options.signal]),signal=scope.signal;
-  const direction=():'ltr'|'rtl'|'vertical'=>{const value:FixedPreferences['comicDirection']=preferences.comicDirection;return format==='cbz'&&value!=='file'?value:fileDirection;};
+  const direction=():'ltr'|'rtl'|'vertical'=>{const value:FixedPreferences['comicDirection']=preferences.comicDirection;return format!=='pdf'&&value!=='file'?value:fileDirection;};
   const fit=():'auto'|'page'|'width'|'height'|'spread'=>{
     if(zoom?.kind==='fit')return zoom.value;
     if(format==='pdf'){const value:FixedPreferences['pdfView']=preferences.pdfView;return value==='automatic'?'auto':value;}
