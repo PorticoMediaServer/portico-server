@@ -4,10 +4,12 @@ import type {RemoteSource, RemoteSourceService} from '@core/remote-sources.ts';
 import {router} from '../../../router';
 import {Button, Switch} from '../../../kit/controls';
 import {Dialog} from '../../../kit/overlays';
+import {usePhone} from '../../../kit/overlays/shared';
 import {SettingNumber} from '../../../kit/settings';
 import {useOwnedResource} from './resources';
 import {OfferedReadingChoices} from './OfferedReadingChoices';
 import {ReadingProfileOpening} from './reading-profile-opening';
+import {SourceChoiceSummary} from './SourceChoiceSummary';
 import styles from './remote-sources.module.css';
 
 const t = defaultI18n.t;
@@ -35,6 +37,7 @@ function ReadingBody({reader, service, onClose, reportError, errorText, isAuthFa
 }) {
   const state = useSyncExternalStore(reader.subscribe, reader.getSnapshot, reader.getSnapshot);
   const sourceState = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
+  const phone = usePhone();
   const close = () => {if (reader.current()) {reader.retire();onClose();}};
   useLayoutEffect(() => {if (state.kind === 'saved') close();}, [state, reader]);
   useLayoutEffect(() => {
@@ -47,7 +50,8 @@ function ReadingBody({reader, service, onClose, reportError, errorText, isAuthFa
   const editable = state.kind === 'ready' || state.kind === 'failed';
   const disabled = !editable || !draft || sourceState.busy || sourceState.ambiguous;
   const choices = draft ? reader.offers(draft) : undefined;
-  const recorded = draft ? reader.recorded(draft) : undefined;
+  const recorded = draft && state.kind === 'ready' ? reader.recorded(draft) : undefined;
+  const custom = recorded && recorded.comparison.changedFields.length > 0 ? recorded : undefined;
   const error = state.kind === 'failed' ? errorText(state.error) : undefined;
   return <Dialog open title={reader.source.name} description={t('next.remoteSources.reading')}
     onOpenChange={open => {if (!open) close();}}
@@ -57,13 +61,17 @@ function ReadingBody({reader, service, onClose, reportError, errorText, isAuthFa
       {state.kind === 'unknown'
         ? <Button size="compact" variant="primary" onClick={() => {void reader.recover(state);}}>{t('next.remoteSources.checkResult')}</Button>
         : state.kind !== 'accepted-unavailable' && state.kind !== 'saved-unavailable' && <Button size="compact" variant="primary" disabled={disabled}
-          onClick={() => {if (draft) void reader.save(draft);}}>{t('next.remoteSources.save')}</Button>}
+          onClick={() => {if (draft) void reader.save(draft, state);}}>{t('next.remoteSources.save')}</Button>}
     </>}>
     {state.kind === 'loading' && <p className={styles.muted} role="status">{t('next.remoteSources.loading')}</p>}
     {error && <p className={styles.error} role="alert">{error}</p>}
     {state.kind === 'unknown' && <p className={styles.note} role="status">{t('next.remoteSources.unconfirmed')}</p>}
     {(state.kind === 'accepted-unavailable' || state.kind === 'saved-unavailable') && <p className={styles.note} role="status">{t('next.remoteSources.error.refreshFailed')}</p>}
     {draft && <fieldset disabled={disabled} className={styles.readingFields}>
+      {custom && <div className={styles.recordedChoice}>
+        <SourceChoiceSummary comparison={custom.comparison} definition={custom.definition} phone={phone} disabled={disabled || draft.consentDirty}
+          onResetAll={() => {if (reader.getSnapshot() === state) reader.select(draft, custom.definition);}}/>
+      </div>}
       {choices && <OfferedReadingChoices definitions={choices} selected={draft.choice ?? (recorded?.comparison.changedFields.length === 0 ? recorded.definition : undefined)} disabled={disabled || draft.consentDirty}
         onSelect={choice => reader.select(draft, choice)}/>}
       {draft.choice && <p className={styles.note}>{t('next.remoteSources.changeBody')}</p>}

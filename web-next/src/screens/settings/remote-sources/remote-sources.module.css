@@ -159,6 +159,8 @@
 /* How Portico treats a saved source, and Changing it (remote-sources.html#7, #7c). */
 .choiceSummary { display: flex; align-items: center; gap: 10px; font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
 .choiceSummary b { flex: 1; min-width: 0; font-size: var(--type-row-subtitle-size); font-weight: var(--type-body-strong-weight); color: var(--color-text); }
+/* remote-sources.html .box / phone .mg: the caller owns the summary's surface. */
+.recordedChoice { background: var(--color-raised); border-radius: 14px; }
 /* The drawn mobile-web choice row: the choice in force, its one-line reason and Change (14b). */
 .readingSummary { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 10px; background: var(--color-raised); }
 .readingSummary > span { display: grid; gap: 3px; flex: 1; min-width: 0; }

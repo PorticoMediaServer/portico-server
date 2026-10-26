@@ -92,8 +92,8 @@ export class ReadingProfileOpening {
     if (!this.holds(draft) || draft.choice || draft.consent === undefined) return;
     this.publish({kind: 'ready', draft: Object.freeze({...draft, consent, consentDirty: true})});
   };
-  save = async (draft: ReadingDraft) => {
-    if (this.flight || (this.state.kind !== 'ready' && this.state.kind !== 'failed') || this.state.draft !== draft) return;
+  save = async (draft: ReadingDraft, rendered: ReadingOpeningState) => {
+    if (this.state !== rendered || this.flight || (this.state.kind !== 'ready' && this.state.kind !== 'failed') || this.state.draft !== draft) return;
     // Claim before caller predicates, publication or SDK callbacks can re-enter.
     const flight = {};this.flight = flight;
     const current = () => this.current() && (draft.choice ? this.command === flight : this.flight === flight);

@@ -22,12 +22,12 @@ function profile(saved = true): SourceReadSettings {
   return {sourceId: source.id, generation: '7', revision: saved ? 2 : 0, saved, configurationGeneration: '11',
     values: {...reading, wholeFileReads: true, allowAdvancedMediaAnalysis: false}, choiceDefinitions: definitions, choiceApplicableFields: sourceChoiceFields};
 }
-function parent(): SourceReadSettings {
-  return {...profile(), choiceBaseline: {sourceId: source.id, generation: '7', configurationGeneration: '11', name: 'once',
-    definitionRevision: 1, readRevision: 2, advancedRevision: 6, reading, advanced, currentAdvanced: advanced,
+function parent(readRevision = 2, advancedRevision = 6): SourceReadSettings {
+  return {...profile(), revision: readRevision, choiceBaseline: {sourceId: source.id, generation: '7', configurationGeneration: '11', name: 'once',
+    definitionRevision: 1, readRevision, advancedRevision, reading, advanced, currentAdvanced: advanced,
     applicableFields: sourceChoiceFields, changedFields: []}};
 }
-function receipt() {return {scope: wire, receipt: {operationId: operation, accepted: true, removed: false, source, readSettings: parent()}};}
+function receipt(settings = parent()) {return {scope: wire, receipt: {operationId: operation, accepted: true, removed: false, source, readSettings: settings}};}
 function deferred<T>() {
   let resolve!: (value: T) => void, reject!: (error: unknown) => void;
   const promise = new Promise<T>((yes, no) => {resolve = yes;reject = no;});
@@ -61,7 +61,7 @@ test('original service-issued pair and exact offered object reach one atomic PUT
   const original = f.draft(), choice = original.profile.choiceDefinitions![1]!;
   f.opening.select(original, {...choice});assert.equal(f.draft(), original, 'a cloned offer is refused');
   f.opening.select(original, choice);const selected = f.draft();
-  const save = f.opening.save(selected);void f.opening.save(selected);
+  const save = f.opening.save(selected, f.opening.getSnapshot());void f.opening.save(selected, f.opening.getSnapshot());
   await Promise.resolve();await Promise.resolve();
   assert.equal(f.calls.filter(call => call.method === 'PUT').length, 1);
   const body = f.calls.find(call => call.method === 'PUT')!.body as {values: Record<string, unknown>; startChoice: Record<string, unknown>};
@@ -76,14 +76,14 @@ test('retained input from draft A cannot edit or submit B; dirty consent is an i
   f.opening.changeConsent(a, true);const b = f.draft();
   f.opening.edit(a, {connections: 9});f.opening.select(b, b.profile.choiceDefinitions![1]!);
   assert.equal(f.draft(), b);assert.equal(b.choice, undefined);
-  await f.opening.save(a);assert.equal(f.calls.filter(call => call.method === 'PUT').length, 0);
-  await f.opening.save(b);
+  await f.opening.save(a, f.opening.getSnapshot());assert.equal(f.calls.filter(call => call.method === 'PUT').length, 0);
+  await f.opening.save(b, f.opening.getSnapshot());
   const body = f.calls.find(call => call.method === 'PUT')!.body as {values: Record<string, unknown>; startChoice?: unknown};
   assert.equal(body.startChoice, undefined);assert.equal(body.values.allowAdvancedMediaAnalysis, true);
 });
 
 test('an unedited consent fact is omitted from an ordinary save', async () => {
-  const f = fixture();await f.opening.load();await f.opening.save(f.draft());
+  const f = fixture();await f.opening.load();await f.opening.save(f.draft(), f.opening.getSnapshot());
   const body = f.calls.find(call => call.method === 'PUT')!.body as {values: Record<string, unknown>};
   assert.equal(Object.hasOwn(body.values, 'allowAdvancedMediaAnalysis'), false);
 });
@@ -93,9 +93,9 @@ test('unknown retains the original SDK opening after the dispatch flight ends; r
   const f = fixture({put: async () => {throw new TypeError('connection lost');}, recover: async () => {
     if (++reads === 1) throw Object.assign(new Error('not found yet'), {code: 'not_found'});return receipt();
   }});
-  await f.opening.load();const a = f.draft();f.opening.select(a, a.profile.choiceDefinitions![1]!);await f.opening.save(f.draft());
+  await f.opening.load();const a = f.draft();f.opening.select(a, a.profile.choiceDefinitions![1]!);await f.opening.save(f.draft(), f.opening.getSnapshot());
   const unknown = f.opening.getSnapshot();assert.equal(unknown.kind, 'unknown');if (unknown.kind !== 'unknown') return;
-  f.opening.changeConsent(unknown.draft, true);await f.opening.save(unknown.draft);
+  f.opening.changeConsent(unknown.draft, true);await f.opening.save(unknown.draft, f.opening.getSnapshot());
   await f.opening.recover(unknown);const next = f.opening.getSnapshot();assert.equal(next.kind, 'unknown');
   if (next.kind !== 'unknown') return;assert.equal(next.result.intent, unknown.result.intent);
   await f.opening.recover(unknown);assert.equal(reads, 1, 'an old Check result cannot borrow the newer outcome');
@@ -106,24 +106,24 @@ test('unknown retains the original SDK opening after the dispatch flight ends; r
 test('confirmed acceptance plus failed refresh is terminal accepted-unavailable, never another PUT or recovery', async () => {
   const f = fixture({fresh: async () => {throw new TypeError('refresh offline');}});await f.opening.load();
   const a = f.draft();f.opening.select(a, a.profile.choiceDefinitions![1]!);const selected = f.draft();
-  await f.opening.save(selected);const accepted = f.opening.getSnapshot();assert.equal(accepted.kind, 'accepted-unavailable');
-  await f.opening.save(selected);assert.equal(f.calls.filter(call => call.method === 'PUT').length, 1);
+  await f.opening.save(selected, f.opening.getSnapshot());const accepted = f.opening.getSnapshot();assert.equal(accepted.kind, 'accepted-unavailable');
+  await f.opening.save(selected, f.opening.getSnapshot());assert.equal(f.calls.filter(call => call.method === 'PUT').length, 1);
   if (accepted.kind === 'accepted-unavailable') assert.equal(accepted.result.settings, accepted.result.accepted.settings);
 });
 
 test('route/layout retirement aborts only this opening, suppresses late settlement, and never revives its commands', async () => {
   const held = deferred<unknown>(), f = fixture({put: () => held.promise});await f.opening.load();
   const a = f.draft();f.opening.select(a, a.profile.choiceDefinitions![1]!);const selected = f.draft();
-  const save = f.opening.save(selected);await Promise.resolve();await Promise.resolve();
+  const save = f.opening.save(selected, f.opening.getSnapshot());await Promise.resolve();await Promise.resolve();
   const signal = f.calls.find(call => call.method === 'PUT')!.signal!;
   f.opening.retire();assert.equal(signal.aborted, true);held.resolve(receipt());await save;
-  assert.equal(f.opening.getSnapshot().kind, 'retired');await f.opening.save(selected);
+  assert.equal(f.opening.getSnapshot().kind, 'retired');await f.opening.save(selected, f.opening.getSnapshot());
   assert.equal(f.calls.filter(call => call.method === 'PUT').length, 1);
 });
 
 test('original viewer/source guard retirement before Save makes zero write I/O', async () => {
   const f = fixture();await f.opening.load();const a = f.draft();f.opening.select(a, a.profile.choiceDefinitions![1]!);
-  const selected = f.draft();f.retireAuthority();await f.opening.save(selected);
+  const selected = f.draft();f.retireAuthority();await f.opening.save(selected, f.opening.getSnapshot());
   assert.equal(f.calls.filter(call => call.method === 'PUT').length, 0);
 });
 
@@ -136,16 +136,16 @@ test('an unavailable Advanced read supplies no invented pair and cannot offer an
 test('reentrant publication and throwing view listeners cannot duplicate a command or erase its known success', async () => {
   const f = fixture();await f.opening.load();const a = f.draft();f.opening.select(a, a.profile.choiceDefinitions![1]!);
   const selected = f.draft();
-  f.opening.subscribe(() => {void f.opening.save(selected);throw new Error('view listener failed');});
-  await f.opening.save(selected);
+  f.opening.subscribe(() => {void f.opening.save(selected, f.opening.getSnapshot());throw new Error('view listener failed');});
+  await f.opening.save(selected, f.opening.getSnapshot());
   assert.equal(f.opening.getSnapshot().kind, 'saved');assert.equal(f.calls.filter(call => call.method === 'PUT').length, 1);
 });
 
 test('ordinary known save followed by failed refresh also cannot offer a second write', async () => {
   const f = fixture({put: async () => ({scope: wire, receipt: {operationId: operation, accepted: true, removed: false, source}}),
     fresh: async () => {throw new TypeError('refresh offline');}});
-  await f.opening.load();const draft = f.draft();await f.opening.save(draft);
-  assert.equal(f.opening.getSnapshot().kind, 'saved-unavailable');await f.opening.save(draft);
+  await f.opening.load();const draft = f.draft();await f.opening.save(draft, f.opening.getSnapshot());
+  assert.equal(f.opening.getSnapshot().kind, 'saved-unavailable');await f.opening.save(draft, f.opening.getSnapshot());
   assert.equal(f.calls.filter(call => call.method === 'PUT').length, 1);
 });
 
@@ -162,4 +162,64 @@ test('a recorded choice is shown only with its exact current Advanced pair, neve
   exact.opening.changeConsent(draft, true);const permission = exact.draft();
   assert.deepEqual(exact.opening.recorded(permission)?.comparison.changedFields, [], 'consent is not a counted setting');
   exact.opening.edit(permission, {connections: 9});assert.equal(exact.opening.recorded(exact.draft()), undefined, 'unsaved draft changes are not a new server comparison');
+});
+
+function customProfile(): SourceReadSettings {
+  const saved = parent();
+  return {...saved, values: {...saved.values, connections: 2, wholeFileReads: false, allowAdvancedMediaAnalysis: true},
+    choiceBaseline: {...saved.choiceBaseline!, changedFields: ['connections']}};
+}
+function pairedAdvanced(values = advanced) {return {scope: wire, settings: {
+  sourceId: source.id, generation: '7', revision: 6, saved: true, cacheSupported: true, cacheApplied: true,
+  cacheUsedBytes: 0, scanIntervalObserved: 0, values,
+}};}
+
+test('Custom count comes from the coherent recorded difference; Reset all stages its exact version and saves atomically', async () => {
+  const accepted = {...parent(3, 7), values: {...reading, wholeFileReads: false, allowAdvancedMediaAnalysis: true}};
+  const f = fixture({initial: customProfile(), advanced: async () => pairedAdvanced(),
+    put: async () => receipt(accepted), fresh: async () => ({scope: wire, settings: accepted})});
+  await f.opening.load();const draft = f.draft(), recorded = f.opening.recorded(draft)!;
+  assert.deepEqual(recorded.comparison.changedFields, ['connections']);
+  assert.equal(recorded.definition, draft.profile.choiceDefinitions![1]);
+  assert.equal(draft.consent, true);assert.equal(draft.values.wholeFileReads, false);
+  f.opening.select(draft, recorded.definition);const reset = f.draft();
+  assert.equal(reset.choice, recorded.definition);assert.equal(reset.values.connections, 4);
+  assert.equal(reset.consent, true);assert.equal(reset.consentDirty, false);
+  assert.equal(f.calls.filter(call => call.method === 'PUT').length, 0, 'Reset is staged until the existing explicit Save');
+  await f.opening.save(reset, f.opening.getSnapshot());assert.equal(f.opening.getSnapshot().kind, 'saved');
+  const puts = f.calls.filter(call => call.method === 'PUT');assert.equal(puts.length, 1);
+  assert.equal(puts[0]!.path.endsWith('/settings/read-profile'), true);
+  const body = puts[0]!.body as {values: Record<string, unknown>; startChoice: {definitionRevision: number; expectedAdvancedRevision: number}};
+  assert.equal(body.startChoice.definitionRevision, recorded.definition.definitionRevision);
+  assert.equal(body.startChoice.expectedAdvancedRevision, 6);
+  assert.equal(body.values.wholeFileReads, false);assert.equal(Object.hasOwn(body.values, 'allowAdvancedMediaAnalysis'), false);
+});
+
+test('a retained Reset from the previous rendered draft cannot reset a newer edit or dirty consent', async () => {
+  const f = fixture({initial: customProfile(), advanced: async () => pairedAdvanced()});await f.opening.load();
+  const a = f.draft(), reset = f.opening.recorded(a)!.definition;
+  f.opening.edit(a, {connections: 3});const b = f.draft();f.opening.select(a, reset);
+  assert.equal(f.draft(), b);assert.equal(f.draft().values.connections, 3);assert.equal(f.draft().choice, undefined);
+  f.opening.changeConsent(b, false);const dirty = f.draft();f.opening.select(dirty, reset);
+  assert.equal(f.draft(), dirty);assert.equal(dirty.consentDirty, true);assert.equal(dirty.choice, undefined);
+  assert.equal(f.calls.filter(call => call.method === 'PUT').length, 0);
+});
+
+test('a different offered definition version or a contradictory Advanced read withholds recorded reset/count', async () => {
+  const old = customProfile();
+  const newer = fixture({initial: {...old, choiceDefinitions: definitions.map(definition => ({...definition, definitionRevision: 2}))},
+    advanced: async () => pairedAdvanced()});
+  await newer.opening.load();assert.equal(newer.opening.recorded(newer.draft()), undefined);
+  const mismatch = fixture({initial: old, advanced: async () => pairedAdvanced({...advanced, watchForChanges: true})});
+  await mismatch.opening.load();assert.equal(mismatch.opening.recorded(mismatch.draft()), undefined);
+  assert.equal(newer.calls.filter(call => call.method === 'PUT').length + mismatch.calls.filter(call => call.method === 'PUT').length, 0);
+});
+
+test('a retained Save cannot retry the same draft after a definite failure replaces its rendered state', async () => {
+  const f = fixture({put: async () => {throw Object.assign(new Error('refused'), {code: 'invalid_request'});}});
+  await f.opening.load();const a = f.draft();f.opening.select(a, a.profile.choiceDefinitions![1]!);
+  const draft = f.draft(), rendered = f.opening.getSnapshot();
+  await f.opening.save(draft, rendered);assert.equal(f.opening.getSnapshot().kind, 'failed');
+  await f.opening.save(draft, rendered);
+  assert.equal(f.calls.filter(call => call.method === 'PUT').length, 1, 'old rendered callback cannot dispatch again');
 });
