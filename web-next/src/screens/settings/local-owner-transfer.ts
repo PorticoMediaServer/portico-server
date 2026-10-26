@@ -16,6 +16,9 @@ type Admission = {
 };
 export type LocalOwnerTransferOptions = Readonly<{
   accountId: string; profileId: string;
+  /** Purpose-only original transport: known accepting responses must not be
+   * erased by the general Settings view's post-await publication guard. */
+  transferApi: ProfileAPI;
   /** The captured Settings build must still be the same Local owner/main profile,
    * server, family and Sign-in opening. Never supply a latest-context getter. */
   isCurrent: () => boolean;
@@ -42,11 +45,13 @@ export class LocalOwnerTransferSource {
   private readonly profileId: string;
   private readonly parentCurrent: () => boolean;
   private readonly onTransferred: (publish: boolean) => void | Promise<void>;
+  private readonly transferApi: ProfileAPI;
   /** Used only to keep the existing sign-in move command mutually exclusive. */
   get inFlight() {return this.running !== undefined;}
   constructor(private readonly api: ProfileAPI, options: LocalOwnerTransferOptions) {
     this.accountId = options.accountId; this.profileId = options.profileId;
     this.parentCurrent = options.isCurrent; this.onTransferred = options.onTransferred;
+    this.transferApi = options.transferApi;
     this.people = new SettingsPeopleClient(api, this.current);
   }
   private current = () => {
@@ -98,7 +103,7 @@ export class LocalOwnerTransferSource {
             assert();
             if (person.accountId !== target || person.role !== 'member' || person.disabled || person.hostedAccountId ||
               person.revision !== revisions.get(target)) throw changed();
-            await transferLocalOwnership(this.api, target, password, revision, commandSignal);
+            await transferLocalOwnership(this.transferApi, target, password, revision, commandSignal);
             // The response is a known accepting acknowledgement. View retirement
             // can suppress publication, but cannot make this source reusable.
             const publish = this.owns(entry) && entry.port === port && activeCaller(command) && !commandSignal.aborted;

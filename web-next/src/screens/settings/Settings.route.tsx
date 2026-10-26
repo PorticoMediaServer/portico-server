@@ -56,6 +56,7 @@ import {createPrivacySettingsSurfaces} from './privacy-controls';
 import {PeopleScreen, type PeopleBindings} from './People';
 import {SignInSettingsSource} from './signin-source';
 import {LocalOwnerTransferSource} from './local-owner-transfer';
+import {guardedSettingsRequest, localOwnerTransferTransport} from './settings-request';
 import {SettingsStorageSource} from './server/storage-source';
 import {StorageDataFolder} from './server/StorageUsage';
 import {SettingsOwnerSwitch} from './owner-switch';
@@ -168,9 +169,7 @@ export function SettingsEntry() {
     const assert = () => {if (!current()) throw new DOMException('Settings build retired', 'AbortError');};
     const signal = (input?: AbortSignal | null) => input ? AbortSignal.any([lifetime.signal, input]) : lifetime.signal;
     const originalApi = context.api;
-    const request: typeof originalApi.request = async <T,>(path: string, method?: string, body?: unknown, input?: AbortSignal): Promise<T> => {
-      assert();const value = await originalApi.request<T>(path, method, body, signal(input));assert();return value;
-    };
+    const request = guardedSettingsRequest(originalApi, assert, signal);
     const requestRaw: typeof originalApi.requestRaw = async (path, method, options) => {
       assert();const value = await originalApi.requestRaw(path, method, {...options, signal: signal(options?.signal)});assert();return value;
     };
@@ -300,6 +299,7 @@ export function SettingsEntry() {
     };
     localOwnerTransfer = localOwnerCurrent() ? new LocalOwnerTransferSource(api, {
       accountId: viewer.accountId, profileId: viewer.profileId, isCurrent: localOwnerCurrent,
+      transferApi: localOwnerTransferTransport(originalApi, () => {if (!localOwnerCurrent()) throw new DOMException('Settings build retired', 'AbortError');}, signal),
       onTransferred: async publish => {
         // `publish` was checked against the exact opening at acknowledgement;
         // capture that location without another authority call before retirement.

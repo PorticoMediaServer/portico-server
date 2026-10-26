@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type {ProfileAPI} from '@core/profile-management.ts';
 import {LocalOwnerTransferSource} from '../src/screens/settings/local-owner-transfer.ts';
+import {guardedSettingsRequest, localOwnerTransferTransport} from '../src/screens/settings/settings-request.ts';
 
 // Accepting-composition vectors, authored UNRUN. Fixtures carry actual People
 // envelopes and revisions; the presenter is not an authority or a role receipt.
@@ -24,7 +25,14 @@ function fixture() {
     if (path === '/v1/direct/ownership') {if (fail) throw fail; await post?.(); return undefined as T;}
     throw new Error('Unexpected transfer request');
   }};
-  const source = new LocalOwnerTransferSource(api, {accountId: 'owner', profileId: 'owner-main', isCurrent: () => current,
+  const build = new AbortController();
+  const assertBuild = () => {if (!current) throw new DOMException('Settings build retired', 'AbortError');};
+  const signal = (input?: AbortSignal | null) => input ? AbortSignal.any([build.signal, input]) : build.signal;
+  // These are the production Settings request boundaries, not a direct fixture
+  // transport standing in for the view proxy. Only the purpose POST keeps ACKs.
+  const guarded: ProfileAPI = {request: guardedSettingsRequest(api, assertBuild, signal)};
+  const source = new LocalOwnerTransferSource(guarded, {accountId: 'owner', profileId: 'owner-main', isCurrent: () => current,
+    transferApi: localOwnerTransferTransport(api, assertBuild, signal),
     onTransferred: publish => {
       // The exact old context is spent even after its view/authority ended.
       complete++;
@@ -32,7 +40,7 @@ function fixture() {
       current = false;
     }});
   return {source, calls, get complete() {return complete;}, get reconciled() {return reconciled;}, get navigated() {return navigated;},
-    retire: () => {current = false;}, restoreParent: () => {current = true;},
+    retire: () => {current = false;build.abort();}, restoreParent: () => {current = true;},
     revised: () => {revision++;}, linked: () => {link = true;}, fail: (error: unknown) => {fail = error;}, wait: (value: () => Promise<void>) => {post = value;}};
 }
 const caller = () => {
@@ -121,4 +129,44 @@ for (const retirement of ['command', 'authority'] as const) test('known 204 afte
     f.restoreParent();
     const count = f.calls.length; await assert.rejects(f.source.open(caller())); assert.equal(f.calls.length, count);
   } finally {f.source.dispose();}
+});
+
+test('Settings build retirement cannot erase its original held POST acknowledgement', async () => {
+  const f = fixture(), life = caller(); let release!: () => void;
+  f.wait(() => new Promise<void>(resolve => {release = resolve;}));
+  try {
+    const port = await f.source.open(life), pending = port.accept(input, life);
+    for (let i = 0; i < 8 && !release; i++) await Promise.resolve();
+    assert.equal(typeof release, 'function');
+    f.retire(); f.source.dispose();
+    release(); await pending;
+    assert.equal(f.complete, 1); assert.equal(f.reconciled, 0); assert.equal(f.navigated, 0);
+    f.restoreParent();
+    const count = f.calls.length; await assert.rejects(f.source.open(caller())); assert.equal(f.calls.length, count);
+  } finally {f.source.dispose();}
+});
+
+test('a held ownership transport rejection after build retirement is not a confirmed transfer', async () => {
+  const f = fixture(), life = caller(), uncertain = new Error('response lost'); let reject!: (error: unknown) => void;
+  f.wait(() => new Promise<void>((_resolve, refuse) => {reject = refuse;}));
+  try {
+    const port = await f.source.open(life), pending = port.accept(input, life);
+    for (let i = 0; i < 8 && !reject; i++) await Promise.resolve();
+    f.retire(); f.source.dispose(); reject(uncertain);
+    await assert.rejects(pending, error => error === uncertain);
+    assert.equal(f.complete, 0); assert.equal(f.reconciled, 0); assert.equal(f.navigated, 0);
+  } finally {f.source.dispose();}
+});
+
+test('ordinary Settings request still refuses a response after its build retires', async () => {
+  let current = true, release!: () => void;
+  const api: ProfileAPI = {request: async <T,>(): Promise<T> => {await new Promise<void>(resolve => {release = resolve;});return undefined as T;}};
+  const assertBuild = () => {if (!current) throw new DOMException('Settings build retired', 'AbortError');};
+  const signal = new AbortController().signal;
+  const guarded = guardedSettingsRequest(api, assertBuild, () => signal);
+  const pending = guarded('/v1/admin/access/members', 'GET');
+  current = false; release();
+  await assert.rejects(pending, error => error instanceof DOMException && error.name === 'AbortError');
+  const purpose = localOwnerTransferTransport(api, assertBuild, () => signal);
+  await assert.rejects(purpose.request('/v1/admin/access/members', 'GET'));
 });
