@@ -60,17 +60,35 @@ func (s *Service) checkActiveDiscSnapshotTx(ctx context.Context, tx *sql.Tx, sna
 	}
 	// A pending private candidate cannot become readable merely by possessing a
 	// legacy ID. The actual accepted V1 occurrence must still be alive.
-	var accepted bool
-	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM playback_v1_sessions v JOIN catalog_entities i ON i.id=v.item_id
+	var session, startKey, body string
+	err = tx.QueryRowContext(ctx, `SELECT v.id,v.start_key,v.start_digest FROM playback_v1_sessions v JOIN catalog_entities i ON i.id=v.item_id
  WHERE v.media_session_id=? AND v.media_generation=? AND v.account_id=? AND v.profile_id=? AND v.authority=? AND v.device_id=?
- AND v.ended_ms=0 AND v.lease_expires_ms>? AND pid(i.public_id)=? AND v.queue_id=? AND v.entry_id=?)`,
+ AND v.ended_ms=0 AND v.lease_expires_ms>? AND pid(i.public_id)=? AND v.queue_id=? AND v.entry_id=?
+ AND (SELECT count(*) FROM playback_v1_sessions same WHERE same.media_session_id=v.media_session_id AND same.media_generation=v.media_generation AND same.ended_ms=0)=1`,
 		snapshot.SessionID, snapshot.Generation, snapshot.Actor.AccountID, snapshot.Actor.ProfileID, snapshot.Actor.Authority, snapshot.Actor.DeviceID,
-		time.Now().UnixMilli(), item, snapshot.Operation.QueueID, snapshot.Operation.QueueEntryID).Scan(&accepted)
+		time.Now().UnixMilli(), item, snapshot.Operation.QueueID, snapshot.Operation.QueueEntryID).Scan(&session, &startKey, &body)
 	if err != nil {
 		return err
 	}
-	if !accepted {
+	if identity.Digest(startKey) != snapshot.Operation.StartKeyDigest || body != snapshot.Operation.StartBodyDigest {
 		return playbackdisc.ErrCurrent
+	}
+	if snapshot.Operation.QueueID != "" {
+		// Queue edits may advance its revision without replacing the audible
+		// occurrence. They cannot change its original owner/custody, entry or
+		// accepted session and let this reader follow the successor.
+		var owned bool
+		err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM queues_v1 q WHERE q.id=? AND q.owner_kind=? AND q.owner_id=?
+ AND q.authority=? AND q.account_id=? AND q.profile_id=? AND q.custody_generation=? AND q.revision>=?
+ AND q.session_id=? AND q.current_entry_id=?)`, snapshot.Operation.QueueID, snapshot.Operation.QueueOwnerKind, snapshot.Operation.QueueOwnerID,
+			snapshot.Actor.Authority, snapshot.Actor.AccountID, snapshot.Actor.ProfileID, snapshot.Operation.QueueCustodyGeneration, snapshot.Operation.QueueRevision,
+			session, snapshot.Operation.QueueEntryID).Scan(&owned)
+		if err != nil {
+			return err
+		}
+		if !owned {
+			return playbackdisc.ErrCurrent
+		}
 	}
 	if err := recordingAdmittedTx(ctx, tx, item); err != nil {
 		return err

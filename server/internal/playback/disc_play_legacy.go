@@ -44,11 +44,21 @@ func (b *discPlayBorrow) legacySnapshotTx(ctx context.Context, tx *sql.Tx, s *Se
 }
 
 func (b *discPlayBorrow) checkLegacyRequestTx(ctx context.Context, tx *sql.Tx, s *Service, p identity.Principal, item, asset, request string, choice *V1Choice, replacement *SessionReplacement) error {
-	if choice == nil || !choice.PendingActivation || choice.PrivateFor != "" || choice.AssetID != asset || choice.AudioPlanV2 || choice.AudioServerRender || choice.DiscTitle != nil || choice.SubtitleKind != "" || choice.SubtitleBesideStream {
+	if choice == nil || !choice.PendingActivation || choice.PrivateFor != "" || choice.AssetID != asset || choice.AudioPlanV2 || choice.AudioServerRender || choice.SubtitleKind != "" || choice.SubtitleBesideStream {
 		return disc.ErrRemoteUnqualified
 	}
-	if _, err := b.legacySnapshotTx(ctx, tx, s, p, item, asset); err != nil {
+	snapshot, err := b.legacySnapshotTx(ctx, tx, s, p, item, asset)
+	if err != nil {
 		return err
+	}
+	if choice.DiscTitle != nil {
+		selected, err := measuredDiscTitleRef(snapshot)
+		if err != nil {
+			return err
+		}
+		if *selected != *choice.DiscTitle {
+			return ErrStaleOffer
+		}
 	}
 	b.owner.mu.Lock()
 	original := b.owner.operation.Binding
@@ -78,6 +88,10 @@ func (b *discPlayBorrow) createLegacy(ctx context.Context, s *Service, p identit
 		return Session{}, err
 	}
 	if err := b.held(); err != nil {
+		return Session{}, err
+	}
+	ctx, err := b.withContext(ctx)
+	if err != nil {
 		return Session{}, err
 	}
 	choice.discBorrow = b

@@ -127,13 +127,20 @@ func checkDiscSessionTx(ctx context.Context, tx *sql.Tx, id string) error {
 // PresentationDiscTitleTx captures the actual selected title for a presentation
 // being accepted. The caller owns actor/occurrence admission in this same Tx.
 func (s *Service) PresentationDiscTitleTx(ctx context.Context, tx *sql.Tx, id string, generation int) (*catalog.DiscTitleRef, error) {
-	if _, _, private, err := privateDiscBindingTx(ctx, tx, id); err != nil {
+	if key, snapshotID, private, err := privateDiscBindingTx(ctx, tx, id); err != nil {
 		return nil, err
 	} else if private {
-		// The existing projection below is a local catalogue-token projection.
-		// A private start must supply its separately sealed title projection;
-		// absence is not permission to publish a presentation without its pin.
-		return nil, disc.ErrRemoteUnqualified
+		if key.Generation != generation {
+			return nil, ErrStaleOffer
+		}
+		if borrow, ok := ctx.Value(discPlayBorrowKey{}).(*discPlayBorrow); ok {
+			return borrow.pendingTitleTx(ctx, tx, s, key, snapshotID)
+		}
+		snapshot, _, err := s.activePrivateDiscSnapshotTx(ctx, tx, id)
+		if err != nil {
+			return nil, err
+		}
+		return measuredDiscTitleRef(snapshot)
 	}
 	var asset string
 	if err := tx.QueryRowContext(ctx, `SELECT asset_id FROM playback_sessions WHERE id=? AND generation=? AND state NOT IN('stopped','ended','failed')`, id, generation).Scan(&asset); err != nil {
