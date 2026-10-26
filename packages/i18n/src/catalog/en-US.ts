@@ -1569,6 +1569,7 @@ export const enUS = {
   'downloads.addedMixed': '{accepted} added; {rejected} couldn’t be: {reason}',
   'downloads.already': 'That’s already in your downloads.',
   'downloads.addedMany': '{count, plural, one {# title} other {# titles}} added to your downloads.',
+  'downloads.chooseQuality': 'What quality?',
   'downloads.view': 'View downloads',
   'downloads.quality.original': 'Original',
   'downloads.quality.1080p': '1080p',
