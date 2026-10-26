@@ -134,7 +134,7 @@ func handlerPrepare(t *testing.T, f *sqlFixture, h *ClaimHandler) ClaimStatus {
 func handlerApprove(t *testing.T, f *sqlFixture, h *ClaimHandler, s ClaimStatus) ClaimStatus {
 	t.Helper()
 	a := s.ApprovalRequest
-	w := approvalWire{"", "portico.claim.approval", "2", "https://hosted.example", a.OperationID, a.ServerID, f.binding.AccountID, a.PublicKey, a.LocalGeneration, 1, "setup", "", "", "", f.now.Format(time.RFC3339Nano), f.now.Add(5 * time.Minute).Format(time.RFC3339Nano)}
+	w := approvalWire{Kind: "portico.claim.approval", Version: "2", Audience: "https://hosted.example", OperationID: a.OperationID, ServerID: a.ServerID, AccountID: f.binding.AccountID, PublicKey: a.PublicKey, LocalGeneration: a.LocalGeneration, ApprovalRevision: 1, Purpose: "setup", IssuedAt: f.now.Format(time.RFC3339Nano), ExpiresAt: f.now.Add(5 * time.Minute).Format(time.RFC3339Nano)}
 	raw, _ := json.Marshal(w)
 	body := struct {
 		Expected         ClaimExpected `json:"expected"`

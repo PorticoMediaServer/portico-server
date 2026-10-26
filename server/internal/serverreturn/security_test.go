@@ -29,12 +29,18 @@ func TestSecurityContextIsCanonicalFiniteAndNeverASignInPurpose(t *testing.T) {
 	if _, _, e = VerifySecurityContext(signedSecurityTest(t, key, c), public, now); e != nil {
 		t.Fatal(e)
 	}
-	if Purpose("security") || ReturnBinding("security", "", "") {
+	secret := strings.Repeat("v", 43)
+	exchange := Exchange{Code: secret, TransactionID: "transaction", Verifier: secret, RegistrationID: "registration", ServerChallenge: secret, InstallationID: secret, Purpose: "sign-in"}
+	if !exchange.Valid() {
+		t.Fatal("ordinary sign-in exchange fixture is invalid")
+	}
+	exchange.Purpose = "security"
+	if Purpose("security") || exchange.Valid() {
 		t.Fatal("Security became a sign-in/claim exchange purpose")
 	}
 	for _, change := range []func(*SecurityContext){
 		func(v *SecurityContext) { v.AuthorityExpiresAt = now.Add(4 * time.Minute) }, func(v *SecurityContext) { v.SettingsScope = "server" }, func(v *SecurityContext) { v.SettingsSection = "signin" }, func(v *SecurityContext) { v.Purpose = "account_export" },
-		func(v *SecurityContext) { v.Kind = AssertionKind }, func(v *SecurityContext) { v.Origin += "/path" }, func(v *SecurityContext) { v.HostedOrigin = "http://web.getportico.tv" }, func(v *SecurityContext) { v.ProviderRevision = 0 }, func(v *SecurityContext) { v.TaskID = "" }, func(v *SecurityContext) { v.ActorBinding = "" }, func(v *SecurityContext) { v.ExpiresAt = now }, func(v *SecurityContext) { v.ExpiresAt = now.Add(5*time.Minute + time.Nanosecond) },
+		func(v *SecurityContext) { v.Kind = SecurityConfirmationKind }, func(v *SecurityContext) { v.Origin += "/path" }, func(v *SecurityContext) { v.HostedOrigin = "http://web.getportico.tv" }, func(v *SecurityContext) { v.ProviderRevision = 0 }, func(v *SecurityContext) { v.TaskID = "" }, func(v *SecurityContext) { v.ActorBinding = "" }, func(v *SecurityContext) { v.ExpiresAt = now }, func(v *SecurityContext) { v.ExpiresAt = now.Add(5*time.Minute + time.Nanosecond) },
 	} {
 		bad := c
 		change(&bad)
