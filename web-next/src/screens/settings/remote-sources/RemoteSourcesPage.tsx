@@ -15,7 +15,7 @@ import {SettingsGroup} from '../../../kit/settings';
 import {SettingsRow} from '../../../kit/shell/SettingsSurfaces';
 import {Icon, type IconName} from '../../../kit/Icon';
 import styles from './remote-sources.module.css';
-import {DriveModePane} from './DrivePanes';
+import {DriveKeyPane, DriveModePane} from './DrivePanes';
 import {RemoteFolderPicker} from './RemoteFolderPicker';
 import {ProgramPicker} from './ProgramPicker';
 import {SourceHeader} from './SourceHeader';
@@ -1003,24 +1003,15 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
           {oauthError && <p className={styles.error} role="alert">{oauthError}</p>}
         </>}
         {driveMode === 'service' && <>
-        <label className={styles.configField}><span className={styles.configLabel}>{t('next.remoteSources.driveKey')}</span>
-          <textarea className={styles.config} aria-label={t('next.remoteSources.driveKey')} value={drive.keyJson} placeholder={t('next.remoteSources.driveKeyPlaceholder')} maxLength={65536}
-            disabled={busy} spellCheck={false} rows={7} onChange={event => updateDrive({keyJson: event.target.value})}/>
-          <small className={styles.note}>{t('next.remoteSources.driveKeyHelp')}</small>
-        </label>
-        <div className={styles.testRow}>
-          <Button size="compact" variant="glass" disabled={busy} onClick={() => keyFile.current?.click()}>{t('next.remoteSources.driveUpload')}</Button>
-          <Button size="compact" variant="text" disabled={busy || !drive.keyJson} onClick={() => updateDrive({keyJson: ''})}>{t('next.remoteSources.driveClear')}</Button>
-          <input ref={keyFile} type="file" accept="application/json,.json" hidden aria-label={t('next.remoteSources.driveUpload')}
-            onChange={event => {const file = event.target.files?.[0];void readKeyFile(file);event.target.value = '';}}/>
-        </div>
-        {!drive.keyJson.trim() ? <p className={styles.note}>{t('next.remoteSources.driveKeyEmptyHint')}</p>
-          : !driveResult.ok ? <div className={styles.testRow}><p className={styles.error} role="alert">{t(driveReason(driveResult.reason))}</p>
-            {driveResult.reason === 'oauth' && <Button size="xs" variant="glass" disabled={busy}
-              onClick={() => {retireOAuth(oauthRenderTicket);invalidateDrive();setDriveTested(undefined);setDriveMode('oauth');}}>{t('next.remoteSources.driveOAuth')}</Button>}</div>
-            : <div className={styles.testCard} data-tone="good"><Icon name="i-check" size={18}/><span>{driveResult.draft.email}</span>
-                <Button size="xs" variant="text" onClick={() => copyEmail(driveResult.draft.email)}>{t('next.remoteSources.driveCopy')}</Button></div>}
-        {driveResult.ok && <p className={styles.note}>{t('next.remoteSources.driveEmailHeading')} {t('next.remoteSources.driveEmailHelp')}</p>}
+        <DriveKeyPane value={drive.keyJson} disabled={busy}
+          error={driveResult.ok ? undefined : t(driveReason(driveResult.reason))}
+          email={driveResult.ok ? driveResult.draft.email : undefined}
+          oauth={!driveResult.ok && driveResult.reason === 'oauth'}
+          onChange={keyJson => updateDrive({keyJson})} onUpload={() => keyFile.current?.click()}
+          onClear={() => updateDrive({keyJson: ''})} onCopy={() => {if (driveResult.ok) copyEmail(driveResult.draft.email);}}
+          onUseOAuth={() => {retireOAuth(oauthRenderTicket);invalidateDrive();setDriveTested(undefined);setDriveMode('oauth');}}/>
+        <input ref={keyFile} type="file" accept="application/json,.json" hidden aria-label={t('next.remoteSources.driveUpload')}
+          onChange={event => {const file = event.target.files?.[0];void readKeyFile(file);event.target.value = '';}}/>
         </>}
 
         <div className={styles.lab2}>{t('next.remoteSources.driveLocation')}</div>
