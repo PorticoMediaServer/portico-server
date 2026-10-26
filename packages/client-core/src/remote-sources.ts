@@ -1,5 +1,5 @@
 import {routeBody} from "../../contracts/src/routes.ts";
-import {parseSourceChoiceApplicableFields,parseSourceChoiceBaseline,parseSourceChoiceDefinitions,sourceChoiceAdopt,sourceChoiceCommand,sourceChoicePutBody,type SourceChoiceBaseline,type SourceChoiceCommand,type SourceChoiceComparison,type SourceChoiceDefinition,type SourceChoiceField} from './remote-source-choice.ts';
+import {parseSourceChoiceApplicableFields,parseSourceChoiceBaseline,parseSourceChoiceDefinitions,sourceChoiceAccepted,sourceChoiceAdopt,sourceChoiceCommand,sourceChoicePutBody,type SourceChoiceAcceptance,type SourceChoiceBaseline,type SourceChoiceCommand,type SourceChoiceComparison,type SourceChoiceDefinition,type SourceChoiceField} from './remote-source-choice.ts';
 import type {RouteResponse} from "../../contracts/src/routes.ts";
 import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
 /** Owner-only source metadata and operation recovery. Credentials exist only in an
@@ -365,12 +365,14 @@ function safeError(e:unknown):string{
  return messages[code]??'The operation outcome is not confirmed. Check the original receipt; credentials will not be resent automatically.';
 }
 export type SourceChoiceOpening=Readonly<{signal:AbortSignal;isCurrent:()=>boolean;consentDirty:false}>;
-export type SourceChoiceIntent=Readonly<{operationId:string;body:ReturnType<typeof sourceChoicePutBody>;command:SourceChoiceCommand;owner:object;epoch:number;opening:SourceChoiceOpening}>;
+/** Issued once and retained by identity; a structural clone cannot recover it. */
+export type SourceChoiceIntent=Readonly<{operationId:string;body:ReturnType<typeof sourceChoicePutBody>;command:SourceChoiceCommand}>;
 export type SourceChoiceApplyResult=
- |Readonly<{kind:'applied';settings:SourceReadSettings;comparison:SourceChoiceComparison}>
- |Readonly<{kind:'accepted-unavailable';settings:SourceReadSettings}>
+ |Readonly<{kind:'applied';operationId:string;settings:SourceReadSettings;accepted:SourceChoiceAcceptance;comparison:SourceChoiceComparison}>
+ |Readonly<{kind:'accepted-unavailable';operationId:string;settings:SourceReadSettings;accepted:SourceChoiceAcceptance;error?:unknown}>
  |Readonly<{kind:'unknown';intent:SourceChoiceIntent;error:unknown}>;
-function retiredChoice(error:unknown):boolean{return record(error)&&typeof error.code==='string'&&normalizedCode(error.code)==='retired';}
+type ChoiceCustody={intent:SourceChoiceIntent;epoch:number;opening:SourceChoiceOpening};
+type ChoiceRequest=Readonly<{token:object;signal:AbortSignal;onDispatch?:()=>void}>;
 function definiteRefusal(error:unknown):boolean{
  const code=record(error)&&typeof error.code==='string'?normalizedCode(error.code):'';
  return ['invalid_request','unauthorized','forbidden','not_permitted','revision_mismatch','idempotency_key_reused'].includes(code);
@@ -404,7 +406,7 @@ export class RemoteSourceService{
  private retire(code:string){
   if(this.refused)return;
   this.refused=true;this.refusedCode=code;
-  this.intent=null;
+  this.intent=null;this.choicePending=undefined;this.choiceFlight=undefined;
   this.epoch++;
   for(const c of this.controllers)c.abort();
   this.controllers.clear();
@@ -413,23 +415,44 @@ export class RemoteSourceService{
  }
  private refuse(error:unknown){const code=this.refusalCode(error);if(code)this.retire(code);}
  private publish(value:Partial<RemoteState>){if(this.refused||!this.live())return;this.state=Object.freeze({...this.state,...value});for(const fn of this.listeners)fn();}
- dispose(){this.epoch++;this.disposed=true;this.choiceIntent=undefined;this.choiceOpening=0;this.intent=null;this.refused=false;this.refusedCode='';for(const c of this.controllers)c.abort();this.controllers.clear();this.listeners.clear();this.state={...this.state,sources:[],receipt:null,rclone:null,operationId:null,operationKind:''};}
+ dispose(){this.epoch++;this.disposed=true;this.choicePending=undefined;this.choiceFlight=undefined;this.intent=null;this.refused=false;this.refusedCode='';for(const c of this.controllers)c.abort();this.controllers.clear();this.listeners.clear();this.state={...this.state,sources:[],receipt:null,rclone:null,operationId:null,operationKind:''};}
  private fence(raw:unknown){if(!record(raw)||!record(raw.scope)||raw.scope.serverId!==this.scope.serverId||!text(raw.scope.viewerFence,256)||!raw.scope.viewerFence||this.viewerFence&&this.viewerFence!==raw.scope.viewerFence)invalid();this.viewerFence=raw.scope.viewerFence;}
- private async request(path:string,method='GET',body?:unknown,guard?:()=>boolean):Promise<unknown>{
+ /** Ordinary mutations retain their exclusion through operation-id waits and
+  * callbacks. Outside a choice, their existing admission/behavior is unchanged. */
+ private ordinaryMutations=0;private activeWrites=0;
+ private holdOrdinaryMutation():()=>void{
+  if(this.choiceFlight||this.choicePending)throw new Error('Finish or recover the current source command first.');
+  this.ordinaryMutations++;
+  return ()=>{this.ordinaryMutations--;};
+ }
+ private async request(path:string,method='GET',body?:unknown,guard?:()=>boolean,choice?:ChoiceRequest):Promise<unknown>{
   if(this.refused)throw Object.assign(new Error(messages[this.refusedCode]??messages.unauthorized),{code:this.refusedCode||'unauthorized'});
   if(!this.live()||(guard&&!guard()))throw new Error('Scope changed.');
-  // One unresolved explicit choice excludes every other source mutation, while
-  // its own PUT passes through the private write flag.
-  if(method!=='GET'&&this.choiceIntent&&!this.choiceWrite)throw new Error('Finish or recover the current source command first.');
+  const write=method!=='GET';
+  if(write&&(this.choiceFlight||this.choicePending)&&(!choice||!this.choiceFlight||choice.token!==this.choiceFlight))throw new Error('Finish or recover the current source command first.');
+  if(choice&&this.choiceFlight!==choice.token)throw Object.assign(new Error('Scope changed.'),{code:'retired'});
   const c=new AbortController();this.controllers.add(c);let timer:ReturnType<typeof setTimeout>|undefined;
+  let rejectAbort:((reason:unknown)=>void)|undefined;
+  const abort=()=>{c.abort();rejectAbort?.(Object.assign(new Error('Scope changed.'),{code:'retired'}));};
+  if(write)this.activeWrites++;
   try{
-   return await Promise.race([this.api.request(path,method,body,c.signal),new Promise<never>((_,reject)=>{timer=setTimeout(()=>{c.abort();reject(new Error('timeout'));},45000);})]);
+   const aborted=new Promise<never>((_,reject)=>{rejectAbort=reject;});
+   void aborted.catch(()=>{}); // Registration/guard may retire before Promise.race is attached.
+   choice?.signal.addEventListener('abort',abort,{once:true});
+   if(choice?.signal.aborted)throw Object.assign(new Error('Scope changed.'),{code:'retired'});
+   // Recheck after signal registration, before the exact original transport.
+   if(guard&&!guard())throw new Error('Scope changed.');
+   choice?.onDispatch?.();
+   const pending=this.api.request(path,method,body,c.signal);
+   return await Promise.race([pending,aborted,new Promise<never>((_,reject)=>{timer=setTimeout(()=>{c.abort();reject(new Error('timeout'));},45000);})]);
   }catch(error){
-   // One place decides that the owner has been refused, whatever the transport shape.
    const code=this.refusalCode(error);
    if(code){this.retire(code);throw Object.assign(new Error(this.refusalMessage(code)),{code});}
    throw error;
-  }finally{if(timer)clearTimeout(timer);this.controllers.delete(c);}
+  }finally{
+   if(timer)clearTimeout(timer);choice?.signal.removeEventListener('abort',abort);rejectAbort=undefined;this.controllers.delete(c);
+   if(write)this.activeWrites--;
+  }
  }
  /** The sources as the server has them, checked; `undefined` when a later read or another viewer has taken over. */
  private async readSources(epoch:number,sequence:number,guard?:()=>boolean){const raw=await this.request(routePath("get_storage_sources"),'GET',undefined,guard);if(!this.live()||(guard&&!guard())||epoch!==this.epoch||sequence!==this.read)return undefined;this.fence(raw);if(!record(raw)||!Array.isArray(raw.sources)||typeof raw.mountSupported!=='boolean')invalid();const rows=firstOfEach('remote-sources','sources',keepReadable('remote-sources','sources',raw.sources,source),s=>s.id);return {sources:Object.freeze(rows),mountSupported:raw.mountSupported};}
@@ -480,6 +503,8 @@ export class RemoteSourceService{
  /** The owner's own Google OAuth client and the server-run sign-in it starts.
   * The client secret is used by the server's exchange and is never returned. */
  async startDriveOAuth(clientId:string,clientSecret:string,guard?:()=>boolean):Promise<DriveOAuthStart>{
+ const releaseChoiceExclusion=this.holdOrdinaryMutation();
+ try{
   if(!this.live()||(guard&&!guard())||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');
   if(!text(clientId,512)||clientId.trim().length<8||!text(clientSecret,2048)||clientSecret.length<8)throw new Error('Invalid OAuth client.');
   const epoch=this.epoch;
@@ -489,7 +514,9 @@ export class RemoteSourceService{
   if(!record(raw)||!text(raw.authorizationUrl,8192)||!raw.authorizationUrl||!text(raw.state,128)||!raw.state)invalid();
   if(!/^https:\/\/accounts\.google\.com\/o\/oauth2\/v2\/auth\?/.test(raw.authorizationUrl))invalid();
   return Object.freeze({authorizationUrl:raw.authorizationUrl,state:raw.state});
- }
+
+ }finally{releaseChoiceExclusion();}
+}
  private async driveOAuthAnswer(path:string,body:Record<string,unknown>,guard?:()=>boolean):Promise<DriveOAuthStatus>{
   const epoch=this.epoch;
   const raw=await this.request(path,'POST',body,guard);
@@ -500,10 +527,16 @@ export class RemoteSourceService{
   return Object.freeze({phase:raw.phase as DriveOAuthPhase,token:''});
  }
  async driveOAuthStatus(state:string,guard?:()=>boolean):Promise<DriveOAuthStatus>{
+ const releaseChoiceExclusion=this.holdOrdinaryMutation();
+ try{
   if(!this.live()||(guard&&!guard())||!text(state,128)||!state)throw new Error('Invalid sign-in.');
   return await this.driveOAuthAnswer(routePath('post_storage_source_drive_oauth_status'),{state},guard);
- }
+
+ }finally{releaseChoiceExclusion();}
+}
  async driveOAuthPaste(state:string,redirectUrl:string,guard?:()=>boolean):Promise<DriveOAuthStatus>{
+ const releaseChoiceExclusion=this.holdOrdinaryMutation();
+ try{
   if(!this.live()||(guard&&!guard())||!text(state,128)||!state||!text(redirectUrl,8192)||!redirectUrl.trim())throw new Error('Invalid sign-in address.');
   // This only records the address's code; the single status owner exchanges it.
   const epoch=this.epoch;
@@ -512,11 +545,17 @@ export class RemoteSourceService{
   this.fence(raw);
   if(!record(raw)||typeof raw.phase!=='string'||!['pending','ready','expired','denied'].includes(raw.phase))invalid();
   return Object.freeze({phase:raw.phase as DriveOAuthPhase,token:''});
- }
+
+ }finally{releaseChoiceExclusion();}
+}
  async driveOAuthCancel(state:string):Promise<void>{
+ const releaseChoiceExclusion=this.holdOrdinaryMutation();
+ try{
   if(!this.live()||!text(state,128)||!state)return;
   try{await this.request(routePath('post_storage_source_drive_oauth_cancel'),'POST',routeBody('post_storage_source_drive_oauth_cancel',{state}));}catch{/* A closed session needs no second report. */}
- }
+
+ }finally{releaseChoiceExclusion();}
+}
  /** The server account's own rclone configuration, by remote name and type only. */
  async rcloneConfig():Promise<RcloneConfigView>{
   const epoch=this.epoch;
@@ -534,14 +573,20 @@ export class RemoteSourceService{
  /** Saves a source from one remote of that configuration. The section itself is
   * read on the server and never sent to, or read back by, this client. */
  async configureRcloneFromConfig(input:Readonly<{name:string;remote:string}>,guard?:()=>boolean):Promise<RcloneReceipt|undefined>{
+ const releaseChoiceExclusion=this.holdOrdinaryMutation();
+ try{
   if(!this.live()||(guard&&!guard())||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');
   if(!text(input.name,200)||!input.name.trim()||!text(input.remote,64)||!input.remote.trim())throw new Error('Invalid connection fields.');
   const body=routeBody('create_storage_source_rclone_config',{name:input.name.trim(),remote:input.remote.trim()});
   const intent:SourceCommandIntent={operationId:'',kind:'rclone',action:'create',sourceId:null};
   return await this.command(routePath('create_storage_source_rclone_config'),'POST',body,intent,guard) as RcloneReceipt|undefined;
- }
+
+ }finally{releaseChoiceExclusion();}
+}
  /** One explicit in-flight configuration test. It saves no source, receipt or approval. */
  async testRclone(input:RcloneTestInput,guard?:()=>boolean):Promise<RcloneTestResult>{
+ const releaseChoiceExclusion=this.holdOrdinaryMutation();
+ try{
   if(!this.live()||(guard&&!guard())||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');
   if(!text(input.remote,512)||!input.remote.trim()||!configText(input.config)||!input.config.trim())throw new Error('Invalid connection fields.');
   const epoch=this.epoch;this.publish({busy:true,error:'',errorCode:''});
@@ -565,12 +610,16 @@ export class RemoteSourceService{
    this.refuse({code});
    this.publish({error:message,errorCode:code});throw Object.assign(new Error(message),{code});
   }finally{if(this.live()&&epoch===this.epoch)this.publish({busy:false});}
- }
+
+ }finally{releaseChoiceExclusion();}
+}
  /** Saves an imported source from its configuration, or replaces one at the
   * generation the owner was shown. A conflict is returned for a fresh look and a
   * new explicit save; nothing is replayed or rebased here, and the configuration
   * is not kept after the call. */
  async configureRclone(id:string|null,input:RcloneSourceDraft,base?:RemoteSource,guard?:()=>boolean):Promise<RcloneReceipt|undefined>{
+ const releaseChoiceExclusion=this.holdOrdinaryMutation();
+ try{
   if(!this.live()||(guard&&!guard())||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');
   if(id&&(!base||base.kind!=='rclone'||base.id!==id))throw new Error('This source cannot be changed now.');
   if(!text(input.name,100)||!input.name.trim()||!text(input.remote,512)||!input.remote.trim()||!configText(input.config)||!input.config.trim())throw new Error('Invalid connection fields.');
@@ -580,18 +629,26 @@ export class RemoteSourceService{
   const intent:SourceCommandIntent={operationId:'',kind:'rclone',action:id?'edit':'create',sourceId:id,...(id?{generation:base!.generation}:{})};
   const path=id?encodedRoutePath('update_storage_source_rclone',{id:encodeURIComponent(id)}):routePath('create_storage_source_rclone');
   return await this.command(path,id?'PUT':'POST',body,intent,guard) as RcloneReceipt|undefined;
- }
+
+ }finally{releaseChoiceExclusion();}
+}
  /** Removes an imported source at the generation the owner was shown. A conflict
   * is returned for a fresh look; nothing is replayed. */
  async removeRclone(row:RemoteSource,guard?:()=>boolean):Promise<RcloneReceipt|undefined>{
+ const releaseChoiceExclusion=this.holdOrdinaryMutation();
+ try{
   if(!this.live()||(guard&&!guard())||row.kind!=='rclone'||this.state.busy||this.state.ambiguous)throw new Error('This source cannot be removed now.');
   const path=encodedRoutePath('remove_storage_source_rclone',{id:encodeURIComponent(row.id)});
   const body=routeBody('remove_storage_source_rclone',{expectedGeneration:row.generation});
   const intent:SourceCommandIntent={operationId:'',kind:'rclone',action:'remove',sourceId:row.id};
   return await this.command(path,'DELETE',body,intent,guard) as RcloneReceipt|undefined;
- }
+
+ }finally{releaseChoiceExclusion();}
+}
  /** A new-source test uses one explicit in-flight credential request. It saves no source or retry receipt. */
  async testConnection(input:DAVConnectionInput,guard?:()=>boolean):Promise<DAVConnectionResult>{
+ const releaseChoiceExclusion=this.holdOrdinaryMutation();
+ try{
   if(!this.live()||(guard&&!guard())||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');
   if(!text(input.name,100)||!input.name.trim()||!text(input.root)||!text(input.username,1024)||!text(input.password)||typeof input.insecureLocal!=='boolean')throw new Error('Invalid connection fields.');
   const epoch=this.epoch;this.publish({busy:true,error:'',errorCode:''});
@@ -614,26 +671,36 @@ export class RemoteSourceService{
    this.refuse({code});
    this.publish({error:message,errorCode:code});throw Object.assign(new Error(message),{code});
   }finally{if(this.live()&&epoch===this.epoch)this.publish({busy:false});}
- }
+
+ }finally{releaseChoiceExclusion();}
+}
  /**
   * Adds a share (`id` null) or changes one. `base` is the share as the edit started from it: when
   * someone else changed the share meanwhile, it is read again and the edit, carried onto it field by
   * field, is sent once more without a word; only a field both changed is a conflict.
   */
- async configure(id:string|null,input:DAVConfiguration,base?:RemoteSource,guard?:()=>boolean){if(!this.live()||(guard&&!guard())||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');if(!text(input.name,100)||!input.name.trim()||!text(input.root)||!text(input.username,1024)||!text(input.password))throw new Error('Invalid connection fields.');
+ async configure(id:string|null,input:DAVConfiguration,base?:RemoteSource,guard?:()=>boolean){
+ const releaseChoiceExclusion=this.holdOrdinaryMutation();
+ try{if(!this.live()||(guard&&!guard())||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');if(!text(input.name,100)||!input.name.trim()||!text(input.root)||!text(input.username,1024)||!text(input.password))throw new Error('Invalid connection fields.');
   const path=routePath("post_storage_sources_webdav")+(id?'/'+encodeURIComponent(id):'');
   await this.command(path,id?'PUT':'POST',input,{operationId:'',kind:'source',action:id?'edit':'create',sourceId:id},guard);
   if(!id||!base||this.state.errorCode!==CONFLICT)return;
   const fresh=await this.reread(id,guard);if(!fresh)return;
   const rebased=rebaseDavEdit(base,fresh,input);if(!rebased)return this.publish({error:safeError({code:CONFLICT}),errorCode:CONFLICT});
-  return this.command(path,'PUT',rebased,{operationId:'',kind:'source',action:'edit',sourceId:id},guard);}
+  return this.command(path,'PUT',rebased,{operationId:'',kind:'source',action:'edit',sourceId:id},guard);
+ }finally{releaseChoiceExclusion();}
+}
  /** Removes a share. A share changed elsewhere is still the share the owner meant: it is read again and removed; one already gone is done. */
- async remove(row:RemoteSource,guard?:()=>boolean){if(!this.live()||(guard&&!guard())||row.kind!=='webdav'||this.state.busy||this.state.ambiguous)throw new Error('This source cannot be removed now.');
+ async remove(row:RemoteSource,guard?:()=>boolean){
+ const releaseChoiceExclusion=this.holdOrdinaryMutation();
+ try{if(!this.live()||(guard&&!guard())||row.kind!=='webdav'||this.state.busy||this.state.ambiguous)throw new Error('This source cannot be removed now.');
   const path=encodedRoutePath("delete_storage_sources_webdav_id", {"id": encodeURIComponent(row.id)});
   await this.command(path,'DELETE',{expectedGeneration:row.generation},{operationId:'',kind:'source',action:'remove',sourceId:row.id},guard);
   if(this.state.errorCode!==CONFLICT)return;
   const fresh=await this.reread(row.id,guard);if(fresh===null)return this.publish({error:'',errorCode:'',alreadyDone:true});if(!fresh)return;
-  return this.command(path,'DELETE',{expectedGeneration:fresh.generation},{operationId:'',kind:'source',action:'remove',sourceId:row.id},guard);}
+  return this.command(path,'DELETE',{expectedGeneration:fresh.generation},{operationId:'',kind:'source',action:'remove',sourceId:row.id},guard);
+ }finally{releaseChoiceExclusion();}
+}
  /** After a conflict: the share as the server has it now, null when it is gone, undefined when it could not be read (the conflict stays as it was). */
  private async reread(id:string,guard?:()=>boolean):Promise<RemoteSource|null|undefined>{const epoch=this.epoch,sequence=++this.read;try{const next=await this.readSources(epoch,sequence,guard);if(!next||(guard&&!guard()))return undefined;this.publish(next);return next.sources.find(s=>s.id===id)??null;}catch{return undefined;}}
  private async command(path:string,method:string,body:unknown,intent:SourceCommandIntent,guard?:()=>boolean):Promise<RemoteReceipt|RcloneReceipt|undefined>{
@@ -670,6 +737,8 @@ export class RemoteSourceService{
   }finally{body=undefined;if(this.live()&&epoch===this.epoch)this.publish({busy:false});}
  }
  async recover(){
+ const releaseChoiceExclusion=this.holdOrdinaryMutation();
+ try{
   const intent=this.intent;
   if(!this.live()||this.state.busy||!this.state.operationId||!intent||intent.operationId!==this.state.operationId)throw new Error('No source operation to recover.');
   const op=intent.operationId,epoch=this.epoch;
@@ -688,10 +757,16 @@ export class RemoteSourceService{
    }
   }catch(e){if(epoch===this.epoch)this.publish({ambiguous:true,error:safeError(e)});}
   finally{if(this.live()&&epoch===this.epoch)this.publish({busy:false});}
- }
+
+ }finally{releaseChoiceExclusion();}
+}
  async policy(libraryId:string):Promise<AnalysisPolicy>{const epoch=this.epoch,raw=await this.request(encodedRoutePath("get_libraries_id_strm_analysis_policy", {"id": encodeURIComponent(libraryId)}));if(!this.live()||epoch!==this.epoch)throw new Error('Scope changed.');return this.parsePolicy(raw,libraryId);}
  private parsePolicy(raw:unknown,id:string):AnalysisPolicy{this.fence(raw);if(!record(raw)||!record(raw.policy)||raw.policy.libraryId!==id||typeof raw.policy.enabled!=='boolean'||!integer(raw.policy.revision))invalid();if(raw.policy.effective!==undefined&&typeof raw.policy.effective!=='boolean')invalid();const scanTier=['file_list_only','basic','complete','custom'].includes(String(raw.policy.scanTier))?raw.policy.scanTier as string:undefined;if(raw.policy.scanTier!==undefined&&scanTier===undefined)noteSkipped('remote-sources','policy.scanTier');return Object.freeze({libraryId:id,enabled:raw.policy.enabled,revision:raw.policy.revision,...(raw.policy.effective===undefined?{}:{effective:raw.policy.effective as boolean}),...(scanTier===undefined?{}:{scanTier})});}
- async setPolicy(policy:AnalysisPolicy,enabled:boolean):Promise<AnalysisPolicy>{const epoch=this.epoch,raw=await this.request(encodedRoutePath("put_libraries_id_strm_analysis_policy", {"id": encodeURIComponent(policy.libraryId)}),'PUT',routeBody("put_libraries_id_strm_analysis_policy", {enabled,expectedRevision:policy.revision}));if(!this.live()||epoch!==this.epoch)throw new Error('Scope changed.');return this.parsePolicy(raw,policy.libraryId);}
+ async setPolicy(policy:AnalysisPolicy,enabled:boolean):Promise<AnalysisPolicy>{
+ const releaseChoiceExclusion=this.holdOrdinaryMutation();
+ try{const epoch=this.epoch,raw=await this.request(encodedRoutePath("put_libraries_id_strm_analysis_policy", {"id": encodeURIComponent(policy.libraryId)}),'PUT',routeBody("put_libraries_id_strm_analysis_policy", {enabled,expectedRevision:policy.revision}));if(!this.live()||epoch!==this.epoch)throw new Error('Scope changed.');return this.parsePolicy(raw,policy.libraryId);
+ }finally{releaseChoiceExclusion();}
+}
  async readProfile(id:string,expectedGeneration?:string,guard?:()=>boolean):Promise<SourceReadSettings>{
  if(!this.live()||(guard&&!guard()))throw new Error('Scope changed.');
  const epoch=this.epoch;
@@ -701,7 +776,7 @@ export class RemoteSourceService{
   this.fence(raw);if(!record(raw)||!record(raw.settings))invalid();
   const settings=sourceReadSettings(raw.settings);
   if(settings.sourceId!==id||expectedGeneration!==undefined&&settings.generation!==expectedGeneration)invalid();
-  return settings;
+  this.choiceReads.set(settings,epoch);return settings;
  }catch(error){
   const refused=this.refusalCode(error);
   if(refused)throw Object.assign(new Error(this.refusalMessage(refused)),{code:refused});
@@ -712,6 +787,8 @@ export class RemoteSourceService{
  }
 }
 async saveProfile(profile:SourceReadSettings,values:SourceReadValues,guard?:()=>boolean):Promise<SourceReadSettings>{
+ const releaseChoiceExclusion=this.holdOrdinaryMutation();
+ try{
  if(!this.live()||(guard&&!guard())||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');
  const parsed=sourceReadValues(values);
  if(!profile.sourceId||!profile.generation||!Number.isSafeInteger(profile.revision)||profile.revision<0)throw new Error('Invalid source profile.');
@@ -747,86 +824,128 @@ async saveProfile(profile:SourceReadSettings,values:SourceReadValues,guard?:()=>
   this.publish(accepted?{ambiguous:false,error:safeError({code:auth?code:'refresh_failed'}),errorCode:auth?code:'refresh_failed'}:{ambiguous:submitted&&!rejected,error:safeError(error),errorCode:code});
   throw accepted?Object.assign(new Error(safeError({code:auth?code:'refresh_failed'})),{code:auth?code:'refresh_failed'}):Object.assign(new Error(safeError(error)),{code:code||'internal'});
  }finally{if(this.live()&&epoch===this.epoch)this.publish({busy:false});}
+
+ }finally{releaseChoiceExclusion();}
 }
 
- /** The one atomic explicit-choice PUT. The original admission is claimed
-  * synchronously before the operation id or busy publication; a first choice
-  * needs no baseline. An uncertain outcome retains the exact intent for the
-  * narrow source-operation recovery, never a generic source recovery. */
- async saveProfileStartChoice(profile:SourceReadSettings,advanced:SourceAdvancedSettings,offered:SourceChoiceDefinition,opening:SourceChoiceOpening):Promise<SourceChoiceApplyResult>{
-  if(!this.live())throw new Error('Scope changed.');
-  if(!opening||opening.consentDirty!==false||!opening.signal||typeof opening.isCurrent!=='function')throw new Error('The choice opening is invalid.');
-  const capturedOpening=Object.freeze({signal:opening.signal,isCurrent:opening.isCurrent,consentDirty:false as const});
-  if(this.choiceOpening!==0||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');
-  const epoch=this.epoch,openingToken=++this.openingSeq;this.choiceOpening=openingToken;
-  this.publish({busy:true,error:'',errorCode:'',receipt:null,rclone:null,alreadyDone:false,operationId:null,operationKind:'source'});
-  let intent:SourceChoiceIntent|undefined,dispatched=false;
+ private choicePending?:ChoiceCustody;private choiceFlight?:object;
+ private choiceReads=new WeakMap<SourceReadSettings,number>();private choiceAdvancedReads=new WeakMap<SourceAdvancedSettings,number>();
+ private choiceCurrent(token:object,epoch:number,opening:SourceChoiceOpening):void{
+  const owned=()=>this.choiceFlight===token&&epoch===this.epoch&&!this.disposed&&!this.refused;
+  if(!owned()||opening.signal.aborted||!this.live()||opening.isCurrent()!==true||!owned()||opening.signal.aborted)
+   throw Object.assign(new Error('Scope changed.'),{code:'retired'});
+ }
+ /** Listener faults cannot lose a submitted intent or turn acceptance unknown.
+  * The exact claim remains held throughout synchronous notifications. */
+ private publishChoice(token:object,epoch:number,opening:SourceChoiceOpening,value:Partial<RemoteState>):void{
+  this.choiceCurrent(token,epoch,opening);this.state=Object.freeze({...this.state,...value});
+  for(const listener of [...this.listeners]){this.choiceCurrent(token,epoch,opening);try{listener();}catch{/* Preserve the original operation outcome. */}}
+  this.choiceCurrent(token,epoch,opening);
+ }
+ private finishChoice(token:object,epoch:number,opening?:SourceChoiceOpening):void{
+  if(this.choiceFlight!==token)return;
   try{
-   this.choiceCurrent(openingToken,epoch,capturedOpening);
-   if(profile.saved!==true&&profile.saved!==false||advanced.saved!==true&&advanced.saved!==false)throw new Error('The source documents are incomplete.');
-   if(profile.revision===0&&profile.saved||advanced.revision===0&&advanced.saved)throw new Error('Revision zero needs an unsaved source.');
-   const command=sourceChoiceCommand(profile,advanced,offered);
-   if(!command)throw new Error('This choice cannot be applied from the current read.');
-   this.choiceCurrent(openingToken,epoch,capturedOpening);
-   const op=await this.operationId();this.choiceCurrent(openingToken,epoch,capturedOpening);
-   const body=sourceChoicePutBody(command,op);
-   intent=Object.freeze({operationId:op,body,command,owner:this.choiceOwner,epoch,opening:capturedOpening});this.choiceIntent=intent;
-   dispatched=true;this.choiceWrite=true;
-   const raw=await this.request(encodedRoutePath("put_storage_source_read_profile",{"id":encodeURIComponent(command.sourceId)}),'PUT',routeBody("put_storage_source_read_profile",body),()=>!capturedOpening.signal.aborted&&capturedOpening.isCurrent());
-   this.choiceCurrent(openingToken,epoch,capturedOpening);
-   const parent=this.choiceParent(raw,op,command);
-   let settings:SourceReadSettings;
-   try{settings=await this.readProfile(command.sourceId,undefined);}catch(error){return Object.freeze({kind:'accepted-unavailable',settings:parent,error});}
-   this.choiceCurrent(openingToken,epoch,capturedOpening);
-   const comparison=sourceChoiceAdopt(settings,command);
-   if(!comparison)return Object.freeze({kind:'accepted-unavailable',settings:parent});
-   this.choiceIntent=undefined;this.publish({busy:false});
-   return Object.freeze({kind:'applied',settings,comparison});
+   if(opening){try{this.choiceCurrent(token,epoch,opening);}catch{return;}
+    this.publishChoice(token,epoch,opening,{busy:false});}
+  }finally{if(this.choiceFlight===token)this.choiceFlight=undefined;}
+ }
+ private choiceParent(raw:unknown,intent:SourceChoiceIntent):Readonly<{receipt:RemoteReceipt;accepted:SourceChoiceAcceptance}>{
+  const receipt=this.parseReceipt(raw,intent.operationId),command=intent.command;
+  if(receipt.removed||receipt.source.id!==command.sourceId||String(receipt.source.generation)!==command.expectedGeneration)invalid();
+  if(!record(raw)||!record(raw.receipt)||raw.receipt.readSettings===undefined)invalid();
+  const accepted=sourceChoiceAccepted(sourceReadSettings(raw.receipt.readSettings),command);
+  if(!accepted)invalid();
+  return Object.freeze({receipt,accepted});
+ }
+ private async reconcileChoice(custody:ChoiceCustody,token:object,accepted:SourceChoiceAcceptance):Promise<SourceChoiceApplyResult>{
+  const {intent,opening,epoch}=custody,current=()=>{this.choiceCurrent(token,epoch,opening);return true;};
+  try{
+   // No expectedGeneration from the historical receipt: a causal cache child
+   // carries its own raw/effective generations but the SAME accepted revisions.
+   const raw=await this.request(encodedRoutePath('get_storage_source_read_profile',{id:encodeURIComponent(intent.command.sourceId)}),'GET',undefined,current,{token,signal:opening.signal});
+   current();this.fence(raw);if(!record(raw)||!record(raw.settings))invalid();
+   const settings=sourceReadSettings(raw.settings),comparison=sourceChoiceAdopt(settings,intent.command,accepted);
+   current();
+   if(comparison)return Object.freeze({kind:'applied',operationId:intent.operationId,settings,accepted,comparison});
+   return Object.freeze({kind:'accepted-unavailable',operationId:intent.operationId,settings:accepted.settings,accepted});
   }catch(error){
-   if(retiredChoice(error))throw error;
-   if(dispatched&&intent&&!definiteRefusal(error))return Object.freeze({kind:'unknown',intent,error});
-   this.choiceIntent=undefined;throw error;
-  }finally{
-   this.choiceWrite=false;
-   if(this.choiceOpening===openingToken){this.choiceOpening=0;if(this.live()&&epoch===this.epoch)this.publish({busy:false});}
+   current();
+   // A refresh failure NEVER converts a confirmed write into an unknown write.
+   return Object.freeze({kind:'accepted-unavailable',operationId:custody.intent.operationId,settings:accepted.settings,accepted,error});
   }
  }
- private choiceIntent?:SourceChoiceIntent;private choiceWrite=false;
- private choiceOpening=0;private openingSeq=0;private readonly choiceOwner=Object.freeze({});
- private choiceCurrent(opening:number,epoch:number,captured:SourceChoiceOpening){if(!this.live()||captured.signal.aborted||!captured.isCurrent()||epoch!==this.epoch||this.choiceOpening!==opening)throw Object.assign(new Error('Scope changed.'),{code:'retired'});}
- private choiceParent(raw:unknown,op:string,command:SourceChoiceCommand):SourceReadSettings{
-  this.parseReceipt(raw,op);
-  if(!record(raw)||!record(raw.receipt)||raw.receipt.readSettings===undefined)invalid();
-  const settings=sourceReadSettings(raw.receipt.readSettings);
-  if(settings.sourceId!==command.sourceId||settings.generation!==command.expectedGeneration||settings.configurationGeneration!==command.startChoice.expectedConfigurationGeneration)invalid();
-  return settings;
- }
- /** Recovery is only the original source-operation GET under this same service
-  * and still-current opening; it requires the parent readSettings and parses it
-  * with the same typed intent. */
- async recoverStartChoice(intent:SourceChoiceIntent):Promise<SourceChoiceApplyResult>{
-  if(intent!==this.choiceIntent||intent.owner!==this.choiceOwner||!this.live()||intent.opening.signal.aborted||!intent.opening.isCurrent()||intent.epoch!==this.epoch)throw new Error('This operation belongs to another opening.');
-  const epoch=this.epoch,openingToken=++this.openingSeq;this.choiceOpening=openingToken;
+ /** One atomic PUT from an original service-issued pair and offered definition.
+  * Claim BEFORE even opening/profile getters, callbacks or busy publication. */
+ async saveProfileStartChoice(profile:SourceReadSettings,advanced:SourceAdvancedSettings,offered:SourceChoiceDefinition,opening:SourceChoiceOpening):Promise<SourceChoiceApplyResult>{
+  if(this.choiceFlight||this.choicePending||this.ordinaryMutations||this.activeWrites||this.state.busy||this.state.ambiguous||this.disposed||this.refused)
+   throw new Error('Finish or recover the current source command first.');
+  const token=Object.freeze({}),epoch=this.epoch;this.choiceFlight=token;
+  let captured:SourceChoiceOpening|undefined,custody:ChoiceCustody|undefined,accepted:SourceChoiceAcceptance|undefined,dispatched=false;
   try{
-   const raw=await this.request(encodedRoutePath("get_storage_source_operations_id",{"id":encodeURIComponent(intent.operationId)}),'GET',undefined,()=>!intent.opening.signal.aborted&&intent.opening.isCurrent());
-   this.choiceCurrent(openingToken,epoch,intent.opening);
-   const parent=this.choiceParent(raw,intent.operationId,intent.command);
-   let settings:SourceReadSettings;
-   try{settings=await this.readProfile(intent.command.sourceId,undefined);}catch(error){return Object.freeze({kind:'accepted-unavailable',settings:parent,error});}
-   this.choiceCurrent(openingToken,epoch,intent.opening);
-   const comparison=sourceChoiceAdopt(settings,intent.command);
-   if(comparison){this.choiceIntent=undefined;return Object.freeze({kind:'applied',settings,comparison});}
-   return Object.freeze({kind:'accepted-unavailable',settings:parent});
+   const signal=opening?.signal,isCurrent=opening?.isCurrent,consentDirty=opening?.consentDirty;
+   if(!signal||typeof signal.addEventListener!=='function'||typeof isCurrent!=='function'||consentDirty!==false)throw new Error('The choice opening is invalid.');
+   captured=Object.freeze({signal,isCurrent,consentDirty:false as const});this.choiceCurrent(token,epoch,captured);
+   if(this.choiceReads.get(profile)!==epoch||this.choiceAdvancedReads.get(advanced)!==epoch)throw new Error('Use the original source reads from this service.');
+   const command=sourceChoiceCommand(profile,advanced,offered);
+   if(!command)throw new Error('This choice cannot be applied from the current read.');
+   this.choiceCurrent(token,epoch,captured);
+   const op=await this.operationId();this.choiceCurrent(token,epoch,captured);
+   const body=sourceChoicePutBody(command,op),intent=Object.freeze({operationId:op,body,command});
+   custody={intent,epoch,opening:captured};this.choicePending=custody;
+   const originalOpening=captured;
+   const current=()=>{this.choiceCurrent(token,epoch,originalOpening);return true;};
+   this.publishChoice(token,epoch,captured,{busy:true,error:'',errorCode:'',receipt:null,rclone:null,alreadyDone:false,operationId:op,operationKind:'source',ambiguous:false});
+   current();
+   // The custom strict body names the actual published producer fields.
+   // No handwritten generated declaration or contract cast is needed.
+   const raw=await this.request(encodedRoutePath('put_storage_source_read_profile',{id:encodeURIComponent(command.sourceId)}),'PUT',body,current,
+    {token,signal:captured.signal,onDispatch:()=>{dispatched=true;}});
+   current();const parent=this.choiceParent(raw,intent);accepted=parent.accepted;
+   this.choicePending=undefined;this.publishChoice(token,epoch,captured,{receipt:parent.receipt,ambiguous:false});current();
+   return await this.reconcileChoice(custody,token,accepted);
   }catch(error){
-   if(retiredChoice(error))throw error;
-   if(!definiteRefusal(error))return Object.freeze({kind:'unknown',intent,error});
+   if(!dispatched&&this.choicePending===custody)this.choicePending=undefined;
+   if(captured)this.choiceCurrent(token,epoch,captured);
+   if(accepted&&custody)return Object.freeze({kind:'accepted-unavailable',operationId:custody.intent.operationId,settings:accepted.settings,accepted,error});
+   if(dispatched&&custody&&!definiteRefusal(error)){
+    this.publishChoice(token,epoch,custody.opening,{ambiguous:true,error:safeError(error),errorCode:record(error)&&typeof error.code==='string'?normalizedCode(error.code):'internal'});
+    this.choiceCurrent(token,epoch,custody.opening);
+    return Object.freeze({kind:'unknown',intent:custody.intent,error});
+   }
+   if(this.choicePending===custody)this.choicePending=undefined;
    throw error;
-  }finally{if(this.choiceOpening===openingToken){this.choiceOpening=0;if(this.live()&&epoch===this.epoch)this.publish({busy:false});}}
+  }finally{this.finishChoice(token,epoch,captured);}
  }
-
+ /** Recovery is GET only, using the EXACT privately issued intent and its
+  * ORIGINAL opening. A 404 cannot establish that the PUT will never commit. */
+ async recoverStartChoice(intent:SourceChoiceIntent):Promise<SourceChoiceApplyResult>{
+  const custody=this.choicePending;
+  if(!custody||custody.intent!==intent||this.choiceFlight||this.ordinaryMutations||this.activeWrites||this.disposed||this.refused)
+   throw new Error('This operation belongs to another opening.');
+  const token=Object.freeze({}),{epoch,opening}=custody;this.choiceFlight=token;
+  let accepted:SourceChoiceAcceptance|undefined;
+  try{
+   const current=()=>{this.choiceCurrent(token,epoch,opening);return true;};current();
+   this.publishChoice(token,epoch,opening,{busy:true,error:'',errorCode:''});current();
+   const raw=await this.request(encodedRoutePath('get_storage_source_operations_id',{id:encodeURIComponent(intent.operationId)}),'GET',undefined,current,{token,signal:opening.signal});
+   current();const parent=this.choiceParent(raw,intent);accepted=parent.accepted;
+   this.choicePending=undefined;this.publishChoice(token,epoch,opening,{receipt:parent.receipt,ambiguous:false});current();
+   return await this.reconcileChoice(custody,token,accepted);
+  }catch(error){
+   this.choiceCurrent(token,epoch,opening);
+   if(accepted&&custody)return Object.freeze({kind:'accepted-unavailable',operationId:custody.intent.operationId,settings:accepted.settings,accepted,error});
+   this.publishChoice(token,epoch,opening,{ambiguous:true,error:safeError(error),errorCode:record(error)&&typeof error.code==='string'?normalizedCode(error.code):'internal'});
+   this.choiceCurrent(token,epoch,opening);
+   return Object.freeze({kind:'unknown',intent,error});
+  }finally{this.finishChoice(token,epoch,opening);}
+ }
 
 async networkPolicy(libraryId:string):Promise<NetworkPolicy>{const epoch=this.epoch,raw=await this.request(encodedRoutePath("get_libraries_id_network_roots", {"id": encodeURIComponent(libraryId)}));if(!this.live()||epoch!==this.epoch)throw new Error('Scope changed.');this.fence(raw);if(!record(raw)||!record(raw.policy)||raw.policy.libraryId!==libraryId||!integer(raw.policy.revision)||!Array.isArray(raw.policy.origins)||raw.policy.origins.length>8||!raw.policy.origins.every(origin=>text(origin,8192)))invalid();return Object.freeze({libraryId,revision:raw.policy.revision,origins:Object.freeze(raw.policy.origins as string[])});}
- async setNetworkPolicy(policy:NetworkPolicy,roots:readonly string[]):Promise<NetworkPolicy>{if(roots.length>8||roots.some(root=>!text(root,8192)))throw new Error('Invalid network roots.');const epoch=this.epoch;await this.request(encodedRoutePath("post_libraries_id_network_roots", {"id": encodeURIComponent(policy.libraryId)}),'POST',routeBody("post_libraries_id_network_roots", {roots,expectedRevision:policy.revision}));if(!this.live()||epoch!==this.epoch)throw new Error('Scope changed.');return this.networkPolicy(policy.libraryId);}
+ async setNetworkPolicy(policy:NetworkPolicy,roots:readonly string[]):Promise<NetworkPolicy>{
+ const releaseChoiceExclusion=this.holdOrdinaryMutation();
+ try{if(roots.length>8||roots.some(root=>!text(root,8192)))throw new Error('Invalid network roots.');const epoch=this.epoch;await this.request(encodedRoutePath("post_libraries_id_network_roots", {"id": encodeURIComponent(policy.libraryId)}),'POST',routeBody("post_libraries_id_network_roots", {roots,expectedRevision:policy.revision}));if(!this.live()||epoch!==this.epoch)throw new Error('Scope changed.');return this.networkPolicy(policy.libraryId);
+ }finally{releaseChoiceExclusion();}
+}
  /** One folder of a saved source, folders only, read when the owner opens it.
   * Nothing is listed in advance, downloaded or cached by this call. */
  async listFolders(id:string,options:Readonly<{path?:string;cursor?:string;showHidden?:boolean;limit?:number}>={},guard?:()=>boolean):Promise<RemoteFolderPage>{
@@ -847,6 +966,8 @@ async networkPolicy(libraryId:string):Promise<NetworkPolicy>{const epoch=this.ep
  /** Change the rclone program that serves a mounted source; the mount approves
   * it by running it with version before it is accepted. */
  async setProgram(id:string,expectedRevision:number,choice:Readonly<{useIncluded?:boolean;executable?:string}>,guard?:()=>boolean):Promise<SourceProgram>{
+ const releaseChoiceExclusion=this.holdOrdinaryMutation();
+ try{
   if(!this.live()||(guard&&!guard()))throw new Error('Scope changed.');
   if(!text(id,256)||!id||!Number.isSafeInteger(expectedRevision)||expectedRevision<1)throw new Error('Invalid program change.');
   const useIncluded=choice.useIncluded===true;
@@ -862,7 +983,9 @@ async networkPolicy(libraryId:string):Promise<NetworkPolicy>{const epoch=this.ep
   if(!integer(raw.program.revision)||raw.program.revision<expectedRevision)invalid();
   if(typeof raw.program.included!=='boolean')invalid();
   return Object.freeze({executable:raw.program.executable,version:raw.program.version,revision:raw.program.revision,included:raw.program.included});
- }
+
+ }finally{releaseChoiceExclusion();}
+}
  /** The Advanced page as saved; unsaved values default from the source's folders. */
  async readAdvanced(id:string,guard?:()=>boolean):Promise<SourceAdvancedSettings>{
   if(!this.live()||(guard&&!guard()))throw new Error('Scope changed.');
@@ -872,10 +995,12 @@ async networkPolicy(libraryId:string):Promise<NetworkPolicy>{const epoch=this.ep
   if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
   this.fence(raw);
   if(!record(raw)||!record(raw.settings))invalid();
-  return sourceAdvancedSettings(raw.settings,id);
+  const settings=sourceAdvancedSettings(raw.settings,id);this.choiceAdvancedReads.set(settings,epoch);return settings;
  }
  /** One CAS write of the Advanced page; the server applies it to the folders and cache. */
  async saveAdvanced(settings:SourceAdvancedSettings,values:SourceAdvanced,guard?:()=>boolean):Promise<SourceAdvancedSettings>{
+ const releaseChoiceExclusion=this.holdOrdinaryMutation();
+ try{
   if(!this.live()||(guard&&!guard()))throw new Error('Scope changed.');
   if(!settings.sourceId||!settings.generation||!Number.isSafeInteger(settings.revision)||settings.revision<0)throw new Error('Invalid source settings.');
   const epoch=this.epoch;
@@ -894,9 +1019,13 @@ async networkPolicy(libraryId:string):Promise<NetworkPolicy>{const epoch=this.ep
    this.publish({error:safeError({code}),errorCode:code});
    throw Object.assign(new Error(safeError({code})),{code:code||'internal'});
   }finally{if(this.live()&&epoch===this.epoch)this.publish({busy:false});}
- }
+
+ }finally{releaseChoiceExclusion();}
+}
  /** What the source is doing now, and where its folders went; one bounded read. */
  async testSaved(id:string,guard?:()=>boolean):Promise<SavedSourceTest>{
+ const releaseChoiceExclusion=this.holdOrdinaryMutation();
+ try{
   if(!this.live()||(guard&&!guard()))throw new Error('Scope changed.');
   if(!text(id,256)||id.length===0)throw new Error('Invalid source id.');
   const epoch=this.epoch;
@@ -915,7 +1044,9 @@ async networkPolicy(libraryId:string):Promise<NetworkPolicy>{const epoch=this.ep
   if(r.reachable===true&&errorCode!==undefined)invalid();
   if(r.reachable===false&&errorCode===undefined)invalid();
   return Object.freeze({sourceId:r.sourceId,generation:r.generation,reachable:r.reachable,...(rangeSupport?{rangeSupport}:{}),...(errorCode?{errorCode}:{})});
- }
+
+ }finally{releaseChoiceExclusion();}
+}
  async readStatus(id:string,guard?:()=>boolean):Promise<RemoteSourceStatus>{
   if(!this.live()||(guard&&!guard()))throw new Error('Scope changed.');
   if(!text(id,256)||!id)throw new Error('Invalid source.');

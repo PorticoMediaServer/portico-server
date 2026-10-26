@@ -165,10 +165,12 @@ export function sourceChoiceCommand(read:SourceReadSettings,advanced:SourceAdvan
   parseSourceChoiceDefinitions(originalDefinitions);
   const sourceId=read.sourceId,rawGeneration=read.generation,configurationGeneration=read.configurationGeneration,originalRevision=read.revision;
   const advancedSourceId=advanced.sourceId,advancedRawGeneration=advanced.generation,advancedRevision=advanced.revision;
+  const readSaved=read.saved,advancedSaved=advanced.saved;
   const values=actualReading(read.values),originalAdvanced=definitionAdvanced(advanced.values),applicable=fields([...(read.choiceApplicableFields??[])]);
   if(typeof sourceId!=='string'||sourceId.length<1||sourceId.length>160||sourceId!==advancedSourceId)return undefined;
   if(!generation(rawGeneration)||rawGeneration!==advancedRawGeneration||!generation(configurationGeneration))return undefined;
-  if(!integer(originalRevision)||!integer(advancedRevision))return undefined;
+  if(typeof readSaved!=='boolean'||typeof advancedSaved!=='boolean'||!integer(originalRevision)||!integer(advancedRevision))return undefined;
+  if(originalRevision===0&&readSaved||advancedRevision===0&&advancedSaved)return undefined;
   const startChoice=Object.freeze({name:capturedDefinition.name,definitionRevision:capturedDefinition.definitionRevision,
    expectedAdvancedRevision:advancedRevision,expectedConfigurationGeneration:configurationGeneration});
   const wireValues=Object.freeze({scanDepth:capturedDefinition.reading.scanDepth,wholeFileReads:values.wholeFileReads,
@@ -188,24 +190,54 @@ export function sourceChoicePutBody(command:SourceChoiceCommand,operationId:stri
  return Object.freeze({operationId,expectedGeneration:command.expectedGeneration,expectedRevision:command.expectedRevision,values:command.values,startChoice:command.startChoice});
 }
 
-/** Adopt a confirmed choice only from the exact recorded association: the same
- * source, raw and effective generations, the exact definition and applicable
- * set, both accepted revisions, and coherence with the current read values. The
- * read revision may be unchanged; the Advanced revision is read from the
- * baseline, never derived. */
-export function sourceChoiceAdopt(settings:SourceReadSettings,command:SourceChoiceCommand):SourceChoiceComparison|undefined{
- const definitions=settings.choiceDefinitions,applicableFields=settings.choiceApplicableFields,baseline=settings.choiceBaseline;
- if(!definitions||!applicableFields||!baseline||!settings.configurationGeneration)return undefined;
- if(settings.sourceId!==command.sourceId||settings.generation!==command.expectedGeneration||settings.configurationGeneration!==command.startChoice.expectedConfigurationGeneration)return undefined;
- if(baseline.sourceId!==command.sourceId||baseline.generation!==command.expectedGeneration||baseline.configurationGeneration!==command.startChoice.expectedConfigurationGeneration)return undefined;
- if(baseline.name!==command.startChoice.name||baseline.definitionRevision!==command.startChoice.definitionRevision||baseline.advancedRevision!==command.startChoice.expectedAdvancedRevision)return undefined;
- if(baseline.applicableFields.length!==applicableFields.length||baseline.applicableFields.some((field,index)=>field!==applicableFields[index]))return undefined;
- const match=definitions.filter(value=>value.name===baseline.name&&value.definitionRevision===baseline.definitionRevision);
- if(match.length!==1)return undefined;
- const definition=match[0]!;
- if(!sameReading(definition.reading,baseline.reading)||!sameAdvanced(definition.advanced,baseline.advanced))return undefined;
- if(!sameReading(definition.reading,command.definition.reading)||!sameAdvanced(definition.advanced,command.definition.advanced))return undefined;
- if(baseline.changedFields.length!==0)return undefined;
- return sourceChoiceComparison({sourceId:settings.sourceId,generation:settings.generation,revision:settings.revision,configurationGeneration:settings.configurationGeneration,
-  values:settings.values,choiceDefinitions:definitions,choiceApplicableFields:applicableFields,choiceBaseline:baseline});
+/** Actual immutable parent acceptance, not a cache-applied or current claim. */
+export type SourceChoiceAcceptance=Readonly<{settings:SourceReadSettings;readRevision:number;advancedRevision:number}>;
+const sameFields=(a:readonly SourceChoiceField[],b:readonly SourceChoiceField[])=>a.length===b.length&&a.every((value,index)=>value===b[index]);
+
+/** Check definition, current applicable values and preserved independent facts
+ * against the ORIGINAL command. The enclosing generations belong to this very
+ * snapshot; a causal child need not retain the parent's generations. */
+function choiceAssociation(settings:SourceReadSettings,command:SourceChoiceCommand):SourceChoiceComparison|undefined{
+ const baseline=settings.choiceBaseline,definitions=settings.choiceDefinitions,applicable=settings.choiceApplicableFields;
+ if(!baseline||!definitions||!applicable||settings.saved!==true||settings.sourceId!==command.sourceId)return undefined;
+ if(!generation(settings.generation)||!generation(settings.configurationGeneration))return undefined;
+ if(!sameFields(applicable,command.applicableFields)||!sameFields(baseline.applicableFields,command.applicableFields))return undefined;
+ if(baseline.name!==command.startChoice.name||baseline.definitionRevision!==command.startChoice.definitionRevision)return undefined;
+ const offered=definitions.filter(value=>value.name===command.definition.name&&value.definitionRevision===command.definition.definitionRevision);
+ if(offered.length!==1||!sameReading(offered[0]!.reading,command.definition.reading)||!sameAdvanced(offered[0]!.advanced,command.definition.advanced))return undefined;
+ if(!sameReading(baseline.reading,command.definition.reading)||!sameAdvanced(baseline.advanced,command.definition.advanced))return undefined;
+ if(!sameReading(settings.values,command.values)||settings.values.allowAdvancedMediaAnalysis!==command.originalConsent)return undefined;
+ for(const field of advancedKeys){
+  const expected=command.applicableFields.includes(field)?command.definition.advanced[field]:command.originalAdvanced[field];
+  if(baseline.currentAdvanced[field]!==expected)return undefined;
+ }
+ const comparison=sourceChoiceComparison(settings);
+ return comparison&&comparison.changedFields.length===0?comparison:undefined;
+}
+
+/** Validate the immutable parent BEFORE recording acceptance. A no-op read may
+ * keep its revision; Advanced must advance. Retain the actual returned pair. */
+export function sourceChoiceAccepted(settings:SourceReadSettings,command:SourceChoiceCommand):SourceChoiceAcceptance|undefined{
+ if(settings.generation!==command.expectedGeneration||settings.configurationGeneration!==command.startChoice.expectedConfigurationGeneration)return undefined;
+ const baseline=settings.choiceBaseline;
+ if(!baseline||!integer(settings.revision,1)||!integer(baseline.advancedRevision,1)||settings.revision<command.expectedRevision||baseline.advancedRevision<=command.startChoice.expectedAdvancedRevision)return undefined;
+ if(!choiceAssociation(settings,command))return undefined;
+ return Object.freeze({settings,readRevision:settings.revision,advancedRevision:baseline.advancedRevision});
+}
+
+/** Reconcile only the accepted revision pair and its exact recorded association.
+ * The fresh parent or causal child must cohere with its OWN generations; equal
+ * values at another operation's later revisions do not qualify. */
+export function sourceChoiceAdopt(settings:SourceReadSettings,command:SourceChoiceCommand,accepted:SourceChoiceAcceptance):SourceChoiceComparison|undefined{
+ const parent=sourceChoiceAccepted(accepted.settings,command);
+ if(!parent||parent.readRevision!==accepted.readRevision||parent.advancedRevision!==accepted.advancedRevision)return undefined;
+ if(settings.revision!==parent.readRevision||settings.choiceBaseline?.advancedRevision!==parent.advancedRevision)return undefined;
+ return choiceAssociation(settings,command);
+}
+
+/** Reset uses only the recorded name/version and its exact published definition,
+ * never the latest definition of the same name. A first apply needs no reset. */
+export function sourceChoiceResetDefinition(settings:SourceReadSettings):SourceChoiceDefinition|undefined{
+ const comparison=sourceChoiceComparison(settings);
+ return comparison?settings.choiceDefinitions?.find(value=>value.name===comparison.name&&value.definitionRevision===comparison.definitionRevision):undefined;
 }
