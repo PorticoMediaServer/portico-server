@@ -21,11 +21,21 @@ func captureVersion(id string, b Binding, object mediaartifact.Object) (mediasou
 	if !captureID.MatchString(id) || !b.valid() {
 		return mediasource.Version{}, ErrInput
 	}
+	scope := framed("portico.owned-capture.scope.v1", b)
+	if b.OwnerScan != (OwnerScanTarget{}) {
+		// Normal playback keeps its original serialization/domain. A scan capture
+		// additionally binds its exact non-authorizing job/execution preconditions.
+		scope = framed("portico.owned-capture.owner-scan.scope.v1", struct {
+			Binding   Binding
+			OwnerScan OwnerScanTarget
+		}{b, b.OwnerScan})
+	}
 	return mediasource.NewVersion(mediasource.Evidence{Kind: mediasource.ContentSHA256,
-		Scope: framed("portico.owned-capture.scope.v1", b), Object: id, Revision: object.Digest, Size: object.Size})
+		Scope: scope, Object: id, Revision: object.Digest, Size: object.Size})
 }
 
-const sourceColumns = `s.capture_id,s.source_id,s.config_generation,s.object_id,s.object_revision,s.asset_id,s.acquisition_id,s.reservation_id,s.policy_witness,s.authority_witness,s.expected_size,s.created_ms,s.expires_ms,l.state,l.pending_digest`
+const sourceTables = `owned_capture_sources s JOIN owned_capture_lifecycle l ON l.capture_id=s.capture_id LEFT JOIN owned_capture_scan_purposes p ON p.capture_id=s.capture_id`
+const sourceColumns = `s.capture_id,s.source_id,s.config_generation,s.object_id,s.object_revision,s.asset_id,s.acquisition_id,s.reservation_id,s.policy_witness,s.authority_witness,s.expected_size,s.created_ms,s.expires_ms,l.state,l.pending_digest,COALESCE(p.admission_id,''),COALESCE(p.job_id,''),COALESCE(p.execution_id,''),COALESCE(p.execution_revision,0),COALESCE(p.object_id,''),COALESCE(p.object_revision,''),COALESCE(p.asset_id,''),COALESCE(p.scan_policy_revision,0)`
 
 type sourceRow struct {
 	id                     string
@@ -36,14 +46,15 @@ type sourceRow struct {
 
 func readSource(row interface{ Scan(...any) error }) (sourceRow, error) {
 	var r sourceRow
-	err := row.Scan(&r.id, &r.b.SourceID, &r.b.ConfigGeneration, &r.b.ObjectID, &r.b.ObjectRevision, &r.b.AssetID, &r.b.AcquisitionID, &r.b.ReservationID, &r.b.PolicyWitness, &r.b.AuthorityWitness, &r.size, &r.created, &r.expires, &r.state, &r.digest)
+	v := &r.b.OwnerScan
+	err := row.Scan(&r.id, &r.b.SourceID, &r.b.ConfigGeneration, &r.b.ObjectID, &r.b.ObjectRevision, &r.b.AssetID, &r.b.AcquisitionID, &r.b.ReservationID, &r.b.PolicyWitness, &r.b.AuthorityWitness, &r.size, &r.created, &r.expires, &r.state, &r.digest, &v.AdmissionID, &v.JobID, &v.ExecutionID, &v.ExecutionRevision, &v.ObjectID, &v.ObjectRevision, &v.AssetID, &v.ScanPolicyRevision)
 	if err == nil && (!r.b.valid() || !captureID.MatchString(r.id) || r.size <= 0 || r.expires <= r.created) {
 		err = ErrInput
 	}
 	return r, err
 }
 func sourceTx(ctx context.Context, tx *sql.Tx, id string) (sourceRow, error) {
-	return readSource(tx.QueryRowContext(ctx, `SELECT `+sourceColumns+` FROM owned_capture_sources s JOIN owned_capture_lifecycle l ON l.capture_id=s.capture_id WHERE s.capture_id=?`, id))
+	return readSource(tx.QueryRowContext(ctx, `SELECT `+sourceColumns+` FROM `+sourceTables+` WHERE s.capture_id=?`, id))
 }
 func (s *Service) resolveTx(ctx context.Context, tx *sql.Tx, id string, b Binding) (Receipt, error) {
 	var out Receipt
@@ -71,6 +82,9 @@ func (s *Service) resolveTx(ctx context.Context, tx *sql.Tx, id string, b Bindin
 		return Receipt{}, ErrCurrent
 	}
 	if err = s.producer.CheckTx(ctx, tx, b); err != nil {
+		return Receipt{}, err
+	}
+	if err = s.checkOwnerScanTx(ctx, tx, b.OwnerScan); err != nil {
 		return Receipt{}, err
 	}
 	return out, ctx.Err()

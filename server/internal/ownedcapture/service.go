@@ -126,8 +126,17 @@ func bindLife(parent, other context.Context) (context.Context, func()) {
 func (s *Service) Capture(ctx context.Context, request Request) (receipt Receipt, err error) {
 	// Acquisition and immutable sealing must never join an outer transaction;
 	// publication here must be committed before any usable receipt is returned.
-	if dbwork.Snapshot(ctx) != nil {
+	if ctx == nil || dbwork.Snapshot(ctx) != nil {
 		return receipt, ErrInput
+	}
+	// A copied private scan request cannot be used at another store or changed
+	// into an asset-only request. The producer still re-admits the exact target.
+	expectedScan := OwnerScanTarget{}
+	if request.ownerScan != nil {
+		if request.ownerScan.service != s || !request.ownerScan.target.valid() || request.AssetID != request.ownerScan.target.AssetID {
+			return receipt, ErrInput
+		}
+		expectedScan = request.ownerScan.target
 	}
 	if !s.enter() {
 		return receipt, ErrCurrent
@@ -154,7 +163,7 @@ func (s *Service) Capture(ctx context.Context, request Request) (receipt Receipt
 	defer sourceDone()
 	b, size, expires := acquisition.Binding(), acquisition.Size(), acquisition.ExpiresAt().UTC()
 	now := time.Now().UTC()
-	if !b.valid() || b.AssetID != request.AssetID || size <= 0 || size == int64(^uint64(0)>>1) || !expires.After(now) || expires.After(now.Add(MaxCaptureLifetime)) {
+	if !b.valid() || b.AssetID != request.AssetID || b.OwnerScan != expectedScan || size <= 0 || size == int64(^uint64(0)>>1) || !expires.After(now) || expires.After(now.Add(MaxCaptureLifetime)) {
 		return receipt, ErrInput
 	}
 	expires = time.UnixMilli(expires.UnixMilli()).UTC()
@@ -169,9 +178,18 @@ func (s *Service) Capture(ctx context.Context, request Request) (receipt Receipt
 		if e := acquisition.CheckTx(ctx, tx); e != nil {
 			return e
 		}
+		if e := s.checkOwnerScanTx(ctx, tx, b.OwnerScan); e != nil {
+			return e
+		}
 		_, e := tx.ExecContext(ctx, `INSERT INTO owned_capture_sources(capture_id,source_id,config_generation,object_id,object_revision,asset_id,acquisition_id,reservation_id,policy_witness,authority_witness,expected_size,created_ms,expires_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`, id, b.SourceID, b.ConfigGeneration, b.ObjectID, b.ObjectRevision, b.AssetID, b.AcquisitionID, b.ReservationID, b.PolicyWitness, b.AuthorityWitness, size, now.UnixMilli(), expires.UnixMilli())
 		if e != nil {
 			return e
+		}
+		if b.OwnerScan != (OwnerScanTarget{}) {
+			v := b.OwnerScan
+			if _, e = tx.ExecContext(ctx, `INSERT INTO owned_capture_scan_purposes(capture_id,admission_id,job_id,execution_id,execution_revision,object_id,object_revision,asset_id,scan_policy_revision) VALUES(?,?,?,?,?,?,?,?,?)`, id, v.AdmissionID, v.JobID, v.ExecutionID, v.ExecutionRevision, v.ObjectID, v.ObjectRevision, v.AssetID, v.ScanPolicyRevision); e != nil {
+				return e
+			}
 		}
 		_, e = tx.ExecContext(ctx, `INSERT INTO owned_capture_lifecycle(capture_id,state,updated_ms) VALUES(?,'capturing',?)`, id, now.UnixMilli())
 		return e
@@ -229,6 +247,9 @@ func (s *Service) Capture(ctx context.Context, request Request) (receipt Receipt
 		if e := acquisition.CheckTx(ctx, tx); e != nil {
 			return e
 		}
+		if e := s.checkOwnerScanTx(ctx, tx, b.OwnerScan); e != nil {
+			return e
+		}
 		result, e := tx.ExecContext(ctx, `UPDATE owned_capture_lifecycle SET pending_digest=?,updated_ms=? WHERE capture_id=? AND state='capturing' AND pending_digest=''`, digest, time.Now().UnixMilli(), id)
 		if e != nil {
 			return e
@@ -259,6 +280,9 @@ func (s *Service) Capture(ctx context.Context, request Request) (receipt Receipt
 	receipt = Receipt{ID: id, ArtifactID: uniqueID(), Binding: b, Object: object, Version: version, ExpiresAt: expires}
 	err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
 		if e := acquisition.CheckTx(ctx, tx); e != nil {
+			return e
+		}
+		if e := s.checkOwnerScanTx(ctx, tx, b.OwnerScan); e != nil {
 			return e
 		}
 		row, e := sourceTx(ctx, tx, id)

@@ -9281,6 +9281,26 @@ CREATE TABLE owned_capture_lifecycle(
  state TEXT NOT NULL CHECK(state IN('capturing','ready','retired','deleted')),
  pending_digest TEXT NOT NULL DEFAULT '',updated_ms INTEGER NOT NULL
 ) STRICT;
+-- Root62 private explicit-owner scan purpose. This is an immutable exact lookup
+-- precondition; original owner/source/read authority remains in source rows.
+CREATE TABLE owned_capture_scan_purposes(
+ capture_id TEXT PRIMARY KEY REFERENCES owned_capture_sources(capture_id),
+ admission_id TEXT NOT NULL CHECK(length(admission_id)>0),
+ job_id TEXT NOT NULL CHECK(length(job_id)>0),
+ execution_id TEXT NOT NULL CHECK(length(execution_id)>0),
+ execution_revision INTEGER NOT NULL CHECK(execution_revision>0),
+ object_id TEXT NOT NULL CHECK(length(object_id)>0),
+ object_revision TEXT NOT NULL CHECK(length(object_revision)>0),
+ asset_id TEXT NOT NULL CHECK(length(asset_id)>0),
+ scan_policy_revision INTEGER NOT NULL CHECK(scan_policy_revision>0)
+) STRICT;
+CREATE TRIGGER owned_capture_scan_purpose_immutable BEFORE UPDATE ON owned_capture_scan_purposes
+BEGIN SELECT RAISE(ABORT,'owned capture scan purpose is immutable'); END;
+CREATE TRIGGER owned_capture_scan_purpose_original BEFORE INSERT ON owned_capture_scan_purposes
+WHEN NOT EXISTS(SELECT 1 FROM owned_capture_sources s WHERE s.capture_id=NEW.capture_id
+ AND s.object_id=NEW.object_id AND s.object_revision=NEW.object_revision AND s.asset_id=NEW.asset_id)
+ OR EXISTS(SELECT 1 FROM owned_capture_lifecycle l WHERE l.capture_id=NEW.capture_id)
+BEGIN SELECT RAISE(ABORT,'owned capture scan purpose is not original'); END;
 CREATE INDEX owned_capture_lifecycle_collect ON owned_capture_lifecycle(state,updated_ms,capture_id);
 CREATE TABLE owned_capture_receipts(
  capture_id TEXT PRIMARY KEY REFERENCES owned_capture_sources(capture_id),
