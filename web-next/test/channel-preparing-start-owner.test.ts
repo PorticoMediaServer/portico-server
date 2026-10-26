@@ -5,6 +5,7 @@ import type {HttpLocalApi, LocalSession} from '../../packages/client-core/src/in
 import {V1ChannelControl, type OriginalChannelStart} from '../../packages/client-core/src/playback-v1/channel-control.ts';
 import {parseStartPreparation, type Timers} from '../../packages/client-core/src/playback-v1/sessions.ts';
 import type {V1Request} from '../../packages/client-core/src/playback-v1/http.ts';
+import {ownedWebChannels} from '../src/platform/playback/channel-start-binding.ts';
 import {createWebPreparingStarts} from '../src/platform/playback/start-owner.ts';
 
 // Authored source vectors, UNRUN. Only the original fake API and canonical SDK
@@ -105,16 +106,18 @@ function controlFixture(realPreparation: boolean) {
   const control = new V1ChannelControl({key: () => 'actual-channel-key', timers, http: {send: async request => {
     calls.push(request);return await (replies.shift() ?? Promise.resolve(response(realPreparation ? {...real(), retryAfterMs: 500} : {retryAfterMs: 500})));
   }}});
-  const start = () => control.open({kind: 'live-source', sourceId: 'source', channelId: 'station', generation: 'original-guide'},
-    {state: () => {assert.fail('no late install');}, error: () => {assert.fail('no successor error');}},
-    {signal: caller.signal, isCurrent: f.current, captureStart: original => f.reg.beginChannel(original, f.current)});
-  return {...f, cleanupCalls: f.calls, control, caller, calls, jobs, replies, start};
+  const installed: string[] = [];
+  const bound = ownedWebChannels(control, f.reg, () => f.current);
+  const start = () => bound.open({kind: 'live-source', sourceId: 'source', channelId: 'station', generation: 'original-guide'},
+    {state: value => {installed.push(value.playbackId);}, error: () => {assert.fail('no successor error');}},
+    {signal: caller.signal, isCurrent: f.current});
+  return {...f, cleanupCalls: f.calls, control, caller, calls, jobs, replies, installed, bound, start};
 }
 
 test('actual channel SDK current real202 then wait-abort spends only its original host receipt', async () => {
   const f = controlFixture(true);
   try {const pending = f.start();await settle();assert.equal(f.jobs.size, 1);f.caller.abort();await pending;await settle();
-    assert.deepEqual(f.calls.map(call => call.method), ['POST']);assert.equal(f.jobs.size, 0);
+    assert.deepEqual(f.calls.map(call => call.method), ['POST']);assert.equal(f.jobs.size, 0);assert.equal(f.installed.length, 0);
     assert.deepEqual(f.cleanupCalls.map(call => call.method), ['GET', 'DELETE']);
     assert.deepEqual(f.calls[0]!.body, {channelId: 'live:source:station', channelGeneration: 'original-guide', state: 'playing'});
     assert.deepEqual(f.calls[0]!.headers, {'Idempotency-Key': 'actual-channel-key'});
@@ -130,7 +133,50 @@ test('actual channel SDK retry-only abort has no resource or cleanup', async () 
 test('actual channel SDK late201 uses its original host facts path, with no bare DELETE', async () => {
   const f = controlFixture(false), held = deferred<ReturnType<typeof response>>();f.replies.push(held.promise);
   try {const pending = f.start();await settle();f.caller.abort();held.resolve(response(real(), 201));await pending;await settle();
-    assert.deepEqual(f.calls.map(call => call.method), ['POST']);assert.equal(f.jobs.size, 0);
+    assert.deepEqual(f.calls.map(call => call.method), ['POST']);assert.equal(f.jobs.size, 0);assert.equal(f.installed.length, 0);
     assert.deepEqual(f.cleanupCalls.map(call => call.method), ['GET', 'DELETE']);
   } finally {f.control.close();f.reg.dispose();f.owner.dispose();}
+});
+
+
+test('the public pre-install claim registers a genuine accepted channel before service publication', async () => {
+  const f = controlFixture(false);f.replies.push(Promise.resolve(response(real(), 201)));
+  try {await f.start();assert.deepEqual(f.installed, ['original_channel']);
+    // The successful resource is remembered before an older receipt can try
+    // to acquire and retire this same id, even without media attachment yet.
+    const later = f.reg.beginChannel(f.original('later-key'), f.current);
+    await later.retireUninstalled({id: 'original_channel', generation: 1});later.finish();assert.equal(f.cleanupCalls.length, 0);
+  } finally {f.control.close();f.reg.dispose();f.owner.dispose();}
+});
+
+test('a cleanup-claimed resource refuses canonical install before any state or go-live PATCH', async () => {
+  const f = controlFixture(false), stopping = deferred<unknown>();f.stops.push(stopping.promise);
+  const original = f.reg.beginChannel(f.original('cleanup-key'), f.current);
+  try {
+    const cleanup = Promise.resolve(original.retireUninstalled({id: 'original_channel', generation: 1}));await settle();
+    assert.deepEqual(f.cleanupCalls.map(call => call.method), ['GET', 'DELETE']);
+    f.replies.push(Promise.resolve(response(real(), 201)));await f.start();assert.equal(f.installed.length, 0);
+    assert.deepEqual(f.calls.map(call => call.method), ['POST']);
+    stopping.resolve(undefined);await cleanup;original.finish();
+  } finally {stopping.resolve(undefined);f.control.close();f.reg.dispose();f.owner.dispose();}
+});
+
+test('a real installed channel denies earlier custody before its joined media need publish', async () => {
+  const f = fixture(), earlier = f.reg.beginChannel(f.original('earlier-key'), f.current), current = f.reg.beginChannel(f.original('new-key'), f.current);
+  try {
+    const cleanup = earlier.capturePreparing(parseStartPreparation({...real(), retryAfterMs: 500}).session!)!;
+    assert.equal(current.claimInstall(Object.freeze({id: 'original_channel', generation: 1})), true);
+    current.finish();await cleanup();earlier.finish();assert.equal(f.calls.length, 0);
+  } finally {f.reg.dispose();f.owner.dispose();}
+});
+
+test('an ownerless Web binding truthfully refuses late cleanup and never invokes legacy raw DELETE', async () => {
+  const held = deferred<ReturnType<typeof response>>(), caller = new AbortController(), methods: string[] = [];
+  const control = new V1ChannelControl({key: () => 'ownerless-key', http: {send: async request => {methods.push(request.method);return held.promise;}}});
+  const bound = ownedWebChannels(control, undefined, () => () => !caller.signal.aborted);
+  try {
+    const pending = bound.open({kind: 'live-source', sourceId: 'source', channelId: 'station', generation: 'original-guide'},
+      {state: () => assert.fail('retired state'), error: () => assert.fail('retired error')}, {signal: caller.signal});
+    await settle();caller.abort();held.resolve(response(real(), 201));await pending;await settle();assert.deepEqual(methods, ['POST']);
+  } finally {control.close();}
 });

@@ -14,6 +14,8 @@ import {SessionsClient} from '@core/playback-v1/sessions.ts';
 import type {CatalogueSelectionQueuePort} from '@core/catalogue-selection.ts';
 import {QueueClient, type SegmentInput} from '@core/playback-v1/queue.ts';
 import {V1ChannelControl} from '@core/playback-v1/channel-control.ts';
+import {ownedWebChannels} from './channel-start-binding.ts';
+import type {WebStartRegistration} from './preparing-start.ts';
 import type {HomeSelectionPlaybackPort, HomeSelectionPlaybackRequest} from '@core/home-selection/types.ts';
 import type {SelectionContext} from '@core/selection-model/types.ts';
 import type {HomeChannel} from '@core/home.ts';
@@ -96,6 +98,7 @@ type Stack = {
   itemId?: string; metadataItemId?: string; libraryId?: string; subject?: PlaybackSubject; showId?: string; seasonId?: string;
   posterUrl?: string; backdropUrl?: string; expanded: boolean; retired: boolean;
   channel?: ChannelTarget;
+  channelStarts?: WebStartRegistration;
   confirmedEnd?: Readonly<{sessionId: string; generation: number; intentId: number; view: ReturnType<V1QueuePlayer['getSnapshot']>['view']}>;
 };
 const emptySubtitle: SubtitleSnapshot = {catalog: null, plan: null, busy: false, loading: false, suppressed: true, error: null, canRetry: false, candidates: []};
@@ -289,10 +292,16 @@ export class WebShellPlaybackRuntime {
         return current();
       }});
     // The actual controller retains its ordered stop barrier across consecutive channel starts.
-    service.useChannelPlayback(this.channelControl);
+    const channelStarts = this.source.preparingStarts?.attach(id => service.getSnapshot().session?.id === id);
+    service.useChannelPlayback(ownedWebChannels(this.channelControl, channelStarts, channel => {
+      const operation = this.operation, original = service.getSnapshot();
+      return () => this.current(stackReference) && !life.signal.aborted && this.operation === operation &&
+        service.getSnapshot().intentId === original.intentId && service.getSnapshot().playbackRun === original.playbackRun &&
+        original.channel === channel && service.getSnapshot().channel === channel;
+    }));
     queue.setCompletionPolicy(() => 'hold');
     const api = {request: <T>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal) => this.source.api.request<T>(path, method, body, signal ? AbortSignal.any([signal, life.signal]) : life.signal)};
-    const stackReference: Stack = {mode, web, service, queue, http, life, offers: new PlayerOffersService({api, scope: this.source.contentScope}), optionsClient: new PlaybackOptionsClient(http), options: null, offs: [], expanded: false, retired: false};
+    const stackReference: Stack = {mode, web, service, queue, http, life, channelStarts, offers: new PlayerOffersService({api, scope: this.source.contentScope}), optionsClient: new PlaybackOptionsClient(http), options: null, offs: [], expanded: false, retired: false};
     return stackReference;
   }
 
@@ -391,7 +400,7 @@ export class WebShellPlaybackRuntime {
     stack.retired = true;
     stack.confirmedEnd = undefined;
     this.clearSourceResources(stack);
-    stack.service.leave(); stack.queue.dispose(); stack.unmount?.(); stack.unmount = undefined;
+    stack.service.leave(); stack.channelStarts?.dispose(); stack.queue.dispose(); stack.unmount?.(); stack.unmount = undefined;
     stack.web.dispose(); stack.offers.dispose(); stack.life.abort();
     this.surface?.clear();
   }

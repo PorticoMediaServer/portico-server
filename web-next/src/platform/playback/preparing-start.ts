@@ -1,4 +1,4 @@
-import type {OriginalChannelStart} from '@core/playback-v1/channel-control.ts';
+import type {ChannelStartReceipt, OriginalChannelStart} from '@core/playback-v1/channel-control.ts';
 import type {PreparingSessionView, StartContext, StartOptions, StartTarget} from '@core/playback-v1/sessions.ts';
 
 const retired = () => new DOMException('Original playback start retired', 'AbortError');
@@ -13,12 +13,7 @@ export type OriginalWebStart = Readonly<{
   body: StartTarget & StartOptions; key: string; context: StartContext; finish(): void;
 }>;
 export type ChannelStartResource = Readonly<{id: string; generation: number}>;
-export type WebChannelStart = Readonly<{
-  isCurrent(): boolean;
-  capturePreparing: NonNullable<StartContext['capturePreparing']>;
-  retireUninstalled(session: ChannelStartResource): void | Promise<void>;
-  finish(): void;
-}>;
+export type WebChannelStart = ChannelStartReceipt;
 export type WebStartRegistration = Readonly<{
   remember(id: string): boolean; forget(id: string): void; dispose(): void;
   beginChannel(original: OriginalChannelStart, isCurrent: () => boolean): WebChannelStart;
@@ -42,8 +37,18 @@ export class WebPreparingStarts {
   attach(installed: (id: string) => boolean = () => false): WebStartRegistration {
     const ids = new Set<string>(), registration = Object.freeze({ids, installed});this.registrations.add(registration);
     let live = true;
+    const remember = (id: string) => {
+      if ([...this.flights].some(flight => flight.stopping && flight.session?.id === id)) return false;
+      for (const flight of this.flights) {
+        if (flight.seen.size >= 256) flight.denied = true;
+        else flight.seen.add(id);
+        if (flight.session?.id === id) {flight.denied = true;flight.cleanup?.abort();}
+      }
+      if (live) ids.add(id);
+      return true;
+    };
     const begin = (target: StartTarget, options: StartOptions, key: string, signal: AbortSignal | undefined, isCurrent: () => boolean,
-      channel?: OriginalChannelStart['body']): OriginalWebStart & {retireChannel(session: ChannelStartResource): void | Promise<void>} => {
+      channel?: OriginalChannelStart['body']): OriginalWebStart & {retireChannel(session: ChannelStartResource): void | Promise<void>; claimChannel(session: ChannelStartResource): boolean} => {
         if (typeof key !== 'string' || !key || this.requests.has(key)) throw retired();
         const seen = new Set<string>();
         const flight: Flight = {seen, denied: false, cancel: () => {flight.denied = true;flight.cleanup?.abort();}};
@@ -72,6 +77,7 @@ export class WebPreparingStarts {
             let spent = false;
             const owned = () => !flight.denied && this.flights.has(flight) && flight.session === original && !flight.seen.has(original.id);
             const uninstalled = () => owned() && this.current() &&
+              ![...this.flights].some(other => other !== flight && other.stopping && other.session?.id === original.id) &&
               [...this.registrations].every(registered => valid(() => !registered.installed(original.id))) && this.current() && owned();
             return receipt = async () => {
               if (spent) return;spent = true;
@@ -114,25 +120,21 @@ export class WebPreparingStarts {
             const original = Object.freeze({id: actual.id, generation: actual.generation});
             return channelStop(original)?.();
           };
-          return Object.freeze({body, key, context: Object.freeze({signal, isCurrent: continuation, capturePreparing}), finish, retireChannel});
+          const claimChannel = (actual: ChannelStartResource) => {
+            if (!channel || !continuation() || typeof actual.id !== 'string' || !actual.id ||
+              !Number.isSafeInteger(actual.generation) || actual.generation < 1 ||
+              captured && (!flight.session || flight.session.id !== actual.id || flight.session.generation !== actual.generation)) return false;
+            // Canonical SDK819 calls this before a.id/accept/go-live. The same
+            // registration synchronously excludes every older cleanup flight.
+            return remember(actual.id) && continuation();
+          };
+          return Object.freeze({body, key, context: Object.freeze({signal, isCurrent: continuation, capturePreparing}), finish, retireChannel, claimChannel});
         } catch (error) {finish();throw error;}
       };
     return Object.freeze({
-      remember: (id: string) => {
-        // After the exact GET, cleanup may synchronously claim the never-installed
-        // resource before DELETE. A later local adopter cannot install it while
-        // that bounded original stop is settling (or make abort unsend a DELETE).
-        if ([...this.flights].some(flight => flight.stopping && flight.session?.id === id)) return false;
-        // A late real 201 is still registered by its original core cleanup path.
-        // It must also deny any other pending preparation receipt for this id.
-        for (const flight of this.flights) {
-          if (flight.seen.size >= 256) flight.denied = true;
-          else flight.seen.add(id);
-          if (flight.session?.id === id) {flight.denied = true;flight.cleanup?.abort();}
-        }
-        if (live) ids.add(id);
-        return true;
-      },
+      // An actual current install denies older cleanup, even after forget.
+      // A stop already synchronously claimed for that id refuses installation.
+      remember,
       forget: (id: string) => {ids.delete(id);},
       dispose: () => {live = false;this.registrations.delete(registration);ids.clear();},
       begin,
@@ -140,7 +142,7 @@ export class WebPreparingStarts {
         const {body, key, signal, isCurrent: channelCurrent} = original;
         const current = () => valid(channelCurrent) && valid(isCurrent);
         const start = begin({channelId: body.channelId, channelGeneration: body.channelGeneration}, {state: body.state}, key, signal, current, body);
-        return Object.freeze({isCurrent: start.context.isCurrent!, capturePreparing: start.context.capturePreparing!, retireUninstalled: start.retireChannel, finish: start.finish});
+        return Object.freeze({isCurrent: start.context.isCurrent!, capturePreparing: start.context.capturePreparing!, claimInstall: start.claimChannel, retireUninstalled: start.retireChannel, finish: start.finish});
       },
     });
   }
