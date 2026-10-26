@@ -2,6 +2,7 @@ import {useLayoutEffect, useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import {Button} from '../../kit/controls/Button';
 import {Dialog} from '../../kit/overlays/Dialog';
+import {SecureRefusalDialog} from './SecureRefusalDialog';
 import {ownerSwitchContextAllowed} from '../../platform/secure-pending';
 import type {OwnerClaimAttempt} from '../../platform/owner-claim';
 import type {SettingsOwnerSwitch} from './owner-switch';
@@ -86,9 +87,7 @@ export function ChangeOwner({source, isCurrent, onError}: {
   const current = opening && active.current === opening ? opening : undefined;
   return <>
     <Button ref={opener} variant="glass" size="small" loading={busy} disabled={!isCurrent()} onClick={open}>{label}</Button>
-    <Dialog children={null} open={secure} onOpenChange={value => {if (!value) setSecure(false);}} title={t('accounts.ownerSwitch.secureTitle')}
-      description={t('accounts.ownerSwitch.secureBody', {localUrl: 'http://localhost:32500'})}
-      footer={<Button variant="glass" onClick={() => setSecure(false)}>{t('action.cancel')}</Button>}/>
+    <SecureRefusalDialog open={secure} onOpenChange={value => {if (!value) setSecure(false);}} />
     <Dialog open={confirming && !!current} onOpenChange={value => {if (!busy && !value && current) close(current);}} title={`${verb}?`} description={t(CONFIRM)}
       initialFocusRef={cancel} returnFocusRef={opener} dismissOnBack={!busy} dismissOnOutsidePress={!busy} showCloseButton={!busy}
       footer={<>

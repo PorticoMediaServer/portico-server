@@ -17,6 +17,7 @@ import {SettingsPageFailure} from '../../kit/settings';
 import {settingsPlatform} from '../../platform/settings-platform';
 import {DashboardScreen, HistoryScreen, createDashboardBindings, type DashboardBindings} from '../dashboard';
 import {SettingsScreen, type SettingsBindings, type SettingsContext, type SettingsPageSnapshot} from './Settings';
+import {SecureAddressProvider} from './SecureAddressProvider';
 import {CustomizeHomeRow} from './account-appearance/CustomizeHome';
 import {SettingsController, type SettingsControllerOptions} from './controller';
 import {createSettingsBindings} from './bindings';
@@ -115,6 +116,8 @@ const settingsBuildFacts = (context?: ShellAssemblyContext) => {
 const settingsLocationRoute = (location: Readonly<{pathname: string; searchStr: string}>) => settingsRoute(location.pathname === '/dashboard'
   ? {scope: 'server', section: 'dashboard'} : Object.fromEntries(new URLSearchParams(location.searchStr)), () => true);
 type SettingsBuild = Readonly<{context: ShellAssemblyContext; inputs: readonly unknown[]; current: () => boolean;
+  /** The build's own captured transport, so a holder read keeps this same fence. */
+  api: ShellAssemblyContext['api'];
   settings: SettingsBindings; dashboard?: DashboardBindings; profiles?: ProfileSettingsSource;
   profilePINCurrent: (request: ProfilePINRequest) => boolean; closeProfilePIN: (request: ProfilePINRequest) => void}>;
 
@@ -518,7 +521,7 @@ export function SettingsEntry() {
       load: (...args) => current() ? settings.load(...args) : Promise.resolve(),
       ...(settings.loadContext ? {loadContext: (...args: Parameters<NonNullable<SettingsBindings['loadContext']>>) => current() ? settings.loadContext!(...args) : Promise.resolve()} : {}),
     };
-    setFailure(false);setOwned({context, inputs, current, settings: publishedSettings, dashboard, profiles, profilePINCurrent, closeProfilePIN});
+    setFailure(false);setOwned({context, api, inputs, current, settings: publishedSettings, dashboard, profiles, profilePINCurrent, closeProfilePIN});
     return () => {active = false;offPreferenceFence();pinRequest = undefined;lifetime.abort();setProfilePIN(held => held?.source === profiles ? undefined : held);profileDevices?.dispose();otherDeviceSignOut?.dispose();offRestrictions?.();restrictions?.dispose();offProfileFailures?.();profiles?.dispose();previewLife.abort();signinStorage?.dispose();signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();intros?.dispose();server?.dispose();troubleshooting?.dispose();playbackProblems?.dispose();live?.dispose();integrationKeys?.dispose();webhooks?.dispose();updates?.dispose();missing?.dispose();hardware?.dispose();controller.dispose();};
   // Each setup owns and retires exactly its own sources. No shared "latest"
   // slot participates in cleanup, including the owner's update reader.
@@ -530,7 +533,9 @@ export function SettingsEntry() {
   // A URL that names its scope or section was a link to that page (a Dashboard
   // or storage alert), so the compact layout opens the page, not the list.
   const openDetail = typeof raw.scope === 'string' || typeof raw.section === 'string';
-  return <><SettingsScreen bindings={settings} route={route} navigate={navigate} openDetail={openDetail} />
+  return <><SecureAddressProvider api={selected.api} isCurrent={selected.current} active={route.scope === 'server' && route.section === 'signin' && selected.settings.role === 'owner'}>
+    <SettingsScreen bindings={settings} route={route} navigate={navigate} openDetail={openDetail} />
+  </SecureAddressProvider>
     {profilePIN && selected.profiles === profilePIN.source && <ProfilePINDialog key={JSON.stringify([profilePIN.target.id, profilePIN.target.revision, profilePIN.remove])}
       request={profilePIN} isCurrent={() => selected.profilePINCurrent(profilePIN) && selected.profiles === profilePIN.source && !!profilePIN.source.getSnapshot().document} onClose={() => selected.closeProfilePIN(profilePIN)} onFailure={() => {if (selected.profilePINCurrent(profilePIN)) setFailure(true);}} />}
   </>;

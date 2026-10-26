@@ -5,6 +5,7 @@ import {defaultI18n} from '@i18n';
 import {Button} from '../../kit/controls/Button';
 import {TextField} from '../../kit/controls/Fields';
 import {Dialog} from '../../kit/overlays/Dialog';
+import {SecureRefusalDialog} from './SecureRefusalDialog';
 import {router} from '../../router';
 import {cancelLocalMoveHandoff, offerLocalMove, type LocalMoveHandoff} from '../../platform/local-move-continuation';
 import {ownerSwitchContextAllowed} from '../../platform/secure-pending';
@@ -151,9 +152,7 @@ export function LocalMoveSwitch({source, isCurrent, onError, startOver = false}:
   return <>
     <Button className={startOver ? styles.destructive : undefined} variant="glass" size="small" disabled={state.busy || !!state.preview || state.confirmed || !!active.current}
       onClick={start}>{t(`${startOver ? 'next.settingsSpec.server.signin.groups.1.rows.1' : 'next.settingsSpec.server.signin.groups.1.rows.0'}.control.label`)}</Button>
-    <Dialog children={null} open={secure} onOpenChange={value => {if (!value) setSecure(false);}} title={t('accounts.ownerSwitch.secureTitle')}
-      description={t('accounts.ownerSwitch.secureBody', {localUrl: 'http://localhost:32500'})}
-      footer={<Button variant="glass" onClick={() => setSecure(false)}>{t('action.cancel')}</Button>}/>
+    <SecureRefusalDialog open={secure} onOpenChange={value => {if (!value) setSecure(false);}} />
     <Dialog open={!!current && !!preview && state.preview === preview} onOpenChange={value => {if (!value && current) close(current);}} width={600}
       title={t(`${keys}.title`)} dismissOnBack={!busy} dismissOnOutsidePress={!busy} showCloseButton={!busy}
       footer={<><Button variant="glass" disabled={busy} onClick={() => {if (current) close(current);}}>{t(`${keys}.footer.secondary`)}</Button>
