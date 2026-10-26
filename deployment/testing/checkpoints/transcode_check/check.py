@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import secrets
 
-from api_smoke.client import sleep_within
+from api_smoke.client import CLOSED_CODES, sleep_within
 
 from .media import MAX_SAMPLE, MediaError
 
@@ -39,9 +39,13 @@ HEIGHT_CEILING = 480
 class CheckFailure(Exception):
     """A step failed with a closed reason; the receipt still gets written."""
 
-    def __init__(self, reason):
+    def __init__(self, reason, reply=None):
         super().__init__(reason)
         self.reason = reason
+        value = getattr(reply, 'status', None)
+        self.http = value if isinstance(value, int) and not isinstance(value, bool) and 100 <= value <= 599 else None
+        value = getattr(reply, 'code', None)
+        self.code = value if isinstance(value, str) and value in CLOSED_CODES else None
 
 
 def bucket(value, edges=(1, 2, 4, 8, 16, 32, 64, 128, 256)):
@@ -142,7 +146,12 @@ class Check:
                 if self._start(document):
                     self._delivered(document)
             except CheckFailure as failure:
-                document['steps'].append({'step': 'check', 'status': 'fail', 'reason': failure.reason})
+                row = {'step': 'check', 'status': 'fail', 'reason': failure.reason}
+                if failure.http is not None:
+                    row['http'] = failure.http
+                if failure.code is not None:
+                    row['code'] = failure.code
+                document['steps'].append(row)
             except Exception:
                 # An unexpected body or transport shape is a closed failure, never
                 # an escape: the receipt is still written and cleanup still runs.
@@ -162,7 +171,7 @@ class Check:
     def _call(self, operation, method, path, **kwargs):
         reply = self.client.call(operation, method, path, **kwargs)
         if reply.failure is not None:
-            raise CheckFailure('transport-' + reply.failure)
+            raise CheckFailure('transport-' + reply.failure, reply)
         return reply
 
     def _capacity(self, document):
@@ -171,7 +180,7 @@ class Check:
             return
         reply = self._call('transcode-capacity', 'GET', '/v1/admin/transcode/capacity')
         if reply.status != 200 or not isinstance(reply.data, dict):
-            raise CheckFailure('capacity-' + (reply.code or 'shape'))
+            raise CheckFailure('capacity-' + (reply.code or 'shape'), reply)
         # Owner telemetry is a projected console {data, scope} envelope.
         data = reply.data.get('data')
         if not isinstance(data, dict) or not isinstance(data.get('enabled'), bool):
@@ -208,7 +217,7 @@ class Check:
     def _policy(self, document):
         reply = self._call('playback-delivery-policy', 'GET', '/v1/playback/delivery-policy')
         if reply.status != 200 or not isinstance(reply.data, dict):
-            raise CheckFailure('policy-' + (reply.code or 'shape'))
+            raise CheckFailure('policy-' + (reply.code or 'shape'), reply)
         decisions = reply.data.get('policy')
         decisions = decisions if isinstance(decisions, dict) else {}
         mode = policy_mode(decisions.get('transcode'))
@@ -266,7 +275,7 @@ class Check:
             self._step(document, 'start', 'unavailable', document['admission']['reason'])
             return False
         if reply.status != 201:
-            raise CheckFailure('start-' + (reply.code or 'refused'))
+            raise CheckFailure('start-' + (reply.code or 'refused'), reply)
         ref = session_ref(reply.data if isinstance(reply.data, dict) else {})
         if self.owned is not None and ref != self.owned:
             raise CheckFailure('session-identity-changed')
@@ -303,7 +312,7 @@ class Check:
     def _view(self):
         reply = self._call('playback-session', 'GET', '/v1/playback/sessions/' + self.session)
         if reply.status != 200 or not isinstance(reply.data, dict):
-            raise CheckFailure('session-' + (reply.code or 'shape'))
+            raise CheckFailure('session-' + (reply.code or 'shape'), reply)
         if session_ref(reply.data) != self.owned:
             raise CheckFailure('session-identity')
         return reply.data

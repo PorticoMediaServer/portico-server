@@ -13,12 +13,56 @@ from unittest.mock import patch
 HERE = Path(__file__).parent
 sys.path.insert(0, str(HERE))
 from api_smoke.client import Deadline
+import transcode_check as runner
 from transcode_check import media
 from transcode_check.check import CheckFailure, retry_hint
-from test_transcode_check import FakeClient, FakeDeadline, VIEW_BODY, routes, run
+from test_transcode_check import FakeClient, FakeDeadline, VIEW_BODY, reply, routes, run
 
 
 class Boundaries(unittest.TestCase):
+    def test_endpoint_failure_keeps_only_closed_http_and_code(self):
+        table = routes()
+        table['transcode-capacity'] = lambda *_: reply(status=503, code='unclassified')
+        doc = run(FakeClient(table))
+        self.assertEqual(doc['steps'][-1], {'step': 'check', 'status': 'fail',
+            'reason': 'capacity-unclassified', 'http': 503, 'code': 'unclassified'})
+        failure = CheckFailure('shape', SimpleNamespace(status=True, code={'private': 'value'}))
+        self.assertIsNone(failure.http)
+        self.assertIsNone(failure.code)
+
+    def test_read_rechecks_runtime_after_io(self):
+        events = []
+        def verify(_):
+            events.append('verify')
+            if events.count('verify') == 2:
+                raise RuntimeError('synthetic runtime retired')
+        client = SimpleNamespace(call=lambda *_, **__: events.append('get') or reply())
+        with patch.object(runner, 'Client', return_value=client), patch.object(runner, 'verify', verify):
+            fenced = runner.OriginalRuntimeClient(object(), FakeDeadline())
+            with self.assertRaises(RuntimeError):
+                fenced.call('read', 'GET', '/v1/example')
+        self.assertEqual(events, ['verify', 'get', 'verify'])
+
+    def test_acknowledged_start_handle_survives_until_caller_can_own_it(self):
+        events = []
+        retired = False
+        acknowledged = reply(status=201, data=VIEW_BODY)
+        def verify(_):
+            events.append('verify')
+            if retired:
+                raise RuntimeError('synthetic runtime retired')
+        def call(*_, **__):
+            nonlocal retired
+            events.append('post')
+            retired = True
+            return acknowledged
+        with patch.object(runner, 'Client', return_value=SimpleNamespace(call=call)), patch.object(runner, 'verify', verify):
+            fenced = runner.OriginalRuntimeClient(object(), FakeDeadline())
+            self.assertIs(fenced.call('start', 'POST', '/v1/playback/sessions'), acknowledged)
+            with self.assertRaises(RuntimeError):
+                fenced.call('read', 'GET', '/v1/example')
+        self.assertEqual(events, ['verify', 'post', 'verify'])
+
     def test_missing_hint_on_owned_202_still_cleans_up(self):
         data = copy.deepcopy(VIEW_BODY)
         data.pop('retryAfterMs', None)
