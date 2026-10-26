@@ -123,3 +123,14 @@ test('All genres uses the original authorized page, includes art-less genres, an
     owner.retire(); assert.throws(() => owner.controller.showAll(owner.controller.getSnapshot()), {name: 'AbortError'});
   } finally {owner.controller.dispose();}
 });
+
+
+test('an art-less first window still exposes the real All genres entry', async () => {
+  const owner = setup(async () => page([genre('without-art', 4, false)]));
+  try {
+    await owner.controller.load(); const preview = owner.controller.getSnapshot();
+    assert.equal(preview.genres.length, 0); assert.equal(preview.hasGenres, true);
+    owner.controller.showAll(preview);
+    assert.deepEqual(owner.controller.getSnapshot().genres.map(x => x.value), ['without-art']);
+  } finally {owner.controller.dispose();}
+});

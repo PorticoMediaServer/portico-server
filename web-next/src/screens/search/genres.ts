@@ -10,6 +10,7 @@ export type SearchGenresSnapshot = Readonly<{
   nextCursor?: string;
   canContinue: boolean;
   all?: boolean;
+  hasGenres?: boolean;
   error?: unknown;
 }>;
 const empty = (): SearchGenresSnapshot => Object.freeze({phase: 'idle', genres: Object.freeze([]), canContinue: false});
@@ -93,7 +94,7 @@ export class SearchGenresController {
         const genres = Object.freeze([...prior, ...eligible].slice(0, this.all ? 50 : this.limit));
         this.page = page;
         this.cursors = cursor ? [...this.cursors, cursor].slice(-64) : [];
-        this.publish({phase: 'ready', genres, revision: page.revision, ...(page.nextCursor ? {nextCursor: page.nextCursor} : {}),
+        this.publish({phase: 'ready', genres, hasGenres: page.genres.length > 0 || prior.length > 0, revision: page.revision, ...(page.nextCursor ? {nextCursor: page.nextCursor} : {}),
           ...(this.all ? {all: true} : {}), canContinue: (this.all || genres.length < this.limit) && !!page.nextCursor});
       } catch (error) {
         if (generation === this.generation) this.publish({...empty(), phase: this.active() ? 'error' : 'idle', ...(this.active() ? {error} : {})});

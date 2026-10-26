@@ -197,10 +197,10 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
   const nextGenres = genres.all && genres.canContinue && <Button variant="glass" size="small" onClick={() => runScreenCommand(context, () => {
     if (binding.genres.getSnapshot() === genres) return binding.genres.next();
   })}>{t('web.pager.next')}</Button>;
-  const genreSection = genres.phase === 'ready' && genres.genres.length > 0 && <section className={styles.emptySection} aria-labelledby="search-genres">
+  const genreSection = genres.phase === 'ready' && (genres.hasGenres || genres.genres.length > 0 || genres.canContinue) && <section className={styles.emptySection} aria-labelledby="search-genres">
     <header><h2 id="search-genres">{t('next.search.browseByGenre')}</h2><span>{videoKinds}</span>{allGenres}</header>{genreTiles}{nextGenres}</section>;
   // Frame 5: a no-match answer keeps the same genre browsing, so it is not a dead end.
-  const browseInstead = genres.phase === 'ready' && genres.genres.length > 0 && <section className={styles.emptySection} aria-labelledby="search-browse-instead">
+  const browseInstead = genres.phase === 'ready' && (genres.hasGenres || genres.genres.length > 0 || genres.canContinue) && <section className={styles.emptySection} aria-labelledby="search-browse-instead">
     <header><h2 id="search-browse-instead">{t('next.search.browseInstead')}</h2>{allGenres}</header>{genreTiles}{nextGenres}</section>;
   const beforeTyping = <div className={styles.empty}>
     {recentBlock}
