@@ -25,9 +25,13 @@ class Capabilities(unittest.TestCase):
             self.assertEqual(build.load(candidate).build_tags, ())
             paths=type('Paths',(),{'builds':root})()
             self.assertIsNone(coordinator['_existing_build'](paths,'a'*40))
+            doc['buildTags']=['release','portico_cb7'];manifest.write_text(json.dumps(doc))
+            self.assertEqual(build.load(candidate).build_tags, ('release','portico_cb7'))
+            self.assertIsNone(coordinator['_existing_build'](paths,'a'*40))
+            self.assertEqual(build.BUILD_TAGS, ('release','portico_cb7','portico_rar7z'))
             doc['buildTags']=list(build.BUILD_TAGS);manifest.write_text(json.dumps(doc))
             self.assertEqual(coordinator['_existing_build'](paths,'a'*40).build_tags,build.BUILD_TAGS)
-            for wrong in ('release', ['release'], ['release','unknown'], [1,2]):
+            for wrong in ('release', ['release'], ['release','unknown'], ['release','portico_rar7z'], [1,2], [['release']]):
                 doc['buildTags']=wrong;manifest.write_text(json.dumps(doc))
                 with self.assertRaises(build.BuildError): build.load(candidate)
 

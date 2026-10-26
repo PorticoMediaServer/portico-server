@@ -212,6 +212,7 @@ def _libraries(client, token, installation, fixtures):
     # directory. Required Movies/Music/Books above never depend on these.
     for name, kind, relative in (
         ('Comics', 'comic', 'Walks/Comics'),
+        ('RAR5 Comics', 'comic', 'Walks/RAR5'),
         ('PDF', 'book', 'Walks/PDF'),
         ('Magazines', 'book', 'Walks/Magazines'),
         ('Magazine Issues', 'book', 'Walks/MagazineIssues'),

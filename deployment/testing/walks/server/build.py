@@ -20,10 +20,12 @@ from .process import capture, run as run_process
 from .receipt import write_json
 from .source import SourceError, generate
 
-# The sprint exercises the existing bounded local CB7 reader on Linux. This
-# changes packaging only; the source lease, helper limits and format guards
-# remain the server's. Old artifacts still load for rollback, never as CB7 proof.
-BUILD_TAGS = ('release', 'portico_cb7')
+# The sprint exercises the existing bounded local CB7 and RAR5 readers.
+# Source leases, decoder limits and format guards remain the server's.
+BUILD_TAGS = ('release', 'portico_cb7', 'portico_rar7z')
+# Keep prior recorded artifacts readable for rollback; reuse still requires
+# exact current BUILD_TAGS in the coordinator. Missing tags imply no capability.
+_RECORDED_BUILD_TAGS = ((), ('release', 'portico_cb7'), BUILD_TAGS)
 
 class BuildError(Exception):
     """A closed build refusal."""
@@ -302,7 +304,7 @@ def load(directory):
     if not isinstance(document, dict):
         raise BuildError('manifest-missing')
     tags = document.get('buildTags', [])
-    if not isinstance(tags, list) or (tags and tags != list(BUILD_TAGS)):
+    if not isinstance(tags, list) or tuple(tags) not in _RECORDED_BUILD_TAGS:
         raise BuildError('build-tags-mismatch')
     binary = directory / 'portico-server'
     web = directory / 'web'
