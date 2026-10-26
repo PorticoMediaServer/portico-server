@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -13,9 +15,16 @@ import (
 	"portico.local/server/internal/persistence"
 	"strings"
 	"testing"
+	"time"
 )
 
 func homeAPIFixture(t *testing.T) (http.Handler, identity.Envelope, catalogtest.Names) {
+	t.Helper()
+	handler, owner, names, _, _ := homeAPIFixtureWithConsole(t)
+	return handler, owner, names
+}
+
+func homeAPIFixtureWithConsole(t *testing.T) (http.Handler, identity.Envelope, catalogtest.Names, *operations.Store, *sql.DB) {
 	t.Helper()
 	root := t.TempDir()
 	db, e := persistence.Open(filepath.Join(root, "db"))
@@ -49,7 +58,97 @@ func homeAPIFixture(t *testing.T) (http.Handler, identity.Envelope, catalogtest.
 	if e != nil {
 		t.Fatal(e)
 	}
-	return New(Dependencies{DB: db, Identity: id, Catalog: catalog.New(db), Console: operations.New(db)}), owner, names
+	console := operations.New(db)
+	return New(Dependencies{DB: db, Identity: id, Catalog: catalog.New(db), Console: console}), owner, names, console, db
+}
+
+func TestItemRecommendationsReadStoredPolicyWithoutToolValidation(t *testing.T) {
+	handler, owner, names, console, db := homeAPIFixtureWithConsole(t)
+	toolCalls := 0
+	console.FFmpegValidation = func(context.Context, string) operations.FFmpegStatus {
+		toolCalls++
+		return operations.FFmpegStatus{}
+	}
+	viewers := []struct{ account, profile, name string }{
+		{"b", "q", "B"}, {"c", "r", "C"}, {"d", "s", "D"},
+	}
+	for _, viewer := range viewers {
+		if _, e := db.Exec(`INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES(?,?,x'00',?,1)`, viewer.account, viewer.account, viewer.profile); e != nil {
+			t.Fatal(e)
+		}
+		if _, e := db.Exec(`INSERT INTO direct_profiles(id,account_id,name,is_primary,position) VALUES(?,?,?,1,0)`, viewer.profile, viewer.account, viewer.name); e != nil {
+			t.Fatal(e)
+		}
+		if _, e := db.Exec(`INSERT INTO direct_memberships(account_id,role,allowed_libraries,revision,disabled) VALUES(?,'member','["movies"]',1,0)`, viewer.account); e != nil {
+			t.Fatal(e)
+		}
+	}
+	auth := func(context.Context, *sql.Tx, string) error { return nil }
+	for _, viewer := range viewers {
+		principal := identity.Principal{Viewer: identity.Viewer{Authority: "local", AccountID: viewer.account, ProfileID: viewer.profile}}
+		current, e := console.Preferences(context.Background(), principal, "web", auth)
+		if e != nil || len(current.Documents) == 0 {
+			t.Fatal("preference document", e)
+		}
+		if _, e = console.ApplyPreferences(context.Background(), principal, auth, operations.PreferenceChange{
+			Scope: operations.ScopeProfileServer, DeviceClass: "web",
+			ExpectedRevision: current.Documents[0].Revision, IdempotencyKey: identity.Token(),
+			Values: operations.PreferencePatch{"privacy.showActivityToMembers": true},
+		}); e != nil {
+			t.Fatal(e)
+		}
+	}
+	now := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+	for _, viewer := range viewers {
+		key := persistence.PersonalOwnerKey("local", viewer.account, viewer.profile)
+		for _, item := range []string{"m1", "m2"} {
+			if _, e := db.Exec(`INSERT INTO rec_profile_signals(profile_id,work_id,weight,engaged,hidden,finished,at,long,short) VALUES(?,?,1,1,0,1,?,1,1)`, key, names[item].ID, now); e != nil {
+				t.Fatal(e)
+			}
+		}
+	}
+	setCommunity := func(enabled bool) {
+		value := 0
+		if enabled {
+			value = 1
+		}
+		if _, e := db.Exec(`INSERT INTO server_settings(singleton,"home.communityActivityEnabled",updated_ms) VALUES(1,?,0) ON CONFLICT(singleton) DO UPDATE SET "home.communityActivityEnabled"=excluded."home.communityActivityEnabled",updated_ms=excluded.updated_ms`, value); e != nil {
+			t.Fatal(e)
+		}
+	}
+	request := func() []catalog.HomeRow {
+		toolCalls = 0
+		w := homeAPIRequest(t, handler, owner.AccessToken, "GET", "/v1/items/"+names["m1"].Public+"/recommendations", "")
+		if w.Code != 200 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		var page struct {
+			Rows []catalog.HomeRow `json:"rows"`
+		}
+		if e := json.Unmarshal(w.Body.Bytes(), &page); e != nil {
+			t.Fatal(e)
+		}
+		if toolCalls != 0 {
+			t.Fatalf("recommendations ran FFmpeg validation %d times", toolCalls)
+		}
+		return page.Rows
+	}
+	hasCommunityRow := func(rows []catalog.HomeRow) bool {
+		for _, row := range rows {
+			if row.Relation == "viewers_also_watched" {
+				return true
+			}
+		}
+		return false
+	}
+	setCommunity(false)
+	if hasCommunityRow(request()) {
+		t.Fatal("community recommendations offered while the stored policy is off")
+	}
+	setCommunity(true)
+	if !hasCommunityRow(request()) {
+		t.Fatal("stored community policy did not change the offered recommendation rows")
+	}
 }
 
 func homeAPIRequest(t *testing.T, h http.Handler, token, method, path, body string) *httptest.ResponseRecorder {
