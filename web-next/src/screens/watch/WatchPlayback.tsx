@@ -338,9 +338,10 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
   const visualId = remote?.phase === 'playing' ? remoteState?.cast.receiver?.itemId : remote?.itemId;
   const item = visualId ? cast?.item(visualId) : undefined;
   const source = remote?.source?.fence.kind === 'queue' && remote.source.fence.itemId === visualId ? remote.source : undefined;
+  const described = remote && remote.itemId === visualId ? remote.metadata : undefined;
   const subject = item ? itemSubject(item) : source?.subject;
   const visuals = binding ? {itemId: subject ? visualId : undefined, identity: subject ? playbackIdentity(subject, 'full', binding.environment) : undefined,
-    artwork: subject ? binding.artwork.foreground(item?.posterUrl ?? item?.backdropUrl ?? source?.posterUrl ?? source?.backdropUrl, 256, 16 / 9, {group: 'playback', priority: 'high'}) : undefined,
+    artwork: subject ? binding.artwork.foreground(item?.posterUrl ?? item?.backdropUrl ?? source?.posterUrl ?? source?.backdropUrl ?? described?.artworkPath, 256, 16 / 9, {group: 'playback', priority: 'high'}) : undefined,
     skipBackSeconds: binding.skips.back, skipForwardSeconds: binding.skips.forward} : undefined;
   const windowPort = typeof document !== 'undefined' ? {
     ...(document.fullscreenEnabled ? {fullscreen: {active: fullscreen, toggle: toggleFullscreen}} : {}),

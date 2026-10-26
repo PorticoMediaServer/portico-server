@@ -1,8 +1,6 @@
 import {defaultI18n} from '@i18n';
 import {shellLanguage} from '../../shell/settings';
 import type {GetItemsIdResponse} from '../../../../packages/contracts/src/types.ts';
-import {encodedRoutePath} from '../../../../packages/contracts/src/routes.ts';
-import {parseMediaItem} from '@core/media-item.ts';
 import type {CastMetadata} from '@core/cast/index.ts';
 import {WebCastSender} from '../../platform/cast';
 import {PlayOnController, mediaAirPlayPort} from '../../platform/playback/play-on';
@@ -10,6 +8,7 @@ import {WatchReceivers, watchLinkTv} from './receivers';
 import type {ShellAssemblyContext} from '../../shell/bootstrap';
 import type {WatchBindings} from './types';
 import type {WebPlaybackRuntimeSnapshot} from '../../platform/playback';
+import {readWatchCastMetadata} from './cast-metadata';
 
 /** Only current source facts can prove a caption survives a video-only transport.
  * A missing plan is unknown; older no-plan offers may prove off, and the current
@@ -46,15 +45,14 @@ export function createWatchPlayOn(context: WatchPlaybackContext, binding: WatchB
     assertCurrent(); const active = signal ? AbortSignal.any([signal, life.signal]) : life.signal;
     const value = await context.api.request<T>(path, method, body, active); assertCurrent();active.throwIfAborted();return value;
   }};
-  const describeItem = async (itemId: string): Promise<CastMetadata> => {
-    const raw = await api.request<GetItemsIdResponse>(encodedRoutePath('get_items_id', {id: encodeURIComponent(itemId)}));
-    const item = parseMediaItem(raw);
-    if (item.id !== itemId) throw new Error('cast_item_mismatch');
-    items.set(itemId, raw);
+  const describe = async (itemId: string, purpose: 'identity' | 'cover'): Promise<CastMetadata> => {
+    const described = await readWatchCastMetadata(api, itemId, assertCurrent, purpose);
+    assertCurrent();
+    items.set(itemId, described.item);
     while (items.size > 4) items.delete(items.keys().next().value!);
-    return {title: item.title, kind: item.kind, artworkPath: item.posterUrl ?? item.backdropUrl,
-      ...(raw.episode ? {seriesTitle: raw.episode.showTitle, season: raw.episode.seasonNumber, episode: raw.episode.number} : {})};
+    return described.metadata;
   };
+  const describeItem = (itemId: string) => describe(itemId, 'cover');
   const preferences = context.preferences?.getSnapshot('web') ?? context.facts?.preferences;
   const language = preferences ? shellLanguage(preferences) : defaultI18n;
   const receivers = new WatchReceivers({api: {request: (path, method, body, signal) => api.request(path, method, body, signal)}, runtime: binding.runtime, t: language.t, isCurrent, reportError: binding.reportError});
@@ -63,7 +61,7 @@ export function createWatchPlayOn(context: WatchPlaybackContext, binding: WatchB
     ...(pin&&pin.serverId===originalSession.viewer.serverId&&originalSession.deviceId?{controllerContext:{origin:new URL(context.api.baseUrl).origin,publicKey:pin.publicKey,
       serverId:originalSession.viewer.serverId,authority:originalSession.viewer.authority,accountId:originalSession.viewer.accountId,profileId:originalSession.viewer.profileId,
       senderDeviceId:originalSession.deviceId,senderFamilyId:originalSession.sessionFamilyId}}:{}), serverOrigin: context.api.baseUrl, castApplicationId: applicationId,
-    describe: async itemId => (await describeItem(itemId)).title});
+    describe: async itemId => (await describe(itemId, 'identity')).title});
   const controller = new PlayOnController({sender, receivers, runtime: binding.runtime, airPlay: mediaAirPlayPort(video, undefined, {
     isCurrent: () => {const shown = binding.runtime.getSnapshot();return isCurrent() && !!shown.fence && remotePictureKeepsCaptions(shown) && binding.runtime.browserMediaReady(shown.fence);},
     subscribe: binding.runtime.subscribe,
