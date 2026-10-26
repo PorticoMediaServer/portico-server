@@ -37,6 +37,32 @@ func Schema(t reflect.Type) (map[string]any, error) { return schema(t, map[refle
 // {}: any value, generated as TypeScript `unknown`).
 type SchemaProvider interface{ JSONSchema() map[string]any }
 
+// StatusSchemaProvider narrows a response union for a declared HTTP status.
+// JSONSchema still describes all response variants for the shared SDK decoder.
+// A nil status schema retains that union. This never declares a new status.
+type StatusSchemaProvider interface {
+	SchemaProvider
+	JSONSchemaForStatus(int) map[string]any
+}
+
+func schemaForStatus(t reflect.Type, status int, fallback map[string]any) map[string]any {
+	for t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	var provider StatusSchemaProvider
+	if t.Implements(reflect.TypeFor[StatusSchemaProvider]()) {
+		provider = reflect.Zero(t).Interface().(StatusSchemaProvider)
+	} else if reflect.PointerTo(t).Implements(reflect.TypeFor[StatusSchemaProvider]()) {
+		provider = reflect.New(t).Interface().(StatusSchemaProvider)
+	}
+	if provider != nil {
+		if shape := provider.JSONSchemaForStatus(status); shape != nil {
+			return shape
+		}
+	}
+	return fallback
+}
+
 func schema(t reflect.Type, stack map[reflect.Type]bool, overrides map[reflect.Type]map[string]any) (map[string]any, error) {
 	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
@@ -293,7 +319,7 @@ func GenerateWith(definitions []Definition, options Options) (Artifacts, error) 
 		if contentType == "" {
 			contentType = "application/json"
 		}
-		operation := map[string]any{"operationId": d.ID, "summary": d.Summary, "x-access": d.Access, "x-scope": d.Requires, "x-lane": d.Lane, "x-cost": d.Cost, "responses": map[string]any{fmt.Sprint(d.Status): map[string]any{"description": "Success", "content": map[string]any{contentType: map[string]any{"schema": response}}}}}
+		operation := map[string]any{"operationId": d.ID, "summary": d.Summary, "x-access": d.Access, "x-scope": d.Requires, "x-lane": d.Lane, "x-cost": d.Cost, "responses": map[string]any{fmt.Sprint(d.Status): map[string]any{"description": "Success", "content": map[string]any{contentType: map[string]any{"schema": schemaForStatus(d.Response, d.Status, response)}}}}}
 		parameters := []any{}
 		for _, part := range strings.Split(d.Path, "/") {
 			if strings.HasPrefix(part, "{") {
@@ -332,7 +358,7 @@ func GenerateWith(definitions []Definition, options Options) (Artifacts, error) 
 		for _, status := range append(append([]int{}, d.SuccessStatuses...), d.ResponseStatuses...) {
 			reply := map[string]any{"description": "Success"}
 			if status != 204 && !d.NoResponseBody {
-				reply["content"] = map[string]any{contentType: map[string]any{"schema": response}}
+				reply["content"] = map[string]any{contentType: map[string]any{"schema": schemaForStatus(d.Response, status, response)}}
 			}
 			operation["responses"].(map[string]any)[fmt.Sprint(status)] = reply
 		}
