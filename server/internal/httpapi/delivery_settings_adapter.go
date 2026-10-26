@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"portico.local/server/internal/supervise"
 	"strings"
 	"sync"
@@ -25,6 +26,10 @@ var _ playback.DeliverySettings = (*RegistryDeliverySettings)(nil)
 // deciding what happens to it.
 func (a *RegistryDeliverySettings) Delivery() playback.DeliveryConfiguration {
 	s, bitrate := a.current()
+	return deliveryFromSettings(s, bitrate)
+}
+
+func deliveryFromSettings(s telemetry.TranscodeSettings, bitrate int) playback.DeliveryConfiguration {
 	return playback.DeliveryConfiguration{
 		ConversionMode: s.ConversionMode, OutputFormat: s.OutputFormat, DownloadMaxQuality: s.DownloadMaxQuality, MaxMusicQuality: s.MaxMusicQuality,
 		MaxVideoBitrateBPS:     bitrate,
@@ -43,6 +48,23 @@ func (a *RegistryDeliverySettings) Delivery() playback.DeliveryConfiguration {
 		MaxHardwareConversions: s.MaxHardwareSessions,
 		MaxSoftwareConversions: s.MaxSoftwareSessions,
 	}
+}
+
+// DeliveryTx reads actual stored settings with the caller's exact transaction;
+// it never refreshes the diagnostic cache or invokes tool validation.
+func (a *RegistryDeliverySettings) DeliveryTx(ctx context.Context, tx *sql.Tx) (playback.DeliveryConfiguration, error) {
+	if a == nil || a.Console == nil {
+		return playback.DefaultDeliveryConfiguration(), nil
+	}
+	authorize := a.Authorize
+	if authorize == nil {
+		authorize = operations.AllowServerScope
+	}
+	document, err := a.Console.SettingsTx(ctx, tx, authorize)
+	if err != nil {
+		return playback.DeliveryConfiguration{}, err
+	}
+	return deliveryFromSettings(transcodeSettings(document.Effective), document.Effective.RemoteBitrateLimitKbps*1000), nil
 }
 
 // playbackProbes publishes the delivery service's encoder probes to the
@@ -71,7 +93,7 @@ func (p playbackProbes) Facts(ctx context.Context, device, configured string) de
 	if p.playback == nil {
 		return decoder.HardwareFacts{Devices: []decoder.HardwareFactDevice{}, Formats: []decoder.HardwareFactFormat{}}
 	}
-	selected := p.playback.HardwareSelection()
+	selected := p.playback.HardwareSelection(ctx)
 	return decoder.ComposeHardwareFacts(p.playback.HardwareDevices(ctx), p.playback.HardwareReport(ctx), configured, &selected)
 }
 
@@ -85,9 +107,8 @@ type RegistryDeliverySettings struct {
 	// server-scoped, not viewer-scoped, so this is the server's own authority.
 	Authorize operations.Authorize
 
-	// Delivery() runs inside session-creation transactions, so it must never
-	// open a database transaction of its own: the snapshot below is what it
-	// answers from, refreshed off the request path.
+	// Ordinary diagnostics use this short-lived cache. Playback accepting
+	// transactions use DeliveryTx and never use the cache as configuration proof.
 	mu         sync.RWMutex
 	snapshot   telemetry.TranscodeSettings
 	bitrateBPS int
@@ -99,7 +120,8 @@ type RegistryDeliverySettings struct {
 const deliverySettingsTTL = 5 * time.Second
 
 // Refresh reads the effective settings now. Call it at startup and after an
-// owner applies settings; the request path only ever reads the snapshot.
+// owner applies settings; diagnostics read the snapshot while accepting playback
+// reads actual stored settings with DeliveryTx.
 func (a *RegistryDeliverySettings) Refresh(ctx context.Context) {
 	if a == nil || a.Console == nil {
 		return

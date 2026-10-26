@@ -86,12 +86,16 @@ func (s *Service) HardwareReport(ctx context.Context) []decoder.HardwareProbe {
 // read cannot change what the server reports about itself. It never starts a
 // probe: a cold cache answers software-and-warming now, exactly as a session
 // would, and the background warm-up fills the cache for the next read.
-func (s *Service) HardwareSelection() decoder.HardwareProbe {
+func (s *Service) HardwareSelection(ctx context.Context) decoder.HardwareProbe {
 	cfg := s.DeliveryConfiguration()
 	if s.hardware == nil || s.hardwareFFmpeg == "" || cfg.HardwareBackend == string(decoder.BackendSoftware) {
 		return decoder.HardwareProbe{Backend: decoder.BackendSoftware, Available: true, Reason: decoder.ProbeDisabled}
 	}
-	return s.hardware.SelectCached(s.hardwareFFmpeg, cfg.HardwareBackend, cfg.HardwareDevice)
+	probe, err := s.hardware.SelectCachedContext(ctx, s.hardwareFFmpeg, cfg.HardwareBackend, cfg.HardwareDevice)
+	if err != nil {
+		return decoder.HardwareProbe{Backend: decoder.BackendSoftware, Reason: decoder.ProbeTimedOut}
+	}
+	return probe
 }
 
 // HardwareDevices names the adapters this host exposes, by the name their
@@ -142,16 +146,20 @@ func (s *Service) HardwareTest(ctx context.Context) {
 	}
 }
 
-// selectHardware resolves the backend for one session. Selection is cached by
-// the detector, so this is a map read after the first probe on a host.
-func (s *Service) selectHardware(ctx context.Context, cfg DeliveryConfiguration) decoder.HardwareProbe {
+// selectHardware runs only in the request-cancellable preflight, outside SQL.
+func (s *Service) selectHardware(ctx context.Context, cfg DeliveryConfiguration) (decoder.HardwareProbe, error) {
+	if err := ctx.Err(); err != nil {
+		return decoder.HardwareProbe{}, err
+	}
 	if s.hardware == nil || s.hardwareFFmpeg == "" || cfg.HardwareBackend == string(decoder.BackendSoftware) {
 		s.noteHardware(cfg.HardwareBackend, true, "")
-		return decoder.HardwareProbe{Backend: decoder.BackendSoftware, Available: true, Reason: decoder.ProbeDisabled}
+		return decoder.HardwareProbe{Backend: decoder.BackendSoftware, Available: true, Reason: decoder.ProbeDisabled}, nil
 	}
 	// Never probe on a request: a cold cache answers software now and warms itself.
-	_ = ctx
-	probe := s.hardware.SelectCached(s.hardwareFFmpeg, cfg.HardwareBackend, cfg.HardwareDevice)
+	probe, err := s.hardware.SelectCachedContext(ctx, s.hardwareFFmpeg, cfg.HardwareBackend, cfg.HardwareDevice)
+	if err != nil {
+		return decoder.HardwareProbe{}, err
+	}
 	// A backend the owner chose explicitly that doesn't work is reported with the
 	// probe's reason; "auto" falling back to software is normal, and clears a
 	// failure reported while a backend was chosen.
@@ -163,7 +171,7 @@ func (s *Service) selectHardware(ctx context.Context, cfg DeliveryConfiguration)
 	default:
 		s.noteHardware(cfg.HardwareBackend, true, "")
 	}
-	return probe
+	return probe, nil
 }
 
 // hardwareState is what the hardware capability report last said.

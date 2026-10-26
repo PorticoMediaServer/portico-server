@@ -239,6 +239,11 @@ type HardwareDetector struct {
 	// Run is the process seam. Tests substitute it; production runs the confined
 	// child directly, because a synthetic clip borrows no source custody.
 	Run func(ctx context.Context, cmd *exec.Cmd) error
+	// RuntimeIdentity is a trusted composition/test seam. Nil uses the full executable and
+	// resolved-library identity; it is never supplied by a playback request.
+	RuntimeIdentity func(context.Context, string) (string, error)
+	identityMu      sync.Mutex
+	identityFlight  *hardwareIdentityFlight
 
 	mu               sync.Mutex
 	cache            map[string]HardwareProbe
@@ -588,20 +593,36 @@ func (d *HardwareDetector) probe(ctx context.Context, executable string, backend
 // wait on a probe encode, so a cold cache yields software for this session and
 // starts the real probe in the background; the next session sees the verdict.
 func (d *HardwareDetector) SelectCached(executable, configured, device string) HardwareProbe {
+	probe, _ := d.SelectCachedContext(context.Background(), executable, configured, device)
+	return probe
+}
+
+// SelectCachedContext performs the exact runtime observation under the original caller's
+// cancellation/deadline. Playback calls this BEFORE acquiring any SQL transaction.
+func (d *HardwareDetector) SelectCachedContext(ctx context.Context, executable, configured, device string) (HardwareProbe, error) {
+	if ctx == nil {
+		return HardwareProbe{}, ErrInvalidConfiguration
+	}
+	if err := ctx.Err(); err != nil {
+		return HardwareProbe{}, err
+	}
 	if configured == "" {
 		configured = "auto"
 	}
 	if configured == string(BackendSoftware) {
-		return HardwareProbe{Backend: BackendSoftware, Available: true, Reason: ProbeDisabled}
+		return HardwareProbe{Backend: BackendSoftware, Available: true, Reason: ProbeDisabled}, nil
 	}
-	identity, err := hardwareRuntimeIdentity(context.Background(), executable)
+	identity, err := d.runtimeIdentity(ctx, executable)
 	if err != nil {
-		return HardwareProbe{Backend: BackendSoftware, Available: true, Reason: ProbeEncodeFailed}
+		if ctx.Err() != nil {
+			return HardwareProbe{}, ctx.Err()
+		}
+		return HardwareProbe{Backend: BackendSoftware, Available: true, Reason: ProbeEncodeFailed}, nil
 	}
 	candidates := HardwareBackends
 	if configured != "auto" {
 		if !ValidBackend(configured) {
-			return HardwareProbe{Backend: BackendSoftware, Available: true, Reason: ProbeDisabled}
+			return HardwareProbe{Backend: BackendSoftware, Available: true, Reason: ProbeDisabled}, nil
 		}
 		candidates = []HardwareBackend{HardwareBackend(configured)}
 	}
@@ -622,15 +643,18 @@ func (d *HardwareDetector) SelectCached(executable, configured, device string) H
 		}
 		if cached.Available && !deviceCircuitOpen(backend, device) {
 			d.mu.Unlock()
-			return cached
+			return cached, ctx.Err()
 		}
 	}
 	d.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return HardwareProbe{}, err
+	}
 	if cold {
 		d.warm(executable, configured, device)
-		return HardwareProbe{Backend: BackendSoftware, Available: true, Reason: ProbeWarming, Identity: identity}
+		return HardwareProbe{Backend: BackendSoftware, Available: true, Reason: ProbeWarming, Identity: identity}, nil
 	}
-	return HardwareProbe{Backend: BackendSoftware, Available: true, Reason: ProbeEncodeFailed, Identity: identity}
+	return HardwareProbe{Backend: BackendSoftware, Available: true, Reason: ProbeEncodeFailed, Identity: identity}, nil
 }
 
 // warm runs one background Select per (identity, configuration, device) so a

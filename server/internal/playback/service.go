@@ -108,6 +108,9 @@ func (s *Service) completeDeliveryInputTx(ctx context.Context, tx *sql.Tx, p ide
 		input.PreferAudioDescription = values.Text("playback.audioDescription") == "prefer"
 	}
 	input.Server = decoder.CurrentToolchain()
+	if prepared, ok := ctx.Value(deliveryPreflightKey{}).(*deliveryPreflight); ok && prepared.service == s {
+		input.Server = prepared.toolchain
+	}
 	input.FMP4Output = s.hls.fragmentedOutput()
 	input.NoHLS = s.hls == nil
 	if explicitAudio != nil {
@@ -199,7 +202,11 @@ func (s *Service) planInputsTx(ctx context.Context, tx *sql.Tx, p identity.Princ
 	if v1 == nil {
 		v1 = &V1Choice{}
 	}
-	cfg := deliveryConfiguration(s.deliverySettings)
+	preparedDelivery, err := s.checkedDeliveryTx(ctx, tx)
+	if err != nil {
+		return planInputs{}, err
+	}
+	cfg := preparedDelivery.state.configuration
 	edge := DeliveryContextFrom(ctx)
 	values := s.viewerPreferences(tx, p, edge)
 	policy := ResolveDeliveryPolicy(values, edge.NetworkClass, edge.ServerLocality, edge.TransportClass, cfg)
@@ -228,7 +235,7 @@ func (s *Service) planInputsTx(ctx context.Context, tx *sql.Tx, p identity.Princ
 	} else if e := tx.QueryRow(`SELECT COALESCE(a.height,0),COALESCE((SELECT f.color_transfer FROM asset_streams f WHERE f.asset_id=a.token AND f.type='video' ORDER BY f.stream_index LIMIT 1),''),COALESCE((SELECT f.color_primaries FROM asset_streams f WHERE f.asset_id=a.token AND f.type='video' ORDER BY f.stream_index LIMIT 1),'') FROM catalog_assets a WHERE a.token=?`, aid).Scan(&sourceHeight, &transfer, &primaries); e != nil {
 		return planInputs{}, e
 	}
-	hardware := s.selectHardware(ctx, cfg)
+	hardware := preparedDelivery.hardware
 	target := v1.target(policy, cfg)
 	input := DeliveryInput{SourceID: aid, Container: container, VideoCodec: video, AudioCodec: audio, Duration: duration, Height: sourceHeight, ColorTransfer: transfer, ColorPrimaries: primaries, Remote: remote, Policy: policy, Target: target, Config: cfg, TranscodingEnabled: ownerTranscoding, Hardware: hardware}
 	// The caller authorized this public title in this transaction. The
@@ -321,6 +328,10 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 	}
 	if v1.discBorrow == nil {
 		s.refreshStreamDetail(ctx, selectedAsset)
+	}
+	ctx, e = s.prepareDelivery(ctx)
+	if e != nil {
+		return Session{}, e
 	}
 	gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassEstablishedPlayback)
 	if e != nil {

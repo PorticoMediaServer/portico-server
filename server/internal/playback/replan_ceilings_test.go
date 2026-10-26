@@ -79,6 +79,10 @@ func (f *replanFixture) subtitle(ctx context.Context, session string, resource *
 }
 
 func (f *replanFixture) bareSubtitle(ctx context.Context, session string, resource *subtitles.Resource) error {
+	ctx, err := f.s.prepareDelivery(ctx)
+	if err != nil {
+		return err
+	}
 	return dbwork.WithWriteTx(ctx, f.db, dbwork.ClassEstablishedPlayback, func(tx *sql.Tx) error {
 		return f.s.ChangeSubtitleDeliveryTx(ctx, tx, f.p, session, resource)
 	})

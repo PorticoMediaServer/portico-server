@@ -62,7 +62,11 @@ func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p id
 	if source.Video == nil {
 		return subtitles.ErrUnsupported
 	}
-	cfg := deliveryConfiguration(s.deliverySettings)
+	preparedDelivery, err := s.checkedDeliveryTx(ctx, tx)
+	if err != nil {
+		return err
+	}
+	cfg := preparedDelivery.state.configuration
 	edge := DeliveryContextFrom(ctx)
 	values := s.viewerPreferences(tx, p, edge)
 	policy := ResolveDeliveryPolicy(values, edge.NetworkClass, edge.ServerLocality, edge.TransportClass, cfg)
@@ -86,7 +90,7 @@ func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p id
 	if err != nil {
 		return err
 	}
-	input := DeliveryInput{SourceID: source.ID, Source: &source, Container: source.Container, VideoCodec: source.Video.Codec, Duration: source.Duration, Height: source.Video.Height, Policy: policy, Target: target, Config: cfg, TranscodingEnabled: enabled, Hardware: s.selectHardware(ctx, cfg), BurnIn: resource != nil, Remote: source.Container == "strm", Engine: old.Engine}
+	input := DeliveryInput{SourceID: source.ID, Source: &source, Container: source.Container, VideoCodec: source.Video.Codec, Duration: source.Duration, Height: source.Video.Height, Policy: policy, Target: target, Config: cfg, TranscodingEnabled: enabled, Hardware: preparedDelivery.hardware, BurnIn: resource != nil, Remote: source.Container == "strm", Engine: old.Engine}
 	var explicit *int
 	if old.AudioStream >= 0 {
 		explicit = &old.AudioStream
@@ -234,6 +238,7 @@ func narrowTarget(t QualityTarget, remote bool, member int, cfg DeliveryConfigur
 
 func (s *Service) ConfigureSubtitleDelivery(service *subtitles.Service) {
 	s.Subtitles = service
+	service.PrepareDelivery = s.prepareDelivery
 	service.ChangeDeliveryTx = s.ChangeSubtitleDeliveryTx
 	service.RestartDelivery = s.RestartConversion
 	if s.hls != nil {

@@ -153,6 +153,11 @@ func (s *Service) CreateV1(ctx context.Context, p identity.Principal, item, requ
 // PlanV1 is what CreateV1 would decide for this device, with no side effects
 // (spec §4.1 `plan`). It returns the asset it planned for.
 func (s *Service) PlanV1(ctx context.Context, p identity.Principal, item string, choice V1Choice) (DeliveryPlan, error) {
+	var err error
+	ctx, err = s.prepareDelivery(ctx)
+	if err != nil {
+		return DeliveryPlan{}, err
+	}
 	var aid string
 	if e := s.selectAsset(ctx, item, &choice).Scan(&aid); e != nil {
 		return DeliveryPlan{}, e

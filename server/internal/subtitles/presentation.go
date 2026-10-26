@@ -241,6 +241,12 @@ func (s *Service) selectPlayback(ctx context.Context, p identity.Principal, item
 		prepared.resource = &resource
 	}
 
+	if prepared.replace && s.PrepareDelivery != nil {
+		publicationContext, e = s.PrepareDelivery(publicationContext)
+		if e != nil {
+			return PlaybackPlan{}, e
+		}
+	}
 	out, e := s.selectCommit(publicationContext, p, item, session, m, prepared)
 	return out, e
 }

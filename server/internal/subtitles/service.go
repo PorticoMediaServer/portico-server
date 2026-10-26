@@ -48,6 +48,8 @@ type Service struct {
 
 	// Shared playback owns the delivery plan and its producer. Selection and
 	// delivery change commit together; process replacement runs after commit.
+	// PrepareDelivery captures tool/configuration facts outside selection writers.
+	PrepareDelivery  func(context.Context) (context.Context, error)
 	ChangeDeliveryTx func(context.Context, *sql.Tx, identity.Principal, string, *Resource) error
 	RestartDelivery  func(context.Context, string, float64)
 }
