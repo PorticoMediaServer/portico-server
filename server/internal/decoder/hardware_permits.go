@@ -49,7 +49,7 @@ func HardwarePermits() *HardwareSessionPermits { return hardwareSessionPermits }
 // driver actually enforced for that cell may be recorded; an incomplete cell, a
 // session count or a generic refusal is refused here rather than published.
 func (p *HardwareSessionPermits) RecordCeiling(cell PermitCell, sessions int) bool {
-	if !cell.Valid() || sessions < 2 {
+	if !cell.Valid() || sessions < 1 {
 		return false
 	}
 	p.mu.Lock()
