@@ -192,7 +192,7 @@ export function SearchScreen({binding, selection, linkedQuery, onConsumeLinkedQu
       model={{title: genre.label, caption: [{id: 'count', role: 'supplement', text: t('next.selection.titles', {count: genre.count})}]}}
       onNavigate={() => runScreenCommand(context, () => {const browse = context.effects.openBrowse;if (browse) browse(binding.genres.browseTarget(genre));})} />];
   })}</div>;
-  const allGenres = !genres.all && <Button variant="text" size="xs" icon="i-right" className={styles.trailingLink}
+  const allGenres = !genres.all && <Button variant="text" size="small" icon="i-right" iconSize={18} className={`${styles.trailingLink} ${styles.allGenresLink}`}
     onClick={() => runScreenCommand(context, () => binding.genres.showAll(genres))}>{t('next.search.allGenres')}</Button>;
   const nextGenres = genres.all && genres.canContinue && <Button variant="glass" size="small" onClick={() => runScreenCommand(context, () => {
     if (binding.genres.getSnapshot() === genres) return binding.genres.next();

@@ -40,6 +40,7 @@
 .seeAll { display: inline-flex; align-items: center; gap: 2px; }
 
 .emptySection header > .trailingLink { flex-direction: row-reverse; }
+.emptySection header > .allGenresLink.allGenresLink { height: auto; min-height: 0; padding: 0 0 0 16px; gap: 2px; font-size: var(--type-person-title-size); font-weight: var(--type-button-weight); line-height: normal; color: var(--color-text-secondary); }
 
 .cards { display: flex; gap: 16px; align-items: start; }
 
