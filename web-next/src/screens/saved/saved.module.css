@@ -85,6 +85,25 @@
 .historyDay h2 { margin: 0 0 8px; font-size: var(--type-body-size); font-weight: var(--type-row-heading-weight); color: var(--color-text-tertiary); }
 .historyRow { display: grid; grid-template-columns: 160px minmax(0, 1fr) 240px 100px; gap: 24px; align-items: center; padding: 10px 12px; margin: 0 -12px; border-radius: 12px; }
 .historyRow:hover { background: var(--color-raised); }
+
+/* Cleared history: the outgoing rows stay for their authored exit in a bounded,
+   noninteractive presence layer; the gap closes by transform, never by resizing a row. */
+"
+     ".historyRoster { position: relative; }
+"
+     ".historyLeaving { position: absolute; inset: 0 0 auto; z-index: var(--layer-content); pointer-events: none; animation: historyGap 320ms cubic-bezier(.4, 0, .2, 1) both; }
+"
+     ".historyLeavingRow { animation: historyOut 180ms linear both; }
+"
+     ".historyLive { animation: historyIn 180ms cubic-bezier(.4, 0, .2, 1) both; }
+"
+     "@keyframes historyOut { to { opacity: 0; } }
+"
+     "@keyframes historyIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+"
+     "@keyframes historyGap { to { transform: translateY(calc(-1 * var(--history-collapse, 0px))); } }
+"
+     "@media (prefers-reduced-motion: reduce) { .historyLeaving, .historyLeavingRow, .historyLive { animation-duration: 1ms; } }
 .historyArt { position: relative; width: 160px; height: 90px; border-radius: 8px; overflow: hidden; padding: 0; }
 .historyArt > * { width: 100%; height: 100%; }
 .historyArt[data-shape='square'] { background: var(--color-raised); }

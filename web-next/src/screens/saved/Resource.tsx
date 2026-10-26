@@ -1,5 +1,5 @@
 import {CatalogueSelectionEntry} from '../browse/document-selection';
-import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties} from 'react';
 import {defaultI18n} from '@i18n';
 import type {ContentEntry} from '@core/library-content.ts';
 import type {PersonalSavedIntent, PersonalResourceEntry} from '@core/personal-saved.ts';
@@ -162,6 +162,21 @@ export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
     const urls = snapshot.entries.flatMap(entry => { const media = entry.media, url = media && (media.backdropUrl ?? media.posterUrl); return url ? [url] : []; });
     return [...new Set(urls)].slice(0, 3).flatMap(url => { const source = bindings.artwork.ambient(url); return source ? [source] : []; });
   }, [bindings.presentation.backdrops, bindings.presentation.backdrop, bindings.artwork, snapshot.entries]);
+  // The confirmed clear keeps the outgoing rows for their authored exit in a bounded
+  // presence layer above the live layout, so the gap closes by transform and the live
+  // empty/error state owns focus immediately. Outgoing paint is noninteractive.
+  const [leaving, setLeaving] = useState<Readonly<{groups: readonly {day: Date; entries: PersonalResourceEntry[]}[]; collapse: number}>>();
+  const confirmedClear = useRef(false), collapseAtClear = useRef(0), previousGroups = useRef<readonly {day: Date; entries: PersonalResourceEntry[]}[]>([]), roster = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!confirmedClear.current || snapshot.entries.length) return;
+    const previous = previousGroups.current; confirmedClear.current = false;
+    if (!previous.length) return;
+    const collapse = collapseAtClear.current || roster.current?.getBoundingClientRect().height || 0;
+    setLeaving({groups: previous, collapse});
+    const rows = Math.min(40, previous.reduce((count, group) => count + group.entries.length, 0));
+    const timer = setTimeout(() => setLeaving(undefined), 320 + 180 + 40 * Math.max(0, rows - 1));
+    return () => clearTimeout(timer);
+  }, [snapshot.entries.length]);
   if (!sameSavedRoute(snapshot.route, bindings.route)) return null;
   const period = bindings.route.view === 'history' ? bindings.route.period ?? '30d' : '30d';
   const groups = new Map<string, {day: Date; entries: PersonalResourceEntry[]}>();
@@ -170,6 +185,7 @@ export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
     const date = new Date(entry.updatedAt); if (!Number.isFinite(date.getTime())) continue;
     const key = date.toDateString(); let group = groups.get(key); if (!group) { group = {day: date, entries: []}; groups.set(key, group); } group.entries.push(entry);
   }
+  if (groups.size) previousGroups.current = [...groups.values()];
   return <>
     {wash.length ? <div className={styles.wash} aria-hidden="true"><AmbientArt sources={wash} treatment="library" height={640} /></div> : null}
     <div className={styles.toolbar}>
@@ -178,16 +194,26 @@ export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
       </div>
       <div className={styles.toolbarEnd}><Button variant="text" size="small" onClick={() => setConfirm(true)}>{t('web.saved.clearHistory')}</Button></div>
     </div>
-    {snapshot.error && !snapshot.entries.length && <StateView title={t('saved.historyLoadFailed')} primary={{id: 'retry', label: t('action.tryAgain'), onPress: () => { void service.retryRead(); }}} />}
-    {!snapshot.loading && !snapshot.error && !snapshot.entries.length && <StateView title={t('web.saved.empty.history')} body={t('web.saved.empty.historyBody')} />}
-    {[...groups.values()].map(group => <section className={styles.historyDay} key={group.day.toDateString()}><h2>{historyDayLabel(group.day)}</h2>
-      {group.entries.map(entry => entry.media && <HistoryRow key={entry.id} bindings={bindings} entry={entry} media={entry.media} />)}
-    </section>)}
-    {snapshot.nextCursor && <Button className={styles.showMore} size="small" loading={snapshot.loading} onClick={() => { void service.next(); }}>{t('action.showMore')}</Button>}
+    <div className={styles.historyRoster} ref={roster}>
+      {leaving ? <div className={styles.historyLeaving} aria-hidden="true" {...({inert: ''} as Record<string, string>)}
+        style={{'--history-collapse': `${leaving.collapse}px`} as CSSProperties}>
+        {leaving.groups.map(group => <section className={styles.historyDay} key={`leaving:${group.day.toDateString()}`}><h2>{historyDayLabel(group.day)}</h2>
+          {group.entries.slice(0, 40).map((entry, index) => entry.media && <div key={`leaving:${entry.id}`} className={styles.historyLeavingRow} style={{animationDelay: `${index * 40}ms`}}><HistoryRow bindings={bindings} entry={entry} media={entry.media} /></div>)}
+        </section>)}
+      </div> : null}
+      {snapshot.error && !snapshot.entries.length && <div className={styles.historyLive}><StateView title={t('saved.historyLoadFailed')} primary={{id: 'retry', label: t('action.tryAgain'), onPress: () => { void service.retryRead(); }}} /></div>}
+      {!snapshot.loading && !snapshot.error && !snapshot.entries.length && <div className={styles.historyLive}><StateView title={t('web.saved.empty.history')} body={t('web.saved.empty.historyBody')} /></div>}
+      {[...groups.values()].map(group => <section className={styles.historyDay} data-history-day="" key={group.day.toDateString()}><h2>{historyDayLabel(group.day)}</h2>
+        {group.entries.map(entry => entry.media && <HistoryRow key={entry.id} bindings={bindings} entry={entry} media={entry.media} />)}
+      </section>)}
+      {snapshot.nextCursor && <Button className={styles.showMore} size="small" loading={snapshot.loading} onClick={() => { void service.next(); }}>{t('action.showMore')}</Button>}
+    </div>
     <Dialog open={confirm} onOpenChange={open => { if (!busy) setConfirm(open); }} title={t('web.saved.clearHistoryTitle')} description={t('web.saved.clearHistoryBody')} initialFocusRef={cancel}
       footer={<><Button ref={cancel} size="small" disabled={busy} onClick={() => setConfirm(false)}>{t('action.cancel')}</Button><Button size="small" className={styles.destructive} loading={busy} onClick={() => {
         if (busy || !bindings.operations.current) return;
-        setBusy(true); void bindings.operations.run(async () => { if (!await service.mutate({action: 'clear-history'})) throw service.getSnapshot().mutationError; }, () => { setBusy(false); setConfirm(false); }).catch(error => { setBusy(false); bindings.effects.reportError(error); });
+        collapseAtClear.current = [...(roster.current?.querySelectorAll<HTMLElement>('[data-history-day]') ?? [])]
+          .reduce((height, day) => height + day.getBoundingClientRect().height, 0);
+        setBusy(true); void bindings.operations.run(async () => { if (!await service.mutate({action: 'clear-history'})) throw service.getSnapshot().mutationError; confirmedClear.current = true; }, () => { setBusy(false); setConfirm(false); }).catch(error => { setBusy(false); bindings.effects.reportError(error); });
       }}>{t('web.saved.clearHistoryAction')}</Button></>}><span /></Dialog>
   </>;
 }
