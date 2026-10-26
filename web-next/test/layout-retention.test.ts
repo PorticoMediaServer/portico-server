@@ -33,3 +33,16 @@ test('overlapping batches never replace an older retained source with a successo
   const original = first.exits.get('b')!, next = retainLayout(first, rows('later'), keyOf, 20, false, 180, 160, policy);
   assert.equal(next.exits.get('b'), original);assert.equal(original.item, before.live[1]);assert.equal(original.delay, 40);
 });
+test('paging cannot admit new exits or renew an already admitted cohort', () => {
+  const first = retainLayout(initial(rows('old')), rows('kept', 'page-only'), keyOf, 0, false, 180, 160, policy);
+  const original = first.exits.get('old')!;
+  const paged = retainLayout(first, rows('kept'), keyOf, 40, false, 180, 160, {...policy, admitNew: false});
+  assert.equal(paged.exits.size, 1);assert.equal(paged.exits.get('old'), original);
+  assert.equal(paged.exits.has('page-only'), false);assert.equal(original.retireAt, 180);
+});
+test('the sparse outgoing cap never caps the accepted live answer', () => {
+  const old = rows(...Array.from({length: 100}, (_, i) => `old-${i}`)), live = rows(...Array.from({length: 200}, (_, i) => `live-${i}`));
+  const next = retainLayout(initial(old), live, keyOf, 0, false, 180, 160, {...policy, visibleOnly: true}, new Set(old.slice(0, 60).map(keyOf)));
+  assert.equal(next.exits.size, 40);assert.equal(next.live.length, 200);assert.equal(next.present.length, 240);
+  assert.equal(next.exits.get('old-39')!.delay, 1560);assert.equal(next.exits.has('old-40'), false);
+});
