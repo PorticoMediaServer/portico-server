@@ -32,14 +32,6 @@ func (b *discPlayBorrow) legacySnapshotTx(ctx context.Context, tx *sql.Tx, s *Se
 	if snapshot.Actor != actor || snapshot.Source != original.Source || snapshot.Operation != original.Queue {
 		return playbackdisc.Snapshot{}, playbackdisc.ErrCurrent
 	}
-	// Inventory subtitle scopes do not identify this captured title's resources.
-	// Until that exact binding is composed, refuse instead of silently selecting,
-	// dropping or advertising a subtitle from shared mutable asset facts.
-	for _, stream := range snapshot.Media.Streams {
-		if stream.Type == "subtitle" {
-			return playbackdisc.Snapshot{}, disc.ErrRemoteUnqualified
-		}
-	}
 	return snapshot, b.held()
 }
 

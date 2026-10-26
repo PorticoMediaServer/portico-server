@@ -84,7 +84,7 @@ func (s *Service) PlanTx(ctx context.Context, tx *sql.Tx, p identity.Principal, 
 	if e != nil {
 		return out, e
 	}
-	scope, e := sessionTx(ctx, tx, p, item, session)
+	scope, e := s.sessionTx(ctx, tx, p, item, session)
 	if e != nil {
 		return out, e
 	}
@@ -117,7 +117,7 @@ func (s *Service) PlanTx(ctx context.Context, tx *sql.Tx, p identity.Principal, 
 		if e != nil {
 			return out, e
 		}
-		if err := checkDiscResourceSessionTx(ctx, tx, session, r.ID); err != nil {
+		if err := s.checkDiscResourceSessionTx(ctx, tx, session, r.ID); err != nil {
 			return out, err
 		}
 		if !visible(r, p) || r.SourceID != scope.source || r.sourceSize != scope.size || r.sourceModified != scope.modified {
@@ -203,7 +203,7 @@ func (s *Service) selectCommit(ctx context.Context, p identity.Principal, item, 
 	}
 	tx := gated2.Tx()
 	defer gated2.Rollback()
-	scope, e := sessionTx(ctx, tx, p, item, session)
+	scope, e := s.sessionTx(ctx, tx, p, item, session)
 	if e != nil {
 		return PlaybackPlan{}, e
 	}
@@ -246,7 +246,7 @@ func (s *Service) selectCommit(ctx context.Context, p identity.Principal, item, 
 		if e != nil {
 			return PlaybackPlan{}, e
 		}
-		if err := checkDiscResourceSessionTx(ctx, tx, session, r.ID); err != nil {
+		if err := s.checkDiscResourceSessionTx(ctx, tx, session, r.ID); err != nil {
 			return PlaybackPlan{}, err
 		}
 		if !visible(r, p) || r.SourceID != scope.source {
@@ -358,11 +358,11 @@ func (s *Service) OpenDocument(ctx context.Context, p identity.Principal, item, 
 	}
 	tx := gated3.Tx()
 	defer gated3.Rollback()
-	scope, e := sessionTx(ctx, tx, p, item, session)
+	scope, e := s.sessionTx(ctx, tx, p, item, session)
 	if e != nil {
 		return nil, e
 	}
-	if e = checkDiscResourceSessionTx(ctx, tx, session, id); e != nil {
+	if e = s.checkDiscResourceSessionTx(ctx, tx, session, id); e != nil {
 		return nil, e
 	}
 	if !scope.available {
@@ -410,11 +410,11 @@ func (s *Service) CheckDocument(ctx context.Context, p identity.Principal, item,
 	}
 	tx := snapshot.Tx()
 	defer snapshot.Rollback()
-	scope, e := sessionTx(ctx, tx, p, item, session)
+	scope, e := s.sessionTx(ctx, tx, p, item, session)
 	if e != nil {
 		return e
 	}
-	if err := checkDiscResourceSessionTx(ctx, tx, session, id); err != nil {
+	if err := s.checkDiscResourceSessionTx(ctx, tx, session, id); err != nil {
 		return err
 	}
 	if !scope.available {

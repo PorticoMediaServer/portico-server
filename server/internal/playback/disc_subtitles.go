@@ -30,6 +30,14 @@ func (s *Service) OpenDiscSubtitleInput(ctx context.Context, item, source, sessi
 		return nil, err
 	}
 	err = invocation.CheckTx(ctx, tx)
+	if err == nil {
+		snapshot, private, e := s.activePrivateDiscSnapshotTx(ctx, tx, session)
+		if e != nil {
+			err = e
+		} else if private && (facts.SnapshotID != snapshot.ID || facts.AssetID != snapshot.Source.AssetID) || !private && facts.SnapshotID != "" {
+			err = subtitles.ErrConflict
+		}
+	}
 	done()
 	if err != nil {
 		return nil, err

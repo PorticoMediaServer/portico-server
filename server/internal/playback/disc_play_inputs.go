@@ -45,6 +45,9 @@ func (s *Service) ConfigureDiscInputs(serverID string, captures *ownedcapture.Se
 		return err
 	}
 	s.discInputs = &discPlayInputs{store: store, captures: captures, tool: tool, tools: tools}
+	if s.Subtitles != nil {
+		s.Subtitles.DiscPresentations = s
+	}
 	return nil
 }
 

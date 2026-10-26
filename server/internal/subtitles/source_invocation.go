@@ -147,7 +147,7 @@ func (s *Service) playbackSourceContext(ctx context.Context, p identity.Principa
 		if err != nil {
 			return err
 		}
-		now, err := sessionTx(check, tx, current, facts.ItemID, facts.SessionID)
+		now, err := s.sessionTx(check, tx, current, facts.ItemID, facts.SessionID)
 		if err != nil {
 			return err
 		}

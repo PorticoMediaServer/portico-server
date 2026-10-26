@@ -702,6 +702,9 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 		if _, e = v1.discBorrow.bindPendingTx(ctx, tx, playbackdisc.Key{SessionID: id, Generation: generation}); e != nil {
 			return Session{}, e
 		}
+		if e = v1.discBorrow.bindSubtitleResourcesTx(ctx, tx, s, p, item, automaticSubtitles(values, delivery.Trace, DeliveryContextFrom(ctx).AppLanguage)); e != nil {
+			return Session{}, e
+		}
 	} else if _, e = tx.ExecContext(ctx, `INSERT INTO playback_physical_source_pins SELECT ?,source.id,source.incarnation,source.generation FROM inventory_objects object JOIN library_sources source ON source.id=object.source_id JOIN catalog_entities item ON item.id=? JOIN catalog_libraries cl ON cl.id=item.library_id AND cl.library_id=source.library_id WHERE object.asset_id=? AND object.retired=0 AND object.state='available' AND object.root_incarnation=source.incarnation AND source.enabled=1 ORDER BY source.id LIMIT 1`, id, entityID, aid); e != nil {
 		return Session{}, e
 	}
