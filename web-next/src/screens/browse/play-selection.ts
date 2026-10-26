@@ -10,6 +10,7 @@ import type {V1QueuePlayer} from '@core/playback-v1/v1-queue-player.ts';
 import type {BrowseWholeSelection} from '@core/browse.ts';
 import type {BrowseController} from './controller';
 import {wholeViewQuery} from './selection-query';
+import {createCardInteractionOwner} from '../../kit/cards/interaction-admission';
 
 export type LibraryPlayRow = Readonly<{entry: ContentEntry; position: number; key: string; capabilities: SelectionItem['capabilities']}>;
 export type LibraryPlaySelectionSnapshot = Readonly<{
@@ -61,6 +62,7 @@ const terminal = (error: unknown) => typeof error === 'object' && error !== null
  * aggregate expansion or role-derived grants. Only mounted resident windows
  * are registered; explicit model picks survive viewport eviction. */
 export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
+  const interactions = createCardInteractionOwner();
   const {source, api: originalApi, requestId, signal, isCurrent} = input;
   const principal = Object.freeze({serverId: input.principal.serverId, authority: input.principal.authority,
     accountId: input.principal.accountId, profileId: input.principal.profileId});
@@ -90,16 +92,17 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
       ...(selection ? {selection} : {}), playing: !!playing, canPlay: !!playback && !!selection?.summary.every.play, canQueue: !!queue && !!selection?.summary.every.queue,
       ...(error === undefined ? {} : {error})});notify();
   };
-  const clearPreview = () => {if (!rangeTarget) return;rangeTarget = undefined;rangeKeys.clear();publish();};
+  const clearPreview = () => {interactions.resetPreview();if (!rangeTarget) return;rangeTarget = undefined;rangeKeys.clear();publish();};
   const clearWindow = () => {
-    rangeTarget = undefined;rangeKeys.clear();
+    interactions.resetPreview();rangeTarget = undefined;rangeKeys.clear();
     const previous = window;window = undefined;
+    interactions.retireRows();
     previous?.controller.abort();for (const unregister of previous?.registrations ?? []) unregister();
     handles = new WeakMap();
   };
   const retire = (reason?: unknown, silent = false) => {
     if (closed) return;
-    closed = true;sourceOff();collectionOff();modelOff?.();signal.removeEventListener('abort', dispose);
+    closed = true;interactions.dispose();sourceOff();collectionOff();modelOff?.();signal.removeEventListener('abort', dispose);
     life.abort();playing?.controller.abort();playing = undefined;clearWindow();
     whole?.unregister();whole = undefined;model?.dispose();
     for (const grant of grants.values()) {grant.controller.abort();grant.reject(cancelled());}
@@ -162,7 +165,7 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
         expected = Object.freeze({queryRevision: snapshot.queryRevision, revision: snapshot.revision});
         modelOff = model.subscribe(() => {
           if (closed) return;
-          rangeTarget = undefined;rangeKeys.clear();
+          interactions.resetPreview();rangeTarget = undefined;rangeKeys.clear();
           if (playing && !model!.isOperationCurrent(playing.operation)) playing.controller.abort();
           publish();
         });publish();
@@ -247,6 +250,20 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
     if (window) {const {first, last} = window;clearWindow();void registerWindow(first, last).catch(() => {});}
     return change;
   };
+  const rowCurrent = (row: LibraryPlayRow) => {
+    const handle = handles.get(row);
+    return current() && !!model && !!handle && handle.window === window && source.contains(row.entry);
+  };
+  const setPreview = (row: LibraryPlayRow, enabled: boolean) => {
+    // A stale row's leave/cleanup cannot clear another original row's preview.
+    const clearOwn = () => {if (rangeTarget === row) clearPreview();};
+    if (!enabled) {clearOwn();return;}
+    if (!rowCurrent(row) || !model!.getSnapshot().active) {clearOwn();return;}
+    if (rangeTarget === row) return;
+    const range = model!.previewRange(handles.get(row)!.run, row.key);
+    if (!range.ok) {clearOwn();return;}
+    rangeTarget = row;rangeKeys = new Set(range.keys);publish();
+  };
   return {
     start,
     getSnapshot(): LibraryPlaySelectionSnapshot {
@@ -268,15 +285,10 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
       return model.previewRange(handle.run, row.key).ok;
     },
     clearPreview,
-    setPreview(row: LibraryPlayRow, enabled: boolean) {
-      if (!enabled) {clearPreview();return;}
-      const handle = handles.get(row);
-      if (!current() || !model || !handle || handle.window !== window || !source.contains(row.entry)) {clearPreview();return;}
-      if (rangeTarget === row) return;
-      const range = model.previewRange(handle.run, row.key);
-      if (!range.ok) {clearPreview();return;}
-      rangeTarget = row;rangeKeys = new Set(range.keys);publish();
+    interaction(row: LibraryPlayRow) {
+      return interactions.source(row, {current: () => rowCurrent(row), preview: enabled => setPreview(row, enabled)});
     },
+    setPreview,
     rangePreviewed(row: LibraryPlayRow): boolean {
       const handle = handles.get(row);
       return current() && !!rangeTarget && !!handle && handle.window === window && source.contains(row.entry) && rangeKeys.has(row.key);

@@ -8,6 +8,8 @@ import {activateCard, boundedProgress} from './interaction';
 import {useCardHold} from './useCardHold';
 import type {CardFactPresentation, CardProps, CardTextRun} from './types';
 import styles from './cards.module.css';
+import {useCardInteractionAdmission} from './use-interaction-admission';
+import {useRetainedLayoutPaint} from '../layout/retained-paint';
 
 export const cx = (...names: (string | false | undefined)[]) => names.filter(Boolean).join(' ');
 
@@ -38,7 +40,9 @@ type FrameProps = CardProps & Readonly<{children: ReactNode; kind: string; prima
 
 /** Primary navigation and auxiliary actions are sibling buttons, never nested controls. */
 export function CardFrame({children, kind, primaryClassName, playIcon = 'i-play', playIconSize = 22, artworkRef, overlay, footer, ...props}: FrameProps) {
-  const {model, onNavigate, onPlay, onMore, onNotInterested, selection, disabled, className, style, primaryRef} = props;
+  const {model, onNavigate, onPlay, onMore, onNotInterested, selection: originalSelection, disabled, className, style, primaryRef} = props;
+  const interactionRoot = useRef<HTMLElement>(null), retained = useRetainedLayoutPaint();
+  const selection = useCardInteractionAdmission(originalSelection, interactionRoot, disabled || retained);
   const hasAuxiliary = !!(onPlay || onMore || onNotInterested || selection);
   const auxiliaryRef = useRef<HTMLSpanElement>(null);
   const shadowRef = useRef<HTMLSpanElement>(null);
@@ -82,7 +86,7 @@ export function CardFrame({children, kind, primaryClassName, playIcon = 'i-play'
     if (holdGesture.consumeClick()) { event.preventDefault(); return; }
     activateCard(onNavigate, selection, {range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});
   };
-  return <article className={cx(styles.card, styles[kind], styles[`context-${props.context ?? 'shelf'}`], props.density === 'grid' && styles['context-grid'], selection?.active && styles.selecting, selection?.checked && styles.selected, selection?.preview && styles.range, !!holdGesture.hold && styles.holding, props.next && styles.next, className)} style={style} data-card-kind={kind} data-disabled={disabled || undefined}
+  return <article ref={interactionRoot} className={cx(styles.card, styles[kind], styles[`context-${props.context ?? 'shelf'}`], props.density === 'grid' && styles['context-grid'], selection?.active && styles.selecting, selection?.checked && styles.selected, selection?.preview && styles.range, !!holdGesture.hold && styles.holding, props.next && styles.next, className)} style={style} data-card-kind={kind} data-disabled={disabled || undefined}
     {...rangeInteraction}>
     <button type="button" disabled={disabled} ref={primaryRef} className={cx(styles.primary, primaryClassName)} aria-label={model.title} aria-pressed={selection?.active ? selection.checked : undefined} onClick={click} onFocus={props.onFocus} onBlur={event => {holdGesture.cancel(); props.onBlur?.(event);}}
       onKeyDown={event => { if (event.key === 'Escape') { holdGesture.cancel(); if (selection?.active) { event.preventDefault(); event.stopPropagation(); selection.onExit(); } } }}

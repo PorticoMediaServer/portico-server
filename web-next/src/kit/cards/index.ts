@@ -7,3 +7,6 @@ export type {CardContent, CardSelectionIntent, CardSelection, CardProps, MediaCa
 
 export {useSelectionRangePreview} from './selection-range';
 export {activateCard} from './interaction';
+export {useCardInteractionAdmission} from './use-interaction-admission';
+export {retireCardInteractions} from './interaction-admission';
+export type {CardInteractionSource, CardInteractionAdmission} from './interaction-admission';

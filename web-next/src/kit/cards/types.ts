@@ -1,6 +1,7 @@
 import type {CSSProperties, FocusEventHandler, ReactNode, Ref} from 'react';
 import type {CardTextModel, FactPart} from '@portico/client-core/kit-model';
 import type {ArtworkSource, AmbientArtSource} from '../artwork';
+import type {CardInteractionSource, CardInteractionAdmission} from './interaction-admission';
 
 export type CardContent = Pick<CardTextModel, 'title' | 'caption'> & Partial<Pick<CardTextModel, 'detail' | 'progress'>>;
 /** Authored visible text only; runs must concatenate exactly to the canonical text. */
@@ -17,6 +18,10 @@ export type CardSelectionIntent = Readonly<{range: boolean; source: 'pointer' | 
   /** The card element a long press started on, so its owner can anchor the drawn menu. */ anchor?: HTMLElement}>;
 /** The shared selection family supplies the actual SelectionCircle; cards positions it. */
 export type CardSelection = Readonly<{
+  /** Original producer/row identity; unchanged by ordinary preview publication. */
+  interaction?: CardInteractionSource;
+  /** Bound only after the actual CardFrame/list DOM node commits. */
+  admission?: CardInteractionAdmission;
   active: boolean;
   checked: boolean;
   preview?: boolean;

@@ -1,4 +1,5 @@
 import {generatedCoverTint} from '@design';
+import {useCardInteractionAdmission} from '../../kit/cards/use-interaction-admission';
 import type {SearchSelection} from './selection';
 import {SelectionCircle} from '../../kit/selection';
 import {t, locale} from '../detail/text';
@@ -302,7 +303,8 @@ export function SearchResult({entry, binding, selection, position = 0, onCommit,
   useSyncExternalStore(selection?.subscribe ?? noSelectionSubscription, selection?.getSnapshot ?? noSelectionSnapshot, selection?.getSnapshot ?? noSelectionSnapshot);
   const epoch = selection?.epoch();
   useEffect(() => {if (selection && 'libraryId' in entry) return selection.register(entry, position);}, [selection, entry, position, epoch]);
-  const picked = 'libraryId' in entry ? selection?.card(entry) : undefined;
+  const interactionRoot = useRef<HTMLDivElement>(null);
+  const picked = useCardInteractionAdmission('libraryId' in entry ? selection?.card(entry) : undefined, interactionRoot);
   const range = useSelectionRangePreview(picked);
   const {context} = binding, open = () => runScreenCommand(context, () => { binding.open(entry); onCommit(); });
   const liveCards = useSyncExternalStore(binding.live.subscribe, binding.live.getSnapshot, binding.live.getSnapshot);
@@ -318,7 +320,7 @@ export function SearchResult({entry, binding, selection, position = 0, onCommit,
   const model = entryCard(entry, {t, locale: locale()}, 'search'), playable = entry.available === true && !!entry.playback;
   const props = {model, selection: picked, context: 'search' as const, watched: entry.watched, isNew: entry.new, onNavigate: open,
     onPlay: playable ? () => { void binding.play(entry).then(onCommit).catch(context.effects.reportError); } : undefined};
-  if (entry.kind === 'song') return <div className={styles.songSelection} data-selected={picked?.checked || undefined} data-preview={picked?.preview || undefined} {...range}>{picked && <SelectionCircle variant="row" selected={picked.checked} selecting={picked.active} accessibilityLabel={t('next.selection.select')} onClick={event => {event.preventDefault(); picked.onToggle({range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});}}/>}<button className={styles.song} type="button" onClick={event => {if (picked?.active) picked.onToggle({range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'}); else if (playable) void binding.play(entry).then(onCommit).catch(context.effects.reportError); else open();}}><Artwork source={context.artwork.foreground(entry.posterUrl, 88, 1)} alt="" /><span><b>{entry.displayTitle ?? entry.title}</b><small>{entry.artist?.name}{entry.album?.name && <span>{entry.album.name}</span>}</small></span><span>{clockText(entry.duration)}</span></button></div>;
+  if (entry.kind === 'song') return <div ref={interactionRoot} className={styles.songSelection} data-selected={picked?.checked || undefined} data-preview={picked?.preview || undefined} {...range}>{picked && <SelectionCircle variant="row" selected={picked.checked} selecting={picked.active} accessibilityLabel={t('next.selection.select')} onClick={event => {event.preventDefault(); picked.onToggle({range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});}}/>}<button className={styles.song} type="button" onClick={event => {if (picked?.active) picked.onToggle({range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'}); else if (playable) void binding.play(entry).then(onCommit).catch(context.effects.reportError); else open();}}><Artwork source={context.artwork.foreground(entry.posterUrl, 88, 1)} alt="" /><span><b>{entry.displayTitle ?? entry.title}</b><small>{entry.artist?.name}{entry.album?.name && <span>{entry.album.name}</span>}</small></span><span>{clockText(entry.duration)}</span></button></div>;
   if (entry.kind === 'episode') return <EpisodeTile {...props} length={durationText(entry.duration, t)} artwork={context.artwork.foreground(entry.stillUrl ?? entry.backdropUrl, 632, 16 / 9)} artworkKind={entry.stillUrl ? 'still' : 'backdrop'} description={entry.overview} />;
   if (entry.kind === 'artist') {
     const cover = entry.posterUrl ? art : albumArt ? context.artwork.foreground(albumArt, 380, 1) : undefined;
@@ -343,7 +345,8 @@ export function SongTableRow({entry, binding, selection, position = 0, onCommit}
   // the row's selection and content helpers only ever receive a real song entry.
   const song = 'libraryId' in entry && entry.kind === 'song' ? entry : undefined;
   useEffect(() => {if (selection && song) return selection.register(song, position);}, [selection, song, position, epoch]);
-  const picked = song ? selection?.card(song) : undefined, range = useSelectionRangePreview(picked);
+  const interactionRoot = useRef<HTMLDivElement>(null);
+  const picked = useCardInteractionAdmission(song ? selection?.card(song) : undefined, interactionRoot), range = useSelectionRangePreview(picked);
   if (!song) return null;
   const {context} = binding, open = () => runScreenCommand(context, () => { binding.open(song); onCommit(); });
   const playable = song.available === true && !!song.playback, title = song.displayTitle ?? song.title;
@@ -352,7 +355,7 @@ export function SongTableRow({entry, binding, selection, position = 0, onCommit}
     else if (playable) void binding.play(song).then(onCommit).catch(context.effects.reportError);
     else open();
   };
-  return <div className={styles.songTableRow} data-selected={picked?.checked || undefined} data-preview={picked?.preview || undefined} {...range}>
+  return <div ref={interactionRoot} className={styles.songTableRow} data-selected={picked?.checked || undefined} data-preview={picked?.preview || undefined} {...range}>
     <span className={styles.songIndex}>{picked ? <SelectionCircle variant="row" selected={picked.checked} selecting={picked.active} accessibilityLabel={t('next.selection.select')} onClick={event => {event.preventDefault(); picked.onToggle({range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});}}/>
       : <button type="button" className={styles.songIndexPlay} onClick={activate} aria-label={t('next.browse.play', {title})}><span>{defaultI18n.number(position + 1)}</span><Icon name="i-play" size={16}/></button>}</span>
     <button type="button" className={styles.songTitleCell} onClick={activate} aria-label={title}><Artwork source={context.artwork.foreground(song.posterUrl, 88, 1)} alt="" />

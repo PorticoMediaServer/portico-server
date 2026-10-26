@@ -29,11 +29,12 @@ import {wholeViewQuery} from './selection-query';
 /** The play adapter's own model owns the whole-view registration and the range
  * preview; these become available when the route supplies them. The operation
  * pair lets the bar capture the exact target before an awaited job. */
-export type LibrarySelectionHost = Omit<LibraryPlaySelection, 'selectWhole' | 'preview' | 'selected' | 'keepOnly' | 'enqueue' | 'enqueueQuery' | 'setPreview' | 'clearPreview' | 'rangePreviewed' | 'rangeHint'> & Readonly<{
+export type LibrarySelectionHost = Omit<LibraryPlaySelection, 'selectWhole' | 'preview' | 'selected' | 'keepOnly' | 'enqueue' | 'enqueueQuery' | 'setPreview' | 'clearPreview' | 'rangePreviewed' | 'rangeHint' | 'interaction'> & Readonly<{
   keepOnly?: (kind: import('@core/selection-model/index.ts').SelectionKind) => unknown;
   selectWhole?: (query: SelectionQuery) => unknown;
   preview?: (row: LibraryPlayRow) => boolean;
   setPreview?: LibraryPlaySelection['setPreview'];
+  interaction?: LibraryPlaySelection['interaction'];
   clearPreview?: LibraryPlaySelection['clearPreview'];
   rangePreviewed?: LibraryPlaySelection['rangePreviewed'];
   rangeHint?: LibraryPlaySelection['rangeHint'];
@@ -348,6 +349,7 @@ export function createLibrarySelection({playSelection, owner, descriptor, action
       const hint = active && !checked ? playSelection.rangeHint?.(row) : undefined;
       return {
         active, checked,
+        interaction: playSelection.interaction?.(row),
         ...(active && playSelection.rangePreviewed?.(row) === true ? {preview: true} : {}),
         ...(hint ? {hint: {text: defaultI18n.t('next.selection.rangeTitles', hint), shortcut: defaultI18n.t('next.selection.shift')}} : {}),
         onPreview: enabled => playSelection.setPreview?.(row, active && enabled),

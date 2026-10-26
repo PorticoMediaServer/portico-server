@@ -13,6 +13,9 @@ const caps = {library: {id: 'library', name: 'Movies', kind: 'movie', defaultVie
   fields: [], sorts: [{id: 'title', labelKey: 'sort.title', directions: ['asc', 'desc'], defaultDirection: 'asc', applicableKinds: ['movie']}], quickFilters: [],
   queryLimits: {maximumDepth: 5, maximumClauses: 40, maximumBytes: 65536, maximumSorts: 3, defaultLimit: 60, maximumLimit: 100, cursorTtlMs: 1800000}};
 const scope = {serverId: 'server', viewerId: 'actual-captured-viewer'};
+function interactionNode() {
+  return {isConnected: true, closest: () => null, setAttribute() {}, removeAttribute() {}} as unknown as HTMLElement;
+}
 function detail(id: string) {return {scope: {...scope, libraryId: 'library', itemId: id, viewerFence: 'detail-only'}, revision: {catalog: 77, viewer: 3},
   item: {id, libraryId: 'library', kind: 'movie', title: id, durationMs: 1000, progressMs: 0, available: true},
   personal: {watchlisted: false, favorite: false, rating: null, revision: 0}, actions: [
@@ -66,6 +69,36 @@ test('Library selection defers to an actual token and offers no grant or Detail 
     owner.selection.selectLoaded();assert.equal(owner.selection.getSnapshot().selection!.summary.count, 3);
     assert.equal(owner.selection.getSnapshot().canPlay, false);
     await assert.rejects(owner.selection.play(), {code: 'library-play-selection-unavailable'});
+  } finally {owner.dispose();}
+});
+
+test('original row interaction survives preview publications but retires before window replacement', async () => {
+  const owner = setup();
+  try {
+    await owner.load();const rows = await owner.selection.registerWindow(0, 2);
+    owner.selection.toggle(rows[0]);
+    const source = owner.selection.interaction(rows[2]), admission = source.capture(interactionNode())!;
+    admission.preview(true);
+    assert.equal(owner.selection.rangePreviewed(rows[1]), true);
+    assert.equal(owner.selection.interaction(rows[2]), source);
+    assert.equal(admission.current(), true);
+    let retired = false;admission.onRetire(() => {retired = true;});
+    const replacement = owner.selection.registerWindow(1, 3);
+    assert.equal(retired, true);assert.equal(admission.current(), false);
+    const next = await replacement, nextAdmission = owner.selection.interaction(next[1]).capture(interactionNode())!;
+    nextAdmission.preview(true);admission.preview(false);
+    assert.equal(nextAdmission.current(), true);
+  } finally {owner.dispose();}
+});
+
+test('an original Library physical-row cleanup cannot clear a successor preview', async () => {
+  const owner = setup();
+  try {
+    await owner.load();const rows = await owner.selection.registerWindow(0, 2);owner.selection.toggle(rows[0]);
+    const source = owner.selection.interaction(rows[2]), node = interactionNode(), first = source.capture(node)!;
+    first.preview(true);const second = source.capture(node)!;second.preview(true);
+    first.retire();first.preview(false);assert.equal(owner.selection.rangePreviewed(rows[1]), true);
+    second.retire();assert.equal(owner.selection.rangePreviewed(rows[1]), false);
   } finally {owner.dispose();}
 });
 

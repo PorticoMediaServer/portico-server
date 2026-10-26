@@ -1,6 +1,7 @@
 import {serviceI18n} from '@core/presentation/service-text.ts';
 import {musicFormatBadges, formatSignalText} from '@core/music-signal.ts';
-import {activateCard, useSelectionRangePreview} from '../../kit/cards';
+import {activateCard, useSelectionRangePreview, useCardInteractionAdmission} from '../../kit/cards';
+import {useRetainedLayoutPaint} from '../../kit/layout/retained-paint';
 import {useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
 import {timelineFacts, type TextEnvironment} from '@portico/client-core/kit-model';
@@ -121,8 +122,11 @@ export function BrowseResults(props: BrowseResultsProps) {
   </div>;
 }
 function BrowseListRow({member, index, artwork, env, actions, reading, music}: BrowseResultsProps & {member: BrowseMember; index: number; reading: boolean; music: boolean}) {
+  const interactionRoot = useRef<HTMLDivElement>(null), retained = useRetainedLayoutPaint();
   const source = useRef<'pointer' | 'keyboard'>('pointer');
-  const {entry} = member, title = entry.displayTitle ?? entry.title, action = actions(member, index), progress = timelineFacts(entry.duration, entry.progressSeconds).progress;
+  const {entry} = member, title = entry.displayTitle ?? entry.title, originalAction = actions(member, index), progress = timelineFacts(entry.duration, entry.progressSeconds).progress;
+  const selection = useCardInteractionAdmission(originalAction.selection, interactionRoot, retained);
+  const action = {...originalAction, selection};
   const badges = entry.kind === 'song' && entry.audioFacts ? musicFormatBadges(entry.audioFacts).map(badge => typeof badge === 'string' ? badge : formatSignalText(badge, serviceI18n().t)) : [];
   const range = useSelectionRangePreview(action.selection);
   const art = artwork.foreground(entry.posterUrl, music ? 42 * devicePixelRatio : 72 * devicePixelRatio, music ? 1 : 2 / 3, {group: entry.libraryId, order: index});
@@ -130,7 +134,7 @@ function BrowseListRow({member, index, artwork, env, actions, reading, music}: B
   const duration = durationText(entry.duration, env.t);
   const resolution = entry.resolution === '4k' ? t('quality.4k') : entry.resolution === '1080p' ? t('downloads.quality.1080p') : entry.resolution === '720p' ? t('downloads.quality.720p') : entry.resolution === 'sd' ? t('quality.sd') : undefined;
   const select = action.selection && <SelectionCircle selected={action.selection.checked} selecting={action.selection.active} onSelectedChange={(_next, intent) => action.selection?.onToggle({range: intent.intent === 'range' || intent.shiftKey === true, source: source.current})} onKeyDownCapture={() => {source.current = 'keyboard';}} onPointerDownCapture={() => {source.current = 'pointer';}} accessibilityLabel={t('next.selection.select')} variant="row"/>;
-  return <div className={styles.listRow} data-browse-entry={entry.id} data-selected={action.selection?.checked || undefined} data-preview={action.selection?.preview || undefined} {...range} onKeyDown={event => {range.onKeyDown(event);if (event.key === 'Escape' && action.selection?.active) {event.preventDefault();action.selection.onExit();}}}>
+  return <div ref={interactionRoot} className={styles.listRow} data-browse-entry={entry.id} data-selected={action.selection?.checked || undefined} data-preview={action.selection?.preview || undefined} {...range} onKeyDown={event => {range.onKeyDown(event);if (event.key === 'Escape' && action.selection?.active) {event.preventDefault();action.selection.onExit();}}}>
     {music && <span className={styles.musicNumber}>{select ?? <span>{index + 1}</span>}</span>}
     <div className={styles.listTitle}>{!music && select}
       <button type="button" data-layout-primary onClick={event => activateCard(action.onOpen, action.selection, {range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'})}><span className={styles.listArt}><Artwork source={art} visible alt="" fallback={<GeneratedArt glyph={Array.from(title)[0] ?? ''}/>}/></span><span className={styles.listName}>{title}</span>{badges.map(badge => <span key={badge} className={styles.songBadge}>{badge}</span>)}</button></div>

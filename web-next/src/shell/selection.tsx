@@ -16,8 +16,10 @@ import {entryDestination, seeAllDestination} from './navigation';
 import {SelectionSurfaces, SelectionPhoneBar, type SelectionRendererSource} from './SelectionSurfaces';
 import {selectionEditorAudience} from './selection-presentation';
 import {shellSelectionScope} from './selection-scope';
+import {createCardInteractionOwner} from '../kit/cards/interaction-admission';
 
 export function createShellSelection(context: ShellAssemblyContext, playback: HomeSelectionPlaybackPort, reportError: (error: unknown) => void, dockVisible: () => boolean) {
+  const interactions = createCardInteractionOwner(), interactionRows = new WeakMap<HomeRow, Map<string, object>>();
   const listeners = new Set<() => void>();
   const platform: HomeActionPlatform = {platform: 'web', playbackAvailable: true, queueAvailable: true};
   const viewer = context.session().viewer;
@@ -41,20 +43,21 @@ export function createShellSelection(context: ShellAssemblyContext, playback: Ho
       current: snapshot => viewer.role === 'owner' && isCurrent(snapshot.context) && snapshot.editor?.preview?.viewerFence === context.viewerFence}, anchor, artwork: context.artwork, reportError, owner: viewer.role === 'owner', editorAudience: selectionEditorAudience(viewer.role), dockVisible};
   let acceptedContext = JSON.stringify(currentContext()), acceptedEnvironment = JSON.stringify(environment());
   const sync = () => {
-    if (retired || !context.isCurrent()) return;
+    if (retired || !context.isCurrent()) {interactions.retireRows();return;}
     const nextDocument = context.home.getSnapshot().document;
-    if (!nextDocument) { controller.clear(); return; }
+    if (!nextDocument) { interactions.retireRows();controller.clear(); return; }
     const next = homeSelectionContext(scope(), nextDocument), nextEnvironment = environment();
     if (JSON.stringify(next) !== acceptedContext || JSON.stringify(nextEnvironment) !== acceptedEnvironment) {
       acceptedContext = JSON.stringify(next); acceptedEnvironment = JSON.stringify(nextEnvironment); controller.setContext(next, nextEnvironment);
     }
+    interactions.prune();
   };
-  let preview: {windowId: string; target: string; keys: readonly string[]} | undefined;
+  let preview: {row: HomeRow; windowId: string; target: string; keys: readonly string[]} | undefined;
   const emit = () => {if (!retired) for (const listener of listeners) listener();};
-  const clearPreview = () => {if (!preview) return;preview = undefined;emit();};
+  const clearPreview = () => {interactions.resetPreview();if (!preview) return;preview = undefined;emit();};
   const releasePreview = (event: KeyboardEvent) => {if (event.key === 'Shift') clearPreview();};
   window.addEventListener('keyup', releasePreview);window.addEventListener('blur', clearPreview);
-  const off = [controller.subscribe(() => {preview = undefined;emit();}), context.home.subscribe(sync), router.subscribe('onResolved', sync)];
+  const off = [controller.subscribe(() => {interactions.resetPreview();preview = undefined;emit();}), context.home.subscribe(sync), router.subscribe('onResolved', sync)];
   window.addEventListener('resize', sync);
   const perform = (work: () => void) => { try { work(); } catch (error) { reportError(error); } };
   const windowId = (row: HomeRow) => 'home:' + row.id;
@@ -71,6 +74,18 @@ export function createShellSelection(context: ShellAssemblyContext, playback: Ho
   function descriptor(row: HomeRow, item: SelectionIdentity | undefined, title: string): CardSelection | undefined {
     if (!item || !currentRow(row) || !liveCurrent(row)) return undefined;
     const key = controller.key(item), snapshot = controller.getSnapshot().selection;
+    let rows = interactionRows.get(row);
+    if (!rows) {rows = new Map();interactionRows.set(row, rows);}
+    let original = rows.get(key);
+    if (!original) {original = Object.freeze({row, key});rows.set(key, original);}
+    const setPreview = (enabled: boolean) => {
+      const clearOwn = () => {if (preview?.row === row && preview.target === key) clearPreview();};
+      if (!enabled || !controller.getSnapshot().selection.active || !currentRow(row) || !liveCurrent(row)) {clearOwn();return;}
+      if (preview?.row === row && preview.target === key) return;
+      const value = range();if (!value?.ok) {clearOwn();return;}
+      preview = {row, windowId: windowId(row), target: key, keys: value.keys};emit();
+    };
+    const interaction = interactions.source(original, {current: () => currentRow(row) && liveCurrent(row), preview: setPreview});
     const toggle = (range: boolean) => perform(() => {
       if (!currentRow(row) || !liveCurrent(row)) { clearExpiredLive(row); return; }
       const change = controller.toggle(windowId(row), key, range);
@@ -84,14 +99,9 @@ export function createShellSelection(context: ShellAssemblyContext, playback: Ho
     }) : [];
     const hint = hintRange?.ok && named.length && named.every((value): value is string => typeof value === 'string')
       ? {text: defaultI18n.t('next.selection.rangeTitles', {first: named[0]!, last: named.at(-1)!, count: hintRange.keys.length}), shortcut: defaultI18n.t('next.selection.shift')} : undefined;
-    return {active: snapshot.active, checked: selected(key), ...(hint ? {hint} : {}),
+    return {active: snapshot.active, checked: selected(key), interaction, ...(hint ? {hint} : {}),
       preview: snapshot.active && preview?.windowId === windowId(row) && preview.keys.includes(key),
-      onPreview: enabled => {
-        if (!enabled || !snapshot.active || !currentRow(row) || !liveCurrent(row)) {clearPreview();return;}
-        if (preview?.windowId === windowId(row) && preview.target === key) return;
-        const value = range();if (!value?.ok) {clearPreview();return;}
-        preview = {windowId: windowId(row), target: key, keys: value.keys};emit();
-      },
+      onPreview: setPreview,
       onToggle: intent => toggle(intent.range), onExit: () => controller.clear(),
       control: <SelectionCircle selected={selected(key)} selecting={snapshot.active} accessibilityLabel={defaultI18n.t('next.home.select', {title})}
         interactive={false} />};
@@ -137,6 +147,6 @@ export function createShellSelection(context: ShellAssemblyContext, playback: Ho
     }),
     phoneSelection: (): ReactNode => controller.getSnapshot().selection.active ? <SelectionPhoneBar source={source} /> : undefined,
     subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    dispose: () => { retired = true; controller.dispose(); for (const cleanup of off) cleanup(); window.removeEventListener('resize', sync); window.removeEventListener('keyup', releasePreview);window.removeEventListener('blur', clearPreview);preview = undefined;anchor.current = null; listeners.clear(); },
+    dispose: () => { retired = true; interactions.dispose();controller.dispose(); for (const cleanup of off) cleanup(); window.removeEventListener('resize', sync); window.removeEventListener('keyup', releasePreview);window.removeEventListener('blur', clearPreview);preview = undefined;anchor.current = null; listeners.clear(); },
   };
 }
