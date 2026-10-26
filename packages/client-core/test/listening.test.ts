@@ -504,3 +504,145 @@ test('a source replaced by a synchronous listener during setup is never the time
  await assert.rejects(g.service.setTimer('item'),(error:any)=>error?.name==='AbortError');
  assert.equal(swapped,true);assert.equal(g.service.getSnapshot().timer,null);
 });
+
+// Opening-lifetime regressions: a listening timer belongs to the caller's original opening. A
+// retired opening mutates nothing and dispatches no armed policy, a retirement during a book or
+// chapter read aborts that exact request, and a close only ever clears its own still-pending
+// install — never a newer one, and never one whose acknowledgement was already accepted.
+const deferred=<T>()=>{let resolve!:(value:T)=>void;const promise=new Promise<T>(r=>{resolve=r;});return {promise,resolve};};
+const abortedError=()=>Object.assign(new Error('aborted'),{name:'AbortError'});
+
+test('an already-retired opening refuses a timer before any mutation',async t=>{
+ const f=setup(t);await settle();
+ const retired=new AbortController();retired.abort();
+ for(const context of [{signal:retired.signal},{isCurrent:()=>false}]){
+  const before=f.service.getSnapshot(),policies=f.engine.policies.length;
+  await assert.rejects(f.service.setTimer('item',undefined,context),(error:any)=>error?.name==='AbortError');
+  assert.equal(f.service.getSnapshot(),before,'the refusal published no snapshot change');
+  assert.equal(f.engine.policies.length,policies,'the refusal dispatched no policy');
+  assert.equal(f.service.getSnapshot().timer,null);
+ }
+});
+
+test('a retired opening during the book read dispatches no armed timer',async t=>{
+ let heldSignal:AbortSignal|undefined;
+ const f=setup(t,{context:audiobookContext,request:async(path,_body,_method,signal)=>{
+  if(path==='/v1/listening/preferences')return wrapped(prefs);
+  if(path.includes('/timeline')){heldSignal=signal;return new Promise((_resolve,reject)=>{signal?.addEventListener('abort',()=>reject(abortedError()),{once:true});});}
+  return wrapped(audiobookContext(path.split('/')[3]));
+ }});
+ await settle();
+ const controller=new AbortController(),engine=f.engine.state;
+ const setting=f.service.setTimer('book',undefined,{signal:controller.signal});
+ await settle();
+ assert.equal(heldSignal?.aborted,false,'the read starts under the original opening');
+ const armedFrom=f.engine.policies.length;
+ controller.abort();
+ await assert.rejects(setting,(error:any)=>error?.name==='AbortError');
+ assert.equal(heldSignal?.aborted,true,'the received request signal aborts with the opening');
+ assert.equal(f.engine.state,engine,'no output was pinned to a later occurrence');
+ assert.equal(f.service.getSnapshot().timer,null);
+ assert.equal(f.service.getSnapshot().timerLoading,false);
+ assert.equal(f.engine.policies.slice(armedFrom).some(policy=>policy.timer),false,'no armed timer policy was dispatched');
+});
+
+test('an opening that is no longer current during the book read dispatches no armed timer',async t=>{
+ let releaseTimeline!:(value:unknown)=>void;
+ const f=setup(t,{context:audiobookContext,request:async(path)=>{
+  if(path==='/v1/listening/preferences')return wrapped(prefs);
+  if(path.includes('/timeline'))return new Promise(resolve=>{releaseTimeline=resolve;});
+  return wrapped(audiobookContext(path.split('/')[3]));
+ }});
+ await settle();
+ let current=true;const engine=f.engine.state;
+ const setting=f.service.setTimer('book',undefined,{isCurrent:()=>current});
+ await settle();
+ const armedFrom=f.engine.policies.length;
+ current=false;
+ releaseTimeline(wrapped(bookTimeline('')));
+ await assert.rejects(setting,(error:any)=>error?.name==='AbortError');
+ assert.equal(f.engine.state,engine,'no output was pinned to a later occurrence');
+ assert.equal(f.service.getSnapshot().timer,null);
+ assert.equal(f.service.getSnapshot().timerLoading,false);
+ assert.equal(f.engine.policies.slice(armedFrom).some(policy=>policy.timer),false,'no armed timer policy was dispatched');
+});
+
+test('a retired opening during the chapter read dispatches no armed timer',async t=>{
+ let heldSignal:AbortSignal|undefined;
+ const f=setup(t,{request:async(path,_body,_method,signal)=>{
+  if(path==='/v1/listening/preferences')return wrapped(prefs);
+  if(path.includes('/chapters')){heldSignal=signal;return new Promise((_resolve,reject)=>{signal?.addEventListener('abort',()=>reject(abortedError()),{once:true});});}
+  return wrapped({itemId:path.split('/')[3],libraryId:'library',kind:'song',albumId:'album',artistId:'artist'});
+ }});
+ await settle();
+ const controller=new AbortController(),engine=f.engine.state;
+ const setting=f.service.setTimer('chapter',undefined,{signal:controller.signal});
+ await settle();
+ assert.equal(heldSignal?.aborted,false,'the chapter read starts under the original opening');
+ const armedFrom=f.engine.policies.length;
+ controller.abort();
+ await assert.rejects(setting,(error:any)=>error?.name==='AbortError');
+ assert.equal(heldSignal?.aborted,true,'the received chapter request signal aborts with the opening');
+ assert.equal(f.engine.state,engine,'no output was pinned to a later occurrence');
+ assert.equal(f.service.getSnapshot().timer,null);
+ assert.equal(f.engine.policies.slice(armedFrom).some(policy=>policy.timer),false,'no armed timer policy was dispatched');
+});
+
+test('an opening that closes during the acknowledgement clears only its pending install',async t=>{
+ const f=setup(t);await settle();
+ const held=deferred<boolean>();let itemPolicies=0;
+ f.engine.answer=policy=>policy.timer?.choice==='item'&&itemPolicies++<1?held.promise:true;
+ const controller=new AbortController();
+ const setting=f.service.setTimer('item',undefined,{signal:controller.signal});
+ await settle();
+ assert.equal(itemPolicies,1,'the install is waiting for its single explicit acknowledgement');
+ const armedFrom=f.engine.policies.length;
+ controller.abort();
+ assert.equal(f.service.getSnapshot().timer,null);
+ assert.equal(f.service.getSnapshot().timerLoading,false);
+ held.resolve(true);
+ await assert.rejects(setting,(error:any)=>error?.name==='AbortError');
+ assert.equal(f.service.getSnapshot().timer,null,'a late acknowledgement armed the retired install');
+ assert.equal(f.engine.policies.slice(armedFrom).some(policy=>policy.timer),false,'no armed timer policy was dispatched after retirement');
+});
+
+test('a newer timer is untouched when an older opening closes and acknowledges late',async t=>{
+ const f=setup(t);await settle();
+ const held=deferred<boolean>();let itemPolicies=0;
+ f.engine.answer=policy=>policy.timer?.choice==='item'&&itemPolicies++<1?held.promise:true;
+ const controller=new AbortController();
+ const older=f.service.setTimer('item',undefined,{signal:controller.signal});
+ await settle();
+ await f.service.setTimer(15);
+ assert.equal(f.service.getSnapshot().timer?.choice,15);
+ const policies=f.engine.policies.length;
+ controller.abort();
+ held.resolve(true);
+ await assert.rejects(older,(error:any)=>error?.name==='AbortError');
+ assert.equal(f.service.getSnapshot().timer?.choice,15,'the older opening cleared the newer timer');
+ assert.equal(f.engine.policies.length,policies,'the retired older install dispatched another policy');
+});
+
+test('closing the opening after the timer was accepted does not clear it',async t=>{
+ const f=setup(t);await settle();
+ const controller=new AbortController();
+ await f.service.setTimer('item',undefined,{signal:controller.signal});
+ const accepted=f.service.getSnapshot().timer;
+ assert.equal(accepted?.choice,'item');
+ const policies=f.engine.policies.length;
+ controller.abort();
+ await settle();
+ assert.equal(f.service.getSnapshot().timer,accepted,'an accepted timer was cleared by a later opening close');
+ assert.equal(f.engine.policies.length,policies,'closing an accepted opening dispatched a policy');
+});
+test('a synchronous close from the timerLoading update dispatches no armed timer',async t=>{
+ const f=setup(t);await settle();
+ const controller=new AbortController();let closed=false;
+ f.service.subscribe(()=>{if(!closed&&f.service.getSnapshot().timerLoading){closed=true;controller.abort();}});
+ const policies=f.engine.policies.length;
+ await assert.rejects(f.service.setTimer('item',undefined,{signal:controller.signal}),(error:any)=>error?.name==='AbortError');
+ assert.equal(closed,true,'the timerLoading update reached the listener before any dispatch');
+ assert.equal(f.service.getSnapshot().timer,null);
+ assert.equal(f.service.getSnapshot().timerLoading,false);
+ assert.equal(f.engine.policies.slice(policies).some(policy=>policy.timer),false,'no armed timer policy was dispatched');
+});
