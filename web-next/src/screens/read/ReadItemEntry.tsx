@@ -18,6 +18,8 @@ import {router} from '../../router';
 import {Icon} from '../../kit/Icon';
 import {Button, ResumeButton} from '../../kit/controls';
 import {Menu, MenuGroup, MenuItem} from '../../kit/overlays';
+import {usePhone} from '../../kit/overlays/shared';
+import {runScreenCommand} from '../detail/context';
 import {Skeleton, StateView} from '../../kit/states';
 import {ReadBookFacts, ReadBookHero, ReadBookSections} from '../../kit/reader/ReadBookHero';
 import {ServerMark} from '../../kit/shell';
@@ -38,6 +40,7 @@ export function ReadItemEntry({itemId, eligibility}: {itemId: string; eligibilit
 }
 function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility: ReadItemEligibility}) {
   const context = useLibraryScreenContext(captured);
+  const phone = usePhone();
   const [editing, setEditing] = useState(false), [more, setMore] = useState(false);
   const editorAnchor = useRef<HTMLButtonElement>(null);
   const errorSink = useRef(captured.binding.home.effects.reportError); errorSink.current = captured.binding.home.effects.reportError;
@@ -92,6 +95,13 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     })().catch(error => {if (live()) {errorSink.current(error); original.ready = false; original.target = undefined; setDetail({attempt: original, failed: true});} void bindings.close().catch(() => {});});
     return () => {active = false; original.ready = false; original.target = undefined; publication?.dispose(); off(); void bindings.dispose().catch(() => {});};
   }, [attempt, eligibility.itemId]);
+  // The reading branch owns no shell navigation on a phone, so the page keeps one
+  // Back of its own before loading, failure and ready content alike.
+  const back = captured.context.effects.back, openHome = captured.context.effects.openHome;
+  const phoneBack = phone && (back || openHome) ? <div className={styles.phoneTopBar} data-read-phone-back>
+    <Button variant="icon" icon="i-left" iconOnly aria-label={t('next.states.back')}
+      onClick={() => runScreenCommand(captured.context, () => {if (back) back(); else openHome?.();})}/>
+  </div> : null;
   const version = eligibility.versions.find(candidate => candidate.sourceId === sourceId);
   /** An explicit version recovery is permitted while the original attempt is failed or not
    * ready; factsCurrent() is deliberately not the gate because it can never become true then.
@@ -116,12 +126,13 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     </Menu>
   </div> : null;
   if (current(attempt) && detail.attempt === attempt && detail.failed) return <>
+    {phoneBack}
     <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
       primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => refresh(attempt)}}/>
     {versionChooser}
   </>;
   const manifest = current(attempt) && detail.attempt === attempt ? detail.manifest : undefined;
-  if (!manifest || !version || manifest.sourceId !== sourceId) return <>{<Skeleton height={480}/>}{versionChooser}</>;
+  if (!manifest || !version || manifest.sourceId !== sourceId) return <>{phoneBack}{<Skeleton height={480}/>}{versionChooser}</>;
   const title = manifest.metadata.title ?? '', author = manifest.metadata.author;
   const metadata = manifest.metadata, series = metadata.series;
   const original = detail.attempt;
@@ -204,7 +215,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     {id: 'format', label: t('next.reader.format'), value: manifest.format.toUpperCase()},
     {id: 'size', label: t('next.reader.fileSize'), value: defaultI18n.bytes(manifest.size)},
   ]}/>;
-  return <><ReadBookHero cover={context.artwork.foreground(manifest.metadata.coverUrl, 784, 2 / 3)} title={title} author={author ? {name: author} : undefined} series={seriesPresentation} facts={[
+  return <>{phoneBack}<ReadBookHero cover=context.artwork.foreground(manifest.metadata.coverUrl, 784, 2 / 3)} title={title} author={author ? {name: author} : undefined} series={seriesPresentation} facts={[
       ...(metadata.wordCount !== undefined ? [{id: 'words', text: t('next.reader.wordCount', {count: metadata.wordCount}), role: 'context' as const}] : []),
       ...(metadata.pageCount !== undefined ? [{id: 'pages', text: t('next.reader.pageCount', {count: metadata.pageCount}), role: 'context' as const}] : []),
       ...(metadata.estimatedSeconds !== undefined && metadata.estimatedSeconds > 0 ? [{id: 'estimate', text: t('next.reader.aboutDuration', {duration: defaultI18n.duration(metadata.estimatedSeconds)}), role: 'context' as const}] : []),
