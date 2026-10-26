@@ -142,6 +142,8 @@ export class ShellBootstrap {
     selected: Pick<typeof browserViewerStorage, 'read'>;
     restore: typeof restoreBrowserConnection;
     actions?: () => BrowserAppSessionActions;
+    /** Closed Account Settings return: inspect the original access only. */
+    readonlyAccess?: true;
   } = {selected: browserViewerStorage, restore: restoreBrowserConnection}) {}
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { if (this.disposed) return () => {}; this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
@@ -288,6 +290,7 @@ export class ShellBootstrap {
         void browserViewerStorage.clearIfFamily?.(captured.sessionFamilyId).catch(() => {});
       },
     });
+    if (this.environment.readonlyAccess) auth.stop();
     cleanups.push(() => auth.stop());
     const events = new EventsClient({http: localV1Http(api), openStream: browserEventStream(api, session.viewer.serverId + ':' + viewerId(session), () => session.accessToken)});
     cleanups.push(() => events.stop());

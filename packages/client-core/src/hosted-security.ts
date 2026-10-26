@@ -1,6 +1,7 @@
 import {routeBody as hostedRouteBody} from "../../contracts/src/hosted/routes.ts";
 import {routePath as hostedRoutePath, encodedRoutePath as hostedEncodedRoutePath, routePrefix as hostedRoutePrefix} from "../../contracts/src/hosted/routes.ts";
-import type {SecuritySigned} from './security-return.ts';
+import {parseSecuritySigned,parseSecurityReturnIntent,parseSecurityReturnCode,type SecuritySigned} from './security-return.ts';
+import {routeOrigin,routeBytes} from './route-identity.ts';
 import {ApiError, type HostedSession} from './index.ts';
 
 export type IdentityProvider = 'google' | 'apple';
@@ -8,7 +9,7 @@ export type AccountMode = 'browser' | 'native';
 /** `nativeCompletion` (SEC-01): the service returns a native provider sign-in with a completion code
  * when the start asks for it. Only a service that says so is asked: an older one refuses unknown
  * start fields. */
-export type IdentityOptions = {password:boolean;registration:boolean;recovery:boolean;accountSecurity:boolean;verifiedContactRequired:boolean;nativeCompletion?:'code';providers:{id:IdentityProvider;enabled:boolean;native:boolean;nativeClientIds:string[]}[]};
+export type IdentityOptions = {credentialProviderReauthentication?:'account-settings-v1';password:boolean;registration:boolean;recovery:boolean;accountSecurity:boolean;verifiedContactRequired:boolean;nativeCompletion?:'code';providers:{id:IdentityProvider;enabled:boolean;native:boolean;nativeClientIds:string[]}[]};
 export type IdentityTransaction = {transactionId:string;provider:IdentityProvider;mode:'login'|'reauthenticate'|'link';status:'started'|'exchanging'|'onboarding'|'contact_pending'|'verified'|'completed'|'proof_issued'|'failed';expiresAt:string;contactVerified:boolean;needsUsername:boolean;onboardingToken?:string;suggestedName?:string;verifiedEmail?:string;mfaRequired:boolean;securityReturn?:true};
 export type Registration = {kind:'registration';registrationId:string;status:'contact_pending'|'verified'|'completed';revision:string;maskedAddress:string;expiresAt:string;contactVerified:boolean};
 export type MFAChallenge = {mfaRequired:true;challengeId:string;challengeToken:string;expiresAt:string};
@@ -45,7 +46,7 @@ export function parseIdentityOptions(v:unknown):IdentityOptions {
  if(!object(v)||!Array.isArray(v.providers)||v.providers.length>2)return invalid();
  const providers=v.providers.map(p=>{if(!object(p))return invalid();return{id:provider(p.id),enabled:boolean(p.enabled),native:p.native===true,nativeClientIds:Array.isArray(p.nativeClientIds)&&p.nativeClientIds.length<=8?p.nativeClientIds.map(x=>text(x,255)):[]};});
  if(new Set(providers.map(p=>p.id)).size!==providers.length)return invalid();
- return{password:boolean(v.password),registration:v.registration===true,recovery:v.recovery===true,accountSecurity:v.accountSecurity===true,verifiedContactRequired:boolean(v.verifiedContactRequired),...(v.nativeCompletion==='code'?{nativeCompletion:'code' as const}:{}),providers};
+ return{...(v.credentialProviderReauthentication==='account-settings-v1'?{credentialProviderReauthentication:'account-settings-v1' as const}:{}),password:boolean(v.password),registration:v.registration===true,recovery:v.recovery===true,accountSecurity:v.accountSecurity===true,verifiedContactRequired:boolean(v.verifiedContactRequired),...(v.nativeCompletion==='code'?{nativeCompletion:'code' as const}:{}),providers};
 }
 export function parseIdentityTransaction(v:unknown,expected?:string):IdentityTransaction {
  if(!object(v))return invalid();const transactionId=identifier(v.transactionId);
@@ -188,9 +189,41 @@ export class HostedAccountClient {
  async transaction(id?:string,signal?:AbortSignal,completion?:string){const v=await this.request(id?hostedEncodedRoutePath("identity_transaction_get", {"id": pathID(id)}):hostedRoutePath("identity_current"),'GET',undefined,signal,undefined,completion);return v===null?null:parseIdentityTransaction(v,id);}
  /** `completion: 'code'` (SEC-01) asks for the provider return's completion code: only for a native
   * browser sign-in, and only when the service's options say it gives one (`nativeCompletion`). */
- async start(p:IdentityProvider,input:{mode:OIDCStart['mode'];requestId:string;intent?:SecurityIntent;proof?:string;nativeApple?:boolean;completion?:'code'},signal?:AbortSignal,token?:string){
+ async start(p:IdentityProvider,input:{mode:OIDCStart['mode'];requestId:string;intent?:SecurityIntent;proof?:string;expectedIdentity?:{id:string;revision:string};nativeApple?:boolean;completion?:'code'},signal?:AbortSignal,token?:string){
   const {completion,...rest}=input;const asks=completion==='code'&&this.mode==='native'&&!input.nativeApple;
   return parseOIDCStart(await this.request(hostedEncodedRoutePath("identity_start", {"provider": p}),'POST',hostedRouteBody("identity_start", {...rest,sessionMode:this.mode,...(asks?{completion}:{})}),signal,token),p,input.nativeApple);}
+ /** Distinct Security APIs never parse a Hosted session or server sign-in grant. */
+ async prepareSecurityReturn(input:{context:SecuritySigned;state:string;codeChallenge:string},expiresAt:string,token:string,signal?:AbortSignal){
+  return parseSecurityReturnIntent(await this.request(hostedRoutePath("account_security_return_prepare"),'POST',hostedRouteBody("account_security_return_prepare",input),signal,token),expiresAt);
+ }
+ async startSecurityReturn(intentId:string,requestId:string,signal?:AbortSignal):Promise<HostedSecurityReturnStart>{
+  if(!/^sri_[A-Za-z0-9_-]{43}$/.test(intentId))return invalid();
+  const raw=await this.request(hostedEncodedRoutePath("account_security_return_start",{id:pathID(intentId)}),'POST',hostedRouteBody("account_security_return_start",{requestId}),signal);
+  if(!object(raw)||raw.intentId!==intentId||typeof raw.registeredOrigin!=='string'||!raw.registeredOrigin.startsWith('https://')||routeOrigin(raw.registeredOrigin)!==raw.registeredOrigin||typeof raw.state!=='string')return invalid();
+  routeBytes(raw.state,32);const selected=provider(raw.provider),started=parseOIDCStart(raw,selected);
+  if(started.mode!=='reauthenticate')return invalid();
+  return {...started,provider:selected,intentId,registeredOrigin:raw.registeredOrigin,state:raw.state,context:parseSecuritySigned(raw.context)};
+ }
+ async finishSecurityReturn(original:HostedSecurityReturnStart,signal?:AbortSignal):Promise<string>{
+  const transactionId=identifier(original.transactionId),origin=original.registeredOrigin,state=original.state;
+  if(!origin.startsWith('https://')||routeOrigin(origin)!==origin)return invalid();routeBytes(state,32);
+  const raw=await this.request(hostedEncodedRoutePath("identity_security_return",{id:pathID(transactionId)}),'POST',{},signal);
+  if(!object(raw)||Object.keys(raw).join(',')!=='location'||typeof raw.location!=='string')return invalid();
+  const returned=parseSecurityReturnCode(raw.location,{origin,state});
+  if(returned.transactionId!==transactionId)return invalid();return raw.location;
+ }
+ async completeSecurityReturn(transactionId:string,input:{code:string;verifier:string;confirmation:SecuritySigned;factor:string},scope:AccountScope,token:string,signal?:AbortSignal):Promise<RecentProof>{
+  const raw=await this.request(hostedEncodedRoutePath("account_security_return_complete",{id:pathID(transactionId)}),'POST',hostedRouteBody("account_security_return_complete",input),signal,token);
+  if(!object(raw)||Object.keys(raw).join(',')!=='recentProof'||!raw.recentProof)return invalid();return parseRecentProof(raw.recentProof,scope);
+ }
+ async cancelSecurityTransaction(transactionId:string,signal?:AbortSignal){
+  if(this.mode!=='browser'||!/^oid_[A-Za-z0-9_-]{43}$/.test(transactionId))return invalid();
+  await this.request(hostedEncodedRoutePath("identity_security_cancel",{id:pathID(transactionId)}),'POST',{},signal);
+ }
+ async cancelSecurityReturn(intentId:string,token:string,signal?:AbortSignal){
+  if(!/^sri_[A-Za-z0-9_-]{43}$/.test(intentId))return invalid();
+  await this.request(hostedEncodedRoutePath("account_security_return_cancel",{id:pathID(intentId)}),'POST',{},signal,token);
+ }
  async complete(id:string,input:{username?:string;displayName?:string;onboardingToken?:string;factor?:string},signal?:AbortSignal){return parseAccountSession(await this.request(hostedEncodedRoutePath("identity_transaction_complete", {"id": pathID(id)}),'POST',input,signal),this.mode);}
  async completeSecurity(id:string,factor:string,scope:AccountScope,token:string,signal?:AbortSignal):Promise<SecurityCompletion>{const v=await this.request(hostedEncodedRoutePath("identity_transaction_complete", {"id": pathID(id)}),'POST',hostedRouteBody("identity_transaction_complete", {factor}),signal,token);if(!object(v))return invalid();if(v.recentProof)return{recentProof:parseRecentProof(v.recentProof,scope)};if(v.securityResult)return{securityResult:parseSecurityResult(v.securityResult,scope)};return invalid();}
  async sendContact(id:string,contactAddress:string,requestId:string,signal?:AbortSignal){return parseContactChallenge(await this.request(hostedEncodedRoutePath("identity_transaction_contact", {"id": pathID(id)}),'POST',hostedRouteBody("identity_transaction_contact", {contactAddress,requestId}),signal));}
