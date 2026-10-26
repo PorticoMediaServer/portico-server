@@ -8,6 +8,7 @@ import type {PreferenceSnapshot} from '@core/preferences.ts';
 import {parseDirectSnapshot} from '@core/profile-management.ts';
 import {HomeService} from '@core/home-service.ts';
 import {InboxService} from '@core/inbox.ts';
+import {createNotificationScope} from '@core/notification-scope.ts';
 import {EventsClient} from '@core/playback-v1/events.ts';
 import {localV1Http} from '@core/playback-v1/local-http.ts';
 import {runEventFeed} from '@core/event-feed.ts';
@@ -296,8 +297,10 @@ export class ShellBootstrap {
     cleanups.push(() => { freshness.pool.dispose(); freshness.hub.dispose(); });
     const preferences = new PreferencesReader(api, {serverId: session.viewer.serverId, viewerId: viewerId(session)});
     cleanups.push(() => preferences.dispose());
-    const home = new HomeService(api), inbox = new InboxService(api);
-    cleanups.push(() => { home.dispose(); inbox.dispose(); });
+    const notificationScope = createNotificationScope(api, {serverId: session.viewer.serverId, signal, isCurrent,
+      onRetired: () => { if (isCurrent()) this.restart(); }});
+    const home = new HomeService(api), inbox = new InboxService(notificationScope);
+    cleanups.push(() => { home.dispose(); inbox.dispose(); notificationScope.dispose(); });
     const facts = await readFacts(api, session, preferences, inbox, signal);
     if (!isCurrent()) return;
     const homeFence = watchHomeViewerFence(home, isCurrent, () => this.restart());
