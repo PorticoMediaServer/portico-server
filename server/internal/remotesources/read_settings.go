@@ -186,7 +186,7 @@ func readSettingsTx(ctx context.Context, tx *sql.Tx, source string) (Source, Sou
 	if err != nil {
 		return row, SourceReadSettings{}, err
 	}
-	profile, err := SourceReadProfileTx(ctx, tx, source)
+	profile, err := storedSourceReadProfileTx(ctx, tx, source)
 	if err != nil {
 		return row, SourceReadSettings{}, err
 	}

@@ -154,7 +154,7 @@ func (s *Service) readSourceReadSettingsProjectionTx(ctx context.Context, tx *sq
 	if err != nil {
 		return row, settings, err
 	}
-	reading, err := SourceReadProfileTx(ctx, tx, source)
+	reading, err := storedSourceReadProfileTx(ctx, tx, source)
 	if err != nil {
 		return row, settings, err
 	}
