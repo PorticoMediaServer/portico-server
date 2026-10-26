@@ -33,7 +33,7 @@ M0=[
 ]
 FRAME=re.compile(r'^([A-Za-z0-9_-]+)#([0-9][A-Za-z0-9.]*)$')
 WALKABLE=[
-    re.compile(r'^[A-Za-z0-9_-]+#[0-9]+(?:\.[A-Za-z0-9]+)*$'),
+    re.compile(r'^[A-Za-z0-9_-]+#[0-9]+[A-Za-z]?(?:\.[A-Za-z0-9]+)*$'),
     re.compile(r'^[A-Za-z0-9_.-]+\.html#[A-Za-z0-9]+$'),
     re.compile(r'^[A-Za-z0-9_-]+#[0-9]+/[0-9]+$'),
     re.compile(r'^s/[A-Za-z0-9_-]+#group[0-9]+$'),
@@ -41,6 +41,7 @@ WALKABLE=[
 
 def frame_group(pointer):
     first=pointer.split(';',1)[0].strip()
+    first=re.split(r'@',first,maxsplit=1)[0].strip()
     if '#' not in first:return ''
     return first if any(pattern.match(first) for pattern in WALKABLE) else ''
 
@@ -77,6 +78,9 @@ def ledger_rows(program):
             rows.append({'id':rid,'area':area,'platform':platform,'feature':feature,'pointer':pointer,'group':group})
     return rows,excluded,not_a_frame
 
+def natural_key(value):
+    return tuple(int(part) if part.isdigit() else part.casefold() for part in re.split(r'(\d+)',value))
+
 def m0_rank(group,feature):
     for index,(_,pattern) in enumerate(M0):
         if pattern.search(group):return index
@@ -86,7 +90,7 @@ def clean(text,limit):
     value=' '.join(str(text).replace('|','/').split())
     return value if len(value)<=limit else value[:limit-1]+'…'
 
-def render(surface,rows):
+def render(surface,rows,claims):
     stamp=datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M UTC')
     lines=[
         f'# Walk list: {surface}',
@@ -105,12 +109,14 @@ def render(surface,rows):
         lines+=['', 'Fire OS walks the `firetv` flavour; use the Fire OS build from `walks/BUILDS.md`.']
     if surface=='vega':
         lines+=['', 'Vega walks the shared native app through its shims; use the Vega build and the vega device lock.']
+    if surface not in TV_SURFACES:
+        lines+=['', 'Root60: non-TV sign-in begins at `auth#4`; the TV `connect#40`/`auth#5` path is unchanged. No ledger rows are invented.']
     ranked=[]
     for row in rows:
         rank=m0_rank(row['group'],row['feature'])
         ranked.append((rank,row))
-    m0=sorted((item for item in ranked if item[0]<len(M0)),key=lambda item:(item[0],item[1]['group'],item[1]['id']))
-    other=sorted((item for item in ranked if item[0]==len(M0)),key=lambda item:(item[1]['group'],item[1]['id']))
+    m0=sorted((item for item in ranked if item[0]<len(M0)),key=lambda item:(item[0],natural_key(item[1]['group']),natural_key(item[1]['id'])))
+    other=sorted((item for item in ranked if item[0]==len(M0)),key=lambda item:(natural_key(item[1]['group']),natural_key(item[1]['id'])))
     lines+=['','## M0 flows','']
     if not m0:lines.append('- none in this surface')
     for group,members in grouped([row for _,row in m0]):
@@ -119,7 +125,8 @@ def render(surface,rows):
     if not other:lines.append('- none in this surface')
     for group,members in grouped([row for _,row in other]):
         lines.extend(render_group(group,members))
-    lines+=['','## Claims','',f'- (none yet — one line per claimed frame group: `<frame> — <worker> — <UTC time>`)','']
+    body=claims.strip('\n') or '- (none yet — one line per claimed frame group: `<frame> — <worker> — <UTC time>`)'
+    lines+=['','## Claims','',body,'']
     return '\n'.join(lines)+'\n'
 
 def grouped(rows):
@@ -143,6 +150,18 @@ def render_group(group,rows):
     lines.append('')
     return lines
 
+def read_claims(path):
+    if not path.exists():
+        return ''
+    text=path.read_text(encoding='utf-8')
+    match=re.search(r'(?m)^## Claims\n',text)
+    if not match:
+        return ''
+    body=text[match.end():].strip('\n')
+    if body.strip().startswith('- (none yet'):
+        return ''
+    return body
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--program',type=Path,default=DEFAULT_PROGRAM)
@@ -160,13 +179,14 @@ def main():
         by_surface[surface]=list({row['id']:row for row in by_surface[surface]}.values())
     summary={'generated':datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'),'excluded':excluded,'without_frame':not_a_frame,'surfaces':{}}
     for surface in SURFACES:
-        content=render(surface,by_surface[surface])
+        target=out/(surface+'.md')
+        content=render(surface,by_surface[surface],read_claims(target))
         summary['surfaces'][surface]={'rows':len(by_surface[surface]),'groups':len({row['group'] for row in by_surface[surface]})}
         if args.check:continue
         out.mkdir(parents=True,exist_ok=True)
         temporary=out/(surface+'.md.tmp')
         temporary.write_text(content,encoding='utf-8')
-        os.replace(temporary,out/(surface+'.md'))
+        os.replace(temporary,target)
     print(json.dumps(summary,sort_keys=True))
     return 0
 
