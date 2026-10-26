@@ -11,12 +11,22 @@ const t = defaultI18n.t;
  * location object it was opened under and the route's liveness are captured before
  * the read; only this ticket's port may be closed by its retirement. */
 type Ticket = {
-  readonly source: LocalOwnerTransferSource;
+  readonly admission: Admission;
   readonly location: typeof router.state.location;
-  readonly isCurrent: () => boolean;
   readonly abort: AbortController;
   live: boolean;
   port?: LocalOwnerTransferPort;
+};
+
+/** The row's own layout lifetime for one exact source/isCurrent/onError tuple.
+ * Handlers from an earlier render can only act while this admission is the live
+ * one and still carries the same ticket. */
+type Admission = {
+  readonly source: LocalOwnerTransferSource;
+  readonly isCurrent: () => boolean;
+  readonly onError: (error: unknown) => void;
+  live: boolean;
+  ticket?: Ticket;
 };
 
 /** auth 24a/24h: the Sign-in row and its dialog. The row owns the opening; the
@@ -26,55 +36,91 @@ export function LocalChangeOwnerRow({source, isCurrent, onError}: {
   isCurrent: () => boolean;
   onError: (error: unknown) => void;
 }) {
-  const [ticket, setTicket] = useState<Ticket | undefined>(undefined), [port, setPort] = useState<LocalOwnerTransferPort | undefined>(undefined), [opening, setOpening] = useState(false);
-  const ticketRef = useRef<Ticket | undefined>(undefined);
+  const [admission, setAdmission] = useState<Admission | null>(null);
+  const admissionRef = useRef<Admission | null>(null);
+  const [ticket, setTicket] = useState<Ticket | null>(null), [port, setPort] = useState<LocalOwnerTransferPort | null>(null), [opening, setOpening] = useState(false);
   const retire = (held: Ticket) => {
     held.live = false;
     held.abort.abort();
-    if (ticketRef.current === held) ticketRef.current = undefined;
+    if (held.admission.ticket === held) held.admission.ticket = undefined;
     const owned = held.port;
     held.port = undefined;
     owned?.close();
   };
-  // A replaced source or unmount retires this row's opening synchronously.
-  useLayoutEffect(() => () => {
-    const held = ticketRef.current;
-    if (!held) return;
-    retire(held);
-    setPort(undefined);
-    setTicket(undefined);
-    setOpening(false);
-  }, [source]);
+  useLayoutEffect(() => {
+    const fresh: Admission = {source, isCurrent, onError, live: true};
+    admissionRef.current = fresh;
+    setAdmission(fresh);
+    // A route change, even one that keeps this same Settings row mounted, ends the
+    // opening synchronously so its dead ticket cannot block a reopen.
+    const off = router.subscribe('onBeforeNavigate', () => {
+      const held = fresh.ticket;
+      if (!fresh.live || !held) return;
+      fresh.ticket = undefined;
+      const owned = held.port;
+      retire(held);
+      setTicket(current => current === held ? null : current);
+      setPort(current => current === owned ? null : current);
+      setOpening(false);
+    });
+    return () => {
+      off();
+      fresh.live = false;
+      if (admissionRef.current === fresh) admissionRef.current = null;
+      const held = fresh.ticket, ownedPort = held?.port;
+      fresh.ticket = undefined;
+      if (held) retire(held);
+      setAdmission(current => current === fresh ? null : current);
+      setTicket(current => current?.admission === fresh ? null : current);
+      setPort(current => current === ownedPort ? null : current);
+      setOpening(false);
+    };
+  }, [source, isCurrent]);
+  // A new prop tuple must not act through the previous admission before its layout
+  // replacement: handlers use this render's exact matching admission only.
+  const shown = admission && admission.live && admissionRef.current === admission
+    && admission.source === source && admission.isCurrent === isCurrent ? admission : null;
   const open = () => {
-    if (ticketRef.current || opening || !isCurrent()) return;
-    const held: Ticket = {source, location: router.state.location, isCurrent, abort: new AbortController(), live: true};
-    ticketRef.current = held;
-    setTicket(held);setPort(undefined);setOpening(true);
-    const caller = {isCurrent: () => held.live && ticketRef.current === held && router.state.location === held.location &&
-      held.isCurrent() && !held.abort.signal.aborted, signal: held.abort.signal};
+    const current = shown;
+    if (!current || current.ticket || opening || !current.isCurrent()) return;
+    const held: Ticket = {admission: current, location: router.state.location, abort: new AbortController(), live: true};
+    current.ticket = held;
+    setTicket(held);setPort(null);setOpening(true);
+    const caller = {isCurrent: () => held.live && current.live && admissionRef.current === current && current.ticket === held &&
+      router.state.location === held.location && held.admission.isCurrent() && !held.abort.signal.aborted, signal: held.abort.signal};
     void (async () => {
       try {
         const opened = await source.open(caller);
-        if (!held.live || ticketRef.current !== held || !caller.isCurrent()) {opened.close();return;}
+        if (!held.live || current.ticket !== held || !caller.isCurrent()) {opened.close();return;}
         held.port = opened;
         setPort(opened);setOpening(false);
       } catch (failure) {
-        if (!held.live || ticketRef.current !== held) return;
+        // A replaced location/admission or a retired ticket never reports its error
+        // against the surface that replaced it.
+        if (!held.live || current.ticket !== held || !caller.isCurrent()) return;
         retire(held);
-        setPort(undefined);setTicket(undefined);setOpening(false);
-        if (!(failure instanceof DOMException && failure.name === 'AbortError')) onError(failure);
+        setTicket(current => current === held ? null : current);
+        setPort(null);setOpening(false);
+        if (!(failure instanceof DOMException && failure.name === 'AbortError')) current.onError(failure);
       }
     })();
   };
-  const close = () => {
-    const held = ticketRef.current;
-    if (held) retire(held);
-    setPort(undefined);setTicket(undefined);setOpening(false);
+  const close = (held: Ticket) => {
+    // Close only the exact rendered ticket; a retained handler from A can never
+    // retire or clear B.
+    if (!held || !held.live || !shown || held.admission !== shown || held !== ticket || held.admission.ticket !== held) return;
+    const owned = held.port;
+    retire(held);
+    setTicket(current => current === held ? null : current);
+    setPort(current => current === owned ? null : current);
+    setOpening(false);
   };
   return <>
-    <Button variant="glass" size="small" loading={opening} disabled={opening} onClick={open}>
+    <Button variant="glass" size="small" loading={opening} disabled={opening || !shown} onClick={open}>
       {t('next.settingsSpec.server.signin.groups.0.rows.5.control.label')}
     </Button>
-    {ticket && port ? <LocalChangeOwnerDialog open port={port} onClose={close} onError={onError} /> : null}
+    {shown && ticket && ticket.admission === shown && port
+      ? <LocalChangeOwnerDialog open port={port} onClose={() => close(ticket)} onError={shown.onError} />
+      : null}
   </>;
 }
