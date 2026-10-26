@@ -27,7 +27,25 @@ export type V1ChannelOptions = Readonly<{http: V1Http; key?: () => string; now?:
 /** What the service applies: the playback id, whether the start can't proceed, and the projection. */
 export type ChannelView = Readonly<{playbackId: string; status?: string; linear: ChannelProjection}>;
 export type ChannelViewSink = {state: (value: ChannelView) => void; error: (message: string, terminal: boolean) => void; preparation?: (value: StartPreparation | undefined) => void};
-export type ChannelStartOptions = Readonly<{state?:'playing'|'paused'; signal?: AbortSignal; isCurrent?: () => boolean; capturePreparing?: StartContext['capturePreparing']}>;
+/** Facts of this exact original channel POST, captured before any start I/O.
+ * This is not a session, cleanup authority or a permission to adopt a successor. */
+export type OriginalChannelStart = Readonly<{
+  body: Readonly<{channelId: string; channelGeneration: string; state: 'playing' | 'paused'}>;
+  key: string; signal: AbortSignal; isCurrent(): boolean;
+}>;
+/** The host supplies purpose-specific never-installed resource custody. Its
+ * predicate only narrows the original channel lifetime; finish releases that
+ * host flight after settlement, without changing this start's result. */
+export type ChannelStartReceipt = Readonly<{
+  isCurrent(): boolean;
+  capturePreparing: NonNullable<StartContext['capturePreparing']>;
+  /** Facts of a late actual 200/201, never a fabricated Session. The host
+   * re-proves this original principal/id/generation and never-installed
+   * registration before any bounded cleanup. No raw DELETE fallback. */
+  retireUninstalled(session: Readonly<{id: string; generation: number}>): void | Promise<void>;
+  finish(): void | Promise<void>;
+}>;
+export type ChannelStartOptions = Readonly<{state?:'playing'|'paused'; signal?: AbortSignal; isCurrent?: () => boolean; capturePreparing?: StartContext['capturePreparing']; captureStart?: (original: OriginalChannelStart) => ChannelStartReceipt}>;
 
 /** The service's channel control, whichever protocol (the /v2 `ChannelControl` or this). */
 export interface ChannelPlayback {
@@ -170,7 +188,7 @@ export class V1ChannelControl implements ChannelPlayback {
     const entered = this.serial;
     const state=options.state??'playing';
     if(state!=='playing'&&state!=='paused')throw new Error('invalid_channel_start_state');
-    const signal = options.signal, originalCurrent = options.isCurrent, capturePreparing = options.capturePreparing;
+    const signal = options.signal, originalCurrent = options.isCurrent, capturePreparing = options.capturePreparing, captureStart = options.captureStart;
     const originalChannel: ChannelReference = Object.freeze({...channel});
     const starting = () => {try {return !signal?.aborted && (originalCurrent ? originalCurrent() === true : true);} catch {return false;}};
     if (!starting() || entered !== this.serial) throw Object.assign(new Error('cancelled'), {name: 'AbortError'});
@@ -181,29 +199,50 @@ export class V1ChannelControl implements ChannelPlayback {
     const a: Active = {serial: ++this.serial, channel: originalChannel, startAbort: new AbortController(), joined: false, seq: 0, lastReport: 0, tail: Promise.resolve(), closed: false};
     this.active = a;
     const currentStart = () => this.current(a) && starting() && this.current(a);
+    let admitted = currentStart, finish: ChannelStartReceipt['finish'] | undefined;
+    let retireUninstalled: ChannelStartReceipt['retireUninstalled'] | undefined, retiring: Promise<void> | undefined;
+    const retireLate = (session: Readonly<{id: string; generation: number}>) => {
+      if (!captureStart) {void this.stop(session.id); return;}
+      if (retireUninstalled) {try {retiring = Promise.resolve(retireUninstalled(Object.freeze({id: session.id, generation: session.generation}))).catch(() => {});} catch { /* Original host retains cleanup uncertainty; never downgrade it. */ }}
+    };
     const cancel = () => {if (this.current(a)) this.close();};
     signal?.addEventListener('abort', cancel, {once: true});
     try {
-      await this.stopping.catch(() => {});
-      if (!this.current(a) || !starting()) {cancel();return;}
-      const result = await this.sessions.startResponse({channelId: v1ChannelId(originalChannel), channelGeneration: originalChannel.generation}, {state}, this.key(), {
-        signal: a.startAbort.signal, isCurrent: currentStart, capturePreparing,
-        onPreparing: (_wait, preparation) => {if (currentStart()) sink.preparation?.(preparation);},
+      const stopping = this.stopping;
+      const body = Object.freeze({channelId: v1ChannelId(originalChannel), channelGeneration: originalChannel.generation, state});
+      const key = this.key();
+      if (typeof key !== 'string') throw new Error('invalid_channel_start_key');
+      if (!currentStart()) {cancel();return;}
+      const captured = captureStart?.(Object.freeze({body, key, signal: a.startAbort.signal, isCurrent: currentStart}));
+      finish = captured?.finish;
+      retireUninstalled = captured?.retireUninstalled;
+      const hostCurrent = captured?.isCurrent, originalPreparing = captured?.capturePreparing;
+      if (captureStart && (typeof finish !== 'function' || typeof hostCurrent !== 'function' || typeof originalPreparing !== 'function' || typeof retireUninstalled !== 'function')) throw new Error('invalid_channel_start_receipt');
+      admitted = () => {try {return currentStart() && (!hostCurrent || hostCurrent() === true) && currentStart();} catch {return false;}};
+      await stopping.catch(() => {});
+      if (!admitted()) {cancel();return;}
+      const result = await this.sessions.startResponse({channelId: body.channelId, channelGeneration: body.channelGeneration}, {state: body.state}, key, {
+        signal: a.startAbort.signal, isCurrent: admitted, capturePreparing: captureStart ? originalPreparing : capturePreparing,
+        onPreparing: (_wait, preparation) => {if (admitted()) sink.preparation?.(preparation);},
       }, body => parseChannelSession(body, this.now));
-      if (!currentStart()) {void this.stop(result.id);cancel();return;}
+      if (!admitted()) {retireLate(result);cancel();return;}
       const s = result.body;
       sink.preparation?.(undefined);
-      if (!currentStart()) {void this.stop(s.id);cancel();return;}
+      if (!admitted()) {retireLate(result);cancel();return;}
       a.id = s.id;
       this.accept(a, s);
       this.schedule(a);
     } catch (e) {
-      if (!starting()) {cancel();return;}
+      if (!admitted()) {cancel();return;}
       if (this.current(a)) {
         sink.preparation?.(undefined);
-        if (currentStart()) {this.active = undefined; a.closed = true; a.startAbort.abort(); sink.error(message(e), true);}
+        if (admitted()) {this.active = undefined; a.closed = true; a.startAbort.abort(); sink.error(message(e), true);}
       }
-    } finally {signal?.removeEventListener('abort', cancel);}
+    } finally {
+      signal?.removeEventListener('abort', cancel);
+      const settle = () => {if (typeof finish === 'function') {try {void Promise.resolve(finish()).catch(() => {});} catch { /* Host settlement cannot retarget an accepted channel or replace its result. */ }}};
+      if (retiring) void retiring.then(settle); else settle();
+    }
   }
 
   private accept(a: Active, s: Session) {

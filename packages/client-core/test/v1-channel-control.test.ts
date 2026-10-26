@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PlaybackService, tunerHandover} from '../src/index.ts';
-import {V1ChannelControl, channelEndMessage, parseChannelSession, v1ChannelId} from '../src/playback-v1/channel-control.ts';
+import {V1ChannelControl, channelEndMessage, parseChannelSession, v1ChannelId, type OriginalChannelStart} from '../src/playback-v1/channel-control.ts';
 import type {V1Http, V1Request} from '../src/playback-v1/http.ts';
 import type {ChannelReference} from '../src/playback/linear-protocol.ts';
 
@@ -372,4 +372,83 @@ test('an older channel completion cannot publish over its successor', async () =
     await Promise.allSettled([opening, successor]);
     control.close();
   }
+});
+
+test('the channel receipt issuer captures the actual original key and body before dispatch', async () => {
+  const clock = preparationQueue(), originals: OriginalChannelStart[] = [], sent: V1Request[] = [];
+  let keys = 0, captured = 0, abandoned = 0, finished = 0;
+  const control = new V1ChannelControl({key: () => {keys++; return 'channel-original-key-0001';}, timers: clock.timers, pollMs: 10_000,
+    http: {send: async request => {
+      if (request.method !== 'POST') return {status: 204, headers: {}};
+      assert.equal(originals.length, 1, 'host custody exists before the first POST');
+      sent.push(request);
+      return sent.length === 1 ? {status: 202, headers: {}, body: {...completeChannelBody('ps_original'), retryAfterMs: 500}}
+        : {status: 201, headers: {}, body: completeChannelBody('ps_original')};
+    }}});
+  let opening: Promise<void> | undefined;
+  try {
+    opening = control.open(channel, {state: () => {}, error: message => assert.fail(message)}, {captureStart: original => {
+      assert.equal(sent.length, 0); originals.push(original);
+      return {isCurrent: original.isCurrent, capturePreparing: offered => {
+        captured++; assert.equal(offered.channelId, original.body.channelId);
+        return () => {abandoned++;};
+      }, retireUninstalled: () => {assert.fail('the accepted original needs no retirement');}, finish: () => {finished++;}};
+    }});
+    await settle();
+    assert.equal(originals.length, 1); assert.equal(keys, 1); assert.equal(captured, 1); assert.equal(finished, 0);
+    const original = originals[0];
+    assert.ok(Object.isFrozen(original)); assert.ok(Object.isFrozen(original.body));
+    assert.deepEqual(original.body, {channelId: v1ChannelId(channel), channelGeneration: 'g1', state: 'playing'});
+    assert.equal(original.key, 'channel-original-key-0001'); assert.equal(original.isCurrent(), true);
+    clock.fire(); await opening;
+    assert.equal(sent.length, 2); assert.equal(keys, 1); assert.equal(captured, 1); assert.equal(abandoned, 0); assert.equal(finished, 1);
+    for (const request of sent) {
+      assert.deepEqual(request.body, original.body); assert.equal(request.headers?.['Idempotency-Key'], original.key);
+      assert.equal(request.signal, original.signal);
+    }
+  } finally {control.close(); await opening?.catch(() => {});}
+});
+
+test('retirement inside the original channel receipt issuer cannot dispatch a request', async () => {
+  let posts = 0, finished = 0;
+  const control = new V1ChannelControl({key: () => 'channel-original-key-0002', http: {send: async () => {
+    posts++; throw new Error('a retired original cannot send');
+  }}});
+  await control.open(channel, {state: () => assert.fail('no session is installed'), error: message => assert.fail(message)}, {
+    captureStart: original => {
+      control.close(); assert.equal(original.signal.aborted, true);
+      return {isCurrent: () => false, capturePreparing: () => {assert.fail('no preparation was received');}, retireUninstalled: () => {assert.fail('no real session was returned');}, finish: () => {finished++;}};
+    },
+  });
+  assert.equal(posts, 0); assert.equal(finished, 1);
+});
+
+test('a late channel 201 uses the original host refusal without a bare stop fallback', async () => {
+  let posts = 0, enter!: () => void, release!: () => void, finished = 0;
+  const entered = new Promise<void>(resolve => {enter = resolve;}), held = new Promise<void>(resolve => {release = resolve;});
+  const deletes: string[] = [], refused: Readonly<{id: string; generation: number}>[] = [];
+  const control = new V1ChannelControl({key: () => 'channel-original-shared-key', pollMs: 10_000, http: {send: async request => {
+    if (request.method === 'DELETE') {deletes.push(request.path); return {status: 204, headers: {}};}
+    const body = completeChannelBody('ps_shared');
+    if (++posts === 1) {enter(); await held;}
+    return {status: 201, headers: {}, body};
+  }}});
+  let original: Promise<void> | undefined, successor: Promise<void> | undefined;
+  try {
+    original = control.open(channel, {state: () => assert.fail('the retired opening cannot install'), error: message => assert.fail(message)}, {
+      captureStart: start => ({isCurrent: start.isCurrent, capturePreparing: () => undefined,
+        // The actual host must prove noninstallation. This fake refuses to stop
+        // a resource its successor just adopted; it supplies no authority.
+        retireUninstalled: session => {refused.push(session);}, finish: () => {finished++;}}),
+    });
+    await entered;
+    const states: string[] = [];
+    successor = control.open(channel, {state: value => states.push(value.playbackId), error: message => assert.fail(message)});
+    await successor;
+    release(); await original; await settle();
+    assert.deepEqual(states, ['ps_shared']);
+    assert.deepEqual(refused, [{id: 'ps_shared', generation: 1}]);
+    assert.ok(Object.isFrozen(refused[0])); assert.equal(finished, 1);
+    assert.deepEqual(deletes, [], 'host refusal never downgrades to DELETE of the adopted occurrence');
+  } finally {release(); await Promise.allSettled([original, successor]); control.close();}
 });
