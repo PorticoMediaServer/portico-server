@@ -17,6 +17,8 @@ import {Chart} from './Chart';
 import {SessionCard} from './SessionCard';
 import {PhoneHealth} from './PhoneHealth';
 import {DashboardQuiet} from './DashboardQuiet';
+import {desktopDashboardQuietState} from './dashboard-quiet';
+import quietStyles from './dashboard-quiet.module.css';
 import {Analytics} from './Analytics';
 import {useDashboardReport, type DashboardReportController} from './use-report';
 import {readNowPlaying} from './pages';
@@ -60,17 +62,18 @@ function DashboardView({bindings: b, embedded = false, initialSection, phone = f
   if (!allowed) return null;
   const failed = sessions.failed || b.role === 'owner' && (status.failed || (phone ? health.failed : live.failed || accounts.failed) || report.state.failed);
   const retry = () => {sessions.refresh(); if (b.role === 'owner') {status.refresh(); if (phone) health.refresh(); else live.refresh(); report.state.refresh(); accounts.refresh(); server.refresh();}};
+  const groupedQuiet = !phone && !failed && b.role === 'owner' && desktopDashboardQuietState({status: status.value, statusLoading: status.loading, statusFailed: status.failed, sessions: sessions.value, sessionsLoading: sessions.loading, sessionsFailed: sessions.failed}).grouped;
   const sections = phone
     ? <><div data-dashboard-section="streams"><NowPlaying bindings={b} state={sessions} phone /></div>
         {b.role === 'owner' && <><Status bindings={b} status={status} phone /><Tasks status={status} phone /><PhoneHealth reading={health.value} loading={health.loading} failed={health.failed} range={healthRange} onRangeChange={range => {if (b.isCurrent()) setHealthRange(range);}} onRetry={health.refresh} /><div data-dashboard-section="activity"><PhoneStatistics bindings={b} report={report} /></div></>}</>
     : <>{b.role === 'owner' && <Status bindings={b} status={status} />}
         <div data-dashboard-section="streams"><NowPlaying bindings={b} state={sessions} /></div>
-        {b.role === 'owner' && <><Load bindings={b} report={report} live={live} /><div data-dashboard-section="activity"><Analytics bindings={b} report={report} accounts={accounts} /></div><Tasks status={status} /></>}</>;
+        {b.role === 'owner' && <><div className={quietStyles.slot} data-dashboard-quiet-slot="load"><Load bindings={b} report={report} live={live} /></div><div data-dashboard-section="activity"><Analytics bindings={b} report={report} accounts={accounts} /></div><div className={quietStyles.slot} data-dashboard-quiet-slot="tasks"><Tasks status={status} /></div></>}</>;
   if (phone) return <PhonePage chrome={chrome ?? {serverName: '', audience: b.role === 'owner' ? 'owner' : 'administrators'}} server={server.value}
     updatedAt={updatedAt} onBack={() => {if (history.length > 1) history.back(); else b.effects.openHome();}} onRefresh={retry} initialSection={initialSection}>
     {failed && !sessions.value ? <ReadFeedback openHome={b.effects.openHome} height={420} state={{failed: true, loading: false, refresh: retry}} /> : sections}
   </PhonePage>;
-  return <div className={styles.dashboard} ref={ref}>{!embedded && <h2 className={styles.pageTitle}>{t('next.dashboard.title')}</h2>}
+  return <div className={`${styles.dashboard} ${groupedQuiet ? quietStyles.grouped : ''}`} data-quiet-embedded={groupedQuiet && embedded || undefined} ref={ref}>{!embedded && <h2 className={styles.pageTitle}>{t('next.dashboard.title')}</h2>}
     {failed ? <ReadFeedback openHome={b.effects.openHome} state={{failed: true, loading: false, refresh: retry}} /> : sections}
   </div>;
 }
