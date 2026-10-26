@@ -10,7 +10,6 @@ import (
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
-	"portico.local/server/internal/identity"
 	"portico.local/server/internal/localmetadata"
 	"portico.local/server/internal/mediaanalysis"
 	"portico.local/server/internal/storage"
@@ -63,25 +62,7 @@ func (s *Service) Queue(library string) (Job, error) {
 	return s.QueueContext(context.Background(), library, "", nil)
 }
 func (s *Service) QueueContext(ctx context.Context, library, sourceID string, authorize func(*sql.Tx) error) (Job, error) {
-	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
-	if err != nil {
-		return Job{}, err
-	}
-	tx := gated.Tx()
-	defer gated.Rollback()
-	if authorize != nil {
-		if err = authorize(tx); err != nil {
-			return Job{}, err
-		}
-	}
-	j, err := s.queueTx(ctx, tx, library, sourceID)
-	if err != nil {
-		return Job{}, err
-	}
-	if err = gated.Commit(); err != nil {
-		return Job{}, err
-	}
-	return j, nil
+	return s.queueContextCreated(ctx, library, sourceID, authorize, nil)
 }
 
 // QueueTx lets the console commit its receipt and the real durable source jobs
@@ -90,82 +71,10 @@ func (s *Service) QueueTx(ctx context.Context, tx *sql.Tx, library string) (Job,
 	return s.queueTx(ctx, tx, library, "")
 }
 func (s *Service) queueTx(ctx context.Context, tx *sql.Tx, library, sourceID string) (Job, error) {
-	rows, err := tx.QueryContext(ctx, `SELECT id FROM library_sources WHERE library_id=? AND enabled=1 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries d WHERE d.library_id=library_sources.library_id) AND (?='' OR id=?) ORDER BY CASE WHEN id=library_id THEN 0 ELSE 1 END,id`, library, sourceID, sourceID)
-	if err != nil {
-		return Job{}, err
-	}
-	ids := []string{}
-	for rows.Next() {
-		var id string
-		if err = rows.Scan(&id); err != nil {
-			rows.Close()
-			return Job{}, err
-		}
-		ids = append(ids, id)
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return Job{}, err
-	}
-	if len(ids) == 0 {
-		return Job{}, sql.ErrNoRows
-	}
-	var first Job
-	all := []string{}
-	for _, id := range ids {
-		j, e := queueSourceTx(ctx, tx, id, false)
-		if e != nil {
-			return Job{}, e
-		}
-		if first.ID == "" {
-			first = j
-		}
-		all = append(all, j.ID)
-	}
-	first.Jobs = all
-	return first, nil
+	return s.queueTxCreated(ctx, tx, library, sourceID, nil)
 }
 func queueSourceTx(ctx context.Context, tx *sql.Tx, source string, analysisOnly bool) (Job, error) {
-	var j Job
-	j.SourceID = source
-	err := tx.QueryRowContext(ctx, `SELECT j.id,j.status,j.processed,r.phase,r.analyzed,r.warnings FROM inventory_source_active a JOIN jobs j ON j.id=a.job_id JOIN inventory_runs r ON r.job_id=j.id WHERE a.source_id=? AND j.status IN('queued','running','paused')`, source).Scan(&j.ID, &j.Status, &j.Processed, &j.Phase, &j.Analyzed, &j.Warnings)
-	if err == nil {
-		return j, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return j, err
-	}
-	var library, incarnation, rootIdentity string
-	var generation, policy int64
-	err = tx.QueryRowContext(ctx, `SELECT s.library_id,s.generation,s.incarnation,s.root_identity,p.revision FROM library_sources s JOIN library_scan_policies p ON p.library_id=s.library_id WHERE s.id=? AND s.enabled=1 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries d WHERE d.library_id=s.library_id)`, source).Scan(&library, &generation, &incarnation, &rootIdentity, &policy)
-	if err != nil {
-		return j, err
-	}
-	j.ID, j.Status, j.Phase = identity.Token(), "queued", "inventory"
-	if analysisOnly {
-		j.Phase = "analysis_enqueue"
-	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO jobs(id,library_id,status,created_at) VALUES(?,?,'queued',?)`, j.ID, library, time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
-		return j, err
-	}
-	mode, err := scanModeTx(ctx, tx, source)
-	if err != nil {
-		return j, err
-	}
-	j.ScanMode = mode
-	if _, err = tx.ExecContext(ctx, `INSERT INTO inventory_runs(job_id,source_id,source_generation,root_incarnation,root_identity,policy_revision,phase,scan_mode) VALUES(?,?,?,?,?,?,?,?)`, j.ID, source, generation, incarnation, rootIdentity, policy, j.Phase, mode); err != nil {
-		return j, err
-	}
-	if !analysisOnly {
-		if _, err = tx.ExecContext(ctx, `INSERT INTO inventory_directories(job_id,relative_path) VALUES(?,'.')`, j.ID); err != nil {
-			return j, err
-		}
-	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO inventory_source_active(source_id,job_id) VALUES(?,?) ON CONFLICT(source_id) DO UPDATE SET job_id=excluded.job_id`, source, j.ID); err != nil {
-		return j, err
-	}
-	return j, nil
+	return queueSourceTxCreated(ctx, tx, source, analysisOnly, nil)
 }
 func (s *Service) Get(id string) (Job, error) {
 	var j Job
