@@ -127,7 +127,7 @@ export function useSurfaceMotion(open: boolean, kind: 'dialog' | 'menu' | 'panel
     // Menus and side panels leave from their settled pose on opacity alone. A caller that
     // publishes its own exit target (toasts, banners) still wins; the rest keep their painted one.
     const targetTransform = reduced || entering ? 'none' : exitTransform?.current ?? from.transform;
-    const current = element.animate([from, {opacity: entering ? 1 : 0, transform: targetTransform}], {duration: reduced ? reducedMotion.durationMs : entering ? motion.standard : motion.quick, easing: entering ? easings.out : easings.in, fill: 'both'});
+    const current = element.animate([from, {opacity: entering ? 1 : 0, transform: targetTransform}], {duration: reduced ? reducedMotion.durationMs : entering ? motion.standard : motion.quick, easing: reduced ? reducedMotion.easing : entering ? easings.out : easings.in, fill: 'both'});
     animation.current = current;
     // The entry pose is normalised to the two poses a menu can actually occupy: a missing
     // data-side is the default bottom pose, so the first resolution to bottom is not a change.
@@ -153,7 +153,7 @@ export function useSurfaceMotion(open: boolean, kind: 'dialog' | 'menu' | 'panel
         const fromPose = {opacity: Number(painted.opacity), transform: reduced ? 'none' : painted.transform};
         current.cancel();
         const replay = element.animate([fromPose, {opacity: 1, transform: 'none'}],
-          {duration: reduced ? reducedMotion.durationMs : motion.standard, easing: easings.out, fill: 'both'});
+          {duration: reduced ? reducedMotion.durationMs : motion.standard, easing: reduced ? reducedMotion.easing : easings.out, fill: 'both'});
         animation.current = replay;
         replay.onfinish = () => {
           if (animation.current !== replay) return;
