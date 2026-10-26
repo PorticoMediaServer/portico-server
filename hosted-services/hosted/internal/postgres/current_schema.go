@@ -7,7 +7,7 @@ import (
 	"errors"
 )
 
-const CurrentHostedSchemaVersion = 29
+const CurrentHostedSchemaVersion = 30
 
 //go:embed schema.sql
 var currentSchema string

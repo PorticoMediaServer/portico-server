@@ -44,7 +44,7 @@ func (o *OIDCLogin) registerSecurityReturnTx(ctx context.Context, tx *sql.Tx, id
 	}
 	c, raw, e := serverreturn.VerifySecurityContext(q.Context, key, time.Now())
 	u, ue := url.Parse(callback)
-	if e != nil || ue != nil || c.HostedOrigin != u.Scheme+"://"+u.Host || c.AccountID != a.AccountID || c.OperationID != intent.OperationID {
+	if e != nil || ue != nil || c.HostedOrigin != u.Scheme+"://"+u.Host || c.AccountID != a.AccountID || c.OperationID != intent.OperationID || c.Purpose != intent.Purpose || c.Target != intent.Target {
 		return serverreturn.ErrInvalid
 	}
 	t, e := returnTupleTx(ctx, tx, a.AccountID, c.ServerID, c.ClaimOperationID, "sign-in", c.RegistrationID)
@@ -57,7 +57,7 @@ func (o *OIDCLogin) registerSecurityReturnTx(ctx context.Context, tx *sql.Tx, id
 	var providerID string
 	var revision int64
 	var hasPassword bool
-	if e = tx.QueryRowContext(ctx, `SELECT expected_identity_id,expected_identity_revision FROM identity_transactions WHERE id=$1 AND mode='reauthenticate' AND session_mode='browser' AND purpose='password_set_or_change' AND intent_target=''`, id).Scan(&providerID, &revision); e != nil {
+	if e = tx.QueryRowContext(ctx, `SELECT expected_identity_id,expected_identity_revision FROM identity_transactions WHERE id=$1 AND mode='reauthenticate' AND session_mode='browser' AND purpose=$2 AND intent_target=$3`, id, intent.Purpose, intent.Target).Scan(&providerID, &revision); e != nil {
 		return serverreturn.ErrInvalid
 	}
 	if e = tx.QueryRowContext(ctx, `SELECT password_hash IS NOT NULL FROM accounts WHERE id=$1`, a.AccountID).Scan(&hasPassword); e != nil {
@@ -104,7 +104,7 @@ func (o *OIDCLogin) securityReturnTx(ctx context.Context, tx *sql.Tx, id, bindin
 	}
 	var link string
 	var revision int64
-	e := tx.QueryRowContext(ctx, `SELECT expected_account_id,expected_family_id,expected_account_epoch,expected_family_generation,expected_access_hash,session_mode,expected_identity_id,expected_identity_revision FROM identity_transactions WHERE id=$1 AND binding_hash=$2 AND binding_generation=$3 AND mode='reauthenticate' AND session_mode='browser' AND purpose='password_set_or_change' AND intent_target=''`, id, security.Hash(binding), generation).Scan(&out.a.AccountID, &out.a.FamilyID, &out.a.AuthEpoch, &out.a.FamilyGeneration, &out.a.TokenHash, &out.a.Mode, &link, &revision)
+	e := tx.QueryRowContext(ctx, `SELECT expected_account_id,expected_family_id,expected_account_epoch,expected_family_generation,expected_access_hash,session_mode,expected_identity_id,expected_identity_revision FROM identity_transactions WHERE id=$1 AND binding_hash=$2 AND binding_generation=$3 AND mode='reauthenticate' AND session_mode='browser' AND security_return`, id, security.Hash(binding), generation).Scan(&out.a.AccountID, &out.a.FamilyID, &out.a.AuthEpoch, &out.a.FamilyGeneration, &out.a.TokenHash, &out.a.Mode, &link, &revision)
 	if e != nil {
 		return out, identity.ErrCredentials
 	}
@@ -289,13 +289,23 @@ func (o *OIDCLogin) boundSecurityReturnProofTx(ctx context.Context, tx *sql.Tx, 
 		return nil
 	}
 	var expiry time.Time
-	e := tx.QueryRowContext(ctx, `SELECT expires_at FROM identity_security_returns WHERE transaction_id=$1`, id).Scan(&expiry)
+	var cipher []byte
+	e := tx.QueryRowContext(ctx, `SELECT LEAST(expires_at,confirmation_expires_at),context_cipher FROM identity_security_returns WHERE transaction_id=$1`, id).Scan(&expiry, &cipher)
 	if errors.Is(e, sql.ErrNoRows) {
 		return identity.ErrRecentAuth
 	}
 	if e != nil {
 		return e
 	}
+	plain, e := o.Keys.Open(cipher, "security-return-context:"+id)
+	if e != nil {
+		return e
+	}
+	var original serverreturn.SecurityContext
+	if json.Unmarshal([]byte(plain), &original) != nil || original.AuthorityExpiresAt.IsZero() {
+		return identity.ErrRecentAuth
+	}
+	expiry = securityReturnDeadline(original, expiry)
 	e = tx.QueryRowContext(ctx, `UPDATE account_recent_proofs SET expires_at=LEAST(expires_at,$2) WHERE proof_hash=$1 AND $2>clock_timestamp() RETURNING expires_at`, security.Hash(proof.Proof), expiry).Scan(&proof.ExpiresAt)
 	if errors.Is(e, sql.ErrNoRows) {
 		return identity.ErrRecentAuth
@@ -315,7 +325,7 @@ func (o *OIDCLogin) CompleteSecurityReturnFlow(ctx context.Context, id, access, 
 		return empty, e
 	}
 	var encrypted []byte
-	e := o.Store.DB.QueryRowContext(ctx, `SELECT r.binding_cipher FROM identity_security_returns r JOIN identity_transactions t ON t.id=r.transaction_id WHERE r.transaction_id=$1 AND t.expected_access_hash=$2 AND t.mode='reauthenticate' AND t.session_mode='browser' AND t.purpose='password_set_or_change' AND t.intent_target=''`, id, security.Hash(access)).Scan(&encrypted)
+	e := o.Store.DB.QueryRowContext(ctx, `SELECT r.binding_cipher FROM identity_security_returns r JOIN identity_transactions t ON t.id=r.transaction_id WHERE r.transaction_id=$1 AND t.expected_access_hash=$2 AND t.mode='reauthenticate' AND t.session_mode='browser' AND t.security_return`, id, security.Hash(access)).Scan(&encrypted)
 	if e != nil {
 		return empty, identity.ErrCredentials
 	}

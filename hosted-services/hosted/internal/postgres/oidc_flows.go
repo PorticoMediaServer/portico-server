@@ -65,7 +65,7 @@ func (o *OIDCLogin) StartFlow(ctx context.Context, provider, binding, access str
 	if q.SecurityReturn != nil {
 		captured := *q.SecurityReturn
 		q.SecurityReturn = &captured
-		if q.SecurityReturnExpectation == nil || q.SecurityReturnIntentID == "" || !captured.Valid() || q.Mode != "reauthenticate" || q.SessionMode != "browser" || q.NativeApple || q.Completion != "" || q.Proof != "" || q.Intent == nil || q.Intent.Purpose != "password_set_or_change" || q.Intent.Target != "" {
+		if q.SecurityReturnExpectation == nil || q.SecurityReturnIntentID == "" || !captured.Valid() || q.Mode != "reauthenticate" || q.SessionMode != "browser" || q.NativeApple || q.Completion != "" || q.Proof != "" || q.Intent == nil || !serverreturn.CredentialPurpose(q.Intent.Purpose, q.Intent.Target) {
 			return v, "", "", identity.ErrInvalid
 		}
 	}

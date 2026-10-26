@@ -149,6 +149,12 @@ func (o *OIDCLogin) PrepareSecurityReturnIntent(ctx context.Context, access, ori
 	if e != nil || c.Origin != origin || c.HostedOrigin != audience || c.AccountID != a.AccountID {
 		return out, serverreturn.ErrInvalid
 	}
+	if c.Purpose == "email_change" {
+		normalized, e := NormalizeContact(c.Target)
+		if e != nil || normalized != c.Target {
+			return out, identity.ErrInvalid
+		}
+	}
 	var live bool
 	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM account_external_identities i JOIN accounts a ON a.id=i.account_id WHERE i.id=$1 AND i.account_id=$2 AND i.revision=$3 AND i.revoked_at IS NULL AND a.password_hash IS NULL)`, c.ProviderIdentityID, a.AccountID, c.ProviderRevision).Scan(&live); e != nil {
 		return out, e
@@ -289,6 +295,6 @@ func (o *OIDCLogin) StartSecurityReturnFlow(ctx context.Context, id, binding, re
 	if e = tx.Commit(); e != nil {
 		return empty, "", e
 	}
-	v, location, _, e := o.StartFlow(ctx, provider, binding, access, OIDCStartInput{Mode: "reauthenticate", SessionMode: "browser", RequestID: requestID, Intent: &identity.SecurityIntent{Purpose: "password_set_or_change", OperationID: c.OperationID}, SecurityReturn: &q, SecurityReturnExpectation: &a, SecurityReturnIntentID: id})
+	v, location, _, e := o.StartFlow(ctx, provider, binding, access, OIDCStartInput{Mode: "reauthenticate", SessionMode: "browser", RequestID: requestID, Intent: &identity.SecurityIntent{Purpose: c.Purpose, Target: c.Target, OperationID: c.OperationID}, SecurityReturn: &q, SecurityReturnExpectation: &a, SecurityReturnIntentID: id})
 	return v, location, e
 }

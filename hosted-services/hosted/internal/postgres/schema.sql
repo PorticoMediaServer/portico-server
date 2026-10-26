@@ -259,7 +259,7 @@ CREATE TABLE account_recent_proofs (
     CONSTRAINT account_recent_proofs_check CHECK ((((credential_kind = 'password'::text) AND (identity_id IS NULL) AND (identity_revision IS NULL)) OR ((credential_kind IN ('provider','provider_security_return')) AND (identity_id IS NOT NULL) AND (identity_revision IS NOT NULL)))),
     CONSTRAINT account_recent_proofs_check1 CHECK (((expires_at > created_at) AND (expires_at <= (created_at + '00:05:00'::interval)))),
     CONSTRAINT account_recent_proofs_check2 CHECK (((consumed_at IS NULL) OR ((consumed_at >= created_at) AND (consumed_at < expires_at)))),
-    CONSTRAINT account_recent_proofs_security_purpose CHECK (credential_kind<>'provider_security_return' OR purpose='password_set_or_change'),
+    CONSTRAINT account_recent_proofs_security_purpose CHECK (credential_kind<>'provider_security_return' OR purpose IN('password_set_or_change','email_change','mfa_enroll','mfa_disable','recovery_codes')),
     CONSTRAINT account_recent_proofs_credential_kind_check CHECK ((credential_kind = ANY (ARRAY['password'::text, 'provider'::text, 'provider_security_return'::text]))),
     CONSTRAINT account_recent_proofs_family_generation_check CHECK ((family_generation >= 0)),
     CONSTRAINT account_recent_proofs_identity_revision_check CHECK ((identity_revision > 0)),
@@ -948,7 +948,7 @@ CREATE TABLE identity_transactions (
     native_completion boolean DEFAULT false NOT NULL,
     CONSTRAINT identity_security_authority CHECK ((((mode = 'login'::text) AND (purpose IS NULL) AND (intent_digest IS NULL) AND (expected_account_id IS NULL) AND (expected_family_id IS NULL) AND (expected_account_epoch IS NULL) AND (expected_family_generation IS NULL) AND (expected_access_hash IS NULL) AND (expected_identity_id IS NULL) AND (expected_identity_revision IS NULL)) OR ((mode = ANY (ARRAY['reauthenticate'::text, 'link'::text])) AND (purpose IS NOT NULL) AND (intent_digest IS NOT NULL) AND (expected_account_id IS NOT NULL) AND (expected_family_id IS NOT NULL) AND (expected_account_epoch IS NOT NULL) AND (expected_family_generation IS NOT NULL) AND (expected_access_hash IS NOT NULL) AND (((mode = 'reauthenticate'::text) AND (expected_identity_id IS NOT NULL) AND (expected_identity_revision IS NOT NULL)) OR ((mode = 'link'::text) AND (purpose = 'provider_link'::text) AND (expected_identity_id IS NULL) AND (expected_identity_revision IS NULL)))))),
     CONSTRAINT identity_security_mode CHECK ((mode = ANY (ARRAY['login'::text, 'reauthenticate'::text, 'link'::text]))),
-    CONSTRAINT identity_security_return_purpose CHECK (NOT security_return OR (mode='reauthenticate' AND session_mode='browser' AND purpose='password_set_or_change' AND intent_target='')),
+    CONSTRAINT identity_security_return_purpose CHECK (NOT security_return OR (mode='reauthenticate' AND session_mode='browser' AND ((purpose IN('password_set_or_change','mfa_enroll','mfa_disable','recovery_codes') AND intent_target='') OR (purpose='email_change' AND octet_length(intent_target) BETWEEN 3 AND 320)))),
     CONSTRAINT identity_security_onboarding CHECK (((status <> ALL (ARRAY['onboarding'::text, 'contact_pending'::text, 'completed'::text])) OR (mode = 'login'::text))),
     CONSTRAINT identity_security_proof CHECK (((status <> 'proof_issued'::text) OR (mode = ANY (ARRAY['reauthenticate'::text, 'link'::text])))),
     CONSTRAINT identity_security_purpose CHECK ((purpose = ANY (ARRAY['password_set_or_change'::text, 'account_deletion_preview'::text, 'email_change'::text, 'provider_link'::text, 'provider_unlink'::text, 'mfa_enroll'::text, 'mfa_disable'::text, 'recovery_codes'::text, 'server_transfer'::text, 'server_remove'::text, 'account_export'::text]))),
@@ -1758,7 +1758,7 @@ ALTER TABLE account_security_return_intents ADD FOREIGN KEY (family_id) REFERENC
 ALTER TABLE identity_security_returns ADD FOREIGN KEY (intent_id) REFERENCES account_security_return_intents(id) ON DELETE CASCADE;
 ALTER TABLE identity_security_returns ADD FOREIGN KEY (transaction_id) REFERENCES identity_transactions(id) ON DELETE CASCADE;
 ALTER TABLE identity_security_returns ADD FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE;
-INSERT INTO hosted_schema_contract VALUES (true, 'portico-hosted', 29);
+INSERT INTO hosted_schema_contract VALUES (true, 'portico-hosted', 30);
 INSERT INTO hosted_signing_state VALUES (true, 0, '\x', false, '', '\x');
 INSERT INTO identity_protocol_policy VALUES (true, 1, false, NULL, clock_timestamp());
 

@@ -43,7 +43,7 @@ func TestOwnerSwitchCountFreshSchemaPairConstraints(t *testing.T) {
 func TestOwnerSwitchCountFreshFormatRefusesPreviousMarker(t *testing.T) {
 	f := currentFamilySetup(t)
 	ctx := context.Background()
-	if postgres.CurrentHostedSchemaVersion != 29 {
+	if postgres.CurrentHostedSchemaVersion != 30 {
 		t.Fatal("count proof baseline did not advance its format")
 	}
 	if e := f.store.Migrate(ctx); e != nil {
