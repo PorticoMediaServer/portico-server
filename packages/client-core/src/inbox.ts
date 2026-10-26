@@ -157,7 +157,7 @@ export class InboxService{
   // listener woken by the optimistic patch cannot dispatch a second write.
   const flight=this.begin([{action,ids:[...ids]}]);
   if(!flight)return;
-  const before=this.state,chosen=new Set(ids),now=Date.now();
+  const before=this.state,chosen=new Set(flight.intent.operations[0].ids),now=Date.now();
   const next=before.items.map(n=>!chosen.has(n.id)?n:action==='read'?{...n,read:true,readAt:n.readAt??now}:action==='unread'?{...n,read:false,readAt:null}:action==='archive'?{...n,archived:true,archivedAt:now}:{...n,archived:false,archivedAt:null});
   this.publish({items:this.visible(next),error:undefined});
   await this.dispatch(flight,before);
