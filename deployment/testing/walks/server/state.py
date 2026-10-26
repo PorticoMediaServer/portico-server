@@ -280,14 +280,31 @@ def _prime_magazine_issues(client, token, installation, libraries):
         if value != 'magazine':
             raise StateError('magazine-type-missing')
         deadline = time.monotonic() + 60
+        latest = None
         while time.monotonic() < deadline:
-            periodicals = _call(client, 'GET', '/v1/libraries/' + segment(library) + '/reading/periodicals',
-                                query={'publicationType': 'magazine', 'limit': 5},
-                                token=token, installation=installation)
+            try:
+                remaining = max(0.1, deadline - time.monotonic())
+                periodicals = _call(client, 'GET', '/v1/libraries/' + segment(library) + '/reading/periodicals',
+                                    query={'publicationType': 'magazine', 'limit': 5},
+                                    token=token, installation=installation,
+                                    timeout=min(45.0, remaining))
+            except StateError as error:
+                # The captured 412 is the route's revision_mismatch class; the
+                # retained receipt has no body or internal branch, so its cause
+                # stays unassigned. Retry only that closed cause inside the same
+                # wait, and remember it only while it is the latest observation.
+                if error.code == 'api-http' and error.status == 412:
+                    latest = ('changed', error)
+                    time.sleep(2)
+                    continue
+                raise
             groups = periodicals.get('groups') if isinstance(periodicals, dict) else None
             if isinstance(groups, list) and groups:
                 return len(groups)
+            latest = ('empty', None)
             time.sleep(2)
+        if latest is not None and latest[0] == 'changed':
+            raise latest[1]
         raise StateError('magazine-group-missing')
     finally:
         if isinstance(session, str) and session:

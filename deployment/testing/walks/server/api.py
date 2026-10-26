@@ -26,7 +26,7 @@ class Client:
         self._timeout = timeout
 
     def call(self, method, path, body=None, token=None, installation=None, origin=None,
-             expect=(200,), limit=_MAX, query=None):
+             expect=(200,), limit=_MAX, query=None, timeout=None):
         if method not in ('GET', 'POST', 'PATCH', 'PUT', 'DELETE'):
             raise ApiError('api-method')
         if not isinstance(path, str) or not _PATH.fullmatch(path) or '//' in path or '..' in path.split('/'):
@@ -43,7 +43,8 @@ class Client:
         if body is not None:
             payload = json.dumps(body, separators=(',', ':')).encode()
             headers['Content-Type'] = 'application/json'
-        connection = http.client.HTTPConnection('127.0.0.1', self._port, timeout=self._timeout)
+        request_timeout = self._timeout if timeout is None else max(0.1, min(self._timeout, timeout))
+        connection = http.client.HTTPConnection('127.0.0.1', self._port, timeout=request_timeout)
         try:
             connection.request(method, target, body=payload, headers=headers)
             response = connection.getresponse()
