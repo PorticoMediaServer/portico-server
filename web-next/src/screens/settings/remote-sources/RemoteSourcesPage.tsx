@@ -19,6 +19,7 @@ import {RemoteFolderPicker} from './RemoteFolderPicker';
 import {ReadingChoices, presetHint} from './ReadingChoices';
 import {SourceAdvancedRows} from './SourceAdvancedRows';
 import {ProgramPicker} from './ProgramPicker';
+import {SourceReadingDialog} from './SourceReadingDialog';
 import {useOwnedResource} from './resources';
 import {AnalysisConsentDraft, ProfileAdmission, type HeldProfile} from './profile-admission';
 
@@ -260,7 +261,7 @@ function RemoteSourcesLoaded({api, serverId, viewerId, isCurrent, reportError, o
     {managing && (managing.kind === 'rclone'
       ? <ManageRcloneDialog key={managing.id} service={service} source={managing} isCurrent={isCurrent} reportError={reportError} onClose={() => setManaging(undefined)} onRemoved={() => setManaging(undefined)}/>
       : <ManageSourceDialog key={managing.id} service={service} source={managing} api={api} serverId={serverId} viewerId={viewerId} isCurrent={isCurrent} reportError={reportError} onClose={() => setManaging(undefined)} onRemoved={() => setManaging(undefined)}/>)}
-    {reading && <SourceReadingDialog key={`${reading.id}:${reading.generation}`} service={service} source={reading} isCurrent={isCurrent} reportError={reportError} onClose={() => setReading(undefined)}/>}
+    {reading && <SourceReadingDialog key={`${reading.id}:${reading.generation}`} service={service} source={reading} isCurrent={isCurrent} reportError={reportError} onClose={() => setReading(undefined)} errorText={remoteErrorText} isAuthFailure={authFailure}/>}
     {snapshot.loading && sources.length > 0 && <Button size="xs" variant="text" onClick={refresh}>{t('next.remoteSources.refresh')}</Button>}
   </div>;
 }
@@ -1758,72 +1759,5 @@ function ManageRcloneDialog({service, source, isCurrent, reportError, onClose, o
       </>}
     </section>
 
-  </Dialog>;
-}
-
-/** Reading applies to the exact listed source; no credential or connection mutation. */
-function SourceReadingDialog({service, source, isCurrent, reportError, onClose}: Readonly<{
-  service: RemoteSourceService; source: RemoteSource; isCurrent: () => boolean;
-  reportError: (error: unknown) => void; onClose: () => void;
-}>) {
-  const admission = useProfileAdmission({service, source, isCurrent});
-  const held = admission.held;
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-  useLayoutEffect(() => {setBusy(false);}, [admission.token]);
-  const scope = useMemo(() => ({service, source, isCurrent}), [service, source, isCurrent]);
-  const token = useRef<object | null>(scope);
-  const profileFlight = useRef<object | undefined>(undefined);
-  const state = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
-  const listed = useCallback(() => service.getSnapshot().sources.some(row => row === source), [service, source]);
-  const current = useCallback((captured: object | null) => captured !== null && token.current === captured && isCurrent() && listed(), [isCurrent, listed]);
-  const close = () => {if (!admission.opening() || token.current !== scope || !isCurrent()) return;admission.retire();token.current = null;onClose();};
-  useLayoutEffect(() => {
-    const captured = scope;token.current = captured;
-    return () => {if (token.current === captured) token.current = null;};
-  }, [scope]);
-  useEffect(() => {
-    const captured = scope, exact = admission.token;
-    if (!current(captured) || !admission.admitted || !exact) return;
-    void service.readProfile(source.id, String(source.generation), () => current(captured) && admission.current()).then(next => {
-      if (!current(captured) || !admission.current() || next.sourceId !== source.id || next.generation !== String(source.generation)) return;
-      admission.setHeld({token: exact, profile: next, consent: next.values.allowAdvancedMediaAnalysis,
-        values: next.saved ? readValuesWithoutConsent(next.values) : withLegacyWholeFileReads(sourceReadPreset('list'), next.values.wholeFileReads)});
-    }).catch(value => {
-      if (!current(captured) || !admission.current()) return;
-      if (authFailure(value)) {token.current = null;reportError(value);} else setError(remoteErrorText(value));
-    });
-  }, [service, source, scope, current, reportError, admission.admitted, admission.token]);
-  const save = async () => {
-    const captured = scope, exact = admission.token, snapshot = held;
-    if (!current(captured) || !exact || !snapshot || snapshot.token !== exact || state.busy || state.ambiguous || !admission.holds(snapshot) || profileFlight.current) return;
-    const claim = admission.begin(snapshot);if (!claim) return;
-    profileFlight.current = claim;
-    const owns = () => current(captured) && admission.owns(claim) && admission.holds(snapshot);
-    setBusy(true);setError('');
-    try {
-      await service.saveProfile(snapshot.profile, readValuesWithConsent(snapshot.values, snapshot.consent, snapshot.consentDirty), owns);
-      if (owns()) close();
-    } catch (value) {
-      if (!owns()) return;
-      if (authFailure(value)) {token.current = null;reportError(value);}
-      else if (refreshFailure(value)) close();
-      else setError(remoteErrorText(value));
-    } finally {if (profileFlight.current === claim) {profileFlight.current = undefined;if (admission.finish(claim) && current(captured)) setBusy(false);}}
-  };
-  const disabled = busy || state.busy || state.ambiguous || !held || !listed();
-  return <Dialog open title={source.name} description={t('next.remoteSources.reading')} onOpenChange={open => {if (!open) close();}}
-    footer={<><Button size="compact" variant="glass" onClick={close}>{t('action.cancel')}</Button><Button size="compact" variant="primary" disabled={disabled} onClick={() => void save()}>{t('next.remoteSources.save')}</Button></>}>
-    {error && <p className={styles.error} role="alert">{error}</p>}
-    {!held && !error && <p className={styles.muted} role="status">{t('next.remoteSources.loading')}</p>}
-    {held && <fieldset disabled={disabled} className={styles.readingFields}>
-      <ReadingChoices values={held.values} origin={source.origin} rangeSupport={source.rangeSupport} disabled={disabled} onChange={next => admission.setHeld(current => current && current.token === held.token ? {...current, values: withLegacyWholeFileReads(next, current.values.wholeFileReads)} : current)}/>
-      <div className={styles.limits}>
-        <SettingNumber label={t('next.remoteSources.connections')} value={held.values.connections} min={1} max={32} unit={t('next.remoteSources.atOnce')} disabled={disabled} onCommit={value => {if (value !== null && held) admission.setHeld(current => current && current.token === held.token ? {...current, values: {...current.values, connections: value}} : current);}}/>
-        <SettingNumber label={t('next.remoteSources.requestsPerSecond')} value={held.values.requestsPerSecond} min={1} max={50} unit={t('next.remoteSources.aSecond')} disabled={disabled} onCommit={value => {if (value !== null && held) admission.setHeld(current => current && current.token === held.token ? {...current, values: {...current.values, requestsPerSecond: value}} : current);}}/>
-        <SettingNumber label={t('next.remoteSources.downloadSpeed')} value={held.values.bytesPerSecond ? held.values.bytesPerSecond / 1_000_000 : null} min={1} max={1000} optional unit={t('next.remoteSources.megabytesPerSecond')} disabled={disabled} onCommit={value => {if (held) admission.setHeld(current => current && current.token === held.token ? {...current, values: {...current.values, bytesPerSecond: value === null ? 0 : Math.round(value) * 1_000_000}} : current);}}/>
-      </div>
-      <AnalysisConsent consent={held.consent} disabled={disabled} onChange={value => {if (held) admission.setHeld(current => current && current.token === held.token ? {...current, consent: value, consentDirty: true} : current);}}/>
-    </fieldset>}
   </Dialog>;
 }
