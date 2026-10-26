@@ -16,6 +16,7 @@ import {Icon} from '../../kit/Icon';
 import {SelectionCircle} from '../../kit/selection';
 import type {ShellArtwork} from '../../shell/artwork';
 import {BrowseEntryCard, type BrowseItemActions} from './EntryCard';
+import {resultArrival, resultWitness, type ResultWitness} from './result-arrival';
 import type {BrowseController, BrowseMember} from './controller';
 import styles from './browse.module.css';
 
@@ -65,6 +66,24 @@ export function BrowseResults(props: BrowseResultsProps) {
   const [size, setSize] = useState({width: 0, grid: 0, height: 600}), [visible, setVisible] = useState({first: -1, last: -1});
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const snapshot = useSyncExternalStore(controller.collection.subscribe, controller.collection.getSnapshot, controller.collection.getSnapshot);
+  // The authored result crossfade runs on the accepted collection witness only:
+  // the grid is never remounted, so cards, focus, scroll and callbacks keep their
+  // original nodes. A still-running paint retargets from its current opacity.
+  const arrival = useRef<Animation | undefined>(undefined), witness = useRef<ResultWitness | undefined>(undefined);
+  useLayoutEffect(() => {
+    const previous = witness.current;
+    witness.current = resultWitness(snapshot);
+    const element = root.current;
+    if (!element) return;
+    const paint = resultArrival(previous, witness.current, props.reducedMotion);
+    if (!paint) return;
+    const opacity = Number.parseFloat(getComputedStyle(element).opacity), from = Number.isFinite(opacity) ? opacity : 1;
+    arrival.current?.cancel();
+    const animation = element.animate([{opacity: from === 1 ? 0 : from}, {opacity: 1}], {duration: paint.durationMs, easing: paint.easing, fill: 'none'});
+    arrival.current = animation;
+    animation.onfinish = () => {if (arrival.current === animation) {arrival.current = undefined;element.style.opacity = '';}};
+  }, [snapshot, props.reducedMotion]);
+  useLayoutEffect(() => () => {arrival.current?.cancel();arrival.current = undefined;}, []);
   const failed = snapshot.status === 'error';
   useLayoutEffect(() => {
     const element = root.current; if (!element) return;
