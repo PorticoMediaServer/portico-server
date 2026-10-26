@@ -23,7 +23,7 @@ button.tile:focus-visible { outline: 3px solid var(--color-focus); outline-offse
 .big b { font-size: 32px; font-weight: 800; }
 .big span { color: var(--color-text-tertiary); font-size: 13px; }
 .detailSegment { margin: 14px 18px 0; }
-.detailMessage { margin: 18px; color: var(--color-text-secondary); font-size: 13px; }
+.detailMessage { margin: 18px; color: var(--color-text-secondary); font-size: 13px; overflow-wrap: anywhere; }
 .chart { margin: 14px 18px 0; position: relative; height: 170px; padding-left: 38px; }
 .chartPlot { position: relative; width: 100%; height: 100%; }
 .chartPlot svg { width: 100%; height: 100%; overflow: visible; display: block; }

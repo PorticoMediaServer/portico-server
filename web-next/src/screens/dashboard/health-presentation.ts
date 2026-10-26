@@ -30,7 +30,9 @@ function viewerTraffic(reading?: TelemetryReading): Pick<HealthTile, 'value' | '
     details: details([h.status === 'limited' ? h.detail : undefined, a.status === 'limited' ? a.detail : undefined])};
 }
 
-/** Unknown points invalidate the whole history; measured current zero remains visible. */
+/** Unknown returned points invalidate the whole history; measured current zero remains visible.
+ * The parser may discard malformed raw points or details before this boundary;
+ * this check cannot establish completeness of the original raw series. */
 export function healthTiles(reading?: TelemetryReading): readonly HealthTile[] {
   return LOAD_TILES.flatMap<HealthTile>(tile => {
     if (tile.metric === 'netOut') {
