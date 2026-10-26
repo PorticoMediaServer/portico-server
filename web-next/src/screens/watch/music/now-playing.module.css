@@ -44,16 +44,16 @@
   .big { width: 62px; height: 62px; }
 }
 
-/* Motion 2.5: the drawn contents appear in three steps, 60 ms apart, 180 each.
-   Pure paint only: no clock, state or lifecycle is added by these rules. */
-@keyframes music-rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-@keyframes music-fade { from { opacity: 0; } }
-.riseTop { animation: music-rise var(--motion-standard) var(--ease-out) both; }
-.riseMain { animation: music-rise var(--motion-standard) var(--ease-out) 60ms both; }
-.riseSide { animation: music-rise var(--motion-standard) var(--ease-out) 120ms both; }
+/* Motion 2.5 (1532-34, 2565-87): the three drawn content groups fade in, 60 ms
+   apart, 180 each. Fade only - nothing rises, and the static cover never moves.
+   Pure paint: no clock, state or lifecycle is added by these rules. */
+@keyframes music-fade { from { opacity: 0; } to { opacity: 1; } }
+.fade1 { animation: music-fade var(--motion-standard) var(--ease-out) both; }
+.fade2 { animation: music-fade var(--motion-standard) var(--ease-out) 60ms both; }
+.fade3 { animation: music-fade var(--motion-standard) var(--ease-out) 120ms both; }
 @media (prefers-reduced-motion: reduce) {
-  .riseTop, .riseMain, .riseSide { animation: music-fade var(--motion-reduced) linear both; }
+  .fade1, .fade2, .fade3 { animation: music-fade var(--motion-reduced) linear both; }
 }
-[data-reduce-motion="true"] .riseTop,
-[data-reduce-motion="true"] .riseMain,
-[data-reduce-motion="true"] .riseSide { animation: music-fade var(--motion-reduced) linear both; }
+[data-reduce-motion="true"] .fade1,
+[data-reduce-motion="true"] .fade2,
+[data-reduce-motion="true"] .fade3 { animation: music-fade var(--motion-reduced) linear both; }

@@ -11,7 +11,7 @@ test('the frame interpolates only the rectangles the owner measured', () => {
   assert.deepEqual(expansionFrame(dock, player, 1)?.rect, player);
   const middle = expansionFrame(dock, player, 0.5);
   assert.deepEqual(middle?.rect, {left: 70, top: 380, right: 362, bottom: 672});
-  assert.equal(middle?.opacity, 0.5);
+  assert.equal(middle?.coverOpacity, 1, 'the cover is already handed off, never faded by progress');
 });
 
 test('no admitted rectangle and no finite progress means no invented frame', () => {
@@ -22,11 +22,18 @@ test('no admitted rectangle and no finite progress means no invented frame', () 
   assert.equal(expansionFrame(dock, player, Number.POSITIVE_INFINITY), undefined);
 });
 
+test('the cover hands off at the first visible progress and never fades in', () => {
+  assert.equal(expansionFrame(dock, player, 0)?.coverOpacity, 0, 'before any progress the dock art owns the slot');
+  assert.equal(expansionFrame(dock, player, 0.001)?.coverOpacity, 0, 'the handoff starts only after zero');
+  assert.equal(expansionFrame(dock, player, 0.002)?.coverOpacity, 1);
+  assert.equal(expansionFrame(dock, player, 1)?.coverOpacity, 1);
+});
+
 test('progress reverses from the current frame without any new state', () => {
   const forward = expansionFrame(dock, player, 0.8)!;
   const back = expansionFrame(dock, player, 0.2)!;
   assert.ok(forward.rect.left > back.rect.left);
-  assert.ok(forward.opacity > back.opacity);
+  assert.equal(back.coverOpacity, 1, 'a reversal keeps the handed-off cover opaque');
   assert.deepEqual(expansionFrame(dock, player, 1.4)!.rect, player, 'clamped, never extrapolated');
   assert.deepEqual(expansionFrame(dock, player, -0.2)!.rect, dock);
 });

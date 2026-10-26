@@ -43,7 +43,7 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
   const notice = code ? {code, sequence: snapshot.sequence} : undefined;
   const seek = (seconds: number) => { const value = watchSeek(snapshot, seconds); if (value !== null) send({kind: 'seek', seconds: value}); };
   return <section className={styles.frame} aria-label={t('next.music.nowPlaying')} data-watch-music>
-    <header className={`${styles.top} ${styles.riseTop}`}>
+    <header className={styles.top}>
       <button type="button" className={styles.round} aria-label={t('player.minimize')} onClick={onCollapse}><Icon name="i-down" size={22} /></button>
       <span className={styles.from}>{t('next.music.playingFrom', {source: from})}</span>
       <ListeningNotice notice={notice} paused={snapshot.playback.intent === 'paused'}
@@ -54,15 +54,15 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
       {can('pause') || can('play') ? <button type="button" className={styles.glass} onClick={() => send({kind: presentation.playing ? 'pause' : 'play'})}>
         <Icon name={presentation.playing ? 'i-pause' : 'i-play'} size={18} />{presentation.playing ? t('next.dock.pause') : t('next.dock.play')}</button> : null}
     </header>
-    <div className={`${styles.main} ${styles.riseMain}`}>
+    <div className={styles.main}>
       <div className={styles.cover}><Artwork source={artworkSource} alt={identity.title} /></div>
       <div className={styles.info}>
-        <div><h1>{identity.title}</h1><p>{artist}</p></div>
+        <div className={styles.fade1}><h1>{identity.title}</h1><p>{artist}</p></div>
         {signal && <div className={styles.signal}><SignalLine model={signal} translate={t} layout={phone ? 'phone' : 'desktop'}
           ref={signalAnchor} aria-haspopup="dialog" aria-expanded={signalOpen} onClick={() => setSignalOpen(true)} />
           <SignalPath model={signal} translate={t} locale={environment.locale} layout={phone ? 'phone' : 'desktop'}
             open={signalOpen} onOpenChange={setSignalOpen} anchorRef={signalAnchor} /></div>}
-        <div className={styles.scrub}>
+        <div className={`${styles.scrub} ${styles.fade2}`}>
           <span>{watchClock(at)}</span>
           <input type="range" className={styles.track} min={bounds?.start ?? 0} max={bounds?.end ?? Math.max(duration, 1)} step={.1}
             value={Math.min(bounds?.end ?? duration, Math.max(bounds?.start ?? 0, at))} disabled={!canSeek}
@@ -70,22 +70,22 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
             onChange={event => { const value = event.currentTarget.valueAsNumber; if (Number.isFinite(value)) seek(value); }} />
           <span>{watchClock(duration)}</span>
         </div>
-        <div className={styles.controls}>
+        <div className={`${styles.controls} ${styles.fade2}`}>
           <button type="button" className={styles.ctl} aria-label={t('next.dock.previous')} disabled={!can('previous')} onClick={() => send({kind: 'previous'})}><Icon name="i-prev" size={24} /></button>
           <button type="button" className={styles.big} aria-label={presentation.playing ? t('next.dock.pause') : t('next.dock.play')} disabled={!can(presentation.playing ? 'pause' : 'play')}
             onClick={() => send({kind: presentation.playing ? 'pause' : 'play'})}><Icon name={presentation.playing ? 'i-pause' : 'i-play'} size={28} /></button>
           <button type="button" className={styles.ctl} aria-label={t('next.dock.next')} disabled={!can('next')} onClick={() => send({kind: 'next'})}><Icon name="i-next" size={24} /></button>
         </div>
-        {can('volume') && <div className={styles.volume}><button type="button" className={styles.ctl} aria-label={t(presentation.muted ? 'player.unmute' : 'player.mute')} onClick={() => send({kind: 'mute'})}><Icon name="i-vol" size={20} /></button>
+        {can('volume') && <div className={`${styles.volume} ${styles.fade2}`}><button type="button" className={styles.ctl} aria-label={t(presentation.muted ? 'player.unmute' : 'player.mute')} onClick={() => send({kind: 'mute'})}><Icon name="i-vol" size={20} /></button>
           <Slider min={0} max={1} step={.01} value={presentation.muted ? 0 : presentation.volume} aria-label={t('player.volume')} onValueChange={volume => send({kind: 'volume', volume})} /></div>}
       </div>
     </div>
-    <aside className={`${styles.side} ${styles.riseSide}`} aria-label={t('next.music.upNext')}>
+    <aside className={styles.side} aria-label={t('next.music.upNext')}>
         <h2>{t('next.music.upNext')}</h2>
         <p className={styles.section}>{t('next.music.nowPlaying')}</p>
         <div className={styles.queueRow}><span className={styles.eq} aria-hidden="true"><i /><i /><i /></span><span><b>{identity.title}</b><small>{artist}</small></span><span className={styles.duration}>{watchClock(duration)}</span></div>
-        {neighbours.next && <><p className={styles.section}>{t('next.dock.next')}</p>
-          <div className={styles.queueRow}><span><b>{neighbours.next}</b></span></div></>}
+        {neighbours.next && <div className={styles.fade3}><p className={styles.section}>{t('next.dock.next')}</p>
+          <div className={styles.queueRow}><span><b>{neighbours.next}</b></span></div></div>}
     </aside>
   </section>;
 }

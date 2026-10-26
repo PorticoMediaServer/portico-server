@@ -19,8 +19,11 @@ export type ExpansionFrame = Readonly<{
   rect: PaintRect;
   /** 0..1, the same progress the owner passed. */
   progress: number;
-  /** Opacity follows progress; it is never a second source of truth. */
-  opacity: number;
+  /**
+   * The cover hands off from the dock artwork: it is already opaque as soon as the
+   * owner's progress is past zero. It is never faded in proportion to progress.
+   */
+  coverOpacity: 0 | 1;
 }>;
 
 const CONTENT_STEPS = 3;
@@ -52,7 +55,7 @@ export function expansionFrame(source: PaintRect | null | undefined, target: Pai
       bottom: interpolate(source.bottom, target.bottom, clamped),
     },
     progress: clamped,
-    opacity: clamped,
+    coverOpacity: clamped > 0.001 ? 1 : 0,
   };
 }
 
@@ -63,7 +66,7 @@ export function contentStep(index: number, durationMs = STEP_DURATION_MS, gapMs 
   return Object.freeze({index, delayMs: index * gapMs, durationMs});
 }
 
-/** Reduce motion: the same settled frame, opacity only, 160 ms, no geometry. */
+/** Reduce motion content cross-fade: opacity only, 160 ms, no geometry and no stagger. */
 export function reducedFrame(progress: number): Readonly<{opacity: number; durationMs: number}> | undefined {
   if (!finite(progress)) return undefined;
   return {opacity: Math.min(1, Math.max(0, progress)), durationMs: REDUCED_DURATION_MS};
