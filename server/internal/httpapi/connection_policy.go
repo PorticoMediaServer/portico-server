@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/medialimits"
 	"portico.local/server/internal/networkpolicy"
@@ -89,12 +90,25 @@ func (d Dependencies) connectionSetting(ctx context.Context) (*connectionSetting
 	if setting := d.connectionPolicy.setting.Load(); setting != nil {
 		return setting, nil
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	d.connectionPolicy.mu.Lock()
 	defer d.connectionPolicy.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if setting := d.connectionPolicy.setting.Load(); setting != nil {
 		return setting, nil
 	}
-	document, err := d.settingsDocument(ctx)
+	// Request-entry policy uses stored rows only. The owner settings projection
+	// also validates media tools, which must not serialize cold API requests.
+	var document operations.SettingsDocument
+	err := dbwork.WithReadSnapshot(ctx, d.Console.DB, func(ctx context.Context) error {
+		var err error
+		document, err = d.Console.SettingsTx(ctx, dbwork.Snapshot(ctx), operations.AllowServerScope)
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
