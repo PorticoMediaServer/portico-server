@@ -8,7 +8,37 @@ import (
 	"portico.local/hosted/internal/serverreturn"
 )
 
+type SecurityReturnStartResponse struct {
+	IdentityStart
+	postgres.SecurityReturnDisplay
+	Provider string `json:"provider"`
+}
+
 func (h *Handler) securityReturnRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("POST /v1/identity/transactions/{id}/cancel-security", func(w http.ResponseWriter, r *http.Request) {
+		if !h.allowAuth(r) {
+			failure(w, identity.ErrRateLimited)
+			return
+		}
+		binding, ok := h.continuation(w, r, false)
+		if !ok {
+			return
+		}
+		if r.URL.RawQuery != "" || r.Header.Get("Origin") != h.AccountOrigin || r.Header.Get("X-Portico-Continuation") != "" {
+			failure(w, identity.ErrCredentials)
+			return
+		}
+		var q struct{}
+		if !decode(w, r, &q) {
+			return
+		}
+		if e := h.OIDC.CancelSecurityTransaction(r.Context(), r.PathValue("id"), binding); e != nil {
+			failure(w, e)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
 	mux.HandleFunc("POST /v1/account/security-return-intents/{id}/cancel", h.account(func(w http.ResponseWriter, r *http.Request, _ identity.Viewer) {
 		if r.URL.RawQuery != "" {
 			failure(w, identity.ErrInvalid)
@@ -85,10 +115,15 @@ func (h *Handler) securityReturnRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
+		display, e := h.OIDC.SecurityReturnDisplay(r.Context(), r.PathValue("id"), v.ID)
+		if e != nil {
+			failure(w, e)
+			return
+		}
 		if v.Provider == "apple" {
 			setAppleCallbackCookie(w, binding)
 		}
-		write(w, 200, IdentityStart{AuthorizationURL: location, ExpiresAt: v.Expires, Mode: v.Mode, TransactionID: v.ID})
+		write(w, 200, SecurityReturnStartResponse{IdentityStart: IdentityStart{AuthorizationURL: location, ExpiresAt: v.Expires, Mode: v.Mode, TransactionID: v.ID}, SecurityReturnDisplay: display, Provider: v.Provider})
 	})
 	mux.HandleFunc("POST /v1/identity/transactions/{id}/security-return", func(w http.ResponseWriter, r *http.Request) {
 		if !h.allowAuth(r) {

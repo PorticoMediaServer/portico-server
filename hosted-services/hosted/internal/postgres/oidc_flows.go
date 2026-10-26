@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -21,6 +22,7 @@ type OIDCStartInput struct {
 	SessionMode               string                             `json:"sessionMode"`
 	RequestID                 string                             `json:"requestId"`
 	Intent                    *identity.SecurityIntent           `json:"intent,omitempty"`
+	ExpectedIdentity          *ExpectedProviderIdentity          `json:"expectedIdentity,omitempty"`
 	Proof                     string                             `json:"proof,omitempty"`
 	SecurityReturn            *serverreturn.SecurityReturnStart  `json:"-"`
 	SecurityReturnExpectation *identity.CurrentFamilyExpectation `json:"-"`
@@ -62,9 +64,33 @@ func cleanProviderName(name string) string {
 }
 func (o *OIDCLogin) StartFlow(ctx context.Context, provider, binding, access string, q OIDCStartInput) (OIDCView, string, string, error) {
 	var v OIDCView
+
+	var wantedIdentity string
+	var wantedRevision int64
+	if q.ExpectedIdentity != nil {
+		captured := *q.ExpectedIdentity
+		q.ExpectedIdentity = &captured
+		if q.Mode != "reauthenticate" || q.SessionMode != "browser" || q.Intent == nil || !serverreturn.CredentialPurpose(q.Intent.Purpose, q.Intent.Target) || len(captured.ID) < 1 || len(captured.ID) > 128 || captured.Revision < 1 {
+			return v, "", "", identity.ErrInvalid
+		}
+		wantedIdentity, wantedRevision = captured.ID, captured.Revision
+	}
 	if q.SecurityReturn != nil {
 		captured := *q.SecurityReturn
 		q.SecurityReturn = &captured
+
+		var selected struct {
+			ID       string `json:"providerIdentityId"`
+			Revision int64  `json:"providerRevision,string"`
+		}
+		raw, e := base64.RawURLEncoding.Strict().DecodeString(captured.Context.Payload)
+		if e != nil || len(raw) > 6144 || json.Unmarshal(raw, &selected) != nil {
+			return v, "", "", identity.ErrInvalid
+		}
+		if wantedIdentity != "" && (wantedIdentity != selected.ID || wantedRevision != selected.Revision) {
+			return v, "", "", identity.ErrInvalid
+		}
+		wantedIdentity, wantedRevision = selected.ID, selected.Revision
 		if q.SecurityReturnExpectation == nil || q.SecurityReturnIntentID == "" || !captured.Valid() || q.Mode != "reauthenticate" || q.SessionMode != "browser" || q.NativeApple || q.Completion != "" || q.Proof != "" || q.Intent == nil || !serverreturn.CredentialPurpose(q.Intent.Purpose, q.Intent.Target) {
 			return v, "", "", identity.ErrInvalid
 		}
@@ -165,8 +191,11 @@ func (o *OIDCLogin) StartFlow(ctx context.Context, provider, binding, access str
 		if q.Mode == "reauthenticate" {
 			var id string
 			var rev int64
-			e = tx.QueryRowContext(ctx, `SELECT id,revision FROM account_external_identities WHERE account_id=$1 AND provider=$2 AND revoked_at IS NULL ORDER BY id LIMIT 1 FOR SHARE`, expected.AccountID, provider).Scan(&id, &rev)
+			e = tx.QueryRowContext(ctx, `SELECT id,revision FROM account_external_identities WHERE account_id=$1 AND provider=$2 AND ($3='' OR id=$3) AND revoked_at IS NULL ORDER BY id LIMIT 1 FOR SHARE`, expected.AccountID, provider, wantedIdentity).Scan(&id, &rev)
 			if e != nil {
+				return v, "", "", identity.ErrRecentAuth
+			}
+			if wantedIdentity != "" && (id != wantedIdentity || rev != wantedRevision) {
 				return v, "", "", identity.ErrRecentAuth
 			}
 			link = id

@@ -119,9 +119,10 @@ func Definitions() []apikit.Definition {
 		route[httpapi.MFACompleteRequest, identity.Session]("POST", "/v1/identity/mfa/complete", "identity_mfa_complete", "Answer a sign-in MFA challenge.", Public, apikit.ScopeSession, 200).lane(security),
 
 		// A closed provider Security return never creates a sign-in grant.
-		route[NoBody, NoBody]("POST", "/v1/account/security-return-intents/{id}/cancel", "account_security_return_cancel", "Cancel only the original server Settings Security intent.", AccountSession, apikit.ScopeSession, 204).lane(security),
-		route[serverreturn.SecurityReturnStart, postgres.SecurityReturnIntent]("POST", "/v1/account/security-return-intents", "account_security_return_prepare", "Register an original server Settings Security intent.", AccountSession, apikit.ScopeSession, 201).lane(security),
-		route[httpapi.RequestIDRequest, httpapi.IdentityStart]("POST", "/v1/account/security-return-intents/{id}/start", "account_security_return_start", "Reauthenticate the original provider from the fixed Hosted origin.", Public, apikit.ScopeSession, 200).lane(security),
+		route[NoBody, NoBody]("POST", "/v1/identity/transactions/{id}/cancel-security", "identity_security_cancel", "Cancel only an original browser credential reauthentication.", Public, apikit.ScopeSession, 204).lane(security),
+		route[NoBody, NoBody]("POST", "/v1/account/security-return-intents/{id}/cancel", "account_security_return_cancel", "Cancel only the original Account Settings Security intent.", AccountSession, apikit.ScopeSession, 204).lane(security),
+		route[serverreturn.SecurityReturnStart, postgres.SecurityReturnIntent]("POST", "/v1/account/security-return-intents", "account_security_return_prepare", "Register an original Account Settings Security intent.", AccountSession, apikit.ScopeSession, 201).lane(security),
+		route[httpapi.RequestIDRequest, httpapi.SecurityReturnStartResponse]("POST", "/v1/account/security-return-intents/{id}/start", "account_security_return_start", "Reauthenticate the original provider from the fixed Hosted origin.", Public, apikit.ScopeSession, 200).lane(security),
 		route[NoBody, serverreturn.Return]("POST", "/v1/identity/transactions/{id}/security-return", "identity_security_return", "Return the original verified Security transaction to its registered server.", Public, apikit.ScopeSession, 200).lane(security),
 		route[postgres.SecurityReturnCompleteInput, postgres.OIDCCompletion]("POST", "/v1/account/security-returns/{id}/complete", "account_security_return_complete", "Complete only the original confirmed provider Security continuation.", AccountSession, apikit.ScopeSession, 200).lane(security),
 		// Provider sign-in transactions.
