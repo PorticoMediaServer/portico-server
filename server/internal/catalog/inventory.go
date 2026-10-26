@@ -1028,11 +1028,18 @@ func (s *Service) CommitInventoryNaming(ctx context.Context, job, object, revisi
 	var asset, relative, incarnation, unsupported, objectState string
 	var size, modified int64
 	var available int
-	if err = tx.QueryRowContext(ctx, `SELECT o.asset_id,o.relative_path,o.size,o.modified_ns,o.root_incarnation,o.unsupported_reason,o.state,a.available FROM inventory_objects o JOIN catalog_assets a ON a.token=o.asset_id WHERE o.id=? AND o.source_id=? AND o.revision=? AND o.retired=0`, object, source.ID, revision).Scan(&asset, &relative, &size, &modified, &incarnation, &unsupported, &objectState, &available); err != nil {
+	var assetPath string
+	var assetSize, assetModified int64
+	if err = tx.QueryRowContext(ctx, `SELECT o.asset_id,o.relative_path,o.size,o.modified_ns,o.root_incarnation,o.unsupported_reason,o.state,a.available,a.path,a.size,a.modified_ns FROM inventory_objects o JOIN catalog_assets a ON a.token=o.asset_id WHERE o.id=? AND o.source_id=? AND o.revision=? AND o.retired=0`, object, source.ID, revision).Scan(&asset, &relative, &size, &modified, &incarnation, &unsupported, &objectState, &available, &assetPath, &assetSize, &assetModified); err != nil {
 		return err
 	}
 	if objectState != "available" || available != 1 || unsupported != "" || incarnation != source.Incarnation {
 		return errors.New("naming-only publication needs a live, observed, supported object")
+	}
+	// The asset must still describe the same file the object names, at the path
+	// this source resolves it to, not merely be marked available.
+	if assetSize != size || assetModified != modified || assetPath != filepath.Join(source.ResolvedPath, relative) {
+		return errors.New("naming-only publication needs the exact asset the object names")
 	}
 	if f.ObservedSize != size || f.ObservedModifiedNS != modified {
 		return errors.New("naming-only publication needs the exact observation it read")
