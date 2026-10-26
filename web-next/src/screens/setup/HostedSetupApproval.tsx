@@ -40,6 +40,15 @@ export function HostedSetupApproval({phase, serverName, address, accountName, re
       <div className={styles.btnRow}><Button variant="primary" size="hero" autoFocus loading={busy} disabled={busy} onClick={onReturn}>{t('web.claim.returnTo', {server: serverName})}</Button></div>
     </AuthStage>
   </div>;
+  // auth2d: an expired or already-answered request is its own outcome, never the review page.
+  if (phase === 'expired') return <div className={styles.host}>
+    <AuthStage service contentClassName={styles.approvalContent}>
+      <h1>{t('web.general.notConnectedBadge')}</h1>
+      <p className={styles.lede}>{t('web.claim.expired')}</p>
+      {Boolean(error) && <HostedError error={error}/>}
+      <div className={styles.btnRow}><Button variant="primary" size="hero" autoFocus onClick={onReturn}>{t('web.claim.returnTo', {server: serverName})}</Button></div>
+    </AuthStage>
+  </div>;
   if (error && !approved) return <div className={styles.host}>
     <AuthStage service contentClassName={styles.approvalContent}>
       <h1>{t('web.claim.titleGeneric')}</h1>
