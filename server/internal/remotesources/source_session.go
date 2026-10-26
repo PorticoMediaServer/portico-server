@@ -9,7 +9,9 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"portico.local/server/internal/assets"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/mediaanalysis"
 	"portico.local/server/internal/rcloneprogram"
 	"portico.local/server/internal/storage"
 )
@@ -88,8 +90,14 @@ func (s *Service) CaptureReadSourceTx(ctx context.Context, tx *sql.Tx, admission
 	if err != nil {
 		return nil, err
 	}
-	if (admission.Purpose == SourceMediaAnalysis || admission.Purpose == SourceEpisodeAutomatic || admission.Purpose == SourceEpisodeExplicit) && !profile.AllowAdvancedMediaAnalysis {
+	analysis := admission.Purpose == SourceMediaAnalysis || admission.Purpose == SourceEpisodeAutomatic || admission.Purpose == SourceEpisodeExplicit
+	if analysis && !profile.AllowAdvancedMediaAnalysis {
 		return nil, storage.ErrRemoteAnalysisDisabled
+	}
+	if analysis && assets.DiscImage(ref.Object) {
+		// Root64 acquires a remote disc only for actual Play. Analysis of owned
+		// playback bytes needs a separate exact custody adapter, never this origin.
+		return nil, mediaanalysis.ErrUnsupported
 	}
 	scan, err := readScanObservationTx(ctx, tx, ref.SourceID, ref.Object)
 	if err != nil {
