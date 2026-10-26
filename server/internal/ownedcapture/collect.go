@@ -69,7 +69,7 @@ func (s *Service) retireAndClean(ctx context.Context, id string, held bool) erro
 	row, e := sourceTx(ctx, view.Tx(), id)
 	var pins int
 	if e == nil {
-		e = view.Tx().QueryRowContext(ctx, `SELECT count(*) FROM owned_capture_reader_pins WHERE capture_id=? AND expires_ms>?`, id, time.Now().UnixMilli()).Scan(&pins)
+		pins, e = retainedCapturePinsTx(ctx, view.Tx(), id)
 	}
 	view.Rollback()
 	if e != nil {
@@ -120,7 +120,7 @@ func (s *Service) retireAndClean(ctx context.Context, id string, held bool) erro
 			return ErrCurrent
 		}
 		var active int
-		if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM owned_capture_reader_pins WHERE capture_id=? AND expires_ms>?`, id, time.Now().UnixMilli()).Scan(&active); e != nil {
+		if active, e = retainedCapturePinsTx(ctx, tx, id); e != nil {
 			return e
 		}
 		if active > 0 {
@@ -234,4 +234,20 @@ func (s *Service) Collect(ctx context.Context) error {
 		return nil
 	}
 	return next
+}
+
+// A presentation reference retains bytes/accounting, never source authority.
+// Actual retirement still cancels readers immediately. Cleanup waits only on
+// the original ready presentation deadline or that presentation's real reader
+// pins; another actor/acquisition cannot be substituted by equal bytes.
+func retainedCapturePinsTx(ctx context.Context, tx *sql.Tx, id string) (int, error) {
+	now := time.Now().UnixMilli()
+	var readers, presentations int
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM owned_capture_reader_pins WHERE capture_id=? AND expires_ms>?`, id, now).Scan(&readers); err != nil {
+		return 0, err
+	}
+	err := tx.QueryRowContext(ctx, `SELECT count(*) FROM owned_capture_presentation_refs r JOIN playback_disc_lifecycle l ON l.snapshot_id=r.snapshot_id WHERE r.capture_id=? AND (
+ (l.state IN('pending','active') AND l.sealed=1 AND l.expires_ms>? AND r.expires_ms>?)
+ OR EXISTS(SELECT 1 FROM playback_disc_reader_pins p WHERE p.snapshot_id=r.snapshot_id AND p.expires_ms>?))`, id, now, now, now).Scan(&presentations)
+	return readers + presentations, err
 }
