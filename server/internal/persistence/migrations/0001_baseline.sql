@@ -2353,8 +2353,7 @@ CREATE TABLE analysis_results (
  configuration_generation INTEGER NOT NULL, policy_revision INTEGER NOT NULL,
  stage TEXT NOT NULL, algorithm TEXT NOT NULL, evidence TEXT NOT NULL,
  tool_digest TEXT NOT NULL, duration_us INTEGER NOT NULL, summary_json TEXT NOT NULL,
- created_ms INTEGER NOT NULL, retired_ms INTEGER NOT NULL DEFAULT 0,
- CHECK(state!='active' OR sealed=1)
+ created_ms INTEGER NOT NULL, retired_ms INTEGER NOT NULL DEFAULT 0
 ) STRICT;
 CREATE TABLE analysis_heads (
  object_id TEXT NOT NULL, source_revision TEXT NOT NULL, stage TEXT NOT NULL,
@@ -9370,7 +9369,8 @@ CREATE TABLE playback_disc_lifecycle(
  state TEXT NOT NULL CHECK(state IN('pending','active','retired')),
  sealed INTEGER NOT NULL DEFAULT 0 CHECK(sealed IN(0,1)),
  created_ms INTEGER NOT NULL,expires_ms INTEGER NOT NULL CHECK(expires_ms>created_ms),
- retired_ms INTEGER NOT NULL DEFAULT 0
+ retired_ms INTEGER NOT NULL DEFAULT 0,
+ CHECK(state!='active' OR sealed=1)
 ) STRICT;
 CREATE INDEX playback_disc_lifecycle_collect ON playback_disc_lifecycle(state,expires_ms,snapshot_id);
 CREATE TABLE playback_disc_snapshot_actor(
@@ -9676,6 +9676,9 @@ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=OLD.id A
  OR EXISTS(SELECT 1 FROM playback_disc_reader_pins WHERE snapshot_id=OLD.id)
  OR EXISTS(SELECT 1 FROM owned_capture_presentation_refs WHERE snapshot_id=OLD.id)
 BEGIN SELECT RAISE(ABORT,'private disc snapshot still owns references'); END;
+CREATE TRIGGER playback_disc_lifecycle_insert BEFORE INSERT ON playback_disc_lifecycle
+WHEN NEW.state!='pending' OR NEW.sealed!=0 OR NEW.retired_ms!=0
+BEGIN SELECT RAISE(ABORT,'private disc lifecycle must begin pending and unsealed'); END;
 CREATE TRIGGER playback_disc_lifecycle_transition BEFORE UPDATE ON playback_disc_lifecycle
 WHEN NEW.snapshot_id!=OLD.snapshot_id OR NEW.created_ms!=OLD.created_ms OR NEW.expires_ms!=OLD.expires_ms
  OR NEW.sealed<OLD.sealed OR OLD.state='retired' AND NEW.state!='retired'
