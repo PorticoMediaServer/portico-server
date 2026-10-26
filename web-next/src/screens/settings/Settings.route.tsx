@@ -532,7 +532,7 @@ export function SettingsEntry() {
       },
       section: (selected, _openPanel, renderRows) => selected.section.scope === 'account' && selected.section.id === 'profile' && profiles && securityCommands
         ? <>{selected.section.groups?.map((group,index) => group.rows.some(row => row.id === 'profile.password')
-          ? <ProfileSignIn key={index} profiles={profiles} api={api} commandApi={securityCommands} signIn={identity.signIn === 'portico' ? 'portico' : 'local'} isCurrent={profileSecurityCurrent} onEnded={context.signOut} onFacts={securityFactsChanged}/>
+          ? <ProfileSignIn key={index} session={context.session} profiles={profiles} api={api} commandApi={securityCommands} signIn={identity.signIn === 'portico' ? 'portico' : 'local'} isCurrent={profileSecurityCurrent} onEnded={context.signOut} onFacts={securityFactsChanged}/>
           : <Fragment key={index}>{renderRows({groups:[group]})}</Fragment>)}{selected.section.advanced ? renderRows({advanced:selected.section.advanced}) : null}</>
         : selected.section.scope === 'server' && selected.section.id === 'signin'
         ? <SignInMoveWatch source={signIn?.ownerSwitch}>{move => <>
