@@ -61,6 +61,8 @@ export function HostedSetupApproval({phase, serverName, address, accountName, re
       <p className={styles.okline}><Icon name="i-okc" size={20}/>{t('web.claim.connectedTitle')}</p>
       <h1>{t('web.setup.youOwn', {server: serverName})}</h1>
       <p className={styles.lede}>{t('web.claim.connected', {server: serverName})} {t('web.claim.nextFirstLibrary')}</p>
+      {/* The approval stands even when the completion step failed: the same Return retries it. */}
+      {Boolean(error) && <HostedError error={error}/>}
       <div className={styles.btnRow}><Button variant="primary" size="hero" autoFocus loading={busy} disabled={busy} onClick={onReturn}>{t('web.claim.returnTo', {server: serverName})}</Button></div>
       <ServicesQuiet>{t('web.claim.signedInAs', {account: accountName})}</ServicesQuiet>
     </AuthStage>
