@@ -1,3 +1,5 @@
+import {linkAbortSignals, throwIfAborted} from './abort-lifetime.ts';
+export {linkAbortSignals, throwIfAborted} from './abort-lifetime.ts';
 export * from './reading-mark-all.ts';
 export * from './reading-reread.ts';
 export * from './reading-indexed-search.ts';
@@ -392,24 +394,32 @@ export class HttpLocalApi {
     const raw=action==='status'?undefined:JSON.stringify(body);
     if(raw!==undefined&&raw.length>2048)throw new Error('Certificate configuration is too large.');
     const token=this.token,epoch=this.certificateSessionEpoch;
-    const bounded=AbortSignal.any([signal,AbortSignal.timeout(10000)]);
+    const lifetime=linkAbortSignals([signal],10000);
+    const bounded=lifetime.signal;
+    try {
+    throwIfAborted(bounded);
     const response=await this.fetcher(this.baseUrl + routePath(action==='status'?'get_networking_certificate':action==='config'?'post_networking_certificate_config':'post_networking_certificate_retry'),{method:action==='status'?'GET':'POST',signal:bounded,redirect:'error',credentials:'omit',headers:{Accept:'application/json',...(raw===undefined?{}:{'Content-Type':'application/json'}),...(token?{Authorization:'Bearer '+token}:{})},...(raw===undefined?{}:{body:raw})});
     if(bounded.aborted||this.certificateSessionEpoch!==epoch){void response.body?.cancel().catch(()=>{});throw new Error('The server session changed.');}
     const value=await readCertificateResponse<T>(response,bounded);
     if(bounded.aborted||this.certificateSessionEpoch!==epoch)throw new Error('The server session changed.');
     return value;
+    } finally {lifetime.dispose();}
   }
   /** GET-only bounded diagnostics transport; existing request behavior is unchanged. */
   async requestBounded<T>(path:string,maxBytes:number,signal:AbortSignal):Promise<T>{
     if(!Number.isSafeInteger(maxBytes)||maxBytes<1||maxBytes>1048576)throw new Error('Invalid response byte limit.');
     if(!path.startsWith(apiRoot)||path.includes('?')||path.includes('#'))throw new Error('Use a fixed selected-server API path.');
     const token=this.token,fetcher=this.fetcher;
-    const bounded=AbortSignal.any([signal,AbortSignal.timeout(10000)]);
+    const lifetime=linkAbortSignals([signal],10000);
+    const bounded=lifetime.signal;
+    try {
+    throwIfAborted(bounded);
     const response=await fetcher(this.baseUrl+path,{method:'GET',signal:bounded,headers:{Accept:'application/json',...(token?{Authorization:'Bearer '+token}:{})}});
     if(bounded.aborted||this.token!==token){void response.body?.cancel().catch(()=>{});throw new Error('Your server session changed. Reopen support.');}
     const value=await readBoundedJson<T>(response,maxBytes,bounded);
     if(bounded.aborted||this.token!==token)throw new Error('Your server session changed. Reopen support.');
     return value;
+    } finally {lifetime.dispose();}
   }
   /** Bounded selected-server console transport, including paged reads and writes. */
   async requestConsole<T>(path:string, method:string, body:unknown, signal:AbortSignal):Promise<T>{
@@ -496,12 +506,12 @@ export class HttpLocalApi {
     const token = this.token, epoch = this.certificateSessionEpoch;
     const current = () => {if (this.token !== token || this.certificateSessionEpoch !== epoch) throw new Error('The metadata upload belongs to an old session.');};
     return withinDeadline(30000, input, async signal => {
-      current(); signal.throwIfAborted();
+      current(); throwIfAborted(signal);
       const response = await this.fetcher(this.baseUrl + path, {method: 'POST', body, signal, redirect: 'error', credentials: 'omit', referrerPolicy: 'no-referrer',
         headers: {Accept: 'application/json', ...(token ? {Authorization: `Bearer ${token}`} : {}), ...this.deliveryHeaders()}});
-      current(); signal.throwIfAborted();
+      current(); throwIfAborted(signal);
       const value = await response.json();
-      current(); signal.throwIfAborted();
+      current(); throwIfAborted(signal);
       if (!response.ok) throw new ApiError(response.status, value?.error?.code ?? value?.code ?? 'request_failed', value?.error?.message ?? 'Artwork upload failed.', false);
       return value as T;
     });

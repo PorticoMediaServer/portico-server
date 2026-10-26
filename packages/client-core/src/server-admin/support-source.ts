@@ -1,3 +1,4 @@
+import {linkAbortSignals, throwIfAborted} from '../abort-lifetime.ts';
 import {ConsoleClient, type ConsoleAPI, type SupportExport} from '../console.ts';
 import {isStatePermissionsAlert} from '../administration.ts';
 import {fixStatePermissions} from '../backups.ts';
@@ -46,10 +47,12 @@ export class SettingsSupportSource {
   constructor(transport: ConsoleAPI, private readonly serverId: string, viewerId: string, private readonly isCurrent: () => boolean, private readonly reportError?: (error:unknown)=>void, private readonly operationId:()=>string=randomId) {
     const guarded = async <T>(consoleRequest: boolean, path: string, method = 'GET', body?: unknown, signal?: AbortSignal): Promise<T> => {
       this.assertCurrent();
-      const combined = signal ? AbortSignal.any([signal, this.lifetime.signal]) : this.lifetime.signal;
-      combined.throwIfAborted();
-      const value = await (consoleRequest && transport.requestConsole ? transport.requestConsole<T>(path, method, body, combined) : transport.request<T>(path, method, body, combined));
-      this.assertCurrent();combined.throwIfAborted();return value;
+      const lifetime = linkAbortSignals([signal, this.lifetime.signal]);
+      try {
+        throwIfAborted(lifetime.signal);
+        const value = await (consoleRequest && transport.requestConsole ? transport.requestConsole<T>(path, method, body, lifetime.signal) : transport.request<T>(path, method, body, lifetime.signal));
+        this.assertCurrent();throwIfAborted(lifetime.signal);return value;
+      } finally {lifetime.dispose();}
     };
     this.transport = {request: <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => guarded<T>(false, path, method, body, signal),
       ...(transport.requestConsole ? {requestConsole: <T>(path: string, method: string, body: unknown, signal: AbortSignal) => guarded<T>(true, path, method, body, signal)} : {})};

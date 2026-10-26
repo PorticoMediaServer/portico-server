@@ -1,3 +1,4 @@
+import {throwIfAborted} from './abort-lifetime.ts';
 import {routeBody,routePath,encodedRoutePath,type RouteRequest} from '../../contracts/src/routes.ts';
 import {CodedError,unreadableServerResponse} from './server-messages.ts';
 import {currentUTCTimestamp} from './local-session.ts';
@@ -120,7 +121,7 @@ class MoveTransport {
   const abort=()=>controller.abort();if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});
   let timer:ReturnType<typeof setTimeout>|undefined;let off=()=>{};
   try{
-   controller.signal.throwIfAborted();
+   throwIfAborted(controller.signal);
    const pending=this.api.request<unknown>(path,method,body,controller.signal).then(async raw=>{
     const value=parse(raw);if(!current()){const late=grant?.(value);if(late?.kind==='signed-in')await this.options.retireLateGrant(late.session);ended();}return value;
    });

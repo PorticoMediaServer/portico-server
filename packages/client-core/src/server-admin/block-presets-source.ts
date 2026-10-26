@@ -1,3 +1,4 @@
+import {linkAbortSignals, throwIfAborted} from '../abort-lifetime.ts';
 import type {ChannelApi} from '../channel-guide.ts';
 import {browseCapabilitiesPath, parseBrowseCapabilities, validateBrowseQuery, type BrowseNode} from '../browse.ts';
 import {channelConditionFields} from '../server-admin/channel-conditions.ts';
@@ -25,6 +26,11 @@ export class BlockPresetsSource {
   private flight?:AbortController;
   private intent?:Intent;
   constructor(private readonly api:ChannelApi,private readonly serverId:string,private readonly isCurrent:()=>boolean,private readonly reportError:(error:unknown)=>void,private readonly operationId:()=>string=channelRequestID){}
+  private async request<T = unknown>(signals: readonly (AbortSignal | undefined)[], path: string, method?: string, body?: unknown): Promise<T> {
+    const lifetime = linkAbortSignals(signals);
+    try {throwIfAborted(lifetime.signal); return await this.api.request<T>(path, method, body, lifetime.signal);}
+    finally {lifetime.dispose();}
+  }
   private current(){return !this.lifetime.signal.aborted&&this.isCurrent();}
   getSnapshot=()=>this.current()?this.state:empty;
   subscribe=(listener:()=>void)=>{this.listeners.add(listener);return()=>{this.listeners.delete(listener);};};
@@ -39,7 +45,7 @@ export class BlockPresetsSource {
     try {
       if(!owns())return;
       const params=new URLSearchParams({limit:'100'});if(cursor)params.set('cursor',cursor);
-      const response=decodeGetAdminLibraryChannelsBlockPresetsResponse(await this.api.request(routePath('get_admin_library_channels_block_presets')+'?'+params,'GET',undefined,AbortSignal.any([flight.signal,this.lifetime.signal])));
+      const response=decodeGetAdminLibraryChannelsBlockPresetsResponse(await this.request([flight.signal,this.lifetime.signal], routePath('get_admin_library_channels_block_presets')+'?'+params,'GET',undefined));
       if(!owns())return;
       const page=this.checked(response) as typeof response.result;
       if(page.items.length>100||page.nextCursor.length>2048||cursor&&page.nextCursor===cursor)throw new Error('invalid_block_preset_page');
@@ -67,7 +73,7 @@ export class BlockPresetsSource {
     this.publish({busy:true,pending:intent,error:undefined});let completed=false;
     try {
       if(!owns())return false;
-      const raw=await this.api.request(intent.id?encodedRoutePath('put_admin_library_channels_block_presets_id',{id:encodeURIComponent(intent.id)}):routePath('post_admin_library_channels_block_presets'),intent.id?'PUT':'POST',intent.body,AbortSignal.any([flight.signal,this.lifetime.signal]));
+      const raw=await this.request([flight.signal,this.lifetime.signal], intent.id?encodedRoutePath('put_admin_library_channels_block_presets_id',{id:encodeURIComponent(intent.id)}):routePath('post_admin_library_channels_block_presets'),intent.id?'PUT':'POST',intent.body);
       if(!owns())return false;
       const response=intent.id?decodePutAdminLibraryChannelsBlockPresetsIdResponse(raw):decodePostAdminLibraryChannelsBlockPresetsResponse(raw),row=this.checked(response) as BlockPreset;
       const expected={...intent.body.body,days:[...intent.body.body.days].sort()};
@@ -87,7 +93,7 @@ export class BlockPresetsSource {
     try {
       if(!owns())return false;
       const query=new URLSearchParams({expectedRevision:String(record.revision),operationId});
-      const response=decodeDeleteAdminLibraryChannelsBlockPresetsIdResponse(await this.api.request(encodedRoutePath('delete_admin_library_channels_block_presets_id',{id:encodeURIComponent(record.id)})+'?'+query,'DELETE',undefined,AbortSignal.any([flight.signal,this.lifetime.signal])));
+      const response=decodeDeleteAdminLibraryChannelsBlockPresetsIdResponse(await this.request([flight.signal,this.lifetime.signal], encodedRoutePath('delete_admin_library_channels_block_presets_id',{id:encodeURIComponent(record.id)})+'?'+query,'DELETE',undefined));
       if(!owns())return false;
       const result=this.checked(response) as typeof response.result;
       if(!result.deleted||result.id!==record.id)throw new Error('invalid_block_preset_delete');completed=true;this.publish({loaded:false});
@@ -108,7 +114,7 @@ export class BlockPresetsSource {
     this.publish({busy:true,error:undefined});
     try{
       if(!owns())return;
-      const raw=await this.api.request(browseCapabilitiesPath(definition.libraryId, ''),'GET',undefined,AbortSignal.any([flight.signal,this.lifetime.signal,caller]));
+      const raw=await this.request([flight.signal,this.lifetime.signal,caller], browseCapabilitiesPath(definition.libraryId, ''),'GET',undefined);
       if(!owns())return;
       const capabilities=parseBrowseCapabilities(raw);
       if(capabilities.library.id!==definition.libraryId||!['movie','tv','anime'].includes(capabilities.library.kind))throw new Error('unsupported_block_preset_library');

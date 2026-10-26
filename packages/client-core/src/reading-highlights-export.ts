@@ -1,3 +1,4 @@
+import {linkAbortSignals} from './abort-lifetime.ts';
 import type {ReadingAnnotation, ReadingAnnotationPort} from './reading-annotations.ts';
 
 export type ReadingHighlightsFile = Readonly<{fileName: string; markdown: string}>;
@@ -14,11 +15,12 @@ const code = (text: string) => text.replace(/\r\n?/g, '\n').replace(/[\x00-\x08\
 /** Explicit current-profile/current-publication export. No persistent copy or new authority. */
 export async function collectReadingHighlights(options: ReadingHighlightsExport): Promise<ReadingHighlightsFile> {
   const {port, revision, signal, isCurrent} = options;
-  const timeout = new AbortController(), timer = setTimeout(() => timeout.abort(), 15000);
-  const combined = AbortSignal.any([signal, port.signal, timeout.signal]);
-  const check = () => {if (combined.aborted || !isCurrent() || port.manifest.canAnnotate !== true) throw new Error('reading_export_retired');};
+  let lifetime: ReturnType<typeof linkAbortSignals> | undefined;
   const title = options.title, author = options.author;
   try {
+    lifetime = linkAbortSignals([signal, port.signal], 15000);
+    const combined = lifetime.signal;
+    const check = () => {if (combined.aborted || !isCurrent() || port.manifest.canAnnotate !== true) throw new Error('reading_export_retired');};
     if (!Number.isSafeInteger(revision) || revision < 0 || title !== undefined && encoder.encode(title).length > 4096 || author !== undefined && encoder.encode(author).length > 4096) throw new Error('invalid_reading_export');
     check();
     const entries: ReadingAnnotation[] = [];
@@ -60,5 +62,5 @@ export async function collectReadingHighlights(options: ReadingHighlightsExport)
     if (confirmed.revision !== revision || confirmed.sourceId !== port.manifest.sourceId || confirmed.sourceRevision !== port.manifest.revision) throw new Error('annotation_revision_changed');
     const stem = (title ?? '').normalize('NFKD').replace(/[^A-Za-z0-9 -]/g, '').trim().replace(/\s+/g, '-').slice(0, 64);
     return Object.freeze({fileName: `${stem || 'reading'}-highlights.md`, markdown});
-  } finally {clearTimeout(timer);}
+  } finally {lifetime?.dispose();}
 }

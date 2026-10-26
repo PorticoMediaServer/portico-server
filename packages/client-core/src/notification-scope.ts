@@ -1,3 +1,4 @@
+import {throwIfAborted} from './abort-lifetime.ts';
 import {routePath} from '../../contracts/src/routes.ts';
 import type {InboxApi} from './inbox.ts';
 import {parseNotificationBatchResult, parseNotificationInbox, parseNotificationSummary, parseNotificationVocabulary, type NotificationVocabulary} from './notifications.ts';
@@ -45,7 +46,7 @@ export function createNotificationScope(api: InboxApi, lifetime: NotificationSco
  signal.addEventListener('abort', dispose, {once: true});
  if (signal.aborted) dispose();
  const request: InboxApi['request'] = async <T>(path: string, method = 'GET', body?: unknown, callerSignal?: AbortSignal): Promise<T> => {
-  check();callerSignal?.throwIfAborted();
+  check();throwIfAborted(callerSignal);
   if (typeof path !== 'string' || path.length > 8192) throw invalid();
   const split = path.indexOf('?'), route = split < 0 ? path : path.slice(0, split);
   const query = new URLSearchParams(split < 0 ? '' : path.slice(split + 1));
@@ -75,14 +76,14 @@ export function createNotificationScope(api: InboxApi, lifetime: NotificationSco
   for (const parent of signals) {parent.addEventListener('abort', abort, {once: true});if (parent.aborted) abort();}
   requests.add(owned);
   try {
-   check();owned.signal.throwIfAborted();
+   check();throwIfAborted(owned.signal);
    let raw: unknown;
    try {raw = await originalRequest<T>(path, method, capturedBody, owned.signal);} catch (error) {
-    check();owned.signal.throwIfAborted();
+    check();throwIfAborted(owned.signal);
     if (object(error) && (error.status === 401 || error.status === 403)) retire();
     throw error;
    }
-   check();owned.signal.throwIfAborted();
+   check();throwIfAborted(owned.signal);
    if (!object(raw) || !object(raw.scope) || !object(raw.data)) throw invalid();
    const scope = raw.scope;
    if (scope.serverId !== serverId) throw retire();
@@ -97,7 +98,7 @@ export function createNotificationScope(api: InboxApi, lifetime: NotificationSco
    else if(action)parseNotificationBatchResult(raw.data);
    else parseNotificationVocabulary(raw.data);
    fence = scope.viewerFence;
-   check();owned.signal.throwIfAborted();
+   check();throwIfAborted(owned.signal);
    return raw as T;
   } finally {
    for (const parent of signals) parent.removeEventListener('abort', abort);
@@ -107,10 +108,10 @@ export function createNotificationScope(api: InboxApi, lifetime: NotificationSco
  return Object.freeze({request, dispose,
   vocabulary: async (callerSignal?: AbortSignal) => {
    const raw = await request<unknown>(routePath('get_notifications_capabilities'), 'GET', undefined, callerSignal);
-   check();callerSignal?.throwIfAborted();
+   check();throwIfAborted(callerSignal);
    if (!object(raw)) throw invalid();
    const value = parseNotificationVocabulary(raw.data);
-   check();callerSignal?.throwIfAborted();return value;
+   check();throwIfAborted(callerSignal);return value;
   },
  });
 }

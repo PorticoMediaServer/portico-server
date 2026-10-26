@@ -1,3 +1,4 @@
+import {throwIfAborted} from './abort-lifetime.ts';
 import {routePath as hostedRoutePath,encodedRoutePath as hostedEncodedRoutePath} from '../../contracts/src/hosted/routes.ts';
 import {routePath} from '../../contracts/src/routes.ts';
 import {requestPorticoChallenge,type HostedRequestApi} from './portico-servers.ts';
@@ -85,7 +86,7 @@ export async function consumeSameTabReturn(api:Pick<HttpLocalApi,'request'|'getR
   if(url.pathname!=='/auth/portico-return'||url.search||!pending||Date.now()-pending.createdAt>5*60_000||pending.createdAt>Date.now()+60_000||api.getRouteConnection()?.pin.serverId!==pending.serverId||[...params.keys()].sort().join(',')!=='code,state,transaction'||params.getAll('state').length!==1||params.get('state')!==pending.state||!/^src_[A-Za-z0-9_-]{20,128}$/.test(params.get('code')??'')||!/^srt_[A-Za-z0-9_-]{20,128}$/.test(params.get('transaction')??''))throw new Error('This return is no longer valid. Start again.');
   if(!validMemberProof(pending)||pending.registrationOrigin!==undefined&&pending.registrationOrigin!==url.origin)throw new Error('This return is no longer valid. Start again.');
   if(pending.purpose==='sign-in'&&(!continuation.isCurrent||!continuation.retireLateGrant))throw new Error('Capture the server session before completing sign-in.');
-  signal?.throwIfAborted();if(continuation.isCurrent&&!continuation.isCurrent())throw new CodedError('cancelled','This server sign-in changed.');
+  throwIfAborted(signal);if(continuation.isCurrent&&!continuation.isCurrent())throw new CodedError('cancelled','This server sign-in changed.');
   const out=parseDirectSignIn(await api.request(routePath('post_auth_portico_return_exchange'),'POST',{code:params.get('code'),transactionId:params.get('transaction'),verifier:pending.verifier,registrationId:pending.registrationId,serverChallenge:pending.serverChallenge,installationId:pending.installationId,purpose:pending.purpose,expectedRevision:continuation.expectedRevision??'0',...(pending.moveTicket?{moveTicket:pending.moveTicket}:{}),...(pending.moveCode?{moveCode:pending.moveCode}:{}),...(continuation.requestId?{requestId:continuation.requestId}:{}),...(continuation.setupToken?{setupToken:continuation.setupToken}:{})},signal));
   if(signal?.aborted||continuation.isCurrent&&!continuation.isCurrent()){
    if(out.kind==='signed-in')await continuation.retireLateGrant?.(out.session);throw new CodedError('cancelled','This server sign-in changed.');

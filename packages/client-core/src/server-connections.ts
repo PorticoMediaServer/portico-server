@@ -1,3 +1,4 @@
+import {throwIfAborted} from './abort-lifetime.ts';
 import type {RouteResponse as HostedRouteResponse} from "../../contracts/src/hosted/routes.ts";
 import {routeBody} from "../../contracts/src/routes.ts";
 import type {RouteResponse} from "../../contracts/src/routes.ts";
@@ -82,12 +83,12 @@ export async function connectPairedServer(origin:string,pin:ServerPin,env:Connec
 export async function connectPairedPorticoServer(origin:string,pin:ServerPin,source:HostedConnectionSource,env:ConnectionEnvironment,signal:AbortSignal):Promise<{api:HttpLocalApi;connection:RouteConnection;hosted:NonNullable<RememberedServer['hosted']>}>{
  const accountOrigin=hostedOrigin(source.origin);
  if(!/^[A-Za-z0-9_-]{1,128}$/.test(source.accountId))throw new RouteError('identity_mismatch','Choose the Portico Account before signing in to this server.');
- signal.throwIfAborted();
+ throwIfAborted(signal);
  const paired=await connectPairedServer(origin,pin,env,signal);
  try{
   const system=parseServerSignIn(await paired.api.request(routePath('get_system'),'GET',undefined,signal));
   if(system.id!==pin.serverId||system.signIn!=='portico')throw new RouteError('identity_mismatch','This server does not use Portico Accounts.');
-  const key=await routeKey(source,env,signal);signal.throwIfAborted();
+  const key=await routeKey(source,env,signal);throwIfAborted(signal);
   return {...paired,hosted:{origin:accountOrigin,accountId:source.accountId,key}};
  }catch(error){paired.connection.dispose();throw error;}
 }
