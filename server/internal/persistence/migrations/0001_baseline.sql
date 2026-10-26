@@ -9803,7 +9803,7 @@ CREATE TABLE playback_start_preparation_queue(
  queue_revision INTEGER NOT NULL,
  queue_custody_generation INTEGER NOT NULL,
  CHECK((queue_id='' AND queue_entry_id='' AND queue_owner_kind='' AND queue_owner_id='' AND queue_revision=0 AND queue_custody_generation=0)
- OR (queue_id<>'' AND queue_entry_id<>'' AND queue_owner_kind<>'' AND queue_owner_id<>'' AND queue_revision>0 AND queue_custody_generation>0))
+ OR (queue_id<>'' AND queue_entry_id<>'' AND queue_owner_kind<>'' AND queue_owner_id<>'' AND queue_revision>0 AND queue_custody_generation>=0))
 ) STRICT;
 CREATE TABLE playback_start_preparation_results(
  operation_id TEXT PRIMARY KEY REFERENCES playback_start_preparations(id),
