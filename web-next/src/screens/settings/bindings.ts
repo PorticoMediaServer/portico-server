@@ -1,4 +1,5 @@
 import type {ReactNode} from 'react';
+import {defaultI18n} from '@i18n';
 import type {SettingsRow, SettingsValue} from '@core/presentation/settings-spec.ts';
 import type {SettingPresentation} from '../../kit/settings';
 import type {ShellIdentity} from '../../shell/Shell';
@@ -20,14 +21,21 @@ export type SettingsSections = Readonly<{
 export function createSettingsBindings(controller: SettingsController, options: SettingsControllerOptions, identity: ShellIdentity, sections: SettingsSections): SettingsBindings {
   /** A switch row belongs to the direction its server is not already in. Both
    * drawn directions have their own surface; without the captured owner switch
-   * they stay out rather than becoming dead controls. The local change-owner
-   * row stays out because there is no justified local-only transfer authority. */
-  const signInSwitch = (rowId: string): {present: boolean; disabled?: boolean} | undefined => {
-    if (rowId === 'signin.changeOwnerLocal') return {present: false};
+   * they stay out rather than becoming dead controls. The local change-owner row
+   * appears only when the owner-supplied guarded transfer source exists. */
+  const signInSwitch = (rowId: string): {present: boolean; disabled?: boolean; help?: string} | undefined => {
+    // The local row exists only with the owner-supplied guarded source, and only
+    // on a server whose current kind is local. Its help is Root 63's sentence.
+    if (rowId === 'signin.changeOwnerLocal') {
+      if (!sections.signIn?.localOwnerTransfer) return {present: false};
+      const snapshot = sections.signIn.getSnapshot();
+      return {present: !!snapshot.document && snapshot.document.signIn === 'local', disabled: snapshot.loading,
+        help: defaultI18n.t('next.settings.changeOwnerLocalBody')};
+    }
     // Only one sign-in change is ever in flight: while a real move is running its
     // switch, start-over and change-owner rows are gone until it ends.
     const running = sections.signIn?.ownerSwitch?.getMove();
-    if (running && ['signin.changeOwner', 'signin.switchToPortico', 'signin.startOverPortico', 'signin.switchToLocal', 'signin.startOverLocal'].includes(rowId)) return {present: false};
+    if (running && ['signin.changeOwner', 'signin.changeOwnerLocal', 'signin.switchToPortico', 'signin.startOverPortico', 'signin.switchToLocal', 'signin.startOverLocal'].includes(rowId)) return {present: false};
     if (rowId === 'signin.changeOwner') {
       if (!sections.signIn?.ownerSwitch) return {present: false};
       const snapshot = sections.signIn.getSnapshot();

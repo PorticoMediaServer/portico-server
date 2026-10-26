@@ -138,6 +138,12 @@ export const accountMessages = {
   'accounts.settings.finishNow': 'Finish now',
   'accounts.settings.finishNowConfirm': 'Turn off the {count, plural, one {# account that hasn’t} other {# accounts that haven’t}} moved? Their profiles and history are kept until you delete them.',
   'accounts.settings.finishNowHelp': 'Anyone still waiting is turned off as “Didn’t move”. Their data stays until the owner deletes them.',
+  'accounts.settings.changeOwnerLocalNewOwner': 'New owner',
+  'accounts.settings.changeOwnerLocalEmpty': 'There are no other active members to choose.',
+  'accounts.settings.changeOwnerLocalPassword': 'Current password',
+  'accounts.settings.changeOwnerLocalPasswordHelp': 'Confirms this change is yours.',
+  'accounts.settings.changeOwnerLocalStays': 'Profiles, history and libraries stay with the server.',
+  'accounts.settings.changeOwnerLocalOnlyNew': 'Only the new owner sees Server › Sign-in afterwards.',
   // Binding ruling 17.5, also applied to Start over with Portico Accounts.
   'accounts.ownerSwitch.secureTitle': 'Switch from a secure page',
   'accounts.ownerSwitch.secureBody': 'Switching sends sign-in details this page can’t protect. Open Portico at its secure address, or on the server itself at {localUrl}.',

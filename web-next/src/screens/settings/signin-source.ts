@@ -4,6 +4,7 @@ import type {SignInKind} from '@core/app-sessions.ts';
 import {defaultI18n} from '@i18n';
 import type {SettingPresentation} from '../../kit/settings';
 import type {SettingsOwnerSwitch} from './owner-switch';
+import type {LocalOwnerTransferSource} from './local-owner-transfer';
 
 type Snapshot = Readonly<{loading: boolean; document?: SignInSettings; error?: unknown}>;
 const empty: Snapshot = Object.freeze({loading: true});
@@ -11,6 +12,8 @@ export type SignInSettingsSourceOptions = Readonly<{
   serverId: string; signIn: SignInKind; isCurrent: () => boolean;
   capabilities: () => ManagementCapabilities;
   ownerSwitch?: SettingsOwnerSwitch;
+  /** The owner-supplied guarded local transfer source; absent keeps its row hidden. */
+  localOwnerTransfer?: LocalOwnerTransferSource;
   /** The shell rereads actual authority/kind; the Settings source grants nothing. */
   onAuthorityChanged: () => void;
 }>;
@@ -18,6 +21,7 @@ export type SignInSettingsSourceOptions = Readonly<{
 /** The Sign-in page's private facts, read through the checked guarded client. */
 export class SignInSettingsSource {
   readonly ownerSwitch?: SettingsOwnerSwitch;
+  readonly localOwnerTransfer?: LocalOwnerTransferSource;
   private readonly client: ReadOnlySignInClient;
   private readonly listeners = new Set<() => void>();
   private readonly lifetime = new AbortController();
@@ -27,6 +31,7 @@ export class SignInSettingsSource {
   constructor(api: ProfileAPI, private readonly options: SignInSettingsSourceOptions) {
     this.client = new ReadOnlySignInClient(api, options);
     this.ownerSwitch = options.ownerSwitch;
+    this.localOwnerTransfer = options.localOwnerTransfer;
   }
   private current = () => !this.closed && this.options.isCurrent() && this.options.capabilities().manageSignIn;
   getSnapshot = (): Snapshot => this.current() ? this.snapshot : empty;
@@ -67,7 +72,7 @@ export class SignInSettingsSource {
   };
   dispose = () => {
     if (this.closed) return;
-    this.closed = true;this.lifetime.abort();this.client.dispose();this.ownerSwitch?.dispose();this.snapshot = empty;
+    this.closed = true;this.lifetime.abort();this.client.dispose();this.ownerSwitch?.dispose();this.localOwnerTransfer?.dispose();this.snapshot = empty;
     for (const listener of this.listeners) listener();
     this.listeners.clear();
   };
