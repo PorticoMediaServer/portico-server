@@ -218,7 +218,7 @@ func (h *HLS) downgradeCopyPlan(ctx context.Context, id string, plan *DeliveryPl
 	if !enabled {
 		return nil, ErrTranscodingDisabled
 	}
-	source, err := loadSessionDeliverySource(ctx, tx, id, plan.SourceID)
+	source, err := h.loadSessionDeliverySourceTx(ctx, tx, id, plan.SourceID)
 	if err != nil {
 		return nil, err
 	}

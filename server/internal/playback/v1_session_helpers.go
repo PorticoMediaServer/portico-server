@@ -78,6 +78,17 @@ func checkSessionOccurrenceModeTx(ctx context.Context, tx *sql.Tx, id string, in
 	if err := checkDiscSessionTx(ctx, tx, id); err != nil {
 		return err
 	}
+	return checkSessionOccurrencePhysicalTx(ctx, tx, id, initialAudio)
+}
+
+func (s *Service) checkSessionOccurrenceModeTx(ctx context.Context, tx *sql.Tx, id string, initialAudio bool) error {
+	if err := s.checkDiscSessionTx(ctx, tx, id); err != nil {
+		return err
+	}
+	return checkSessionOccurrencePhysicalTx(ctx, tx, id, initialAudio)
+}
+
+func checkSessionOccurrencePhysicalTx(ctx context.Context, tx *sql.Tx, id string, initialAudio bool) error {
 	var invalidPhysical int
 	if e := tx.QueryRowContext(ctx, `SELECT count(*) FROM playback_physical_source_pins pin WHERE pin.session_id=? AND NOT EXISTS(SELECT 1 FROM library_sources source JOIN inventory_objects object ON object.source_id=source.id JOIN playback_sessions ps ON ps.asset_id=object.asset_id JOIN catalog_entities item ON item.id=ps.item_id JOIN catalog_libraries cl ON cl.id=item.library_id AND cl.library_id=source.library_id WHERE ps.id=pin.session_id AND source.id=pin.source_id AND source.incarnation=pin.incarnation AND source.generation=pin.configuration_generation AND source.enabled=1 AND object.root_incarnation=pin.incarnation AND object.retired=0 AND object.state='available')`, id).Scan(&invalidPhysical); e != nil {
 		return e

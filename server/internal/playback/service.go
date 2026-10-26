@@ -50,6 +50,8 @@ type Session struct {
 	State             string     `json:"state,omitempty"`
 }
 type Service struct {
+	discInputs *discPlayInputs // exact private disc readers; no start producer
+
 	// prefetched counts bytes served to private presentations (audio_plan_v2.go).
 	prefetchMu      sync.Mutex
 	prefetched      map[string]int64
@@ -736,7 +738,7 @@ func (s *Service) ProgressEvidenceContext(ctx context.Context, p identity.Princi
 }
 func (s *Service) progressTx(ctx context.Context, tx *sql.Tx, p identity.Principal, id string, generation int, sequence int64, position float64, state string, rate float64, seeked *bool, playing bool) error {
 	var e error
-	if e = checkSessionOccurrenceTx(ctx, tx, id); e != nil {
+	if e = s.checkSessionOccurrenceModeTx(ctx, tx, id, false); e != nil {
 		return e
 	}
 	// Fence authentication and current item policy before accepting any evidence.
@@ -865,7 +867,7 @@ func (s *Service) resolveGrant(ctx context.Context, grant string, initialAudio b
 	if e = tx.QueryRowContext(ctx, `SELECT id FROM playback_sessions WHERE grant_hash=?`, identity.Digest(grant)).Scan(&sid); e != nil {
 		return "", p, "", e
 	}
-	if e = checkSessionOccurrenceModeTx(ctx, tx, sid, initialAudio); e != nil {
+	if e = s.checkSessionOccurrenceModeTx(ctx, tx, sid, initialAudio); e != nil {
 		if errors.Is(e, identity.ErrUnauthorized) {
 			e = ErrGrantEnded
 		}
@@ -928,8 +930,35 @@ func (s *Service) resolveGrant(ctx context.Context, grant string, initialAudio b
 	return aid, p, item, nil
 }
 func (s *Service) Cleanup() error {
-	_, e := dbwork.ExecWrite(context.Background(), s.db, dbwork.ClassEstablishedPlayback, `DELETE FROM playback_sessions WHERE expires_at<?`, time.Now().UTC().Format(time.RFC3339))
-	return e
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if s.discInputs != nil {
+		s.discInputs.cleanup.Lock()
+		defer s.discInputs.cleanup.Unlock()
+	}
+	gate, err := dbwork.Begin(ctx, s.db, dbwork.ClassEstablishedPlayback)
+	if err != nil {
+		return err
+	}
+	defer gate.Rollback()
+	next, err := s.cleanupDiscInputsTx(gate.Context(), gate.Tx())
+	if err != nil {
+		return err
+	}
+	// A private snapshot's FK intentionally retains its legacy occurrence
+	// until its own readers/references have retired. Missing optional reader
+	// composition cannot turn this sweep into a cascade or discard custody.
+	_, err = gate.Tx().ExecContext(gate.Context(), `DELETE FROM playback_sessions WHERE expires_at<? AND NOT EXISTS(SELECT 1 FROM playback_disc_snapshots d WHERE d.session_id=playback_sessions.id)`, time.Now().UTC().Format(time.RFC3339))
+	if err != nil {
+		return err
+	}
+	if err = gate.Commit(); err != nil {
+		return err
+	}
+	if s.discInputs != nil {
+		s.discInputs.after = next
+	}
+	return nil
 }
 func (s Session) String() string { return fmt.Sprintf("playback %s generation %d", s.ID, s.Generation) }
 
@@ -937,6 +966,7 @@ func (s *Service) ConfigureHLS(h *HLS) {
 	s.hls = h
 	if h != nil {
 		h.subtitleService = s.Subtitles
+		h.discPlayback = s
 	}
 }
 func (s *Service) Ready(ctx context.Context, out Session) error {

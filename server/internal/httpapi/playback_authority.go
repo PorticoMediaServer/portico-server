@@ -57,6 +57,11 @@ func (d Dependencies) configurePlaybackEvidence() {
 	}
 	d.Playback.AuthorityTx = d.playbackAuthorityTx
 	d.Playback.ContinueAuthorityTx = d.playbackFamilyAuthorityTx
+	if d.Identity != nil && d.DiscCaptures != nil {
+		// Optional private reader composition. Unsupported host/tool closures
+		// remain closed; this installs no preparation/start response producer.
+		_ = d.Playback.ConfigureDiscInputs(d.Identity.ID(), d.DiscCaptures)
+	}
 	d.Playback.MarkersTx = func(ctx context.Context, tx *sql.Tx, p identity.Principal, scope playback.OffersScope, source string) (segmentmarkers.Set, error) {
 		return mediaanalysis.ViewerMarkersTx(ctx, tx, d.markerAccess(p, scope.LibraryID, scope.ItemID, scope.ViewerFence), source)
 	}

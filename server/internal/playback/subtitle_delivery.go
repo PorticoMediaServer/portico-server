@@ -14,10 +14,18 @@ import (
 // after its viewer, source, resource and policy fences have been checked.
 // The new grant, selected subtitle and ordinary delivery plan commit together.
 func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p identity.Principal, session string, resource *subtitles.Resource) error {
-	if err := checkDiscSessionTx(ctx, tx, session); err != nil {
+	if err := s.checkDiscSessionTx(ctx, tx, session); err != nil {
 		return err
 	}
 	if resource != nil {
+		if _, _, private, err := privateDiscBindingTx(ctx, tx, session); err != nil {
+			return err
+		} else if private {
+			// Local inventory resource scopes cannot qualify a private captured
+			// title. Keep this branch closed until the exact snapshot/resource
+			// binding is available; Off still replans the same measured input.
+			return subtitles.ErrUnsupported
+		}
 		if err := subtitles.CheckDiscResourceSessionTx(ctx, tx, session, resource.ID); err != nil {
 			return err
 		}
@@ -29,7 +37,7 @@ func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p id
 	if old == nil {
 		return subtitles.ErrUnavailable
 	}
-	source, err := loadSessionDeliverySource(ctx, tx, session, old.SourceID)
+	source, err := s.loadSessionDeliverySourceTx(ctx, tx, session, old.SourceID)
 	if err != nil {
 		return err
 	}

@@ -108,6 +108,13 @@ func pinDiscSessionTx(ctx context.Context, tx *sql.Tx, id, asset string, ref *ca
 // The selection is checked alongside the occurrence's existing physical-source
 // pin. A later scan may not silently change a running title or its track indices.
 func checkDiscSessionTx(ctx context.Context, tx *sql.Tx, id string) error {
+	if _, _, private, err := privateDiscBindingTx(ctx, tx, id); err != nil {
+		return err
+	} else if private {
+		// Only the service's immutable snapshot/ordinary authority composition
+		// can check a private presentation. The local helper cannot qualify it.
+		return disc.ErrRemoteUnqualified
+	}
 	if err := disc.CheckPlaybackSelectionTx(ctx, tx, id); err != nil {
 		if errors.Is(err, disc.ErrProtocol) {
 			return identity.ErrUnauthorized
@@ -120,6 +127,14 @@ func checkDiscSessionTx(ctx context.Context, tx *sql.Tx, id string) error {
 // PresentationDiscTitleTx captures the actual selected title for a presentation
 // being accepted. The caller owns actor/occurrence admission in this same Tx.
 func (s *Service) PresentationDiscTitleTx(ctx context.Context, tx *sql.Tx, id string, generation int) (*catalog.DiscTitleRef, error) {
+	if _, _, private, err := privateDiscBindingTx(ctx, tx, id); err != nil {
+		return nil, err
+	} else if private {
+		// The existing projection below is a local catalogue-token projection.
+		// A private start must supply its separately sealed title projection;
+		// absence is not permission to publish a presentation without its pin.
+		return nil, disc.ErrRemoteUnqualified
+	}
 	var asset string
 	if err := tx.QueryRowContext(ctx, `SELECT asset_id FROM playback_sessions WHERE id=? AND generation=? AND state NOT IN('stopped','ended','failed')`, id, generation).Scan(&asset); err != nil {
 		return nil, err
@@ -139,6 +154,9 @@ func (s *Service) PresentationDiscTitleTx(ctx context.Context, tx *sql.Tx, id st
 }
 
 func (h *HLS) openDiscInput(ctx context.Context, id string) (*assets.PlaybackInput, bool, error) {
+	if input, handled, err := h.openPrivateDiscInput(ctx, id); handled {
+		return input, true, err
+	}
 	tx, done, err := dbwork.BeginRead(ctx, h.db)
 	if err != nil {
 		return nil, true, err
@@ -419,7 +437,12 @@ func discSourceFacts(asset string, f assets.Facts) DeliverySource {
 
 	return out
 }
-func loadSessionDeliverySource(ctx context.Context, tx *sql.Tx, session, asset string) (DeliverySource, error) {
+func loadLocalSessionDeliverySource(ctx context.Context, tx *sql.Tx, session, asset string) (DeliverySource, error) {
+	if _, _, private, err := privateDiscBindingTx(ctx, tx, session); err != nil {
+		return DeliverySource{}, err
+	} else if private {
+		return DeliverySource{}, disc.ErrRemoteUnqualified
+	}
 	var key, revision string
 	err := tx.QueryRowContext(ctx, `SELECT title_key,title_facts_revision FROM playback_disc_pins WHERE session_id=?`, session).Scan(&key, &revision)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -450,6 +473,6 @@ func loadSessionDeliverySource(ctx context.Context, tx *sql.Tx, session, asset s
 
 func hasDiscSessionTx(ctx context.Context, tx *sql.Tx, id string) (bool, error) {
 	var found bool
-	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM playback_disc_pins WHERE session_id=?)`, id).Scan(&found)
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM playback_disc_pins WHERE session_id=?) OR EXISTS(SELECT 1 FROM playback_disc_snapshots WHERE session_id=?)`, id, id).Scan(&found)
 	return found, err
 }
