@@ -89,7 +89,7 @@ function OwnedMusicCover({scope, motion}: {scope: Scope; motion: MusicExpansion}
     };
     const follow = (event: Event) => {if (event.target instanceof HTMLElement && event.target.contains(dock)) paint();};
     refresh.current = paint;paint();
-    const observer = new ResizeObserver(paint);observer.observe(dock);if (motion.cover.current) observer.observe(motion.cover.current);
+    const observer = new ResizeObserver(paint);observer.observe(dock);if (motion.bar.current) observer.observe(motion.bar.current);if (motion.cover.current) observer.observe(motion.cover.current);
     document.addEventListener(dockMotionEvent, follow);window.addEventListener('resize', paint);window.addEventListener('scroll', paint, true);
     return () => {live = false;if (nextFrame !== undefined) cancelAnimationFrame(nextFrame);if (refresh.current === paint) refresh.current = () => {};observer.disconnect();document.removeEventListener(dockMotionEvent, follow);window.removeEventListener('resize', paint);window.removeEventListener('scroll', paint, true);};
     // Read the actual committed nodes on every commit: a phone/desktop renderer may replace a
