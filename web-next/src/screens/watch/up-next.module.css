@@ -1,5 +1,5 @@
 /* desktop-player f4/f4s; the actual policy owns the count and progress. */
-.card { --up-next-label-size: 13px; --up-next-title-size: 18px; --up-next-fact-size: 13.5px; --up-next-action-size: 15px; --up-next-weight: 700; --up-next-title-weight: 800; --up-next-title-tracking: -.015em; --up-next-ease: cubic-bezier(.2,.7,.2,1); position: absolute; z-index: 1; right: 40px; bottom: 40px; width: 440px; padding: 16px 16px 14px; border-radius: 18px; background: color-mix(in srgb, var(--color-player-notice) 86%, transparent); backdrop-filter: blur(28px) saturate(1.3); box-shadow: 0 34px 64px -22px color-mix(in srgb, var(--color-shadow) 90%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--color-text) 9%, transparent); color: var(--color-text); line-height: normal; }
+.card { --up-next-label-size: 13px; --up-next-title-size: 18px; --up-next-fact-size: 13.5px; --up-next-action-size: 15px; --up-next-weight: 700; --up-next-title-weight: 800; --up-next-title-tracking: -.015em; --up-next-ease: cubic-bezier(.2,.7,.2,1); position: absolute; z-index: 1; right: 40px; bottom: 40px; transform: translateY(calc(var(--prompt-lift, 0px) * -1)); width: 440px; padding: 16px 16px 14px; border-radius: 18px; background: color-mix(in srgb, var(--color-player-notice) 86%, transparent); backdrop-filter: blur(28px) saturate(1.3); box-shadow: 0 34px 64px -22px color-mix(in srgb, var(--color-shadow) 90%, transparent), inset 0 0 0 1px color-mix(in srgb, var(--color-text) 9%, transparent); color: var(--color-text); line-height: normal; }
 .card[data-scene-after='true'] { width: 476px; }
 .row { display: flex; gap: 16px; align-items: center; }
 .still { position: relative; width: 150px; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; flex: none; background: var(--color-raised); }
@@ -11,7 +11,7 @@
 .facts i { display: inline-block; width: 12px; }
 .when { margin-top: 6px; font-size: var(--up-next-fact-size); font-weight: var(--up-next-weight); font-variant-numeric: tabular-nums; }
 .actions { display: flex; gap: 8px; align-items: center; margin-top: 14px; }
-.actions button { height: 42px; padding: 0 18px; border: 0; border-radius: 10px; display: inline-flex; align-items: center; gap: 8px; font-size: var(--up-next-action-size); font-weight: var(--up-next-weight); line-height: normal; background: color-mix(in srgb, var(--color-text) 14%, transparent); backdrop-filter: blur(20px); color: var(--color-text); transition: transform 160ms var(--up-next-ease), background 160ms var(--up-next-ease); cursor: pointer; white-space: nowrap; }
+.actions button { height: 42px; padding: 0 18px; border: 0; border-radius: 10px; display: inline-flex; align-items: center; gap: 8px; font-size: var(--up-next-action-size); font-weight: var(--up-next-weight); line-height: normal; background: color-mix(in srgb, var(--color-text) 14%, transparent); backdrop-filter: blur(20px); color: var(--color-text); transition: transform 90ms var(--up-next-ease), background 160ms var(--up-next-ease); cursor: pointer; white-space: nowrap; }
 .actions button:hover { background: color-mix(in srgb, var(--color-text) 22%, transparent); }
 .actions svg { display: block; flex: none; }
 .actions button:active { transform: scale(.97); }
@@ -34,4 +34,4 @@
 
 /* phone-player f6c: with the controls up the card rises above them; the scene
    variant's 424 px width stays bounded by the authored right inset. */
-.card[data-layout='phone'][data-controls-visible='true'] { bottom: 100px; }
+.card[data-layout='phone'][data-controls-visible='true'] { --prompt-lift: 80px; }
