@@ -12,6 +12,7 @@ import (
 
 	"portico.local/server/internal/access"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/operations"
 )
 
 // controlItemID reads just the subject out of a v2 control envelope. The
@@ -113,6 +114,9 @@ func (d Dependencies) admitPlayback(r *http.Request, p identity.Principal, item 
 	if d.Access.Access == nil || d.DB == nil {
 		return access.Decision{}, nil
 	}
+	if tx := dbwork.Snapshot(r.Context()); tx != nil {
+		return d.admitPlaybackInTx(r, tx, p)
+	}
 	document, err := d.settingsDocument(r.Context())
 	if err != nil {
 		return access.Decision{}, err
@@ -148,6 +152,41 @@ func (d Dependencies) admitPlayback(r *http.Request, p identity.Principal, item 
 		d.alertUploadBudget(r.Context(), exhausted)
 	}
 	return decision, nil
+}
+
+// admitPlaybackInTx is a read check within the caller's exact source or accepting
+// snapshot. It must not begin/commit a transaction, invoke settings/tool status
+// validation or publish an owner alert. The caller retains its writer custody.
+func (d Dependencies) admitPlaybackInTx(r *http.Request, tx *sql.Tx, p identity.Principal) (access.Decision, error) {
+	ctx := r.Context()
+	settings := operations.DefaultSettings()
+	if d.Console != nil {
+		document, err := d.Console.SettingsTx(ctx, tx, operations.AllowServerScope)
+		if err != nil {
+			return access.Decision{}, err
+		}
+		settings = document.Effective
+	}
+	policy := newLocalityPolicy(settings)
+	proxies := policy.proxies
+	if d.Console == nil {
+		proxies = d.TrustedProxies
+	}
+	remote := remoteClient(r, proxies, policy)
+	decision, err := d.enforcer().AdmitPlayback(ctx, tx, p, access.Admission{Remote: remote,
+		ReplanSessionID: playbackv1.ReplanOf(ctx).Session, ReplanMediaID: playbackv1.ReplanOf(ctx).Media})
+	if err != nil {
+		return decision, err
+	}
+	if remote && settings.UploadCapacityKbps > 0 {
+		ceiling, full, err := uploadBudgetCeiling(ctx, tx, settings.UploadCapacityKbps, playbackv1.ReplanOf(ctx).Session, time.Now())
+		if err != nil {
+			return decision, err
+		}
+		decision.MaxVideoBitrateBPS = narrowBitrate(decision.MaxVideoBitrateBPS, ceiling)
+		decision.UploadLimited = full
+	}
+	return decision, ctx.Err()
 }
 
 // admitChannel applies the live channel allow/deny policy (canonical v1 ids

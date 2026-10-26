@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/access"
+	"portico.local/server/internal/contentaccess"
 	"portico.local/server/internal/dbwork"
 
 	"portico.local/server/internal/catalog"
@@ -23,6 +24,12 @@ import (
 // catalog then applies exactly one predicate (internal/catalog/restrictions.go);
 // no surface writes a visibility rule of its own.
 func (d Dependencies) viewerRestrictions(r *http.Request, p identity.Principal) (identity.ContentRestrictions, string, error) {
+	if tx := dbwork.Snapshot(r.Context()); tx != nil {
+		// Currentness/acceptance reads use their actual profile and account
+		// rows, including uncommitted changes, never the outside viewer cache.
+		restrictions, err := contentaccess.RestrictionsTx(r.Context(), tx, p.Viewer)
+		return restrictions, catalog.RestrictionFence(restrictions), err
+	}
 	// Several surfaces on one page each ask for this, and it is one row that
 	// changes only through a restriction publication. The cache is fenced on the
 	// authority generation, so a publication invalidates it before the next read
@@ -80,6 +87,9 @@ func (d Dependencies) restrictedItem(r *http.Request, p identity.Principal, item
 	// profile's restrictions narrowed by its account's limits). Without a
 	// catalogue service the same predicate runs through contentaccess.
 	if d.Catalog == nil {
+		if tx := dbwork.Snapshot(r.Context()); tx != nil {
+			return d.itemRestrictionsTx(r.Context(), tx, p, item)
+		}
 		gate, err := dbwork.BeginSnapshot(r.Context(), d.DB)
 		if err != nil {
 			return err
@@ -101,7 +111,7 @@ func (d Dependencies) restrictedItem(r *http.Request, p identity.Principal, item
 	if e != nil {
 		return e
 	}
-	if e = d.Catalog.VisibleItem(r.Context(), viewer, item); errors.Is(e, sql.ErrNoRows) {
+	if e = d.Catalog.WithContext(r.Context()).VisibleItem(r.Context(), viewer, item); errors.Is(e, sql.ErrNoRows) {
 		return identity.ErrContentRestricted
 	}
 	return e
