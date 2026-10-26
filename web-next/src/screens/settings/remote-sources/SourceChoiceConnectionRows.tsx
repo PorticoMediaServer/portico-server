@@ -22,6 +22,8 @@ export type SourceChoiceConnectionMarkers = Readonly<{
 export type SourceChoiceConnectionRowsProps = Readonly<{
   values: ConnectionValues;
   disabled: boolean;
+  /** The caller's real phone decision (remote-sources.html#11b); never detected here. */
+  phone?: boolean;
   onChange: (patch: Partial<ConnectionValues>) => void;
   markers?: SourceChoiceConnectionMarkers;
 }>;
@@ -33,12 +35,12 @@ export type SourceChoiceConnectionRowsProps = Readonly<{
  * applicability, the changed set, each formatted baseline string and the exact
  * callbacks, so this reads no comparison, command, read, state or clock. A row
  * outside the marker, or with no markers at all, draws the plain row. */
-export function SourceChoiceConnectionRows({values, disabled, onChange, markers}: SourceChoiceConnectionRowsProps) {
+export function SourceChoiceConnectionRows({values, disabled, phone = false, onChange, markers}: SourceChoiceConnectionRowsProps) {
   const on = (field: SourceChoiceField) => !!markers && markers.applicable.includes(field) && markers.changed.includes(field);
   const word = (field: SourceChoiceField) => (on(field) ? markers!.value(field) : undefined);
   const reset = (field: SourceChoiceField) => (markers?.onReset ? () => markers.onReset!(field) : undefined);
   const conn = word('connections'), rps = word('requestsPerSecond'), speed = word('bytesPerSecond');
-  return <div className={styles.rows}>
+  return <div className={styles.rows} data-phone={phone || undefined}>
     <div className={styles.cell} data-changed={on('connections') || undefined}>
       <span className={styles.label}>{t('next.remoteSources.connections')}</span>
       <div className={styles.control}>

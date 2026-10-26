@@ -66,3 +66,8 @@
 .reset:hover:not(:disabled) { text-decoration: underline; }
 .reset:focus-visible { outline: var(--spec-focus-ring-width-web) solid var(--color-focus); outline-offset: 3px; }
 .reset:disabled { cursor: default; opacity: .5; }
+/* The phone rows (remote-sources.html#11b, .mg > .lr.noic at 58px): the same
+   full-width line with the drawn 8px 14px row padding, 12px gap and the phone's
+   15.5/600 label. Values only; the caller's box still owns the surface. */
+.rows[data-phone] .cell { gap: 12px; padding: 8px 14px; min-height: 58px; }
+.rows[data-phone] .label { font-size: 15.5px; font-weight: 600; }

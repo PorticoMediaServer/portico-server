@@ -114,7 +114,7 @@ export function SourceReadingFields({reader, state, disabled, phone, advancedOpe
         onSelect={choice => reader.select(draft, choice)}/>}
       {draft.choice && <p className={styles.note}>{t('next.remoteSources.changeBody')}</p>}
       <div className={styles.limits}>
-        <SourceChoiceConnectionRows values={draft.values} disabled={disabled || !!draft.choice || !!draft.advancedDirty}
+        <SourceChoiceConnectionRows values={draft.values} disabled={disabled || !!draft.choice || !!draft.advancedDirty} phone={phone}
           markers={markers} onChange={patch => reader.edit(draft, patch)}/>
       </div>
       {draft.consent !== undefined && <AdvancedAnalysisConsent checked={draft.consent}
