@@ -46,12 +46,20 @@ var processSpawns = map[string]string{
 	"internal/storage/root_registration_unix.go:RegisterRoot":                    "storage helper (server binary)",
 	"internal/storage/root_registration_windows.go:RegisterRoot":                 "storage helper (server binary); transfers a retained root handle",
 	"internal/subtitles/acquisition.go:Import":                                   "subtitle sidecar helper (server binary); reads text files, runs no tool",
+	// Reading helpers: one bounded document operation each. The archive and PDF
+	// helpers are this same server binary in a hidden mode; the converter and
+	// raster helpers are a pinned bubblewrap sandbox over a pinned static worker.
+	// None of them runs a media tool.
+	"internal/reading/cb7_helper.go:runCB7Helper":     "reading helper (server binary) in its CB7 archive mode; the archive is staged from an admitted local source and argv carries only the fixed mode and one already-validated member name; runs no media tool",
+	"internal/reading/mobi_conversion_linux.go:run":   "reading helper: pinned bubblewrap sandbox starting the pinned static libmobi EPUB converter on one admitted book; verified inherited descriptors, private namespace and bounded output; runs no media tool",
+	"internal/reading/pdf_raster_linux.go:renderPage": "reading helper: pinned bubblewrap sandbox starting the pinned static PDF page raster worker on one admitted document; empty guest root, verified descriptors and bounded output; runs no media tool",
+	"internal/reading/pdf_text.go:countPDFText":       "reading helper (server binary) in its pdf-text-extract mode over one private copy of an admitted document; fixed argv and bounded output; runs no media tool",
 	// Not media.
 	"internal/decoder/hardware_nvidia.go:runNVIDIADiscovery":     "fixed read-only nvidia-smi UUID/PCI/index/name/driver query; 5-second context, bounded output, minimal environment and childprocess group retirement; no media input or codec availability inference",
 	"internal/mounts/service.go:reconcile":                       "rclone mount guardian (server binary)",
 	"internal/mounts/native.go:NativeHelper":                     "rclone, inside the native helper, for a managed network mount",
 	"internal/mounts/native.go:runOwned":                         "rclone native helper (server binary)",
-	"internal/mounts/native.go:approveExecutable":                "rclone version, to approve the configured executable",
+	"internal/mounts/native.go:checkProgramVersion":              "fixed read-only rclone version probe under the existing storage supervisor; bounded first line, no media input",
 	"internal/mounts/guardian.go:Guardian":                       "rclone under the guardian",
 	"internal/rcloneprogram/command_other.go:versionCommand":     "fixed rclone version probe; Check bounds runtime/output and applies childprocess cleanup; no media input",
 	"internal/rcloneprogram/command_windows.go:versionCommand":   "fixed rclone version probe, including a selected .cmd/.bat wrapper; same Check bounds and childprocess cleanup; no media input",
