@@ -8,6 +8,7 @@ import {finishRouteMotion, routeMotionOwnedByBrowser} from './route-motion';
 import {webScreens, WebRetainedScreenHosts, useWebAction} from '../route-registry-view';
 import {webScreenIdForRoute} from '../route-registry';
 import {BootstrapContent} from './BootstrapState';
+import {DestinationErrorBoundary} from './DestinationError';
 import {useShellWidth} from './viewport';
 import {useServerAway} from './ConnectionAway';
 
@@ -26,7 +27,11 @@ function RouteContent() {
   const target = useMemo(() => ({get current() { return routeMotionOwnedByBrowser() ? null : content.current; }}), []);
   useRouteFade(target, routeKey, commits);
   useLayoutEffect(() => { finishRouteMotion(); }, [routeKey]);
-  return <main id="portico-content" ref={content} data-route-content data-shell-page tabIndex={-1}><BootstrapContent><Outlet /></BootstrapContent></main>;
+  // The destination boundary wraps only the outlet: the top bar, rail and phone navigation stay
+  // mounted through a destination failure, while a ShellRoot failure still reaches the app last resort.
+  // Its recovery lifetime is the existing route key (href + history entry) plus the captured scope.
+  const lifetime = `${routeKey ?? ''}|${owner?.scopeKey ?? 'signed-out'}`;
+  return <main id="portico-content" ref={content} data-route-content data-shell-page tabIndex={-1}><BootstrapContent><DestinationErrorBoundary lifetime={lifetime}><Outlet /></DestinationErrorBoundary></BootstrapContent></main>;
 }
 export function ShellRoot() {
   const binding = useShellBindings();
