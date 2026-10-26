@@ -34,7 +34,7 @@ export type SourceCommandIntent=Readonly<{operationId:string;kind:'source'|'rclo
 export type AnalysisPolicy=Readonly<{libraryId:string;enabled:boolean;revision:number;effective?:boolean;scanTier?:string}>;
 /** The read-authority part of one source's Reading settings. A missing saved profile is
  * reported as `saved:false` with the server's list/once defaults; it is never invented. */
-export type SourceReadValues=Readonly<{scanDepth:'file_list_only'|'basic'|'complete';wholeFileReads:boolean;connections:number;requestsPerSecond:number;bytesPerSecond:number}>;
+export type SourceReadValues=Readonly<{scanDepth:'file_list_only'|'basic'|'complete';wholeFileReads:boolean;connections:number;requestsPerSecond:number;bytesPerSecond:number;/** Recorded advanced media-analysis consent; absent means this server never published one, not false. */allowAdvancedMediaAnalysis?:boolean}>;
 export type SourceReadSettings=Readonly<{sourceId:string;generation:string;revision:number;saved:boolean;values:SourceReadValues}>;
 export type SourceReadPreset='list'|'once'|'everything'|'ask';
 /** One folder inside a saved source during browsing: its display name, the
@@ -74,10 +74,13 @@ export type RemoteSourceStatus=Readonly<{assignmentFenceSupported?:boolean;sourc
 export type SourceAdvanced=Readonly<{scanIntervalSeconds:number;watchForChanges:boolean;scanOnStart:boolean;fullRecheckDays:number;cacheBytes:number;cacheFloorBytes:number;seekPreviews:boolean;chapterImages:boolean;waveforms:boolean;loudness:boolean;checksums:boolean;introsMode:'off'|'inherit'|'sound'|'picture';doubleCheckFolders:boolean;dirCacheSeconds:number;readBufferBytes:number;connectTimeoutSeconds:number;idleTimeoutSeconds:number;retries:number;lowLevelRetries:number}>;
 export type SourceProgram=Readonly<{executable:string;version:string;revision:number;included:boolean}>;
 export type SourceAdvancedSettings=Readonly<{sourceId:string;generation:string;revision:number;saved:boolean;cacheSupported:boolean;cacheApplied:boolean;cacheError?:string;cacheUsedBytes:number;scanIntervalObserved:number;values:SourceAdvanced}>;
+// The retired whole-file flag stays in the wire body as a compatibility fact, but every drawn
+// choice is false and no choice carries advanced-analysis consent: choosing or resetting a preset
+// never grants or revokes it.
 const sourceReadPresets:Readonly<Record<SourceReadPreset,SourceReadValues>>=Object.freeze({
  list:{scanDepth:'file_list_only',wholeFileReads:false,connections:2,requestsPerSecond:2,bytesPerSecond:0},
  once:{scanDepth:'basic',wholeFileReads:false,connections:4,requestsPerSecond:4,bytesPerSecond:0},
- everything:{scanDepth:'complete',wholeFileReads:true,connections:8,requestsPerSecond:10,bytesPerSecond:0},
+ everything:{scanDepth:'complete',wholeFileReads:false,connections:8,requestsPerSecond:10,bytesPerSecond:0},
  ask:{scanDepth:'basic',wholeFileReads:false,connections:2,requestsPerSecond:2,bytesPerSecond:0},
 });
 /** The drawn S3 form's fields. The owner fills these in; Portico writes the
@@ -199,13 +202,17 @@ export function sourceReadPresetName(values:SourceReadValues):SourceReadPreset|u
  return (Object.keys(sourceReadPresets) as SourceReadPreset[]).find(name=>sameSourceRead(values,sourceReadPresets[name]));
 }
 function sameSourceRead(a:SourceReadValues,b:SourceReadValues):boolean{
- return a.scanDepth===b.scanDepth&&a.wholeFileReads===b.wholeFileReads&&a.connections===b.connections&&a.requestsPerSecond===b.requestsPerSecond&&a.bytesPerSecond===b.bytesPerSecond;
+ // The legacy whole-file flag and the independent analysis consent never decide which drawn
+ // choice is in force, so a preset comparison cannot depend on either.
+ return a.scanDepth===b.scanDepth&&a.connections===b.connections&&a.requestsPerSecond===b.requestsPerSecond&&a.bytesPerSecond===b.bytesPerSecond;
 }
 function sourceReadValues(raw:unknown):SourceReadValues{
  if(!record(raw))invalid();
- const scanDepth=raw.scanDepth, wholeFileReads=raw.wholeFileReads, connections=raw.connections, requestsPerSecond=raw.requestsPerSecond, bytesPerSecond=raw.bytesPerSecond;
+ const scanDepth=raw.scanDepth, wholeFileReads=raw.wholeFileReads, connections=raw.connections, requestsPerSecond=raw.requestsPerSecond, bytesPerSecond=raw.bytesPerSecond, allowAdvancedMediaAnalysis=raw.allowAdvancedMediaAnalysis;
  if((scanDepth!=='file_list_only'&&scanDepth!=='basic'&&scanDepth!=='complete')||typeof wholeFileReads!=='boolean'||!integer(connections)||connections<1||connections>32||!integer(requestsPerSecond)||requestsPerSecond<1||requestsPerSecond>50||!integer(bytesPerSecond)||!(bytesPerSecond===0||bytesPerSecond>=1_000_000&&bytesPerSecond<=1_000_000_000&&bytesPerSecond%1_000_000===0))invalid();
- return Object.freeze({scanDepth,wholeFileReads,connections,requestsPerSecond,bytesPerSecond});
+ // A present consent is an exact boolean; an older server's absence stays unknown rather than false.
+ if(allowAdvancedMediaAnalysis!==undefined&&typeof allowAdvancedMediaAnalysis!=='boolean')invalid();
+ return Object.freeze({scanDepth,wholeFileReads,connections,requestsPerSecond,bytesPerSecond,...(allowAdvancedMediaAnalysis===undefined?{}:{allowAdvancedMediaAnalysis})});
 }
 function sourceReadSettings(raw:unknown):SourceReadSettings{
  if(!record(raw)||!text(raw.sourceId,256)||!raw.sourceId||!text(raw.generation,64)||!raw.generation||!integer(raw.revision)||typeof raw.saved!=='boolean')invalid();
