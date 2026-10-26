@@ -9,3 +9,7 @@
 .dock:fullscreen { inset: 0; width: 100%; height: 100%; }
 .remote { position: absolute; left: 0; right: 0; bottom: 0; z-index: calc(var(--layer-player) + 2); }
 .localDock[data-covered='true'] { visibility: hidden; pointer-events: none; }
+/* Expanded music Now playing owns the viewport; the dock host is bottom-only otherwise. */
+.dock[data-music-expanded='true'] { inset: 0; }
+:global(body:has([data-navigation='rail'])) .dock[data-music-expanded='true'] { left: 0; }
+:global(body:has([data-navigation='sidebar'])) .dock[data-music-expanded='true'] { left: 0; }
