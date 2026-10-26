@@ -13,6 +13,83 @@ def port():
 def private_json(path,value):
     with path.open('x') as f:os.chmod(path,0o600);json.dump(value,f)
 
+
+def _start_ticks(pid):
+    try:return int(Path('/proc/%d/stat'%pid).read_text().rpartition(')')[2].split()[19])
+    except (OSError,IndexError,ValueError):return None
+
+def _children(pid):
+    result=[]
+    try:tasks=sorted(Path('/proc/%d/task'%pid).iterdir(),key=lambda p:int(p.name))[:256]
+    except OSError:return result
+    # Go may spawn its working child from a non-leader OS thread, so children are
+    # read per task rather than per process.
+    for task in tasks:
+        try:values=(task/'children').read_text().split()
+        except OSError:continue
+        for value in values:
+            if value.isdigit() and int(value) not in result:result.append(int(value))
+    return result
+
+def _descendants(pid,limit=64):
+    result=[pid];pending=[pid]
+    while pending and len(result)<limit:
+        current=pending.pop(0)
+        for child in _children(current):
+            if child not in result:
+                result.append(child);pending.append(child)
+                if len(result)>=limit:break
+    return result
+
+def _listener_inodes(port):
+    wanted='%04X'%port;inodes=set()
+    for name in ['tcp','tcp6']:
+        try:lines=Path('/proc/net/'+name).read_text().splitlines()[1:]
+        except OSError:continue
+        for line in lines:
+            fields=line.split()
+            if len(fields)<10 or fields[3]!='0A':continue
+            local=fields[1]
+            if not local.startswith('0100007F:') or local.split(':',1)[1].upper()!=wanted:continue
+            if fields[9].isdigit() and fields[9]!='0':inodes.add(fields[9])
+    return inodes
+
+def _owns_socket(pid,inodes):
+    if not inodes:return False
+    try:
+        with os.scandir('/proc/%d/fd'%pid) as entries:
+            for index,entry in enumerate(entries):
+                if index>=4096:break
+                try:target=os.readlink(entry.path)
+                except OSError:continue
+                if target.startswith('socket:[') and target[8:-1] in inodes:return True
+    except OSError:return False
+    return False
+
+_SMOKE_SETS=None
+def api_smoke_sets():
+    """The CLI's own closed endpoint-code and reason sets, read from the checkout.
+
+    The sets live beside this file in the secondary checkout. If they cannot be
+    read, no code or reason is published at all rather than accepting free text.
+    """
+    global _SMOKE_SETS
+    if _SMOKE_SETS is None:
+        codes,reasons=frozenset(),frozenset()
+        try:
+            directory=str(Path(__file__).resolve().parent)
+            if directory not in sys.path:sys.path.insert(0,directory)
+            from api_smoke.client import CLOSED_CODES
+            from api_smoke.flows import REASONS
+            codes,reasons=frozenset(CLOSED_CODES),frozenset(REASONS)
+        except Exception:
+            pass
+        _SMOKE_SETS=(codes,reasons)
+    return _SMOKE_SETS
+
+# The closed set of operation ids the reviewed API smoke may publish.
+API_SMOKE_FLOWS=frozenset('health-live health-ready home-real-rows library-real-content detail-real-item search-real-title reading-list reading-session-open reading-resource reading-progress-read reading-progress-save reading-progress-confirm reading-progress-stale-guard reading-session-close playback-options playback-queue-create playback-queue-read playback-start-admission playback-preparing playback-current playback-controls-read playback-stop playback-queue-cleanup settings-me settings-downloads settings-console settings-configuration cleanup-reading-session cleanup-playback-session cleanup-queue cleanup-owned-handles'.split())
+
 class Job:
     def __init__(self,args):
         self.args=args;self.source=Path.cwd();self.tools=Path(os.environ['PORTICO_RUNNER_SECONDARY_SOURCE']);self.out=Path(os.environ['PORTICO_RUNNER_OUTPUT']);self.work=Path(os.environ['TMPDIR'])/'checkpoint';self.work.mkdir(mode=0o700);self.children=[];self.logs=[];self.mailboxes=[];self.process_env=dict(os.environ,GOMAXPROCS='2',GOMEMLIMIT='1400MiB');self.report={'serverMain':args.server,'privateMain':args.private,'surface':args.surface,'flows':[],'generated':[],'runtimeProfile':'isolated loopback QA; no public deployment or production-identity acceptance'}
@@ -121,6 +198,94 @@ class Job:
         flags='-X portico.local/server/internal/buildinfo.Version=0.1.0-checkpoint+'+self.args.server[:8]+' -X portico.local/server/internal/buildinfo.BuildID='+self.args.server+' -X portico.local/server/internal/hostedtrust.OfficialRoot='+key
         self.run('server',['go','build','-p=2','-tags','release','-trimpath','-buildvcs=false','-ldflags',flags,'-o',str(self.work/'server'),'./cmd/server'],self.source/'server')
         self.run('server-version',[str(self.work/'server'),'--version'],timeout=10)
+    def original_runtime(self,bind,timeout=30):
+        """The exact built server process behind the bwrap launcher.
+
+        A candidate must be a bounded same-process descendant of the launcher, run
+        the exact executable this job built, report real start ticks, and own the
+        admitted loopback listener socket. A bare listener on the port is never
+        adopted; more than one match is ambiguous and therefore unusable.
+        """
+        launcher=getattr(self,'app_pid',None);launcher_start=getattr(self,'app_start',None)
+        # A pid alone can be reused: the captured launcher process and its start
+        # ticks have to still be the same live process, before and after the walk.
+        if launcher is None or launcher_start is None or getattr(self,'app',None) is None:return None
+        expected=os.path.realpath(str(self.work/'server'));deadline=time.monotonic()+timeout
+        def launcher_original():
+            if self.app.poll() is not None:return False
+            return _start_ticks(launcher)==launcher_start
+        while time.monotonic()<deadline:
+            if not launcher_original():return None
+            inodes=_listener_inodes(bind)
+            if inodes:
+                matches=[]
+                for candidate in _descendants(launcher):
+                    try:exe=os.path.realpath(os.readlink('/proc/%d/exe'%candidate))
+                    except OSError:continue
+                    ticks=_start_ticks(candidate)
+                    if exe!=expected or ticks is None:continue
+                    if _owns_socket(candidate,inodes):matches.append((candidate,ticks))
+                if len(matches)>1:return None
+                if len(matches)==1:return matches[0] if launcher_original() else None
+            time.sleep(.25)
+        return None
+    def api_smoke(self,base,bind,token,installation):
+        """Run the reviewed API smoke against this exact disposable runtime.
+
+        The context is private to this job and removed in the finally path; the
+        setup grant is still alive so the call uses this run's own token. A missing
+        or ambiguous runtime identity, or a CLI that never wrote its receipt,
+        publishes only an unavailable API row: the browser follow-on, the setup
+        grant retirement and the job result are all unaffected.
+        """
+        surface='server-api';context=self.work/'api-context.json';result=self.out/'flow-api-smoke.log'
+        try:
+            runtime=self.original_runtime(bind)
+            if runtime is None:
+                self.report['flows'].append({'surface':surface,'id':'runtime-identity','status':'unavailable','reason':'original-runtime-not-resolved'});return
+            private_json(context,{'origin':base,'accessToken':token,'installationId':installation,'owner':True,'scope':'checkpoint-disposable','runId':self.args.run_id,'runtime':{'pid':runtime[0],'startTimeTicks':runtime[1]}})
+            try:self.run('api-smoke',['python3',str(self.tools/'deployment/testing/checkpoints/api-smoke.py'),'--context',str(context),'--origin',base,'--run-id',self.args.run_id,'--output',str(result)],timeout=420)
+            except StepFailure:
+                if not result.is_file():raise
+        except StepFailure:
+            self.report['flows'].append({'surface':surface,'id':'api-smoke','status':'unavailable','reason':'api-smoke-not-started'})
+        except Exception:
+            self.report['flows'].append({'surface':surface,'id':'api-smoke','status':'unavailable','reason':'api-smoke-harness'})
+        finally:
+            # Nothing here may raise: the browser follow-on and the setup grant
+            # retirement continue whatever the smoke did.
+            try:context.unlink()
+            except FileNotFoundError:pass
+            except OSError:self.report['flows'].append({'surface':surface,'id':'context-cleanup','status':'unavailable','reason':'context-not-removed'})
+            self.merge_api_smoke(result)
+    def merge_api_smoke(self,result):
+        """Merge only closed rows from the CLI receipt; a malformed one is unavailable."""
+        surface='server-api'
+        if not result.is_file():return
+        try:
+            document=json.loads(result.read_text())
+            flows=document['flows']
+            if not isinstance(flows,list):raise ValueError('receipt-shape')
+            codes,reasons=api_smoke_sets();rows=[]
+            for flow in flows:
+                if not isinstance(flow,dict):raise ValueError('receipt-row')
+                identifier,status=flow.get('id'),flow.get('status')
+                if not isinstance(identifier,str):raise ValueError('receipt-row')
+                if status not in ('pass','fail','unavailable'):raise ValueError('receipt-row')
+                if identifier not in API_SMOKE_FLOWS:continue
+                row={'surface':surface,'id':identifier,'status':status}
+                if flow.get('kind') in ('api','cleanup'):row['kind']=flow['kind']
+                # A real endpoint cause survives: integer status plus the CLI's own
+                # closed code and reason sets. Nothing else about the reply is copied.
+                http=flow.get('http')
+                if isinstance(http,int) and not isinstance(http,bool) and 100<=http<=599:row['http']=http
+                code,reason=flow.get('code'),flow.get('reason')
+                if isinstance(code,str) and code in codes:row['code']=code
+                if isinstance(reason,str) and reason in reasons:row['reason']=reason
+                rows.append(row)
+            self.report['flows']+=rows
+        except (OSError,ValueError,KeyError,TypeError):
+            self.report['flows'].append({'surface':surface,'id':'api-smoke-receipt','status':'unavailable','reason':'receipt-unreadable'})
     def web_server(self):
         node=self.node();generated=self.attempt('server','official-generation',self.generation)
         server=self.attempt('server','server-build-and-release-guard',self.server_build)
@@ -138,7 +303,7 @@ class Job:
         # Exercise the normal Linux service profile, while its fixed transcode
         # path is a private disk-backed bind mount rather than a host write.
         transcode=self.work/'transcode';transcode.mkdir(mode=0o700)
-        app=self.spawn('server-runtime',['bwrap','--die-with-parent','--unshare-user','--ro-bind','/','/','--bind',str(self.work),str(self.work),'--tmpfs','/var/cache','--dir','/var/cache/portico','--bind',str(transcode),'/var/cache/portico','--proc','/proc','--dev','/dev','--',str(self.work/'server')],env=env);self.ready(base+'/health/ready',app)
+        app=self.spawn('server-runtime',['bwrap','--die-with-parent','--unshare-user','--ro-bind','/','/','--bind',str(self.work),str(self.work),'--tmpfs','/var/cache','--dir','/var/cache/portico','--bind',str(transcode),'/var/cache/portico','--proc','/proc','--dev','/dev','--',str(self.work/'server')],env=env);self.app=app;self.app_pid=app.pid;self.app_start=_start_ticks(app.pid);self.ready(base+'/health/ready',app)
         books=self.work/'book-fixture';books.mkdir(mode=0o700)
         epubs=list((self.args.fixtures/'media/Read/Books').rglob('*.epub'))
         if len(epubs)!=1 or hashlib.sha256(epubs[0].read_bytes()).hexdigest()!='85814417c1a74d2ca7f3b077b47454d0cfc728392d40d846d1c97d44f24c5279':raise StepFailure('unchanged-epub-fixture')
@@ -162,6 +327,7 @@ class Job:
                 if all(x in ['complete','complete_with_warnings','completed','failed','cancelled'] for x in states):break
                 time.sleep(2)
             home=self.json_call(base,'GET','/v1/home',token=token,installation=installation);self.report['flows'].append({'surface':'server','id':'real-fixture-ingestion-home','status':'pass' if home.get('rows') else 'fail','rows':len(home.get('rows',[]))})
+            if home.get('rows'):self.api_smoke(base,bind,token,installation)
         finally:self.json_call(base,'DELETE','/v1/devices/'+grant['deviceId'],token=token,installation=installation,expected=(204,))
         if built:self.browser(node,{'surface':'web','origin':base,'username':username,'password':password,'profileName':username,'reviewProfile':'Review','disabled':self.args.disabled})
     def hosted(self):
