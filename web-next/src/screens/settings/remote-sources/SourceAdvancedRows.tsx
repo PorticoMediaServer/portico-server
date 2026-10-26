@@ -34,6 +34,9 @@ export function SourceAdvancedRows({values, cacheSupported, transportSupported, 
   /** A marked row is the same node, wrapped only when markers exist. No control ring is drawn:
    *  no single control element is proved for these rows, so the tint, bar and preset line stand
    *  alone rather than a guessed descendant selector. */
+  /** Only the six numeric rows can carry the authored .n.ch ring; selects, switches and the
+   *  two-radio groups have no authored ring rule, so they keep the tint, bar and preset line. */
+  const changed = (field: SourceChoiceField) => !!markers && markers.changed.includes(field);
   const row = (field: SourceChoiceField, node: ReactNode) => {
     if (!markers) return node;
     if (!markers.applicable.includes(field)) return null;
@@ -138,17 +141,17 @@ export function SourceAdvancedRows({values, cacheSupported, transportSupported, 
       <p className={styles.advTitle}>{t('next.remoteSources.advRcloneSettings')}</p>
       <p className={styles.note}>{t('next.remoteSources.advRcloneHelp')}</p>
       <div className={styles.transportGrid}>
-        {row('dirCacheSeconds', <SettingNumber label={t('next.remoteSources.advKeepFolderLists')} value={Math.round(values.dirCacheSeconds / 60)} min={0} max={1440}
+        {row('dirCacheSeconds', <SettingNumber changed={changed('dirCacheSeconds')} label={t('next.remoteSources.advKeepFolderLists')} value={Math.round(values.dirCacheSeconds / 60)} min={0} max={1440}
           unit={t('next.remoteSources.advMinutesUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('dirCacheSeconds', Math.round(value) * 60);}}/> )}
-        {row('readBufferBytes', <SettingNumber label={t('next.remoteSources.advReadBuffer')} value={Math.round(values.readBufferBytes / (1024 * 1024))} min={0} max={1024}
+        {row('readBufferBytes', <SettingNumber changed={changed('readBufferBytes')} label={t('next.remoteSources.advReadBuffer')} value={Math.round(values.readBufferBytes / (1024 * 1024))} min={0} max={1024}
           unit={t('next.remoteSources.advMegabytesUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('readBufferBytes', Math.round(value) * 1024 * 1024);}}/> )}
-        {row('connectTimeoutSeconds', <SettingNumber label={t('next.remoteSources.advConnectTimeout')} value={values.connectTimeoutSeconds} min={0} max={600}
+        {row('connectTimeoutSeconds', <SettingNumber changed={changed('connectTimeoutSeconds')} label={t('next.remoteSources.advConnectTimeout')} value={values.connectTimeoutSeconds} min={0} max={600}
           unit={t('next.remoteSources.advSecondsUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('connectTimeoutSeconds', Math.round(value));}}/> )}
-        {row('idleTimeoutSeconds', <SettingNumber label={t('next.remoteSources.advIdleTimeout')} value={values.idleTimeoutSeconds} min={0} max={3600}
+        {row('idleTimeoutSeconds', <SettingNumber changed={changed('idleTimeoutSeconds')} label={t('next.remoteSources.advIdleTimeout')} value={values.idleTimeoutSeconds} min={0} max={3600}
           unit={t('next.remoteSources.advSecondsUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('idleTimeoutSeconds', Math.round(value));}}/> )}
-        {row('retries', <SettingNumber label={t('next.remoteSources.advRetries')} value={values.retries} min={0} max={10}
+        {row('retries', <SettingNumber changed={changed('retries')} label={t('next.remoteSources.advRetries')} value={values.retries} min={0} max={10}
           unit={t('next.remoteSources.advTimesUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('retries', Math.round(value));}}/> )}
-        {row('lowLevelRetries', <SettingNumber label={t('next.remoteSources.advLowRetries')} value={values.lowLevelRetries} min={0} max={10}
+        {row('lowLevelRetries', <SettingNumber changed={changed('lowLevelRetries')} label={t('next.remoteSources.advLowRetries')} value={values.lowLevelRetries} min={0} max={10}
           unit={t('next.remoteSources.advTimesUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('lowLevelRetries', Math.round(value));}}/> )}
       </div>
     </>}

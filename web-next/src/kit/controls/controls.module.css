@@ -259,3 +259,8 @@
 
 .field[data-variant="setting"] .inputShell {height: 40px; border-radius: 10px; padding: 0 14px;}
 .field[data-variant="setting"] .input {font-size: 15px;}
+
+/* remote-sources .nf .n.ch: a changed setting's own input shell carries the authored inset ring;
+   the canonical focus-within halo is drawn after it, so focus still wins. */
+.field[data-changed] .inputShell { box-shadow: inset 0 0 0 1.5px var(--color-accent-strong); }
+.field[data-changed] .inputShell:focus-within { box-shadow: inset 0 0 0 1.5px var(--color-accent-strong), 0 0 0 3px var(--color-focus); }
