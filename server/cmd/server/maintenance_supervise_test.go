@@ -16,12 +16,12 @@ func restoreMaintenanceSeams(t *testing.T) {
 	retention, planner := retentionRun, plannerRefresh
 	interval := plannerRefreshInterval
 	poll, ancillary := housekeepingPollInterval, housekeepingAncillaryInterval
-	tickHook, plannerHook := housekeepingTickHook, plannerRefreshHook
+	tickHook := housekeepingTickHook
 	t.Cleanup(func() {
 		retentionRun, plannerRefresh = retention, planner
 		plannerRefreshInterval = interval
 		housekeepingPollInterval, housekeepingAncillaryInterval = poll, ancillary
-		housekeepingTickHook, plannerRefreshHook = tickHook, plannerHook
+		housekeepingTickHook = tickHook
 	})
 }
 
@@ -71,7 +71,6 @@ func TestHousekeepingAdvancesWhileRetentionIsBlocked(t *testing.T) {
 		}
 		return nil
 	}
-	plannerRefreshHook = func() {}
 
 	done := make(chan struct{})
 	go func() {
@@ -88,12 +87,13 @@ func TestHousekeepingAdvancesWhileRetentionIsBlocked(t *testing.T) {
 	waitFor(t, retentionStopped, "retention child exit")
 }
 
-// Cancellation must join both tracked loops through the existing shutdown path.
-func TestHousekeepingCancellationStopsTrackedRetention(t *testing.T) {
+// The shared lifecycle must cancel both independently supervised loop bodies.
+func TestHousekeepingCancellationStopsRetention(t *testing.T) {
 	db := openMaintenanceDB(t)
 	restoreMaintenanceSeams(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	retentionStarted := make(chan struct{})
 	retentionStopped := make(chan struct{})
 	retentionRun = func(ctx context.Context, db *sql.DB) {
@@ -115,6 +115,67 @@ func TestHousekeepingCancellationStopsTrackedRetention(t *testing.T) {
 	cancel()
 	waitFor(t, done, "housekeeping exit")
 	waitFor(t, retentionStopped, "retention child exit")
+}
+
+// Exercise the real yielding refresh through its caller, not just a timer hook.
+// Startup statistics deliberately describe one row; growth must be noticed
+// while the same process and its blocked retention child stay alive.
+func TestHousekeepingRefreshesGrownTableWithoutRestart(t *testing.T) {
+	db := openMaintenanceDB(t)
+	restoreMaintenanceSeams(t)
+	for _, statement := range []string{
+		`CREATE TABLE maintenance_growth(id INTEGER PRIMARY KEY, value TEXT NOT NULL)`,
+		`INSERT INTO maintenance_growth VALUES(1,'original')`,
+		`ANALYZE maintenance_growth`,
+		`WITH RECURSIVE n(i) AS (SELECT 2 UNION ALL SELECT i+1 FROM n WHERE i<21) INSERT INTO maintenance_growth SELECT i,'grown' FROM n`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var before string
+	if err := db.QueryRow(`SELECT stat FROM sqlite_stat1 WHERE tbl='maintenance_growth'`).Scan(&before); err != nil || before != "1" {
+		t.Fatalf("initial statistics = %q, err=%v", before, err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	retentionStopped := make(chan struct{})
+	retentionRun = func(ctx context.Context, _ *sql.DB) {
+		<-ctx.Done()
+		close(retentionStopped)
+	}
+	plannerRefreshInterval = 0
+	housekeepingPollInterval = 5 * time.Millisecond
+	housekeepingAncillaryInterval = time.Millisecond
+	refreshed := make(chan error, 1)
+	plannerRefresh = func(ctx context.Context, db *sql.DB) error {
+		err := persistence.RefreshPlannerStatistics(ctx, db)
+		select {
+		case refreshed <- err:
+		default:
+		}
+		return err
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runDatabaseHousekeeping(ctx, db)
+	}()
+	select {
+	case err := <-refreshed:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("housekeeping did not complete a real planner refresh")
+	}
+	var after string
+	if err := db.QueryRow(`SELECT stat FROM sqlite_stat1 WHERE tbl='maintenance_growth'`).Scan(&after); err != nil || after != "21" {
+		t.Fatalf("refreshed statistics = %q, err=%v", after, err)
+	}
+	cancel()
+	waitFor(t, done, "housekeeping exit after refresh")
+	waitFor(t, retentionStopped, "retention exit after refresh")
 }
 
 func waitFor(t *testing.T, signal <-chan struct{}, what string) {

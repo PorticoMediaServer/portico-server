@@ -49,7 +49,6 @@ var (
 	housekeepingPollInterval      = dbwork.CheckpointPollInterval
 	housekeepingAncillaryInterval = dbwork.CheckpointRegularInterval
 	housekeepingTickHook          = func() {}
-	plannerRefreshHook            = func() {}
 )
 
 // integritySchedule reads the owner's choice. Off unless asked for, because on a
@@ -94,7 +93,7 @@ func runDatabaseHousekeeping(ctx context.Context, db *sql.DB) {
 		}
 	}
 	// Owner-paused retention must never pause WAL pressure monitoring. Start it
-	// as a tracked child of this same lifecycle so the goroutine here can reach
+	// on this same lifecycle so the goroutine here can reach
 	// its own ticker instead of running retention's never-ending timer inline.
 	supervise.Supervise(ctx, "cmd.record-retention", func(ctx context.Context) { retentionRun(ctx, db) })
 	interval, integrity := integritySchedule()
@@ -144,10 +143,13 @@ func runDatabaseHousekeeping(ctx context.Context, db *sql.DB) {
 			// sessions and catalogues grow. Reuse the yielding, short-writer
 			// refresh; it counts only stale tables and samples index keys.
 			lastPlannerRefresh = time.Now()
-			if err := plannerRefresh(ctx, db); err != nil && ctx.Err() == nil {
-				log.Printf("Planner statistics refresh will retry: %v", err)
+			if err := plannerRefresh(ctx, db); err != nil {
+				if ctx.Err() == nil {
+					log.Printf("Planner statistics refresh will retry: %v", err)
+				}
+			} else {
+				log.Printf("Database planner statistics refresh completed")
 			}
-			plannerRefreshHook()
 		}
 		if err := persistence.ReclaimSpace(ctx, db); err != nil {
 			log.Printf("warn: Database space reclamation: %v", err)
