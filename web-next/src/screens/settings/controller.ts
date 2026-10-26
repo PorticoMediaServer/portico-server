@@ -195,10 +195,15 @@ export class SettingsController {
     // The drawn status line above Home networks says whether this connection
     // counts as home, from the same connectivity report the form holds.
     if (row.id === 'remote.thisDevice') {
-      const status = this.forms.connectivity?.status(), address = status?.connection.clientAddress;
-      if (!status || !address) return {present: false};
-      return {present: true, statusTone: status.connection.remote ? 'warn' : 'ok',
-        displayValue: defaultI18n.t(status.connection.remote ? 'next.remoteStatus.deviceAway' : 'next.remoteStatus.deviceHome', {address})};
+      const status = this.forms.connectivity?.status(), connection = status?.connection;
+      // The connectivity form publishes an untyped status document. Draw this row only from a
+      // complete connection row: a real address string and an explicit home/away answer.
+      if (typeof connection !== 'object' || connection === null || Array.isArray(connection)
+        || !('clientAddress' in connection) || typeof connection.clientAddress !== 'string' || !connection.clientAddress
+        || !('remote' in connection) || typeof connection.remote !== 'boolean') return {present: false};
+      const address = connection.clientAddress, remote = connection.remote;
+      return {present: true, statusTone: remote ? 'warn' : 'ok',
+        displayValue: defaultI18n.t(remote ? 'next.remoteStatus.deviceAway' : 'next.remoteStatus.deviceHome', {address})};
     }
     const value = this.read(row, context);
     if (!value || value.configOnly) return {present: false};
