@@ -358,6 +358,8 @@ export function createLibrarySelection({playSelection, owner, descriptor, action
     registerWindow: (first, last) => {
       const next = Number.isSafeInteger(first) && Number.isSafeInteger(last) && first >= 0 && last >= first ? Object.freeze({first, last}) : undefined;
       if (next?.first !== visibleValue?.first || next?.last !== visibleValue?.last) {visibleValue = next; for (const listener of visibleListeners) listener();}
+      // Empty layout observations are not selection commands or server errors.
+      if (!next) return;
       void playSelection.registerWindow(first, last).catch(reportError);
     },
     personal, queue, addToPlaylist, addToCollection,

@@ -56,7 +56,8 @@ test('Library selection defers to an actual token and offers no grant or Detail 
   const owner = setup();
   try {
     assert.equal(owner.selection.getSnapshot().phase, 'waiting');assert.equal(owner.detailReads(), 0);
-    await assert.rejects(owner.selection.registerWindow(0, 2), {code: 'library-play-selection-unavailable'});
+    assert.deepEqual(await owner.selection.registerWindow(0, 2), []);
+    assert.equal(owner.selection.getSnapshot().phase, 'waiting');assert.equal(owner.detailReads(), 0);
     await owner.load();const rows = await owner.selection.registerWindow(0, 2);
     assert.equal(owner.detailReads(), 0);assert.equal(rows.length, 3);
     const context = owner.selection.getSnapshot().selection!.context;
@@ -302,4 +303,30 @@ test('Select all refuses a same-revision selector that is not this source descri
     assert.throws(() => owner.selection.selectWhole(forged), {code: 'library-play-selection-unavailable'});
     assert.equal(owner.selection.getSnapshot().selection?.active, false);
   } finally {owner.dispose();}
+});
+
+test('Reading rows never enter the catalogue selection model or close gaps between admitted rows', async () => {
+  const entries = [
+    {id: 'movie-a', libraryId: 'library', kind: 'movie' as const, title: 'A'},
+    {id: 'epub', libraryId: 'library', kind: 'ebook' as const, title: 'Publication'},
+    {id: 'movie-b', libraryId: 'library', kind: 'movie' as const, title: 'B'},
+    {id: 'comic', libraryId: 'library', kind: 'comic' as const, title: 'Comic'},
+  ];
+  let reads = 0;
+  const source = {
+    viewIdentity: () => 'original-mixed-window',
+    getSnapshot: () => ({phase: 'ready', revision: 'accepted-page', queryRevision: 1}),
+    subscribe: () => () => {}, contains: (entry: unknown) => entries.includes(entry as typeof entries[number]),
+    collection: {subscribe: () => () => {}, itemAt: (index: number) => entries[index] ? {entry: entries[index]} : undefined},
+  };
+  const selection = createLibraryPlaySelection({source, scope, principal: {serverId: 'server', authority: 'local', accountId: 'account', profileId: 'profile'},
+    signal: new AbortController().signal, isCurrent: () => true, api: {async request<T>(): Promise<T> {reads++; throw new Error('No grant read');}},
+    requestId: async () => {throw new Error('No mutation');}});
+  try {
+    const rows = await selection.registerWindow(0, 3);
+    assert.deepEqual(rows.map(row => row.position), [0, 2]);
+    assert.deepEqual(rows.map(row => row.entry.id), ['movie-a', 'movie-b']);
+    selection.selectLoaded(); assert.equal(selection.getSnapshot().selection?.summary.count, 2);
+    assert.equal(reads, 0); assert.equal(selection.getSnapshot().canPlay, false);
+  } finally {selection.dispose();}
 });
