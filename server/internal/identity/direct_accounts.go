@@ -818,7 +818,7 @@ func (s *Service) TransferDirectOwnership(ctx context.Context, bearer, target, p
 	if err := s.RequireSignInKind(ctx, SignInLocal); err != nil {
 		return err
 	}
-	if len(password) > 72 || target == "" {
+	if password == "" || len(password) > 72 || target == "" {
 		return ErrDirectInput
 	}
 	proof, e := s.proveCurrentPassword(ctx, bearer, password)

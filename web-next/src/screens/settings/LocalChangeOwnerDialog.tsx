@@ -2,7 +2,8 @@ import {useLayoutEffect, useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import {errorMessage} from '@core/presentation/errors.ts';
 import {Icon} from '../../kit/Icon';
-import {Button, RichSelect, TextField} from '../../kit/controls';
+import {Button, TextField} from '../../kit/controls';
+import {LocalOwnerChoiceFields, type LocalOwnerChoiceMode} from './LocalOwnerChoiceFields';
 import {Dialog} from '../../kit/overlays/Dialog';
 import styles from './local-change-owner.module.css';
 import type {LocalOwnerTransferPort} from './local-owner-transfer';
@@ -31,7 +32,9 @@ export function LocalChangeOwnerDialog({open, port, onClose, onError}: {
   // advances this generation so a fresh one is minted for the reopened dialog.
   const [generation, setGeneration] = useState(0);
   const witnessRef = useRef<Witness | null>(null);
-  const [selected, setSelected] = useState(''), [password, setPassword] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState<unknown>();
+  const [selected, setSelected] = useState(''), [mode, setMode] = useState<LocalOwnerChoiceMode>('existing');
+  const [username, setUsername] = useState(''), [name, setName] = useState(''), [newPassword, setNewPassword] = useState('');
+  const [password, setPassword] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState<unknown>();
   useLayoutEffect(() => {
     if (!open || !port) return;
     // The callbacks and port belong to this opening; a later prop is never adopted.
@@ -39,7 +42,7 @@ export function LocalChangeOwnerDialog({open, port, onClose, onError}: {
     witnessRef.current = fresh;
     setWitness(fresh);
     // The approved dialog has no default owner: the caller must choose one explicitly.
-    setSelected('');
+    setSelected('');setMode('existing');setUsername('');setName('');setNewPassword('');
     setPassword('');
     setError(undefined);
     setBusy(false);
@@ -47,7 +50,7 @@ export function LocalChangeOwnerDialog({open, port, onClose, onError}: {
       fresh.live = false;
       if (witnessRef.current === fresh) witnessRef.current = null;
       setWitness(current => current === fresh ? null : current);
-      setPassword('');
+      setPassword('');setNewPassword('');
       fresh.abort.abort();
     };
   }, [open, port, generation]);
@@ -56,7 +59,7 @@ export function LocalChangeOwnerDialog({open, port, onClose, onError}: {
     held.live = false;
     if (witnessRef.current === held) witnessRef.current = null;
     setWitness(current => current === held ? null : current);
-    setPassword('');
+    setPassword('');setNewPassword('');setUsername('');setName('');
     setBusy(false);
     setGeneration(value => value + 1);
   };
@@ -72,19 +75,21 @@ export function LocalChangeOwnerDialog({open, port, onClose, onError}: {
     const held = witnessRef.current;
     return !!held && held === drawn && held === witness && held.live && open && held.port === port && !held.abort.signal.aborted;
   };
-  const choose = (value: string) => {if (live()) setSelected(value);};
-  const typePassword = (value: string) => {if (live()) setPassword(value);};
+  const choose = (value: string) => {if (live() && !drawn.busy) setSelected(value);};
+  const typePassword = (value: string) => {if (live() && !drawn.busy) setPassword(value);};
+  const changeMode = (value: LocalOwnerChoiceMode) => {if (live() && !drawn.busy) {setMode(value);setSelected('');setUsername('');setName('');setNewPassword('');setPassword('');setError(undefined);}};
   const submit = () => {
     const held = witnessRef.current;
-    if (!held || held !== witness || held !== drawn || !held.live || held.busy || !selected || !password) return;
+    if (!held || held !== witness || held !== drawn || !held.live || held.busy || !password || (mode === 'existing' ? !selected : !username.trim() || !name.trim() || !newPassword)) return;
     // Take the secret out of retained UI state before the request starts; a rejection
     // reports the failure but never restores or keeps the password.
     const secret = password;
-    held.busy = true;setBusy(true);setError(undefined);setPassword('');
+    const target = mode === 'new' ? {newAccount: Object.freeze({username, name, password: newPassword})} : {accountId: selected};
+    held.busy = true;setBusy(true);setError(undefined);setPassword('');setNewPassword('');
     const caller = {isCurrent: () => held.live && witnessRef.current === held && !held.abort.signal.aborted, signal: held.abort.signal};
     void (async () => {
       try {
-        await accept({accountId: selected, currentPassword: secret, expectedRevision: held.port.opening.ownerRevision}, caller);
+        await accept({...target, currentPassword: secret, expectedRevision: held.port.opening.ownerRevision}, caller);
         if (!held.live || witnessRef.current !== held) return;
         retire(held);
         held.onClose();
@@ -95,7 +100,7 @@ export function LocalChangeOwnerDialog({open, port, onClose, onError}: {
       }
     })();
   };
-  const ready = Boolean(selected && password && !busy);
+  const ready = Boolean(password && !busy && (mode === 'existing' ? selected : username.trim() && name.trim() && newPassword));
   return <Dialog open={open} onOpenChange={value => {if (!value) close();}} width={560} title={t('next.settingsSpec.server.signin.groups.0.rows.5.label')}
     dismissOnBack={!busy} dismissOnOutsidePress={!busy} showCloseButton={!busy}
     footer={<>
@@ -105,9 +110,10 @@ export function LocalChangeOwnerDialog({open, port, onClose, onError}: {
     <div className={styles.body}>
       <p className={styles.lede}>{t('next.settings.changeOwnerLocalBody')}</p>
       {error ? <p className={styles.error} role="alert">{errorMessage(error, 'generic', {operation: 'action'})}</p> : null}
-      <RichSelect label={t('accounts.settings.changeOwnerLocalNewOwner')} value={selected} disabled={busy || !members.length}
-        options={members.map(member => ({value: member.accountId, label: member.username}))} onValueChange={choose}/>
-      {!members.length && <p className={styles.empty}>{t('accounts.settings.changeOwnerLocalEmpty')}</p>}
+      <LocalOwnerChoiceFields mode={mode} members={members} accountId={selected} username={username} name={name} newPassword={newPassword}
+        disabled={busy} onModeChange={changeMode} onAccountIdChange={choose}
+        onUsernameChange={value => {if (live() && !drawn.busy) setUsername(value);}} onNameChange={value => {if (live() && !drawn.busy) setName(value);}}
+        onNewPasswordChange={value => {if (live() && !drawn.busy) setNewPassword(value);}} />
       <TextField label={t('account.currentPassword')}
         type="password" autoComplete="current-password" value={password} disabled={busy} onChange={event => typePassword(event.currentTarget.value)}/>
       <ul className={styles.lines}>
