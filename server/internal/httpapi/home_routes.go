@@ -202,9 +202,15 @@ func (d Dependencies) homeRoutes(mux *http.ServeMux) {
 			homeFailure(w, e)
 			return
 		}
-		// Viewers also watched follows the owner's community-activity setting,
-		// as Home's Popular on this server does.
-		settings, e := d.Console.Settings(r.Context(), d.consoleAuthority(p, false))
+		// Viewers also watched follows the owner's stored community-activity
+		// policy, as Home's Popular on this server does. Read only stored policy
+		// here: the full Settings projection would run unrelated tool validation.
+		var settings operations.SettingsDocument
+		e = dbwork.WithReadSnapshot(r.Context(), d.Console.DB, func(ctx context.Context) error {
+			var err error
+			settings, err = d.Console.SettingsTx(ctx, dbwork.Snapshot(ctx), d.consoleAuthority(p, false))
+			return err
+		})
 		if e != nil {
 			homeFailure(w, e)
 			return
