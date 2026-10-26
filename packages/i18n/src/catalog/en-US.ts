@@ -282,6 +282,7 @@ export const enUS = {
   'error.artworkGone': 'This artwork is no longer available. Refresh to see the latest.',
   'error.webUnavailable': 'The web app is temporarily unavailable. Try again in a moment.',
   'error.methodNotAllowed': 'This action isn’t supported here.',
+  'error.clocksDisagree': 'This device and the server do not agree on the time. No credentials were sent.',
   'error.unknown': 'Something went wrong. Try again.',
   'content.openFailed': 'This content could not be opened.',
   'error.screenCrashed': 'Something went wrong on this screen.',
