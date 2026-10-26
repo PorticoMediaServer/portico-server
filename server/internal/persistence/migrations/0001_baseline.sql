@@ -9720,3 +9720,166 @@ CREATE TRIGGER owned_capture_presentation_ref_delete BEFORE DELETE ON owned_capt
 WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=OLD.snapshot_id AND state='retired')
  OR EXISTS(SELECT 1 FROM playback_disc_reader_pins WHERE snapshot_id=OLD.snapshot_id)
 BEGIN SELECT RAISE(ABORT,'private disc presentation still retains its capture'); END;
+
+-- Original actual-Play preparation, before any media session exists. These
+-- bounded private rows retain selection/idempotency only, never prepared facts,
+-- credentials, locators, byte custody, or a permission reconstructed on restart.
+CREATE TABLE playback_start_preparations(
+ id TEXT PRIMARY KEY,
+ device_id TEXT NOT NULL CHECK(device_id<>''),
+ start_key_digest TEXT NOT NULL CHECK(length(start_key_digest)=64),
+ start_body_digest TEXT NOT NULL CHECK(length(start_body_digest)=64),
+ item_id TEXT NOT NULL CHECK(item_id<>''),
+ asset_id TEXT NOT NULL CHECK(asset_id<>''),
+ part_index INTEGER NOT NULL CHECK(part_index>=0),
+ replaces_session_id TEXT NOT NULL,
+ replaces_generation INTEGER NOT NULL,
+ token_expires_ms INTEGER NOT NULL,
+ created_ms INTEGER NOT NULL CHECK(created_ms>0),
+ deadline_ms INTEGER NOT NULL CHECK(deadline_ms>created_ms AND deadline_ms-created_ms<=120000 AND deadline_ms<=token_expires_ms),
+ UNIQUE(device_id,start_key_digest),
+ CHECK((replaces_session_id='' AND replaces_generation=0) OR (replaces_session_id<>'' AND replaces_generation>0))
+) STRICT;
+CREATE TABLE playback_start_preparation_lifecycle(
+ operation_id TEXT PRIMARY KEY REFERENCES playback_start_preparations(id),
+ state TEXT NOT NULL CHECK(state IN('pending','preparing','prepared','accepted','failed','retired')),
+ revision INTEGER NOT NULL CHECK(revision>0),
+ execution_id TEXT NOT NULL,
+ sealed INTEGER NOT NULL CHECK(sealed IN(0,1)),
+ CHECK(state<>'pending' OR execution_id=''),
+ CHECK(state NOT IN('preparing','prepared','accepted') OR (execution_id<>'' AND sealed=1))
+) STRICT;
+CREATE UNIQUE INDEX playback_start_preparation_execution ON playback_start_preparation_lifecycle(execution_id) WHERE execution_id<>'';
+CREATE INDEX playback_start_preparation_state ON playback_start_preparation_lifecycle(state,operation_id);
+CREATE TABLE playback_start_preparation_actor(
+ operation_id TEXT PRIMARY KEY REFERENCES playback_start_preparations(id),
+ server_id TEXT NOT NULL,
+ authority TEXT NOT NULL,
+ account_id TEXT NOT NULL,
+ profile_id TEXT NOT NULL,
+ device_id TEXT NOT NULL,
+ family_id TEXT NOT NULL,
+ grant_id TEXT NOT NULL,
+ session_hash TEXT NOT NULL CHECK(length(session_hash)=64),
+ epoch INTEGER NOT NULL CHECK(epoch>=0),
+ token_generation INTEGER NOT NULL CHECK(token_generation>0),
+ original_horizon_ms INTEGER NOT NULL CHECK(original_horizon_ms>0)
+) STRICT;
+CREATE TABLE playback_start_preparation_source(
+ operation_id TEXT PRIMARY KEY REFERENCES playback_start_preparations(id),
+ library_id TEXT NOT NULL,
+ library_source_id TEXT NOT NULL,
+ asset_id TEXT NOT NULL,
+ inventory_object_id TEXT NOT NULL,
+ inventory_revision TEXT NOT NULL,
+ root_identity TEXT NOT NULL,
+ incarnation TEXT NOT NULL,
+ remote_source_id TEXT NOT NULL,
+ effective_configuration TEXT NOT NULL,
+ read_policy_witness TEXT NOT NULL,
+ read_authority_witness TEXT NOT NULL,
+ library_generation INTEGER NOT NULL CHECK(library_generation>0),
+ raw_configuration_generation INTEGER NOT NULL CHECK(raw_configuration_generation>0),
+ profile_revision INTEGER NOT NULL CHECK(profile_revision>=0),
+ size INTEGER NOT NULL CHECK(size>0),
+ modified_ns INTEGER NOT NULL CHECK(modified_ns>=0)
+) STRICT;
+CREATE TABLE playback_start_preparation_queue(
+ operation_id TEXT PRIMARY KEY REFERENCES playback_start_preparations(id),
+ legacy_request_id TEXT NOT NULL CHECK(legacy_request_id<>''),
+ start_key_digest TEXT NOT NULL CHECK(length(start_key_digest)=64),
+ start_body_digest TEXT NOT NULL CHECK(length(start_body_digest)=64),
+ queue_id TEXT NOT NULL,
+ queue_entry_id TEXT NOT NULL,
+ queue_owner_kind TEXT NOT NULL,
+ queue_owner_id TEXT NOT NULL,
+ queue_revision INTEGER NOT NULL,
+ queue_custody_generation INTEGER NOT NULL,
+ CHECK((queue_id='' AND queue_entry_id='' AND queue_owner_kind='' AND queue_owner_id='' AND queue_revision=0 AND queue_custody_generation=0)
+ OR (queue_id<>'' AND queue_entry_id<>'' AND queue_owner_kind<>'' AND queue_owner_id<>'' AND queue_revision>0 AND queue_custody_generation>0))
+) STRICT;
+CREATE TABLE playback_start_preparation_results(
+ operation_id TEXT PRIMARY KEY REFERENCES playback_start_preparations(id),
+ session_id TEXT NOT NULL UNIQUE,
+ legacy_session_id TEXT NOT NULL,
+ legacy_generation INTEGER NOT NULL CHECK(legacy_generation>0),
+ snapshot_id TEXT NOT NULL UNIQUE
+) STRICT;
+CREATE TRIGGER playback_start_preparation_root_immutable BEFORE UPDATE ON playback_start_preparations
+BEGIN SELECT RAISE(ABORT,'original preparation binding is immutable'); END;
+CREATE TRIGGER playback_start_preparation_root_delete BEFORE DELETE ON playback_start_preparations
+BEGIN SELECT RAISE(ABORT,'original preparation key remains an idempotency tombstone'); END;
+CREATE TRIGGER playback_start_preparation_lifecycle_insert BEFORE INSERT ON playback_start_preparation_lifecycle
+WHEN NEW.state<>'pending' OR NEW.revision<>1 OR NEW.execution_id<>'' OR NEW.sealed<>0
+BEGIN SELECT RAISE(ABORT,'preparation must begin without an execution or session'); END;
+CREATE TRIGGER playback_start_preparation_lifecycle_transition BEFORE UPDATE ON playback_start_preparation_lifecycle
+WHEN NEW.operation_id<>OLD.operation_id
+ OR OLD.state IN('accepted','failed','retired')
+ OR NOT(
+  (OLD.state='pending' AND OLD.sealed=0 AND NEW.state='pending' AND NEW.sealed=1 AND NEW.revision=OLD.revision AND NEW.execution_id=OLD.execution_id)
+  OR (OLD.sealed=1 AND NEW.sealed=1 AND NEW.revision=OLD.revision+1 AND (
+   (OLD.state='pending' AND NEW.state='preparing' AND NEW.execution_id<>'')
+   OR (NEW.execution_id=OLD.execution_id AND (
+    (OLD.state='preparing' AND NEW.state='prepared')
+    OR (OLD.state='prepared' AND NEW.state='accepted')
+    OR (OLD.state IN('pending','preparing','prepared') AND NEW.state IN('failed','retired'))
+   ))
+  ))
+ )
+BEGIN SELECT RAISE(ABORT,'preparation execution or terminal state cannot be replaced'); END;
+CREATE TRIGGER playback_start_preparation_seal BEFORE UPDATE OF sealed ON playback_start_preparation_lifecycle
+WHEN OLD.sealed=0 AND NEW.sealed=1 AND NOT EXISTS(
+ SELECT 1 FROM playback_start_preparations p
+ JOIN playback_start_preparation_actor a ON a.operation_id=p.id
+ JOIN playback_start_preparation_source s ON s.operation_id=p.id
+ JOIN playback_start_preparation_queue q ON q.operation_id=p.id
+ WHERE p.id=NEW.operation_id AND a.device_id=p.device_id AND a.original_horizon_ms>=p.deadline_ms
+ AND s.asset_id=p.asset_id AND q.start_key_digest=p.start_key_digest AND q.start_body_digest=p.start_body_digest
+)
+BEGIN SELECT RAISE(ABORT,'preparation original normalized witnesses are incomplete'); END;
+CREATE TRIGGER playback_start_preparation_accept BEFORE UPDATE OF state ON playback_start_preparation_lifecycle
+WHEN NEW.state='accepted' AND NOT EXISTS(SELECT 1 FROM playback_start_preparation_results WHERE operation_id=NEW.operation_id)
+BEGIN SELECT RAISE(ABORT,'preparation has no exact accepted session result'); END;
+CREATE TRIGGER playback_start_preparation_lifecycle_delete BEFORE DELETE ON playback_start_preparation_lifecycle
+BEGIN SELECT RAISE(ABORT,'preparation lifecycle remains an idempotency tombstone'); END;
+CREATE TRIGGER playback_start_preparation_actor_insert BEFORE INSERT ON playback_start_preparation_actor
+WHEN NOT EXISTS(SELECT 1 FROM playback_start_preparation_lifecycle WHERE operation_id=NEW.operation_id AND state='pending' AND sealed=0)
+BEGIN SELECT RAISE(ABORT,'preparation actor cannot be attached late'); END;
+CREATE TRIGGER playback_start_preparation_actor_immutable BEFORE UPDATE ON playback_start_preparation_actor
+BEGIN SELECT RAISE(ABORT,'preparation actor is immutable'); END;
+CREATE TRIGGER playback_start_preparation_actor_delete BEFORE DELETE ON playback_start_preparation_actor
+BEGIN SELECT RAISE(ABORT,'preparation actor remains an original witness'); END;
+CREATE TRIGGER playback_start_preparation_source_insert BEFORE INSERT ON playback_start_preparation_source
+WHEN NOT EXISTS(SELECT 1 FROM playback_start_preparation_lifecycle WHERE operation_id=NEW.operation_id AND state='pending' AND sealed=0)
+BEGIN SELECT RAISE(ABORT,'preparation source cannot be attached late'); END;
+CREATE TRIGGER playback_start_preparation_source_immutable BEFORE UPDATE ON playback_start_preparation_source
+BEGIN SELECT RAISE(ABORT,'preparation source is immutable'); END;
+CREATE TRIGGER playback_start_preparation_source_delete BEFORE DELETE ON playback_start_preparation_source
+BEGIN SELECT RAISE(ABORT,'preparation source remains an original witness'); END;
+CREATE TRIGGER playback_start_preparation_queue_insert BEFORE INSERT ON playback_start_preparation_queue
+WHEN NOT EXISTS(SELECT 1 FROM playback_start_preparation_lifecycle WHERE operation_id=NEW.operation_id AND state='pending' AND sealed=0)
+BEGIN SELECT RAISE(ABORT,'preparation queue cannot be attached late'); END;
+CREATE TRIGGER playback_start_preparation_queue_immutable BEFORE UPDATE ON playback_start_preparation_queue
+BEGIN SELECT RAISE(ABORT,'preparation queue is immutable'); END;
+CREATE TRIGGER playback_start_preparation_queue_delete BEFORE DELETE ON playback_start_preparation_queue
+BEGIN SELECT RAISE(ABORT,'preparation queue remains an original witness'); END;
+CREATE TRIGGER playback_start_preparation_result_insert BEFORE INSERT ON playback_start_preparation_results
+WHEN NOT EXISTS(
+ SELECT 1 FROM playback_start_preparations p JOIN playback_start_preparation_lifecycle l ON l.operation_id=p.id
+ JOIN playback_start_preparation_actor a ON a.operation_id=p.id
+ JOIN playback_disc_snapshots snapshot ON snapshot.id=NEW.snapshot_id
+ JOIN playback_disc_lifecycle life ON life.snapshot_id=snapshot.id
+ JOIN playback_disc_snapshot_operation operation ON operation.snapshot_id=snapshot.id
+ JOIN playback_v1_sessions session ON session.id=NEW.session_id
+ WHERE p.id=NEW.operation_id AND l.state='prepared' AND l.sealed=1
+ AND snapshot.session_id=NEW.legacy_session_id AND snapshot.generation=NEW.legacy_generation AND life.state='active' AND life.sealed=1
+ AND operation.start_key_digest=p.start_key_digest AND operation.start_body_digest=p.start_body_digest
+ AND session.device_id=p.device_id AND session.start_digest=p.start_body_digest
+ AND session.account_id=a.account_id AND session.profile_id=a.profile_id AND session.authority=a.authority
+ AND session.media_session_id=NEW.legacy_session_id AND session.media_generation=NEW.legacy_generation
+)
+BEGIN SELECT RAISE(ABORT,'preparation result is not its exact real accepted presentation'); END;
+CREATE TRIGGER playback_start_preparation_result_immutable BEFORE UPDATE ON playback_start_preparation_results
+BEGIN SELECT RAISE(ABORT,'preparation accepted result is immutable'); END;
+CREATE TRIGGER playback_start_preparation_result_delete BEFORE DELETE ON playback_start_preparation_results
+BEGIN SELECT RAISE(ABORT,'preparation accepted result cannot be replaced'); END;
