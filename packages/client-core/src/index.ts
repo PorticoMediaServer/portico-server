@@ -2240,6 +2240,7 @@ export * from './home.ts';
 export * from './play-history.ts';
 export * from './recommendations.ts';
 export * from './notifications.ts';
+export * from './notification-scope.ts';
 export {detailExtraTypes,type DetailExtra,type DetailExtraType,parseCreditPage,type CreditPage,type DetailCredit} from './detail.ts';
 
 export * from './downloads.ts';
