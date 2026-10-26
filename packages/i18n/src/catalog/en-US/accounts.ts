@@ -143,6 +143,7 @@ export const accountMessages = {
   'accounts.settings.changeOwnerLocalStays': 'Profiles, history and libraries stay with the server.',
   'accounts.settings.changeOwnerLocalOnlyNew': 'Only the new owner sees Server › Sign-in afterwards.',
   'accounts.settings.changeOwnerLocalExisting': 'Choose an existing member',
+  'accounts.settings.changeOwnerLocalTargetKind': 'New owner',
   'accounts.settings.changeOwnerLocalCreate': 'Create a new local account',
   'accounts.settings.changeOwnerLocalUsername': 'Username',
   'accounts.settings.changeOwnerLocalName': 'Display name',

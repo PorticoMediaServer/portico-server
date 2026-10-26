@@ -29,7 +29,7 @@ export function LocalOwnerChoiceFields({mode, members, accountId, username, name
   onNewPasswordChange: (password: string) => void;
 }) {
   return <div className={styles.body}>
-    <RichSelect label={t('accounts.settings.changeOwnerLocalNewOwner')} value={mode} disabled={disabled}
+    <RichSelect label={t('accounts.settings.changeOwnerLocalTargetKind')} value={mode} disabled={disabled}
       options={[{value: 'existing', label: t('accounts.settings.changeOwnerLocalExisting')}, {value: 'new', label: t('accounts.settings.changeOwnerLocalCreate')}]}
       onValueChange={value => onModeChange(value === 'new' ? 'new' : 'existing')} />
     {mode === 'existing' ? <>
