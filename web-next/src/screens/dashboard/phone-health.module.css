@@ -44,3 +44,5 @@ button.tile:focus-visible { outline: 3px solid var(--color-focus); outline-offse
   .big b { font-size: 40px; line-height: 1; letter-spacing: -.035em; }
   .big span { font-size: 14px; font-weight: 600; }
 }
+
+.key small { display: block; margin-top: 3px; font-size: 12px; font-weight: 600; color: var(--color-text-tertiary); overflow-wrap: anywhere; }
