@@ -94,6 +94,7 @@ func (h *Handler) oidcRoutes(mux *http.ServeMux) {
 	if h.OIDC == nil {
 		return
 	}
+	h.securityReturnRoutes(mux)
 	mux.HandleFunc("POST /v1/identity/{provider}/start", func(w http.ResponseWriter, r *http.Request) {
 		if !h.allowAuth(r) {
 			failure(w, identity.ErrRateLimited)

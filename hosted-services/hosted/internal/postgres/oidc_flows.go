@@ -11,17 +11,21 @@ import (
 
 	"portico.local/hosted/internal/identity"
 	"portico.local/hosted/internal/security"
+	"portico.local/hosted/internal/serverreturn"
 )
 
 // The public transaction identifier is not a credential. Every continuation
 // also requires the original HttpOnly cookie or native private binding.
 type OIDCStartInput struct {
-	Mode        string                   `json:"mode"`
-	SessionMode string                   `json:"sessionMode"`
-	RequestID   string                   `json:"requestId"`
-	Intent      *identity.SecurityIntent `json:"intent,omitempty"`
-	Proof       string                   `json:"proof,omitempty"`
-	NativeApple bool                     `json:"nativeApple,omitempty"`
+	Mode                      string                             `json:"mode"`
+	SessionMode               string                             `json:"sessionMode"`
+	RequestID                 string                             `json:"requestId"`
+	Intent                    *identity.SecurityIntent           `json:"intent,omitempty"`
+	Proof                     string                             `json:"proof,omitempty"`
+	SecurityReturn            *serverreturn.SecurityReturnStart  `json:"-"`
+	SecurityReturnExpectation *identity.CurrentFamilyExpectation `json:"-"`
+	SecurityReturnIntentID    string                             `json:"-"`
+	NativeApple               bool                               `json:"nativeApple,omitempty"`
 	// Completion "code" is required on every native sign-in that goes through the
 	// browser (all providers except the native Apple assertion): the callback
 	// returns /app/account-return#tx=&code=, and the app presents that code
@@ -58,6 +62,13 @@ func cleanProviderName(name string) string {
 }
 func (o *OIDCLogin) StartFlow(ctx context.Context, provider, binding, access string, q OIDCStartInput) (OIDCView, string, string, error) {
 	var v OIDCView
+	if q.SecurityReturn != nil {
+		captured := *q.SecurityReturn
+		q.SecurityReturn = &captured
+		if q.SecurityReturnExpectation == nil || q.SecurityReturnIntentID == "" || !captured.Valid() || q.Mode != "reauthenticate" || q.SessionMode != "browser" || q.NativeApple || q.Completion != "" || q.Proof != "" || q.Intent == nil || q.Intent.Purpose != "password_set_or_change" || q.Intent.Target != "" {
+			return v, "", "", identity.ErrInvalid
+		}
+	}
 	p := o.Providers[provider]
 	if p == nil || len(binding) != 43 || len(q.RequestID) < 16 || len(q.RequestID) > 128 || (q.SessionMode != "native" && q.SessionMode != "browser") || (q.Mode != "login" && q.Mode != "reauthenticate" && q.Mode != "link") || (q.NativeApple && (provider != "apple" || q.SessionMode != "native" || p.NativeAudience == "")) || (q.Completion != "" && (q.Completion != NativeCompletionCode || q.SessionMode != "native" || q.NativeApple)) || (q.SessionMode == "native" && !q.NativeApple && q.Completion != NativeCompletionCode) {
 		return v, "", "", identity.ErrInvalid
@@ -81,6 +92,9 @@ func (o *OIDCLogin) StartFlow(ctx context.Context, provider, binding, access str
 		if e != nil {
 			return v, "", "", e
 		}
+		if original := q.SecurityReturnExpectation; q.SecurityReturn != nil && (original.AccountID != expected.AccountID || original.FamilyID != expected.FamilyID || original.AuthEpoch != expected.AuthEpoch || original.FamilyGeneration != expected.FamilyGeneration || original.Mode != expected.Mode || !equalSecret(original.TokenHash, expected.TokenHash)) {
+			return v, "", "", identity.ErrCredentials
+		}
 		if e = o.Security.Limit(ctx, "oidc-security-start", expected.AccountID, 10, 15*time.Minute); e != nil {
 			return v, "", "", e
 		}
@@ -101,7 +115,8 @@ func (o *OIDCLogin) StartFlow(ctx context.Context, provider, binding, access str
 	req := o.Security.requestHash(struct {
 		Provider, Access string
 		Input            OIDCStartInput
-	}{provider, access, q})
+		SecurityReturn   *serverreturn.SecurityReturnStart `json:"SecurityReturn,omitempty"`
+	}{provider, access, q, q.SecurityReturn})
 	var existing string
 	var prior, auth, nonce []byte
 	e = tx.QueryRowContext(ctx, `SELECT id,start_request_hash,authorization_cipher,native_nonce_cipher FROM identity_transactions WHERE binding_hash=$1 AND operation_id=$2`, bh, q.RequestID).Scan(&existing, &prior, &auth, &nonce)
@@ -203,6 +218,14 @@ func (o *OIDCLogin) StartFlow(ctx context.Context, provider, binding, access str
 			return v, "", "", e
 		}
 	}
+	if q.SecurityReturn != nil {
+		if _, e = tx.ExecContext(ctx, `UPDATE identity_transactions SET security_return=true WHERE id=$1`, id); e != nil {
+			return v, "", "", e
+		}
+		if e = o.registerSecurityReturnTx(ctx, tx, id, binding, q.SecurityReturnIntentID, expected, *q.Intent, *q.SecurityReturn, p.Callback); e != nil {
+			return v, "", "", e
+		}
+	}
 	sealed, e := o.Keys.Seal(verifier, id)
 	if e != nil {
 		return v, "", "", e
@@ -228,6 +251,7 @@ func (o *OIDCLogin) rotateOnboarding(ctx context.Context, tx *sql.Tx, id string)
 }
 func (o *OIDCLogin) viewTx(ctx context.Context, tx *sql.Tx, r oidcRow, completion string) (*OIDCView, error) {
 	v := &OIDCView{ID: r.ID, Provider: r.Provider, Mode: r.Mode, Expires: r.Expires.UTC(), Status: r.Status}
+	v.SecurityReturn = r.SecurityReturn
 	// A12: a native (non-Apple) transaction's initiator is only its binding
 	// holder, who may not be the person who signed in at the provider. Until
 	// the completion code delivered to the callback browser is presented, it

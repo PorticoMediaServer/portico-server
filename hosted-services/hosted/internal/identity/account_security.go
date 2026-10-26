@@ -86,6 +86,7 @@ type SignInResult struct {
 type SecurityProvider struct {
 	ID       string `json:"id"`
 	Provider string `json:"provider"`
+	Revision int64  `json:"revision,string"`
 }
 type SecurityState struct {
 	AccountID              string             `json:"accountId"`

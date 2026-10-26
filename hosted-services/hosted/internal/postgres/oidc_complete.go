@@ -106,7 +106,7 @@ func (o *OIDCLogin) CompleteFlow(ctx context.Context, id, binding, access string
 		}
 	}
 	if r.Mode != "login" {
-		return o.completeSecurityTx(ctx, tx, r, access, q, issuer, subject, accountID, identityID, identityRevision, revoked)
+		return o.completeSecurityTx(ctx, tx, r, binding, access, q, issuer, subject, accountID, identityID, identityRevision, revoked)
 	}
 	if r.Status == "completed" {
 		var cipher []byte
@@ -262,7 +262,7 @@ func (o *OIDCLogin) CompleteFlow(ctx context.Context, id, binding, access string
 	out.Session = &session
 	return out, tx.Commit()
 }
-func (o *OIDCLogin) completeSecurityTx(ctx context.Context, tx *sql.Tx, r oidcRow, access string, q OIDCCompleteInput, issuer, subject, owner, link string, revision int64, revoked sql.NullTime) (OIDCCompletion, error) {
+func (o *OIDCLogin) completeSecurityTx(ctx context.Context, tx *sql.Tx, r oidcRow, binding, access string, q OIDCCompleteInput, issuer, subject, owner, link string, revision int64, revoked sql.NullTime) (OIDCCompletion, error) {
 	var out OIDCCompletion
 	var expected identity.CurrentFamilyExpectation
 	var expectedLink sql.NullString
@@ -274,6 +274,9 @@ func (o *OIDCLogin) completeSecurityTx(ctx context.Context, tx *sql.Tx, r oidcRo
 	}
 	if !equalSecret(expected.TokenHash, security.Hash(access)) {
 		return out, identity.ErrCredentials
+	}
+	if e = o.securityReturnAdmissionTx(ctx, tx, r.ID, binding, r.SecurityReturn); e != nil {
+		return out, e
 	}
 	raw, e := o.Keys.Open(cipher, "oidc-intent:"+r.ID)
 	if e != nil {
@@ -326,8 +329,15 @@ func (o *OIDCLogin) completeSecurityTx(ctx context.Context, tx *sql.Tx, r oidcRo
 			}
 			return out, identity.ErrChallenge
 		}
-		proof, e := o.Security.issueProofTx(ctx, tx, expected, intent, "provider", link, revision)
+		kind := "provider"
+		if r.SecurityReturn {
+			kind = "provider_security_return"
+		}
+		proof, e := o.Security.issueProofTx(ctx, tx, expected, intent, kind, link, revision)
 		if e != nil {
+			return out, e
+		}
+		if e = o.boundSecurityReturnProofTx(ctx, tx, r.ID, &proof, r.SecurityReturn); e != nil {
 			return out, e
 		}
 		out.Proof = &proof

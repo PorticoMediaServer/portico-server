@@ -7,7 +7,7 @@ import (
 	"errors"
 )
 
-const CurrentHostedSchemaVersion = 28
+const CurrentHostedSchemaVersion = 29
 
 //go:embed schema.sql
 var currentSchema string
@@ -30,7 +30,7 @@ func InitializeCurrentHostedSchemaTx(ctx context.Context, tx *sql.Tx) error {
 			return errors.New("unsupported Hosted schema; provision the current format")
 		}
 		var valid bool
-		if e := tx.QueryRowContext(ctx, `SELECT to_regclass(current_schema()||'.app_authorizations') IS NOT NULL AND to_regclass(current_schema()||'.hosted_signing_state') IS NOT NULL AND to_regclass(current_schema()||'.server_leave_receipts') IS NOT NULL AND to_regclass(current_schema()||'.owner_claim_starts') IS NOT NULL AND to_regclass(current_schema()||'.setup_claim_starts') IS NOT NULL AND to_regclass(current_schema()||'.server_member_incarnations') IS NOT NULL AND to_regclass(current_schema()||'.server_member_endings') IS NOT NULL AND NOT EXISTS(SELECT 1 FROM pg_tables WHERE schemaname=current_schema() AND tablename IN('profiles','memberships','restrictions','invitations','profile_server_policies','account_erasure_jobs','hosted_schema_migrations'))`).Scan(&valid); e != nil {
+		if e := tx.QueryRowContext(ctx, `SELECT to_regclass(current_schema()||'.identity_security_returns') IS NOT NULL AND to_regclass(current_schema()||'.account_security_return_intents') IS NOT NULL AND to_regclass(current_schema()||'.app_authorizations') IS NOT NULL AND to_regclass(current_schema()||'.hosted_signing_state') IS NOT NULL AND to_regclass(current_schema()||'.server_leave_receipts') IS NOT NULL AND to_regclass(current_schema()||'.owner_claim_starts') IS NOT NULL AND to_regclass(current_schema()||'.setup_claim_starts') IS NOT NULL AND to_regclass(current_schema()||'.server_member_incarnations') IS NOT NULL AND to_regclass(current_schema()||'.server_member_endings') IS NOT NULL AND NOT EXISTS(SELECT 1 FROM pg_tables WHERE schemaname=current_schema() AND tablename IN('profiles','memberships','restrictions','invitations','profile_server_policies','account_erasure_jobs','hosted_schema_migrations'))`).Scan(&valid); e != nil {
 			return e
 		}
 		if !valid {

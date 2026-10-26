@@ -30,6 +30,7 @@ type OIDCView struct {
 	OnboardingToken string    `json:"onboardingToken,omitempty"`
 	SuggestedName   string    `json:"suggestedName,omitempty"`
 	MFARequired     bool      `json:"mfaRequired,omitempty"`
+	SecurityReturn  bool      `json:"securityReturn,omitempty"`
 	VerifiedEmail   string    `json:"verifiedEmail,omitempty"`
 }
 type oidcRow struct {
@@ -41,6 +42,7 @@ type oidcRow struct {
 	NativeApple                                      bool
 	// NativeCompletion: the client opted into the completion-code return.
 	NativeCompletion bool
+	SecurityReturn   bool
 }
 
 // NativeCompletionCode is the value GET /v1/identity/options advertises as
@@ -100,7 +102,7 @@ func lockOIDCTransactionHash(ctx context.Context, tx *sql.Tx, id string, binding
 	if e != nil {
 		return r, currentFamilyError(ctx, e)
 	}
-	e = tx.QueryRowContext(ctx, `SELECT t.id,t.provider,t.status,t.descriptor_id,t.marker_key_id,t.binding_generation,t.revision,t.policy_revision,t.descriptor_revision,t.expires_at,t.nonce_hash,t.mode,t.session_mode,t.native_apple,t.native_completion FROM identity_transactions t JOIN identity_protocol_policy p ON p.singleton JOIN identity_provider_descriptors d ON d.id=t.descriptor_id WHERE t.id=$1 AND t.binding_hash=$2 AND t.binding_generation=$3 AND t.expires_at>clock_timestamp() AND p.enabled AND p.revision=t.policy_revision AND p.marker_key_id=t.marker_key_id AND d.enabled AND d.revision=t.descriptor_revision FOR UPDATE OF t FOR SHARE OF p,d`, id, binding, generation).Scan(&r.ID, &r.Provider, &r.Status, &r.Descriptor, &r.Marker, &r.Generation, &r.Revision, &r.Policy, &r.DescriptorRevision, &r.Expires, &r.Nonce, &r.Mode, &r.SessionMode, &r.NativeApple, &r.NativeCompletion)
+	e = tx.QueryRowContext(ctx, `SELECT t.id,t.provider,t.status,t.descriptor_id,t.marker_key_id,t.binding_generation,t.revision,t.policy_revision,t.descriptor_revision,t.expires_at,t.nonce_hash,t.mode,t.session_mode,t.native_apple,t.native_completion,t.security_return FROM identity_transactions t JOIN identity_protocol_policy p ON p.singleton JOIN identity_provider_descriptors d ON d.id=t.descriptor_id WHERE t.id=$1 AND t.binding_hash=$2 AND t.binding_generation=$3 AND t.expires_at>clock_timestamp() AND p.enabled AND p.revision=t.policy_revision AND p.marker_key_id=t.marker_key_id AND d.enabled AND d.revision=t.descriptor_revision FOR UPDATE OF t FOR SHARE OF p,d`, id, binding, generation).Scan(&r.ID, &r.Provider, &r.Status, &r.Descriptor, &r.Marker, &r.Generation, &r.Revision, &r.Policy, &r.DescriptorRevision, &r.Expires, &r.Nonce, &r.Mode, &r.SessionMode, &r.NativeApple, &r.NativeCompletion, &r.SecurityReturn)
 	if errors.Is(e, sql.ErrNoRows) {
 		e = identity.ErrCredentials
 	}

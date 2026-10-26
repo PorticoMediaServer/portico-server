@@ -258,7 +258,12 @@ func (s *AccountSecurity) proofTx(ctx context.Context, tx *sql.Tx, expected iden
 	if e != nil {
 		return e
 	}
-	if kind == "provider" {
+	if kind == "provider" || kind == "provider_security_return" {
+		if kind == "provider_security_return" {
+			if e = s.securityReturnActionTx(ctx, tx, expected, i); e != nil {
+				return e
+			}
+		}
 		var valid bool
 		e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM account_external_identities WHERE id=$1 AND account_id=$2 AND revision=$3 AND revoked_at IS NULL)`, identityID.String, expected.AccountID, revision.Int64).Scan(&valid)
 		if e != nil {
@@ -273,7 +278,7 @@ func (s *AccountSecurity) proofTx(ctx context.Context, tx *sql.Tx, expected iden
 func (s *AccountSecurity) issueProofTx(ctx context.Context, tx *sql.Tx, expected identity.CurrentFamilyExpectation, i identity.SecurityIntent, kind, link string, revision int64) (identity.RecentProof, error) {
 	out := identity.RecentProof{Proof: security.RandomID("proof_"), AccountID: expected.AccountID, FamilyID: expected.FamilyID}
 	var identityID, identityRevision any
-	if kind == "provider" {
+	if kind == "provider" || kind == "provider_security_return" {
 		identityID = link
 		identityRevision = revision
 	}
@@ -535,13 +540,13 @@ func (s *AccountSecurity) State(ctx context.Context, token string) (identity.Sec
 	if e != nil {
 		return out, e
 	}
-	rows, e := tx.QueryContext(ctx, `SELECT id,provider FROM account_external_identities WHERE account_id=$1 AND revoked_at IS NULL ORDER BY provider,id`, expected.AccountID)
+	rows, e := tx.QueryContext(ctx, `SELECT id,provider,revision FROM account_external_identities WHERE account_id=$1 AND revoked_at IS NULL ORDER BY provider,id`, expected.AccountID)
 	if e != nil {
 		return out, e
 	}
 	for rows.Next() {
 		var p identity.SecurityProvider
-		if e = rows.Scan(&p.ID, &p.Provider); e != nil {
+		if e = rows.Scan(&p.ID, &p.Provider, &p.Revision); e != nil {
 			rows.Close()
 			return out, e
 		}

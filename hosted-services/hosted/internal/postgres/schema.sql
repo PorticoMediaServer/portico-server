@@ -256,10 +256,11 @@ CREATE TABLE account_recent_proofs (
     consumed_at timestamp with time zone,
     CONSTRAINT account_recent_proofs_account_epoch_check CHECK ((account_epoch >= 0)),
     CONSTRAINT account_recent_proofs_captured_access_hash_check CHECK ((octet_length(captured_access_hash) = 32)),
-    CONSTRAINT account_recent_proofs_check CHECK ((((credential_kind = 'password'::text) AND (identity_id IS NULL) AND (identity_revision IS NULL)) OR ((credential_kind = 'provider'::text) AND (identity_id IS NOT NULL) AND (identity_revision IS NOT NULL)))),
+    CONSTRAINT account_recent_proofs_check CHECK ((((credential_kind = 'password'::text) AND (identity_id IS NULL) AND (identity_revision IS NULL)) OR ((credential_kind IN ('provider','provider_security_return')) AND (identity_id IS NOT NULL) AND (identity_revision IS NOT NULL)))),
     CONSTRAINT account_recent_proofs_check1 CHECK (((expires_at > created_at) AND (expires_at <= (created_at + '00:05:00'::interval)))),
     CONSTRAINT account_recent_proofs_check2 CHECK (((consumed_at IS NULL) OR ((consumed_at >= created_at) AND (consumed_at < expires_at)))),
-    CONSTRAINT account_recent_proofs_credential_kind_check CHECK ((credential_kind = ANY (ARRAY['password'::text, 'provider'::text]))),
+    CONSTRAINT account_recent_proofs_security_purpose CHECK (credential_kind<>'provider_security_return' OR purpose='password_set_or_change'),
+    CONSTRAINT account_recent_proofs_credential_kind_check CHECK ((credential_kind = ANY (ARRAY['password'::text, 'provider'::text, 'provider_security_return'::text]))),
     CONSTRAINT account_recent_proofs_family_generation_check CHECK ((family_generation >= 0)),
     CONSTRAINT account_recent_proofs_identity_revision_check CHECK ((identity_revision > 0)),
     CONSTRAINT account_recent_proofs_intent_digest_check CHECK ((octet_length(intent_digest) = 32)),
@@ -906,6 +907,7 @@ CREATE TABLE identity_provider_descriptors (
     CONSTRAINT identity_provider_descriptors_revision_check CHECK ((revision > 0))
 );
 CREATE TABLE identity_transactions (
+    security_return boolean DEFAULT false NOT NULL,
     id text NOT NULL,
     binding_hash bytea NOT NULL,
     binding_generation bigint NOT NULL,
@@ -946,6 +948,7 @@ CREATE TABLE identity_transactions (
     native_completion boolean DEFAULT false NOT NULL,
     CONSTRAINT identity_security_authority CHECK ((((mode = 'login'::text) AND (purpose IS NULL) AND (intent_digest IS NULL) AND (expected_account_id IS NULL) AND (expected_family_id IS NULL) AND (expected_account_epoch IS NULL) AND (expected_family_generation IS NULL) AND (expected_access_hash IS NULL) AND (expected_identity_id IS NULL) AND (expected_identity_revision IS NULL)) OR ((mode = ANY (ARRAY['reauthenticate'::text, 'link'::text])) AND (purpose IS NOT NULL) AND (intent_digest IS NOT NULL) AND (expected_account_id IS NOT NULL) AND (expected_family_id IS NOT NULL) AND (expected_account_epoch IS NOT NULL) AND (expected_family_generation IS NOT NULL) AND (expected_access_hash IS NOT NULL) AND (((mode = 'reauthenticate'::text) AND (expected_identity_id IS NOT NULL) AND (expected_identity_revision IS NOT NULL)) OR ((mode = 'link'::text) AND (purpose = 'provider_link'::text) AND (expected_identity_id IS NULL) AND (expected_identity_revision IS NULL)))))),
     CONSTRAINT identity_security_mode CHECK ((mode = ANY (ARRAY['login'::text, 'reauthenticate'::text, 'link'::text]))),
+    CONSTRAINT identity_security_return_purpose CHECK (NOT security_return OR (mode='reauthenticate' AND session_mode='browser' AND purpose='password_set_or_change' AND intent_target='')),
     CONSTRAINT identity_security_onboarding CHECK (((status <> ALL (ARRAY['onboarding'::text, 'contact_pending'::text, 'completed'::text])) OR (mode = 'login'::text))),
     CONSTRAINT identity_security_proof CHECK (((status <> 'proof_issued'::text) OR (mode = ANY (ARRAY['reauthenticate'::text, 'link'::text])))),
     CONSTRAINT identity_security_purpose CHECK ((purpose = ANY (ARRAY['password_set_or_change'::text, 'account_deletion_preview'::text, 'email_change'::text, 'provider_link'::text, 'provider_unlink'::text, 'mfa_enroll'::text, 'mfa_disable'::text, 'recovery_codes'::text, 'server_transfer'::text, 'server_remove'::text, 'account_export'::text]))),
@@ -967,6 +970,54 @@ CREATE TABLE identity_transactions (
     CONSTRAINT identity_transactions_policy_revision_check CHECK ((policy_revision > 0)),
     CONSTRAINT identity_transactions_revision_check CHECK ((revision > 0)),
     CONSTRAINT identity_transactions_state_hash_check CHECK ((octet_length(state_hash) = 32))
+);
+CREATE TABLE account_security_return_intents (
+ id text PRIMARY KEY,
+ account_id text NOT NULL,
+ family_id text NOT NULL,
+ account_epoch bigint NOT NULL,
+ family_generation bigint NOT NULL,
+ access_hash bytea NOT NULL CHECK (octet_length(access_hash)=32),
+ operation_id text NOT NULL,
+ request_hash bytea NOT NULL CHECK (octet_length(request_hash)=32),
+ access_cipher bytea NOT NULL,
+ input_cipher bytea NOT NULL,
+ expires_at timestamptz NOT NULL,
+ cancelled_at timestamptz,
+ start_request_id text,
+ start_binding_hash bytea CHECK (start_binding_hash IS NULL OR octet_length(start_binding_hash)=32),
+ CHECK ((start_request_id IS NULL)=(start_binding_hash IS NULL)),
+ UNIQUE(account_id,operation_id)
+);
+-- A closed Security continuation; never read by server_returns or a session issuer.
+CREATE TABLE identity_security_returns (
+ transaction_id text PRIMARY KEY,
+ intent_id text NOT NULL,
+ security_operation_id text NOT NULL,
+ cancelled_at timestamptz,
+ binding_cipher bytea NOT NULL,
+ context_cipher bytea NOT NULL,
+ context_digest text NOT NULL,
+ server_id text NOT NULL,
+ registration_id text NOT NULL,
+ origin text NOT NULL,
+ claim_generation bigint NOT NULL CHECK (claim_generation>0),
+ credential_generation bigint NOT NULL CHECK (credential_generation>0),
+ route_generation bigint NOT NULL CHECK (route_generation>0),
+ state text NOT NULL,
+ code_challenge text NOT NULL,
+ expires_at timestamptz NOT NULL,
+ code_hash bytea CHECK (code_hash IS NULL OR octet_length(code_hash)=32),
+ code_cipher bytea,
+ code_expires_at timestamptz,
+ consumed_at timestamptz,
+ consume_hash bytea CHECK (consume_hash IS NULL OR octet_length(consume_hash)=32),
+ confirmation_expires_at timestamptz,
+ CHECK ((code_hash IS NULL)=(code_cipher IS NULL)),
+ CHECK ((code_hash IS NULL)=(code_expires_at IS NULL)),
+ CHECK (code_expires_at IS NULL OR code_expires_at<=expires_at),
+ CHECK ((consumed_at IS NULL)=(consume_hash IS NULL)),
+ CHECK ((consumed_at IS NULL)=(confirmation_expires_at IS NULL))
 );
 CREATE TABLE identity_verified_assertions (
     transaction_id text NOT NULL,
@@ -1702,7 +1753,12 @@ ALTER TABLE ONLY wake_state
 INSERT INTO account_identity_schema VALUES (true, 1);
 INSERT INTO account_security_schema VALUES (true, 1);
 INSERT INTO apple_notification_schema VALUES (true, 1);
-INSERT INTO hosted_schema_contract VALUES (true, 'portico-hosted', 28);
+ALTER TABLE account_security_return_intents ADD FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE;
+ALTER TABLE account_security_return_intents ADD FOREIGN KEY (family_id) REFERENCES session_families(id) ON DELETE CASCADE;
+ALTER TABLE identity_security_returns ADD FOREIGN KEY (intent_id) REFERENCES account_security_return_intents(id) ON DELETE CASCADE;
+ALTER TABLE identity_security_returns ADD FOREIGN KEY (transaction_id) REFERENCES identity_transactions(id) ON DELETE CASCADE;
+ALTER TABLE identity_security_returns ADD FOREIGN KEY (server_id) REFERENCES servers(id) ON DELETE CASCADE;
+INSERT INTO hosted_schema_contract VALUES (true, 'portico-hosted', 29);
 INSERT INTO hosted_signing_state VALUES (true, 0, '\x', false, '', '\x');
 INSERT INTO identity_protocol_policy VALUES (true, 1, false, NULL, clock_timestamp());
 
@@ -1827,7 +1883,7 @@ CREATE INDEX setup_claim_starts_server ON setup_claim_starts(server_id);
 
 -- Root31: only a previously admitted exact membership can acquire ending evidence.
 CREATE TABLE server_member_incarnations (
- server_id text NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+ server_id text NOT NULL,
  account_id text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
  membership_id text NOT NULL CHECK(membership_id ~ '^[0-9a-f]{32}$'),
  standing_sequence bigint NOT NULL CHECK(standing_sequence>=0),
@@ -1838,7 +1894,7 @@ CREATE TABLE server_member_incarnations (
 );
 CREATE INDEX server_member_incarnations_retention ON server_member_incarnations(retained_until);
 CREATE TABLE server_member_endings (
- server_id text NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+ server_id text NOT NULL,
  account_id text NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
  membership_id text NOT NULL CHECK(membership_id ~ '^[0-9a-f]{32}$'),
  sequence bigint NOT NULL CHECK(sequence>0 AND sequence<=9007199254740991),
