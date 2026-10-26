@@ -6,7 +6,9 @@ import (
 	"errors"
 	"path/filepath"
 
+	"portico.local/server/internal/assets"
 	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/mediaanalysis"
 	"portico.local/server/internal/storage"
 )
 
@@ -49,7 +51,7 @@ func (r EpisodeAuthorityResolver) EpisodeRangesSupportedTx(ctx context.Context, 
 		return r.LocalStorage != nil && filepath.IsAbs(r.LocalStorage.Binary) && r.Sources.mounts != nil, nil
 	case "remote":
 		if err = r.readEpisodeRemoteTx(ctx, tx, target, &captured); err != nil {
-			if errors.Is(err, storage.ErrRemoteRange) {
+			if errors.Is(err, storage.ErrRemoteRange) || errors.Is(err, mediaanalysis.ErrUnsupported) {
 				return false, nil
 			}
 			return false, err
@@ -70,6 +72,9 @@ func (r EpisodeAuthorityResolver) EpisodeRangesSupportedTx(ctx context.Context, 
 // current source profile. It is shared by availability and retained authority;
 // none of these source facts replaces the latter's actual actor/job checks.
 func (r EpisodeAuthorityResolver) readEpisodeRemoteTx(ctx context.Context, tx *sql.Tx, t EpisodeTarget, out *episodeAuthoritySnapshot) error {
+	if assets.DiscImage(out.File) {
+		return mediaanalysis.ErrUnsupported
+	}
 	s := &out.Source
 	var err error
 	b, object, ok := r.Sources.find(out.File)

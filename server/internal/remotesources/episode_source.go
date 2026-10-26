@@ -37,7 +37,7 @@ func (r EpisodeAuthorityResolver) ResolveEpisodeReadSourceTx(ctx context.Context
 		return nil, ErrEpisodeAuthority
 	}
 	policy, err := r.ResolveEpisodeAuthorityTx(ctx, tx, request)
-	if request.Purpose == EpisodeAutomatic && (err == ErrEpisodeAutomaticSourceTier || errors.Is(err, storage.ErrRemoteAnalysisDisabled)) {
+	if request.Purpose == EpisodeAutomatic && (err == ErrEpisodeAutomaticSourceTier || errors.Is(err, storage.ErrRemoteAnalysisDisabled) || errors.Is(err, mediaanalysis.ErrUnsupported)) {
 		return nil, nil
 	}
 	if err != nil {
