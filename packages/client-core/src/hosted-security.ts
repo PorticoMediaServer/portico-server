@@ -1,5 +1,6 @@
 import {routeBody as hostedRouteBody} from "../../contracts/src/hosted/routes.ts";
 import {routePath as hostedRoutePath, encodedRoutePath as hostedEncodedRoutePath, routePrefix as hostedRoutePrefix} from "../../contracts/src/hosted/routes.ts";
+import type {SecuritySigned} from './security-return.ts';
 import {ApiError, type HostedSession} from './index.ts';
 
 export type IdentityProvider = 'google' | 'apple';
@@ -8,7 +9,7 @@ export type AccountMode = 'browser' | 'native';
  * when the start asks for it. Only a service that says so is asked: an older one refuses unknown
  * start fields. */
 export type IdentityOptions = {password:boolean;registration:boolean;recovery:boolean;accountSecurity:boolean;verifiedContactRequired:boolean;nativeCompletion?:'code';providers:{id:IdentityProvider;enabled:boolean;native:boolean;nativeClientIds:string[]}[]};
-export type IdentityTransaction = {transactionId:string;provider:IdentityProvider;mode:'login'|'reauthenticate'|'link';status:'started'|'exchanging'|'onboarding'|'contact_pending'|'verified'|'completed'|'proof_issued'|'failed';expiresAt:string;contactVerified:boolean;needsUsername:boolean;onboardingToken?:string;suggestedName?:string;verifiedEmail?:string;mfaRequired:boolean};
+export type IdentityTransaction = {transactionId:string;provider:IdentityProvider;mode:'login'|'reauthenticate'|'link';status:'started'|'exchanging'|'onboarding'|'contact_pending'|'verified'|'completed'|'proof_issued'|'failed';expiresAt:string;contactVerified:boolean;needsUsername:boolean;onboardingToken?:string;suggestedName?:string;verifiedEmail?:string;mfaRequired:boolean;securityReturn?:true};
 export type Registration = {kind:'registration';registrationId:string;status:'contact_pending'|'verified'|'completed';revision:string;maskedAddress:string;expiresAt:string;contactVerified:boolean};
 export type MFAChallenge = {mfaRequired:true;challengeId:string;challengeToken:string;expiresAt:string};
 export type ContactChallenge = {challengeId:string;maskedAddress:string;expiresAt:string};
@@ -20,10 +21,11 @@ export type SecurityIntent = {purpose:SecurityPurpose;target:string;operationId:
 export function securityPurposeNeedsProof(purpose:SecurityPurpose):boolean{return purpose==='password_set_or_change'||purpose==='email_change'||purpose==='mfa_enroll'||purpose==='mfa_disable'||purpose==='recovery_codes';}
 export type AccountScope = {accountId:string;familyId:string};
 export type RecentProof = AccountScope & {proof:string;expiresAt:string};
-export type SecurityState = AccountScope & {contactAddress:string;privateEmail:boolean;hasPassword:boolean;mfaEnabled:boolean;recoveryCodesRemaining:number;providers:{id:string;provider:IdentityProvider}[]};
+export type SecurityState = AccountScope & {contactAddress:string;privateEmail:boolean;hasPassword:boolean;mfaEnabled:boolean;recoveryCodesRemaining:number;providers:{id:string;provider:IdentityProvider;revision?:string}[]};
 export type DeletionPreview = {deletionToken:string;expiresAt:string;ownedServers:{id:string;name:string}[];affectedServers:{id:string;name:string}[];canDelete:boolean};
 export type SecurityResult = AccountScope & {status:string;signOut?:boolean;challengeId?:string;maskedAddress?:string;resendsRemaining?:number;expiresAt?:string;secret?:string;otpAuthUri?:string;recoveryCodes?:string[];deletionPreview?:DeletionPreview};
 export type OIDCStart = {transactionId:string;expiresAt:string;mode:'login'|'reauthenticate'|'link';authorizationUrl?:string;nativeNonce?:string};
+export type HostedSecurityReturnStart = OIDCStart & {provider:IdentityProvider;intentId:string;registeredOrigin:string;state:string;context:SecuritySigned};
 export type SecurityCompletion = {recentProof?:RecentProof;securityResult?:SecurityResult};
 /** `completion` is a native provider return's completion code (SEC-01), sent as `X-Portico-Completion`. */
 export type AccountTransport = (path:string,method:string,body:unknown,signal?:AbortSignal,token?:string,completion?:string)=>Promise<unknown>;
@@ -48,11 +50,12 @@ export function parseIdentityOptions(v:unknown):IdentityOptions {
 export function parseIdentityTransaction(v:unknown,expected?:string):IdentityTransaction {
  if(!object(v))return invalid();const transactionId=identifier(v.transactionId);
  if(expected&&transactionId!==expected||!['login','reauthenticate','link'].includes(String(v.mode))||!['started','exchanging','onboarding','contact_pending','verified','completed','proof_issued','failed'].includes(String(v.status)))return invalid();
+ if(v.securityReturn!==undefined&&(typeof v.securityReturn!=='boolean'||v.securityReturn&&v.mode!=='reauthenticate'))return invalid();
  const contactVerified=boolean(v.contactVerified);
  // This optional fact is the current transaction's verified contact, never the account's
  // primary address. Older services and privacy-gated transaction views omit it entirely.
  if(v.verifiedEmail!==undefined&&(!contactVerified||!['onboarding','verified','completed','proof_issued'].includes(String(v.status))))return invalid();
- return{transactionId,provider:provider(v.provider),mode:v.mode as IdentityTransaction['mode'],status:v.status as IdentityTransaction['status'],expiresAt:timestamp(v.expiresAt),contactVerified,needsUsername:boolean(v.needsUsername),mfaRequired:v.mfaRequired===true,...(v.onboardingToken?{onboardingToken:text(v.onboardingToken,256)}:{}),...(v.suggestedName?{suggestedName:text(v.suggestedName,120)}:{}),...(v.verifiedEmail!==undefined?{verifiedEmail:text(v.verifiedEmail,320)}:{})};
+ return{transactionId,provider:provider(v.provider),mode:v.mode as IdentityTransaction['mode'],status:v.status as IdentityTransaction['status'],expiresAt:timestamp(v.expiresAt),contactVerified,needsUsername:boolean(v.needsUsername),mfaRequired:v.mfaRequired===true,...(v.securityReturn===true&&v.mode==='reauthenticate'?{securityReturn:true as const}:{}),...(v.onboardingToken?{onboardingToken:text(v.onboardingToken,256)}:{}),...(v.suggestedName?{suggestedName:text(v.suggestedName,120)}:{}),...(v.verifiedEmail!==undefined?{verifiedEmail:text(v.verifiedEmail,320)}:{})};
 }
 export function parseRegistration(v:unknown):Registration {
  if(!object(v)||v.kind!=='registration'||!['contact_pending','verified','completed'].includes(String(v.status))||typeof v.revision!=='string'||!/^\d+$/.test(v.revision))return invalid();
@@ -74,7 +77,7 @@ export function parseRecentProof(v:unknown,expected?:AccountScope):RecentProof {
 export function parseSecurityState(v:unknown,expected:AccountScope):SecurityState {
  if(!object(v)||!Array.isArray(v.providers)||v.providers.length>10||!Number.isSafeInteger(v.recoveryCodesRemaining)||Number(v.recoveryCodesRemaining)<0||Number(v.recoveryCodesRemaining)>10)return invalid();
  const scope=scoped(v);if(!sameAccountScope(scope,expected))return invalid();
- return{...scope,contactAddress:typeof v.contactAddress==='string'&&v.contactAddress===''?'':text(v.contactAddress,320),privateEmail:boolean(v.privateEmail),hasPassword:boolean(v.hasPassword),mfaEnabled:boolean(v.mfaEnabled),recoveryCodesRemaining:Number(v.recoveryCodesRemaining),providers:v.providers.map(p=>{if(!object(p))return invalid();return{id:identifier(p.id),provider:provider(p.provider)};})};
+ return{...scope,contactAddress:typeof v.contactAddress==='string'&&v.contactAddress===''?'':text(v.contactAddress,320),privateEmail:boolean(v.privateEmail),hasPassword:boolean(v.hasPassword),mfaEnabled:boolean(v.mfaEnabled),recoveryCodesRemaining:Number(v.recoveryCodesRemaining),providers:v.providers.map(p=>{if(!object(p))return invalid();const revision=p.revision;if(revision!==undefined&&(typeof revision!=='string'||!/^[1-9][0-9]{0,18}$/.test(revision)||BigInt(revision)<1n||BigInt(revision)>9223372036854775807n))return invalid();return{id:identifier(p.id),provider:provider(p.provider),...(typeof revision==='string'?{revision}:{})};})};
 }
 export function parseSecurityResult(v:unknown,expected:AccountScope):SecurityResult {
  if(!object(v))return invalid();const scope=scoped(v);if(!sameAccountScope(scope,expected))return invalid();
