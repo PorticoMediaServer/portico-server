@@ -49,7 +49,7 @@ export function PhoneHealth({reading, loading, failed, range, onRangeChange, onR
     {current && (tiles.length ? <div className={styles.tiles}>{tiles.map(tile => {
       const plot = healthPlot(tile.points, from, until);
       return <button type="button" className={styles.tile} key={tile.metric} onClick={event => {opener.current = event.currentTarget; setSelected({metric: tile.metric, label: t(tile.label)});}}>
-        <div className={styles.key}><span>{t(tile.label)}</span><b>{tile.value}</b></div>
+        <div className={styles.key}><span>{t(tile.label)}</span><b>{tile.value}</b>{tile.limited && <small>{tile.details.length ? tile.details.join(' · ') : t('next.remoteSources.state.limited')}</small>}</div>
         <div className={`${styles.spark} ${plot ? '' : styles.empty}`}>
           {plot && <svg viewBox="0 0 100 46" preserveAspectRatio="none" aria-hidden="true">
             <defs><linearGradient id={`${gradient}-${tile.metric}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#409fd4" stopOpacity=".24"/><stop offset="1" stopColor="#409fd4" stopOpacity="0"/></linearGradient></defs>
@@ -61,14 +61,16 @@ export function PhoneHealth({reading, loading, failed, range, onRangeChange, onR
     })}{shortHistory && <div className={styles.note}>{t('next.dashboard.healthLater')}</div>}</div> : <div className={styles.feedback}>{t('server.health.loadNotMeasured')}</div>)}
     <Dialog open={selected !== undefined} onOpenChange={open => {if (!open) setSelected(undefined);}} title={selectedLabel} returnFocusRef={opener} headerClassName={styles.detailHeader} bodyClassName={styles.detailBody}>
       {selectedTile && <div className={styles.big}><b>{selectedTile.value}</b>{range === '10m' && <span>{t('next.dashboard.nowValue')}</span>}</div>}
+      {selectedTile?.limited && <div className={styles.detailMessage}>{selectedTile.details.length ? selectedTile.details.join(' · ') : t('next.remoteSources.state.limited')}</div>}
       <div className={`${styles.segment} ${styles.detailSegment}`} role="group" aria-label={t('web.telemetry.period')}>
         {ranges.map(item => <button key={item.value} type="button" aria-pressed={range === item.value} onClick={() => onRangeChange(item.value)}>{t(item.label)}</button>)}
       </div>
       {failed ? <div className={`${styles.detailMessage} ${styles.feedback}`} role="alert">{t('next.states.pageFailed')} <button type="button" onClick={onRetry}>{t('next.dashboard.retry')}</button></div>
         : loading && !current ? <div className={styles.detailMessage} role="status">{t('next.settings.loading')}</div>
-        : !selectedTile || selectedTile.history === 'withheld' || selectedTile.history === 'gap' ? <div className={styles.detailMessage}>{t('next.kit.browse.unavailable')}</div>
+        : !selectedTile || selectedTile.history === 'gap' ? <div className={styles.detailMessage}>{t('next.kit.browse.unavailable')}</div>
         : !detail ? <div className={styles.detailMessage}>{selectedTile.points.length < 2 ? t('next.dashboard.healthLater') : t('next.kit.browse.unavailable')}</div>
         : <>
+          {selectedTile.points.some(point => point.status === 'limited') && <div className={styles.detailMessage}>{[...new Set(selectedTile.points.filter(point => point.status === 'limited').map(point => point.detail || t('next.remoteSources.state.limited')))].join(' · ')}</div>}
           <div className={styles.chart}>
             {(detail.top === 0 ? [0] : [1, .5, 0]).map(f => <div className={`${styles.gridline} ${f === 0 ? styles.baseline : ''}`} style={{top: `${(1 - f) * 100}%`}} key={f}><span>{number(detail.top * f)}</span></div>)}
             <div className={styles.chartPlot}><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
