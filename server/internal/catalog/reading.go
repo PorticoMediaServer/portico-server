@@ -18,7 +18,7 @@ func readingFormat(path, kind string) string {
 	if kind == "book" && (ext == ".epub" || ext == ".pdf" || ext == ".mobi" || ext == ".azw3") {
 		return ext[1:]
 	}
-	if kind == "comic" && (ext == ".cbz" || ext == ".pdf" || ext == ".cb7" && readingcap.CB7()) {
+	if kind == "comic" && (ext == ".cbz" || ext == ".pdf" || ext == ".cb7" && readingcap.CB7() || ext == ".cbr" && readingcap.CBR()) {
 		return ext[1:]
 	}
 	return ""

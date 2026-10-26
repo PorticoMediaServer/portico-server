@@ -83,7 +83,7 @@ func (s *Service) savedReading(r ContentRequest, libraries []string, flag string
  JOIN catalog_asset_links link ON link.entity_id=i.id AND link.asset_id=publication.asset_id
  WHERE publication.item_id=i.id AND publication.asset_id=` + savedReadingPrimaryPublicationSQL("i.id") + `
  AND ((i.kind=20 AND json_extract(admitted.value,'$.kind')='book' AND (publication.format IN('epub','pdf') OR (json_extract(admitted.value,'$.mobi')=1 AND publication.format IN('mobi','azw3'))))
- OR (i.kind=21 AND json_extract(admitted.value,'$.kind')='comic' AND publication.format IN(` + readingcap.ComicFormatsSQL() + `) AND ` + readingcap.LocalCB7SQL("publication") + `))))`
+ OR (i.kind=21 AND json_extract(admitted.value,'$.kind')='comic' AND publication.format IN(` + readingcap.ComicFormatsSQL() + `) AND ` + readingcap.LocalComicArchiveSQL("publication") + `))))`
 		encoded, err := json.Marshal(witnesses)
 		if err != nil {
 			return out, err
@@ -190,6 +190,6 @@ func (s *Service) savedEntries(profile string, ids []string, scope savedReadingS
 // converter domain so an unavailable original cannot conceal a native version.
 func savedReadingPrimaryPublicationSQL(item string) string {
 	return `(SELECT candidate.asset_id FROM reading_publications candidate WHERE candidate.item_id=` + item + `
- AND ((json_extract(admitted.value,'$.kind')='book' AND (candidate.format IN('epub','pdf') OR (json_extract(admitted.value,'$.mobi')=1 AND candidate.format IN('mobi','azw3')))) OR (json_extract(admitted.value,'$.kind')='comic' AND candidate.format IN(` + readingcap.ComicFormatsSQL() + `))) AND ` + readingcap.LocalCB7SQL("candidate") + `
+ AND ((json_extract(admitted.value,'$.kind')='book' AND (candidate.format IN('epub','pdf') OR (json_extract(admitted.value,'$.mobi')=1 AND candidate.format IN('mobi','azw3')))) OR (json_extract(admitted.value,'$.kind')='comic' AND candidate.format IN(` + readingcap.ComicFormatsSQL() + `))) AND ` + readingcap.LocalComicArchiveSQL("candidate") + `
  ORDER BY EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=candidate.item_id AND available.asset_id=(SELECT token FROM catalog_assets WHERE id=candidate.asset_id) AND available.available=1) DESC,candidate.asset_id LIMIT 1)`
 }

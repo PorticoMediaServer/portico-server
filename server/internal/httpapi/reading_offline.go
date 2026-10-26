@@ -35,7 +35,7 @@ func readingOfflineInteger(minimum int64) map[string]any {
 }
 func (ReadingOfflineLocation) JSONSchema() map[string]any {
 	variants := []any{}
-	for _, format := range []string{"epub", "pdf", "cbz", "cb7"} {
+	for _, format := range []string{"epub", "pdf", "cbz", "cb7", "cbr"} {
 		properties := map[string]any{"format": map[string]any{"type": "string", "const": format}, "progression": map[string]any{"type": "number", "minimum": 0, "maximum": 1}}
 		required := []string{"format", "progression"}
 		if format == "epub" {

@@ -19,7 +19,7 @@ func savedReadingInProgressSQL() string {
  JOIN library_sources source ON source.id=observed.source_id AND source.library_id=cl.library_id
  WHERE rp.owner_key=p.profile_id AND rp.item_id=i.id AND rp.progression>0 AND rp.progression<1
  AND rp.format=publication.format
- AND ((i.kind=20 AND lib.kind='book' AND publication.format IN('epub','pdf')) OR (i.kind=21 AND lib.kind='comic' AND publication.format IN(` + readingcap.ComicFormatsSQL() + `))) AND ` + readingcap.LocalCB7SQL("publication") + `
+ AND ((i.kind=20 AND lib.kind='book' AND publication.format IN('epub','pdf')) OR (i.kind=21 AND lib.kind='comic' AND publication.format IN(` + readingcap.ComicFormatsSQL() + `))) AND ` + readingcap.LocalComicArchiveSQL("publication") + `
  AND ` + eligible("observed", "source") + `
  AND NOT EXISTS(SELECT 1 FROM reading_progress newer WHERE newer.owner_key=rp.owner_key AND newer.item_id=rp.item_id
  AND (newer.observed_at>rp.observed_at OR (newer.observed_at=rp.observed_at AND newer.asset_id>rp.asset_id)))

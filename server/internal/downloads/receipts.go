@@ -56,7 +56,7 @@ func (ReceiptPublication) JSONSchema() map[string]any {
 			"sourceId":       map[string]any{"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9_-]+$"},
 			"revision":       map[string]any{"type": "string", "pattern": "^[0-9a-f]{64}$"},
 			"documentSha256": map[string]any{"type": "string", "pattern": "^[0-9a-f]{64}$"},
-			"format":         map[string]any{"type": "string", "enum": []string{"epub", "pdf", "cbz", "cb7"}},
+			"format":         map[string]any{"type": "string", "enum": []string{"epub", "pdf", "cbz", "cb7", "cbr"}},
 		}}
 }
 

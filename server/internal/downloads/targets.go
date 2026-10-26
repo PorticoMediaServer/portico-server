@@ -264,6 +264,8 @@ func artifactDelivery(container, preparation string) (string, string) {
 		kind, extension = "application/vnd.comicbook+zip", "cbz"
 	case "cb7":
 		kind, extension = "application/x-7z-compressed", "cb7"
+	case "cbr":
+		kind, extension = "application/vnd.comicbook-rar", "cbr"
 	case "mp3":
 		kind, extension = "audio/mpeg", "mp3"
 	case "flac":

@@ -382,7 +382,7 @@ func SupportedForKind(path, kind string) bool {
 		if extension == ".cbz" || extension == ".pdf" {
 			return true
 		}
-		return extension == ".cb7" && readingcap.CB7()
+		return extension == ".cb7" && readingcap.CB7() || extension == ".cbr" && readingcap.CBR()
 	}
 	audio := false
 	switch extension {

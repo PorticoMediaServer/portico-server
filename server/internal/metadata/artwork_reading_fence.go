@@ -23,7 +23,7 @@ func readingArtworkSourceFence(ctx context.Context, tx *sql.Tx, entity int64) (s
   SELECT primary_version.asset_id FROM reading_publications primary_version
   WHERE primary_version.item_id=e.id
   AND ((e.kind=20 AND primary_version.format IN('epub','pdf','mobi','azw3'))
-   OR (e.kind=21 AND primary_version.format IN('cbz','pdf','cb7')))
+   OR (e.kind=21 AND primary_version.format IN('cbz','pdf','cb7','cbr')))
   ORDER BY EXISTS(SELECT 1 FROM inventory_item_availability eligible
    WHERE eligible.item_id=primary_version.item_id
    AND eligible.asset_id=(SELECT token FROM catalog_assets WHERE id=primary_version.asset_id)

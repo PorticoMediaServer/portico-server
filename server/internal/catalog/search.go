@@ -546,7 +546,7 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 		where += ` AND e.retired=0 AND EXISTS(SELECT 1 FROM reading_publications reading_publication
  JOIN catalog_asset_links reading_link ON reading_link.entity_id=reading_publication.item_id AND reading_link.asset_id=reading_publication.asset_id
  JOIN libraries reading_library ON reading_library.id=l.library_id
- WHERE reading_publication.item_id=e.id AND ((e.kind=20 AND reading_library.kind='book' AND reading_publication.format IN('epub','pdf')) OR (e.kind=21 AND reading_library.kind='comic' AND reading_publication.format IN(` + readingcap.ComicFormatsSQL() + `))) AND ` + readingcap.LocalCB7SQL("reading_publication") + `)`
+ WHERE reading_publication.item_id=e.id AND ((e.kind=20 AND reading_library.kind='book' AND reading_publication.format IN('epub','pdf')) OR (e.kind=21 AND reading_library.kind='comic' AND reading_publication.format IN(` + readingcap.ComicFormatsSQL() + `))) AND ` + readingcap.LocalComicArchiveSQL("reading_publication") + `)`
 	}
 
 	for _, word := range strings.Fields(facettext.SearchFold(r.Q)) {

@@ -288,11 +288,12 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 		// reads nothing from it and the naming-only analysis publishes it from its
 		// name, so it is no longer tagged as an unsupported remote disc. Folders
 		// that carry a disc layout keep their explicit reason above.
-		// CB7 has only a local bounded helper representation. A remote source
-		// never admits it, so a capable scan cannot create an inventory-ready
-		// remote cb7 or starve a local comic primary. The opener still refuses
-		// remote cb7 as defense in depth.
-		if libraryKind == "comic" && source.Kind != "local" && strings.EqualFold(filepath.Ext(v.Path), ".cb7") {
+		// CBR/CB7 have only local admitted archive representations. A remote source
+		// never admits either, so a capable scan cannot create an inventory-ready
+		// remote archive or starve a local comic primary. The opener also
+		// enforces local archive custody.
+		extension := strings.ToLower(filepath.Ext(v.Path))
+		if libraryKind == "comic" && source.Kind != "local" && (extension == ".cb7" || extension == ".cbr") {
 			continue
 		}
 		if reason != "" {
@@ -573,7 +574,7 @@ func (s *Service) observeInventoryTx(ctx context.Context, tx *sql.Tx, job string
 	// A revision/policy-specific queue is separate from inventory visibility.
 	// Static reading publications have no timed media probe. Their package and
 	// page resources are validated by the interactive, actor-authorized reader.
-	if policy.Tier != "file_list_only" && reason == "" && ext != "strm" && ext != "epub" && ext != "pdf" && ext != "cbz" && ext != "cb7" {
+	if policy.Tier != "file_list_only" && reason == "" && ext != "strm" && ext != "epub" && ext != "pdf" && ext != "cbz" && ext != "cb7" && ext != "cbr" {
 		_, err = tx.ExecContext(ctx, `INSERT INTO inventory_analysis_queue(job_id,object_id,revision,policy_revision) SELECT ?,id,revision,? FROM inventory_objects WHERE id=? AND (analysis_revision!=revision OR analysis_policy!=?) ON CONFLICT(job_id,object_id) DO UPDATE SET revision=excluded.revision,policy_revision=excluded.policy_revision,state=CASE WHEN inventory_analysis_queue.revision=excluded.revision AND inventory_analysis_queue.policy_revision=excluded.policy_revision THEN inventory_analysis_queue.state ELSE 'pending' END`, job, policy.Revision, object, policy.Revision)
 	}
 	return previousSeen != job, err

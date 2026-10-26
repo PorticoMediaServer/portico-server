@@ -83,6 +83,9 @@ func (r *readingBrowseScope) fence() string {
 	if readingcap.CB7() {
 		value += ":cb7-v1"
 	}
+	if readingcap.CBR() {
+		value += ":cbr-v1"
+	}
 	return value
 }
 
@@ -102,12 +105,12 @@ func (r *readingBrowseScope) eligibleSQL(entity string) string {
  JOIN reading_publications reading_publication ON reading_publication.item_id=reading_title.id
  JOIN catalog_asset_links reading_link ON reading_link.entity_id=reading_title.id AND reading_link.asset_id=reading_publication.asset_id
  WHERE reading_title.id=` + entity + ` AND reading_title.library_id=` + strconv.FormatInt(r.library, 10) + `
- AND reading_title.kind=` + kind + ` AND reading_title.retired=0 AND reading_publication.format IN(` + formats + `) AND ` + readingcap.LocalCB7SQL("reading_publication") + `
+ AND reading_title.kind=` + kind + ` AND reading_title.retired=0 AND reading_publication.format IN(` + formats + `) AND ` + readingcap.LocalComicArchiveSQL("reading_publication") + `
  AND reading_publication.asset_id=` + r.primaryPublicationSQL("reading_title.id") + `)`
 }
 
 func (r *readingBrowseScope) primaryPublicationSQL(item string) string {
-	return `(SELECT candidate.asset_id FROM reading_publications candidate WHERE candidate.item_id=` + item + ` AND candidate.format IN(` + r.sourceFormatsSQL() + `) AND ` + readingcap.LocalCB7SQL("candidate") + `
+	return `(SELECT candidate.asset_id FROM reading_publications candidate WHERE candidate.item_id=` + item + ` AND candidate.format IN(` + r.sourceFormatsSQL() + `) AND ` + readingcap.LocalComicArchiveSQL("candidate") + `
  ORDER BY EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=candidate.item_id
  AND available.asset_id=(SELECT token FROM catalog_assets WHERE id=candidate.asset_id) AND available.available=1) DESC,candidate.asset_id LIMIT 1)`
 }

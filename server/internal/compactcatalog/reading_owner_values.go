@@ -43,7 +43,7 @@ func ReadingOwnerValuesTx(ctx context.Context, tx *sql.Tx, items []int64) (map[i
  WHERE e.id IN (` + strings.Join(marks, ",") + `) AND e.retired=0 AND cl.retired=0
  AND ((e.kind=20 AND lib.kind='book') OR (e.kind=21 AND lib.kind='comic'))
  AND EXISTS(SELECT 1 FROM reading_publications p JOIN catalog_asset_links link ON link.entity_id=p.item_id AND link.asset_id=p.asset_id
- WHERE p.item_id=e.id AND ((e.kind=20 AND p.format IN('epub','pdf','mobi','azw3')) OR (e.kind=21 AND p.format IN('cbz','pdf','cb7'))))`
+ WHERE p.item_id=e.id AND ((e.kind=20 AND p.format IN('epub','pdf','mobi','azw3')) OR (e.kind=21 AND p.format IN('cbz','pdf','cb7','cbr'))))`
 	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
