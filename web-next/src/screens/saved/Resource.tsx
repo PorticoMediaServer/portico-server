@@ -1,5 +1,5 @@
 import {CatalogueSelectionEntry} from '../browse/document-selection';
-import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import {useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, Fragment, type ReactNode, type RefObject} from 'react';
 import {defaultI18n} from '@i18n';
 import type {ContentEntry} from '@core/library-content.ts';
 import type {PersonalSavedIntent, PersonalResourceEntry} from '@core/personal-saved.ts';
@@ -14,6 +14,10 @@ import {Dialog, Menu} from '../../kit/overlays';
 import {Skeleton, StateView} from '../../kit/states';
 import {CircleCard, PosterCard, SquareCard} from '../../kit/cards';
 import {WindowedGrid} from '../../kit/layout';
+import {useLayoutPresence} from '../../kit/layout/presence';
+import {applyRemovalFocus} from '../../kit/layout/focus-context';
+import {useReducedMotion} from '../../kit/overlays/shared';
+import {HistoryPaint} from './HistoryPaint';
 import {homeCardModel, homeCardSubject} from '../home/model';
 import {BrowseEntryCard} from '../browse';
 import type {SavedViewBindings} from './Saved';
@@ -153,36 +157,50 @@ function historyDayLabel(date: Date): string {
   const days = Math.round((start.getTime() - day.getTime()) / 86_400_000);
   return days <= 0 ? t('saved.today') : days === 1 ? t('relative.yesterday') : weekdayName.format(day);
 }
+type HistoryItem = Readonly<{key: string; dayKey: string; day: Date; entry: PersonalResourceEntry; media: ContentEntry; source?: ArtworkSource; bindings: SavedViewBindings}>;
+const historyItemKey = (item: HistoryItem) => item.key;
+type HistoryRemoval = Readonly<{scope: object; apply(keys: ReadonlySet<string>): void}>;
 export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
-  const service = bindings.runtime.personal, snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot), [confirm, setConfirm] = useState(false), [busy, setBusy] = useState(false), cancel = useRef<HTMLButtonElement>(null);
-  // The same canonical library wash, fed by the first titles the timeline shows.
+  const service = bindings.runtime.personal;
+  const scope = useMemo(() => Object.freeze({}), [service, bindings.runtime, bindings.operations, bindings.artwork, bindings.effects]);
+  const removal = useRef<HistoryRemoval | undefined>(undefined), clear = useRef<HTMLButtonElement>(null);
+  const subscribe = useCallback((listener: () => void) => service.subscribe(() => {
+    // The original service has published its accepted rows, but React has not
+    // committed inert/removal yet. Focus belongs to the exact old DOM context.
+    try {
+      const next = service.getSnapshot(), original = removal.current;
+      if (original?.scope === scope && bindings.operations.current && sameSavedRoute(next.route, bindings.route))
+        original.apply(new Set(next.entries.filter(entry => entry.media && entry.updatedAt && Number.isFinite(Date.parse(entry.updatedAt))).map(entry => entry.id)));
+    } catch { /* A focus refusal cannot turn a successful data publication into an error. */ }
+    listener();
+  }), [service, scope]);
+  const snapshot = useSyncExternalStore(subscribe, service.getSnapshot, service.getSnapshot), [confirm, setConfirm] = useState(false), [busy, setBusy] = useState(false), cancel = useRef<HTMLButtonElement>(null);
   const wash = useMemo(() => {
     if (!bindings.presentation.backdrops) return [];
     if (bindings.presentation.backdrop) return [bindings.presentation.backdrop];
     const urls = snapshot.entries.flatMap(entry => { const media = entry.media, url = media && (media.backdropUrl ?? media.posterUrl); return url ? [url] : []; });
     return [...new Set(urls)].slice(0, 3).flatMap(url => { const source = bindings.artwork.ambient(url); return source ? [source] : []; });
   }, [bindings.presentation.backdrops, bindings.presentation.backdrop, bindings.artwork, snapshot.entries]);
+  const items = useMemo<readonly HistoryItem[]>(() => snapshot.entries.flatMap(entry => {
+    if (!entry.media || !entry.updatedAt) return [];
+    const day = new Date(entry.updatedAt);if (!Number.isFinite(day.getTime())) return [];
+    const media = entry.media, square = shapeFor(media.kind) === 'square';
+    return [{key: entry.id, dayKey: day.toDateString(), day, entry, media, bindings,
+      source: bindings.artwork.foreground(square ? media.posterUrl : media.backdropUrl ?? media.posterUrl, 320, square ? 1 : 16 / 9)}];
+  }), [snapshot.entries, scope]);
   if (!sameSavedRoute(snapshot.route, bindings.route)) return null;
   const period = bindings.route.view === 'history' ? bindings.route.period ?? '30d' : '30d';
-  const groups = new Map<string, {day: Date; entries: PersonalResourceEntry[]}>();
-  for (const entry of snapshot.entries) {
-    if (!entry.updatedAt) continue;
-    const date = new Date(entry.updatedAt); if (!Number.isFinite(date.getTime())) continue;
-    const key = date.toDateString(); let group = groups.get(key); if (!group) { group = {day: date, entries: []}; groups.set(key, group); } group.entries.push(entry);
-  }
+  const empty = snapshot.error && !snapshot.entries.length ? <StateView title={t('saved.historyLoadFailed')} primary={{id: 'retry', label: t('action.tryAgain'), onPress: () => { void service.retryRead(); }}} />
+    : !snapshot.loading && !snapshot.error && !snapshot.entries.length ? <StateView title={t('web.saved.empty.history')} body={t('web.saved.empty.historyBody')} /> : null;
   return <>
     {wash.length ? <div className={styles.wash} aria-hidden="true"><AmbientArt sources={wash} treatment="library" height={640} /></div> : null}
     <div className={styles.toolbar}>
       <div className={styles.periodChips} role="group" aria-label={t('web.saved.period')}>
         {historyPeriods.map(value => <Chip key={value} variant="toolbar" selected={period === value} onClick={() => bindings.effects.selectRoute({view: 'history', period: value})}>{periodLabel(value)}</Chip>)}
       </div>
-      <div className={styles.toolbarEnd}><Button variant="text" size="small" onClick={() => setConfirm(true)}>{t('web.saved.clearHistory')}</Button></div>
+      <div className={styles.toolbarEnd}><Button ref={clear} variant="text" size="small" onClick={() => setConfirm(true)}>{t('web.saved.clearHistory')}</Button></div>
     </div>
-    {snapshot.error && !snapshot.entries.length && <StateView title={t('saved.historyLoadFailed')} primary={{id: 'retry', label: t('action.tryAgain'), onPress: () => { void service.retryRead(); }}} />}
-    {!snapshot.loading && !snapshot.error && !snapshot.entries.length && <StateView title={t('web.saved.empty.history')} body={t('web.saved.empty.historyBody')} />}
-    {[...groups.values()].map(group => <section className={styles.historyDay} key={group.day.toDateString()}><h2>{historyDayLabel(group.day)}</h2>
-      {group.entries.map(entry => entry.media && <HistoryRow key={entry.id} bindings={bindings} entry={entry} media={entry.media} />)}
-    </section>)}
+    <HistoryTimeline items={items} scope={scope} reduced={bindings.presentation.reducedMotion} empty={empty} removal={removal} sectionStart={clear} />
     {snapshot.nextCursor && <Button className={styles.showMore} size="small" loading={snapshot.loading} onClick={() => { void service.next(); }}>{t('action.showMore')}</Button>}
     <Dialog open={confirm} onOpenChange={open => { if (!busy) setConfirm(open); }} title={t('web.saved.clearHistoryTitle')} description={t('web.saved.clearHistoryBody')} initialFocusRef={cancel}
       footer={<><Button ref={cancel} size="small" disabled={busy} onClick={() => setConfirm(false)}>{t('action.cancel')}</Button><Button size="small" className={styles.destructive} loading={busy} onClick={() => {
@@ -190,6 +208,49 @@ export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
         setBusy(true); void bindings.operations.run(async () => { if (!await service.mutate({action: 'clear-history'})) throw service.getSnapshot().mutationError; }, () => { setBusy(false); setConfirm(false); }).catch(error => { setBusy(false); bindings.effects.reportError(error); });
       }}>{t('web.saved.clearHistoryAction')}</Button></>}><span /></Dialog>
   </>;
+}
+
+/** All accepted live rows stay mounted. Only genuinely visible removed rows may
+ * occupy the shared 40-slot outgoing budget across overlapping batches. */
+function HistoryTimeline({items, scope, reduced, empty, removal, sectionStart}: {items: readonly HistoryItem[]; scope: object; reduced: boolean; empty: ReactNode; removal: RefObject<HistoryRemoval | undefined>; sectionStart: RefObject<HTMLButtonElement | null>}) {
+  const systemReduced = useReducedMotion(), reduce = reduced || systemReduced;
+  const presence = useLayoutPresence(items, historyItemKey, reduce, 180, 320, {maxRetained: 40, staggerMs: 40, visibleOnly: true, scope});
+  const keyboard = useRef(false), focused = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    const root = presence.root.current;if (!root) return;
+    const order = Array.from(root.children).filter((node): node is HTMLElement => node instanceof HTMLElement && node.dataset.historyRow !== undefined);
+    const starts = sectionStart.current ? [sectionStart.current] : [];
+    const captured: HistoryRemoval = {scope, apply(keys) {
+      if (removal.current !== captured || presence.root.current !== root || !root.isConnected || !keyboard.current) return;
+      const held = focused.current, active = root.ownerDocument.activeElement;
+      if (!held || active !== held && !(active instanceof Node && held.contains(active))) return;
+      const outgoing = order.find(node => !keys.has(node.dataset.historyRow!) && node.contains(held));
+      if (!outgoing) return;
+      const surviving = order.filter(node => keys.has(node.dataset.historyRow!));
+      const target = applyRemovalFocus({root, order, surviving, sectionStarts: starts}, outgoing);
+      focused.current = target.element;
+    }};
+    removal.current = captured;
+    return () => {if (removal.current === captured) removal.current = undefined;};
+  }, [presence.present, scope, removal, sectionStart]);
+  const headings = new Set<string>(), liveDays = new Set(items.map(item => item.dayKey));
+  return <div ref={presence.root} tabIndex={-1}
+    onKeyDownCapture={() => {keyboard.current = true;}} onPointerDownCapture={() => {keyboard.current = false;}}
+    onFocusCapture={event => {const target = event.target as HTMLElement;focused.current = target;keyboard.current = target.matches(':focus-visible');}}
+    onBlurCapture={event => {const next = event.relatedTarget as Node | null;if (next && !event.currentTarget.contains(next)) focused.current = null;}}
+ className={styles.historyRoster} data-reduced-motion={reduce || undefined}>
+    {presence.present.map(item => {
+      const heading = !headings.has(item.dayKey);headings.add(item.dayKey);
+      const leaving = presence.leaving.has(item.key);
+      return <Fragment key={item.key}>
+        {heading && <div className={styles.historyHeading} data-layout-item={`day:${item.dayKey}`} inert={!liveDays.has(item.dayKey)} aria-hidden={!liveDays.has(item.dayKey) || undefined}><h2>{historyDayLabel(item.day)}</h2></div>}
+        <div className={styles.historyItem} data-layout-item={item.key} data-history-row={item.key} data-leaving={leaving || undefined} inert={leaving} aria-hidden={leaving || undefined}>
+          <HistoryPaint exit={presence.exits.get(item.key)} reduced={reduce} scope={scope}><HistoryRow bindings={item.bindings} entry={item.entry} media={item.media} source={item.source} paintOnly={leaving} /></HistoryPaint>
+        </div>
+      </Fragment>;
+    })}
+    {!presence.present.length && empty && <div className={styles.historyLive}>{empty}</div>}
+  </div>;
 }
 /** The drawn row names what was played: an episode leads with its code and title,
  * a song with its artist and album, a film with its kind and year, a book with its author. */
@@ -203,16 +264,16 @@ function historySubtitle(media: ContentEntry): readonly string[] {
   if (media.kind === 'movie') return [t('next.browse.kind.movie'), ...(media.year === undefined ? [] : [String(media.year)])];
   return media.year === undefined ? [] : [String(media.year)];
 }
-function HistoryRow({bindings, entry, media}: {bindings: SavedViewBindings; entry: PersonalResourceEntry; media: ContentEntry}) {
+function HistoryRow({bindings, entry, media, source, paintOnly = false}: {bindings: SavedViewBindings; entry: PersonalResourceEntry; media: ContentEntry; source?: ArtworkSource; paintOnly?: boolean}) {
   // The row names the show for an episode, the title itself otherwise.
   const title = media.kind === 'episode' ? media.show?.name ?? media.displayTitle ?? media.title : media.displayTitle ?? media.title;
   const subtitles = historySubtitle(media), position = entry.positionSeconds ?? 0, duration = media.duration;
   const progress = duration && duration > 0 ? Math.min(1, position / duration) : undefined;
   const left = !entry.completed && duration !== undefined && duration > position ? Math.round((duration - position) / 60) : undefined;
   const remaining = left === undefined ? undefined : left >= 60 ? t(left % 60 ? 'next.kit.duration.hoursMinutes' : 'next.kit.duration.hours', {hours: Math.floor(left / 60), minutes: left % 60}) : t('next.kit.duration.minutes', {minutes: left});
-  const square = shapeFor(media.kind) === 'square', source = bindings.artwork.foreground(square ? media.posterUrl : media.backdropUrl ?? media.posterUrl, 320, square ? 1 : 16 / 9);
+  const square = shapeFor(media.kind) === 'square';
   return <div className={styles.historyRow} data-shape={square ? 'square' : 'wide'}>
-    <button className={styles.historyArt} data-shape={square ? 'square' : 'wide'} onClick={() => bindings.effects.openEntry(media)} aria-label={title}>
+    <button className={styles.historyArt} data-shape={square ? 'square' : 'wide'} disabled={paintOnly} onClick={paintOnly ? undefined : () => {if (bindings.operations.current) bindings.effects.openEntry(media);}} aria-label={title}>
       {square ? <><span className={styles.historyBackdrop}><Artwork source={source} alt="" /></span><span className={styles.historyCover}><Artwork source={source} alt="" /></span></> : <Artwork source={source} alt="" />}
     </button>
     <div className={styles.historyCopy}><b>{title}</b>{subtitles.length ? <small>{subtitles.map((part, index) => <span key={`${index}:${part}`}>{part}</span>)}</small> : null}</div>
