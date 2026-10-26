@@ -1,5 +1,5 @@
 .page { display: grid; gap: 18px; }
-.title { margin: 0; font-size: var(--type-section-title-size, var(--type-body-size)); font-weight: var(--type-button-weight); letter-spacing: -.01em; }
+.title { margin: 0; font-size: var(--type-section-title-size, var(--type-body-size)); font-weight: var(--type-button-weight); letter-spacing: var(--type-fixed-tracking-minus-point-01em); }
 .facts { display: grid; gap: 8px; margin: 0; }
 .facts > div { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 12px; align-items: baseline; }
 .facts dt { font-size: var(--type-caption-size); font-weight: var(--type-body-strong-weight); color: var(--color-text-tertiary); }

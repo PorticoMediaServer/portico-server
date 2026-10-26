@@ -52,8 +52,8 @@ export function PhoneHealth({reading, loading, failed, range, onRangeChange, onR
         <div className={styles.key}><span>{t(tile.label)}</span><b>{tile.value}</b>{tile.limited && <small>{tile.details.length ? tile.details.join(' · ') : t('next.remoteSources.state.limited')}</small>}</div>
         <div className={`${styles.spark} ${plot ? '' : styles.empty}`}>
           {plot && <svg viewBox="0 0 100 46" preserveAspectRatio="none" aria-hidden="true">
-            <defs><linearGradient id={`${gradient}-${tile.metric}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#409fd4" stopOpacity=".24"/><stop offset="1" stopColor="#409fd4" stopOpacity="0"/></linearGradient></defs>
-            <path d={plot.area} fill={`url(#${gradient}-${tile.metric})`}/><path d={plot.line} fill="none" stroke="#5cb3e2" strokeWidth="1.6" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+            <defs><linearGradient id={`${gradient}-${tile.metric}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--color-accent)" stopOpacity=".24"/><stop offset="1" stopColor="var(--color-accent)" stopOpacity="0"/></linearGradient></defs>
+            <path d={plot.area} fill={`url(#${gradient}-${tile.metric})`}/><path d={plot.line} fill="none" stroke="var(--color-accent-strong)" strokeWidth="1.6" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
           </svg>}
           {plot && <i className={styles.dot} style={{left: `${plot.endX}%`, top: `${plot.endY / 46 * 100}%`}} aria-hidden="true"/>}
         </div>
@@ -74,8 +74,8 @@ export function PhoneHealth({reading, loading, failed, range, onRangeChange, onR
           <div className={styles.chart}>
             {(detail.top === 0 ? [0] : [1, .5, 0]).map(f => <div className={`${styles.gridline} ${f === 0 ? styles.baseline : ''}`} style={{top: `${(1 - f) * 100}%`}} key={f}><span>{number(detail.top * f)}</span></div>)}
             <div className={styles.chartPlot}><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-              <defs><linearGradient id={`${gradient}-detail`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#409fd4" stopOpacity=".24"/><stop offset="1" stopColor="#409fd4" stopOpacity="0"/></linearGradient></defs>
-              <path d={detail.area} fill={`url(#${gradient}-detail)`}/><path d={detail.line} fill="none" stroke="#5cb3e2" strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round"/>
+              <defs><linearGradient id={`${gradient}-detail`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--color-accent)" stopOpacity=".24"/><stop offset="1" stopColor="var(--color-accent)" stopOpacity="0"/></linearGradient></defs>
+              <path d={detail.area} fill={`url(#${gradient}-detail)`}/><path d={detail.line} fill="none" stroke="var(--color-accent-strong)" strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round"/>
             </svg><i className={styles.detailDot} style={{left: `${detail.endX}%`, top: `${detail.endY}%`}} aria-hidden="true"/></div>
           </div>
           <div className={styles.axis}><span>{time(from)}</span><span>{time((from + until) / 2)}</span><span>{time(until)}</span></div>

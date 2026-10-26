@@ -4,7 +4,7 @@ export const accountMessages = {
   'accounts.recovery.choiceTitle': 'Which one fits you?',
   'accounts.recovery.choiceBody': 'Portico doesn’t send email from your server, so a forgotten password is reset with a one-time code written to a file on this server’s computer.',
   'accounts.recovery.choiceFile': 'I can open that file on this server',
-  'accounts.recovery.choicePorticoHint': 'A Portico Account resets its own password by email from the Portico Account page; a local account asks this server’s owner.',
+  'accounts.recovery.choicePorticoHint': 'A Portico Account resets its own password by email from the Portico Account page; a server account asks this server’s owner.',
 
   'accounts.tvOffline.title': 'Your servers aren’t answering',
   'accounts.tvOffline.body': 'Portico keeps checking and opens one the moment it answers.',
@@ -144,11 +144,11 @@ export const accountMessages = {
   'accounts.settings.changeOwnerLocalOnlyNew': 'Only the new owner sees Server › Sign-in afterwards.',
   'accounts.settings.changeOwnerLocalExisting': 'Choose an existing member',
   'accounts.settings.changeOwnerLocalTargetKind': 'New owner',
-  'accounts.settings.changeOwnerLocalCreate': 'Create a new local account',
+  'accounts.settings.changeOwnerLocalCreate': 'Create a new server account',
   'accounts.settings.changeOwnerLocalUsername': 'Username',
   'accounts.settings.changeOwnerLocalName': 'Display name',
   'accounts.settings.changeOwnerLocalPassword': 'New password',
-  'accounts.settings.changeOwnerLocalEmptyCreate': 'There are no other active members to choose. You can create a new local account instead.',
+  'accounts.settings.changeOwnerLocalEmptyCreate': 'There are no other active members to choose. You can create a new server account instead.',
   // Binding ruling 17.5, also applied to Start over with Portico Accounts.
   'accounts.ownerSwitch.secureTitle': 'Switch from a secure page',
   'accounts.ownerSwitch.secureBody': 'Switching sends sign-in details this page can’t protect. Open Portico at its secure address, or on the server itself at {localUrl}.',

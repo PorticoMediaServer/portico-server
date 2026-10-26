@@ -29,7 +29,7 @@ export const musicMetadataMessages = {
   'musicMetadata.fingerprint.not_available': 'No current fingerprint is available. Other matching evidence is still used.',
   'musicMetadata.fingerprint.stale_or_invalid': 'The fingerprint is stale or invalid. Other matching evidence is still used.',
   'musicMetadata.fingerprint.provider_disabled': 'AcoustID authentication or terms prevented lookup. Update the server application credential before retrying.',
-  'musicMetadata.fingerprint.provider_backoff': 'AcoustID requested a pause. Retry after the provider cooldown.',
+  'musicMetadata.fingerprint.provider_backoff': 'AcoustID requested a pause. Try again after the provider cooldown.',
   'musicMetadata.fingerprint.provider_unavailable': 'AcoustID could not be reached. Other matching evidence is still used.',
   'musicMetadata.fingerprint.no_match': 'AcoustID returned no supported recording match.',
   'musicMetadata.fingerprint.matched': 'AcoustID supports one or more recording candidates.',

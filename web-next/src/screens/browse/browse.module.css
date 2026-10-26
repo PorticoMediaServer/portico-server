@@ -30,10 +30,10 @@
 .results[data-music] .listRow::after { display: none; }
 .results[data-music] .listHead > :first-child { text-align: center; }
 .results[data-music] .listArt { width: 40px; height: 40px; border-radius: 6px; }
-.results[data-music] .listName { font-size: 15px; font-weight: 600; }
-.results[data-music] .musicMeta { overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: var(--color-text-secondary); }
-.results[data-music] .musicNumber { overflow: hidden; text-align: right; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
-.results[data-music] .listRow > :first-child { display: grid; place-items: center; font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+.results[data-music] .listName { font-size: var(--type-fixed-size-15px); font-weight: var(--type-fixed-weight-600); }
+.results[data-music] .musicMeta { overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; font-size: var(--type-fixed-size-14px); color: var(--color-text-secondary); }
+.results[data-music] .musicNumber { overflow: hidden; text-align: right; text-overflow: ellipsis; white-space: nowrap; font-size: var(--type-fixed-size-14px); color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+.results[data-music] .listRow > :first-child { display: grid; place-items: center; font-size: var(--type-fixed-size-15px); font-weight: var(--type-fixed-weight-600); color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
 
 /* desktop-read 2c: a Reading list draws its own six columns; cells without a fact stay empty. */
 .results[data-reading] .listHead, .results[data-reading] .listRow { grid-template-columns: minmax(0,1fr) 180px 150px 230px 70px 110px 92px; }
@@ -86,7 +86,7 @@
   margin: 24px var(--shell-gutter, var(--gutter-desktop));
   color: var(--color-text-tertiary);
   font-size: var(--type-caption-size);
-  line-height: 1.5;
+  line-height: var(--type-fixed-line-1point-5);
 }
 
 .listRow[data-selected="true"] .listTitle > button[data-layout-primary] { color: var(--color-accent-strong); }
@@ -94,4 +94,4 @@
 .listRow[data-preview="true"] .listTitle > button[data-variant="row"][aria-pressed="false"] { background: color-mix(in srgb,var(--color-accent-strong) 45%,transparent); box-shadow: inset 0 0 0 2px var(--color-accent-strong); }
 .listRow:hover .listTitle > button[data-variant="row"],.listRow:focus-within .listTitle > button[data-variant="row"] { opacity: 1; }
 
-.songBadge { flex: none; white-space: nowrap; border: 1px solid color-mix(in srgb, var(--color-text) 30%, transparent); border-radius: 4px; padding: 2px 5px; color: var(--color-text-secondary); font-size: 12px; line-height: 1; font-weight: 600; font-variant-numeric: tabular-nums; }
+.songBadge { flex: none; white-space: nowrap; border: 1px solid color-mix(in srgb, var(--color-text) 30%, transparent); border-radius: 4px; padding: 2px 5px; color: var(--color-text-secondary); font-size: var(--type-fixed-size-12px); line-height: var(--type-fixed-line-1); font-weight: var(--type-fixed-weight-600); font-variant-numeric: tabular-nums; }

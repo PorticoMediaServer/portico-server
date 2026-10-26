@@ -159,24 +159,24 @@
 @media (max-width: 599px) {
   .sbar { display: flex; align-items: center; gap: 10px; }
   .sbar .field { flex: 1; min-width: 0; }
-  .sbar .cancel[data-variant='text'] { flex: none; color: var(--color-text-secondary); font-size: 15.5px; font-weight: 600; }
+  .sbar .cancel[data-variant='text'] { flex: none; color: var(--color-text-secondary); font-size: var(--type-fixed-size-15point-5px); font-weight: var(--type-fixed-weight-600); }
   /* The drawn top result: the title's own art behind it, the artist's circle when it has
      one, its real facts, and Play only where this title really plays. */
   .phoneTop { position: relative; display: flex; align-items: center; gap: 16px; width: 100%; min-height: 148px; margin: 14px 0 2px; padding: 14px 16px; border-radius: 14px; overflow: hidden; background: var(--color-raised); isolation: isolate; }
   .phoneTopBg { position: absolute; inset: -30%; width: 160%; height: 160%; object-fit: cover; filter: blur(40px) saturate(1.4); opacity: .5; z-index: -1; }
   .phoneTopOpen { position: absolute; inset: 0; z-index: 0; border: 0; background: transparent; cursor: pointer; }
   .phoneTopOpen:focus-visible { outline: 3px solid var(--color-focus); outline-offset: -3px; border-radius: 14px; }
-  .phoneTopRing { position: relative; z-index: 1; flex: none; display: grid; pointer-events: none; place-items: center; width: 96px; height: 96px; border-radius: 50%; overflow: hidden; background: var(--color-raised-high); box-shadow: 0 16px 30px -12px var(--color-shadow), 0 0 0 3px color-mix(in srgb, var(--color-text) 14%, transparent); font-size: 30px; font-weight: 800; }
+  .phoneTopRing { position: relative; z-index: 1; flex: none; display: grid; pointer-events: none; place-items: center; width: 96px; height: 96px; border-radius: 50%; overflow: hidden; background: var(--color-raised-high); box-shadow: 0 16px 30px -12px var(--color-shadow), 0 0 0 3px color-mix(in srgb, var(--color-text) 14%, transparent); font-size: var(--type-fixed-size-30px); font-weight: var(--type-fixed-weight-800); }
   .phoneTopRing > * { width: 100%; height: 100%; }
   .phoneTopCopy { position: relative; z-index: 1; flex: 1; min-width: 0; pointer-events: none; }
-  .phoneTopCopy > small { display: block; font-size: 12.5px; font-weight: 700; color: var(--color-accent-strong); }
-  .phoneTopCopy > b { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; margin: 3px 0 4px; font-size: 25px; font-weight: 800; letter-spacing: -.035em; line-height: 1.05; }
-  .phoneTopCopy > :last-child { font-size: 13px; color: var(--color-text-secondary); }
-  .phoneTopPlay { position: relative; z-index: 2; flex: none; width: 46px; height: 46px; border-radius: 50%; }
+  .phoneTopCopy > small { display: block; font-size: var(--type-fixed-size-12point-5px); font-weight: var(--type-fixed-weight-700); color: var(--color-accent-strong); }
+  .phoneTopCopy > b { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; margin: 3px 0 4px; font-size: var(--type-fixed-size-25px); font-weight: var(--type-fixed-weight-800); letter-spacing: var(--type-fixed-tracking-minus-point-035em); line-height: var(--type-fixed-line-1point-05); }
+  .phoneTopCopy > :last-child { font-size: var(--type-fixed-size-13px); color: var(--color-text-secondary); }
+  .phoneTopPlay { position: relative; z-index: var(--layer-content); flex: none; width: 46px; height: 46px; border-radius: 50%; }
 }
 
 /* Desktop-search frame 3: a full-width Songs answer carries the Music library's columns. */
-.resultTotal { margin-left: 12px; font-size: var(--type-person-title-size); font-weight: 400; color: var(--color-text-tertiary); }
+.resultTotal { margin-left: 12px; font-size: var(--type-person-title-size); font-weight: var(--type-fixed-weight-400); color: var(--color-text-tertiary); }
 .songColumns,.songTableRow { display: grid; grid-template-columns: 44px minmax(0,2.3fr) minmax(0,1.25fr) minmax(0,1.7fr) 64px 64px; align-items: center; gap: 14px; }
 .songColumns { padding: 0 12px 8px 6px; font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
 .songColumns > :nth-child(n+5) { text-align: right; }
@@ -191,7 +191,7 @@
 /* music-plus f8: the song's own notable formats, outlined, never filled; the title shrinks first. */
 .songTitleText { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .songTitleText > b { min-width: 0; }
-.songBadge { flex: none; display: inline-flex; align-items: center; height: 20px; padding: 0 6px; margin-left: 2px; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--color-text) 30%, transparent); font-size: 11.5px; font-weight: 700; letter-spacing: .01em; line-height: normal; color: var(--color-text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.songBadge { flex: none; display: inline-flex; align-items: center; height: 20px; padding: 0 6px; margin-left: 2px; border-radius: 6px; border: 1px solid color-mix(in srgb, var(--color-text) 30%, transparent); font-size: var(--type-fixed-size-11point-5px); font-weight: var(--type-fixed-weight-700); letter-spacing: var(--type-fixed-tracking-point-01em); line-height: normal; color: var(--color-text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .songArtist,.songAlbum,.songPlays,.songLength { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
 .songPlays,.songLength { text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 599px) {
@@ -216,7 +216,7 @@
 /* Phone-app 7: the Search title sits above the field until the viewer types; frame 4's
    Cancel then takes over in the bar. */
 @media (max-width: 599px) {
-  .phoneSearchTitle { margin: 0 0 12px; font-size: 2rem; line-height: 1.15; font-weight: 800; letter-spacing: -.035em; }
+  .phoneSearchTitle { margin: 0 0 12px; font-size: var(--type-fixed-size-2rem); line-height: var(--type-fixed-line-1point-15); font-weight: var(--type-fixed-weight-800); letter-spacing: var(--type-fixed-tracking-minus-point-035em); }
 }
 
 /* Phone-app 7: each recent search keeps its own remove control beside the row. */
