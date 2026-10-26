@@ -15,7 +15,7 @@ export function WatchUndoPrompt({binding, snapshot, expanded, controlsVisible, l
 }) {
   const offer = watchUndoOffer(binding, snapshot), reduced = usePromptReducedMotion();
   const displayed = expanded && offer ? {offer, snapshot, binding} : undefined;
-  const presence = usePromptPresence(displayed, displayed?.offer.marker.id, promptScope(snapshot, expanded), reduced);
+  const presence = usePromptPresence(displayed, displayed?.offer.marker.id, promptScope(snapshot, expanded, binding), reduced);
   const shown = presence.present;
   if (!shown) return null;
   const undo = shown.offer;
