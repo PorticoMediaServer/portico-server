@@ -68,7 +68,8 @@ async function main(){
   const appPage=await openPage(app.context);
   try{await appPage.goto(args.app,{waitUntil:'domcontentloaded'});}
   catch{throw new ToolError('app-navigation');}
-  await installFont(appPage,font);await settle(appPage);
+  // Measure the app's own loaded fonts/styles without modifying its CSS/CSP.
+  await settle(appPage);
   if(args['app-wait']){
    try{await appPage.locator(args['app-wait']).first().waitFor();}
    catch{throw new ToolError('app-wait-timeout');}
@@ -84,7 +85,7 @@ async function main(){
     continue;
    }
    if(result?.error)throw new ToolError('extract-'+result.error,pair.appSelector);
-   rows.push(...comparePair(designElement,result.element,{citation:cite,appSelector:pair.appSelector,strictText:Boolean(args['strict-text']),data:designElement.textMode==='data',mapped}));
+   rows.push(...comparePair(designElement,result.element,{citation:cite,appSelector:pair.appSelector,strictText:true,data:designElement.textMode==='data',mapped}));
   }
   for(const order of orders){
    const designList=await extract(designPage,{mode:'list',rootSelector:FRAME,selectors:order.frameSelectors,dataSelectors});
