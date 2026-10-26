@@ -50,7 +50,8 @@ export class ServicesAuthFlow {
     return attempt;
   }
   retryInitialization(): Promise<void> {
-    if (this.disposed || this.state.options || !this.state.optionsFailed || this.operation || this.state.retryAt > Date.now())
+    if (this.disposed) return Promise.resolve();
+    if (this.state.options || !this.state.optionsFailed || this.operation || this.state.retryAt > Date.now())
       return this.initialized ?? Promise.resolve();
     return this.initialize();
   }

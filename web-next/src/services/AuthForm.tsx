@@ -74,6 +74,9 @@ function MountedAuthForm({account, flow, initialUsername = '', embedded = false,
     </>}
     {(mode === 'signin' || mode === 'create') && providerButtons}
     {state.error && !codeRejected && !(errorCode === 'username_unavailable' && (mode === 'create' || mode === 'provider')) ? state.retryAt > 0 ? <ServicesNotice tone="error">{t('services.signin.tooMany')}</ServicesNotice> : errorCode === 'invalid_credentials' ? <ServicesNotice tone="error">{t('services.signin.credentials')}</ServicesNotice> : mailDown ? <ServicesNotice icon="i-clock">{t('services.signup.mailUnavailable')}</ServicesNotice> : <HostedError error={state.error} /> : null}
+    {!state.options && state.optionsFailed && <ServicesActions>
+      <Button loading={busy} disabled={blocked} onClick={() => {if (flow.getSnapshot() === state) void flow.retryInitialization();}}>{retrySeconds > 0 ? retryLabel : t('action.tryAgain')}</Button>
+    </ServicesActions>}
     {mode === 'signin' && state.options?.password && <>
       <form className={styles.form} onSubmit={submit(() => flow.signIn(username, password, code))}>
         <TextField variant="auth" label={t('auth.usernameOrEmail')} placeholder={t('auth.usernameOrEmail')} name="username" autoComplete="username" autoCapitalize="off" spellCheck={false} value={username} onChange={event => setUsername(event.currentTarget.value)} disabled={busy} required />
