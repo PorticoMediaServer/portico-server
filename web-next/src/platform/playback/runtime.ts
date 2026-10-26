@@ -226,6 +226,14 @@ export class WebShellPlaybackRuntime {
         this.replacing = true;this.retire(stackReference);this.stack = this.makeStack();this.activate(this.stack);this.replacing = false;this.sync();
       }}});
     const web = new WebPlayback({
+      preparingStarts: this.source.preparingStarts,
+      captureStartCurrent: () => {
+        const operation = this.operation, drawn = stackReference.service.getSnapshot(), queue = stackReference.queue.getSnapshot().view?.queue;
+        const originalCurrent = stackReference.capacityCurrent;
+        return () => this.current(stackReference) && !life.signal.aborted && operation === this.operation &&
+          stackReference.service.getSnapshot().intentId === drawn.intentId && stackReference.service.getSnapshot().playbackRun === drawn.playbackRun &&
+          stackReference.queue.getSnapshot().view?.queue === queue && (originalCurrent?.() ?? true);
+      },
       recordDiagnostic: this.recordDiagnostic,
       http, mediaUrl: path => this.source.api.mediaUrl(path),
       subscribeRoute: this.source.api.subscribeRoute, getRouteSnapshot: this.source.api.getRouteSnapshot,

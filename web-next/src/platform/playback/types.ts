@@ -23,6 +23,7 @@ import type {LocalPlaybackScope} from '../../../../packages/player-core/src/inde
 import type {WebLocalQueueSnapshot, WebLocalQueueResource} from './local-queue.ts';
 import type {WebPlaybackCapacityWait} from './capacity-retry.ts';
 import type {WebPlaybackStartFailure} from './start-failure.ts';
+import type {WebPreparingStarts} from './preparing-start';
 
 export type WebPlaybackAuthority = V1Viewer & Readonly<{epoch: string | number; viewerFence: string}>;
 export type WebPlaybackStart = Readonly<{entry: ContentEntry; target: NonNullable<ContentEntry['playback']>; origin?: Readonly<{kind: 'home-row'; rowId: string}>}>;
@@ -44,6 +45,8 @@ export type WebPlaybackSettings = Readonly<{
 /** The shell supplies an actual viewer-bound transport/feed, and destroys this runtime before
  * replacing that authority. isCurrent also fences an async callback during shell teardown. */
 export type WebPlaybackSource = Readonly<{
+  /** Original shell principal, independent of a Home/player view's lifetime. */
+  preparingStarts?: WebPreparingStarts;
   /** Same actual session as authority, including its independently captured family id. */
   localScope?: LocalPlaybackScope;
   api: HttpLocalApi; authority: WebPlaybackAuthority; contentScope: ContentScope;

@@ -42,6 +42,7 @@ import type {DiscTitleRef, Session} from '@core/playback-v1/types.ts';
 import type {QueueSessionTransport} from '@core/playback-v1/v1-queue-player.ts';
 import {QueueSelectionRegistrations, type QueueSelectionRegistration} from '@core/playback-v1/selection-registration.ts';
 import {WebMediaPlayer, type HlsModule, type SubtitleTimeline, type VideoLike, type WebPlayerNotice, type WebPlayerTimers, type WebMediaPlayerOptions} from './web-media-player.ts';
+import type {WebPreparingStarts, WebStartRegistration} from './preparing-start';
 
 /** What the binding tells the player screen in words (the screen owns the wording). */
 export type WebPlaybackNotice = 'autoplayBlocked' | 'qualityLowered' | 'qualityRaised';
@@ -80,6 +81,9 @@ export const failure = {
 } as const;
 
 export type WebPlaybackHost = Readonly<{
+  preparingStarts?: WebPreparingStarts;
+  /** Capture the actual stack/run/intent/queue witness before dispatch. */
+  captureStartCurrent?(): () => boolean;
   recordDiagnostic?: import('../app-log').AppLogRecorder;
   http: V1Http;
   /** Makes a capability path absolute on the selected server's current route. */
@@ -268,6 +272,7 @@ export class WebPlayback implements PlaybackAdapter {
   private readonly client: SessionsClient;
   private readonly options: PlaybackOptionsClient;
   private readonly known = new Map<string, Session>();
+  private readonly startRegistration?: WebStartRegistration;
   private readonly registrations = new QueueSelectionRegistrations();
   private readonly selectionAdoptions = new WeakMap<PlaybackSession, Readonly<{id: string; registration: QueueSelectionRegistration}>>();
   private readonly changedListeners = new Set<(session: Session) => void>();
@@ -314,6 +319,7 @@ export class WebPlayback implements PlaybackAdapter {
       onServerEnded: (session, end) => this.serverEnded(session.id, end),
       onLeaseExpired: (session, positionMs) => void this.leaseExpired(session, positionMs),
     });
+    this.startRegistration = host.preparingStarts?.attach(id => this.controller.getSnapshot().session?.id === id || this.service?.getSnapshot().session?.id === id);
     this.transport = this.makeTransport();
     this.offs.push(this.slot.onEvent(e => this.playerEvent(e)), this.slot.onNotice(n => this.playerNotice(n)), this.controller.subscribe(() => this.controllerChanged()));
     const offRoute = host.subscribeRoute?.(() => this.routeChanged());
@@ -350,6 +356,7 @@ export class WebPlayback implements PlaybackAdapter {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.startRegistration?.dispose();
     for (const off of this.offs.splice(0)) off();
     this.endRender();
     this.controller.dispose();
@@ -691,6 +698,7 @@ export class WebPlayback implements PlaybackAdapter {
     if (OWN_ENDS.includes(end.reason)) return;
     this.registrations.changed(sessionId);
     this.known.delete(sessionId);
+    this.startRegistration?.forget(sessionId);
     for (const l of [...this.endedListeners]) l(sessionId, end);
   }
 
@@ -782,17 +790,19 @@ export class WebPlayback implements PlaybackAdapter {
   // ── PlaybackApi and the queue player's transport ────────────────────────
 
   private remember(session: Session): Session {
+    this.startRegistration?.remember(session.id);
     this.registrations.changed(session.id);
     this.known.set(session.id, session);
     // Bounded: sessions leave by retire, forget and stop; this is the backstop.
     if (this.known.size > 16) {
       const oldest = this.known.keys().next().value!;
-      this.registrations.changed(oldest);this.known.delete(oldest);
+      this.registrations.changed(oldest);this.known.delete(oldest);this.startRegistration?.forget(oldest);
     }
     return session;
   }
 
   private dropped(id: string) {
+    this.startRegistration?.forget(id);
     this.registrations.changed(id);
     this.known.delete(id);
     this.positions.delete(id);
@@ -809,7 +819,7 @@ export class WebPlayback implements PlaybackAdapter {
     const uninstalled = () => !this.disposed && this.controller.getSnapshot().session?.id !== id && this.service?.getSnapshot().session?.id !== id;
     return this.registrations.capture(id, () => uninstalled() && this.known.get(id) === original, () => {
       if (!uninstalled() || this.known.get(id) !== original) return false;
-      this.known.delete(id);this.positions.delete(id);this.registrations.changed(id);
+      this.known.delete(id);this.positions.delete(id);this.registrations.changed(id);this.startRegistration?.forget(id);
       return true;
     });
   }
@@ -825,7 +835,17 @@ export class WebPlayback implements PlaybackAdapter {
       } catch { return 0; } // The engine reports the duration once it has the media.
     };
     const start = async (target: StartTarget, options: StartOptions, key: string = (self.host.key ?? idempotencyKey)(), durationSeconds?: number, signal?: AbortSignal) => {
-      const session = self.remember(await self.client.start(target, options, key, {signal}));
+      const source = self.service, drawn = source?.getSnapshot(), originalCurrent = self.host.captureStartCurrent?.();
+      const current = () => !self.disposed && self.service === source &&
+        (!drawn || source?.getSnapshot().intentId === drawn.intentId && source.getSnapshot().playbackRun === drawn.playbackRun) &&
+        (originalCurrent?.() ?? true);
+      const original = self.startRegistration?.begin(target, options, key, signal, current);
+      let session: Session;
+      try {
+        // The canonical SDK alone decodes status/variants and owns the unchanged
+        // wait budget. A late real 201 still enters the original core cleanup.
+        session = self.remember(await self.client.start(original?.body ?? target, original ? {} : options, original?.key ?? key, original?.context ?? {signal, isCurrent: current}));
+      } finally {original?.finish();}
       const seconds = session.discTitle
         ? await duration(session.itemId ?? '', session.versionId, signal, session.discTitle)
         : durationSeconds ?? await duration(session.itemId ?? '', session.versionId, signal);
@@ -868,6 +888,7 @@ export class WebPlayback implements PlaybackAdapter {
         }
         self.registrations.changed(id);
         self.known.delete(id);
+        self.startRegistration?.forget(id);
         self.positions.delete(id);
       },
       // Progress is the controller's timeline, fed by the port itself. Only the end is waited
