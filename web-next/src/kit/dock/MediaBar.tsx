@@ -57,10 +57,15 @@ export function MediaBar(props: DockRendererProps) {
   };
   const release = (event: PointerEvent<HTMLElement>, cancelled = false) => {
     clearHold(); const g = gesture.current; gesture.current = null; if (!g || g.id !== event.pointerId) return;
-    if (g.vertical?.release(event, cancelled)) {
+    const reservedVertical = !!g.vertical && (g.verticalActive || Math.abs(g.dy) > Math.abs(g.dx));
+    const handledVertical = g.vertical?.release(event, cancelled);
+    // An installed original port owns refusal as well as admission. Its moved
+    // vertical gesture can never borrow the legacy no-port expansion action.
+    if (handledVertical || reservedVertical) {
       suppressClick.current = true;
       if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-      event.currentTarget.style.transform = '';event.currentTarget.style.opacity = '';return;
+      event.currentTarget.style.transform = '';event.currentTarget.style.opacity = '';
+      signalDockMotion(event.currentTarget, {kind: 'reset'});return;
     }
     if (!g.moved) { event.currentTarget.style.transform = ''; event.currentTarget.style.opacity = ''; signalDockMotion(event.currentTarget, {kind: 'reset'}); return; }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
