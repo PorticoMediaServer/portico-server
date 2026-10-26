@@ -272,3 +272,43 @@ test('a retired or caller-aborted contents resolution never reaches the mounted 
     await rejected;assert.equal(moves,0);await f.controller.close();
   }
 });
+
+test('a delayed outline does not block first-page readiness or search', async () => {
+  const f = fixture(), outline = deferred<readonly import('../src/ports.ts').ReaderTocItem[]>();
+  const expected = f.document.toc;
+  Object.defineProperty(f.document, 'toc', {value: [], configurable: true});
+  let signal: AbortSignal | undefined;
+  f.document.loadToc = async active => {signal = active; return outline.promise;};
+  await f.controller.open({source, format: 'epub', container});
+  assert.equal(f.controller.getSnapshot().status, 'ready');
+  assert.deepEqual(f.controller.getSnapshot().toc, []);
+  const hits = [];
+  for await (const hit of f.controller.search('Actual', {limit: 2, signal: new AbortController().signal})) hits.push(hit);
+  assert.ok(hits.length > 0);
+  outline.resolve(expected); await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(f.controller.getSnapshot().toc, expected);
+  await f.controller.close(); assert.equal(signal?.aborted, true);
+});
+
+test('a replaced document cannot publish its delayed outline or location', async () => {
+  const f = fixture(), next = fixture(), outline = deferred<readonly import('../src/ports.ts').ReaderTocItem[]>();
+  f.document.loadToc = async () => outline.promise;
+  await f.controller.open({source, format: 'epub', container});
+  f.adapter.open = async () => next.document;
+  await f.controller.open({source, format: 'epub', container});
+  const snapshot = f.controller.getSnapshot();
+  outline.resolve([{id: 'old', label: 'Old document', location}]);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.controller.getSnapshot(), snapshot);
+  await f.controller.close();
+});
+
+test('outline failure from a closed document cannot replace the closed snapshot', async () => {
+  const f = fixture(); let reject!: (error: unknown) => void;
+  f.document.loadToc = () => new Promise((_, failed) => {reject = failed;});
+  await f.controller.open({source, format: 'epub', container});
+  await new Promise(resolve => setImmediate(resolve));
+  await f.controller.close(); const closed = f.controller.getSnapshot();
+  reject(new ReaderError('invalid_book')); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.controller.getSnapshot(), closed);
+});

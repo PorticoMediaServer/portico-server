@@ -114,6 +114,9 @@ export interface ReaderDocument<Preferences extends object> {
   readonly revision: string;
   readonly metadata: ReaderMetadata;
   readonly toc: readonly ReaderTocItem[];
+  /** Optional expensive outline resolution. The first page mounts before this
+   * runs; results remain owned by the same abortable document/session. */
+  loadToc?(signal: AbortSignal): Promise<readonly ReaderTocItem[]>;
   /** Resolve a captured manifest entry through this already-open engine. */
   resolveContents?(index: number, signal: AbortSignal): Promise<ReaderLocation>;
   mount(options: ReaderMount<Preferences>): Promise<ReaderView<Preferences>>;
