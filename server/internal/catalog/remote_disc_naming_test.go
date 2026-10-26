@@ -1,0 +1,218 @@
+package catalog
+
+import (
+	"context"
+	"database/sql"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"portico.local/server/internal/assets"
+	"portico.local/server/internal/persistence"
+	"portico.local/server/internal/storage"
+)
+
+// namingRemote is the source producer stub for the naming-only publication: it
+// records the reference the commit writes and refuses every byte-level call, so a
+// test fails loudly if naming ever reaches for the image.
+type namingRemote struct {
+	references []string
+}
+
+func (r *namingRemote) Handles(path string) bool { return strings.HasPrefix(path, "/remote") }
+func (r *namingRemote) InspectRoot(context.Context, string) (storage.Snapshot, error) {
+	return storage.Snapshot{}, storage.ErrRemoteConfig
+}
+func (r *namingRemote) Stat(context.Context, string) (storage.Snapshot, error) {
+	return storage.Snapshot{}, storage.ErrRemoteConfig
+}
+func (r *namingRemote) ListPage(context.Context, string, string, string) (storage.RemotePage, error) {
+	return storage.RemotePage{}, storage.ErrRemoteConfig
+}
+func (r *namingRemote) CommitPage(context.Context, *sql.Tx, storage.RemotePage) error {
+	return storage.ErrRemoteConfig
+}
+func (r *namingRemote) CheckScan(context.Context, string, string) error {
+	return storage.ErrRemoteConfig
+}
+func (r *namingRemote) ValidateScan(context.Context, *sql.Tx, string, string) error {
+	return storage.ErrRemoteConfig
+}
+func (r *namingRemote) RecordReference(_ context.Context, _ *sql.Tx, path, _ string) error {
+	r.references = append(r.references, path)
+	return nil
+}
+func (r *namingRemote) Acquire(context.Context, string, string) (storage.RemoteObject, error) {
+	return nil, storage.ErrRemoteConfig
+}
+
+type namingFixture struct {
+	service  *Service
+	db       *sql.DB
+	remote   *namingRemote
+	library  string
+	source   string
+	job      string
+	object   string
+	revision string
+	policy   int64
+}
+
+// namingFixture builds one running remote scan with one inventoried disc image
+// and its queued analysis row, without any inventory page walk.
+func namingFixture(t *testing.T, kind, relative string) namingFixture {
+	t.Helper()
+	root := t.TempDir()
+	db, err := persistence.Open(filepath.Join(root, "catalog.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	service := New(db)
+	local := filepath.Join(root, "local")
+	if err = os.Mkdir(local, 0700); err != nil {
+		t.Fatal(err)
+	}
+	library, err := service.Create("Titles", kind, local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote := &namingRemote{}
+	service.storage = &storage.Client{Remote: remote}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err = db.Exec(`INSERT INTO remote_sources(id,kind,name,root,generation,state) VALUES('remote','webdav','Remote','/remote',1,'ready')`); err != nil {
+		t.Fatal(err)
+	}
+	sourceID := library.ID + "-remote"
+	if _, err = db.Exec(`INSERT INTO library_sources(id,library_id,kind,name,configured_root,root,classification,generation,incarnation,root_identity,identity_confirmed,enabled,remote_source_id) VALUES(?,?,'remote','Remote','/remote','/remote','network',1,'incarnation','identity',1,1,'remote')`, sourceID, library.ID); err != nil {
+		t.Fatal(err)
+	}
+	var policy int64
+	if err = db.QueryRow(`SELECT revision FROM library_scan_policies WHERE library_id=?`, library.ID).Scan(&policy); err != nil {
+		t.Fatal(err)
+	}
+	job := "naming-job"
+	if _, err = db.Exec(`INSERT INTO jobs(id,library_id,status,created_at) VALUES(?,?,'running',?)`, job, library.ID, now); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO inventory_runs(job_id,source_id,source_generation,root_incarnation,root_identity,policy_revision,phase,scan_mode) VALUES(?,?,1,'incarnation','identity',?,'analysis','incremental')`, job, sourceID, policy); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO remote_scan_generations(job_id,source_id,generation) VALUES(?,?,'1')`, job, sourceID); err != nil {
+		t.Fatal(err)
+	}
+	asset := "naming-asset"
+	if _, err = db.Exec(`INSERT INTO catalog_assets(token,path,size,modified_ns,container,video_codec,audio_codec,width,height,duration,available) VALUES(?,'/remote/image.iso',734003200,1700000000000000000,'iso','','',0,0,0,1)`, asset); err != nil {
+		t.Fatal(err)
+	}
+	object, revision := "naming-object", "revision-1"
+	if _, err = db.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,object_identity,revision,evidence_json,size,modified_ns,seen_job,unsupported_reason,directory_path) VALUES(?,?,?,'incarnation',?,'identity',?,'{}',734003200,1700000000000000000,?,'',?)`, object, sourceID, asset, relative, revision, job, filepath.Dir(relative)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`INSERT INTO inventory_analysis_queue(job_id,object_id,revision,policy_revision) VALUES(?,?,?,?)`, job, object, revision, policy); err != nil {
+		t.Fatal(err)
+	}
+	return namingFixture{service: service, db: db, remote: remote, library: library.ID, source: sourceID, job: job, object: object, revision: revision, policy: policy}
+}
+
+// Root64: a remote disc image is published as an ordinary title from its name,
+// with no technical fact written and no byte of the image read.
+func TestCommitInventoryNamingPublishesRemoteDiscImageFromItsName(t *testing.T) {
+	f := namingFixture(t, "movie", "Heat (1995).iso")
+	if err := f.service.CommitInventoryNaming(context.Background(), f.job, f.object, f.revision, f.policy, assets.Facts{}); err != nil {
+		t.Fatal(err)
+	}
+	var title, kind string
+	var year int
+	if err := f.db.QueryRow(`SELECT e.title,k.name,e.year FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind JOIN catalog_asset_links l ON l.entity_id=e.id JOIN catalog_assets a ON a.id=l.asset_id WHERE a.token='naming-asset'`).Scan(&title, &kind, &year); err != nil {
+		t.Fatalf("the disc image did not become a titled item: %v", err)
+	}
+	if title != "Heat" || kind != "movie" || year != 1995 {
+		t.Fatalf("published %q %q %d, want the file name's title", title, kind, year)
+	}
+	var state, analysisRevision string
+	var queue string
+	if err := f.db.QueryRow(`SELECT analysis_state,analysis_revision FROM inventory_objects WHERE id=?`, f.object).Scan(&state, &analysisRevision); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.db.QueryRow(`SELECT state FROM inventory_analysis_queue WHERE job_id=? AND object_id=?`, f.job, f.object).Scan(&queue); err != nil {
+		t.Fatal(err)
+	}
+	if state != "deferred" || analysisRevision != f.revision || queue != "done" {
+		t.Fatalf("naming recorded %q/%q/%q, want deferred technical analysis", state, analysisRevision, queue)
+	}
+	// No technical fact is invented for the title it published.
+	for _, table := range []string{"asset_stream_facts", "asset_chapter_facts", "inventory_disc_facts"} {
+		var rows int
+		if err := f.db.QueryRow(`SELECT count(*) FROM ` + table).Scan(&rows); err != nil {
+			t.Fatal(err)
+		}
+		if rows != 0 {
+			t.Fatalf("%s carries %d rows after naming-only publication", table, rows)
+		}
+	}
+	var video, audio string
+	var duration float64
+	if err := f.db.QueryRow(`SELECT video_codec,audio_codec,duration FROM catalog_assets WHERE token='naming-asset'`).Scan(&video, &audio, &duration); err != nil {
+		t.Fatal(err)
+	}
+	if video != "" || audio != "" || duration != 0 {
+		t.Fatalf("naming wrote technical facts %q %q %v", video, audio, duration)
+	}
+	var issues int
+	if err := f.db.QueryRow(`SELECT count(*) FROM inventory_scan_issues WHERE job_id=? AND reason='unsupported_remote_disc'`, f.job).Scan(&issues); err != nil {
+		t.Fatal(err)
+	}
+	if issues != 0 {
+		t.Fatal("the ordinary title still carries the bespoke remote-disc issue")
+	}
+	if len(f.remote.references) != 1 || f.remote.references[0] != "/remote/Heat (1995).iso" {
+		t.Fatalf("recorded references %v, want the exact image path once", f.remote.references)
+	}
+}
+
+// The library kind decides the title: a TV name becomes its show, season and
+// episode, still from naming alone.
+func TestCommitInventoryNamingFollowsTheLibraryKind(t *testing.T) {
+	f := namingFixture(t, "tv", "Show Name/Season 01/Show Name - s01e02 - Episode Title.iso")
+	if err := f.service.CommitInventoryNaming(context.Background(), f.job, f.object, f.revision, f.policy, assets.Facts{}); err != nil {
+		t.Fatal(err)
+	}
+	var show, episode string
+	var season, number int
+	if err := f.db.QueryRow(`SELECT show.title,ep.number,sea.number,ep.title FROM catalog_entities ep JOIN catalog_entities sea ON sea.id=ep.parent_id JOIN catalog_entities show ON show.id=sea.parent_id WHERE ep.kind=(SELECT id FROM catalog_kinds WHERE name='episode')`).Scan(&show, &number, &season, &episode); err != nil {
+		t.Fatalf("the TV disc image did not become an episode from its name: %v", err)
+	}
+	if show != "Show Name" || season != 1 || number != 2 || episode != "Episode Title" {
+		t.Fatalf("published %q s%d e%d %q, want the file name's episode", show, season, number, episode)
+	}
+}
+
+// The naming-only commit refuses anything that is not a remote disc image in a
+// video library, so it cannot become a general unprobed publication path.
+func TestCommitInventoryNamingRefusesOtherObjects(t *testing.T) {
+	for _, tc := range []struct{ name, kind, relative string }{
+		{"local library", "movie", "Heat (1995).iso"},
+		{"book library", "book", "Heat (1995).iso"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := namingFixture(t, tc.kind, tc.relative)
+			if tc.name == "local library" {
+				if _, err := f.db.Exec(`UPDATE library_sources SET kind='local',remote_source_id=NULL WHERE id=?`, f.source); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := f.service.CommitInventoryNaming(context.Background(), f.job, f.object, f.revision, f.policy, assets.Facts{}); err == nil {
+				t.Fatal("naming-only publication accepted an object it must refuse")
+			}
+		})
+	}
+	t.Run("ordinary file", func(t *testing.T) {
+		f := namingFixture(t, "movie", "Heat (1995).mkv")
+		if err := f.service.CommitInventoryNaming(context.Background(), f.job, f.object, f.revision, f.policy, assets.Facts{}); err == nil {
+			t.Fatal("naming-only publication accepted a non-disc file")
+		}
+	})
+}
