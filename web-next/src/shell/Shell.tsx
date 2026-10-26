@@ -83,7 +83,7 @@ function ShellFrame({identity, OwnerActivity, dockVisible, serverAway, onSignOut
   const committedSwitch = useRef<{identity: ShellIdentity; pathname: string; selectServer: typeof onSwitchServer; selectProfile: typeof onSwitchProfile} | undefined>(undefined);
   useLayoutEffect(() => {
     committedSwitch.current = {identity, pathname, selectServer: onSwitchServer, selectProfile: onSwitchProfile};
-    switchOwner.current = undefined; setSwitchOpening(undefined);
+    switchOwner.current = undefined; setSwitchOpening(undefined); setHostedSelection(undefined);
     return () => {committedSwitch.current = undefined; switchOwner.current = undefined;};
   }, [identity, pathname, onSwitchServer, onSwitchProfile]);
   const openSwitcher = () => {
