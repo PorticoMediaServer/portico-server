@@ -59,5 +59,10 @@ func (b *discPlayBorrow) bindSubtitleResourcesTx(ctx context.Context, tx *sql.Tx
 	if service.Subtitles.DiscPresentations != service {
 		return subtitles.ErrUnavailable
 	}
+	if extractor, ok := service.Subtitles.Extractor.(subtitles.DiscSubtitleExtractor); !ok || !extractor.DiscSubtitleAvailable() {
+		// Keep the real measured resources visible as unavailable, but do not
+		// auto-select a document the configured host cannot actually extract.
+		automatic.Off = true
+	}
 	return subtitles.PersistPrivateDiscResourcesTx(ctx, tx, principal, discSubtitlePresentation(snapshot, item), automatic, b.checkContinuationTx)
 }

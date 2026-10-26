@@ -87,6 +87,14 @@ func TestPlaybackStartWrapperKeepsActualSessionJSON(t *testing.T) {
 			v.RetryAfterMs = 500
 		}
 		raw, _ := json.Marshal(v)
+		projected, err := startPreparedResponse(playbackv1.PreparedStart{Session: &v, Preparing: status == 202, RetryAfterMs: v.RetryAfterMs})
+		if err != nil {
+			t.Fatalf("real session projection status %d: %v", status, err)
+		}
+		projectedJSON, err := json.Marshal(projected)
+		if err != nil || string(projectedJSON) != string(raw) {
+			t.Fatalf("real session projection status %d changed: %v\n%s\n%s", status, err, raw, projectedJSON)
+		}
 		if issues := validator.ValidateJSON(out.JSONSchemaForStatus(status), raw); len(issues) != 0 {
 			t.Fatalf("real session status %d: %v", status, issues)
 		}
