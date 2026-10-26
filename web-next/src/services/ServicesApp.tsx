@@ -24,7 +24,7 @@ import {OwnerApprovalPage} from './OwnerApprovalPage';
 import {SetupApprovalPage} from './SetupApprovalPage';
 import {HostedSetupApproval} from '../screens/setup/HostedSetupApproval';
 
-type Context = {account: ServicesAccount; bootstrap: ServicesBootstrap; invalidContinuation: boolean; join?: JoinLink; plainShortJoin?: boolean};
+type Context = {account: ServicesAccount; bootstrap: ServicesBootstrap; invalidContinuation: boolean; join?: JoinLink; plainShortJoin?: boolean; identityTransaction?: string};
 const root = createRootRouteWithContext<Context>()({component: ServicesRoot, notFoundComponent: InvalidLink});
 const home = createRoute({getParentRoute: () => root, path: '/', component: HomeRoute});
 const workspace = createRoute({getParentRoute: () => root, path: '/account', component: AccountRoute,
@@ -43,14 +43,14 @@ function makeRouter(context: Context) {
   return createRouter({routeTree: root.addChildren([home, workspace, device, reset, verify, claim, invitation]), context});
 }
 // This router's types stay local. The server app remains the only global TanStack Register.
-export function ServicesApp({capture, invalidContinuation, join, plainShortJoin, signIn, owner}: {capture?: LinkCapture; invalidContinuation?: boolean; join?: JoinLink; plainShortJoin?: boolean; signIn?: SignInCapture; owner?: HostedOwnerClaimCapture} = {}) {
+export function ServicesApp({capture, invalidContinuation, join, plainShortJoin, signIn, owner, identityTransaction}: {capture?: LinkCapture; invalidContinuation?: boolean; join?: JoinLink; plainShortJoin?: boolean; signIn?: SignInCapture; owner?: HostedOwnerClaimCapture; identityTransaction?: string} = {}) {
   // main.tsx captures and scrubs intake once, before React. A discarded render
   // must not reread a scrubbed URL or allocate a terminal bootstrap controller.
   const create = useCallback(() => {
     const account = servicesAccount(), bootstrap = new ServicesBootstrap(account, servicesLinkStore, capture, {origin: location.origin, capture: signIn},
       location.pathname === '/claim' ? {origin: location.origin, capture: owner} : undefined);
-    return {account, bootstrap, router: makeRouter({account, bootstrap, invalidContinuation: invalidContinuation === true, join, plainShortJoin}), dispose: () => bootstrap.dispose()};
-  }, [capture, invalidContinuation, join, plainShortJoin, signIn, owner]);
+    return {account, bootstrap, router: makeRouter({account, bootstrap, invalidContinuation: invalidContinuation === true, join, plainShortJoin, identityTransaction}), dispose: () => bootstrap.dispose()};
+  }, [capture, invalidContinuation, join, plainShortJoin, signIn, owner, identityTransaction]);
   const bound = useAccountResource(create);
   return <><IconSprite />{bound ? <MountedServicesRouter key={bound.id} value={bound.value} /> : <ServicesAuthStage><></></ServicesAuthStage>}</>;
 }
@@ -84,6 +84,7 @@ function HomeRoute() {
   return <ServicesHomePage account={account} session={session} />;
 }
 function AccountRoute() {
+  const {identityTransaction} = root.useRouteContext<ServicesRouter>();
   const {account, session} = useAccount(), {tab} = workspace.useSearch<ServicesRouter>();
   const [authenticating, setAuthenticating] = useState(() => !session), [deleted, setDeleted] = useState(false);
   const {t} = servicesI18n();
@@ -94,7 +95,7 @@ function AccountRoute() {
   if (deleted && !session) return <ServicesAuthStage><ServicesStateIcon/><ServicesHeading>{t('web.deleteAccount.doneTitle')}</ServicesHeading>
     <ServicesLead>{t('web.deleteAccount.doneBody')}</ServicesLead><ServicesActions><Button variant="glass" onClick={() => {setDeleted(false);location.assign('/');}}>{t('web.link.backToPortico')}</Button></ServicesActions></ServicesAuthStage>;
   if (!session || authenticating) return <ServicesAuthForm account={account} before={securityEnded ? <ServicesNotice>{t('services.signin.ended')}</ServicesNotice> : undefined} onSignedIn={() => {setSecurityEnded(undefined);setAuthenticating(false);}} />;
-  return <AccountPage account={account} session={session} section={tab as 'devices' | 'security' | 'servers' | 'notifications'} onDeleted={() => setDeleted(true)} onSecurityEnded={codes => setSecurityEnded({...(codes ? {codes: Object.freeze([...codes])} : {})})} />;
+  return <AccountPage identityTransaction={identityTransaction} account={account} session={session} section={tab as 'devices' | 'security' | 'servers' | 'notifications'} onDeleted={() => setDeleted(true)} onSecurityEnded={codes => setSecurityEnded({...(codes ? {codes: Object.freeze([...codes])} : {})})} />;
 }
 function DeviceRoute() {
   const {account, bootstrap} = root.useRouteContext<ServicesRouter>(), link = bootstrap.getSnapshot().link;
