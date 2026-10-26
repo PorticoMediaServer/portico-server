@@ -23,7 +23,7 @@ function viewerTraffic(reading?: TelemetryReading): Pick<HealthTile, 'value' | '
 
 /** Omit unmeasurable metrics; retain actual measured zero. */
 export function healthTiles(reading?: TelemetryReading): readonly HealthTile[] {
-  return LOAD_TILES.flatMap(tile => {
+  return LOAD_TILES.flatMap<HealthTile>(tile => {
     if (tile.metric === 'netOut') {
       const viewer = viewerTraffic(reading);
       return viewer ? [{metric: tile.metric, label: 'next.dashboard.sentToViewers' as const, ...viewer}] : [];
