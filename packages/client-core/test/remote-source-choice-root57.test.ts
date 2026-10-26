@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {RemoteSourceService} from '../src/remote-sources.ts';
 import {sourceChoiceAdopt,sourceChoiceCommand,sourceChoiceComparison,sourceChoiceFields,sourceChoicePutBody,type SourceChoiceBaseline,type SourceChoiceDefinition,type SourceChoiceField} from '../src/remote-source-choice.ts';
 
+const openChoice=(current:()=>boolean=()=>true)=>({signal:new AbortController().signal,isCurrent:current,consentDirty:false as const});
 const scope={serverId:'server',viewerId:'owner'},wire={serverId:'server',viewerFence:'fence'};
 const reading={scanDepth:'basic',wholeFileReads:false,connections:4,requestsPerSecond:4,bytesPerSecond:0} as const;
 const advanced={scanIntervalSeconds:21600,watchForChanges:false,scanOnStart:false,fullRecheckDays:0,cacheBytes:0,cacheFloorBytes:0,seekPreviews:true,chapterImages:true,waveforms:true,loudness:true,checksums:true,introsMode:'inherit',doubleCheckFolders:false,dirCacheSeconds:0,readBufferBytes:0,connectTimeoutSeconds:0,idleTimeoutSeconds:0,retries:0,lowLevelRetries:0} as const;
@@ -130,7 +131,7 @@ test('a first explicit choice captures the original read and Advanced pair witho
 test('consent stays only as optional metadata for true, false and older absence',()=>{
  for(const [consent,want] of [[true,true],[false,false],[undefined,undefined]] as const){
   const values={...reading,wholeFileReads:false,...(consent===undefined?{}:{allowAdvancedMediaAnalysis:consent})};
-  const command=sourceChoiceCommand(originalRead({values}) as never,advancedSettings() as never,definitions[1]!);
+  const command=sourceChoiceCommand(originalRead({values}) as never,advancedSettings() as never,definitions[1]!,openChoice());
   assert.ok(command);
   assert.equal(Object.hasOwn(command.values,'allowAdvancedMediaAnalysis'),false);
   assert.equal(Object.hasOwn(command.startChoice,'allowAdvancedMediaAnalysis'),false);
@@ -202,7 +203,7 @@ test('getter-backed originals are read once and cannot change the capture',()=>{
 
 
 test('the atomic body carries only the selected four controls and the original witnesses',()=>{
- const command=sourceChoiceCommand(originalRead() as never,advancedSettings({revision:5}) as never,definitions[1]!)!;
+ const command=sourceChoiceCommand(originalRead() as never,advancedSettings({revision:5}) as never,definitions[1]!,openChoice())!;
  const operationId='1788580000000-12345678-1234-1234-1234-123456789012';
  const body=sourceChoicePutBody(command,operationId);
  assert.deepEqual(Object.keys(body).sort(),['expectedGeneration','expectedRevision','operationId','startChoice','values']);
@@ -215,7 +216,7 @@ test('the atomic body carries only the selected four controls and the original w
 });
 
 test('adoption needs the exact association, both accepted revisions and an empty changed set',()=>{
- const command=sourceChoiceCommand(originalRead() as never,advancedSettings({revision:5}) as never,definitions[1]!)!;
+ const command=sourceChoiceCommand(originalRead() as never,advancedSettings({revision:5}) as never,definitions[1]!,openChoice())!;
  const adoptedBaseline=Object.freeze({...baseline,advancedRevision:5,currentAdvanced:Object.freeze({...advanced}),changedFields:Object.freeze([] as SourceChoiceField[])});
  const adopted=settings({choiceBaseline:adoptedBaseline});
  assert.deepEqual(sourceChoiceAdopt(adopted,command)?.changedFields,[]);
@@ -236,7 +237,7 @@ test('the service sends exactly one atomic PUT and adopts the exact accepted chi
  }};
  const service=new RemoteSourceService(api as never,scope,async()=>'1788580000000-12345678-1234-1234-1234-123456789012');
  const profile={sourceId:'dav',generation:'7',revision:0,saved:false,values:{...reading,wholeFileReads:true},configurationGeneration:'11',choiceDefinitions:definitions,choiceApplicableFields:applicable};
- const result=await service.saveProfileStartChoice(profile,advancedSettings({revision:5}) as never,definitions[1]!);
+ const result=await service.saveProfileStartChoice(profile,advancedSettings({revision:5}) as never,definitions[1]!,openChoice());
  assert.equal(result.kind,'applied');
  assert.equal(calls.filter(call=>call.method==='PUT').length,1);
  assert.deepEqual((calls[0]!.body as {values:object}).values,{scanDepth:'basic',wholeFileReads:true,connections:4,requestsPerSecond:4,bytesPerSecond:0});
@@ -245,7 +246,7 @@ test('the service sends exactly one atomic PUT and adopts the exact accepted chi
 });
 
 test('a no-op read revision is adopted, while another operation later Advanced revision is not',()=>{
- const command=sourceChoiceCommand(originalRead() as never,advancedSettings({revision:5}) as never,definitions[1]!)!;
+ const command=sourceChoiceCommand(originalRead() as never,advancedSettings({revision:5}) as never,definitions[1]!,openChoice())!;
  const current=Object.freeze({...baseline,advancedRevision:5,currentAdvanced:Object.freeze({...advanced}),changedFields:Object.freeze([] as SourceChoiceField[])});
  assert.deepEqual(sourceChoiceAdopt(settings({choiceBaseline:current}),command)?.changedFields,[]);
  assert.equal(sourceChoiceAdopt(settings({choiceBaseline:{...current,advancedRevision:6}}),command),undefined,'equal values from a later operation are not adopted');
@@ -264,7 +265,7 @@ test('an uncertain PUT retains the exact intent and recovers only through the so
  }};
  const service=new RemoteSourceService(api as never,scope,async()=>'1788580000000-12345678-1234-1234-1234-123456789012');
  const profile={sourceId:'dav',generation:'7',revision:0,saved:false,values:{...reading,wholeFileReads:true},configurationGeneration:'11',choiceDefinitions:definitions,choiceApplicableFields:applicable};
- const first=await service.saveProfileStartChoice(profile,advancedSettings({revision:5}) as never,definitions[1]!);
+ const first=await service.saveProfileStartChoice(profile,advancedSettings({revision:5}) as never,definitions[1]!,openChoice());
  assert.equal(first.kind,'unknown');if(first.kind!=='unknown')return;
  assert.equal(putAttempts,1);
  const recovered=await service.recoverStartChoice(first.intent);
@@ -280,7 +281,7 @@ test('a retired callback cannot settle or publish the choice',async()=>{
   readSettings:{sourceId:'dav',generation:'7',revision:2,saved:true,values:{...reading},configurationGeneration:'11'}}}};}};
  const service=new RemoteSourceService(api as never,scope,async()=>'1788580000000-12345678-1234-1234-1234-123456789012');
  const profile={sourceId:'dav',generation:'7',revision:0,saved:false,values:{...reading,wholeFileReads:true},configurationGeneration:'11',choiceDefinitions:definitions,choiceApplicableFields:applicable};
- await assert.rejects(()=>service.saveProfileStartChoice(profile,advancedSettings({revision:5}) as never,definitions[1]!,()=>current),error=>Boolean(error&&(error as {code?:string}).code==='retired'));
+ await assert.rejects(()=>service.saveProfileStartChoice(profile,advancedSettings({revision:5}) as never,definitions[1]!,openChoice(()=>current)),error=>Boolean(error&&(error as {code?:string}).code==='retired'));
  service.dispose();
 });
 
@@ -293,7 +294,7 @@ test('the fresh read must still be the parent acceptance revision before adoptin
  }};
  const service=new RemoteSourceService(api as never,scope,async()=>'1788580000000-12345678-1234-1234-1234-123456789012');
  const profile={sourceId:'dav',generation:'7',revision:0,saved:false,values:{...reading,wholeFileReads:true},configurationGeneration:'11',choiceDefinitions:definitions,choiceApplicableFields:applicable};
- const result=await service.saveProfileStartChoice(profile,advancedSettings({revision:5}) as never,definitions[1]!);
+ const result=await service.saveProfileStartChoice(profile,advancedSettings({revision:5}) as never,definitions[1]!,openChoice());
  assert.equal(result.kind,'accepted-unavailable','a newer read revision is not the accepted parent');
  service.dispose();
 });

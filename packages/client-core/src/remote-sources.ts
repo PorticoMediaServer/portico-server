@@ -364,7 +364,8 @@ function safeError(e:unknown):string{
  }
  return messages[code]??'The operation outcome is not confirmed. Check the original receipt; credentials will not be resent automatically.';
 }
-export type SourceChoiceIntent=Readonly<{operationId:string;body:ReturnType<typeof sourceChoicePutBody>;command:SourceChoiceCommand;owner:object;epoch:number}>;
+export type SourceChoiceOpening=Readonly<{signal:AbortSignal;isCurrent:()=>boolean;consentDirty:false}>;
+export type SourceChoiceIntent=Readonly<{operationId:string;body:ReturnType<typeof sourceChoicePutBody>;command:SourceChoiceCommand;owner:object;epoch:number;opening:SourceChoiceOpening}>;
 export type SourceChoiceApplyResult=
  |Readonly<{kind:'applied';settings:SourceReadSettings;comparison:SourceChoiceComparison}>
  |Readonly<{kind:'accepted-unavailable';settings:SourceReadSettings}>
@@ -412,11 +413,14 @@ export class RemoteSourceService{
  }
  private refuse(error:unknown){const code=this.refusalCode(error);if(code)this.retire(code);}
  private publish(value:Partial<RemoteState>){if(this.refused||!this.live())return;this.state=Object.freeze({...this.state,...value});for(const fn of this.listeners)fn();}
- dispose(){this.epoch++;this.disposed=true;this.intent=null;this.refused=false;this.refusedCode='';for(const c of this.controllers)c.abort();this.controllers.clear();this.listeners.clear();this.state={...this.state,sources:[],receipt:null,rclone:null,operationId:null,operationKind:''};}
+ dispose(){this.epoch++;this.disposed=true;this.choiceIntent=undefined;this.choiceOpening=0;this.intent=null;this.refused=false;this.refusedCode='';for(const c of this.controllers)c.abort();this.controllers.clear();this.listeners.clear();this.state={...this.state,sources:[],receipt:null,rclone:null,operationId:null,operationKind:''};}
  private fence(raw:unknown){if(!record(raw)||!record(raw.scope)||raw.scope.serverId!==this.scope.serverId||!text(raw.scope.viewerFence,256)||!raw.scope.viewerFence||this.viewerFence&&this.viewerFence!==raw.scope.viewerFence)invalid();this.viewerFence=raw.scope.viewerFence;}
  private async request(path:string,method='GET',body?:unknown,guard?:()=>boolean):Promise<unknown>{
   if(this.refused)throw Object.assign(new Error(messages[this.refusedCode]??messages.unauthorized),{code:this.refusedCode||'unauthorized'});
   if(!this.live()||(guard&&!guard()))throw new Error('Scope changed.');
+  // One unresolved explicit choice excludes every other source mutation, while
+  // its own PUT passes through the private write flag.
+  if(method!=='GET'&&this.choiceIntent&&!this.choiceWrite)throw new Error('Finish or recover the current source command first.');
   const c=new AbortController();this.controllers.add(c);let timer:ReturnType<typeof setTimeout>|undefined;
   try{
    return await Promise.race([this.api.request(path,method,body,c.signal),new Promise<never>((_,reject)=>{timer=setTimeout(()=>{c.abort();reject(new Error('timeout'));},45000);})]);
@@ -749,39 +753,47 @@ async saveProfile(profile:SourceReadSettings,values:SourceReadValues,guard?:()=>
   * synchronously before the operation id or busy publication; a first choice
   * needs no baseline. An uncertain outcome retains the exact intent for the
   * narrow source-operation recovery, never a generic source recovery. */
- async saveProfileStartChoice(profile:SourceReadSettings,advanced:SourceAdvancedSettings,offered:SourceChoiceDefinition,guard?:()=>boolean):Promise<SourceChoiceApplyResult>{
-  if(!this.live()||(guard&&!guard()))throw new Error('Scope changed.');
+ async saveProfileStartChoice(profile:SourceReadSettings,advanced:SourceAdvancedSettings,offered:SourceChoiceDefinition,opening:SourceChoiceOpening):Promise<SourceChoiceApplyResult>{
+  if(!this.live())throw new Error('Scope changed.');
+  if(!opening||opening.consentDirty!==false||!opening.signal||typeof opening.isCurrent!=='function')throw new Error('The choice opening is invalid.');
+  const capturedOpening=Object.freeze({signal:opening.signal,isCurrent:opening.isCurrent,consentDirty:false as const});
   if(this.choiceOpening!==0||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');
-  if(profile.revision===0&&profile.saved||advanced.revision===0&&advanced.saved)throw new Error('Revision zero needs an unsaved source.');
-  const command=sourceChoiceCommand(profile,advanced,offered);
-  if(!command)throw new Error('This choice cannot be applied from the current read.');
-  const epoch=this.epoch,opening=++this.openingSeq;this.choiceOpening=opening;
+  const epoch=this.epoch,openingToken=++this.openingSeq;this.choiceOpening=openingToken;
   this.publish({busy:true,error:'',errorCode:'',receipt:null,rclone:null,alreadyDone:false,operationId:null,operationKind:'source'});
-  let intent:SourceChoiceIntent|undefined;
+  let intent:SourceChoiceIntent|undefined,dispatched=false;
   try{
-   const op=await this.operationId();this.choiceCurrent(opening,epoch,guard);
+   this.choiceCurrent(openingToken,epoch,capturedOpening);
+   if(profile.saved!==true&&profile.saved!==false||advanced.saved!==true&&advanced.saved!==false)throw new Error('The source documents are incomplete.');
+   if(profile.revision===0&&profile.saved||advanced.revision===0&&advanced.saved)throw new Error('Revision zero needs an unsaved source.');
+   const command=sourceChoiceCommand(profile,advanced,offered);
+   if(!command)throw new Error('This choice cannot be applied from the current read.');
+   this.choiceCurrent(openingToken,epoch,capturedOpening);
+   const op=await this.operationId();this.choiceCurrent(openingToken,epoch,capturedOpening);
    const body=sourceChoicePutBody(command,op);
-   intent=Object.freeze({operationId:op,body,command,owner:this.choiceOwner,epoch});
-   const raw=await this.request(encodedRoutePath("put_storage_source_read_profile",{"id":encodeURIComponent(command.sourceId)}),'PUT',routeBody("put_storage_source_read_profile",body),guard);
-   this.choiceCurrent(opening,epoch,guard);
+   intent=Object.freeze({operationId:op,body,command,owner:this.choiceOwner,epoch,opening:capturedOpening});this.choiceIntent=intent;
+   dispatched=true;this.choiceWrite=true;
+   const raw=await this.request(encodedRoutePath("put_storage_source_read_profile",{"id":encodeURIComponent(command.sourceId)}),'PUT',routeBody("put_storage_source_read_profile",body),()=>!capturedOpening.signal.aborted&&capturedOpening.isCurrent());
+   this.choiceCurrent(openingToken,epoch,capturedOpening);
    const parent=this.choiceParent(raw,op,command);
-   const settings=await this.readProfile(command.sourceId,undefined,guard);
-   this.choiceCurrent(opening,epoch,guard);
-   if(settings.revision!==parent.revision)return Object.freeze({kind:'accepted-unavailable',settings});
+   let settings:SourceReadSettings;
+   try{settings=await this.readProfile(command.sourceId,undefined);}catch(error){return Object.freeze({kind:'accepted-unavailable',settings:parent,error});}
+   this.choiceCurrent(openingToken,epoch,capturedOpening);
    const comparison=sourceChoiceAdopt(settings,command);
-   if(!comparison)return Object.freeze({kind:'accepted-unavailable',settings});
-   this.publish({busy:false});
+   if(!comparison)return Object.freeze({kind:'accepted-unavailable',settings:parent});
+   this.choiceIntent=undefined;this.publish({busy:false});
    return Object.freeze({kind:'applied',settings,comparison});
   }catch(error){
    if(retiredChoice(error))throw error;
-   if(intent&&!definiteRefusal(error))return Object.freeze({kind:'unknown',intent,error});
-   throw error;
+   if(dispatched&&intent&&!definiteRefusal(error))return Object.freeze({kind:'unknown',intent,error});
+   this.choiceIntent=undefined;throw error;
   }finally{
-   if(this.choiceOpening===opening){this.choiceOpening=0;if(this.live()&&epoch===this.epoch)this.publish({busy:false});}
+   this.choiceWrite=false;
+   if(this.choiceOpening===openingToken){this.choiceOpening=0;if(this.live()&&epoch===this.epoch)this.publish({busy:false});}
   }
  }
+ private choiceIntent?:SourceChoiceIntent;private choiceWrite=false;
  private choiceOpening=0;private openingSeq=0;private readonly choiceOwner=Object.freeze({});
- private choiceCurrent(opening:number,epoch:number,guard?:()=>boolean){if(!this.live()||(guard&&!guard())||epoch!==this.epoch||this.choiceOpening!==opening)throw Object.assign(new Error('Scope changed.'),{code:'retired'});}
+ private choiceCurrent(opening:number,epoch:number,captured:SourceChoiceOpening){if(!this.live()||captured.signal.aborted||!captured.isCurrent()||epoch!==this.epoch||this.choiceOpening!==opening)throw Object.assign(new Error('Scope changed.'),{code:'retired'});}
  private choiceParent(raw:unknown,op:string,command:SourceChoiceCommand):SourceReadSettings{
   this.parseReceipt(raw,op);
   if(!record(raw)||!record(raw.receipt)||raw.receipt.readSettings===undefined)invalid();
@@ -792,22 +804,24 @@ async saveProfile(profile:SourceReadSettings,values:SourceReadValues,guard?:()=>
  /** Recovery is only the original source-operation GET under this same service
   * and still-current opening; it requires the parent readSettings and parses it
   * with the same typed intent. */
- async recoverStartChoice(intent:SourceChoiceIntent,guard?:()=>boolean):Promise<SourceChoiceApplyResult>{
-  if(intent.owner!==this.choiceOwner||!this.live()||(guard&&!guard())||this.choiceOpening!==0||this.state.busy||this.state.ambiguous)throw new Error('This operation belongs to another opening.');
-  const epoch=this.epoch,opening=++this.openingSeq;this.choiceOpening=opening;
+ async recoverStartChoice(intent:SourceChoiceIntent):Promise<SourceChoiceApplyResult>{
+  if(intent!==this.choiceIntent||intent.owner!==this.choiceOwner||!this.live()||intent.opening.signal.aborted||!intent.opening.isCurrent()||intent.epoch!==this.epoch)throw new Error('This operation belongs to another opening.');
+  const epoch=this.epoch,openingToken=++this.openingSeq;this.choiceOpening=openingToken;
   try{
-   const raw=await this.request(encodedRoutePath("get_storage_source_operations_id",{"id":encodeURIComponent(intent.operationId)}),'GET',undefined,guard);
-   this.choiceCurrent(opening,epoch,guard);
+   const raw=await this.request(encodedRoutePath("get_storage_source_operations_id",{"id":encodeURIComponent(intent.operationId)}),'GET',undefined,()=>!intent.opening.signal.aborted&&intent.opening.isCurrent());
+   this.choiceCurrent(openingToken,epoch,intent.opening);
    const parent=this.choiceParent(raw,intent.operationId,intent.command);
-   const settings=await this.readProfile(intent.command.sourceId,undefined,guard);
-   if(settings.revision!==parent.revision)return Object.freeze({kind:'accepted-unavailable',settings});
+   let settings:SourceReadSettings;
+   try{settings=await this.readProfile(intent.command.sourceId,undefined);}catch(error){return Object.freeze({kind:'accepted-unavailable',settings:parent,error});}
+   this.choiceCurrent(openingToken,epoch,intent.opening);
    const comparison=sourceChoiceAdopt(settings,intent.command);
-   return comparison?Object.freeze({kind:'applied',settings,comparison}):Object.freeze({kind:'accepted-unavailable',settings});
+   if(comparison){this.choiceIntent=undefined;return Object.freeze({kind:'applied',settings,comparison});}
+   return Object.freeze({kind:'accepted-unavailable',settings:parent});
   }catch(error){
    if(retiredChoice(error))throw error;
    if(!definiteRefusal(error))return Object.freeze({kind:'unknown',intent,error});
    throw error;
-  }finally{if(this.choiceOpening===opening){this.choiceOpening=0;if(this.live()&&epoch===this.epoch)this.publish({busy:false});}}
+  }finally{if(this.choiceOpening===openingToken){this.choiceOpening=0;if(this.live()&&epoch===this.epoch)this.publish({busy:false});}}
  }
 
 
