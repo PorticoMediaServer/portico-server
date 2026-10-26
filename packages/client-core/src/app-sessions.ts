@@ -83,12 +83,13 @@ export class AppSessionStore {
   async selected(): Promise<AppServerSession | undefined> {
     const value = await this.read(); return value.servers.find(v => v.connection.pin.serverId === value.selectedServerId);
   }
-  async select(serverId: string, isCurrent: () => boolean = () => true): Promise<void> {
-    if (!id(serverId)) invalid();
+  async select(serverId: string, isCurrent: () => boolean = () => true, expectedRevision?: number): Promise<void> {
+    if (!id(serverId) || expectedRevision !== undefined && (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0)) invalid();
     const beforeCommit = () => { if (!isCurrent()) cancelled(); };
     await this.storage.change(raw => {
       beforeCommit();
       const old = parseAppSessionRecord(raw);
+      if (expectedRevision !== undefined && old.revision !== expectedRevision) cancelled();
       if (!old.servers.some(v => v.connection.pin.serverId === serverId)) cancelled();
       return next(old, old.servers, serverId);
     }, beforeCommit);
