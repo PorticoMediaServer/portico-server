@@ -241,11 +241,29 @@ export type NotificationVocabulary=Readonly<{
  * never name something this client would not also read there. */
 const vocabularyBounds={audiences:[4,40],severities:[8,40],states:[8,20],sources:[32,60],commands:[32,80],views:[64,80]} as const;
 
+/** A published token is a non-empty, well-formed UTF-16 string with no control
+ * characters. It is deliberately not narrowed to a pattern: a command or view a
+ * newer server adds stays exactly as published and inert unless this build knows
+ * it, so a token is never rewritten to fit a regex. */
+function wellFormed(value:unknown,max:number):value is string{
+ if(!text(value,max)||!value)return false;
+ for(let index=0;index<value.length;index++){
+  const code=value.charCodeAt(index);
+  if(code<0x20||(code>=0x7f&&code<=0x9f))return false;
+  if(code>=0xd800&&code<=0xdbff){
+   const next=value.charCodeAt(index+1);
+   if(!(next>=0xdc00&&next<=0xdfff))return false;
+   index++;
+  }else if(code>=0xdc00&&code<=0xdfff)return false;
+ }
+ return true;
+}
+
 function vocabularyList(value:unknown,max:number,token:number):readonly string[]{
  if(!Array.isArray(value)||value.length>max)invalid();
  const out:string[]=[];
  // A repeated token is the same permission, not a second one; first wins.
- for(const entry of value){if(!text(entry,token)||!entry)invalid();if(!out.includes(entry))out.push(entry);}
+ for(const entry of value){if(!wellFormed(entry,token))invalid();if(!out.includes(entry))out.push(entry);}
  return Object.freeze(out);
 }
 

@@ -228,6 +228,15 @@ test('a vocabulary outside its closed shape is refused, never half-read',()=>{
  assert.throws(()=>parseNotificationVocabulary({...publishedVocabulary,commands:[7]}));
 });
 
+test('a vocabulary token is non-empty, well-formed text with no control characters',()=>{
+ for(const token of ['run\u0000scan','run\u0007scan','\u001f','run\u007fscan','\u009f','\ud800','\udc00','run\ud800scan',''])
+  assert.throws(()=>parseNotificationVocabulary({...publishedVocabulary,commands:[token]}));
+ // Well-formed text outside ASCII stays exactly as published; no pattern narrowing.
+ const published=parseNotificationVocabulary({...publishedVocabulary,commands:['run😀scan','команда']});
+ assert.deepEqual(published.commands,['run😀scan','команда']);
+ assert.deepEqual(published.supportedCommands,[]);
+});
+
 test('a repeated vocabulary token is one permission, and the parsed document cannot be edited',()=>{
  const parsed=parseNotificationVocabulary({...publishedVocabulary,
   audiences:['profile','profile','account-admin'],commands:['run-scan','run-scan'],views:['home','home']});
