@@ -1,7 +1,7 @@
 /* Shared prompt-only presence and snap reposition. The caller owns its offer. */
-.prompt { transition: transform var(--prompt-snap-ms, 0ms) var(--prompt-spring, ease-out); }
-.prompt[data-prompt-phase='in'] { animation: promptIn 180ms ease-out; }
-.prompt[data-prompt-phase='out'] { animation: promptOut var(--prompt-exit-ms, 120ms) linear forwards; pointer-events: none; }
+.prompt { transition: transform var(--prompt-snap-ms, 0ms) var(--prompt-spring, var(--ease-out)); }
+.prompt[data-prompt-phase='in'] { animation: promptIn 180ms var(--ease-out); }
+.prompt[data-prompt-phase='out'] { animation: promptOut var(--prompt-exit-ms, 120ms) var(--ease-out) forwards; pointer-events: none; }
 @keyframes promptIn {
   from { opacity: 0; transform: translateY(calc(var(--prompt-lift, 0px) * -1 + 12px)); }
   to { opacity: 1; transform: translateY(calc(var(--prompt-lift, 0px) * -1)); }
@@ -17,4 +17,3 @@
 :global([data-reduce-motion='true']) .prompt { transition: none; }
 :global([data-reduce-motion='true']) .prompt[data-prompt-phase='in'] { animation: promptInReduced 160ms linear; }
 :global([data-reduce-motion='true']) .prompt[data-prompt-phase='out'] { animation: promptOut 160ms linear forwards; }
-:global(body[data-reduce-motion='true']) .prompt { transition: none; }
