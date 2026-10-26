@@ -382,7 +382,6 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 		})
 	}
 	if remoteDisc {
-
 		// Root64: a remote disc image is an ordinary title. A scan never reads
 		// the image, so publish its name and local metadata only and leave
 		// technical facts deferred; no probe, ranged read or disc read runs here.
@@ -430,7 +429,6 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 			}
 			return s.analysisOutcome(parent, job, object, revision, queuedPolicy, true, "analysis_publication_failed")
 		}
-		return nil
 		return nil
 	}
 	var f assets.Facts

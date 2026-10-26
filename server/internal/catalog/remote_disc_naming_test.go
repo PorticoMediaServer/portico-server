@@ -54,7 +54,7 @@ func (r *namingRemote) Acquire(context.Context, string, string) (storage.RemoteO
 }
 
 func (f namingFixture) observed() assets.Facts {
-	return assets.Facts{ObservedSize: 734003200, ObservedModifiedNS: 1700000000000000000, ObservedRevision: f.revision}
+	return assets.Facts{ObservedSize: 734003200, ObservedModifiedNS: 1700000000000000000, ObservedRevision: f.remote.wantRevision}
 }
 
 type namingFixture struct {
@@ -117,7 +117,8 @@ func newNamingFixture(t *testing.T, kind, relative string) namingFixture {
 		t.Fatal(err)
 	}
 	object, revision := "naming-object", "revision-1"
-	remote.wantRevision = revision
+	// The provider observation and catalogue revision are distinct witnesses.
+	remote.wantRevision = "1:original-provider-observation"
 	if _, err = db.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,object_identity,revision,evidence_json,size,modified_ns,seen_job,unsupported_reason,directory_path) VALUES(?,?,?,'incarnation',?,'identity',?,'{}',734003200,1700000000000000000,?,'',?)`, object, sourceID, asset, relative, revision, job, filepath.Dir(relative)); err != nil {
 		t.Fatal(err)
 	}

@@ -1084,8 +1084,8 @@ func (s *Service) CommitInventoryNaming(ctx context.Context, job, object, revisi
 		return err
 	}
 	// The naming work for this revision is complete; technical analysis is
-	// explicitly deferred, so no fact is claimed and a consenting later analysis
-	// remains a distinct, owner-gated decision.
+	// explicitly deferred. Any analysis of bytes already acquired for playback
+	// needs its own admission; this naming result grants no origin read.
 	if _, err = tx.ExecContext(ctx, `UPDATE inventory_objects SET analysis_revision=?,analysis_policy=?,analysis_operations_json=?,analysis_state='deferred',analysis_error='',analysis_algorithm='',analysis_generation=? WHERE id=?`, revision, policyRevision, actualScanOperations(policy, f.AnalysisOperations), source.Generation, object); err != nil {
 		return err
 	}
