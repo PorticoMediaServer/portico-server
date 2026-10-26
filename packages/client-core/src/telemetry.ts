@@ -17,7 +17,9 @@ export const METRIC_NAMES:MetricName[]=['cpu','memory','diskRead','diskWrite','n
 export type TelemetryWindow='today'|'live'|'12h'|'24h'|'7d'|'30d'|'90d'|'1y'|'all'|'10m'|'1h';
 export const TELEMETRY_WINDOWS:TelemetryWindow[]=['today','live','12h','24h','7d','30d','90d','1y','all','10m','1h'];
 export type TelemetrySample={at:number;metrics:Record<MetricName,Metric>;memoryUsedBytes:number;memoryTotalBytes:number;gpuDevice?:string;gpuProvider?:string};
-export type TelemetryPoint={t:number;v:number};
+/** Per-point producer provenance. Older/malformed status remains unknown;
+ * neither a numeric zero nor the series' newest status can supply it. */
+export type TelemetryPoint={t:number;v:number;status?:'available'|'limited';detail?:string};
 export type TelemetryReading=ReportInterval & {window:TelemetryWindow;series:Record<MetricName,TelemetryPoint[]>;status:Record<MetricName,Metric>;observedAt:number};
 
 export type HardwareProbe={backend:string;supported:boolean;detail:string;device?:string;encoder?:string};
@@ -95,7 +97,11 @@ export function parseTelemetryReading(value:unknown):TelemetryReading{
    if(!integer(p.t)||!finite(p.v)||p.t<=previous||p.t>r.observedAt)invalid();
    if(r.window!=='live'&&r.window!=='10m'&&(!bucketStarts.has(p.t)||p.t>=Date.parse(interval.until)))invalid();
    previous=p.t;
-   return {t:p.t,v:p.v};
+   const status=p.status==='available'||p.status==='limited'?p.status:undefined;
+   if(p.status!==undefined&&status===undefined)noteSkipped('telemetry','point.status');
+   const detail=text(p.detail,512)?p.detail:undefined;
+   if(p.detail!==undefined&&detail===undefined)noteSkipped('telemetry','point.detail');
+   return {t:p.t,v:p.v,...(status===undefined?{}:{status}),...(detail===undefined?{}:{detail})};
   });
  }
  return {...interval,window:r.window,series:out,status:metricMap(r.status),observedAt:r.observedAt};

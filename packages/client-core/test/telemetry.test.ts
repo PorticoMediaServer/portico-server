@@ -147,3 +147,43 @@ test('playback history keeps a running session open rather than zero length',()=
   assert.throws(()=>parsePlaybackHistory({items:[entry()],nextCursor:'x'.repeat(201)}),/Invalid/);
   assert.throws(()=>parsePlaybackHistory({items:[entry()],nextCursor:12}),/Invalid/);
 });
+
+
+test('live and ten-minute points preserve their own actual limited or available-zero provenance',()=>{
+ for(const window of ['live','10m']){
+  const raw=reading({period:window,window,status:metrics({cpu:{status:'available',value:0}})});
+  (raw.series as any).cpu=[{t:1757999500000,v:7,status:'limited',detail:'hostEstimate'},
+   {t:1758000000000,v:0,status:'available'}];
+  const parsed=parseTelemetryReading(raw);
+  assert.deepEqual(parsed.series.cpu,(raw.series as any).cpu);
+  assert.equal(parsed.series.cpu[0].status,'limited');assert.equal(parsed.series.cpu[1].v,0);
+  assert.equal(parsed.series.cpu[1].status,'available');assert.equal(parsed.status.cpu.status,'available');
+ }
+});
+
+test('aggregate points retain actual per-bucket provenance without borrowing the latest metric status',()=>{
+ const until=Math.floor(1758000000000/900000)*900000,from=until-3600000;
+ const raw=reading({period:'all',window:'all',observedAt:until,from:new Date(from).toISOString(),until:new Date(until).toISOString(),
+  buckets:[{start:new Date(from).toISOString(),end:new Date(from+1800000).toISOString(),partial:false},
+   {start:new Date(from+1800000).toISOString(),end:new Date(until).toISOString(),partial:false}],
+  status:metrics({cpu:{status:'available',value:0}})});
+ (raw.series as any).cpu=[{t:from,v:0,status:'available'},{t:from+1800000,v:3,status:'limited',detail:'mixed measured contributors'}];
+ assert.deepEqual(parseTelemetryReading(raw).series.cpu,(raw.series as any).cpu);
+});
+
+test('older missing and unrecognized point status stays unknown even with zero or an available series status',()=>{
+ const raw=reading({status:metrics({cpu:{status:'available',value:0}})});
+ (raw.series as any).cpu=[{t:1,v:0},{t:2,v:0,status:'future',detail:'producer-specific'},
+  {t:3,v:0,status:'unavailable',detail:'warmingUp'}];
+ const parsed=parseTelemetryReading(raw);
+ assert.deepEqual(parsed.series.cpu,[{t:1,v:0},{t:2,v:0,detail:'producer-specific'},{t:3,v:0,detail:'warmingUp'}]);
+ assert.ok(parsed.series.cpu.every(point=>point.status===undefined));
+});
+
+test('unreadable point detail is omitted independently without erasing known limited provenance',()=>{
+ const raw=reading();
+ (raw.series as any).cpu=[{t:1,v:4,status:'limited',detail:99},{t:2,v:0,status:'available',detail:'x'.repeat(513)},
+  {t:3,v:5,status:'limited',detail:'measured',measurement_revision:1,source:'private'}];
+ assert.deepEqual(parseTelemetryReading(raw).series.cpu,[{t:1,v:4,status:'limited'},
+  {t:2,v:0,status:'available'},{t:3,v:5,status:'limited',detail:'measured'}]);
+});
