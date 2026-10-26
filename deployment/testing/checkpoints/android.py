@@ -90,68 +90,58 @@ def main():
  if a.target.is_symlink() or a.target.stat().st_mode&0o077 or a.target.stat().st_uid!=os.getuid():p.error('private owned target required')
  surface='fire-os-tv' if a.flavour=='firetv' else 'android-'+a.mode
  if a.flavour=='firetv' and a.mode!='tv':p.error('Fire OS requires TV allocation')
+ tv=load('tv_flows',Path(__file__).with_name('tv_flows.py')) if a.mode=='tv' else None
  out=a.out;out.mkdir(parents=True,exist_ok=False);private=ROOT/'.private/v3-checkpoints'/('flow-'+out.parent.name+'-'+out.name);private.mkdir(mode=0o700,exist_ok=False);server=ROOT/'.worktrees/ui-2026/v3-release/server';legacy=load('legacy_android_flows',server/'smoke/android/flows.py');target=json.loads(a.target.read_text());d=Device(target,a.mode,out,private,server);flows=[];log=(private/'native-logcat.log').open('wb');capture=subprocess.Popen(['adb','-s',d.serial,'logcat','-v','brief','-T','1','ReactNativeJS:W','AndroidRuntime:E','*:S'],stdout=log,stderr=subprocess.STDOUT)
+ failures=(Refusal,tv.Failure) if tv else (Refusal,)
+ unavailable_errors=(tv.Unavailable,) if tv else ()
  def flow(name,fn):
   record={'surface':surface,'id':name}
   if record['surface']+':'+name in a.disabled:record.update(status='dropped',manual='Justin hands-on; flaky twice');flows.append(record);return False
   started=time.monotonic()
-  try:fn();record['status']='pass'
-  except Refusal as e:record.update(status='fail',reason=str(e),timeout=str(e)=='expected-ui-timeout')
+  try:
+   value=fn();record['status']='pass'
+   if isinstance(value,dict):record['evidence']=value
+  except unavailable_errors as e:record.update(status='unavailable',reason=str(e),dependency='authoritative device observation unavailable')
+  except failures as e:record.update(status='fail',reason=str(e),timeout=str(e)=='expected-ui-timeout')
   except Exception as e:record.update({'status':'fail','class':type(e).__name__})
   record['durationMs']=round((time.monotonic()-started)*1000)
   try:record['screenshot']=d.screenshot(name)
   except Exception:record['screenshotWithheld']=True
   flows.append(record);return record['status']=='pass'
+ flow.unavailable=lambda name,reason,dependency:flows.append({'surface':surface,'id':name,'status':'unavailable','reason':reason,'dependency':dependency})
  try:
-  def launch():
-   # Exact allocated AVD was checked above; am start avoids stale agent claims
-   # from unrelated emulators that previously reused this serial. UI remains
-   # driven by the exact device_open launcher/session and authoritative refs.
-   subprocess.run(['adb','-s',d.serial,'shell','am','start','-W','-n',PACKAGE+'/.MainActivity'],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=20)
-   d.wait_text(legacy.HOME_ROWS.pattern,25)
-  flow('launch-restored-family',launch)
-  home=flow('home-real-rows',lambda:d.wait_text(legacy.HOME_ROWS.pattern,20))
-  if home:
-   if a.mode=='phone':flow('libraries-open',lambda:(d.tap('Libraries'),d.wait_text('Movies',15)))
-   def browse_movies():
-    if not re.search(r'80 movies|12 Angry Men',d.text()):d.tap('Movies(?:,.*)?')
-    d.wait_text('12 Angry Men',20)
-   movies=flow('movies-browse',browse_movies)
-   if a.mode=='tv':
-    if a.flavour=='firetv' and movies:
-     def menu_back():
-      before=d.nodes();focused=next((n for n in before if n.get('focused') is True and n.get('label')),None)
-      if not focused:raise Refusal('focused-menu-target-unavailable')
-      prior={n.get('label') for n in before if n.get('label')};d.key('KEYCODE_MENU');time.sleep(1)
-      actions={n.get('label') for n in d.nodes() if n.get('label') not in prior and re.fullmatch(r'Play(?: next)?|Add to.*|Mark.*|Select|More.*',str(n.get('label','')))}
-      if not actions:raise Refusal('menu-context-not-observed')
-      d.key('KEYCODE_BACK');time.sleep(1);after=d.nodes()
-      if any(n.get('label') in actions for n in after) or not any(n.get('focused') is True and n.get('label')==focused['label'] for n in after):raise Refusal('menu-back-focus-not-restored')
-     flow('fire-os-menu-back',menu_back)
-    def focus_walk():
-     seen=set()
-     for _ in range(12):
-      d.key('KEYCODE_DPAD_RIGHT');time.sleep(.4)
-      for n in d.nodes():
-       if n.get('focused') is True and n.get('label'):seen.add(str(n['label']))
-     if len(seen)<3:raise Refusal('dpad-focus-did-not-reach-three-controls')
-    flow('dpad-focus-walk',focus_walk)
-   if movies:
-    # Prefer the real fixture by its visible title; no arbitrary first control.
-    detail=flow('movie-detail',lambda:(d.tap(r'12 Angry Men(?:,.*)?'),d.wait_text('Play|Resume',15)))
-    if detail:
-     def play():
-      d.tap('Play|Resume(?:.*)?');time.sleep(5)
-      original=legacy.Device(d.serial,str(private));playing,states=original.playing()
-      if not playing:raise Refusal('media-session-not-playing')
-     flow('movie-playback-session',play)
-   d.key('KEYCODE_MEDIA_STOP')
-   if movies:d.key('KEYCODE_BACK');d.key('KEYCODE_BACK')
-   def settings():
-    if a.mode=='phone':d.tap('Home');d.wait_text(legacy.HOME_ROWS.pattern,20)
-    d.tap('Settings(?:,.*)?');d.wait_text('Settings',15)
-   flow('settings-open',settings)
-  else:flows.append({'surface':surface,'id':'remaining-core-flows','status':'unavailable','dependency':'retained-family Home failed; no reset/re-auth fallback'})
+  if a.mode=='tv':tv.run_tv(d,flow,legacy,a.flavour)
+  else:
+   def launch():
+    # Exact allocated AVD was checked above; am start avoids stale agent claims
+    # from unrelated emulators that previously reused this serial. UI remains
+    # driven by the exact device_open launcher/session and authoritative refs.
+    subprocess.run(['adb','-s',d.serial,'shell','am','start','-W','-n',PACKAGE+'/.MainActivity'],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=20)
+    d.wait_text(legacy.HOME_ROWS.pattern,25)
+   flow('launch-restored-family',launch)
+   home=flow('home-real-rows',lambda:d.wait_text(legacy.HOME_ROWS.pattern,20))
+   if home:
+    flow('libraries-open',lambda:(d.tap('Libraries'),d.wait_text('Movies',15)))
+    def browse_movies():
+     if not re.search(r'80 movies|12 Angry Men',d.text()):d.tap('Movies(?:,.*)?')
+     d.wait_text('12 Angry Men',20)
+    movies=flow('movies-browse',browse_movies)
+    if movies:
+     # Prefer the real fixture by its visible title; no arbitrary first control.
+     detail=flow('movie-detail',lambda:(d.tap(r'12 Angry Men(?:,.*)?'),d.wait_text('Play|Resume',15)))
+     if detail:
+      def play():
+       d.tap('Play|Resume(?:.*)?');time.sleep(5)
+       original=legacy.Device(d.serial,str(private));playing,states=original.playing()
+       if not playing:raise Refusal('media-session-not-playing')
+      flow('movie-playback-session',play)
+    d.key('KEYCODE_MEDIA_STOP')
+    if movies:d.key('KEYCODE_BACK');d.key('KEYCODE_BACK')
+    def settings():
+     if a.mode=='phone':d.tap('Home');d.wait_text(legacy.HOME_ROWS.pattern,20)
+     d.tap('Settings(?:,.*)?');d.wait_text('Settings',15)
+    flow('settings-open',settings)
+   else:flows.append({'surface':surface,'id':'remaining-core-flows','status':'unavailable','dependency':'retained-family Home failed; no reset/re-auth fallback'})
  finally:
   with contextlib.suppress(Exception):d.key('KEYCODE_MEDIA_STOP')
   with contextlib.suppress(Exception):subprocess.run(['adb','-s',d.serial,'shell','am','force-stop',PACKAGE],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=10)
