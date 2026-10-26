@@ -51,7 +51,7 @@ func validOperation(o Operation) bool {
 	if o.QueueID == "" {
 		return o.QueueEntryID == "" && o.QueueOwnerKind == "" && o.QueueOwnerID == "" && o.QueueRevision == 0 && o.QueueCustodyGeneration == 0
 	}
-	return text(o.QueueID, 256, false) && text(o.QueueEntryID, 256, false) && text(o.QueueOwnerKind, 80, false) && text(o.QueueOwnerID, 256, false) && o.QueueRevision > 0 && o.QueueCustodyGeneration > 0
+	return text(o.QueueID, 256, false) && text(o.QueueEntryID, 256, false) && text(o.QueueOwnerKind, 80, false) && text(o.QueueOwnerID, 256, false) && o.QueueRevision > 0 && o.QueueCustodyGeneration >= 0
 }
 func validSource(s Source) bool {
 	for _, v := range []string{s.LibraryID, s.LibrarySourceID, s.AssetID, s.InventoryObjectID, s.InventoryRevision, s.Incarnation, s.RemoteSourceID, s.EffectiveConfiguration, s.ReadPolicyWitness, s.ReadAuthorityWitness} {

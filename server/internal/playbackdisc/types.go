@@ -30,6 +30,12 @@ type Actor struct {
 	ServerID, Authority, AccountID, ProfileID, DeviceID, FamilyID, Grant, SessionHash string
 	Epoch, TokenGeneration, OriginalHorizonMs                                         int64
 }
+
+// Operation retains the original queue tuple. QueueCustodyGeneration zero is
+// the legitimate initial value supplied by queues_v1. A queued operation still
+// requires its complete original identity, owner/entry/revision and the
+// mandatory accepting checker; custody is compared
+// exactly, never inferred, incremented or replaced by this store.
 type Operation struct {
 	LegacyRequestID, StartKeyDigest, StartBodyDigest, QueueID, QueueEntryID, QueueOwnerKind, QueueOwnerID string
 	QueueRevision, QueueCustodyGeneration                                                                 int64
