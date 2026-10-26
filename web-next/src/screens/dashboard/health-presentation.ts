@@ -49,3 +49,21 @@ export function healthPlot(points: readonly TelemetryPoint[], from: number, unti
   const first = coords[0], last = coords[coords.length - 1];
   return {line, area: `${line} L${last.x.toFixed(2)},46 L${first.x.toFixed(2)},46 Z`, endX: last.x, endY: last.y};
 }
+
+export type HealthDetail = Readonly<{
+  line: string; area: string; endX: number; endY: number; top: number;
+  low: number; average: number; high: number; highAt: number;
+}>;
+/** One validated observation set feeds both the chart and all three statistics. */
+export function healthDetail(points: readonly TelemetryPoint[], from: number, until: number, percent: boolean): HealthDetail | undefined {
+  if (!Number.isFinite(from) || !Number.isFinite(until) || until <= from || points.length < 2) return undefined;
+  if (points.some((p, i) => !Number.isFinite(p.t) || !Number.isFinite(p.v) || p.v < 0 || (percent && p.v > 100)
+    || p.t < from || p.t > until || (i > 0 && p.t <= points[i - 1].t))) return undefined;
+  const high = Math.max(...points.map(p => p.v)), low = Math.min(...points.map(p => p.v));
+  const top = percent ? 100 : high;
+  const coords = points.map(p => ({x: (p.t - from) / (until - from) * 100, y: top === 0 ? 100 : 100 - p.v / top * 100}));
+  const line = coords.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(' ');
+  const first = coords[0], last = coords[coords.length - 1];
+  return {line, area: `${line} L${last.x.toFixed(2)},100 L${first.x.toFixed(2)},100 Z`, endX: last.x, endY: last.y,
+    top, low, high, average: points.reduce((sum, p) => sum + p.v, 0) / points.length, highAt: points.find(p => p.v === high)!.t};
+}
