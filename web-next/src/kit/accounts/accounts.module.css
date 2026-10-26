@@ -43,7 +43,9 @@
 .error { display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px; border-radius: 12px; font-size: 15px; line-height: 1.45; margin: 0 0 18px; background: rgba(243,139,136,.1); box-shadow: inset 0 0 0 1px rgba(243,139,136,.32); }
 .error > svg { flex: none; margin-top: 1px; color: var(--color-danger); }
 .stage[data-layout="center"] .content { align-items: center; text-align: center; margin: 0; width: 100%; }
-.pickerTitle { position: relative; font-size: 64px !important; line-height: normal !important; margin: 0 0 56px !important; }
+/* The picker heading is left-aligned over centred faces (auth.html 13 `.who h1`: text-align
+   start inside a centred flex column), not the centred PIN copy of the same stage. */
+.pickerTitle { position: relative; font-size: 64px !important; line-height: normal !important; margin: 0 0 56px !important; text-align: start; }
 .pin { display: flex; flex-direction: column; align-items: center; text-align: center; }
 .desktopFace > span { font-size: 58px; }
 .pin > p { font-size: 17px; color: var(--color-text-secondary); margin: 0 0 30px; line-height: normal; }
