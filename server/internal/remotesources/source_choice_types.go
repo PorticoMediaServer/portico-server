@@ -121,3 +121,26 @@ func (SourceChoiceBaseline) JSONSchema() map[string]any {
 	type wire SourceChoiceBaseline
 	return sourceChoiceSchema(reflect.TypeFor[wire]())
 }
+
+// The additive choice facts are bounded and optional on the existing document;
+// an older/unknown definition cannot manufacture a legacy baseline.
+func (SourceReadSettings) JSONSchema() map[string]any {
+	type wire SourceReadSettings
+	shape, _ := apikit.Schema(reflect.TypeFor[wire]())
+	props, _ := shape["properties"].(map[string]any)
+	if props == nil {
+		return shape
+	}
+	if definitions, ok := props["choiceDefinitions"].(map[string]any); ok {
+		definitions["minItems"] = 4
+		definitions["maxItems"] = 4
+	}
+	if _, ok := props["choiceApplicableFields"]; ok {
+		props["choiceApplicableFields"] = map[string]any{"type": "array", "minItems": 1, "maxItems": len(sourceChoiceWireFields), "uniqueItems": true,
+			"items": map[string]any{"type": "string", "enum": append([]string(nil), sourceChoiceWireFields[:]...)}}
+	}
+	if field, ok := props["configurationGeneration"].(map[string]any); ok {
+		field["pattern"] = "^[1-9][0-9]{0,18}$"
+	}
+	return shape
+}

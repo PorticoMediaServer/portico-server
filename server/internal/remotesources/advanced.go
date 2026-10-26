@@ -509,6 +509,10 @@ type cacheApply struct {
 	admitted Source
 	revision int64
 	values   SourceAdvanced
+	// Non-wire continuation for one recorded choice cache operation only.
+	operationID             string
+	configurationGeneration int64
+	accepted                func(context.Context, *sql.Tx, mounts.Mount, mounts.Mount) error
 }
 
 const (
@@ -576,13 +580,15 @@ func (s *Service) applyCache(ctx context.Context, identities *identity.Service, 
 			}
 		}
 	}
-	_, err = s.mounts.Command(ctx, owner.Hash, accept.admitted.MountID, mounts.Command{
-		OperationID:      scanOperationID(),
-		Action:           "configure",
-		ExpectedRevision: controlRevision,
-		CacheBytes:       &cacheBytes,
-		CacheFloor:       &floor,
-	}, authorize)
+	if accept.accepted != nil {
+		_, err = s.mounts.ConfigureReadCache(ctx, owner.Hash, accept.admitted.MountID, accept.operationID,
+			controlRevision, accept.configurationGeneration, cacheBytes, floor, authorize, accept.accepted)
+	} else {
+		_, err = s.mounts.Command(ctx, owner.Hash, accept.admitted.MountID, mounts.Command{
+			OperationID: scanOperationID(), Action: "configure", ExpectedRevision: controlRevision,
+			CacheBytes: &cacheBytes, CacheFloor: &floor,
+		}, authorize)
+	}
 	if err != nil {
 		switch {
 		case errors.Is(err, storage.ErrRemoteChanged), errors.Is(err, mounts.ErrCommandConflict), errors.Is(err, mounts.ErrCommandExpired):

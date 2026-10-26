@@ -13,10 +13,13 @@ import (
 )
 
 // sourceChoiceApply is the committed half of a startChoice command. It is used
-// only after the accepting transaction commits, for the transport effect that
-// does not cross the held cache/reference seam. It is never stored or replayed.
+// only after the accepting transaction commits. Its mount-cache child uses
+// the same-transaction continuation; receipt replay never repeats effects.
 type sourceChoiceApply struct {
 	source           Source
+	values           SourceAdvanced
+	ref              sourceChoiceRef
+	cacheNeeded      bool
 	transportChanged bool
 }
 
@@ -147,24 +150,46 @@ func (s *Service) applySourceChoiceTx(ctx context.Context, tx *sql.Tx, identitie
 	if written.revision < 1 {
 		return zero, zeroSettings, zeroApply, storage.ErrRemoteChanged
 	}
-	// Cache application and the recorded reference are held until the causal
-	// mount-command receipt seam is grounded. Writing the reference here would
-	// bind a pre-cache generation that the ordinary mount/native save changes.
+	configGeneration, err := strconv.ParseInt(effective, 10, 64)
+	if err != nil || configGeneration < 1 {
+		return zero, zeroSettings, zeroApply, storage.ErrRemoteChanged
+	}
+	fingerprint, err := s.sourceChoiceConfigFingerprintTx(ctx, tx, source)
+	if err != nil {
+		return zero, zeroSettings, zeroApply, err
+	}
+	ref := sourceChoiceRef{SourceID: source, SourceRowGeneration: row.Generation, ConfigGeneration: configGeneration,
+		MountID: row.MountID, ConfigFingerprint: fingerprint, Name: definition.Name, DefinitionRevision: definition.DefinitionRevision,
+		AppliedReadRevision: readResult.Profile.Revision, AppliedAdvancedRevision: written.revision, OperationID: in.OperationID, AppliedMS: time.Now().UnixMilli()}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO remote_source_choice_refs(source_id,source_row_generation,config_generation,mount_id,config_fingerprint,name,definition_revision,applied_read_revision,applied_advanced_revision,operation_id,applied_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(source_id) DO UPDATE SET source_row_generation=excluded.source_row_generation,config_generation=excluded.config_generation,mount_id=excluded.mount_id,config_fingerprint=excluded.config_fingerprint,name=excluded.name,definition_revision=excluded.definition_revision,applied_read_revision=excluded.applied_read_revision,applied_advanced_revision=excluded.applied_advanced_revision,operation_id=excluded.operation_id,applied_ms=excluded.applied_ms`,
+		ref.SourceID, ref.SourceRowGeneration, ref.ConfigGeneration, ref.MountID, ref.ConfigFingerprint, ref.Name, ref.DefinitionRevision, ref.AppliedReadRevision, ref.AppliedAdvancedRevision, ref.OperationID, ref.AppliedMS); err != nil {
+		return zero, zeroSettings, zeroApply, err
+	}
 	_, settings, err := s.readSourceReadSettingsProjectionTx(ctx, tx, source)
 	if err != nil {
 		return zero, zeroSettings, zeroApply, err
 	}
-	apply := sourceChoiceApply{
-		source:           row,
-		transportChanged: advanced.values.transport() != values.transport(),
+	if settings.ChoiceBaseline == nil {
+		return zero, zeroSettings, zeroApply, storage.ErrRemoteChanged
 	}
+	apply := sourceChoiceApply{source: row, values: values, ref: ref,
+		cacheNeeded: row.MountID != "" && (advanced.values.CacheBytes != values.CacheBytes || advanced.values.CacheFloorBytes != values.CacheFloorBytes ||
+			advanced.appliedBytes != values.CacheBytes || advanced.appliedFloor != values.CacheFloorBytes),
+		transportChanged: advanced.values.transport() != values.transport()}
 	return row, settings, apply, nil
 }
 
-// finishSourceChoice runs only the transport effect that is independent of the
-// held cache/reference seam. Cache application and recorded-reference creation
-// remain unwired until the original causal mount-command receipt is grounded.
-func (s *Service) finishSourceChoice(apply sourceChoiceApply) {
+// finishSourceChoice performs no acceptance or replay. A refused/unfinished
+// cache command leaves the saved configuration honest as not yet applied. Its
+// successful child and reference/applied projection publish in one mount Tx.
+func (s *Service) finishSourceChoice(ctx context.Context, identities *identity.Service, owner identity.Principal, apply sourceChoiceApply) {
+	if apply.cacheNeeded {
+		if operation, err := s.sourceChoiceCacheOperation(apply.ref); err == nil {
+			_, _ = s.applyCache(ctx, identities, owner, cacheApply{admitted: apply.source, revision: apply.ref.AppliedAdvancedRevision, values: apply.values,
+				operationID: operation, configurationGeneration: apply.ref.ConfigGeneration,
+				accepted: s.sourceChoiceCacheAccepted(identities, owner, apply.source, apply.ref, apply.values)})
+		}
+	}
 	if apply.transportChanged {
 		s.transportCommitted(apply.source.ID)
 	}

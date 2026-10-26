@@ -49,7 +49,7 @@ func managedS3(v S3Setup) (string, string, error) {
 	return config, remote, nil
 }
 
-func (s *Service) configure(ctx context.Context, actor, id, hash string, c Command, authorize func(*sql.Tx) error) (Receipt, error) {
+func (s *Service) configure(ctx context.Context, actor, id, hash string, c Command, authorize func(*sql.Tx) error, readCacheAccepted func(context.Context, *sql.Tx, Mount, Mount) error) (Receipt, error) {
 	var zero Receipt
 	if id == "" || c.ExpectedRevision < 1 {
 		return zero, ErrInvalid
@@ -61,6 +61,10 @@ func (s *Service) configure(ctx context.Context, actor, id, hash string, c Comma
 	if m.ControlRevision != c.ExpectedRevision || m.RemovalPending {
 		return zero, ErrCommandConflict
 	}
+	if c.readCacheGeneration != 0 && m.BackendRevision != c.readCacheGeneration {
+		return zero, ErrCommandConflict
+	}
+	before := m
 	if c.sourceGeneration != 0 && m.BackendRevision != c.sourceGeneration {
 		return zero, ErrCommandConflict
 	}
@@ -217,6 +221,13 @@ func (s *Service) configure(ctx context.Context, actor, id, hash string, c Comma
 	m.Error = ""
 	if publication != nil {
 		if err = publication.CommitTx(ctx, tx, m); err != nil {
+			return zero, err
+		}
+	}
+	// The source publication and its exact accepted child are still inside
+	// this same transaction. A private cache continuation cannot adopt latest.
+	if readCacheAccepted != nil {
+		if err = readCacheAccepted(ctx, tx, before, m); err != nil {
 			return zero, err
 		}
 	}

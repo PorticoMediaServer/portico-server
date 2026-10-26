@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"testing"
 
 	"portico.local/server/internal/catalog"
@@ -32,7 +33,7 @@ func TestSourceReadSettingsOwnerCommandAndExactReceipt(t *testing.T) {
 		t.Fatal("affected library authority was not advanced", policy, err)
 	}
 	replay, err := f.s.SaveSourceReadSettings(ctx, identities, owner, "remote", input)
-	if err != nil || replay.ReadSettings == nil || *replay.ReadSettings != *first.ReadSettings {
+	if err != nil || replay.ReadSettings == nil || !reflect.DeepEqual(replay.ReadSettings, first.ReadSettings) {
 		t.Fatal("exact command receipt was not recovered", replay, err)
 	}
 	policy, err = catalog.New(f.s.db).ScanPolicy(ctx, f.library)
@@ -128,7 +129,7 @@ func TestSourceReadSettingsReceiptSurvivesActualSourceRemoval(t *testing.T) {
 		t.Fatal(err)
 	}
 	recovered, err := f.s.Receipt(ctx, string(actor), input.OperationID)
-	if err != nil || recovered.ReadSettings == nil || *recovered.ReadSettings != *accepted.ReadSettings {
+	if err != nil || recovered.ReadSettings == nil || !reflect.DeepEqual(recovered.ReadSettings, accepted.ReadSettings) {
 		t.Fatal("source removal hid the accepted profile receipt", recovered, err)
 	}
 	if _, err = f.s.ReadSourceReadSettings(ctx, identities, owner, "remote"); err == nil {
@@ -205,7 +206,7 @@ func TestSourceReadSettingsRetirementSurvivesRequestCancelAndReceiptReplay(t *te
 	revision = commitWithoutNotification(revision, "everything")
 	actor, _ := json.Marshal([]string{owner.Authority, owner.AccountID, owner.ProfileID})
 	replayed, err := f.s.Receipt(ctx, string(actor), input.OperationID)
-	if err != nil || replayed.ReadSettings == nil || *replayed.ReadSettings != *accepted.ReadSettings {
+	if err != nil || replayed.ReadSettings == nil || !reflect.DeepEqual(replayed.ReadSettings, accepted.ReadSettings) {
 		t.Fatal("receipt replay failed after missed notification", replayed, err)
 	}
 	if second.CheckLocal() == nil || secondReader.life.Err() == nil {

@@ -233,7 +233,7 @@ func (s *Service) SaveSourceReadSettings(ctx context.Context, identities *identi
 		return Receipt{}, err
 	}
 	if in.StartChoice != nil {
-		s.finishSourceChoice(apply)
+		s.finishSourceChoice(ctx, identities, owner, apply)
 	}
 	return receipt, s.finishReadSettings(ctx, source, settings.Revision)
 }

@@ -52,6 +52,9 @@ func readSourceChoiceDefinitionsTx(ctx context.Context, tx *sql.Tx) ([]SourceCho
 		if err != nil {
 			return nil, err
 		}
+		if definition.DefinitionRevision < 1 || definition.DefinitionRevision > 9007199254740991 || !validSourceReadProfile(definition.Reading.profile("definition")) || !definition.Advanced.valid() {
+			return nil, nil
+		}
 		out = append(out, definition)
 	}
 	return out, nil
@@ -83,7 +86,8 @@ func (s *Service) sourceChoiceConfigFingerprintTx(ctx context.Context, tx *sql.T
 // the baseline. Legacy sources therefore receive no fabricated Started-from,
 // count, or reset baseline.
 func (s *Service) sourceChoiceBaselineTx(ctx context.Context, tx *sql.Tx, source Source, reading SourceReadProfile, advanced advancedRow) (*SourceChoiceBaseline, error) {
-	if !reading.Saved || !advanced.saved {
+	if !reading.Saved || !advanced.saved || reading.Revision < 1 || reading.Revision > 9007199254740991 || advanced.revision < 1 || advanced.revision > 9007199254740991 ||
+		!validSourceReadProfile(reading) || !advanced.values.valid() {
 		return nil, nil
 	}
 	ref, err := readSourceChoiceRefTx(ctx, tx, source.ID)
