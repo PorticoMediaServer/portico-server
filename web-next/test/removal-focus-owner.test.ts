@@ -10,7 +10,7 @@ class ElementFixture extends EventTarget {
   parentElement: ElementFixture | null = null;
   dataset: {layoutItem?: string} = {};
   isConnected = true; inert = false; hidden = false; button = false; tabIndex = false; keyboard = true;
-  ownerDocument: {activeElement: ElementFixture | null; body: ElementFixture};
+  ownerDocument: EventTarget & {activeElement: ElementFixture | null; body: ElementFixture};
   constructor(document: ElementFixture['ownerDocument']) {super();this.ownerDocument = document;}
   append(...children: ElementFixture[]) {for (const child of children) {child.parentElement = this;this.children.push(child);}}
   contains(node: unknown): boolean {return node === this || this.children.some(child => child.contains(node));}
@@ -30,7 +30,7 @@ function fixture(t: TestContext) {
     Object.defineProperty(globalThis, name, {configurable: true, writable: true, value});
     t.after(() => {if (original) Object.defineProperty(globalThis, name, original);else Reflect.deleteProperty(globalThis, name);});
   }
-  const document = {activeElement: null, body: undefined} as unknown as ElementFixture['ownerDocument'];
+  const document = Object.assign(new EventTarget(), {activeElement: null, body: undefined}) as unknown as ElementFixture['ownerDocument'];
   document.body = new ElementFixture(document);
   const root = new ElementFixture(document);root.tabIndex = true;
   const rows = ['a','b','c'].map(key => {const row = new ElementFixture(document);row.dataset.layoutItem = key;const button = new ElementFixture(document);button.button = true;row.append(button);return row;});
@@ -57,6 +57,18 @@ test('a real portalled opening hands off from its original row and cannot restor
   const f = fixture(t);f.active(0);const receipt = captureListFocusReturn(dom(f.rows[0].children[0]))!;
   const portal = new ElementFixture(f.document), button = new ElementFixture(f.document);button.button = true;portal.append(button);receipt.attach(dom(portal));button.focus();portal.dispatchEvent(new Event('keydown'));
   f.owner.beforeLeave(new Set(['b','c']));assert.equal(f.document.activeElement, f.rows[1].children[0]);receipt.restore();assert.equal(f.document.activeElement, f.rows[1].children[0]);receipt.dispose();
+});
+test('a sibling portal mutation detach preserves its original keyboard handoff before row inert', t => {
+  const f = fixture(t);f.active(0);const receipt = captureListFocusReturn(dom(f.rows[0].children[0]))!;
+  const portal = new ElementFixture(f.document), button = new ElementFixture(f.document);button.button = true;portal.append(button);receipt.attach(dom(portal));button.focus();portal.dispatchEvent(new Event('keydown'));
+  receipt.retireContent();portal.isConnected = false;f.document.activeElement = f.document.body;
+  f.owner.beforeLeave(new Set(['b','c']));assert.equal(f.document.activeElement, f.rows[1].children[0]);assert.equal(f.rows[0].inert, false);receipt.restore();receipt.dispose();
+});
+test('outside pointer input cancels a retiring portal keyboard handoff', t => {
+  const f = fixture(t);f.active(0);const receipt = captureListFocusReturn(dom(f.rows[0].children[0]))!;
+  const portal = new ElementFixture(f.document);receipt.attach(dom(portal));f.document.activeElement = portal;f.key();
+  f.document.dispatchEvent(new Event('pointerdown'));receipt.retireContent();portal.isConnected = false;f.document.activeElement = f.document.body;
+  f.owner.beforeLeave(new Set(['b','c']));receipt.restore();assert.equal(f.document.activeElement, f.document.body);receipt.dispose();
 });
 test('modal isolation defers only the captured handoff until close and refuses focus theft', t => {
   const f = fixture(t);f.active(0);const receipt = captureListFocusReturn(dom(f.rows[0].children[0]))!;

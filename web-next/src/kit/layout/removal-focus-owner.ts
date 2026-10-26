@@ -2,14 +2,14 @@ import {applyRemovalFocus, removalFocusEligible} from './focus-context';
 
 type Row = Readonly<{key: string; node: HTMLElement}>;
 type Committed = Readonly<{epoch: object; root: HTMLElement; rows: readonly Row[]}>;
-type Opening = {context: Committed; row: Row; opener: HTMLElement; content: HTMLElement | null; withdrawn: boolean; settled: boolean; pending?: ReadonlySet<string>; detach?: () => void};
+type Opening = {context: Committed; row: Row; opener: HTMLElement; content: HTMLElement | null; withdrawn: boolean; settled: boolean; retiringFocused?: boolean; pending?: ReadonlySet<string>; detach?: () => void};
 const roots = new WeakMap<HTMLElement, RemovalFocusOwner>();
 const portals = new WeakMap<HTMLElement, {owner: RemovalFocusOwner; opening: Opening}>();
-const refused: ListFocusReturn = Object.freeze({attach() {}, detach() {}, restore() {}, dispose() {}});
+const refused: ListFocusReturn = Object.freeze({attach() {}, retireContent() {}, detach() {}, restore() {}, dispose() {}});
 let nextLifetime = 0;
 
 /** A return receipt belongs to the actual opener and committed list, never to a replacement key. */
-export type ListFocusReturn = Readonly<{attach: (content: HTMLElement) => void; detach: () => void; restore: () => void; dispose: () => void}>;
+export type ListFocusReturn = Readonly<{attach: (content: HTMLElement) => void; retireContent: () => void; detach: () => void; restore: () => void; dispose: () => void}>;
 
 /** Find provenance once, at opening, by walking the real opener's committed DOM ancestry. */
 export function captureListFocusReturn(opener: HTMLElement | null): ListFocusReturn | undefined {
@@ -59,7 +59,11 @@ export class RemovalFocusOwner {
       if (root) {
         roots.set(root, this);
         const detach = this.listen(root);
-        this.detachRoot = () => {detach();if (roots.get(root) === this) roots.delete(root);};
+        // A pointer interaction outside a portalled list is still pointer input. This observes
+        // modality only; it never searches that document or chooses a target outside this root.
+        const pointer = () => {this.keyboard = false;};
+        const document = root.ownerDocument;document.addEventListener('pointerdown', pointer, true);
+        this.detachRoot = () => {detach();document.removeEventListener('pointerdown', pointer, true);if (roots.get(root) === this) roots.delete(root);};
       }
     }
     this.committed = root ? {epoch: this.epoch, root, rows: nodes.flatMap(node => {
@@ -81,7 +85,9 @@ export class RemovalFocusOwner {
     for (const opening of this.openings) {
       if (opening.settled || opening.withdrawn || !this.live(opening.context) || remaining.has(opening.row.key)) continue;
       opening.withdrawn = true; // Even pointer removal must suppress a delayed Radix return.
-      if (active instanceof Node && opening.content?.contains(active)) {focused = opening.row;focusedPortal = opening;}
+      const inPortal = active instanceof Node && opening.content?.contains(active);
+      const lostWithPortal = opening.retiringFocused && !opening.content?.isConnected && (active === context.root.ownerDocument.body || active === null);
+      if (inPortal || lostWithPortal) {focused = opening.row;focusedPortal = opening;}
     }
     if (!focused || !this.keyboard) return;
     // Only exact original survivors may take focus; no latest list/ID lookup or body fallback.
@@ -101,11 +107,19 @@ export class RemovalFocusOwner {
     this.openings.add(opening);
     return {
       attach: content => {
-        if (opening.settled || !this.live(context) || opening.withdrawn || opening.content === content) return;
+        if (opening.settled || !this.live(context) || opening.withdrawn) return;
+        opening.retiringFocused = undefined;
+        if (opening.content === content && opening.detach) return;
         opening.detach?.(); opening.content = content;
         portals.set(content, {owner: this, opening});
         const detach = this.listen(content);
         opening.detach = () => {detach();if (portals.get(content)?.opening === opening) portals.delete(content);};
+      },
+      // Called by the exact content ref's mutation-phase detach, while its real focus is still
+      // observable. A sibling portal can disappear before the list's layout handoff runs.
+      retireContent: () => {
+        const active = context.root.ownerDocument.activeElement;
+        opening.retiringFocused = !opening.settled && this.live(context) && this.keyboard && active instanceof Node && !!opening.content?.contains(active);
       },
       restore: () => {
         if (opening.settled) return;

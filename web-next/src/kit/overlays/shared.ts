@@ -70,11 +70,12 @@ export function useSurfaceFocus(open: boolean, initialFocusRef?: RefObject<HTMLE
   const current = useRef<Opening | null>(null);
   const content = useRef<HTMLElement | null>(null);
   const contentRef = useCallback((element: HTMLElement | null) => {
-    content.current = element;
     const record = current.current;
+    if (!element && record?.content === content.current) record?.list?.retireContent();
+    content.current = element;
     // A Portal can mount after its owner's layout setup. Publish its first actual node only;
     // a later replacement node cannot inherit the previous opening's return receipt.
-    if (element && record && !record.content) {record.content = element;record.list?.attach(element);}
+    if (element && record && (!record.content || record.content === element)) {record.content = element;record.list?.attach(element);}
   }, []);
   useLayoutEffect(() => {
     if (!open) return;

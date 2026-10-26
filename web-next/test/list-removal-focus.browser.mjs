@@ -32,6 +32,10 @@ export async function checkListRemovalFocus(page, origin) {
     await page.waitForFunction(() => !document.querySelector('[data-menu-action=alpha]'));
     assert.equal(await page.locator('[data-primary=bravo]').evaluate(node => node === document.activeElement), true, 'late portal close cannot restore the outgoing opener');
 
+    await mount();await focus('[data-external-opener=alpha]');await page.keyboard.press('Enter');
+    await page.locator('[data-external-action=alpha]').waitFor();await focus('[data-external-action=alpha]');await remove('alpha');await primary('bravo');
+    assert.equal(await page.locator('[data-layout-item=alpha]').evaluate(node => node.hasAttribute('inert')), true, 'a sibling portal may unmount before the retained row becomes inert');
+
     await mount();await focus('[data-dialog-opener=alpha]');await page.keyboard.press('Enter');
     await page.locator('[data-dialog-cancel=alpha]').waitFor();await focus('[data-dialog-cancel=alpha]');await remove('alpha');await primary('bravo');
     assert.equal(await page.locator('[data-primary=bravo]').evaluate(node => !node.closest('[inert],[aria-hidden="true"]')), true, 'modal isolation has really been released');
