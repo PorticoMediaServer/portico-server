@@ -246,3 +246,43 @@ func (h *RouteIdentityHandler) CancelSecurityReturn(parent context.Context, orig
 		return g.Commit()
 	})
 }
+
+// CheckSecurityReturn checks only the captured UI return scope. It grants no
+// server-settings authority and performs no provider/password reauthentication.
+func (h *RouteIdentityHandler) CheckSecurityReturn(parent context.Context, original serverreturn.SecuritySigned, read SecurityActorReader) error {
+	if h == nil || h.keys == nil || h.runner == nil || read == nil {
+		return ErrInvalid
+	}
+	return h.runner.Do(parent, func(ctx context.Context) error {
+		g, e := dbwork.BeginSnapshot(ctx, h.keys.db)
+		if e != nil {
+			return e
+		}
+		defer g.Rollback()
+		tx := g.Tx()
+		account, binding, authority, e := read(ctx, tx)
+		if e != nil {
+			return e
+		}
+		id, e := CurrentIdentityTx(ctx, tx)
+		if e != nil {
+			return e
+		}
+		c, _, e := serverreturn.VerifySecurityContext(original, id.PublicKey, time.Now())
+		if e != nil || c.AccountID != account || c.ActorBinding != binding || !c.AuthorityExpiresAt.Equal(authority) {
+			return ErrStale
+		}
+		if _, e = h.securityReturnIdentityTx(ctx, tx, c); e != nil {
+			return e
+		}
+		var present bool
+		e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM identity_security_return_openings WHERE operation_id=? AND opening_id=? AND task_id=? AND actor_binding=? AND payload=? AND signature=? AND phase='confirmed' AND expires_ms>?)`, c.OperationID, c.OpeningID, c.TaskID, binding, original.Payload, original.Signature, time.Now().UnixMilli()).Scan(&present)
+		if e != nil {
+			return e
+		}
+		if !present || !c.ExpiresAt.After(time.Now()) || !authority.After(time.Now()) {
+			return ErrStale
+		}
+		return g.Commit()
+	})
+}
