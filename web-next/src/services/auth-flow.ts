@@ -5,13 +5,16 @@ import {routeBody, routePath} from '../../../packages/contracts/src/hosted/route
 import {accountIdentity, currentAccountWork, sameAccount, type AccountIdentity, type ServicesAccount} from './session';
 
 export type AuthMode = 'signin' | 'create' | 'verify' | 'forgot' | 'sent' | 'factor' | 'recovery' | 'provider' | 'provider-stopped' | 'ready';
-export type AuthSnapshot = Readonly<{mode: AuthMode; options?: IdentityOptions; registration?: Registration; provider?: IdentityProvider; suggestedName?: string; verifiedEmail?: string; busy: boolean; retryAt: number; resends: number; error?: unknown}>;
+export type AuthSnapshot = Readonly<{mode: AuthMode; options?: IdentityOptions; optionsFailed?: boolean; registration?: Registration; provider?: IdentityProvider; suggestedName?: string; verifiedEmail?: string; busy: boolean; retryAt: number; resends: number; error?: unknown}>;
+type InitialAuthContinuation = Readonly<{mode: AuthMode; registration?: Registration; transaction?: IdentityTransaction}>;
 /** Local form controller. The singleton CredentialSessionService owns every account session. */
 export class ServicesAuthFlow {
   private state: AuthSnapshot;
   private listeners = new Set<() => void>();
   private operation?: AbortController;
   private initialized?: Promise<void>;
+  private initialContinuation?: InitialAuthContinuation;
+  private initialContinuationRetired = false;
   private disposed = false;
   private challenge?: MFAChallenge;
   private transaction?: IdentityTransaction;
@@ -32,21 +35,56 @@ export class ServicesAuthFlow {
   }
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private publish(value: Partial<AuthSnapshot>) { if (this.disposed) return; this.state = {...this.state, ...value}; for (const listener of this.listeners) listener(); }
-  dispose() { this.disposed = true; this.operation?.abort(); this.listeners.clear(); this.challenge = undefined; this.transaction = undefined; this.providerRefresh = undefined; this.ids.clear(); }
-  go(mode: AuthMode) { if (this.operation) return; this.challenge = undefined; this.publish({mode, error: undefined, retryAt: 0}); }
+  dispose() { this.disposed = true; this.operation?.abort(); this.listeners.clear(); this.initialContinuation = undefined; this.challenge = undefined; this.transaction = undefined; this.providerRefresh = undefined; this.ids.clear(); }
+  go(mode: AuthMode) { if (this.operation) return; if (this.initialContinuation && mode !== this.state.mode) this.initialContinuationRetired = true; this.challenge = undefined; this.publish({mode, error: undefined, retryAt: 0}); }
   recovery() { if (!this.operation && this.challenge) this.publish({mode: this.state.mode === 'factor' ? 'recovery' : 'factor', error: undefined}); }
   startAgain() { if (!this.operation) { this.publish({registration: undefined, resends: 0}); this.go('create'); } }
-  initialize() { return this.initialized ??= this.load(); }
+  initialize(): Promise<void> {
+    if (this.initialized) return this.initialized;
+    // Reserve before load publishes busy: a listener may synchronously retry.
+    let resolve!: () => void, reject!: (error: unknown) => void;
+    const attempt = new Promise<void>((done, fail) => {resolve = done; reject = fail;});
+    this.initialized = attempt;
+    const release = () => {if (this.initialized === attempt && !this.state.options) this.initialized = undefined;};
+    void this.load().then(() => {release(); resolve();}, error => {release(); reject(error);});
+    return attempt;
+  }
+  retryInitialization(): Promise<void> {
+    if (this.disposed || this.state.options || !this.state.optionsFailed || this.operation || this.state.retryAt > Date.now())
+      return this.initialized ?? Promise.resolve();
+    return this.initialize();
+  }
   private async load() {
     await this.run(async signal => {
-      if (this.state.mode !== 'signin') { this.publish({options: await this.account.client.options(signal)}); return; }
-      const [options, registration, transaction] = await Promise.allSettled([
-        this.account.client.options(signal), this.account.client.registration(undefined, signal), this.account.client.transaction(undefined, signal),
-      ]);
-      if (signal.aborted) return;
-      if (options.status === 'fulfilled') this.publish({options: options.value}); else throw options.reason;
-      if (transaction.status === 'fulfilled' && transaction.value?.mode === 'login') {
-        const tx = transaction.value;
+      let options: IdentityOptions;
+      try {
+        if (!this.initialContinuation && this.state.mode === 'signin') {
+          // Capture the original browser-bound results once, even if options
+          // fail. Retrying capabilities must not discover a successor tab's flow.
+          const mode = this.state.mode;
+          const [read, registration, transaction] = await Promise.allSettled([
+            this.account.client.options(signal), this.account.client.registration(undefined, signal), this.account.client.transaction(undefined, signal),
+          ]);
+          if (signal.aborted || this.disposed) return;
+          this.initialContinuation = Object.freeze({mode,
+            ...(registration.status === 'fulfilled' && registration.value ? {registration: Object.freeze({...registration.value})} : {}),
+            ...(transaction.status === 'fulfilled' && transaction.value ? {transaction: Object.freeze({...transaction.value})} : {})});
+          if (read.status === 'rejected') throw read.reason;
+          options = read.value;
+        } else {
+          this.initialContinuation ??= Object.freeze({mode: this.state.mode});
+          options = await this.account.client.options(signal);
+        }
+      } catch (error) {
+        if (!signal.aborted) this.publish({optionsFailed: true});
+        throw error;
+      }
+      if (signal.aborted || this.disposed) return;
+      this.publish({options, optionsFailed: false});
+      const original = this.initialContinuation;
+      if (this.initialContinuationRetired || original?.mode !== 'signin' || this.state.mode !== original.mode) return;
+      const tx = original.transaction;
+      if (tx?.mode === 'login') {
         if (tx.status === 'failed') {
           // The current browser-bound transaction is terminal. It proves no
           // email/account collision and cannot be completed or adopted.
@@ -60,8 +98,8 @@ export class ServicesAuthFlow {
           await this.authenticate(inner => this.account.client.complete(tx.transactionId, {}, AbortSignal.any([inner, signal]))); return;
         }
       }
-      if (registration.status === 'fulfilled' && registration.value && ['contact_pending', 'verified'].includes(registration.value.status))
-        this.publish({mode: 'verify', registration: registration.value});
+      if (original.registration && ['contact_pending', 'verified'].includes(original.registration.status))
+        this.publish({mode: 'verify', registration: original.registration});
     });
   }
   private async run(work: (signal: AbortSignal) => Promise<void>) {
