@@ -192,6 +192,14 @@ export class SettingsController {
     if (row.id === 'troubleshooting.detailLength' && this.forms.logs?.status()?.logDetailMinutes === undefined) return {present: false};
     const location = settingsRowIndex.get(row.id);
     if (!location || !this.sectionVisible(location.section)) return {present: false};
+    // The drawn status line above Home networks says whether this connection
+    // counts as home, from the same connectivity report the form holds.
+    if (row.id === 'remote.thisDevice') {
+      const status = this.forms.connectivity?.status(), address = status?.connection.clientAddress;
+      if (!status || !address) return {present: false};
+      return {present: true, statusTone: status.connection.remote ? 'warn' : 'ok',
+        displayValue: defaultI18n.t(status.connection.remote ? 'next.remoteStatus.deviceAway' : 'next.remoteStatus.deviceHome', {address})};
+    }
     const value = this.read(row, context);
     if (!value || value.configOnly) return {present: false};
     const current = value.current as SettingsValue;

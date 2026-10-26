@@ -15,6 +15,8 @@ export const remoteSourcesMessages = {
   'next.remoteStatus.connection': 'Your connection',
   'next.remoteStatus.home': 'home network',
   'next.remoteStatus.away': 'from outside',
+  'next.remoteStatus.deviceHome': 'At home, {address}',
+  'next.remoteStatus.deviceAway': 'From outside, {address}',
   'next.remoteStatus.reading': 'Reading…',
   'next.remoteStatus.failed': 'The server did not answer.',
   'next.remoteStatus.save': 'Save remote access',
