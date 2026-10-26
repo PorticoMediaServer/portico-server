@@ -19,8 +19,8 @@ import (
 )
 
 // PreparedStart is internal to the actual route composition, not a fabricated
-// SessionView. The HTTP handler remains on Start until the complete cohort is
-// coherent; a nil Session here means genuine still-current private preparation.
+// SessionView. A nil Session means genuine still-current private preparation;
+// ordinary starts retain their actual session-backed result and errors.
 type PreparedStart struct {
 	Session      *SessionView
 	Preparing    bool
@@ -30,12 +30,16 @@ type originalDiscStartKey struct{}
 type originalDiscStart struct {
 	principal         identity.Principal
 	device, key, body string
+	private           bool // internal path classification only; never admission
 }
 type discStartPending struct{}
 
 func (*discStartPending) Error() string { return "original Play input is preparing" }
 
 func (s *Service) StartPrepared(ctx context.Context, c Caller, key string, req StartRequest) (PreparedStart, error) {
+	if ctx == nil {
+		return PreparedStart{}, disc.ErrProtocol
+	}
 	// Capture the complete original graph before an admission/read can yield.
 	raw, err := json.Marshal(req)
 	if err != nil {
@@ -45,14 +49,18 @@ func (s *Service) StartPrepared(ctx context.Context, c Caller, key string, req S
 	if err = json.Unmarshal(raw, &original); err != nil {
 		return PreparedStart{}, err
 	}
-	ctx = context.WithValue(ctx, originalDiscStartKey{}, originalDiscStart{principal: c.Principal, device: c.DeviceID, key: key, body: digest(original)})
+	start := &originalDiscStart{principal: c.Principal, device: c.DeviceID, key: key, body: digest(original)}
+	ctx = context.WithValue(ctx, originalDiscStartKey{}, start)
 	v, preparing, err := s.Start(ctx, c, key, original)
 	var pending *discStartPending
 	if errors.As(err, &pending) {
 		return PreparedStart{Preparing: true, RetryAfterMs: PreparingRetryMs}, nil
 	}
 	if err != nil {
-		return PreparedStart{}, discStartError(err)
+		if start.private {
+			err = discStartError(err)
+		}
+		return PreparedStart{}, err
 	}
 	return PreparedStart{Session: &v, Preparing: preparing, RetryAfterMs: v.RetryAfterMs}, nil
 }
@@ -60,8 +68,8 @@ func (s *Service) StartPrepared(ctx context.Context, c Caller, key string, req S
 // prepareDiscStart runs under the normal account start admission lock, before
 // minting a new candidate or reselecting a physical source on an original poll.
 func (s *Service) prepareDiscStart(ctx context.Context, c Caller, key, body string, req StartRequest, base row, stored storedRequest) (context.Context, error) {
-	original, enabled := ctx.Value(originalDiscStartKey{}).(originalDiscStart)
-	if !enabled || s.Playback == nil {
+	original, enabled := ctx.Value(originalDiscStartKey{}).(*originalDiscStart)
+	if !enabled || original == nil || s.Playback == nil {
 		return ctx, nil
 	}
 	if original.principal != c.Principal || original.device != c.DeviceID || original.key != key || original.body != body {
@@ -69,7 +77,11 @@ func (s *Service) prepareDiscStart(ctx context.Context, c Caller, key, body stri
 	}
 	operation, err := s.Playback.FindDiscPlay(ctx, c.Principal, c.DeviceID, key, body)
 	if err != nil {
+		original.private = true
 		return ctx, err
+	}
+	if operation != nil {
+		original.private = true
 	}
 	if operation == nil {
 		if base.kind != "vod" || base.partIndex != 0 || c.Principal.Grant == identity.GrantCastTarget || req.TransferID != "" || req.CastTransferID != "" {
@@ -98,6 +110,7 @@ func (s *Service) prepareDiscStart(ctx context.Context, c Caller, key, body stri
 		if kind != "remote" || !assets.DiscImage(path) {
 			return ctx, nil
 		}
+		original.private = true
 		if c.Admit == nil {
 			return ctx, identity.ErrForbidden
 		}

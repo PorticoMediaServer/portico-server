@@ -61,16 +61,16 @@ func DerivePrivateDiscResourcesTx(ctx context.Context, tx *sql.Tx, p identity.Pr
 		if _, err = tx.ExecContext(ctx, `INSERT INTO subtitle_resources(id,item_id,source_id,scope,owner,current_revision,deleted,discovered,discovery_id,discovery_revision) SELECT ?,item_id,source_id,scope,owner,current_revision,0,0,'',1 FROM subtitle_resources WHERE id=?`, id, o.id); err != nil {
 			return "", err
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO subtitle_revisions SELECT ?,revision,digest,size,format,language,title,origin,provider,attribution,rights,original_digest,offset_us,source_size,source_modified_ns,source_facts_revision,created_at FROM subtitle_revisions WHERE resource_id=? AND revision=?`, id, o.id, o.revision); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO subtitle_revisions(resource_id,revision,digest,size,format,language,title,origin,provider,attribution,rights,original_digest,offset_us,source_size,source_modified_ns,source_facts_revision,created_at) SELECT ?,revision,digest,size,format,language,title,origin,provider,attribution,rights,original_digest,offset_us,source_size,source_modified_ns,source_facts_revision,created_at FROM subtitle_revisions WHERE resource_id=? AND revision=?`, id, o.id, o.revision); err != nil {
 			return "", err
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO subtitle_render_revisions SELECT ?,revision,renderer,is_default,is_forced,source_evidence,hearing_impaired FROM subtitle_render_revisions WHERE resource_id=? AND revision=?`, id, o.id, o.revision); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO subtitle_render_revisions(resource_id,revision,renderer,is_default,is_forced,source_evidence,hearing_impaired) SELECT ?,revision,renderer,is_default,is_forced,source_evidence,hearing_impaired FROM subtitle_render_revisions WHERE resource_id=? AND revision=?`, id, o.id, o.revision); err != nil {
 			return "", err
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO subtitle_original_revisions SELECT ?,revision,digest,size,skipped_fonts,forced_lines,total_lines FROM subtitle_original_revisions WHERE resource_id=? AND revision=?`, id, o.id, o.revision); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO subtitle_original_revisions(resource_id,revision,digest,size,skipped_fonts,forced_lines,total_lines) SELECT ?,revision,digest,size,skipped_fonts,forced_lines,total_lines FROM subtitle_original_revisions WHERE resource_id=? AND revision=?`, id, o.id, o.revision); err != nil {
 			return "", err
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO subtitle_original_files SELECT ?,revision,part,name,format,encoding,digest,size FROM subtitle_original_files WHERE resource_id=? AND revision=?`, id, o.id, o.revision); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO subtitle_original_files(resource_id,revision,part,name,format,encoding,digest,size) SELECT ?,revision,part,name,format,encoding,digest,size FROM subtitle_original_files WHERE resource_id=? AND revision=?`, id, o.id, o.revision); err != nil {
 			return "", err
 		}
 		if _, err = tx.ExecContext(ctx, `INSERT INTO playback_disc_subtitle_resources(snapshot_id,resource_id,stream_index) VALUES(?,?,?)`, child, id, o.stream); err != nil {

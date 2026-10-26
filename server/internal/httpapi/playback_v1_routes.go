@@ -460,7 +460,7 @@ func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
 		Errors: []string{"invalid_request", "unauthorized", "not_found", "idempotency_key_required", "idempotency_key_reused", "stream_limit_reached", "conversion_capacity", "transcode_not_allowed", "source_unavailable", "unsupported_media", "connection_too_slow", "feature_restricted", "no_tuner_available", "queue_building"}},
 		func(ctx context.Context, q *http.Request, in playbackv1.StartRequest) (playbackStartResponse, error) {
 			c := d.v1ServiceCaller(q, callerFrom(ctx))
-			v, preparing, err := d.playbackV1().Start(ctx, c, q.Header.Get("Idempotency-Key"), in)
+			started, err := d.playbackV1().StartPrepared(ctx, c, q.Header.Get("Idempotency-Key"), in)
 			if err != nil {
 				if errors.Is(err, playback.ErrOwnerAccountCap) {
 					if detail, e := d.playbackV1().AccountStreamLimit(ctx, c); e == nil {
@@ -469,15 +469,17 @@ func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
 				}
 				return playbackStartResponse{}, err
 			}
-			out, err := startSessionResponse(v, preparing)
+			out, err := startPreparedResponse(started)
 			if err != nil {
 				return playbackStartResponse{}, err
 			}
-			if preparing {
+			if started.Preparing {
 				apikit.SetStatus(ctx, 202)
 				apikit.SetHeader(ctx, "Retry-After", "1")
 			}
-			setSessionHeaders(ctx, v)
+			if started.Session != nil {
+				setSessionHeaders(ctx, *started.Session)
+			}
 			return out, nil
 		})
 	v1Route(r, apikit.Metadata{Admission: laneSecurityFence, ID: "get_playback_session", Method: "GET", Path: "/v1/playback/sessions/{id}", Summary: "Read a playback session",

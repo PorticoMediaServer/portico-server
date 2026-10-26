@@ -9,12 +9,25 @@ import (
 )
 
 // playbackStartResponse keeps a pre-session wait distinct from a real session.
-// The minimal branch is declared for adapter compatibility before admission is
-// wired; the current handler only constructs the existing session-backed branch.
+// The minimal branch belongs only to a still-current original preparation;
+// ordinary starts construct the existing session-backed branch.
 // Embedding preserves the real SessionView's JSON and nullable-field handling.
 type playbackStartResponse struct {
 	*playbackv1.SessionView
 	RetryAfterMs int `json:"retryAfterMs,omitempty"`
+}
+
+func startPreparedResponse(v playbackv1.PreparedStart) (playbackStartResponse, error) {
+	if v.Session != nil {
+		if v.RetryAfterMs != v.Session.RetryAfterMs {
+			return playbackStartResponse{}, errors.New("start retry does not match its real session")
+		}
+		return startSessionResponse(*v.Session, v.Preparing)
+	}
+	if !v.Preparing || v.RetryAfterMs < 1 || v.RetryAfterMs > 10000 {
+		return playbackStartResponse{}, errors.New("start did not return a current preparation or a real session")
+	}
+	return playbackStartResponse{RetryAfterMs: v.RetryAfterMs}, nil
 }
 
 func startSessionResponse(v playbackv1.SessionView, preparing bool) (playbackStartResponse, error) {

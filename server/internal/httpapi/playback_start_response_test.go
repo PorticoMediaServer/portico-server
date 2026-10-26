@@ -37,6 +37,24 @@ func TestPlaybackStartMinimalWaitHasNoSessionAndIs202Only(t *testing.T) {
 	}
 }
 
+func TestPlaybackStartProjectionRequiresGenuinePreparationOrRealSession(t *testing.T) {
+	for _, wait := range []int{1, 500, 10000} {
+		out, err := startPreparedResponse(playbackv1.PreparedStart{Preparing: true, RetryAfterMs: wait})
+		if err != nil || out.SessionView != nil || out.RetryAfterMs != wait {
+			t.Fatalf("pre-session wait gained a resource: %+v, %v", out, err)
+		}
+	}
+	for _, invalid := range []playbackv1.PreparedStart{
+		{}, {RetryAfterMs: 500}, {Preparing: true},
+		{Preparing: true, RetryAfterMs: -1}, {Preparing: true, RetryAfterMs: 10001},
+		{Session: &playbackv1.SessionView{}, Preparing: true, RetryAfterMs: 500},
+	} {
+		if _, err := startPreparedResponse(invalid); err == nil {
+			t.Fatalf("invalid producer result became a start response: %+v", invalid)
+		}
+	}
+}
+
 func TestPlaybackStartWrapperKeepsActualSessionJSON(t *testing.T) {
 	f := newV1Fixture(t, 1)
 	var session playbackv1.SessionView
@@ -44,6 +62,15 @@ func TestPlaybackStartWrapperKeepsActualSessionJSON(t *testing.T) {
 	out, err := startSessionResponse(session, false)
 	if err != nil {
 		t.Fatal(err)
+	}
+	projected, err := startPreparedResponse(playbackv1.PreparedStart{Session: &session})
+	if err != nil || projected.SessionView == nil || projected.ID != session.ID || projected.RetryAfterMs != 0 {
+		t.Fatalf("ordinary route result changed: %+v, %v", projected, err)
+	}
+	preparing := session
+	preparing.RetryAfterMs = 500
+	if _, err = startPreparedResponse(playbackv1.PreparedStart{Session: &preparing, Preparing: true, RetryAfterMs: 501}); err == nil {
+		t.Fatal("a wait unrelated to the real session was accepted")
 	}
 	before, err := json.Marshal(session)
 	if err != nil {
