@@ -77,6 +77,7 @@ export class LocalOwnerTransferSource {
       if (owner.accountId !== this.accountId || owner.profileId !== this.profileId || owner.role !== 'owner' || owner.disabled || owner.hostedAccountId) throw changed();
       const members = Object.freeze(page.items.filter(row => row.role === 'member' && !row.disabled && row.accountId !== this.accountId)
         .map(row => Object.freeze({accountId: row.accountId, username: row.username})));
+      if (!members.length && page.matchedCount > 0) throw changed();
       const revisions = new Map(page.items.map(row => [row.accountId, row.revision]));
       const opening = Object.freeze({members, ownerRevision: owner.revision});
       const port: LocalOwnerTransferPort = Object.freeze({opening, close: () => this.retire(entry),

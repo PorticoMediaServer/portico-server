@@ -140,8 +140,6 @@ export const accountMessages = {
   'accounts.settings.finishNowHelp': 'Anyone still waiting is turned off as “Didn’t move”. Their data stays until the owner deletes them.',
   'accounts.settings.changeOwnerLocalNewOwner': 'New owner',
   'accounts.settings.changeOwnerLocalEmpty': 'There are no other active members to choose.',
-  'accounts.settings.changeOwnerLocalPassword': 'Current password',
-  'accounts.settings.changeOwnerLocalPasswordHelp': 'Confirms this change is yours.',
   'accounts.settings.changeOwnerLocalStays': 'Profiles, history and libraries stay with the server.',
   'accounts.settings.changeOwnerLocalOnlyNew': 'Only the new owner sees Server › Sign-in afterwards.',
   // Binding ruling 17.5, also applied to Start over with Portico Accounts.

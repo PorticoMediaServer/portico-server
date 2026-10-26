@@ -108,7 +108,7 @@ export function LocalChangeOwnerDialog({open, port, onClose, onError}: {
       <RichSelect label={t('accounts.settings.changeOwnerLocalNewOwner')} value={selected} disabled={busy || !members.length}
         options={members.map(member => ({value: member.accountId, label: member.username}))} onValueChange={choose}/>
       {!members.length && <p className={styles.empty}>{t('accounts.settings.changeOwnerLocalEmpty')}</p>}
-      <TextField label={t('accounts.settings.changeOwnerLocalPassword')} description={t('accounts.settings.changeOwnerLocalPasswordHelp')}
+      <TextField label={t('account.currentPassword')}
         type="password" autoComplete="current-password" value={password} disabled={busy} onChange={event => typePassword(event.currentTarget.value)}/>
       <ul className={styles.lines}>
         <li><Icon name="i-check" size={18} />{t('accounts.settings.changeOwnerLocalStays')}</li>

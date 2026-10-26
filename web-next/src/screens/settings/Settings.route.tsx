@@ -105,6 +105,9 @@ import {ProfileForgetDevices} from './account-profile/ProfileForgetDevices';
 
 // A carry contains calendar bounds only. The captured session object owns its lifetime.
 const historyContexts = new WeakMap<ShellAssemblyContext, ReportContext>();
+/** A confirmed transfer permanently spends this owner Settings context. Only
+ * the shell's actual authority reconciliation can supply a replacement. */
+const transferredOwnerContexts = new WeakSet<ShellAssemblyContext>();
 const noPreferences = () => () => {};
 /** Stable snapshot: the Remote sources page owns its reads and never enters the generic section loader. */
 const remoteSourcesPageSnapshot = Object.freeze({loading: false});
@@ -144,7 +147,7 @@ export function SettingsEntry() {
   const mediaRuntime = protectedContext?.binding.playback?.runtime;
   useLayoutEffect(() => {
     const reader = context?.preferences, snapshot = preferences;
-    if (!context || !reader || !snapshot || !context.isCurrent()) return;
+    if (!context || !reader || !snapshot || !context.isCurrent() || transferredOwnerContexts.has(context)) return;
     let active = true;
     const lifetime = new AbortController(), authorityListeners = new Set<() => void>();
     let preferencesAvailable = true, confirmedZone = reportTimeZone;
@@ -156,7 +159,7 @@ export function SettingsEntry() {
       confirmedZone = confirmed && shellLanguage(confirmed).region.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
     });
     const current = () => {
-      if (!active || !context.isCurrent() || !sameBuildInputs(facts, settingsBuildFacts(context))) return false;
+      if (!active || transferredOwnerContexts.has(context) || !context.isCurrent() || !sameBuildInputs(facts, settingsBuildFacts(context))) return false;
       const location = router.state.location;
       if (location.pathname !== '/settings' && location.pathname !== '/dashboard') return false;
       const selected = settingsLocationRoute(location);
@@ -289,6 +292,7 @@ export function SettingsEntry() {
         if (!localOwnerCurrent()) return;
         // A confirmed write spends this exact owner Settings build immediately.
         // Only the existing session reader may publish the actual retier.
+        transferredOwnerContexts.add(context);
         active = false; lifetime.abort();
         for (const listener of authorityListeners) {try {listener();} catch { /* Retire every captured command. */ }}
         authorityListeners.clear();
