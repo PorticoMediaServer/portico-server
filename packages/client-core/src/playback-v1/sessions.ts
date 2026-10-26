@@ -27,7 +27,7 @@ export type {SessionChangeContext} from './change-context.ts';
 
 export type StartTarget =
   | Readonly<{itemId: string}>
-  | Readonly<{channelId: string}>
+  | Readonly<{channelId: string; channelGeneration?: string}>
   | Readonly<{queue: Readonly<{queueId: string; entryId: string}>}>
   | Readonly<{transferId: string}>;
 
@@ -124,6 +124,13 @@ export class SessionsClient {
    * request waiting until success, a real refusal or caller retirement. Server
    * preparation/authority deadlines remain server-owned and are never renewed. */
   async start(target: StartTarget, options: StartOptions, key: string, extra: StartContext = {}): Promise<Session> {
+    return (await this.startResponse(target, options, key, extra)).session;
+  }
+
+  /** The channel adapter retains the actual declared linear projection beside
+   * the checked final Session. Both use this same status/retry/lifetime path;
+   * a retry-only body can never be returned as a completed start. */
+  async startResponse(target: StartTarget, options: StartOptions, key: string, extra: StartContext = {}): Promise<Readonly<{session: Session; body: unknown}>> {
     // Capture the original wire and lifetime once, before callbacks or asynchronous work.
     const http = this.http, signal = extra.signal, isCurrent = extra.isCurrent;
     const onPreparing = extra.onPreparing, capturePreparing = extra.capturePreparing;
@@ -151,7 +158,7 @@ export class SessionsClient {
           const session = parseSession(r.body);
           if (prepared && (prepared.id !== session.id || prepared.presentation.generation !== session.presentation.generation))
             throw new ContractError('preparation session changed');
-          return session;
+          return {session, body: r.body};
         }
         const preparing = parseStartPreparation(r.body);
         if (preparing.session) {
@@ -337,6 +344,10 @@ export class PlaybackSessionController {
     // claim over the successor. Claim before touching request getters or publishing.
     if (!admitted() || this.disposed || before !== this.startToken) return undefined;
     const token = ++this.startToken;
+    if (this.state.preparation) {
+      this.publish({preparation: undefined});
+      if (!admitted() || token !== this.startToken || this.disposed) return undefined;
+    }
     const previous = this.state.session, wasActive = this.state.phase === 'active';
     const originalTarget: StartTarget = freezeWire(JSON.parse(JSON.stringify(target)));
     const originalOptions: StartOptions = freezeWire(JSON.parse(JSON.stringify(options)));
@@ -354,6 +365,7 @@ export class PlaybackSessionController {
         },
         capturePreparing});
       if (!admitted() || token !== this.startToken || this.disposed) {
+        if (token === this.startToken && !this.disposed) this.publish({preparation: undefined});
         // The request may have created a session even though its caller moved on.
         if (this.state.session?.id !== session.id || this.disposed) await this.client.stop(session.id).catch(() => {});
         return undefined;

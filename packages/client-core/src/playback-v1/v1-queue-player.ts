@@ -189,7 +189,7 @@ export class V1QueuePlayer implements QueueController {
   private completionPolicy: CompletionPolicy = () => 'advance';
   private endedId?: string;
   private generation = 0;
-  private preparingStart?: {generation: number; notice?: StartPreparation};
+  private preparingStart?: {generation: number; intent: number; notice?: StartPreparation};
   private changeSequence = 0;
   private policySequence = 0;
   private refreshSequence = 0;
@@ -686,7 +686,7 @@ export class V1QueuePlayer implements QueueController {
   private async startEntry(queueId: string, entryId: string, intent: number, startSeconds?: number, generation: number = this.generation, choices?: PlaybackChoices, state: 'playing' | 'paused' = 'playing', signal?: AbortSignal, isCurrent?: () => boolean, subtitles?: StartOptions['subtitles'], automatic = false) {
     const current = () => !this.disposed && generation === this.generation && !signal?.aborted && isCurrent?.() !== false;
     const entry = this.window.find(e => e.entryId === entryId);
-    const preparing: {generation: number; notice?: StartPreparation} = {generation};
+    const preparing: {generation: number; intent: number; notice?: StartPreparation} = {generation, intent};
     this.preparingStart = preparing;
     this.publish({});
     let r: Awaited<ReturnType<QueueSessionTransport['start']>>;
@@ -702,8 +702,8 @@ export class V1QueuePlayer implements QueueController {
     });} finally {
       if (this.preparingStart === preparing) {
         this.preparingStart = undefined;
-        this.publish({});
         this.playback.reportStartPreparation(intent, undefined);
+        this.publish({});
       }
     }
     if (!current()) { this.api.forget(r.session.id); this.abandon(r.session); return; }
@@ -1318,9 +1318,15 @@ export class V1QueuePlayer implements QueueController {
     try { await this.startEntry(h.id, h.current.entryId, intent, at, generation, choices); } catch (e) { if (generation === this.generation) this.fail('', e, serviceText('queuePlayer.startFailed')); }
   }
 
-  async cancel(_invalidateSelection = true): Promise<void> { ++this.generation; ++this.epoch; this.prepared = undefined; this.audioReadyToken = undefined; this.publish({phase: 'ready'}); }
+  private clearStartPreparation() {
+    const original = this.preparingStart;
+    this.preparingStart = undefined;
+    if (original) this.playback.reportStartPreparation(original.intent, undefined);
+  }
 
-  leave() { ++this.generation; ++this.epoch; this.prepared = undefined; this.audioReadyToken = undefined; this.publish({completion: null}); }
+  async cancel(_invalidateSelection = true): Promise<void> { ++this.generation; ++this.epoch; this.prepared = undefined; this.audioReadyToken = undefined; this.clearStartPreparation(); this.publish({phase: 'ready'}); }
+
+  leave() { ++this.generation; ++this.epoch; this.prepared = undefined; this.audioReadyToken = undefined; this.clearStartPreparation(); this.publish({completion: null}); }
 
   dispose() {
     if (this.disposed) return;
@@ -1335,7 +1341,7 @@ export class V1QueuePlayer implements QueueController {
     this.detach?.();
     this.listening.dispose();
     if (this.session) this.api.forget(this.session.id);
-    this.preparingStart = undefined;
+    this.clearStartPreparation();
     this.state = Object.freeze({...this.state, phase: 'disposed', view: null, preparation: undefined});
     this.listeners.clear();
     this.queueListeners.clear();

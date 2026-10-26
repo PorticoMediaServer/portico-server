@@ -1,4 +1,4 @@
-import {routePath, encodedRoutePath} from "../../../contracts/src/routes.ts";
+import {encodedRoutePath} from "../../../contracts/src/routes.ts";
 /**
  * Live TV and Library Channels on a Playback v1 session (spec §11, §18.6; Plan — Client Playback
  * Migration §10, B6). The same surface as the /v2 `ChannelControl` (open, pause, resume, seek, go
@@ -20,13 +20,14 @@ import type {ChannelDesired, ChannelProjection, ChannelReference} from '../playb
 import {channelMessage} from '../playback/linear-protocol.ts';
 import {PlaybackApiError, call, enc, idempotencyKey, type V1Http} from './http.ts';
 import {serviceText} from '../presentation/service-text.ts';
+import {SessionsClient, type StartContext, type StartPreparation} from './sessions.ts';
 
 export type V1ChannelOptions = Readonly<{http: V1Http; key?: () => string; now?: () => number; pollMs?: number}>;
 
 /** What the service applies: the playback id, whether the start can't proceed, and the projection. */
 export type ChannelView = Readonly<{playbackId: string; status?: string; linear: ChannelProjection}>;
-export type ChannelViewSink = {state: (value: ChannelView) => void; error: (message: string, terminal: boolean) => void};
-export type ChannelStartOptions = Readonly<{state?:'playing'|'paused'; signal?: AbortSignal; isCurrent?: () => boolean}>;
+export type ChannelViewSink = {state: (value: ChannelView) => void; error: (message: string, terminal: boolean) => void; preparation?: (value: StartPreparation | undefined) => void};
+export type ChannelStartOptions = Readonly<{state?:'playing'|'paused'; signal?: AbortSignal; isCurrent?: () => boolean; capturePreparing?: StartContext['capturePreparing']}>;
 
 /** The service's channel control, whichever protocol (the /v2 `ChannelControl` or this). */
 export interface ChannelPlayback {
@@ -114,7 +115,7 @@ export function channelView(s: Session, channel: ChannelReference): ChannelView 
   return Object.freeze({playbackId: s.id, status: l?.state === 'recoverable' ? 'recoverable' : undefined, linear});
 }
 
-type Active = {serial: number; channel: ChannelReference; id?: string; session?: Session; joined: boolean; seq: number; lastReport: number; timer?: ReturnType<typeof setTimeout>; tail: Promise<unknown>; closed: boolean};
+type Active = {serial: number; channel: ChannelReference; startAbort: AbortController; id?: string; session?: Session; joined: boolean; seq: number; lastReport: number; timer?: ReturnType<typeof setTimeout>; tail: Promise<unknown>; closed: boolean};
 
 const message = (e: unknown): string => {
   if (e instanceof PlaybackApiError) {
@@ -137,6 +138,7 @@ const terminal = (e: unknown) => e instanceof PlaybackApiError && [401, 403, 404
 
 export class V1ChannelControl implements ChannelPlayback {
   private readonly http: V1Http;
+  private readonly sessions: SessionsClient;
   private readonly key: () => string;
   private readonly now: () => number;
   private readonly pollMs: number;
@@ -148,6 +150,7 @@ export class V1ChannelControl implements ChannelPlayback {
 
   constructor(options: V1ChannelOptions) {
     this.http = options.http;
+    this.sessions = new SessionsClient(options.http);
     this.key = options.key ?? (() => idempotencyKey());
     this.now = options.now ?? Date.now;
     this.pollMs = options.pollMs ?? 1000;
@@ -164,30 +167,43 @@ export class V1ChannelControl implements ChannelPlayback {
   }
 
   async open(channel: ChannelReference, sink: ChannelViewSink, options:ChannelStartOptions={}): Promise<void> {
+    const entered = this.serial;
     const state=options.state??'playing';
     if(state!=='playing'&&state!=='paused')throw new Error('invalid_channel_start_state');
-    const starting = () => !options.signal?.aborted && options.isCurrent?.() !== false;
-    if (!starting()) throw Object.assign(new Error('cancelled'), {name: 'AbortError'});
+    const signal = options.signal, originalCurrent = options.isCurrent, capturePreparing = options.capturePreparing;
+    const originalChannel: ChannelReference = Object.freeze({...channel});
+    const starting = () => {try {return !signal?.aborted && (originalCurrent ? originalCurrent() === true : true);} catch {return false;}};
+    if (!starting() || entered !== this.serial) throw Object.assign(new Error('cancelled'), {name: 'AbortError'});
     this.close();
+    if (!starting() || this.serial !== entered + 1) return;
     this.sink = sink;
     this.wanted = state;
-    const a: Active = {serial: ++this.serial, channel, joined: false, seq: 0, lastReport: 0, tail: Promise.resolve(), closed: false};
+    const a: Active = {serial: ++this.serial, channel: originalChannel, startAbort: new AbortController(), joined: false, seq: 0, lastReport: 0, tail: Promise.resolve(), closed: false};
     this.active = a;
     const cancel = () => {if (this.current(a)) this.close();};
-    options.signal?.addEventListener('abort', cancel, {once: true});
+    signal?.addEventListener('abort', cancel, {once: true});
     try {
       await this.stopping.catch(() => {});
       if (!this.current(a) || !starting()) {cancel();return;}
-      const r = await call(this.http, {method: 'POST', path: routePath("start_playback_session"), headers: {'Idempotency-Key': this.key()}, body: {channelId: v1ChannelId(channel), channelGeneration: channel.generation, state: this.wanted}, signal: options.signal});
-      const s = parseChannelSession(r.body);
+      const result = await this.sessions.startResponse({channelId: v1ChannelId(originalChannel), channelGeneration: originalChannel.generation}, {state}, this.key(), {
+        signal: a.startAbort.signal, isCurrent: () => this.current(a) && starting(), capturePreparing,
+        onPreparing: (_wait, preparation) => {if (this.current(a) && starting()) sink.preparation?.(preparation);},
+      });
+      if (!this.current(a) || !starting()) {void this.stop(result.session.id);cancel();return;}
+      const s = parseChannelSession(result.body, this.now);
+      if (!this.current(a) || !starting()) {void this.stop(s.id);cancel();return;}
+      sink.preparation?.(undefined);
       if (!this.current(a) || !starting()) {void this.stop(s.id);cancel();return;}
       a.id = s.id;
       this.accept(a, s);
       this.schedule(a);
     } catch (e) {
       if (!starting()) {cancel();return;}
-      if (this.current(a)) { this.active = undefined; sink.error(message(e), true); }
-    } finally {options.signal?.removeEventListener('abort', cancel);}
+      if (this.current(a)) {
+        sink.preparation?.(undefined);
+        if (this.current(a) && starting()) {this.active = undefined; a.closed = true; a.startAbort.abort(); sink.error(message(e), true);}
+      }
+    } finally {signal?.removeEventListener('abort', cancel);}
   }
 
   private accept(a: Active, s: Session) {
@@ -308,10 +324,12 @@ export class V1ChannelControl implements ChannelPlayback {
 
   close() {
     ++this.serial;
-    const a = this.active;
+    const a = this.active, sink = this.sink;
     this.active = undefined;
     if (!a) return;
     a.closed = true;
+    a.startAbort.abort();
+    sink?.preparation?.(undefined);
     if (a.timer) clearTimeout(a.timer);
     if (a.id) void this.stop(a.id);
   }

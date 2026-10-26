@@ -1258,6 +1258,7 @@ export class PlaybackService {
     if(this.snapshot.intentId!==intentId||!this.snapshot.channel||options.signal?.aborted||options.isCurrent?.()===false)return;
     await this.channels.open(reference,{
       state:value=>{if(this.snapshot.intentId===intentId&&this.snapshot.channel)this.applyChannel(value);},
+      preparation:value=>{if(this.snapshot.intentId===intentId&&this.snapshot.channel)this.reportStartPreparation(intentId,value);},
       error:(message,terminal)=>{if(this.snapshot.intentId!==intentId||!this.snapshot.channel)return;this.update({error:message,...(terminal?{phase:'error' as const,session:undefined,pendingSeek:undefined}:{} )});}
     },{...options,state});
   }
