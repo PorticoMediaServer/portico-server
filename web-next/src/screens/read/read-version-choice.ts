@@ -33,15 +33,19 @@ export type ReadVersionAdmission = Readonly<{
   currentSourceId: string | undefined;
   renderedAttempt: unknown;
   currentAttempt: unknown;
-  attemptRetired: boolean;
+  attemptLive: boolean;
   candidate: ReadVersion;
   offered: readonly ReadVersion[];
+  currentOffered: readonly ReadVersion[] | undefined;
 }>;
 
 export function readVersionAdmission(facts: ReadVersionAdmission): boolean {
   if (!facts.liveRoute || facts.renderedContext !== facts.currentContext) return false;
   if (facts.renderedSourceId === undefined || facts.renderedSourceId !== facts.currentSourceId) return false;
-  if (facts.renderedAttempt !== facts.currentAttempt || facts.attemptRetired) return false;
+  if (!facts.attemptLive || facts.renderedAttempt !== facts.currentAttempt) return false;
+  // The committed eligibility identity, not the callback's own captured list, must still be the
+  // same list this row came from; a replaced list therefore invalidates the old row.
+  if (facts.currentOffered === undefined || facts.offered !== facts.currentOffered) return false;
   const matches = facts.offered.filter(version => version.sourceId === facts.candidate.sourceId);
   return matches.length === 1 && matches[0] === facts.candidate && facts.candidate.inventoryAvailable && facts.candidate.sourceId !== facts.currentSourceId;
 }

@@ -49,6 +49,8 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const [saving, setSaving] = useState(false), [rereading, setRereading] = useState(false);
   const [attempt, setAttempt] = useState<ReadAttempt>();
   const attemptRef = useRef<ReadAttempt | undefined>(undefined);
+  const committed = useRef<{context: Captured['context']; sourceId: string | undefined; versions: ReadItemEligibility['versions']}>();
+  useLayoutEffect(() => {committed.current = {context: captured.context, sourceId, versions: eligibility.versions};}, [captured.context, sourceId, eligibility.versions]);
   const renderIdentity = useRef({context: captured.context, sourceId, retry});
   renderIdentity.current = {context: captured.context, sourceId, retry};
   const [detail, setDetail] = useState<Readonly<{attempt?: ReadAttempt; manifest?: ReadingManifest; progress?: ReadingProgress; client?: ReturnType<typeof createReadBindings>['client']; targets?: readonly ReaderContentsTarget[]; failed?: boolean}>>({});
@@ -97,10 +99,13 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   }, [attempt, eligibility.itemId]);
   // The reading branch owns no shell navigation on a phone, so the page keeps one
   // Back of its own before loading, failure and ready content alike.
+  const backEntry = {href: router.state.location.href, key: router.history.location.key};
   const phoneBack = phone && context.effects.back ? <div className={styles.phoneTopBar} data-read-phone-back>
     <Button className={styles.phoneBack} size="small" variant="icon" icon="i-left" iconOnly aria-label={t('next.states.back')}
       onClick={() => runScreenCommand(context, () => {
         if (!context.isCurrent()) return;
+        // Only the original entry may navigate: a later route makes this callback stale.
+        if (router.state.location.href !== backEntry.href || router.history.location.key !== backEntry.key) return;
         if (readBackDestination(router.history.canGoBack()) === 'back') context.effects.back?.();
         else context.effects.openHome?.();
       })}/>
@@ -110,15 +115,18 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
    * ready; factsCurrent() is deliberately not the gate because it can never become true then.
    * The fence is the original route/context, the live attempt identity and the chosen row. */
   const pickVersion = (candidate: ReadVersion, renderedAttempt: ReadAttempt | undefined, renderedSourceId: string | undefined) => {
-    if (!readVersionAdmission({
-      liveRoute: context.isCurrent(), renderedContext: captured.context, currentContext: renderIdentity.current.context,
-      renderedSourceId, currentSourceId: renderIdentity.current.sourceId,
-      renderedAttempt, currentAttempt: attemptRef.current, attemptRetired: !!renderedAttempt?.fileLife.signal.aborted,
-      candidate, offered: eligibility.versions,
-    })) return;
-    if (renderedAttempt) retire(renderedAttempt);
-    // A reentrant callback may already have started a successor; only the original may be replaced.
-    if (attemptRef.current && attemptRef.current !== renderedAttempt) return;
+    const admit = () => readVersionAdmission({
+      liveRoute: context.isCurrent(), renderedContext: captured.context, currentContext: committed.current?.context,
+      renderedSourceId, currentSourceId: committed.current?.sourceId,
+      renderedAttempt, currentAttempt: attemptRef.current,
+      attemptLive: !!renderedAttempt && renderedAttempt.live && !renderedAttempt.fileLife.signal.aborted,
+      candidate, offered: eligibility.versions, currentOffered: committed.current?.versions,
+    });
+    if (!admit() || !renderedAttempt) return;
+    retire(renderedAttempt);
+    // Retirement can reenter; re-check the original route/context/source/list and that no
+    // successor exists before any state write.
+    if (!admit() || attemptRef.current) return;
     setDetail({});
     setSaving(false); setRereading(false);
     setMenu(false); setChooserMenu(false);

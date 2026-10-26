@@ -32,18 +32,21 @@ test('the component admits an explicit recovery only from the exact render it wa
   const offered = [epub, pdf];
   const route = {} as never, attempt = {} as never;
   const base = {liveRoute: true, renderedContext: route, currentContext: route, renderedSourceId: 'epub-source', currentSourceId: 'epub-source',
-    renderedAttempt: attempt, currentAttempt: attempt, attemptRetired: false, candidate: pdf, offered};
+    renderedAttempt: attempt, currentAttempt: attempt, attemptLive: true, candidate: pdf, offered, currentOffered: offered};
   assert.equal(readVersionAdmission(base), true);
   // A retained menu callback after the attempt was replaced must not retire the successor.
   assert.equal(readVersionAdmission({...base, currentAttempt: {} as never}), false);
   // A replaced source or version list refuses the old row.
   assert.equal(readVersionAdmission({...base, currentSourceId: 'pdf-source'}), false);
-  assert.equal(readVersionAdmission({...base, offered: [epub, {...pdf, size: 999}]}), false);
+  assert.equal(readVersionAdmission({...base, offered: [epub, {...pdf, size: 999}], currentOffered: [epub, {...pdf, size: 999}]}), false);
+  // A replaced committed list invalidates the callback's own captured list even when it matches itself.
+  assert.equal(readVersionAdmission({...base, currentOffered: [epub]}), false);
   assert.equal(readVersionAdmission({...base, offered: [epub, stale]}), false);
   // A stale route/context and a retired original also refuse, while a failed original stays admissible.
   assert.equal(readVersionAdmission({...base, liveRoute: false}), false);
   assert.equal(readVersionAdmission({...base, currentContext: {} as never}), false);
-  assert.equal(readVersionAdmission({...base, attemptRetired: true}), false);
+  assert.equal(readVersionAdmission({...base, attemptLive: false}), false);
+  assert.equal(readVersionAdmission({...base, renderedAttempt: undefined, currentAttempt: undefined}), false, 'both undefined never admits');
   assert.equal(readVersionAdmission({...base, candidate: epub}), false, 'the current version is not a change');
 });
 
