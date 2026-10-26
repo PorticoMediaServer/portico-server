@@ -51,6 +51,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const root = useRef<HTMLDivElement>(null), chrome = useRef<HTMLDivElement>(null), body = useRef<HTMLDivElement>(null), panelAnchor = useRef<HTMLButtonElement>(null), moreAnchor = useRef<HTMLButtonElement>(null);
   const bodyScroll = useRef<{identity?: string; top: number; left: number; anchor?: HTMLElement; offset?: number}>({top: 0, left: 0});
   const [panel, setPanel] = useState<WatchPanel | null>(null), [more, setMore] = useState(false), [shortcuts, setShortcuts] = useState(false), [visible, setVisible] = useState(true), [fullWindow, setFullWindow] = useState(false), [liveGuideOpen, setLiveGuideOpen] = useState(false);
+  const [controlsExit, setControlsExit] = useState<'idle' | 'tap'>('idle');
   type Scrub = {snapshot: WatchScreenProps['snapshot']; fence: PlaybackFence; seconds: number; pointerId: number};
   const [scrub, setScrub] = useState<Scrub | null>(null), [hoverSeconds, setHoverSeconds] = useState<number | null>(null);
   const scrubDrag = useRef<Scrub | null>(null);
@@ -112,15 +113,15 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
         if (keyboardFocus.current) return;
         if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
       }
-      setVisible(false);
+      setControlsExit('idle'); setVisible(false);
     }, milliseconds);
   }, [clearTimer, open, permanent, panel, externalPanel, more, shortcuts, liveGuideOpen, presentation?.playing]);
-  const reveal = useCallback(() => revealFor(coarsePointer ? 4000 : 2800), [revealFor, coarsePointer]);
+  const reveal = useCallback(() => revealFor(coarsePointer ? 4000 : 3000), [revealFor, coarsePointer]);
   useEffect(() => {
     const layout = `${width}:${height}:${geometry?.revision ?? ''}`, changed = lastLayout.current !== null && lastLayout.current !== layout;
     lastLayout.current = layout;
     // Q7 window/posture changes reveal for 3s; ordinary touch activity uses 4s.
-    revealFor(changed ? 3000 : coarsePointer ? 4000 : 2800);
+    revealFor(changed ? 3000 : coarsePointer ? 4000 : 3000);
     return clearTimer;
   }, [revealFor, clearTimer, coarsePointer, width, height, geometry?.revision, sourceKey]);
   useEffect(() => { onControlsVisibleChange?.(open && chromeVisible); }, [onControlsVisibleChange, open, chromeVisible]);
@@ -290,7 +291,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     {!touchTablet && (portrait || !windowPort?.fullscreen || !mobile) && <Control icon="i-full" label={t('next.states.shortcut.fullscreen')} active={fullWindow || windowPort?.fullscreen?.active} action={toggleFullscreen} />}
   </>;
   const stillWatching = surfaces?.modal === 'still-watching';
-  return <div ref={root} className={styles.watch} hidden={!open} tabIndex={-1} data-watch-screen data-mode={mode} data-still-watching={stillWatching || undefined} data-touch-expanded={coarsePointer && width >= 1024 || undefined} data-controls-visible={chromeVisible} data-panel-open={!!panel} data-scrubbing={!!activeScrub && mobile}
+  return <div ref={root} className={styles.watch} hidden={!open} tabIndex={-1} data-watch-screen data-mode={mode} data-still-watching={stillWatching || undefined} data-touch-expanded={coarsePointer && width >= 1024 || undefined} data-controls-visible={chromeVisible} data-controls-exit={controlsExit} data-panel-open={!!panel} data-scrubbing={!!activeScrub && mobile}
     onPointerDownCapture={() => { keyboardFocus.current = false; }}
     onPointerMove={event => { if (event.pointerType === 'mouse') reveal(); }} onFocusCapture={reveal}>
     <div ref={surfaceSlotRef} className={styles.pictureSlot} style={rectStyle(geometry?.picture)} data-watch-picture-slot data-media-slot="expanded" aria-hidden="true" />
@@ -317,7 +318,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
             back: binding.skips.back, forward: binding.skips.forward,
             single: () => {
               if (!controlsVisible.current) { controlsVisible.current = true; reveal(); }
-              else if (presentation?.playing && !permanent) { controlsVisible.current = false; clearTimer(); setVisible(false); }
+              else if (presentation?.playing && !permanent) { controlsVisible.current = false; clearTimer(); setControlsExit('tap'); setVisible(false); }
             },
             fullscreen: toggleFullscreen,
             feedback: (direction, seconds) => setTapFeedback(value => ({direction, seconds, x, y, sequence: (value?.sequence ?? 0) + 1})),
@@ -330,7 +331,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
         <Icon name={tapFeedback.direction === 'left' ? 'i-back' : 'i-fwd'} size={40} />
         <span>{t('duration.long.seconds', {seconds: tapFeedback.seconds})}</span>
       </div>}
-      {liveChrome ? open && <div className={styles.liveOverlay} data-visible={chromeVisible}>
+      {liveChrome ? open && <div className={styles.liveOverlay} data-visible={chromeVisible} inert={!chromeVisible || undefined}>
         <LiveChrome port={liveChrome} playing={!!presentation?.playing} onCollapse={onCollapse} onStop={() => send({kind: 'stop'})}
           onPlayPause={() => send({kind: mainKind})} onSkip={skip} onSeek={seconds => {if (can('seek')) send({kind: 'seek', seconds});}}
           onMore={anchor => {moreAnchor.current = anchor;setPanel(null);setMore(value => !value);}}
@@ -338,7 +339,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
       </div> : <>
         <div className={styles.shade} />
         {endCard?.backdrop && <><div className={styles.endAmbient} aria-hidden="true"><Artwork source={endCard.backdrop} alt="" width="100%" height="100%" /></div><div className={styles.endVeil} aria-hidden="true" /></>}
-        {!(endCard && mobile) && <div className={styles.top}>
+        {!(endCard && mobile) && <div className={styles.top} inert={!chromeVisible || undefined}>
           <Control large icon="i-down" label={t('player.minimize')} action={onCollapse} />
           <div className={styles.identity}><h2>{identity?.title}</h2><p>{identity && <Facts parts={identity.subtitle} />}</p></div>
           <div className={styles.together}>{surfaces?.together}</div>
@@ -353,8 +354,8 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
         </div>}
         {endCard ? <WatchEndCardView card={endCard} canReplay={can('replay')} onReplay={() => send({kind: 'replay'})} onClose={() => send({kind: 'stop'})} layout={mobile ? 'phone' : 'desktop'} reportError={binding.reportError}
           artwork={url => binding.artwork.foreground(url, 512, 16 / 9, {group: 'playback', priority: 'high'})} /> : <>
-        <div className={styles.center}>{transport}</div>
-        <div className={styles.bottom}>
+        <div className={styles.center} inert={!chromeVisible || undefined}>{transport}</div>
+        <div className={styles.bottom} inert={!chromeVisible || undefined}>
           <div className={styles.seek}>
             <span className={styles.rail}><i style={{width: `${bounds ? Math.min(100, Math.max(0, (drawnPosition - bounds.start) / (bounds.end - bounds.start) * 100)) : 0}%`}} />
               {presentation?.policy?.markers.map(marker => duration > 0 && <span key={marker.id} className={styles.marker} data-kind={marker.kind}
