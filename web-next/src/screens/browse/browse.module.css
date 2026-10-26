@@ -29,8 +29,8 @@
 .results[data-music] .listRow { height: 56px; }
 .results[data-music] .listRow::after { display: none; }
 .results[data-music] .listHead > :first-child { text-align: center; }
-.results[data-music] .listArt { width: 42px; height: 42px; border-radius: 6px; }
-.results[data-music] .listName { font-size: 16px; font-weight: 600; }
+.results[data-music] .listArt { width: 40px; height: 40px; border-radius: 6px; }
+.results[data-music] .listName { font-size: 15px; font-weight: 600; }
 .results[data-music] .musicMeta { overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: var(--color-text-secondary); }
 .results[data-music] .musicNumber { overflow: hidden; text-align: right; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
 .results[data-music] .listRow > :first-child { display: grid; place-items: center; font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
