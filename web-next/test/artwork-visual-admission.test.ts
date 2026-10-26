@@ -49,7 +49,7 @@ test('a mounted predecessor blocks its later sibling even when the sibling decod
   const a = paint.mount({scope: scopeA, group: 'row', order: 1});
   const b = paint.mount({scope: scopeA, group: 'row', order: 2});
   c.ready(() => seen.push('c'));
-  assert.deepEqual(seen, [], 'C decoded first but its mounted predecessors are still pending');
+  assert.equal(seen.length, 0, 'C decoded first but its mounted predecessors are still pending');
   assert.equal(time.pending(), 0, 'waiting for a mounted predecessor is not a timer fact');
   a.ready(() => seen.push('a'));
   assert.deepEqual(seen, ['a']);
@@ -166,7 +166,7 @@ test('a re-created slot cannot paint from a stale ready callback', () => {
   stale.retire();
   const fresh = paint.mount({scope: scopeA, group: 'row', order: 1});
   stale.ready(() => seen.push('stale'));
-  assert.deepEqual(seen, [], 'a retired slot never paints in a successor slot');
+  assert.equal(seen.length, 0, 'a retired slot never paints in a successor slot');
   fresh.ready(() => seen.push('fresh'));
   assert.deepEqual(seen, ['fresh']);
 });
