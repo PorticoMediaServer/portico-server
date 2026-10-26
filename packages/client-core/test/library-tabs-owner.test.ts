@@ -13,7 +13,7 @@ test('an online owner library gets exactly one attention tab', () => {
     const attention = tabs.filter(tab => tab.shows === 'unmatched');
     assert.equal(attention.length, 1, kind);
     assert.equal(attention[0].id, 'unmatched');
-    assert.equal(attention[0].label, 'library.tab.unmatched');
+    assert.equal(attention[0].label, 'next.ownerLibraries.tab.attention');
     assert.equal(tabs.at(-1)?.shows, 'unmatched', 'the attention tab is the last pivot');
   }
 });

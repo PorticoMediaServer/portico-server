@@ -10,6 +10,6 @@ export function LibraryMetadataMenu({onUnmatched}: {onUnmatched: () => void}) {
     trigger={<Button variant="icon" size="compact" icon="i-more" iconOnly aria-label={t('next.browse.libraryOptions')}/>}
     items={[
       {id: 'server', label: t('next.browse.server'), section: true, ownerOnly: true},
-      {id: 'unmatched', label: t('library.tab.unmatched'), icon: 'i-list', onSelect: () => {setOpen(false); onUnmatched();}},
+      {id: 'unmatched', label: t('next.ownerLibraries.tab.attention'), icon: 'i-list', onSelect: () => {setOpen(false); onUnmatched();}},
     ]}/>;
 }

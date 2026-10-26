@@ -65,7 +65,7 @@ export function LibraryMenu({owner, read = false, onSaveView, onMarkAll, onEditP
     {onMarkAll && <MenuItem icon="i-check" description={countSummary} onSelect={act(onMarkAll)}>{t(read ? 'next.browse.markAllRead' : 'next.browse.markAllWatched')}</MenuItem>}
     {onEditPins && <MenuItem icon="i-updown" onSelect={act(onEditPins)}>{t('next.browse.editPins')}</MenuItem>}
     {owner && (onUnmatched || onLibrarySettings || onScan) && <MenuGroup ownerOnly className={styles.ownerGroup} label={<span className={styles.ownerLabel}>{t('next.browse.server')}{ownerMark}</span>}>
-      {onUnmatched && <MenuItem icon="i-list" onSelect={act(onUnmatched)}>{t('library.tab.unmatched')}</MenuItem>}
+      {onUnmatched && <MenuItem icon="i-list" onSelect={act(onUnmatched)}>{t('next.ownerLibraries.tab.attention')}</MenuItem>}
       {onLibrarySettings && <MenuItem icon="i-cog" onSelect={act(onLibrarySettings)}>{t('next.browse.librarySettings')}</MenuItem>}
       {onScan && <MenuItem icon="i-reload" onSelect={act(onScan)}>{t('next.browse.scan')}</MenuItem>}
     </MenuGroup>}

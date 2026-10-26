@@ -64,7 +64,9 @@ const TABS: Readonly<Record<string, readonly LibraryTab[]>> = {
 const unmatched: LibraryTab = {id: 'unmatched', label: 'library.tab.unmatched', pivot: 'albums', shows: 'titles', fixedFilter: [{field: 'match', operator: 'equals', value: 'unmatched'}]};
 
 /** The tabs of a library of this kind, in order. Anime has television's. */
-const ownerUnmatched: LibraryTab = {id: 'unmatched', label: 'library.tab.unmatched', shows: 'unmatched'};
+/** The owner's last pivot is named like the screen it is the other door to, so it is not
+ *  mistaken for the public match filter above. */
+const ownerUnmatched: LibraryTab = {id: 'unmatched', label: 'next.ownerLibraries.tab.attention', shows: 'unmatched'};
 
 export function libraryTabs(kind: string, options: Readonly<{owner?: boolean; /** True only from the current public albums capability; absent/offline/local-only is false. */ unmatched?: boolean; /** True only when the current library's own metadata agent read says online; unknown is false. */ onlineAttention?: boolean}> = {}): readonly LibraryTab[] {
   const tabs = TABS[kind === 'anime' ? 'tv' : kind] ?? [discover];
