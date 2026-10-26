@@ -1,4 +1,5 @@
 import {routeBody} from "../../contracts/src/routes.ts";
+import {parseSourceChoiceApplicableFields,parseSourceChoiceBaseline,parseSourceChoiceDefinitions,type SourceChoiceBaseline,type SourceChoiceDefinition,type SourceChoiceField} from './remote-source-choice.ts';
 import type {RouteResponse} from "../../contracts/src/routes.ts";
 import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
 /** Owner-only source metadata and operation recovery. Credentials exist only in an
@@ -35,7 +36,13 @@ export type AnalysisPolicy=Readonly<{libraryId:string;enabled:boolean;revision:n
 /** The read-authority part of one source's Reading settings. A missing saved profile is
  * reported as `saved:false` with the server's list/once defaults; it is never invented. */
 export type SourceReadValues=Readonly<{scanDepth:'file_list_only'|'basic'|'complete';wholeFileReads:boolean;connections:number;requestsPerSecond:number;bytesPerSecond:number;/** Recorded advanced media-analysis consent; absent means this server never published one, not false. */allowAdvancedMediaAnalysis?:boolean}>;
-export type SourceReadSettings=Readonly<{sourceId:string;generation:string;revision:number;saved:boolean;values:SourceReadValues}>;
+export type SourceReadSettings=Readonly<{sourceId:string;generation:string;revision:number;saved:boolean;values:SourceReadValues;
+ /** Present only when the server observed an effective configuration generation. */
+ configurationGeneration?:string;
+ /** Root57 projection, present only as the server published it. */
+ choiceDefinitions?:readonly SourceChoiceDefinition[];
+ choiceApplicableFields?:readonly SourceChoiceField[];
+ choiceBaseline?:SourceChoiceBaseline}>;
 export type SourceReadPreset='list'|'once'|'everything'|'ask';
 /** One folder inside a saved source during browsing: its display name, the
  * absolute path the catalog uses for it, and the path inside the source. */
@@ -216,7 +223,16 @@ function sourceReadValues(raw:unknown):SourceReadValues{
 }
 function sourceReadSettings(raw:unknown):SourceReadSettings{
  if(!record(raw)||!text(raw.sourceId,256)||!raw.sourceId||!text(raw.generation,64)||!raw.generation||!integer(raw.revision)||typeof raw.saved!=='boolean')invalid();
- return Object.freeze({sourceId:raw.sourceId,generation:raw.generation,revision:raw.revision,saved:raw.saved,values:sourceReadValues(raw.values)});
+ const configurationGeneration=raw.configurationGeneration;
+ if(configurationGeneration!==undefined&&(typeof configurationGeneration!=='string'||!/^[1-9][0-9]{0,18}$/.test(configurationGeneration)||configurationGeneration.length>19))invalid();
+ const choiceDefinitions=parseSourceChoiceDefinitions(raw.choiceDefinitions);
+ const choiceApplicableFields=parseSourceChoiceApplicableFields(raw.choiceApplicableFields);
+ const choiceBaseline=parseSourceChoiceBaseline(raw.choiceBaseline);
+ return Object.freeze({sourceId:raw.sourceId,generation:raw.generation,revision:raw.revision,saved:raw.saved,values:sourceReadValues(raw.values),
+  ...(configurationGeneration===undefined?{}:{configurationGeneration}),
+  ...(choiceDefinitions===undefined?{}:{choiceDefinitions}),
+  ...(choiceApplicableFields===undefined?{}:{choiceApplicableFields}),
+  ...(choiceBaseline===undefined?{}:{choiceBaseline})});
 }
 function remoteFolder(raw:unknown):RemoteFolder{
  if(!record(raw)||!text(raw.name,255)||!raw.name||!text(raw.path)||!raw.path||!text(raw.relative)||typeof raw.hidden!=='boolean')invalid();

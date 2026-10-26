@@ -25,6 +25,7 @@ export * from './owner-claim-client.ts';
 export * from './route-connection.ts';
 export * from './known-servers.ts';
 export * from './portico-servers.ts';
+export * from './remote-source-choice.ts';
 import type {PreparedChoice} from './prepared-media.ts';
 import type {PlaybackChoices} from './playback-v1/choices.ts';
 import {ListeningDeadlineClock,noListeningDeadlines,type NativeListeningStatus,type NativeListeningV1Control,type NativeListeningV1Event,type ListeningDeadlines,type ListeningPolicy} from './playback/native-listening.ts';
