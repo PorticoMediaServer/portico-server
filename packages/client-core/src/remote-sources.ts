@@ -1,5 +1,5 @@
 import {routeBody} from "../../contracts/src/routes.ts";
-import {parseSourceChoiceApplicableFields,parseSourceChoiceBaseline,parseSourceChoiceDefinitions,type SourceChoiceBaseline,type SourceChoiceDefinition,type SourceChoiceField} from './remote-source-choice.ts';
+import {parseSourceChoiceApplicableFields,parseSourceChoiceBaseline,parseSourceChoiceDefinitions,sourceChoiceAdopt,sourceChoiceCommand,sourceChoicePutBody,type SourceChoiceBaseline,type SourceChoiceCommand,type SourceChoiceComparison,type SourceChoiceDefinition,type SourceChoiceField} from './remote-source-choice.ts';
 import type {RouteResponse} from "../../contracts/src/routes.ts";
 import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
 /** Owner-only source metadata and operation recovery. Credentials exist only in an
@@ -363,6 +363,16 @@ function safeError(e:unknown):string{
   if(version&&minimum)return `This rclone is too old (${version}). Choose ${minimum} or newer.`;
  }
  return messages[code]??'The operation outcome is not confirmed. Check the original receipt; credentials will not be resent automatically.';
+}
+export type SourceChoiceIntent=Readonly<{operationId:string;body:ReturnType<typeof sourceChoicePutBody>;command:SourceChoiceCommand;owner:object;epoch:number}>;
+export type SourceChoiceApplyResult=
+ |Readonly<{kind:'applied';settings:SourceReadSettings;comparison:SourceChoiceComparison}>
+ |Readonly<{kind:'accepted-unavailable';settings:SourceReadSettings}>
+ |Readonly<{kind:'unknown';intent:SourceChoiceIntent;error:unknown}>;
+function retiredChoice(error:unknown):boolean{return record(error)&&typeof error.code==='string'&&normalizedCode(error.code)==='retired';}
+function definiteRefusal(error:unknown):boolean{
+ const code=record(error)&&typeof error.code==='string'?normalizedCode(error.code):'';
+ return ['invalid_request','unauthorized','forbidden','not_permitted','revision_mismatch','idempotency_key_reused'].includes(code);
 }
 export class RemoteSourceService{
  private state:RemoteState={sources:[],loading:false,busy:false,error:'',errorCode:'',operationId:null,operationKind:'',ambiguous:false,receipt:null,rclone:null,alreadyDone:false,mountSupported:false};
@@ -734,6 +744,72 @@ async saveProfile(profile:SourceReadSettings,values:SourceReadValues,guard?:()=>
   throw accepted?Object.assign(new Error(safeError({code:auth?code:'refresh_failed'})),{code:auth?code:'refresh_failed'}):Object.assign(new Error(safeError(error)),{code:code||'internal'});
  }finally{if(this.live()&&epoch===this.epoch)this.publish({busy:false});}
 }
+
+ /** The one atomic explicit-choice PUT. The original admission is claimed
+  * synchronously before the operation id or busy publication; a first choice
+  * needs no baseline. An uncertain outcome retains the exact intent for the
+  * narrow source-operation recovery, never a generic source recovery. */
+ async saveProfileStartChoice(profile:SourceReadSettings,advanced:SourceAdvancedSettings,offered:SourceChoiceDefinition,guard?:()=>boolean):Promise<SourceChoiceApplyResult>{
+  if(!this.live()||(guard&&!guard()))throw new Error('Scope changed.');
+  if(this.choiceOpening!==0||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');
+  if(profile.revision===0&&profile.saved||advanced.revision===0&&advanced.saved)throw new Error('Revision zero needs an unsaved source.');
+  const command=sourceChoiceCommand(profile,advanced,offered);
+  if(!command)throw new Error('This choice cannot be applied from the current read.');
+  const epoch=this.epoch,opening=++this.openingSeq;this.choiceOpening=opening;
+  this.publish({busy:true,error:'',errorCode:'',receipt:null,rclone:null,alreadyDone:false,operationId:null,operationKind:'source'});
+  let intent:SourceChoiceIntent|undefined;
+  try{
+   const op=await this.operationId();this.choiceCurrent(opening,epoch,guard);
+   const body=sourceChoicePutBody(command,op);
+   intent=Object.freeze({operationId:op,body,command,owner:this.choiceOwner,epoch});
+   const raw=await this.request(encodedRoutePath("put_storage_source_read_profile",{"id":encodeURIComponent(command.sourceId)}),'PUT',routeBody("put_storage_source_read_profile",body),guard);
+   this.choiceCurrent(opening,epoch,guard);
+   const parent=this.choiceParent(raw,op,command);
+   const settings=await this.readProfile(command.sourceId,undefined,guard);
+   this.choiceCurrent(opening,epoch,guard);
+   if(settings.revision!==parent.revision)return Object.freeze({kind:'accepted-unavailable',settings});
+   const comparison=sourceChoiceAdopt(settings,command);
+   if(!comparison)return Object.freeze({kind:'accepted-unavailable',settings});
+   this.publish({busy:false});
+   return Object.freeze({kind:'applied',settings,comparison});
+  }catch(error){
+   if(retiredChoice(error))throw error;
+   if(intent&&!definiteRefusal(error))return Object.freeze({kind:'unknown',intent,error});
+   throw error;
+  }finally{
+   if(this.choiceOpening===opening){this.choiceOpening=0;if(this.live()&&epoch===this.epoch)this.publish({busy:false});}
+  }
+ }
+ private choiceOpening=0;private openingSeq=0;private readonly choiceOwner=Object.freeze({});
+ private choiceCurrent(opening:number,epoch:number,guard?:()=>boolean){if(!this.live()||(guard&&!guard())||epoch!==this.epoch||this.choiceOpening!==opening)throw Object.assign(new Error('Scope changed.'),{code:'retired'});}
+ private choiceParent(raw:unknown,op:string,command:SourceChoiceCommand):SourceReadSettings{
+  this.parseReceipt(raw,op);
+  if(!record(raw)||!record(raw.receipt)||raw.receipt.readSettings===undefined)invalid();
+  const settings=sourceReadSettings(raw.receipt.readSettings);
+  if(settings.sourceId!==command.sourceId||settings.generation!==command.expectedGeneration||settings.configurationGeneration!==command.startChoice.expectedConfigurationGeneration)invalid();
+  return settings;
+ }
+ /** Recovery is only the original source-operation GET under this same service
+  * and still-current opening; it requires the parent readSettings and parses it
+  * with the same typed intent. */
+ async recoverStartChoice(intent:SourceChoiceIntent,guard?:()=>boolean):Promise<SourceChoiceApplyResult>{
+  if(intent.owner!==this.choiceOwner||!this.live()||(guard&&!guard())||this.choiceOpening!==0||this.state.busy||this.state.ambiguous)throw new Error('This operation belongs to another opening.');
+  const epoch=this.epoch,opening=++this.openingSeq;this.choiceOpening=opening;
+  try{
+   const raw=await this.request(encodedRoutePath("get_storage_source_operations_id",{"id":encodeURIComponent(intent.operationId)}),'GET',undefined,guard);
+   this.choiceCurrent(opening,epoch,guard);
+   const parent=this.choiceParent(raw,intent.operationId,intent.command);
+   const settings=await this.readProfile(intent.command.sourceId,undefined,guard);
+   if(settings.revision!==parent.revision)return Object.freeze({kind:'accepted-unavailable',settings});
+   const comparison=sourceChoiceAdopt(settings,intent.command);
+   return comparison?Object.freeze({kind:'applied',settings,comparison}):Object.freeze({kind:'accepted-unavailable',settings});
+  }catch(error){
+   if(retiredChoice(error))throw error;
+   if(!definiteRefusal(error))return Object.freeze({kind:'unknown',intent,error});
+   throw error;
+  }finally{if(this.choiceOpening===opening){this.choiceOpening=0;if(this.live()&&epoch===this.epoch)this.publish({busy:false});}}
+ }
+
 
 async networkPolicy(libraryId:string):Promise<NetworkPolicy>{const epoch=this.epoch,raw=await this.request(encodedRoutePath("get_libraries_id_network_roots", {"id": encodeURIComponent(libraryId)}));if(!this.live()||epoch!==this.epoch)throw new Error('Scope changed.');this.fence(raw);if(!record(raw)||!record(raw.policy)||raw.policy.libraryId!==libraryId||!integer(raw.policy.revision)||!Array.isArray(raw.policy.origins)||raw.policy.origins.length>8||!raw.policy.origins.every(origin=>text(origin,8192)))invalid();return Object.freeze({libraryId,revision:raw.policy.revision,origins:Object.freeze(raw.policy.origins as string[])});}
  async setNetworkPolicy(policy:NetworkPolicy,roots:readonly string[]):Promise<NetworkPolicy>{if(roots.length>8||roots.some(root=>!text(root,8192)))throw new Error('Invalid network roots.');const epoch=this.epoch;await this.request(encodedRoutePath("post_libraries_id_network_roots", {"id": encodeURIComponent(policy.libraryId)}),'POST',routeBody("post_libraries_id_network_roots", {roots,expectedRevision:policy.revision}));if(!this.live()||epoch!==this.epoch)throw new Error('Scope changed.');return this.networkPolicy(policy.libraryId);}

@@ -4,7 +4,7 @@
  * reading or writing any source mutation. Consent is never part of a definition
  * or baseline reading: choosing or comparing a choice cannot grant it.
  */
-import type {SourceReadValues,SourceAdvanced} from './remote-sources.ts';
+import type {SourceReadValues,SourceAdvanced,SourceReadSettings,SourceAdvancedSettings} from './remote-sources.ts';
 
 export const sourceChoiceNames=['list','once','everything','ask'] as const;
 export type SourceChoiceName=typeof sourceChoiceNames[number];
@@ -127,4 +127,85 @@ export function sourceChoiceComparison(settings:Readonly<{sourceId:string;genera
  const changed=baseline.applicableFields.filter(field=>differs(field,definition,settings.values,baseline.currentAdvanced));
  if(changed.length!==baseline.changedFields.length||changed.some((field,index)=>field!==baseline.changedFields[index]))return undefined;
  return Object.freeze({name:baseline.name,definitionRevision:baseline.definitionRevision,applicableFields:baseline.applicableFields,changedFields:baseline.changedFields});
+}
+
+
+/** The exact explicit choice a later write will name. It is intent, not a grant. */
+export type SourceChoiceStart=Readonly<{name:SourceChoiceName;definitionRevision:number;expectedAdvancedRevision:number;expectedConfigurationGeneration:string}>;
+/** One frozen original-pair capture for a first or repeat explicit choice. The
+ * wire body later selects only the start-choice and read controls; metadata here
+ * never leaves the process. */
+export type SourceChoiceCommand=Readonly<{sourceId:string;expectedGeneration:string;expectedRevision:number;values:SourceReadValues;
+ startChoice:SourceChoiceStart;definition:SourceChoiceDefinition;applicableFields:readonly SourceChoiceField[];originalAdvanced:SourceAdvanced;originalConsent?:boolean}>;
+
+/** Actual saved reading, including the independent consent fact (validated, not
+ * forwarded in startChoice or definition). */
+function actualReading(raw:unknown):SourceReadValues{
+ if(!record(raw))bad();
+ const {scanDepth,wholeFileReads,connections,requestsPerSecond,bytesPerSecond,allowAdvancedMediaAnalysis}=raw;
+ if((scanDepth!=='file_list_only'&&scanDepth!=='basic'&&scanDepth!=='complete')||typeof wholeFileReads!=='boolean')bad();
+ if(!integer(connections,1)||connections>32||!integer(requestsPerSecond,1)||requestsPerSecond>50)bad();
+ if(!integer(bytesPerSecond)||!(bytesPerSecond===0||bytesPerSecond>=1_000_000&&bytesPerSecond<=1_000_000_000&&bytesPerSecond%1_000_000===0))bad();
+ if(allowAdvancedMediaAnalysis!==undefined&&typeof allowAdvancedMediaAnalysis!=='boolean')bad();
+ return Object.freeze({scanDepth,wholeFileReads,connections,requestsPerSecond,bytesPerSecond,...(allowAdvancedMediaAnalysis===undefined?{}:{allowAdvancedMediaAnalysis})}) as SourceReadValues;
+}
+
+/** Capture the original read and Advanced pair for an offered definition. The
+ * offered object must be the exact one the read published, so a substituted
+ * clone cannot be turned into intent. No baseline is required: a first explicit
+ * choice works from the original revisions and effective generation. Every
+ * retained value is a frozen copy; invalid or mismatched input returns undefined. */
+export function sourceChoiceCommand(read:SourceReadSettings,advanced:SourceAdvancedSettings,offered:SourceChoiceDefinition):SourceChoiceCommand|undefined{
+ try{
+  const capturedDefinition=definition(offered);
+  const originalDefinitions=read.choiceDefinitions;
+  if(!originalDefinitions||!originalDefinitions.includes(offered))return undefined;
+  // The whole published set must still be the complete four, even though the
+  // identity check is against the original array the caller actually read.
+  parseSourceChoiceDefinitions(originalDefinitions);
+  const sourceId=read.sourceId,rawGeneration=read.generation,configurationGeneration=read.configurationGeneration,originalRevision=read.revision;
+  const advancedSourceId=advanced.sourceId,advancedRawGeneration=advanced.generation,advancedRevision=advanced.revision;
+  const values=actualReading(read.values),originalAdvanced=definitionAdvanced(advanced.values),applicable=fields([...(read.choiceApplicableFields??[])]);
+  if(typeof sourceId!=='string'||sourceId.length<1||sourceId.length>160||sourceId!==advancedSourceId)return undefined;
+  if(!generation(rawGeneration)||rawGeneration!==advancedRawGeneration||!generation(configurationGeneration))return undefined;
+  if(!integer(originalRevision)||!integer(advancedRevision))return undefined;
+  const startChoice=Object.freeze({name:capturedDefinition.name,definitionRevision:capturedDefinition.definitionRevision,
+   expectedAdvancedRevision:advancedRevision,expectedConfigurationGeneration:configurationGeneration});
+  const wireValues=Object.freeze({scanDepth:capturedDefinition.reading.scanDepth,wholeFileReads:values.wholeFileReads,
+   connections:capturedDefinition.reading.connections,requestsPerSecond:capturedDefinition.reading.requestsPerSecond,bytesPerSecond:capturedDefinition.reading.bytesPerSecond}) as SourceReadValues;
+  return Object.freeze({sourceId,expectedGeneration:rawGeneration,expectedRevision:originalRevision,values:wireValues,
+   startChoice,definition:capturedDefinition,applicableFields:applicable,originalAdvanced,
+   ...(values.allowAdvancedMediaAnalysis===undefined?{}:{originalConsent:values.allowAdvancedMediaAnalysis})});
+ }catch{return undefined;}
+}
+
+
+/** The exact one-PUT body for an explicit choice. Only the selected four read
+ * controls plus the original compatibility flag travel; consent never does, and
+ * the Advanced object is not sent separately. */
+export function sourceChoicePutBody(command:SourceChoiceCommand,operationId:string):Readonly<{operationId:string;expectedGeneration:string;expectedRevision:number;values:SourceReadValues;startChoice:SourceChoiceStart}>{
+ if(typeof operationId!=='string'||!/^[0-9]{13}-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(operationId))bad();
+ return Object.freeze({operationId,expectedGeneration:command.expectedGeneration,expectedRevision:command.expectedRevision,values:command.values,startChoice:command.startChoice});
+}
+
+/** Adopt a confirmed choice only from the exact recorded association: the same
+ * source, raw and effective generations, the exact definition and applicable
+ * set, both accepted revisions, and coherence with the current read values. The
+ * read revision may be unchanged; the Advanced revision is read from the
+ * baseline, never derived. */
+export function sourceChoiceAdopt(settings:SourceReadSettings,command:SourceChoiceCommand):SourceChoiceComparison|undefined{
+ const definitions=settings.choiceDefinitions,applicableFields=settings.choiceApplicableFields,baseline=settings.choiceBaseline;
+ if(!definitions||!applicableFields||!baseline||!settings.configurationGeneration)return undefined;
+ if(settings.sourceId!==command.sourceId||settings.generation!==command.expectedGeneration||settings.configurationGeneration!==command.startChoice.expectedConfigurationGeneration)return undefined;
+ if(baseline.sourceId!==command.sourceId||baseline.generation!==command.expectedGeneration||baseline.configurationGeneration!==command.startChoice.expectedConfigurationGeneration)return undefined;
+ if(baseline.name!==command.startChoice.name||baseline.definitionRevision!==command.startChoice.definitionRevision||baseline.advancedRevision!==command.startChoice.expectedAdvancedRevision)return undefined;
+ if(baseline.applicableFields.length!==applicableFields.length||baseline.applicableFields.some((field,index)=>field!==applicableFields[index]))return undefined;
+ const match=definitions.filter(value=>value.name===baseline.name&&value.definitionRevision===baseline.definitionRevision);
+ if(match.length!==1)return undefined;
+ const definition=match[0]!;
+ if(!sameReading(definition.reading,baseline.reading)||!sameAdvanced(definition.advanced,baseline.advanced))return undefined;
+ if(!sameReading(definition.reading,command.definition.reading)||!sameAdvanced(definition.advanced,command.definition.advanced))return undefined;
+ if(baseline.changedFields.length!==0)return undefined;
+ return sourceChoiceComparison({sourceId:settings.sourceId,generation:settings.generation,revision:settings.revision,configurationGeneration:settings.configurationGeneration,
+  values:settings.values,choiceDefinitions:definitions,choiceApplicableFields:applicableFields,choiceBaseline:baseline});
 }
