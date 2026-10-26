@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useRef, useState} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
 import type {ServerInvitation} from '@core/direct-account.ts';
 import {settingsSpec} from '@core/presentation/settings-spec.ts';
@@ -8,6 +8,7 @@ import {Dialog} from '../../kit/overlays/Dialog';
 import {SettingsGroup, SettingsPageFailure, SettingsTable, type SettingsTableRow, type TableQuery} from '../../kit/settings';
 import kitStyles from '../../kit/settings/settings.module.css';
 import type {SettingsInvitations} from './invitations';
+import {InvitationsView, type InvitationScope, type ResidentInvitations, type InvitationOpening, type InvitationRead, type InvitationRevoke} from './people-invitations-view';
 
 const t = defaultI18n.t;
 const section = settingsSpec.find(candidate => candidate.scope === 'server' && candidate.id === 'people')!;
@@ -16,15 +17,8 @@ const DAY = 86_400_000;
 const date = new Intl.DateTimeFormat(undefined, {dateStyle: 'medium'});
 const initialQuery: TableQuery = {search: '', filters: {status: 'all'}, sort: {by: model.sort?.by ?? 'sent', direction: (model.sort?.dir as 'asc' | 'desc' | undefined) ?? 'desc'}};
 
-/** The producer already normalizes an expired pending row; a clock that moved
- * between read and paint is still shown as expired, never as waiting. */
-function stateOf(invitation: ServerInvitation, now: number): ServerInvitation['state'] {
-  if (invitation.state === 'pending' && Date.parse(invitation.expiresAt) <= now) return 'expired';
-  return invitation.state;
-}
-
 function invitationRow(invitation: ServerInvitation, libraries: readonly {id: string; name: string}[], now: number): SettingsTableRow {
-  const state = stateOf(invitation, now), notes = invitation.notes?.trim() ?? '';
+  const state = invitation.state, notes = invitation.notes?.trim() ?? '';
   const title = notes || t('next.settings.invitations.linkOnly');
   const role = invitation.role === 'admin';
   const names = invitation.allowedLibraries.map(id => libraries.find(library => library.id === id)?.name).filter((name): name is string => !!name);
@@ -32,7 +26,7 @@ function invitationRow(invitation: ServerInvitation, libraries: readonly {id: st
     : names.length === invitation.allowedLibraries.length && names.length <= 2 ? defaultI18n.list(names)
     : t('next.settings.invitations.libraries', {count: invitation.allowedLibraries.length});
   const days = Math.ceil((Date.parse(invitation.expiresAt) - now) / DAY);
-  const status = state === 'pending' ? days <= 2
+  const status = state === 'pending' ? days > 0 && days <= 2
       ? {title: t('next.settings.invitations.expiresIn', {count: Math.max(1, days)}), tone: 'warn' as const}
       : {title: t('next.settings.personStatus.waiting'), tone: 'quiet' as const}
     : state === 'accepted' ? {title: invitation.porticoUsername ? t('next.settings.invitations.usedBy', {name: invitation.porticoUsername}) : t('next.settings.invitations.used'), tone: 'ok' as const}
@@ -60,102 +54,155 @@ export function PeopleInvitations({invitations, libraries, authority, version, o
   openHome: () => void;
   reportError: (error: unknown) => void;
 }>) {
-  const [query, setQuery] = useState<TableQuery>(initialQuery);
-  const [page, setPage] = useState<Readonly<{items: readonly ServerInvitation[]; nextCursor?: string; matchedCount: number; totalCount: number}>>();
-  const [refresh, setRefresh] = useState(0), [loading, setLoading] = useState(false), [error, setError] = useState<unknown>();
-  const [note, setNote] = useState<MessageId>(), [confirming, setConfirming] = useState<ServerInvitation>();
-  const [revoking, setRevoking] = useState(false);
-  const mounted = useRef(true), generation = useRef(0), noteTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const confirmOpener = useRef<HTMLElement | null>(null), revokeOperation = useRef('');
-  useEffect(() => {mounted.current = true;return () => {mounted.current = false;clearTimeout(noteTimer.current);};}, []);
-  const current = useCallback(() => mounted.current && authority.isCurrent(), [authority]);
-  const failure = useCallback((value: unknown) => {
-    if (!current()) return;
+  const [entry, setEntry] = useState<Readonly<{view: InvitationsView; invitations: SettingsInvitations; authority: typeof authority; id: number}>>();
+  const entrySequence = useRef(0);
+  // The lease is created by a committed layout, including StrictMode remounts.
+  useLayoutEffect(() => {
+    const view = new InvitationsView(authority.isCurrent);
+    const owned = Object.freeze({view, invitations, authority, id: ++entrySequence.current});
+    setEntry(owned);
+    return () => owned.view.retire();
+  }, [invitations, authority]);
+  // A successor render cannot combine a predecessor's view with new ports.
+  // A fresh layout entry also gives the child fresh query/page/modal state.
+  return entry && entry.invitations === invitations && entry.authority === authority && entry.view.current()
+    && <InvitationTable key={entry.id} version={version} view={entry.view} invitations={entry.invitations} libraries={libraries} authority={entry.authority}
+    openInvite={openInvite} openHome={openHome} reportError={reportError} />;
+}
+
+function InvitationTable({view, invitations, libraries, authority, version, openInvite, openHome, reportError}: Readonly<{
+  view: InvitationsView;
+  version: number;
+  invitations: SettingsInvitations;
+  libraries: readonly {id: string; name: string}[];
+  authority: Readonly<{isCurrent: () => boolean; onAuthorityChanged: () => void}>;
+  openInvite: ((opener: HTMLElement) => void) | undefined;
+  openHome: () => void;
+  reportError: (error: unknown) => void;
+}>) {
+  const [query, setQuery] = useState<TableQuery>(initialQuery), [refresh, setRefresh] = useState(0);
+  const [scope, setScope] = useState<InvitationScope>();
+  const [resident, setResident] = useState<ResidentInvitations>();
+  const [busy, setBusy] = useState<InvitationScope | InvitationRead>(), [error, setError] = useState<unknown>();
+  const loading = !!busy;
+  const [note, setNote] = useState<Readonly<{message: MessageId}>>();
+  const [confirming, setConfirming] = useState<InvitationOpening>();
+  const [running, setRunning] = useState<InvitationRevoke>();
+  const noteTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(noteTimer.current), []);
+  const failure = (value: unknown, selected: InvitationScope) => {
     const status = value && typeof value === 'object' && 'status' in value ? value.status : undefined;
     if (status === 401 || status === 403) {authority.onAuthorityChanged();return;}
-    setError(value);
-  }, [authority, current]);
-  useEffect(() => {
-    if (!current()) return;
-    const epoch = ++generation.current, controller = new AbortController();
-    setPage(undefined); setLoading(true); setError(undefined);
-    const timer = setTimeout(() => {
-      void invitations.read(query, '', {signal: controller.signal, isCurrent: current}).then(value => {
-        if (!controller.signal.aborted && epoch === generation.current && current()) setPage(value);
-      }).catch(value => {if (!controller.signal.aborted && epoch === generation.current) failure(value);})
-        .finally(() => {if (epoch === generation.current) setLoading(false);});
-    }, query.search ? 200 : 0);
-    return () => {clearTimeout(timer); controller.abort();};
-  }, [invitations, query, refresh, version, current, failure]);
-  const more = () => {
-    if (!page?.nextCursor || loading || !current()) return;
-    const epoch = generation.current, before = page, controller = new AbortController();
-    setLoading(true);
-    void invitations.read(query, page.nextCursor, {signal: controller.signal, isCurrent: current}).then(next => {
-      if (!controller.signal.aborted && epoch === generation.current && current()) {
-        const ids = new Set(before.items.map(invitation => invitation.id));
-        setPage({...next, items: [...before.items, ...next.items.filter(invitation => !ids.has(invitation.id))]});
+    setError(before => view.scopeCurrent(selected) ? value : before);
+  };
+  const read = (ticket: InvitationRead, cursor: string) => {
+    void invitations.read(ticket.scope.query, cursor, {signal: ticket.life.signal, isCurrent: () => view.readCurrent(ticket)}).then(value => {
+      const page = view.acceptRead(ticket, value);
+      if (page) {
+        setResident(before => view.pageCurrent(page) ? page : before);
+        setBusy(before => before === ticket ? undefined : before);
       }
-    }).catch(value => {if (!controller.signal.aborted && epoch === generation.current) failure(value);})
-      .finally(() => {if (epoch === generation.current) setLoading(false);});
+    }).catch(value => {
+      if (view.refuseRead(ticket)) {setBusy(before => before === ticket ? undefined : before);failure(value, ticket.scope);}
+    });
+  };
+  useLayoutEffect(() => {
+    const owned = view.replace(query);
+    setScope(owned);setResident(undefined);setBusy(owned);setError(undefined);setConfirming(undefined);setRunning(undefined);
+    const timer = setTimeout(() => {
+      const ticket = view.beginRead(owned);
+      if (ticket) {setBusy(ticket);read(ticket, '');}
+    }, owned.query.search ? 200 : 0);
+    return () => {clearTimeout(timer);view.retireScope(owned);};
+    // The read owns these exact committed source/authority closures. A new
+    // source creates a new view; no pending callback reads replacement refs.
+  }, [view, query, refresh, version]);
+  useLayoutEffect(() => confirming ? view.commitOpening(confirming) : undefined, [view, confirming]);
+  const page = view.pageCurrent(resident) ? resident : undefined;
+  const opening = view.openingCurrent(confirming) ? confirming : undefined;
+  const revoking = !!opening && running?.opening === opening;
+  const more = () => {
+    if (!scope || !page?.value.nextCursor) return;
+    const ticket = view.beginRead(scope, page);
+    if (ticket) {setBusy(ticket);read(ticket, page.value.nextCursor);}
   };
   const show = (message: MessageId) => {
-    clearTimeout(noteTimer.current); setNote(message);
-    noteTimer.current = setTimeout(() => {if (mounted.current) setNote(undefined);}, 4000);
+    const owned = Object.freeze({message});
+    clearTimeout(noteTimer.current);setNote(owned);
+    noteTimer.current = setTimeout(() => {if (view.current()) setNote(before => before === owned ? undefined : before);}, 4000);
   };
-  const copy = async (invitation: ServerInvitation) => {
-    if (!current()) return;
-    const controller = new AbortController();
+  const copy = async (selected: ResidentInvitations, invitation: ServerInvitation) => {
+    const current = () => view.rowCurrent(selected, invitation);
+    if (!current() || invitation.state !== 'pending') return;
     try {
-      const link = await invitations.link(invitation, {signal: controller.signal, isCurrent: current});
+      const link = await invitations.link(invitation, {signal: selected.life.signal, isCurrent: current});
       if (!current()) return;
       await navigator.clipboard.writeText(link);
       if (current()) show('next.settings.invitations.linkCopied');
     } catch (value) {if (current()) reportError(value);}
   };
-  const revoke = async () => {
-    if (!confirming || revoking || !current()) return;
-    setRevoking(true);
-    const controller = new AbortController();
+  const cancel = (selected: InvitationOpening) => {
+    if (view.cancel(selected)) setConfirming(before => before === selected ? undefined : before);
+  };
+  const revoke = async (selected: InvitationOpening) => {
+    let ticket: InvitationRevoke | undefined;
     try {
-      // One operation for this confirmation: a retry repeats that exact request.
-      if (!revokeOperation.current) revokeOperation.current = randomId();
-      await invitations.revoke(confirming, revokeOperation.current, {signal: controller.signal, isCurrent: current});
-      if (!current()) return;
-      revokeOperation.current = ''; setConfirming(undefined); show('next.settings.invitations.revoked'); setRefresh(value => value + 1);
-    } catch (value) {if (current()) reportError(value);}
-    finally {if (mounted.current) setRevoking(false);}
+      ticket = view.beginRevoke(selected, randomId);
+      if (!ticket) return;
+      const owned = ticket;
+      setRunning(owned);
+      await invitations.revoke(selected.row, owned.operationId, {signal: selected.life.signal, isCurrent: () => view.revokeCurrent(owned)});
+      if (!view.settleRevoke(owned, true)) return;
+      setConfirming(before => before === selected ? undefined : before);
+      setRunning(before => before === owned ? undefined : before);
+      show('next.settings.invitations.revoked');
+      // Retire the page synchronously; held row callbacks cannot run while
+      // React is scheduling the refresh.
+      view.retireScope(selected.page.scope);setRefresh(value => value + 1);
+    } catch (value) {
+      if (ticket ? view.settleRevoke(ticket, false) : view.openingCurrent(selected)) {
+        const owned = ticket;
+        if (owned) setRunning(before => before === owned ? undefined : before);
+        reportError(value);
+      }
+    }
   };
   const now = Date.now();
-  const rows = (page?.items ?? []).map(invitation => invitationRow(invitation, libraries, now));
+  const rows = (page?.value.items ?? []).map(invitation => invitationRow(invitation, libraries, now));
   const filtered = !!query.search.trim() || Object.values(query.filters).some(value => value !== 'all');
   const actionCopy = model.rowActions![0], revokeCopy = model.rowActions![1];
   return <>
     <SettingsGroup title={t(group.title!)} plain actions={openInvite && <Button size="small" variant="primary" icon="i-plus" iconSize={20}
-      onClick={event => {if (authority.isCurrent()) openInvite(event.currentTarget);}}>{t(model.addLabel!)}</Button>}>
-    {error && !page ? <SettingsPageFailure retry={() => setRefresh(value => value + 1)} home={openHome} /> : <SettingsTable height={model.height}
+      onClick={event => {if (view.scopeCurrent(scope)) openInvite(event.currentTarget);}}>{t(model.addLabel!)}</Button>}>
+    {error && !page ? <SettingsPageFailure retry={() => {if (view.scopeCurrent(scope)) {view.retireScope(scope);setRefresh(value => value + 1);}}}
+      home={() => {if (view.scopeCurrent(scope)) openHome();}} /> : <SettingsTable height={model.height}
       label={t(group.title!)} rows={rows}
       columns={model.columns!.map(column => ({id: column.id!, label: t(column.label), kind: column.kind as 'main' | 'text' | 'muted' | 'badge' | 'num' | undefined, sortable: column.sort && (column.id === 'sent' || column.id === 'status'), width: column.width}))}
-      query={query} onQueryChange={setQuery}
+      query={query} onQueryChange={next => {if (view.scopeCurrent(scope)) {view.retireScope(scope);setQuery(Object.freeze({search: next.search, filters: Object.freeze({...next.filters}), sort: Object.freeze({...next.sort})}));}}}
       filters={model.filters!.map(filter => ({id: filter.id, label: t(filter.label), options: filter.options.map(option => ({value: option.value, label: t(option.label)}))}))}
       searchLabel={t(model.search!)} emptyLabel={t(model.empty!)} loading={loading}
-      countLabel={page ? t(filtered ? 'next.settings.invitationsCount' : 'next.settings.invitationsTotal', {matched: page.matchedCount, total: page.totalCount}) : undefined}
-      matchedCount={page?.matchedCount} hasMore={!!page?.nextCursor} onLoadMore={more}
+      countLabel={page ? t(filtered ? 'next.settings.invitationsCount' : 'next.settings.invitationsTotal', {matched: page.value.matchedCount, total: page.value.totalCount}) : undefined}
+      matchedCount={page?.value.matchedCount} hasMore={!!page?.value.nextCursor} onLoadMore={more}
       actions={error && page ? <span className={kitStyles.status} role="status" data-tone="bad">{t('next.states.pageFailedBody')}</span>
-        : note && <span className={kitStyles.status} role="status" data-tone="ok">{t(note)}</span>}
+        : note && <span className={kitStyles.status} role="status" data-tone="ok">{t(note.message)}</span>}
       rowActions={row => {
-        const invitation = page?.items.find(item => item.id === row.id);
-        if (!invitation) return null;
-        const state = stateOf(invitation, now);
+        const selected = page, invitation = selected?.value.items.find(item => item.id === row.id);
+        if (!selected || !invitation) return null;
+        // State/filter/count all consume the producer's normalized snapshot.
+        // The local clock is used only for the display countdown above.
+        const state = invitation.state;
         return <span style={{display: 'inline-flex', gap: 4}}>
-          {state === 'pending' && <Button size="xs" variant="text" onClick={() => {void copy(invitation);}}>{t(actionCopy.label)}</Button>}
-          {(state === 'pending' || state === 'expired') && <Button size="xs" variant="text" onClick={event => {confirmOpener.current = event.currentTarget; revokeOperation.current = ''; setConfirming(invitation);}}>{t(revokeCopy.label)}</Button>}
+          {state === 'pending' && <Button size="xs" variant="text" onClick={() => {void copy(selected, invitation);}}>{t(actionCopy.label)}</Button>}
+          {(state === 'pending' || state === 'expired') && <Button size="xs" variant="text" onClick={event => {
+            const owned = view.open(selected, invitation, event.currentTarget);
+            if (owned) setConfirming(owned);
+          }}>{t(revokeCopy.label)}</Button>}
         </span>;
       }} />}
     </SettingsGroup>
-    {confirming && <Dialog open title={t(revokeCopy.label)} onOpenChange={open => {if (!open && !revoking) {revokeOperation.current = ''; setConfirming(undefined);}}}
-      returnFocusRef={confirmOpener} footer={<><Button disabled={revoking} onClick={() => setConfirming(undefined)}>{t('next.settings.cancel')}</Button>
-        <Button variant="primary" className={kitStyles.danger} loading={revoking} onClick={() => {void revoke();}}>{t(revokeCopy.label)}</Button></>}>
+    {opening && <Dialog open title={t(revokeCopy.label)} onOpenChange={open => {if (!open) cancel(opening);}}
+      returnFocusRef={opening.focus} footer={<><Button disabled={revoking} onClick={() => cancel(opening)}>{t('next.settings.cancel')}</Button>
+        <Button variant="primary" className={kitStyles.danger} loading={revoking} onClick={() => {void revoke(opening);}}>{t(revokeCopy.label)}</Button></>}>
       <p>{t(revokeCopy.confirm!)}</p>
     </Dialog>}
   </>;
