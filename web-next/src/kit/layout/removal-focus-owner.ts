@@ -48,7 +48,7 @@ export class RemovalFocusOwner {
     node.addEventListener('keydown', key, true); node.addEventListener('pointerdown', pointer, true); node.addEventListener('focusin', focus, true);
     return () => {node.removeEventListener('keydown', key, true);node.removeEventListener('pointerdown', pointer, true);node.removeEventListener('focusin', focus, true);};
   }
-  commit(root: HTMLElement | null) {
+  commit(root: HTMLElement | null, nodes: readonly HTMLElement[] = root ? [...root.children] as HTMLElement[] : []) {
     if (!this.epoch) return;
     if (this.committed?.root !== root) {
       this.detachRoot?.(); this.detachRoot = undefined;
@@ -62,8 +62,8 @@ export class RemovalFocusOwner {
         this.detachRoot = () => {detach();if (roots.get(root) === this) roots.delete(root);};
       }
     }
-    this.committed = root ? {epoch: this.epoch, root, rows: [...root.children].flatMap(child => {
-      const node = child as HTMLElement, key = node.dataset.layoutItem;
+    this.committed = root ? {epoch: this.epoch, root, rows: nodes.flatMap(node => {
+      const key = node.dataset.layoutItem;
       return key !== undefined && !node.hasAttribute('inert') ? [{key, node}] : [];
     })} : undefined;
   }
@@ -88,7 +88,8 @@ export class RemovalFocusOwner {
     const target = applyRemovalFocus({root: context.root, order: context.rows.map(row => row.node), surviving: this.surviving(context, remaining)}, focused.node);
     // A modal may still hide the rest of this exact list. Its actual close-autofocus callback
     // retries the original handoff after Radix releases that isolation, never the withdrawn opener.
-    if (focusedPortal && (!target.element || context.root.ownerDocument.activeElement !== target.element)) focusedPortal.pending = new Set(remaining);
+    if (focusedPortal && (!target.element || context.root.ownerDocument.activeElement !== target.element))
+      for (const opening of this.openings) if (opening.withdrawn && this.live(opening.context) && opening.row.node === focused.node) opening.pending = new Set(remaining);
   };
   capture(opener: HTMLElement, parent?: Opening): ListFocusReturn | undefined {
     const context = parent?.context ?? this.committed;

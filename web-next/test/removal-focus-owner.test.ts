@@ -1,6 +1,7 @@
 import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {RemovalFocusOwner, captureListFocusReturn} from '../src/kit/layout/removal-focus-owner.ts';
+import {GridRemovalFocus, type GridRemovalFocusProps} from '../src/kit/layout/GridRemovalFocus.ts';
 
 // UNRUN. Exercises the production DOM owner with structural element/event fixtures.
 // Real React/Radix focus timing is covered separately by the browser regression source.
@@ -76,4 +77,40 @@ test('root replacement invalidates both a queued portal return and its nested pr
   const f = fixture(t);f.active(0);const receipt = captureListFocusReturn(dom(f.rows[0].children[0]))!;
   const portal = new ElementFixture(f.document), button = new ElementFixture(f.document);portal.append(button);receipt.attach(dom(portal));
   f.owner.commit(dom(new ElementFixture(f.document)));f.document.activeElement = f.document.body;receipt.restore();assert.equal(f.document.activeElement, f.document.body);assert.equal(captureListFocusReturn(dom(button)), undefined);receipt.dispose();
+});
+
+// Actual before-mutation boundary methods, not a second acceptance predicate.
+// These structural lifecycle calls do not claim real React DOM execution.
+function gridBoundary(t: TestContext) {
+  const f = fixture(t);
+  const extent = new ElementFixture(f.document);extent.append(...f.rows);f.root.children = [extent];extent.parentElement = f.root;
+  Object.defineProperty(f.root, 'firstElementChild', {get: () => f.root.children[0]});
+  const props: GridRemovalFocusProps = {owner: f.owner, root: {current: dom(f.root) as HTMLDivElement}, children: null,
+    generation: 1, accepted: true, keys: new Set(['a','b','c']), viewport: {width: 900, height: 600, top: 0}};
+  const boundary = new GridRemovalFocus(props);boundary.componentDidMount();
+  const update = (change: Partial<GridRemovalFocusProps>) => {
+    const previous = boundary.props, next = {...previous, ...change};
+    Object.defineProperty(boundary, 'props', {configurable: true, value: next});
+    boundary.getSnapshotBeforeUpdate(previous);
+  };
+  t.after(() => boundary.componentWillUnmount());
+  return {...f, boundary, update};
+}
+test('grid accepted generation hands focus off while the original sparse node is still connected', t => {
+  const f = gridBoundary(t);f.active(0);f.update({generation: 2, keys: new Set(['b','c'])});
+  assert.equal(f.document.activeElement, f.rows[1].children[0]);assert.equal(f.rows[0].isConnected, true);
+});
+for (const [name, change] of [
+  ['scroll window', {generation: 2, viewport: {width: 900, height: 600, top: 400}}],
+  ['loading', {generation: 2, accepted: false}],
+  ['same-generation page', {generation: 1}],
+] as const) test(`grid ${name} change is not an admitted removal`, t => {
+  const f = gridBoundary(t);f.active(0);f.update({...change, keys: new Set(['b','c'])});
+  assert.equal(f.document.activeElement, f.rows[0].children[0]);
+});
+test('grid collection replacement retires old receipts without focusing the replacement window', t => {
+  const f = gridBoundary(t);f.active(0);const receipt = captureListFocusReturn(dom(f.rows[0].children[0]))!;
+  const replacement = new RemovalFocusOwner();t.after(() => replacement.dispose());
+  f.update({owner: replacement, generation: 2, keys: new Set(['b','c'])});f.document.activeElement = f.document.body;
+  receipt.restore();assert.equal(f.document.activeElement, f.document.body);receipt.dispose();
 });

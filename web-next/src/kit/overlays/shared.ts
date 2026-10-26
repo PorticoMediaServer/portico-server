@@ -92,7 +92,8 @@ export function useSurfaceFocus(open: boolean, initialFocusRef?: RefObject<HTMLE
     onOpenAutoFocus(event: Event) {
       const record = current.current;
       if (!record || record.content !== event.target) {event.preventDefault();return;}
-      if (initialFocusRef?.current) { event.preventDefault(); focusElement(initialFocusRef.current); }
+      const initial = initialFocusRef?.current;
+      if (initial && record.content?.contains(initial)) { event.preventDefault(); focusElement(initial); }
     },
     onCloseAutoFocus(event: Event) {
       event.preventDefault();
