@@ -443,8 +443,10 @@ test('Root69 an adapter decode failure keeps the original 202 cleanup and preser
   const c = clock(); let calls = 0, abandoned = 0;
   const failure = new Error('adapter decode failed');
   const http: V1Http = {send: async () => ++calls === 1 ? reply({...real(), retryAfterMs: 500}) : reply(real(), 201)};
-  await assert.rejects(new SessionsClient(http, c.timers).startResponse({itemId: 'movie'}, {}, 'original_key_0000033',
-    {capturePreparing: () => () => {abandoned++;}}, () => {throw failure;}), error => error === failure);
+  const pending = new SessionsClient(http, c.timers).startResponse({itemId: 'movie'}, {}, 'original_key_0000033',
+    {capturePreparing: () => () => {abandoned++;}}, () => {throw failure;});
+  const rejected = assert.rejects(pending, error => error === failure);
+  await settle(); c.fire(); await rejected;
   assert.equal(calls, 2); assert.equal(abandoned, 1, 'the original real-202 receipt cleans up exactly once');
   assert.equal(c.jobs.size, 0);
 });
