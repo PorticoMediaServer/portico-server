@@ -36,10 +36,6 @@ type OwnerResetVerify struct {
 	Code           string `json:"code"`
 	TurnOffTwoStep bool   `json:"turnOffTwoStep,omitempty"`
 }
-type MemberResetRequest struct {
-	ExpectedRevision int64 `json:"expectedRevision"`
-	TurnOffTwoStep   bool  `json:"turnOffTwoStep,omitempty"`
-}
 type MemberResetCode struct {
 	ServerID  string `json:"serverId,omitempty"`
 	Code      string `json:"code"`
@@ -433,15 +429,8 @@ func (s *Service) MakeMemberResetCode(ctx context.Context, bearer, target string
 	if !validFamilyID(target) || q.ExpectedRevision < 1 {
 		return MemberResetCode{}, ErrDirectInput
 	}
-	if q.OriginalResetCode != nil {
-		if len(*q.OriginalResetCode) != 43 {
-			return MemberResetCode{}, ErrDirectInput
-		}
-		for _, b := range []byte(*q.OriginalResetCode) {
-			if !(b >= 'A' && b <= 'Z' || b >= 'a' && b <= 'z' || b >= '0' && b <= '9' || b == '-' || b == '_') {
-				return MemberResetCode{}, ErrDirectInput
-			}
-		}
+	if q.OriginalResetCode != nil && !validMemberResetOriginalCode(*q.OriginalResetCode) {
+		return MemberResetCode{}, ErrDirectInput
 	}
 	out := MemberResetCode{Code: Token()}
 	err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
