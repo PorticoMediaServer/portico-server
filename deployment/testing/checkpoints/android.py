@@ -91,9 +91,10 @@ def main():
  surface='fire-os-tv' if a.flavour=='firetv' else 'android-'+a.mode
  if a.flavour=='firetv' and a.mode!='tv':p.error('Fire OS requires TV allocation')
  tv=load('tv_flows',Path(__file__).with_name('tv_flows.py')) if a.mode=='tv' else None
+ phone=load('phone_flows',Path(__file__).with_name('phone_flows.py')) if a.mode=='phone' else None
  out=a.out;out.mkdir(parents=True,exist_ok=False);private=ROOT/'.private/v3-checkpoints'/('flow-'+out.parent.name+'-'+out.name);private.mkdir(mode=0o700,exist_ok=False);server=ROOT/'.worktrees/ui-2026/v3-release/server';legacy=load('legacy_android_flows',server/'smoke/android/flows.py');target=json.loads(a.target.read_text());d=Device(target,a.mode,out,private,server);flows=[];log=(private/'native-logcat.log').open('wb');capture=subprocess.Popen(['adb','-s',d.serial,'logcat','-v','brief','-T','1','ReactNativeJS:W','AndroidRuntime:E','*:S'],stdout=log,stderr=subprocess.STDOUT)
- failures=(Refusal,tv.Failure) if tv else (Refusal,)
- unavailable_errors=(tv.Unavailable,) if tv else ()
+ failures=(Refusal,tv.Failure) if tv else (Refusal,phone.Refusal)
+ unavailable_errors=(tv.Unavailable,) if tv else (phone.Unavailable,)
  def flow(name,fn):
   record={'surface':surface,'id':name}
   if record['surface']+':'+name in a.disabled:record.update(status='dropped',manual='Justin hands-on; flaky twice');flows.append(record);return False
@@ -102,7 +103,7 @@ def main():
    value=fn();record['status']='pass'
    if isinstance(value,dict):record['evidence']=value
   except unavailable_errors as e:record.update(status='unavailable',reason=str(e),dependency='authoritative device observation unavailable')
-  except failures as e:record.update(status='fail',reason=str(e),timeout=str(e)=='expected-ui-timeout')
+  except failures as e:record.update(status='fail',reason=str(e),timeout=str(e)=='expected-ui-timeout' or str(e).endswith('-timeout'))
   except Exception as e:record.update({'status':'fail','class':type(e).__name__})
   record['durationMs']=round((time.monotonic()-started)*1000)
   try:record['screenshot']=d.screenshot(name)
@@ -119,29 +120,10 @@ def main():
     subprocess.run(['adb','-s',d.serial,'shell','am','start','-W','-n',PACKAGE+'/.MainActivity'],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=20)
     d.wait_text(legacy.HOME_ROWS.pattern,25)
    flow('launch-restored-family',launch)
-   home=flow('home-real-rows',lambda:d.wait_text(legacy.HOME_ROWS.pattern,20))
-   if home:
-    flow('libraries-open',lambda:(d.tap('Libraries'),d.wait_text('Movies',15)))
-    def browse_movies():
-     if not re.search(r'80 movies|12 Angry Men',d.text()):d.tap('Movies(?:,.*)?')
-     d.wait_text('12 Angry Men',20)
-    movies=flow('movies-browse',browse_movies)
-    if movies:
-     # Prefer the real fixture by its visible title; no arbitrary first control.
-     detail=flow('movie-detail',lambda:(d.tap(r'12 Angry Men(?:,.*)?'),d.wait_text('Play|Resume',15)))
-     if detail:
-      def play():
-       d.tap('Play|Resume(?:.*)?');time.sleep(5)
-       original=legacy.Device(d.serial,str(private));playing,states=original.playing()
-       if not playing:raise Refusal('media-session-not-playing')
-      flow('movie-playback-session',play)
-    d.key('KEYCODE_MEDIA_STOP')
-    if movies:d.key('KEYCODE_BACK');d.key('KEYCODE_BACK')
-    def settings():
-     if a.mode=='phone':d.tap('Home');d.wait_text(legacy.HOME_ROWS.pattern,20)
-     d.tap('Settings(?:,.*)?');d.wait_text('Settings',15)
-    flow('settings-open',settings)
-   else:flows.append({'surface':surface,'id':'remaining-core-flows','status':'unavailable','dependency':'retained-family Home failed; no reset/re-auth fallback'})
+   if not any(row['id']=='launch-restored-family' and row['status']=='pass' for row in flows):
+    flow.unavailable('remaining-phone-flows','retained-launch-unavailable','no reset or re-auth fallback')
+   else:
+    phone.run_phone(d,flow,legacy,launched=True,refusal=Refusal,unavailable=lambda name,code:flow.unavailable(name,code,'authoritative observation or prerequisite unavailable'))
  finally:
   with contextlib.suppress(Exception):d.key('KEYCODE_MEDIA_STOP')
   with contextlib.suppress(Exception):subprocess.run(['adb','-s',d.serial,'shell','am','force-stop',PACKAGE],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=10)
