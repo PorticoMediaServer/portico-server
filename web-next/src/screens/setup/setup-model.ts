@@ -1,5 +1,6 @@
 import {defaultI18n, type MessageId} from '@i18n';
 import {passwordStrength} from '@core/password-strength.ts';
+import {addressSetupFailure} from '../../platform/setup-failure.ts';
 import {presentError} from '@core/presentation/errors.ts';
 import {libraryKindDescription, libraryKindLabel, libraryKindMessages} from '../settings/libraries/model';
 
@@ -50,8 +51,9 @@ export function localPasswordValid(password: string, confirm: string): boolean {
 /** A setup that cannot be authorized at this address answers 401/403; it is
  * never "sign in again" because no account exists yet. */
 export function setupErrorMessage(error: unknown): string {
-  const status = (error as {status?: number} | undefined)?.status;
-  if (status === 401 || status === 403) return defaultI18n.t('web.setup.notOnNetwork');
+  // Only the browser-start refusal has the drawn "can't start here" words; any
+  // other auth failure uses the ordinary error body.
+  if (addressSetupFailure(error)) return defaultI18n.t('web.setup.notOnNetwork');
   return presentError(error, 'sign-in', {operation: 'action', i18n: defaultI18n}).body;
 }
 

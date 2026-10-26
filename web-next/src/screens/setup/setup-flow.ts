@@ -4,6 +4,7 @@ import {initializeServer, resumeServerSetup, type PendingAccountSetup, type Setu
 import type {HttpLocalApi, LocalSession} from '@core/index.ts';
 import type {ServerPin} from '@core/route-identity.ts';
 import type {ServerSignIn} from '@core/sign-in.ts';
+import {SetupStageFailure} from '../../platform/setup-failure.ts';
 import {defaultLibraryName, defaultSetupServerName, localPasswordValid, setupErrorMessage, setupNameValid, validLocalUsername, type SetupLibraryKind, type SetupMode} from './setup-model.ts';
 
 export type SetupServer = Readonly<{
@@ -49,6 +50,8 @@ export type SetupSnapshot = Readonly<{
   busy: boolean;
   error?: string;
   connectError?: unknown;
+  /** The exact staged failure, kept for the panel and its own callbacks. */
+  failure?: SetupStageFailure;
 }>;
 
 const timeout = 30_000;
@@ -81,7 +84,7 @@ export class SetupFlow {
   };
   private async connect(): Promise<void> {
     const op = this.operation();
-    this.publish({phase: 'loading', busy: true, error: undefined, connectError: undefined});
+    this.publish({phase: 'loading', busy: true, error: undefined, connectError: undefined, failure: undefined});
     try {
       const server = await this.ports.connect(op.signal);
       if (!op.current() || this.disposed) {server.dispose(); return;}
@@ -113,7 +116,7 @@ export class SetupFlow {
       this.publish({phase: 'form', busy: false});
     } catch (error) {
       if (!op.current()) return;
-      this.publish({phase: 'error', busy: false, connectError: error, error: setupErrorMessage(error)});
+      this.publish({phase: 'error', busy: false, connectError: error, error: setupErrorMessage(error), failure: error instanceof SetupStageFailure ? error : undefined});
     }
   }
   setName = (name: string) => {if (!this.state.busy) this.publish({name});};
@@ -136,12 +139,41 @@ export class SetupFlow {
     const server = this.server;
     if (!server || this.state.phase !== 'form' || this.state.busy || this.state.mode !== 'hosted' || !setupNameValid(this.state.name)) return;
     const op = this.operation();
-    this.publish({busy: true, error: undefined});
+    this.publish({busy: true, error: undefined, failure: undefined});
     try {
       await this.ports.continueHosted(server, {name: this.state.name.trim()});
       if (this.current(server, op)) this.publish({phase: 'waiting', busy: false});
     } catch (error) {
-      if (this.current(server, op)) this.publish({busy: false, error: setupErrorMessage(error)});
+      if (this.current(server, op)) this.publish({phase: 'error', busy: false, error: setupErrorMessage(error), failure: error instanceof SetupStageFailure ? error : undefined});
+    }
+  };
+  /** Runs the exact rendered failure's own retry once, under this flow. */
+  retryFailure = async (expected: SetupStageFailure): Promise<void> => {
+    const server = this.server;
+    if (!server || this.state.busy || this.state.failure !== expected || typeof expected.retry !== 'function') return;
+    const op = this.operation();
+    this.publish({busy: true, error: undefined});
+    try {
+      await expected.retry!();
+      if (this.current(server, op) && this.state.failure === expected) this.publish({phase: 'waiting', busy: false});
+    } catch (error) {
+      if (this.current(server, op) && this.state.failure === expected)
+        this.publish({phase: 'error', busy: false, error: setupErrorMessage(error), failure: error instanceof SetupStageFailure ? error : expected});
+    }
+  };
+  /** Switches to local setup only after the failure's own guarded callback resolves. */
+  useLocalFailure = async (expected: SetupStageFailure): Promise<void> => {
+    const server = this.server;
+    if (!server || this.state.busy || this.state.failure !== expected || typeof expected.useLocal !== 'function') return;
+    const op = this.operation();
+    this.publish({busy: true, error: undefined});
+    try {
+      await expected.useLocal!();
+      if (!this.current(server, op) || this.state.failure !== expected) return;
+      this.publish({phase: 'form', mode: 'local', busy: false, failure: undefined, error: undefined});
+    } catch (error) {
+      if (this.current(server, op) && this.state.failure === expected)
+        this.publish({phase: 'error', busy: false, error: setupErrorMessage(error), failure: error instanceof SetupStageFailure ? error : expected});
     }
   };
   submitLocal = async (): Promise<void> => {
