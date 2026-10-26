@@ -1,15 +1,18 @@
-import {useEffect, useState, type PointerEvent, type FocusEvent, type KeyboardEvent as ReactKeyboardEvent} from 'react';
+import {useLayoutEffect, useState, type PointerEvent, type FocusEvent, type KeyboardEvent as ReactKeyboardEvent} from 'react';
 import type {CardSelection} from './types';
+import {useRetainedLayoutPaint} from '../layout/retained-paint';
 
 /** Paint intent only; the selection owner checks its actual anchor and members. */
 export function useSelectionRangePreview(selection?: CardSelection, disabled = false) {
+  const retained = useRetainedLayoutPaint();disabled = disabled || retained;
   const [hover, setHover] = useState(false), paint = selection?.onPreview, active = selection?.active;
-  useEffect(() => {
-    if (!hover || !active || !paint) return;
-    const key = (event: KeyboardEvent) => {if (event.key === 'Shift') paint(event.type === 'keydown');};
+  useLayoutEffect(() => {
+    if (!hover || !active || !paint || disabled) return;
+    let live = true;
+    const key = (event: KeyboardEvent) => {if (live && event.key === 'Shift') paint(event.type === 'keydown');};
     window.addEventListener('keydown', key);window.addEventListener('keyup', key);
-    return () => {window.removeEventListener('keydown', key);window.removeEventListener('keyup', key);};
-  }, [hover, active, paint]);
+    return () => {live = false;window.removeEventListener('keydown', key);window.removeEventListener('keyup', key);};
+  }, [hover, active, paint, disabled]);
   const leave = () => {setHover(false);paint?.(false);};
   return {
     onPointerEnter: (event: PointerEvent<HTMLElement>) => {if (!paint) return;setHover(event.pointerType === 'mouse' && !disabled);paint(!!active && event.pointerType === 'mouse' && !disabled && event.shiftKey);},

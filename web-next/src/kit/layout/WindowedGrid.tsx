@@ -1,9 +1,13 @@
-import {useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode, type Ref} from 'react';
+import {useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, cloneElement, type CSSProperties, type HTMLAttributes, type ReactElement, type ReactNode, type Ref} from 'react';
 import type {WindowedCollection} from '@core/collections/windowed';
 import {gridColumns, gridWindow} from './geometry';
 import {cancelLayoutScroll, scrollLayout, useLayoutMotion} from './motion';
 import {RemovalFocusOwner} from './removal-focus-owner';
 import {GridRemovalFocus} from './GridRemovalFocus';
+import {useLayoutPresence} from './presence';
+import {useGridExitPaint} from './grid-exit-paint';
+import {RetainedLayoutPaint} from './retained-paint';
+import {useAcceptedArrival} from '../browse/use-arrival';
 import styles from './layout.module.css';
 
 export type WindowedGridHandle = {scrollToIndex: (index: number, options?: {focus?: boolean}) => void};
@@ -14,17 +18,26 @@ export type WindowedGridProps<T> = {
   /** Position once after this collection total and viewport are observed. */
   initialIndex?: number;
   onVisibleRange?: (first: number, last: number) => void; onItemFocus?: (item: T, index: number) => void; reducedMotion?: boolean;
+  /** Opt-in original mounted paint only, bounded to40 visible outgoing slots. */
+  retainRemovals?: boolean; paintScope?: object; empty?: ReactNode;
   ref?: Ref<WindowedGridHandle>; className?: string; style?: CSSProperties;
 };
 
 // Keep even million-item spans below the smallest supported browser's box limit.
 const MAX_SCROLL_HEIGHT = 8_000_000;
+type SlotProps = HTMLAttributes<HTMLDivElement> & {'data-grid-leaving'?: boolean};
+type PaintSlot = Readonly<{key: string; node: ReactElement<SlotProps>; content: ReactNode}>;
+const paintKey = (slot: PaintSlot) => slot.key;
+const livePaintSlots = (root: HTMLElement): readonly HTMLElement[] => [...root.children].filter((node): node is HTMLElement => node instanceof HTMLElement && !!node.dataset.layoutItem && !node.hasAttribute('data-grid-leaving'));
+const emptyPaint = (root: HTMLElement): readonly HTMLElement[] => root.childElementCount ? [root] : [];
+const reducedAt = (node: HTMLElement | null) => typeof document !== 'undefined' && (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
+  || !!node?.closest('[data-reduce-motion="true"]') || document.documentElement.dataset.reduceMotion === 'true' || document.body.dataset.reduceMotion === 'true');
 export function WindowedGrid<T>({collection, renderItem, renderPlaceholder, label, height, cardWidth, rowHeight, gap = 20, rowGap = 30, overscanRows = 1, stickyOffset = 0,
-  initialIndex, onVisibleRange, onItemFocus, reducedMotion = false, ref, className, style}: WindowedGridProps<T>) {
+  initialIndex, onVisibleRange, onItemFocus, reducedMotion = false, retainRemovals = false, paintScope, empty, ref, className, style}: WindowedGridProps<T>) {
   const initialPosition = useRef<WindowedCollection<T> | undefined>(undefined);
   const root = useRef<HTMLDivElement>(null), pendingFocus = useRef<number | null>(null), [viewport, setViewport] = useState({width: 0, height: 0, top: 0});
   const [focused, setFocused] = useState<string | null>(null), motion = useLayoutMotion(reducedMotion);
-  const focusOwner = useMemo(() => new RemovalFocusOwner(), [collection]);
+  const focusOwner = useMemo(() => new RemovalFocusOwner(), [collection, paintScope]);
   useLayoutEffect(() => {pendingFocus.current = null;setFocused(null);}, [focusOwner]);
   const snapshot = useSyncExternalStore(collection.subscribe, collection.getSnapshot, collection.getSnapshot);
   const total = snapshot.total ?? collection.pageSize, columns = gridColumns(viewport.width, cardWidth, gap), pitch = rowHeight + rowGap;
@@ -47,7 +60,8 @@ export function WindowedGrid<T>({collection, renderItem, renderPlaceholder, labe
     return () => { observer.disconnect(); cancelLayoutScroll(element); };
   }, []);
   useEffect(() => {
-    if (range.renderLast >= range.renderFirst) collection.ensureRange(range.renderFirst, range.renderLast);
+    if (range.renderLast < range.renderFirst) return;
+    collection.ensureRange(range.renderFirst, range.renderLast);
     onVisibleRange?.(range.first, range.last);
   }, [collection, range.renderFirst, range.renderLast, range.first, range.last, onVisibleRange]);
   const jump = useCallback((index: number, focus = false, repeat = false) => {
@@ -73,31 +87,63 @@ export function WindowedGrid<T>({collection, renderItem, renderPlaceholder, labe
     const target = slot.querySelector<HTMLElement>('[data-layout-primary],button:not(:disabled),a[href],[tabindex="0"]') ?? slot;
     target.focus({preventScroll: true}); pendingFocus.current = null;
   }, [range.renderFirst, range.renderLast, pages, viewport]);
-  const rendered: ReactNode[] = [], keys = new Set<string>();
-  for (let index = range.renderFirst; index <= range.renderLast; index++) {
-    const slot = collection.slotAt(index), row = Math.floor(index / columns), column = index % columns;
-    if (slot.kind === 'item') keys.add(slot.key);
-    // An unloaded slot's coordinate key never stands in for an entity ID or selection ID.
-    rendered.push(<div key={slot.key} className={styles.gridItem} role="listitem" aria-posinset={index + 1} aria-setsize={snapshot.total ?? -1}
-      tabIndex={-1} data-grid-index={index} data-item-id={slot.kind === 'item' ? slot.key : undefined} data-layout-item={slot.kind === 'item' ? slot.key : undefined}
-      style={{width: cardWidth, height: rowHeight, left: column * (cardWidth + gap), top: row * pitch - logicalTop + viewport.top + stickyOffset}}
-      onFocusCapture={() => { if (slot.kind === 'item') { setFocused(slot.key); onItemFocus?.(slot.item, index); } }}>
-      {slot.kind === 'item' ? renderItem(slot.item, {index, key: slot.key, focused: slot.key === focused}) : renderPlaceholder(index)}
-    </div>);
-  }
-  return <GridRemovalFocus owner={focusOwner} root={root} generation={snapshot.generation} accepted={snapshot.status === 'ready' && !snapshot.refreshing && snapshot.total !== undefined} keys={keys} viewport={viewport}>
+  const {items, keys} = useMemo(() => {
+    const items: PaintSlot[] = [], keys = new Set<string>();
+    for (let index = range.renderFirst; index <= range.renderLast; index++) {
+      const slot = collection.slotAt(index), row = Math.floor(index / columns), column = index % columns;
+      if (slot.kind === 'item') keys.add(slot.key);
+      const content = slot.kind === 'item' ? renderItem(slot.item, {index, key: slot.key, focused: slot.key === focused}) : renderPlaceholder(index);
+      // The exact original React child and its Artwork/source/action props stay with this slot.
+      const node = <div key={slot.key} className={styles.gridItem} role="listitem" aria-posinset={index + 1} aria-setsize={snapshot.total ?? -1}
+        tabIndex={-1} data-grid-index={index} data-item-id={slot.kind === 'item' ? slot.key : undefined} data-layout-item={slot.kind === 'item' ? slot.key : undefined}
+        style={{width: cardWidth, height: rowHeight, left: column * (cardWidth + gap), top: row * pitch - logicalTop + viewport.top + stickyOffset}}
+        onFocusCapture={() => {if (slot.kind === 'item') {setFocused(slot.key);onItemFocus?.(slot.item, index);}}}>
+        <RetainedLayoutPaint.Provider value={false}>{content}</RetainedLayoutPaint.Provider>
+      </div>;
+      items.push({key: slot.key, node, content});
+    }
+    return {items, keys};
+  }, [collection, pages, snapshot.generation, snapshot.total, range.renderFirst, range.renderLast, columns, cardWidth, rowHeight, gap, pitch, logicalTop, viewport.top, stickyOffset, focused, onItemFocus, renderItem, renderPlaceholder]);
+  const paintOwner = useMemo(() => ({collection, paintScope}), [collection, paintScope]);
+  // Scrolling, a different original source, or a layout replacement is not a removal animation.
+  const paintWindow = useMemo(() => ({owner: paintOwner, width: viewport.width, height: viewport.height, top: viewport.top, cardWidth, rowHeight, gap, rowGap, stickyOffset}),
+    [paintOwner, viewport.width, viewport.height, viewport.top, cardWidth, rowHeight, gap, rowGap, stickyOffset]);
+  const accepted = snapshot.status === 'ready' && !snapshot.refreshing && snapshot.total !== undefined;
+  const previousAnswer = useRef<{window: object; generation: number} | undefined>(undefined);
+  const reduced = motion.reduced || reducedAt(root.current);
+  const presence = useLayoutPresence(items, paintKey, reduced, 180, 320, {scope: paintWindow, maxRetained: retainRemovals ? 40 : 0, staggerMs: 40, visibleOnly: true,
+    admitNew: retainRemovals && accepted && previousAnswer.current?.window === paintWindow && previousAnswer.current.generation !== snapshot.generation}, root);
+  useGridExitPaint(presence.root, presence.exits, paintWindow, reduced);
+  // Only the incoming slots fade. The old generation's outgoing paint has its own lease.
+  // Waiting for the retained tree's live answer prevents consuming a generation before its DOM.
+  const arrival = retainRemovals && presence.ready ? snapshot : undefined;
+  useAcceptedArrival(presence.root, arrival, paintWindow, livePaintSlots);
+  const emptyRoot = useRef<HTMLDivElement | null>(null);
+  useAcceptedArrival(emptyRoot, arrival, paintWindow, emptyPaint);
+  useLayoutEffect(() => {if (accepted) previousAnswer.current = {window: paintWindow, generation: snapshot.generation};}, [accepted, paintWindow, snapshot.generation]);
+  const painted = retainRemovals ? presence.present : items;
+  const incomingPaintKeys = new Set(items.map(paintKey));
+  // Keep the original viewport while its bounded outgoing rows fade, including total→0.
+  const extentHeight = Math.max(scrollHeight + stickyOffset, ...(retainRemovals ? painted.map(slot => {
+    const box = slot.node.props.style;return Number(box?.top ?? 0) + Number(box?.height ?? 0);
+  }) : []), retainRemovals && presence.leaving.size ? viewport.top + viewport.height : 0);
+  return <GridRemovalFocus owner={focusOwner} root={root} generation={snapshot.generation} accepted={accepted} keys={keys} viewport={viewport}>
     <div ref={root} tabIndex={-1} className={[styles.grid, className].filter(Boolean).join(' ')} style={{height, ...style}} role="list" aria-label={label} aria-busy={snapshot.status === 'loading'}
     onScroll={event => { const element = event.currentTarget; setViewport({width: element.clientWidth, height: element.clientHeight, top: element.scrollTop}); }}
     onBlurCapture={event => { const next = event.relatedTarget as HTMLElement | null; if (!next || !event.currentTarget.contains(next) || !next.closest('[data-item-id]')) setFocused(null); }}
     onKeyDown={event => {
       if ((event.target as HTMLElement).closest('input,textarea,select,[contenteditable="true"]')) return;
-      const slot = (event.target as HTMLElement).closest<HTMLElement>('[data-grid-index]'); if (!slot) return;
+      const slot = (event.target as HTMLElement).closest<HTMLElement>('[data-grid-index]'); if (!slot || slot.hasAttribute('data-grid-leaving')) return;
       const index = Number(slot.dataset.gridIndex);
       const delta = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowDown' ? columns : event.key === 'ArrowUp' ? -columns : 0;
       const target = event.key === 'Home' ? 0 : event.key === 'End' ? total - 1 : index + delta;
       if (!delta && event.key !== 'Home' && event.key !== 'End') return;
       if (target < 0 || target >= total) return;
       event.preventDefault(); jump(target, true, event.repeat);
-    }}><div key={focusOwner.lifetime} className={styles.gridExtent} style={{height: scrollHeight + stickyOffset, minWidth: columns * cardWidth + (columns - 1) * gap}}>{rendered}</div></div>
+    }}><div key={focusOwner.lifetime} ref={presence.root} className={styles.gridExtent} style={{height: extentHeight, minWidth: columns * cardWidth + (columns - 1) * gap}}>{painted.map(slot => {
+        if (!retainRemovals || incomingPaintKeys.has(slot.key)) return slot.node;
+        return cloneElement(slot.node, {inert: true, 'aria-hidden': true, 'data-grid-leaving': true, onFocusCapture: undefined,
+          children: <RetainedLayoutPaint.Provider value>{slot.content}</RetainedLayoutPaint.Provider>});
+      })}</div>{retainRemovals && <div ref={emptyRoot} className={styles.gridEmpty} style={{top: viewport.top + stickyOffset}}>{snapshot.total === 0 ? empty : null}</div>}</div>
   </GridRemovalFocus>;
 }

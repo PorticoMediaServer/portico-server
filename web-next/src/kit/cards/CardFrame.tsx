@@ -7,6 +7,7 @@ import {SelectionCircle, SelectionHoldFeedback} from '../selection';
 import {activateCard, boundedProgress} from './interaction';
 import {useCardHold} from './useCardHold';
 import type {CardFactPresentation, CardProps, CardTextRun} from './types';
+import {useRetainedLayoutPaint} from '../layout/retained-paint';
 import styles from './cards.module.css';
 
 export const cx = (...names: (string | false | undefined)[]) => names.filter(Boolean).join(' ');
@@ -38,6 +39,7 @@ type FrameProps = CardProps & Readonly<{children: ReactNode; kind: string; prima
 
 /** Primary navigation and auxiliary actions are sibling buttons, never nested controls. */
 export function CardFrame({children, kind, primaryClassName, playIcon = 'i-play', playIconSize = 22, artworkRef, overlay, footer, ...props}: FrameProps) {
+  const retained = useRetainedLayoutPaint();
   const {model, onNavigate, onPlay, onMore, onNotInterested, selection, disabled, className, style, primaryRef} = props;
   const hasAuxiliary = !!(onPlay || onMore || onNotInterested || selection);
   const auxiliaryRef = useRef<HTMLSpanElement>(null);
@@ -79,22 +81,23 @@ export function CardFrame({children, kind, primaryClassName, playIcon = 'i-play'
   const selectionHint = selection?.hint ?? (selection && !selection.active ? {text: defaultI18n.t('next.selection.select')} : undefined);
   const holdGesture = useCardHold({selection, disabled, row: model});
   const click = (event: MouseEvent<HTMLButtonElement>) => {
+    if (retained) {event.preventDefault();return;}
     if (holdGesture.consumeClick()) { event.preventDefault(); return; }
     activateCard(onNavigate, selection, {range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});
   };
   return <article className={cx(styles.card, styles[kind], styles[`context-${props.context ?? 'shelf'}`], props.density === 'grid' && styles['context-grid'], selection?.active && styles.selecting, selection?.checked && styles.selected, selection?.preview && styles.range, !!holdGesture.hold && styles.holding, props.next && styles.next, className)} style={style} data-card-kind={kind} data-disabled={disabled || undefined}
     {...rangeInteraction}>
-    <button type="button" disabled={disabled} ref={primaryRef} className={cx(styles.primary, primaryClassName)} aria-label={model.title} aria-pressed={selection?.active ? selection.checked : undefined} onClick={click} onFocus={props.onFocus} onBlur={event => {holdGesture.cancel(); props.onBlur?.(event);}}
-      onKeyDown={event => { if (event.key === 'Escape') { holdGesture.cancel(); if (selection?.active) { event.preventDefault(); event.stopPropagation(); selection.onExit(); } } }}
+    <button type="button" disabled={disabled} ref={primaryRef} className={cx(styles.primary, primaryClassName)} aria-label={model.title} aria-pressed={selection?.active ? selection.checked : undefined} onClick={click} onFocus={retained ? undefined : props.onFocus} onBlur={event => {holdGesture.cancel(); if (!retained) props.onBlur?.(event);}}
+      onKeyDown={event => { if (!retained && event.key === 'Escape') { holdGesture.cancel(); if (selection?.active) { event.preventDefault(); event.stopPropagation(); selection.onExit(); } } }}
       {...holdGesture.handlers}>
       {artworkRef && <span ref={shadowRef} className={styles.artShadow} aria-hidden="true" />}
       {children}
     </button>
     {hasAuxiliary && <span className={cx(styles.auxiliary, !!artworkRef && styles.artAligned)}><span ref={auxiliaryRef} className={artworkRef ? styles.artAuxiliary : styles.cardAuxiliary}>
-    {onPlay && !selection?.active && <button type="button" disabled={disabled} className={styles.play} aria-label={props.playLabel ?? defaultI18n.t(playIcon === 'i-book' ? 'next.cards.read' : playIcon === 'i-pause' ? 'next.cards.pause' : 'next.cards.play')} onClick={onPlay}><Icon name={playIcon} size={playIconSize} /></button>}
-    {onMore && <button type="button" disabled={disabled} className={styles.more} aria-label={defaultI18n.t('next.cards.more')} aria-haspopup="menu" aria-expanded={props.moreExpanded} onClick={event => onMore(event.currentTarget)}><Icon name="i-more" size={18} /></button>}
-    {onNotInterested && <NotInterestedButton disabled={disabled} onClick={onNotInterested} className={styles.notInterestedPosition} />}
-    {selection && <button type="button" disabled={disabled} className={styles.selection} aria-label={defaultI18n.t('card.select', {title: model.title})} aria-describedby={selectionHint ? selectionHintId : undefined} aria-pressed={selection.checked} onClick={event => {event.stopPropagation(); selection.onToggle({range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});}}>{selection.control ?? <SelectionCircle interactive={false} selected={selection.checked} selecting={selection.active} accessibilityLabel={model.title} />}</button>}
+    {onPlay && !selection?.active && <button type="button" disabled={disabled} className={styles.play} aria-label={props.playLabel ?? defaultI18n.t(playIcon === 'i-book' ? 'next.cards.read' : playIcon === 'i-pause' ? 'next.cards.pause' : 'next.cards.play')} onClick={() => {if (!retained) onPlay();}}><Icon name={playIcon} size={playIconSize} /></button>}
+    {onMore && <button type="button" disabled={disabled} className={styles.more} aria-label={defaultI18n.t('next.cards.more')} aria-haspopup="menu" aria-expanded={props.moreExpanded} onClick={event => {if (!retained) onMore(event.currentTarget);}}><Icon name="i-more" size={18} /></button>}
+    {onNotInterested && <NotInterestedButton disabled={disabled} onClick={() => {if (!retained) onNotInterested();}} className={styles.notInterestedPosition} />}
+    {selection && <button type="button" disabled={disabled} className={styles.selection} aria-label={defaultI18n.t('card.select', {title: model.title})} aria-describedby={selectionHint ? selectionHintId : undefined} aria-pressed={selection.checked} onClick={event => {event.stopPropagation(); if (!retained) selection.onToggle({range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});}}>{selection.control ?? <SelectionCircle interactive={false} selected={selection.checked} selecting={selection.active} accessibilityLabel={model.title} />}</button>}
     {selectionHint && <span className={styles.selectionHint} id={selectionHintId} role="tooltip">{'shortcut' in selectionHint && selectionHint.shortcut && <kbd>{selectionHint.shortcut}</kbd>}{selectionHint.text}</span>}
     </span></span>}
     {holdGesture.hold && <SelectionHoldFeedback active progress={holdGesture.hold.progress} className={styles.holdFeedback} style={{left: holdGesture.hold.x - 31, top: holdGesture.hold.y - 31}} />}

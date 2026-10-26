@@ -1,7 +1,7 @@
 import {serviceI18n} from '@core/presentation/service-text.ts';
 import {musicFormatBadges, formatSignalText} from '@core/music-signal.ts';
 import {activateCard, useSelectionRangePreview} from '../../kit/cards';
-import {useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
+import {useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
 import {timelineFacts, type TextEnvironment} from '@portico/client-core/kit-model';
 import {durationText} from '@core/presentation/kit-model/text.ts';
@@ -15,7 +15,7 @@ import {Button} from '../../kit/controls';
 import {Icon} from '../../kit/Icon';
 import {SelectionCircle} from '../../kit/selection';
 import type {ShellArtwork} from '../../shell/artwork';
-import {useAcceptedArrival} from '../../kit/browse/use-arrival';
+import {useRetainedLayoutPaint} from '../../kit/layout/retained-paint';
 import {BrowseEntryCard, type BrowseItemActions} from './EntryCard';
 import type {BrowseController, BrowseMember} from './controller';
 import styles from './browse.module.css';
@@ -66,9 +66,7 @@ export function BrowseResults(props: BrowseResultsProps) {
   const [size, setSize] = useState({width: 0, grid: 0, height: 600}), [visible, setVisible] = useState({first: -1, last: -1});
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const snapshot = useSyncExternalStore(controller.collection.subscribe, controller.collection.getSnapshot, controller.collection.getSnapshot);
-  // motion 3.8: the answer cross-fades at 180 when its own committed generation lands; the collection
-  // already keeps the old pages on screen until then, so nothing here re-keys or refetches the grid.
-  useAcceptedArrival(root, snapshot, controller.collection);
+  // WindowedGrid owns incoming arrival separately from its bounded original outgoing paint.
   const failed = snapshot.status === 'error';
   useLayoutEffect(() => {
     const element = root.current; if (!element) return;
@@ -112,28 +110,30 @@ export function BrowseResults(props: BrowseResultsProps) {
         {offered ? <button type="button" onClick={() => props.onSort({field: offered.id, direction: state.sort?.field === offered.id && offered.directions.length > 1 ? state.sort.direction === 'asc' ? 'desc' : 'asc' : offered.defaultDirection})}>{t(column.label)}{state.sort?.field === field && <Icon name={state.sort.direction === 'asc' ? 'i-up' : 'i-down'} size={14}/>}</button> : t(column.label)}
       </div>;
     })}{!reading && !music && <span aria-label={t('next.cards.watched')} role="columnheader"/>}<span/></div>}
-    {snapshot.total === 0 ? props.empty : <WindowedGrid collection={controller.collection} ref={grid} label={props.label} height={size.height - (list ? 44 : 0)}
+    <WindowedGrid collection={controller.collection} ref={grid} label={props.label} height={size.height - (list ? 44 : 0)} retainRemovals paintScope={controller} empty={props.empty}
       cardWidth={width} rowHeight={list ? music ? 56 : 70 : height} gap={list ? 0 : gap} rowGap={list ? 0 : tiles ? 24 : gridRowGap} reducedMotion={props.reducedMotion}
       onVisibleRange={range} renderPlaceholder={() => <Skeleton height={list ? 54 : musicGenres ? 152 : width / ratio} width={list ? '100%' : width}/>}
       renderItem={(member, context) => list ? <BrowseListRow {...props} member={member} index={context.index} reading={reading} music={music}/> : <BrowseEntryCard entry={member.entry} actions={props.actions(member, context.index)} artwork={props.artwork} env={props.env}
-        width={width} family={props.familyForEntry?.(member.entry) ?? state.capabilities?.library.kind} mixed={controller.source.libraryId === '*'} visible order={context.index} group={controller.source.libraryId} backdrops={props.backdrops}/>} />}
+        width={width} family={props.familyForEntry?.(member.entry) ?? state.capabilities?.library.kind} mixed={controller.source.libraryId === '*'} visible order={context.index} group={controller.source.libraryId} backdrops={props.backdrops}/>} />
     {state.sort?.field === 'title' && anchors.length > 0 && !tiles && <AlphabetRail anchors={anchors} visibleRange={visible} onJump={anchor => grid.current?.scrollToIndex(anchor.index)} className={styles.rail}/>}
   </div>;
 }
 function BrowseListRow({member, index, artwork, env, actions, reading, music}: BrowseResultsProps & {member: BrowseMember; index: number; reading: boolean; music: boolean}) {
+  const retained = useRetainedLayoutPaint();
   const source = useRef<'pointer' | 'keyboard'>('pointer');
-  const {entry} = member, title = entry.displayTitle ?? entry.title, action = actions(member, index), progress = timelineFacts(entry.duration, entry.progressSeconds).progress;
+  const action = useMemo(() => actions(member, index), [actions, member, index]);
+  const {entry} = member, title = entry.displayTitle ?? entry.title, progress = timelineFacts(entry.duration, entry.progressSeconds).progress;
   const badges = entry.kind === 'song' && entry.audioFacts ? musicFormatBadges(entry.audioFacts).map(badge => typeof badge === 'string' ? badge : formatSignalText(badge, serviceI18n().t)) : [];
   const range = useSelectionRangePreview(action.selection);
-  const art = artwork.foreground(entry.posterUrl, music ? 42 * devicePixelRatio : 72 * devicePixelRatio, music ? 1 : 2 / 3, {group: entry.libraryId, order: index});
+  const art = useMemo(() => artwork.foreground(entry.posterUrl, music ? 42 * devicePixelRatio : 72 * devicePixelRatio, music ? 1 : 2 / 3, {group: entry.libraryId, order: index}), [artwork, entry.posterUrl, entry.libraryId, music, index]);
   const added = entry.addedAt && Number.isFinite(Date.parse(entry.addedAt)) ? new Intl.DateTimeFormat(env.locale ?? 'en-US', {month: 'short', day: 'numeric', year: 'numeric'}).format(new Date(entry.addedAt)) : undefined;
   const duration = durationText(entry.duration, env.t);
   const resolution = entry.resolution === '4k' ? t('quality.4k') : entry.resolution === '1080p' ? t('downloads.quality.1080p') : entry.resolution === '720p' ? t('downloads.quality.720p') : entry.resolution === 'sd' ? t('quality.sd') : undefined;
-  const select = action.selection && <SelectionCircle selected={action.selection.checked} selecting={action.selection.active} onSelectedChange={(_next, intent) => action.selection?.onToggle({range: intent.intent === 'range' || intent.shiftKey === true, source: source.current})} onKeyDownCapture={() => {source.current = 'keyboard';}} onPointerDownCapture={() => {source.current = 'pointer';}} accessibilityLabel={t('next.selection.select')} variant="row"/>;
-  return <div className={styles.listRow} data-browse-entry={entry.id} data-selected={action.selection?.checked || undefined} data-preview={action.selection?.preview || undefined} {...range} onKeyDown={event => {range.onKeyDown(event);if (event.key === 'Escape' && action.selection?.active) {event.preventDefault();action.selection.onExit();}}}>
+  const select = action.selection && <SelectionCircle selected={action.selection.checked} selecting={action.selection.active} onSelectedChange={(_next, intent) => {if (!retained) action.selection?.onToggle({range: intent.intent === 'range' || intent.shiftKey === true, source: source.current});}} onKeyDownCapture={() => {source.current = 'keyboard';}} onPointerDownCapture={() => {source.current = 'pointer';}} accessibilityLabel={t('next.selection.select')} variant="row"/>;
+  return <div className={styles.listRow} data-browse-entry={entry.id} data-selected={action.selection?.checked || undefined} data-preview={action.selection?.preview || undefined} {...range} onKeyDown={event => {range.onKeyDown(event);if (!retained && event.key === 'Escape' && action.selection?.active) {event.preventDefault();action.selection.onExit();}}}>
     {music && <span className={styles.musicNumber}>{select ?? <span>{index + 1}</span>}</span>}
     <div className={styles.listTitle}>{!music && select}
-      <button type="button" data-layout-primary onClick={event => activateCard(action.onOpen, action.selection, {range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'})}><span className={styles.listArt}><Artwork source={art} visible alt="" fallback={<GeneratedArt glyph={Array.from(title)[0] ?? ''}/>}/></span><span className={styles.listName}>{title}</span>{badges.map(badge => <span key={badge} className={styles.songBadge}>{badge}</span>)}</button></div>
+      <button type="button" data-layout-primary onClick={event => {if (!retained) activateCard(action.onOpen, action.selection, {range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'});}}><span className={styles.listArt}><Artwork source={art} visible alt="" fallback={<GeneratedArt glyph={Array.from(title)[0] ?? ''}/>}/></span><span className={styles.listName}>{title}</span>{badges.map(badge => <span key={badge} className={styles.songBadge}>{badge}</span>)}</button></div>
     {music ? <>
       <span className={styles.musicMeta}>{entry.artist?.name}</span><span className={styles.musicMeta}>{entry.album?.name}</span>
       <span className={styles.musicNumber}>{duration}</span><span className={styles.musicNumber}>{entry.plays === undefined ? undefined : defaultI18n.number(entry.plays)}</span>
@@ -150,6 +150,6 @@ function BrowseListRow({member, index, artwork, env, actions, reading, music}: B
       <span>{entry.year}</span><span>{durationText(entry.duration, env.t)}</span><span>{entry.rating === undefined ? '–' : defaultI18n.number(entry.rating, {minimumFractionDigits: 1, maximumFractionDigits: 1})}</span>
       <span>{resolution && <span className={styles.resolution}>{resolution}</span>}</span><span>{added}</span>
       <span className={styles.listWatched}>{entry.watched ? <Icon name="i-check" size={18}/> : progress !== undefined && <span className={styles.miniProgress}><span style={{width: `${progress * 100}%`}}/></span>}</span></>}
-    <span className={styles.listActions}>{action.onPlay && !action.selection?.active && <Button variant="primary" size="small" icon="i-play" iconOnly onClick={action.onPlay} aria-label={t('next.browse.play', {title})}/>}{action.onMore && <Button variant="icon" size="small" icon="i-more" iconOnly onClick={event => action.onMore?.(event.currentTarget)} aria-label={t('next.browse.moreFor', {title})}/>}</span>
+    <span className={styles.listActions}>{action.onPlay && !action.selection?.active && <Button variant="primary" size="small" icon="i-play" iconOnly onClick={() => {if (!retained) action.onPlay?.();}} aria-label={t('next.browse.play', {title})}/>}{action.onMore && <Button variant="icon" size="small" icon="i-more" iconOnly onClick={event => {if (!retained) action.onMore?.(event.currentTarget);}} aria-label={t('next.browse.moreFor', {title})}/>}</span>
   </div>;
 }

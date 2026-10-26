@@ -9,6 +9,8 @@ export type LayoutRetention<T> = Readonly<{
 }>;
 export type LayoutRetentionPolicy = Readonly<{
   maxRetained?: number; staggerMs?: number; visibleOnly?: boolean; scope?: unknown;
+  /** A sparse caller admits new exits only for an accepted model replacement, not paging. */
+  admitNew?: boolean;
   /** Original caller context only, before the withdrawal commit makes rows inert. */
   beforeLeave?: (remaining: ReadonlySet<string>) => void;
 }>;
@@ -27,7 +29,7 @@ export function retainLayout<T>(previous: LayoutRetention<T>, incoming: readonly
     exits.set(key, reduced && !exit.reduced ? Object.freeze({...exit, reduced: true, retireAt: Math.min(exit.retireAt, now + reducedMs)}) : exit);
   }
   const admitted: {key: string; item: T}[] = [];
-  for (const item of previous.live) {
+  for (const item of policy?.admitNew === false ? [] : previous.live) {
     const key = keyOf(item);
     if (ids.has(key) || previous.exits.has(key) || exits.size + admitted.length >= max || policy?.visibleOnly && !visible?.has(key)) continue;
     admitted.push({key, item});
