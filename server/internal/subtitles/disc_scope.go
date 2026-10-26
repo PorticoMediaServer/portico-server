@@ -40,6 +40,16 @@ func CheckDiscScopeTx(ctx context.Context, tx *sql.Tx, scope DiscScope) error {
 	return nil
 }
 func discSessionScopeTx(ctx context.Context, tx *sql.Tx, session string) (*DiscScope, error) {
+	var private bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM playback_disc_snapshots WHERE session_id=?)`, session).Scan(&private); err != nil {
+		return nil, err
+	}
+	if private {
+		// An absent local pin cannot make a private title an ordinary asset
+		// scope. Its resource resolver must retain the exact accepted snapshot;
+		// until that resolver is composed, no inventory resource is substituted.
+		return nil, ErrUnsupported
+	}
 	if err := disc.CheckPlaybackSelectionTx(ctx, tx, session); err != nil {
 		return nil, ErrConflict
 	}
