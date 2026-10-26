@@ -34,9 +34,10 @@ and no injected auth state. Every refusal and unavailable code is a fixed
 string from this file, so a receipt never carries a pattern, identifier, title,
 library name, URL, token or raw exception text.
 
-A tree loss mid-flow still reaches the recorder as the explicit ``Unavailable``
-class, because the common driver is not modified; the owner's wrapper may map
-that class name to an unavailable row where it appears.
+A tree loss mid-flow reaches the shared driver as the explicit ``Unavailable``
+class, which the driver records as an ``unavailable`` row rather than a failure;
+the pre-flight and playback paths report through the caller's ``unavailable``
+hook so they never reach the recorder at all.
 
 Playback passes only on measured progress of this package's own session: the
 same session identity and the same fixture title in two samples, a positive
