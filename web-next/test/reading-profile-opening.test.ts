@@ -34,13 +34,17 @@ function deferred<T>() {
   return {promise, resolve, reject};
 }
 type Call = {path: string; method: string; body: unknown; signal?: AbortSignal};
-function fixture(options: {put?: (call: Call) => Promise<unknown>; recover?: () => Promise<unknown>;
+function fixture(options: {put?: (call: Call) => Promise<unknown>; advancedPut?: (call: Call) => Promise<unknown>; recover?: () => Promise<unknown>;
   fresh?: () => Promise<unknown>; initial?: SourceReadSettings; unsaved?: boolean; advanced?: () => Promise<unknown>} = {}) {
   const calls: Call[] = [];let submitted = false, live = true;
   const api: LibraryContentApi = {request: async<T>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal): Promise<T> => {
     const call = {path, method, body, signal};calls.push(call);
     let value: unknown;
-    if (method === 'PUT') {submitted = true;value = options.put ? await options.put(call) : receipt();}
+    if (method === 'PUT' && path.endsWith('/settings/advanced')) {
+      const response = pairedAdvanced(body && typeof body === 'object' && 'values' in body ? body.values as SourceAdvanced : advanced);
+      value = options.advancedPut ? await options.advancedPut(call) : {...response, settings: {...response.settings, revision: 7}};
+    }
+    else if (method === 'PUT') {submitted = true;value = options.put ? await options.put(call) : receipt();}
     else if (path.includes('/source-operations/')) value = options.recover ? await options.recover() : receipt();
     else if (path.endsWith('/settings/advanced')) value = options.advanced ? await options.advanced() : {scope: wire,
       settings: {sourceId: source.id, generation: '7', revision: options.unsaved ? 0 : 5, saved: !options.unsaved,
@@ -222,4 +226,50 @@ test('a retained Save cannot retry the same draft after a definite failure repla
   await f.opening.save(draft, rendered);assert.equal(f.opening.getSnapshot().kind, 'failed');
   await f.opening.save(draft, rendered);
   assert.equal(f.calls.filter(call => call.method === 'PUT').length, 1, 'old rendered callback cannot dispatch again');
+});
+
+test('a per-reading-field Reset stages only its recorded value and a stale marker cannot reset a later draft', async () => {
+  const f = fixture({initial: customProfile(), advanced: async () => pairedAdvanced()});await f.opening.load();
+  const a = f.draft(), rendered = f.opening.getSnapshot();f.opening.resetField(a, rendered, 'connections');
+  const b = f.draft();assert.equal(b.values.connections, reading.connections);assert.equal(b.choice, undefined);
+  assert.equal(b.consent, true);assert.equal(b.values.wholeFileReads, false);
+  f.opening.resetField(a, rendered, 'requestsPerSecond');assert.equal(f.draft(), b);assert.equal(f.calls.filter(call => call.method === 'PUT').length, 0);
+});
+
+test('a per-Advanced-field Reset uses the original Advanced CAS and never a split preset apply or consent write', async () => {
+  const actual = {...advanced, scanOnStart: true}, initial = parent();
+  const custom = {...initial, choiceBaseline: {...initial.choiceBaseline!, currentAdvanced: actual, changedFields: ['scanOnStart'] as const}};
+  const f = fixture({initial: custom, advanced: async () => pairedAdvanced(actual)});await f.opening.load();
+  const a = f.draft();assert.deepEqual(f.opening.recorded(a)?.comparison.changedFields, ['scanOnStart']);
+  f.opening.resetField(a, f.opening.getSnapshot(), 'scanOnStart');const b = f.draft();
+  assert.equal(b.advancedValues?.scanOnStart, false);assert.equal(b.advancedDirty, true);assert.equal(f.opening.recorded(b), undefined);
+  const state = f.opening.getSnapshot();await f.opening.save(b, state);assert.equal(f.calls.filter(call => call.method === 'PUT').length, 0);
+  await f.opening.saveAdvanced(b, state);const writes = f.calls.filter(call => call.method === 'PUT');
+  assert.equal(writes.length, 1);assert.equal(writes[0].path.endsWith('/settings/advanced'), true);
+  assert.deepEqual(writes[0].body, {expectedGeneration: '7', expectedRevision: 6, values: advanced});
+  assert.equal(f.opening.getSnapshot().kind, 'saved');
+});
+
+test('dirty permission or Reading drafts cannot be silently mixed into an Advanced save', async () => {
+  for (const mode of ['consent', 'reading'] as const) {
+    const f = fixture({initial: parent(), advanced: async () => pairedAdvanced()});await f.opening.load();const a = f.draft();
+    if (mode === 'consent') f.opening.changeConsent(a, true);else f.opening.edit(a, {connections: 8});
+    const b = f.draft();f.opening.editAdvanced(b, {...advanced, watchForChanges: true});assert.equal(f.draft(), b);
+    await f.opening.saveAdvanced(b, f.opening.getSnapshot());assert.equal(f.calls.filter(call => call.method === 'PUT').length, 0);
+  }
+});
+
+test('an Advanced Save is single-flight, exact-render-bound and retired replies cannot publish success', async () => {
+  const held = deferred<unknown>(), f = fixture({advancedPut: () => held.promise});await f.opening.load();const a = f.draft();
+  f.opening.editAdvanced(a, {...advanced, watchForChanges: true});const b = f.draft(), rendered = f.opening.getSnapshot();
+  const save = f.opening.saveAdvanced(b, rendered);await f.opening.saveAdvanced(b, rendered);f.opening.retire();
+  held.resolve(pairedAdvanced({...advanced, watchForChanges: true}));await save;
+  assert.equal(f.calls.filter(call => call.method === 'PUT').length, 1);assert.equal(f.opening.getSnapshot().kind, 'retired');
+});
+
+test('choice Advanced preview preserves inapplicable original values; it grants no consent', async () => {
+  const original = {...profile(), choiceApplicableFields: sourceChoiceFields.filter(field => field !== 'watchForChanges')};
+  const f = fixture({initial: original, advanced: async () => pairedAdvanced({...advanced, watchForChanges: true})});await f.opening.load();
+  const a = f.draft();f.opening.select(a, a.profile.choiceDefinitions![1]);const b = f.draft();
+  assert.equal(f.opening.previewAdvanced(b)?.watchForChanges, true);assert.equal(b.consent, false);assert.equal(b.consentDirty, false);
 });

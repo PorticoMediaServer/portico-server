@@ -1,8 +1,8 @@
 import {useCallback, useLayoutEffect, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n, type MessageId} from '@i18n';
 import {
-  RemoteSourceService, cloudTokenDraft, driveOAuthDraft, driveServiceAccountDraft, s3SourceDraft, sourceReadPreset, sourceReadPresetName,
-  type CloudTokenFields, type DAVConnectionResult, type DriveKeyFields, type RcloneConfigView, type RcloneProgram, type RcloneTestResult, type RemoteFolder, type RemoteSource, type SavedSourceTest, type S3SourceFields, type RemoteSourceStatus, type RemoteContactErrorCode, type RemoteScanMode, type RemoteScanPhase, type RemoteSourceHealth, type RemoteScanStateCode, type SourceAdvanced, type SourceReadPreset, type SourceReadSettings, type SourceReadValues,
+  RemoteSourceService, cloudTokenDraft, driveOAuthDraft, driveServiceAccountDraft, s3SourceDraft, sourceReadPreset,
+  type CloudTokenFields, type DAVConnectionResult, type DriveKeyFields, type RcloneConfigView, type RcloneProgram, type RcloneTestResult, type RemoteFolder, type RemoteSource, type SavedSourceTest, type S3SourceFields, type RemoteSourceStatus, type RemoteContactErrorCode, type RemoteScanMode, type RemoteScanPhase, type RemoteSourceHealth, type RemoteScanStateCode, type SourceReadPreset, type SourceReadSettings, type SourceReadValues,
 } from '@core/remote-sources.ts';
 import {LibraryManagementService, type ManagedLibrary} from '@core/library-management.ts';
 import {readLibraryInventoryConfig, saveLibraryFolder} from '@core/server-admin/libraries.ts';
@@ -11,67 +11,27 @@ import type {LibraryContentApi} from '@core/library-content.ts';
 import {Button, RichSelect, Switch, TextField} from '../../../kit/controls';
 import {Dialog} from '../../../kit/overlays';
 import {usePhone} from '../../../kit/overlays/shared';
-import {SettingsGroup, SettingNumber} from '../../../kit/settings';
+import {SettingsGroup} from '../../../kit/settings';
 import {SettingsRow} from '../../../kit/shell/SettingsSurfaces';
 import {Icon, type IconName} from '../../../kit/Icon';
 import styles from './remote-sources.module.css';
 import {RemoteFolderPicker} from './RemoteFolderPicker';
-import {ReadingChoices, presetHint} from './ReadingChoices';
-import {SourceAdvancedRows} from './SourceAdvancedRows';
 import {ProgramPicker} from './ProgramPicker';
-import {SourceReadingDialog} from './SourceReadingDialog';
+import {SourceReadingDialog, SourceReadingFields} from './SourceReadingDialog';
+import {ReadingProfileOpening} from './reading-profile-opening';
+import {sourceChoiceComparison} from '@core/remote-source-choice.ts';
+import {configuredReadingSource, acceptedReadingSource} from './reading-source-row';
 import {useOwnedResource} from './resources';
-import {AnalysisConsentDraft, ProfileAdmission, type HeldProfile} from './profile-admission';
 import {router} from '../../../router';
 
 const t = defaultI18n.t;
+const noReadSubscribe = () => () => {};
+const noReadState = () => undefined;
 
 /** Read values, including the retired whole-file compatibility wire; the independent analysis consent is its own draft. */
 function readValuesWithoutConsent(values: SourceReadValues): SourceReadValues {
   const {allowAdvancedMediaAnalysis, ...read} = values;
   return allowAdvancedMediaAnalysis === undefined ? values : read;
-}
-/** A save body carries consent only when this server actually published one. */
-function readValuesWithConsent(values: SourceReadValues, consent: boolean | undefined, edited: boolean | undefined): SourceReadValues {
-  const read = readValuesWithoutConsent(values);
-  return !edited || consent === undefined ? read : {...read, allowAdvancedMediaAnalysis: consent};
-}
-/** One source-specific analysis control; an older server without the fact draws no control,
- * never an off/false checkbox it cannot have recorded. */
-function AnalysisConsent({consent, disabled, onChange}: {consent: boolean | undefined; disabled: boolean; onChange: (value: boolean) => void}) {
-  if (consent === undefined) return null;
-  return <label className={styles.switchRow}>
-    <span>{t('next.remoteSources.allowAdvancedMediaAnalysis')}<small className={styles.note}>{t('next.remoteSources.allowAdvancedMediaAnalysisWarning')}</small></span>
-    <Switch aria-label={t('next.remoteSources.allowAdvancedMediaAnalysis')} checked={consent} disabled={disabled} onCheckedChange={onChange}/>
-  </label>;
-}
-
-/** Keep the read profile's captured legacy whole-file compatibility value while a choice or an
- * unsaved default replaces only the drawn read values. Consent is never part of this. */
-function withLegacyWholeFileReads(values: SourceReadValues, legacy: boolean): SourceReadValues {
-  return values.wholeFileReads === legacy ? values : {...values, wholeFileReads: legacy};
-}
-/** A new exact source/service/currentness tuple creates a fresh layout resource.
- * No ref is written during render and no retired profile is rearmed. */
-function useProfileAdmission({service, source, isCurrent}: {service: RemoteSourceService; source: RemoteSource; isCurrent: () => boolean}) {
-  const owned = useOwnedResource(() => new ProfileAdmission(source, () => isCurrent() && service.getSnapshot().sources.some(row =>
-    row.id === source.id && row.generation === source.generation)), value => value.retire(), [service, source, isCurrent]);
-  const entry = owned?.value;
-  const [published, publish] = useState<HeldProfile>();
-  const held = entry && entry.current() && published === entry.snapshot() ? published : undefined;
-  const current = () => !!entry && entry.current();
-  const setHeld = (update: HeldProfile | undefined | ((value: HeldProfile | undefined) => HeldProfile | undefined)) => {
-    if (!entry || !entry.holds(held)) return;
-    const next = typeof update === 'function' ? update(held) : update;
-    if (entry.replace(held, next)) publish(entry.snapshot());
-  };
-  return {admitted: !!entry && entry.current(), token: entry, held, setHeld, current,
-    holds: (record: HeldProfile) => !!entry && entry.holds(record), opening: () => !!entry && entry.opening(), retire: () => entry?.retire(),
-    begin: (record: HeldProfile) => entry?.begin(record), owns: (flight: object) => !!entry && entry.owns(flight),
-    finish: (flight: object) => !!entry && entry.finish(flight),
-    settle: (flight: object, expected: HeldProfile, next: HeldProfile) => {
-      if (entry?.owns(flight) && entry.replace(expected, next, flight)) publish(entry.snapshot());
-    }};
 }
 const emptyDraft: WebDavDraft = {name: '', root: '', username: '', password: '', insecureLocal: false};
 type SourceKind = 'webdav' | 'rclone' | 'config' | 's3' | 'drive' | 'cloud';
@@ -334,6 +294,7 @@ export function AddSourceDialog(props: AddSourceProps) {
 }
 
 function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, reportError, onClose, onCreated, libraries}: AddSourceProps & Readonly<{libraries: LibraryManagementService}>) {
+  const phone = usePhone();
   const [step, setStep] = useState<WizardStep>('what');
   const [family, setFamily] = useState<SourceFamily>('webdav');
   const [sourceKind, setSourceKind] = useState<SourceKind>('webdav');
@@ -387,21 +348,9 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
   const [profile, setProfile] = useState<SourceReadSettings>();
   const [values, setValues] = useState<SourceReadValues>(sourceReadPreset('once'));
   const [, showConsent] = useState(0);
-  // The drawn mobile-web step (remote-sources.html#14b) shows the choice in force
-  // and opens the four choices from Change; the wide layout keeps them inline.
-  // A confirm belongs to the opening it was rendered in: the wizard's token, its
-  // reading step, and the exact source generation and saved profile revision.
-  const phone = usePhone();
-  const [pendingReading, setPendingReading] = useState<SourceReadValues>(sourceReadPreset('once'));
-  // The opening is its own object, never a flag: a handler that belongs to a
-  // retired opening cannot confirm, edit or close the one that replaced it.
-  const [readingOpening, setReadingOpening] = useState<ReadingOpening | null>(null);
-  const readingOpeningRef = useRef<ReadingOpening | null>(null);
-  const readingLive = useRef<{step: WizardStep; source?: RemoteSource; profile?: SourceReadSettings}>({step: 'what'});
   // The committed step and form token of this wizard opening.
   const wizardLive = useRef<{step: WizardStep; token: number}>({step: 'what', token: -1});
   const [busy, setBusy] = useState(false);
-  const [loadingProfile, setLoadingProfile] = useState(false);
   // The folders step: chosen folders, the library they join, and what the done step reports.
   const librarySnapshot = useSyncExternalStore(libraries.subscribe, libraries.getSnapshot, libraries.getSnapshot);
   const [chosen, setChosen] = useState<readonly RemoteFolder[]>([]);
@@ -413,9 +362,6 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
   const [finishBusy, setFinishBusy] = useState(false);
   const [finishError, setFinishError] = useState('');
   const [summary, setSummary] = useState<Readonly<{library?: string; folders: number}>>({folders: 0});
-  const initialAdvanced: SourceAdvanced = {scanIntervalSeconds: 21600, watchForChanges: false, scanOnStart: false, fullRecheckDays: 0, cacheBytes: 0, cacheFloorBytes: 0, seekPreviews: true, chapterImages: true, waveforms: true, loudness: true, checksums: true, introsMode: 'inherit', doubleCheckFolders: false, dirCacheSeconds: 0, readBufferBytes: 0, connectTimeoutSeconds: 0, idleTimeoutSeconds: 0, retries: 0, lowLevelRetries: 0};
-  const [advancedValues, setAdvancedValues] = useState<SourceAdvanced>(initialAdvanced);
-  const [advancedTouched, setAdvancedTouched] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [leaving, setLeaving] = useState<'' | 'saved' | 'unsaved'>('');
   const [leaveChoice, setLeaveChoice] = useState<'keep' | 'remove'>('keep');
@@ -428,26 +374,29 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
   // This render's own guard. A retained handler carries the guard of the
   // render that drew it, never one acquired later.
   const renderGuard = attemptGuard();
-  const consentOwned = useOwnedResource(() => profile ? new AnalysisConsentDraft(profile, renderGuard) : undefined,
-    value => value?.retire(), [service, profile, isCurrent, formToken]);
-  const consentDraft = consentOwned?.value;
 
+
+  const enterReading = (sourceId: string, generation: number, guard: () => boolean) => {
+    if (!guard()) return;
+    const row = configuredReadingSource(service.getSnapshot().sources, {sourceId, generation});
+    if (!row) {setError(t('next.remoteSources.error.changed'));return;}
+    nextSourceId.current = sourceId;setCreated(row);setStep('reading');setProfile(undefined);
+  };
   /** A refused owner retires this form before Settings hears about it. */
   const refuse = (error: unknown) => {active.current=false;pending.current=false;lifetime.current++;reportError(error);};
   const reset = () => {
+    wizardReader?.retire();
     setStep('what'); setFamily('webdav'); setSourceKind('webdav'); setDraft(emptyDraft); setRclone(emptyRclone); setProgram(undefined); setProviders([]); setConfigView(undefined); setConfigRemote(''); setConfigName(''); setS3(emptyS3); setDrive(emptyDrive); setS3Name(''); setDriveName(''); setS3Tested(undefined); setDriveTested(undefined); setCloud(emptyCloud); setCloudName(''); setCloudTested(undefined); setDriveMode('service'); setOauthClientId(''); setOauthClientSecret(''); setOauthToken(''); setOauthState(''); setOauthPhase('idle'); setOauthAddress(''); setOauthError(''); oauthLease.current = null; oauthGeneration.current++; invalidateS3(); invalidateDrive(); invalidateCloud();
     setResult(undefined); setRcloneResult(undefined); setError(''); setCreated(undefined);
-    setProfile(undefined); setValues(sourceReadPreset('once')); setBusy(false); setLoadingProfile(false);
-    setReadingOpening(null); setPendingReading(sourceReadPreset('once')); readingOpeningRef.current = null;
+    setProfile(undefined); setValues(sourceReadPreset('once')); setBusy(false);
     setChosen([]); setPicking(false); setAttachMode('new'); setLibraryName(''); setKind('movie'); setExistingId('');
     setFinishBusy(false); setFinishError(''); setSummary({folders: 0}); setLeaving(''); setLeaveRemove(false); setLeaveError(''); setLeaveChoice('keep');
-    setAdvancedValues(initialAdvanced);
-    setAdvancedTouched(false); setAdvancedOpen(false);
+    setAdvancedOpen(false);
     testAttempt.current++; lifetime.current++; setFormToken(lifetime.current); pending.current = false;
   };
   const updateDraft = (patch: Partial<WebDavDraft>) => {testAttempt.current++;setResult(undefined);setError('');setDraft(current => ({...current, ...patch}));};
   const updateRclone = (patch: Partial<RcloneDraft>) => {testAttempt.current++;setRcloneResult(undefined);setError('');setRclone(current => ({...current, ...patch}));};
-  useEffect(() => {active.current=open;if(open)reset();else{retireOAuthCurrentRef.current();lifetime.current++;pending.current=false;readingOpeningRef.current=null;setReadingOpening(null);setDraft(emptyDraft);setRclone(emptyRclone);setResult(undefined);setRcloneResult(undefined);setError('');}}, [open]);
+  useLayoutEffect(() => {active.current=open;if(open)reset();else{retireOAuthCurrentRef.current();lifetime.current++;pending.current=false;setDraft(emptyDraft);setRclone(emptyRclone);setResult(undefined);setRcloneResult(undefined);setError('');}}, [open]);
   useEffect(() => () => {active.current=false;lifetime.current++;retireOAuthCurrentRef.current();}, []);
   const test = async () => {
     const guard = attemptGuard();
@@ -505,7 +454,7 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
   };
   const goBack = (from: WizardStep, to: WizardStep, guard: () => boolean, token: number) => {
     if (!wizardAction(guard, from, token)) return;
-    setStep(to);
+    wizardReader?.retire();setStep(to);
   };
   const chooseFamily = (next: SourceFamily, guard: () => boolean, token: number) => {
     if (!wizardAction(guard, 'what', token) || next === family) return;
@@ -679,10 +628,7 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
         if (authFailure({code: state.errorCode})) {refuse({code: state.errorCode});return;}
         setError(state.error || t('next.remoteSources.unconfirmed'));return;
       }
-      nextSourceId.current = receipt.sourceId;setStep('reading');setLoadingProfile(true);
-      try {const next = await service.readProfile(receipt.sourceId, String(receipt.generation), guard);if (guard()) {setProfile(next);setValues(next.saved ? readValuesWithoutConsent(next.values) : withLegacyWholeFileReads(sourceReadPreset('once'), next.values.wholeFileReads));}}
-      catch (value) {if (guard()) setError(remoteErrorText(value));}
-      finally {if (guard()) setLoadingProfile(false);}
+      enterReading(receipt.sourceId, receipt.generation, guard);
     } finally {if (guard()) {pending.current=false;setBusy(false);}}
   };
   const cloudReason = (reason: 'json'|'token'|'client'|'google'|'folder'): MessageId => reason === 'json' ? 'next.remoteSources.cloudTokenNotJson'
@@ -727,10 +673,7 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
         if (authFailure({code: state.errorCode})) {refuse({code: state.errorCode});return;}
         setError(state.error || t('next.remoteSources.unconfirmed'));return;
       }
-      nextSourceId.current = receipt.sourceId;setStep('reading');setLoadingProfile(true);
-      try {const next = await service.readProfile(receipt.sourceId, String(receipt.generation), guard);if (guard()) {setProfile(next);setValues(next.saved ? readValuesWithoutConsent(next.values) : withLegacyWholeFileReads(sourceReadPreset('once'), next.values.wholeFileReads));}}
-      catch (value) {if (guard()) setError(remoteErrorText(value));}
-      finally {if (guard()) setLoadingProfile(false);}
+      enterReading(receipt.sourceId, receipt.generation, guard);
     } finally {if (guard()) {pending.current=false;setBusy(false);}}
   };
   const updateS3 = (patch: Partial<S3SourceFields>) => {testAttempt.current++;setRcloneResult(undefined);setS3Tested(undefined);invalidateS3();setError('');setS3(current => ({...current, ...patch}));};
@@ -783,10 +726,7 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
         if (authFailure({code: state.errorCode})) {refuse({code: state.errorCode});return;}
         setError(state.error || t('next.remoteSources.unconfirmed'));return;
       }
-      nextSourceId.current = receipt.sourceId;setStep('reading');setLoadingProfile(true);
-      try {const next = await service.readProfile(receipt.sourceId, String(receipt.generation), guard);if (guard()) {setProfile(next);setValues(next.saved ? readValuesWithoutConsent(next.values) : withLegacyWholeFileReads(sourceReadPreset('once'), next.values.wholeFileReads));}}
-      catch (value) {if (guard()) setError(remoteErrorText(value));}
-      finally {if (guard()) setLoadingProfile(false);}
+      enterReading(receipt.sourceId, receipt.generation, guard);
     } finally {if (guard()) {pending.current=false;setBusy(false);}}
   };
   const create = async () => {
@@ -799,10 +739,7 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
       if (!guard()) return;
       const state = service.getSnapshot();
       if (state.error || !state.receipt) {if (guard()) setError(state.error || t('next.remoteSources.unconfirmed'));return;}
-      const source = state.receipt.source;setCreated(source);nextSourceId.current = source.id;setStep('reading');setLoadingProfile(true);setDraft(current => ({...current, password: ''}));
-      try {const next = await service.readProfile(source.id, String(source.generation), guard);if (guard()) {setProfile(next);setValues(next.saved ? readValuesWithoutConsent(next.values) : withLegacyWholeFileReads(sourceReadPreset('once'), next.values.wholeFileReads));}}
-      catch (value) {if (guard()) setError(remoteErrorText(value));}
-      finally {if (guard()) setLoadingProfile(false);}
+      const source = state.receipt.source;enterReading(source.id, source.generation, guard);setDraft(current => ({...current, password: ''}));
     } finally {if (guard()) {pending.current=false;setBusy(false);}}
   };
   const createS3 = async () => {
@@ -822,10 +759,7 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
         if (authFailure({code: state.errorCode})) {refuse({code: state.errorCode});return;}
         setError(state.error || t('next.remoteSources.unconfirmed'));return;
       }
-      nextSourceId.current = receipt.sourceId;setStep('reading');setLoadingProfile(true);
-      try {const next = await service.readProfile(receipt.sourceId, String(receipt.generation), guard);if (guard()) {setProfile(next);setValues(next.saved ? readValuesWithoutConsent(next.values) : withLegacyWholeFileReads(sourceReadPreset('once'), next.values.wholeFileReads));}}
-      catch (value) {if (guard()) setError(remoteErrorText(value));}
-      finally {if (guard()) setLoadingProfile(false);}
+      enterReading(receipt.sourceId, receipt.generation, guard);
     } finally {if (guard()) {pending.current=false;setBusy(false);}}
   };
   const createFromConfig = async () => {
@@ -842,41 +776,15 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
         if (authFailure({code: state.errorCode})) {refuse({code: state.errorCode});return;}
         setError(state.error || t('next.remoteSources.unconfirmed'));return;
       }
-      nextSourceId.current = receipt.sourceId;setStep('reading');setLoadingProfile(true);
-      try {const next = await service.readProfile(receipt.sourceId, String(receipt.generation), guard);if (guard()) {setProfile(next);setValues(next.saved ? readValuesWithoutConsent(next.values) : withLegacyWholeFileReads(sourceReadPreset('once'), next.values.wholeFileReads));}}
-      catch (value) {if (guard()) setError(remoteErrorText(value));}
-      finally {if (guard()) setLoadingProfile(false);}
+      enterReading(receipt.sourceId, receipt.generation, guard);
     } finally {if (guard()) {pending.current=false;setBusy(false);}}
   };
-  const saveReading = async () => {
-    const original = attemptGuard();
-    const guard = () => original() && !!consentDraft?.current();
-    if (pending.current || !guard() || !profile) return;
-    pending.current = true;
-    setError('');setBusy(true);
-    let confirmed: SourceReadSettings | undefined;
-    try {
-      const next = await service.saveProfile(profile, consentDraft!.values(values), guard);
-      if (!guard()) return;
-      if (service.getSnapshot().error) {setError(service.getSnapshot().error);return;}
-      confirmed = next;
-      const savedSource = created ?? service.getSnapshot().sources.find(source => source.id === next.sourceId);
-      if (advancedTouched && savedSource) {
-        const current = await service.readAdvanced(savedSource.id, guard);
-        if (!guard()) return;
-        const advancedSaved = await service.saveAdvanced(current, advancedValues, guard);
-        if (!guard()) return;
-        setAdvancedValues(advancedSaved.values);
-      }
-      setStep('folders');
-      setLibraryName(current => current || (created ?? service.getSnapshot().sources.find(source => source.id === next.sourceId))?.name || '');
-      void libraries.loadLibraries();
-    } catch (value) {
-      if (!guard()) return;
-      const saved = created ?? service.getSnapshot().sources.find(source => source.id === nextSourceId.current);
-      if (authFailure(value)) { active.current=false; reportError(value); return; }
-      if (refreshFailure(value) && saved) {active.current=false;setCreated(saved);setStep('folders');void libraries.loadLibraries();} else setError(remoteErrorText(value));
-    } finally {if (guard()) {if (confirmed) setProfile(confirmed);pending.current=false;setBusy(false);}}
+  const saveReading = () => {
+    if (pending.current || !wizardAction(renderGuard, 'reading', formToken) || !wizardReader || !wizardReadState) return;
+    if (wizardReadState.kind === 'unknown') {void wizardReader.recover(wizardReadState);return;}
+    if (wizardReadState.kind !== 'ready' && wizardReadState.kind !== 'failed' || !wizardReadState.draft) return;
+    const draft = wizardReadState.draft;
+    void (draft.advancedDirty ? wizardReader.saveAdvanced(draft, wizardReadState) : wizardReader.save(draft, wizardReadState));
   };
   /** Attaches the chosen folders to a new or existing library; the source is
    * already saved, so a failure here leaves the source in place. */
@@ -931,7 +839,8 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
   };
   useEffect(() => {if (attachMode === 'existing' && !existingId && librarySnapshot.directory.data?.items.length) setExistingId(librarySnapshot.directory.data.items[0].id);}, [attachMode, existingId, librarySnapshot.directory.data]);
   const sourceNow = created ?? (step === 'folders' || step === 'done' ? service.getSnapshot().sources.find(source => source.id === nextSourceId.current) : undefined);
-  const presetName = sourceReadPresetName(values);
+  const recordedReading = profile ? sourceChoiceComparison(profile) : undefined;
+  const presetName = recordedReading?.changedFields.length === 0 ? recordedReading.name : undefined;
   // The drawn wizard has five steps: what, the remote, how Portico treats it,
   // folders, done (remote-sources.html#1, #8 to #12).
   const stepNumber = step === 'what' ? 1 : step === 'remote' ? 2 : step === 'reading' ? 3 : step === 'folders' ? 4 : 5;
@@ -956,50 +865,48 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
         : sourceKind === 'drive' ? !!driveTested && driveTested.revision === driveRevision && !!driveName.trim() && (driveMode === 'oauth' ? oauthPhase === 'ready' && !!oauthToken : driveResult.ok)
           : sourceKind === 'cloud' ? !!cloudTested && cloudTested.revision === cloudRevision && !!cloudName.trim() && cloudResult.ok
           : !!configRemote && !!configView?.remotes.some(remote => remote.name === configRemote && remote.supported);
-  useLayoutEffect(() => {wizardLive.current = {step, token: formToken}; readingOpeningRef.current = readingOpening; readingLive.current = {step, source: sourceNow, profile};});
-  // The dialog cannot outlive a phone layout: a wider window retires its opening.
-  useLayoutEffect(() => {if (phone || !readingOpening) return; readingOpeningRef.current = null; setReadingOpening(null);}, [phone, readingOpening]);
-  // Retire the opening as soon as the wizard closes, and on unmount, in a layout
-  // pass: a retained choice edit must not write in the passive-cleanup gap.
-  useLayoutEffect(() => {if (open) return; readingOpeningRef.current = null; setReadingOpening(null);}, [open]);
-  useLayoutEffect(() => () => {readingOpeningRef.current = null;}, []);
-  /** Retires the opening only when it is still the one this handler belongs to. */
-  const retireReading = (opening: ReadingOpening) => {
-    if (readingOpeningRef.current !== opening) return;
-    readingOpeningRef.current = null;
-    setReadingOpening(null);
-  };
-  const openReadingChange = () => {
-    if (!profile || !sourceNow || readingOpeningRef.current) return;
-    const opening: ReadingOpening = {guard: attemptGuard(), sourceId: sourceNow.id, sourceGeneration: sourceNow.generation, profileGeneration: profile.generation, profileRevision: profile.revision};
-    readingOpeningRef.current = opening;
-    setPendingReading(values);
-    setReadingOpening(opening);
-  };
-  /** Only the exact opening this handler was rendered with may replace the choice. */
-  const useReadingOpening = (opening: ReadingOpening) => {
-    if (readingOpeningRef.current !== opening) return;
-    const live = readingLive.current;
-    readingOpeningRef.current = null;
-    setReadingOpening(null);
-    if (!opening.guard() || live.step !== 'reading') return;
-    if (!live.source || !live.profile || live.source.id !== opening.sourceId || live.source.generation !== opening.sourceGeneration) return;
-    if (live.profile.generation !== opening.profileGeneration || live.profile.revision !== opening.profileRevision) return;
-    setValues(withLegacyWholeFileReads(pendingReading, values.wholeFileReads));
-  };
-  const readingChangeDialog = phone && readingOpening ? <Dialog open width={560} title={t('next.remoteSources.changeTitle')} description={t('next.remoteSources.changeBody')}
-    onOpenChange={value => {if (!value) retireReading(readingOpening);}}
-    footer={<><Button size="compact" variant="glass" onClick={() => retireReading(readingOpening)}>{t('next.remoteSources.cancel')}</Button>
-      <Button size="compact" variant="primary" onClick={() => useReadingOpening(readingOpening)}>{t('next.remoteSources.useChoice')}</Button></>}>
-    <ReadingChoices values={pendingReading} origin={result?.origin ?? sourceNow?.origin} rangeSupport={result?.rangeSupport ?? sourceNow?.rangeSupport ?? 'unknown'} disabled={false}
-      onChange={next => {if (readingOpeningRef.current === readingOpening) setPendingReading(next);}}/>
-  </Dialog> : null;
+  useLayoutEffect(() => {wizardLive.current = {step, token: formToken};});
+  const [readingEpoch, setReadingEpoch] = useState(0);
+  const readingOwner = useOwnedResource(() => {
+    if (!open || step !== 'reading' || !created) return undefined;
+    const location = router.state.location;
+    const reader = new ReadingProfileOpening(service, created, () => renderGuard() && router.state.location === location &&
+      wizardLive.current.step === 'reading' && wizardLive.current.token === formToken &&
+      service.getSnapshot().sources.some(row => row.id === created.id && row.generation === created.generation),
+      () => !pending.current && !service.getSnapshot().busy && !service.getSnapshot().ambiguous);
+    const off = router.subscribe('onBeforeNavigate', () => reader.retire());
+    return {reader, retire: () => {reader.retire();off();}};
+  }, entry => entry?.retire(), [service, created, isCurrent, formToken, open, step === 'reading', readingEpoch], entry => {void entry?.reader.load();});
+  const wizardReader = readingOwner?.value?.reader;
+  const wizardReadState = useSyncExternalStore(wizardReader?.subscribe ?? noReadSubscribe, wizardReader?.getSnapshot ?? noReadState, noReadState);
+  const readingHandled = useRef<object | undefined>(undefined);
+  useLayoutEffect(() => {
+    if (!wizardReader?.current() || !wizardReadState || wizardReadState.kind !== 'failed' || !authFailure(wizardReadState.error)) return;
+    wizardReader.retire();refuse(wizardReadState.error);
+  }, [wizardReader, wizardReadState]);
+  useEffect(() => {
+    if (!wizardReader?.current() || wizardReadState?.kind !== 'saved' || readingHandled.current === wizardReadState) return;
+    readingHandled.current = wizardReadState;
+    if (!wizardReadState.profile) {setReadingEpoch(value => value + 1);return;}
+    const accepted = wizardReadState.profile, location = router.state.location;
+    const current = () => renderGuard() && router.state.location === location && wizardLive.current.step === 'reading' && wizardLive.current.token === formToken;
+    void (async () => {
+      // A confirmed choice is already terminal. Only this exact accepted raw
+      // generation may supply the next folder step; a refresh failure is no PUT.
+      await service.load();
+      if (!current()) return;
+      const row = acceptedReadingSource(service.getSnapshot().sources, accepted);
+      if (!row) {setError(t('next.remoteSources.error.refreshFailed'));return;}
+      wizardReader.retire();setProfile(accepted);setValues(readValuesWithoutConsent(accepted.values));setCreated(row);
+      setStep('folders');setLibraryName(value => value || row.name);void libraries.loadLibraries();
+    })().catch(error => {if (current()) setError(remoteErrorText(error));});
+  }, [wizardReader, wizardReadState]);
   const footer = step === 'what'
     ? <><Button size="compact" variant="glass" onClick={() => close()}>{t('next.remoteSources.cancel')}</Button><Button size="compact" variant="primary" onClick={() => continueFromWhat(renderGuard, formToken)}>{t('next.remoteSources.continue')}</Button></>
     : step === 'remote'
       ? <><Button size="compact" variant="glass" disabled={busy} onClick={() => goBack('remote', 'what', renderGuard, formToken)}>{t('next.remoteSources.back')}</Button><Button size="compact" variant="primary" disabled={busy || !canContinue} onClick={() => void (sourceKind === 'webdav' ? create() : sourceKind === 'rclone' ? createRclone() : sourceKind === 's3' ? createS3() : sourceKind === 'drive' ? createDrive() : sourceKind === 'cloud' ? createCloud() : createFromConfig())}>{t('next.remoteSources.saveAndContinue')}</Button></>
       : step === 'reading'
-        ? <><Button size="compact" variant="glass" disabled={busy} onClick={() => goBack('reading', 'remote', renderGuard, formToken)}>{t('next.remoteSources.back')}</Button><Button size="compact" variant="primary" disabled={busy || loadingProfile || !profile} onClick={saveReading}>{t('next.remoteSources.save')}</Button></>
+        ? <><Button size="compact" variant="glass" disabled={busy} onClick={() => goBack('reading', 'remote', renderGuard, formToken)}>{t('next.remoteSources.back')}</Button><Button size="compact" variant="primary" disabled={busy || !wizardReader?.current() || !wizardReadState || !['ready', 'failed', 'unknown'].includes(wizardReadState.kind)} onClick={saveReading}>{t(wizardReadState?.kind === 'unknown' ? 'next.remoteSources.checkResult' : 'next.remoteSources.save')}</Button></>
         : step === 'folders' ? foldersFooter : doneFooter;
   return <Dialog open={open} onOpenChange={value => {if (!value) close();}} title={t('next.settingsSpec.server.remote-sources.panels.newSource.newTitle')} width={760}
     description={step === 'done' ? undefined : stepTitle} footer={footer}>
@@ -1183,35 +1090,14 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
       </>}
     </>}
     {step === 'reading' && <>
-      <p className={styles.note}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.label')}</p>
-      {phone
-        ? <div className={styles.readingSummary}>
-          <span><b>{t(presetName ? presetLabel(presetName) : 'next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.4.label')}</b>
-            {presetName && <small>{t(presetHint(presetName))}</small>}</span>
-          <Button size="xs" variant="glass" disabled={busy || loadingProfile || !profile || !sourceNow} onClick={openReadingChange}>{t('next.remoteSources.change')}</Button>
-        </div>
-        : advancedOpen
-          // Frame 4b folds the four choices into one line while Advanced is
-          // open, so the page does not double in length. It states only the
-          // current profile in the same words the phone uses; it makes no claim
-          // that any Advanced value belongs to that choice.
-          ? <div className={styles.readingSummary}>
-            <span><b>{t(presetName ? presetLabel(presetName) : 'next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.4.label')}</b>
-              {presetName && <small>{t(presetHint(presetName))}</small>}</span>
-          </div>
-          : <ReadingChoices values={values} origin={result?.origin ?? sourceNow?.origin} rangeSupport={result?.rangeSupport ?? sourceNow?.rangeSupport ?? 'unknown'} disabled={busy} onChange={next => setValues(withLegacyWholeFileReads(next, values.wholeFileReads))}/>}
-      <div className={styles.limits}>
-        <SettingNumber label={t('next.remoteSources.connections')} value={values.connections} min={1} max={32} unit={t('next.remoteSources.atOnce')} disabled={busy} onCommit={value => {if (value !== null) setValues({...values, connections: value});}}/>
-        <SettingNumber label={t('next.remoteSources.requestsPerSecond')} value={values.requestsPerSecond} min={1} max={50} unit={t('next.remoteSources.aSecond')} disabled={busy} onCommit={value => {if (value !== null) setValues({...values, requestsPerSecond: value});}}/>
-        <SettingNumber label={t('next.remoteSources.downloadSpeed')} value={values.bytesPerSecond ? values.bytesPerSecond / 1_000_000 : null} min={1} max={1000} optional unit={t('next.remoteSources.megabytesPerSecond')} disabled={busy} onCommit={value => setValues({...values, bytesPerSecond: value === null ? 0 : Math.round(value) * 1_000_000})}/>
-      </div>
-      <AnalysisConsent consent={consentDraft?.current() ? consentDraft.value() : undefined} disabled={busy} onChange={value => {if (!pending.current && consentDraft?.change(value)) showConsent(before => before + 1);}}/>
-      <button type="button" className={styles.advRow} aria-expanded={advancedOpen} onClick={() => setAdvancedOpen(value => !value)}>
-        <span><b>{t('next.remoteSources.advanced')}</b><small>{t('next.remoteSources.advancedHelp')}</small></span>
-        <Icon name="i-down" size={18}/>
-      </button>
-      {advancedOpen && <SourceAdvancedRows values={advancedValues} cacheSupported transportSupported={!!sourceNow?.mountId} cacheApplied cacheError={undefined} observedInterval={0} disabled={busy}
-        onChange={next => {setAdvancedTouched(true);setAdvancedValues(next);}}/>}
+      {(!wizardReadState || wizardReadState.kind === 'loading') && <p role="status">{t('next.remoteSources.loading')}</p>}
+      {wizardReadState?.kind === 'failed' && <p className={styles.error} role="alert">{remoteErrorText(wizardReadState.error)}</p>}
+      {wizardReadState?.kind === 'unknown' && <p className={styles.note} role="status">{t('next.remoteSources.unconfirmed')}</p>}
+      {(wizardReadState?.kind === 'accepted-unavailable' || wizardReadState?.kind === 'saved-unavailable') && <p className={styles.note} role="status">{t('next.remoteSources.error.refreshFailed')}</p>}
+      {wizardReadState?.kind === 'saved' && <p role="status">{t('next.remoteSources.saved')}</p>}
+      {wizardReader && wizardReadState && <SourceReadingFields reader={wizardReader} state={wizardReadState} phone={phone}
+        disabled={busy || !['ready', 'failed'].includes(wizardReadState.kind)} advancedOpen={advancedOpen}
+        onAdvancedChange={() => {if (wizardAction(renderGuard, 'reading', formToken) && wizardReader.getSnapshot() === wizardReadState) setAdvancedOpen(!advancedOpen);}}/>}
     </>}
     {step === 'folders' && <>
       <p className={styles.note}>{t('next.remoteSources.foldersOnlyHint')}</p>
@@ -1253,8 +1139,8 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
         <li><b>{t('next.remoteSources.summaryConnected')}</b><small>{t('next.remoteSources.summaryConnectedHelp')}</small></li>
         <li><b>{t('next.remoteSources.summaryLimits', {connections: values.connections, requests: values.requestsPerSecond})}</b>
           <small>{values.bytesPerSecond ? t('next.remoteSources.downloadSpeed') + ': ' + (values.bytesPerSecond / 1_000_000) + ' ' + t('next.remoteSources.megabytesPerSecond') + '. ' : t('next.remoteSources.noLimit') + '. '}{t('next.remoteSources.summaryLimitsHelp', {name: sourceNow?.name ?? ''})}</small></li>
-        <li><b>{t('next.remoteSources.summaryTreatment', {preset: presetName ? t(presetLabel(presetName)) : t('next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.4.label')})}</b>
-          <small>{t('next.remoteSources.summaryTreatmentHelp', {name: sourceNow?.name ?? ''})}</small></li>
+        {recordedReading && <li><b>{t('next.remoteSources.summaryTreatment', {preset: presetName ? t(presetLabel(presetName)) : t('next.remoteSources.custom')})}</b>
+          <small>{t('next.remoteSources.summaryTreatmentHelp', {name: sourceNow?.name ?? ''})}</small></li>}
         {summary.library
           ? <li><b>{t('next.remoteSources.summaryLibrary', {library: summary.library})}</b>
             <small>{t(summary.folders === 1 ? 'next.remoteSources.summaryLibraryOne' : 'next.remoteSources.summaryLibraryMany', {count: summary.folders, source: sourceNow?.name ?? ''})}</small></li>
@@ -1264,7 +1150,6 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
     </div>}
     {picking && sourceNow && <RemoteFolderPicker service={service} sourceId={sourceNow.id} sourceName={sourceNow.name} open={picking}
       onOpenChange={setPicking} onChoose={folders => setChosen(current => [...current, ...folders.filter(folder => !current.some(value => value.relative === folder.relative))])}/>}
-    {readingChangeDialog}
     <Dialog open={leaving !== ''} role="alertdialog" width={520} title={t('next.remoteSources.leaveTitle')}
       onOpenChange={value => {if (!value && !leaveRemove) setLeaving('');}}
       description={leaving === 'saved' ? t('next.remoteSources.leaveSavedBody', {name: sourceNow?.name ?? ''}) : t('next.remoteSources.leaveUnsavedBody')}
@@ -1315,12 +1200,9 @@ function ManageSourceDialog(props: ManageSourceProps) {
 function ManageSourceLoaded({service, source, api, serverId, viewerId, openSection, isCurrent, reportError, onClose, onRemoved, libraries, openingId}: ManageSourceProps & Readonly<{libraries: LibraryManagementService; openingId: number}>) {
   const [draft, setDraft] = useState<WebDavDraft>({name: source.name, root: '', username: '', password: '', insecureLocal: source.insecureLocal});
   const [result, setResult] = useState<DAVConnectionResult>();
-  const admission = useProfileAdmission({service, source, isCurrent});
-  const held = admission.held;
-  const flight = useRef<object | undefined>(undefined);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  useLayoutEffect(() => {setBusy(false);}, [admission.token]);
+  useLayoutEffect(() => {setBusy(false);}, [openingId]);
   const [typed, setTyped] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [status, setStatus] = useState<RemoteSourceStatus>();
@@ -1351,13 +1233,8 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
       if (savedTestRunning.current?.owner === owner) savedTestRunning.current = null;
     };
   }, [service, source, status]);
-  const [changing, setChanging] = useState(false);
-  const [advanced, setAdvanced] = useState<{settings?: Awaited<ReturnType<RemoteSourceService['readAdvanced']>>; values: SourceAdvanced}>();
-  const [advancedBusy, setAdvancedBusy] = useState(false);
-  const [advancedNote, setAdvancedNote] = useState('');
   const [pickingProgram, setPickingProgram] = useState(false);
   const [programNote, setProgramNote] = useState('');
-  const [pendingValues, setPendingValues] = useState<SourceReadValues>(sourceReadPreset('list'));
   const librarySnapshot = useSyncExternalStore(libraries.subscribe, libraries.getSnapshot, libraries.getSnapshot);
   const [attachTo, setAttachTo] = useState('');
   const [picking, setPicking] = useState(false);
@@ -1365,6 +1242,7 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
   const [attachNote, setAttachNote] = useState('');
   const testAttempt = useRef(0), active = useRef(true), pending = useRef(false), lifetime = useRef(0);
   const attemptGuard = () => { const captured = lifetime.current; return () => active.current && lifetime.current === captured && isCurrent(); };
+  const profileCurrent = useCallback(() => active.current && isCurrent(), [isCurrent, openingId]);
   // The dialog's admission is layout-owned: a replayed mount admits again, and
   // the cleanup retires this exact render synchronously.
   useLayoutEffect(() => {
@@ -1376,17 +1254,9 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
     // The guard belongs to this rendered dialog, not to a later one.
     const captured = lifetime.current;
     const guard = () => active.current && lifetime.current === captured && isCurrent();
-    const exact = admission.token;
-    if (!admission.admitted || !exact) return;
-    service.readProfile(source.id, String(source.generation), () => admission.current() && guard()).then(next => {
-      if (!admission.current() || !guard() || next.sourceId !== source.id || next.generation !== String(source.generation)) return;
-      admission.setHeld({token: exact, profile: next, consent: next.values.allowAdvancedMediaAnalysis,
-        values: next.saved ? readValuesWithoutConsent(next.values) : withLegacyWholeFileReads(sourceReadPreset('list'), next.values.wholeFileReads)});
-    }).catch(value => {if (admission.current() && guard()) setError(remoteErrorText(value));});
     service.readStatus(source.id, guard).then(next => {if (guard()) setStatus(next);}).catch(() => {});
-    service.readAdvanced(source.id, guard).then(next => {if (guard()) setAdvanced({settings: next, values: next.values});}).catch(() => {});
     void libraries.loadLibraries();
-  }, [service, source.id, source.generation, isCurrent, libraries, admission.admitted, admission.token]);
+  }, [service, source.id, source.generation, isCurrent, libraries, openingId]);
   useEffect(() => {if (!attachTo && status?.libraries.length) setAttachTo(status.libraries[0].libraryId);}, [attachTo, status]);
   useEffect(() => {if (!attachTo && librarySnapshot.directory.data?.items.length) setAttachTo(librarySnapshot.directory.data.items[0].id);}, [attachTo, librarySnapshot.directory.data]);
   const changeProgram = async (choice: Readonly<{useIncluded?: boolean; executable?: string}>) => {
@@ -1397,15 +1267,6 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
       const next = await service.readStatus(source.id, attemptGuard());
       if (active.current) {setStatus(next);setProgramNote(t('next.remoteSources.programChanged'));}
     } catch (value) {if (active.current) setProgramNote(attachFailure(value));}
-  };
-  const saveAdvanced = async () => {
-    if (!advanced || advancedBusy) return;
-    setAdvancedBusy(true);setAdvancedNote('');
-    try {
-      const saved = advanced.settings ? await service.saveAdvanced(advanced.settings, advanced.values, attemptGuard()) : undefined;
-      if (saved && active.current) {setAdvanced({settings: saved, values: saved.values});setAdvancedNote(t('next.remoteSources.saved'));}
-    } catch (value) {if (active.current) setAdvancedNote(attachFailure(value));}
-    finally {if (active.current) setAdvancedBusy(false);}
   };
   const attach = async (folders: readonly RemoteFolder[]) => {
     if (!attachTo || attachBusy) return;
@@ -1444,22 +1305,6 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
       done();
     } finally {if (guard()) {pending.current=false;setBusy(false);}}
   };
-  const saveReading = async () => {
-    const guard = attemptGuard(), exact = admission.token, snapshot = held;
-    if (pending.current || !guard() || !exact || !snapshot || !admission.holds(snapshot) || flight.current) return;
-    const claim = admission.begin(snapshot);if (!claim) return;
-    pending.current = true;flight.current = claim;
-    const current = () => admission.owns(claim) && admission.holds(snapshot) && guard();
-    setError('');setBusy(true);
-    try {
-      const next = await service.saveProfile(snapshot.profile, readValuesWithConsent(snapshot.values, snapshot.consent, snapshot.consentDirty), current);
-      if (!current()) return;
-      if (service.getSnapshot().error) {setError(service.getSnapshot().error);return;}
-      admission.settle(claim, snapshot, {token: exact, profile: next, consent: next.values.allowAdvancedMediaAnalysis, values: readValuesWithoutConsent(next.values)});
-    }
-    catch (value) {if (!current()) return;if (authFailure(value)) {active.current=false;lifetime.current++;reportError(value);return;}if (refreshFailure(value)) done(); else setError(remoteErrorText(value));}
-    finally {if (flight.current === claim) {flight.current = undefined;pending.current=false;if (admission.finish(claim) && guard()) setBusy(false);}}
-  };
   const disconnect = async () => {
     const guard = attemptGuard();
     if (pending.current || !guard() || typed.trim() !== source.name) return;
@@ -1470,7 +1315,7 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
     finally {if (guard()) {pending.current=false;setBusy(false);}}
   };
   const done = () => {
-    admission.retire();active.current=false;pending.current=false;lifetime.current++;
+    active.current=false;pending.current=false;lifetime.current++;
     // Retire the test admission with the close gesture, before the unmount
     // layout runs: a retained Test cannot be admitted in between.
     savedTestOwner.current=null;
@@ -1564,31 +1409,9 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
       </div>
       <Button size="compact" variant="primary" disabled={busy || !draft.name.trim() || (!result && !draft.root.trim())} onClick={() => void saveConnection()}>{t('next.remoteSources.save')}</Button>
     </section>
-    <section className={styles.group}><h3>{t('next.remoteSources.reading')}</h3>
-      {!held ? <p className={styles.muted} role="status">{t('next.remoteSources.loading')}</p> : <>
-      <div className={styles.choiceSummary}>
-        <span>{t('next.remoteSources.howTreated')}</span>
-        <b>{t(presetLabel(sourceReadPresetName(held.values) ?? 'once'))}</b>
-        <Button size="xs" variant="glass" disabled={busy} onClick={() => {setPendingValues(held.values);setChanging(true);}}>{t('next.remoteSources.change')}</Button>
-      </div>
-      <div className={styles.limits}>
-        <SettingNumber label={t('next.remoteSources.connections')} value={held.values.connections} min={1} max={32} unit={t('next.remoteSources.atOnce')} disabled={busy} onCommit={value => {if (value !== null && held) admission.setHeld(current => current && current.token === held.token ? {...current, values: {...current.values, connections: value}} : current);}}/>
-        <SettingNumber label={t('next.remoteSources.requestsPerSecond')} value={held.values.requestsPerSecond} min={1} max={50} unit={t('next.remoteSources.aSecond')} disabled={busy} onCommit={value => {if (value !== null && held) admission.setHeld(current => current && current.token === held.token ? {...current, values: {...current.values, requestsPerSecond: value}} : current);}}/>
-        <SettingNumber label={t('next.remoteSources.downloadSpeed')} value={held.values.bytesPerSecond ? held.values.bytesPerSecond / 1_000_000 : null} min={1} max={1000} optional unit={t('next.remoteSources.megabytesPerSecond')} disabled={busy} onCommit={value => {if (held) admission.setHeld(current => current && current.token === held.token ? {...current, values: {...current.values, bytesPerSecond: value === null ? 0 : Math.round(value) * 1_000_000}} : current);}}/>
-      </div>
-      <AnalysisConsent consent={held.consent} disabled={busy} onChange={value => {if (held) admission.setHeld(current => current && current.token === held.token ? {...current, consent: value, consentDirty: true} : current);}}/>
-      <Button size="compact" variant="primary" disabled={busy} onClick={() => void saveReading()}>{t('next.remoteSources.save')}</Button>
-      </>}
-    </section>
-    <section className={styles.group}><h3>{t('next.remoteSources.advanced')}</h3>
-      <p className={styles.note}>{t('next.remoteSources.advancedHelp')}</p>
-      {advanced
-        ? <><SourceAdvancedRows values={advanced.values} cacheSupported={advanced.settings?.cacheSupported ?? false} transportSupported={advanced.settings?.cacheSupported ?? false}
-          cacheApplied={advanced.settings?.cacheApplied ?? true} cacheError={advanced.settings?.cacheError} cacheUsedBytes={advanced.settings?.cacheUsedBytes} observedInterval={advanced.settings?.scanIntervalObserved ?? 0}
-          disabled={advancedBusy} onChange={values => setAdvanced(current => current && {...current, values})}/>
-          <Button size="compact" variant="primary" disabled={advancedBusy} onClick={() => void saveAdvanced()}>{t('next.remoteSources.save')}</Button></>
-        : <p className={styles.muted} role="status">{t('next.remoteSources.loading')}</p>}
-      {advancedNote && <p className={styles.note} role="status">{advancedNote}</p>}
+    <SourceReadingDialog embedded service={service} source={source} isCurrent={profileCurrent} reportError={reportError}
+      onClose={done} errorText={remoteErrorText} isAuthFailure={authFailure}/>
+    <section className={styles.group}><h3>{t('next.remoteSources.connection')}</h3>
       {status?.program && <div className={styles.programRows}>
         <p className={styles.advTitle}>{t('next.remoteSources.connection')}</p>
         <label className={styles.switchRow}><span>{t('next.remoteSources.customProgram')}<small className={styles.note}>{t('next.remoteSources.customProgramHelp')}</small></span>
@@ -1634,12 +1457,6 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
           <Button size="compact" variant="primary" disabled={busy || typed.trim() !== source.name} onClick={() => void disconnect()}>{t('next.remoteSources.disconnect')}</Button></div>
       </>}
     </section>
-    <Dialog open={changing && !!held} width={560} title={t('next.remoteSources.changeTitle')} description={t('next.remoteSources.changeBody')}
-      onOpenChange={setChanging}
-      footer={<><Button size="compact" variant="glass" onClick={() => setChanging(false)}>{t('next.remoteSources.cancel')}</Button>
-        <Button size="compact" variant="primary" onClick={() => {if (held) admission.setHeld(current => current && current.token === held.token ? {...current, values: withLegacyWholeFileReads(pendingValues, current.values.wholeFileReads)} : current);setChanging(false);}}>{t('next.remoteSources.useChoice')}</Button></>}>
-      <ReadingChoices values={pendingValues} origin={source.origin} rangeSupport={source.rangeSupport} disabled={false} onChange={setPendingValues}/>
-    </Dialog>
     {picking && <RemoteFolderPicker service={service} sourceId={source.id} sourceName={source.name} open={picking}
       onOpenChange={setPicking} onChoose={folders => {setPicking(false);void attach(folders);}}/>}
   </Dialog>;
@@ -1653,20 +1470,18 @@ function ManageRcloneDialog({service, source, isCurrent, reportError, onClose, o
   const [draft, setDraft] = useState<RcloneDraft>({name: source.name, remote: '', config: ''});
   const [program, setProgram] = useState<RcloneProgram>();
   const [result, setResult] = useState<RcloneTestResult>();
-  const admission = useProfileAdmission({service, source, isCurrent});
-  const profileHeld = admission.held;
-  const profileFlight = useRef<object | undefined>(undefined);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  useLayoutEffect(() => {setBusy(false);}, [admission.token]);
   const [typed, setTyped] = useState('');
   const [confirming, setConfirming] = useState(false);
   const testAttempt = useRef(0), pending = useRef(false);
   const ownedLease = useOwnedResource(() => ({live: true, service, sourceId: source.id, generation: source.generation, isCurrent, reportError, onClose, onRemoved}),
     value => {value.live = false;}, [service, source, isCurrent]);
   const lease = ownedLease?.value;
+  useLayoutEffect(() => {setBusy(false);}, [lease]);
+  const profileCurrent = useCallback(() => !!lease && lease.live && lease.isCurrent(), [lease]);
   const held = (captured: typeof lease) => () => {try {return !!captured && captured.live && captured.isCurrent();} catch {return false;}};
-  const retire = () => {admission.retire();if (lease) lease.live = false;pending.current = false;};
+  const retire = () => {if (lease) lease.live = false;pending.current = false;};
   const refuse = (error: unknown) => {if (!held(lease)()) return;retire();lease?.reportError(error);};
   const stillListed = (captured: typeof lease) => !!captured && held(captured)() && service.getSnapshot().sources.some(row => row.id === captured.sourceId && row.generation === captured.generation);
   const updateDraft = (patch: Partial<RcloneDraft>) => {testAttempt.current++;setResult(undefined);setError('');setDraft(current => ({...current, ...patch}));};
@@ -1674,21 +1489,11 @@ function ManageRcloneDialog({service, source, isCurrent, reportError, onClose, o
     // The guard stays with this lease, not with a later source or service.
     const captured = lease;
     const guard = held(captured);
-    const exact = admission.token;
-    if (!admission.admitted || !exact) return;
-    service.readProfile(source.id, String(source.generation), () => admission.current() && guard()).then(next => {
-      if (!admission.current() || !guard() || next.sourceId !== source.id || next.generation !== String(source.generation)) return;
-      admission.setHeld({token: exact, profile: next, consent: next.values.allowAdvancedMediaAnalysis,
-        values: next.saved ? readValuesWithoutConsent(next.values) : withLegacyWholeFileReads(sourceReadPreset('list'), next.values.wholeFileReads)});
-    }).catch(value => {
-      if (!guard() || !admission.current()) return;
-      if (authFailure(value)) {refuse(value);return;}
-      setError(remoteErrorText(value));
-    });
+    if (!guard()) return;
     service.rcloneProgram().then(next => {if (guard()) setProgram(next);}).catch(value => {
       if (guard() && authFailure(value)) {refuse(value);}
     });
-  }, [service, source.id, source.generation, isCurrent, lease, admission.admitted, admission.token]);
+  }, [service, source.id, source.generation, isCurrent, lease]);
   const test = async () => {
     const guard = held(lease);
     if (pending.current || !guard()) return;
@@ -1724,34 +1529,7 @@ function ManageRcloneDialog({service, source, isCurrent, reportError, onClose, o
       done();
     } finally {if (guard()) {pending.current=false;setBusy(false);}}
   };
-  const saveReading = async () => {
-    const guard = held(lease), exact = admission.token, snapshot = profileHeld;
-    if (pending.current || !guard() || !exact || !snapshot || !admission.holds(snapshot) || profileFlight.current) return;
-    const claim = admission.begin(snapshot);if (!claim) return;
-    pending.current = true;profileFlight.current = claim;
-    const current = () => guard() && admission.owns(claim) && admission.holds(snapshot);
-    setError('');setBusy(true);
-    try {
-      const next = await service.saveProfile(snapshot.profile, readValuesWithConsent(snapshot.values, snapshot.consent, snapshot.consentDirty), current);
-      if (!current()) return;
-      if (service.getSnapshot().error) {setError(service.getSnapshot().error);return;}
-      admission.settle(claim, snapshot, {token: exact, profile: next, consent: next.values.allowAdvancedMediaAnalysis, values: readValuesWithoutConsent(next.values)});
-    }
-    catch (value) {if (!current()) return;if (authFailure(value)) {refuse(value);return;}if (refreshFailure(value)) done(); else setError(remoteErrorText(value));}
-    finally {if (profileFlight.current === claim) {profileFlight.current = undefined;pending.current=false;if (admission.finish(claim) && guard()) setBusy(false);}}
-  };
-  const disconnect = async () => {
-    const guard = held(lease);
-    if (pending.current || !guard() || !lease || typed.trim() !== source.name) return;
-    const current = service.getSnapshot().sources.find(value => value.id === lease.sourceId && value.generation === lease.generation);
-    if (!current) {setError(remoteErrorText({code: 'revision_mismatch'}));return;}
-    pending.current = true;setError('');setBusy(true);
-    try {const receipt = await service.removeRclone(current, guard);if (!guard()) return;const state = service.getSnapshot();
-      if (!receipt) {if (authFailure({code: state.errorCode})) {refuse({code: state.errorCode});return;}setError(state.error || t('next.remoteSources.unconfirmed'));return;}
-      retire();lease?.onRemoved();}
-    finally {if (guard()) {pending.current=false;setBusy(false);}}
-  };
-  const done = () => {retire();setDraft(current => ({...current, config: ''}));setTyped('');lease?.onClose();};
+  const done = () => {if (!held(lease)()) return;retire();setDraft(current => ({...current, config: ''}));setTyped('');lease?.onClose();};
   const close = () => {if (busy || pending.current) return;done();};
   if (!lease || !held(lease)()) return null;
   return <Dialog open onOpenChange={value => {if (!value) close();}} title={source.name} width={760} footer={<Button size="compact" variant="glass" disabled={busy} onClick={close}>{t('next.remoteSources.cancel')}</Button>}>
@@ -1772,18 +1550,8 @@ function ManageRcloneDialog({service, source, isCurrent, reportError, onClose, o
       </div>
       <Button size="compact" variant="primary" disabled={busy || !draft.name.trim() || !draft.remote.trim() || !draft.config.trim()} onClick={() => void saveConnection()}>{t('next.remoteSources.save')}</Button>
     </section>
-    <section className={styles.group}><h3>{t('next.remoteSources.reading')}</h3>
-      {!profileHeld ? <p className={styles.muted} role="status">{t('next.remoteSources.loading')}</p> : <>
-      <ReadingChoices values={profileHeld.values} origin={source.origin} rangeSupport={source.rangeSupport} disabled={busy} onChange={next => admission.setHeld(current => current && current.token === profileHeld.token ? {...current, values: withLegacyWholeFileReads(next, current.values.wholeFileReads)} : current)}/>
-      <div className={styles.limits}>
-        <SettingNumber label={t('next.remoteSources.connections')} value={profileHeld.values.connections} min={1} max={32} unit={t('next.remoteSources.atOnce')} disabled={busy} onCommit={value => {if (value !== null && profileHeld) admission.setHeld(current => current && current.token === profileHeld.token ? {...current, values: {...current.values, connections: value}} : current);}}/>
-        <SettingNumber label={t('next.remoteSources.requestsPerSecond')} value={profileHeld.values.requestsPerSecond} min={1} max={50} unit={t('next.remoteSources.aSecond')} disabled={busy} onCommit={value => {if (value !== null && profileHeld) admission.setHeld(current => current && current.token === profileHeld.token ? {...current, values: {...current.values, requestsPerSecond: value}} : current);}}/>
-        <SettingNumber label={t('next.remoteSources.downloadSpeed')} value={profileHeld.values.bytesPerSecond ? profileHeld.values.bytesPerSecond / 1_000_000 : null} min={1} max={1000} optional unit={t('next.remoteSources.megabytesPerSecond')} disabled={busy} onCommit={value => {if (profileHeld) admission.setHeld(current => current && current.token === profileHeld.token ? {...current, values: {...current.values, bytesPerSecond: value === null ? 0 : Math.round(value) * 1_000_000}} : current);}}/>
-      </div>
-      <AnalysisConsent consent={profileHeld.consent} disabled={busy} onChange={value => {if (profileHeld) admission.setHeld(current => current && current.token === profileHeld.token ? {...current, consent: value, consentDirty: true} : current);}}/>
-      <Button size="compact" variant="primary" disabled={busy} onClick={() => void saveReading()}>{t('next.remoteSources.save')}</Button>
-      </>}
-    </section>
+    <SourceReadingDialog embedded service={service} source={source} isCurrent={profileCurrent} reportError={reportError}
+      onClose={done} errorText={remoteErrorText} isAuthFailure={authFailure}/>
 
   </Dialog>;
 }
