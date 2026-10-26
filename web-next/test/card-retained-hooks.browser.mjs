@@ -11,7 +11,10 @@ export async function checkCardRetainedHooks(page, origin) {
     assert.deepEqual(withdrawn.after, withdrawn.before); assert.equal(withdrawn.consumed, false);
     await page.waitForTimeout(550);
     assert.equal((await page.evaluate(() => window.cardRetainedHarness.observations())).toggles, 0);
-    await page.evaluate(() => {const h = window.cardRetainedHarness; h.setRetained(false); h.current().enter(); h.current().down(); h.old().leave(); h.old().down();});
+    await page.evaluate(() => {const h = window.cardRetainedHarness; h.setRetained(false); h.current().move();});
+    await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keyup', {key: 'Shift'})));
+    assert.equal((await page.evaluate(() => window.cardRetainedHarness.observations())).preview.at(-1), false, 'fresh mouse move re-admits the window Shift listener');
+    await page.evaluate(() => {const h = window.cardRetainedHarness; h.current().down(); h.old().leave(); h.old().down();});
     await page.waitForTimeout(550);
     const revived = await page.evaluate(() => {const h = window.cardRetainedHarness; return {state: h.observations(), oldConsumed: h.old().consume(), currentConsumed: h.current().consume()};});
     assert.equal(revived.state.toggles, 1); assert.equal(revived.oldConsumed, false); assert.equal(revived.currentConsumed, true);

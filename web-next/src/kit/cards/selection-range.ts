@@ -38,7 +38,7 @@ export function useSelectionRangePreview(selection?: CardSelection, disabled = f
   const leave = () => {if (!owns(current)) return; setHover(false); paint(current, false);};
   return {
     onPointerEnter: (event: PointerEvent<HTMLElement>) => {if (!owns(current) || !current?.selection?.onPreview) return; setHover(event.pointerType === 'mouse'); paint(current, !!current.selection.active && event.pointerType === 'mouse' && event.shiftKey);},
-    onPointerMove: (event: PointerEvent<HTMLElement>) => paint(current, !!current?.selection?.active && event.pointerType === 'mouse' && event.shiftKey),
+    onPointerMove: (event: PointerEvent<HTMLElement>) => {if (!owns(current)) return; if (event.pointerType === 'mouse') setHover(true); paint(current, !!current?.selection?.active && event.pointerType === 'mouse' && event.shiftKey);},
     onPointerLeave: leave, onPointerCancel: leave,
     onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => {if (event.key === 'Shift' && !event.defaultPrevented) paint(current, !!current?.selection?.active);},
     onKeyUp: (event: ReactKeyboardEvent<HTMLElement>) => {if (event.key === 'Shift') paint(current, false);},
