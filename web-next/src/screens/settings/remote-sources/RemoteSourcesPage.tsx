@@ -15,6 +15,7 @@ import {SettingsGroup} from '../../../kit/settings';
 import {SettingsRow} from '../../../kit/shell/SettingsSurfaces';
 import {Icon, type IconName} from '../../../kit/Icon';
 import styles from './remote-sources.module.css';
+import {DriveModePane} from './DrivePanes';
 import {RemoteFolderPicker} from './RemoteFolderPicker';
 import {ProgramPicker} from './ProgramPicker';
 import {SourceHeader} from './SourceHeader';
@@ -980,19 +981,9 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
       </> : sourceKind === 'drive' ? <>
         <div className={styles.kind}><Icon name="i-google" size={22} /><span><b>{t('next.remoteSources.connectDrive')}</b><small>{t('next.remoteSources.connectDriveHint')}</small></span></div>
         <TextField label={t('next.remoteSources.name')} value={driveName} maxLength={200} disabled={busy} onChange={event => setDriveName(event.target.value)}/>
-        <div className={styles.lab2}>{t('next.remoteSources.driveSignIn')}</div>
-        <div className={styles.kindTiles} role="radiogroup" aria-label={t('next.remoteSources.driveSignIn')}>
-          <button type="button" role="radio" aria-checked={driveMode === 'service'} className={styles.kindTile} data-picked={driveMode === 'service' || undefined} disabled={busy}
-            onClick={() => {retireOAuth(oauthRenderTicket);invalidateDrive();setDriveTested(undefined);setDriveMode('service');}}><Icon name="i-key" size={22}/>{t('next.remoteSources.driveServiceAccount')}</button>
-          <button type="button" role="radio" aria-checked={driveMode === 'oauth'} className={styles.kindTile} data-picked={driveMode === 'oauth' || undefined} disabled={busy}
-            onClick={() => {retireOAuth(oauthRenderTicket);invalidateDrive();setDriveTested(undefined);setDriveMode('oauth');}}><Icon name="i-google" size={22}/>{t('next.remoteSources.driveOAuth')}</button>
-        </div>
-        {driveMode === 'service' ? <>
-          <p className={styles.note}>{t('next.remoteSources.driveServiceAccountHint')}</p>
-          <a className={styles.consoleLink} href={DRIVE_CONSOLE} target="_blank" rel="noopener noreferrer">{t('next.remoteSources.driveConsole')}</a>
-        </> : <>
-          <p className={styles.note}>{t('next.remoteSources.driveOAuthHint')}</p>
-          <a className={styles.consoleLink} href={DRIVE_CONSOLE} target="_blank" rel="noopener noreferrer">{t('next.remoteSources.driveConsole')}</a>
+        <DriveModePane mode={driveMode} disabled={busy} onChange={next => {retireOAuth(oauthRenderTicket);invalidateDrive();setDriveTested(undefined);setDriveMode(next);}}/>
+        <a className={styles.consoleLink} href={DRIVE_CONSOLE} target="_blank" rel="noopener noreferrer">{t('next.remoteSources.driveConsole')}</a>
+        {driveMode === 'oauth' && <>
           <TextField label={t('next.remoteSources.driveClientId')} value={oauthClientId} maxLength={512} disabled={busy}
             autoCapitalize="off" spellCheck={false} className={styles.monoInput} onChange={event => updateOAuthClient({clientId: event.target.value})}/>
           <TextField label={t('next.remoteSources.driveClientSecret')} type="password" value={oauthClientSecret} maxLength={2048} disabled={busy} onChange={event => updateOAuthClient({clientSecret: event.target.value})}/>
