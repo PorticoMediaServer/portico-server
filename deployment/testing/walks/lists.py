@@ -6,21 +6,21 @@ Usage (always under the claims lock when writing the campaign lists):
 
 The ledger lives in the campaign (`_program/ledger`); the campaign v3 directory
 receives `walks/lists/`. Rows are grouped by their source pointer's frame label.
-Only implemented rows are walkable. Root §§36/38/56/59 exclusions are omitted and
-never credited. Fire OS and Vega reuse the TV rows; this script invents no IDs.
+Only implemented rows in the original v3 scope (v3/scope.py) are walkable. Pure desktop
+app and Roku rows, and the four Root ID exclusions, are omitted and never credited.
+Fire OS and Vega reuse the TV rows; this script invents no IDs.
 
 The result is a starting point for walkers: they claim a frame group under the
 list's "## Claims" section, then write `walks/results/<worker>.md` in the exact
 table from WALKS.md.
 """
-import argparse,datetime,json,os,re
+import argparse,datetime,json,os,re,sys
 from pathlib import Path
 
 ROOT=Path('/home/justin/projects/Portico')
 DEFAULT_PROGRAM=ROOT/'.worktrees/ui-2026/_program'
 SURFACES=['web-desktop','web-phone','ios-phone','ipad','android-phone','tvos','android-tv','fire-os','vega']
 TV_SURFACES={'tvos','android-tv','fire-os','vega'}
-EXCLUDED={'F-MUS-E9621A8','F-MUS-EDF7FE7','S-ACC-997896E','S-ACC-694BA5F'}
 NATIVE_PHONE_FRAMES={'phone-app','phone-detail','phone-player','phone-read','phone-guide'}
 M0=[
     ('sign-in',re.compile(r'^(auth|account|connect|welcome|signin)(?:#|$)',re.I)),
@@ -31,19 +31,22 @@ M0=[
     ('Settings',re.compile(r'^(settings|s/|owner-|server-|remote-|account-)',re.I)),
     ('Read',re.compile(r'^(read|phone-read|book|comic)',re.I)),
 ]
-FRAME=re.compile(r'^([A-Za-z0-9_-]+)#([0-9][A-Za-z0-9.]*)$')
+FRAME=re.compile(r'^([A-Za-z0-9_-]+)#([A-Za-z]?[0-9][A-Za-z0-9.]*)$')
 WALKABLE=[
-    re.compile(r'^[A-Za-z0-9_-]+#[0-9]+[A-Za-z]?(?:\.[A-Za-z0-9]+)*$'),
+    re.compile(r'^[A-Za-z0-9_-]+#[A-Za-z]?[0-9][A-Za-z0-9.]*$'),
     re.compile(r'^[A-Za-z0-9_.-]+\.html#[A-Za-z0-9]+$'),
     re.compile(r'^[A-Za-z0-9_-]+#[0-9]+/[0-9]+$'),
     re.compile(r'^s/[A-Za-z0-9_-]+#group[0-9]+$'),
 ]
 
-def frame_group(pointer):
-    first=pointer.split(';',1)[0].strip()
-    first=re.split(r'@',first,maxsplit=1)[0].strip()
-    if '#' not in first:return ''
-    return first if any(pattern.match(first) for pattern in WALKABLE) else ''
+def frame_group(pointer,embedded=False):
+    tokens=pointer.split(';') if embedded else [pointer.split(';',1)[0]]
+    for token in tokens:
+        token=re.split(r'@',token.strip(),maxsplit=1)[0].strip().strip('`').strip()
+        candidates=[token]+re.findall(r'[A-Za-z0-9_./-]+#[A-Za-z0-9][A-Za-z0-9./]*',token)
+        for candidate in candidates:
+            if any(pattern.match(candidate) for pattern in WALKABLE):return candidate
+    return ''
 
 def surfaces_for(platform,pointer,group):
     p=platform.strip().lower()
@@ -65,18 +68,19 @@ def surfaces_for(platform,pointer,group):
     return []
 
 def ledger_rows(program):
-    rows=[];excluded=0;not_a_frame=0
-    for path in sorted((program/'ledger').glob('*.md')):
-        for line in path.read_text(encoding='utf-8').splitlines():
-            cells=[cell.strip() for cell in line.strip().strip('|').split('|')]
-            if len(cells)<7 or cells[0]=='ID' or not re.match(r'^[A-Z]',cells[0]):continue
-            rid,area,platform,feature,status,pointer=cells[:6]
-            if status.lower()!='implemented':continue
-            if rid in EXCLUDED:excluded+=1;continue
-            group=frame_group(pointer)
-            if not group:not_a_frame+=1;continue
-            rows.append({'id':rid,'area':area,'platform':platform,'feature':feature,'pointer':pointer,'group':group})
-    return rows,excluded,not_a_frame
+    sys.path.insert(0,str(Path(program)/'v3'))
+    import scope
+    rows=[];excluded=0;unknown=0;not_a_frame=0
+    for item in scope.load(program):
+        if item['status']!='implemented':continue
+        result=scope.verdict(item)
+        if result['scope']=='unknown':unknown+=1;continue
+        if result['scope']!='in':excluded+=1;continue
+        platform=scope.surface_platform(item)
+        group=frame_group(item['pointer'],embedded=item['schema']=='compact')
+        if not group:not_a_frame+=1;continue
+        rows.append({'id':item['id'],'area':item['area'],'platform':platform,'feature':item['feature'],'pointer':item['pointer'],'group':group})
+    return rows,excluded,unknown,not_a_frame
 
 def natural_key(value):
     return tuple(int(part) if part.isdigit() else part.casefold() for part in re.split(r'(\d+)',value))
@@ -146,7 +150,8 @@ def render_group(group,rows):
         hint=''
     lines=[f'### `{group}`{hint}',f'_{len(rows)} row{"s" if len(rows)!=1 else ""}_','']
     for row in rows:
-        lines.append(f"- `{row['id']}` — {clean(row['feature'],220)} — source `{clean(row['pointer'],240)}`")
+        source='' if row['pointer']==row['feature'] else f" — source `{clean(row['pointer'],240)}`"
+        lines.append(f"- `{row['id']}` — {clean(row['feature'],220)}{source}")
     lines.append('')
     return lines
 
@@ -170,14 +175,14 @@ def main():
     args=parser.parse_args()
     program=args.program.resolve();out=(args.out or program/'v3'/'walks'/'lists')
     if not (program/'ledger').is_dir():parser.error('ledger directory not found')
-    rows,excluded,not_a_frame=ledger_rows(program)
+    rows,excluded,unknown,not_a_frame=ledger_rows(program)
     by_surface={surface:[] for surface in SURFACES}
     for row in rows:
         for surface in surfaces_for(row['platform'],row['pointer'],row['group']):
             by_surface[surface].append(row)
     for surface in SURFACES:
         by_surface[surface]=list({row['id']:row for row in by_surface[surface]}.values())
-    summary={'generated':datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'),'excluded':excluded,'without_frame':not_a_frame,'surfaces':{}}
+    summary={'generated':datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'),'excluded':excluded,'unknown':unknown,'without_frame':not_a_frame,'surfaces':{}}
     for surface in SURFACES:
         target=out/(surface+'.md')
         content=render(surface,by_surface[surface],read_claims(target))
