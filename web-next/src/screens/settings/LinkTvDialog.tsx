@@ -15,13 +15,18 @@ type Review = {opening: Opening; preview: PlayOnLinkPreview};
 /** Settings › This device › Link a TV. The same real quick-connect services the Play on
  * sheet uses: the phone reads the code the TV shows, sees the device it reports, and
  * records its own approval. The TV collects its session in its own request. */
-export function LinkTvDialog({open, onOpenChange, api, returnFocusRef}: {
+export function LinkTvDialog({open, onOpenChange, api, returnFocusRef, initialCode}: {
   open: boolean; onOpenChange(open: boolean): void;
   api: LinkApi;
   returnFocusRef: React.RefObject<HTMLElement | null>;
+  /** Display-only code captured once for this mount's first committed open (e.g. the local
+   * entry's /device fragment). It seeds the field and nothing else: no review, approval or
+   * request, and later prop changes never reach an existing opening. Settings omits it. */
+  initialCode?: string;
 }) {
   const [opening, setOpening] = useState<Opening | null>(null);
   const [code, setCode] = useState(''), [review, setReview] = useState<Review | undefined>(undefined);
+  const seed = useRef<string | undefined>(initialCode === undefined ? '' : initialCode.slice(0, 10));
   const [phase, setPhase] = useState<'code' | 'busy' | 'review' | 'done' | 'failed'>('code');
   const liveOpening = useRef<Opening | null>(null);
   const clear = () => { setCode(''); setReview(undefined); setPhase('code'); };
@@ -45,7 +50,9 @@ export function LinkTvDialog({open, onOpenChange, api, returnFocusRef}: {
     const next: Opening = {controller: new AbortController(), api, port: watchLinkTv({request: (path, method, body, signal) => api.request(path, method, body, signal)}), busy: false};
     liveOpening.current = next;
     setOpening(next);
-    clear();
+    setReview(undefined); setPhase('code');
+    setCode(seed.current ?? '');
+    seed.current = '';
   }, [open, api, opening]);
   useLayoutEffect(() => () => { const held = liveOpening.current; liveOpening.current = null; held?.controller.abort(); }, []);
 

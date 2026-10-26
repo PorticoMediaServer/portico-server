@@ -18,7 +18,7 @@ const deferred = <T,>(): Deferred<T> => {
   return {promise, resolve, reject};
 };
 
-async function mount() {
+async function mount(initialCode?: string) {
   const h = createRenderer(), opened: boolean[] = [], ports: any[] = [];
   const watchLinkTv = (api: unknown) => {
     const port: any = {api, previews: [] as any[], decisions: [] as any[]};
@@ -46,8 +46,8 @@ async function mount() {
   const api = {request: async () => undefined};
   // A layout-committed admission re-renders before paint: show() models that synchronous second
   // pass, so the returned tree carries the callbacks bound to the committed opening.
-  const show: any = (open: boolean, target = api) => {
-    const paint = () => tree(h.render(() => app.LinkTvDialog({open, onOpenChange: (value: boolean) => opened.push(value), api: target, returnFocusRef})));
+  const show: any = (open: boolean, target = api, seed: string | undefined = initialCode) => {
+    const paint = () => tree(h.render(() => app.LinkTvDialog({open, onOpenChange: (value: boolean) => opened.push(value), api: target, returnFocusRef, initialCode: seed})));
     paint();
     return paint();
   };
@@ -210,4 +210,22 @@ test('a current review approves once with its captured requestId and reviewed us
   await tick();
   v = show(true);
   assert.equal(form(v).phase, 'done');
+});
+
+test('an entry code seeds only the first committed opening, display-only', async () => {
+  const {api, opened, ports, show} = await mount('ABCD-EFGH');
+  let v = show(true);
+  assert.equal(form(v).code, 'ABCD-EFGH', 'the captured entry code is shown in the field');
+  assert.equal(form(v).phase, 'code');
+  assert.equal(form(v).preview, undefined);
+  assert.equal(ports[0].previews.length, 0, 'prefill starts no review');
+  assert.equal(ports[0].decisions.length, 0, 'prefill records no approval');
+  v = show(true, api, 'ZZZZ-ZZZZ');
+  assert.equal(form(v).code, 'ABCD-EFGH', 'a later prop change never adopts the open dialog');
+  one(v, 'Dialog').props.onOpenChange(false);
+  v = show(false, api, 'ZZZZ-ZZZZ');
+  v = show(true, api, 'ZZZZ-ZZZZ');
+  assert.equal(form(v).code, '', 'the seed is consumed once; reopens start empty like Settings');
+  assert.equal(ports[0].previews.length, 0);
+  assert.deepEqual(opened, [false]);
 });
