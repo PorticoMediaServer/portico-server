@@ -83,7 +83,7 @@ func (s *Service) savedReading(r ContentRequest, libraries []string, flag string
  JOIN catalog_asset_links link ON link.entity_id=i.id AND link.asset_id=publication.asset_id
  WHERE publication.item_id=i.id AND publication.asset_id=` + savedReadingPrimaryPublicationSQL("i.id") + `
  AND ((i.kind=20 AND json_extract(admitted.value,'$.kind')='book' AND (publication.format IN('epub','pdf') OR (json_extract(admitted.value,'$.mobi')=1 AND publication.format IN('mobi','azw3'))))
- OR (i.kind=21 AND json_extract(admitted.value,'$.kind')='comic' AND publication.format IN(` + readingcap.ComicFormatsSQL() + `) AND ` + readingcap.LocalCB7SQL("publication") + `)))))`
+ OR (i.kind=21 AND json_extract(admitted.value,'$.kind')='comic' AND publication.format IN(` + readingcap.ComicFormatsSQL() + `) AND ` + readingcap.LocalCB7SQL("publication") + `))))`
 		encoded, err := json.Marshal(witnesses)
 		if err != nil {
 			return out, err
