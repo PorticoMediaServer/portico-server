@@ -36,10 +36,6 @@ type OwnerResetVerify struct {
 	Code           string `json:"code"`
 	TurnOffTwoStep bool   `json:"turnOffTwoStep,omitempty"`
 }
-type MemberResetRequest struct {
-	ExpectedRevision int64 `json:"expectedRevision"`
-	TurnOffTwoStep   bool  `json:"turnOffTwoStep,omitempty"`
-}
 type MemberResetCode struct {
 	ServerID  string `json:"serverId,omitempty"`
 	Code      string `json:"code"`
