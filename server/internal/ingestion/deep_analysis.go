@@ -8,6 +8,7 @@ import (
 	"portico.local/server/internal/supervise"
 	"time"
 
+	"portico.local/server/internal/assets"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/mediaanalysis"
 )
@@ -129,8 +130,8 @@ func (s *Service) QueueItemAnalysis(ctx context.Context, library, asset, revisio
 			return Job{}, e
 		}
 	}
-	var source, object string
-	e = tx.QueryRowContext(ctx, `SELECT o.source_id,o.id FROM inventory_objects o JOIN library_sources src ON src.id=o.source_id WHERE o.asset_id=? AND o.revision=? AND src.library_id=? AND src.enabled=1 AND o.retired=0 AND o.state='available' AND o.root_incarnation=src.incarnation ORDER BY o.id LIMIT 1`, asset, revision, library).Scan(&source, &object)
+	var source, object, relative string
+	e = tx.QueryRowContext(ctx, `SELECT o.source_id,o.id,o.relative_path FROM inventory_objects o JOIN library_sources src ON src.id=o.source_id WHERE o.asset_id=? AND o.revision=? AND src.library_id=? AND src.enabled=1 AND o.retired=0 AND o.state='available' AND o.root_incarnation=src.incarnation ORDER BY o.id LIMIT 1`, asset, revision, library).Scan(&source, &object, &relative)
 	if e != nil {
 		return Job{}, e
 	}
@@ -144,6 +145,18 @@ func (s *Service) QueueItemAnalysis(ctx context.Context, library, asset, revisio
 	}
 	if !allowed {
 		return Job{}, catalog.ErrAdminQuery
+	}
+	// Refuse before creating/coalescing a job or resetting any stage. The
+	// executing worker repeats this original source gate for bytes/publication;
+	// a manual action cannot accept work that the source has not opted into.
+	consent, e := catalog.SourceAnalysisConsentTx(ctx, tx, source)
+	if e != nil {
+		return Job{}, e
+	}
+	if !consent.Allowed || (consent.Remote && assets.DiscImage(relative)) {
+		// Remote disc bytes are fetched only on Play. This origin enqueue has
+		// no independently admitted receipt for bytes already owned by playback.
+		return Job{}, mediaanalysis.ErrUnsupported
 	}
 	j, e := queueSourceTx(ctx, tx, source, true)
 	if e != nil {
