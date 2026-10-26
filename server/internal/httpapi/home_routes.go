@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
 	"strconv"
@@ -66,7 +67,14 @@ func (d Dependencies) homeRequestFor(r *http.Request, p identity.Principal, rest
 		return request, e
 	}
 	request.RowOrder, request.HiddenRowIDs, request.LayoutRevision = layout.RowOrder, layout.HiddenRowIDs, layout.Revision
-	settings, e := d.Console.Settings(r.Context(), auth)
+	// Home needs stored policy, not tool validation or applied-runtime status.
+	// Join composition's snapshot; direct layout callers get a bounded reader.
+	var settings operations.SettingsDocument
+	e = dbwork.WithReadSnapshot(r.Context(), d.Console.DB, func(ctx context.Context) error {
+		var err error
+		settings, err = d.Console.SettingsTx(ctx, dbwork.Snapshot(ctx), auth)
+		return err
+	})
 	if e != nil {
 		return request, e
 	}
