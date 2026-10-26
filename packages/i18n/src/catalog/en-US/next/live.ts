@@ -40,7 +40,7 @@ export const liveMessages = {
   'next.live.sortOldest': 'Oldest first',
   'next.live.watched': 'Watched',
   'next.live.unwatched': 'Unwatched',
-  'next.live.more': 'Load more',
+  'next.live.more': 'Show more',
   'next.live.play': 'Play',
   'next.live.oneTime': 'One time',
   'next.live.livePicture': 'Live picture',

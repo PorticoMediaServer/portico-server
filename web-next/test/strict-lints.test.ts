@@ -59,3 +59,10 @@ test('hook rules reject conditional hooks and missing dependencies with warnings
   const deps = spawnSync(executable, ['-c', new URL('../.oxlintrc.json', import.meta.url).pathname, '--deny-warnings', f.root], {encoding: 'utf8'});
   assert.notEqual(deps.status, 0); assert.match(deps.stdout + deps.stderr, /exhaustive-deps/);
 });
+
+test('glossary preserves exact current Reading/player words but rejects unrelated legacy actions', async () => {
+  const {lintNextGlossary} = await import('../scripts/lint-next-glossary.mjs');
+  assert.deepEqual(lintNextGlossary({'next.reader.bookmarks': 'Bookmarks', 'next.info.title': 'Playback info', 'next.tvPeople.local': 'Local account'}), []);
+  assert.notEqual(lintNextGlossary({'next.unrelated': 'Bookmarks'}).length, 0);
+  assert.notEqual(lintNextGlossary({'next.reader.bookmarks': 'Retry'}).length, 0);
+});
