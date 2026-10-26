@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useId, useRef, useState, type CSSProperties} from 'react';
+import {useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties} from 'react';
 import {jobName} from '@core/server-admin/console-catalogue.ts';
 import type {MessageId} from '@i18n';
 import {DASHBOARD_LOAD_RANGES, DASHBOARD_LOAD_SERIES, type DashboardStatus} from '@core/admin/dashboard.ts';
@@ -20,6 +20,8 @@ import {useDashboardReport, type DashboardReportController} from './use-report';
 import {readNowPlaying} from './pages';
 import {PhonePage, PhoneStatistics, type DashboardPhoneChrome} from './phone';
 import {ProgressRing} from '../../kit/shell/Activity';
+import {useLayoutMotion} from '../../kit/layout/motion';
+import {useLayoutPresence} from '../../kit/layout/presence';
 import styles from './dashboard.module.css';
 
 export type DashboardScreenProps = Readonly<{
@@ -67,21 +69,45 @@ type SessionsState = ReadState<DashboardSessions> & {refresh: () => void};
 type LiveState = ReadState<TelemetryReading> & {refresh: () => void};
 function NowPlaying({bindings: b, state, phone = false}: {bindings: DashboardBindings; state: SessionsState; phone?: boolean}) {
   const [toast, showToast] = useState<ToastData | null>(null);
-  const stack = useRef<HTMLDivElement>(null), removed = useRef<{id: string; index: number} | undefined>(undefined);
-  const sessions = orderedSessions(state.value?.items ?? []), totals = state.value?.totals;
-  useEffect(() => {
-    const target = removed.current;
-    if (!target || state.loading || state.failed || !state.value || state.value.items.some(s => s.id === target.id)) return;
-    const buttons = stack.current?.querySelectorAll<HTMLButtonElement>('button[data-session-menu]');
-    (buttons?.[Math.min(target.index, buttons.length - 1)] ?? stack.current)?.focus({preventScroll: true}); removed.current = undefined;
-  }, [state.value, state.loading, state.failed]);
+  const stack = useRef<HTMLDivElement>(null);
+  const sessions = useMemo(() => orderedSessions(state.value?.items ?? []), [state.value?.items]), totals = state.value?.totals;
+  const motion = useLayoutMotion();
+  const sessionKey = useCallback((session: {id: string}) => session.id, []);
+  const presence = useLayoutPresence(sessions, sessionKey, motion.reduced, 180, 320);
+  const previousIds = useRef<string[]>([]), focusedId = useRef<string | undefined>(undefined), restoreId = useRef<string | undefined>(undefined), keyboardFocus = useRef(false);
+  useLayoutEffect(() => {
+    const ids = sessions.map(session => session.id), focused = focusedId.current;
+    const removed = focused && !ids.includes(focused) ? focused : undefined;
+    if (removed && keyboardFocus.current) {
+      const index = previousIds.current.indexOf(removed);
+      const candidates = index < 0 ? [...ids] : [...previousIds.current.slice(index + 1), ...previousIds.current.slice(0, index).reverse(), ...ids];
+      restoreId.current = candidates.find(id => ids.includes(id)) ?? '';
+    }
+    previousIds.current = ids;
+  }, [sessions]);
+  useLayoutEffect(() => {
+    if (restoreId.current === undefined) return;
+    const id = restoreId.current;
+    restoreId.current = undefined;
+    const card = id === undefined ? undefined : [...(stack.current?.querySelectorAll<HTMLElement>('[data-session-id]') ?? [])].find(element => element.dataset.sessionId === id);
+    (card?.querySelector<HTMLElement>('button[data-session-menu]') ?? card ?? stack.current)?.focus({preventScroll: true});
+  }, [presence.present]);
   const count = totals && (phone
     ? totals.streams > 0
       ? <><span>{t('next.dashboard.peopleCount', {count: totals.people})}</span><i className={styles.dotSep} aria-hidden="true" /><small>{t('next.dashboard.locations', {home: totals.atHome, away: totals.away})}</small></>
       : <span>{t('next.shell.streams', {count: 0})}</span>
     : totals.streams > 0 && <><span>{t('next.dashboard.streams', {count: totals.streams})}</span><small>{t('next.dashboard.locations', {home: totals.atHome, away: totals.away})}</small></>);
   return <Section phone={phone} title={t('next.dashboard.now')} extra={count}>
-    <ReadFeedback openHome={b.effects.openHome} state={state} />{state.value && <div className={phone ? styles.phoneSessionStack : styles.sessionStack} ref={stack} tabIndex={-1} aria-label={t('next.dashboard.now')}>{sessions.map((s, index) => <SessionCard key={s.id} session={s} bindings={b} layout={phone ? 'phone' : 'desktop'} refresh={id => {if (id) {removed.current = {id, index}; showToast({id, message: t('next.dashboard.stopped', {title: sessionStopTitle(s)}), icon: 'i-check', durationMs: 3200});} state.refresh();}} />)}
+    <ReadFeedback openHome={b.effects.openHome} state={state} />{state.value && <div className={phone ? styles.phoneSessionStack : styles.sessionStack} ref={stack} tabIndex={-1} aria-label={t('next.dashboard.now')}
+      onKeyDownCapture={() => {keyboardFocus.current = true;}}
+      onPointerDownCapture={() => {keyboardFocus.current = false;}}
+      onFocusCapture={event => {const card = (event.target as HTMLElement).closest<HTMLElement>('[data-session-id]'); if (card) focusedId.current = card.dataset.sessionId;}}>
+      {presence.present.map(session => {
+        const key = session.id, leaving = presence.leaving.has(key);
+        return <div key={key} className={styles.sessionSlot} data-layout-item={key} data-session-id={key} data-leaving={leaving || undefined} inert={leaving} aria-hidden={leaving || undefined}>
+          <SessionCard session={session} bindings={b} layout={phone ? 'phone' : 'desktop'} refresh={id => {if (id) showToast({id, message: t('next.dashboard.stopped', {title: sessionStopTitle(session)}), icon: 'i-check', durationMs: 3200}); state.refresh();}} />
+        </div>;
+      })}
       {!sessions.length && (phone
         ? <div className={styles.phoneCalm}><span className={styles.phoneCalmLead}><Icon name="i-play" size={18} /></span><b>{t('next.dashboard.nobody')}</b>{b.role === 'owner' && <button type="button" className={styles.phoneCalmLink} onClick={b.effects.openHistory}>{t('next.dashboard.history')}</button>}</div>
         : <p className={styles.empty}>{t('next.dashboard.nobody')}</p>)}
