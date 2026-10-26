@@ -557,7 +557,7 @@ export const enUS = {
   'player.dolbyVisionWarning': 'This version uses Dolby Vision, which this screen can’t show. Colors may look wrong.',
   'player.playAnyway': 'Play anyway',
   'player.subtitleReason.signIn': 'Ask the server owner to check the subtitle search sign-in.',
-  'player.subtitleReason.provider': 'Ask the server owner to set up subtitle search.',
+  'player.subtitleReason.provider': 'Subtitle search isn’t set up on this server. Ask the owner to add an OpenSubtitles key.',
   'player.subtitleReason.format': 'This subtitle format is not supported.',
   'player.subtitleReason.text': 'This subtitle has no readable lines.',
   'player.subtitleReason.extraction': 'The server needs a working decoder to read this track.',
