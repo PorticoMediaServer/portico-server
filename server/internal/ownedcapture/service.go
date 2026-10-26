@@ -124,10 +124,10 @@ func bindLife(parent, other context.Context) (context.Context, func()) {
 // Capture never probes/reopens/resumes a provider. Producer.Admit must return
 // one already admitted from-start sequential body; only complete EOF bytes seal.
 func (s *Service) Capture(ctx context.Context, request Request) (receipt Receipt, err error) {
-	return s.capture(ctx, request, nil)
+	return s.capture(ctx, request, nil, nil)
 }
 
-func (s *Service) capture(ctx context.Context, request Request, original PlayCaptureCheck) (receipt Receipt, err error) {
+func (s *Service) capture(ctx context.Context, request Request, original PlayCaptureCheck, ticket *PlayCaptureTicket) (receipt Receipt, err error) {
 	// Acquisition and immutable sealing must never join an outer transaction;
 	// publication here must be committed before any usable receipt is returned.
 	if ctx == nil || dbwork.Snapshot(ctx) != nil {
@@ -143,6 +143,9 @@ func (s *Service) capture(ctx context.Context, request Request, original PlayCap
 		return receipt, err
 	}
 	id := uniqueID()
+	if ticket != nil {
+		id = ticket.ID()
+	}
 	custody, err := s.gate("acquisition", id)
 	if err != nil {
 		return receipt, err
@@ -166,6 +169,9 @@ func (s *Service) capture(ctx context.Context, request Request, original PlayCap
 	now := time.Now().UTC()
 	if !b.valid() || b.AssetID != request.AssetID || size <= 0 || size == int64(^uint64(0)>>1) || !expires.After(now) || expires.After(now.Add(MaxCaptureLifetime)) {
 		return receipt, ErrInput
+	}
+	if ticket != nil && !ticket.matches(b, size) {
+		return receipt, ErrCurrent
 	}
 	expires = time.UnixMilli(expires.UnixMilli()).UTC()
 	ctx, expiryCancel := context.WithDeadline(ctx, expires)

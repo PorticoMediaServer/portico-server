@@ -29,7 +29,7 @@ func (s *Service) CapturePlay(ctx context.Context, request Request, original Pla
 	if err := ctx.Err(); err != nil {
 		return Receipt{}, err
 	}
-	return s.capture(ctx, request, original)
+	return s.capture(ctx, request, original, nil)
 }
 
 func (s *Service) checkPlayCapture(ctx context.Context, original PlayCaptureCheck) error {
