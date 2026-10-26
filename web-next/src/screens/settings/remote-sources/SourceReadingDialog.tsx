@@ -2,13 +2,14 @@ import {useLayoutEffect, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import type {RemoteSource, RemoteSourceService} from '@core/remote-sources.ts';
 import {router} from '../../../router';
-import {Button, Switch} from '../../../kit/controls';
+import {Button} from '../../../kit/controls';
 import {Dialog} from '../../../kit/overlays';
 import {usePhone} from '../../../kit/overlays/shared';
 import {useOwnedResource} from './resources';
 import {OfferedReadingChoices} from './OfferedReadingChoices';
 import {ReadingProfileOpening, type ReadingOpeningState} from './reading-profile-opening';
 import {SourceChoiceSummary} from './SourceChoiceSummary';
+import {AdvancedAnalysisConsent} from './AdvancedAnalysisConsent';
 import {SourceChoiceConnectionRows} from './SourceChoiceConnectionRows';
 import {SourceAdvancedRows} from './SourceAdvancedRows';
 import {sourceChoiceValue} from './source-choice-value';
@@ -120,11 +121,8 @@ export function SourceReadingFields({reader, state, disabled, phone, advancedOpe
         <SourceChoiceConnectionRows values={draft.values} disabled={disabled || !!draft.choice || !!draft.advancedDirty}
           markers={markers} onChange={patch => reader.edit(draft, patch)}/>
       </div>
-      {draft.consent !== undefined && <label className={styles.switchRow}>
-        <span>{t('next.remoteSources.allowAdvancedMediaAnalysis')}<small className={styles.note}>{t('next.remoteSources.allowAdvancedMediaAnalysisWarning')}</small></span>
-        <Switch aria-label={t('next.remoteSources.allowAdvancedMediaAnalysis')} checked={draft.consent}
-          disabled={disabled || !!draft.choice || !!draft.advancedDirty} onCheckedChange={value => reader.changeConsent(draft, value)}/>
-      </label>}
+      {draft.consent !== undefined && <AdvancedAnalysisConsent checked={draft.consent}
+        disabled={disabled || !!draft.choice || !!draft.advancedDirty} onChange={value => reader.changeConsent(draft, value)}/>}
       {onAdvancedChange && <button type="button" className={styles.advRow} aria-expanded={advancedOpen} disabled={disabled} onClick={onAdvancedChange}>
         <span><b>{t('next.remoteSources.advanced')}</b><small>{advancedChanges !== undefined && advancedChanges > 0
           ? t('next.remoteSources.advancedChangeCount', {count: advancedChanges}) : t('next.remoteSources.advancedHelp')}</small></span><Icon name="i-down" size={18}/>
