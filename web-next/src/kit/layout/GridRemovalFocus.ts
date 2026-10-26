@@ -1,5 +1,6 @@
 import {Component, type ReactNode, type RefObject} from 'react';
 import {RemovalFocusOwner} from './removal-focus-owner';
+import {captureCardInteractionRetirement} from '../cards/interaction-admission';
 
 export type GridRemovalFocusProps = Readonly<{
   owner: RemovalFocusOwner; root: RefObject<HTMLDivElement | null>; children: ReactNode;
@@ -18,9 +19,16 @@ export class GridRemovalFocus extends Component<GridRemovalFocusProps> {
   componentDidMount() {this.props.owner.activate();this.commit();}
   getSnapshotBeforeUpdate(previous: GridRemovalFocusProps) {
     const next = this.props;
-    if (previous.owner !== next.owner) {previous.owner.dispose();next.owner.activate();return null;}
+    const root = previous.root.current;
+    const removed = root?.firstElementChild ? [...root.firstElementChild.children].flatMap(node => {
+      const element = node as HTMLElement, key = element.dataset.layoutItem;
+      return key !== undefined && (previous.owner !== next.owner || !next.keys.has(key)) ? [element] : [];
+    }) : [];
+    const withdraw = captureCardInteractionRetirement(removed);
+    if (previous.owner !== next.owner) {previous.owner.dispose();withdraw();next.owner.activate();return null;}
     const sameViewport = previous.viewport.width === next.viewport.width && previous.viewport.height === next.viewport.height && previous.viewport.top === next.viewport.top;
-    if (sameViewport && next.accepted && previous.generation !== next.generation) next.owner.beforeLeave(next.keys);
+    try {if (sameViewport && next.accepted && previous.generation !== next.generation) next.owner.beforeLeave(next.keys);}
+    finally {withdraw();}
     return null;
   }
   componentDidUpdate() {this.commit();}

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createCardInteractionOwner, createCardInteractionBinding, retireCardInteractions} from '../src/kit/cards/interaction-admission.ts';
+import {createCardInteractionOwner, createCardInteractionBinding, captureCardInteractionRetirement, retireCardInteractions} from '../src/kit/cards/interaction-admission.ts';
 
 // Unit-level physical-node doubles, not browser/keyboard qualification. UNRUN.
 class Node {
@@ -129,4 +129,15 @@ test('subtree retirement snapshots original receipts before any reentrant replac
   retireCardInteractions(root.element);
   assert.equal(first.live, false);assert.equal(oldOther.live, false);
   assert.equal(successor!.live, true);assert.equal(successor!.current(), true);f.owner.dispose();
+});
+
+test('captured multi-row withdrawal cannot adopt a successor created by focus handoff', () => {
+  const f = fixture(), other = new Node();
+  const first = f.source.capture(f.node.element)!, oldOther = f.source.capture(other.element)!;
+  const withdraw = captureCardInteractionRetirement([f.node.element, other.element]);
+  // Represents a caller focus callback replacing another physical admission.
+  const successor = f.source.capture(other.element)!;successor.preview(true);
+  withdraw();withdraw();
+  assert.equal(first.live, false);assert.equal(oldOther.live, false);assert.equal(successor.live, true);
+  assert.deepEqual(f.paint, [true]);f.owner.dispose();
 });

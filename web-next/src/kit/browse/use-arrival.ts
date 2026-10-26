@@ -1,4 +1,5 @@
-import {useEffect, useLayoutEffect, useRef, type RefObject} from 'react';
+import {useLayoutEffect, useRef, type RefObject} from 'react';
+import {hasExitPaint, ownArrivalPaint, takeArrivalPaint, type ArrivalPaintLease} from './arrival-paint';
 import {easings, motion, reducedMotion} from '@design';
 import {useReducedMotion} from '../overlays/shared';
 
@@ -26,7 +27,8 @@ const accepted = (answer: AcceptedAnswer | undefined): answer is AcceptedAnswer 
 const reducedNow = (node: HTMLElement, prefersReduced: boolean) => prefersReduced
   || window.matchMedia('(prefers-reduced-motion: reduce)').matches
   || !!node.closest('[data-reduce-motion="true"]')
-  || document.documentElement.dataset.reduceMotion === 'true';
+  || document.documentElement.dataset.reduceMotion === 'true'
+  || document.body.dataset.reduceMotion === 'true';
 
 /** motion §3.8: the answer fades in at standard 180, and reduction keeps a 160 linear fade. */
 const fade = (node: HTMLElement, fromOpacity: number, reduced: boolean) => node.animate([{opacity: fromOpacity}, {opacity: 1}],
@@ -41,33 +43,60 @@ const fade = (node: HTMLElement, fromOpacity: number, reduced: boolean) => node.
  * `source` is the collection the answer belongs to: replacing it cancels the running fade and
  * starts over, since a new collection's first answer is immediate even if its numbers repeat.
  */
-export function useAcceptedArrival(element: RefObject<HTMLElement | null>, answer: AcceptedAnswer | undefined, source?: unknown) {
+export function useAcceptedArrival(element: RefObject<HTMLElement | null>, answer: AcceptedAnswer | undefined, source?: unknown,
+  select?: (root: HTMLElement) => readonly HTMLElement[]) {
   const prefersReduced = useReducedMotion(element);
-  const shown = useRef<{source: unknown; generation: number} | undefined>(undefined);
-  const animation = useRef<Animation | null>(null);
+  const shown = useRef<{source: unknown; node: HTMLElement; generation: number} | undefined>(undefined);
+  type Job = {animation: Animation; lease?: ArrivalPaintLease; reduced: boolean};
+  const jobs = useRef(new Map<HTMLElement, Job>());
+  const stop = (node: HTMLElement, original: Job) => {
+    if (jobs.current.get(node) !== original) return;
+    jobs.current.delete(node);original.lease?.release();original.animation.cancel();
+  };
   useLayoutEffect(() => {
+    const root = element.current;
+    const nodes = root?.isConnected ? [...new Set(select ? select(root) : [root])].filter(node => node.isConnected && root.contains(node)) : [];
+    for (const [node, job] of jobs.current) if (!node.isConnected || !root?.contains(node) || !job.lease?.current()
+      || accepted(answer) && !nodes.includes(node)) stop(node, job);
     const remembered = shown.current;
-    if (remembered === undefined || remembered.source !== source) {
-      // A different collection owns this element now: the running arrival is not this answer's.
-      animation.current?.cancel(); animation.current = null;
-      shown.current = accepted(answer) ? {source, generation: answer.generation} : undefined;
+    if (!root || !remembered || remembered.source !== source || remembered.node !== root) {
+      for (const [node, job] of jobs.current) stop(node, job);
+      shown.current = root && accepted(answer) ? {source, node: root, generation: answer.generation} : undefined;
       return;
     }
-    if (!accepted(answer) || remembered.generation === answer.generation) return;
-    shown.current = {source, generation: answer.generation};
-    const node = element.current;
-    if (!node) return;
-    // An interrupted arrival continues from what is painted instead of restarting from nothing.
-    const fromOpacity = animation.current ? Number(getComputedStyle(node).opacity) : 0;
-    animation.current?.cancel();
-    const current = fade(node, fromOpacity, reducedNow(node, prefersReduced));
-    animation.current = current;
-    current.onfinish = () => {
-      if (animation.current !== current) return;
-      node.style.opacity = '1'; current.cancel(); animation.current = null;
+    const draw = (node: HTMLElement, from: number, reduced: boolean, policyChange = false) => {
+      const animation = fade(node, from, reduced || policyChange);
+      const original: Job = {animation, reduced};
+      jobs.current.set(node, original);
+      original.lease = ownArrivalPaint(node, source, () => {
+        // The taker has removed this lease before invoking its captured callback.
+        if (jobs.current.get(node) !== original || element.current !== root || !node.isConnected || !root.contains(node)) return;
+        const opacity = Number(getComputedStyle(node).opacity);stop(node, original);return opacity;
+      });
+      animation.onfinish = () => {
+        if (jobs.current.get(node) !== original || !original.lease?.current() || element.current !== root || !node.isConnected || !root.contains(node)) return;
+        node.style.opacity = '1';stop(node, original);
+      };
     };
-  }, [element, answer, source, prefersReduced]);
-  useEffect(() => () => {animation.current?.cancel(); animation.current = null;}, []);
+    // Retarget only active paint when policy changes. Settled entries never replay.
+    for (const [node, job] of [...jobs.current]) {
+      const reduced = reducedNow(node, prefersReduced);
+      if (reduced !== job.reduced) draw(node, takeArrivalPaint(node, source) ?? Number(getComputedStyle(node).opacity), reduced, true);
+    }
+    if (!accepted(answer)) return;
+    if (remembered.generation === answer.generation) {
+      // A newly loaded page can return a key during its previous exit without
+      // changing the accepted generation. Restore only that exact exit lease.
+      for (const node of nodes) if (hasExitPaint(node, source)) {
+        const from = takeArrivalPaint(node, source);if (from !== undefined) draw(node, from, reducedNow(node, prefersReduced));
+      }
+      return;
+    }
+    if (!nodes.length) return;
+    shown.current = {source, node: root, generation: answer.generation};
+    for (const node of nodes) draw(node, takeArrivalPaint(node, source) ?? 0, reducedNow(node, prefersReduced));
+  }, [element, answer, source, prefersReduced, select]);
+  useLayoutEffect(() => () => {for (const [node, job] of jobs.current) stop(node, job);}, []);
 }
 
 /**

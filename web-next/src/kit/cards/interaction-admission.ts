@@ -50,9 +50,15 @@ export function createCardInteractionBinding() {
 /** The presence owner can withdraw original interactions before making paint inert.
  * Only actual registered nodes below this captured DOM root are considered. */
 export function retireCardInteractions(root: HTMLElement): void {
-  const nodes = [root, ...root.querySelectorAll<HTMLElement>(`[${marker}]`)];
-  const originals = nodes.map(node => mounted.get(node)?.admission);
-  for (const original of originals) original?.retire();
+  captureCardInteractionRetirement([root])();
+}
+
+/** Snapshot before a caller's focus callbacks; withdraw after that handoff, before
+ * DOM mutation. Neither callback reentrancy nor replacement rows renew this set. */
+export function captureCardInteractionRetirement(roots: readonly HTMLElement[]): () => void {
+  const originals = new Set(roots.flatMap(root => [root, ...root.querySelectorAll<HTMLElement>(`[${marker}]`)]
+    .flatMap(node => {const original = mounted.get(node)?.admission;return original ? [original] : [];})));
+  return () => {for (const original of originals) original.retire();};
 }
 
 /** One real selection producer owns preview arbitration. A stale row or old

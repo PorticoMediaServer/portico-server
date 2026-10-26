@@ -9,9 +9,25 @@ export type LayoutRetention<T> = Readonly<{
 }>;
 export type LayoutRetentionPolicy = Readonly<{
   maxRetained?: number; staggerMs?: number; visibleOnly?: boolean; scope?: unknown;
+  /** A sparse caller admits new exits only for an accepted model replacement, not paging. */
+  admitNew?: boolean;
   /** Original caller context only, before the withdrawal commit makes rows inert. */
   beforeLeave?: (remaining: ReadonlySet<string>) => void;
 }>;
+
+/** Render boundary, including the first accepted replacement before layout
+ * admission. Live rows are uncapped; existing exits have priority over new ones. */
+export function boundedOutgoingPaint<T>(present: readonly T[], incoming: ReadonlySet<string>, keyOf: (item: T) => string,
+  exits: ReadonlyMap<string, unknown>, visible: ReadonlySet<string>, limit: number): readonly T[] {
+  const max = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 0;
+  const retained = new Set<string>();
+  for (const key of exits.keys()) if (!incoming.has(key) && retained.size < max) retained.add(key);
+  for (const item of present) {
+    const key = keyOf(item);
+    if (!incoming.has(key) && visible.has(key) && retained.size < max) retained.add(key);
+  }
+  return present.filter(item => incoming.has(keyOf(item)) || retained.has(keyOf(item)));
+}
 
 export function retainLayout<T>(previous: LayoutRetention<T>, incoming: readonly T[], keyOf: (item: T) => string,
   now: number, reduced: boolean, exitMs: number, reducedMs: number, policy?: LayoutRetentionPolicy,
@@ -27,7 +43,7 @@ export function retainLayout<T>(previous: LayoutRetention<T>, incoming: readonly
     exits.set(key, reduced && !exit.reduced ? Object.freeze({...exit, reduced: true, retireAt: Math.min(exit.retireAt, now + reducedMs)}) : exit);
   }
   const admitted: {key: string; item: T}[] = [];
-  for (const item of previous.live) {
+  for (const item of policy?.admitNew === false ? [] : previous.live) {
     const key = keyOf(item);
     if (ids.has(key) || previous.exits.has(key) || exits.size + admitted.length >= max || policy?.visibleOnly && !visible?.has(key)) continue;
     admitted.push({key, item});
