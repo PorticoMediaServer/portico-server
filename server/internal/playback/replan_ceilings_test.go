@@ -61,7 +61,7 @@ func (f *replanFixture) start(request string, choice V1Choice) Session {
 
 func (f *replanFixture) plan(session string) *DeliveryPlan {
 	f.t.Helper()
-	plan, err := loadDeliveryPlan(f.db, session)
+	plan, err := loadDeliveryPlan(context.Background(), f.db, session)
 	if err != nil || plan == nil {
 		f.t.Fatal(plan, err)
 	}

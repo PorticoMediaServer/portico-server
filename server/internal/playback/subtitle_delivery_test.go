@@ -66,7 +66,7 @@ func TestOrdinaryBurnSelectionReplansRotatesGrantAndReturnsToCopy(t *testing.T) 
 	if _, _, _, e = s.ResolveGrant(grant); e == nil {
 		t.Fatal("old grant survived")
 	}
-	delivery, e := loadDeliveryPlan(h.db, session.ID)
+	delivery, e := loadDeliveryPlan(context.Background(), h.db, session.ID)
 	if e != nil || delivery.VideoAction != "convert" || delivery.BurnIn == nil {
 		t.Fatal(delivery, e)
 	}
@@ -85,7 +85,7 @@ func TestOrdinaryBurnSelectionReplansRotatesGrantAndReturnsToCopy(t *testing.T) 
 	if e != nil {
 		t.Fatal(e)
 	}
-	delivery, e = loadDeliveryPlan(h.db, session.ID)
+	delivery, e = loadDeliveryPlan(context.Background(), h.db, session.ID)
 	if e != nil || delivery.BurnIn != nil || delivery.VideoAction != "copy" || off.Generation != 3 {
 		t.Fatal(delivery, off, e)
 	}

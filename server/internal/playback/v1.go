@@ -214,7 +214,7 @@ func (s *Service) SessionPlan(ctx context.Context, session string) (*DeliveryPla
 		return nil, e
 	}
 	defer done()
-	return loadDeliveryPlan(tx, session)
+	return loadDeliveryPlan(ctx, tx, session)
 }
 
 // ReadyWithin reports whether a presentation can be played now, waiting at most

@@ -202,12 +202,12 @@ func TestRenditionFailureIsBoundToOneTrackAndGeneration(t *testing.T) {
 	if e := s.Ready(ctx, session); e != nil {
 		t.Fatal(e)
 	}
-	plan, e := loadDeliveryPlan(h.db, session.ID)
+	plan, e := loadDeliveryPlan(context.Background(), h.db, session.ID)
 	if e != nil {
 		t.Fatal(e)
 	}
 	h.renditionFailed(ctx, session.ID, session.Generation+1, plan.Renditions[1], FailureConverter)
-	check, e := loadDeliveryPlan(h.db, session.ID)
+	check, e := loadDeliveryPlan(context.Background(), h.db, session.ID)
 	if e != nil || check.Renditions[1].Failure != "" {
 		t.Fatal("stale producer changed plan", e)
 	}
@@ -246,7 +246,7 @@ func TestRenditionPreservesAC3AndEAC3ChannelsAtSeek(t *testing.T) {
 	if err := s.Ready(ctx, session); err != nil {
 		t.Fatal(err)
 	}
-	plan, err := loadDeliveryPlan(h.db, session.ID)
+	plan, err := loadDeliveryPlan(context.Background(), h.db, session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

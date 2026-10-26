@@ -47,9 +47,9 @@ func StoreConversionTarget(ctx context.Context, tx *sql.Tx, session string, targ
 	return err
 }
 
-func loadConversionTarget(q audioQuery, session string, p *DeliveryPlan) error {
+func loadConversionTarget(ctx context.Context, q planRowQuery, session string, p *DeliveryPlan) error {
 	var raw, probeJSON string
-	err := q.QueryRow(`SELECT t.target_json,t.hardware_json FROM playback_conversion_targets t JOIN playback_sessions ps ON ps.id=t.session_id WHERE t.session_id=? AND t.generation=ps.generation`, session).Scan(&raw, &probeJSON)
+	err := q.QueryRowContext(ctx, `SELECT t.target_json,t.hardware_json FROM playback_conversion_targets t JOIN playback_sessions ps ON ps.id=t.session_id WHERE t.session_id=? AND t.generation=ps.generation`, session).Scan(&raw, &probeJSON)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}

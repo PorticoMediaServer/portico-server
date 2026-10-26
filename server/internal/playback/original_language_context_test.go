@@ -97,7 +97,7 @@ func TestPublishedOriginalLanguageReachesAuthorizedPreviewAndCreate(t *testing.T
 		if err != nil {
 			t.Fatal(err)
 		}
-		actual, err := loadDeliveryPlan(db, session.ID)
+		actual, err := loadDeliveryPlan(ctx, db, session.ID)
 		if err != nil || actual.AudioStream != tc.want || actual.Trace.Audio.ChosenBy != tc.reason {
 			t.Fatalf("create %s: plan=%+v err=%v", tc.language, actual, err)
 		}

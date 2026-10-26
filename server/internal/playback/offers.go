@@ -187,7 +187,7 @@ func (s *Service) Offers(ctx context.Context, p identity.Principal, scope Offers
 		}
 		_ = tx.QueryRowContext(ctx, `SELECT version_id FROM prepared_media_session_pins WHERE session_id=?`, session).Scan(&c.PreparedVersionID)
 		c.QualityID = "original"
-		if plan, planErr := loadDeliveryPlan(tx, session); planErr == nil && plan != nil && plan.QualityID != "" {
+		if plan, planErr := loadDeliveryPlan(ctx, tx, session); planErr == nil && plan != nil && plan.QualityID != "" {
 			c.QualityID = plan.QualityID
 		}
 		out.Current = c
@@ -203,7 +203,7 @@ func (s *Service) Offers(ctx context.Context, p identity.Principal, scope Offers
 				out.Markers = &markers
 			}
 		}
-		out.DeliveryPlan, e = loadDeliveryPlan(tx, session)
+		out.DeliveryPlan, e = loadDeliveryPlan(ctx, tx, session)
 		if e != nil {
 			return out, e
 		}
