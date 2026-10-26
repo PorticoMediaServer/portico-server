@@ -23,6 +23,18 @@
 .listArt { display: block; flex: none; width: 36px; height: 54px; border-radius: 5px; overflow: hidden; }
 .resolution { padding: 2px 7px; border-radius: 6px; font-size: var(--type-card-subtitle-size); font-weight: var(--type-row-heading-weight); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 22%, transparent); }
 .listWatched { display: flex; justify-content: center; align-items: center; }
+/* desktop-listen 4 / music-plus 9: the music list's own #/Title/Artist/Album/Duration/Plays/Date added. */
+.results[data-music] .listHead, .results[data-music] .listRow { grid-template-columns: 44px minmax(0,1.8fr) minmax(0,1fr) minmax(0,1.2fr) 80px 64px 120px 72px; column-gap: 16px; padding: 0 12px 0 8px; }
+.results[data-music] .listHead { height: 42px; }
+.results[data-music] .listRow { height: 56px; }
+.results[data-music] .listRow::after { display: none; }
+.results[data-music] .listHead > :first-child { text-align: center; }
+.results[data-music] .listArt { width: 42px; height: 42px; border-radius: 6px; }
+.results[data-music] .listName { font-size: 16px; font-weight: 600; }
+.results[data-music] .musicMeta { overflow: hidden; text-align: left; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: var(--color-text-secondary); }
+.results[data-music] .musicNumber { overflow: hidden; text-align: right; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+.results[data-music] .listRow > :first-child { display: grid; place-items: center; font-size: 15px; font-weight: 600; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+
 /* desktop-read 2c: a Reading list draws its own six columns; cells without a fact stay empty. */
 .results[data-reading] .listHead, .results[data-reading] .listRow { grid-template-columns: minmax(0,1fr) 180px 150px 230px 70px 110px 92px; }
 .results[data-reading] .listHead > :not(:first-child), .results[data-reading] .listRow > span { text-align: left; }
