@@ -45,6 +45,21 @@ func TestExplicitEpisodeFenceRechecksRealActorTargetAndSource(t *testing.T) {
 				}
 			}
 			identities, owner, family := observationOwner(t, f)
+			// The explicit one-off action still needs the source's own recorded
+			// consent. Save it through the real owner/CAS writer with the source
+			// fixture whose profile would otherwise be absent.
+			listing, _ := SourceReadPreset("list")
+			consent := true
+			writer, e := dbwork.Begin(ctx, f.s.db, dbwork.ClassBackgroundMedia)
+			if e != nil {
+				t.Fatal(e)
+			}
+			if _, e = f.s.ApplySourceReadProfileTx(ctx, writer.Tx(), identities, owner, SourceReadProfileChange{SourceID: "remote", Generation: "1", ExpectedRevision: 0, Profile: listing, AdvancedMediaAnalysis: &consent}); e != nil {
+				t.Fatal(e)
+			}
+			if e = writer.Commit(); e != nil {
+				t.Fatal(e)
+			}
 			var episode string
 			if err := f.s.db.QueryRow(`SELECT pid(public_id) FROM catalog_entities WHERE kind=4`).Scan(&episode); err != nil {
 				t.Fatal(err)
@@ -62,7 +77,7 @@ func TestExplicitEpisodeFenceRechecksRealActorTargetAndSource(t *testing.T) {
 				t.Fatal(err)
 			}
 			if err = authority.Authorize(ctx, "episode_thumbnail", "decode", true); err != nil {
-				t.Fatal("explicit Off/missing-profile refused", err)
+				t.Fatal("explicit Off with recorded consent refused", err)
 			}
 			facts.still, facts.artworkRevision = true, "artwork-2"
 			facts.providerResolved, facts.generationNeeded = true, true
@@ -73,7 +88,9 @@ func TestExplicitEpisodeFenceRechecksRealActorTargetAndSource(t *testing.T) {
 			var args []any
 			switch changed {
 			case "profile":
-				mutation = `INSERT INTO remote_source_read_profiles VALUES('remote',1,'file_list_only',0,2,2,0)`
+				// Mutate the saved profile and its consent; a positional INSERT would
+				// conflict with the row the real writer already recorded.
+				mutation = `UPDATE remote_source_read_profiles SET revision=revision+1,allow_advanced_media_analysis=0 WHERE source_id='remote'`
 			case "generation":
 				mutation = `UPDATE remote_sources SET generation=generation+1 WHERE id='remote'`
 			case "object":
@@ -95,7 +112,13 @@ func TestExplicitEpisodeFenceRechecksRealActorTargetAndSource(t *testing.T) {
 					_, e = publication.Tx().ExecContext(ctx, `UPDATE authorization_session_families SET revoked=1 WHERE id=?`, family)
 				case "publication_profile":
 					list, _ := SourceReadPreset("list")
-					_, e = f.s.ApplySourceReadProfileTx(ctx, publication.Tx(), identities, owner, SourceReadProfileChange{SourceID: "remote", Generation: "1", Profile: list})
+					current, profileErr := SourceReadProfileTx(ctx, publication.Tx(), "remote")
+					if profileErr != nil {
+						t.Fatal(profileErr)
+					}
+					// Revoke the recorded consent at the exact current revision; the
+					// publication fence must see the replacement, not an earlier row.
+					_, e = f.s.ApplySourceReadProfileTx(ctx, publication.Tx(), identities, owner, SourceReadProfileChange{SourceID: "remote", Generation: "1", ExpectedRevision: current.Revision, Profile: list, AdvancedMediaAnalysis: analysisConsentPointer(false)})
 				case "publication_object":
 					_, e = publication.Tx().ExecContext(ctx, `UPDATE inventory_objects SET revision='replacement' WHERE id='object'`)
 				}
@@ -134,23 +157,34 @@ func TestExplicitEpisodeFenceRechecksRealActorTargetAndSource(t *testing.T) {
 
 func TestEpisodeAutomaticAndExplicitPolicyMatrix(t *testing.T) {
 	library := catalog.ScanPolicy{Tier: "complete", Revision: 7, Operations: []string{"probe", "episode_thumbnail"}}
-	for _, preset := range []string{"list", "once", "everything", "ask", "missing"} {
-		profile, _ := SourceReadPreset(preset)
-		if preset == "missing" {
-			profile, _ = SourceReadPreset("list")
-		}
-		profile.Saved = preset != "missing"
-		for _, mode := range []string{"provider_then_made", "provider", "off", "unknown"} {
-			for _, still := range []bool{false, true} {
-				state := EpisodeState{PolicyRevision: 7, ArtworkRevision: "artwork-2", Mode: mode, ProviderResolved: true, GenerationNeeded: true, ProviderStill: still}
-				for _, purpose := range []EpisodePurpose{EpisodeAutomatic, EpisodeExplicitOneEpisode} {
-					want := mode != "unknown"
-					if purpose == EpisodeAutomatic {
-						want = mode == "provider_then_made" && !still && preset == "everything"
-					}
-					err := episodePolicy(purpose, state, library, true, profile)
-					if (err == nil) != want {
-						t.Errorf("preset=%s mode=%s still=%v purpose=%s: %v", preset, mode, still, purpose, err)
+	// Consent is a separate dimension from the scan-depth presets: every preset
+	// is refused remotely while it is off, and stays exactly as it was when on.
+	for _, consent := range []bool{false, true} {
+		for _, preset := range []string{"list", "once", "everything", "ask", "missing"} {
+			profile, _ := SourceReadPreset(preset)
+			if preset == "missing" {
+				profile, _ = SourceReadPreset("list")
+			}
+			profile.Saved = preset != "missing"
+			profile.AllowAdvancedMediaAnalysis = consent
+			for _, mode := range []string{"provider_then_made", "provider", "off", "unknown"} {
+				for _, still := range []bool{false, true} {
+					state := EpisodeState{PolicyRevision: 7, ArtworkRevision: "artwork-2", Mode: mode, ProviderResolved: true, GenerationNeeded: true, ProviderStill: still}
+					for _, purpose := range []EpisodePurpose{EpisodeAutomatic, EpisodeExplicitOneEpisode} {
+						want := mode != "unknown"
+						if purpose == EpisodeAutomatic {
+							want = mode == "provider_then_made" && !still && preset == "everything"
+						}
+						if !consent {
+							want = false
+						}
+						err := episodePolicy(purpose, state, library, true, profile)
+						if (err == nil) != want {
+							t.Errorf("consent=%v preset=%s mode=%s still=%v purpose=%s: %v", consent, preset, mode, still, purpose, err)
+						}
+						if !consent && mode != "unknown" && !errors.Is(err, storage.ErrRemoteAnalysisDisabled) {
+							t.Errorf("consent=off preset=%s mode=%s still=%v purpose=%s accepted a lower gate instead of the consent refusal: %v", preset, mode, still, purpose, err)
+						}
 					}
 				}
 			}
@@ -159,11 +193,32 @@ func TestEpisodeAutomaticAndExplicitPolicyMatrix(t *testing.T) {
 	state := EpisodeState{PolicyRevision: 7, ArtworkRevision: "artwork-2", Mode: "provider_then_made", ProviderResolved: true, GenerationNeeded: true}
 	profile, _ := SourceReadPreset("everything")
 	profile.Saved, profile.WholeFileReads = true, false
+	// The consent is explicit and independent of the legacy whole-file switch:
+	// a bounded decode runs with that switch off only while consent is on.
+	profile.AllowAdvancedMediaAnalysis = true
 	if err := episodePolicy(EpisodeAutomatic, state, library, true, profile); err != nil {
-		t.Fatal("whole-file switch blocked bounded decode", err)
+		t.Fatal("explicit consent did not permit bounded decode with whole-file off", err)
 	}
+	if profile.WholeFileReads {
+		t.Fatal("bounded-decode case no longer exercises the legacy whole-file switch")
+	}
+	profile.AllowAdvancedMediaAnalysis = false
+	if err := episodePolicy(EpisodeAutomatic, state, library, true, profile); !errors.Is(err, storage.ErrRemoteAnalysisDisabled) {
+		t.Fatal("missing consent did not refuse bounded decode", err)
+	}
+	// The remaining lower-gate assertions run with consent recorded, so each
+	// one still exercises its own old check rather than the consent refusal.
+	profile.AllowAdvancedMediaAnalysis = true
 	if err := episodePolicy(EpisodeAutomatic, state, library, false, SourceReadProfile{}); err != nil {
 		t.Fatal("local source required a remote profile", err)
+	}
+	if err := episodePolicy(EpisodeExplicitOneEpisode, state, library, false, SourceReadProfile{}); err != nil {
+		t.Fatal("local source required remote consent for explicit work", err)
+	}
+	limited := library
+	limited.Operations = []string{"probe"}
+	if err := episodePolicy(EpisodeAutomatic, state, limited, false, SourceReadProfile{}); err == nil {
+		t.Fatal("local folder ignored the library operation ceiling")
 	}
 	for _, missing := range []string{"provider_resolution", "generation_needed", "artwork_digest"} {
 		t.Run(missing, func(t *testing.T) {
@@ -220,6 +275,9 @@ func TestEpisodeSourceTierExclusionIsExactAutomaticApplicability(t *testing.T) {
 		if preset == "missing" {
 			profile, _ = SourceReadPreset("list")
 		}
+		// With consent recorded, the lower automatic source-tier refusal is the
+		// one that decides; the consent gate is exercised by the matrix above.
+		profile.AllowAdvancedMediaAnalysis = true
 		if err := episodePolicy(EpisodeAutomatic, state, library, true, profile); !errors.Is(err, ErrEpisodeAutomaticSourceTier) {
 			t.Fatal("known excluded source tier was not examined", preset, err)
 		}
@@ -227,11 +285,12 @@ func TestEpisodeSourceTierExclusionIsExactAutomaticApplicability(t *testing.T) {
 			t.Fatal("automatic source exclusion blocked explicit command", preset, err)
 		}
 	}
-	if err := episodePolicy(EpisodeAutomatic, state, library, true, SourceReadProfile{}); !errors.Is(err, ErrEpisodeAuthority) {
+	if err := episodePolicy(EpisodeAutomatic, state, library, true, SourceReadProfile{AllowAdvancedMediaAnalysis: true}); !errors.Is(err, ErrEpisodeAuthority) {
 		t.Fatal("unknown profile was treated as a positive exclusion", err)
 	}
 	state.ProviderResolved = false
 	list, _ := SourceReadPreset("list")
+	list.AllowAdvancedMediaAnalysis = true
 	if err := episodePolicy(EpisodeAutomatic, state, library, true, list); !errors.Is(err, ErrEpisodeAuthority) {
 		t.Fatal("unknown provider authority was treated as a positive exclusion", err)
 	}

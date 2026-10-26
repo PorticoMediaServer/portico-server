@@ -120,6 +120,11 @@ func episodePolicy(purpose EpisodePurpose, state EpisodeState, library catalog.S
 	default:
 		return ErrEpisodeAuthority
 	}
+	// The explicit one-off action bypasses automatic scheduling, never this
+	// independently recorded source consent (including bounded ranged work).
+	if remote && !profile.AllowAdvancedMediaAnalysis {
+		return storage.ErrRemoteAnalysisDisabled
+	}
 	if purpose == EpisodeExplicitOneEpisode {
 		return nil
 	}
@@ -134,8 +139,7 @@ func episodePolicy(purpose EpisodePurpose, state EpisodeState, library catalog.S
 			return ErrEpisodeAutomaticSourceTier
 		}
 	}
-	// A bounded decode is not a whole-file read, irrespective of the profile's
-	// whole-file I/O switch. No whole-file operation is authorized here.
+	// Consent does not authorize a whole-file operation or relax any lower gate.
 	return nil
 }
 

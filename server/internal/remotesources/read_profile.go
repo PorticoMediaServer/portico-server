@@ -25,7 +25,10 @@ type SourceReadProfile struct {
 	Saved          bool
 	ScanDepth      string
 	WholeFileReads bool
-	Limits         ReadLimits
+	// Explicit source consent, independent of scan depth and legacy whole-file
+	// flags. An absent/legacy profile never supplies this permission.
+	AllowAdvancedMediaAnalysis bool
+	Limits                     ReadLimits
 }
 
 func validSourceReadProfile(p SourceReadProfile) bool {
@@ -49,7 +52,7 @@ func SourceReadPreset(name string) (SourceReadProfile, error) {
 		p.ScanDepth = "basic"
 		p.Limits = ReadLimits{Connections: 4, RequestsPerSecond: 4}
 	case "everything":
-		p.ScanDepth, p.WholeFileReads = "complete", true
+		p.ScanDepth = "complete"
 		p.Limits = ReadLimits{Connections: 8, RequestsPerSecond: 10}
 	default:
 		return SourceReadProfile{}, storage.ErrRemoteConfig
@@ -67,7 +70,7 @@ func SourceReadProfileTx(ctx context.Context, tx *sql.Tx, source string) (Source
 		return SourceReadProfile{}, err
 	}
 	p := SourceReadProfile{SourceID: source, Saved: true}
-	err := tx.QueryRowContext(ctx, `SELECT revision,scan_depth,whole_file_reads,connections,requests_per_second,bytes_per_second FROM remote_source_read_profiles WHERE source_id=?`, source).Scan(&p.Revision, &p.ScanDepth, &p.WholeFileReads, &p.Limits.Connections, &p.Limits.RequestsPerSecond, &p.Limits.BytesPerSecond)
+	err := tx.QueryRowContext(ctx, `SELECT revision,scan_depth,whole_file_reads,connections,requests_per_second,bytes_per_second,allow_advanced_media_analysis FROM remote_source_read_profiles WHERE source_id=?`, source).Scan(&p.Revision, &p.ScanDepth, &p.WholeFileReads, &p.Limits.Connections, &p.Limits.RequestsPerSecond, &p.Limits.BytesPerSecond, &p.AllowAdvancedMediaAnalysis)
 	if errors.Is(err, sql.ErrNoRows) {
 		p, _ = SourceReadPreset("list")
 		p.SourceID = source
@@ -105,6 +108,9 @@ type SourceReadProfileChange struct {
 	SourceID, Generation string
 	ExpectedRevision     int64
 	Profile              SourceReadProfile
+	// Only a separately submitted explicit action changes consent. Presets and
+	// older callers omit it and preserve the original current opt-in.
+	AdvancedMediaAnalysis *bool
 }
 
 type SourceReadProfileResult struct {
@@ -119,6 +125,11 @@ type SourceReadProfileResult struct {
 func (s *Service) ApplySourceReadProfileTx(ctx context.Context, tx *sql.Tx, identities *identity.Service, owner identity.Principal, change SourceReadProfileChange) (SourceReadProfileResult, error) {
 	if s == nil || tx == nil || change.SourceID == "" || change.Generation == "" || change.ExpectedRevision < 0 || change.Profile.SourceID != "" && change.Profile.SourceID != change.SourceID || !validSourceReadProfile(change.Profile) {
 		return SourceReadProfileResult{}, storage.ErrRemoteConfig
+	}
+	consentPresent := change.AdvancedMediaAnalysis != nil
+	consent := false
+	if consentPresent {
+		consent = *change.AdvancedMediaAnalysis
 	}
 	if err := currentLocalOwnerTx(ctx, tx, identities, owner); err != nil {
 		return SourceReadProfileResult{}, err
@@ -139,6 +150,10 @@ func (s *Service) ApplySourceReadProfileTx(ctx context.Context, tx *sql.Tx, iden
 	}
 	p := change.Profile
 	p.SourceID, p.Saved, p.Revision = change.SourceID, true, old.Revision
+	p.AllowAdvancedMediaAnalysis = old.AllowAdvancedMediaAnalysis
+	if consentPresent {
+		p.AllowAdvancedMediaAnalysis = consent
+	}
 	if old.Saved && old == p {
 		return SourceReadProfileResult{Profile: old}, nil
 	}
@@ -148,7 +163,7 @@ func (s *Service) ApplySourceReadProfileTx(ctx context.Context, tx *sql.Tx, iden
 	p.Revision++
 	if old.Saved {
 		var result sql.Result
-		result, err = tx.ExecContext(ctx, `UPDATE remote_source_read_profiles SET revision=?,scan_depth=?,whole_file_reads=?,connections=?,requests_per_second=?,bytes_per_second=? WHERE source_id=? AND revision=?`, p.Revision, p.ScanDepth, p.WholeFileReads, p.Limits.Connections, p.Limits.RequestsPerSecond, p.Limits.BytesPerSecond, p.SourceID, old.Revision)
+		result, err = tx.ExecContext(ctx, `UPDATE remote_source_read_profiles SET revision=?,scan_depth=?,whole_file_reads=?,connections=?,requests_per_second=?,bytes_per_second=?,allow_advanced_media_analysis=? WHERE source_id=? AND revision=?`, p.Revision, p.ScanDepth, p.WholeFileReads, p.Limits.Connections, p.Limits.RequestsPerSecond, p.Limits.BytesPerSecond, p.AllowAdvancedMediaAnalysis, p.SourceID, old.Revision)
 		if err == nil {
 			var count int64
 			count, err = result.RowsAffected()
@@ -157,7 +172,7 @@ func (s *Service) ApplySourceReadProfileTx(ctx context.Context, tx *sql.Tx, iden
 			}
 		}
 	} else {
-		_, err = tx.ExecContext(ctx, `INSERT INTO remote_source_read_profiles(source_id,revision,scan_depth,whole_file_reads,connections,requests_per_second,bytes_per_second) VALUES(?,?,?,?,?,?,?)`, p.SourceID, p.Revision, p.ScanDepth, p.WholeFileReads, p.Limits.Connections, p.Limits.RequestsPerSecond, p.Limits.BytesPerSecond)
+		_, err = tx.ExecContext(ctx, `INSERT INTO remote_source_read_profiles(source_id,revision,scan_depth,whole_file_reads,connections,requests_per_second,bytes_per_second,allow_advanced_media_analysis) VALUES(?,?,?,?,?,?,?,?)`, p.SourceID, p.Revision, p.ScanDepth, p.WholeFileReads, p.Limits.Connections, p.Limits.RequestsPerSecond, p.Limits.BytesPerSecond, p.AllowAdvancedMediaAnalysis)
 	}
 	if err != nil {
 		return SourceReadProfileResult{}, err

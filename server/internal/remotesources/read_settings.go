@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io"
 	"strconv"
 	"time"
 
@@ -17,18 +18,62 @@ import (
 // SourceReadValues is the existing normalized read-profile subset of the
 // source's Reading settings. It does not stand in for scheduling or caching.
 type SourceReadValues struct {
-	ScanDepth         string `json:"scanDepth"`
-	WholeFileReads    bool   `json:"wholeFileReads"`
-	Connections       int    `json:"connections"`
-	RequestsPerSecond int    `json:"requestsPerSecond"`
-	BytesPerSecond    int64  `json:"bytesPerSecond"`
+	ScanDepth                  string `json:"scanDepth"`
+	WholeFileReads             bool   `json:"wholeFileReads"`
+	Connections                int    `json:"connections"`
+	RequestsPerSecond          int    `json:"requestsPerSecond"`
+	BytesPerSecond             int64  `json:"bytesPerSecond"`
+	AllowAdvancedMediaAnalysis *bool  `json:"allowAdvancedMediaAnalysis,omitempty"`
+}
+
+// Decode one closed object without allowing JSON's last-key-wins behavior to
+// turn a duplicated consent field into an explicit accepting command.
+func readSettingsFields(raw []byte) (map[string]json.RawMessage, error) {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	start, err := decoder.Token()
+	if err != nil || start != json.Delim('{') {
+		return nil, storage.ErrRemoteConfig
+	}
+	fields := map[string]json.RawMessage{}
+	for decoder.More() {
+		key, err := decoder.Token()
+		name, ok := key.(string)
+		if err != nil || !ok {
+			return nil, storage.ErrRemoteConfig
+		}
+		if _, exists := fields[name]; exists {
+			return nil, storage.ErrRemoteConfig
+		}
+		var value json.RawMessage
+		if err = decoder.Decode(&value); err != nil {
+			return nil, storage.ErrRemoteConfig
+		}
+		fields[name] = value
+	}
+	if end, err := decoder.Token(); err != nil || end != json.Delim('}') {
+		return nil, storage.ErrRemoteConfig
+	}
+	if _, err := decoder.Token(); err != io.EOF {
+		return nil, storage.ErrRemoteConfig
+	}
+	return fields, nil
 }
 
 // A complete settings value is required, particularly for false and zero:
 // omitted/null fields must not silently switch off a restriction.
 func (v *SourceReadValues) UnmarshalJSON(raw []byte) error {
-	var fields map[string]json.RawMessage
-	if json.Unmarshal(raw, &fields) != nil || len(fields) != 5 {
+	fields, err := readSettingsFields(raw)
+	if err != nil || len(fields) < 5 || len(fields) > 6 {
+		return storage.ErrRemoteConfig
+	}
+	for name := range fields {
+		switch name {
+		case "scanDepth", "wholeFileReads", "connections", "requestsPerSecond", "bytesPerSecond", "allowAdvancedMediaAnalysis":
+		default:
+			return storage.ErrRemoteConfig
+		}
+	}
+	if consent, present := fields["allowAdvancedMediaAnalysis"]; present && bytes.Equal(bytes.TrimSpace(consent), []byte("null")) {
 		return storage.ErrRemoteConfig
 	}
 	for _, name := range []string{"scanDepth", "wholeFileReads", "connections", "requestsPerSecond", "bytesPerSecond"} {
@@ -62,8 +107,8 @@ type SourceReadSettingsChange struct {
 }
 
 func (v *SourceReadSettingsChange) UnmarshalJSON(raw []byte) error {
-	var fields map[string]json.RawMessage
-	if json.Unmarshal(raw, &fields) != nil || len(fields) != 4 {
+	fields, err := readSettingsFields(raw)
+	if err != nil || len(fields) != 4 {
 		return storage.ErrRemoteConfig
 	}
 	for _, name := range []string{"operationId", "expectedGeneration", "expectedRevision", "values"} {
@@ -82,7 +127,8 @@ func (v *SourceReadSettingsChange) UnmarshalJSON(raw []byte) error {
 }
 
 func sourceReadValues(p SourceReadProfile) SourceReadValues {
-	return SourceReadValues{ScanDepth: p.ScanDepth, WholeFileReads: p.WholeFileReads, Connections: p.Limits.Connections, RequestsPerSecond: p.Limits.RequestsPerSecond, BytesPerSecond: p.Limits.BytesPerSecond}
+	consent := p.AllowAdvancedMediaAnalysis
+	return SourceReadValues{ScanDepth: p.ScanDepth, WholeFileReads: p.WholeFileReads, Connections: p.Limits.Connections, RequestsPerSecond: p.Limits.RequestsPerSecond, BytesPerSecond: p.Limits.BytesPerSecond, AllowAdvancedMediaAnalysis: &consent}
 }
 
 func (v SourceReadValues) profile(source string) SourceReadProfile {
@@ -122,6 +168,10 @@ func (s *Service) SaveSourceReadSettings(ctx context.Context, identities *identi
 	if s == nil || s.db == nil || s.mounts == nil || source == "" || in.ExpectedGeneration == "" || in.ExpectedRevision < 0 || !validSourceReadProfile(in.Values.profile(source)) {
 		return Receipt{}, storage.ErrRemoteConfig
 	}
+	if in.Values.AllowAdvancedMediaAnalysis != nil {
+		consent := *in.Values.AllowAdvancedMediaAnalysis
+		in.Values.AllowAdvancedMediaAnalysis = &consent
+	}
 	s.commands.Lock()
 	defer s.commands.Unlock()
 	authorize := func(tx *sql.Tx) error { return currentLocalOwnerTx(ctx, tx, identities, owner) }
@@ -152,7 +202,23 @@ func (s *Service) SaveSourceReadSettings(ctx context.Context, identities *identi
 		return Receipt{}, err
 	}
 	defer writer.Rollback()
-	_, err = s.ApplySourceReadProfileTx(ctx, writer.Tx(), identities, owner, SourceReadProfileChange{SourceID: source, Generation: in.ExpectedGeneration, ExpectedRevision: in.ExpectedRevision, Profile: in.Values.profile(source)})
+	if err = authorize(writer.Tx()); err != nil {
+		return Receipt{}, err
+	}
+	// The public legacy generation is the source row's generation; the lower
+	// lease/profile writer checks the effective mount observation authority.
+	rowBefore, _, err := readSettingsTx(ctx, writer.Tx(), source)
+	if err != nil {
+		return Receipt{}, err
+	}
+	if strconv.FormatInt(rowBefore.Generation, 10) != in.ExpectedGeneration {
+		return Receipt{}, storage.ErrRemoteChanged
+	}
+	configuration, err := observationGenerationTx(ctx, writer.Tx(), source)
+	if err != nil {
+		return Receipt{}, err
+	}
+	_, err = s.ApplySourceReadProfileTx(ctx, writer.Tx(), identities, owner, SourceReadProfileChange{SourceID: source, Generation: configuration, ExpectedRevision: in.ExpectedRevision, Profile: in.Values.profile(source), AdvancedMediaAnalysis: in.Values.AllowAdvancedMediaAnalysis})
 	if err != nil {
 		return Receipt{}, err
 	}
