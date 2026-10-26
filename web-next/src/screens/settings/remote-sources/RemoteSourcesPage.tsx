@@ -17,6 +17,7 @@ import {Icon, type IconName} from '../../../kit/Icon';
 import styles from './remote-sources.module.css';
 import {RemoteFolderPicker} from './RemoteFolderPicker';
 import {ProgramPicker} from './ProgramPicker';
+import {SourceHeader} from './SourceHeader';
 import {SourceReadingDialog, SourceReadingFields} from './SourceReadingDialog';
 import {ReadingProfileOpening} from './reading-profile-opening';
 import {sourceChoiceComparison} from '@core/remote-source-choice.ts';
@@ -1367,9 +1368,8 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
   };
   return <Dialog open onOpenChange={value => {if (!value) close();}} title={source.name} width={760} footer={<Button size="compact" variant="glass" disabled={busy} onClick={close}>{t('next.remoteSources.cancel')}</Button>}>
     {error && <p className={styles.error} role="alert">{error}</p>}
-    <section className={styles.statusBox} aria-label={t('next.remoteSources.status')}>
-      <div className={styles.statusHead}><SourceStatus source={source}/>{source.origin && <span className={styles.statusOrigin}>{source.origin}</span>}</div>
-      {problemId(source) && <p className={styles.statusNotice}>{t(problemId(source)!)}</p>}
+    <SourceHeader label={t('next.remoteSources.status')} status={<SourceStatus source={source}/>} origin={source.origin}
+      notice={problemId(source) ? t(problemId(source)!) : undefined}>
       <dl className={styles.statusRows}>
         <div><dt>{t('next.remoteSources.rightNow')}</dt><dd>{!status ? '—'
           : status.connectionsInUse === 0 ? t('next.remoteSources.nothingReading')
@@ -1406,7 +1406,7 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
           {status.scan.finishedAt && <div><dt>{t('next.remoteSources.scanFinished')}</dt><dd>{checkedWhen(status.scan.finishedAt)}</dd></div>}
         </>}
       </dl>
-    </section>
+    </SourceHeader>
     <section className={styles.group} id="source-connection"><h3>{t('next.remoteSources.connection')}</h3>
       <TextField label={t('next.remoteSources.name')} value={draft.name} maxLength={100} disabled={busy} onChange={event => updateDraft({name: event.target.value})}/>
       <TextField label={t('next.remoteSources.address')} value={draft.root} placeholder={source.origin ?? t('next.settingsSpec.server.remote-sources.panels.source.tabs.0.groups.0.rows.1.control.placeholder')} disabled={busy}

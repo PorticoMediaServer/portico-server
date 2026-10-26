@@ -1,0 +1,24 @@
+/* The shared top of a remote source. Values are the existing drawn status box
+   (remote-sources.module.css .statusBox/.statusHead), lifted here so the top tile
+   has one owner; the caller supplies the badge, notice, actions and rows. */
+.header {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: var(--color-raised);
+}
+.head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.name { margin: 0; font-size: var(--type-body-size); font-weight: var(--type-button-weight); }
+.origin { font-family: var(--font-mono); font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
+.actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.notice { margin: 0; font-size: var(--type-caption-size); color: var(--color-text-secondary); }
+/* Phone keeps the same values; only the action row moves under the badge so it
+   never squeezes the source's own address. */
+.header[data-phone] .head { align-items: flex-start; }
+.header[data-phone] .actions { margin-left: 0; width: 100%; justify-content: flex-end; }
