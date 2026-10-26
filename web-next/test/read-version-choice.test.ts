@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readBackDestination, readRouteEntry, readSameRouteEntry, readVersionAlternatives, readVersionCanChoose,
-  readVersionPick, readVersionPostRetire, readVersionPreRetire, readVersionRecovery, type ReadRouteEntry} from '../src/screens/read/read-version-choice.ts';
+import {readBackCommit, readBackDestination, readRetireAttempt, readRouteEntry, readSameRouteEntry, readVersionAlternatives,
+  readVersionCanChoose, readVersionPick, readVersionPostRetire, readVersionPreRetire, readVersionRecovery,
+  type ReadRouteEntry, type ReadVersion} from '../src/screens/read/read-version-choice.ts';
 
 const epub = {sourceId: 'epub-source', format: 'epub' as const, size: 900, inventoryAvailable: true};
 const pdf = {sourceId: 'pdf-source', format: 'pdf' as const, size: 1200, inventoryAvailable: true};
@@ -32,30 +33,89 @@ test('a one-version item shows no chooser', () => {
   assert.deepEqual(readVersionAlternatives([epub], epub.sourceId), []);
 });
 
-test('the actual source sequence admits failed A then dispatches B after retirement', () => {
+type Reentry = {
+  /** Start a successor attempt from inside the abort listener. */
+  successor(value: unknown): void;
+  /** Replace the current route from inside the abort listener. */
+  route(value: ReadRouteEntry): void;
+  /** Replace the committed eligibility list with an equal-contents new list. */
+  versions(value: readonly ReadVersion[]): void;
+  readonly attemptB: {live: boolean; ready: boolean; rereading: boolean};
+};
+
+/** Drive the exact caller sequence the component uses: pre-retire admission, the
+ * component's dead/detach/abort retirement, then the post-retire witness, and only
+ * then the source write. `reenter` runs from the abort listener. */
+function recover(reenter?: (set: Reentry) => void) {
   const versions = [epub, pdf];
   const opened = entry('entry-a');
-  const attemptA = {live: true, aborted: false, sourceId: epub.sourceId};
+  const attemptA = {live: true, ready: true, rereading: true, target: (() => 1) as unknown};
+  const attemptB = {live: true, ready: true, rereading: false};
+  let currentAttempt: unknown = attemptA, currentRoute: ReadRouteEntry | undefined = opened, sourceId: string = epub.sourceId;
+  let committed: {context: unknown; sourceId: string; versions: readonly ReadVersion[]} = {context: route, sourceId: epub.sourceId, versions};
+  const rendered = {context: route, sourceId: epub.sourceId, versions, attempt: attemptA};
+  const admitted = readVersionRecovery({
+    liveRoute: true, route: opened, committedRoute: opened, currentRoute,
+    rendered, committed, currentAttempt, attemptLive: attemptA.live, candidate: pdf,
+    retire: value => {
+      assert.equal(value, attemptA, 'retirement may only target the attempt the row was rendered with');
+      readRetireAttempt(attemptA, () => {if (currentAttempt === attemptA) currentAttempt = undefined;}, () => {
+        // The abort listener must see the attempt already dead and detached.
+        assert.equal(attemptA.live, false, 'dead is published before abort');
+        assert.equal(currentAttempt, undefined, 'the attempt ref is cleared before abort');
+        reenter?.({successor: value => {currentAttempt = value;}, route: value => {currentRoute = value;},
+          versions: value => {committed = {...committed, versions: value};}, attemptB});
+      });
+    },
+    afterRetire: () => ({liveRoute: true, committedRoute: opened, currentRoute, successor: currentAttempt, committed}),
+  });
+  if (admitted) sourceId = pdf.sourceId;
+  return {admitted, sourceId, attemptA, attemptB};
+}
+
+test('caller-level failed A really selects B after the original is retired', () => {
+  const result = recover();
+  assert.equal(result.admitted, true);
+  assert.equal(result.sourceId, pdf.sourceId, 'the caller wrote the chosen source');
+  assert.equal(result.attemptA.live, false, 'the original attempt was retired');
+});
+
+test('an abort-listener successor blocks the pending source write', () => {
+  const result = recover(set => {set.successor(set.attemptB);});
+  assert.equal(result.admitted, false);
+  assert.equal(result.sourceId, epub.sourceId);
+  assert.equal(result.attemptB.live, true, 'the old callback never retired the successor');
+});
+
+test('an abort-listener route replacement blocks the pending source write', () => {
+  const result = recover(set => {set.route(entry('entry-b'));});
+  assert.equal(result.admitted, false);
+  assert.equal(result.sourceId, epub.sourceId);
+});
+
+test('an abort-listener list replacement blocks the pending source write', () => {
+  const result = recover(set => {set.versions([epub, pdf]);});
+  assert.equal(result.admitted, false);
+  assert.equal(result.sourceId, epub.sourceId);
+});
+
+test('a reused component accepts the new entry and refuses the old callback', () => {
+  const versions = [epub, pdf];
+  const oldEntry = entry('entry-old'), newEntry = entry('entry-new');
+  const attemptA = {live: true, aborted: false};
   const rendered = {context: route, sourceId: epub.sourceId, versions, attempt: attemptA};
   const committed = {context: route, sourceId: epub.sourceId, versions};
-  let currentAttempt: unknown = attemptA;
-  const facts = {
-    liveRoute: true, route: opened, currentRoute: opened, rendered, committed,
-    currentAttempt, attemptLive: !attemptA.aborted && attemptA.live, candidate: pdf,
-    retire: (value: unknown) => {
-      assert.equal(value, attemptA, 'retirement may only target the attempt the row was rendered with');
-      attemptA.live = false; attemptA.aborted = true; currentAttempt = undefined;
-    },
-    afterRetire: () => ({liveRoute: true, currentRoute: opened, successor: currentAttempt, committed}),
-  };
-  // This is the sequence the component calls; it must reach setSourceId for a failed A.
-  assert.equal(readVersionRecovery(facts), true);
-  assert.equal(attemptA.live, false, 'the original attempt really was retired');
-  assert.equal(currentAttempt, undefined, 'retirement cleared the attempt ref');
-  // The post-retire leg must not require the retired attempt to still be live or current.
-  assert.equal(readVersionPostRetire({
-    liveRoute: true, route: opened, currentRoute: opened, rendered, committed, successor: undefined, candidate: pdf,
-  }), true);
+  const base = {liveRoute: true, route: oldEntry, committedRoute: newEntry, currentRoute: newEntry,
+    rendered, committed, currentAttempt: attemptA, attemptLive: true, candidate: pdf};
+  // The old entry's callback is refused after the new entry committed, even though the
+  // same mounted component and the same attempt continue.
+  assert.equal(readVersionPreRetire(base), false);
+  // The new entry's callback is the fresh committed lifetime and works.
+  assert.equal(readVersionPreRetire({...base, route: newEntry}), true);
+  // Back: old callback does nothing; the new callback decides normally.
+  assert.equal(readBackCommit(oldEntry, newEntry, newEntry, true), undefined);
+  assert.equal(readBackCommit(newEntry, newEntry, newEntry, true), 'back');
+  assert.equal(readBackCommit(newEntry, newEntry, newEntry, false), 'home');
 });
 
 test('a retained row is refused after a successor, replacement or navigation', () => {
@@ -64,7 +124,8 @@ test('a retained row is refused after a successor, replacement or navigation', (
   const attemptA = {live: true, aborted: false}, attemptB = {live: true, aborted: false};
   const rendered = {context: route, sourceId: epub.sourceId, versions, attempt: attemptA};
   const committed = {context: route, sourceId: epub.sourceId, versions};
-  const base = {liveRoute: true, route: opened, currentRoute: opened, rendered, committed, currentAttempt: attemptA, attemptLive: true, candidate: pdf};
+  const base = {liveRoute: true, route: opened, committedRoute: opened, currentRoute: opened,
+    rendered, committed, currentAttempt: attemptA, attemptLive: true, candidate: pdf};
   assert.equal(readVersionPreRetire(base), true);
   // A successor attempt exists: the old callback must not retire it.
   assert.equal(readVersionPreRetire({...base, currentAttempt: attemptB}), false);
@@ -73,8 +134,9 @@ test('a retained row is refused after a successor, replacement or navigation', (
   // The committed source or list was replaced (even with equal contents).
   assert.equal(readVersionPreRetire({...base, committed: {...committed, sourceId: pdf.sourceId}}), false);
   assert.equal(readVersionPreRetire({...base, committed: {...committed, versions: [...versions]}}), false);
-  // Another route entry replaced the original.
+  // Another route entry replaced the original, or the new entry committed.
   assert.equal(readVersionPreRetire({...base, currentRoute: elsewhere}), false);
+  assert.equal(readVersionPreRetire({...base, committedRoute: elsewhere}), false);
   assert.equal(readVersionPreRetire({...base, liveRoute: false}), false);
   // Both attempts undefined never admits.
   assert.equal(readVersionPreRetire({...base, rendered: {...rendered, attempt: undefined}, currentAttempt: undefined}), false);
@@ -89,10 +151,12 @@ test('post-retire still refuses a successor or a replaced witness', () => {
   const attemptA = {live: false, aborted: true};
   const rendered = {context: route, sourceId: epub.sourceId, versions, attempt: attemptA};
   const committed = {context: route, sourceId: epub.sourceId, versions};
-  const base = {liveRoute: true, route: opened, currentRoute: opened, rendered, committed, successor: undefined, candidate: pdf};
+  const base = {liveRoute: true, route: opened, committedRoute: opened, currentRoute: opened,
+    rendered, committed, successor: undefined, candidate: pdf};
   assert.equal(readVersionPostRetire(base), true);
   assert.equal(readVersionPostRetire({...base, successor: {}}), false);
   assert.equal(readVersionPostRetire({...base, currentRoute: elsewhere}), false);
+  assert.equal(readVersionPostRetire({...base, committedRoute: elsewhere}), false);
   assert.equal(readVersionPostRetire({...base, committed: {...committed, versions: [...versions]}}), false);
 });
 
