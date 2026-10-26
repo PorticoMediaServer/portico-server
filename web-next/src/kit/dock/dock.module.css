@@ -10,7 +10,7 @@
 .identityText b { display: block; font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .identityText small { display: block; font-size: 13px; color: var(--color-text-tertiary); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gap { display: inline-block; width: 12px; flex: none; }
-.artSlot { position: relative; width: 60px; height: 60px; border-radius: 8px; overflow: hidden; flex: none; background: var(--color-shadow); box-shadow: 0 10px 24px -10px var(--color-shadow); }
+.artSlot { position: relative; width: 60px; height: 60px; border-radius: 8px; overflow: hidden; flex: none; background: var(--color-shadow); --dock-art-shadow: 0 10px 24px -10px var(--color-shadow); box-shadow: var(--dock-art-shadow); }
 .cover { width: 100%; height: 100%; }
 .videoArt { width: 107px; box-shadow: 0 10px 24px -10px var(--color-shadow), 0 0 0 1px rgba(237,245,250,.08); transition: transform 160ms var(--ease-out), box-shadow 160ms var(--ease-out); }
 .expandMark { position: absolute; inset: 0; display: grid; place-items: center; color: var(--color-white); background: rgba(4,9,13,.46); opacity: 0; transition: opacity 160ms var(--ease-out); }
@@ -158,3 +158,6 @@ button.identity:hover .expandTip, button.identity:focus-visible .expandTip { dis
 :global([data-reduce-motion="true"]) button.identity:hover .videoArt, :global([data-reduce-motion="true"]) button.identity:focus-visible .videoArt, :global([data-reduce-motion="true"]) .primary:hover, :global([data-reduce-motion="true"]) .tvTransport button:focus, :global([data-reduce-motion="true"]) .phoneBar[data-holding], :global([data-reduce-motion="true"]) .mediaSurface[data-docked][data-hover] .surfacePicture { transform: none; }
 @media (prefers-reduced-transparency: reduce) { .bar, .phoneBar, .tvCard { background: var(--color-raised); backdrop-filter: none; } }
 @supports not (backdrop-filter: blur(1px)) { .bar, .phoneBar, .tvCard { background: var(--color-raised); } }
+
+/* The current music cover surface paints the actual slot's art and shadow once. */
+.artSlot[data-external-artwork] { box-shadow: none; background: transparent; }

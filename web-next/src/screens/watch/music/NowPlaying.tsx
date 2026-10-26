@@ -31,9 +31,9 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
   const signal = watchMusicSignal(snapshot, settings, readWatchMusicAudioFacts(binding.runtime, snapshot));
   const identity = presentation ? playbackIdentity(presentation.subject, 'full', environment) : undefined;
   const artworkSource = presentation ? binding.artwork.foreground(presentation.posterUrl ?? presentation.backdropUrl, 560, 1, {group: 'playback', priority: 'high'}) : undefined;
-  const open = expanded && presentation?.kind === 'music' && !!identity && (!isCurrent || isCurrent());
+  const open = expanded && presentation?.kind === 'music' && !!identity && (!isCurrent || isCurrent()) && (!motion || !!motion.scope);
   useLayoutEffect(() => {if (!open) setSignalOpen(false);}, [open]);
-  const present = motion?.scope ? motion.present : open;
+  const present = motion ? motion.present : open;
   if (!present || !presentation || !identity || isCurrent && !isCurrent()) return null;
   const send = (intent: WatchIntent) => { if (!open || motion?.scope && !motion.scope.current()) return;void dispatchWatch(binding.runtime, snapshot, intent).catch(binding.reportError); };
   const bounds = watchSeekBounds(snapshot), at = presentation.positionSeconds, duration = presentation.durationSeconds;

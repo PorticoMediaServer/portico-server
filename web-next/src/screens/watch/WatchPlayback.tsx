@@ -182,7 +182,8 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
   const media = useMemo(() => new PlaybackMediaOwner<HTMLVideoElement>(), []);
   const cache = useMemo(() => new PlaybackPresentations(runtime), [runtime]);
   const dockPanelsCurrent = useCallback(() => context?.isCurrent() === true && cast?.controller.getSnapshot().remote?.phase !== 'playing', [context, cast]);
-  const musicMotion = useMusicExpansion(binding, snapshot, dockPanelsCurrent, dockSlot, musicBar, remotePlaying);
+  const musicCurrent = useCallback(() => dockPanelsCurrent() && !cast?.controller.getSnapshot().remote, [dockPanelsCurrent, cast]);
+  const musicMotion = useMusicExpansion(binding, snapshot, musicCurrent, dockSlot, musicBar, !!remoteState?.remote);
   const subscribeDockPanels = useCallback((changed: () => void) => cast?.controller.subscribe(changed) ?? (() => {}), [cast]);
   const [heldDockPanels, setHeldDockPanels] = useState<Readonly<{offer: WatchDockPanelOffer; context: WatchPlaybackContext | undefined; current: () => boolean}>>();
   const publishDockPanels = useCallback((offer: WatchDockPanelOffer) => {
