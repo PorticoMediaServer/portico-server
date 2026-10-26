@@ -208,6 +208,9 @@ export class InboxService{
  }
  private retirePage(){this.page=undefined;}
  private admit(revision:number,audience:NotificationAudience,view:InboxView){
+  // A new page identity retires the exact write aimed at the old one: an
+  // obsolete intent must never survive to block or be reused against this page.
+  this.retireFlight();
   this.page=Object.freeze({token:++this.pageToken,revision,audience,view});
  }
  private async dispatch(flight:InboxFlight,before:InboxSnapshot):Promise<void>{
@@ -231,14 +234,15 @@ export class InboxService{
    this.publish({counts:result.counts,revision:result.revision});this.unreadDirty=true;void this.refreshUnread();
   }catch(e){
    if(!this.owns(token))return;
+   // The page this attempt was aimed at is gone. Release this claim and stop:
+   // a stale failure may not mark itself unresolved, take over, or write its
+   // error into the page that is on screen now.
+   if(!this.current(flight)){this.flight=undefined;return;}
    // A stated refusal is finished. An unanswered attempt stays unresolved with
    // its original intent until the same change explicitly resumes it.
    if(definiteRefusal(e))this.flight=undefined;
    else this.flight=Object.freeze({flight,phase:'unresolved'});
    const notice=message(e,'notifications.error.change','notifications','save');
-   // A page replaced while this attempt was out keeps its own rows and counts;
-   // only the failure itself is shown.
-   if(!this.current(flight)){this.publish({error:notice});return;}
    this.publish({items:before.items,counts:before.counts,error:notice});
    // A revision conflict means the server moved: one fresh read keeps the page
    // honest and keeps this copy visible. It never resends the change.

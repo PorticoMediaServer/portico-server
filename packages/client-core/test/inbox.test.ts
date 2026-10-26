@@ -31,7 +31,7 @@ function server(){
  * answered at once, so a dispatch's lifetime and the admitted page are visible. */
 function flightServer(){
  const calls:{path:string;method:string;body?:any;signal?:AbortSignal}[]=[];
- const posts:{resolve:(value:any)=>void;signal?:AbortSignal}[]=[];
+ const posts:{resolve:(value:any)=>void;reject:(reason:any)=>void;signal?:AbortSignal}[]=[];
  const reads:{resolve:(value:any)=>void}[]=[];
  let immediate:Error|undefined,defer=false,holdRead=false,revision=7,nextCursor='';
  let items:any[]=[notification(),notification({id:'n-2',cursor:'4'})];
@@ -42,7 +42,7 @@ function flightServer(){
   if(path.startsWith('/v1/notifications/unread-count'))return Promise.resolve({data:{revision,audience:'profile',counts:counts(items.length),observedAt:at(2)}} as T);
   if(path.startsWith('/v1/notifications/inbox/actions')){
    if(immediate){const failure=immediate;immediate=undefined;return Promise.reject(failure);}
-   if(defer)return new Promise<T>(resolve=>posts.push({resolve,signal}));
+   if(defer)return new Promise<T>((resolve,reject)=>posts.push({resolve,reject,signal}));
    return Promise.resolve({data:{revision:++revision,audience:'profile',applied:1,receipts:[],counts:counts(0)}} as T);
   }
   if(holdRead)return new Promise<T>(resolve=>reads.push({resolve}));
@@ -276,6 +276,33 @@ test('more waits for an outbound write, and a pushed revision keeps its own coun
  s.posts[1].resolve({data:{revision:8,audience:'profile',applied:1,receipts:[],counts:counts(0)}});
  await later;
  assert.equal(service.getSnapshot().revision,9,'the late counts do not replace the current page');
+ assert.equal(service.getSnapshot().counts.unread,5);
+ service.dispose();
+});
+
+test('a late failure after a pushed page leaves the successor untouched',async()=>{
+ const s=flightServer();const service=new InboxService(s.api,()=>'op');await service.load();
+ s.setDefer(true);
+ const stale=service.apply('read',['n-1']);
+ assert.equal(s.posts.length,1);
+ service.accept({revision:9,since:8,resync:false,items:[],counts:{unread:5,read:0,archived:0,total:5}});
+ assert.equal(s.posts[0].signal!.aborted,true,'the replaced page retires the stale write');
+ // A successor write fails on the new page and leaves its own error and rows.
+ s.setImmediate(Object.assign(new Error('The server is busy.'),{status:503}));
+ await service.apply('archive',['n-2']);
+ const successor=service.getSnapshot();
+ assert.ok(successor.error);
+ const rows=successor.items.map(n=>n.id);
+ // The stale attempt's answer now fails too. It may not touch the successor,
+ // not even its error area, and it does not become a reusable intent.
+ s.posts[0].reject(new TypeError('Failed to fetch'));
+ await stale;
+ assert.equal(service.getSnapshot().revision,successor.revision);
+ assert.deepEqual(service.getSnapshot().counts,successor.counts);
+ assert.deepEqual(service.getSnapshot().items.map(n=>n.id),rows);
+ assert.equal(service.getSnapshot().error,successor.error,'the successor keeps its own error');
+ assert.equal(s.calls.filter(c=>c.method==='POST').length,2,'nothing new is sent');
+ assert.equal(service.getSnapshot().revision,9);
  assert.equal(service.getSnapshot().counts.unread,5);
  service.dispose();
 });
