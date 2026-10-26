@@ -267,6 +267,18 @@ export function SettingsEntry() {
     const controller = new SettingsController(options);
     const session = context.session(), transferOrigin = originalApi.baseUrl, transferRoute = originalApi.getRouteConnection();
     const transferPrincipal = Object.freeze({...viewer, family: session.sessionFamilyId});
+    // Independent of this Settings build or dialog. After a known write, only
+    // this original shell identity/family may reconcile its actual authority.
+    const originalTransferAuthority = () => {
+      try {
+        if (!context.isCurrent() || !transferRoute || transferRoute.getSnapshot().phase !== 'ready' ||
+          originalApi.baseUrl !== transferOrigin || originalApi.getRouteConnection() !== transferRoute ||
+          context.facts.identity.signIn !== 'local') return false;
+        const now = context.session();
+        return now.sessionFamilyId === transferPrincipal.family && now.viewer.serverId === transferPrincipal.serverId &&
+          now.viewer.authority === transferPrincipal.authority && now.viewer.accountId === transferPrincipal.accountId && now.viewer.profileId === transferPrincipal.profileId;
+      } catch {return false;}
+    };
     let localOwnerTransfer: LocalOwnerTransferSource | undefined;
     const ownerSwitch = identity.primaryProfile === true && role === 'owner' && identity.capabilities?.manageSignIn === true &&
       (identity.signIn === 'local' || identity.signIn === 'portico') ? new SettingsOwnerSwitch(api, {serverId: viewer.serverId,
@@ -288,17 +300,21 @@ export function SettingsEntry() {
     };
     localOwnerTransfer = localOwnerCurrent() ? new LocalOwnerTransferSource(api, {
       accountId: viewer.accountId, profileId: viewer.profileId, isCurrent: localOwnerCurrent,
-      onTransferred: async () => {
-        if (!localOwnerCurrent()) return;
+      onTransferred: async publish => {
+        // `publish` was checked against the exact opening at acknowledgement;
+        // capture that location without another authority call before retirement.
+        const location = publish ? router.state.location : undefined;
         // A confirmed write spends this exact owner Settings build immediately.
-        // Only the existing session reader may publish the actual retier.
+        // This is unconditional: an ended view cannot revive the old context.
         transferredOwnerContexts.add(context);
         active = false; lifetime.abort();
         for (const listener of authorityListeners) {try {listener();} catch { /* Retire every captured command. */ }}
         authorityListeners.clear();
         setOwned(held => held?.current === current ? undefined : held);
+        if (!originalTransferAuthority()) return;
+        // No latest context, auth object or location may be adopted here.
         const reconcile = context.auth.permissionDenied();
-        void router.navigate({to: '/', replace: true}).catch(() => {});
+        if (location && router.state.location === location) void router.navigate({to: '/', replace: true}).catch(() => {});
         await reconcile;
       },
     }) : undefined;
