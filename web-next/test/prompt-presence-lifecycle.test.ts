@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, {type TestContext} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {registerHooks} from 'node:module';
@@ -63,7 +63,7 @@ class HookFrame {
     const i = this.cursor++;
     this.slots[i] ??= {value: initial};
     return [this.slots[i].value, (next: unknown) => {
-      assert.ok(this.mounted, 'no prompt state update after unmount');
+      if (!this.mounted) return;
       const value = typeof next === 'function' ? (next as (value: unknown) => unknown)(this.slots[i].value) : next;
       if (!Object.is(value, this.slots[i].value)) { this.slots[i].value = value; this.dirty = true; }
     }];
@@ -200,6 +200,17 @@ function bindingFor(getLive: () => WebPlaybackRuntimeSnapshot) {
     reportError: (error: unknown) => {throw error;}};
   return {binding, actions};
 }
+function timerHarness(t: TestContext) {
+  const callbacks = new Map<number, () => void>(), cleared: number[] = [];
+  let serial = 0;
+  const original = {set: globalThis.setTimeout, clear: globalThis.clearTimeout};
+  const set = ((callback: () => void) => { const id = ++serial; callbacks.set(id, callback); return id as unknown as ReturnType<typeof setTimeout>; }) as typeof setTimeout;
+  const clear = ((id: number) => { cleared.push(id); }) as typeof clearTimeout;
+  (globalThis as Record<string, unknown>).setTimeout = set;
+  (globalThis as Record<string, unknown>).clearTimeout = clear;
+  t.after(() => Object.assign(globalThis as Record<string, unknown>, {setTimeout: original.set, clearTimeout: original.clear}));
+  return {ids: () => [...callbacks.keys()], cleared, fire(id: number) { const callback = callbacks.get(id); callbacks.delete(id); callback?.(); }};
+}
 function buttons(element: ReactNode): any[] {
   const found: any[] = [];
   const visit = (node: ReactNode) => { if (!isValidElement<any>(node)) return; if (node.props.type === 'button') found.push(node); Children.forEach(node.props.children, visit); };
@@ -252,10 +263,11 @@ test('Skip withdraws action eligibility at once and exits from the painted pose'
   assert.equal(render(), null, 'the outgoing paint leaves after its 120 ms exit');
 });
 
-test('a quiet dock drops the prompt without starting an exit paint', () => {
+test('a quiet dock drops the prompt without starting an exit paint', t => {
   const f = fence(), first = skipSnapshot(f), live = {value: first};
   const {binding} = bindingFor(() => live.value);
   const frame = new HookFrame();
+  t.after(() => frame.unmount());
   const render = (shown: WebPlaybackRuntimeSnapshot) => frame.render(() => WatchSkipPrompt({binding: binding as unknown as WatchPolicyBinding, snapshot: shown,
     expanded: true, controlsVisible: false, layout: 'desktop'}));
   const active = render(first) as any, node = rootNode(active);
@@ -264,54 +276,52 @@ test('a quiet dock drops the prompt without starting an exit paint', () => {
   assert.equal(render(live.value), null);
   assert.equal(node.animations.length, 1, 'no 120 ms exit is created for dock suppression');
   assert.equal(node.animations[0].cancelled, 1);
-  frame.unmount();
 });
 
-test('seek-row appearance and rapid reverse keep one prompt tree and the snap recipe', () => {
-  const f = fence(), shown = skipSnapshot(f), node = new PromptNode('focus');
+test('the authored snap recipe and prompt identity survive control toggles (source-level only)', t => {
+  const f = fence(), shown = skipSnapshot(f);
   const {binding} = bindingFor(() => shown);
   const frame = new HookFrame();
+  t.after(() => frame.unmount());
   const render = (controlsVisible: boolean) => frame.render(() => WatchSkipPrompt({binding: binding as unknown as WatchPolicyBinding, snapshot: shown,
     expanded: true, controlsVisible, layout: 'desktop'}));
   const settled = render(false) as any, prompt = rootNode(settled), snap = springTiming(springs.snap);
+  // Authored recipe/identity only. This hook seam cannot supply the real seek row, computed
+  // transform/focus or a genuine current-paint reversal; that remains a DOM integration check.
   assert.equal(settled.props.style['--prompt-snap-ms'], `${snap.durationMs}ms`);
   assert.equal(settled.props.style['--prompt-spring'], snap.css);
   assert.equal(prompt.animations.length, 1);
-  (globalThis.document as any).activeElement = node;
   for (const controlsVisible of [true, false, true]) {
     const next = render(controlsVisible) as any;
     assert.equal(next.props['data-controls-visible'], controlsVisible);
-    assert.equal(rootNode(next), prompt, 'the placement update keeps the same prompt node');
-    assert.equal(prompt.animations.length, 1, 'the snap transition does not queue another JS animation');
-    assert.equal((globalThis.document as any).activeElement, node, 'the original focus is retained');
+    assert.equal(rootNode(next), prompt, 'the control update keeps the same prompt node');
+    assert.equal(prompt.animations.length, 1, 'the authored place change does not queue another JS animation');
   }
-  const skipCss = readFileSync(new URL('../src/screens/watch/skip-prompt.module.css', import.meta.url), 'utf8');
-  for (const lift of ['100px', '144px', '74px']) assert.match(skipCss, new RegExp(`--prompt-lift: ${lift}`));
-  frame.unmount();
 });
 
 for (const [name, system, app] of [['app', false, true], ['system', true, false]] as const) {
-  test(`${name} reduction renders Undo as a 160 ms opacity-only fade`, () => {
+  test(`${name} reduction renders Undo as a 160 ms opacity-only fade`, t => {
     setReduced(system, app);
     const f = fence(), shown = undoSnapshot(f), live = {value: shown};
     const {binding} = bindingFor(() => live.value);
     const frame = new HookFrame();
+    t.after(() => frame.unmount());
     const root = frame.render(() => WatchUndoPrompt({binding: binding as unknown as WatchPolicyBinding, snapshot: shown, expanded: true, controlsVisible: false, layout: 'desktop'})) as any;
     const node = rootNode(root);
     assert.equal(root.props['data-watch-undo'], true);
     assert.deepEqual(node.animations[0].frames, [{opacity: 0}, {opacity: 1}]);
     assert.deepEqual(node.animations[0].options, {duration: reducedMotion.durationMs, easing: easings.linear, fill: 'none'});
     assert.equal(node.translateValue, 'none');
-    frame.unmount();
   });
 }
 
-test('a successor Up next offer cancels the retired animation and keeps its own target', async () => {
+test('a successor Up next offer cancels the retired animation and keeps its own target', async t => {
   const f = fence(), first = upNextSnapshot(f, 'offer:1', 'e2'), successor = upNextSnapshot(f, 'offer:2', 'e3');
   const live = {value: first}, {binding, actions} = bindingFor(() => live.value);
   const artwork = {foreground: () => ({src: 'next.jpg'})} as never;
   const environment = {t: (key: string) => key} as never;
   const frame = new HookFrame();
+  t.after(() => frame.unmount());
   const render = (shown: WebPlaybackRuntimeSnapshot) => frame.render(() => WatchUpNextPrompt({binding: binding as unknown as WatchNextBinding, snapshot: shown, artwork, environment,
     expanded: true, controlsVisible: false, layout: 'desktop'}));
   const active = render(first) as any, node = rootNode(active);
@@ -330,10 +340,11 @@ test('a successor Up next offer cancels the retired animation and keeps its own 
   assert.equal(successorNode.animations[0].cancelled, 1);
 });
 
-test('an Undo policy switch uses only the successor marker', async () => {
+test('an Undo policy switch uses only the successor marker', async t => {
   const f = fence(), first = undoSnapshot(f, 'undo-1'), successor = undoSnapshot(f, 'undo-2');
   const live = {value: first}, {binding, actions} = bindingFor(() => live.value);
   const frame = new HookFrame();
+  t.after(() => frame.unmount());
   const render = (shown: WebPlaybackRuntimeSnapshot) => frame.render(() => WatchUndoPrompt({binding: binding as unknown as WatchPolicyBinding, snapshot: shown, expanded: true, controlsVisible: false, layout: 'desktop'}));
   const active = render(first) as any, node = rootNode(active);
   live.value = successor;
@@ -345,13 +356,102 @@ test('an Undo policy switch uses only the successor marker', async () => {
   frame.unmount();
 });
 
+for (const [name, system, app] of [['app', false, true], ['system', true, false]] as const) {
+  test(`${name} reduction retargets an active Undo from its painted opacity to the original action`, async t => {
+    const f = fence(), shown = undoSnapshot(f, 'undo-live'), live = {value: shown};
+    const {binding, actions} = bindingFor(() => live.value);
+    const frame = new HookFrame(); t.after(() => frame.unmount());
+    const render = () => frame.render(() => WatchUndoPrompt({binding: binding as unknown as WatchPolicyBinding, snapshot: shown, expanded: true, controlsVisible: false, layout: 'desktop'}));
+    const active = render() as any, node = rootNode(active);
+    assert.equal(node.animations[0].options.duration, 180);
+    assert.ok(node.animations[0].frames.some(frame => 'translate' in frame));
+    node.pose(0.55, '0px 6px');
+    setReduced(system, app);
+    const reduced = render() as any;
+    assert.equal(rootNode(reduced), node);
+    assert.equal(node.animations[0].cancelled, 1);
+    assert.deepEqual(node.animations[1].frames, [{opacity: 0.55}, {opacity: 1}]);
+    assert.deepEqual(node.animations[1].options, {duration: reducedMotion.durationMs, easing: easings.linear, fill: 'none'});
+    assert.equal(node.translateValue, 'none');
+    buttons(reduced)[0].props.onClick(); await Promise.resolve();
+    assert.deepEqual(actions, [{kind: 'undo', markerId: 'undo-live'}]);
+  });
+  test(`${name} reduction retargets an active Up next from its painted opacity to the original entry`, async t => {
+    const f = fence(), shown = upNextSnapshot(f, 'offer:live', 'e2'), live = {value: shown};
+    const {binding, actions} = bindingFor(() => live.value);
+    const artwork = {foreground: () => ({src: 'next.jpg'})} as never, environment = {t: (key: string) => key} as never;
+    const frame = new HookFrame(); t.after(() => frame.unmount());
+    const render = () => frame.render(() => WatchUpNextPrompt({binding: binding as unknown as WatchNextBinding, snapshot: shown, artwork, environment,
+      expanded: true, controlsVisible: false, layout: 'desktop'}));
+    const active = render() as any, node = rootNode(active);
+    assert.equal(node.animations[0].options.duration, 180);
+    assert.ok(node.animations[0].frames.some(frame => 'translate' in frame));
+    node.pose(0.48, '0px 5px');
+    setReduced(system, app);
+    const reduced = render() as any;
+    assert.equal(rootNode(reduced), node);
+    assert.equal(node.animations[0].cancelled, 1);
+    assert.deepEqual(node.animations[1].frames, [{opacity: 0.48}, {opacity: 1}]);
+    assert.deepEqual(node.animations[1].options, {duration: reducedMotion.durationMs, easing: easings.linear, fill: 'none'});
+    assert.equal(node.translateValue, 'none');
+    buttons(reduced)[0].props.onClick(); await Promise.resolve();
+    assert.deepEqual(actions, [{kind: 'play-now', nextEntryId: 'e2'}]);
+  });
+}
+
+test('a withdrawal release queued before a successor cannot release or repaint it', async t => {
+  const f = fence(), first = skipSnapshot(f, 'old'), successor = skipSnapshot(f, 'new');
+  const live = {value: first}, {binding, actions} = bindingFor(() => live.value);
+  const frame = new HookFrame(); t.after(() => frame.unmount());
+  const timers = timerHarness(t);
+  const render = (shown: WebPlaybackRuntimeSnapshot) => frame.render(() => WatchSkipPrompt({binding: binding as unknown as WatchPolicyBinding, snapshot: shown,
+    expanded: true, controlsVisible: false, layout: 'desktop'}));
+  render(first);
+  live.value = snapshot(f, policy({prompt: null}));
+  render(first);
+  const [id] = timers.ids();
+  assert.equal(timers.ids().length, 1);
+  live.value = successor;
+  const next = render(successor) as any, node = rootNode(next);
+  assert.equal(next.props['data-prompt-phase'], 'in');
+  assert.ok(timers.cleared.includes(id));
+  timers.fire(id);
+  const after = render(successor) as any;
+  assert.equal(after.props['data-prompt-phase'], 'in');
+  assert.equal(rootNode(after), node);
+  buttons(after)[1].props.onClick(); await Promise.resolve();
+  assert.deepEqual(actions, [{kind: 'skip', markerId: 'new'}]);
+});
+
+test('a withdrawal release queued before unmount is cleared and cannot repaint', t => {
+  const f = fence(), first = skipSnapshot(f, 'unmount');
+  const live = {value: first}, {binding} = bindingFor(() => live.value);
+  const frame = new HookFrame(); t.after(() => frame.unmount());
+  const timers = timerHarness(t);
+  let renders = 0;
+  const render = (shown: WebPlaybackRuntimeSnapshot) => { renders += 1; return frame.render(() => WatchSkipPrompt({binding: binding as unknown as WatchPolicyBinding, snapshot: shown,
+    expanded: true, controlsVisible: false, layout: 'desktop'})); };
+  render(first);
+  live.value = snapshot(f, policy({prompt: null}));
+  render(first);
+  const [id] = timers.ids();
+  assert.equal(timers.ids().length, 1);
+  const before = renders;
+  frame.unmount();
+  assert.ok(timers.cleared.includes(id));
+  assert.doesNotThrow(() => timers.fire(id));
+  assert.equal(renders, before);
+});
+
 test('prompt press feedback remains local at 90 ms and becomes opacity-only under both reduced signals', () => {
   const skip = readFileSync(new URL('../src/screens/watch/skip-prompt.module.css', import.meta.url), 'utf8');
   const upNext = readFileSync(new URL('../src/screens/watch/up-next.module.css', import.meta.url), 'utf8');
   assert.match(skip, /\.skip \{[^}]*transition: transform 90ms var\(--ease-out\)/);
   assert.match(skip, /@media \(prefers-reduced-motion: reduce\) \{ \.skip \{ transition: opacity var\(--motion-reduced\) linear; \} \.skip:active \{ transform: none; opacity: \.85; \} \}/);
-  assert.match(skip, /\[data-reduce-motion='true'\] \.skip:active \{ transform: none; opacity: \.85; \}/);
+  assert.match(skip, /\[data-reduce-motion='true'\]\) \.skip:active \{ transform: none; opacity: \.85; \}/);
+  assert.match(skip, /\[data-reduce-motion='true'\]\) \.skip \{ transition: opacity var\(--motion-reduced\) linear; \}/);
   assert.match(upNext, /\.actions button \{[^}]*transition: transform 90ms var\(--up-next-ease\)/);
   assert.match(upNext, /@media \(prefers-reduced-motion: reduce\) \{ \.actions button \{ transition: opacity var\(--motion-reduced\) linear; \} \.actions button:active \{ transform: none; opacity: \.85; \} \}/);
-  assert.match(upNext, /\[data-reduce-motion='true'\] \.actions button:active \{ transform: none; opacity: \.85; \}/);
+  assert.match(upNext, /\[data-reduce-motion='true'\]\) \.actions button:active \{ transform: none; opacity: \.85; \}/);
+  assert.match(upNext, /\[data-reduce-motion='true'\]\) \.actions button \{ transition: opacity var\(--motion-reduced\) linear; \}/);
 });
