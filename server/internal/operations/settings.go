@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/medialimits"
 	"portico.local/server/internal/networkpolicy"
@@ -430,6 +431,32 @@ func readSettings(tx *sql.Tx) (SettingsDocument, error) {
 
 // restartFields reports restart-applied settings the running process has not adopted.
 func restartFields(v Settings) []string { _, fields := effectiveMediaSettings(v); return fields }
+
+// SettingsTx reads the canonical stored settings in the exact caller-owned
+// transaction. It performs no tool validation, applied-runtime callbacks,
+// transaction ownership or publication. Admission uses its stored policy rows;
+// the ordinary Settings projection retains its runtime/status decoration.
+func (s *Store) SettingsTx(ctx context.Context, tx *sql.Tx, auth Authorize) (SettingsDocument, error) {
+	if s == nil || tx == nil || ctx == nil {
+		return SettingsDocument{}, ErrInvalid
+	}
+	if auth == nil {
+		return SettingsDocument{}, identity.ErrUnauthorized
+	}
+	bound, err := dbwork.BindSnapshot(ctx, tx)
+	if err != nil {
+		return SettingsDocument{}, err
+	}
+	if err = auth(bound, tx, ""); err != nil {
+		return SettingsDocument{}, err
+	}
+	document, err := readSettings(tx)
+	if err != nil {
+		return SettingsDocument{}, err
+	}
+	return document, ctx.Err()
+}
+
 func (s *Store) Settings(ctx context.Context, auth Authorize) (out SettingsDocument, e error) {
 	e = s.snapshot(ctx, auth, "", func(tx *sql.Tx) error { var err error; out, err = readSettings(tx); return err })
 	if e == nil {
