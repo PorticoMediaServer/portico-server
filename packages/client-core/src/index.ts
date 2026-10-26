@@ -49,6 +49,7 @@ export * from './client-profile.ts';
 import {readConsoleJson,consoleUTF8Size} from './console-transport.ts';
 import {channelSeconds,channelMessage,type ChannelProjection,type ChannelReference} from './playback/linear-protocol.ts';
 import type {ChannelPlayback,ChannelView,ChannelStartOptions} from './playback-v1/channel-control.ts';
+import type {StartPreparation} from './playback-v1/sessions.ts';
 export type {ChannelStartOptions} from './playback-v1/channel-control.ts';
 export type {ChannelReference,ChannelProjection} from './playback/linear-protocol.ts';
 import type {QueueController} from './queue-controller.ts';
@@ -729,6 +730,8 @@ export function audioTrackLabel(t:{title?:string;language?:string;channels?:numb
   return [trackName(t)||('Track '+ordinal),[codec,layout].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
 }
 export type PlaybackSnapshot = {
+  /** Genuine server-directed start preparation; carries no session or media authority. */
+  preparation?: StartPreparation;
   audioTracks?: AudioTracksSnapshot;
   nativeListening?: NativeListeningStatus;
   listeningDeadlines?: ListeningDeadlines;
@@ -917,6 +920,7 @@ export class PlaybackService {
     };
   }
   private update(patch: Partial<PlaybackSnapshot>) {
+    if(patch.phase==='idle'||patch.phase==='error'||patch.phase==='ended'||'intentId' in patch&&patch.intentId!==this.snapshot.intentId)patch={...patch,preparation:undefined};
     if(patch.intent==='playing'||patch.phase==='idle'||patch.phase==='error'||patch.error||'intentId' in patch&&patch.intentId!==this.snapshot.intentId)patch={...patch,listeningNotice:undefined};
     // A fallback lasts for this song only: its own terminal and new-run resets, separate
     // from the notice, including a real ended fact that keeps the same item and intent.
@@ -1317,9 +1321,14 @@ export class PlaybackService {
     // A parked restore or server-selected start has no new per-title choices to retain.
     if(fresh&&(state==='paused'||itemId===undefined)){this.lastPlay=undefined;this.escalations=0;}
     if(fresh&&this.options.beforeFreshPlayback)this.freshReady=this.options.beforeFreshPlayback().catch(()=>{});
-    if(!this.snapshot.session){this.clearStartup();this.update({phase:'starting',intent:state,itemId,error:undefined,...run});}
-    else this.update({intent:state,error:undefined,...run});
+    if(!this.snapshot.session){this.clearStartup();this.update({phase:'starting',intent:state,itemId,error:undefined,preparation:undefined,...run});}
+    else this.update({intent:state,error:undefined,preparation:undefined,...run});
     return this.snapshot.intentId;
+  }
+  /** Presentation only: the queue/channel start retains the actual original
+   * intent and clears this status on settlement. It never installs a session. */
+  reportStartPreparation(intentId:number,preparation:StartPreparation|undefined):void{
+    if(this.snapshot.intentId===intentId)this.update({preparation});
   }
   async prepareQueueIntent(intentId:number):Promise<boolean>{
     if(this.snapshot.intentId!==intentId||this.snapshot.channel)return false;
