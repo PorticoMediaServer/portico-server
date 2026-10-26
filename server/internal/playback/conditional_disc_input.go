@@ -24,7 +24,12 @@ import (
 // raw stdout descriptor is never handed to FFmpeg, which would bypass Read's
 // original authority and known-helper-failure checks. This adapter grants no
 // source, title or presentation authority and cannot serve weak/provider guesses.
-func conditionalDiscInput(ctx context.Context, tool disc.Tool, object storage.RemoteObject, structure disc.Probe, title disc.Title, current func(context.Context) error) (_ *assets.PlaybackInput, err error) {
+type conditionalDiscPlaybackInput struct {
+	Input   *assets.PlaybackInput
+	Quiesce func(context.Context) error
+}
+
+func conditionalDiscInput(ctx context.Context, tool disc.Tool, object storage.RemoteObject, structure disc.Probe, title disc.Title, current func(context.Context) error) (_ *conditionalDiscPlaybackInput, err error) {
 	if ctx == nil || dbwork.Snapshot(ctx) != nil || object == nil {
 		return nil, disc.ErrProtocol
 	}
@@ -127,6 +132,9 @@ func conditionalDiscInput(ctx context.Context, tool disc.Tool, object storage.Re
 	options := []string{"-protocol_whitelist", "pipe", "-format_whitelist", "mpegts", "-f", "mpegts"}
 	input = &assets.PlaybackInput{Inherit: true, Argument: "pipe:3", Options: append([]string(nil), options...), Validate: validate, Lifetime: life, ReleaseSource: owner.Close}
 	input.InputAt = func(check context.Context, ms int64) ([]string, string, int64, error) {
+		if check == nil || dbwork.Snapshot(check) != nil {
+			return nil, "", 0, disc.ErrProtocol
+		}
 		owner.openMu.Lock()
 		defer owner.openMu.Unlock()
 		if e := validate(check); e != nil {
@@ -198,7 +206,57 @@ func conditionalDiscInput(ctx context.Context, tool disc.Tool, object storage.Re
 		}
 		return append([]string(nil), options...), "pipe:3", landing.TitleTimeMs, nil
 	}
-	return input, nil
+	return &conditionalDiscPlaybackInput{Input: input, Quiesce: func(check context.Context) error {
+		return quiesceConditionalDiscInput(check, owner, input, snapshot, validate, checkSource)
+	}}, nil
+}
+
+func quiesceConditionalDiscInput(check context.Context, owner *conditionalDiscPipe, input *assets.PlaybackInput, snapshot storage.Snapshot, validate, checkSource func(context.Context) error) error {
+	if check == nil || dbwork.Snapshot(check) != nil {
+		return disc.ErrProtocol
+	}
+	// No child may retain the worker's old claim across the prepared CAS.
+	// Keep the original conditional object, but stop/join its one probe run.
+	owner.openMu.Lock()
+	defer owner.openMu.Unlock()
+	if err := validate(check); err != nil {
+		return err
+	}
+	owner.mu.Lock()
+	active := owner.active
+	owner.mu.Unlock()
+	if active != nil {
+		active.Close()
+		// Close-induced cancellation is not a successful EOF. Preserve any
+		// actual non-cancel helper failure, then freshly check the SAME object.
+		if active.err != nil && !errors.Is(active.err, context.Canceled) {
+			owner.cancel()
+			return active.err
+		}
+	}
+	if err := checkSource(check); err != nil {
+		return err
+	}
+	actual, err := owner.object.Observe(check)
+	if err != nil {
+		owner.cancel()
+		return err
+	}
+	if actual != snapshot {
+		owner.cancel()
+		return mediasource.ErrSourceChanged
+	}
+	if err = checkSource(check); err != nil {
+		return err
+	}
+	owner.mu.Lock()
+	defer owner.mu.Unlock()
+	if owner.active != active || owner.closed {
+		owner.cancel()
+		return context.Canceled
+	}
+	owner.active, input.File = nil, nil
+	return owner.life.Err()
 }
 
 type conditionalDiscPipe struct {
