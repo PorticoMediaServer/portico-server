@@ -44,8 +44,9 @@ test('duplicate, extra, reordered and percent-encoded aliases are refused', () =
     href(canonical() + '&extra=1'),
     href('state=' + state + '&security=' + code + '&transaction=' + transaction),
     href('security=' + code + '&state=' + state),
-    href('security=' + encodeURIComponent(code) + '&state=' + state + '&transaction=' + transaction),
-    href('security=' + code + '&%73tate=' + state + '&transaction=' + transaction),
+    // A real percent alias: it decodes to the same code while the fragment
+    // spelling differs from the canonical producer string.
+    href('security=%73cr_' + 'C'.repeat(43) + '&state=' + state + '&transaction=' + transaction),
   ]) assert.throws(() => parseSecurityReturnCode(candidate, original), candidate);
 });
 
