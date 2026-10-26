@@ -26,12 +26,13 @@ import {homeCardModel} from '../home/model';
 import {BrowseEntryCard} from '../browse';
 import {LocalDownloads, ServerDownloads, type SavedDownloadEffects} from './Downloads';
 import {sameSavedDownloadsScope, type SavedDownloadsPort} from './downloads-port.ts';
-import type {SavedRuntime, SavedScreenRoute} from './runtime.ts';
+import {savedReaderRoute, type SavedRuntime, type SavedScreenRoute} from './runtime.ts';
 import {savedSectionWindow} from './window.ts';
 import {savedText as s} from './text.ts';
 import {SavedHistory, SavedResourceScreen} from './Resource';
 import {ResourceFields} from './ResourceFields';
 import {SavedDialog} from './SavedDialog';
+import {SavedPhoneDirectory} from './SavedPhoneDirectory';
 import type {SavedPresentation} from './presentation.ts';
 export type {SavedPresentation} from './presentation.ts';
 import type {SavedOperations} from './operations.ts';
@@ -74,22 +75,34 @@ const tabLabels = {watchlist: 'saved.tab.watchlist', favorites: 'saved.tab.favor
 export function SavedScreen(bindings: SavedBindings) {
   const {runtime, route, presentation, effects} = bindings;
   const viewKey = savedViewKey(runtime.scope, route), operations = useSavedViewOperations(runtime.operations, viewKey);
+  // `home` is the phone directory; every reader below uses its canonical My List.
+  const readerRoute = savedReaderRoute(route), phone = useShellWidth() < 600;
   const viewBindings: SavedViewBindings = {...bindings, operations};
   const [creating, setCreating] = useState<Readonly<{viewKey: string; kind: 'playlist' | 'collection'}>>();
   useEffect(() => {
-    if (route.view === 'downloads') return;
-    const current = ['collections', 'views', 'history', 'resource'].includes(route.view) ? runtime.personal.getSnapshot().route : runtime.saved.getSnapshot().route;
-    const same = route.view === 'watchlist' || route.view === 'favorites'
-      ? sameSavedRoute(runtime.posters.getSnapshot().route, {...route, shape: 'posters'}) && sameSavedRoute(runtime.squares.getSnapshot().route, {...route, shape: 'squares'})
-      : sameSavedRoute(current, route);
+    if (readerRoute.view === 'downloads') return;
+    const current = ['collections', 'views', 'history', 'resource'].includes(readerRoute.view) ? runtime.personal.getSnapshot().route : runtime.saved.getSnapshot().route;
+    const same = readerRoute.view === 'watchlist' || readerRoute.view === 'favorites'
+      ? sameSavedRoute(runtime.posters.getSnapshot().route, {...readerRoute, shape: 'posters'}) && sameSavedRoute(runtime.squares.getSnapshot().route, {...readerRoute, shape: 'squares'})
+      : sameSavedRoute(current, readerRoute);
     if (!same) void runtime.select(route).catch(effects.reportError);
-  }, [runtime, route, effects.reportError]);
+  }, [runtime, route, readerRoute, effects.reportError]);
+  // The directory's counts are one summary read per actual entry. It starts whatever
+  // phase the borrowed summary was left in — an abandoned, aborted load included —
+  // carries its own abort, and a stable dependency set keeps it from looping. It
+  // never adopts an older request and never disposes the shared summary.
+  useEffect(() => {
+    if (route.view !== 'home' || !runtime.operations.current) return;
+    const controller = new AbortController();
+    void runtime.summary.refresh(controller.signal).catch(error => {if (!controller.signal.aborted) effects.reportError(error);});
+    return () => controller.abort();
+  }, [runtime, route.view, effects.reportError]);
   const refresh = useCallback(async (context?: {signal?: AbortSignal; settle?: () => Promise<void>}) => {
-    if (!runtime.operations.current || route.view === 'downloads') return;
-    if (['collections', 'views', 'history', 'resource'].includes(route.view)) await Promise.all([runtime.personal.revalidate(context), route.view === 'collections' || route.view === 'views' ? runtime.summary.refresh(context?.signal) : Promise.resolve()]);
-    else if (route.view === 'watchlist' || route.view === 'favorites') await Promise.all([runtime.posters.revalidate(context), runtime.squares.revalidate(context)]);
+    if (!runtime.operations.current || readerRoute.view === 'downloads') return;
+    if (['collections', 'views', 'history', 'resource'].includes(readerRoute.view)) await Promise.all([runtime.personal.revalidate(context), readerRoute.view === 'collections' || readerRoute.view === 'views' ? runtime.summary.refresh(context?.signal) : Promise.resolve()]);
+    else if (readerRoute.view === 'watchlist' || readerRoute.view === 'favorites') await Promise.all([runtime.posters.revalidate(context), runtime.squares.revalidate(context)]);
     else await runtime.saved.revalidate(context);
-  }, [runtime, route.view]);
+  }, [runtime, readerRoute]);
   useQuietRefresh('saved', refresh, () => runtime.operations.current, {dependencies: [dependsOn.personal(), dependsOn.progress(), dependsOn.content(), dependsOn.settings('preferences')], everyMs: 0});
   const localSnapshot = useSyncExternalStore(bindings.localDownloads?.subscribe ?? noSubscribe, bindings.localDownloads?.getSnapshot ?? noLocalSnapshot, noLocalSnapshot);
   const localUsable = !!bindings.localDownloads && sameSavedDownloadsScope(bindings.localDownloads.scope, runtime.scope) && !!localSnapshot?.available;
@@ -99,7 +112,14 @@ export function SavedScreen(bindings: SavedBindings) {
   }, [runtime, localUsable, effects.saveReadyPreparation, effects.reportError]);
   if (!runtime.operations.current) return null;
   if (route.view === 'playlist' || route.view === 'resource') return <SavedResourceScreen key={viewKey} bindings={viewBindings} />;
-  const active = route.view;
+  // At phone width the home route is the drawn directory (phone-web frame 6);
+  // desktop and tablet keep today's tabbed page with My List active.
+  if (phone && route.view === 'home') return <main className={styles.page}>
+    {presentation.backdrop && <div className={styles.wash} aria-hidden="true"><AmbientArt source={presentation.backdrop} treatment="hero" /></div>}
+    <SavedPhoneDirectory runtime={runtime} downloadsOffered={bindings.downloadsOffered || localUsable} select={effects.selectRoute} />
+  </main>;
+  const dataBindings = readerRoute === route ? viewBindings : {...viewBindings, route: readerRoute};
+  const active = readerRoute.view;
   const tabs = (Object.keys(tabLabels) as (keyof typeof tabLabels)[]).filter(tab => tab !== 'downloads' || bindings.downloadsOffered || localUsable);
   const server = <ServerDownloads key={viewKey} service={runtime.downloads} operations={operations} effects={effects} artwork={bindings.preparationArtwork} online={bindings.online} />;
   return <main className={styles.page}>
@@ -109,9 +129,9 @@ export function SavedScreen(bindings: SavedBindings) {
       items={tabs.map(tab => ({value: tab, label: t(tabLabels[tab])}))} />
     {route.view === 'downloads' ? localUsable && bindings.localDownloads
       ? <LocalDownloads key={viewKey} port={bindings.localDownloads} operations={operations} effects={effects} server={<ServerDownloads service={runtime.downloads} operations={operations} effects={effects} artwork={bindings.preparationArtwork} online={bindings.online} embedded managed={!!effects.saveReadyPreparation} />} /> : server
-      : route.view === 'history' ? <SavedHistory key={viewKey} bindings={viewBindings} />
-        : route.view === 'collections' || route.view === 'views' ? <PersonalResources key={viewKey} {...viewBindings} onCreate={() => setCreating({viewKey, kind: 'collection'})} />
-          : <SavedLists key={viewKey} {...viewBindings} onCreate={() => setCreating({viewKey, kind: 'playlist'})} />}
+      : route.view === 'history' ? <SavedHistory key={viewKey} bindings={dataBindings} />
+        : readerRoute.view === 'collections' || readerRoute.view === 'views' ? <PersonalResources key={viewKey} {...dataBindings} onCreate={() => setCreating({viewKey, kind: 'collection'})} />
+          : <SavedLists key={viewKey} {...dataBindings} onCreate={() => setCreating({viewKey, kind: 'playlist'})} />}
     <CreateResourceDialog key={`create:${viewKey}`} kind={creating?.viewKey === viewKey ? creating.kind : undefined} bindings={viewBindings} close={() => setCreating(undefined)} />
   </main>;
 }

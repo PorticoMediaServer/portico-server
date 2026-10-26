@@ -218,3 +218,11 @@
   .title > b { font-size: var(--type-subheading-size); }
   .facts { gap: 8px; }
 }
+/* phone-web frame 6: Saved is a list of rows on a phone, each opening its own page. */
+.phoneDirectory { padding-bottom: 72px; }
+.phoneDirectoryRows { margin-top: 18px; }
+.phoneDirectoryRow.phoneDirectoryRow { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 52px; padding: 0 20px; border-radius: 0; text-align: left; }
+.phoneDirectoryIcon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--color-raised); color: var(--color-text-secondary); flex: none; }
+.phoneDirectoryLabel { flex: 1; min-width: 0; font-size: var(--type-subheading-size); font-weight: var(--type-row-heading-weight); color: var(--color-text); }
+.phoneDirectoryCount { color: var(--color-text-tertiary); font-size: var(--type-caption-size); font-variant-numeric: tabular-nums; }
+.phoneDirectoryChevron { color: var(--color-line-strong); flex: none; }

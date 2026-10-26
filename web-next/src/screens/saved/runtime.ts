@@ -8,7 +8,12 @@ import {SavedOperations} from './operations.ts';
 import {SavedReadyDownloads, type SaveReadyPreparation} from './ready-downloads.ts';
 import {SavedSummary} from './summary.ts';
 
-export type SavedScreenRoute = SavedRoute | Readonly<{view: 'downloads'}>;
+export type SavedScreenRoute = SavedRoute | Readonly<{view: 'downloads'}> | Readonly<{view: 'home'}>;
+/** The web's home route is the directory; its canonical My List is the only read it
+ * may make. `home` is a UI route and never reaches core by type. */
+/** One frozen query object, so every effect and quiet refresh sees a stable route. */
+const watchlistReader = Object.freeze({view: 'watchlist'}) as Readonly<{view: 'watchlist'}>;
+export const savedReaderRoute = (route: SavedScreenRoute): Exclude<SavedScreenRoute, {view: 'home'}> => route.view === 'home' ? watchlistReader : route;
 
 /** One captured parent lifetime, using only the published server services. Native
  * files/rules/artwork are installed separately by Settings; this creates no store. */
@@ -54,11 +59,12 @@ export function createSavedRuntime(input: Readonly<{api: SavedApi; scope: SavedD
       downloads.start();
     },
     async select(route: SavedScreenRoute, restore?: SavedRestore): Promise<void> {
-      if (!operations.current || route.view === 'downloads') return;
-      if (isPersonalSavedRoute(route)) { await Promise.all([personal.select(route, restore), route.view === 'collections' || route.view === 'views' ? summary.refresh() : Promise.resolve()]); return; }
-      if (route.view === 'watchlist' || route.view === 'favorites') {
-        await Promise.all([posters.select({...route, shape: 'posters'}, restore), squares.select({...route, shape: 'squares'}, restore)]);
-      } else await saved.select(route, restore);
+      const reader = savedReaderRoute(route);
+      if (!operations.current || reader.view === 'downloads') return;
+      if (isPersonalSavedRoute(reader)) { await Promise.all([personal.select(reader, restore), reader.view === 'collections' || reader.view === 'views' ? summary.refresh() : Promise.resolve()]); return; }
+      if (reader.view === 'watchlist' || reader.view === 'favorites') {
+        await Promise.all([posters.select({...reader, shape: 'posters'}, restore), squares.select({...reader, shape: 'squares'}, restore)]);
+      } else await saved.select(reader, restore);
     },
     dispose(): void {
       readyDownloads?.dispose();

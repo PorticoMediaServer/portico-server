@@ -1,16 +1,23 @@
 import {historyPeriods, playlistListFilters, savedListFilters, type SavedRoute} from '@core/saved.ts';
 import type {SavedDownloadsScope} from './downloads-port.ts';
 
-type Route = SavedRoute | Readonly<{view: 'downloads'}>;
+type Route = SavedRoute | Readonly<{view: 'downloads'}> | Readonly<{view: 'home'}>;
 
-const names = ['watchlist', 'favorites', 'playlists', 'playlist', 'collections', 'views', 'history', 'resource', 'downloads'] as const;
+const names = ['home', 'watchlist', 'favorites', 'playlists', 'playlist', 'collections', 'views', 'history', 'resource', 'downloads'] as const;
 const text = (value: unknown, max = 256): value is string => typeof value === 'string' && value.length > 0 && value.length <= max && !/[\x00-\x1f\x7f]/.test(value);
 function invalid(): never {throw new Error('invalid-saved-route');}
 /** The owned URL schema forwards only the selected server policy, never raw keys. */
 export function parseSavedScreenRoute(raw: Record<string, unknown>): Route {
-  const view = names.find(name => name === (raw.view ?? (raw.resourceId === undefined ? 'watchlist' : 'resource')));
+  // A bare /saved is the phone directory; any owned parameter without a view keeps
+  // the existing watchlist semantics (or resource, for resourceId) unchanged.
+  const owned = ['resourceId', 'playlistId', 'sort', 'direction', 'filter', 'shape', 'period'] as const;
+  const hasOwned = owned.some(key => raw[key] !== undefined);
+  const view = names.find(name => name === (raw.view ?? (hasOwned ? (raw.resourceId === undefined ? 'watchlist' : 'resource') : 'home')));
   if (!view) invalid();
   if (view === 'downloads') return {view};
+  // A directory route owns no other saved parameter; an explicit view=home with one
+  // is refused rather than silently dropping it.
+  if (view === 'home') {if (hasOwned) invalid(); return {view};}
   if (view === 'playlist') return text(raw.playlistId) ? {view, playlistId: raw.playlistId} : invalid();
   if (view === 'resource' && !text(raw.resourceId)) invalid();
   if (raw.resourceId !== undefined && !text(raw.resourceId)) invalid();

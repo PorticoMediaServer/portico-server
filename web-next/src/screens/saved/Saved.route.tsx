@@ -14,7 +14,7 @@ import type {RetainedSavedOwner} from './retained-owner';
 import {parseSavedScreenRoute, savedRouteKey, sameSavedRoute} from './route';
 import {SavedOperations} from './operations';
 import type {ScreenContext} from '../detail/context';
-import type {SavedScreenRoute} from './runtime';
+import {savedReaderRoute, type SavedScreenRoute} from './runtime';
 
 const networkSnapshot = () => navigator.onLine;
 const networkSubscribe = (changed: () => void) => {
@@ -27,10 +27,11 @@ function savedLocationCurrent(key: string) {
   try {return savedRouteKey(parseSavedScreenRoute(location.search)) === key;} catch {return false;}
 }
 function savedReadersMatch(runtime: RetainedSavedOwner['runtime'], route: SavedScreenRoute) {
-  if (route.view === 'downloads') return true;
-  if (route.view === 'watchlist' || route.view === 'favorites') return sameSavedRoute(runtime.posters.getSnapshot().route, {...route, shape: 'posters'})
-    && sameSavedRoute(runtime.squares.getSnapshot().route, {...route, shape: 'squares'});
-  return sameSavedRoute(['collections', 'views', 'history', 'resource'].includes(route.view) ? runtime.personal.getSnapshot().route : runtime.saved.getSnapshot().route, route);
+  const reader = savedReaderRoute(route);
+  if (reader.view === 'downloads') return true;
+  if (reader.view === 'watchlist' || reader.view === 'favorites') return sameSavedRoute(runtime.posters.getSnapshot().route, {...reader, shape: 'posters'})
+    && sameSavedRoute(runtime.squares.getSnapshot().route, {...reader, shape: 'squares'});
+  return sameSavedRoute(['collections', 'views', 'history', 'resource'].includes(reader.view) ? runtime.personal.getSnapshot().route : runtime.saved.getSnapshot().route, reader);
 }
 type SavedRouteLease = Readonly<{context: ScreenContext; owner: RetainedSavedOwner; route: SavedScreenRoute; routeKey: string;
   playback: NonNullable<ProtectedLibraryScreen['binding']['playback']>['runtime'] | undefined;
@@ -52,7 +53,7 @@ function BoundSaved({captured, owner}: {captured: ProtectedLibraryScreen; owner:
     const signal = (input?: AbortSignal) => input ? AbortSignal.any([lifetime.signal, input]) : lifetime.signal;
     const original: ScreenContext = {...context, isCurrent: current};
     const operations = new SavedOperations(current), borrowed = owner.runtime;
-    const selection = createSavedCatalogueSelection(original, borrowed, originalRoute,
+    const selection = createSavedCatalogueSelection(original, borrowed, savedReaderRoute(originalRoute),
       {serverId: viewer.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId},
       () => captured.context.viewerFence, current, playback);
     const select: typeof borrowed.select = async (value, restore) => {
@@ -89,6 +90,8 @@ function CommittedSaved({captured, lease, appearance, choice, setChoice}: {captu
   appearance: NonNullable<ReturnType<typeof useScreenAppearance>>; choice?: Readonly<{defaultView: 'grid' | 'list'; view: 'grid' | 'list'}>;
   setChoice: (choice: Readonly<{defaultView: 'grid' | 'list'; view: 'grid' | 'list'}>) => void}) {
   const {context, owner, route, selection, playback} = lease, runtime = owner.runtime;
+  // One canonical data route for every witness: `home` is the UI identity only.
+  const dataRoute = savedReaderRoute(route);
   const native = useSyncExternalStore(owner.subscribe, owner.getSnapshot, owner.getSnapshot);
   const saved = useSyncExternalStore(runtime.saved.subscribe, runtime.saved.getSnapshot, runtime.saved.getSnapshot);
   const posters = useSyncExternalStore(runtime.posters.subscribe, runtime.posters.getSnapshot, runtime.posters.getSnapshot);
@@ -97,10 +100,10 @@ function CommittedSaved({captured, lease, appearance, choice, setChoice}: {captu
   const downloads = useSyncExternalStore(runtime.downloads.subscribe, runtime.downloads.getSnapshot, runtime.downloads.getSnapshot);
   const online = useSyncExternalStore(networkSubscribe, networkSnapshot, () => true), width = useShellWidth();
   const effects: SavedEffects = useMemo(() => {
-    const documents = route.view === 'playlist' ? [{service: runtime.saved, state: saved, expected: route}]
-      : route.view === 'watchlist' || route.view === 'favorites' ? [
-        {service: runtime.posters, state: posters, expected: {...route, shape: 'posters' as const}},
-        {service: runtime.squares, state: squares, expected: {...route, shape: 'squares' as const}}] : [];
+    const documents = dataRoute.view === 'playlist' ? [{service: runtime.saved, state: saved, expected: dataRoute}]
+      : dataRoute.view === 'watchlist' || dataRoute.view === 'favorites' ? [
+        {service: runtime.posters, state: posters, expected: {...dataRoute, shape: 'posters' as const}},
+        {service: runtime.squares, state: squares, expected: {...dataRoute, shape: 'squares' as const}}] : [];
     const documentCurrent = (held: typeof documents[number]) => {
       const now = held.service.getSnapshot();
       return lease.current() && held.state.phase === 'ready' && !!held.state.projection && now.phase === 'ready'
@@ -109,17 +112,17 @@ function CommittedSaved({captured, lease, appearance, choice, setChoice}: {captu
     const personalCurrent = () => {
       const now = runtime.personal.getSnapshot();
       return lease.current() && !personal.loading && !personal.error && !now.loading && !now.error
-        && sameSavedRoute(now.route, route) && now.entries === personal.entries && now.resource === personal.resource
+        && sameSavedRoute(now.route, dataRoute) && now.entries === personal.entries && now.resource === personal.resource
         && now.revision === personal.revision && now.viewerFence === personal.viewerFence;
     };
     const member = (entry: ContentEntry) => documents.some(held => documentCurrent(held)
       && held.state.projection!.sections.some(section => section.entries.some(value => savedCatalogueEntry(value) === entry)))
-      || (route.view === 'resource' || route.view === 'history') && personalCurrent() && personal.entries.some(value => !value.hidden && value.media === entry);
+      || (dataRoute.view === 'resource' || dataRoute.view === 'history') && personalCurrent() && personal.entries.some(value => !value.hidden && value.media === entry);
     const reportError = (error: unknown) => {if (lease.current()) context.effects.reportError(error);};
     return {
       openEntry(entry) {if (member(entry)) context.effects.openEntry(entry);},
       openReadingGroup(card) {
-        if (route.view !== 'watchlist' || !documents.some(held => documentCurrent(held)
+        if (dataRoute.view !== 'watchlist' || !documents.some(held => documentCurrent(held)
           && held.state.projection!.sections.some(section => section.entries.some(value => value === card)))) return;
         void router.navigate({to: '/library/$libraryId', params: {libraryId: card.libraryId}, search: {view: 'series', entityId: card.readingGroup.seriesId,
           ...(card.navigation.pivot ? {pivot: card.navigation.pivot} : {})}}).catch(reportError);
