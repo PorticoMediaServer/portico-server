@@ -113,7 +113,8 @@ function NowPlaying({bindings: b, state, phone = false}: {bindings: DashboardBin
     ? totals.streams > 0
       ? <><span>{t('next.dashboard.peopleCount', {count: totals.people})}</span><i className={styles.dotSep} aria-hidden="true" /><small>{t('next.dashboard.locations', {home: totals.atHome, away: totals.away})}</small></>
       : <span>{t('next.shell.streams', {count: 0})}</span>
-    : totals.streams > 0 && <><span>{t('next.dashboard.streams', {count: totals.streams})}</span><small>{t('next.dashboard.locations', {home: totals.atHome, away: totals.away})}</small></>);
+    : totals.streams > 0 ? <><span>{t('next.dashboard.streams', {count: totals.streams})}</span><small>{t('next.dashboard.locations', {home: totals.atHome, away: totals.away})}</small></>
+      : !state.loading && !state.failed && state.value && totals.streams === 0 && state.value.items.length === 0 ? <span>{t('next.shell.streams', {count: 0})}</span> : null);
   return <Section phone={phone} title={t('next.dashboard.now')} extra={count}>
     <ReadFeedback openHome={b.effects.openHome} state={state} />{state.value && <SessionList key={bindingLifetime(b)} sessions={sessions} bindings={b} phone={phone} empty={empty} onRefresh={refresh} />}
     <ToastHost toast={toast} onDismiss={() => showToast(null)} />
