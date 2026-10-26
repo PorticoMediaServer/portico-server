@@ -43,6 +43,7 @@ type SecurityContext struct {
 	Nonce              string    `json:"nonce"`
 	IssuedAt           time.Time `json:"issuedAt"`
 	ExpiresAt          time.Time `json:"expiresAt"`
+	AuthorityExpiresAt time.Time `json:"authorityExpiresAt"`
 }
 
 type SecurityReturnStart struct {
@@ -107,7 +108,7 @@ func VerifySecurityContext(q SecuritySigned, public []byte, now time.Time) (Secu
 		!identifier.MatchString(out.AccountID) || !identifier.MatchString(out.ProviderIdentityID) || out.ProviderRevision < 1 ||
 		!secret.MatchString(out.ActorBinding) || !identifier.MatchString(out.OpeningID) || len(out.OpeningID) < 16 ||
 		!identifier.MatchString(out.TaskID) || len(out.TaskID) < 16 || !identifier.MatchString(out.OperationID) || len(out.OperationID) < 16 ||
-		!secret.MatchString(out.Nonce) || !securityTime(out.IssuedAt, out.ExpiresAt, now, 5*time.Minute) {
+		!secret.MatchString(out.Nonce) || out.AuthorityExpiresAt.IsZero() || out.ExpiresAt.After(out.AuthorityExpiresAt) || !securityTime(out.IssuedAt, out.ExpiresAt, now, 5*time.Minute) {
 		return SecurityContext{}, nil, ErrInvalid
 	}
 	return out, raw, nil

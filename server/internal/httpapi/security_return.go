@@ -74,7 +74,7 @@ func securityReturnFailure(w http.ResponseWriter, e error) {
 func (d Dependencies) securityReturnRoutes(mux *http.ServeMux) {
 	actor := func(r *http.Request) networking.SecurityActorReader {
 		bearer := directBearer(r)
-		return func(ctx context.Context, tx *sql.Tx) (string, string, error) {
+		return func(ctx context.Context, tx *sql.Tx) (string, string, time.Time, error) {
 			return d.Identity.SecurityReturnActorTx(ctx, tx, bearer)
 		}
 	}

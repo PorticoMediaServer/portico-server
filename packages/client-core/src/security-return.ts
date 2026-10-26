@@ -5,7 +5,7 @@ import {CodedError} from './server-messages.ts';
 export type SecuritySigned=Readonly<{payload:string;signature:string}>;
 export type CredentialSecurityPurpose='password_set_or_change'|'email_change'|'mfa_enroll'|'mfa_disable'|'recovery_codes';
 export type SecurityPrepare=Readonly<{purpose:CredentialSecurityPurpose;target:string;origin:string;openingId:string;taskId:string;operationId:string;providerIdentityId:string;providerRevision:string;nonce:string;expiresAt:string}>;
-const fields=['settingsScope','settingsSection','purpose','target','kind','serverId','publicKey','registrationId','origin','hostedOrigin','claimOperationId','accountId','actorBinding','openingId','taskId','operationId','providerIdentityId','providerRevision','nonce','issuedAt','expiresAt'] as const;
+const fields=['settingsScope','settingsSection','purpose','target','kind','serverId','publicKey','registrationId','origin','hostedOrigin','claimOperationId','accountId','actorBinding','openingId','taskId','operationId','providerIdentityId','providerRevision','nonce','issuedAt','expiresAt','authorityExpiresAt'] as const;
 export type SecurityContextFacts=Readonly<Record<typeof fields[number],string>>;
 const invalid=()=>new CodedError('invalid_security_return','This account security continuation no longer matches its original opening.');
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v)&&[Object.prototype,null].includes(Object.getPrototypeOf(v));
@@ -29,7 +29,7 @@ export async function verifySecurityContext(raw:unknown,pin:ServerPin,expected:{
  const c=value as Record<typeof fields[number],string>,q=expected.prepare;
  if(c.settingsScope!=='account'||c.settingsSection!=='profile'||c.purpose!==q.purpose||c.target!==q.target||!['password_set_or_change','email_change','mfa_enroll','mfa_disable','recovery_codes'].includes(c.purpose)||(c.purpose==='email_change'?!c.target||c.target.length>320:c.target!=='')||c.kind!=='portico.security-return-prepare.v1'||c.serverId!==pin.serverId||c.publicKey!==pin.publicKey||!/^ret_[A-Za-z0-9_-]{43}$/.test(c.registrationId)||!identifier(c.claimOperationId)||c.accountId!==expected.accountId||
   c.origin!==q.origin||c.hostedOrigin!==expected.hostedOrigin||c.openingId!==q.openingId||c.taskId!==q.taskId||c.operationId!==q.operationId||c.providerIdentityId!==q.providerIdentityId||c.providerRevision!==q.providerRevision||c.nonce!==q.nonce||
-  !identifier(c.openingId,16)||!identifier(c.taskId,16)||!identifier(c.operationId,16)||!identifier(c.providerIdentityId)||!revision(c.providerRevision)||!utc(c.issuedAt)||!utc(c.expiresAt)||Date.parse(c.expiresAt)!==Date.parse(q.expiresAt))throw invalid();
+  !identifier(c.openingId,16)||!identifier(c.taskId,16)||!identifier(c.operationId,16)||!identifier(c.providerIdentityId)||!revision(c.providerRevision)||!utc(c.issuedAt)||!utc(c.expiresAt)||!utc(c.authorityExpiresAt)||!Number.isFinite(Date.parse(q.expiresAt))||Date.parse(c.expiresAt)>Date.parse(q.expiresAt)||Date.parse(c.expiresAt)>Date.parse(c.authorityExpiresAt))throw invalid();
  for(const origin of [c.origin,c.hostedOrigin])if(!origin.startsWith('https://')||routeOrigin(origin)!==origin)throw invalid();
  routeBytes(c.actorBinding,32);routeBytes(c.nonce,32);routeBytes(c.registrationId.slice(4),32);
  const issued=Date.parse(c.issuedAt),expires=Date.parse(c.expiresAt);

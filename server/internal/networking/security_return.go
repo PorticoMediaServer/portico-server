@@ -15,7 +15,7 @@ import (
 	"portico.local/server/internal/serverreturn"
 )
 
-type SecurityActorReader func(context.Context, *sql.Tx) (account, binding string, err error)
+type SecurityActorReader func(context.Context, *sql.Tx) (account, binding string, expires time.Time, err error)
 
 // securityReturnIdentityTx proves the exact current installed route tuple. It
 // never uses the sign-in challenge or session-producing return exchange.
@@ -61,7 +61,7 @@ func signSecurity(key ed25519.PrivateKey, value any) (serverreturn.SecuritySigne
 // request returns its original signed bytes/expiry; another opening cancels its
 // predecessor in the same writer. The caller cannot choose key or actor facts.
 func (h *RouteIdentityHandler) SignSecurityReturn(parent context.Context, q serverreturn.SecurityContext, read SecurityActorReader) (out serverreturn.SecuritySigned, err error) {
-	if h == nil || h.keys == nil || h.runner == nil || read == nil || q.SettingsScope != "" || q.SettingsSection != "" || q.Kind != "" || q.PublicKey != "" || q.AccountID != "" || q.ActorBinding != "" || !q.IssuedAt.IsZero() {
+	if h == nil || h.keys == nil || h.runner == nil || read == nil || !q.AuthorityExpiresAt.IsZero() || q.SettingsScope != "" || q.SettingsSection != "" || q.Kind != "" || q.PublicKey != "" || q.AccountID != "" || q.ActorBinding != "" || !q.IssuedAt.IsZero() {
 		return out, ErrInvalid
 	}
 	request, _ := json.Marshal(q)
@@ -73,7 +73,7 @@ func (h *RouteIdentityHandler) SignSecurityReturn(parent context.Context, q serv
 		}
 		defer g.Rollback()
 		tx := g.Tx()
-		account, binding, e := read(ctx, tx)
+		account, binding, authorityExpires, e := read(ctx, tx)
 		if e != nil {
 			return e
 		}
@@ -104,6 +104,8 @@ func (h *RouteIdentityHandler) SignSecurityReturn(parent context.Context, q serv
 		if !errors.Is(e, sql.ErrNoRows) {
 			return e
 		}
+		q.AuthorityExpiresAt = authorityExpires.UTC()
+		q.ExpiresAt = minSecurityTime(q.ExpiresAt, authorityExpires)
 		q.SettingsScope = "account"
 		q.SettingsSection = "profile"
 		q.Kind = serverreturn.SecurityContextKind
@@ -124,6 +126,9 @@ func (h *RouteIdentityHandler) SignSecurityReturn(parent context.Context, q serv
 		if _, e = tx.ExecContext(ctx, `INSERT INTO identity_security_return_openings(operation_id,actor_binding,request_hash,opening_id,task_id,phase,payload,signature,expires_ms) VALUES(?,?,?,?,?,'prepared',?,?,?)`, q.OperationID, binding, requestHash, q.OpeningID, q.TaskID, out.Payload, out.Signature, q.ExpiresAt.UnixMilli()); e != nil {
 			return e
 		}
+		if !q.ExpiresAt.After(time.Now()) || !authorityExpires.After(time.Now()) {
+			return ErrStale
+		}
 		return g.Commit()
 	})
 	if err != nil {
@@ -143,7 +148,7 @@ func (h *RouteIdentityHandler) ConfirmSecurityReturn(parent context.Context, ori
 		}
 		defer g.Rollback()
 		tx := g.Tx()
-		account, binding, e := read(ctx, tx)
+		account, binding, authorityExpires, e := read(ctx, tx)
 		if e != nil {
 			return e
 		}
@@ -152,7 +157,7 @@ func (h *RouteIdentityHandler) ConfirmSecurityReturn(parent context.Context, ori
 			return e
 		}
 		c, raw, e := serverreturn.VerifySecurityContext(original, id.PublicKey, time.Now())
-		if e != nil || c.AccountID != account || c.ActorBinding != binding {
+		if e != nil || c.AccountID != account || c.ActorBinding != binding || !c.AuthorityExpiresAt.Equal(authorityExpires) {
 			return ErrStale
 		}
 		if _, e = h.securityReturnIdentityTx(ctx, tx, c); e != nil {
@@ -218,7 +223,7 @@ func (h *RouteIdentityHandler) CancelSecurityReturn(parent context.Context, orig
 		}
 		defer g.Rollback()
 		tx := g.Tx()
-		account, binding, e := read(ctx, tx)
+		account, binding, authorityExpires, e := read(ctx, tx)
 		if e != nil {
 			return e
 		}
@@ -227,7 +232,7 @@ func (h *RouteIdentityHandler) CancelSecurityReturn(parent context.Context, orig
 			return e
 		}
 		c, _, e := serverreturn.VerifySecurityContext(original, id.PublicKey, time.Now())
-		if e != nil || c.AccountID != account || c.ActorBinding != binding {
+		if e != nil || c.AccountID != account || c.ActorBinding != binding || !c.AuthorityExpiresAt.Equal(authorityExpires) {
 			return ErrStale
 		}
 		result, e := tx.ExecContext(ctx, `UPDATE identity_security_return_openings SET phase='cancelled' WHERE operation_id=? AND opening_id=? AND task_id=? AND actor_binding=? AND payload=? AND signature=?`, c.OperationID, c.OpeningID, c.TaskID, binding, original.Payload, original.Signature)
