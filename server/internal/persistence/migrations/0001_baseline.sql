@@ -3898,6 +3898,58 @@ CREATE TABLE remote_source_settings(
  loudness INTEGER NOT NULL CHECK(loudness IN(0,1)),
  checksums INTEGER NOT NULL CHECK(checksums IN(0,1)))
  STRICT;
+-- Root57 v1 product defaults. Definitions are immutable versions, not inferred
+-- histories or performance measurements. Existing sources gain no reference.
+CREATE TABLE remote_source_choice_definitions(
+ name TEXT NOT NULL CHECK(name IN('list','once','everything','ask')),
+ definition_revision INTEGER NOT NULL CHECK(definition_revision>0),
+ scan_depth TEXT NOT NULL CHECK(scan_depth IN('file_list_only','basic','complete')),
+ whole_file_reads INTEGER NOT NULL CHECK(whole_file_reads IN(0,1)),
+ connections INTEGER NOT NULL CHECK(connections BETWEEN 1 AND 32),
+ requests_per_second INTEGER NOT NULL CHECK(requests_per_second BETWEEN 1 AND 50),
+ bytes_per_second INTEGER NOT NULL CHECK(bytes_per_second=0 OR (bytes_per_second BETWEEN 1000000 AND 1000000000 AND bytes_per_second%1000000=0)),
+ scan_interval_seconds INTEGER NOT NULL CHECK(scan_interval_seconds IN(0,900,3600,21600,86400,604800)),
+ watch_for_changes INTEGER NOT NULL CHECK(watch_for_changes IN(0,1)),
+ scan_on_start INTEGER NOT NULL CHECK(scan_on_start IN(0,1)),
+ full_recheck_days INTEGER NOT NULL CHECK(full_recheck_days IN(0,7,14,30)),
+ double_check_folders INTEGER NOT NULL CHECK(double_check_folders IN(0,1)),
+ seek_previews INTEGER NOT NULL CHECK(seek_previews IN(0,1)),
+ chapter_images INTEGER NOT NULL CHECK(chapter_images IN(0,1)),
+ waveforms INTEGER NOT NULL CHECK(waveforms IN(0,1)),
+ loudness INTEGER NOT NULL CHECK(loudness IN(0,1)),
+ checksums INTEGER NOT NULL CHECK(checksums IN(0,1)),
+ intros_mode TEXT NOT NULL CHECK(intros_mode IN('off','inherit','sound','picture')),
+ cache_bytes INTEGER NOT NULL CHECK(cache_bytes=0 OR cache_bytes BETWEEN 67108864 AND 68719476736),
+ cache_floor_bytes INTEGER NOT NULL CHECK(cache_floor_bytes=0 OR cache_floor_bytes BETWEEN 1073741824 AND 1099511627776),
+ dir_cache_seconds INTEGER NOT NULL CHECK(dir_cache_seconds BETWEEN 0 AND 86400),
+ read_buffer_bytes INTEGER NOT NULL CHECK(read_buffer_bytes BETWEEN 0 AND 1073741824),
+ connect_timeout_seconds INTEGER NOT NULL CHECK(connect_timeout_seconds BETWEEN 0 AND 600),
+ idle_timeout_seconds INTEGER NOT NULL CHECK(idle_timeout_seconds BETWEEN 0 AND 3600),
+ retries INTEGER NOT NULL CHECK(retries BETWEEN 0 AND 10),
+ low_level_retries INTEGER NOT NULL CHECK(low_level_retries BETWEEN 0 AND 10),
+ PRIMARY KEY(name,definition_revision)) STRICT;
+INSERT INTO remote_source_choice_definitions(name,definition_revision,scan_depth,whole_file_reads,connections,requests_per_second,bytes_per_second,scan_interval_seconds,watch_for_changes,scan_on_start,full_recheck_days,double_check_folders,seek_previews,chapter_images,waveforms,loudness,checksums,intros_mode,cache_bytes,cache_floor_bytes,dir_cache_seconds,read_buffer_bytes,connect_timeout_seconds,idle_timeout_seconds,retries,low_level_retries) VALUES
+ ('list',1,'file_list_only',0,2,2,0,86400,0,0,30,0,0,0,0,0,0,'off',0,2147483648,60,8388608,10,30,1,2),
+ ('once',1,'basic',0,4,4,0,21600,0,0,14,0,0,0,0,0,0,'off',8589934592,2147483648,60,8388608,10,30,1,2),
+ ('everything',1,'complete',1,8,10,0,3600,1,1,7,1,1,1,1,1,1,'inherit',34359738368,2147483648,60,8388608,10,30,1,2),
+ ('ask',1,'basic',0,2,2,0,0,0,0,0,0,0,0,0,0,0,'off',0,2147483648,60,8388608,10,30,1,2);
+CREATE TRIGGER remote_source_choice_definition_immutable_update BEFORE UPDATE ON remote_source_choice_definitions
+ BEGIN SELECT RAISE(ABORT,'source choice definitions are immutable'); END;
+CREATE TRIGGER remote_source_choice_definition_immutable_delete BEFORE DELETE ON remote_source_choice_definitions
+ BEGIN SELECT RAISE(ABORT,'source choice definitions are immutable'); END;
+CREATE TABLE remote_source_choice_refs(
+ source_id TEXT PRIMARY KEY REFERENCES remote_sources(id) ON DELETE CASCADE,
+ source_row_generation INTEGER NOT NULL CHECK(source_row_generation>0),
+ config_generation INTEGER NOT NULL CHECK(config_generation>0),
+ mount_id TEXT NOT NULL,
+ config_fingerprint TEXT NOT NULL CHECK(length(config_fingerprint)=64),
+ name TEXT NOT NULL,
+ definition_revision INTEGER NOT NULL,
+ applied_read_revision INTEGER NOT NULL CHECK(applied_read_revision>0),
+ applied_advanced_revision INTEGER NOT NULL CHECK(applied_advanced_revision>0),
+ operation_id TEXT NOT NULL CHECK(length(operation_id) BETWEEN 1 AND 128),
+ applied_ms INTEGER NOT NULL CHECK(applied_ms>0),
+ FOREIGN KEY(name,definition_revision) REFERENCES remote_source_choice_definitions(name,definition_revision)) STRICT;
 CREATE TABLE remote_source_cache_entries(
  source_id TEXT NOT NULL REFERENCES remote_sources(id) ON DELETE CASCADE,
  cache_key TEXT NOT NULL, file_name TEXT NOT NULL, used_bytes INTEGER NOT NULL CHECK(used_bytes>=0),
