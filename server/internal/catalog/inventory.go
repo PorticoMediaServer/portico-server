@@ -284,12 +284,10 @@ func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job str
 		if !supported {
 			continue
 		}
-		// Remote disc stream-mode admission is not qualified. Retain the real
-		// skipped file with its explicit reason; do not run a generic file probe
-		// and misclassify the missing disc reader as damaged media.
-		if source.Kind == "remote" && assets.DiscImage(v.Path) {
-			reason = "unsupported_remote_disc"
-		}
+		// Root64: a remote disc image is an ordinary title for discovery. A scan
+		// reads nothing from it and the naming-only analysis publishes it from its
+		// name, so it is no longer tagged as an unsupported remote disc. Folders
+		// that carry a disc layout keep their explicit reason above.
 		// CB7 has only a local bounded helper representation. A remote source
 		// never admits it, so a capable scan cannot create an inventory-ready
 		// remote cb7 or starve a local comic primary. The opener still refuses
@@ -836,34 +834,8 @@ func (s *Service) CommitInventoryAnalysis(ctx context.Context, job, object, revi
 		return err
 	}
 	if kind == "movie" || kind == "tv" || kind == "anime" {
-		if err = persistVideoNameTx(ctx, tx, asset, revision, f.VideoName); err != nil {
+		if err = s.publishVideoNamingTx(ctx, tx, job, source, asset, relative, revision, kind, manuallyLinked, f); err != nil {
 			return err
-		}
-		path := filepath.Join(source.ResolvedPath, relative)
-		if manuallyLinked == 0 {
-			prefs, err := LibraryPreferencesTx(ctx, tx, source.LibraryID)
-			if err != nil {
-				return err
-			}
-			embedded := f.VideoName
-			if prefs.TitleSource == "names" {
-				embedded = naming.Embedded{}
-			}
-			reading := naming.ReadWithEmbedded(relative, kind, embedded)
-			if kind == "movie" {
-				if err = s.reinterpretInventoryTx(ctx, tx, source, asset, path); err != nil {
-					return err
-				}
-			} else if _, extra := ClassifyExtraFor(kind, source.ResolvedPath, path); !extra {
-				if err = s.commitEpisodes(tx, source.LibraryID, asset, filepath.Base(path), EpisodeFromReading(reading), false); err != nil {
-					return err
-				}
-			}
-		}
-		if f.VideoNameSkipped {
-			if err = InventoryIssueTx(ctx, tx, job, storage.InventoryIssue{Path: relative, Reason: "embedded_name_fields_skipped", Warning: true}); err != nil {
-				return err
-			}
 		}
 	}
 	if manuallyLinked != 0 && (kind == "music" || kind == "audiobook") {
@@ -896,40 +868,8 @@ func (s *Service) CommitInventoryAnalysis(ctx context.Context, job, object, revi
 			return err
 		}
 	}
-	if policy.Allows("local_metadata") && kind == "movie" {
-		if f.ArtworkKey != "" {
-			items, err := scanInt64s(tx.QueryContext(ctx, `SELECT l.entity_id FROM catalog_assets a JOIN catalog_asset_links l INDEXED BY catalog_asset_links_asset ON l.asset_id=a.id
- JOIN catalog_entities i ON i.id=l.entity_id JOIN catalog_libraries cl ON cl.id=i.library_id WHERE a.token=? AND cl.library_id=?`, asset, source.LibraryID))
-			if err != nil {
-				return err
-			}
-			for _, item := range items {
-				if err = compactcatalog.SetFieldsTx(ctx, tx, item, compactcatalog.Automatic, map[string]any{"poster_url": "local:" + f.ArtworkKey}); err != nil {
-					return err
-				}
-			}
-		}
-	}
-	if policy.Allows("local_metadata") && (len(f.ArtworkExtra) > 0 || f.ArtworkObserved || f.ArtworkKey != "") && (kind == "movie" || kind == "tv" || kind == "anime") {
-		if f.ArtworkExtra == nil {
-			f.ArtworkExtra = map[string]string{}
-		}
-		if kind == "movie" && f.ArtworkKey != "" {
-			f.ArtworkExtra["item/poster"] = f.ArtworkKey
-		}
-		if err = s.commitAssetSidecars(ctx, tx, source.LibraryID, kind, asset, f.ArtworkExtra); err != nil {
-			return err
-		}
-	}
-	if policy.Allows("local_metadata") && f.ArtworkCandidatesObserved && (kind == "movie" || kind == "tv" || kind == "anime") {
-		if err = s.commitInventoryArtworkCandidatesTx(ctx, tx, source, object, revision, asset, kind, f.ArtworkCandidates); err != nil {
-			return err
-		}
-	}
-	if sidecarObservation != nil {
-		if err = settleSidecarRead(ctx, tx, source.LibraryID, sidecarObservation); err != nil {
-			return err
-		}
+	if err = s.persistScanArtworkTx(ctx, tx, source, object, revision, asset, kind, policy, f, sidecarObservation); err != nil {
+		return err
 	}
 	if f.Container == "strm" {
 		if f.AnalysisSourceEvidence == "" {
@@ -970,6 +910,195 @@ func (s *Service) CommitInventoryAnalysis(ctx context.Context, job, object, revi
 		return err
 	}
 	return gated2.Commit()
+}
+
+// publishVideoNamingTx publishes the video title a scanned asset names: the
+// stored embedded name, the library's title-source preference, the ordinary
+// file-name reading, and the movie/tv routing that creates or links the title.
+// Naming needs no technical facts, so the probe-bearing analysis commit and the
+// naming-only remote disc image commit share this one implementation.
+func (s *Service) publishVideoNamingTx(ctx context.Context, tx *sql.Tx, job string, source LibrarySource, asset, relative, revision, kind string, manuallyLinked int, f assets.Facts) error {
+	if err := persistVideoNameTx(ctx, tx, asset, revision, f.VideoName); err != nil {
+		return err
+	}
+	path := filepath.Join(source.ResolvedPath, relative)
+	if manuallyLinked == 0 {
+		prefs, err := LibraryPreferencesTx(ctx, tx, source.LibraryID)
+		if err != nil {
+			return err
+		}
+		embedded := f.VideoName
+		if prefs.TitleSource == "names" {
+			embedded = naming.Embedded{}
+		}
+		reading := naming.ReadWithEmbedded(relative, kind, embedded)
+		if kind == "movie" {
+			if err = s.reinterpretInventoryTx(ctx, tx, source, asset, path); err != nil {
+				return err
+			}
+		} else if _, extra := ClassifyExtraFor(kind, source.ResolvedPath, path); !extra {
+			if err = s.commitEpisodes(tx, source.LibraryID, asset, filepath.Base(path), EpisodeFromReading(reading), false); err != nil {
+				return err
+			}
+		}
+	}
+	if f.VideoNameSkipped {
+		return InventoryIssueTx(ctx, tx, job, storage.InventoryIssue{Path: relative, Reason: "embedded_name_fields_skipped", Warning: true})
+	}
+	return nil
+}
+
+// persistScanArtworkTx records the local artwork a scan observed for one asset:
+// the movie poster, sidecar keys, and candidates. It is naming/metadata evidence,
+// never a technical media fact.
+func (s *Service) persistScanArtworkTx(ctx context.Context, tx *sql.Tx, source LibrarySource, object, revision, asset, kind string, policy ScanPolicy, f assets.Facts, sidecarObservation *sidecarRead) error {
+	if policy.Allows("local_metadata") && kind == "movie" {
+		if f.ArtworkKey != "" {
+			items, err := scanInt64s(tx.QueryContext(ctx, `SELECT l.entity_id FROM catalog_assets a JOIN catalog_asset_links l INDEXED BY catalog_asset_links_asset ON l.asset_id=a.id
+ JOIN catalog_entities i ON i.id=l.entity_id JOIN catalog_libraries cl ON cl.id=i.library_id WHERE a.token=? AND cl.library_id=?`, asset, source.LibraryID))
+			if err != nil {
+				return err
+			}
+			for _, item := range items {
+				if err = compactcatalog.SetFieldsTx(ctx, tx, item, compactcatalog.Automatic, map[string]any{"poster_url": "local:" + f.ArtworkKey}); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	if policy.Allows("local_metadata") && (len(f.ArtworkExtra) > 0 || f.ArtworkObserved || f.ArtworkKey != "") && (kind == "movie" || kind == "tv" || kind == "anime") {
+		if f.ArtworkExtra == nil {
+			f.ArtworkExtra = map[string]string{}
+		}
+		if kind == "movie" && f.ArtworkKey != "" {
+			f.ArtworkExtra["item/poster"] = f.ArtworkKey
+		}
+		if err := s.commitAssetSidecars(ctx, tx, source.LibraryID, kind, asset, f.ArtworkExtra); err != nil {
+			return err
+		}
+	}
+	if policy.Allows("local_metadata") && f.ArtworkCandidatesObserved && (kind == "movie" || kind == "tv" || kind == "anime") {
+		if err := s.commitInventoryArtworkCandidatesTx(ctx, tx, source, object, revision, asset, kind, f.ArtworkCandidates); err != nil {
+			return err
+		}
+	}
+	if sidecarObservation != nil {
+		return settleSidecarRead(ctx, tx, source.LibraryID, sidecarObservation)
+	}
+	return nil
+}
+
+// CommitInventoryNaming publishes a remote disc image as an ordinary title from
+// its name and local metadata only. Root64: a scan never reads the image, so this
+// records the naming work done for this revision and leaves technical analysis
+// explicitly deferred; it writes no codec, duration, stream, chapter or disc
+// fact and infers none. Its disc bytes are acquired only when someone plays it,
+// through the ordinary playback path; any analysis of those owned playback bytes
+// is a separate decision and never inherits this naming work.
+func (s *Service) CommitInventoryNaming(ctx context.Context, job, object, revision string, policyRevision int64, f assets.Facts) error {
+	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
+	if err != nil {
+		return err
+	}
+	tx := gated.Tx()
+	defer gated.Rollback()
+	source, err := InventoryFenceTx(ctx, tx, job)
+	if err != nil {
+		return err
+	}
+	if source.Kind != "remote" {
+		return errors.New("naming-only publication is for a remote disc image")
+	}
+	policy, err := ScanPolicyTx(ctx, tx, source.LibraryID)
+	if err != nil {
+		return err
+	}
+	if policy.Revision != policyRevision {
+		return context.Canceled
+	}
+	// Never become an unqueued or unavailable naming publisher: the exact
+	// accepted queue invocation, the current observation and live availability
+	// must still hold in the transaction that publishes.
+	var queued int
+	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM inventory_analysis_queue WHERE job_id=? AND object_id=? AND revision=? AND policy_revision=? AND state='pending'`, job, object, revision, policyRevision).Scan(&queued); err != nil {
+		return err
+	}
+	if queued != 1 {
+		return context.Canceled
+	}
+	var asset, relative, incarnation, unsupported, objectState string
+	var size, modified int64
+	var available int
+	var assetPath string
+	var assetSize, assetModified int64
+	if err = tx.QueryRowContext(ctx, `SELECT o.asset_id,o.relative_path,o.size,o.modified_ns,o.root_incarnation,o.unsupported_reason,o.state,a.available,a.path,a.size,a.modified_ns FROM inventory_objects o JOIN catalog_assets a ON a.token=o.asset_id WHERE o.id=? AND o.source_id=? AND o.revision=? AND o.retired=0`, object, source.ID, revision).Scan(&asset, &relative, &size, &modified, &incarnation, &unsupported, &objectState, &available, &assetPath, &assetSize, &assetModified); err != nil {
+		return err
+	}
+	if objectState != "available" || available != 1 || unsupported != "" || incarnation != source.Incarnation {
+		return errors.New("naming-only publication needs a live, observed, supported object")
+	}
+	// The asset must still describe the same file the object names, at the path
+	// this source resolves it to, not merely be marked available.
+	if assetSize != size || assetModified != modified || assetPath != filepath.Join(source.ResolvedPath, relative) {
+		return errors.New("naming-only publication needs the exact asset the object names")
+	}
+	if f.ObservedSize != size || f.ObservedModifiedNS != modified {
+		return errors.New("naming-only publication needs the exact observation it read")
+	}
+	if !assets.DiscImage(relative) {
+		return errors.New("naming-only publication is for a disc image")
+	}
+	var kind string
+	if err = tx.QueryRowContext(ctx, `SELECT kind FROM libraries WHERE id=?`, source.LibraryID).Scan(&kind); err != nil {
+		return err
+	}
+	// A disc image is one title in a video library; every other library kind is
+	// refused at discovery, so reaching here with one is a caller mistake.
+	if kind != "movie" && kind != "tv" && kind != "anime" {
+		return errors.New("naming-only publication is for a video library")
+	}
+	if s.storage == nil || s.storage.Remote == nil {
+		return storage.ErrRemoteConfig
+	}
+	if err = s.storage.Remote.RecordReference(ctx, tx, filepath.Join(source.ResolvedPath, relative), f.ObservedRevision); err != nil {
+		return err
+	}
+	var sidecarObservation *sidecarRead
+	if f.ArtworkObserved {
+		ctx, sidecarObservation = withSidecarRead(ctx, asset)
+	}
+	f.ObservedRevision = revision
+	var manuallyLinked int
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_version_links WHERE library_id=? AND asset_id=?)`, source.LibraryID, asset).Scan(&manuallyLinked); err != nil {
+		return err
+	}
+	if err = s.publishVideoNamingTx(ctx, tx, job, source, asset, relative, revision, kind, manuallyLinked, f); err != nil {
+		return err
+	}
+	if policy.Allows("local_metadata") {
+		if err = localmetadata.PersistVideo(ctx, tx, source.LibraryID, asset, f); err != nil {
+			return err
+		}
+	}
+	if err = s.persistScanArtworkTx(ctx, tx, source, object, revision, asset, kind, policy, f, sidecarObservation); err != nil {
+		return err
+	}
+	// The naming work for this revision is complete; technical analysis is
+	// explicitly deferred. Any analysis of bytes already acquired for playback
+	// needs its own admission; this naming result grants no origin read.
+	if _, err = tx.ExecContext(ctx, `UPDATE inventory_objects SET analysis_revision=?,analysis_policy=?,analysis_operations_json=?,analysis_state='deferred',analysis_error='',analysis_algorithm='',analysis_generation=? WHERE id=?`, revision, policyRevision, actualScanOperations(policy, f.AnalysisOperations), source.Generation, object); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE inventory_analysis_queue SET state='done' WHERE job_id=? AND object_id=? AND revision=? AND policy_revision=?`, job, object, revision, policyRevision); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE inventory_runs SET analyzed=analyzed+1 WHERE job_id=?`, job); err != nil {
+		return err
+	}
+	if err = inventoryEvent(ctx, tx, source.ID, job, object, asset, revision, "analysis_completed"); err != nil {
+		return err
+	}
+	return gated.Commit()
 }
 
 func actualScanOperations(p ScanPolicy, actual []string) string {

@@ -170,9 +170,9 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 	if err != nil {
 		return err
 	}
-	var object, revision, relative, analyzed, operations string
-	var queuedPolicy int64
-	err = s.db.QueryRowContext(parent, `SELECT q.object_id,q.revision,q.policy_revision,o.relative_path,o.analysis_revision,o.analysis_operations_json FROM inventory_analysis_queue q JOIN inventory_objects o ON o.id=q.object_id WHERE q.job_id=? AND q.state='pending' ORDER BY q.object_id LIMIT 1`, job).Scan(&object, &revision, &queuedPolicy, &relative, &analyzed, &operations)
+	var object, revision, relative, analyzed, operations, analysisState string
+	var queuedPolicy, analysisPolicy int64
+	err = s.db.QueryRowContext(parent, `SELECT q.object_id,q.revision,q.policy_revision,o.relative_path,o.analysis_revision,o.analysis_operations_json,o.analysis_policy,o.analysis_state FROM inventory_analysis_queue q JOIN inventory_objects o ON o.id=q.object_id WHERE q.job_id=? AND q.state='pending' ORDER BY q.object_id LIMIT 1`, job).Scan(&object, &revision, &queuedPolicy, &relative, &analyzed, &operations, &analysisPolicy, &analysisState)
 	if errors.Is(err, sql.ErrNoRows) {
 		gated2, e := dbwork.Begin(parent, s.db, dbwork.ClassBackgroundMedia)
 		if e != nil {
@@ -254,7 +254,20 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 	for _, op := range catalog.DeepScanOperations {
 		deep = deep || policy.Allows(op)
 	}
-	if !policy.Allows("probe") || !basicNeeded {
+	// Root64: a remote disc image is never probed, deep-analysed or read for a
+	// scan, whatever historical operation tokens the row carries and whether or
+	// not its basic bookkeeping looks complete. Naming is the only analysis it
+	// gets, and this revision's naming being recorded is what completes it.
+	// The source's own kind is the authority: a stale or missing storage registry
+	// must never let a remote image fall into the local disc probe.
+	remoteDisc := source.Kind == "remote" && assets.DiscImage(relative)
+	if remoteDisc && analyzed == revision && analysisPolicy == queuedPolicy && analysisState == "deferred" {
+		// Naming is already recorded for this exact revision and policy. Settle
+		// this queue invocation through the ordinary outcome path, which reproves
+		// the fence and policy revision, and reads nothing from the source.
+		return s.analysisOutcome(parent, job, object, revision, queuedPolicy, false, "")
+	}
+	if !remoteDisc && (!policy.Allows("probe") || !basicNeeded) {
 		if deep {
 			return s.analyzeDeep(parent, job, object, revision, policy, source)
 		}
@@ -276,7 +289,17 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 			case <-watcherDone:
 				return
 			case <-ticker.C:
-				if e := s.analysisAllowed(ctx, job, source.LibraryID, policy.Revision, "probe"); e != nil {
+				if remoteDisc {
+					// Naming has no probe prerequisite. Its sidecar reads separately
+					// reprove local_metadata; retain the original running job/policy.
+					var status string
+					var currentPolicy int64
+					e := s.db.QueryRowContext(ctx, `SELECT j.status,p.revision FROM jobs j JOIN library_scan_policies p ON p.library_id=j.library_id WHERE j.id=? AND j.library_id=?`, job, source.LibraryID).Scan(&status, &currentPolicy)
+					if e != nil || status != "running" || currentPolicy != policy.Revision {
+						cancel()
+						return
+					}
+				} else if e := s.analysisAllowed(ctx, job, source.LibraryID, policy.Revision, "probe"); e != nil {
 					cancel()
 					return
 				}
@@ -368,6 +391,56 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 			return err
 		})
 	}
+	if remoteDisc {
+		// Root64: a remote disc image is an ordinary title. A scan never reads
+		// the image, so publish its name and local metadata only and leave
+		// technical facts deferred; no probe, ranged read or disc read runs here.
+		f := assets.Facts{}
+		completed := []string{}
+		if policy.Allows("local_metadata") && s.LocalMetadata != nil {
+			if e := s.analysisAllowed(ctx, job, source.LibraryID, policy.Revision, "local_metadata"); e == nil {
+				var kind string
+				if e = s.db.QueryRowContext(ctx, `SELECT kind FROM libraries WHERE id=?`, source.LibraryID).Scan(&kind); e == nil {
+					f = s.LocalMetadata.VideoNFO(readContext("local_metadata"), source.LibraryID, source.ResolvedPath, path, kind, f)
+					if kind == "movie" {
+						f = s.LocalMetadata.MovieArtwork(readContext("local_metadata"), source.LibraryID, path, f)
+					}
+					season := -1
+					if kind == "tv" || kind == "anime" {
+						if rel, rerr := filepath.Rel(source.ResolvedPath, path); rerr == nil {
+							if plan := catalog.ParseEpisode(rel, kind); plan.Issue == "" && plan.Season >= 0 && plan.Season <= 9999 {
+								season = plan.Season
+							}
+						}
+					}
+					extra := s.LocalMetadata.ReadSidecars(readContext("local_metadata"), source.LibraryID, kind, source.ResolvedPath, path, season)
+					if key := extra["album/cover"]; key != "" && f.ArtworkKey == "" {
+						f.ArtworkKey = key
+						delete(extra, "album/cover")
+					}
+					if len(extra) > 0 {
+						f.ArtworkExtra = extra
+					}
+					f.ArtworkCandidates, f.ArtworkCandidatesObserved = s.LocalMetadata.ReadArtworkCandidates(readContext("local_metadata"), source.LibraryID, kind, source.ResolvedPath, path, season)
+					f.ArtworkObserved = f.LocalMetadataIssue == ""
+					completed = append(completed, "local_metadata")
+				}
+			}
+		}
+		after, e := stat()
+		if e != nil || !matches(after) {
+			return s.analysisOutcome(parent, job, object, revision, queuedPolicy, true, "source_revision_changed")
+		}
+		f.ObservedSize, f.ObservedModifiedNS, f.ObservedRevision = before.Size, before.ModifiedNS, before.Revision
+		f.AnalysisOperations = completed
+		if err = s.catalog.CommitInventoryNaming(ctx, job, object, revision, policy.Revision, f); err != nil {
+			if errors.Is(err, context.Canceled) {
+				return nil
+			}
+			return s.analysisOutcome(parent, job, object, revision, queuedPolicy, true, "analysis_publication_failed")
+		}
+		return nil
+	}
 	var f assets.Facts
 	if err = s.analysisAllowed(ctx, job, source.LibraryID, policy.Revision, "probe"); err != nil {
 		return nil
@@ -379,11 +452,6 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 		f, err = s.AnalyzeSTRM(ctx, source.LibraryID, path)
 		s.recordDescriptorAnalysis(ctx, path, err)
 	} else if s.storage.IsRemote(path) {
-		if assets.DiscImage(path) {
-			// Also fence jobs admitted before discovery learned the explicit
-			// remote-disc skipped reason. Generic FFprobe is not a disc reader.
-			return s.analysisOutcome(parent, job, object, revision, queuedPolicy, true, "unsupported_remote_disc")
-		}
 		f, err = s.inspectRemote(ctx, path, before)
 	} else if before.Directory {
 		if !storage.DirectoryDiscScanSupported() {
