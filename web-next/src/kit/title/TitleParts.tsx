@@ -3,11 +3,19 @@ import {defaultI18n} from '@i18n';
 import {Button} from '../controls';
 import {Artwork, type ArtworkSource} from '../artwork';
 import type {FactPart} from '@core/presentation/kit-model';
+import {inlineMarkup} from '@core/presentation/inline-markup.ts';
 import styles from './title-parts.module.css';
 
-/** Exact title/biography prose from desktop-detail and detail-phone. */
-export function TitleProse({variant = 'body', className, ...props}: HTMLAttributes<HTMLParagraphElement> & {variant?: 'body' | 'hero'}) {
-  return <p {...props} data-variant={variant} className={[styles.prose, className].filter(Boolean).join(' ')} />;
+/** Exact title/biography prose from desktop-detail and detail-phone. `markup`
+ * reads the catalog string through the closed bold/italic/line-break reader, so
+ * a description that carried tags draws them instead of showing them. */
+export function TitleProse({variant = 'body', className, markup, children, ...props}: HTMLAttributes<HTMLParagraphElement> & {variant?: 'body' | 'hero'; markup?: string}) {
+  return <p {...props} data-variant={variant} className={[styles.prose, className].filter(Boolean).join(' ')}>
+    {markup === undefined ? children : inlineMarkup(markup).map((run, index) => run.kind === 'break' ? <br key={index}/>
+      : run.strong && run.emphasis ? <strong key={index}><em>{run.text}</em></strong>
+        : run.strong ? <strong key={index}>{run.text}</strong>
+          : run.emphasis ? <em key={index}>{run.text}</em> : run.text)}
+  </p>;
 }
 /** Title pages and Top result put a border around kind/rating only, never runtime. */
 export function TitleFactsLine({parts, genres}: {parts: readonly FactPart[]; genres?: ReactNode}) {
