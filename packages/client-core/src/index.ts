@@ -2295,6 +2295,7 @@ export {readLibraryInventoryConfig} from './library-inventory.ts';
 export {setLibraryAnalysis,setLibraryScanDepth,libraryScanDepth,setLibrarySeekPreviews,setLibraryPreviewHours} from './server-admin/library-policy.ts';
 export type {LibraryAdminDocument,LibrarySettings} from './administration.ts';
 export {readLibrarySonic,saveLibrarySonic,retryLibrarySonic,librarySonicAvailable,type LibrarySonicDocument,type LibrarySonicState} from './server-admin/library-sonic.ts';
+export {librarySonicStatus,type LibrarySonicStatusLine} from './server-admin/library-sonic-words.ts';
 
 export {parsePlaybackInfo} from './playback-v1/playback-info.ts';
 export type {PlaybackInfo, PlaybackRoute, PlaybackPictureFacts, PlaybackSoundFacts, PlaybackSubtitleFacts, PlaybackMediaFacts, PlaybackReplacement} from './playback-v1/playback-info.ts';

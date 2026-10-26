@@ -220,4 +220,9 @@ export const settingsMessages = {
   'next.settings.hardware.neverTested': 'Not tested yet.',
   'next.settings.hardware.testResult.ok': 'Tested just now. Everything works.',
   'next.settings.hardware.testResult.problem': 'Tested just now.',
+  'next.settings.librarySonic.analyzing': 'Analyzing music, {done} of {total}',
+  'next.settings.librarySonic.pausedUntil': 'Paused until {time}, {done} of {total}',
+  'next.settings.librarySonic.complete': 'All {total} songs analyzed',
+  'next.settings.librarySonic.unavailable': 'Can’t run on this server: the analysis engine didn’t load.',
+  'next.settings.librarySonic.retryUnavailable': 'Still can’t load. The log in Troubleshooting has the reason.',
 } as const;
