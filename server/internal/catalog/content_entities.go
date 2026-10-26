@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"portico.local/server/internal/requestinput"
 	"strconv"
 	"strings"
@@ -211,7 +210,7 @@ func (s *Service) contentEntities(r ContentRequest, cursor string, limit int) ([
  AND EXISTS(SELECT 1 FROM catalog_book_files f JOIN catalog_entities item ON item.id=f.entity_id WHERE f.book_id=book.id AND ` + leafVisible + `)`
 			args = append(args, leafArgs...)
 		default:
-			return entries, "", 0, errors.New("unsupported hierarchy")
+			return entries, "", 0, requestinput.New("unsupported hierarchy")
 		}
 	}
 	where := `1=1`
