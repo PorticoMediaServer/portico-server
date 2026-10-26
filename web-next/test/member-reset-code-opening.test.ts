@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {setImmediate as settle} from 'node:timers/promises';
 import type {ProfileAPI} from '../../packages/client-core/src/profile-management.ts';
-import {MemberResetCodeSource, type MemberResetCodeOpening} from '../src/screens/settings/member-reset-code.ts';
+import {MemberResetCodePanel, MemberResetCodeSource, type MemberResetCodeOpening} from '../src/screens/settings/member-reset-code.ts';
 
 // Authored UNRUN against the real opening and canonical Make/replace helpers.
 // Fixture strings are synthetic; no owner session, clipboard or server is used.
@@ -100,4 +100,44 @@ test('Copy uses only the exact currently published code and old callbacks cannot
 test('an unstated choice and retired signal make no replacement request', async () => {
   const f = fixture(), opening = f.open();await settle();const shown = ready(opening);
   await opening.change(shown, undefined as never);f.caller.abort();await opening.change(shown, true);assert.equal(f.calls.length, 1);
+});
+
+test('the actual panel authorizes its Make before publishing the pending port, once only', async () => {
+  const f = fixture(), panel = new MemberResetCodePanel(f.source, target, () => true, () => true), shown = panel.getSnapshot();
+  panel.begin(shown);panel.begin(shown);assert.equal(f.calls.length, 1);
+  const opened = panel.getSnapshot();assert.equal(opened.kind, 'open');
+  if (opened.kind === 'open') {assert.equal(opened.opening.getSnapshot().kind, 'pending');await settle();assert.equal(ready(opened.opening).result.code, codeA);}
+});
+
+test('a retained Make or Done cannot reopen or close a successor screen', async () => {
+  const f = fixture(), panel = new MemberResetCodePanel(f.source, target, () => true, () => true), first = panel.getSnapshot();
+  panel.begin(first);await settle();const a = panel.getSnapshot();panel.done(a);
+  panel.begin(first);assert.equal(f.calls.length, 1, 'old Make is spent');
+  const second = panel.getSnapshot();panel.begin(second);await settle();const b = panel.getSnapshot();
+  panel.done(a);assert.equal(panel.getSnapshot(), b);assert.equal(f.calls.length, 2);
+});
+
+test('closing a pending result blocks a new Make until only that original flight settles', async () => {
+  const f = fixture(), held = deferred<unknown>();f.replies.push(held.promise);
+  const panel = new MemberResetCodePanel(f.source, target, () => true, () => true);
+  panel.begin(panel.getSnapshot());panel.done(panel.getSnapshot());const empty = panel.getSnapshot();
+  assert.equal(panel.canMake(empty), false);panel.begin(empty);assert.equal(f.calls.length, 1);
+  held.resolve(original);await settle();assert.equal(panel.canMake(empty), true);
+  panel.begin(empty);await settle();assert.equal(f.calls.length, 2);
+});
+
+test('view retirement clears the exact result and cannot be rearmed by a replayed predicate', async () => {
+  const f = fixture();let current = true;
+  const panel = new MemberResetCodePanel(f.source, target, () => current, () => true), shown = panel.getSnapshot();
+  panel.begin(shown);await settle();const a = panel.getSnapshot();assert.equal(a.kind, 'open');
+  assert.equal(panel.leave(a), true);current = false;current = true;
+  panel.begin(shown);assert.equal(panel.current(), false);assert.equal(panel.getSnapshot().kind, 'retired');
+  if (a.kind === 'open') assert.equal(a.opening.getSnapshot().kind, 'retired');
+  assert.equal(f.calls.length, 1);
+});
+
+test('reentrant panel admission cannot mint a second intent before the first synchronous claim', async () => {
+  const f = fixture();let reenter = false;
+  const panel = new MemberResetCodePanel(f.source, target, () => {if (reenter) {reenter = false;panel.begin(shown);}return true;}, () => true);
+  const shown = panel.getSnapshot();reenter = true;panel.begin(shown);await settle();assert.equal(f.calls.length, 1);
 });

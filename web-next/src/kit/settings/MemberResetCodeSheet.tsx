@@ -20,9 +20,9 @@ export type MemberResetCodeSheetProps = Readonly<{
   username: string;
   result: MemberResetCodePublished;
   turnOffTwoStep: boolean;
-  /** Root61's typed port is published (aa6a2c521); the normal generated
-   * request/error body is still pending, so the caller supplies this only when
-   * that body exists. The sheet never reissues. */
+  /** Supplied by the owner-authored `useMemberResetCodeView` opening. The sheet
+   * only forwards the change; the opening owns the published code, replacement,
+   * deadline and uncertainty. The sheet never issues or reissues. */
   onTurnOffTwoStepChange?: (value: boolean) => void;
   onCopy: () => void;
   onDone: () => void;
