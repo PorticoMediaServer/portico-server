@@ -330,20 +330,25 @@ export class PlaybackSessionController {
    */
   async start(target: StartTarget, options: StartOptions = {}, signal?: AbortSignal,
     context: Pick<StartContext, 'isCurrent' | 'capturePreparing'> = {}): Promise<Session | undefined> {
-    if (this.disposed) return undefined;
+    if (this.disposed || signal?.aborted) return undefined;
+    const before = this.startToken;
+    const originalCurrent = context.isCurrent, capturePreparing = context.capturePreparing;
+    const admitted = () => {try {return !signal?.aborted && originalCurrent?.() !== false;} catch {return false;}};
+    // Even a currentness callback may reenter; it cannot let this older invocation
+    // claim over the successor. Claim before touching request getters or publishing.
+    if (!admitted() || this.disposed || before !== this.startToken) return undefined;
     const token = ++this.startToken;
     const previous = this.state.session, wasActive = this.state.phase === 'active';
-    const originalCurrent = context.isCurrent, capturePreparing = context.capturePreparing;
     const originalTarget: StartTarget = freezeWire(JSON.parse(JSON.stringify(target)));
     const originalOptions: StartOptions = freezeWire(JSON.parse(JSON.stringify(options)));
-    if (token !== this.startToken || this.disposed) return undefined;
+    if (!admitted() || token !== this.startToken || this.disposed) return undefined;
     const body: StartOptions = {...originalOptions, ...(previous && wasActive && !originalOptions.replacesSessionId ? {replacesSessionId: previous.id} : {})};
     this.lastStart = {target: originalTarget, options: originalOptions};
     this.retireReporter();
     this.publish({phase: 'starting', error: undefined, ended: undefined, changing: false});
     try {
       const session = await this.client.start(originalTarget, body, this.key(), {signal,
-        isCurrent: () => token === this.startToken && !this.disposed && originalCurrent?.() !== false,
+        isCurrent: () => token === this.startToken && !this.disposed && admitted(),
         onPreparing: () => { if (token === this.startToken) this.publish({phase: 'preparing'}); },
         capturePreparing});
       if (token !== this.startToken || this.disposed || signal?.aborted) {

@@ -247,3 +247,17 @@ test('Root67 controller keeps the original paused intent through preparation pub
     assert.equal(engine.loads[0].autoplay, false, 'the original paused start owns acceptance');
   } finally {off(); controller.dispose();}
 });
+
+test('Root67 a retired controller opening cannot publish over an installed session', async () => {
+  const c = clock(), engine = player(); let calls = 0, publications = 0;
+  const controller = new PlaybackSessionController({timers: c.timers, player: engine.port, key: () => 'original_key_0000020',
+    http: {send: async () => {calls++; return reply(real(), 201);}}});
+  try {
+    await controller.start({itemId: 'movie'});
+    const installed = controller.getSnapshot(), off = controller.subscribe(() => {publications++;});
+    try {
+      assert.equal(await controller.start({itemId: 'retired'}, {}, undefined, {isCurrent: () => false}), undefined);
+      assert.equal(controller.getSnapshot(), installed); assert.equal(publications, 0); assert.equal(calls, 1);
+    } finally {off();}
+  } finally {controller.dispose();}
+});
