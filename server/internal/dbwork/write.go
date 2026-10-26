@@ -535,5 +535,7 @@ func BeginConn(ctx context.Context, conn *sql.Conn, class Class) (*Write, error)
 		return nil, err
 	}
 	held := &carried{tx: tx, class: class}
-	return &Write{tx: tx, changes: changes, ctx: context.WithValue(ctx, writeKey{}, held), owned: held, changesAtStart: rowChanges(ctx, tx)}, nil
+	w := &Write{tx: tx, changes: changes, ctx: context.WithValue(ctx, writeKey{}, held), owned: held, changesAtStart: rowChanges(ctx, tx)}
+	liveWrites.Store(tx, w)
+	return w, nil
 }

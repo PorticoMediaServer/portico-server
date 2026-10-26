@@ -137,7 +137,11 @@ func (s *Service) captureReadSourceTx(ctx context.Context, tx *sql.Tx, admission
 			return nil, storage.ErrRemoteChanged
 		}
 	}
-	if err = admission.CheckTx(ctx, tx, binding); err != nil {
+	callbackCtx, err := dbwork.BindSnapshot(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	if err = admission.CheckTx(callbackCtx, tx, binding); err != nil {
 		return nil, err
 	}
 	life, cancel := context.WithCancel(ctx)
@@ -168,7 +172,7 @@ func (s *Service) captureReadSourceTx(ctx context.Context, tx *sql.Tx, admission
 }
 func (l *SourceReadLease) Binding() SourceReadBinding { return l.binding }
 func (l *SourceReadLease) CheckTx(ctx context.Context, tx *sql.Tx) error {
-	if l == nil || tx == nil {
+	if l == nil || ctx == nil || tx == nil {
 		return storage.ErrRemoteConfig
 	}
 	l.mu.Lock()
@@ -183,7 +187,11 @@ func (l *SourceReadLease) CheckTx(ctx context.Context, tx *sql.Tx) error {
 	if err := l.life.Err(); err != nil {
 		return l.checkFailure(ctx, err)
 	}
-	if err := l.admission.CheckTx(ctx, tx, l.binding); err != nil {
+	callbackCtx, err := dbwork.BindSnapshot(ctx, tx)
+	if err != nil {
+		return l.checkFailure(ctx, err)
+	}
+	if err := l.admission.CheckTx(callbackCtx, tx, l.binding); err != nil {
 		return l.checkFailure(ctx, err)
 	}
 	generation, err := observationGenerationTx(ctx, tx, l.binding.Observation.SourceID)
