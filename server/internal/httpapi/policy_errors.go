@@ -43,6 +43,7 @@ func policyCatalogue() *apierror.Registry {
 	definitions := append(v1ErrorDefinitions(), policyErrorDefinitions()...)
 	definitions = append(definitions, connectionErrorDefinitions()...)
 	definitions = append(definitions, credentialErrorDefinitions()...)
+	definitions = append(definitions, accountSecurityErrorDefinitions()...)
 	definitions = append(definitions, webhookErrorDefinitions()...)
 	definitions = append(definitions, subtitleErrorDefinitions()...)
 	definitions = append(definitions, downloadErrorDefinitions()...)

@@ -173,7 +173,7 @@ func registerIdentityHTTPContracts(registry *apikit.Registry) error {
 	if err := apikit.RegisterHTTP[struct {
 		Password string `json:"password"`
 		Code     string `json:"code"`
-	}, identity.RecoveryCodes](registry, apikit.Metadata{ID: "post_direct_two_factor_recovery_codes", Method: "POST", Path: "/v1/direct/two-factor/recovery-codes", Summary: "Replace account recovery codes", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}, identity.RecoveryCodes](registry, apikit.Metadata{ID: "post_direct_two_factor_recovery_codes", Method: "POST", Path: "/v1/direct/two-factor/recovery-codes", Summary: "Replace account recovery codes", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "current_password_incorrect", "account_locked", "two_factor_missing", "two_factor_required", "two_factor_invalid", "sign_in_kind_portico", "password_change_required", "factor_setup_required", "internal"}}); err != nil {
 		return err
 	}
 
