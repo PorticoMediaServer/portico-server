@@ -126,6 +126,11 @@ func (s *Service) ApplySourceReadProfileTx(ctx context.Context, tx *sql.Tx, iden
 	if s == nil || tx == nil || change.SourceID == "" || change.Generation == "" || change.ExpectedRevision < 0 || change.Profile.SourceID != "" && change.Profile.SourceID != change.SourceID || !validSourceReadProfile(change.Profile) {
 		return SourceReadProfileResult{}, storage.ErrRemoteConfig
 	}
+	consentPresent := change.AdvancedMediaAnalysis != nil
+	consent := false
+	if consentPresent {
+		consent = *change.AdvancedMediaAnalysis
+	}
 	if err := currentLocalOwnerTx(ctx, tx, identities, owner); err != nil {
 		return SourceReadProfileResult{}, err
 	}
@@ -146,8 +151,8 @@ func (s *Service) ApplySourceReadProfileTx(ctx context.Context, tx *sql.Tx, iden
 	p := change.Profile
 	p.SourceID, p.Saved, p.Revision = change.SourceID, true, old.Revision
 	p.AllowAdvancedMediaAnalysis = old.AllowAdvancedMediaAnalysis
-	if change.AdvancedMediaAnalysis != nil {
-		p.AllowAdvancedMediaAnalysis = *change.AdvancedMediaAnalysis
+	if consentPresent {
+		p.AllowAdvancedMediaAnalysis = consent
 	}
 	if old.Saved && old == p {
 		return SourceReadProfileResult{Profile: old}, nil

@@ -168,6 +168,10 @@ func (s *Service) SaveSourceReadSettings(ctx context.Context, identities *identi
 	if s == nil || s.db == nil || s.mounts == nil || source == "" || in.ExpectedGeneration == "" || in.ExpectedRevision < 0 || !validSourceReadProfile(in.Values.profile(source)) {
 		return Receipt{}, storage.ErrRemoteConfig
 	}
+	if in.Values.AllowAdvancedMediaAnalysis != nil {
+		consent := *in.Values.AllowAdvancedMediaAnalysis
+		in.Values.AllowAdvancedMediaAnalysis = &consent
+	}
 	s.commands.Lock()
 	defer s.commands.Unlock()
 	authorize := func(tx *sql.Tx) error { return currentLocalOwnerTx(ctx, tx, identities, owner) }
@@ -198,7 +202,23 @@ func (s *Service) SaveSourceReadSettings(ctx context.Context, identities *identi
 		return Receipt{}, err
 	}
 	defer writer.Rollback()
-	_, err = s.ApplySourceReadProfileTx(ctx, writer.Tx(), identities, owner, SourceReadProfileChange{SourceID: source, Generation: in.ExpectedGeneration, ExpectedRevision: in.ExpectedRevision, Profile: in.Values.profile(source), AdvancedMediaAnalysis: in.Values.AllowAdvancedMediaAnalysis})
+	if err = authorize(writer.Tx()); err != nil {
+		return Receipt{}, err
+	}
+	// The public legacy generation is the source row's generation; the lower
+	// lease/profile writer checks the effective mount observation authority.
+	rowBefore, _, err := readSettingsTx(ctx, writer.Tx(), source)
+	if err != nil {
+		return Receipt{}, err
+	}
+	if strconv.FormatInt(rowBefore.Generation, 10) != in.ExpectedGeneration {
+		return Receipt{}, storage.ErrRemoteChanged
+	}
+	configuration, err := observationGenerationTx(ctx, writer.Tx(), source)
+	if err != nil {
+		return Receipt{}, err
+	}
+	_, err = s.ApplySourceReadProfileTx(ctx, writer.Tx(), identities, owner, SourceReadProfileChange{SourceID: source, Generation: configuration, ExpectedRevision: in.ExpectedRevision, Profile: in.Values.profile(source), AdvancedMediaAnalysis: in.Values.AllowAdvancedMediaAnalysis})
 	if err != nil {
 		return Receipt{}, err
 	}
