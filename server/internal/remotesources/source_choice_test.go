@@ -183,6 +183,34 @@ func TestSourceChoiceNoInferredRecordedAssociation(t *testing.T) {
 	}
 }
 
+func TestSourceChoiceUnavailableMountProofWithholdsOnlyOptionalAssociation(t *testing.T) {
+	ctx := context.Background()
+	f := newTestSourceChoiceFixture(t)
+	f.sealDAV(t, "remote")
+	f.apply(t, "remote", "once", nativeSaveOperation(120))
+	// Keep the recorded settings, but remove the effective authority by changing
+	// the fixture to a mount-backed source with no such mount. This must never
+	// substitute the still-existing raw generation as effective proof.
+	if _, err := f.f.s.db.Exec(`UPDATE remote_sources SET kind='rclone',mount_id='unavailable-mount' WHERE id='remote'`); err != nil {
+		t.Fatal(err)
+	}
+	out, err := f.f.s.ReadSourceReadSettings(ctx, f.identities, f.owner, "remote")
+	if err != nil || !out.Saved || out.Revision != 1 || out.Values.ScanDepth != "basic" || len(out.ChoiceDefinitions) != 4 {
+		t.Fatalf("stored current owner facts were hidden: %#v %v", out, err)
+	}
+	if out.ConfigurationGeneration != "" || out.ChoiceBaseline != nil {
+		t.Fatal("missing effective authority was relabelled from raw generation", out)
+	}
+	view, err := dbwork.BeginSnapshot(ctx, f.f.s.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer view.Rollback()
+	if _, err = SourceReadProfileTx(ctx, view.Tx(), "remote"); err == nil {
+		t.Fatal("stored owner facts were accepted as source-read authority")
+	}
+}
+
 func TestSourceChoiceRevisionMismatchWritesNothing(t *testing.T) {
 	for _, test := range []struct {
 		name   string
