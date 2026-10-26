@@ -52,9 +52,12 @@ export type SecurityReturnCode=Readonly<{code:string;state:string;transactionId:
 /** Only an opaque reference crosses the registered callback. Synchronous URL
  * scrubbing belongs to the platform intake before protected storage/network. */
 export function parseSecurityReturnCode(href:string,original:{origin:string;state:string}):SecurityReturnCode{
+ if(!original.origin.startsWith('https://')||routeOrigin(original.origin)!==original.origin)throw invalid();routeBytes(original.state,32);
  const url=new URL(href),values=new URLSearchParams(url.hash.slice(1));
  if(url.origin!==original.origin||url.pathname!=='/auth/portico-return'||url.search||url.username||url.password||!href.startsWith(original.origin+'/auth/portico-return#')||url.hash.length>2048||
   [...values.keys()].sort().join(',')!=='security,state,transaction'||['security','state','transaction'].some(key=>values.getAll(key).length!==1)||values.get('state')!==original.state||!/^scr_[A-Za-z0-9_-]{43}$/.test(values.get('security')??'')||!/^oid_[A-Za-z0-9_-]{43}$/.test(values.get('transaction')??''))throw invalid();
+ const canonical=new URLSearchParams([['security',values.get('security')!],['state',original.state],['transaction',values.get('transaction')!]]).toString();
+ if(url.hash!=='#'+canonical)throw invalid();
  return Object.freeze({code:values.get('security')!,state:original.state,transactionId:values.get('transaction')!});
 }
 
