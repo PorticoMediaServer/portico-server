@@ -96,10 +96,11 @@ func registerIdentityHTTPContracts(registry *apikit.Registry) error {
 	}
 	// internal/httpapi/direct_identity.go:275
 	if err := apikit.RegisterHTTP[struct {
-		AccountID        string         "json:\"accountId\""
-		CurrentPassword  string         "json:\"currentPassword\""
-		ExpectedRevision int64          "json:\"expectedRevision\""
-		PorticoIdentity  *hosted.Signed "json:\"porticoIdentity,omitempty\""
+		AccountID        string                     "json:\"accountId\""
+		CurrentPassword  string                     "json:\"currentPassword\""
+		ExpectedRevision int64                      "json:\"expectedRevision\""
+		NewAccount       *identity.LocalOwnerCreate "json:\"newAccount,omitempty\""
+		PorticoIdentity  *hosted.Signed             "json:\"porticoIdentity,omitempty\""
 	}, struct{}](registry, apikit.Metadata{ID: "post_direct_ownership", Method: "POST", Path: "/v1/direct/ownership", Summary: "Run account ownership", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 204, Headers: []string{"X-Portico-Installation-Id"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}

@@ -282,15 +282,30 @@ func (d Dependencies) directIdentityRoutes(mux *http.ServeMux) {
 	})
 	d.httpHandle(mux, "POST /v1/direct/ownership", func(w http.ResponseWriter, r *http.Request) {
 		var q struct {
-			AccountID        string `json:"accountId"`
-			CurrentPassword  string `json:"currentPassword"`
-			ExpectedRevision int64  `json:"expectedRevision"`
+			AccountID        string                     `json:"accountId"`
+			CurrentPassword  string                     `json:"currentPassword"`
+			ExpectedRevision int64                      `json:"expectedRevision"`
+			NewAccount       *identity.LocalOwnerCreate `json:"newAccount,omitempty"`
 			// PorticoIdentity confirms a Portico Account owner, which has no
 			// password here: a fresh Hosted identity assertion for that account.
 			PorticoIdentity *hosted.Signed `json:"porticoIdentity,omitempty"`
 		}
 		if e := decode(w, r, &q); e != nil {
 			failure(w, e)
+			return
+		}
+		// New local-account creation and existing/Hosted targets are closed,
+		// mutually exclusive variants. Never create a member before proof/transfer.
+		if q.NewAccount != nil {
+			if q.AccountID != "" || q.PorticoIdentity != nil {
+				failure(w, identity.ErrDirectInput)
+				return
+			}
+			if e := d.Identity.TransferDirectOwnershipToNewAccount(r.Context(), directBearer(r), *q.NewAccount, q.CurrentPassword, q.ExpectedRevision); e != nil {
+				failure(w, e)
+				return
+			}
+			w.WriteHeader(204)
 			return
 		}
 		if q.PorticoIdentity != nil {

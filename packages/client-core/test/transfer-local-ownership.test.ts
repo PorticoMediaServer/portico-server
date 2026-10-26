@@ -68,3 +68,25 @@ test('one call, the API error keeps its identity and there is no Hosted or custo
  assert.equal(calls,1);
  assert.deepEqual(paths,[routePath('post_direct_ownership')]);
 });
+
+test('new local owner is one closed atomic ownership request with captured scalars',async()=>{
+ const {transferLocalOwnershipToNewAccount}=await import('../src/portico-servers.ts');
+ const {api,calls}=recorder(), abort=new AbortController();
+ const newAccount={username:'newowner',name:'New owner',password:'New-password2!'};
+ await transferLocalOwnershipToNewAccount(api,newAccount,password,revision,abort.signal);
+ assert.deepEqual(calls,[{path:routePath('post_direct_ownership'),method:'POST',body:{accountId:'',currentPassword:password,expectedRevision:revision,newAccount},signal:abort.signal}]);
+ assert.equal(Object.hasOwn(calls[0]!.body as object,'porticoIdentity'),false);
+});
+
+test('invalid new account, current proof or retired command never creates a member',async()=>{
+ const {transferLocalOwnershipToNewAccount}=await import('../src/portico-servers.ts');
+ const valid={username:'newowner',name:'New owner',password:'New-password2!'};
+ for(const change of [{username:'bad user'},{name:'\n'},{password:'short'},{password:'x'.repeat(73)}]){
+  const {api,calls}=recorder();
+  await assert.rejects(transferLocalOwnershipToNewAccount(api,{...valid,...change},password,revision));assert.equal(calls.length,0);
+ }
+ const {api,calls}=recorder(), abort=new AbortController();abort.abort();
+ await assert.rejects(transferLocalOwnershipToNewAccount(api,valid,password,revision,abort.signal));
+ await assert.rejects(transferLocalOwnershipToNewAccount(api,valid,'',revision));
+ assert.equal(calls.length,0);
+});

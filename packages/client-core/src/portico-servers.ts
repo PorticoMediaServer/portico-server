@@ -157,6 +157,21 @@ export async function transferLocalOwnership(server:ProfileAPI,accountId:string,
  await server.request<unknown>(routePath("post_direct_ownership"),'POST',routeBody("post_direct_ownership",body),signal);
 }
 
+/** Root68: a new local account is created in the SAME accepting owner transfer.
+ * Never issue an ordinary member-create followed by a second mutation. */
+export type LocalOwnerCreate = Readonly<{username:string;name:string;password:string}>;
+export async function transferLocalOwnershipToNewAccount(server:ProfileAPI,newAccount:LocalOwnerCreate,currentPassword:string,expectedRevision:number,signal?:AbortSignal):Promise<void>{
+ const username=newAccount?.username, name=newAccount?.name, password=newAccount?.password;
+ if(typeof username!=='string'||!wellFormed(username)||new TextEncoder().encode(username.trim()).length<3||new TextEncoder().encode(username.trim()).length>64||/[ \t\r\n@]/.test(username.trim()))throw new Error('The new local username is invalid.');
+ if(typeof name!=='string'||!wellFormed(name)||!name.trim()||new TextEncoder().encode(name.trim()).length>120||/[\x00-\x1f\x7f]/.test(name.trim()))throw new Error('The new local display name is invalid.');
+ if(typeof password!=='string'||!wellFormed(password)||[...password].length<8||new TextEncoder().encode(password).length>72)throw new Error('The new local password is invalid.');
+ if(typeof expectedRevision!=='number'||!Number.isSafeInteger(expectedRevision)||expectedRevision<1)throw new Error('The owner revision is invalid.');
+ if(typeof currentPassword!=='string'||!wellFormed(currentPassword)||!currentPassword||new TextEncoder().encode(currentPassword).length>72)throw new Error('The current password is invalid.');
+ if(signal?.aborted)throw Object.assign(new Error('The ownership transfer was cancelled.'),{name:'AbortError'});
+ const body={accountId:'',currentPassword,expectedRevision,newAccount:{username,name,password}};
+ await server.request<unknown>(routePath("post_direct_ownership"),'POST',routeBody("post_direct_ownership",body),signal);
+}
+
 /** A Portico Account owner accepts Hosted's custody of the server's claim (retiring it, its
  * certificates): `POST /v1/direct/ownership/custody {porticoIdentity}` with this device's account
  * session and a custody assertion. Ask the owner first: this is their consent. Needed when the
