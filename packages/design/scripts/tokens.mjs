@@ -2,7 +2,7 @@
 import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {dirname, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {colors, profileArtColors, spacing, spacingGrid, radii, platformRadii, motion, easings, springs, springTiming, reducedMotion, layout, layers, targets, typography, typeScale, componentSpec} from '../src/index.ts';
+import {colors, profileArtColors, spacing, spacingGrid, radii, platformRadii, motion, easings, springs, springTiming, reducedMotion, layout, layers, targets, typography, typeScale, watchEndType, componentSpec} from '../src/index.ts';
 
 export const tokenCssPath = fileURLToPath(new URL('../../../web-next/src/kit/tokens.css', import.meta.url));
 const kebab = value => value.replace(/[A-Z]/g, letter => '-' + letter.toLowerCase());
@@ -39,10 +39,22 @@ function flattenSpec(object, path = []) {
     return [`--spec-${parts.map(kebab).join('-')}: ${specValue(value, parts)}`];
   });
 }
+/** The nine owned end-card roles, identical in every authored scale block. */
+function watchEndTokens() {
+  return [`--type-watch-end-kicker-size: ${rem(watchEndType.kickerSize)}`,
+    `--type-watch-end-title-size: ${rem(watchEndType.titleSize)}`,
+    `--type-watch-end-title-compact-size: ${rem(watchEndType.titleCompactSize)}`,
+    `--type-watch-end-title-line: ${scalar(watchEndType.titleLine)}`,
+    `--type-watch-end-title-tracking: ${watchEndType.titleTracking}em`,
+    `--type-watch-end-feature-size: ${rem(watchEndType.featureSize)}`,
+    `--type-watch-end-name-size: ${rem(watchEndType.nameSize)}`,
+    `--type-watch-end-name-line: ${scalar(watchEndType.nameLine)}`,
+    `--type-watch-end-year-size: ${rem(watchEndType.yearSize)}`];
+}
 function platformTokens(platform) {
   const column = platform === 'web' ? 'desktop' : platform === 'tv' ? 'tenFoot' : 'handheld';
   const {hero, button, card, chip, shelf} = componentSpec;
-  return [...typeTokens(column),
+  return [...typeTokens(column), ...watchEndTokens(),
     `--hero-home-height: ${px(hero.homeHeight[platform])}`, `--hero-title-height: ${px(hero.titleHeight[platform])}`,
     `--hero-ambient-blur: ${px(hero.ambient.blur[platform])}`, `--hero-ambient-alpha: ${hero.ambient.alpha[platform]}`,
     `--button-hero-height: ${px(button.hero.height[platform])}`, `--button-hero-radius: ${px(button.hero.radius[platform])}`,
