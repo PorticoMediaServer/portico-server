@@ -170,3 +170,36 @@ test('ordinary Settings request still refuses a response after its build retires
   const purpose = localOwnerTransferTransport(api, assertBuild, () => signal);
   await assert.rejects(purpose.request('/v1/admin/access/members', 'GET'));
 });
+
+const newInput = {newAccount:{username:'newowner',name:'New owner',password:'New-password2!'},currentPassword:' original password ',expectedRevision:9};
+test('new-owner creation uses the original transfer opening without a separate member write',async()=>{
+ const f=fixture(),life=caller();
+ try {
+  const port=await f.source.open(life);
+  await port.accept(newInput,life);
+  assert.deepEqual(f.calls.filter(c=>c.method==='POST'),[{path:'/v1/direct/ownership',method:'POST',body:{accountId:'',...newInput}}]);
+  assert.equal(f.complete,1);
+ } finally {f.source.dispose();}
+});
+test('new-owner creation refuses retired opening, changed revision and ambiguous target before writing',async()=>{
+ for(const kind of ['retired','revision','ambiguous'] as const){
+  const f=fixture(),life=caller();
+  try {
+   const port=await f.source.open(life);
+   if(kind==='retired')life.retire();
+   const input=kind==='revision'?{...newInput,expectedRevision:10}:kind==='ambiguous'?{...newInput,accountId:'member'}:newInput;
+   await assert.rejects(port.accept(input as never,life));
+   assert.equal(f.calls.some(c=>c.method==='POST'),false);
+  } finally {f.source.dispose();}
+ }
+});
+test('known new-owner 204 after retirement still spends only the original context',async()=>{
+ const f=fixture(),life=caller();let release!:()=>void;
+ f.wait(()=>new Promise<void>(resolve=>{release=resolve;}));
+ try {
+  const port=await f.source.open(life),pending=port.accept(newInput,life);
+  for(let i=0;i<8&&!release;i++)await Promise.resolve();
+  assert.equal(typeof release,'function');f.retire();f.source.dispose();release();await pending;
+  assert.equal(f.complete,1);assert.equal(f.navigated,0);assert.equal(f.reconciled,0);
+ } finally {f.source.dispose();}
+});

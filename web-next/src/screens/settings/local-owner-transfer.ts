@@ -1,13 +1,14 @@
 import type {ProfileAPI} from '@core/profile-management.ts';
 import {SettingsPeopleClient} from '@core/settings-people.ts';
-import {transferLocalOwnership} from '@core/portico-servers.ts';
+import {transferLocalOwnership, transferLocalOwnershipToNewAccount, type LocalOwnerCreate} from '@core/portico-servers.ts';
 
 export type LocalOwnerCandidate = Readonly<{accountId: string; username: string}>;
 export type LocalOwnerTransferCaller = Readonly<{isCurrent: () => boolean; signal: AbortSignal}>;
 export type LocalOwnerTransferOpening = Readonly<{members: readonly LocalOwnerCandidate[]; ownerRevision: number}>;
+export type LocalOwnerTransferInput = Readonly<{currentPassword: string; expectedRevision: number}> & (Readonly<{accountId: string; newAccount?: never}> | Readonly<{accountId?: never; newAccount: LocalOwnerCreate}>);
 export type LocalOwnerTransferPort = Readonly<{
   opening: LocalOwnerTransferOpening;
-  accept: (input: Readonly<{accountId: string; currentPassword: string; expectedRevision: number}>, caller: LocalOwnerTransferCaller) => Promise<void>;
+  accept: (input: LocalOwnerTransferInput, caller: LocalOwnerTransferCaller) => Promise<void>;
   close: () => void;
 }>;
 type Admission = {
@@ -90,20 +91,26 @@ export class LocalOwnerTransferSource {
         accept: async (input, commandCaller) => {
           this.assert(entry);
           if (entry.port !== port || entry.busy || this.running || !activeCaller(commandCaller) || input.expectedRevision !== opening.ownerRevision ||
-            !members.some(row => row.accountId === input.accountId)) throw ended();
+            (input.newAccount ? input.accountId !== undefined : !members.some(row => row.accountId === input.accountId))) throw ended();
           // Capture request-local scalars and the exact caller before the first await.
           const target = input.accountId, password = input.currentPassword, revision = opening.ownerRevision;
+          const newAccount = input.newAccount ? Object.freeze({username: input.newAccount.username, name: input.newAccount.name, password: input.newAccount.password}) : undefined;
           const command = Object.freeze({...commandCaller});
           const commandSignal = AbortSignal.any([signal, command.signal]);
           const assert = () => {this.assert(entry); if (entry.port !== port || !activeCaller(command) || commandSignal.aborted) throw ended();};
           entry.busy = true; this.running = entry;
           try {
             assert();
-            const person = await this.people.person(target, commandSignal);
-            assert();
-            if (person.accountId !== target || person.role !== 'member' || person.disabled || person.hostedAccountId ||
-              person.revision !== revisions.get(target)) throw changed();
-            await transferLocalOwnership(this.transferApi, target, password, revision, commandSignal);
+            if (newAccount) {
+              await transferLocalOwnershipToNewAccount(this.transferApi, newAccount, password, revision, commandSignal);
+            } else {
+              if (!target) throw ended();
+              const person = await this.people.person(target, commandSignal);
+              assert();
+              if (person.accountId !== target || person.role !== 'member' || person.disabled || person.hostedAccountId ||
+                person.revision !== revisions.get(target)) throw changed();
+              await transferLocalOwnership(this.transferApi, target, password, revision, commandSignal);
+            }
             // The response is a known accepting acknowledgement. View retirement
             // can suppress publication, but cannot make this source reusable.
             const publish = this.owns(entry) && entry.port === port && activeCaller(command) && !commandSignal.aborted;
