@@ -473,6 +473,8 @@ export const enUS = {
   'player.quality.tooSlowAny': 'Your connection is too slow for that quality. Try Automatic.',
   'player.quality.automaticNow': 'Automatic · {quality}',
   'player.quality.fixedHelp': 'Up to {height}p; converted only when the file is larger',
+  // A slow start the server asks the player to retry (§9.5): the player keeps trying.
+  'player.preparing.slowStart': 'This may take a little longer to load',
   'player.queueMoveUp': 'Move up',
   'player.queueMoveDown': 'Move down',
   'player.queueRemove': 'Remove from queue',
@@ -1569,6 +1571,7 @@ export const enUS = {
   'downloads.addedMixed': '{accepted} added; {rejected} couldn’t be: {reason}',
   'downloads.already': 'That’s already in your downloads.',
   'downloads.addedMany': '{count, plural, one {# title} other {# titles}} added to your downloads.',
+  'downloads.chooseQuality': 'What quality?',
   'downloads.view': 'View downloads',
   'downloads.quality.original': 'Original',
   'downloads.quality.1080p': '1080p',

@@ -12,8 +12,15 @@ export type SavedScreenRoute = SavedRoute | Readonly<{view: 'downloads'}> | Read
 /** The web's home route is the directory; its canonical My List is the only read it
  * may make. `home` is a UI route and never reaches core by type. */
 /** One frozen query object, so every effect and quiet refresh sees a stable route. */
-const watchlistReader = Object.freeze({view: 'watchlist'}) as Readonly<{view: 'watchlist'}>;
-export const savedReaderRoute = (route: SavedScreenRoute): Exclude<SavedScreenRoute, {view: 'home'}> => route.view === 'home' ? watchlistReader : route;
+const watchlistReader = Object.freeze({view: 'watchlist', sort: 'added', direction: 'desc'} as const);
+/** One canonical reader query for the directory, its preview and My List.
+ * Current server Saved publishes added in both directions. Keep explicit URL
+ * sort/direction; never rewrite only the request behind an exact route witness. */
+export const savedReaderRoute = (route: SavedScreenRoute): Exclude<SavedScreenRoute, {view: 'home'}> => {
+  if (route.view === 'home') return watchlistReader;
+  if (route.view === 'watchlist' && route.sort === undefined) return Object.freeze({...route, sort: 'added', direction: route.direction ?? 'desc'});
+  return route;
+};
 
 /** One captured parent lifetime, using only the published server services. Native
  * files/rules/artwork are installed separately by Settings; this creates no store. */

@@ -33,7 +33,8 @@ func assertHomeActionSnapshotQueries(t *testing.T, cost dbwork.Cost, queries []s
 			"FROM json_each(?) requested CROSS JOIN catalog_entities e ON e.public_id=pid_blob(requested.value)",
 			"home_member.entity_id=e.id AND available.available=1 AND available.retired=0",
 			"visible_library.library_id IN(SELECT value FROM json_each(?))",
-			"WHERE e.retired=0 AND l.retired=0 AND CASE WHEN k.playable=1",
+			"WHERE e.retired=0 AND l.retired=0 AND (e.kind NOT IN(20,21) OR EXISTS(SELECT 1 FROM libraries reading_library",
+			"CASE WHEN k.playable=1 OR e.kind IN(20,21) THEN (EXISTS(SELECT 1 FROM catalog_entities visible_item",
 		} {
 			if !strings.Contains(query, constraint) {
 				t.Fatalf("action batch lost its returned-ID/current-policy constraint %q: %s", constraint, query)

@@ -30,7 +30,7 @@
 
 .section header,.recent header,.emptySection header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 16px; min-height: 30px; }
 
-.section header h2,.recent h2,.single h2,.emptySection h2 { font-size: var(--type-row-heading-size); font-weight: var(--type-button-weight); letter-spacing: var(--type-row-heading-tracking); margin: 0; }
+.section header h2,.recent h2,.single h2,.emptySection h2 { font-size: var(--type-row-heading-size); font-weight: var(--type-button-weight); letter-spacing: var(--type-row-heading-tracking); line-height: normal; margin: 0; }
 
 .section header > span,.emptySection header > span { font-size: var(--type-person-title-size); color: var(--color-text-tertiary); }
 

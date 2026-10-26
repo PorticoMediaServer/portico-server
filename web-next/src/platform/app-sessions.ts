@@ -15,7 +15,7 @@ export class BrowserAppSessionActions {
  constructor(readonly store:AppSessionStore, private readonly environment:(serverId:string)=>ConnectionEnvironment,
    private readonly revoke:(entry:AppServerSession)=>Promise<void>) {}
  readonly probe = new ServerSignInProbe();
- async switchServer(serverId:string,isCurrent:()=>boolean=()=>true){this.probe.cancel();await this.store.select(serverId,isCurrent);}
+ async switchServer(serverId:string,isCurrent:()=>boolean=()=>true,expectedRevision?:number){this.probe.cancel();await this.store.select(serverId,isCurrent,expectedRevision);}
  /** Forget follows an identity failure: the address may now be somebody else's.
   * Remove only the captured family's local record/pin/routes. Never reconnect,
   * revoke remotely, or send that family a token while forgetting it. */

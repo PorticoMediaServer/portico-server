@@ -195,16 +195,18 @@ test('a channel start forwards captured cancellation and refuses late adoption a
   for (const abort of [false, true]) {
     const server = new ChannelServer(), life = new AbortController();let active = true, enter!: () => void, release!: () => void;
     const entered = new Promise<void>(resolve => {enter = resolve;}), held = new Promise<void>(resolve => {release = resolve;});
-    const states: unknown[] = [], errors: string[] = [];
+    const states: unknown[] = [], errors: string[] = []; let sentSignal: AbortSignal | undefined;
     const control = new V1ChannelControl({http: {send: async request => {
       const response = await server.send(request);
-      if (request.method === 'POST' && request.path === '/v1/playback/sessions') {assert.equal(request.signal, life.signal);enter();await held;}
+      if (request.method === 'POST' && request.path === '/v1/playback/sessions') {sentSignal = request.signal;enter();await held;}
       return response;
     }}});
     const opening = control.open(channel, {state: value => states.push(value), error: value => errors.push(value)}, {signal: life.signal, isCurrent: () => active});
     await entered;
+    assert.ok(sentSignal); assert.equal(sentSignal.aborted, false);
     if (abort) life.abort();else active = false;
     release();await opening;await settle();
+    assert.equal(sentSignal.aborted, true, 'the channel releases only its own pending request when the opening retires');
     assert.deepEqual(states, []);assert.deepEqual(errors, []);
     assert.ok(server.log.some(request => request.method === 'DELETE' && request.path === '/v1/playback/sessions/ps_1'));
     control.close();

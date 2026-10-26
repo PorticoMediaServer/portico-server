@@ -96,7 +96,7 @@ function TitleHero({binding, data, showBackdrops}: {binding: DetailBindings; dat
         <div className={styles.phoneCopy}><Lockup title={item.title} long platform="phone-web" /><TitleFactsLine parts={phoneParts} genres={genres} /></div>
       </div>
       <TitleActions binding={binding} data={data} />
-      {item.overview && <TitleProse variant="hero" className={styles.phoneSynopsis}>{item.overview}</TitleProse>}
+      {item.overview && <TitleProse variant="hero" className={styles.phoneSynopsis} markup={item.overview}/>}
       {(item.kind === 'movie' || item.kind === 'episode') && <PreplayChoices binding={binding} data={data} />}
     </header>;
   }
@@ -107,7 +107,7 @@ function TitleHero({binding, data, showBackdrops}: {binding: DetailBindings; dat
       <Lockup title={item.title} platform={phone ? 'phone-web' : 'desktop'} />
       <TitleFactsLine parts={parts} genres={genres} />
       {facts?.tagline && <p className={styles.tagline}>{facts.tagline}</p>}
-      {item.overview && <TitleProse variant="hero" className={styles.blurb}>{item.overview}</TitleProse>}
+      {item.overview && <TitleProse variant="hero" className={styles.blurb} markup={item.overview}/>}
       {(directed.length > 0 || starring.length > 0) && <div className={styles.credits}>{directed.length > 0 && <CreditLine message="title.directedBy" credits={directed} binding={binding} data={data} />}{starring.length > 0 && <CreditLine message="title.starring" credits={starring} binding={binding} data={data} />}</div>}
       <TitleActions binding={binding} data={data} />
     </div>

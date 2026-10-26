@@ -18,6 +18,7 @@ import {useProtectedWebScreenContext} from '../../route-registry-view';
 import {router} from '../../router';
 import {Skeleton, StateView} from '../../kit/states';
 import {LibraryEmpty} from '../../kit/states/LibraryEmpty';
+
 import {useShellWidth} from '../../shell/viewport';
 import {ShowBody} from '../detail/Show';
 import {DetailLoading} from '../detail/Loading';
@@ -48,6 +49,7 @@ import {isReadingLibrary} from './reading-library';
 import {useReadingMarkAll} from '../read/useReadingMarkAll';
 
 const t = defaultI18n.t;
+const noSelectionSubscribe = () => () => {};
 const noPlaybackSubscribe = () => () => {};
 const noPlaybackSnapshot = () => undefined;
 type PeriodicalTab = Readonly<{id: 'magazines' | 'newspapers'; label: 'library.tab.magazines' | 'library.tab.newspapers'; pivot: 'magazines' | 'newspapers'; shows: 'periodicals'; publicationType: ReadingPeriodicalType}>;
@@ -300,6 +302,11 @@ function CommittedLibrary({captured, library, search, readingMarkAll, frame, res
   const selectedLease = selectionLease?.resources === resources && selectionLease.runtime === runtime
     && selectionLease.queryRevision === state.queryRevision && selectionLease.current() ? selectionLease : undefined;
   const playSelection = selectedLease?.playSelection, selection = selectedLease?.selection;
+  /** The selection toolbar is a real surface only while the viewer has an active selection;
+   * an empty one must not displace the library's own toolbar. The fact comes from the
+   * selection model's own snapshot, never a local counter. */
+  const selectionActive = useSyncExternalStore(playSelection?.subscribe ?? noSelectionSubscribe,
+    () => playSelection?.getSnapshot().selection?.active === true, () => false);
   const [saving, setSaving] = useState<SavedDefinition>();
   const navigate = (value: LibraryScreenSearch, id = library.id) => {if (resources.life.current() && context.isCurrent()) void router.navigate({to: '/library/$libraryId', params: {libraryId: id}, search: value}).catch(context.effects.reportError);};
   const actions = (entry: ContentEntry, witness = () => !browse || resources.controller.contains(entry)) => {
@@ -395,7 +402,7 @@ function CommittedLibrary({captured, library, search, readingMarkAll, frame, res
     unmatchedHelp: context.effects.editMetadata ? t('metadata.attention.browseHelp') : undefined,
     env: {t, locale: defaultI18n.region.formatLocale}, reducedMotion: appearance.reducedMotion, owner: context.identity?.viewer.role === 'owner',
     reportError: context.effects.reportError, empty, canSaveView: resources.controller.canSaveView(), onSaveView: save,
-    selection: {toolbar: selection?.toolbar, actions: (member, index) => ({...actions(member.entry), selection: selection?.entry(member, index)}),
+    selection: {toolbar: selectionActive ? selection?.toolbar : undefined, actions: (member, index) => ({...actions(member.entry), selection: selection?.entry(member, index)}),
       registerWindow: selection?.registerWindow, playSelection},
     onAppearanceChange: change => {if (!resources.life.current()) return;if (change.view) setChoice({defaultView: appearance.libraryView, view: change.view});if (change.cardSize) setSize(change.cardSize);}};
   const contentRoute: ContentRoute = {libraryId: library.id, view, ...(search.entityId ? {entityId: search.entityId} : {}), ...(search.category ? {category: search.category} : {}), ...(search.q ? {q: search.q} : {})};

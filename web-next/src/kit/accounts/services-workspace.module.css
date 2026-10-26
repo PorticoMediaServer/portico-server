@@ -144,11 +144,16 @@
   .group { margin-top: 14px; }
   .groupHeading { margin: 20px 4px 8px; }
   .groupHeading h3 { font-size: 14px; }
-  .iconRow { padding: 12px 14px; gap: 12px; grid-template-columns: 32px minmax(0, 1fr) auto; }
+  /* account28/29 .wbody .lr: the text is .tx, not the unused nested b variant. */
+  .groupBox { overflow: hidden; }
+  .iconRow, .plainRow.plainRow { min-height: 58px; padding: 9px 14px; gap: 12px; border-top: 0; position: relative; line-height: normal; }
+  .iconRow { grid-template-columns: 32px minmax(0, 1fr) auto; }
+  .groupBox > :is(.iconRow, .plainRow) + :is(.iconRow, .plainRow)::before { content: ''; position: absolute; top: 0; left: 58px; right: 0; height: 1px; background: var(--color-line-soft); }
   .iconRow[data-phone-icon-only] { gap: 12px; grid-template-columns: 32px minmax(0, 1fr) auto; }
   .iconRow[data-phone-icon-only] > .icon { display: grid; }
-  .iconRow b { font-weight: 700; font-size: 15px; }
-  .iconRow p { font-size: 12.5px; }
+  .iconRow b, .plainRow > div:first-child > b { font-weight: 600; font-size: 15.5px; line-height: normal; }
+  .iconRow p, .plainRow > div:first-child > p { margin-top: 2px; font-size: 12.5px; line-height: 1.4; font-weight: 500; }
+  .iconRow > div:last-child > button { height: 32px; padding: 0 12px; border-radius: 9px; font-size: 13px; }
   .icon { width: 32px; height: 32px; border-radius: 9px; }
   .icon > svg { width: 18px; height: 18px; }
   .icon[data-phone-tone="green"] { background: rgba(134,207,179,.13); color: var(--color-healthy); }
@@ -158,11 +163,17 @@
   .factDesktop { display: none; }
   .factPhone { display: contents; }
   .inlineFacts { column-gap: 8px; }
-  .feedRow { grid-template-columns: 32px minmax(0, 1fr); padding: 14px 14px 14px 22px; gap: 12px; }
-  .feedRow[data-unread]::before { left: 8px; top: 28px; }
-  .feedRow b { font-size: 15px; }
-  .feedRow p { font-size: 13px; }
-  .feedRow > time { grid-column: 2; padding: 0; margin-top: -8px; font-size: 12px; }
+  /* .wbody overrides .nt's left padding/dot to 22/8; keep that actual cascade. */
+  .groupBox:has(> .feedRow) { padding: 2px 0; }
+  .feedRow { grid-template-columns: 32px minmax(0, 1fr); padding: 14px 14px 14px 22px; gap: 0 12px; line-height: normal; }
+  .feedRow[data-unread]::before { left: 8px; top: 26px; width: 6px; height: 6px; }
+  .feedRow > .icon { grid-row: 1 / span 4; }
+  .feedRow > div { display: contents; }
+  .feedRow b { grid-column: 2; grid-row: 1; font-size: 15px; }
+  .feedRow p { grid-column: 2; grid-row: 2; margin-top: 3px; font-size: 13px; line-height: 1.45; }
+  .feedRow > time { grid-column: 2; grid-row: 3; padding: 0; margin-top: 5px; font-size: 12px; }
+  .feedActions { grid-column: 2; grid-row: 4; margin-top: 10px; }
+  .feedActions > button { height: 34px; padding: 0 13px; font-size: 13.5px; }
   .start, .startMain { min-height: 100dvh; }
   .start .header { position: relative; height: 46px; padding: 14px 22px 0; background: none; backdrop-filter: none; box-shadow: none; }
   .start .brand img { height: 16px; }

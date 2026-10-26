@@ -150,7 +150,7 @@ export class BrowserAccountEntry {
  }
  /** A directory fact is only a hint until Hosted-signed routes and the Server's
   * private key prove this exact identity. The Server still decides membership. */
- async openHostedServer(input:HostedDirectoryServer,source:AccountServerAccess):Promise<boolean>{
+ async openHostedServer(input:HostedDirectoryServer,source:AccountServerAccess,expectedRevision?:number):Promise<boolean>{
   const account:AccountServerAccess=Object.freeze({origin:source.origin,accountId:source.accountId,request:source.request.bind(source),isCurrent:source.isCurrent.bind(source),...(source.observe?{observe:source.observe.bind(source)}:{})});
   const server:HostedServer=Object.freeze({id:input.id,name:input.name,publicKey:input.publicKey,policyRevision:input.policyRevision,baseUrl:input.baseUrl,...(input.routes?{routes:structuredClone(input.routes)}:{})});
   this.cancel();const op=this.operation();this.publish({phase:'checking',busy:true});
@@ -159,6 +159,7 @@ export class BrowserAccountEntry {
   try{
    if(!guard.current())throw new CodedError('cancelled','The Portico Account changed.');
    const revision=(await this.ports.store.read()).revision;if(!guard.current())return false;
+   if(expectedRevision!==undefined&&(!Number.isSafeInteger(expectedRevision)||expectedRevision<0||revision!==expectedRevision))throw new CodedError('cancelled','The server selection changed.');
    const request:HostedRequestApi['request']=async<T,>(path:string,method?:string,body?:unknown,signal?:AbortSignal)=>{
     if(!guard.current())throw new CodedError('cancelled','The Portico Account changed.');
     const result=await account.request<T>(path,method,body,signal);

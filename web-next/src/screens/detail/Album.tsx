@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState} from 'react';
+import {Fragment, useEffect, useRef, useState} from 'react';
 import {t, environment as env} from './text';
 import {cardText, type FactPart} from '@core/presentation/kit-model';
 import {LibraryContentService, readListeningSimilar, type ContentEntry, type ContentProjection, type LibraryContentSnapshot} from '@core/library-content.ts';
@@ -13,7 +13,7 @@ import {Menu} from '../../kit/overlays';
 import {TitleFactsLine} from '../../kit/title/TitleParts';
 import {useShellWidth} from '../../shell/viewport';
 import {runScreenCommand, screenLifetime, type ScreenContext} from './context';
-import {entrySubject} from './model';
+import {calendarDate, entrySubject, instantDate} from './model';
 import {ScreenProblem} from './ScreenProblem';
 import {MusicEntryMenu} from './MusicEntryMenu';
 import {TitleRow} from './Detail';
@@ -82,6 +82,16 @@ export function AlbumScreen({context, libraryId, albumId, onBack}: AlbumScreenPr
     && (menu.seed === album || songs.includes(menu.seed));
   const menuAnchor = {current: menu?.anchor ?? null};
   const recommendations = similar?.life === life && similar.projection === projection ? similar : undefined;
+  const long = album.title.length > 24, locale = env.locale ?? 'en', genres = album.genres?.filter(Boolean) ?? [];
+  const metaParts: FactPart[] = [...parts, ...(genres.length ? [{id: 'genres', role: 'supplement' as const, text: genres.join(', ')}] : [])];
+  const details: [string, string][] = [];
+  const fact = (label: string, value: string | number | null | undefined) => {if (value !== undefined && value !== null && value !== '') details.push([label, String(value)]);};
+  fact(t('title.year'), album.year && album.year > 0 ? defaultI18n.number(album.year, {useGrouping: false}) : undefined);
+  fact(t('title.releaseDate'), calendarDate(album.releaseDate, locale) ?? instantDate(album.releaseDate, locale));
+  fact(t('title.label'), album.label);
+  fact(t('title.albumType'), album.albumType);
+  fact(t('title.genres'), genres.join(', '));
+  fact(t('title.added'), instantDate(album.addedAt, locale));
   return <div className={styles.page}>
     <div className={styles.bar}>
       {onBack && <Button variant="icon" icon="i-left" iconOnly aria-label={t('next.states.back')} onClick={() => runScreenCommand(context, () => {if (life.current()) onBack();})}/>}
@@ -90,9 +100,12 @@ export function AlbumScreen({context, libraryId, albumId, onBack}: AlbumScreenPr
     <header className={styles.hero}>
       <span className={styles.art}><AmbientArt className={styles.ambient} treatment="phone" source={context.artwork.ambient(album.posterUrl)} foreground={context.artwork.foreground(album.posterUrl, 760, 1)}/><Artwork source={context.artwork.foreground(album.posterUrl, 760, 1)} alt=""/></span>
       <div className={styles.copy}>
-        <Lockup title={album.title} platform={phone ? 'phone-web' : 'desktop'}/>
-        {album.artist?.name && <p className={styles.artist}>{album.artist.name}</p>}
-        <div className={styles.meta}><TitleFactsLine parts={parts}/>
+        <p className={styles.kind}>{t('next.browse.album')}</p>
+        <Lockup title={album.title} long={long} platform={phone ? 'phone-web' : 'desktop'} className={styles.title}
+          style={{fontSize: phone ? (long ? 42 : 56) : (long ? 68 : 104), lineHeight: .98}}/>
+        <div className={styles.meta}>
+          {album.artist?.name && <span className={styles.by}>{album.artist.name}</span>}
+          <TitleFactsLine parts={metaParts}/>
           {badges.length > 0 && <span className={styles.badges}>{badges.map(badge => {
             const label = typeof badge === 'string' ? badge : formatSignalText(badge, t);
             return <span key={label} className={styles.badge}>{label}</span>;
@@ -103,18 +116,25 @@ export function AlbumScreen({context, libraryId, albumId, onBack}: AlbumScreenPr
             <Button variant="primary" icon="i-play" disabled={!current()} onClick={() => runScreenCommand(context, () => context.effects.playAlbum!(albumId, false, life.signal(), current))}>{t('next.controls.play')}</Button>
             <Button variant="glass" icon="i-shuffle" disabled={!current()} onClick={() => runScreenCommand(context, () => context.effects.playAlbum!(albumId, true, life.signal(), current))}>{t('title.shuffle')}</Button>
           </>}
-          {context.effects.playRadio && <Button ref={more} variant="glass" icon="i-more" iconOnly disabled={!current()} aria-label={t('card.more', {title: album.title})} onClick={event => open(album, event.currentTarget)}/>}
+          <Button ref={more} variant="glass" icon="i-more" iconOnly disabled={!current()} aria-label={t('card.more', {title: album.title})} onClick={event => open(album, event.currentTarget)}/>
         </div>
       </div>
     </header>
-    <TrackTable variant="album" platform={phone ? 'phone' : 'desktop'} label={t('music.allSongs')} totalCount={songs.length}
-      columns={context.effects.playRadio ? undefined : [{id: 'number', width: '44px'}, {id: 'title', width: 'minmax(0,1fr)'}, {id: 'plays', width: '90px'}, {id: 'duration', width: '80px'}]}
-      rows={songs.map((song, index) => ({id: song.id, number: song.trackNumber ?? index + 1, plays: song.plays, playable: current() && !!song.playback && song.available !== false && !song.missing && song.libraryId === libraryId, text: cardText(entrySubject(song), 'song-row', env)}))}
-      onPlay={id => {const song = songs.find(song => song.id === id); if (song) play(song);}}
-      onMore={(id, anchor) => {const song = songs.find(song => song.id === id); if (song && anchor) open(song, anchor);}}/>
-    {snapshot.appended.filter(section => section.nextCursor).map(section => <Button key={section.id} variant="glass" disabled={snapshot.phase !== 'ready'} onClick={() => runScreenCommand(context, () => {if (current()) return service.next(section.id);})}>{t('next.settings.loadMore')}</Button>)}
-    {snapshot.phase === 'loading' && <p role="status">{t('music.loading')}</p>}
-    {(snapshot.phase === 'error' || snapshot.phase === 'refresh-required') && <ScreenProblem context={context} error={snapshot.error} retry={() => setRetry(value => value + 1)}/>}
+    <section className={details.length > 0 ? styles.split : styles.full}>
+      <div className={styles.tracks}>
+        <TrackTable variant="album" platform={phone ? 'phone' : 'desktop'} label={t('music.allSongs')} totalCount={songs.length}
+          rows={songs.map((song, index) => ({id: song.id, number: song.trackNumber ?? index + 1, plays: song.plays, playable: current() && !!song.playback && song.available !== false && !song.missing && song.libraryId === libraryId, text: cardText(entrySubject(song), 'song-row', env)}))}
+          onPlay={id => {const song = songs.find(song => song.id === id); if (song) play(song);}}
+          onMore={(id, anchor) => {const song = songs.find(song => song.id === id); if (song && anchor) open(song, anchor);}}/>
+        {snapshot.appended.filter(section => section.nextCursor).map(section => <Button key={section.id} variant="glass" disabled={snapshot.phase !== 'ready'} onClick={() => runScreenCommand(context, () => {if (current()) return service.next(section.id);})}>{t('next.settings.loadMore')}</Button>)}
+        {snapshot.phase === 'loading' && <p role="status">{t('music.loading')}</p>}
+        {(snapshot.phase === 'error' || snapshot.phase === 'refresh-required') && <ScreenProblem context={context} error={snapshot.error} retry={() => setRetry(value => value + 1)}/>}
+      </div>
+      {details.length > 0 && <aside className={styles.aside}>
+        <h2 className={styles.detailsTitle}>{t('title.details')}</h2>
+        <dl className={styles.facts}>{details.map(([label, value]) => <Fragment key={label}><dt>{label}</dt><dd>{value}</dd></Fragment>)}</dl>
+      </aside>}
+    </section>
     {recommendations && recommendations.entries.length > 0 && <TitleRow heading={t('music.moreLikeThis')}
       subtitle={t(recommendations.bySound ? 'music.moreLikeThisBySound' : 'music.moreLikeThisHint')} entries={recommendations.entries} binding={{context}}/>}
     {menu && <Menu open={menuCurrent()} onOpenChange={open => {if (!open) setMenu(undefined);}} anchorRef={menuAnchor} returnFocusRef={menuAnchor} title={menu.seed.title} placement="bottom-end">

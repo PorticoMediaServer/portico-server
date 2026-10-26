@@ -79,13 +79,13 @@ export function WatchMusicNowPlaying({binding, snapshot, expanded, onCollapse, p
         {can('volume') && <div className={styles.volume}><button type="button" className={styles.ctl} aria-label={t(presentation.muted ? 'player.unmute' : 'player.mute')} onClick={() => send({kind: 'mute'})}><Icon name="i-vol" size={20} /></button>
           <Slider min={0} max={1} step={.01} value={presentation.muted ? 0 : presentation.volume} aria-label={t('player.volume')} onValueChange={volume => send({kind: 'volume', volume})} /></div>}
       </div>
-      <aside className={styles.side} aria-label={t('next.music.upNext')}>
+    </div>
+    <aside className={styles.side} aria-label={t('next.music.upNext')}>
         <h2>{t('next.music.upNext')}</h2>
         <p className={styles.section}>{t('next.music.nowPlaying')}</p>
         <div className={styles.queueRow}><span className={styles.eq} aria-hidden="true"><i /><i /><i /></span><span><b>{identity.title}</b><small>{artist}</small></span><span className={styles.duration}>{watchClock(duration)}</span></div>
         {neighbours.next && <><p className={styles.section}>{t('next.dock.next')}</p>
           <div className={styles.queueRow}><span><b>{neighbours.next}</b></span></div></>}
-      </aside>
-    </div>
+    </aside>
   </section>;
 }

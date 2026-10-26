@@ -4,9 +4,9 @@ import {TextField, Button} from '../controls';
 import {Icon} from '../Icon';
 import styles from './settings.module.css';
 
-export type SettingNumberProps = Readonly<{label: string; value: number | null; optional?: boolean; min: number; max: number; step?: number; unit?: string; placeholder?: string; disabled?: boolean; plain?: boolean; onCommit: (value: number | null) => void}>;
+export type SettingNumberProps = Readonly<{label: string; value: number | null; optional?: boolean; min: number; max: number; step?: number; unit?: string; placeholder?: string; disabled?: boolean; plain?: boolean; /** Presentation only: the field shell carries the authored changed ring. */ changed?: boolean; onCommit: (value: number | null) => void}>;
 /** Empty optional fields stay empty. In-progress typing is never sent as NaN. */
-export function SettingNumber({label, value, optional, min, max, step = 1, unit, placeholder, disabled, plain = false, onCommit}: SettingNumberProps) {
+export function SettingNumber({label, value, optional, min, max, step = 1, unit, placeholder, disabled, plain = false, changed = false, onCommit}: SettingNumberProps) {
   const [draft, setDraft] = useState(value === null ? '' : String(value));
   useEffect(() => {setDraft(value === null ? '' : String(value));}, [value]);
   const commit = (text: string) => {
@@ -19,7 +19,7 @@ export function SettingNumber({label, value, optional, min, max, step = 1, unit,
   const change = (direction: number) => commit(String(Math.round(((value ?? min) + direction * step) * 1000000) / 1000000));
   return <span className={styles.number} data-plain={plain || undefined}>
     {!plain && <Button size="xs" variant="icon" disabled={disabled || value !== null && value <= min} aria-label={defaultI18n.t('next.settings.decrease', {name: label})} onClick={() => change(-1)}><span aria-hidden="true">−</span></Button>}
-    <TextField variant="setting" aria-label={label} type="text" inputMode="decimal" value={draft} placeholder={placeholder} disabled={disabled} onChange={event => setDraft(event.currentTarget.value)}
+    <TextField variant="setting" changed={changed} aria-label={label} type="text" inputMode="decimal" value={draft} placeholder={placeholder} disabled={disabled} onChange={event => setDraft(event.currentTarget.value)}
       onBlur={event => commit(event.currentTarget.value)} onKeyDown={event => {
         if (event.key === 'Enter') {event.preventDefault(); commit(draft);}
         if (event.key === 'Escape') {event.preventDefault(); setDraft(value === null ? '' : String(value));}

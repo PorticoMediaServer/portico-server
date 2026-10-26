@@ -15,8 +15,11 @@ import {SettingsGroup} from '../../../kit/settings';
 import {SettingsRow} from '../../../kit/shell/SettingsSurfaces';
 import {Icon, type IconName} from '../../../kit/Icon';
 import styles from './remote-sources.module.css';
+import {DriveKeyPane, DriveModePane, DriveOAuthPane} from './DrivePanes';
 import {RemoteFolderPicker} from './RemoteFolderPicker';
 import {ProgramPicker} from './ProgramPicker';
+import {SourceHeader} from './SourceHeader';
+import {SourceDone} from './SourceDone';
 import {SourceReadingDialog, SourceReadingFields} from './SourceReadingDialog';
 import {ReadingProfileOpening} from './reading-profile-opening';
 import {sourceChoiceComparison} from '@core/remote-source-choice.ts';
@@ -848,7 +851,6 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
   // The drawn wizard has five steps: what, the remote, how Portico treats it,
   // folders, done (remote-sources.html#1, #8 to #12).
   const stepNumber = step === 'what' ? 1 : step === 'remote' ? 2 : step === 'reading' ? 3 : step === 'folders' ? 4 : 5;
-  const stepLabel = step === 'done' ? undefined : t('next.remoteSources.stepOf', {step: stepNumber});
   const familyLabel = family === 'webdav' ? 'next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.0.label'
     : family === 'rclone' ? 'next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.1.label'
       : 'next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.2.label';
@@ -920,10 +922,7 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
     description={step === 'done' ? undefined : stepTitle} footer={footer}>
     {error && <p className={styles.error} role="alert">{error}</p>}
     {finishError && <p className={styles.error} role="alert">{finishError}</p>}
-    {step !== 'done' && <div className={styles.wizardHead}>
-      <div className={styles.wizardSteps} aria-hidden="true">{[1, 2, 3, 4, 5].map(value => <i key={value} data-on={value <= stepNumber || undefined}/>)}</div>
-      <div className={styles.wizardStep}><span>{stepLabel}</span><b>{stepTitle}</b></div>
-    </div>}
+    {step !== 'done' && <WizardStepHeader step={stepNumber} count={5} title={stepTitle}/>}
     {step === 'what' && <div className={styles.whatCards} role="radiogroup" aria-label={t('next.remoteSources.whatToConnect')}>
       {whatOptions.map(option => <button key={option.family} type="button" role="radio" aria-checked={family === option.family} className={styles.whatCard}
         data-picked={family === option.family || undefined} disabled={busy} onClick={() => chooseFamily(option.family, renderGuard, formToken)}>
@@ -979,56 +978,21 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
       </> : sourceKind === 'drive' ? <>
         <div className={styles.kind}><Icon name="i-google" size={22} /><span><b>{t('next.remoteSources.connectDrive')}</b><small>{t('next.remoteSources.connectDriveHint')}</small></span></div>
         <TextField label={t('next.remoteSources.name')} value={driveName} maxLength={200} disabled={busy} onChange={event => setDriveName(event.target.value)}/>
-        <div className={styles.lab2}>{t('next.remoteSources.driveSignIn')}</div>
-        <div className={styles.kindTiles} role="radiogroup" aria-label={t('next.remoteSources.driveSignIn')}>
-          <button type="button" role="radio" aria-checked={driveMode === 'service'} className={styles.kindTile} data-picked={driveMode === 'service' || undefined} disabled={busy}
-            onClick={() => {retireOAuth(oauthRenderTicket);invalidateDrive();setDriveTested(undefined);setDriveMode('service');}}><Icon name="i-key" size={22}/>{t('next.remoteSources.driveServiceAccount')}</button>
-          <button type="button" role="radio" aria-checked={driveMode === 'oauth'} className={styles.kindTile} data-picked={driveMode === 'oauth' || undefined} disabled={busy}
-            onClick={() => {retireOAuth(oauthRenderTicket);invalidateDrive();setDriveTested(undefined);setDriveMode('oauth');}}><Icon name="i-google" size={22}/>{t('next.remoteSources.driveOAuth')}</button>
-        </div>
-        {driveMode === 'service' ? <>
-          <p className={styles.note}>{t('next.remoteSources.driveServiceAccountHint')}</p>
-          <a className={styles.consoleLink} href={DRIVE_CONSOLE} target="_blank" rel="noopener noreferrer">{t('next.remoteSources.driveConsole')}</a>
-        </> : <>
-          <p className={styles.note}>{t('next.remoteSources.driveOAuthHint')}</p>
-          <a className={styles.consoleLink} href={DRIVE_CONSOLE} target="_blank" rel="noopener noreferrer">{t('next.remoteSources.driveConsole')}</a>
-          <TextField label={t('next.remoteSources.driveClientId')} value={oauthClientId} maxLength={512} disabled={busy}
-            autoCapitalize="off" spellCheck={false} className={styles.monoInput} onChange={event => updateOAuthClient({clientId: event.target.value})}/>
-          <TextField label={t('next.remoteSources.driveClientSecret')} type="password" value={oauthClientSecret} maxLength={2048} disabled={busy} onChange={event => updateOAuthClient({clientSecret: event.target.value})}/>
-          <div className={styles.testRow}>
-            <Button size="compact" variant="glass" disabled={busy || !oauthClientId.trim() || !oauthClientSecret} onClick={() => void startOAuth()}>{t('next.remoteSources.driveOAuthSignIn')}</Button>
-            {oauthPhase === 'waiting' && <span className={styles.note} role="status">{t('next.remoteSources.driveOAuthWaiting')}</span>}
-            {oauthPhase === 'ready' && <span className={styles.testCard} data-tone="good"><Icon name="i-check" size={18}/>{t('next.remoteSources.driveOAuthReady')}</span>}
-            {oauthPhase === 'expired' && <span className={styles.note} role="status">{t('next.remoteSources.driveOAuthExpired')}</span>}
-          </div>
-          {oauthPhase === 'denied' && <p className={styles.error} role="alert">{t('next.remoteSources.driveOAuthDenied')}</p>}
-          <p className={styles.note}>{t('next.remoteSources.driveOAuthTestingNote')}</p>
-          {oauthPhase === 'waiting' && <>
-            <TextField label={t('next.remoteSources.driveOAuthPaste')} value={oauthAddress} maxLength={8192} disabled={busy}
-              autoCapitalize="off" spellCheck={false} className={styles.monoInput} onChange={event => updatePasteAddress(event.target.value)}/>
-            <Button size="compact" variant="glass" disabled={busy || !oauthAddress.trim()} onClick={() => void pasteOAuth()}>{t('next.remoteSources.driveOAuthPasteAction')}</Button>
-          </>}
-          {oauthError && <p className={styles.error} role="alert">{oauthError}</p>}
-        </>}
+        <DriveModePane mode={driveMode} disabled={busy} onChange={next => {retireOAuth(oauthRenderTicket);invalidateDrive();setDriveTested(undefined);setDriveMode(next);}}/>
+        <a className={styles.consoleLink} href={DRIVE_CONSOLE} target="_blank" rel="noopener noreferrer">{t('next.remoteSources.driveConsole')}</a>
+        {driveMode === 'oauth' && <DriveOAuthPane phase={oauthPhase} clientId={oauthClientId} clientSecret={oauthClientSecret} address={oauthAddress}
+          error={oauthError} disabled={busy} onClientId={value => updateOAuthClient({clientId: value})} onClientSecret={value => updateOAuthClient({clientSecret: value})}
+          onSignIn={() => void startOAuth()} onAddress={value => updatePasteAddress(value)} onPaste={() => void pasteOAuth()}/>}
         {driveMode === 'service' && <>
-        <label className={styles.configField}><span className={styles.configLabel}>{t('next.remoteSources.driveKey')}</span>
-          <textarea className={styles.config} aria-label={t('next.remoteSources.driveKey')} value={drive.keyJson} placeholder={t('next.remoteSources.driveKeyPlaceholder')} maxLength={65536}
-            disabled={busy} spellCheck={false} rows={7} onChange={event => updateDrive({keyJson: event.target.value})}/>
-          <small className={styles.note}>{t('next.remoteSources.driveKeyHelp')}</small>
-        </label>
-        <div className={styles.testRow}>
-          <Button size="compact" variant="glass" disabled={busy} onClick={() => keyFile.current?.click()}>{t('next.remoteSources.driveUpload')}</Button>
-          <Button size="compact" variant="text" disabled={busy || !drive.keyJson} onClick={() => updateDrive({keyJson: ''})}>{t('next.remoteSources.driveClear')}</Button>
-          <input ref={keyFile} type="file" accept="application/json,.json" hidden aria-label={t('next.remoteSources.driveUpload')}
-            onChange={event => {const file = event.target.files?.[0];void readKeyFile(file);event.target.value = '';}}/>
-        </div>
-        {!drive.keyJson.trim() ? <p className={styles.note}>{t('next.remoteSources.driveKeyEmptyHint')}</p>
-          : !driveResult.ok ? <div className={styles.testRow}><p className={styles.error} role="alert">{t(driveReason(driveResult.reason))}</p>
-            {driveResult.reason === 'oauth' && <Button size="xs" variant="glass" disabled={busy}
-              onClick={() => {retireOAuth(oauthRenderTicket);invalidateDrive();setDriveTested(undefined);setDriveMode('oauth');}}>{t('next.remoteSources.driveOAuth')}</Button>}</div>
-            : <div className={styles.testCard} data-tone="good"><Icon name="i-check" size={18}/><span>{driveResult.draft.email}</span>
-                <Button size="xs" variant="text" onClick={() => copyEmail(driveResult.draft.email)}>{t('next.remoteSources.driveCopy')}</Button></div>}
-        {driveResult.ok && <p className={styles.note}>{t('next.remoteSources.driveEmailHeading')} {t('next.remoteSources.driveEmailHelp')}</p>}
+        <DriveKeyPane value={drive.keyJson} disabled={busy}
+          error={driveResult.ok ? undefined : t(driveReason(driveResult.reason))}
+          email={driveResult.ok ? driveResult.draft.email : undefined}
+          oauth={!driveResult.ok && driveResult.reason === 'oauth'}
+          onChange={keyJson => updateDrive({keyJson})} onUpload={() => keyFile.current?.click()}
+          onClear={() => updateDrive({keyJson: ''})} onCopy={() => {if (driveResult.ok) copyEmail(driveResult.draft.email);}}
+          onUseOAuth={() => {retireOAuth(oauthRenderTicket);invalidateDrive();setDriveTested(undefined);setDriveMode('oauth');}}/>
+        <input ref={keyFile} type="file" accept="application/json,.json" hidden aria-label={t('next.remoteSources.driveUpload')}
+          onChange={event => {const file = event.target.files?.[0];void readKeyFile(file);event.target.value = '';}}/>
         </>}
 
         <div className={styles.lab2}>{t('next.remoteSources.driveLocation')}</div>
@@ -1141,22 +1105,21 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
       <div className={styles.switchRow}><span>{t('next.remoteSources.scanWhenFinished')}<small className={styles.note}>{t('next.remoteSources.scanWhenFinishedHelp')}</small></span>
         <span className={styles.staticValue}>{t('next.remoteSources.on')}</span></div>
     </>}
-    {step === 'done' && <div className={styles.doneList}>
-      <div className={styles.doneHead}><Icon name="i-okc" size={34}/><h3>{t('next.remoteSources.doneTitle', {name: sourceNow?.name ?? ''})}</h3></div>
-      <p className={styles.note}>{summary.library ? t('next.remoteSources.doneLede', {name: summary.library}) : t('next.remoteSources.summaryNoLibraryHelp')}</p>
-      <ul className={styles.doneRows}>
-        <li><b>{t('next.remoteSources.summaryConnected')}</b><small>{t('next.remoteSources.summaryConnectedHelp')}</small></li>
-        <li><b>{t('next.remoteSources.summaryLimits', {connections: values.connections, requests: values.requestsPerSecond})}</b>
-          <small>{values.bytesPerSecond ? t('next.remoteSources.downloadSpeed') + ': ' + (values.bytesPerSecond / 1_000_000) + ' ' + t('next.remoteSources.megabytesPerSecond') + '. ' : t('next.remoteSources.noLimit') + '. '}{t('next.remoteSources.summaryLimitsHelp', {name: sourceNow?.name ?? ''})}</small></li>
-        {recordedReading && <li><b>{t('next.remoteSources.summaryTreatment', {preset: presetName ? t(presetLabel(presetName)) : t('next.remoteSources.custom')})}</b>
-          <small>{t('next.remoteSources.summaryTreatmentHelp', {name: sourceNow?.name ?? ''})}</small></li>}
-        {summary.library
-          ? <li><b>{t('next.remoteSources.summaryLibrary', {library: summary.library})}</b>
-            <small>{t(summary.folders === 1 ? 'next.remoteSources.summaryLibraryOne' : 'next.remoteSources.summaryLibraryMany', {count: summary.folders, source: sourceNow?.name ?? ''})}</small></li>
-          : <li><b>{t('next.remoteSources.summaryNoLibrary')}</b><small>{t('next.remoteSources.summaryNoLibraryHelp')}</small></li>}
-        {summary.library && <li><b>{t('next.remoteSources.summaryScan')}</b><small>{t('next.remoteSources.summaryScanHelp')}</small></li>}
-      </ul>
-    </div>}
+    {step === 'done' && <SourceDone
+      title={t('next.remoteSources.doneTitle', {name: sourceNow?.name ?? ''})}
+      lede={summary.library ? t('next.remoteSources.doneLede', {name: summary.library}) : t('next.remoteSources.summaryNoLibraryHelp')}
+      rows={[
+        {label: t('next.remoteSources.summaryConnected'), detail: t('next.remoteSources.summaryConnectedHelp')},
+        {label: t('next.remoteSources.summaryLimits', {connections: values.connections, requests: values.requestsPerSecond}),
+          detail: `${values.bytesPerSecond ? t('next.remoteSources.downloadSpeed') + ': ' + (values.bytesPerSecond / 1_000_000) + ' ' + t('next.remoteSources.megabytesPerSecond') + '. ' : t('next.remoteSources.noLimit') + '. '}${t('next.remoteSources.summaryLimitsHelp', {name: sourceNow?.name ?? ''})}`},
+        ...(recordedReading ? [{label: t('next.remoteSources.summaryTreatment', {preset: presetName ? t(presetLabel(presetName)) : t('next.remoteSources.custom')}),
+          detail: t('next.remoteSources.summaryTreatmentHelp', {name: sourceNow?.name ?? ''})}] : []),
+        summary.library
+          ? {label: t('next.remoteSources.summaryLibrary', {library: summary.library}),
+            detail: t(summary.folders === 1 ? 'next.remoteSources.summaryLibraryOne' : 'next.remoteSources.summaryLibraryMany', {count: summary.folders, source: sourceNow?.name ?? ''})}
+          : {label: t('next.remoteSources.summaryNoLibrary'), detail: t('next.remoteSources.summaryNoLibraryHelp')},
+        ...(summary.library ? [{label: t('next.remoteSources.summaryScan'), detail: t('next.remoteSources.summaryScanHelp')}] : []),
+      ]}/>}
     {picking && sourceNow && <RemoteFolderPicker service={service} sourceId={sourceNow.id} sourceName={sourceNow.name} open={picking}
       onOpenChange={setPicking} onChoose={folders => setChosen(current => [...current, ...folders.filter(folder => !current.some(value => value.relative === folder.relative))])}/>}
     <Dialog open={leaving !== ''} role="alertdialog" width={520} title={t('next.remoteSources.leaveTitle')}
@@ -1220,6 +1183,7 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
   // for. A replaced source or status retires it whole.
   const [savedTestLease, setSavedTestLease] = useState<SavedTestLease | null>(null);
   const [savedTest, setSavedTest] = useState<Readonly<{result: SavedSourceTest; generation: string}> | null>(null);
+  const phone = usePhone();
   const [savedTesting, setSavedTesting] = useState(false);
   const savedTestOwner = useRef<object | null>(null);
   const savedTestLeaseRef = useRef<SavedTestLease | null>(null);
@@ -1367,9 +1331,8 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
   };
   return <Dialog open onOpenChange={value => {if (!value) close();}} title={source.name} width={760} footer={<Button size="compact" variant="glass" disabled={busy} onClick={close}>{t('next.remoteSources.cancel')}</Button>}>
     {error && <p className={styles.error} role="alert">{error}</p>}
-    <section className={styles.statusBox} aria-label={t('next.remoteSources.status')}>
-      <div className={styles.statusHead}><SourceStatus source={source}/>{source.origin && <span className={styles.statusOrigin}>{source.origin}</span>}</div>
-      {problemId(source) && <p className={styles.statusNotice}>{t(problemId(source)!)}</p>}
+    <SourceHeader label={t('next.remoteSources.status')} phone={phone} status={<SourceStatus source={source}/>} origin={source.origin}
+      notice={problemId(source) ? t(problemId(source)!) : undefined}>
       <dl className={styles.statusRows}>
         <div><dt>{t('next.remoteSources.rightNow')}</dt><dd>{!status ? '—'
           : status.connectionsInUse === 0 ? t('next.remoteSources.nothingReading')
@@ -1406,7 +1369,7 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
           {status.scan.finishedAt && <div><dt>{t('next.remoteSources.scanFinished')}</dt><dd>{checkedWhen(status.scan.finishedAt)}</dd></div>}
         </>}
       </dl>
-    </section>
+    </SourceHeader>
     <section className={styles.group} id="source-connection"><h3>{t('next.remoteSources.connection')}</h3>
       <TextField label={t('next.remoteSources.name')} value={draft.name} maxLength={100} disabled={busy} onChange={event => updateDraft({name: event.target.value})}/>
       <TextField label={t('next.remoteSources.address')} value={draft.root} placeholder={source.origin ?? t('next.settingsSpec.server.remote-sources.panels.source.tabs.0.groups.0.rows.1.control.placeholder')} disabled={busy}

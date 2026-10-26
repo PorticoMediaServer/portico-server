@@ -275,6 +275,24 @@ func (d Dependencies) identityAuthRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
+	d.httpHandle(mux, "POST /v1/direct/two-factor/recovery-codes", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Password string `json:"password"`
+			Code     string `json:"code"`
+		}
+		if e := decode(w, r, &body); e != nil {
+			failure(w, e)
+			return
+		}
+		out, e := d.Identity.ReplaceRecoveryCodes(r.Context(), directBearer(r), body.Password, body.Code)
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		write(w, 200, out)
+	})
+
 	d.httpHandle(mux, "DELETE /v1/direct/two-factor", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Password string `json:"password"`

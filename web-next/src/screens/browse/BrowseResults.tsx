@@ -38,7 +38,7 @@ const gridGap = 20, gridRowGap = 30;
 // caption offset, two 14px/1.3 title lines, the 2px year offset and one 13px line at the
 // font's 1.4 normal leading. Frames #grid (49px, one line) and #big (66.6px, two lines) agree.
 const gridCaption = 66.6;
-type BrowseColumn = Readonly<{id: string; label: MessageId}>;
+type BrowseColumn = Readonly<{id: string; label: MessageId; sort?: string}>;
 const columns: readonly BrowseColumn[] = [
   {id: 'title', label: 'library.column.title'}, {id: 'year', label: 'library.column.year'},
   {id: 'duration', label: 'library.column.runtime'}, {id: 'communityRating', label: 'library.column.rating'},
@@ -51,6 +51,13 @@ const readingColumns: readonly BrowseColumn[] = [
   {id: 'title', label: 'library.column.title'}, {id: 'author', label: 'library.column.author'},
   {id: 'progress', label: 'library.column.progress'}, {id: 'series', label: 'library.column.series'},
   {id: 'pages', label: 'library.column.pages'}, {id: 'added', label: 'library.column.added'},
+];
+// desktop-listen 4 / music-plus 9: the music list's own columns, from published facts only.
+const musicColumns: readonly BrowseColumn[] = [
+  {id: 'number', label: 'next.browse.number'}, {id: 'title', label: 'library.column.title', sort: 'title'},
+  {id: 'artist', label: 'library.column.artist', sort: 'artist'}, {id: 'album', label: 'library.column.album', sort: 'album'},
+  {id: 'duration', label: 'library.column.duration', sort: 'duration'}, {id: 'plays', label: 'library.column.plays', sort: 'playCount'},
+  {id: 'added', label: 'library.column.added', sort: 'added'},
 ];
 export function BrowseResults(props: BrowseResultsProps) {
   const {controller, view, shape, cardWidth, onVisibleRange} = props;
@@ -76,9 +83,12 @@ export function BrowseResults(props: BrowseResultsProps) {
   const range = useCallback((first: number, last: number) => {setVisible(before => before.first === first && before.last === last ? before : {first, last});onVisibleRange?.(first, last);}, [onVisibleRange]);
   const anchors = Object.entries(snapshot.positionIndex ?? {}).map(([key, index]) => ({key, index}));
   const list = view === 'list', ratio = shape === 'poster' ? 2 / 3 : shape === 'collection' ? 16 / 9 : 1;
-  const musicGenres = state.capabilities?.library.kind === 'music' && controller.source.pivot === 'genres';
+  const musicLibrary = state.capabilities?.library.kind === 'music';
+  // The canonical Songs tab maps its pivot to 'songs' (library-tabs.ts); only that tab is the song table.
+  const music = musicLibrary && controller.source.pivot === 'songs';
+  const musicGenres = musicLibrary && controller.source.pivot === 'genres';
   const reading = state.capabilities?.library.kind === 'book' || state.capabilities?.library.kind === 'comic';
-  const drawnColumns = reading ? readingColumns : columns;
+  const drawnColumns = reading ? readingColumns : music ? musicColumns : columns;
   // Frame #collections draws three 16:9 series tiles at 24px: a page of about ten groups reads as
   // banners, not as seven poster columns. Every other grid fills its columns to the gutter.
   const tiles = shape === 'collection' && !list, gap = tiles ? 24 : gridGap;
@@ -90,34 +100,41 @@ export function BrowseResults(props: BrowseResultsProps) {
   const height = musicGenres ? 152 : width / ratio + (shape === 'collection' ? 0 : gridCaption);
   const gutter = {'--grid-overflow': `${overflow}px`} as CSSProperties;
   if (failed) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')} primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: controller.retry}}/>;
-  return <div className={styles.results} ref={root} data-view={view} data-reading={reading || undefined} data-shape={tiles ? 'collection' : undefined} data-empty={snapshot.total === 0 ? '' : undefined} style={gutter}>
+  return <div className={styles.results} ref={root} data-view={view} data-music={music || undefined} data-reading={reading || undefined} data-shape={tiles ? 'collection' : undefined} data-empty={snapshot.total === 0 ? '' : undefined} style={gutter}>
     {tiles && <p className={styles.collectionsNote}><Icon name="i-layers" size={18}/>{t('next.browse.collectionsAutomatic')}</p>}
     {list && <div className={styles.listHead} role="row">{drawnColumns.map(column => {
-      const offered = state.capabilities?.sorts.find(sort => sort.id === column.id);
-      return <div key={column.id} role="columnheader" className={column.id === 'pages' || column.id === 'added' ? styles.listNumber : undefined} aria-sort={state.sort?.field === column.id ? state.sort.direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
-        {offered ? <button type="button" onClick={() => props.onSort({field: offered.id, direction: state.sort?.field === offered.id && offered.directions.length > 1 ? state.sort.direction === 'asc' ? 'desc' : 'asc' : offered.defaultDirection})}>{t(column.label)}{state.sort?.field === column.id && <Icon name={state.sort.direction === 'asc' ? 'i-up' : 'i-down'} size={14}/>}</button> : t(column.label)}
+      const field = column.sort ?? column.id, offered = state.capabilities?.sorts.find(sort => sort.id === field);
+      return <div key={column.id} role="columnheader" className={column.id === 'pages' || column.id === 'added' || column.id === 'number' ? styles.listNumber : undefined} aria-sort={state.sort?.field === field ? state.sort.direction === 'asc' ? 'ascending' : 'descending' : 'none'}>
+        {offered ? <button type="button" onClick={() => props.onSort({field: offered.id, direction: state.sort?.field === offered.id && offered.directions.length > 1 ? state.sort.direction === 'asc' ? 'desc' : 'asc' : offered.defaultDirection})}>{t(column.label)}{state.sort?.field === field && <Icon name={state.sort.direction === 'asc' ? 'i-up' : 'i-down'} size={14}/>}</button> : t(column.label)}
       </div>;
-    })}{!reading && <span aria-label={t('next.cards.watched')} role="columnheader"/>}<span/></div>}
+    })}{!reading && !music && <span aria-label={t('next.cards.watched')} role="columnheader"/>}<span/></div>}
     {snapshot.total === 0 ? props.empty : <WindowedGrid collection={controller.collection} ref={grid} label={props.label} height={size.height - (list ? 44 : 0)}
-      cardWidth={width} rowHeight={list ? 70 : height} gap={list ? 0 : gap} rowGap={list ? 0 : tiles ? 24 : gridRowGap} reducedMotion={props.reducedMotion}
+      cardWidth={width} rowHeight={list ? music ? 56 : 70 : height} gap={list ? 0 : gap} rowGap={list ? 0 : tiles ? 24 : gridRowGap} reducedMotion={props.reducedMotion}
       onVisibleRange={range} renderPlaceholder={() => <Skeleton height={list ? 54 : musicGenres ? 152 : width / ratio} width={list ? '100%' : width}/>}
-      renderItem={(member, context) => list ? <BrowseListRow {...props} member={member} index={context.index} reading={reading}/> : <BrowseEntryCard entry={member.entry} actions={props.actions(member, context.index)} artwork={props.artwork} env={props.env}
+      renderItem={(member, context) => list ? <BrowseListRow {...props} member={member} index={context.index} reading={reading} music={music}/> : <BrowseEntryCard entry={member.entry} actions={props.actions(member, context.index)} artwork={props.artwork} env={props.env}
         width={width} family={props.familyForEntry?.(member.entry) ?? state.capabilities?.library.kind} mixed={controller.source.libraryId === '*'} visible order={context.index} group={controller.source.libraryId} backdrops={props.backdrops}/>} />}
     {state.sort?.field === 'title' && anchors.length > 0 && !tiles && <AlphabetRail anchors={anchors} visibleRange={visible} onJump={anchor => grid.current?.scrollToIndex(anchor.index)} className={styles.rail}/>}
   </div>;
 }
-function BrowseListRow({member, index, artwork, env, actions, reading}: BrowseResultsProps & {member: BrowseMember; index: number; reading: boolean}) {
+function BrowseListRow({member, index, artwork, env, actions, reading, music}: BrowseResultsProps & {member: BrowseMember; index: number; reading: boolean; music: boolean}) {
   const source = useRef<'pointer' | 'keyboard'>('pointer');
   const {entry} = member, title = entry.displayTitle ?? entry.title, action = actions(member, index), progress = timelineFacts(entry.duration, entry.progressSeconds).progress;
   const badges = entry.kind === 'song' && entry.audioFacts ? musicFormatBadges(entry.audioFacts).map(badge => typeof badge === 'string' ? badge : formatSignalText(badge, serviceI18n().t)) : [];
   const range = useSelectionRangePreview(action.selection);
-  const art = artwork.foreground(entry.posterUrl, 72 * devicePixelRatio, 2 / 3, {group: entry.libraryId, order: index});
+  const art = artwork.foreground(entry.posterUrl, music ? 42 * devicePixelRatio : 72 * devicePixelRatio, music ? 1 : 2 / 3, {group: entry.libraryId, order: index});
   const added = entry.addedAt && Number.isFinite(Date.parse(entry.addedAt)) ? new Intl.DateTimeFormat(env.locale ?? 'en-US', {month: 'short', day: 'numeric', year: 'numeric'}).format(new Date(entry.addedAt)) : undefined;
+  const duration = durationText(entry.duration, env.t);
   const resolution = entry.resolution === '4k' ? t('quality.4k') : entry.resolution === '1080p' ? t('downloads.quality.1080p') : entry.resolution === '720p' ? t('downloads.quality.720p') : entry.resolution === 'sd' ? t('quality.sd') : undefined;
+  const select = action.selection && <SelectionCircle selected={action.selection.checked} selecting={action.selection.active} onSelectedChange={(_next, intent) => action.selection?.onToggle({range: intent.intent === 'range' || intent.shiftKey === true, source: source.current})} onKeyDownCapture={() => {source.current = 'keyboard';}} onPointerDownCapture={() => {source.current = 'pointer';}} accessibilityLabel={t('next.selection.select')} variant="row"/>;
   return <div className={styles.listRow} data-browse-entry={entry.id} data-selected={action.selection?.checked || undefined} data-preview={action.selection?.preview || undefined} {...range} onKeyDown={event => {range.onKeyDown(event);if (event.key === 'Escape' && action.selection?.active) {event.preventDefault();action.selection.onExit();}}}>
-    <div className={styles.listTitle}>{action.selection && <SelectionCircle selected={action.selection.checked} selecting={action.selection.active} onSelectedChange={(_next, intent) => action.selection?.onToggle({range: intent.intent === 'range' || intent.shiftKey === true, source: source.current})} onKeyDownCapture={() => {source.current = 'keyboard';}} onPointerDownCapture={() => {source.current = 'pointer';}} accessibilityLabel={t('next.selection.select')} variant="row"/>}
+    {music && <span className={styles.musicNumber}>{select ?? <span>{index + 1}</span>}</span>}
+    <div className={styles.listTitle}>{!music && select}
       <button type="button" data-layout-primary onClick={event => activateCard(action.onOpen, action.selection, {range: event.shiftKey, source: event.detail === 0 ? 'keyboard' : 'pointer'})}><span className={styles.listArt}><Artwork source={art} visible alt="" fallback={<GeneratedArt glyph={Array.from(title)[0] ?? ''}/>}/></span><span className={styles.listName}>{title}</span>{badges.map(badge => <span key={badge} className={styles.songBadge}>{badge}</span>)}</button></div>
-    {reading ? <>
+    {music ? <>
+      <span className={styles.musicMeta}>{entry.artist?.name}</span><span className={styles.musicMeta}>{entry.album?.name}</span>
+      <span className={styles.musicNumber}>{duration}</span><span className={styles.musicNumber}>{entry.plays === undefined ? undefined : defaultI18n.number(entry.plays)}</span>
+      <span className={styles.musicNumber}>{added}</span>
+    </> : reading ? <>
       <span className={styles.listAuthor}>{entry.author}</span>
       {/* A finished mark draws the drawn state. An explicit unread mark only says the mark was
           reset — the title may still hold reading progress — so it draws nothing. */}

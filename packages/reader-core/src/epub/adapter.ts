@@ -148,11 +148,12 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
       const metadata:ReaderMetadata=Object.freeze({title:metadataText(b.metadata?.title),author:metadataText(b.metadata?.author),
         language:metadataLanguage(b.metadata?.language),...(b.dir==='rtl'||b.dir==='ltr'?{direction:b.dir}:{})});
       const tocBySection=new Map<number,{label:string;cfi:string}[]>();
-      async function mapToc(items:readonly Toc[]):Promise<readonly ReaderTocItem[]> {
+      async function mapToc(items:readonly Toc[],active:AbortSignal):Promise<readonly ReaderTocItem[]> {
         const result:ReaderTocItem[]=[];
         for(const item of items) {
-          throwIfAborted(signal);const target=b.resolveHref(item.href);if(!target||!b.sections[target.index])continue;
+          throwIfAborted(active);unchanged();const target=b.resolveHref(item.href);if(!target||!b.sections[target.index])continue;
           const doc=await b.sections[target.index].createDocument();
+          throwIfAborted(active);unchanged();
           const node=typeof target.anchor==='function'?target.anchor(doc):null;
           const range=doc.createRange();if(node instanceof Range)range.setStart(node.startContainer,node.startOffset);
           else if(node instanceof Node)range.selectNodeContents(node);else range.selectNodeContents(doc.body??doc.documentElement);
@@ -163,11 +164,20 @@ export function createBrowserEpubAdapter<P extends EpubDisplayPreferences>(optio
               return prefix.toString().length/Math.max(1,(doc.body??doc.documentElement).textContent?.length??1);
             })()),chapter:item.label};
           const list=tocBySection.get(target.index)??[];list.push({label:item.label,cfi:location.cfi});tocBySection.set(target.index,list);
-          result.push(Object.freeze({id:item.href,label:item.label,location:Object.freeze(location),...(item.subitems?{children:await mapToc(item.subitems)}:{})}));
+          result.push(Object.freeze({id:item.href,label:item.label,location:Object.freeze(location),...(item.subitems?{children:await mapToc(item.subitems,active)}:{})}));
         }return Object.freeze(result);
       }
-      const toc=await mapToc(b.toc??[]);
-      const document:ReaderDocument<P>={id,revision,format:'epub',metadata,toc,
+      let toc:readonly ReaderTocItem[]=Object.freeze([]),tocTask:Promise<readonly ReaderTocItem[]>|undefined;
+      const document:ReaderDocument<P>={id,revision,format:'epub',metadata,get toc(){return toc;},
+        async loadToc(callerSignal) {
+          throwIfAborted(callerSignal);throwIfAborted(signal);unchanged();
+          if(!tocTask)tocTask=(async()=>{
+            const task=abortScope([signal,callerSignal]);
+            try {const resolved=await mapToc(b.toc??[],task.signal);throwIfAborted(task.signal);unchanged();toc=resolved;return toc;}
+            finally{task.dispose();}
+          })();
+          const result=await tocTask;throwIfAborted(callerSignal);throwIfAborted(signal);unchanged();return result;
+        },
         async resolveContents(index,callerSignal) {
           const task=abortScope([signal,callerSignal]);
           try {
@@ -349,7 +359,7 @@ async function mountEpub<P extends EpubDisplayPreferences>(book:Book,mount:Reade
   const surface=document.createElement('div');surface.style.cssText='position:relative;width:100%;height:100%;overflow:hidden;';
   renderer.style.cssText='display:block;position:absolute;left:0;right:0;width:100%;';
   const urls={literata:URL.createObjectURL(options.fonts.literata),manrope:URL.createObjectURL(options.fonts.manrope)};
-  let location:ReaderLocation|null=null,preferences=mount.preferences,viewport=mount.viewport,dead=false;
+  let location:ReaderLocation|null=null,relocated:Relocate|undefined,preferences=mount.preferences,viewport=mount.viewport,dead=false;
   let cleanupDoc:()=>void=()=>{};
   let clearSearchMark:()=>void=()=>{};
   function current(){throwIfAborted(signal);if(dead)throw new ReaderError('closed');unchanged();}
@@ -365,6 +375,7 @@ async function mountEpub<P extends EpubDisplayPreferences>(book:Book,mount:Reade
   const relocate=(event:Event)=>{
     if(dead||signal.aborted)return;const d=(event as CustomEvent<Relocate>).detail;
     if(!book.sections[d.index]||!Number.isFinite(d.fraction))return;
+    relocated=d;
     location=Object.freeze({format:'epub',cfi:cfiAt(book,d.index,d.range),section:book.sections[d.index].id,
       progression:progression(book,d.index,d.fraction),chapter:chapterAt(book,d.index,d.range,tocBySection),
       ...((tocBySection.get(d.index)?.length??0)===1&&d.size&&Number.isFinite(d.size)&&d.size>0?{pagesLeftInSection:Math.max(0,Math.ceil((1-d.fraction)/d.size)-1)}:{})});
@@ -464,7 +475,14 @@ async function mountEpub<P extends EpubDisplayPreferences>(book:Book,mount:Reade
       if(callerSignal.aborted){clear();throwIfAborted(callerSignal);}
       current();
     },
-    getLocation(){return location;},dispose
+    getLocation(){
+      if(!location||!relocated)return location;
+      // Outline completion can enrich the current measured location without
+      // inventing a turn or retaining a range from a different page.
+      return Object.freeze({...location,chapter:chapterAt(book,relocated.index,relocated.range,tocBySection),
+        ...((tocBySection.get(relocated.index)?.length??0)===1&&relocated.size&&Number.isFinite(relocated.size)&&relocated.size>0?
+          {pagesLeftInSection:Math.max(0,Math.ceil((1-relocated.fraction)/relocated.size)-1)}:{})});
+    },dispose
   };
   try {
     current();renderer.open(book);surface.append(renderer);mount.container.append(surface);apply();

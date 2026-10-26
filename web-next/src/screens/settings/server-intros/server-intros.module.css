@@ -37,3 +37,25 @@
 .notice { display: flex; gap: 8px; align-items: center; padding: 12px; color: var(--color-record); }
 .notice button { color: inherit; background: transparent; border: 0; cursor: pointer; }
 @media (max-width: 899px) { .columns { grid-template-columns: minmax(0, 1fr); } .shows { border-right: 0; border-bottom: 1px solid var(--color-line-soft); } .reviewHead { flex-wrap: wrap; } .legend { margin-left: 0; } }
+
+/* The phone-web review (owner-libraries#22b/#22c in the Safari form): the same
+   facts as one column, with the library choice as cards, the title's own actions
+   full width under the season picker, and each episode as its own card. Kit
+   tokens only; no native frame value is copied across. */
+@media (max-width: 599px) {
+  .review { margin-top: 20px; }
+  .reviewHead { gap: 10px; }
+  .legend { margin-left: 0; gap: 10px; }
+  .columns { margin-top: 8px; }
+  .shows { padding: 10px 8px; }
+  .libraryTabs { margin: 0 2px 6px; }
+  .show { padding: 10px; border-radius: 12px; }
+  .pane { padding: 12px 10px 4px; }
+  .reviewTitle { gap: 10px; padding-bottom: 12px; }
+  .reviewTitle b { font-size: var(--type-body-size); }
+  .actions { margin-left: 0; width: 100%; }
+  .actions > * { flex: 1 1 0; }
+  .episode { margin-top: 10px; padding: 12px; border-bottom: 0; border-radius: 12px; background: var(--color-raised); }
+  .episodeHead { gap: 8px; align-items: center; }
+  .state { margin-left: 0; }
+}

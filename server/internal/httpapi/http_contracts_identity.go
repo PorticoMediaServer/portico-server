@@ -96,10 +96,11 @@ func registerIdentityHTTPContracts(registry *apikit.Registry) error {
 	}
 	// internal/httpapi/direct_identity.go:275
 	if err := apikit.RegisterHTTP[struct {
-		AccountID        string         "json:\"accountId\""
-		CurrentPassword  string         "json:\"currentPassword\""
-		ExpectedRevision int64          "json:\"expectedRevision\""
-		PorticoIdentity  *hosted.Signed "json:\"porticoIdentity,omitempty\""
+		AccountID        string                     "json:\"accountId\""
+		CurrentPassword  string                     "json:\"currentPassword\""
+		ExpectedRevision int64                      "json:\"expectedRevision\""
+		NewAccount       *identity.LocalOwnerCreate "json:\"newAccount,omitempty\""
+		PorticoIdentity  *hosted.Signed             "json:\"porticoIdentity,omitempty\""
 	}, struct{}](registry, apikit.Metadata{ID: "post_direct_ownership", Method: "POST", Path: "/v1/direct/ownership", Summary: "Run account ownership", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 204, Headers: []string{"X-Portico-Installation-Id"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
@@ -169,6 +170,13 @@ func registerIdentityHTTPContracts(registry *apikit.Registry) error {
 	}, identity.TwoFactorState](registry, apikit.Metadata{ID: "post_direct_two_factor_verify", Method: "POST", Path: "/v1/direct/two-factor/verify", Summary: "Run account two-factor verification verify", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
+	if err := apikit.RegisterHTTP[struct {
+		Password string `json:"password"`
+		Code     string `json:"code"`
+	}, identity.RecoveryCodes](registry, apikit.Metadata{ID: "post_direct_two_factor_recovery_codes", Method: "POST", Path: "/v1/direct/two-factor/recovery-codes", Summary: "Replace account recovery codes", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "current_password_incorrect", "account_locked", "two_factor_missing", "two_factor_required", "two_factor_invalid", "sign_in_kind_portico", "password_change_required", "factor_setup_required", "authentication_busy", "internal"}}); err != nil {
+		return err
+	}
+
 	// internal/httpapi/identity_routes.go:282
 	if err := apikit.RegisterHTTP[struct {
 		Password string "json:\"password\""

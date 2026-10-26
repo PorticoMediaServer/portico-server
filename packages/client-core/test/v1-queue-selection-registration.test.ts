@@ -71,3 +71,58 @@ test('bridge receipt belongs to the returned adoption, never a later registratio
   assert.equal(first.forget(() => true), false); assert.equal(second.current(), true);
   api.forget(session.id);
 });
+
+function preparationTimers() {
+  const jobs = new Map<number, () => void>(); let id = 0;
+  return {
+    timers: {setTimer: (fn: () => void) => {jobs.set(++id, fn); return id;}, clearTimer: (timer: unknown) => {jobs.delete(timer as number);}},
+    fire: () => {const job = jobs.entries().next().value; assert.ok(job, 'a real preparation wait is installed'); jobs.delete(job[0]); job[1]();},
+    pending: () => jobs.size
+  };
+}
+const settleBridge = async () => {for (let i = 0; i < 16; i++) await Promise.resolve();};
+
+test('a bridge start forwards every real preparation notice before it adopts or registers anything', async () => {
+  let starts = 0;
+  const server = new FakePlaybackServer({prepareRounds: () => {starts++; return 2;}});
+  const clock = preparationTimers();
+  const api = new V1PlaybackApi(fakeHttp(server), {timers: clock.timers});
+  let adopts = 0, durations = 0;
+  const realAdopt = api.adopt.bind(api), realDuration = api.duration.bind(api);
+  api.adopt = (session, seconds) => {adopts++; return realAdopt(session, seconds);};
+  api.duration = (itemId, versionId, signal, discTitle) => {durations++; return realDuration(itemId, versionId, signal, discTitle);};
+  const waits: number[] = [], notices: unknown[] = [];
+  let resolved = false;
+  const started = api.start({itemId: 'movie'}, {state: 'playing'}, 'registration-source-000001', undefined, undefined,
+    {onPreparing: (wait, notice) => {waits.push(wait); notices.push(notice);}}).then(value => {resolved = true; return value;});
+  await settleBridge();
+  assert.equal(resolved, false, 'a retry-only 202 resolves nothing');
+  assert.deepEqual(waits, [500]);
+  assert.equal(adopts, 0); assert.equal(durations, 0);
+  clock.fire(); await settleBridge();
+  assert.equal(resolved, false, 'the same original start is still preparing');
+  assert.deepEqual(waits, [500, 500]);
+  assert.equal(adopts, 0); assert.equal(durations, 0);
+  for (const notice of notices) {assert.deepEqual(notice, {messageId: 'player.preparing.slowStart', retryAfterMs: 500}); assert.ok(Object.isFrozen(notice));}
+  assert.equal(server.eventLog().filter(event => event.resource?.kind === 'session').length, 0, 'retry-only responses fabricate no session');
+  clock.fire();
+  const adopted = await started;
+  assert.equal(starts, 1, 'every 202 asked for the same original start');
+  assert.equal(adopts, 1); assert.equal(durations, 1);
+  assert.equal(server.session(adopted.session.id)?.itemId, 'movie', 'the final response names a real created session');
+  assert.equal(api.selectionRegistration(adopted.session.id, adopted.playback)!.current(), true);
+});
+
+test('bridge callback retirement stops preparation polling without a fabricated receipt', async () => {
+  let starts = 0;
+  const server = new FakePlaybackServer({prepareRounds: () => {starts++; return 3;}});
+  const clock = preparationTimers();
+  const base = fakeHttp(server);
+  let posts = 0;
+  const api = new V1PlaybackApi({send: request => {if (request.method === 'POST') posts++; return base.send(request);}}, {timers: clock.timers});
+  const caller = new AbortController(); let notices = 0;
+  await assert.rejects(api.start({itemId: 'movie'}, {state: 'playing'}, 'registration-source-000002', undefined, caller.signal,
+    {onPreparing: () => {notices++; caller.abort();}}), {name: 'AbortError'});
+  assert.equal(notices, 1); assert.equal(posts, 1, 'a retired callback sends no further POST'); assert.equal(starts, 1); assert.equal(clock.pending(), 0);
+  assert.equal(server.eventLog().filter(event => event.resource?.kind === 'session').length, 0);
+});

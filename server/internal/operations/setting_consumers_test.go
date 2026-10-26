@@ -106,6 +106,7 @@ var settingConsumers = map[string]settingConsumer{
 	"livechannels.LiveDefaults.retryWindowMs":                                {"internal/livechannels/configuration.go", "RetryWindowMs", "Apply shared guide and live-source defaults"},
 	"livechannels.LiveDefaults.streamBufferMs":                               {"internal/livechannels/configuration.go", "StreamBufferMs", "Apply shared guide and live-source defaults"},
 	"livechannels.LiveDefaults.userAgent":                                    {"internal/livechannels/configuration.go", "UserAgent", "Apply shared guide and live-source defaults"},
+	"livechannels.LiveDefaults.timeshiftMinutes":                             {"cmd/server/main.go", "TimeshiftLimits", "Size the live rewind window and buffer budget from the saved server default"},
 	"livechannels.LiveSourceSettings.channelNumbering.mode":                  {"internal/administration/live_sources.go", "Mode", "Set source kind, guide mapping and channel numbers"},
 	"livechannels.LiveSourceSettings.channelNumbering.startAt":               {"internal/administration/live_sources.go", "StartAt", "Set source kind, guide mapping and channel numbers"},
 	"livechannels.LiveSourceSettings.channelNumbering.step":                  {"internal/administration/live_sources.go", "Step", "Set source kind, guide mapping and channel numbers"},
@@ -169,8 +170,8 @@ var settingConsumers = map[string]settingConsumer{
 	// refuses anything outside the drawn ladder, and then published in the
 	// settings document the invitation dialog starts from (settings-bindings rows
 	// people.inviteRole and people.inviteExpiry, frozen per opened invitation).
-	"operations.Settings.people.invitation_role":      {"internal/operations/settings_administration.go", "validPeopleInviteRole", "Domain check on the accepted owner write; the invitation dialog reads the saved default"},
-	"operations.Settings.people.invitation_days":      {"internal/operations/settings_administration.go", "validPeopleInvitationDays", "Domain check on the accepted owner write; the invitation dialog reads the saved default"},
+	"operations.Settings.people.invitation_role":      {"internal/operations/settings_administration.go", "function:validPeopleInviteRole", "Domain check on the accepted owner write; the invitation dialog reads the saved default"},
+	"operations.Settings.people.invitation_days":      {"internal/operations/settings_administration.go", "function:validPeopleInvitationDays", "Domain check on the accepted owner write; the invitation dialog reads the saved default"},
 	"operations.Settings.logLevel":                    {"cmd/server/administration.go", "LogLevel", "Choose recorded log detail"},
 	"operations.Settings.logRetention.category":       {"internal/httpapi/admin_diagnostics.go", "LogRetentionDays", "Prune the message log by category"},
 	"operations.Settings.logRetention.days":           {"internal/httpapi/admin_diagnostics.go", "LogRetentionDays", "Prune the message log by category"},

@@ -2,7 +2,6 @@ import {Fragment, useLayoutEffect, useEffect, useMemo, useRef, useState} from 'r
 import type {DeletionPreview, IdentityProvider, SecurityIntent, SecurityPurpose, SecurityResult, SecurityState} from '@core/hosted-security.ts';
 import {passwordStrength} from '@core/password-strength.ts';
 import {ApiError} from '@core/index.ts';
-import {runAccountExport} from '@core/account-notifications.ts';
 import {AuthCodeBoxes, AuthPasswordField, AuthLinks} from '../kit/accounts';
 import {ServicesAuthenticator, ServicesBadge, ServicesDangerAction, ServicesGroup, ServicesRecoveryCodes, ServicesRowNote, ServicesWorkspaceRow} from '../kit/accounts/ServicesWorkspace';
 import {HostedError, ServicesLabel, ServicesNotice, ServicesQuiet, ServicesRegistrationLead, ServicesStrength, ServicesAuthStage, ServicesHeading, ServicesActions} from '../kit/accounts/ServicesAuth';
@@ -12,6 +11,7 @@ import {accountIdentity, sameAccount, currentAccountWork, type AccountIdentity, 
 import {servicesI18n} from './i18n';
 import type {WorkspaceApi} from './workspace-api';
 import styles from './services.module.css';
+import {AccountExportRow} from './AccountExportRow';
 
 type Task = 'password_set_or_change' | 'email_change' | 'mfa_enroll' | 'mfa_disable' | 'recovery_codes';
 export function SecurityPanel({account, api, identity, username, onDeleted, onSecurityEnded, error: parentError}: {account: ServicesAccount; api: WorkspaceApi; identity: AccountIdentity; username: string; onDeleted?: () => void; onSecurityEnded?: (codes?: readonly string[]) => void; error?: unknown}) {
@@ -19,7 +19,6 @@ export function SecurityPanel({account, api, identity, username, onDeleted, onSe
   const [state, setState] = useState<SecurityState>(), [offered, setOffered] = useState<IdentityProvider[]>([]);
   const [error, setError] = useState<unknown>(), [task, setTask] = useState<Task>(), [deleting, setDeleting] = useState(false);
   const [disconnecting, setDisconnecting] = useState<{id: string; provider: IdentityProvider}>(), [busy, setBusy] = useState(false);
-  const [exporting, setExporting] = useState(false), [exportPending, setExportPending] = useState(false);
   const [connected, setConnected] = useState<IdentityProvider>();
   const life = useRef<AbortController | null>(null);
   const scope = identity.accountId + '/' + identity.familyId;
@@ -64,17 +63,6 @@ export function SecurityPanel({account, api, identity, username, onDeleted, onSe
     const next = await api.security(signal);
     if (!signal.aborted) { setState(next); setDisconnecting(undefined); }
   });
-  const download = async () => {
-    if (exporting || !life.current) return;
-    const signal = life.current.signal; setExporting(true); setError(undefined);
-    try {
-      const value = await runAccountExport(api.notifications, crypto.randomUUID(), {signal});
-      if (signal.aborted) return;
-      if (value.state === 'pending') setExportPending(true);
-      else downloadJSON(value.data);
-    } catch (value) { if (!signal.aborted) setError(value); }
-    finally { if (!signal.aborted) setExporting(false); }
-  };
   const onlyProvider = state && !state.hasPassword && state.providers.length === 1;
   return <>{parentError || error ? <HostedError error={parentError ?? error} /> : null}
     {connected && <ServicesNotice tone="success">{t('web.hostedSecurity.providerConnected', {provider: providerName(connected)})}</ServicesNotice>}
@@ -101,8 +89,7 @@ export function SecurityPanel({account, api, identity, username, onDeleted, onSe
         </ServicesWorkspaceRow>
         {state.mfaEnabled && state.hasPassword && <ServicesWorkspaceRow phoneIcon="i-key" title={t('web.hostedSecurity.recoveryCodes')} help={t('web.hostedSecurity.recoveryCodesHelp')}><Button size="small" onClick={() => setTask('recovery_codes')}>{t('web.hostedSecurity.makeCodes')}</Button></ServicesWorkspaceRow>}
       </ServicesGroup>
-      <ServicesGroup title={t('services.security.yourData')}><ServicesWorkspaceRow phoneIcon="i-file" title={t('web.account.export.button')} help={t('web.account.export.help')}><Button size="small" icon="i-download" loading={exporting} onClick={() => void download()}>{t('web.account.export.button')}</Button></ServicesWorkspaceRow></ServicesGroup>
-      {exportPending && <ServicesQuiet>{t('web.account.export.preparing')}</ServicesQuiet>}
+      <AccountExportRow account={account} api={api} identity={identity}/>
       <ServicesGroup title={t('web.deleteAccount.title')} danger><ServicesWorkspaceRow phoneIcon="i-trash" title={t('web.deleteAccount.row')} help={t('web.deleteAccount.help')}><ServicesDangerAction compact icon="i-trash" onClick={() => setDeleting(true)}>{t('web.deleteAccount.action')}</ServicesDangerAction></ServicesWorkspaceRow></ServicesGroup>
       {task && <SecurityTask key={task} account={account} identity={identity} state={state} task={task} onSecurityEnded={onSecurityEnded} onClose={() => { setTask(undefined); void api.security(life.current?.signal).then(setState, setError); }} />}
       {deleting && <DeleteAccount account={account} identity={identity} target={state.contactAddress || username} onDeleted={onDeleted} onClose={() => setDeleting(false)} />}
@@ -258,4 +245,3 @@ function downloadText(value: string, filename: string, type = 'text/plain') {
   const url = URL.createObjectURL(new Blob([value], {type}));
   const link = document.createElement('a'); link.href = url; link.download = filename; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-function downloadJSON(value: unknown) { downloadText(JSON.stringify(value, null, 2), 'portico-account.json', 'application/json'); }

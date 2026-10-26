@@ -2,13 +2,15 @@ import {useLayoutEffect, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import type {RemoteSource, RemoteSourceService} from '@core/remote-sources.ts';
 import {router} from '../../../router';
-import {Button, Switch} from '../../../kit/controls';
+import {Button} from '../../../kit/controls';
 import {Dialog} from '../../../kit/overlays';
 import {usePhone} from '../../../kit/overlays/shared';
 import {useOwnedResource} from './resources';
-import {OfferedReadingChoices} from './OfferedReadingChoices';
+import {OfferedReadingChoices, offeredChoiceHints, offeredChoiceLabels} from './OfferedReadingChoices';
+import {ReadingChoiceFold} from './ReadingChoiceFold';
 import {ReadingProfileOpening, type ReadingOpeningState} from './reading-profile-opening';
 import {SourceChoiceSummary} from './SourceChoiceSummary';
+import {AdvancedAnalysisConsent} from './AdvancedAnalysisConsent';
 import {SourceChoiceConnectionRows} from './SourceChoiceConnectionRows';
 import {SourceAdvancedRows} from './SourceAdvancedRows';
 import {sourceChoiceValue} from './source-choice-value';
@@ -16,12 +18,6 @@ import {Icon} from '../../../kit/Icon';
 import styles from './remote-sources.module.css';
 
 const t = defaultI18n.t;
-const choiceLabels = {
-  list: 'next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.0.label',
-  once: 'next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.1.label',
-  everything: 'next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.2.label',
-  ask: 'next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.3.label',
-} as const;
 type Props = Readonly<{embedded?: boolean; service: RemoteSourceService; source: RemoteSource; isCurrent: () => boolean;
   reportError: (error: unknown) => void; onClose: () => void;
   errorText: (error: unknown) => string; isAuthFailure: (error: unknown) => boolean}>;
@@ -111,20 +107,18 @@ export function SourceReadingFields({reader, state, disabled, phone, advancedOpe
           onResetAll={() => {if (reader.getSnapshot() === state) reader.select(draft, custom.definition);}}/>
       </div>}
       {custom && advancedOpen && <p className={styles.note}>{t('next.remoteSources.changedRowsHint')}</p>}
-      {folded && selected && !custom && <div className={styles.readingSummary}><b>{t(choiceLabels[selected.name])}</b>
-        <Button size="xs" variant="glass" disabled={disabled} onClick={onAdvancedChange}>{t('next.remoteSources.change')}</Button></div>}
-      {!folded && choices && <OfferedReadingChoices definitions={choices} selected={selected} disabled={disabled || draft.consentDirty}
+      {folded && selected && !custom && <ReadingChoiceFold label={offeredChoiceLabels[selected.name]} hint={offeredChoiceHints[selected.name]}
+        recommended={selected.name === 'once'} disabled={disabled} phone={phone}
+        onChange={() => {if (onAdvancedChange) onAdvancedChange();}}/>}
+      {!folded && choices && <OfferedReadingChoices definitions={choices} selected={selected} disabled={disabled || draft.consentDirty} phone={phone}
         onSelect={choice => reader.select(draft, choice)}/>}
       {draft.choice && <p className={styles.note}>{t('next.remoteSources.changeBody')}</p>}
       <div className={styles.limits}>
-        <SourceChoiceConnectionRows values={draft.values} disabled={disabled || !!draft.choice || !!draft.advancedDirty}
+        <SourceChoiceConnectionRows values={draft.values} disabled={disabled || !!draft.choice || !!draft.advancedDirty} phone={phone}
           markers={markers} onChange={patch => reader.edit(draft, patch)}/>
       </div>
-      {draft.consent !== undefined && <label className={styles.switchRow}>
-        <span>{t('next.remoteSources.allowAdvancedMediaAnalysis')}<small className={styles.note}>{t('next.remoteSources.allowAdvancedMediaAnalysisWarning')}</small></span>
-        <Switch aria-label={t('next.remoteSources.allowAdvancedMediaAnalysis')} checked={draft.consent}
-          disabled={disabled || !!draft.choice || !!draft.advancedDirty} onCheckedChange={value => reader.changeConsent(draft, value)}/>
-      </label>}
+      {draft.consent !== undefined && <AdvancedAnalysisConsent checked={draft.consent}
+        disabled={disabled || !!draft.choice || !!draft.advancedDirty} onChange={value => reader.changeConsent(draft, value)}/>}
       {onAdvancedChange && <button type="button" className={styles.advRow} aria-expanded={advancedOpen} disabled={disabled} onClick={onAdvancedChange}>
         <span><b>{t('next.remoteSources.advanced')}</b><small>{advancedChanges !== undefined && advancedChanges > 0
           ? t('next.remoteSources.advancedChangeCount', {count: advancedChanges}) : t('next.remoteSources.advancedHelp')}</small></span><Icon name="i-down" size={18}/>

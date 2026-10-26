@@ -82,3 +82,18 @@ test('cancelled durable admission restores exact previous family and cannot over
   await adapter.change(current => current?.selectionId === candidate.selectionId ? previous : current);
   assert.equal((await adapter.read())?.session.sessionFamilyId, 'newer');
 });
+
+test('a rendered server choice consumes only its original saved-record revision', async () => {
+  const store = storage([entry('a'), entry('b')]), rendered = await store.read();
+  // The same id survives a family replacement; an id-only choice would select it.
+  await store.connectionStorage('b').change(value => ({...value!, session: {...value!.session, accessToken: 'renewed', tokenGeneration: '2'}}));
+  const replaced = await store.read();
+  await assert.rejects(store.select('b', () => true, rendered.revision), {code: 'cancelled'});
+  assert.deepEqual(await store.read(), replaced);
+  await store.select('b', () => true, replaced.revision);
+  const accepted = await store.read(); assert.equal(accepted.selectedServerId, 'b');
+  await assert.rejects(store.select('a', () => true, replaced.revision), {code: 'cancelled'});
+  assert.deepEqual(await store.read(), accepted);
+  await assert.rejects(store.select('a', () => true, -1));
+  assert.deepEqual(await store.read(), accepted);
+});

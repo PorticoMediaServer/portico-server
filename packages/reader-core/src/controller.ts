@@ -135,6 +135,20 @@ export class ReaderController<P extends object> {
       this.refreshViewState();
       this.publish({status: 'ready', metadata, toc: freezeToc(document.toc),
         location: location ? copy(location) : this.snapshot.location});
+      // Resolving EPUB outline anchors can read every chapter. It must never
+      // hold first paint, navigation or in-book search behind those reads.
+      if (document.loadToc && this.current(session)) {
+        void Promise.resolve().then(() => {
+          if (this.current(session)) return document.loadToc!(session.abort.signal);
+        }).then(toc => {
+          if (!toc || !this.current(session)) return;
+          const location = view.getLocation();
+          if (location) validateLocation(location, options.format);
+          this.publish({toc: freezeToc(toc), location: location ? copy(location) : this.snapshot.location});
+        }).catch(error => {
+          if (this.current(session)) this.publish({error: readerErrorCode(error)});
+        });
+      }
     } catch (error) {
       if (!this.current(session)) return;
       session.abort.abort();

@@ -9,6 +9,7 @@ import (
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/reading"
+	"portico.local/server/internal/readingtest"
 )
 
 // The public Reading projection publishes only the accepted attribution facts
@@ -18,8 +19,8 @@ import (
 func TestReadingPrivateAttributionProjectionOnListAndContinue(t *testing.T) {
 	r := newReadingFixture(t, "book", "pdf")
 	ctx := context.Background()
-	onePath := readingTreeFile(t, r, "Author One/Series/One.epub")
-	twoPath := readingTreeFile(t, r, "Author One/Series/Two.epub")
+	onePath := readingTreeFile(t, r, "Author One/Series/One.epub", readingtest.EPUBWithoutCreator())
+	twoPath := readingTreeFile(t, r, "Author One/Series/Two.epub", readingtest.EPUBWithoutCreator())
 	readingScan(t, r.f, r.library)
 	one, two := readingPathItem(t, r, onePath), readingPathItem(t, r, twoPath)
 	h := New(r.d)

@@ -144,7 +144,8 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, o
   useEffect(() => {
     const scope = searchScope;
     setCurrentHit(undefined); setHitsQuery(query); setHitsScope(scope);
-    if (!scope || searchScopeRef.current !== scope || scope.query !== query || !scope.active || scope.abort.signal.aborted || !active || !query.trim()) {setHits([]); setSearching(false); return;}
+    if (!scope || searchScopeRef.current !== scope || scope.query !== query || !scope.active || scope.abort.signal.aborted || !active || !query.trim()
+      || snapshot.status !== 'ready' || snapshot.sourceId !== publication.source.id || snapshot.sourceRevision !== publication.source.revision) {setHits([]); setSearching(false); return;}
     const life = new AbortController(), signal = AbortSignal.any([life.signal, scope.abort.signal]); let queryCurrent = true;
     setSearching(true); setHits([]);
     void (async () => {
@@ -158,7 +159,7 @@ export function ReaderBook({book, active, reportError, onBack, onOpenSettings, o
     })().catch(error => {if (queryCurrent && searchScopeRef.current === scope && !signal.aborted && authority.isCurrent()) reportError(error);})
       .finally(() => {if (queryCurrent && searchScopeRef.current === scope) setSearching(false);});
     return () => {queryCurrent = false; life.abort();};
-  }, [searchScope, controller, authority, active, query, reportError]);
+  }, [searchScope, controller, authority, active, query, reportError, snapshot.status, snapshot.sourceId, snapshot.sourceRevision, publication]);
   const openSearchHit = (hit: ReaderSearchResult) => {
     const scope = searchScope, current = controller.getSnapshot();
     if (!hit.location || !scope || searchScopeRef.current !== scope || scope.abort.signal.aborted || !activeRef.current || searchMove.current || queryRef.current !== query || !visibleHits.includes(hit) || !active || !authority.isCurrent()
