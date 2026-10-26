@@ -13,7 +13,7 @@ const formatBytes = (bytes: number) => bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 
  * analysis stages. Rows the server cannot honour are not drawn. */
 export function SourceAdvancedRows({values, cacheSupported, transportSupported, cacheApplied, cacheError, cacheUsedBytes, observedInterval, disabled, onChange}: Readonly<{
   values: SourceAdvanced; cacheSupported: boolean; transportSupported: boolean; cacheApplied: boolean; cacheError?: string;
-  cacheUsedBytes: number; observedInterval: number; disabled: boolean; onChange: (values: SourceAdvanced) => void;
+  cacheUsedBytes?: number; observedInterval: number; disabled: boolean; onChange: (values: SourceAdvanced) => void;
 }>) {
   const set = <K extends keyof SourceAdvanced,>(key: K, value: SourceAdvanced[K]) => onChange({...values, [key]: value});
   const intervals = [
@@ -101,7 +101,7 @@ export function SourceAdvancedRows({values, cacheSupported, transportSupported, 
         value={String(values.cacheFloorBytes / (1024 * 1024 * 1024))}
         options={floors.map((size, index) => ({value: size, label: t(`next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.2.rows.0.control.options.${index}.label` as never)}))}
         onValueChange={value => set('cacheFloorBytes', gb(value))}/>
-      <p className={styles.note} role="status">{t('next.remoteSources.advCacheUsed', {used: formatBytes(cacheUsedBytes)})}</p>
+      {cacheUsedBytes !== undefined && <p className={styles.note} role="status">{t('next.remoteSources.advCacheUsed', {used: formatBytes(cacheUsedBytes)})}</p>}
       {!cacheApplied && <p className={styles.note} role="status">{t('next.remoteSources.advCachePending')}</p>}
       {cacheError && <p className={styles.error} role="alert">{t(cacheError === 'source_changed' ? 'next.remoteSources.advCacheChanged'
         : cacheError === 'mount_unavailable' ? 'next.remoteSources.advCacheUnavailable'

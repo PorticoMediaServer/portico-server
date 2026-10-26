@@ -1111,7 +1111,7 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
         <span><b>{t('next.remoteSources.advanced')}</b><small>{t('next.remoteSources.advancedHelp')}</small></span>
         <Icon name="i-down" size={18}/>
       </button>
-      {advancedOpen && <SourceAdvancedRows values={advancedValues} cacheSupported transportSupported={!!sourceNow?.mountId} cacheApplied cacheError={undefined} cacheUsedBytes={0} observedInterval={0} disabled={busy}
+      {advancedOpen && <SourceAdvancedRows values={advancedValues} cacheSupported transportSupported={!!sourceNow?.mountId} cacheApplied cacheError={undefined} observedInterval={0} disabled={busy}
         onChange={next => {setAdvancedTouched(true);setAdvancedValues(next);}}/>}
     </>}
     {step === 'folders' && <>
@@ -1119,7 +1119,7 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
       <div className={styles.lab2}>{t('next.remoteSources.foldersHeader', {name: sourceNow?.name ?? ''})}</div>
       <ul className={styles.pickedList}>
         {chosen.map(folder => <li key={folder.relative} className={styles.pickedRow}>
-          <Icon name="i-folder" size={20}/><span className={styles.pickedPath}>{folder.relative ? `/${folder.relative}` : '/'}<small>{t('next.remoteSources.checksEverySixHours')}</small></span>
+          <Icon name="i-folder" size={20}/><span className={styles.pickedPath}>{folder.relative ? `/${folder.relative}` : '/'}</span>
           <Button size="xs" variant="text" onClick={() => setChosen(chosen.filter(value => value.relative !== folder.relative))} aria-label={t('next.remoteSources.removeFolder', {name: folder.name})}><Icon name="i-x" size={16}/></Button>
         </li>)}
         <li className={styles.pickedRow} data-empty={!chosen.length || undefined}>
@@ -1472,7 +1472,7 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
       <p className={styles.note}>{t('next.remoteSources.advancedHelp')}</p>
       {advanced
         ? <><SourceAdvancedRows values={advanced.values} cacheSupported={advanced.settings?.cacheSupported ?? false} transportSupported={advanced.settings?.cacheSupported ?? false}
-          cacheApplied={advanced.settings?.cacheApplied ?? true} cacheError={advanced.settings?.cacheError} cacheUsedBytes={advanced.settings?.cacheUsedBytes ?? 0} observedInterval={advanced.settings?.scanIntervalObserved ?? 0}
+          cacheApplied={advanced.settings?.cacheApplied ?? true} cacheError={advanced.settings?.cacheError} cacheUsedBytes={advanced.settings?.cacheUsedBytes} observedInterval={advanced.settings?.scanIntervalObserved ?? 0}
           disabled={advancedBusy} onChange={values => setAdvanced(current => current && {...current, values})}/>
           <Button size="compact" variant="primary" disabled={advancedBusy} onClick={() => void saveAdvanced()}>{t('next.remoteSources.save')}</Button></>
         : <p className={styles.muted} role="status">{t('next.remoteSources.loading')}</p>}

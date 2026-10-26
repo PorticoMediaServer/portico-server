@@ -235,7 +235,6 @@ export const remoteSourcesMessages = {
   'next.remoteSources.chooseFolders': 'Choose folders…',
   'next.remoteSources.noFoldersChosen': 'No folders yet. Choose the folders that hold this library’s files.',
   'next.remoteSources.foldersOnlyHint': 'Portico lists a folder only when you open it and downloads nothing to show it.',
-  'next.remoteSources.checksEverySixHours': 'Checks every 6 hours',
   'next.remoteSources.addThemTo': 'Add them to',
   'next.remoteSources.newLibrary': 'A new library',
   'next.remoteSources.existingLibrary': 'An existing library',
