@@ -30,10 +30,14 @@ export function PhoneHealth({reading, loading, failed, range, onRangeChange, onR
   const percent = selected?.metric !== 'netOut' && selected?.metric !== 'diskRead';
   const detail = selectedTile?.history === 'samples' ? healthDetail(selectedTile.points, from, until, percent) : undefined;
   const number = (value: number) => percent ? `${Math.round(value)}%` : selected?.metric === 'netOut'
-    ? t('next.dashboard.mbps', {value: String(Number(value.toFixed(1)))}) : `${formatBytes(value)}/s`;
-  const time = (value: number) => {
-    return new Intl.DateTimeFormat(defaultI18n.locale, {timeZone: current?.timeZone, hour: 'numeric', minute: '2-digit'}).format(value);
-  };
+    ? t('next.dashboard.mbps', {value: new Intl.NumberFormat(defaultI18n.locale, {maximumSignificantDigits: 4}).format(value)}) : `${formatBytes(value)}/s`;
+  const zone = current?.timeZone;
+  const offset = (value: number) => new Intl.DateTimeFormat(defaultI18n.locale, {timeZone: zone, timeZoneName: 'shortOffset'}).formatToParts(value).find(part => part.type === 'timeZoneName')?.value;
+  const extendedTime = !!current && (range === '24h' || offset(from) !== offset(until));
+  const time = (value: number) => new Intl.DateTimeFormat(defaultI18n.locale, {
+    timeZone: zone, hour: 'numeric', minute: '2-digit',
+    ...(extendedTime ? {month: 'short', day: 'numeric', year: 'numeric', timeZoneName: 'shortOffset'} : {}),
+  }).format(value);
   const shortHistory = tiles.some(tile => tile.history === 'samples' && tile.points.length < 2);
   return <section className={styles.section} aria-labelledby={`${gradient}-title`} aria-busy={loading}>
     <div className={styles.heading}><h2 id={`${gradient}-title`}>{t('settings.server.health')}</h2></div>
@@ -55,17 +59,18 @@ export function PhoneHealth({reading, loading, failed, range, onRangeChange, onR
         </div>
       </button>;
     })}{shortHistory && <div className={styles.note}>{t('next.dashboard.healthLater')}</div>}</div> : <div className={styles.feedback}>{t('server.health.loadNotMeasured')}</div>)}
-    <Dialog open={selected !== undefined} onOpenChange={open => {if (!open) setSelected(undefined);}} title={selectedLabel} returnFocusRef={opener} bodyClassName={styles.detailBody}>
+    <Dialog open={selected !== undefined} onOpenChange={open => {if (!open) setSelected(undefined);}} title={selectedLabel} returnFocusRef={opener} headerClassName={styles.detailHeader} bodyClassName={styles.detailBody}>
       {selectedTile && <div className={styles.big}><b>{selectedTile.value}</b>{range === '10m' && <span>{t('next.dashboard.nowValue')}</span>}</div>}
       <div className={`${styles.segment} ${styles.detailSegment}`} role="group" aria-label={t('web.telemetry.period')}>
         {ranges.map(item => <button key={item.value} type="button" aria-pressed={range === item.value} onClick={() => onRangeChange(item.value)}>{t(item.label)}</button>)}
       </div>
-      {loading && !current ? <div className={styles.detailMessage} role="status">{t('next.settings.loading')}</div>
+      {failed ? <div className={`${styles.detailMessage} ${styles.feedback}`} role="alert">{t('next.states.pageFailed')} <button type="button" onClick={onRetry}>{t('next.dashboard.retry')}</button></div>
+        : loading && !current ? <div className={styles.detailMessage} role="status">{t('next.settings.loading')}</div>
         : !selectedTile || selectedTile.history === 'withheld' || selectedTile.history === 'gap' ? <div className={styles.detailMessage}>{t('next.kit.browse.unavailable')}</div>
         : !detail ? <div className={styles.detailMessage}>{selectedTile.points.length < 2 ? t('next.dashboard.healthLater') : t('next.kit.browse.unavailable')}</div>
         : <>
           <div className={styles.chart}>
-            {[1, .5, 0].map(f => <div className={styles.gridline} style={{top: `${(1 - f) * 100}%`}} key={f}><span>{number(detail.top * f)}</span></div>)}
+            {(detail.top === 0 ? [0] : [1, .5, 0]).map(f => <div className={`${styles.gridline} ${f === 0 ? styles.baseline : ''}`} style={{top: `${(1 - f) * 100}%`}} key={f}><span>{number(detail.top * f)}</span></div>)}
             <div className={styles.chartPlot}><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
               <defs><linearGradient id={`${gradient}-detail`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#409fd4" stopOpacity=".24"/><stop offset="1" stopColor="#409fd4" stopOpacity="0"/></linearGradient></defs>
               <path d={detail.area} fill={`url(#${gradient}-detail)`}/><path d={detail.line} fill="none" stroke="#5cb3e2" strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round"/>
