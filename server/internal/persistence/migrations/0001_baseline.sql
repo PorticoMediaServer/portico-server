@@ -2921,6 +2921,7 @@ CREATE TABLE telemetry_rollups(
  detail TEXT NOT NULL,
  first_event_ms INTEGER NOT NULL,
  last_event_ms INTEGER NOT NULL,
+ measurement_revision INTEGER NOT NULL DEFAULT 0 CHECK(measurement_revision IN(0,1)),
  PRIMARY KEY(bucket_ms,metric)
 ) STRICT, WITHOUT ROWID;
 CREATE TABLE social_groups(

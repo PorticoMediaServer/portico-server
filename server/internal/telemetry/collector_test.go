@@ -85,7 +85,7 @@ func TestQuarterTelemetryUsesActualWeightsAndExcludesCurrentQuarter(t *testing.T
 		t.Fatal(again)
 	}
 	old := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC).UnixMilli()
-	if _, e = db.Exec(`INSERT INTO telemetry_rollups VALUES(?,'cpu',1,10,'available','',?,?)`, old, old, old); e != nil {
+	if _, e = db.Exec(`INSERT INTO telemetry_rollups(bucket_ms,metric,samples,total,status,detail,first_event_ms,last_event_ms,measurement_revision) VALUES(?,'cpu',1,10,'available','',?,?,1)`, old, old, old); e != nil {
 		t.Fatal(e)
 	}
 	c.persist(context.Background(), true)
@@ -93,7 +93,7 @@ func TestQuarterTelemetryUsesActualWeightsAndExcludesCurrentQuarter(t *testing.T
 	if e != nil || len(all.Series["cpu"]) != 2 {
 		t.Fatal("All-time15-minute retention", all, e)
 	}
-	if _, e = db.Exec(`INSERT INTO telemetry_rollups VALUES(?,'cpu',1,1,'available','',?,?)`, old+1, old, old); e == nil {
+	if _, e = db.Exec(`INSERT INTO telemetry_rollups(bucket_ms,metric,samples,total,status,detail,first_event_ms,last_event_ms,measurement_revision) VALUES(?,'cpu',1,1,'available','',?,?,1)`, old+1, old, old); e == nil {
 		t.Fatal("non-quarter grain accepted")
 	}
 }
@@ -110,13 +110,13 @@ func TestQuarterTelemetryLateFactsAndSharedReadTransaction(t *testing.T) {
 	if len(read().Series["cpu"]) != 0 {
 		t.Fatal("fake empty value")
 	}
-	if _, e := db.Exec(`INSERT INTO telemetry_rollups VALUES(?,'cpu',2,30,'available','',?,?)`, at, at, at+2000); e != nil {
+	if _, e := db.Exec(`INSERT INTO telemetry_rollups(bucket_ms,metric,samples,total,status,detail,first_event_ms,last_event_ms,measurement_revision) VALUES(?,'cpu',2,30,'available','',?,?,1)`, at, at, at+2000); e != nil {
 		t.Fatal(e)
 	}
 	if len(read().Series["cpu"]) != 1 || read().Series["cpu"][0].V != 15 {
 		t.Fatal("late event not included")
 	}
-	if _, e := db.Exec(`INSERT INTO telemetry_rollups VALUES(?,'cpu',1,99,'available','',?,?)`, at+900000, at+900000, at+900000); e != nil {
+	if _, e := db.Exec(`INSERT INTO telemetry_rollups(bucket_ms,metric,samples,total,status,detail,first_event_ms,last_event_ms,measurement_revision) VALUES(?,'cpu',1,99,'available','',?,?,1)`, at+900000, at+900000, at+900000); e != nil {
 		t.Fatal(e)
 	}
 	if read().Series["cpu"][0].V != 15 {
@@ -149,7 +149,7 @@ func TestLiveRetainsMovingSixtyMeasuredTwoSecondPoints(t *testing.T) {
 func TestAggregateQueriesBorrowOneActualReadAndSeeLateFactsAfterward(t *testing.T) {
 	db := openTelemetryDatabase(t)
 	at := time.Date(2026, 10, 22, 11, 45, 0, 0, time.UTC).UnixMilli()
-	if _, e := db.Exec(`INSERT INTO telemetry_rollups VALUES(?,'cpu',2,30,'available','',?,?)`, at, at, at+2000); e != nil {
+	if _, e := db.Exec(`INSERT INTO telemetry_rollups(bucket_ms,metric,samples,total,status,detail,first_event_ms,last_event_ms,measurement_revision) VALUES(?,'cpu',2,30,'available','',?,?,1)`, at, at, at+2000); e != nil {
 		t.Fatal(e)
 	}
 	e := dbwork.WithReadSnapshot(context.Background(), db, func(ctx context.Context) error {

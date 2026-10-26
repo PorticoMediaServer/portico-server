@@ -29,6 +29,9 @@ const (
 	RollupSamples  = 24 * 60
 	persistEvery   = time.Minute
 	sampleBudget   = 1500 * time.Millisecond
+	// Revision 1 excludes unmeasured counter warm-up/reset samples. Revision 0
+	// rollups may have irreversibly averaged their placeholder zero into a rate.
+	measurementRevision = 1
 )
 
 // Collector samples off the request path and answers windowed reads from
@@ -124,7 +127,7 @@ func appendBounded(list []Sample, v Sample, limit int) []Sample {
 
 // average folds a minute of detail samples into one rollup. A metric that no
 // sample in the minute could measure stays unavailable rather than becoming a
-// zero, and a metric measured only under restriction stays limited.
+// zero. Any contributing limited measurement keeps the result limited.
 func average(samples []Sample, at int64) Sample {
 	out := newSample(at)
 	out.counts = map[string]int{}
@@ -151,7 +154,7 @@ func average(samples []Sample, at int64) Sample {
 			out.lastAt[name] = s.At
 			sum += m.Value
 			count++
-			if status != StatusAvailable {
+			if m.Status == StatusLimited || status == "" {
 				status, detail = m.Status, m.Detail
 			}
 		}
@@ -199,7 +202,8 @@ func (c *Collector) Read(window, zone, until string) (Reading, bool) {
 		for _, name := range MetricNames {
 			for _, s := range c.detail {
 				if s.At >= out.ObservedAt-span.Milliseconds() && s.At <= out.ObservedAt && s.Metrics[name].Known() {
-					out.Series[name] = append(out.Series[name], Point{T: s.At, V: s.Metrics[name].Value})
+					m := s.Metrics[name]
+					out.Series[name] = append(out.Series[name], Point{T: s.At, V: m.Value, Status: PointStatus(m.Status), Detail: m.Detail})
 				}
 			}
 			if len(c.detail) > 0 {
@@ -228,7 +232,7 @@ func (c *Collector) Read(window, zone, until string) (Reading, bool) {
 			for _, name := range MetricNames {
 				m := s.Metrics[name]
 				if m.Known() {
-					a.add(s.At, name, 1, m.Value, m.Status, m.Detail)
+					a.add(s.At, name, int64(s.counts[name]), s.totals[name], m.Status, m.Detail, measurementRevision)
 				}
 			}
 		}
@@ -263,7 +267,15 @@ func newAggregate(r reportwindow.Interval) *aggregate {
 	}
 	return a
 }
-func (a *aggregate) add(at int64, name string, count int64, total float64, status, detail string) {
+func (a *aggregate) add(at int64, name string, count int64, total float64, status, detail string, revision int64) {
+	if revision != measurementRevision {
+		switch name {
+		case "cpu", "diskRead", "diskWrite", "netIn", "netOut":
+			// Old mixed averages cannot be unblended from t/v or their final
+			// status. Preserve their rows, but do not assert measured rates.
+			return
+		}
+	}
 	values, known := a.values[name]
 	if !known || count <= 0 || math.IsNaN(total) || math.IsInf(total, 0) {
 		return
@@ -286,7 +298,7 @@ func (a *aggregate) finish(out *Reading) {
 			if v.count > 0 {
 				at, _ := time.Parse(time.RFC3339Nano, a.interval.Buckets[n].Start)
 				m := Metric{Status: v.status, Value: v.total / float64(v.count), Detail: v.detail}
-				out.Series[name] = append(out.Series[name], Point{T: at.UnixMilli(), V: m.Value})
+				out.Series[name] = append(out.Series[name], Point{T: at.UnixMilli(), V: m.Value, Status: PointStatus(m.Status), Detail: m.Detail})
 				out.Status[name] = m
 			}
 		}
@@ -325,19 +337,19 @@ func ReadAggregate(ctx context.Context, db *sql.DB, window, zone, until string) 
 	out := emptyReading(window, r)
 	a := newAggregate(r)
 	from := r.FromMS() - r.FromMS()%reportwindow.Grain.Milliseconds()
-	rows, e := dbwork.Query(ctx, db, `SELECT bucket_ms,metric,samples,total,status,detail FROM telemetry_rollups WHERE bucket_ms>=? AND bucket_ms<? ORDER BY bucket_ms,metric`, from, r.UntilMS())
+	rows, e := dbwork.Query(ctx, db, `SELECT bucket_ms,metric,samples,total,status,detail,measurement_revision FROM telemetry_rollups WHERE bucket_ms>=? AND bucket_ms<? ORDER BY bucket_ms,metric`, from, r.UntilMS())
 	if e != nil {
 		return out, e
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var t, count int64
+		var t, count, revision int64
 		var name, status, detail string
 		var total float64
-		if e = rows.Scan(&t, &name, &count, &total, &status, &detail); e != nil {
+		if e = rows.Scan(&t, &name, &count, &total, &status, &detail, &revision); e != nil {
 			return out, e
 		}
-		a.add(t, name, count, total, status, detail)
+		a.add(t, name, count, total, status, detail, revision)
 	}
 	if e = rows.Err(); e != nil {
 		return out, e
@@ -395,14 +407,14 @@ func (c *Collector) persist(ctx context.Context, final bool) {
 				continue
 			}
 			stamp := s.At - s.At%reportwindow.Grain.Milliseconds()
-			values = append(values, "(?,?,?,?,?,?,?,?)")
-			args = append(args, stamp, name, count, total, m.Status, m.Detail, s.firstAt[name], s.lastAt[name])
+			values = append(values, "(?,?,?,?,?,?,?,?,?)")
+			args = append(args, stamp, name, count, total, m.Status, m.Detail, s.firstAt[name], s.lastAt[name], measurementRevision)
 		}
 		if len(values) > 0 {
 			// A sample has a fixed, bounded metric vocabulary. Persist all of
 			// its known cells together, preserving each weight and event bound
 			// without one statement per cell on an otherwise idle server.
-			_, e = tx.ExecContext(ctx, `INSERT INTO telemetry_rollups(bucket_ms,metric,samples,total,status,detail,first_event_ms,last_event_ms) VALUES`+strings.Join(values, ",")+` ON CONFLICT(bucket_ms,metric) DO UPDATE SET samples=samples+excluded.samples,total=total+excluded.total,status=CASE WHEN status='limited' OR excluded.status='limited' THEN 'limited' ELSE 'available' END,detail=excluded.detail,first_event_ms=min(first_event_ms,excluded.first_event_ms),last_event_ms=max(last_event_ms,excluded.last_event_ms)`, args...)
+			_, e = tx.ExecContext(ctx, `INSERT INTO telemetry_rollups(bucket_ms,metric,samples,total,status,detail,first_event_ms,last_event_ms,measurement_revision) VALUES`+strings.Join(values, ",")+` ON CONFLICT(bucket_ms,metric) DO UPDATE SET samples=samples+excluded.samples,total=total+excluded.total,status=CASE WHEN status='limited' OR excluded.status='limited' THEN 'limited' ELSE 'available' END,detail=CASE WHEN status='limited' THEN detail ELSE excluded.detail END,first_event_ms=min(first_event_ms,excluded.first_event_ms),last_event_ms=max(last_event_ms,excluded.last_event_ms),measurement_revision=min(measurement_revision,excluded.measurement_revision)`, args...)
 			if e != nil {
 				return
 			}

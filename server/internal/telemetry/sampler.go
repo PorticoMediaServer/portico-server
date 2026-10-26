@@ -16,8 +16,8 @@ type counter struct {
 }
 
 // cpuCounter holds the busy and total CPU time a platform reports. A percentage
-// needs two reads, so the first sample after startup reports the metric as
-// limited rather than pretending to a value.
+// needs two reads, so the first sample after startup is unavailable rather than
+// pretending to a measured value.
 type cpuCounter struct {
 	busy  uint64
 	total uint64
@@ -101,7 +101,7 @@ func rate(out Sample, readName, writeName string, previous counter, at int64, cu
 	}
 	current.at = at
 	if !previous.known || current.at <= previous.at || current.read < previous.read || current.write < previous.write {
-		out.Metrics[readName], out.Metrics[writeName] = Limited(0, warmingUp), Limited(0, warmingUp)
+		out.Metrics[readName], out.Metrics[writeName] = Unavailable(warmingUp), Unavailable(warmingUp)
 		return current
 	}
 	seconds := float64(current.at-previous.at) / 1000
@@ -114,7 +114,7 @@ func rate(out Sample, readName, writeName string, previous counter, at int64, cu
 func deltaCPU(previous *cpuCounter, busy, total uint64) Metric {
 	defer func() { *previous = cpuCounter{busy: busy, total: total, known: true} }()
 	if !previous.known || total <= previous.total || busy < previous.busy {
-		return Limited(0, warmingUp)
+		return Unavailable(warmingUp)
 	}
 	return Available(percent(float64(busy-previous.busy) / float64(total-previous.total) * 100))
 }

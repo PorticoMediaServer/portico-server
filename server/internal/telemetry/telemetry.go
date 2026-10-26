@@ -88,11 +88,21 @@ func newSample(at int64) Sample {
 	return s
 }
 
-// Point is one charted value. A point is only emitted for a metric that was
-// known at that moment, so a gap in a series is a real gap.
+// PointStatus is the provenance of an emitted measurement. Unavailable
+// observations have no point; available zero remains a measured zero.
+type PointStatus string
+
+func (PointStatus) JSONSchema() map[string]any {
+	return map[string]any{"type": "string", "enum": []string{StatusAvailable, StatusLimited}}
+}
+
+// Point is one charted value with its own provenance. No series-level status
+// can establish whether a different, historical observation was measured.
 type Point struct {
-	T int64   `json:"t"`
-	V float64 `json:"v"`
+	T      int64       `json:"t"`
+	V      float64     `json:"v"`
+	Status PointStatus `json:"status"`
+	Detail string      `json:"detail,omitempty"`
 }
 
 // Reading is the wire shape of GET /v1/admin/telemetry.

@@ -248,13 +248,13 @@ func TestAllTimeUsesCommonVisibleStartAcrossFamiliesAndFilters(t *testing.T) {
 	historyAt := time.Date(2025, 2, 4, 0, 0, 0, 0, time.UTC).UnixMilli()
 	addReportFact(t, db, item, "retained", historyAt, 1234)
 	telemetryAt := time.Date(2024, 1, 3, 0, 0, 0, 0, time.UTC).UnixMilli()
-	if _, e := db.Exec(`INSERT INTO telemetry_rollups VALUES(?,'cpu',2,30,'available','',?,?)`, telemetryAt, telemetryAt, telemetryAt+2000); e != nil {
+	if _, e := db.Exec(`INSERT INTO telemetry_rollups(bucket_ms,metric,samples,total,status,detail,first_event_ms,last_event_ms,measurement_revision) VALUES(?,'cpu',2,30,'available','',?,?,1)`, telemetryAt, telemetryAt, telemetryAt+2000); e != nil {
 		t.Fatal(e)
 	}
 	cutoff, _ := time.Parse(time.RFC3339, until)
 	// These real but not-yet-eligible facts must not enter the report.
 	addReportFact(t, db, item, "at-until-all", cutoff.UnixMilli(), 9000)
-	if _, e := db.Exec(`INSERT INTO telemetry_rollups VALUES(?,'cpu',1,99,'available','',?,?)`, cutoff.UnixMilli(), cutoff.UnixMilli(), cutoff.UnixMilli()); e != nil {
+	if _, e := db.Exec(`INSERT INTO telemetry_rollups(bucket_ms,metric,samples,total,status,detail,first_event_ms,last_event_ms,measurement_revision) VALUES(?,'cpu',1,99,'available','',?,?,1)`, cutoff.UnixMilli(), cutoff.UnixMilli(), cutoff.UnixMilli()); e != nil {
 		t.Fatal(e)
 	}
 	expected := "2023-12-31T18:15:00Z"
