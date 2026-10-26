@@ -13,6 +13,7 @@ import type {WorkspaceApi} from './workspace-api';
 import styles from './services.module.css';
 import {AccountExportRow} from './AccountExportRow';
 
+export type HostedSecurityTaskKind = Task;
 type Task = 'password_set_or_change' | 'email_change' | 'mfa_enroll' | 'mfa_disable' | 'recovery_codes';
 export function SecurityPanel({account, api, identity, username, onDeleted, onSecurityEnded, error: parentError}: {account: ServicesAccount; api: WorkspaceApi; identity: AccountIdentity; username: string; onDeleted?: () => void; onSecurityEnded?: (codes?: readonly string[]) => void; error?: unknown}) {
   const {t} = useMemo(servicesI18n, []);
@@ -99,7 +100,7 @@ export function SecurityPanel({account, api, identity, username, onDeleted, onSe
   </>;
 }
 
-function SecurityTask({account, identity, state, task, onClose, onSecurityEnded}: {account: ServicesAccount; identity: AccountIdentity; state: SecurityState; task: Task; onClose: () => void; onSecurityEnded?: (codes?: readonly string[]) => void}) {
+function SecurityTask({account, identity, state, task, onClose, onSecurityEnded, isCurrent}: {account: ServicesAccount; identity: AccountIdentity; state: SecurityState; task: Task; onClose: () => void; onSecurityEnded?: (codes?: readonly string[]) => void; isCurrent?: () => boolean}) {
   const {t} = useMemo(servicesI18n, []), [operationId] = useState(() => crypto.randomUUID());
   const [password, setPassword] = useState(''), [factor, setFactor] = useState(''), [value, setValue] = useState(''), [code, setCode] = useState('');
   const [result, setResult] = useState<SecurityResult>(), [error, setError] = useState<unknown>(), [busy, setBusy] = useState(false);
@@ -110,39 +111,47 @@ function SecurityTask({account, identity, state, task, onClose, onSecurityEnded}
     const active: Flight = {controller: new AbortController(), pending: false};
     life.current = active; setFlight(active); setBusy(false);
     return () => {if (life.current === active) life.current = null; active.controller.abort();};
-  }, [identity.accountId, identity.familyId]);
-  const current = () => Boolean(flight && life.current === flight && !flight.controller.signal.aborted);
+  }, [account, identity.accountId, identity.familyId, isCurrent]);
+  const parentCurrent = () => {try {return isCurrent?.() !== false;} catch {return false;}};
+  const current = () => Boolean(flight && life.current === flight && !flight.controller.signal.aborted && parentCurrent());
+  const assertCurrent = () => {if (!current()) throw new DOMException('Account security opening ended', 'AbortError');};
   const codes = result?.recoveryCodes, confirm = result?.challengeId;
   const title = t(codes ? 'web.hostedSecurity.newCodesTitle' : confirm ? task === 'mfa_enroll' ? 'web.hostedSecurity.addToAuthenticator' : 'web.hostedSecurity.checkEmail' : task === 'password_set_or_change' ? 'account.changePasswordTitle' : task === 'email_change' ? 'web.hostedSecurity.changeEmailTitle' : task === 'mfa_disable' ? 'web.twoStep.turnOffConfirmTitle' : task === 'mfa_enroll' ? 'web.twoStep.turnOnTitle' : 'web.hostedSecurity.newCodesTitle');
   const submit = async () => {
     if (!flight || !current() || flight.pending) return;
-    const signal = flight.controller.signal; flight.pending = true; setBusy(true); setError(undefined);
+    const signal = flight.controller.signal, proofPassword = password, proofFactor = factor, submittedValue = value, submittedCode = code;
+    flight.pending = true; setBusy(true); setError(undefined);setPassword('');setFactor('');setCode('');
+    if(task === 'password_set_or_change')setValue('');
     try {
-      const intent: SecurityIntent = {purpose: task as SecurityPurpose, target: task === 'email_change' ? value.trim() : '', operationId};
+      const intent: SecurityIntent = {purpose: task as SecurityPurpose, target: task === 'email_change' ? submittedValue.trim() : '', operationId};
       const proof = confirm ? undefined : await currentAccountWork(account, session =>
-        account.client.passwordProof(intent, password, factor, identity, session.accessToken, signal), identity);
+        {assertCurrent();return account.client.passwordProof(intent, proofPassword, proofFactor, identity, session.accessToken, signal);}, identity);
       // A proof response may have arrived after another tab changed the account. Acquire and
       // check the current family again before the separate mutation is allowed to leave.
-      const session = await currentAccountWork(account, async session => session, identity);
+      assertCurrent();
+      const session = await currentAccountWork(account, async session => {assertCurrent();return session;}, identity);
+      assertCurrent();
       signal.throwIfAborted();
       const output = confirm ?
-        await account.client.confirm(task === 'mfa_enroll' ? 'mfa' : 'email', confirm, code, operationId, identity, session.accessToken, signal) :
-        await account.client.action(intent, proof!.proof, task === 'password_set_or_change' ? value : '', identity, session.accessToken, signal);
+        await account.client.confirm(task === 'mfa_enroll' ? 'mfa' : 'email', confirm, submittedCode, operationId, identity, session.accessToken, signal) :
+        await account.client.action(intent, proof!.proof, task === 'password_set_or_change' ? submittedValue : '', identity, session.accessToken, signal);
       signal.throwIfAborted();
       if (output.signOut) {
         const current = account.service.getSnapshot().session;
         const original = current && sameAccount(accountIdentity(current), identity);
         const cleanup = account.service.logoutIfCurrent(identity);
-        if (original) onSecurityEnded?.(output.recoveryCodes);
+        if (original && parentCurrent()) onSecurityEnded?.(output.recoveryCodes);
         await cleanup;
         return;
       }
-      await currentAccountWork(account, async () => undefined, identity);
+      assertCurrent();
+      await currentAccountWork(account, async () => {assertCurrent();}, identity);
+      assertCurrent();
       if (signal.aborted) return;
       setPassword(''); setFactor('');
       if (output.challengeId || output.recoveryCodes) setResult(output); else onClose();
-    } catch (value) { if (!signal.aborted) setError(value); }
-    finally {flight.pending = false; if (!signal.aborted) setBusy(false);}
+    } catch (value) { if (current()) setError(value); }
+    finally {flight.pending = false; if (current()) setBusy(false);}
   };
   const resend = async () => {
     // This rendered handler owns this challenge. It never discovers another one
@@ -153,15 +162,15 @@ function SecurityTask({account, identity, state, task, onClose, onSecurityEnded}
     flight.pending = true; setBusy(true); setError(undefined);
     try {
       const output = await currentAccountWork(account, session => {
-        signal.throwIfAborted();
+        signal.throwIfAborted();assertCurrent();
         return account.client.resendEmailChange(confirm, requestId, identity, session.accessToken, signal);
       }, identity);
-      signal.throwIfAborted();
+      signal.throwIfAborted();assertCurrent();
       if (output.expiresAt !== originalExpiry) throw new Error('The account service returned a different email challenge.');
       if (resendOperation.current === requestId) resendOperation.current = undefined;
       setResult(output); setCode('');
-    } catch (value) { if (!signal.aborted) setError(value); }
-    finally { flight.pending = false; if (!signal.aborted) setBusy(false); }
+    } catch (value) { if (current()) setError(value); }
+    finally { flight.pending = false; if (current()) setBusy(false); }
   };
   const ready = confirm ? code.length === 6 : Boolean(password) && (!state.mfaEnabled || Boolean(factor.trim())) && (task === 'password_set_or_change' ? passwordStrength(value).acceptable : task !== 'email_change' || /^\S+@\S+\.\S+$/.test(value.trim()));
   const commitLabel = t(confirm ? 'web.hostedSecurity.confirm' : task === 'password_set_or_change' ? 'account.changePasswordTitle' : task === 'email_change' ? 'services.security.sendCode' : task === 'mfa_disable' ? 'web.hostedSecurity.turnOff' : 'action.continue');
@@ -171,8 +180,8 @@ function SecurityTask({account, identity, state, task, onClose, onSecurityEnded}
     footer={codes ? <Button size="small" variant="primary" onClick={onClose}>{t('action.done')}</Button> : <><Button size="small" disabled={busy} onClick={onClose}>{t('action.cancel')}</Button>{commitAction}</>}>
     {error ? <HostedError error={error} /> : null}
     {codes ? <><ServicesQuiet>{t('services.security.codesBody')}</ServicesQuiet><ServicesRecoveryCodes codes={codes}
-      onCopy={() => void navigator.clipboard.writeText(codes.join('\n')).catch(setError)} onDownload={() => downloadText(codes.join('\n'), 'portico-recovery-codes.txt')} /></> :
-      confirm ? <div className={styles.form}>{task === 'mfa_enroll' ? <><ServicesQuiet>{t('web.hostedSecurity.enterKey')}</ServicesQuiet>{result?.secret && <ServicesAuthenticator secret={result.secret} uri={result.otpAuthUri} onCopy={() => void navigator.clipboard.writeText(result.secret!).catch(setError)} onError={setError} />}</> : <ServicesRegistrationLead address={result?.maskedAddress ?? maskedEmail(value.trim())} message="web.hostedSecurity.sentCode" />}<AuthCodeBoxes length={6} value={code} onChange={setCode} onComplete={() => {}} label={t('web.twoStep.code')} disabled={busy} />{task === 'email_change' && <AuthLinks><button type="button" disabled={!current() || busy || result?.resendsRemaining === 0} onClick={() => void resend()}>{t('auth.sendCodeAgain')}</button></AuthLinks>}</div> :
+      onCopy={() => {if(current())void navigator.clipboard.writeText(codes.join('\n')).catch(error => {if(current())setError(error);});}} onDownload={() => {if(current())downloadText(codes.join('\n'), 'portico-recovery-codes.txt');}} /></> :
+      confirm ? <div className={styles.form}>{task === 'mfa_enroll' ? <><ServicesQuiet>{t('web.hostedSecurity.enterKey')}</ServicesQuiet>{result?.secret && <ServicesAuthenticator secret={result.secret} uri={result.otpAuthUri} onCopy={() => {if(current())void navigator.clipboard.writeText(result.secret!).catch(error => {if(current())setError(error);});}} onError={setError} />}</> : <ServicesRegistrationLead address={result?.maskedAddress ?? maskedEmail(value.trim())} message="web.hostedSecurity.sentCode" />}<AuthCodeBoxes length={6} value={code} onChange={setCode} onComplete={() => {}} label={t('web.twoStep.code')} disabled={busy} />{task === 'email_change' && <AuthLinks><button type="button" disabled={!current() || busy || result?.resendsRemaining === 0} onClick={() => void resend()}>{t('auth.sendCodeAgain')}</button></AuthLinks>}</div> :
       <form className={styles.form} onSubmit={event => { event.preventDefault(); if (ready) void submit(); }}>
         {task === 'password_set_or_change' && <ServicesQuiet>{t('web.hostedSecurity.othersSignedOut')}</ServicesQuiet>}
         {task === 'mfa_disable' && <ServicesQuiet>{t('services.security.disableBody')}</ServicesQuiet>}
@@ -245,3 +254,6 @@ function downloadText(value: string, filename: string, type = 'text/plain') {
   const url = URL.createObjectURL(new Blob([value], {type}));
   const link = document.createElement('a'); link.href = url; link.download = filename; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+/** Shared in-place task; a server Settings caller supplies its original opening guard. */
+export {SecurityTask as HostedSecurityTask};
