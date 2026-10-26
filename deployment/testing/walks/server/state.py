@@ -347,11 +347,11 @@ def _verify_member_browse(client, token, installation, libraries):
     if not isinstance(reading_items, list) or not reading_items:
         raise StateError('member-library-access')
     if 'Comics' in libraries:
-        comics = _call(client, 'GET', '/v1/libraries/' + segment(libraries['Comics']) + '/content',
-                       query={'limit': 5}, token=token, installation=installation)
-        comic_sections = comics.get('sections') if isinstance(comics, dict) else None
-        if not isinstance(comic_sections, list) or not any(isinstance(section, dict) and section.get('entries')
-                                                           for section in comic_sections):
+        comics = _call(client, 'GET', '/v1/reading/items',
+                       query={'libraryId': libraries['Comics'], 'limit': 5},
+                       token=token, installation=installation)
+        comic_items = comics.get('items') if isinstance(comics, dict) else None
+        if not isinstance(comic_items, list) or not comic_items:
             raise StateError('member-library-access')
 
 def _members(client, token, installation, credentials, libraries):
