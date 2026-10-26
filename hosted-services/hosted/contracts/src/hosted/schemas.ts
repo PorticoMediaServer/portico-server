@@ -1765,14 +1765,41 @@ export const schemas = {
       "authorizationUrl": {
         "type": "string"
       },
+      "context": {
+        "properties": {
+          "payload": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "payload",
+          "signature"
+        ],
+        "type": "object"
+      },
       "expiresAt": {
         "format": "date-time",
+        "type": "string"
+      },
+      "intentId": {
         "type": "string"
       },
       "mode": {
         "type": "string"
       },
       "nativeNonce": {
+        "type": "string"
+      },
+      "provider": {
+        "type": "string"
+      },
+      "registeredOrigin": {
+        "type": "string"
+      },
+      "state": {
         "type": "string"
       },
       "transactionId": {
@@ -1784,7 +1811,12 @@ export const schemas = {
       "expiresAt",
       "mode",
       "nativeNonce",
-      "transactionId"
+      "transactionId",
+      "intentId",
+      "registeredOrigin",
+      "state",
+      "context",
+      "provider"
     ],
     "type": "object"
   },
@@ -2615,6 +2647,16 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "IdentitySecurityCancelRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "IdentitySecurityCancelResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
   "IdentitySecurityReturnRequest": {
     "properties": {},
     "required": [],
@@ -2635,6 +2677,21 @@ export const schemas = {
     "properties": {
       "completion": {
         "type": "string"
+      },
+      "expectedIdentity": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "revision"
+        ],
+        "type": "object"
       },
       "intent": {
         "properties": {

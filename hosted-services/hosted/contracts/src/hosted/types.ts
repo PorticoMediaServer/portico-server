@@ -54,7 +54,7 @@ export type AccountSecurityReturnCompleteResponse = { "recentProof"?: { "account
 export type AccountSecurityReturnPrepareRequest = { "codeChallenge": string; "context": { "payload": string; "signature": string }; "state": string };
 export type AccountSecurityReturnPrepareResponse = { "expiresAt": string; "intentId": string };
 export type AccountSecurityReturnStartRequest = { "requestId": string };
-export type AccountSecurityReturnStartResponse = { "authorizationUrl": string; "expiresAt": string; "mode": string; "nativeNonce": string; "transactionId": string };
+export type AccountSecurityReturnStartResponse = { "authorizationUrl": string; "context": { "payload": string; "signature": string }; "expiresAt": string; "intentId": string; "mode": string; "nativeNonce": string; "provider": string; "registeredOrigin": string; "state": string; "transactionId": string };
 export type AccountSessionDeleteRequest = {  };
 export type AccountSessionDeleteResponse = { "current": boolean; "id": string; "revoked": boolean };
 export type AccountSessionsListRequest = {  };
@@ -91,9 +91,11 @@ export type IdentityMfaCompleteRequest = { "challengeId": string; "challengeToke
 export type IdentityMfaCompleteResponse = { "accessToken": string; "account": { "displayName": string; "id": string; "username": string }; "expiresAt": string; "familyId"?: string; "refreshExpiresAt"?: string; "refreshToken"?: string };
 export type IdentityOptionsGetRequest = {  };
 export type IdentityOptionsGetResponse = { "accountSecurity": boolean; "nativeCompletion": string; "password": boolean; "providers": Array<{ "enabled": boolean; "id": string; "native": boolean; "nativeClientIds": Array<string> }>; "recovery": boolean; "registration": boolean; "verifiedContactRequired": boolean };
+export type IdentitySecurityCancelRequest = {  };
+export type IdentitySecurityCancelResponse = {  };
 export type IdentitySecurityReturnRequest = {  };
 export type IdentitySecurityReturnResponse = { "location": string };
-export type IdentityStartRequest = { "completion"?: string; "intent"?: { "operationId": string; "purpose": string; "target": string }; "mode": string; "nativeApple"?: boolean; "proof"?: string; "requestId": string; "sessionMode": string };
+export type IdentityStartRequest = { "completion"?: string; "expectedIdentity"?: { "id": string; "revision": string }; "intent"?: { "operationId": string; "purpose": string; "target": string }; "mode": string; "nativeApple"?: boolean; "proof"?: string; "requestId": string; "sessionMode": string };
 export type IdentityStartResponse = { "authorizationUrl": string; "expiresAt": string; "mode": string; "nativeNonce": string; "transactionId": string };
 export type IdentityTransactionCompleteRequest = { "completionCode"?: string; "displayName": string; "factor": string; "onboardingToken": string; "username": string };
 export type IdentityTransactionCompleteResponse = { "accessToken": string; "account": { "displayName": string; "id": string; "username": string }; "expiresAt": string; "familyId"?: string; "refreshExpiresAt"?: string; "refreshToken"?: string };
@@ -254,6 +256,7 @@ export type RouteContracts = {
 "identity_current": { request: IdentityCurrentRequest; response: IdentityCurrentResponse };
 "identity_mfa_complete": { request: IdentityMfaCompleteRequest; response: IdentityMfaCompleteResponse };
 "identity_options_get": { request: IdentityOptionsGetRequest; response: IdentityOptionsGetResponse };
+"identity_security_cancel": { request: IdentitySecurityCancelRequest; response: IdentitySecurityCancelResponse };
 "identity_security_return": { request: IdentitySecurityReturnRequest; response: IdentitySecurityReturnResponse };
 "identity_start": { request: IdentityStartRequest; response: IdentityStartResponse };
 "identity_transaction_complete": { request: IdentityTransactionCompleteRequest; response: IdentityTransactionCompleteResponse };

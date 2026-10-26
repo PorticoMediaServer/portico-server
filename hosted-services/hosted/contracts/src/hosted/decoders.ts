@@ -47,6 +47,7 @@ export function decodeIdentityCancelResponse(input: unknown): types.IdentityCanc
 export function decodeIdentityCurrentResponse(input: unknown): types.IdentityCurrentResponse { return decode("IdentityCurrentResponse", input) as types.IdentityCurrentResponse; }
 export function decodeIdentityMfaCompleteResponse(input: unknown): types.IdentityMfaCompleteResponse { return decode("IdentityMfaCompleteResponse", input) as types.IdentityMfaCompleteResponse; }
 export function decodeIdentityOptionsGetResponse(input: unknown): types.IdentityOptionsGetResponse { return decode("IdentityOptionsGetResponse", input) as types.IdentityOptionsGetResponse; }
+export function decodeIdentitySecurityCancelResponse(input: unknown): types.IdentitySecurityCancelResponse { return decode("IdentitySecurityCancelResponse", input) as types.IdentitySecurityCancelResponse; }
 export function decodeIdentitySecurityReturnResponse(input: unknown): types.IdentitySecurityReturnResponse { return decode("IdentitySecurityReturnResponse", input) as types.IdentitySecurityReturnResponse; }
 export function decodeIdentityStartResponse(input: unknown): types.IdentityStartResponse { return decode("IdentityStartResponse", input) as types.IdentityStartResponse; }
 export function decodeIdentityTransactionCompleteResponse(input: unknown): types.IdentityTransactionCompleteResponse { return decode("IdentityTransactionCompleteResponse", input) as types.IdentityTransactionCompleteResponse; }
