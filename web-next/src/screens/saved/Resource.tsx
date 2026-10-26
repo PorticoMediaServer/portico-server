@@ -201,7 +201,7 @@ export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
       </div>
       <div className={styles.toolbarEnd}><Button variant="text" size="small" onClick={() => setConfirm(true)}>{t('web.saved.clearHistory')}</Button></div>
     </div>
-    <HistoryTimeline key={lifetime.token} bindings={bindings} sections={sections} reduced={bindings.reducedMotion === true} empty={empty}
+    <HistoryTimeline key={lifetime.token} bindings={bindings} sections={sections} reduced={bindings.presentation.reducedMotion} empty={empty}
       more={snapshot.nextCursor ? <Button className={styles.showMore} size="small" loading={snapshot.loading} onClick={() => { void service.next(); }}>{t('action.showMore')}</Button> : null} />
     <Dialog open={confirm} onOpenChange={open => { if (!busy) setConfirm(open); }} title={t('web.saved.clearHistoryTitle')} description={t('web.saved.clearHistoryBody')} initialFocusRef={cancel}
       footer={<><Button ref={cancel} size="small" disabled={busy} onClick={() => setConfirm(false)}>{t('action.cancel')}</Button><Button size="small" className={styles.destructive} loading={busy} onClick={() => {
@@ -217,25 +217,28 @@ const historyItemKey = (item: HistoryItem) => item.key;
  * first 40 rows (outgoing paint only); every later live row renders without it. */
 function HistoryTimeline({bindings, sections, reduced, empty, more}: {bindings: SavedViewBindings; sections: readonly HistorySection[]; reduced: boolean; empty: ReactNode; more: ReactNode}) {
   const {items, rest} = useMemo(() => {
-    const items: HistoryItem[] = [], rest: HistorySection[] = [];
+    const items: HistoryItem[] = [], rest: Readonly<{key: string; day: Date; entries: HistorySection['entries']; continuation: boolean}>[] = [];
     let rows = 0;
     for (const section of sections) {
-      if (rows >= 40) { rest.push(section); continue; }
+      if (rows >= 40) { rest.push({key: section.key, day: section.day, entries: section.entries, continuation: false}); continue; }
       const keep = section.entries.slice(0, 40 - rows);
       items.push({kind: 'day', key: `day:${section.key}`, day: section.day});
       for (const row of keep) items.push({kind: 'row', key: `row:${row.entry.id}`, entry: row.entry, media: row.media, source: row.source});
       rows += keep.length;
-      if (keep.length < section.entries.length) rest.push({...section, entries: section.entries.slice(keep.length)});
+      // A day that continues past the bounded window keeps its single original heading
+      // in the presence layer; its remaining rows follow without a second label or gap.
+      if (keep.length < section.entries.length) rest.push({key: section.key, day: section.day, entries: section.entries.slice(keep.length), continuation: true});
     }
     return {items, rest};
   }, [sections]);
-  const [lastRows, setLastRows] = useState(0);
-  const liveRows = items.reduce((count, item) => count + (item.kind === 'row' ? 1 : 0), 0);
-  useEffect(() => {if (liveRows) setLastRows(liveRows);}, [liveRows]);
-  // Retention covers only this transition's bounded stagger tail, so the last leaving row
-  // finishes its fade and the retained layout is not held past it.
-  const leavingRows = Math.min(40, Math.max(0, lastRows - liveRows));
-  const exit = reduced ? 160 : 180 + 40 * Math.max(0, leavingRows - 1);
+  const rowKeys = useMemo(() => items.flatMap(item => item.kind === 'row' ? [item.key] : []), [items]);
+  const [priorKeys, setPriorKeys] = useState<readonly string[]>([]);
+  useEffect(() => {if (rowKeys.length) setPriorKeys(rowKeys);}, [rowKeys]);
+  const incoming = new Set(rowKeys);
+  // Retention covers the rows actually leaving in this transition, not a net size change:
+  // same-size replacements and partial removals with arrivals still fade their own rows.
+  const removedRows = Math.min(40, priorKeys.reduce((count, key) => count + (incoming.has(key) ? 0 : 1), 0));
+  const exit = reduced ? 160 : 180 + 40 * Math.max(0, removedRows - 1);
   const presence = useLayoutPresence(items, historyItemKey, reduced, exit, 320);
   const delays = new Map<string, number>();
   let next = 0;
@@ -250,9 +253,11 @@ function HistoryTimeline({bindings, sections, reduced, empty, more}: {bindings: 
         <HistoryRow bindings={bindings} entry={item.entry} media={item.media} source={item.source} paintOnly={leaving} />
       </div>;
     })}
-    {rest.map(section => <section key={`rest:${section.key}`} className={styles.historyDay}><h2>{historyDayLabel(section.day)}</h2>
-      {section.entries.map(({entry, media, source}) => <HistoryRow key={entry.id} bindings={bindings} entry={entry} media={media} source={source} />)}
-    </section>)}
+    {rest.map(section => section.continuation
+      ? <div key={`rest:${section.key}`}>{section.entries.map(({entry, media, source}) => <div key={entry.id} className={styles.historyItem}><HistoryRow bindings={bindings} entry={entry} media={media} source={source} /></div>)}</div>
+      : <section key={`rest:${section.key}`} className={styles.historyDay}><h2>{historyDayLabel(section.day)}</h2>
+        {section.entries.map(({entry, media, source}) => <HistoryRow key={entry.id} bindings={bindings} entry={entry} media={media} source={source} />)}
+      </section>)}
     {empty}
     {more}
   </div>;
