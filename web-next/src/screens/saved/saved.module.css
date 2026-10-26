@@ -226,3 +226,18 @@
 .phoneDirectoryLabel { flex: 1; min-width: 0; font-size: var(--type-subheading-size); font-weight: var(--type-row-heading-weight); color: var(--color-text); }
 .phoneDirectoryCount { color: var(--color-text-tertiary); font-size: var(--type-caption-size); font-variant-numeric: tabular-nums; }
 .phoneDirectoryChevron { color: var(--color-line-strong); flex: none; }
+/* phone-web frame 6: a pushed Saved page's own bar, replacing the desktop heading and tabs. */
+.phoneNav { position: relative; z-index: var(--layer-content); display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; min-height: 56px; padding: 8px 12px 0; }
+.phoneNav > b { font-size: var(--type-subheading-size); font-weight: var(--type-row-heading-weight); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.phoneNavStart { display: flex; justify-content: flex-start; min-width: 0; }
+.phoneNavEnd { display: flex; justify-content: flex-end; min-width: 0; }
+/* phone-web frame 6 / kit.css .phone: the My List rail lifts the authored row-head
+   and track values (118px cards, 12px gap, 8/20/10 track padding, 4px head margin). */
+.phonePreview { margin-top: 2px; }
+.phonePreviewHead { display: flex; align-items: baseline; gap: 14px; width: 100%; padding: 0 20px; margin: 0 0 4px; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; }
+.phonePreviewHead > b { font-size: 19px; font-weight: 700; letter-spacing: -.015em; }
+.phonePreviewHead > span { font-size: 13px; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+.phonePreviewHead > svg { color: var(--color-text-tertiary); margin-left: auto; }
+.phonePreviewRail { display: flex; gap: 12px; overflow-x: auto; padding: 8px 20px 10px; scrollbar-width: none; }
+.phonePreviewRail::-webkit-scrollbar { display: none; }
+.phonePreviewRail > * { width: 118px; flex: none; }

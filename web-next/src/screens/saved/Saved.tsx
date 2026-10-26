@@ -33,6 +33,7 @@ import {SavedHistory, SavedResourceScreen} from './Resource';
 import {ResourceFields} from './ResourceFields';
 import {SavedDialog} from './SavedDialog';
 import {SavedPhoneDirectory} from './SavedPhoneDirectory';
+import {SavedPhoneNav} from './SavedPhoneNav';
 import type {SavedPresentation} from './presentation.ts';
 export type {SavedPresentation} from './presentation.ts';
 import type {SavedOperations} from './operations.ts';
@@ -116,7 +117,7 @@ export function SavedScreen(bindings: SavedBindings) {
   // desktop and tablet keep today's tabbed page with My List active.
   if (phone && route.view === 'home') return <main className={styles.page}>
     {presentation.backdrop && <div className={styles.wash} aria-hidden="true"><AmbientArt source={presentation.backdrop} treatment="hero" /></div>}
-    <SavedPhoneDirectory runtime={runtime} downloadsOffered={bindings.downloadsOffered || localUsable} select={effects.selectRoute} />
+    <SavedPhoneDirectory runtime={runtime} downloadsOffered={bindings.downloadsOffered || localUsable} artwork={bindings.artwork} select={effects.selectRoute} openEntry={effects.openEntry} />
   </main>;
   const dataBindings = readerRoute === route ? viewBindings : {...viewBindings, route: readerRoute};
   const active = readerRoute.view;
@@ -124,9 +125,14 @@ export function SavedScreen(bindings: SavedBindings) {
   const server = <ServerDownloads key={viewKey} service={runtime.downloads} operations={operations} effects={effects} artwork={bindings.preparationArtwork} online={bindings.online} />;
   return <main className={styles.page}>
     {presentation.backdrop && <div className={styles.wash} aria-hidden="true"><AmbientArt source={presentation.backdrop} treatment="hero" /></div>}
-    <header className={styles.header}><h1>{t('saved.title')}</h1></header>
-    <Tabs className={styles.tabs} listClassName={styles.tabsList} value={active} aria-label={t('web.saved.sections')} onValueChange={value => { if (value in tabLabels) effects.selectRoute({view: value as keyof typeof tabLabels}); }}
-      items={tabs.map(tab => ({value: tab, label: t(tabLabels[tab])}))} />
+    {phone && active in tabLabels ? <SavedPhoneNav title={t(tabLabels[active as keyof typeof tabLabels])} onBack={() => effects.selectRoute({view: 'home'})}
+      action={active === 'playlists' && runtime.saved.getSnapshot().projection?.actions?.includes('create_playlist')
+        ? <Button variant="icon" size="small" icon="i-plus" iconOnly aria-label={t('web.saved.newPlaylist')} onClick={() => setCreating({viewKey, kind: 'playlist'})} />
+        : active === 'collections' ? <Button variant="icon" size="small" icon="i-plus" iconOnly aria-label={t('web.saved.newCollection')} onClick={() => setCreating({viewKey, kind: 'collection'})} /> : undefined} /> : phone ? null : <>
+      <header className={styles.header}><h1>{t('saved.title')}</h1></header>
+      <Tabs className={styles.tabs} listClassName={styles.tabsList} value={active} aria-label={t('web.saved.sections')} onValueChange={value => { if (value in tabLabels) effects.selectRoute({view: value as keyof typeof tabLabels}); }}
+        items={tabs.map(tab => ({value: tab, label: t(tabLabels[tab])}))} />
+    </>}
     {route.view === 'downloads' ? localUsable && bindings.localDownloads
       ? <LocalDownloads key={viewKey} port={bindings.localDownloads} operations={operations} effects={effects} server={<ServerDownloads service={runtime.downloads} operations={operations} effects={effects} artwork={bindings.preparationArtwork} online={bindings.online} embedded managed={!!effects.saveReadyPreparation} />} /> : server
       : route.view === 'history' ? <SavedHistory key={viewKey} bindings={dataBindings} />
