@@ -93,7 +93,7 @@ export function ServicesGroup({title, description, actions, danger = false, chil
   return <section className={styles.group}>{(title || actions) && <div className={styles.groupHeading}>{title && <h3>{title}</h3>}{actions && <div>{actions}</div>}</div>}{description && <p className={styles.groupDescription}>{description}</p>}<div className={styles.groupBox} data-danger={danger || undefined}>{children}</div></section>;
 }
 export function ServicesWorkspaceRow({title, help, helpPhone, children, icon, phoneIcon, phoneTone, badge, dim}: {title: ReactNode; help?: ReactNode; helpPhone?: ReactNode; children?: ReactNode; icon?: IconName; phoneIcon?: WorkspaceIconName; phoneTone?: 'green'; badge?: ReactNode; dim?: boolean}) {
-  if (!icon && !phoneIcon) return <SettingsRow label={<>{title}{badge}</>} help={help}>{children}</SettingsRow>;
+  if (!icon && !phoneIcon) return <SettingsRow className={styles.plainRow} label={<>{title}{badge}</>} help={help}>{children}</SettingsRow>;
   return <div className={styles.iconRow} data-phone-icon-only={!icon || undefined} data-dim={dim || undefined}><span className={styles.icon} data-icon={icon ?? phoneIcon} data-phone-tone={phoneTone}><WorkspaceIcon name={(icon ?? phoneIcon)!} size={22} /></span><div><b>{title}{badge}</b>{help && <p>{helpPhone === undefined ? help : <><span className={styles.factDesktop}>{help}</span><span className={styles.factPhone}>{helpPhone}</span></>}</p>}</div><div>{children}</div></div>;
 }
 export function ServicesRowNote({children}: {children: ReactNode}) { return <p className={styles.rowNote}>{children}</p>; }
