@@ -212,3 +212,164 @@ test('a channel start forwards captured cancellation and refuses late adoption a
     control.close();
   }
 });
+
+function preparationQueue() {
+  const jobs = new Map<number, () => void>(); const cleared: unknown[] = []; let serial = 0;
+  return {timers: {setTimer: (fn: () => void) => {jobs.set(++serial, fn); return serial;}, clearTimer: (timer: unknown) => {cleared.push(timer); jobs.delete(timer as number);}},
+    fire() {const job = jobs.entries().next().value; if (!job) throw new Error('no channel preparation wait'); jobs.delete(job[0]); job[1]();},
+    pending: () => jobs.size, cleared};
+}
+
+/** A complete official channel session, as §18.6 serves it, before any freeze. */
+function completeChannelBody(id: string): Record<string, unknown> {
+  return {id, revision: '1', kind: 'channel', role: 'local', state: 'playing', channelId: v1ChannelId(channel),
+    lease: {expiresAt: '2030-01-01T00:00:00Z', reportEveryMs: 10_000},
+    presentation: {generation: 1, mode: 'stream', engine: 'native', url: '', startPositionMs: 0, quality: {mode: 'original'}, subtitles: [],
+      decision: {video: {action: 'copy', reasons: []}, audio: {action: 'copy', reasons: []}},
+      linear: {name: 'News', programme: {id: 'p1', title: 'Morning', startMs: 0, endMs: 3_600_000}, originMs: 1000, windowStartMs: 0, windowEndMs: 0, liveEdgeMs: 0, state: 'preparing'}}};
+}
+
+test('a channel retry-only 202 prepares the original start before any channel state', async () => {
+  const server = new ChannelServer(), clock = preparationQueue();
+  const posts: {key?: string; body: unknown}[] = [];
+  const http: V1Http = {send: async request => {
+    if (request.method === 'POST' && request.path === '/v1/playback/sessions') {
+      posts.push({key: request.headers?.['Idempotency-Key'], body: request.body});
+      if (posts.length <= 2) return {status: 202, headers: {}, body: {retryAfterMs: 500}};
+    }
+    return server.send(request);
+  }};
+  const control = new V1ChannelControl({http, key: () => 'channel-key-0000001', pollMs: 5, timers: clock.timers});
+  const states: any[] = [], errors: string[] = [], preparation: any[] = [];
+  let opening: Promise<void> | undefined;
+  try {
+    opening = control.open(channel, {state: value => states.push(value), error: message => errors.push(message), preparation: value => preparation.push(value)});
+    await settle();
+    assert.deepEqual(preparation, [{messageId: 'player.preparing.slowStart', retryAfterMs: 500}]);
+    assert.deepEqual(states, [], 'no channel state exists before a real 201');
+    assert.equal(clock.pending(), 1);
+    clock.fire(); await settle();
+    assert.deepEqual(preparation, [{messageId: 'player.preparing.slowStart', retryAfterMs: 500}, {messageId: 'player.preparing.slowStart', retryAfterMs: 500}]);
+    assert.deepEqual(states, []);
+    clock.fire(); await settle(); await opening;
+    assert.equal(posts.length, 3);
+    for (const post of posts) {assert.equal(post.key, 'channel-key-0000001'); assert.deepEqual(post.body, posts[0].body);}
+    assert.deepEqual(posts[0].body, {channelId: v1ChannelId(channel), channelGeneration: 'g1', state: 'playing'});
+    assert.equal(preparation.at(-1), undefined, 'acceptance clears the notice');
+    assert.deepEqual(errors, []);
+    assert.ok(states.length >= 1);
+    assert.equal(states[0].playbackId, 'ps_1');
+    assert.equal(states[0].linear.name, 'News');
+    await new Promise(resolve => setTimeout(resolve, 40)); await settle();
+    assert.ok(server.log.some(request => request.method === 'PATCH' && (request.body as any).seek?.live === true), 'the honest generation-0/empty-URL 201 still joins');
+  } finally { control.close(); await opening?.catch(() => {}); }
+});
+
+test('a channel real-session 202 keeps one original ownership receipt and the actual projection', async () => {
+  const clock = preparationQueue();
+  let posts = 0, captures = 0, abandoned = 0;
+  const http: V1Http = {send: async request => {
+    if (request.method !== 'POST' || request.path !== '/v1/playback/sessions') return {status: 204, headers: {}};
+    posts++;
+    if (posts === 1) return {status: 202, headers: {}, body: {...completeChannelBody('ps_1'), retryAfterMs: 500}};
+    return {status: 201, headers: {}, body: completeChannelBody('ps_1')};
+  }};
+  const control = new V1ChannelControl({http, key: () => 'channel-key-0000002', pollMs: 10_000, timers: clock.timers});
+  const states: any[] = [], errors: string[] = [], preparation: any[] = [];
+  let opening: Promise<void> | undefined;
+  try {
+    opening = control.open(channel, {state: value => states.push(value), error: message => errors.push(message), preparation: value => preparation.push(value)},
+      {capturePreparing: () => {captures++; return () => {abandoned++;};}});
+    await settle();
+    assert.equal(captures, 1, 'the complete real 202 session is the original ownership receipt');
+    assert.deepEqual(preparation, [{messageId: 'player.preparing.slowStart', retryAfterMs: 500}]);
+    assert.deepEqual(states, []);
+    clock.fire(); await settle(); await opening;
+    assert.equal(posts, 2); assert.equal(abandoned, 0);
+    assert.equal(states.length, 1);
+    assert.equal(states[0].playbackId, 'ps_1');
+    assert.equal(states[0].linear.name, 'News');
+    assert.deepEqual(errors, []);
+  } finally { control.close(); await opening?.catch(() => {}); }
+});
+
+test('closing a channel during a valid preparation wait clears its timer and sends nothing more', async () => {
+  const server = new ChannelServer(), clock = preparationQueue();
+  let posts = 0;
+  const http: V1Http = {send: async request => {
+    if (request.method === 'POST' && request.path === '/v1/playback/sessions') {posts++; return {status: 202, headers: {}, body: {retryAfterMs: 500}};}
+    return server.send(request);
+  }};
+  const control = new V1ChannelControl({http, key: () => 'channel-key-0000003', pollMs: 10_000, timers: clock.timers});
+  const states: any[] = [], errors: string[] = [], preparation: any[] = [];
+  const opening = control.open(channel, {state: value => states.push(value), error: message => errors.push(message), preparation: value => preparation.push(value)});
+  try {
+    await settle();
+    assert.equal(posts, 1); assert.equal(clock.pending(), 1); assert.equal(preparation.length, 1);
+  } finally {
+    control.close(); await opening.catch(() => {});
+  }
+  await settle();
+  assert.equal(clock.pending(), 0); assert.ok(clock.cleared.length >= 1);
+  assert.equal(posts, 1); assert.deepEqual(states, []); assert.deepEqual(errors, []);
+  assert.deepEqual(preparation, [{messageId: 'player.preparing.slowStart', retryAfterMs: 500}, undefined], 'the close clears the notice');
+});
+
+test('a channel notice callback can retire its own opening before a wait is installed', async () => {
+  const server = new ChannelServer(), clock = preparationQueue();
+  let posts = 0, notices = 0, clears = 0;
+  const http: V1Http = {send: async request => {
+    if (request.method === 'POST' && request.path === '/v1/playback/sessions') {posts++; return {status: 202, headers: {}, body: {retryAfterMs: 500}};}
+    return server.send(request);
+  }};
+  const control = new V1ChannelControl({http, key: () => 'channel-key-0000004', pollMs: 10_000, timers: clock.timers});
+  const states: any[] = [], errors: string[] = [];
+  let opening: Promise<void> | undefined;
+  try {
+    opening = control.open(channel, {state: value => states.push(value), error: message => errors.push(message),
+      preparation: value => {if (value === undefined) clears++; else {notices++; control.close();}}});
+  } finally {
+    await opening?.catch(() => {});
+  }
+  await settle();
+  assert.equal(notices, 1); assert.equal(clears, 1); assert.equal(posts, 1); assert.equal(clock.pending(), 0);
+  assert.deepEqual(states, []); assert.deepEqual(errors, []);
+});
+
+test('an older channel completion cannot publish over its successor', async () => {
+  let posts = 0, release!: () => void;
+  const held = new Promise<void>(resolve => {release = resolve;});
+  const requests: V1Request[] = [];
+  const http: V1Http = {send: async request => {
+    requests.push(request);
+    if (request.method === 'POST' && request.path === '/v1/playback/sessions') {
+      posts++;
+      if (posts === 1) {await held; return {status: 201, headers: {}, body: completeChannelBody('ps_old')};}
+      return {status: 201, headers: {}, body: completeChannelBody('ps_new')};
+    }
+    return {status: 204, headers: {}};
+  }};
+  const control = new V1ChannelControl({http, key: () => `channel-key-${String(posts + 5).padStart(7, '0')}`, pollMs: 10_000});
+  const statesOld: any[] = [], statesNew: any[] = [], errorsNew: string[] = [];
+  let opening: Promise<void> | undefined, successor: Promise<void> | undefined;
+  try {
+    opening = control.open(channel, {state: value => statesOld.push(value), error: () => {}});
+    await settle();
+    assert.equal(posts, 1);
+    successor = control.open(channel, {state: value => statesNew.push(value), error: message => errorsNew.push(message)});
+    await successor;
+    release();
+    await opening; await settle();
+    assert.equal(statesNew.length, 1);
+    assert.equal(statesNew[0].playbackId, 'ps_new');
+    assert.equal(statesNew[0].linear.name, 'News');
+    assert.deepEqual(statesOld, [], 'the older held start never published');
+    assert.deepEqual(errorsNew, []);
+    const deletes = requests.filter(request => request.method === 'DELETE').map(request => request.path);
+    assert.deepEqual(deletes, ['/v1/playback/sessions/ps_old'], 'only the older completion is stopped before teardown');
+  } finally {
+    release();
+    await Promise.allSettled([opening, successor]);
+    control.close();
+  }
+});

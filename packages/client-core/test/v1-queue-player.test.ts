@@ -934,7 +934,8 @@ function queuedSelection(f: ReturnType<typeof setup>) {
 
 test('queued selection never stops or forgets a same-id same-generation occurrence accepted by a later intent/run', async () => {
   for (const freshRun of [false, true]) {
-    let admitted: Session | undefined, retired = 0, forgotten = 0;
+    let admitted: Session | undefined, retired = 0;
+    const forgottenIds: string[] = [];
     const f = setup({server: {itemKind: () => 'movie'}, retireQueuedSelection: () => {retired++; return true;},
       afterResponse: async (request, response) => {
         if (request.path.endsWith(':advance') && response.status === 200) admitted = parseSession((response.body as {session: unknown}).session);
@@ -943,7 +944,7 @@ test('queued selection never stops or forgets a same-id same-generation occurren
       await f.player.playEntries(['movie-a', 'movie-b'].map(queueItemInput));
       const selection = queuedSelection(f);
       const forget = f.api.forget.bind(f.api);
-      f.api.forget = id => {forgotten++; forget(id);};
+      f.api.forget = id => {forgottenIds.push(id); forget(id);};
       let owner: ReturnType<typeof f.api.selectionRegistration> | undefined;
       f.api.duration = async () => {
         assert.ok(admitted);
@@ -958,7 +959,10 @@ test('queued selection never stops or forgets a same-id same-generation occurren
       assert.equal(f.playback.getSnapshot().session?.generation, admitted!.presentation.generation);
       assert.notEqual(f.playback.getSnapshot().intentId, 0);
       assert.equal(owner?.current(), true, 'later registration remains owned');
-      assert.equal(retired, 0); assert.equal(forgotten, 0);
+      assert.equal(retired, 0);
+      assert.ok(admitted);
+      assert.equal(forgottenIds.includes(admitted!.id), false, 'the admitted/live occurrence is never forgotten');
+      for (const id of forgottenIds) assert.equal(id, selection.target.sessionId, 'only the original replaced selection is forgotten');
     } finally {f.stop();}
   }
 });
@@ -1016,4 +1020,86 @@ test('queued selection cleanup cannot use a changed original core operation afte
     assert.equal(f.playback.getSnapshot().itemId, 'replacement-movie');
     assert.equal(retired, 0);
   } finally {f.stop();}
+});
+
+function watchedPreparation(pending: Promise<void>) {
+  let done = false;
+  const promise = pending.finally(() => {done = true;});
+  void promise.catch(() => {}); // Tests join the original result after advancing its supplied clock.
+  return {promise, done: () => done};
+}
+async function drainPreparation(f: ReturnType<typeof setup>, runs: readonly ReturnType<typeof watchedPreparation>[]) {
+  for (let round = 0; round < 24 && runs.some(run => !run.done()); round++) {
+    f.timers.shift()?.fn();
+    await settle();
+  }
+  assert.ok(runs.every(run => run.done()), 'original starts settle within the bounded preparation clock drain');
+  await Promise.allSettled(runs.map(run => run.promise));
+}
+
+test('a queue start carries the real preparation notice on its original intent and clears it on acceptance', async () => {
+  const f = setup({server: {prepareRounds: () => 2}});
+  const started = watchedPreparation(f.player.playEntries(['movie'].map(queueItemInput), {startSeconds: 0}));
+  try {
+    assert.equal(f.playback.getSnapshot().preparation, undefined, 'nothing prepares before a real 202');
+    assert.equal(f.player.getSnapshot().preparation, undefined);
+    for (let i = 0; i < 60 && !f.playback.getSnapshot().preparation; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    const notice = {messageId: 'player.preparing.slowStart', retryAfterMs: 500};
+    assert.deepEqual(f.playback.getSnapshot().preparation, notice);
+    assert.equal(f.playback.getSnapshot().session, undefined, 'a retry-only 202 installs no session');
+    assert.deepEqual(f.player.getSnapshot().preparation, notice);
+    assert.ok(f.log.some(request => request.method === 'POST' && request.path === '/v1/playback/sessions'), 'the separate session start POST was reached');
+    await drainPreparation(f, [started]); await started.promise;
+    assert.equal(f.playback.getSnapshot().preparation, undefined, 'acceptance clears the notice');
+    assert.equal(f.player.getSnapshot().preparation, undefined);
+    assert.ok(f.playback.getSnapshot().session);
+  } finally { f.stop(); await drainPreparation(f, [started]); }
+});
+
+test('a terminal queue start failure clears the preparation notice', async () => {
+  const f = setup({server: {prepareRounds: () => 3}});
+  const started = watchedPreparation(f.player.playEntries(['movie'].map(queueItemInput), {startSeconds: 0}));
+  try {
+    for (let i = 0; i < 60 && !f.playback.getSnapshot().preparation; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert.ok(f.playback.getSnapshot().preparation);
+    f.server.failNext(500);
+    await drainPreparation(f, [started]);
+    assert.equal(f.playback.getSnapshot().preparation, undefined);
+    assert.equal(f.player.getSnapshot().preparation, undefined);
+    assert.equal(f.player.getSnapshot().phase, 'error');
+  } finally { f.stop(); await drainPreparation(f, [started]); }
+});
+
+test('leaving a preparing queue start clears its notice and installs nothing', async () => {
+  const f = setup({server: {prepareRounds: () => 3}});
+  const started = watchedPreparation(f.player.playEntries(['movie'].map(queueItemInput), {startSeconds: 0}));
+  try {
+    for (let i = 0; i < 60 && !f.playback.getSnapshot().preparation; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert.ok(f.playback.getSnapshot().preparation);
+    const posts = f.log.filter(request => request.method === 'POST' && request.path === '/v1/playback/sessions').length;
+    assert.equal(posts, 1);
+    f.player.leave();
+    assert.equal(f.playback.getSnapshot().preparation, undefined);
+    assert.equal(f.player.getSnapshot().preparation, undefined);
+    assert.equal(f.playback.getSnapshot().session, undefined);
+    await drainPreparation(f, [started]);
+    assert.equal(f.log.filter(request => request.method === 'POST' && request.path === '/v1/playback/sessions').length, posts, 'retirement prevents another POST after the pending wait');
+  } finally { f.stop(); await drainPreparation(f, [started]); }
+});
+
+test('a stale older queue preparation cannot publish over its successor', async () => {
+  const f = setup({server: {prepareRounds: () => 4}});
+  const first = watchedPreparation(f.player.playEntries(['movie'].map(queueItemInput), {startSeconds: 0}));
+  const runs = [first];
+  try {
+    for (let i = 0; i < 60 && !f.playback.getSnapshot().preparation; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert.ok(f.playback.getSnapshot().preparation);
+    const second = watchedPreparation(f.player.playEntries(['other'].map(queueItemInput), {startSeconds: 0}));
+    runs.push(second);
+    await drainPreparation(f, runs); await second.promise;
+    const snapshot = f.playback.getSnapshot();
+    assert.equal(snapshot.preparation, undefined);
+    assert.equal(snapshot.itemId, 'other', 'the successor owns the current intent');
+    assert.ok(snapshot.session);
+  } finally { f.stop(); await drainPreparation(f, runs); }
 });

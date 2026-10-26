@@ -118,3 +118,31 @@ test('MS-MUSIC-07: lost object audio is an actual output fact even when the raw 
  assert.equal(typeof out.value==='object'&&out.value.key,'player.signal.output.decoded');
  assert.notEqual((out.value as {key?:string}).key,'player.signal.line.passthrough');
 });
+
+test('MS-MUSIC-08: a raw flag cannot call conversion or a repackage with baked gain passthrough',()=>{
+ const output={...base.output,passthrough:true};
+ const converted=musicSignal({...base,output,server:{route:'converted',quality:'320',delivered:{codec:'opus',bitrateBps:256000}}});
+ assert.equal(converted.state?.key,'player.signal.line.convertedBitrate');
+ assert.equal(converted.steps.find(s=>s.id==='server')?.changed,true);
+ assert.notEqual((converted.steps.find(s=>s.id==='output')?.value as {key?:string}|undefined)?.key,'player.signal.line.passthrough');
+ const repackaged=musicSignal({...base,output,server:{route:'repackaged',delivered:{codec:'flac',sampleRate:96000},loudnessAppliedDb:-7}});
+ assert.equal(repackaged.steps.find(s=>s.id==='server')?.changed,false);
+ const leveling=repackaged.steps.find(s=>s.id==='leveling')!;
+ assert.equal(typeof leveling.value==='object'&&leveling.value.key,'player.signal.line.loudness');
+ assert.notEqual((repackaged.steps.find(s=>s.id==='output')?.value as {key?:string}|undefined)?.key,'player.signal.line.passthrough');
+});
+test('MS-MUSIC-08: a raw flag without server proof or observed output facts stays unknown',()=>{
+ const model=musicSignal({...base,server:undefined,output:{...base.output,passthrough:true}});
+ assert.equal(model.state,undefined);
+ assert.equal(model.steps.find(s=>s.id==='output')?.value,undefined);
+ assert.equal((model.steps.find(s=>s.id==='leveling')?.value as {key?:string}).key,'player.signal.off');
+ assert.equal((model.steps.find(s=>s.id==='eq')?.value as {key?:string}).key,'player.signal.off');
+});
+test('MS-MUSIC-08: an untouched repackage retains its observed passthrough',()=>{
+ const output={...base.output,passthrough:true};
+ const model=musicSignal({...base,output,server:{route:'repackaged',delivered:{codec:'flac',sampleRate:96000,bitDepth:24}}});
+ assert.equal(model.steps.find(s=>s.id==='server')?.changed,false);
+ assert.equal(model.state?.key,'player.signal.line.passthrough');
+ assert.equal((model.steps.find(s=>s.id==='output')?.value as {key?:string}|undefined)?.key,'player.signal.line.passthrough');
+ assert.equal((model.steps.find(s=>s.id==='leveling')?.value as {key?:string}).key,'player.signal.notApplied');
+});
