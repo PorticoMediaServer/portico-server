@@ -130,7 +130,7 @@
   .content { max-width: none; width: 100%; }
   .reset, .signup, .providerOnboarding { padding: 0; align-self: stretch; }
   .heading, .reset .heading, .signup .heading, .providerOnboarding .heading, .ownerReview .heading { font-size: 30px; line-height: 1.06; letter-spacing: -.04em; margin-bottom: 8px; white-space: normal; }
-  /* account.html 30/31 .pa h1; only the create/forgot forms opt in. */
+  /* account.html 30/31 .pa h1; the frame30 taken-name panel keeps 30px. */
   .heading[data-phone-account-form] { font-size: 34px; line-height: 1.04; }
   .ownerReview .facts > div { grid-template-columns: 110px 1fr; }
   .lead, .reset .lead { font-size: 14.5px; line-height: 1.5; margin-bottom: 18px; }
