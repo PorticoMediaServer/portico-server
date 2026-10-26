@@ -9930,3 +9930,21 @@ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=OLD.snap
 BEGIN SELECT RAISE(ABORT,'private disc subtitle is still retained'); END;
 CREATE TRIGGER playback_disc_subtitle_resource_retire AFTER DELETE ON playback_disc_subtitle_resources
 BEGIN UPDATE subtitle_resources SET deleted=1 WHERE id=OLD.resource_id AND scope='personal'; END;
+
+-- Closed provider Security return openings. No credentials or sign-in grants.
+CREATE TABLE identity_security_return_openings(
+ operation_id TEXT PRIMARY KEY,
+ actor_binding TEXT NOT NULL CHECK(length(actor_binding)=43),
+ request_hash TEXT NOT NULL CHECK(length(request_hash)=43),
+ opening_id TEXT NOT NULL,
+ task_id TEXT NOT NULL,
+ phase TEXT NOT NULL CHECK(phase IN('prepared','confirmed','cancelled')),
+ payload TEXT NOT NULL,
+ signature TEXT NOT NULL,
+ expires_ms INTEGER NOT NULL,
+ transaction_id TEXT NOT NULL DEFAULT '',
+ code_digest TEXT NOT NULL DEFAULT '',
+ confirmation_payload TEXT NOT NULL DEFAULT '',
+ confirmation_signature TEXT NOT NULL DEFAULT ''
+) STRICT;
+CREATE INDEX identity_security_return_actor ON identity_security_return_openings(actor_binding,phase);
