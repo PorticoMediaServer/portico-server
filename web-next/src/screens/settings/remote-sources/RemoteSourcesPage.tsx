@@ -848,7 +848,6 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
   // The drawn wizard has five steps: what, the remote, how Portico treats it,
   // folders, done (remote-sources.html#1, #8 to #12).
   const stepNumber = step === 'what' ? 1 : step === 'remote' ? 2 : step === 'reading' ? 3 : step === 'folders' ? 4 : 5;
-  const stepLabel = step === 'done' ? undefined : t('next.remoteSources.stepOf', {step: stepNumber});
   const familyLabel = family === 'webdav' ? 'next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.0.label'
     : family === 'rclone' ? 'next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.1.label'
       : 'next.settingsSpec.server.remote-sources.panels.newSource.tabs.0.groups.0.rows.0.control.options.2.label';
@@ -920,10 +919,7 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
     description={step === 'done' ? undefined : stepTitle} footer={footer}>
     {error && <p className={styles.error} role="alert">{error}</p>}
     {finishError && <p className={styles.error} role="alert">{finishError}</p>}
-    {step !== 'done' && <div className={styles.wizardHead}>
-      <div className={styles.wizardSteps} aria-hidden="true">{[1, 2, 3, 4, 5].map(value => <i key={value} data-on={value <= stepNumber || undefined}/>)}</div>
-      <div className={styles.wizardStep}><span>{stepLabel}</span><b>{stepTitle}</b></div>
-    </div>}
+    {step !== 'done' && <WizardStepHeader step={stepNumber} count={5} title={stepTitle}/>}
     {step === 'what' && <div className={styles.whatCards} role="radiogroup" aria-label={t('next.remoteSources.whatToConnect')}>
       {whatOptions.map(option => <button key={option.family} type="button" role="radio" aria-checked={family === option.family} className={styles.whatCard}
         data-picked={family === option.family || undefined} disabled={busy} onClick={() => chooseFamily(option.family, renderGuard, formToken)}>
