@@ -120,12 +120,15 @@ export function scopedHostedApproval<Review extends ApprovalReview>(account: Ser
       const op = operation(); await op.assert();
       const location = await operations.complete(account, result, op.signal); await op.assert();
       if (!location) return;
+      // A transient final account recheck must not spend the original protected
+      // attempt before its return can be delivered. Retry remains this operation.
+      await currentAccountWork(account, async () => {op.check();}, result.identity);
+      const finalPending = await op.assert();
       if (!await forgetHostedOwnerPending(store, pending)) throw changed();
       op.check();
-      await currentAccountWork(account, async () => {op.check();}, result.identity);
-      op.check();
       const session = account.service.getSnapshot().session;
-      if (!session || !sameAccount(accountIdentity(session), result.identity)) throw changed();
+      if (!session || !sameAccount(accountIdentity(session), result.identity)) throw new ApiError(409, 'account_changed', 'account_changed', false);
+      if (Date.now() >= Math.min(finalPending.deadline, Date.parse(result.expiresAt))) throw changed();
       reviewed = undefined;
       return location;
     },

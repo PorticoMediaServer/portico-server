@@ -104,3 +104,19 @@ test('a family replacement during final durable cleanup prevents delivery of a r
   const controller = scopedHostedOwnerClaim(a.account, store, pending!); await controller.review(); a.installed(); replaceOnForget = true;
   await assert.rejects(controller.complete(), {code: 'account_changed'}); assert.equal(f.saved(), undefined); controller.dispose();
 });
+test('a transient final account recheck keeps the original protected return attempt for exact retry', async () => {
+  const f = vault(), a = accountFixture(), pending = await restoreHostedOwnerPending(f.store, origin, capture());
+  let responseReceived = false, armed = false, failNextSync = false;
+  a.intercept(async path => {if (path.endsWith('/complete')) responseReceived = true;});
+  const store: HostedOwnerPendingStore = {...f.store, read: async () => {
+    const value = await f.store.read();
+    if (responseReceived && !armed) {armed = true; failNextSync = true;}
+    return value;
+  }};
+  a.account.service.synchronize = async () => {if (failNextSync) {failNextSync = false; throw new Error('temporary account transport failure');}};
+  const controller = scopedHostedOwnerClaim(a.account, store, pending!); await controller.review(); a.installed();
+  await assert.rejects(controller.complete());
+  assert.equal(f.saved()?.attemptId, pending!.attemptId, 'no return was delivered, so its exact proof stays pending');
+  assert.equal(await controller.complete(), 'https://original.example/auth/portico-return#transaction=opaque_transaction');
+  assert.equal(f.saved(), undefined); controller.dispose();
+});

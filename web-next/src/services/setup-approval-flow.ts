@@ -9,7 +9,7 @@ export type SetupApprovalDisplay = Readonly<{
 }>;
 export type SetupApprovalSnapshot = Readonly<{
   phase: 'loading' | 'review' | 'approved' | 'denied' | 'returning' | 'error' | 'expired';
-  busy: boolean; display?: SetupApprovalDisplay; error?: unknown;
+  busy: boolean; approved?: true; display?: SetupApprovalDisplay; error?: unknown;
 }>;
 const changed = () => new ApiError(409, 'claim_stale', 'claim_stale', false);
 
@@ -62,7 +62,7 @@ export class SetupApprovalFlow {
       const display = Object.freeze({name: review.name, address: review.address,
         accountName: session.account.displayName || session.account.username,
         requestedAt: review.requestedAt, expiresAt: review.expiresAt});
-      this.publish({phase: review.status === 'approved' ? 'approved' : 'review', busy: false, display});
+      this.publish({phase: review.status === 'approved' ? 'approved' : 'review', busy: false, ...(review.status === 'approved' ? {approved: true as const} : {}), display});
     });
   }
   async decide(decision: 'approve' | 'deny') {
@@ -76,13 +76,16 @@ export class SetupApprovalFlow {
         await currentAccountWork(this.account, async () => {this.current(generation, identity);}, identity);
         this.current(generation, identity);
         this.publish({phase: 'denied', busy: false, display: this.state.display});
-      } else this.publish({phase: 'approved', busy: false, display: this.state.display});
+      } else this.publish({phase: 'approved', busy: false, approved: true, display: this.state.display});
     });
   }
   /** A denial has no credential exchange to finish. Return only to the original
    * reviewed server, on the viewer's explicit action and under the same family. */
-  returnDenied() {
-    if (this.disposed || this.state.phase !== 'denied' || this.state.busy || !this.review || !this.identity) return;
+  returnDenied() {if (this.state.phase === 'denied') this.returnReviewed();}
+  /** A refused attempt may return to its original public server address, never
+   * bypass a confirmed approval's protected completion or use a successor family. */
+  returnReviewed() {
+    if (this.disposed || !['denied', 'error'].includes(this.state.phase) || this.state.approved || this.state.busy || !this.review || !this.identity) return;
     const generation = this.epoch, identity = this.identity, address = this.review.address;
     try {
       this.current(generation, identity);
@@ -94,14 +97,14 @@ export class SetupApprovalFlow {
     }
   }
   async complete() {
-    if (this.state.phase !== 'approved' || !this.review) return;
+    if (!this.state.approved || !['approved', 'error'].includes(this.state.phase) || !this.review) return;
     return this.run(async (generation, identity) => {
       const location = await this.controller.complete();
       this.current(generation, identity);
       if (!location) return; // Not installed yet: stay put, with no polling.
       await currentAccountWork(this.account, async () => {this.current(generation, identity);}, identity);
       this.current(generation, identity);
-      this.publish({phase: 'returning', busy: false, display: this.state.display});
+      this.publish({phase: 'returning', busy: false, approved: true, display: this.state.display});
       this.current(generation, identity);
       this.navigate(location);
     });
