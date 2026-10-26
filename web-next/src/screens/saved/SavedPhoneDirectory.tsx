@@ -1,6 +1,5 @@
 import {useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
-import {Button} from '../../kit/controls';
 
 import type {ShellArtwork} from '../../shell/artwork';
 import {savedCatalogueEntry} from './catalogue-selection';
@@ -13,6 +12,7 @@ import {shapeFor} from '@core/presentation/card-shape.ts';
 import type {ContentEntry} from '@core/library-content.ts';
 import type {SavedRuntime, SavedScreenRoute} from './runtime.ts';
 import styles from './saved.module.css';
+import directory from './saved-phone-directory.module.css';
 
 const t = defaultI18n.t;
 /** phone-web frame 6: Saved is a list of rows on a phone, each opening its own
@@ -65,14 +65,14 @@ export function SavedPhoneDirectory({runtime, downloadsOffered, artwork, select,
       <div className={styles.phonePreviewRail}>{preview.map(media => <PosterCard key={media.id} model={homeCardModel(media, false, {t, locale: defaultI18n.region.formatLocale})}
         artwork={artwork.foreground(media.posterUrl, 118 * (globalThis.devicePixelRatio || 1), 2 / 3)} context="shelf" onNavigate={() => openEntry(media)} />)}</div>
     </div>}
-    <div className={styles.phoneDirectoryRows} role="list">
+    <div className={directory.rows} role="list">
       {rowsShown.map(row => <div key={row.id} role="listitem">
-        <Button variant="text" size="small" className={styles.phoneDirectoryRow} onClick={() => select(row.route)}>
-          <span className={styles.phoneDirectoryIcon}><Icon name={row.icon} size={18} /></span>
-          <span className={styles.phoneDirectoryLabel}>{row.label}</span>
-          {row.count !== undefined && <span className={styles.phoneDirectoryCount}>{defaultI18n.number(row.count)}</span>}
-          <Icon name="i-right" size={18} className={styles.phoneDirectoryChevron} />
-        </Button>
+        <button type="button" className={directory.row} onClick={() => select(row.route)}>
+          <span className={directory.icon}><Icon name={row.icon} size={18} /></span>
+          <span className={directory.label}>{row.label}</span>
+          {row.count !== undefined && <span className={directory.count}>{defaultI18n.number(row.count)}</span>}
+          <Icon name="i-right" size={18} className={directory.chevron} />
+        </button>
       </div>)}
     </div>
   </div>;
