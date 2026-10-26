@@ -63,13 +63,23 @@ that takes the lock before anything boots or opens**.
 A receipt is **mandatory**: the lease writes its held fact before `prepare` runs, and a
 missing or unwritable receipt parent refuses `RECEIPT_UNAVAILABLE` (or `RECEIPT_REQUIRED`
 when no path is given) before prepare, acquire or the body, so a device is never used
-without a written record. `python3 avd_custody.py <avd>` stays the optional lock-only
+without a written record. This helper's own codes are preserved verbatim in a receipt;
+a callback code is kept only when it is bounded and hyphenated, and anything else becomes
+`unspecified`, so raw text, paths and messages cannot escape. `python3 avd_custody.py <avd>` stays the optional lock-only
 probe and writes nothing.
 
 `prepare` (optional) runs under the lock and may device_open or boot the target; it must
 return exactly `{'serial','avd'}`, and a different device refuses `PREPARE_IDENTITY`. A
 known target may already be booted — that is allowed and `prepare` is skipped, but it is
 never treated as identity or admission.
+
+**A refused admission performs no mutation.** When the lock is held, a claimant exists,
+identity fails or admission is refused, the lease stops before `prepare`, before `acquire`
+and before the body: no install, no clock read or correction, no `adb reverse`, no UI
+action and no probe runs. `prepare` is the only callback that may act before admission, and
+only for an authorised allocation or boot — never an install, clock or reverse. A session
+is opened against the already-installed app; an over-install never precedes a
+`DEVICE_IN_USE` result.
 
 **Conflicts are decided before anything opens — including before `prepare`.** Any other
 Android session that reports this serial **or** this exact AVD on any serial is a
@@ -111,13 +121,14 @@ integrated — so this helper covers cooperative scripted walks and the owner of
 `device_open` only, and acquire-before-install ordering stays a wrapper decision. `python3 avd_custody.py <avd>` prints `free`/`busy` without touching a device.
 
 Synthetic regression tests, `test_avd_custody.py`, run with no adb, CLI, session or
-device: 23 cases cover refused admission running no install/use/cleanup, serial mismatch
+device: 25 cases cover refused admission running no install/use/cleanup, serial mismatch
 never acquiring, a stale claimant skipping before open, same-serial/wrong-name and
 same-AVD/other-serial conflicts, conflicts appearing only after admission (handle
 persisted, nothing admitted), strict acquire and prepare shapes, `prepare` seeing the lock
-held, a missing or absent receipt parent refusing before anything runs, callback codes
-normalised to a bounded form, and handback `None`/`{}`/command/operationless/unknown
-results.
+held, a missing or absent receipt parent refusing before anything runs, a refused
+admission leaving no install/clock/reverse/UI/probe trace, this helper's own refusal code
+kept verbatim, raw callback text unable to escape, and handback
+`None`/`{}`/command/operationless/unknown results.
 
 What is *not* enforced: a session opened outside the helper, an `adb` or launcher call made
 around it, and any physical handback. Cooperative callers are covered; the claimant check

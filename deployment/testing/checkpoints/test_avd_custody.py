@@ -35,8 +35,12 @@ class CustodyTests(unittest.TestCase):
         self.scratch = tempfile.TemporaryDirectory()
         self.addCleanup(self.scratch.cleanup)
         self.lock_dir = Path(self.scratch.name)
-        # The helper's lock path is fixed at /tmp; the synthetic tests assert the real
-        # path so a live AVD name is never created here except the lock file itself.
+        # Every lock in these tests is scratch: the module template is pointed at this
+        # temporary directory and restored afterwards, so the real allocation lock is
+        # never opened, contended or touched.
+        self.original_template = avd_custody.LOCK_TEMPLATE
+        avd_custody.LOCK_TEMPLATE = str(self.lock_dir / 'portico-avd-{name}.lock')
+        self.addCleanup(setattr, avd_custody, 'LOCK_TEMPLATE', self.original_template)
         self.receipt = self.lock_dir / 'receipt.json'
         self.effects = []
 
@@ -66,14 +70,15 @@ class CustodyTests(unittest.TestCase):
         options.update(kwargs)
         return avd_custody.lease(AVD, SERIAL, **options)
 
-    # 1. A refused admission runs no install, use or cleanup, and releases the lock.
+    # 1. A refused admission runs no install, clock, reverse, UI or probe work.
     def test_admission_refusal_runs_no_body(self):
         def refused():
             self.effects.append('acquire')
             raise avd_custody.DeviceInUse()
         with self.assertRaises(avd_custody.DeviceInUse):
             with self.lease(acquire=refused) as held:
-                self.effects.append('body')
+                for marker in ('install', 'clock', 'reverse', 'ui', 'probe', 'body'):
+                    self.effects.append(marker)
         self.assertEqual(self.effects, ['acquire'])
         self.assertEqual(avd_custody.probe(AVD), 'free')
         recorded = json.loads(self.receipt.read_text())
@@ -106,7 +111,8 @@ class CustodyTests(unittest.TestCase):
         with self.assertRaises(avd_custody.DeviceInUse):
             with self.lease(before=[row('t3-synthetic0001')],
                             prepare=should_not_prepare, acquire=should_not_open):
-                self.effects.append('body')
+                for marker in ('install', 'clock', 'reverse', 'ui', 'probe', 'body'):
+                    self.effects.append(marker)
         self.assertEqual(self.effects, [])
         self.assertEqual(avd_custody.probe(AVD), 'free')
         self.assertEqual(json.loads(self.receipt.read_text())['outcome'], 'in-use')
@@ -313,6 +319,33 @@ class CustodyTests(unittest.TestCase):
         recorded = json.loads(self.receipt.read_text())
         self.assertEqual(recorded['sessionHandback'],
                          {'attempted': True, 'result': 'refused', 'code': 'panel-already-gone'})
+
+    # 26. A refusal keeps this helper's own code verbatim in the receipt.
+    def test_refusal_receipt_keeps_helper_code(self):
+        with self.assertRaises(avd_custody.CustodyRefused) as caught:
+            with self.lease(adb_name=lambda serial: 'Portico_TV_API36'):
+                self.effects.append('body')
+        self.assertEqual(caught.exception.code, 'SERIAL_AVD_MISMATCH')
+        recorded = json.loads(self.receipt.read_text())
+        self.assertEqual(recorded['code'], 'SERIAL_AVD_MISMATCH')
+        self.assertEqual(recorded['outcome'], 'refused')
+        self.assertEqual(self.effects, [])
+
+    # 27. A raw callback code cannot escape into the receipt, and the class survives.
+    def test_raw_callback_code_cannot_escape(self):
+        def refuse(identity):
+            raise avd_custody.CustodyRefused('raw: /home/justin/secret path')
+        with self.lease(handback=refuse):
+            pass
+        recorded = json.loads(self.receipt.read_text())
+        self.assertEqual(recorded['sessionHandback']['code'], 'unspecified')
+        self.assertNotIn('secret', json.dumps(recorded))
+
+    # 28. The shipped lock template is asserted as a string only, never acquired.
+    def test_default_lock_template_constant_is_unchanged(self):
+        self.assertEqual(self.original_template, '/tmp/portico-avd-{name}.lock')
+        self.assertEqual(avd_custody.LOCK_TEMPLATE, str(self.lock_dir / 'portico-avd-{name}.lock'))
+        self.assertTrue(avd_custody.lock_path(AVD).is_relative_to(self.lock_dir))
 
 
 if __name__ == '__main__':

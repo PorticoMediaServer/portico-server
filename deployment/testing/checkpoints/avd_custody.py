@@ -51,13 +51,25 @@ ANDROID = 'android'
 IDENTITY_KEYS = ('sessionId', 'serial', 'avd')
 CLOSED_HANDBACK = ('closed', 'already-absent')
 CODE_PATTERN = re.compile(r'[a-z][a-z0-9-]{1,48}\Z')
+# Every code this helper raises itself. They are preserved verbatim in a receipt.
+HELPER_CODES = frozenset({
+    'BAD_AVD_NAME', 'BAD_SERIAL', 'SERIAL_UNAVAILABLE', 'SERIAL_AVD_MISMATCH',
+    'PREPARE_SHAPE', 'PREPARE_IDENTITY', 'ACQUIRE_SHAPE', 'ACQUIRE_IDENTITY',
+    'SESSION_LIST_UNREADABLE', 'SESSION_LIST_UNAVAILABLE', 'SESSION_NOT_NEWLY_ADMITTED',
+    'SESSION_NOT_ADMITTED', 'SESSION_NOT_EXCLUSIVE', 'SESSION_WRONG_PLATFORM',
+    'RECEIPT_REQUIRED', 'RECEIPT_UNAVAILABLE',
+})
 CLASS_PATTERN = re.compile(r'[A-Za-z][A-Za-z0-9_]{0,48}\Z')
 
 
 def closed_code(value, fallback='unspecified'):
-    """A bounded closed-form code, never raw exception text."""
-    if isinstance(value, str) and CODE_PATTERN.match(value):
-        return value
+    """A code for the receipt: this helper's own codes verbatim, a bounded callback
+    code as given, and anything else as the fallback. Raw text never passes."""
+    if isinstance(value, str):
+        if value in HELPER_CODES:
+            return value
+        if CODE_PATTERN.match(value):
+            return value
     return fallback
 
 
