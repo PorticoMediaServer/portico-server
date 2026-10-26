@@ -74,6 +74,10 @@ func (s *Store) ReleasePinTx(ctx context.Context, tx *sql.Tx, p Pin) error {
 // or artifact IO. Only ownedcapture may physically remove bytes and uncharge
 // quota, after checking its actual descriptors and all remaining references.
 func (s *Store) CollectTx(ctx context.Context, tx *sql.Tx, after string, limit int) (next string, collected int, err error) {
+	if s == nil || s.serverID == "" {
+		err = ErrInput
+		return
+	}
 	if err = writeTx(ctx, tx); err != nil {
 		return
 	}

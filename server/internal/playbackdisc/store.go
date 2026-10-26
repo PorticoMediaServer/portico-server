@@ -78,7 +78,7 @@ func (s *Store) sessionTx(ctx context.Context, tx *sql.Tx, v Snapshot) (int64, e
 	return until, nil
 }
 func (s *Store) checkTx(ctx context.Context, tx *sql.Tx, v Snapshot, check Check) (int64, error) {
-	if check == nil {
+	if s == nil || s.serverID == "" || check == nil {
 		return 0, ErrInput
 	}
 	// A callback gets its own deep value; mutating it cannot retarget this store's
