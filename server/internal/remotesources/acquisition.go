@@ -48,6 +48,16 @@ func (s *Service) Acquire(ctx context.Context, path, lane string) (storage.Remot
 	if !ok || b.Removed || relative == "" {
 		return nil, storage.ErrRemoteOffline
 	}
+	return s.acquireBinding(ctx, path, lane, b, relative, nil)
+}
+
+// acquireBinding retains an already selected source rather than resolving the
+// path again. beforeProvider, when present, narrows direct DAV setup after its
+// configuration is opened and before any stat/version request reaches origin.
+func (s *Service) acquireBinding(ctx context.Context, path, lane string, b binding, relative string, beforeProvider func(context.Context, string) error) (storage.RemoteObject, error) {
+	if beforeProvider != nil && b.Kind != "webdav" {
+		return nil, storage.ErrRemoteRange
+	}
 	if err := s.requireWebDAVRandom(ctx, b.ID); err != nil {
 		return nil, err
 	}
@@ -102,6 +112,11 @@ func (s *Service) Acquire(ctx context.Context, path, lane string) (storage.Remot
 		d, o.generation, err = s.dav(ctx, b.ID)
 		if err != nil {
 			return nil, err
+		}
+		if beforeProvider != nil {
+			if err = beforeProvider(ctx, o.generation); err != nil {
+				return nil, err
+			}
 		}
 		gate, gateErr := s.sourceOperations(ctx, b.ID, o.generation)
 		if gateErr != nil {
