@@ -36,18 +36,34 @@ func deliveryDiagnosticsFixture(t *testing.T) (*Service, *HLS, context.CancelFun
 	return s, h, cancel
 }
 
+func assertRecentFailuresArray(t *testing.T, d DeliveryDiagnostics) {
+	t.Helper()
+	if d.RecentFailures == nil {
+		t.Fatal("successful diagnostics left recentFailures nil")
+	}
+	encoded, err := json.Marshal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"recentFailures":[]`) {
+		t.Fatalf("successful diagnostics did not encode an empty failure array: %s", encoded)
+	}
+}
+
 func TestDeliveryDiagnosticsConfigurationAndOwnership(t *testing.T) {
 	var absent *Service
 	d, err := absent.DeliveryDiagnostics(context.Background())
 	if err != nil || d.DirectConfigured || d.HLSConfigured || d.ActiveConversionSessions != nil || d.ConversionSessionLimit != nil {
 		t.Fatal("absent service fabricated availability", d, err)
 	}
+	assertRecentFailuresArray(t, d)
 	s, h, cancel := deliveryDiagnosticsFixture(t)
 	direct := New(s.db)
 	d, err = direct.DeliveryDiagnostics(context.Background())
 	if err != nil || !d.DirectConfigured || d.HLSConfigured || d.ConversionSessionLimit != nil {
 		t.Fatal("direct-only service", d, err)
 	}
+	assertRecentFailuresArray(t, d)
 	h.mu.Lock()
 	h.active["private-source-secret"] = func() {}
 	if h.windows == nil {
@@ -59,6 +75,7 @@ func TestDeliveryDiagnosticsConfigurationAndOwnership(t *testing.T) {
 	if err != nil || !d.HLSConfigured || d.FiniteHLSConfigured || d.Lifecycle != "running" || d.ActiveConversionSessions == nil || *d.ActiveConversionSessions != 1 || d.ConversionSessionLimit != nil || d.ConversionLimitSource != "owner_policy" {
 		t.Fatal(d, err)
 	}
+	assertRecentFailuresArray(t, d)
 	encoded, err := json.Marshal(d)
 	if err != nil {
 		t.Fatal(err)
@@ -79,11 +96,13 @@ func TestDeliveryDiagnosticsConfigurationAndOwnership(t *testing.T) {
 	if err != nil || !d.FiniteHLSConfigured {
 		t.Fatal(d, err)
 	}
+	assertRecentFailuresArray(t, d)
 	cancel()
 	d, err = s.DeliveryDiagnostics(context.Background())
 	if err != nil || d.Lifecycle != "stopping" || d.ActiveConversionSessions == nil || *d.ActiveConversionSessions != 1 {
 		t.Fatal("cancellation fabricated worker retirement", d, err)
 	}
+	assertRecentFailuresArray(t, d)
 	// Snapshot values are copies, not writable aliases into admission accounting.
 	*d.ActiveConversionSessions = 99
 	next, err := s.DeliveryDiagnostics(context.Background())

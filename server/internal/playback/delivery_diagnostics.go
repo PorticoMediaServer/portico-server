@@ -53,7 +53,7 @@ type ConversionFailureRecord struct {
 // database query, so this owner diagnostic must never wait behind it. ConfigureHLS
 // and EnableFinite are startup-only and must complete before HTTP is served.
 func (s *Service) DeliveryDiagnostics(ctx context.Context) (DeliveryDiagnostics, error) {
-	out := DeliveryDiagnostics{Lifecycle: "unavailable", ConversionLimitSource: "unavailable", OutputPolicy: "unavailable"}
+	out := DeliveryDiagnostics{RecentFailures: []ConversionFailureRecord{}, Lifecycle: "unavailable", ConversionLimitSource: "unavailable", OutputPolicy: "unavailable"}
 	if err := ctx.Err(); err != nil {
 		return out, err
 	}

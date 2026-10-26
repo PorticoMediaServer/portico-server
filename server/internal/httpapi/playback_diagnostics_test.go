@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"portico.local/apikit/contract"
 	"portico.local/server/internal/playback"
 	"strings"
 	"testing"
@@ -26,8 +27,11 @@ func TestPlaybackDiagnosticsOwnerScopeAndFreshness(t *testing.T) {
 		}
 	}
 	w := supportRequest(mux, owner.AccessToken, path)
-	if w.Code != 200 || w.Header().Get("Cache-Control") != "no-store" || w.Body.Len() > 8192 {
+	if w.Code != 200 || w.Header().Get("Cache-Control") != "no-store" || w.Body.Len() > 8192 || !strings.Contains(w.Body.String(), `"recentFailures":[]`) {
 		t.Fatal(w.Code, w.Body.String())
+	}
+	if e := contract.Record("../../testdata/contracts/get-admin-playback-diagnostics.json", "GetAdminPlaybackDiagnosticsResponse", "GET", path, nil, w, "owner"); e != nil {
+		t.Fatal(e)
 	}
 	var out struct {
 		Scope                  struct{ ServerID, ViewerFence string }
