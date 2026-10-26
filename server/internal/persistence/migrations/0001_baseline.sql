@@ -9356,3 +9356,366 @@ CREATE TRIGGER owned_capture_receipt_complete BEFORE INSERT ON owned_capture_rec
 WHEN NOT EXISTS(SELECT 1 FROM owned_capture_sources s JOIN owned_capture_lifecycle l ON l.capture_id=s.capture_id
  WHERE s.capture_id=NEW.capture_id AND s.expected_size=NEW.size AND l.state='capturing' AND l.pending_digest=NEW.digest)
 BEGIN SELECT RAISE(ABORT,'owned capture receipt is not a completed acquisition'); END;
+
+-- Private per-presentation remote disc facts. No public catalogue/custody grant.
+CREATE TABLE playback_disc_snapshots(
+ id TEXT PRIMARY KEY,session_id TEXT NOT NULL REFERENCES playback_sessions(id),
+ generation INTEGER NOT NULL CHECK(generation>0),
+ input_kind TEXT NOT NULL CHECK(input_kind IN('conditional','captured')),
+ UNIQUE(session_id,generation)
+) STRICT;
+CREATE TABLE playback_disc_lifecycle(
+ snapshot_id TEXT PRIMARY KEY REFERENCES playback_disc_snapshots(id) ON DELETE CASCADE,
+ state TEXT NOT NULL CHECK(state IN('pending','active','retired')),
+ sealed INTEGER NOT NULL DEFAULT 0 CHECK(sealed IN(0,1)),
+ created_ms INTEGER NOT NULL,expires_ms INTEGER NOT NULL CHECK(expires_ms>created_ms),
+ retired_ms INTEGER NOT NULL DEFAULT 0
+) STRICT;
+CREATE INDEX playback_disc_lifecycle_collect ON playback_disc_lifecycle(state,expires_ms,snapshot_id);
+CREATE TABLE playback_disc_snapshot_actor(
+ snapshot_id TEXT PRIMARY KEY REFERENCES playback_disc_snapshots(id) ON DELETE CASCADE,
+ server_id TEXT NOT NULL,
+ authority TEXT NOT NULL,
+ account_id TEXT NOT NULL,
+ profile_id TEXT NOT NULL,
+ device_id TEXT NOT NULL,
+ family_id TEXT NOT NULL,
+ grant_id TEXT NOT NULL,
+ session_hash TEXT NOT NULL,
+ epoch INTEGER NOT NULL,
+ token_generation INTEGER NOT NULL,
+ original_horizon_ms INTEGER NOT NULL
+) STRICT;
+CREATE TABLE playback_disc_snapshot_operation(
+ snapshot_id TEXT PRIMARY KEY REFERENCES playback_disc_snapshots(id) ON DELETE CASCADE,
+ legacy_request_id TEXT NOT NULL,
+ start_key_digest TEXT NOT NULL,
+ start_body_digest TEXT NOT NULL,
+ queue_id TEXT NOT NULL,
+ queue_entry_id TEXT NOT NULL,
+ queue_owner_kind TEXT NOT NULL,
+ queue_owner_id TEXT NOT NULL,
+ queue_revision INTEGER NOT NULL,
+ queue_custody_generation INTEGER NOT NULL
+) STRICT;
+CREATE TABLE playback_disc_snapshot_source(
+ snapshot_id TEXT PRIMARY KEY REFERENCES playback_disc_snapshots(id) ON DELETE CASCADE,
+ library_id TEXT NOT NULL,
+ library_source_id TEXT NOT NULL,
+ asset_id TEXT NOT NULL,
+ inventory_object_id TEXT NOT NULL,
+ inventory_revision TEXT NOT NULL,
+ root_identity TEXT NOT NULL,
+ incarnation TEXT NOT NULL,
+ remote_source_id TEXT NOT NULL,
+ effective_configuration TEXT NOT NULL,
+ read_policy_witness TEXT NOT NULL,
+ read_authority_witness TEXT NOT NULL,
+ library_generation INTEGER NOT NULL,
+ raw_configuration_generation INTEGER NOT NULL,
+ profile_revision INTEGER NOT NULL,
+ size INTEGER NOT NULL,
+ modified_ns INTEGER NOT NULL
+) STRICT;
+CREATE TABLE playback_disc_snapshot_disc(
+ snapshot_id TEXT PRIMARY KEY REFERENCES playback_disc_snapshots(id) ON DELETE CASCADE,
+ probe_schema INTEGER NOT NULL,
+ kind TEXT NOT NULL,
+ packaging TEXT NOT NULL,
+ encryption TEXT NOT NULL,
+ selected_title_key TEXT NOT NULL,
+ structure_revision TEXT NOT NULL,
+ stream_revision TEXT NOT NULL,
+ chapter_revision TEXT NOT NULL,
+ facts_revision TEXT NOT NULL
+) STRICT;
+CREATE TABLE playback_disc_snapshot_media(
+ snapshot_id TEXT PRIMARY KEY REFERENCES playback_disc_snapshots(id) ON DELETE CASCADE,
+ container TEXT NOT NULL,
+ video_codec TEXT NOT NULL,
+ audio_codec TEXT NOT NULL,
+ width INTEGER NOT NULL,
+ height INTEGER NOT NULL,
+ duration_ms INTEGER NOT NULL,
+ origin_us INTEGER NOT NULL,
+ timing_known INTEGER NOT NULL,
+ chapters_present INTEGER NOT NULL
+) STRICT;
+CREATE TABLE playback_disc_snapshot_tools(
+ snapshot_id TEXT PRIMARY KEY REFERENCES playback_disc_snapshots(id) ON DELETE CASCADE,
+ disc_helper_digest TEXT NOT NULL,
+ ffmpeg_digest TEXT NOT NULL,
+ ffprobe_digest TEXT NOT NULL,
+ runtime_identity TEXT NOT NULL
+) STRICT;
+CREATE TABLE playback_disc_conditional_inputs(
+ snapshot_id TEXT PRIMARY KEY REFERENCES playback_disc_snapshots(id) ON DELETE CASCADE,
+ kind TEXT NOT NULL CHECK(kind IN('strong_etag','immutable_provider_version')),
+ scope TEXT NOT NULL,object_id TEXT NOT NULL,revision TEXT NOT NULL,size INTEGER NOT NULL CHECK(size>0),
+ version_id TEXT NOT NULL CHECK(length(version_id)=64)
+) STRICT;
+CREATE TABLE playback_disc_capture_inputs(
+ snapshot_id TEXT PRIMARY KEY REFERENCES playback_disc_snapshots(id) ON DELETE CASCADE,
+ capture_id TEXT NOT NULL REFERENCES owned_capture_receipts(capture_id),
+ accepted_version_id TEXT NOT NULL CHECK(length(accepted_version_id)=64)
+) STRICT;
+CREATE TABLE playback_disc_snapshot_titles(
+ snapshot_id TEXT NOT NULL REFERENCES playback_disc_snapshots(id) ON DELETE CASCADE,
+ disc_order INTEGER NOT NULL,title_key TEXT NOT NULL,playlist INTEGER,playlist_file TEXT NOT NULL,
+ dvd_title INTEGER NOT NULL,vts INTEGER NOT NULL,pgc INTEGER NOT NULL,
+ duration_ms INTEGER NOT NULL,angle_count INTEGER NOT NULL,
+ PRIMARY KEY(snapshot_id,disc_order),UNIQUE(snapshot_id,title_key)
+) WITHOUT ROWID,STRICT;
+CREATE TABLE playback_disc_snapshot_clips(
+ snapshot_id TEXT NOT NULL,disc_order INTEGER NOT NULL,sequence INTEGER NOT NULL,
+ file TEXT NOT NULL,in_time_90k INTEGER NOT NULL,out_time_90k INTEGER NOT NULL,
+ PRIMARY KEY(snapshot_id,disc_order,sequence),
+ FOREIGN KEY(snapshot_id,disc_order) REFERENCES playback_disc_snapshot_titles(snapshot_id,disc_order) ON DELETE CASCADE
+) WITHOUT ROWID,STRICT;
+CREATE TABLE playback_disc_snapshot_disc_streams(
+ snapshot_id TEXT NOT NULL,disc_order INTEGER NOT NULL,stream_order INTEGER NOT NULL,
+ clip_sequence INTEGER NOT NULL,pid INTEGER NOT NULL,kind TEXT NOT NULL,coding INTEGER NOT NULL,language TEXT NOT NULL,
+ dv_enhancement INTEGER NOT NULL,dv_known INTEGER NOT NULL,dv_base_pid INTEGER,video_role TEXT NOT NULL,
+ PRIMARY KEY(snapshot_id,disc_order,stream_order),
+ FOREIGN KEY(snapshot_id,disc_order) REFERENCES playback_disc_snapshot_titles(snapshot_id,disc_order) ON DELETE CASCADE
+) WITHOUT ROWID,STRICT;
+CREATE TABLE playback_disc_snapshot_disc_chapters(
+ snapshot_id TEXT NOT NULL,disc_order INTEGER NOT NULL,chapter_order INTEGER NOT NULL,start_ms INTEGER NOT NULL,
+ PRIMARY KEY(snapshot_id,disc_order,chapter_order),
+ FOREIGN KEY(snapshot_id,disc_order) REFERENCES playback_disc_snapshot_titles(snapshot_id,disc_order) ON DELETE CASCADE
+) WITHOUT ROWID,STRICT;
+CREATE TABLE playback_disc_snapshot_streams(
+ snapshot_id TEXT NOT NULL REFERENCES playback_disc_snapshots(id) ON DELETE CASCADE,stream_order INTEGER NOT NULL,
+ stream_index INTEGER NOT NULL,
+ type TEXT NOT NULL,
+ codec TEXT NOT NULL,
+ language TEXT NOT NULL,
+ title TEXT NOT NULL,
+ channels INTEGER NOT NULL,
+ channel_layout TEXT NOT NULL,
+ is_default INTEGER NOT NULL,
+ is_forced INTEGER NOT NULL,
+ color_transfer TEXT NOT NULL,
+ color_primaries TEXT NOT NULL,
+ hearing_impaired INTEGER NOT NULL,
+ commentary INTEGER NOT NULL,
+ detail_max_bit_rate INTEGER NOT NULL,
+ detail_h_d_r10_plus INTEGER NOT NULL,
+ detail_profile TEXT NOT NULL,
+ detail_level INTEGER NOT NULL,
+ detail_pixel_format TEXT NOT NULL,
+ detail_bit_depth INTEGER NOT NULL,
+ detail_width INTEGER NOT NULL,
+ detail_height INTEGER NOT NULL,
+ detail_frame_rate REAL NOT NULL,
+ detail_interlaced INTEGER NOT NULL,
+ detail_rotation INTEGER NOT NULL,
+ detail_sample_aspect_ratio TEXT NOT NULL,
+ detail_anamorphic INTEGER NOT NULL,
+ detail_ref_frames INTEGER NOT NULL,
+ detail_codec_tag TEXT NOT NULL,
+ detail_bit_rate INTEGER NOT NULL,
+ detail_sample_rate INTEGER NOT NULL,
+ detail_bits_per_sample INTEGER NOT NULL,
+ detail_dynamic_range TEXT NOT NULL,
+ detail_dolby_vision_profile INTEGER NOT NULL,
+ detail_dolby_vision_level INTEGER NOT NULL,
+ detail_dolby_vision_compatibility INTEGER NOT NULL,
+ detail_enhancement_layer INTEGER NOT NULL,
+ detail_master_display TEXT NOT NULL,
+ detail_max_c_l_l TEXT NOT NULL,
+ detail_object_audio TEXT NOT NULL,
+ detail_audio_description INTEGER NOT NULL,
+ detail_audio_variant TEXT NOT NULL,
+ detail_chroma_subsampling TEXT NOT NULL,
+ detail_frame_rate_numerator INTEGER NOT NULL,
+ detail_frame_rate_denominator INTEGER NOT NULL,
+ detail_frame_rate_mode TEXT NOT NULL,
+ detail_interlace_analysis TEXT NOT NULL,
+ detail_telecine INTEGER NOT NULL,
+ detail_dolby_vision_r_p_u INTEGER NOT NULL,
+ detail_dolby_vision_base_layer INTEGER NOT NULL,
+ detail_dolby_vision_metadata_known INTEGER NOT NULL,
+ detail_dolby_vision_enhancement_type TEXT NOT NULL,
+ detail_dolby_vision_c_m_version TEXT NOT NULL,
+ PRIMARY KEY(snapshot_id,stream_order),UNIQUE(snapshot_id,stream_index)
+) WITHOUT ROWID,STRICT;
+CREATE TABLE playback_disc_snapshot_chapters(
+ snapshot_id TEXT NOT NULL REFERENCES playback_disc_snapshots(id) ON DELETE CASCADE,
+ chapter_order INTEGER NOT NULL,title TEXT NOT NULL,start_seconds REAL NOT NULL,end_seconds REAL NOT NULL,
+ PRIMARY KEY(snapshot_id,chapter_order)
+) WITHOUT ROWID,STRICT;
+CREATE TABLE playback_disc_reader_pins(
+ id TEXT PRIMARY KEY,snapshot_id TEXT NOT NULL REFERENCES playback_disc_snapshots(id),
+ expires_ms INTEGER NOT NULL
+) STRICT;
+CREATE INDEX playback_disc_reader_pins_snapshot ON playback_disc_reader_pins(snapshot_id,expires_ms);
+-- This retains an acquisition, never a new source charge or access grant.
+CREATE TABLE owned_capture_presentation_refs(
+ snapshot_id TEXT PRIMARY KEY REFERENCES playback_disc_snapshots(id),
+ capture_id TEXT NOT NULL REFERENCES owned_capture_receipts(capture_id),expires_ms INTEGER NOT NULL
+) STRICT;
+CREATE INDEX owned_capture_presentation_refs_capture ON owned_capture_presentation_refs(capture_id,expires_ms,snapshot_id);
+CREATE TRIGGER playback_disc_snapshot_actor_insert BEFORE INSERT ON playback_disc_snapshot_actor
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=NEW.snapshot_id AND state='pending' AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is sealed'); END;
+CREATE TRIGGER playback_disc_snapshot_actor_immutable BEFORE UPDATE ON playback_disc_snapshot_actor
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is immutable'); END;
+CREATE TRIGGER playback_disc_snapshot_actor_delete BEFORE DELETE ON playback_disc_snapshot_actor
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=OLD.snapshot_id AND state='retired')
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is still retained'); END;
+CREATE TRIGGER playback_disc_snapshot_operation_insert BEFORE INSERT ON playback_disc_snapshot_operation
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=NEW.snapshot_id AND state='pending' AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is sealed'); END;
+CREATE TRIGGER playback_disc_snapshot_operation_immutable BEFORE UPDATE ON playback_disc_snapshot_operation
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is immutable'); END;
+CREATE TRIGGER playback_disc_snapshot_operation_delete BEFORE DELETE ON playback_disc_snapshot_operation
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=OLD.snapshot_id AND state='retired')
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is still retained'); END;
+CREATE TRIGGER playback_disc_snapshot_source_insert BEFORE INSERT ON playback_disc_snapshot_source
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=NEW.snapshot_id AND state='pending' AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is sealed'); END;
+CREATE TRIGGER playback_disc_snapshot_source_immutable BEFORE UPDATE ON playback_disc_snapshot_source
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is immutable'); END;
+CREATE TRIGGER playback_disc_snapshot_source_delete BEFORE DELETE ON playback_disc_snapshot_source
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=OLD.snapshot_id AND state='retired')
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is still retained'); END;
+CREATE TRIGGER playback_disc_snapshot_disc_insert BEFORE INSERT ON playback_disc_snapshot_disc
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=NEW.snapshot_id AND state='pending' AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is sealed'); END;
+CREATE TRIGGER playback_disc_snapshot_disc_immutable BEFORE UPDATE ON playback_disc_snapshot_disc
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is immutable'); END;
+CREATE TRIGGER playback_disc_snapshot_disc_delete BEFORE DELETE ON playback_disc_snapshot_disc
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=OLD.snapshot_id AND state='retired')
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is still retained'); END;
+CREATE TRIGGER playback_disc_snapshot_media_insert BEFORE INSERT ON playback_disc_snapshot_media
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=NEW.snapshot_id AND state='pending' AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is sealed'); END;
+CREATE TRIGGER playback_disc_snapshot_media_immutable BEFORE UPDATE ON playback_disc_snapshot_media
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is immutable'); END;
+CREATE TRIGGER playback_disc_snapshot_media_delete BEFORE DELETE ON playback_disc_snapshot_media
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=OLD.snapshot_id AND state='retired')
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is still retained'); END;
+CREATE TRIGGER playback_disc_snapshot_tools_insert BEFORE INSERT ON playback_disc_snapshot_tools
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=NEW.snapshot_id AND state='pending' AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is sealed'); END;
+CREATE TRIGGER playback_disc_snapshot_tools_immutable BEFORE UPDATE ON playback_disc_snapshot_tools
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is immutable'); END;
+CREATE TRIGGER playback_disc_snapshot_tools_delete BEFORE DELETE ON playback_disc_snapshot_tools
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=OLD.snapshot_id AND state='retired')
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is still retained'); END;
+CREATE TRIGGER playback_disc_conditional_inputs_insert BEFORE INSERT ON playback_disc_conditional_inputs
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=NEW.snapshot_id AND state='pending' AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is sealed'); END;
+CREATE TRIGGER playback_disc_conditional_inputs_immutable BEFORE UPDATE ON playback_disc_conditional_inputs
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is immutable'); END;
+CREATE TRIGGER playback_disc_conditional_inputs_delete BEFORE DELETE ON playback_disc_conditional_inputs
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=OLD.snapshot_id AND state='retired')
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is still retained'); END;
+CREATE TRIGGER playback_disc_capture_inputs_insert BEFORE INSERT ON playback_disc_capture_inputs
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=NEW.snapshot_id AND state='pending' AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is sealed'); END;
+CREATE TRIGGER playback_disc_capture_inputs_immutable BEFORE UPDATE ON playback_disc_capture_inputs
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is immutable'); END;
+CREATE TRIGGER playback_disc_capture_inputs_delete BEFORE DELETE ON playback_disc_capture_inputs
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=OLD.snapshot_id AND state='retired')
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is still retained'); END;
+CREATE TRIGGER playback_disc_snapshot_titles_insert BEFORE INSERT ON playback_disc_snapshot_titles
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=NEW.snapshot_id AND state='pending' AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is sealed'); END;
+CREATE TRIGGER playback_disc_snapshot_titles_immutable BEFORE UPDATE ON playback_disc_snapshot_titles
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is immutable'); END;
+CREATE TRIGGER playback_disc_snapshot_titles_delete BEFORE DELETE ON playback_disc_snapshot_titles
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=OLD.snapshot_id AND state='retired')
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is still retained'); END;
+CREATE TRIGGER playback_disc_snapshot_clips_insert BEFORE INSERT ON playback_disc_snapshot_clips
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=NEW.snapshot_id AND state='pending' AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is sealed'); END;
+CREATE TRIGGER playback_disc_snapshot_clips_immutable BEFORE UPDATE ON playback_disc_snapshot_clips
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is immutable'); END;
+CREATE TRIGGER playback_disc_snapshot_clips_delete BEFORE DELETE ON playback_disc_snapshot_clips
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=OLD.snapshot_id AND state='retired')
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is still retained'); END;
+CREATE TRIGGER playback_disc_snapshot_disc_streams_insert BEFORE INSERT ON playback_disc_snapshot_disc_streams
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=NEW.snapshot_id AND state='pending' AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is sealed'); END;
+CREATE TRIGGER playback_disc_snapshot_disc_streams_immutable BEFORE UPDATE ON playback_disc_snapshot_disc_streams
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is immutable'); END;
+CREATE TRIGGER playback_disc_snapshot_disc_streams_delete BEFORE DELETE ON playback_disc_snapshot_disc_streams
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=OLD.snapshot_id AND state='retired')
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is still retained'); END;
+CREATE TRIGGER playback_disc_snapshot_disc_chapters_insert BEFORE INSERT ON playback_disc_snapshot_disc_chapters
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=NEW.snapshot_id AND state='pending' AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is sealed'); END;
+CREATE TRIGGER playback_disc_snapshot_disc_chapters_immutable BEFORE UPDATE ON playback_disc_snapshot_disc_chapters
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is immutable'); END;
+CREATE TRIGGER playback_disc_snapshot_disc_chapters_delete BEFORE DELETE ON playback_disc_snapshot_disc_chapters
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=OLD.snapshot_id AND state='retired')
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is still retained'); END;
+CREATE TRIGGER playback_disc_snapshot_streams_insert BEFORE INSERT ON playback_disc_snapshot_streams
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=NEW.snapshot_id AND state='pending' AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is sealed'); END;
+CREATE TRIGGER playback_disc_snapshot_streams_immutable BEFORE UPDATE ON playback_disc_snapshot_streams
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is immutable'); END;
+CREATE TRIGGER playback_disc_snapshot_streams_delete BEFORE DELETE ON playback_disc_snapshot_streams
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=OLD.snapshot_id AND state='retired')
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is still retained'); END;
+CREATE TRIGGER playback_disc_snapshot_chapters_insert BEFORE INSERT ON playback_disc_snapshot_chapters
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=NEW.snapshot_id AND state='pending' AND sealed=0)
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is sealed'); END;
+CREATE TRIGGER playback_disc_snapshot_chapters_immutable BEFORE UPDATE ON playback_disc_snapshot_chapters
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is immutable'); END;
+CREATE TRIGGER playback_disc_snapshot_chapters_delete BEFORE DELETE ON playback_disc_snapshot_chapters
+ WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=OLD.snapshot_id AND state='retired')
+ BEGIN SELECT RAISE(ABORT,'private disc snapshot is still retained'); END;
+CREATE TRIGGER playback_disc_snapshot_immutable BEFORE UPDATE ON playback_disc_snapshots
+BEGIN SELECT RAISE(ABORT,'private disc snapshot identity is immutable'); END;
+CREATE TRIGGER playback_disc_snapshot_delete BEFORE DELETE ON playback_disc_snapshots
+WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=OLD.id AND state='retired')
+ OR EXISTS(SELECT 1 FROM playback_disc_reader_pins WHERE snapshot_id=OLD.id)
+ OR EXISTS(SELECT 1 FROM owned_capture_presentation_refs WHERE snapshot_id=OLD.id)
+BEGIN SELECT RAISE(ABORT,'private disc snapshot still owns references'); END;
+CREATE TRIGGER playback_disc_lifecycle_transition BEFORE UPDATE ON playback_disc_lifecycle
+WHEN NEW.snapshot_id!=OLD.snapshot_id OR NEW.created_ms!=OLD.created_ms OR NEW.expires_ms!=OLD.expires_ms
+ OR NEW.sealed<OLD.sealed OR OLD.state='retired' AND NEW.state!='retired'
+ OR OLD.state='active' AND NEW.state='pending' OR NEW.state='active' AND NEW.sealed!=1
+BEGIN SELECT RAISE(ABORT,'invalid private disc lifecycle transition'); END;
+CREATE TRIGGER playback_disc_lifecycle_seal BEFORE UPDATE OF sealed ON playback_disc_lifecycle
+WHEN NEW.sealed=1 AND OLD.sealed=0 AND (
+ NOT EXISTS(SELECT 1 FROM playback_disc_snapshots s
+ JOIN playback_disc_snapshot_actor a ON a.snapshot_id=s.id
+ JOIN playback_disc_snapshot_operation o ON o.snapshot_id=s.id
+ JOIN playback_disc_snapshot_source src ON src.snapshot_id=s.id
+ JOIN playback_disc_snapshot_disc d ON d.snapshot_id=s.id
+ JOIN playback_disc_snapshot_media m ON m.snapshot_id=s.id
+ JOIN playback_disc_snapshot_tools t ON t.snapshot_id=s.id
+ WHERE s.id=NEW.snapshot_id
+ AND EXISTS(SELECT 1 FROM playback_disc_snapshot_titles title WHERE title.snapshot_id=s.id AND title.title_key=d.selected_title_key)
+ AND EXISTS(SELECT 1 FROM playback_disc_snapshot_streams stream WHERE stream.snapshot_id=s.id)
+ AND ((s.input_kind='conditional' AND EXISTS(SELECT 1 FROM playback_disc_conditional_inputs c WHERE c.snapshot_id=s.id)
+  AND NOT EXISTS(SELECT 1 FROM playback_disc_capture_inputs c WHERE c.snapshot_id=s.id)
+  AND NOT EXISTS(SELECT 1 FROM owned_capture_presentation_refs r WHERE r.snapshot_id=s.id))
+ OR (s.input_kind='captured' AND NOT EXISTS(SELECT 1 FROM playback_disc_conditional_inputs c WHERE c.snapshot_id=s.id)
+  AND EXISTS(SELECT 1 FROM playback_disc_capture_inputs c JOIN owned_capture_presentation_refs r ON r.snapshot_id=c.snapshot_id AND r.capture_id=c.capture_id WHERE c.snapshot_id=s.id AND r.expires_ms=NEW.expires_ms))))
+)
+BEGIN SELECT RAISE(ABORT,'private disc snapshot is incomplete'); END;
+CREATE TRIGGER playback_disc_lifecycle_delete BEFORE DELETE ON playback_disc_lifecycle
+WHEN EXISTS(SELECT 1 FROM playback_disc_snapshots WHERE id=OLD.snapshot_id)
+BEGIN SELECT RAISE(ABORT,'private disc lifecycle still has a snapshot'); END;
+CREATE TRIGGER playback_disc_reader_pin_insert BEFORE INSERT ON playback_disc_reader_pins
+WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=NEW.snapshot_id AND state='active' AND sealed=1 AND NEW.expires_ms<=expires_ms)
+BEGIN SELECT RAISE(ABORT,'private disc reader has no active presentation'); END;
+CREATE TRIGGER playback_disc_reader_pin_immutable BEFORE UPDATE ON playback_disc_reader_pins
+BEGIN SELECT RAISE(ABORT,'private disc reader pin is immutable'); END;
+CREATE TRIGGER owned_capture_presentation_ref_insert BEFORE INSERT ON owned_capture_presentation_refs
+WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle l JOIN playback_disc_capture_inputs c ON c.snapshot_id=l.snapshot_id
+ JOIN owned_capture_lifecycle capture ON capture.capture_id=c.capture_id JOIN owned_capture_sources source ON source.capture_id=c.capture_id
+ WHERE l.snapshot_id=NEW.snapshot_id AND l.state='pending' AND l.sealed=0 AND c.capture_id=NEW.capture_id
+ AND capture.state='ready' AND NEW.expires_ms=l.expires_ms AND NEW.expires_ms<=source.expires_ms)
+BEGIN SELECT RAISE(ABORT,'private disc capture reference is not the original ready receipt'); END;
+CREATE TRIGGER owned_capture_presentation_ref_immutable BEFORE UPDATE ON owned_capture_presentation_refs
+BEGIN SELECT RAISE(ABORT,'private disc capture reference is immutable'); END;
+CREATE TRIGGER owned_capture_presentation_ref_delete BEFORE DELETE ON owned_capture_presentation_refs
+WHEN NOT EXISTS(SELECT 1 FROM playback_disc_lifecycle WHERE snapshot_id=OLD.snapshot_id AND state='retired')
+ OR EXISTS(SELECT 1 FROM playback_disc_reader_pins WHERE snapshot_id=OLD.snapshot_id)
+BEGIN SELECT RAISE(ABORT,'private disc presentation still retains its capture'); END;
