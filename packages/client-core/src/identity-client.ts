@@ -74,7 +74,6 @@ export class IdentityClient{
  async enrolTwoFactor(password:string):Promise<TwoFactorEnrolment>{return parseTwoFactorEnrolment(await this.api.request<RouteResponse<"post_direct_two_factor_enrol">>(routePath("post_direct_two_factor_enrol"),'POST',routeBody("post_direct_two_factor_enrol", {password})));}
  /** C45: confirming enrolment sends the current password with the first code. */
  async verifyTwoFactor(password:string,code:string):Promise<TwoFactorState>{return parseTwoFactorState(await this.api.request<RouteResponse<"post_direct_two_factor_verify">>(routePath("post_direct_two_factor_verify"),'POST',routeBody("post_direct_two_factor_verify", {password,code})));}
- /** C45: turning it off sends the current password and a current code. */
  /** Replaces the local account's codes under a current password and factor proof.
   * Only this response contains the new plaintext codes; callers must keep them memory-only. */
  async replaceRecoveryCodes(password:string,code:string,signal?:AbortSignal):Promise<readonly string[]>{
@@ -85,6 +84,7 @@ export class IdentityClient{
   return Object.freeze([...codes]);
  }
 
+ /** C45: turning it off sends the current password and a current code. */
  async disableTwoFactor(password:string,code:string):Promise<void>{await this.api.request(routePath("delete_direct_two_factor"),'DELETE',routeBody("delete_direct_two_factor", {password,code}));}
 }
 

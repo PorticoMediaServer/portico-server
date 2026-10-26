@@ -111,7 +111,7 @@ function SecurityTask({account, identity, state, task, onClose, onSecurityEnded,
     const active: Flight = {controller: new AbortController(), pending: false};
     life.current = active; setFlight(active); setBusy(false);
     return () => {if (life.current === active) life.current = null; active.controller.abort();};
-  }, [account, identity.accountId, identity.familyId, isCurrent]);
+  }, [account, identity.accountId, identity.familyId, task, operationId, isCurrent]);
   const parentCurrent = () => {try {return isCurrent?.() !== false;} catch {return false;}};
   const current = () => Boolean(flight && life.current === flight && !flight.controller.signal.aborted && parentCurrent());
   const assertCurrent = () => {if (!current()) throw new DOMException('Account security opening ended', 'AbortError');};
@@ -137,7 +137,6 @@ function SecurityTask({account, identity, state, task, onClose, onSecurityEnded,
       const output = confirm ?
         await account.client.confirm(task === 'mfa_enroll' ? 'mfa' : 'email', confirm, submittedCode, operationId, identity, session.accessToken, signal) :
         await account.client.action(intent, proof!.proof, task === 'password_set_or_change' ? submittedValue : '', identity, session.accessToken, signal);
-      signal.throwIfAborted();
       if (output.signOut) {
         const current = account.service.getSnapshot().session;
         const original = current && sameAccount(accountIdentity(current), identity);
@@ -146,6 +145,7 @@ function SecurityTask({account, identity, state, task, onClose, onSecurityEnded,
         await cleanup;
         return;
       }
+      signal.throwIfAborted();
       assertCurrent();
       await currentAccountWork(account, async () => {assertCurrent();}, identity);
       assertCurrent();
