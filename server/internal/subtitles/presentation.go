@@ -54,8 +54,11 @@ func (s *Service) selectPlayback(ctx context.Context, p identity.Principal, item
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
-	scope, e := sessionTx(ctx, tx, p, item, session)
+	scope, e := s.sessionTx(ctx, tx, p, item, session)
 	if e != nil {
+		return PlaybackPlan{}, e
+	}
+	if e = s.checkSelectionAcceptanceTx(ctx, tx, session); e != nil {
 		return PlaybackPlan{}, e
 	}
 	digest := requestDigest([]any{session, m})
@@ -99,7 +102,7 @@ func (s *Service) selectPlayback(ctx context.Context, p identity.Principal, item
 		if e != nil {
 			return PlaybackPlan{}, e
 		}
-		if err := checkDiscResourceSessionTx(ctx, tx, session, resource.ID); err != nil {
+		if err := s.checkDiscResourceSessionTx(ctx, tx, session, resource.ID); err != nil {
 			return PlaybackPlan{}, err
 		}
 		if !visible(resource, p) || resource.SourceID != scope.source {
@@ -164,7 +167,7 @@ func (s *Service) selectPlayback(ctx context.Context, p identity.Principal, item
 			return PlaybackPlan{}, ErrConflict
 		}
 		selected := s.playbackSourceContext(ctx, p, item, session, scope, func(check context.Context, tx *sql.Tx) error {
-			if err := checkDiscResourceSessionTx(check, tx, session, resource.ID); err != nil {
+			if err := s.checkDiscResourceSessionTx(check, tx, session, resource.ID); err != nil {
 				return err
 			}
 			var selectionRevision int64

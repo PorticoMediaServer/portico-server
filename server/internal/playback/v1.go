@@ -19,12 +19,16 @@ import (
 // their saved default for where the request comes from); the owner's ceilings,
 // the member's remote cap and the upload budget always narrow it.
 type V1Choice struct {
-	DiscTitle *catalog.DiscTitleRef
+	// Process-private original POST borrow. Only Media's preparation factory
+	// can supply it; it is neither a wire choice nor a recoverable row proof.
+	discBorrow *discPlayBorrow
+	DiscTitle  *catalog.DiscTitleRef
 	// UseStoredResume is server-private intent, set only for an initial stored
 	// resume. Replans, transfers and already chosen positions leave it false.
 	UseStoredResume bool
 	// PendingActivation hides a candidate and defers personal state until acceptance.
 	PendingActivation bool
+	SubtitleOff       bool // actual initial V1 request; never an authority flag
 	// AssetID is the version to play; empty plays the item's first available one.
 	AssetID string
 	// AudioStream is the absolute source stream index the viewer chose.

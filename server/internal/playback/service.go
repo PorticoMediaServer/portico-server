@@ -15,6 +15,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/listeningrules"
 	"portico.local/server/internal/operations"
+	"portico.local/server/internal/playbackdisc"
 	"portico.local/server/internal/preparedmedia"
 	"portico.local/server/internal/requestinput"
 	"portico.local/server/internal/segmentmarkers"
@@ -50,6 +51,9 @@ type Session struct {
 	State             string     `json:"state,omitempty"`
 }
 type Service struct {
+	discFactory *discPlayFactory
+	discInputs  *discPlayInputs // exact private disc readers; no start producer
+
 	// prefetched counts bytes served to private presentations (audio_plan_v2.go).
 	prefetchMu      sync.Mutex
 	prefetched      map[string]int64
@@ -192,6 +196,9 @@ type planInputs struct {
 // which is what makes "the same request and profile always produce the same plan"
 // true across them.
 func (s *Service) planInputsTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item, aid, container, video, audio string, duration float64, remote, catalogued bool, explicitAudio *int, v1 *V1Choice) (planInputs, error) {
+	if v1 == nil {
+		v1 = &V1Choice{}
+	}
 	cfg := deliveryConfiguration(s.deliverySettings)
 	edge := DeliveryContextFrom(ctx)
 	values := s.viewerPreferences(tx, p, edge)
@@ -202,13 +209,26 @@ func (s *Service) planInputsTx(ctx context.Context, tx *sql.Tx, p identity.Princ
 	}
 	var sourceHeight int
 	var transfer, primaries string
-	if e := tx.QueryRow(`SELECT COALESCE(a.height,0),COALESCE((SELECT f.color_transfer FROM asset_streams f WHERE f.asset_id=a.token AND f.type='video' ORDER BY f.stream_index LIMIT 1),''),COALESCE((SELECT f.color_primaries FROM asset_streams f WHERE f.asset_id=a.token AND f.type='video' ORDER BY f.stream_index LIMIT 1),'') FROM catalog_assets a WHERE a.token=?`, aid).Scan(&sourceHeight, &transfer, &primaries); e != nil {
+	var measured *DeliverySource
+	if v1.discBorrow != nil {
+		snapshot, err := v1.discBorrow.legacySnapshotTx(ctx, tx, s, p, item, aid)
+		if err != nil {
+			return planInputs{}, err
+		}
+		facts := discSnapshotMedia(snapshot.Media)
+		source := discSourceFacts(aid, facts)
+		measured = &source
+		container, video, audio, duration, sourceHeight = facts.Container, facts.VideoCodec, facts.AudioCodec, facts.Duration, facts.Height
+		for _, stream := range facts.Streams {
+			if stream.Type == "video" {
+				transfer, primaries = stream.ColorTransfer, stream.ColorPrimaries
+				break
+			}
+		}
+	} else if e := tx.QueryRow(`SELECT COALESCE(a.height,0),COALESCE((SELECT f.color_transfer FROM asset_streams f WHERE f.asset_id=a.token AND f.type='video' ORDER BY f.stream_index LIMIT 1),''),COALESCE((SELECT f.color_primaries FROM asset_streams f WHERE f.asset_id=a.token AND f.type='video' ORDER BY f.stream_index LIMIT 1),'') FROM catalog_assets a WHERE a.token=?`, aid).Scan(&sourceHeight, &transfer, &primaries); e != nil {
 		return planInputs{}, e
 	}
 	hardware := s.selectHardware(ctx, cfg)
-	if v1 == nil {
-		v1 = &V1Choice{}
-	}
 	target := v1.target(policy, cfg)
 	input := DeliveryInput{SourceID: aid, Container: container, VideoCodec: video, AudioCodec: audio, Duration: duration, Height: sourceHeight, ColorTransfer: transfer, ColorPrimaries: primaries, Remote: remote, Policy: policy, Target: target, Config: cfg, TranscodingEnabled: ownerTranscoding, Hardware: hardware}
 	// The caller authorized this public title in this transaction. The
@@ -220,7 +240,9 @@ func (s *Service) planInputsTx(ctx context.Context, tx *sql.Tx, p identity.Princ
 	input.OriginalLanguage = originalLanguage
 	input.Engine, input.SubtitleKind, input.SubtitleBesideStream, input.CarriedAudioLanguage = v1.Engine, v1.SubtitleKind, v1.SubtitleBesideStream, v1.CarriedAudioLanguage
 	var boundDisc []*DeliverySource
-	if v1.DiscTitle != nil {
+	if measured != nil {
+		boundDisc = []*DeliverySource{measured}
+	} else if v1.DiscTitle != nil {
 		if err := discPlanInputTx(ctx, tx, &input, v1.DiscTitle); err != nil {
 			return planInputs{}, err
 		}
@@ -284,7 +306,7 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 		return Session{}, e
 	}
 	var prepared *remotePreparation
-	if s.remote != nil {
+	if s.remote != nil && v1.discBorrow == nil {
 		var exists int
 		err := s.db.QueryRow(`SELECT 1 FROM playback_requests WHERE account_id=? AND profile_id=? AND request_id IN(?,?) LIMIT 1`, p.AccountID, p.ProfileID, request, legacyRequest).Scan(&exists)
 		if errors.Is(err, sql.ErrNoRows) {
@@ -297,13 +319,16 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 			return Session{}, err
 		}
 	}
-	s.refreshStreamDetail(ctx, selectedAsset)
+	if v1.discBorrow == nil {
+		s.refreshStreamDetail(ctx, selectedAsset)
+	}
 	gated, e := dbwork.Begin(ctx, s.db, dbwork.ClassEstablishedPlayback)
 	if e != nil {
 		return Session{}, e
 	}
 	tx := gated.Tx()
 	defer gated.Rollback()
+	ctx = gated.Context()
 	authorize := s.AuthorityTx
 	if authorize != nil {
 		if p, e = authorize(ctx, tx, p, item); e != nil {
@@ -314,6 +339,11 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 	// source branch. A derivative must not resurrect a deleted recording.
 	if e = recordingAdmittedTx(ctx, tx, item); e != nil {
 		return Session{}, e
+	}
+	if v1.discBorrow != nil {
+		if e = v1.discBorrow.checkLegacyRequestTx(ctx, tx, s, p, item, selectedAsset, legacyRequest, v1, replacement); e != nil {
+			return Session{}, e
+		}
 	}
 	// playback_sessions, playback_requests and progress hold the integer
 	// entity id; callers pass the public id, resolved once here.
@@ -327,6 +357,11 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 	var receipt, originalItem, storedRequest string
 	e = tx.QueryRow(`SELECT response,(SELECT pid(public_id) FROM catalog_entities WHERE id=playback_requests.item_id),request_id FROM playback_requests WHERE account_id=? AND profile_id=? AND request_id IN(?,?) ORDER BY request_id=? DESC LIMIT 1`, p.AccountID, p.ProfileID, request, legacyRequest, request).Scan(&receipt, &originalItem, &storedRequest)
 	if e == nil {
+		if v1.discBorrow != nil {
+			// V1 accepted-result replay happens before this writer. A prepared
+			// borrow cannot attach itself to an existing legacy receipt/session.
+			return Session{}, playbackdisc.ErrCurrent
+		}
 		if originalItem != item {
 			return Session{}, requestinput.New("requestId already belongs to another item")
 		}
@@ -374,11 +409,23 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 	var assetSize, assetModified int64
 	var duration float64
 	var derivative *preparedmedia.Version
+	var measuredDisc playbackdisc.Snapshot
 	{
 		e = tx.QueryRow(`SELECT a.token,a.container,a.video_codec,a.audio_codec,a.duration,a.path,a.size,a.modified_ns FROM catalog_entities e JOIN catalog_asset_links l ON l.entity_id=e.id JOIN catalog_assets a ON a.id=l.asset_id WHERE e.public_id=pid_blob(?) AND a.token=? AND a.available=1 AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=e.id)`, item, selectedAsset).Scan(&aid, &container, &video, &audio, &duration, &sourcePath, &assetSize, &assetModified)
 		if e != nil {
 			return Session{}, e
 		}
+	}
+	if v1.discBorrow != nil {
+		measuredDisc, e = v1.discBorrow.legacySnapshotTx(ctx, tx, s, p, item, aid)
+		if e != nil {
+			return Session{}, e
+		}
+		if measuredDisc.Source.Size != assetSize || measuredDisc.Source.ModifiedNS != assetModified {
+			return Session{}, playbackdisc.ErrCurrent
+		}
+		facts := measuredDisc.Media
+		container, video, audio, duration = facts.Container, facts.VideoCodec, facts.AudioCodec, float64(facts.DurationMs)/1000
 	}
 	if derivative == nil && s.StorageGuard != nil {
 		if e = s.StorageGuard(sourcePath); e != nil {
@@ -433,10 +480,15 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 			delivery.TargetReach = reachRemote
 		}
 	}
-	if v1.DiscTitle != nil {
+	if v1.DiscTitle != nil || v1.discBorrow != nil {
 		duration = delivery.Duration
 	}
 	mode = delivery.Mode
+	if v1.discBorrow != nil && mode != "hls" {
+		// A private disc input is decoded through its retained wrapper, never
+		// by serving the catalogue's original path directly.
+		return Session{}, ErrIncompatible
+	}
 	if mode == "hls" {
 		if s.hls == nil {
 			return Session{}, ErrIncompatible
@@ -497,7 +549,12 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 	if delivery.AudioAction == "convert" && !cfg.AudioConversionAllowed(ownerTranscoding) || delivery.VideoAction == "convert" && !cfg.VideoConversionAllowed(ownerTranscoding) {
 		return Session{}, ErrTranscodingDisabled
 	}
-	if e = tx.QueryRow(`SELECT a.size,a.modified_ns,COALESCE((SELECT f.revision FROM asset_stream_facts f WHERE f.asset_id=a.token AND f.size=a.size AND f.modified_ns=a.modified_ns),0) FROM catalog_assets a WHERE a.token=?`, aid).Scan(&delivery.SourceSize, &delivery.SourceModifiedNS, &delivery.FactsRevision); e != nil {
+	if v1.discBorrow != nil {
+		delivery.SourceSize, delivery.SourceModifiedNS = measuredDisc.Source.Size, measuredDisc.Source.ModifiedNS
+		// The real immutable facts revision is on the exact private snapshot.
+		// No integer global inventory revision is invented for these facts.
+		delivery.FactsRevision = 0
+	} else if e = tx.QueryRow(`SELECT a.size,a.modified_ns,COALESCE((SELECT f.revision FROM asset_stream_facts f WHERE f.asset_id=a.token AND f.size=a.size AND f.modified_ns=a.modified_ns),0) FROM catalog_assets a WHERE a.token=?`, aid).Scan(&delivery.SourceSize, &delivery.SourceModifiedNS, &delivery.FactsRevision); e != nil {
 		return Session{}, e
 	}
 	id, grant := identity.Token(), identity.Token()
@@ -526,19 +583,23 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 	if pinRows != 1 {
 		return Session{}, ErrStaleOffer
 	}
-	if e = pinDiscSessionTx(ctx, tx, id, aid, v1.DiscTitle); e != nil {
-		return Session{}, e
+	if v1.discBorrow == nil {
+		if e = pinDiscSessionTx(ctx, tx, id, aid, v1.DiscTitle); e != nil {
+			return Session{}, e
+		}
 	}
 	if mode == "remote" && prepared.subtitleEvidence != "" {
 		if _, e = tx.Exec(`INSERT INTO subtitle_remote_sessions VALUES(?,?)`, id, prepared.subtitleEvidence); e != nil {
 			return Session{}, e
 		}
 	}
-	if e = subtitles.AutoSelectTx(ctx, tx, id, generation, item, aid, subtitles.ViewerKey(p.Authority, p.AccountID, p.ProfileID, p.ServerID), automaticSubtitles(values, delivery.Trace, DeliveryContextFrom(ctx).AppLanguage)); e != nil {
-		return Session{}, e
+	if v1.discBorrow == nil {
+		if e = subtitles.AutoSelectTx(ctx, tx, id, generation, item, aid, subtitles.ViewerKey(p.Authority, p.AccountID, p.ProfileID, p.ServerID), automaticSubtitles(values, delivery.Trace, DeliveryContextFrom(ctx).AppLanguage)); e != nil {
+			return Session{}, e
+		}
 	}
 
-	if mode == "hls" {
+	if mode == "hls" && v1.discBorrow == nil {
 		if e = subtitles.PinManifestTextTx(ctx, tx, id, item, aid, subtitles.ViewerKey(p.Authority, p.AccountID, p.ProfileID, p.ServerID)); e != nil {
 			return Session{}, e
 		}
@@ -635,7 +696,21 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, reques
 			return Session{}, e
 		}
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO playback_physical_source_pins SELECT ?,source.id,source.incarnation,source.generation FROM inventory_objects object JOIN library_sources source ON source.id=object.source_id JOIN catalog_entities item ON item.id=? JOIN catalog_libraries cl ON cl.id=item.library_id AND cl.library_id=source.library_id WHERE object.asset_id=? AND object.retired=0 AND object.state='available' AND object.root_incarnation=source.incarnation AND source.enabled=1 ORDER BY source.id LIMIT 1`, id, entityID, aid); e != nil {
+	if v1.discBorrow != nil {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO playback_physical_source_pins(session_id,source_id,incarnation,configuration_generation) VALUES(?,?,?,?)`, id, measuredDisc.Source.LibrarySourceID, measuredDisc.Source.Incarnation, measuredDisc.Source.LibraryGeneration); e != nil {
+			return Session{}, e
+		}
+		if _, e = v1.discBorrow.bindPendingTx(ctx, tx, playbackdisc.Key{SessionID: id, Generation: generation}); e != nil {
+			return Session{}, e
+		}
+		automatic := automaticSubtitles(values, delivery.Trace, DeliveryContextFrom(ctx).AppLanguage)
+		if v1.SubtitleOff {
+			automatic.Off = true
+		}
+		if e = v1.discBorrow.bindSubtitleResourcesTx(ctx, tx, s, p, item, automatic); e != nil {
+			return Session{}, e
+		}
+	} else if _, e = tx.ExecContext(ctx, `INSERT INTO playback_physical_source_pins SELECT ?,source.id,source.incarnation,source.generation FROM inventory_objects object JOIN library_sources source ON source.id=object.source_id JOIN catalog_entities item ON item.id=? JOIN catalog_libraries cl ON cl.id=item.library_id AND cl.library_id=source.library_id WHERE object.asset_id=? AND object.retired=0 AND object.state='available' AND object.root_incarnation=source.incarnation AND source.enabled=1 ORDER BY source.id LIMIT 1`, id, entityID, aid); e != nil {
 		return Session{}, e
 	}
 	if e = gated.Commit(); e != nil {
@@ -736,7 +811,7 @@ func (s *Service) ProgressEvidenceContext(ctx context.Context, p identity.Princi
 }
 func (s *Service) progressTx(ctx context.Context, tx *sql.Tx, p identity.Principal, id string, generation int, sequence int64, position float64, state string, rate float64, seeked *bool, playing bool) error {
 	var e error
-	if e = checkSessionOccurrenceTx(ctx, tx, id); e != nil {
+	if e = s.checkSessionOccurrenceModeTx(ctx, tx, id, false); e != nil {
 		return e
 	}
 	// Fence authentication and current item policy before accepting any evidence.
@@ -865,7 +940,7 @@ func (s *Service) resolveGrant(ctx context.Context, grant string, initialAudio b
 	if e = tx.QueryRowContext(ctx, `SELECT id FROM playback_sessions WHERE grant_hash=?`, identity.Digest(grant)).Scan(&sid); e != nil {
 		return "", p, "", e
 	}
-	if e = checkSessionOccurrenceModeTx(ctx, tx, sid, initialAudio); e != nil {
+	if e = s.checkSessionOccurrenceModeTx(ctx, tx, sid, initialAudio); e != nil {
 		if errors.Is(e, identity.ErrUnauthorized) {
 			e = ErrGrantEnded
 		}
@@ -928,8 +1003,38 @@ func (s *Service) resolveGrant(ctx context.Context, grant string, initialAudio b
 	return aid, p, item, nil
 }
 func (s *Service) Cleanup() error {
-	_, e := dbwork.ExecWrite(context.Background(), s.db, dbwork.ClassEstablishedPlayback, `DELETE FROM playback_sessions WHERE expires_at<?`, time.Now().UTC().Format(time.RFC3339))
-	return e
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if s.discFactory != nil {
+		_ = s.discFactory.sweepExpired(ctx)
+	}
+	if s.discInputs != nil {
+		s.discInputs.cleanup.Lock()
+		defer s.discInputs.cleanup.Unlock()
+	}
+	gate, err := dbwork.Begin(ctx, s.db, dbwork.ClassEstablishedPlayback)
+	if err != nil {
+		return err
+	}
+	defer gate.Rollback()
+	next, err := s.cleanupDiscInputsTx(gate.Context(), gate.Tx())
+	if err != nil {
+		return err
+	}
+	// A private snapshot's FK intentionally retains its legacy occurrence
+	// until its own readers/references have retired. Missing optional reader
+	// composition cannot turn this sweep into a cascade or discard custody.
+	_, err = gate.Tx().ExecContext(gate.Context(), `DELETE FROM playback_sessions WHERE expires_at<? AND NOT EXISTS(SELECT 1 FROM playback_disc_snapshots d WHERE d.session_id=playback_sessions.id)`, time.Now().UTC().Format(time.RFC3339))
+	if err != nil {
+		return err
+	}
+	if err = gate.Commit(); err != nil {
+		return err
+	}
+	if s.discInputs != nil {
+		s.discInputs.after = next
+	}
+	return nil
 }
 func (s Session) String() string { return fmt.Sprintf("playback %s generation %d", s.ID, s.Generation) }
 
@@ -937,6 +1042,7 @@ func (s *Service) ConfigureHLS(h *HLS) {
 	s.hls = h
 	if h != nil {
 		h.subtitleService = s.Subtitles
+		h.discPlayback = s
 	}
 }
 func (s *Service) Ready(ctx context.Context, out Session) error {

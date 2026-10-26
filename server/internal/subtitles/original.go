@@ -69,7 +69,7 @@ func (s *Service) OriginalAsset(ctx context.Context, p identity.Principal, item,
 		return RenderAsset{}, e
 	}
 	defer snapshot.Rollback()
-	if e = checkOriginalTx(ctx, snapshot.Tx(), p, item, session, id, revision); e != nil {
+	if e = s.checkOriginalTx(ctx, snapshot.Tx(), p, item, session, id, revision); e != nil {
 		return RenderAsset{}, e
 	}
 	var object mediaartifact.Object
@@ -104,14 +104,14 @@ func (s *Service) CheckOriginal(ctx context.Context, p identity.Principal, item,
 		return e
 	}
 	defer snapshot.Rollback()
-	return checkOriginalTx(ctx, snapshot.Tx(), p, item, session, id, revision)
+	return s.checkOriginalTx(ctx, snapshot.Tx(), p, item, session, id, revision)
 }
-func checkOriginalTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item, session, id string, revision int64) error {
-	scope, e := sessionTx(ctx, tx, p, item, session)
+func (s *Service) checkOriginalTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item, session, id string, revision int64) error {
+	scope, e := s.sessionTx(ctx, tx, p, item, session)
 	if e != nil {
 		return e
 	}
-	if err := checkDiscResourceSessionTx(ctx, tx, session, id); err != nil {
+	if err := s.checkDiscResourceSessionTx(ctx, tx, session, id); err != nil {
 		return err
 	}
 	if !scope.available {

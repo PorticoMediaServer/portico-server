@@ -8,6 +8,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/mediaanalysis"
 	"portico.local/server/internal/playback"
+	"portico.local/server/internal/playbackdisc"
 	"portico.local/server/internal/segmentmarkers"
 )
 
@@ -57,6 +58,17 @@ func (d Dependencies) configurePlaybackEvidence() {
 	}
 	d.Playback.AuthorityTx = d.playbackAuthorityTx
 	d.Playback.ContinueAuthorityTx = d.playbackFamilyAuthorityTx
+	if d.Identity != nil && d.DiscCaptures != nil {
+		// The optional host composition refuses unsupported tool/storage closures.
+		// Only an original remote video Play can enter its private factory.
+		_ = d.Playback.ConfigureDiscInputs(d.Identity.ID(), d.DiscCaptures)
+		if d.TelemetryContext != nil {
+			// Explicit process/key and active-copy budgets. Active work borrows
+			// the existing two playback probe slots; terminal keys are retained
+			// and saturation refuses rather than forgetting/renewing authority.
+			_ = d.Playback.ConfigureDiscPlay(d.TelemetryContext, d.Identity, d.DiscCaptures, d.DiscConditional, playbackdisc.PreparationLimits{Retained: 4096, Active: 2, PerDevice: 1})
+		}
+	}
 	d.Playback.MarkersTx = func(ctx context.Context, tx *sql.Tx, p identity.Principal, scope playback.OffersScope, source string) (segmentmarkers.Set, error) {
 		return mediaanalysis.ViewerMarkersTx(ctx, tx, d.markerAccess(p, scope.LibraryID, scope.ItemID, scope.ViewerFence), source)
 	}

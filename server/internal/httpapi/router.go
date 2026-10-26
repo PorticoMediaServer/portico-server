@@ -124,10 +124,11 @@ type Dependencies struct {
 	Playback          *playback.Service
 	// DiscCaptures is private byte custody only. Composition supplies it before
 	// New copies Dependencies; it does not enable remote disc admission.
-	DiscCaptures *ownedcapture.Service
-	Hosted       *hosted.Service
-	Metadata     *metadata.Service
-	Origins      []string
+	DiscConditional playback.DiscConditionalSource
+	DiscCaptures    *ownedcapture.Service
+	Hosted          *hosted.Service
+	Metadata        *metadata.Service
+	Origins         []string
 	// SetupHosts explicitly authorizes browser bootstrap authorities for custom
 	// DNS names/reverse proxies. Host/Origin agreement alone cannot prove one.
 	SetupHosts     []string

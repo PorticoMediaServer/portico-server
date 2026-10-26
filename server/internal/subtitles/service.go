@@ -42,6 +42,9 @@ type Service struct {
 	inventory    *mediaartifact.Inventory
 	Extractor    SubtitleExtractor
 	SourceInputs SourceInputs
+	// Configured only by the actual playback composition. A private mapping
+	// never falls through to the local/global disc resolver when this is absent.
+	DiscPresentations DiscPresentationResolver
 
 	// Shared playback owns the delivery plan and its producer. Selection and
 	// delivery change commit together; process replacement runs after commit.
@@ -206,7 +209,7 @@ const resourceColumns = `r.id,r.source_id,v.revision,r.scope,r.owner,r.deleted,r
  COALESCE((SELECT is_forced FROM subtitle_render_revisions rr WHERE rr.resource_id=r.id AND rr.revision=v.revision),0),
  COALESCE((SELECT source_evidence FROM subtitle_render_revisions rr WHERE rr.resource_id=r.id AND rr.revision=v.revision),''),
  COALESCE((SELECT hearing_impaired FROM subtitle_render_revisions rr WHERE rr.resource_id=r.id AND rr.revision=v.revision),0),
- EXISTS(SELECT 1 FROM subtitle_disc_resources dr WHERE dr.resource_id=r.id)`
+ (EXISTS(SELECT 1 FROM subtitle_disc_resources dr WHERE dr.resource_id=r.id) OR EXISTS(SELECT 1 FROM playback_disc_subtitle_resources private WHERE private.resource_id=r.id))`
 
 type rowScanner interface{ Scan(...any) error }
 
@@ -499,7 +502,7 @@ func (s *Service) Mutate(ctx context.Context, p identity.Principal, item string,
 	if previous != nil {
 		return *previous, nil
 	}
-	src, e := sourceQuery(ctx, tx, item, m.SourceID)
+	src, e := s.sourceQuery(ctx, tx, item, m.SourceID)
 	if e != nil {
 		return Receipt{}, e
 	}
@@ -650,7 +653,7 @@ func (s *Service) publish(ctx context.Context, p identity.Principal, item string
 	if previous != nil {
 		return *previous, nil
 	}
-	src, e := sourceQuery(ctx, tx, item, m.SourceID)
+	src, e := s.sourceQuery(ctx, tx, item, m.SourceID)
 	if e != nil {
 		return Receipt{}, e
 	}

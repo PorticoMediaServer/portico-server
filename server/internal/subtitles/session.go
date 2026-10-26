@@ -84,7 +84,7 @@ func (s *Service) PlanTx(ctx context.Context, tx *sql.Tx, p identity.Principal, 
 	if e != nil {
 		return out, e
 	}
-	scope, e := sessionTx(ctx, tx, p, item, session)
+	scope, e := s.sessionTx(ctx, tx, p, item, session)
 	if e != nil {
 		return out, e
 	}
@@ -117,7 +117,7 @@ func (s *Service) PlanTx(ctx context.Context, tx *sql.Tx, p identity.Principal, 
 		if e != nil {
 			return out, e
 		}
-		if err := checkDiscResourceSessionTx(ctx, tx, session, r.ID); err != nil {
+		if err := s.checkDiscResourceSessionTx(ctx, tx, session, r.ID); err != nil {
 			return out, err
 		}
 		if !visible(r, p) || r.SourceID != scope.source || r.sourceSize != scope.size || r.sourceModified != scope.modified {
@@ -203,10 +203,14 @@ func (s *Service) selectCommit(ctx context.Context, p identity.Principal, item, 
 	}
 	tx := gated2.Tx()
 	defer gated2.Rollback()
-	scope, e := sessionTx(ctx, tx, p, item, session)
+	scope, e := s.sessionTx(ctx, tx, p, item, session)
 	if e != nil {
 		return PlaybackPlan{}, e
 	}
+	if e = s.checkSelectionAcceptanceTx(ctx, tx, session); e != nil {
+		return PlaybackPlan{}, e
+	}
+	accepting := selectionAcceptance(ctx)
 
 	digest := requestDigest([]any{session, m})
 	var priorDigest, priorSession string
@@ -246,7 +250,7 @@ func (s *Service) selectCommit(ctx context.Context, p identity.Principal, item, 
 		if e != nil {
 			return PlaybackPlan{}, e
 		}
-		if err := checkDiscResourceSessionTx(ctx, tx, session, r.ID); err != nil {
+		if err := s.checkDiscResourceSessionTx(ctx, tx, session, r.ID); err != nil {
 			return PlaybackPlan{}, err
 		}
 		if !visible(r, p) || r.SourceID != scope.source {
@@ -292,6 +296,11 @@ func (s *Service) selectCommit(ctx context.Context, p identity.Principal, item, 
 				return PlaybackPlan{}, ErrConflict
 			}
 		}
+		if accepting != nil {
+			if e = accepting.BeforeGenerationTx(ctx, tx, session, scope.generation); e != nil {
+				return PlaybackPlan{}, e
+			}
+		}
 		if s.ChangeDeliveryTx != nil {
 			if e = s.ChangeDeliveryTx(ctx, tx, p, session, prepared.resource); e != nil {
 				return PlaybackPlan{}, e
@@ -306,6 +315,13 @@ func (s *Service) selectCommit(ctx context.Context, p identity.Principal, item, 
 		n, _ := result.RowsAffected()
 		if n != 1 {
 			return PlaybackPlan{}, ErrConflict
+		}
+		if accepting != nil {
+			mapped, e := accepting.AfterGenerationTx(ctx, tx, session, nextGeneration, m.ResourceID)
+			if e != nil {
+				return PlaybackPlan{}, e
+			}
+			m.ResourceID = mapped
 		}
 		renderID := ""
 		if prepared.ordinaryBurn {
@@ -332,6 +348,11 @@ func (s *Service) selectCommit(ctx context.Context, p identity.Principal, item, 
 		return out, e
 	}
 	out.AppliedRevision = applied
+	if accepting != nil {
+		if e = accepting.AcceptTx(ctx, tx, out); e != nil {
+			return PlaybackPlan{}, e
+		}
+	}
 	if e = gated2.Commit(); e != nil {
 		return out, e
 	}
@@ -358,11 +379,11 @@ func (s *Service) OpenDocument(ctx context.Context, p identity.Principal, item, 
 	}
 	tx := gated3.Tx()
 	defer gated3.Rollback()
-	scope, e := sessionTx(ctx, tx, p, item, session)
+	scope, e := s.sessionTx(ctx, tx, p, item, session)
 	if e != nil {
 		return nil, e
 	}
-	if e = checkDiscResourceSessionTx(ctx, tx, session, id); e != nil {
+	if e = s.checkDiscResourceSessionTx(ctx, tx, session, id); e != nil {
 		return nil, e
 	}
 	if !scope.available {
@@ -410,11 +431,11 @@ func (s *Service) CheckDocument(ctx context.Context, p identity.Principal, item,
 	}
 	tx := snapshot.Tx()
 	defer snapshot.Rollback()
-	scope, e := sessionTx(ctx, tx, p, item, session)
+	scope, e := s.sessionTx(ctx, tx, p, item, session)
 	if e != nil {
 		return e
 	}
-	if err := checkDiscResourceSessionTx(ctx, tx, session, id); err != nil {
+	if err := s.checkDiscResourceSessionTx(ctx, tx, session, id); err != nil {
 		return err
 	}
 	if !scope.available {

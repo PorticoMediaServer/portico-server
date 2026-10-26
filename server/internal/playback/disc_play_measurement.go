@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/disc"
 	"portico.local/server/internal/identity"
@@ -39,15 +40,16 @@ type discPlayMeasurement struct {
 // actor/family, claim, selected physical object and queue/custody intent.
 // No field in this private construction is accepted from a public request as proof.
 type capturedDiscMeasure struct {
-	DB       *sql.DB
-	Reader   *ownedcapture.Reader
-	Tool     disc.Tool
-	Probe    assets.Probe
-	Template playbackdisc.Snapshot
-	TitleKey string // resolved metadata hint; must match these actual measured bytes
-	Current  func(context.Context) error
-	AcceptTx func(context.Context, *sql.Tx) error
-	Tools    func(context.Context) (playbackdisc.ToolPins, error)
+	DB        *sql.DB
+	Reader    *ownedcapture.Reader
+	Tool      disc.Tool
+	Probe     assets.Probe
+	Template  playbackdisc.Snapshot
+	Requested catalog.DiscTitleRef
+	TitleKey  string // resolved metadata hint; must match these actual measured bytes
+	Current   func(context.Context) error
+	AcceptTx  func(context.Context, *sql.Tx) error
+	Tools     func(context.Context) (playbackdisc.ToolPins, error)
 }
 
 // measureCapturedDiscPlay consumes Reader after the outside-SQL context check.
@@ -97,7 +99,7 @@ func measureCapturedDiscPlay(ctx context.Context, o capturedDiscMeasure) (_ *dis
 	if err != nil {
 		return nil, err
 	}
-	title, err := measuredDiscTitle(structure, o.TitleKey)
+	title, err := measuredRequestedDiscTitle(o.Template, structure, o.TitleKey, o.Requested)
 	if err != nil {
 		return nil, err
 	}
@@ -127,6 +129,15 @@ func measureCapturedDiscPlay(ctx context.Context, o capturedDiscMeasure) (_ *dis
 	snapshot, err := measuredDiscSnapshot(o.Template, playbackdisc.Input{Captured: &playbackdisc.Captured{Receipt: o.Reader.Receipt()}}, pins, structure, title, observation.Fingerprint(), facts)
 	if err != nil {
 		return nil, err
+	}
+	if o.Requested.ID != "" {
+		ref, e := measuredDiscTitleRef(snapshot)
+		if e != nil {
+			return nil, e
+		}
+		if *ref != o.Requested {
+			return nil, ErrStaleOffer
+		}
 	}
 	return &discPlayMeasurement{ctx: ctx, input: input, probe: observation, original: o.AcceptTx, snapshot: snapshot}, nil
 }

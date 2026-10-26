@@ -21,6 +21,7 @@ type DiscSubtitleExtractor interface {
 }
 type DiscExtractionFacts struct {
 	SessionID, ItemID, AssetID, ResourceID, Object, TitleKey, FactsRevision string
+	SnapshotID                                                              string
 	ResourceRevision                                                        int64
 	StreamIndex                                                             int
 }
@@ -113,19 +114,26 @@ func (s *Service) fillDiscCache(ctx context.Context, p identity.Principal, item 
 		return err
 	}
 	tx := snapshot.Tx()
-	if err = checkDiscResourceSessionTx(ctx, tx, admitted.SessionID, r.ID); err != nil {
+	if err = s.checkDiscResourceSessionTx(ctx, tx, admitted.SessionID, r.ID); err != nil {
 		snapshot.Rollback()
 		return err
 	}
 	facts := DiscExtractionFacts{SessionID: admitted.SessionID, ItemID: item, AssetID: r.SourceID, ResourceID: r.ID, ResourceRevision: r.Revision}
 	var origin, duration int64
 	var timing bool
-	err = tx.QueryRowContext(ctx, `SELECT dr.object_id,dr.title_key,dr.title_facts_revision,dr.stream_index,dr.origin_us,dr.timing_known,m.duration_ms FROM subtitle_disc_resources dr JOIN inventory_disc_title_media m ON m.object_id=dr.object_id AND m.title_key=dr.title_key AND m.revision=dr.title_facts_revision WHERE dr.resource_id=?`, r.ID).Scan(&facts.Object, &facts.TitleKey, &facts.FactsRevision, &facts.StreamIndex, &origin, &timing, &duration)
+	private, scoped, err := s.privateDiscPresentationTx(ctx, tx, admitted.SessionID)
+	if err == nil && scoped {
+		facts.SnapshotID, facts.Object, facts.TitleKey, facts.FactsRevision = private.SnapshotID, private.ObjectID, private.TitleKey, private.FactsRevision
+		origin, duration, timing = private.OriginUS, private.DurationMS, private.TimingKnown
+		err = tx.QueryRowContext(ctx, `SELECT stream_index FROM playback_disc_subtitle_resources WHERE snapshot_id=? AND resource_id=?`, private.SnapshotID, r.ID).Scan(&facts.StreamIndex)
+	} else if err == nil {
+		err = tx.QueryRowContext(ctx, `SELECT dr.object_id,dr.title_key,dr.title_facts_revision,dr.stream_index,dr.origin_us,dr.timing_known,m.duration_ms FROM subtitle_disc_resources dr JOIN inventory_disc_title_media m ON m.object_id=dr.object_id AND m.title_key=dr.title_key AND m.revision=dr.title_facts_revision WHERE dr.resource_id=?`, r.ID).Scan(&facts.Object, &facts.TitleKey, &facts.FactsRevision, &facts.StreamIndex, &origin, &timing, &duration)
+	}
 	if err != nil {
 		snapshot.Rollback()
 		return err
 	}
-	src, err := sourceQuery(ctx, tx, item, r.SourceID)
+	src, err := s.sourceQuery(ctx, tx, item, r.SourceID)
 	snapshot.Rollback()
 	if err != nil {
 		return err
@@ -139,11 +147,24 @@ func (s *Service) fillDiscCache(ctx context.Context, p identity.Principal, item 
 		if err := sourceInvocation.CheckTx(check, current); err != nil {
 			return err
 		}
-		if err := checkDiscResourceSessionTx(check, current, facts.SessionID, facts.ResourceID); err != nil {
+		if err := s.checkDiscResourceSessionTx(check, current, facts.SessionID, facts.ResourceID); err != nil {
 			return err
 		}
 		var valid bool
-		err := current.QueryRowContext(check, `SELECT EXISTS(SELECT 1 FROM subtitle_resources r JOIN subtitle_disc_resources dr ON dr.resource_id=r.id WHERE r.id=? AND r.current_revision=? AND r.deleted=0 AND r.source_id=? AND dr.object_id=? AND dr.title_key=? AND dr.title_facts_revision=? AND dr.stream_index=? AND `+discResourceCurrent+`)`, facts.ResourceID, facts.ResourceRevision, facts.AssetID, facts.Object, facts.TitleKey, facts.FactsRevision, facts.StreamIndex).Scan(&valid)
+		var err error
+		if facts.SnapshotID != "" {
+			actual, known, e := s.privateDiscPresentationTx(check, current, facts.SessionID)
+			if e != nil {
+				return e
+			}
+			if !known || actual.SnapshotID != facts.SnapshotID || actual.ObjectID != facts.Object || actual.TitleKey != facts.TitleKey || actual.FactsRevision != facts.FactsRevision {
+				return ErrConflict
+			}
+			err = current.QueryRowContext(check, `SELECT EXISTS(SELECT 1 FROM playback_disc_subtitle_resources map JOIN subtitle_resources r ON r.id=map.resource_id WHERE map.snapshot_id=? AND r.id=? AND r.current_revision=? AND r.deleted=0 AND r.source_id=? AND map.stream_index=?)`, facts.SnapshotID, facts.ResourceID, facts.ResourceRevision, facts.AssetID, facts.StreamIndex).Scan(&valid)
+		} else {
+			err = current.QueryRowContext(check, `SELECT EXISTS(SELECT 1 FROM subtitle_resources r JOIN subtitle_disc_resources dr ON dr.resource_id=r.id WHERE r.id=? AND r.current_revision=? AND r.deleted=0 AND r.source_id=? AND dr.object_id=? AND dr.title_key=? AND dr.title_facts_revision=? AND dr.stream_index=? AND `+discResourceCurrent+`)`, facts.ResourceID, facts.ResourceRevision, facts.AssetID, facts.Object, facts.TitleKey, facts.FactsRevision, facts.StreamIndex).Scan(&valid)
+		}
+
 		if err != nil {
 			return err
 		}
@@ -187,7 +208,7 @@ func (s *Service) ensureSessionCached(ctx context.Context, p identity.Principal,
 	}
 	tx := snapshot.Tx()
 	var scoped bool
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM subtitle_disc_resources WHERE resource_id=?)`, id).Scan(&scoped); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM subtitle_disc_resources WHERE resource_id=?1) OR EXISTS(SELECT 1 FROM playback_disc_subtitle_resources WHERE resource_id=?1)`, id).Scan(&scoped); err != nil {
 		snapshot.Rollback()
 		return err
 	}
@@ -195,17 +216,17 @@ func (s *Service) ensureSessionCached(ctx context.Context, p identity.Principal,
 		snapshot.Rollback()
 		return s.ensureCached(ctx, p, item, id, revision)
 	}
-	scope, err := sessionTx(ctx, tx, p, item, session)
+	scope, err := s.sessionTx(ctx, tx, p, item, session)
 	if err != nil {
 		snapshot.Rollback()
 		return err
 	}
-	if err = checkDiscResourceSessionTx(ctx, tx, session, id); err != nil {
+	if err = s.checkDiscResourceSessionTx(ctx, tx, session, id); err != nil {
 		snapshot.Rollback()
 		return err
 	}
 	selected := s.playbackSourceContext(ctx, p, item, session, scope, func(check context.Context, current *sql.Tx) error {
-		if err := checkDiscResourceSessionTx(check, current, session, id); err != nil {
+		if err := s.checkDiscResourceSessionTx(check, current, session, id); err != nil {
 			return err
 		}
 		var admitted bool

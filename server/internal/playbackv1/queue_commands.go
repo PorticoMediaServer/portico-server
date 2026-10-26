@@ -1478,7 +1478,7 @@ func (s *Service) startQueueEntry(ctx context.Context, c Caller, key, startDiges
 	if req.CastTransferID != "" {
 		startCtx = context.WithValue(ctx, castTransferStartKey{}, castTransferStart{intent: req.CastTransferID, queue: q.id, entry: req.Queue.EntryID, item: item, revision: revision})
 	} else {
-		startCtx = context.WithValue(startCtx, queueStartCustodyKey{}, queueStartCustody{queue: q.id, ownerKind: q.ownerKind, ownerID: q.ownerID, session: q.session, currentEntry: currentEntry, generation: q.custody, revision: revision})
+		startCtx = context.WithValue(startCtx, queueStartCustodyKey{}, queueStartCustody{queue: q.id, ownerKind: q.ownerKind, ownerID: q.ownerID, session: q.session, currentEntry: currentEntry, originalEntry: q.currentEntry, generation: q.custody, revision: revision})
 	}
 	view, preparing, err := s.startPresentation(startCtx, c, key, startDigest, req, row{kind: sessionKind, role: "local", item: item, version: req.VersionID, queueID: q.id, entryID: req.Queue.EntryID}, stored)
 	if err != nil {

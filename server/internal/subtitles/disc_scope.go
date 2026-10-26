@@ -25,7 +25,7 @@ const discResourceCurrent = `EXISTS(SELECT 1 FROM subtitle_disc_resources dr
  AND o.revision=df.source_revision AND o.root_incarnation=ls.incarnation AND df.root_incarnation=ls.incarnation
  AND policy.tier<>'file_list_only' AND EXISTS(SELECT 1 FROM json_each(policy.operations_json) op WHERE op.value='subtitles')
  AND df.source_generation=ls.generation AND ls.enabled=1 AND ls.kind='local' AND o.retired=0 AND o.state='available')`
-const discDefaultResource = `((NOT EXISTS(SELECT 1 FROM inventory_disc_facts d WHERE d.asset_id=r.source_id) AND NOT EXISTS(SELECT 1 FROM subtitle_disc_resources dr WHERE dr.resource_id=r.id))
+const discDefaultResource = `NOT EXISTS(SELECT 1 FROM playback_disc_subtitle_resources private WHERE private.resource_id=r.id) AND ((NOT EXISTS(SELECT 1 FROM inventory_disc_facts d WHERE d.asset_id=r.source_id) AND NOT EXISTS(SELECT 1 FROM subtitle_disc_resources dr WHERE dr.resource_id=r.id))
  OR (` + discResourceCurrent + ` AND EXISTS(SELECT 1 FROM subtitle_disc_resources dr JOIN inventory_disc_facts d ON d.object_id=dr.object_id WHERE dr.resource_id=r.id AND dr.title_key=d.media_title_key AND (d.owner_title_key='' OR d.owner_title_key=dr.title_key) AND EXISTS(SELECT 1 FROM catalog_assets a JOIN asset_stream_facts st ON st.asset_id=a.token AND st.size=a.size AND st.modified_ns=a.modified_ns JOIN asset_chapter_facts ch ON ch.asset_id=a.token AND ch.size=a.size AND ch.modified_ns=a.modified_ns WHERE a.token=r.source_id AND st.revision=d.media_stream_revision AND ch.revision=d.media_chapter_revision AND ch.status='known'))))`
 
 func CheckDiscScopeTx(ctx context.Context, tx *sql.Tx, scope DiscScope) error {
@@ -40,6 +40,16 @@ func CheckDiscScopeTx(ctx context.Context, tx *sql.Tx, scope DiscScope) error {
 	return nil
 }
 func discSessionScopeTx(ctx context.Context, tx *sql.Tx, session string) (*DiscScope, error) {
+	var private bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM playback_disc_snapshots WHERE session_id=?)`, session).Scan(&private); err != nil {
+		return nil, err
+	}
+	if private {
+		// An absent local pin cannot make a private title an ordinary asset
+		// scope. Its resource resolver must retain the exact accepted snapshot;
+		// until that resolver is composed, no inventory resource is substituted.
+		return nil, ErrUnsupported
+	}
 	if err := disc.CheckPlaybackSelectionTx(ctx, tx, session); err != nil {
 		return nil, ErrConflict
 	}
@@ -61,6 +71,13 @@ func discSessionScopeTx(ctx context.Context, tx *sql.Tx, session string) (*DiscS
 	return &scope, CheckDiscScopeTx(ctx, tx, scope)
 }
 func checkDiscResourceSessionTx(ctx context.Context, tx *sql.Tx, session, resource string) error {
+	var private bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM playback_disc_subtitle_resources WHERE resource_id=?)`, resource).Scan(&private); err != nil {
+		return err
+	}
+	if private {
+		return ErrConflict
+	}
 	scope, err := discSessionScopeTx(ctx, tx, session)
 	if err != nil {
 		return err
@@ -98,6 +115,16 @@ func (s *Service) ListDiscTitleTx(ctx context.Context, tx *sql.Tx, p identity.Pr
 	return s.listTx(ctx, tx, p, item, scope.Source, &scope)
 }
 func (s *Service) listSessionTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item, source, session string) (Catalog, error) {
+	private, known, err := s.privateDiscPresentationTx(ctx, tx, session)
+	if err != nil {
+		return Catalog{}, err
+	}
+	if known {
+		if private.AssetID != source {
+			return Catalog{}, ErrConflict
+		}
+		return s.listPrivateDiscTx(ctx, tx, p, item, private)
+	}
 	scope, err := discSessionScopeTx(ctx, tx, session)
 	if err != nil {
 		return Catalog{}, err
@@ -113,4 +140,4 @@ func CheckDiscResourceSessionTx(ctx context.Context, tx *sql.Tx, session, resour
 
 // The placeholder is replaced only with a fixed positional SQL parameter.
 // Filtering before LIMIT prevents another title from consuming this title's slots.
-const discSessionResourcePredicate = `((NOT EXISTS(SELECT 1 FROM playback_disc_pins dp WHERE dp.session_id=$SESSION) AND NOT EXISTS(SELECT 1 FROM subtitle_disc_resources dr WHERE dr.resource_id=r.id)) OR (` + discResourceCurrent + ` AND EXISTS(SELECT 1 FROM playback_disc_pins dp JOIN subtitle_disc_resources dr ON dr.object_id=dp.object_id AND dr.title_key=dp.title_key JOIN inventory_disc_title_media tm ON tm.object_id=dr.object_id AND tm.title_key=dr.title_key AND tm.revision=dr.title_facts_revision WHERE dp.session_id=$SESSION AND dr.resource_id=r.id AND dp.title_facts_revision=dr.title_facts_revision AND dp.source_revision=dr.source_revision AND dp.fingerprint=dr.fingerprint)))`
+const discSessionResourcePredicate = `NOT EXISTS(SELECT 1 FROM playback_disc_snapshots private WHERE private.session_id=$SESSION) AND NOT EXISTS(SELECT 1 FROM playback_disc_subtitle_resources private WHERE private.resource_id=r.id) AND ((NOT EXISTS(SELECT 1 FROM playback_disc_pins dp WHERE dp.session_id=$SESSION) AND NOT EXISTS(SELECT 1 FROM subtitle_disc_resources dr WHERE dr.resource_id=r.id)) OR (` + discResourceCurrent + ` AND EXISTS(SELECT 1 FROM playback_disc_pins dp JOIN subtitle_disc_resources dr ON dr.object_id=dp.object_id AND dr.title_key=dp.title_key JOIN inventory_disc_title_media tm ON tm.object_id=dr.object_id AND tm.title_key=dr.title_key AND tm.revision=dr.title_facts_revision WHERE dp.session_id=$SESSION AND dr.resource_id=r.id AND dp.title_facts_revision=dr.title_facts_revision AND dp.source_revision=dr.source_revision AND dp.fingerprint=dr.fingerprint)))`

@@ -33,17 +33,17 @@ func (s *Service) OpenManifestDocument(ctx context.Context, p identity.Principal
 	if e != nil {
 		return nil, 0, e
 	}
-	if _, _, e = manifestDocumentTx(ctx, snapshot.Tx(), p, item, session, id, revision); e != nil {
+	if _, _, e = s.manifestDocumentTx(ctx, snapshot.Tx(), p, item, session, id, revision); e != nil {
 		snapshot.Rollback()
 		return nil, 0, e
 	}
-	scope, e := sessionTx(ctx, snapshot.Tx(), p, item, session)
+	scope, e := s.sessionTx(ctx, snapshot.Tx(), p, item, session)
 	if e != nil {
 		snapshot.Rollback()
 		return nil, 0, e
 	}
 	ctx = s.playbackSourceContext(ctx, p, item, session, scope, func(check context.Context, tx *sql.Tx) error {
-		_, _, err := manifestDocumentTx(check, tx, p, item, session, id, revision)
+		_, _, err := s.manifestDocumentTx(check, tx, p, item, session, id, revision)
 		return err
 	})
 	snapshot.Rollback()
@@ -56,7 +56,7 @@ func (s *Service) OpenManifestDocument(ctx context.Context, p identity.Principal
 		return nil, 0, e
 	}
 	defer gate.Rollback()
-	r, offset, e := manifestDocumentTx(ctx, gate.Tx(), p, item, session, id, revision)
+	r, offset, e := s.manifestDocumentTx(ctx, gate.Tx(), p, item, session, id, revision)
 	if e != nil {
 		return nil, 0, e
 	}
@@ -148,12 +148,12 @@ func ManifestSubtitleName(title, language string, ordinal int) string {
 
 // manifestDocumentTx is what entitles a viewer to one manifest document of
 // their presentation, and the timing it is served with.
-func manifestDocumentTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item, session, id string, revision int64) (Resource, int64, error) {
-	scope, e := sessionTx(ctx, tx, p, item, session)
+func (s *Service) manifestDocumentTx(ctx context.Context, tx *sql.Tx, p identity.Principal, item, session, id string, revision int64) (Resource, int64, error) {
+	scope, e := s.sessionTx(ctx, tx, p, item, session)
 	if e != nil {
 		return Resource{}, 0, e
 	}
-	if err := checkDiscResourceSessionTx(ctx, tx, session, id); err != nil {
+	if err := s.checkDiscResourceSessionTx(ctx, tx, session, id); err != nil {
 		return Resource{}, 0, err
 	}
 	if !scope.available {
@@ -200,6 +200,6 @@ func (s *Service) CheckManifestDocument(ctx context.Context, p identity.Principa
 		return e
 	}
 	defer snapshot.Rollback()
-	_, _, e = manifestDocumentTx(ctx, snapshot.Tx(), p, item, session, id, revision)
+	_, _, e = s.manifestDocumentTx(ctx, snapshot.Tx(), p, item, session, id, revision)
 	return e
 }

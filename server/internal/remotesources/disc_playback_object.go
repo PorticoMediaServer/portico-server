@@ -2,6 +2,7 @@ package remotesources
 
 import (
 	"context"
+	"database/sql"
 	"io"
 	"path/filepath"
 	"strings"
@@ -114,6 +115,22 @@ func (o *discConditionalObject) check(ctx context.Context) error {
 		return storage.ErrRemoteOffline
 	}
 	if err := o.lease.Check(ctx); err != nil {
+		return err
+	}
+	if o.object.Version().ID() != o.version.ID() || o.object.Snapshot() != o.snapshot {
+		return o.lease.fail(storage.ErrRemoteChanged)
+	}
+	return ctx.Err()
+}
+
+// CheckTx is a DB-only check of THIS retained object/lease, including its
+// terminal state. Stored conditional version equality alone cannot revive a
+// source the original lease already retired. No provider observation is done.
+func (o *discConditionalObject) CheckTx(ctx context.Context, tx *sql.Tx) error {
+	if o == nil || ctx == nil || tx == nil || o.closed.Load() {
+		return storage.ErrRemoteOffline
+	}
+	if err := o.lease.CheckTx(ctx, tx); err != nil {
 		return err
 	}
 	if o.object.Version().ID() != o.version.ID() || o.object.Snapshot() != o.snapshot {

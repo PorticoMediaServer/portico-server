@@ -40,6 +40,8 @@ var ErrConversionSpace = errors.New("not enough free space to start media conver
 
 // HLS owns conversion lifetimes only; planning and grants remain in Service.
 type HLS struct {
+	discPlayback *Service // exact active private disc reader, configured by Service
+
 	subtitleService *subtitles.Service
 	WindowInputs    subtitles.WindowInputs
 	// fmp4 turns on fragmented MP4 output for plans that need it.

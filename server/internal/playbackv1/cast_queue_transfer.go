@@ -73,8 +73,8 @@ func (s *Service) replayCastTransfer(ctx context.Context, c Caller, intent strin
 // before transfer cannot publish a new occurrence after the target takes over.
 type queueStartCustodyKey struct{}
 type queueStartCustody struct {
-	queue, ownerKind, ownerID, session, currentEntry string
-	generation, revision                             int64
+	queue, ownerKind, ownerID, session, currentEntry, originalEntry string
+	generation, revision                                            int64
 }
 
 func (s *Service) recheckQueueStartCustodyTx(ctx context.Context, tx *sql.Tx, c Caller, b queueStartCustody) error {

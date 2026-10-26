@@ -14,11 +14,37 @@ import (
 // after its viewer, source, resource and policy fences have been checked.
 // The new grant, selected subtitle and ordinary delivery plan commit together.
 func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p identity.Principal, session string, resource *subtitles.Resource) error {
-	if err := checkDiscSessionTx(ctx, tx, session); err != nil {
+	if err := s.checkDiscSessionTx(ctx, tx, session); err != nil {
 		return err
 	}
+	_, _, private, err := privateDiscBindingTx(ctx, tx, session)
+	if err != nil {
+		return err
+	}
+	if private {
+		transition, ok := ctx.Value(discSubtitleTransitionKey{}).(*DiscSubtitleTransition)
+		if !ok || transition.service != s || transition.parent.SessionID != session {
+			return subtitles.ErrUnsupported
+		}
+		transition.mu.Lock()
+		exact := transition.tx == tx && transition.claim != nil && !transition.child
+		transition.mu.Unlock()
+		if !exact {
+			return subtitles.ErrUnsupported
+		}
+		if err = transition.CheckTx(ctx, tx); err != nil {
+			return err
+		}
+	}
 	if resource != nil {
-		if err := subtitles.CheckDiscResourceSessionTx(ctx, tx, session, resource.ID); err != nil {
+		if private {
+			if s.Subtitles == nil {
+				return subtitles.ErrUnavailable
+			}
+			if err = s.Subtitles.CheckDiscResourceSessionTx(ctx, tx, session, resource.ID); err != nil {
+				return err
+			}
+		} else if err = subtitles.CheckDiscResourceSessionTx(ctx, tx, session, resource.ID); err != nil {
 			return err
 		}
 	}
@@ -29,7 +55,7 @@ func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p id
 	if old == nil {
 		return subtitles.ErrUnavailable
 	}
-	source, err := loadSessionDeliverySource(ctx, tx, session, old.SourceID)
+	source, err := s.loadSessionDeliverySourceTx(ctx, tx, session, old.SourceID)
 	if err != nil {
 		return err
 	}
@@ -79,6 +105,9 @@ func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p id
 	plan, err := planDelivery(input)
 	if err != nil {
 		return err
+	}
+	if private && plan.Mode != "hls" {
+		return subtitles.ErrUnsupported
 	}
 	if old.Trace != nil && old.Trace.Audio != nil && plan.Trace != nil && plan.Trace.Audio != nil {
 		plan.Trace.Audio.ChosenBy = old.Trace.Audio.ChosenBy
