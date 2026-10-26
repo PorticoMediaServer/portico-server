@@ -1,3 +1,4 @@
+import {linkAbortSignals, throwIfAborted} from '../abort-lifetime.ts';
 import type {Library} from '../index.ts';
 import type {ChannelApi} from '../channel-guide.ts';
 import {browseCapabilitiesPath, browseContextFacetsPath, browsePath, parseBrowseCapabilities, parseBrowseFacets, parseBrowseResult, type BrowseFieldCapability, type BrowseFacetValue} from '../browse.ts';
@@ -26,6 +27,11 @@ export class ChannelFieldsSource {
   private readonly titles = new Map<string, PinTitle>();
   private readonly valueLabels = new Map<string, string>();
   constructor(private readonly api: ChannelApi, private readonly allowed: readonly Library[], private readonly isCurrent: () => boolean, private readonly reportError: (error: unknown) => void) {}
+  private async request<T = unknown>(signals: readonly (AbortSignal | undefined)[], path: string, method?: string, body?: unknown): Promise<T> {
+    const lifetime = linkAbortSignals(signals);
+    try {throwIfAborted(lifetime.signal); return await this.api.request<T>(path, method, body, lifetime.signal);}
+    finally {lifetime.dispose();}
+  }
   private current() {return !this.lifetime.signal.aborted && this.isCurrent();}
   private owns(scope: AbortController) {return this.current() && this.scope === scope && !scope.signal.aborted;}
   private publish(state: Snapshot) {if (this.current()) {this.state = Object.freeze(state);for (const listener of this.listeners) listener();}}
@@ -45,7 +51,7 @@ export class ChannelFieldsSource {
       const lists = await Promise.all(representatives.map(async library => {
         if (!this.owns(scope)) throw ended();
         const pivot = library.kind === 'movie' ? 'movies' as const : 'shows' as const;
-        const raw = await this.api.request<unknown>(browseCapabilitiesPath(library.id, pivot), 'GET', undefined, AbortSignal.any([scope.signal, this.lifetime.signal]));
+        const raw = await this.request<unknown>([scope.signal, this.lifetime.signal], browseCapabilitiesPath(library.id, pivot), 'GET', undefined);
         if (!this.owns(scope)) throw ended();
         const capabilities = parseBrowseCapabilities(raw);
         if (capabilities.library.id !== library.id) throw new Error('invalid_channel_field_scope');
@@ -60,9 +66,9 @@ export class ChannelFieldsSource {
   values = async (entry: ChannelField, query: string, caller: AbortSignal): Promise<readonly BrowseFacetValue[]> => {
     const scope = this.scope;
     if (!scope || !this.owns(scope) || caller.aborted || !this.state.fields.includes(entry) || query.length > 200) throw ended();
-    const signal = AbortSignal.any([scope.signal, this.lifetime.signal, caller]);
+    const signals = [scope.signal, this.lifetime.signal, caller];
     try {
-    const raw = await this.api.request<unknown>(browseContextFacetsPath(entry.libraryId, entry.field.id, entry.pivot, undefined, query, 200, 0), 'GET', undefined, signal);
+    const raw = await this.request<unknown>(signals, browseContextFacetsPath(entry.libraryId, entry.field.id, entry.pivot, undefined, query, 200, 0), 'GET', undefined);
     if (!this.owns(scope) || caller.aborted || !this.state.fields.includes(entry)) throw ended();
     const page = parseBrowseFacets(raw, entry.field.id);
     for (const value of page.values) {this.valueLabels.set(`${entry.libraryId}/${entry.field.id}/${value.value}`, value.label);if (this.valueLabels.size > 4096) this.valueLabels.delete(this.valueLabels.keys().next().value!);}
@@ -77,13 +83,13 @@ export class ChannelFieldsSource {
     if (!scope || !this.owns(scope) || caller.aborted || query.trim().length < 2 || query.length > 200 || /[\x00-\x1f\x7f]/.test(query)) return [];
     const search = new AbortController();this.searchRead = search;
     const current = () => this.owns(scope) && this.searchRead === search && !search.signal.aborted && !caller.aborted;
-    const signal = AbortSignal.any([scope.signal, search.signal, this.lifetime.signal, caller]);
+    const signals = [scope.signal, search.signal, this.lifetime.signal, caller];
     const selected = [...this.selected], results: PinTitle[][] = selected.map(() => []);let offset = 0;
     try {
       await Promise.all(Array.from({length: Math.min(4, selected.length)}, async () => {
         for (;;) {
           const index = offset++, library = selected[index];if (!library || !current()) return;
-          const raw = await this.api.request<unknown>(browsePath(library.id), 'POST', {pivot: library.kind === 'movie' ? 'movies' : 'shows', query: {field: 'title', operator: 'contains', value: query.trim()}, limit: 6}, signal);
+          const raw = await this.request<unknown>(signals, browsePath(library.id), 'POST', {pivot: library.kind === 'movie' ? 'movies' : 'shows', query: {field: 'title', operator: 'contains', value: query.trim()}, limit: 6});
           if (!current()) return;
           const page = parseBrowseResult(raw);
           for (const entry of page.entries) {
@@ -106,12 +112,12 @@ export class ChannelFieldsSource {
     const scope = this.scope;if (!scope || !this.owns(scope) || caller.aborted) return;
     const pending = ids.slice(0, 20).filter(id => /^[A-Za-z0-9_-]{1,128}$/.test(id) && !this.titles.has(id));let offset = 0;
     const current = () => this.owns(scope) && !caller.aborted;
-    const signal = AbortSignal.any([scope.signal, this.lifetime.signal, caller]);
+    const signals = [scope.signal, this.lifetime.signal, caller];
     await Promise.all(Array.from({length: Math.min(4, pending.length)}, async () => {
       for (;;) {
         const id = pending[offset++];if (!id || !current()) return;
         try {
-          const raw = await this.api.request<unknown>(encodedRoutePath('get_items_id', {id: encodeURIComponent(id)}), 'GET', undefined, signal);
+          const raw = await this.request<unknown>(signals, encodedRoutePath('get_items_id', {id: encodeURIComponent(id)}), 'GET', undefined);
           if (!current()) return;
           const item = parseMediaItem(raw);
           if (item.id !== id || !this.allowed.some(library => library.id === item.libraryId) || !['movie', 'show', 'episode'].includes(item.kind) || !item.title || item.title.length > 512) continue;

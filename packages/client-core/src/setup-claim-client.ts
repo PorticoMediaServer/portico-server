@@ -1,3 +1,4 @@
+import {throwIfAborted} from './abort-lifetime.ts';
 import {routePath} from '../../contracts/src/routes.ts';
 import type {HttpLocalApi} from './index.ts';
 import type {ClaimExpected} from './claim-onboarding.ts';
@@ -51,9 +52,9 @@ export async function prepareSetupClaimHandoff(api: Api, expected: ClaimExpected
   if (origin.protocol !== 'https:' && !(origin.protocol === 'http:' && origin.hostname === 'localhost')) throw invalid();
   routeBytes(binding.state, 32); routeBytes(binding.codeChallenge, 32);
   const current = async () => {
-    options.signal?.throwIfAborted();
+    throwIfAborted(options.signal);
     await ports.assertPendingCurrent();
-    options.signal?.throwIfAborted();
+    throwIfAborted(options.signal);
     const route = api.getRouteConnection();
     if (!route || route.getSnapshot().phase !== 'ready' || !sameServerPin(route.pin, binding.pin) || installationIdentity()?.installationId !== binding.installationId) throw invalid();
   };
