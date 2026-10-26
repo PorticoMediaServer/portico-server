@@ -12,20 +12,29 @@ import (
 	"portico.local/server/internal/readingtest"
 )
 
-func readingTreeFile(t *testing.T, r *readingFixture, relative string) string {
+// readingTreeFile writes a publication under the fixture root. A caller may
+// supply exact bytes to exercise a publication without the built-in creator.
+func readingTreeFile(t *testing.T, r *readingFixture, relative string, supplied ...[]byte) string {
 	t.Helper()
+	if len(supplied) > 1 {
+		t.Fatal("one publication is required")
+	}
 	name := filepath.Join(filepath.Dir(r.path), filepath.FromSlash(relative))
 	if err := os.MkdirAll(filepath.Dir(name), 0700); err != nil {
 		t.Fatal(err)
 	}
 	var data []byte
-	switch filepath.Ext(name) {
-	case ".epub":
-		data = readingtest.EPUB()
-	case ".cbz":
-		data = readingtest.CBZ()
-	default:
-		data = readingtest.PDF()
+	if len(supplied) == 1 {
+		data = supplied[0]
+	} else {
+		switch filepath.Ext(name) {
+		case ".epub":
+			data = readingtest.EPUB()
+		case ".cbz":
+			data = readingtest.CBZ()
+		default:
+			data = readingtest.PDF()
+		}
 	}
 	if err := os.WriteFile(name, data, 0600); err != nil {
 		t.Fatal(err)

@@ -12,11 +12,22 @@ import (
 	"image/png"
 )
 
-func EPUB() []byte {
+func EPUB() []byte { return epub(true) }
+
+// EPUBWithoutCreator is the same lawful publication without an embedded
+// creator, so a test can exercise folder-derived attribution alone.
+func EPUBWithoutCreator() []byte { return epub(false) }
+
+func epub(creator bool) []byte {
+	metadata := `<dc:identifier id="bookid">urn:uuid:382df65f-89d0-496e-ab18-6670e4d27ad4</dc:identifier><dc:title>Original publication</dc:title>`
+	if creator {
+		metadata += `<dc:creator>Portico</dc:creator>`
+	}
+	metadata += `<dc:language>en</dc:language><meta property="dcterms:modified">2026-10-23T00:00:00Z</meta>`
 	return archive([][2]string{
 		{"mimetype", "application/epub+zip"},
 		{"META-INF/container.xml", `<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0"><rootfiles><rootfile full-path="EPUB/package.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`},
-		{"EPUB/package.opf", `<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="bookid">urn:uuid:382df65f-89d0-496e-ab18-6670e4d27ad4</dc:identifier><dc:title>Original publication</dc:title><dc:creator>Portico</dc:creator><dc:language>en</dc:language><meta property="dcterms:modified">2026-10-23T00:00:00Z</meta></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest><spine page-progression-direction="ltr"><itemref idref="chapter"/></spine></package>`},
+		{"EPUB/package.opf", `<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/">` + metadata + `</metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/></manifest><spine page-progression-direction="ltr"><itemref idref="chapter"/></spine></package>`},
 		{"EPUB/nav.xhtml", `<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="en"><head><title>Contents</title></head><body><nav epub:type="toc"><ol><li><a href="chapter.xhtml">Chapter</a></li></ol></nav></body></html>`},
 		{"EPUB/chapter.xhtml", `<html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><title>Original chapter</title></head><body><h1 id="chapter">Original chapter</h1><p>This original text is a small publication used to verify reading, source authorization and saved locations.</p></body></html>`},
 	})
