@@ -121,6 +121,42 @@ export async function transferPorticoOwnership(hosted:HostedRequestApi,hostedOri
  await server.request(routePath("post_direct_ownership"),'POST',{accountId,expectedRevision,porticoIdentity},signal);
 }
 
+/** A public identity is one server family/account token: ASCII only, 1..128.
+ * The characters are checked one by one, because a regular expression anchor
+ * can match before a final newline. */
+function publicId(value: unknown): value is string {
+ if (typeof value !== 'string' || value.length < 1 || value.length > 128) return false;
+ for (let index = 0; index < value.length; index++) {
+  const code = value.charCodeAt(index);
+  if (!(code >= 0x30 && code <= 0x39 || code >= 0x41 && code <= 0x5a || code >= 0x61 && code <= 0x7a || code === 0x5f || code === 0x2d)) return false;
+ }
+ return true;
+}
+/** Unpaired surrogates would be rewritten by UTF-8 encoding, so a password
+ * carrying one is refused instead of being sent as different bytes. */
+function wellFormed(value: string): boolean {
+ for (let index = 0; index < value.length; index++) {
+  const unit = value.charCodeAt(index);
+  if (unit >= 0xd800 && unit <= 0xdbff) {
+   const low = value.charCodeAt(++index);
+   if (!(low >= 0xdc00 && low <= 0xdfff)) return false;
+  } else if (unit >= 0xdc00 && unit <= 0xdfff) return false;
+ }
+ return true;
+}
+/** The local owner hands ownership to another member of this server:
+ * `POST /v1/direct/ownership {accountId, currentPassword, expectedRevision}` and nothing else.
+ * The caller's own revision is required, and the current password is re-proved by the server.
+ * This helper never signs in, retiers, signs anyone out or falls back to a Hosted assertion. */
+export async function transferLocalOwnership(server:ProfileAPI,accountId:string,currentPassword:string,expectedRevision:number,signal?:AbortSignal):Promise<void>{
+ if(!publicId(accountId))throw new Error('The target account is invalid.');
+ if(typeof expectedRevision!=='number'||!Number.isSafeInteger(expectedRevision)||expectedRevision<1)throw new Error('The owner revision is invalid.');
+ if(typeof currentPassword!=='string'||currentPassword.length===0||!wellFormed(currentPassword)||new TextEncoder().encode(currentPassword).length>72)throw new Error('The current password is invalid.');
+ if(signal?.aborted)throw Object.assign(new Error('The ownership transfer was cancelled.'),{name:'AbortError'});
+ const body:Readonly<{accountId:string;currentPassword:string;expectedRevision:number}>={accountId,currentPassword,expectedRevision};
+ await server.request<unknown>(routePath("post_direct_ownership"),'POST',routeBody("post_direct_ownership",body),signal);
+}
+
 /** A Portico Account owner accepts Hosted's custody of the server's claim (retiring it, its
  * certificates): `POST /v1/direct/ownership/custody {porticoIdentity}` with this device's account
  * session and a custody assertion. Ask the owner first: this is their consent. Needed when the
