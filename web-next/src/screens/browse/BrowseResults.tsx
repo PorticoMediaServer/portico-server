@@ -15,6 +15,7 @@ import {Button} from '../../kit/controls';
 import {Icon} from '../../kit/Icon';
 import {SelectionCircle} from '../../kit/selection';
 import type {ShellArtwork} from '../../shell/artwork';
+import {useAcceptedArrival} from '../../kit/browse/use-arrival';
 import {BrowseEntryCard, type BrowseItemActions} from './EntryCard';
 import type {BrowseController, BrowseMember} from './controller';
 import styles from './browse.module.css';
@@ -65,6 +66,9 @@ export function BrowseResults(props: BrowseResultsProps) {
   const [size, setSize] = useState({width: 0, grid: 0, height: 600}), [visible, setVisible] = useState({first: -1, last: -1});
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const snapshot = useSyncExternalStore(controller.collection.subscribe, controller.collection.getSnapshot, controller.collection.getSnapshot);
+  // motion 3.8: the answer cross-fades at 180 when its own committed generation lands; the collection
+  // already keeps the old pages on screen until then, so nothing here re-keys or refetches the grid.
+  useAcceptedArrival(root, snapshot, controller.collection);
   const failed = snapshot.status === 'error';
   useLayoutEffect(() => {
     const element = root.current; if (!element) return;
