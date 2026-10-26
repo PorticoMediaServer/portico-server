@@ -12,6 +12,8 @@ const approvedStateCopy = {
   // where states.html#25 (the phone's) says Try again.
   'next.states.reloadPage': 'Reload',
   'next.states.playbackInfo': 'Playback info',
+  // playback-info.html:735–736 names this same panel, not a title's media details.
+  'next.info.title': 'Playback info',
 };
 // collections.html 24a/c/e/f and 26b explicitly use Reload for a conflicted Home layout.
 const approvedHomeCopy = {
@@ -33,9 +35,17 @@ const approvedSettingsCopy = {
   'next.settingsSpec.server.storage.groups.0.rows.3.help': 'Pages and videos start slower for a while.',
   'next.settingsSpec.server.storage.groups.0.rows.3.control.confirm': 'Empty the cache? Some pages and videos start slower while Portico rebuilds it. Nothing you added is lost.',
 };
+// Exact context matters: these are Reading locations, sign-in mode data,
+// and a diagnostic log noun, rather than the legacy glossary's saved-title/action senses.
+// desktop-read.html:1041; settings.html:1140. No broad key or substring exemption.
+const contextCopy = {
+  'next.reader.bookmarks': 'Bookmarks',
+  'next.tvPeople.local': 'Local account',
+  'next.settings.librarySonic.retryUnavailable': 'Still can’t load. The log in Troubleshooting has the reason.',
+};
 export function lintNextGlossary(messages) {
   const rules = [...AVOIDS, [/Portico Cloud/, 'Portico Services']];
-  return Object.entries(messages).flatMap(([key, value]) => rules.filter(([pattern]) => pattern.test(value) && approvedStateCopy[key] !== value && approvedHomeCopy[key] !== value && approvedSettingsCopy[key] !== value).map(([, expected]) => `${key}: use ${expected}`));
+  return Object.entries(messages).flatMap(([key, value]) => rules.filter(([pattern]) => pattern.test(value) && approvedStateCopy[key] !== value && approvedHomeCopy[key] !== value && approvedSettingsCopy[key] !== value && contextCopy[key] !== value).map(([, expected]) => `${key}: use ${expected}`));
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const failures = lintNextGlossary(nextMessages);
