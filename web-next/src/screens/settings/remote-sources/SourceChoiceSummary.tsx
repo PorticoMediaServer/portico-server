@@ -27,7 +27,9 @@ export type SourceChoiceSummaryProps = Readonly<{
 
 /** The authored Custom line (remote-sources.html#4d tiles 4 and 6). Presentation only:
  * it reads the two records its caller already matched and never looks up a baseline,
- * a definition list or a command. A pair with no changed rows draws nothing. */
+ * a definition list or a command. A pair with no changed rows draws nothing. The
+ * caller's own wrapper owns the surface (.box on the source page, or the wizard
+ * tile's inline radius and background); this row adds no decoration of its own. */
 export function SourceChoiceSummary({comparison, definition, disabled, onChooseStart, onResetAll}: SourceChoiceSummaryProps) {
   const changes = comparison.changedFields.length;
   if (!changes) return null;

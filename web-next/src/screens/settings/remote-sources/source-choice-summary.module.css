@@ -1,15 +1,14 @@
 /* The authored Custom line: remote-sources.html#4d tiles 4 and 6, .presetrow
-   (remote-sources.html lines 1083-1088). Values are lifted from that rule and
-   its inline row, using the kit's own colour vocabulary. */
+   (remote-sources.html lines 1083-1088). The rule itself carries no surface:
+   the source page wraps it in .box (line 96: var(--raised), border-radius 14px)
+   and the wizard tiles set the same radius and background inline. The caller
+   owns that wrapper, so this module draws layout only and adds no decoration. */
 .presetRow {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) auto;
   gap: 16px;
   align-items: center;
   padding: 18px 22px;
-  border-radius: 14px;
-  background: var(--color-raised);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 6%, transparent);
 }
 .icon {
   width: 44px;
@@ -22,7 +21,9 @@
 }
 .text { min-width: 0; }
 .text b { display: block; font-size: 1rem; font-weight: 700; }
-.text p { margin: 4px 0 0; font-size: 0.875rem; color: var(--color-text-tertiary); line-height: 1.5; max-width: 560px; }
+/* Two classes plus the element, so the authored 4px lead survives the kit's
+   .dialogBody p { margin: 0 } (one class plus the element) regardless of chunk order. */
+.presetRow .text p { margin: 4px 0 0; font-size: 0.875rem; color: var(--color-text-tertiary); line-height: 1.5; max-width: 560px; }
 .tag {
   display: inline-flex;
   align-items: center;
@@ -36,3 +37,8 @@
   color: var(--color-accent-strong);
 }
 .actions { display: flex; gap: 8px; }
+/* Effective authored .btn.xs inside .wz: remote-sources.html:224 sets 0 14 padding,
+   :932 overrides only the height to 34, and :130's 0 13 never applies. The kit xs
+   already draws 34 / r9 / gap 6 / 14px; only the inset differs, and this bounded
+   rule (element plus attribute beats .button[data-size="xs"]) makes it 14px. */
+.actions button[data-size="xs"] { --control-inset: 14px; }
