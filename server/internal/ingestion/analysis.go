@@ -170,9 +170,9 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 	if err != nil {
 		return err
 	}
-	var object, revision, relative, analyzed, operations string
-	var queuedPolicy int64
-	err = s.db.QueryRowContext(parent, `SELECT q.object_id,q.revision,q.policy_revision,o.relative_path,o.analysis_revision,o.analysis_operations_json FROM inventory_analysis_queue q JOIN inventory_objects o ON o.id=q.object_id WHERE q.job_id=? AND q.state='pending' ORDER BY q.object_id LIMIT 1`, job).Scan(&object, &revision, &queuedPolicy, &relative, &analyzed, &operations)
+	var object, revision, relative, analyzed, operations, analysisState string
+	var queuedPolicy, analysisPolicy int64
+	err = s.db.QueryRowContext(parent, `SELECT q.object_id,q.revision,q.policy_revision,o.relative_path,o.analysis_revision,o.analysis_operations_json,o.analysis_policy,o.analysis_state FROM inventory_analysis_queue q JOIN inventory_objects o ON o.id=q.object_id WHERE q.job_id=? AND q.state='pending' ORDER BY q.object_id LIMIT 1`, job).Scan(&object, &revision, &queuedPolicy, &relative, &analyzed, &operations, &analysisPolicy, &analysisState)
 	if errors.Is(err, sql.ErrNoRows) {
 		gated2, e := dbwork.Begin(parent, s.db, dbwork.ClassBackgroundMedia)
 		if e != nil {
@@ -258,9 +258,14 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 	// scan, whatever historical operation tokens the row carries and whether or
 	// not its basic bookkeeping looks complete. Naming is the only analysis it
 	// gets, and this revision's naming being recorded is what completes it.
-	remoteDisc := s.storage != nil && s.storage.IsRemote(filepath.Join(source.ResolvedPath, relative)) && assets.DiscImage(relative)
-	if remoteDisc && analyzed == revision {
-		return nil
+	// The source's own kind is the authority: a stale or missing storage registry
+	// must never let a remote image fall into the local disc probe.
+	remoteDisc := source.Kind == "remote" && assets.DiscImage(relative)
+	if remoteDisc && analyzed == revision && analysisPolicy == queuedPolicy && analysisState == "deferred" {
+		// Naming is already recorded for this exact revision and policy. Settle
+		// this queue invocation through the ordinary outcome path, which reproves
+		// the fence and policy revision, and reads nothing from the source.
+		return s.analysisOutcome(parent, job, object, revision, queuedPolicy, false, "")
 	}
 	if !remoteDisc && (!policy.Allows("probe") || !basicNeeded) {
 		if deep {

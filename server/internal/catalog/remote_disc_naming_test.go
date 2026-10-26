@@ -248,6 +248,16 @@ func TestCommitInventoryNamingReprovesQueueAndObservation(t *testing.T) {
 				t.Fatal(err)
 			}
 		}, observed},
+		{"asset names another path", func(t *testing.T, f namingFixture) {
+			if _, err := f.db.Exec(`UPDATE catalog_assets SET path='/remote/Other.iso' WHERE token='naming-asset'`); err != nil {
+				t.Fatal(err)
+			}
+		}, observed},
+		{"asset size disagrees with object", func(t *testing.T, f namingFixture) {
+			if _, err := f.db.Exec(`UPDATE catalog_assets SET size=size-1 WHERE token='naming-asset'`); err != nil {
+				t.Fatal(err)
+			}
+		}, observed},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
