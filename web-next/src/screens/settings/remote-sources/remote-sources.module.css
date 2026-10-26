@@ -210,3 +210,20 @@
 
 /* The spec's own row label for the source list (s/server-remote-sources#group1). */
 .sectionLabel { margin: 0; padding: 0 2px; font-size: var(--type-caption-size); font-weight: var(--type-body-strong-weight); color: var(--color-text-tertiary); }
+
+/* remote-sources#14: at phone width the folder explorer fills the viewport between the
+   browser's bars instead of rising as a sheet; the dialog's own header, description and
+   footer are replaced by the drawn Cancel / title / Done bar and the chosen list. */
+@media (max-width: 599px) {
+  .folderPickerPhone.folderPickerPhone { inset: 0; translate: none; width: auto; height: auto; max-height: none; padding: 0; border-radius: 0; display: flex; flex-direction: column; background: var(--color-ink); }
+  .folderPickerPhone.folderPickerPhone > header, .folderPickerPhone.folderPickerPhone > p { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); }
+  .folderPickerBodyPhone { display: flex; flex-direction: column; flex: 1; min-height: 0; padding: 0; overflow: hidden; }
+  .folderPhoneTop { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--color-line-soft); }
+  .folderPhoneTop b { flex: 1; min-width: 0; text-align: center; font-size: 17px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .folderPhoneAction, .folderPhoneDone { flex: none; border: 0; padding: 6px; background: none; font: inherit; font-size: 16px; font-weight: 600; color: var(--color-text-secondary); cursor: pointer; }
+  .folderPhoneDone { color: var(--color-accent-strong); font-weight: 700; }
+  .folderPhoneDone:disabled { color: var(--color-text-tertiary); opacity: .6; cursor: default; }
+  .folderPhoneChosen { padding: 10px 14px 0; }
+  .folderPhoneChosen .chosenList { margin: 0; justify-content: flex-start; }
+  .folderPickerBodyPhone .explorer { flex: 1; min-height: 0; overflow: auto; padding: 0 14px calc(14px + env(safe-area-inset-bottom)); }
+}

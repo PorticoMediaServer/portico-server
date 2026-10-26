@@ -3,6 +3,7 @@ import {defaultI18n} from '@i18n';
 import type {RemoteFolder, RemoteFolderPage, RemoteSourceService} from '@core/remote-sources.ts';
 import {Button, Switch, TextField} from '../../../kit/controls';
 import {Dialog} from '../../../kit/overlays/Dialog';
+import {usePhone} from '../../../kit/overlays/shared';
 import {Icon} from '../../../kit/Icon';
 import styles from './remote-sources.module.css';
 
@@ -17,6 +18,7 @@ export function RemoteFolderPicker({service, sourceId, sourceName, open, onOpenC
   service: RemoteSourceService; sourceId: string; sourceName: string; open: boolean;
   onOpenChange: (open: boolean) => void; onChoose: (folders: readonly RemoteFolder[]) => void;
 }>) {
+  const phone = usePhone();
   const [page, setPage] = useState<RemoteFolderPage>();
   const [typed, setTyped] = useState('');
   const [busy, setBusy] = useState(false), [failed, setFailed] = useState<'' | 'list' | 'more'>('');
@@ -62,21 +64,32 @@ export function RemoteFolderPicker({service, sourceId, sourceName, open, onOpenC
   const choose = () => { if (chosen.length) { onChoose(chosen); close(); } };
   const listed = page?.entries;
   const label = (folder: RemoteFolder) => `${sourceName}: /${folder.relative}`;
+  // Several folders are chosen here, so the phone page keeps the chosen list in its body:
+  // the dialog's footer is replaced by the drawn Cancel/title/Done bar on a full window.
+  const chosenList = <div className={styles.chosenList}>
+    {chosen.length > 0 && <span className={styles.chosenLabel}>{t('next.remoteSources.chosen')}</span>}
+    {chosen.map(folder => <button key={folder.relative} type="button" className={styles.chosenChip} onClick={() => toggle(folder)}
+      aria-label={t('next.remoteSources.removeFolder', {name: label(folder)})}>
+      <Icon name="i-folder" size={15}/>{label(folder)}<Icon name="i-x" size={14}/>
+    </button>)}
+  </div>;
   return <Dialog open={open} onOpenChange={next => {if (!next) close();}} width={760} title={t('next.remoteSources.foldersTitle')}
-    description={t('next.remoteSources.foldersIn', {name: sourceName})}
-    footer={<>
-      <div className={styles.chosenList}>
-        {chosen.length > 0 && <span className={styles.chosenLabel}>{t('next.remoteSources.chosen')}</span>}
-        {chosen.map(folder => <button key={folder.relative} type="button" className={styles.chosenChip} onClick={() => toggle(folder)}
-          aria-label={t('next.remoteSources.removeFolder', {name: label(folder)})}>
-          <Icon name="i-folder" size={15}/>{label(folder)}<Icon name="i-x" size={14}/>
-        </button>)}
-      </div>
+    responsive={false} showCloseButton={!phone}
+    className={phone ? styles.folderPickerPhone : undefined} bodyClassName={phone ? styles.folderPickerBodyPhone : undefined}
+    description={phone ? undefined : t('next.remoteSources.foldersIn', {name: sourceName})}
+    footer={phone ? undefined : <>
+      {chosenList}
       <Button size="small" variant="glass" onClick={close}>{t('next.remoteSources.cancel')}</Button>
       <Button size="small" variant="primary" disabled={!chosen.length} onClick={choose}>
         {t(chosen.length === 1 ? 'next.remoteSources.useOneFolder' : 'next.remoteSources.useFolders', {count: chosen.length})}
       </Button>
     </>}>
+    {phone && <div className={styles.folderPhoneTop}>
+      <button type="button" className={styles.folderPhoneAction} onClick={close}>{t('next.remoteSources.cancel')}</button>
+      <b>{t('next.remoteSources.foldersTitle')}</b>
+      <button type="button" className={styles.folderPhoneDone} disabled={!chosen.length} onClick={choose}>{t('next.settings.done')}</button>
+    </div>}
+    {phone && <div className={styles.folderPhoneChosen}>{chosenList}</div>}
     <div className={styles.explorer}>
       <div className={styles.explorerPath}>
         <Button size="small" variant="glass" disabled={busy || !page} aria-label={t('next.remoteSources.upOneFolder')}
