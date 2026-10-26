@@ -225,6 +225,7 @@ class Smoke:
         # and composes its own preview at endpoint. Follow bounded rows in the
         # server's order until one publishes real entries, as the web client does.
         with_entries, movie, title, followed = 0, '', '', 0
+        empty_previews, shape_preview, preview_failure = 0, None, None
         for row in rows[:24]:
             if not isinstance(row, dict):
                 continue
@@ -238,13 +239,18 @@ class Smoke:
                 followed += 1
                 row_reply = self.client.call('home-real-rows', 'GET', endpoint, query={'limit': 20})
                 if row_reply.failure is not None or row_reply.status != 200:
+                    if preview_failure is None:
+                        preview_failure = row_reply
                     continue
                 row_document = row_reply.data
-                if not isinstance(row_document, dict):
+                if not isinstance(row_document, dict) or not isinstance(row_document.get('entries'), list):
+                    if shape_preview is None:
+                        shape_preview = row_reply
                     continue
                 entries = row_document.get('entries')
-            if not isinstance(entries, list) or not entries:
-                continue
+                if not entries:
+                    empty_previews += 1
+                    continue
             with_entries += 1
             for entry in entries[:200]:
                 if not isinstance(entry, dict) or entry.get('kind') != 'movie':
@@ -255,7 +261,15 @@ class Smoke:
                     break
             break
         if with_entries == 0:
-            raise FlowFail(reply, reason='no-home-entries')
+            # An entry claim needs a readable preview. Preserve the first real
+            # preview failure instead of reporting an empty row we never read.
+            if empty_previews:
+                raise FlowFail(reply, reason='no-home-entries')
+            if shape_preview is not None:
+                raise FlowFail(shape_preview, reason='shape')
+            if preview_failure is not None:
+                require(preview_failure, (200,))
+            raise FlowFail(reply, reason='shape')
         if movie and not self.movie:
             self.movie, self.movie_title = movie, title
         return {'rows': count(len(rows)), 'rowsWithEntries': count(with_entries), 'hasMovie': bool(movie)}
