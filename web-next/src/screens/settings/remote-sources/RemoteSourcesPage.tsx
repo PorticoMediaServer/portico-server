@@ -15,7 +15,7 @@ import {SettingsGroup} from '../../../kit/settings';
 import {SettingsRow} from '../../../kit/shell/SettingsSurfaces';
 import {Icon, type IconName} from '../../../kit/Icon';
 import styles from './remote-sources.module.css';
-import {DriveKeyPane, DriveModePane} from './DrivePanes';
+import {DriveKeyPane, DriveModePane, DriveOAuthPane} from './DrivePanes';
 import {RemoteFolderPicker} from './RemoteFolderPicker';
 import {ProgramPicker} from './ProgramPicker';
 import {SourceHeader} from './SourceHeader';
@@ -980,25 +980,9 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
         <TextField label={t('next.remoteSources.name')} value={driveName} maxLength={200} disabled={busy} onChange={event => setDriveName(event.target.value)}/>
         <DriveModePane mode={driveMode} disabled={busy} onChange={next => {retireOAuth(oauthRenderTicket);invalidateDrive();setDriveTested(undefined);setDriveMode(next);}}/>
         <a className={styles.consoleLink} href={DRIVE_CONSOLE} target="_blank" rel="noopener noreferrer">{t('next.remoteSources.driveConsole')}</a>
-        {driveMode === 'oauth' && <>
-          <TextField label={t('next.remoteSources.driveClientId')} value={oauthClientId} maxLength={512} disabled={busy}
-            autoCapitalize="off" spellCheck={false} className={styles.monoInput} onChange={event => updateOAuthClient({clientId: event.target.value})}/>
-          <TextField label={t('next.remoteSources.driveClientSecret')} type="password" value={oauthClientSecret} maxLength={2048} disabled={busy} onChange={event => updateOAuthClient({clientSecret: event.target.value})}/>
-          <div className={styles.testRow}>
-            <Button size="compact" variant="glass" disabled={busy || !oauthClientId.trim() || !oauthClientSecret} onClick={() => void startOAuth()}>{t('next.remoteSources.driveOAuthSignIn')}</Button>
-            {oauthPhase === 'waiting' && <span className={styles.note} role="status">{t('next.remoteSources.driveOAuthWaiting')}</span>}
-            {oauthPhase === 'ready' && <span className={styles.testCard} data-tone="good"><Icon name="i-check" size={18}/>{t('next.remoteSources.driveOAuthReady')}</span>}
-            {oauthPhase === 'expired' && <span className={styles.note} role="status">{t('next.remoteSources.driveOAuthExpired')}</span>}
-          </div>
-          {oauthPhase === 'denied' && <p className={styles.error} role="alert">{t('next.remoteSources.driveOAuthDenied')}</p>}
-          <p className={styles.note}>{t('next.remoteSources.driveOAuthTestingNote')}</p>
-          {oauthPhase === 'waiting' && <>
-            <TextField label={t('next.remoteSources.driveOAuthPaste')} value={oauthAddress} maxLength={8192} disabled={busy}
-              autoCapitalize="off" spellCheck={false} className={styles.monoInput} onChange={event => updatePasteAddress(event.target.value)}/>
-            <Button size="compact" variant="glass" disabled={busy || !oauthAddress.trim()} onClick={() => void pasteOAuth()}>{t('next.remoteSources.driveOAuthPasteAction')}</Button>
-          </>}
-          {oauthError && <p className={styles.error} role="alert">{oauthError}</p>}
-        </>}
+        {driveMode === 'oauth' && <DriveOAuthPane phase={oauthPhase} clientId={oauthClientId} clientSecret={oauthClientSecret} address={oauthAddress}
+          error={oauthError} disabled={busy} onClientId={value => updateOAuthClient({clientId: value})} onClientSecret={value => updateOAuthClient({clientSecret: value})}
+          onSignIn={() => void startOAuth()} onAddress={value => updatePasteAddress(value)} onPaste={() => void pasteOAuth()}/>}
         {driveMode === 'service' && <>
         <DriveKeyPane value={drive.keyJson} disabled={busy}
           error={driveResult.ok ? undefined : t(driveReason(driveResult.reason))}

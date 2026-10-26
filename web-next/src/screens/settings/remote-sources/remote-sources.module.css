@@ -116,6 +116,9 @@
   .driveModeTitle { gap: 4px 8px; font-size: 15.5px; }
   .driveModeHint { font-size: 13px; line-height: 1.45; }
 }
+.driveOAuthCard, .driveOAuthReady { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 12px; background: var(--color-raised); box-shadow: inset 0 0 0 1px var(--color-line-soft); color: var(--color-text-secondary); font-size: var(--type-caption-size); line-height: var(--type-troubleshooting-log-line); }
+.driveOAuthCard svg, .driveOAuthReady svg { flex: none; margin-top: 1px; color: var(--color-accent-strong); }
+.driveOAuthReady svg { color: var(--color-healthy); }
 .driveKeyArea { min-height: 118px; }
 @media (max-width: 720px) { .driveKeyArea { min-height: 96px; } }
 .driveKeyError { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 12px; color: var(--color-record); background: color-mix(in srgb, var(--color-record) 10%, transparent); font-size: var(--type-caption-size); line-height: var(--type-troubleshooting-log-line); }

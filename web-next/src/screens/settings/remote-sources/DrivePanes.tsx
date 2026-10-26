@@ -1,5 +1,5 @@
 import {defaultI18n} from '@i18n';
-import {Button} from '../../../kit/controls';
+import {Button, TextField} from '../../../kit/controls';
 import {Icon} from '../../../kit/Icon';
 import styles from './remote-sources.module.css';
 
@@ -61,5 +61,37 @@ export function DriveKeyPane({value, disabled, error, email, oauth, onChange, on
         <span className={styles.driveKeyEmail}>{email}</span>
         <Button size="xs" variant="text" onClick={onCopy}>{t('next.remoteSources.driveCopy')}</Button>
       </div> : null}
+  </>;
+}
+
+/** The OAuth client pane. It renders only the phases the source can produce;
+ * the producer does not distinguish refused, unknown-client or no-code errors,
+ * so those remain the one existing invalid result. Handlers stay with the
+ * caller; no window, storage or URL parsing lives here. */
+export function DriveOAuthPane({phase, clientId, clientSecret, address, error, disabled, onClientId, onClientSecret, onSignIn, onAddress, onPaste}: Readonly<{
+  phase: 'idle' | 'starting' | 'waiting' | 'ready' | 'expired' | 'denied' | 'error';
+  clientId: string; clientSecret: string; address: string; error?: string; disabled: boolean;
+  onClientId: (value: string) => void; onClientSecret: (value: string) => void; onSignIn: () => void;
+  onAddress: (value: string) => void; onPaste: () => void;
+}>) {
+  return <>
+    <TextField label={t('next.remoteSources.driveClientId')} value={clientId} maxLength={512} disabled={disabled}
+      autoCapitalize="off" spellCheck={false} className={styles.monoInput} onChange={event => onClientId(event.target.value)}/>
+    <TextField label={t('next.remoteSources.driveClientSecret')} type="password" value={clientSecret} maxLength={2048} disabled={disabled}
+      onChange={event => onClientSecret(event.target.value)}/>
+    <div className={styles.testRow}>
+      <Button size="compact" variant="glass" disabled={disabled || !clientId.trim() || !clientSecret} onClick={onSignIn}>{t('next.remoteSources.driveOAuthSignIn')}</Button>
+      {phase === 'expired' && <span className={styles.note} role="status">{t('next.remoteSources.driveOAuthExpired')}</span>}
+    </div>
+    {phase === 'waiting' && <div className={styles.driveOAuthCard}><Icon name="i-link" size={20}/><span>{t('next.remoteSources.driveOAuthWaiting')}</span></div>}
+    {phase === 'ready' && <div className={styles.driveOAuthReady}><Icon name="i-check" size={20}/><span>{t('next.remoteSources.driveOAuthReady')}</span></div>}
+    {phase === 'denied' && <p className={styles.error} role="alert">{t('next.remoteSources.driveOAuthDenied')}</p>}
+    <p className={styles.note}>{t('next.remoteSources.driveOAuthTestingNote')}</p>
+    {phase === 'waiting' && <>
+      <TextField label={t('next.remoteSources.driveOAuthPaste')} value={address} maxLength={8192} disabled={disabled}
+        autoCapitalize="off" spellCheck={false} className={styles.monoInput} onChange={event => onAddress(event.target.value)}/>
+      <Button size="compact" variant="glass" disabled={disabled || !address.trim()} onClick={onPaste}>{t('next.remoteSources.driveOAuthPasteAction')}</Button>
+    </>}
+    {error && <p className={styles.error} role="alert">{error}</p>}
   </>;
 }
