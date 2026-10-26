@@ -1,6 +1,7 @@
 import type {ShellBootstrap} from './shell/bootstrap';
 import {browserEntryDestination, isProfileSettingsLocation, profileSettingsAliasPath, type createEntryDestinationStore} from './route-registry-destination';
 import {accountReturnPath} from './route-registry-return';
+import {localDeviceHint} from './platform/local-device-entry';
 
 export function isAccountEntryPath(path: string): boolean {
   return path === '/setup' || path === '/sign-in' || path === '/profiles' || path === '/servers' || path === accountReturnPath;
@@ -45,7 +46,7 @@ export function bindWebAccountEntry(router: EntryRouter, bootstrap: Pick<ShellBo
     } else if (isAccountEntryPath(event.fromLocation?.pathname ?? '')) {
       returningFromEntry = true;
       void bootstrap.resumeAfterAccountEntry();
-    } else if (event.toLocation.pathname !== '/device') destination.clearLocalDevice();
+    } else if (event.toLocation.pathname !== '/device') {destination.clearLocalDevice();localDeviceHint.clear();}
   });
   const offResolved = router.subscribe('onResolved', finish), offBootstrap = bootstrap.subscribe(finish);
   remember(router.state.location);
