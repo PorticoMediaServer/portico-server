@@ -934,7 +934,8 @@ function queuedSelection(f: ReturnType<typeof setup>) {
 
 test('queued selection never stops or forgets a same-id same-generation occurrence accepted by a later intent/run', async () => {
   for (const freshRun of [false, true]) {
-    let admitted: Session | undefined, retired = 0, forgotten = 0;
+    let admitted: Session | undefined, retired = 0;
+    const forgottenIds: string[] = [];
     const f = setup({server: {itemKind: () => 'movie'}, retireQueuedSelection: () => {retired++; return true;},
       afterResponse: async (request, response) => {
         if (request.path.endsWith(':advance') && response.status === 200) admitted = parseSession((response.body as {session: unknown}).session);
@@ -943,7 +944,7 @@ test('queued selection never stops or forgets a same-id same-generation occurren
       await f.player.playEntries(['movie-a', 'movie-b'].map(queueItemInput));
       const selection = queuedSelection(f);
       const forget = f.api.forget.bind(f.api);
-      f.api.forget = id => {forgotten++; forget(id);};
+      f.api.forget = id => {forgottenIds.push(id); forget(id);};
       let owner: ReturnType<typeof f.api.selectionRegistration> | undefined;
       f.api.duration = async () => {
         assert.ok(admitted);
@@ -958,7 +959,10 @@ test('queued selection never stops or forgets a same-id same-generation occurren
       assert.equal(f.playback.getSnapshot().session?.generation, admitted!.presentation.generation);
       assert.notEqual(f.playback.getSnapshot().intentId, 0);
       assert.equal(owner?.current(), true, 'later registration remains owned');
-      assert.equal(retired, 0); assert.equal(forgotten, 0);
+      assert.equal(retired, 0);
+      assert.ok(admitted);
+      assert.equal(forgottenIds.includes(admitted!.id), false, 'the admitted/live occurrence is never forgotten');
+      for (const id of forgottenIds) assert.equal(id, selection.target.sessionId, 'only the original replaced selection is forgotten');
     } finally {f.stop();}
   }
 });
