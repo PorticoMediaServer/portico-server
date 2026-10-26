@@ -1,6 +1,6 @@
 /* account.html 20–29: account-only Settings list, serverless header, real paged lists. */
 .workspace { min-height: 100dvh; position: relative; background: var(--color-ink); }
-.glow { position: absolute; inset: 0 0 auto; height: 520px; pointer-events: none; background: radial-gradient(48% 90% at 18% 0%, rgba(21,55,73,.95) 0%, transparent 70%), radial-gradient(40% 70% at 70% 0%, rgba(64,159,212,.1) 0%, transparent 70%); }
+.glow { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(44% 66% at 86% 4%, rgba(47,134,187,.46) 0%, rgba(47,134,187,.15) 46%, transparent 74%), radial-gradient(42% 58% at 64% 104%, rgba(30,91,82,.6) 0%, rgba(30,91,82,.18) 50%, transparent 76%), radial-gradient(38% 50% at 4% 0%, rgba(21,55,73,.75) 0%, transparent 72%); }
 .header { position: absolute; z-index: var(--layer-navigation); inset: 0 0 auto; height: 76px; display: flex; align-items: center; gap: 40px; padding: 0 64px; background: linear-gradient(180deg, rgba(7,16,24,.78), rgba(7,16,24,0)); }
 .brand { display: block; }
 .brand img { height: 20px; display: block; }
