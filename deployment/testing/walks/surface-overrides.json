@@ -1,0 +1,448 @@
+{
+  "schema": 1,
+  "note": "Per-surface eligibility overrides for the walk lists. Evidence comes only from the mock-up frame caption and markup in the design repository; a ledger row keeps its canonical status, exclusions and other surfaces. Records with no entry here stay exactly as generated.",
+  "overrides": [
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-4A32AA9",
+      "frame": "collections#10",
+      "action": "exclude",
+      "reason": "the native phone Saved list, not mobile web",
+      "evidence": {
+        "file": "collections.html",
+        "label": "10",
+        "caption": "10. Phone, the three Saved lists. On a phone Saved is a list (phone-app.html frame 9)",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-6517F94",
+      "frame": "collections#11",
+      "action": "exclude",
+      "reason": "native phone playlist page",
+      "evidence": {
+        "file": "collections.html",
+        "label": "11",
+        "caption": "11. Phone, a playlist. The desktop page (frame 4) at phone width",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-F787A17",
+      "frame": "collections#12",
+      "action": "exclude",
+      "reason": "native phone collection page",
+      "evidence": {
+        "file": "collections.html",
+        "label": "12",
+        "caption": "12. Phone, a collection you made, and reordering it.",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-CB12200",
+      "frame": "collections#13",
+      "action": "exclude",
+      "reason": "native phone saved view and sheets",
+      "evidence": {
+        "file": "collections.html",
+        "label": "13",
+        "caption": "13. Phone, a saved view, a shared collection and a confirm.",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-DF8C0DE",
+      "frame": "collections#14",
+      "action": "include",
+      "reason": "mobile web in Safari, authored at phone width",
+      "evidence": {
+        "file": "collections.html",
+        "label": "14",
+        "caption": "14. Mobile web, the same pages in Safari. The web app at phone width is these pages unchanged (phone-web.html)",
+        "markup": "screen trio, .saf"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-68DB60B",
+      "frame": "collections#25",
+      "action": "exclude",
+      "reason": "native phone Customize Home",
+      "evidence": {
+        "file": "collections.html",
+        "label": "25",
+        "caption": "25. Phone, Customize Home.",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-A59B366",
+      "frame": "collections#26",
+      "action": "exclude",
+      "reason": "native phone Customize Home states",
+      "evidence": {
+        "file": "collections.html",
+        "label": "26",
+        "caption": "26. Phone, Customize Home: the other states.",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-EA7AEC6",
+      "frame": "collections#31",
+      "action": "exclude",
+      "reason": "native phone download sheet",
+      "evidence": {
+        "file": "collections.html",
+        "label": "31",
+        "caption": "31. Phone, the Download sheet for a film.",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-4C56FB8",
+      "frame": "collections#32",
+      "action": "exclude",
+      "reason": "native phone download sheets",
+      "evidence": {
+        "file": "collections.html",
+        "label": "32",
+        "caption": "32. Phone, the Download sheet for a season or an album.",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-2360834",
+      "frame": "collections#36",
+      "action": "include",
+      "reason": "mobile web prepared-file flow",
+      "evidence": {
+        "file": "collections.html",
+        "label": "36",
+        "caption": "36. Mobile web, saving a file. A phone's browser cannot keep downloads inside Portico",
+        "markup": "screen trio, .saf"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-0BA018D",
+      "frame": "collections#41",
+      "action": "exclude",
+      "reason": "native phone audiobook book, author and series pages",
+      "evidence": {
+        "file": "collections.html",
+        "label": "41",
+        "caption": "41. Phone, a book, an author and a series. The book page takes the phone album page's shape (phone-app.html)",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-13DF18B",
+      "frame": "collections#42",
+      "action": "include",
+      "reason": "mobile web book, author and series pages in Safari",
+      "evidence": {
+        "file": "collections.html",
+        "label": "42",
+        "caption": "42. Mobile web, the same three pages. The same pages inside Safari, with the app's tab bar",
+        "markup": "screen trio, .saf"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-2329438",
+      "frame": "collections#46",
+      "action": "exclude",
+      "reason": "native phone See all",
+      "evidence": {
+        "file": "collections.html",
+        "label": "46",
+        "caption": "46. Phone, See all: Recommended for you.",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-D948330",
+      "frame": "collections#47",
+      "action": "include",
+      "reason": "mobile web See all",
+      "evidence": {
+        "file": "collections.html",
+        "label": "47",
+        "caption": "47. Mobile web, See all. The same page in Safari.",
+        "markup": "screen trio, .saf"
+      }
+    },
+    {
+      "surface": "android-phone",
+      "id": "S-GAP-4A32AA9",
+      "frame": "collections#10",
+      "action": "include",
+      "reason": "native phone frame per its caption; this row is not mobile web",
+      "evidence": {
+        "file": "collections.html",
+        "label": "10",
+        "caption": "10. Phone, the three Saved lists. On a phone Saved is a list (phone-app.html frame 9)",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "ios-phone",
+      "id": "S-GAP-4A32AA9",
+      "frame": "collections#10",
+      "action": "include",
+      "reason": "native phone frame per its caption; this row is not mobile web",
+      "evidence": {
+        "file": "collections.html",
+        "label": "10",
+        "caption": "10. Phone, the three Saved lists. On a phone Saved is a list (phone-app.html frame 9)",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "android-phone",
+      "id": "S-GAP-6517F94",
+      "frame": "collections#11",
+      "action": "include",
+      "reason": "native phone frame per its caption; this row is not mobile web",
+      "evidence": {
+        "file": "collections.html",
+        "label": "11",
+        "caption": "11. Phone, a playlist. The desktop page (frame 4) at phone width",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "ios-phone",
+      "id": "S-GAP-6517F94",
+      "frame": "collections#11",
+      "action": "include",
+      "reason": "native phone frame per its caption; this row is not mobile web",
+      "evidence": {
+        "file": "collections.html",
+        "label": "11",
+        "caption": "11. Phone, a playlist. The desktop page (frame 4) at phone width",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "android-phone",
+      "id": "S-GAP-F787A17",
+      "frame": "collections#12",
+      "action": "include",
+      "reason": "native phone frame per its caption; this row is not mobile web",
+      "evidence": {
+        "file": "collections.html",
+        "label": "12",
+        "caption": "12. Phone, a collection you made, and reordering it.",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "ios-phone",
+      "id": "S-GAP-F787A17",
+      "frame": "collections#12",
+      "action": "include",
+      "reason": "native phone frame per its caption; this row is not mobile web",
+      "evidence": {
+        "file": "collections.html",
+        "label": "12",
+        "caption": "12. Phone, a collection you made, and reordering it.",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "android-phone",
+      "id": "S-GAP-CB12200",
+      "frame": "collections#13",
+      "action": "include",
+      "reason": "native phone frame per its caption; this row is not mobile web",
+      "evidence": {
+        "file": "collections.html",
+        "label": "13",
+        "caption": "13. Phone, a saved view, a shared collection and a confirm.",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "ios-phone",
+      "id": "S-GAP-CB12200",
+      "frame": "collections#13",
+      "action": "include",
+      "reason": "native phone frame per its caption; this row is not mobile web",
+      "evidence": {
+        "file": "collections.html",
+        "label": "13",
+        "caption": "13. Phone, a saved view, a shared collection and a confirm.",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "android-phone",
+      "id": "S-GAP-68DB60B",
+      "frame": "collections#25",
+      "action": "include",
+      "reason": "native phone frame per its caption; this row is not mobile web",
+      "evidence": {
+        "file": "collections.html",
+        "label": "25",
+        "caption": "25. Phone, Customize Home.",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "ios-phone",
+      "id": "S-GAP-68DB60B",
+      "frame": "collections#25",
+      "action": "include",
+      "reason": "native phone frame per its caption; this row is not mobile web",
+      "evidence": {
+        "file": "collections.html",
+        "label": "25",
+        "caption": "25. Phone, Customize Home.",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "android-phone",
+      "id": "S-GAP-A59B366",
+      "frame": "collections#26",
+      "action": "include",
+      "reason": "native phone frame per its caption; this row is not mobile web",
+      "evidence": {
+        "file": "collections.html",
+        "label": "26",
+        "caption": "26. Phone, Customize Home: the other states.",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "ios-phone",
+      "id": "S-GAP-A59B366",
+      "frame": "collections#26",
+      "action": "include",
+      "reason": "native phone frame per its caption; this row is not mobile web",
+      "evidence": {
+        "file": "collections.html",
+        "label": "26",
+        "caption": "26. Phone, Customize Home: the other states.",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "android-phone",
+      "id": "S-GAP-EA7AEC6",
+      "frame": "collections#31",
+      "action": "include",
+      "reason": "native phone frame per its caption; this row is not mobile web",
+      "evidence": {
+        "file": "collections.html",
+        "label": "31",
+        "caption": "31. Phone, the Download sheet for a film.",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "ios-phone",
+      "id": "S-GAP-EA7AEC6",
+      "frame": "collections#31",
+      "action": "include",
+      "reason": "native phone frame per its caption; this row is not mobile web",
+      "evidence": {
+        "file": "collections.html",
+        "label": "31",
+        "caption": "31. Phone, the Download sheet for a film.",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "android-phone",
+      "id": "S-GAP-4C56FB8",
+      "frame": "collections#32",
+      "action": "include",
+      "reason": "native phone frame per its caption; this row is not mobile web",
+      "evidence": {
+        "file": "collections.html",
+        "label": "32",
+        "caption": "32. Phone, the Download sheet for a season or an album.",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "ios-phone",
+      "id": "S-GAP-4C56FB8",
+      "frame": "collections#32",
+      "action": "include",
+      "reason": "native phone frame per its caption; this row is not mobile web",
+      "evidence": {
+        "file": "collections.html",
+        "label": "32",
+        "caption": "32. Phone, the Download sheet for a season or an album.",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "android-phone",
+      "id": "S-GAP-0BA018D",
+      "frame": "collections#41",
+      "action": "include",
+      "reason": "native phone frame per its caption; this row is not mobile web",
+      "evidence": {
+        "file": "collections.html",
+        "label": "41",
+        "caption": "41. Phone, a book, an author and a series. The book page takes the phone album page's shape (phone-app.html)",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "ios-phone",
+      "id": "S-GAP-0BA018D",
+      "frame": "collections#41",
+      "action": "include",
+      "reason": "native phone frame per its caption; this row is not mobile web",
+      "evidence": {
+        "file": "collections.html",
+        "label": "41",
+        "caption": "41. Phone, a book, an author and a series. The book page takes the phone album page's shape (phone-app.html)",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "android-phone",
+      "id": "S-GAP-2329438",
+      "frame": "collections#46",
+      "action": "include",
+      "reason": "native phone frame per its caption; this row is not mobile web",
+      "evidence": {
+        "file": "collections.html",
+        "label": "46",
+        "caption": "46. Phone, See all: Recommended for you.",
+        "markup": "screen trio, .phone"
+      }
+    },
+    {
+      "surface": "ios-phone",
+      "id": "S-GAP-2329438",
+      "frame": "collections#46",
+      "action": "include",
+      "reason": "native phone frame per its caption; this row is not mobile web",
+      "evidence": {
+        "file": "collections.html",
+        "label": "46",
+        "caption": "46. Phone, See all: Recommended for you.",
+        "markup": "screen trio, .phone"
+      }
+    }
+  ]
+}

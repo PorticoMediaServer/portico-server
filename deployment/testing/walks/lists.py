@@ -20,6 +20,47 @@ from pathlib import Path
 ROOT=Path('/home/justin/projects/Portico')
 DEFAULT_PROGRAM=ROOT/'.worktrees/ui-2026/_program'
 SURFACES=['web-desktop','web-phone','ios-phone','ipad','android-phone','tvos','android-tv','fire-os','vega']
+OVERRIDES=Path(__file__).with_name('surface-overrides.json')
+
+def overrides(surface):
+    '''Per-surface eligibility overrides, proven from the frame caption and markup.
+
+    A record names a surface, a row id, the frame it was audited against, an
+    action (include or exclude) and the caption evidence. Nothing here changes a
+    ledger row's canonical status, its other surfaces or the ledger itself, and a
+    row with no record stays exactly as generated.
+    '''
+    if not OVERRIDES.is_file():return {}
+    try:
+        document=json.loads(OVERRIDES.read_text())
+    except (OSError,ValueError):
+        return {}
+    if not isinstance(document,dict) or document.get('schema')!=1:return {}
+    records=document.get('overrides')
+    if not isinstance(records,list):return {}
+    kept={}
+    for record in records:
+        if not isinstance(record,dict) or record.get('surface')!=surface:continue
+        identifier,action=record.get('id'),record.get('action')
+        if not isinstance(identifier,str) or action not in ('include','exclude'):continue
+        evidence=record.get('evidence') if isinstance(record.get('evidence'),dict) else {}
+        kept[identifier]={'action':action,'frame':str(record.get('frame') or ''),
+                          'reason':str(record.get('reason') or ''),
+                          'caption':str(evidence.get('caption') or ''),
+                          'file':str(evidence.get('file') or ''),'label':str(evidence.get('label') or '')}
+    return kept
+
+def audit_notes(surface, rows, applied):
+    lines=[]
+    for row in sorted(rows,key=lambda r:r['id']):
+        record=applied.get(row['id'])
+        if not record:continue
+        lines.append('- `%s` %s `%s` — %s · %s %s' % (row['id'],record['action'],record['frame'],
+                     record['file'],record['label'],record['caption']))
+    if not lines:return []
+    return ['','## Audit notes','',
+            'Per-surface eligibility proven from the mock-up frame caption and markup. A ledger row keeps its',
+            'canonical status, exclusions and every other surface; these records only decide this surface.', '']+lines
 TV_SURFACES={'tvos','android-tv','fire-os','vega'}
 NATIVE_PHONE_FRAMES={'phone-app','phone-detail','phone-player','phone-read','phone-guide'}
 M0=[
@@ -180,12 +221,25 @@ def main():
     for row in rows:
         for surface in surfaces_for(row['platform'],row['pointer'],row['group']):
             by_surface[surface].append(row)
+    applied_by_surface={surface:overrides(surface) for surface in SURFACES}
+    indexed={row['id']:row for row in rows}
     for surface in SURFACES:
         by_surface[surface]=list({row['id']:row for row in by_surface[surface]}.values())
+        applied=applied_by_surface[surface]
+        if not applied:continue
+        by_surface[surface]=[row for row in by_surface[surface]
+                             if applied.get(row['id'],{}).get('action')!='exclude']
+        present={row['id'] for row in by_surface[surface]}
+        for identifier,record in applied.items():
+            if record['action']=='include' and identifier not in present and identifier in indexed:
+                by_surface[surface].append(indexed[identifier])
     summary={'generated':datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds'),'excluded':excluded,'unknown':unknown,'without_frame':not_a_frame,'surfaces':{}}
     for surface in SURFACES:
         target=out/(surface+'.md')
         content=render(surface,by_surface[surface],read_claims(target))
+        applied=applied_by_surface[surface]
+        notes=audit_notes(surface,by_surface[surface],applied) if applied else []
+        if notes:content=content.rstrip('\n')+'\n'+'\n'.join(notes)+'\n'
         summary['surfaces'][surface]={'rows':len(by_surface[surface]),'groups':len({row['group'] for row in by_surface[surface]})}
         if args.check:continue
         out.mkdir(parents=True,exist_ok=True)
