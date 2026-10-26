@@ -8,7 +8,7 @@ retained in the immutable build receipt. Generator errors still refuse.
 """
 from __future__ import annotations
 
-import difflib
+import tempfile
 import hashlib
 import os
 import shutil
@@ -120,20 +120,31 @@ def generate(tree, log, patch_path):
     changed = [name for name in sorted(set(before) | set(after)) if before.get(name) != after.get(name)]
     if not changed:
         return Generation(clean=True, changed=0, patch_sha256='', patch_path=None)
-    parts = []
-    for name in changed:
-        old = before.get(name, b'').decode('utf-8', 'replace').splitlines(True)
-        new = after.get(name, b'').decode('utf-8', 'replace').splitlines(True)
-        parts.extend(difflib.unified_diff(old, new, fromfile='a/' + name, tofile='b/' + name))
-    text = ''.join(parts)
-    if len(text.encode()) > 4 * 1024 * 1024:
-        raise SourceError('generation-patch-large')
     patch_path = Path(patch_path)
-    descriptor = os.open(patch_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(descriptor, 'w') as stream:
-        stream.write(text)
-        stream.flush()
-        os.fsync(stream.fileno())
+    # GNU diff avoids quadratic SequenceMatcher work on the 20+ MiB generated
+    # OpenAPI document. Only same-tree official generator output enters here.
+    with tempfile.TemporaryDirectory(prefix='.generation-diff-', dir=patch_path.parent) as scratch:
+        old_path, new_path = Path(scratch) / 'old', Path(scratch) / 'new'
+        descriptor = os.open(patch_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(descriptor, 'wb') as stream:
+            for name in changed:
+                old_path.write_bytes(before.get(name, b''))
+                new_path.write_bytes(after.get(name, b''))
+                try:
+                    result = subprocess.run(['diff', '-u', '--label', 'a/' + name,
+                                             '--label', 'b/' + name,
+                                             str(old_path), str(new_path)],
+                                            stdout=stream, stderr=subprocess.DEVNULL,
+                                            timeout=60, check=False)
+                except subprocess.TimeoutExpired:
+                    raise SourceError('generation-diff-timeout') from None
+                if result.returncode not in (0, 1):
+                    raise SourceError('generation-diff-failed')
+                stream.flush()
+                if patch_path.stat().st_size > 64 * 1024 * 1024:
+                    raise SourceError('generation-patch-large')
+            os.fsync(stream.fileno())
+    text = patch_path.read_text()
     digest = hashlib.sha256(text.encode()).hexdigest()
     return Generation(clean=False, changed=len(changed), patch_sha256=digest, patch_path=patch_path)
 
