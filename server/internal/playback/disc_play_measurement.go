@@ -203,9 +203,12 @@ func (m *discPlayMeasurement) CheckPreparedTx(ctx context.Context, tx *sql.Tx) e
 // its real ID/generation and physical source pins. Even a failed attempt cannot
 // retarget this process proof to a different session. Store activation belongs
 // only to the later original v1 accepting continuation, never the background worker.
-func (m *discPlayMeasurement) BindPendingTx(ctx context.Context, tx *sql.Tx, store *playbackdisc.Store, key playbackdisc.Key) (string, error) {
-	if m == nil || store == nil || tx == nil || m.closed.Load() || key.SessionID == "" || key.Generation < 1 {
+func (m *discPlayMeasurement) BindPendingTx(ctx context.Context, tx *sql.Tx, store *playbackdisc.Store, key playbackdisc.Key, continuation func(context.Context, *sql.Tx) error) (string, error) {
+	if m == nil || store == nil || tx == nil || continuation == nil || m.closed.Load() || key.SessionID == "" || key.Generation < 1 {
 		return "", disc.ErrProtocol
+	}
+	if err := continuation(ctx, tx); err != nil {
+		return "", err
 	}
 	m.mu.Lock()
 	if m.bound {
@@ -216,14 +219,14 @@ func (m *discPlayMeasurement) BindPendingTx(ctx context.Context, tx *sql.Tx, sto
 	m.bound = true
 	snapshot := m.snapshot
 	m.mu.Unlock()
-	if err := store.PublishPendingTx(ctx, tx, snapshot, m.CheckTx); err != nil {
+	if err := store.PublishPendingTx(ctx, tx, snapshot, m.acceptingCheck(continuation)); err != nil {
 		return "", err
 	}
 	return snapshot.ID, nil
 }
 
-func (m *discPlayMeasurement) ActivateTx(ctx context.Context, tx *sql.Tx, store *playbackdisc.Store, key playbackdisc.Key) error {
-	if m == nil || store == nil {
+func (m *discPlayMeasurement) ActivateTx(ctx context.Context, tx *sql.Tx, store *playbackdisc.Store, key playbackdisc.Key, continuation func(context.Context, *sql.Tx) error) error {
+	if m == nil || store == nil || continuation == nil {
 		return disc.ErrProtocol
 	}
 	m.mu.Lock()
@@ -233,6 +236,25 @@ func (m *discPlayMeasurement) ActivateTx(ctx context.Context, tx *sql.Tx, store 
 	if !exact {
 		return ErrStaleOffer
 	}
-	_, err := store.ActivateTx(ctx, tx, key, snapshot.ID, m.CheckTx)
+	_, err := store.ActivateTx(ctx, tx, key, snapshot.ID, m.acceptingCheck(continuation))
 	return err
+}
+
+// Worker/source proof alone cannot accept. The real still-admitted original
+// POST supplies this separate continuation check, including exact current
+// request body/key/caller, prepared claim borrow, queue/custody and capacity.
+// The caller also performs it before inserting a legacy row. No default applies.
+func (m *discPlayMeasurement) acceptingCheck(continuation func(context.Context, *sql.Tx) error) playbackdisc.Check {
+	return func(ctx context.Context, tx *sql.Tx, candidate playbackdisc.Snapshot) error {
+		if continuation == nil {
+			return disc.ErrProtocol
+		}
+		if err := continuation(ctx, tx); err != nil {
+			return err
+		}
+		if err := m.CheckTx(ctx, tx, candidate); err != nil {
+			return err
+		}
+		return continuation(ctx, tx)
+	}
 }
