@@ -20,7 +20,7 @@ export function WatchSkipPrompt({binding, snapshot, expanded, controlsVisible, l
     && !live?.attention && !live?.finished && liveSkip.marker.id === skipPrompt.marker.id;
   const reduced = usePromptReducedMotion();
   const displayed = open && skipPrompt ? {marker: skipPrompt.marker, snapshot, binding} : undefined;
-  const presence = usePromptPresence(displayed, displayed?.marker.id, promptScope(snapshot, expanded), reduced);
+  const presence = usePromptPresence(displayed, displayed?.marker.id, promptScope(snapshot, expanded, binding), reduced);
   const shown = presence.present;
   if (!shown) return null;
   const act = (kind: 'skip' | 'dismiss') => { void dispatchWatchMarker(shown.binding, shown.snapshot, {kind, markerId: shown.marker.id}).catch(shown.binding.reportError); };

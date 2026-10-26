@@ -18,19 +18,19 @@ export function WatchUpNextPrompt({binding, snapshot, artwork, environment, expa
   expanded: boolean; controlsVisible: boolean; layout: 'desktop' | 'tablet' | 'phone';
 }) {
   const offer = watchUpNextOffer(binding, snapshot), reduced = usePromptReducedMotion();
-  const displayed = expanded && offer ? {offer, snapshot, binding} : undefined;
+  const still = offer?.next.stillUrl;
+  const offeredArt = useMemo(() => artwork.foreground(still, 176, 16 / 9, {group: 'playback', priority: 'high'}), [artwork, still]);
+  const displayed = expanded && offer ? {offer, snapshot, binding, artwork: offeredArt, environment} : undefined;
   const key = displayed ? `${displayed.offer.prompt.offer.id}|${displayed.offer.next.entryId}|${displayed.offer.next.queueRevision}` : undefined;
-  const presence = usePromptPresence(displayed, key, promptScope(snapshot, expanded), reduced);
+  const presence = usePromptPresence(displayed, key, promptScope(snapshot, expanded, binding), reduced);
   const shown = presence.present, next = shown?.offer.next;
   // A missing still stays unknown. No backdrop, trickplay or fixture image stands in for it.
-  const still = next?.stillUrl;
-  const source = useMemo(() => artwork.foreground(still, 176, 16 / 9, {group: 'playback', priority: 'high'}), [artwork, still]);
   // desktop-player f4/f4s and phone-player f6: the same offer, compact on a phone.
   if (!shown || !next) return null;
-  const {offer: currentOffer, snapshot: shownSnapshot, binding: shownBinding} = shown;
+  const {offer: currentOffer, snapshot: shownSnapshot, binding: shownBinding, artwork: source, environment: shownEnvironment} = shown;
   const {prompt, countdown, progress} = currentOffer, marker = prompt.offer.marker, t = defaultI18n.t;
-  const duration = durationText(next.durationMs === undefined ? undefined : next.durationMs / 1000, environment.t);
-  const episode = next.episode ? environment.t('next.kit.episodeCode', {season: next.episode.seasonNumber, episode: next.episode.number}) : undefined;
+  const duration = durationText(next.durationMs === undefined ? undefined : next.durationMs / 1000, shownEnvironment.t);
+  const episode = next.episode ? shownEnvironment.t('next.kit.episodeCode', {season: next.episode.seasonNumber, episode: next.episode.number}) : undefined;
   const when = countdown ? countdown.automatic ? t('player.upNext.playingIn', {seconds: countdown.seconds})
     : t(prompt.sceneAfterCredits ? 'player.upNext.startsAfterScene' : 'player.upNext.startsIn', {time: watchClock(countdown.seconds)}) : undefined;
   const act = (kind: 'play-now' | 'watch-credits') => {void dispatchWatchNext(shownBinding, shownSnapshot, kind).catch(shownBinding.reportError);};
