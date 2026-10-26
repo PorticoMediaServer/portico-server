@@ -8,7 +8,7 @@ type ReadingFormat string
 // same enum. Whether this server can actually ingest and open a format is a
 // runtime capability, never a contract shape.
 func (ReadingFormat) JSONSchema() map[string]any {
-	return map[string]any{"type": "string", "enum": []string{"epub", "pdf", "cbz", "cb7"}}
+	return map[string]any{"type": "string", "enum": []string{"epub", "pdf", "cbz", "cb7", "cbr"}}
 }
 
 // ReadingSourceFormat describes the real original file. Conversion never widens
@@ -16,7 +16,7 @@ func (ReadingFormat) JSONSchema() map[string]any {
 type ReadingSourceFormat string
 
 func (ReadingSourceFormat) JSONSchema() map[string]any {
-	return map[string]any{"type": "string", "enum": []string{"epub", "pdf", "cbz", "mobi", "azw3", "cb7"}}
+	return map[string]any{"type": "string", "enum": []string{"epub", "pdf", "cbz", "mobi", "azw3", "cb7", "cbr"}}
 }
 
 type ReadingDirection string
@@ -86,6 +86,7 @@ func (ReadingItemMark) JSONSchema() map[string]any {
 	return map[string]any{"type": "object", "additionalProperties": false, "required": []string{"itemId", "read", "revision"}, "properties": map[string]any{
 		"itemId": annotationIDSchema(), "read": map[string]any{"type": "boolean"}, "revision": annotationInteger(9007199254740991)}}
 }
+
 type ReadingItemsResponse struct {
 	Items      []ReadingItem `json:"items"`
 	NextCursor string        `json:"nextCursor,omitempty"`

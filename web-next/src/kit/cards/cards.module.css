@@ -3,13 +3,25 @@
 .poster > .primary, .square > .primary, .cover > .primary { height:100%; }
 .primary:focus-visible, .play:focus-visible, .more:focus-visible, .selection:focus-visible, .notInterested:focus-visible, .remind:focus-visible { outline:3px solid var(--color-focus); outline-offset:3px; }
 .primary:active, .primary:active + .artAligned { transform:scale(.97); }
-.primary, .artAligned { transition:transform 160ms cubic-bezier(.2,.7,.2,1); }
-.art { display:block; position:relative; width:100%; aspect-ratio:2/3; border-radius:10px; overflow:hidden; background:var(--color-raised); transform:scale(var(--cards-art-scale)); transition:transform 260ms cubic-bezier(.2,.7,.2,1),box-shadow 260ms cubic-bezier(.2,.7,.2,1); }
-.art::before { content:''; position:absolute; z-index:1; inset:0 0 auto; height:42%; background:linear-gradient(180deg,rgba(7,16,24,.62),transparent); opacity:0; transition:opacity 200ms cubic-bezier(.2,.7,.2,1); pointer-events:none; }
+.primary, .artAligned { transition:transform 160ms var(--ease-out); }
+.art { display:block; position:relative; width:100%; aspect-ratio:2/3; border-radius:10px; overflow:hidden; background:var(--color-raised); transform:scale(var(--cards-art-scale)); transition:transform 260ms var(--ease-out); }
+.art::before { content:''; position:absolute; z-index:1; inset:0 0 auto; height:42%; background:linear-gradient(180deg,rgba(7,16,24,.62),transparent); opacity:0; transition:opacity 200ms var(--ease-out); pointer-events:none; }
 .loadingArt { position:absolute; inset:0; background:linear-gradient(160deg,var(--color-raised-high),var(--color-raised)); }
-.card:hover, .card:focus-within { --cards-art-scale:1.045; }
-.card:hover .art, .card:focus-within .art { box-shadow:0 22px 40px -16px rgba(0,0,0,.85),0 0 0 1px rgba(237,245,250,.16); }
-.card:hover .art::before, .card:focus-within .art::before { opacity:1; }
+/* The hover shadow is painted once on its own layer and only its opacity fades,
+   so no box-shadow is interpolated. The layer matches the art box. */
+.artShadow { position:absolute; z-index:0; border-radius:10px; pointer-events:none; box-shadow:0 22px 40px -16px rgba(0,0,0,.85); opacity:0; transform:scale(var(--cards-art-scale)); transition:transform 260ms var(--ease-out),opacity 260ms var(--ease-out); }
+.card:has(:focus-visible) .artShadow { opacity:1; }
+
+.card:has(:focus-visible) { --cards-art-scale:1.045; }
+.card:has(:focus-visible) .art { box-shadow:0 0 0 1px rgba(237,245,250,.16); }
+.card:has(:focus-visible) .art::before { opacity:1; }
+/* Touch devices do not hold a hover state: the same lift appears on real hover only. */
+@media (hover:hover) {
+  .card:hover { --cards-art-scale:1.045; }
+  .card:hover .art { box-shadow:0 0 0 1px rgba(237,245,250,.16); }
+  .card:hover .artShadow { opacity:1; }
+  .card:hover .art::before { opacity:1; }
+}
 .caption { display:block; position:relative; margin-top:10px; }
 .title { display:block; font-size:var(--type-card-title-size); line-height:var(--type-card-title-line); font-weight:var(--type-card-title-weight); letter-spacing:var(--type-card-title-tracking); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .twoLines { white-space:normal; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-height:1.3; }
@@ -34,11 +46,11 @@
 .progress > span { display:block; height:100%; border-radius:inherit; background:var(--color-accent-strong); }
 .edge { position:absolute; z-index:2; inset:auto 0 0; margin:0; border-radius:0; background:rgba(237,245,250,.24); }
 .newBadge { position:absolute; z-index:2; top:8px; left:8px; padding:3px 8px; border-radius:6px; font-size:11.5px; font-weight:700; line-height:normal; background:var(--color-accent); color:var(--color-action-ink); }
-.watched { position:absolute; z-index:2; right:8px; top:8px; width:26px; height:26px; display:grid; place-items:center; border-radius:50%; background:rgba(7,16,24,.72); transition:opacity 200ms cubic-bezier(.2,.7,.2,1); }
+.watched { position:absolute; z-index:2; right:8px; top:8px; width:26px; height:26px; display:grid; place-items:center; border-radius:50%; background:rgba(7,16,24,.72); transition:opacity 200ms var(--ease-out); }
 .card:has(.more):hover .watched, .card:has(.more):focus-within .watched { opacity:0; }
 .play, .more, .notInterested { appearance:none; padding:0; border:0; display:grid; place-items:center; cursor:pointer; border-radius:50%; color:var(--color-text); }
-.play { position:absolute; z-index:3; top:auto; bottom:10px; right:10px; width:40px; height:40px; background:var(--color-text); color:var(--color-ink); box-shadow:0 4px 14px rgba(7,16,24,.45),0 0 0 1px rgba(7,16,24,.12); opacity:0; transform:translateY(6px); transition:opacity 200ms cubic-bezier(.2,.7,.2,1),transform 200ms cubic-bezier(.2,.7,.2,1); }
-.more, .notInterested { width:32px; height:32px; background:rgba(7,16,24,.55); -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px); transition:opacity 200ms cubic-bezier(.2,.7,.2,1),background 160ms cubic-bezier(.2,.7,.2,1); }
+.play { position:absolute; z-index:3; top:auto; bottom:10px; right:10px; width:40px; height:40px; background:var(--color-text); color:var(--color-ink); box-shadow:0 4px 14px rgba(7,16,24,.45),0 0 0 1px rgba(7,16,24,.12); opacity:0; transform:translateY(6px); transition:opacity 200ms var(--ease-out),transform 200ms var(--ease-out); }
+.more, .notInterested { width:32px; height:32px; background:rgba(7,16,24,.55); -webkit-backdrop-filter:blur(12px); backdrop-filter:blur(12px); transition:opacity 200ms var(--ease-out),background 160ms var(--ease-out); }
 .more { position:absolute; top:8px; right:8px; z-index:3; opacity:0; }
 .more:hover { background:rgba(237,245,250,.22); }
 .notInterestedWrap { position:relative; display:inline-flex; }
@@ -47,7 +59,7 @@
 .tooltip { display:none; position:absolute; z-index:4; top:39px; right:-4px; padding:7px 11px; border-radius:8px; font-size:12.5px; font-weight:700; white-space:nowrap; background:var(--color-raised-bright); color:var(--color-text); box-shadow:0 10px 24px -6px rgba(0,0,0,.75),0 0 0 1px rgba(237,245,250,.12); }
 .tooltip::before { content:''; position:absolute; top:-5px; right:15px; width:10px; height:10px; transform:rotate(45deg); background:var(--color-raised-bright); border-radius:2px; }
 .notInterestedWrap:hover .tooltip, .notInterestedWrap:focus-within .tooltip { display:block; }
-.selection { --selection-circle-size:26px; position:absolute; z-index:4; top:10px; left:10px; display:inline-flex; appearance:none; padding:0; border:0; border-radius:50%; background:none; color:inherit; cursor:pointer; opacity:0; transition:opacity 200ms cubic-bezier(.2,.7,.2,1); }
+.selection { --selection-circle-size:26px; position:absolute; z-index:4; top:10px; left:10px; display:inline-flex; appearance:none; padding:0; border:0; border-radius:50%; background:none; color:inherit; cursor:pointer; opacity:0; transition:opacity 200ms var(--ease-out); }
 .selectionHint { display:none; position:absolute; z-index:6; left:8px; top:46px; width:max-content; padding:8px 12px; border-radius:9px; font-size:12.5px; font-weight:700; line-height:1.35; white-space:nowrap; background:var(--color-raised-bright); color:var(--color-text); box-shadow:0 10px 24px -6px rgba(0,0,0,.75),0 0 0 1px rgba(237,245,250,.12); pointer-events:none; }
 .selectionHint kbd { display:inline-grid; place-items:center; min-width:22px; height:20px; padding:0 6px; margin-right:6px; border-radius:5px; font:inherit; font-size:11.5px; font-weight:800; color:var(--color-text-secondary); box-shadow:inset 0 0 0 1px rgba(237,245,250,.3); }
 .selection:hover + .selectionHint, .selection:focus-visible + .selectionHint { display:block; }
@@ -108,7 +120,8 @@
 .episode { --cards-width:316px; }
 .episode .art { aspect-ratio:16/9; }
 .episode.next .art { box-shadow:none; }
-.episode:hover, .episode:focus-within { --cards-art-scale:1.03; }
+.episode:has(:focus-visible) { --cards-art-scale:1.03; }
+@media (hover:hover) { .episode:hover { --cards-art-scale:1.03; } }
 .episodePicture { position:absolute; inset:0; }
 .backdropCrop { transform:scale(2.6); filter:saturate(.55) brightness(.42); }
 .length { position:absolute; z-index:2; right:12px; top:12px; padding:3px 8px; border-radius:6px; font-size:12px; font-weight:700; background:rgba(7,16,24,.65); }
@@ -142,8 +155,30 @@
 .ambient { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
 .live { --cards-width:316px; height:178px; border-radius:12px; background:radial-gradient(120% 140% at 100% 0%,var(--cards-tint) 0%,transparent 60%),var(--color-raised); }
 .live .primary { height:100%; padding:18px; display:flex; flex-direction:column; overflow:hidden; }
-.live, .videoGenre, .musicGenre, .series, .resume, .readResume, .collectionTile { transition:transform 260ms cubic-bezier(.2,.7,.2,1),box-shadow 260ms cubic-bezier(.2,.7,.2,1); }
-.live:hover, .live:focus-within, .videoGenre:hover, .musicGenre:hover, .series:hover { transform:scale(1.03); box-shadow:0 22px 40px -16px rgba(0,0,0,.85),0 0 0 1px rgba(237,245,250,.16); }
+.live, .videoGenre, .musicGenre, .series, .resume, .readResume, .collectionTile { transition:transform 260ms var(--ease-out); }
+.live .primary, .videoGenre .primary, .musicGenre .primary, .series .primary, .resume .primary, .readResume .primary, .collectionTile .primary {
+  height: 100%; border-radius: inherit; overflow: hidden;
+}
+/* Each family paints its authored hover shadow once on a card-owned layer and
+   animates only that layer's opacity; the ring appears immediately with the lift.
+   The family cards no longer clip themselves — the backdrops and ambience they
+   contain do — so the layer is never cut away. */
+.live::after, .videoGenre::after, .musicGenre::after, .series::after, .resume::after, .readResume::after {
+  content:''; position:absolute; z-index:0; inset:0; border-radius:inherit; pointer-events:none;
+  box-shadow:0 22px 40px -16px rgba(0,0,0,.85); opacity:0; transition:opacity 260ms var(--ease-out);
+}
+.collectionTile::after {
+  content:''; position:absolute; z-index:0; inset:0; border-radius:inherit; pointer-events:none;
+  box-shadow:0 26px 48px -18px rgba(0,0,0,.9); opacity:0; transition:opacity 260ms var(--ease-out);
+}
+.live:has(:focus-visible), .videoGenre:has(:focus-visible), .musicGenre:has(:focus-visible), .series:has(:focus-visible) { transform:scale(1.03); box-shadow:0 0 0 1px rgba(237,245,250,.16); }
+.live:has(:focus-visible)::after, .videoGenre:has(:focus-visible)::after, .musicGenre:has(:focus-visible)::after, .series:has(:focus-visible)::after,
+.resume:has(:focus-visible)::after, .readResume:has(:focus-visible)::after, .collectionTile:has(:focus-visible)::after { opacity:1; }
+@media (hover:hover) {
+  .live:hover, .videoGenre:hover, .musicGenre:hover, .series:hover { transform:scale(1.03); box-shadow:0 0 0 1px rgba(237,245,250,.16); }
+  .live:hover::after, .videoGenre:hover::after, .musicGenre:hover::after, .series:hover::after,
+  .resume:hover::after, .readResume:hover::after, .collectionTile:hover::after { opacity:1; }
+}
 .channel { display:flex; align-items:center; gap:10px; width:100%; font-size:13px; color:var(--color-text-secondary); font-weight:600; }
 .monogram { position:relative; width:34px; height:34px; flex:none; border-radius:8px; display:grid; place-items:center; overflow:hidden; background:var(--cards-tint); color:var(--color-white); font-size:13px; font-weight:800; }
 /* The drawing's 12px spacer has a 10px channel-row gap on either side. */
@@ -186,8 +221,9 @@
 .fan-periodical .fanItem { width:56px; height:75px; }
 .collectionBanner { width:100%; height:300px; border-radius:16px; background:var(--color-collection); overflow:hidden; display:flex; flex-direction:column; justify-content:center; align-items:flex-start; }
 .collectionBanner .primary { position:static; height:auto; display:flex; align-items:center; flex:none; }
-.collectionBackdrop { position:absolute; top:0; right:0; width:70%; height:100%; -webkit-mask-image:linear-gradient(90deg,transparent,#000 45%); mask-image:linear-gradient(90deg,transparent,#000 45%); transition:transform 600ms cubic-bezier(.2,.7,.2,1); }
-.collectionBanner:hover .collectionBackdrop { transform:scale(1.03); }
+.collectionBackdrop { position:absolute; top:0; right:0; width:70%; height:100%; -webkit-mask-image:linear-gradient(90deg,transparent,#000 45%); mask-image:linear-gradient(90deg,transparent,#000 45%); transition:transform 600ms var(--ease-out); }
+.collectionBanner:has(:focus-visible) .collectionBackdrop { transform:scale(1.03); }
+@media (hover:hover) { .collectionBanner:hover .collectionBackdrop { transform:scale(1.03); } }
 .collectionCopy { position:relative; display:flex; flex-direction:column; padding-left:56px; width:520px; max-width:100%; }
 .kindLabel { font-size:14px; font-weight:600; color:var(--color-accent-strong); }
 .collectionTitle { font-size:52px; font-weight:800; letter-spacing:-.04em; margin:8px 0 10px; line-height:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -205,7 +241,7 @@
 .collectionMeta { display:flex; gap:14px; margin-top:8px; }
 .collectionFacts > span:first-child { color:var(--color-text); font-weight:700; }
 .collectionDetail { color:var(--color-accent-strong); font-weight:700; }
-.collectionTile { --cards-width:421.3333px; aspect-ratio:16/9; border-radius:14px; overflow:hidden; isolation:isolate; background:var(--color-collection); }
+.collectionTile { --cards-width:421.3333px; aspect-ratio:16/9; border-radius:14px; isolation:isolate; background:var(--color-collection); }
 .collectionTile .primary { height:100%; }
 .collectionTile .collectionBackdrop { width:76%; -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 52%); mask-image:linear-gradient(90deg,transparent 0,#000 52%); }
 .collectionTile .collectionBackdrop::after { content:''; position:absolute; inset:0; background:linear-gradient(0deg,rgba(7,16,24,.78) 0,rgba(7,16,24,.2) 50%,transparent 70%),linear-gradient(90deg,rgba(7,16,24,.55),transparent 60%); }
@@ -215,16 +251,20 @@
 .collectionTile .fanItem { width:34px; height:51px; border-radius:5px; }
 .collectionTile .collectionFacts { gap:14px; }
 .collectionTile .collectionAction { position:absolute; padding:0; left:22px; bottom:20px; }
-.collectionTile:hover { transform:scale(1.025); box-shadow:0 26px 48px -18px rgba(0,0,0,.9),0 0 0 1px rgba(237,245,250,.18); }
-.collectionTile:hover .collectionBackdrop { transform:scale(1.04); }
-.videoGenre { --cards-width:316px; height:132px; overflow:hidden; border-radius:12px; background:var(--color-raised); }
+.collectionTile:has(:focus-visible) { transform:scale(1.025); box-shadow:0 0 0 1px rgba(237,245,250,.18); }
+.collectionTile:has(:focus-visible) .collectionBackdrop { transform:scale(1.04); }
+@media (hover:hover) {
+  .collectionTile:hover { transform:scale(1.025); box-shadow:0 0 0 1px rgba(237,245,250,.18); }
+  .collectionTile:hover .collectionBackdrop { transform:scale(1.04); }
+}
+.videoGenre { --cards-width:316px; height:132px; border-radius:12px; background:var(--color-raised); }
 .videoGenre .primary, .musicGenre .primary, .series .primary { height:100%; }
 .genreBackdrop { position:absolute; inset:0; }
 .genreBackdrop::after { content:''; position:absolute; inset:0; background:linear-gradient(90deg,rgba(7,16,24,.88) 0%,rgba(7,16,24,.5) 55%,rgba(7,16,24,.15)); }
 .genreCopy { position:absolute; left:20px; bottom:18px; right:20px; }
 .genreTitle { display:block; font-size:24px; font-weight:800; letter-spacing:-.025em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .genreFacts { font-size:13px; color:var(--color-text-secondary); margin-top:2px; }
-.musicGenre { --cards-width:250px; height:152px; border-radius:14px; overflow:hidden; background:radial-gradient(120% 150% at 100% 0%,var(--cards-tint) 0%,transparent 70%),var(--color-raised); }
+.musicGenre { --cards-width:250px; height:152px; border-radius:14px; background:radial-gradient(120% 150% at 100% 0%,var(--cards-tint) 0%,transparent 70%),var(--color-raised); }
 .musicGenre .genreTitle { font-size:22px; letter-spacing:-.02em; text-shadow:0 2px 16px rgba(7,16,24,.6); }
 .genreFan { top:16px; right:18px; width:120px; height:90px; }
 .genreFan .fanItem { width:76px; height:76px; border-radius:7px; box-shadow:0 12px 22px -8px rgba(0,0,0,.85),0 0 0 1px rgba(237,245,250,.16); }
@@ -250,7 +290,7 @@
 .libraryFan .fanItem:nth-child(2) { top:-40px; }
 .libraryFan.fan-square .fanItem { top:-30px; }
 .libraryFan.fan-square .fanItem:nth-child(2) { top:-33px; }
-.resume, .readResume { --cards-width:456px; height:180px; border-radius:14px; overflow:hidden; background:var(--color-raised); }
+.resume, .readResume { --cards-width:456px; height:180px; border-radius:14px; background:var(--color-raised); }
 .resume .primary, .readResume .primary { height:100%; display:flex; align-items:center; gap:22px; padding:20px; }
 .resume .primary::after, .readResume .primary::after { content:''; position:absolute; inset:0; pointer-events:none; background:linear-gradient(90deg,rgba(7,16,24,.1),rgba(7,16,24,.55)); }
 .resumeCover { display:block; position:relative; z-index:1; flex:none; width:140px; height:140px; border-radius:8px; overflow:hidden; box-shadow:0 16px 30px -12px rgba(0,0,0,.9); }
@@ -263,14 +303,15 @@
 .resume .progress, .readResume .progress { margin-top:8px; }
 .resume .play, .readResume .play { top:18px; bottom:auto; right:18px; }
 .resume .more, .readResume .more { top:64px; right:18px; }
-.resume:hover, .readResume:hover { transform:scale(1.02); box-shadow:0 22px 40px -16px rgba(0,0,0,.85),0 0 0 1px rgba(237,245,250,.16); }
+.resume:has(:focus-visible), .readResume:has(:focus-visible) { transform:scale(1.02); box-shadow:0 0 0 1px rgba(237,245,250,.16); }
+@media (hover:hover) { .resume:hover, .readResume:hover { transform:scale(1.02); box-shadow:0 0 0 1px rgba(237,245,250,.16); } }
 .readResume { --cards-width:440px; height:204px; }
 .readResume .primary { padding:18px 22px 18px 18px; }
 .readResume .resumeCover { width:112px; height:168px; border-radius:6px; }
 .readResume.resumePeriodical .resumeCover { width:126px; }
 .readResume .resumeWhere { margin-top:26px; }
 .readResume .play { top:16px; bottom:auto; right:16px; }
-.series { --cards-width:300px; height:196px; border-radius:14px; overflow:hidden; background:radial-gradient(120% 150% at 100% 0%,var(--cards-tint) 0%,transparent 70%),var(--color-raised); }
+.series { --cards-width:300px; height:196px; border-radius:14px; background:radial-gradient(120% 150% at 100% 0%,var(--cards-tint) 0%,transparent 70%),var(--color-raised); }
 .seriesCopy { position:absolute; left:20px; right:20px; bottom:18px; }
 .seriesTitle { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; max-width:150px; font-size:19px; font-weight:800; letter-spacing:-.02em; line-height:1.15; text-shadow:0 2px 16px rgba(7,16,24,.6); }
 .seriesFacts { font-size:13px; color:var(--color-text-secondary); margin-top:5px; white-space:nowrap; }
@@ -282,7 +323,7 @@
 .segments { display:flex; gap:3px; margin-top:12px; }
 .segments > span { display:block; flex:1; height:4px; border-radius:2px; background:rgba(237,245,250,.2); overflow:hidden; }
 .segments > span > span { display:block; height:100%; background:var(--color-accent-strong); }
-.quick { --cards-width:319px; height:76px; border-radius:10px; overflow:hidden; background:rgba(237,245,250,.07); transition:background 160ms cubic-bezier(.2,.7,.2,1); }
+.quick { --cards-width:319px; height:76px; border-radius:10px; overflow:hidden; background:rgba(237,245,250,.07); transition:background 160ms var(--ease-out); }
 .quick:hover { background:rgba(237,245,250,.13); }
 .quick .primary { height:100%; display:flex; align-items:center; gap:16px; }
 .quickCover { position:relative; display:block; flex:none; width:76px; height:76px; }
@@ -325,7 +366,7 @@
 .sessionFacts > span[data-role='status'] { color:var(--color-accent-strong); background:rgba(64,159,212,.16); }
 .sessionState { position:absolute; right:14px; top:14px; display:flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:var(--color-text-secondary); pointer-events:none; }
 .paused .sessionTitle { padding-right:84px; }
-.sessionActions { position:absolute; z-index:3; right:12px; top:10px; display:flex; gap:6px; opacity:0; transition:opacity 160ms cubic-bezier(.2,.7,.2,1); }
+.sessionActions { position:absolute; z-index:3; right:12px; top:10px; display:flex; gap:6px; opacity:0; transition:opacity 160ms var(--ease-out); }
 .session:hover .sessionActions, .session:focus-within .sessionActions { opacity:1; }
 .session:hover .sessionState, .session:focus-within .sessionState { opacity:0; }
 .session:hover .sessionTitle, .session:focus-within .sessionTitle { padding-right:124px; }
@@ -407,18 +448,75 @@
   .card:has(.more) .watched { right:60px; }
 }
 @media (prefers-reduced-motion:reduce) {
-  .primary, .artAligned, .art, .artAuxiliary, .play, .more, .selection, .live, .videoGenre, .musicGenre, .series, .resume, .readResume, .collectionTile, .collectionBackdrop, .sessionActions { transition:opacity 160ms cubic-bezier(.2,.7,.2,1); }
+  .primary, .artAligned, .art, .artAuxiliary, .play, .more, .selection, .live, .videoGenre, .musicGenre, .series, .resume, .readResume, .collectionTile, .collectionBackdrop, .sessionActions { transition:opacity 160ms linear; }
   .card:hover, .card:focus-within, .holding { --cards-art-scale:1; }
-  .card:hover .art, .card:focus-within .art, .holding .art, .live:hover, .live:focus-within, .videoGenre:hover, .musicGenre:hover, .series:hover, .resume:hover, .readResume:hover, .collectionTile:hover, .collectionTile:hover .collectionBackdrop, .collectionBanner:hover .collectionBackdrop, .primary:active, .primary:active + .artAligned { transform:none; }
+  .card:hover .art, .card:has(:focus-visible) .art, .holding .art,
+  .live:hover, .live:has(:focus-visible), .videoGenre:hover, .videoGenre:has(:focus-visible), .musicGenre:hover, .musicGenre:has(:focus-visible),
+  .series:hover, .series:has(:focus-visible), .resume:hover, .resume:has(:focus-visible), .readResume:hover, .readResume:has(:focus-visible),
+  .collectionTile:hover, .collectionTile:has(:focus-visible), .collectionTile:hover .collectionBackdrop, .collectionTile:has(:focus-visible) .collectionBackdrop,
+  .collectionBanner:hover .collectionBackdrop, .collectionBanner:has(:focus-visible) .collectionBackdrop,
+  .primary:active, .primary:active + .artAligned { transform:none; }
+  .live::after, .videoGenre::after, .musicGenre::after, .series::after, .resume::after, .readResume::after, .collectionTile::after,
+  .artShadow { transition:opacity 160ms linear; transform:none; }
 }
 
 /* The real auxiliary buttons stay outside the primary navigation button. */
 .auxiliary, .cardAuxiliary { position:absolute; inset:0; pointer-events:none; }
 .auxiliary { z-index:3; }
 .auxiliary button, .notInterestedWrap { pointer-events:auto; }
-.artAuxiliary { position:absolute; pointer-events:none; transform:scale(var(--cards-art-scale)); transition:transform 260ms cubic-bezier(.2,.7,.2,1); }
+.artAuxiliary { position:absolute; pointer-events:none; transform:scale(var(--cards-art-scale)); transition:transform 260ms var(--ease-out); }
 .selecting:hover, .selecting:focus-within { --cards-art-scale:1; }
 @media (prefers-reduced-motion:reduce) {
   .card:hover, .card:focus-within, .holding { --cards-art-scale:1; }
   .artAuxiliary { transition:none; }
 }
+
+/* The app's own reduced-motion preference (Root) sets data-reduce-motion on the
+   document whether or not the system asks for it, so the still state above also
+   keys off that attribute: opacity only, no scale, no shadow growth. */
+:root[data-reduce-motion="true"] .primary,
+:root[data-reduce-motion="true"] .artAligned,
+:root[data-reduce-motion="true"] .art,
+:root[data-reduce-motion="true"] .artAuxiliary,
+:root[data-reduce-motion="true"] .play,
+:root[data-reduce-motion="true"] .more,
+:root[data-reduce-motion="true"] .selection,
+:root[data-reduce-motion="true"] .live,
+:root[data-reduce-motion="true"] .videoGenre,
+:root[data-reduce-motion="true"] .musicGenre,
+:root[data-reduce-motion="true"] .series,
+:root[data-reduce-motion="true"] .resume,
+:root[data-reduce-motion="true"] .readResume,
+:root[data-reduce-motion="true"] .collectionTile,
+:root[data-reduce-motion="true"] .collectionBackdrop { transition:opacity 160ms linear; }
+:root[data-reduce-motion="true"] .card:hover,
+:root[data-reduce-motion="true"] .card:has(:focus-visible),
+:root[data-reduce-motion="true"] .holding { --cards-art-scale:1; }
+:root[data-reduce-motion="true"] .live:hover,
+:root[data-reduce-motion="true"] .live:has(:focus-visible),
+:root[data-reduce-motion="true"] .videoGenre:hover,
+:root[data-reduce-motion="true"] .videoGenre:has(:focus-visible),
+:root[data-reduce-motion="true"] .musicGenre:hover,
+:root[data-reduce-motion="true"] .musicGenre:has(:focus-visible),
+:root[data-reduce-motion="true"] .series:hover,
+:root[data-reduce-motion="true"] .series:has(:focus-visible),
+:root[data-reduce-motion="true"] .resume:hover,
+:root[data-reduce-motion="true"] .resume:has(:focus-visible),
+:root[data-reduce-motion="true"] .readResume:hover,
+:root[data-reduce-motion="true"] .readResume:has(:focus-visible),
+:root[data-reduce-motion="true"] .collectionTile:hover,
+:root[data-reduce-motion="true"] .collectionTile:has(:focus-visible),
+:root[data-reduce-motion="true"] .collectionTile:hover .collectionBackdrop,
+:root[data-reduce-motion="true"] .collectionTile:has(:focus-visible) .collectionBackdrop,
+:root[data-reduce-motion="true"] .collectionBanner:hover .collectionBackdrop,
+:root[data-reduce-motion="true"] .collectionBanner:has(:focus-visible) .collectionBackdrop,
+:root[data-reduce-motion="true"] .primary:active,
+:root[data-reduce-motion="true"] .primary:active + .artAligned { transform:none; }
+:root[data-reduce-motion="true"] .artShadow { transform:none; }
+:root[data-reduce-motion="true"] .live::after,
+:root[data-reduce-motion="true"] .videoGenre::after,
+:root[data-reduce-motion="true"] .musicGenre::after,
+:root[data-reduce-motion="true"] .series::after,
+:root[data-reduce-motion="true"] .resume::after,
+:root[data-reduce-motion="true"] .readResume::after,
+:root[data-reduce-motion="true"] .collectionTile::after { transition:opacity 160ms linear; }

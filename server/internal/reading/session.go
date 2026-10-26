@@ -266,7 +266,7 @@ func (s *Service) Prepare(ctx context.Context, p identity.Principal, item, sourc
 		seconds := (*document.Metadata.WordCount*60 + 249) / 250
 		document.Metadata.EstimatedSeconds = &seconds
 	}
-	if (document.Selection.Format == "cbz" || document.Selection.Format == "cb7") && len(document.PageNames) > 0 {
+	if (document.Selection.Format == "cbz" || document.Selection.Format == "cb7" || document.Selection.Format == "cbr") && len(document.PageNames) > 0 {
 		count := int64(len(document.PageNames))
 		document.Metadata.PageCount = &count
 	} else if document.Selection.Format == "pdf" && pageCount != nil {

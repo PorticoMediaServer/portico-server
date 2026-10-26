@@ -41,6 +41,12 @@ func (s *Store) identityTx(ctx context.Context, tx *sql.Tx, key Key, id string) 
 	return
 }
 func (s *Store) sessionTx(ctx context.Context, tx *sql.Tx, v Snapshot) (int64, error) {
+	return s.sessionProofTx(ctx, tx, v, nil)
+}
+
+// A continuation is private store code issued from a live same-Tx parent.
+// Normal publication/activation supplies none and retains its strict hash rule.
+func (s *Store) sessionProofTx(ctx context.Context, tx *sql.Tx, v Snapshot, continuation func(string) error) (int64, error) {
 	if v.Actor.ServerID != s.serverID {
 		return 0, ErrCurrent
 	}
@@ -54,7 +60,12 @@ func (s *Store) sessionTx(ctx context.Context, tx *sql.Tx, v Snapshot) (int64, e
 		return 0, err
 	}
 	if currentHash != v.Actor.SessionHash {
-		if err = s.activeFamilySessionTx(ctx, tx, v, currentHash); err != nil {
+		if continuation != nil {
+			err = continuation(currentHash)
+		} else {
+			err = s.activeFamilySessionTx(ctx, tx, v, currentHash)
+		}
+		if err != nil {
 			return 0, err
 		}
 	}
@@ -158,7 +169,13 @@ func (s *Store) PublishPendingTx(ctx context.Context, tx *sql.Tx, in Snapshot, c
 	if e != nil {
 		return e
 	}
-	until, e := s.checkTx(ctx, tx, v, check)
+	return s.publishPendingValueTx(ctx, tx, v, func() (int64, error) { return s.checkTx(ctx, tx, v, check) })
+}
+
+// The value and proof closure come only from normal frozen publication or the
+// private same-transaction generation claim. No row caller can select a mode.
+func (s *Store) publishPendingValueTx(ctx context.Context, tx *sql.Tx, v Snapshot, prove func() (int64, error)) error {
+	until, e := prove()
 	if e != nil {
 		return e
 	}
@@ -194,7 +211,7 @@ func (s *Store) PublishPendingTx(ctx context.Context, tx *sql.Tx, in Snapshot, c
 		}
 	}
 	// The seal is internal publication state, not a caller-provided readiness bit.
-	if _, e = s.checkTx(ctx, tx, v, check); e != nil {
+	if _, e = prove(); e != nil {
 		return e
 	}
 	result, e := tx.ExecContext(ctx, `UPDATE playback_disc_lifecycle SET sealed=1 WHERE snapshot_id=? AND state='pending' AND sealed=0 AND expires_ms>?`, v.ID, time.Now().UnixMilli())
@@ -259,6 +276,10 @@ func (s *Store) ActivateTx(ctx context.Context, tx *sql.Tx, key Key, id string, 
 	if e := writeTx(ctx, tx); e != nil {
 		return Snapshot{}, e
 	}
+	return s.activateValueTx(ctx, tx, key, id, func(v Snapshot) (int64, error) { return s.checkTx(ctx, tx, v, check) })
+}
+
+func (s *Store) activateValueTx(ctx context.Context, tx *sql.Tx, key Key, id string, prove func(Snapshot) (int64, error)) (Snapshot, error) {
 	l, e := s.identityTx(ctx, tx, key, id)
 	if e != nil {
 		return Snapshot{}, e
@@ -270,7 +291,7 @@ func (s *Store) ActivateTx(ctx context.Context, tx *sql.Tx, key Key, id string, 
 	if e != nil {
 		return Snapshot{}, e
 	}
-	until, e := s.checkTx(ctx, tx, v, check)
+	until, e := prove(v)
 	if e != nil {
 		return Snapshot{}, e
 	}

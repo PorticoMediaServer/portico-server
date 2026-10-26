@@ -1,5 +1,5 @@
 /* Receiver presentation: cast-receiver.html, design 69f2d45. All geometry is at 1920×1080. */
-@font-face { font-family: Manrope; src: url('assets/manrope-var-latin.woff2') format('woff2'); font-weight: 200 800; font-display: block; }
+@font-face { font-family: Manrope; src: url('assets/manrope-var-latin.woff2') format('woff2'); font-weight: 200 800; font-display: swap; }
 :root { color-scheme: dark; --ink: #071018; --raised: #10212d; --accent: #409fd4; --accent-strong: #5cb3e2; --text: #edf5fa; --text-2: #bdccd6; --text-3: #96a9b5; --line: #28404f; --line-strong: #3b5668; --focus: #d5efff; --danger: #f38b88; --glow: rgba(92,179,226,.6); --ease: cubic-bezier(.2,.7,.2,1); }
 html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--ink); color: var(--text); font-family: Manrope, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
 *, *::before, *::after { box-sizing: border-box; }

@@ -13,7 +13,7 @@ import (
 // policy. Bumping membership must not invalidate unchanged original package
 // classification evidence; future classifier changes still invalidate readers
 // and rebuilding automatically through the composite version.
-const ReadingProjectionRuleVersion = ReadingPublicationTypeRuleVersion*1000 + 1
+const ReadingProjectionRuleVersion = ReadingPublicationTypeRuleVersion*1000 + 2
 
 // ReadingGeneration identifies one complete effective-attribution projection.
 // This metadata is not library/content authority. A consumer must authorize its
@@ -97,7 +97,7 @@ func StepReadingAttribution(ctx context.Context, tx *sql.Tx, limit int) (int, er
  CASE WHEN e.retired=0 AND cl.retired=0 AND ((lib.kind='book' AND e.kind=20) OR (lib.kind='comic' AND e.kind=21)) AND EXISTS(
  SELECT 1 FROM reading_publications p JOIN catalog_asset_links link ON link.entity_id=p.item_id AND link.asset_id=p.asset_id
  WHERE p.item_id=e.id
- AND ((e.kind=20 AND p.format IN('epub','pdf','mobi','azw3')) OR (e.kind=21 AND p.format IN('cbz','pdf','cb7')))) THEN 1 ELSE 0 END
+ AND ((e.kind=20 AND p.format IN('epub','pdf','mobi','azw3')) OR (e.kind=21 AND p.format IN('cbz','pdf','cb7','cbr')))) THEN 1 ELSE 0 END
  FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries lib ON lib.id=cl.library_id
  WHERE e.library_id=? AND e.id>? ORDER BY e.id LIMIT ?`, library, after, limit)
 	if err != nil {

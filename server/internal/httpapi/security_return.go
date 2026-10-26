@@ -19,6 +19,8 @@ import (
 )
 
 type securityReturnPrepareRequest struct {
+	Purpose            string    `json:"purpose"`
+	Target             string    `json:"target"`
 	Origin             string    `json:"origin"`
 	OpeningID          string    `json:"openingId"`
 	TaskID             string    `json:"taskId"`
@@ -40,6 +42,7 @@ type securityReturnSigner interface {
 	SignSecurityReturn(context.Context, serverreturn.SecurityContext, networking.SecurityActorReader) (serverreturn.SecuritySigned, error)
 	ConfirmSecurityReturn(context.Context, serverreturn.SecuritySigned, string, string, networking.SecurityActorReader) (serverreturn.SecuritySigned, error)
 	CancelSecurityReturn(context.Context, serverreturn.SecuritySigned, networking.SecurityActorReader) error
+	CheckSecurityReturn(context.Context, serverreturn.SecuritySigned, networking.SecurityActorReader) error
 }
 
 // This unverified parse selects no authority. The signer subsequently verifies
@@ -72,7 +75,7 @@ func securityReturnFailure(w http.ResponseWriter, e error) {
 func (d Dependencies) securityReturnRoutes(mux *http.ServeMux) {
 	actor := func(r *http.Request) networking.SecurityActorReader {
 		bearer := directBearer(r)
-		return func(ctx context.Context, tx *sql.Tx) (string, string, error) {
+		return func(ctx context.Context, tx *sql.Tx) (string, string, time.Time, error) {
 			return d.Identity.SecurityReturnActorTx(ctx, tx, bearer)
 		}
 	}
@@ -97,7 +100,7 @@ func (d Dependencies) securityReturnRoutes(mux *http.ServeMux) {
 			securityReturnFailure(w, e)
 			return
 		}
-		out, e := signer.SignSecurityReturn(r.Context(), serverreturn.SecurityContext{ServerID: prepared.ServerID, RegistrationID: prepared.Registration.ID, Origin: prepared.Registration.Origin, HostedOrigin: prepared.HostedOrigin, ClaimOperationID: prepared.ClaimOperationID, OpeningID: q.OpeningID, TaskID: q.TaskID, OperationID: q.OperationID, ProviderIdentityID: q.ProviderIdentityID, ProviderRevision: q.ProviderRevision, Nonce: q.Nonce, ExpiresAt: q.ExpiresAt}, actor(r))
+		out, e := signer.SignSecurityReturn(r.Context(), serverreturn.SecurityContext{Purpose: q.Purpose, Target: q.Target, ServerID: prepared.ServerID, RegistrationID: prepared.Registration.ID, Origin: prepared.Registration.Origin, HostedOrigin: prepared.HostedOrigin, ClaimOperationID: prepared.ClaimOperationID, OpeningID: q.OpeningID, TaskID: q.TaskID, OperationID: q.OperationID, ProviderIdentityID: q.ProviderIdentityID, ProviderRevision: q.ProviderRevision, Nonce: q.Nonce, ExpiresAt: q.ExpiresAt}, actor(r))
 		if e != nil {
 			securityReturnFailure(w, e)
 			return
@@ -127,6 +130,28 @@ func (d Dependencies) securityReturnRoutes(mux *http.ServeMux) {
 		}
 		w.Header().Set("Cache-Control", "no-store")
 		write(w, 200, out)
+	})
+
+	d.httpHandle(mux, "POST /v1/direct/security-return/check", func(w http.ResponseWriter, r *http.Request) {
+		var q securityReturnCancelRequest
+		if e := decode(w, r, &q); e != nil {
+			securityReturnFailure(w, e)
+			return
+		}
+		if !securityReturnRequestOrigin(r, q.Context) {
+			failure(w, identity.ErrDirectInput)
+			return
+		}
+		signer, ok := d.RouteIdentity.(securityReturnSigner)
+		if !ok {
+			failure(w, identity.ErrUnauthorized)
+			return
+		}
+		if e := signer.CheckSecurityReturn(r.Context(), q.Context, actor(r)); e != nil {
+			securityReturnFailure(w, e)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	})
 	d.httpHandle(mux, "POST /v1/direct/security-return/cancel", func(w http.ResponseWriter, r *http.Request) {
 		var q securityReturnCancelRequest
@@ -159,6 +184,9 @@ func registerSecurityReturnHTTPContracts(registry *apikit.Registry) error {
 		return e
 	}
 	if e := apikit.RegisterHTTP[securityReturnConfirmRequest, serverreturn.SecuritySigned](registry, meta("post_direct_security_return_confirm", "/v1/direct/security-return/confirm", "Confirm only the original provider Security return", 200)); e != nil {
+		return e
+	}
+	if e := apikit.RegisterHTTP[securityReturnCancelRequest, struct{}](registry, meta("post_direct_security_return_check", "/v1/direct/security-return/check", "Check only the original Account Settings UI return scope", 204)); e != nil {
 		return e
 	}
 	return apikit.RegisterHTTP[securityReturnCancelRequest, struct{}](registry, meta("post_direct_security_return_cancel", "/v1/direct/security-return/cancel", "Cancel only the original provider Security opening", 204))

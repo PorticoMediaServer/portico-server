@@ -246,7 +246,7 @@ func annotationLocationSchema() map[string]any {
 		annotationObject([]string{"format", "cfi", "progression"}, map[string]any{
 			"format": map[string]any{"type": "string", "enum": []string{"epub"}}, "cfi": annotationString(10, 4096), "section": annotationString(0, 1024), "progression": progression}),
 		annotationObject([]string{"format", "pageIndex", "progression"}, map[string]any{
-			"format": map[string]any{"type": "string", "enum": []string{"pdf", "cbz", "cb7"}}, "pageIndex": annotationInteger(1000000), "progression": progression}),
+			"format": map[string]any{"type": "string", "enum": []string{"pdf", "cbz", "cb7", "cbr"}}, "pageIndex": annotationInteger(1000000), "progression": progression}),
 	}}
 }
 func annotationRectsSchema() map[string]any {

@@ -18,15 +18,23 @@ const TextCountRuleVersion = 2
 // The default build is dark.
 func CB7() bool { return buildEnabled() && platformSupportsCB7() }
 
+// CBR is present only when the existing pinned RAR5 decoder is compiled in.
+// Signature, dictionary, member, aggregate and lifetime checks remain reader
+// admission; a filename or this capability never qualifies archive bytes.
+func CBR() bool { return rarBuildEnabled() }
+
 func platformSupportsCB7() bool { return runtime.GOOS == "linux" || runtime.GOOS == "darwin" }
 
 // ComicFormats is every admitted comic source format, in the existing order
-// with cb7 appended only when this build exposes it. Existing enum meanings do
+// with each archive appended only when this build exposes it. Existing meanings do
 // not change.
 func ComicFormats() []string {
 	formats := []string{"cbz", "pdf"}
 	if CB7() {
 		formats = append(formats, "cb7")
+	}
+	if CBR() {
+		formats = append(formats, "cbr")
 	}
 	return formats
 }
@@ -43,20 +51,23 @@ func ComicArchiveFormats() []string {
 	if CB7() {
 		formats = append(formats, "cb7")
 	}
+	if CBR() {
+		formats = append(formats, "cbr")
+	}
 	return formats
 }
 
 // ComicArchiveFormatsSQL is the quoted SQL list for ComicArchiveFormats.
 func ComicArchiveFormatsSQL() string { return quoted(ComicArchiveFormats()) }
 
-// LocalCB7SQL keeps a cb7 publication selectable only through a current local
-// library source of its own library. Remote cb7, or a local copy of the same
+// LocalComicArchiveSQL keeps CBR/CB7 selectable only through a current local
+// library source of its own library. A remote archive or a local copy of the same
 // asset token that belongs to another library, neither becomes a primary
 // version nor advertises itself as inventory-ready. Availability itself is not
 // required here: an unavailable local title keeps the existing browse policy.
 // The publication alias is server-owned SQL, never caller text.
-func LocalCB7SQL(publication string) string {
-	return "(" + publication + ".format<>'cb7' OR EXISTS(SELECT 1" +
+func LocalComicArchiveSQL(publication string) string {
+	return "(" + publication + ".format NOT IN('cb7','cbr') OR EXISTS(SELECT 1" +
 		" FROM catalog_entities cb7_entity" +
 		" JOIN catalog_libraries cb7_library ON cb7_library.id=cb7_entity.library_id" +
 		" JOIN catalog_asset_links cb7_link ON cb7_link.entity_id=" + publication + ".item_id AND cb7_link.asset_id=" + publication + ".asset_id" +
@@ -68,6 +79,10 @@ func LocalCB7SQL(publication string) string {
 		" AND cb7_object.size=cb7_asset.size AND cb7_object.modified_ns=cb7_asset.modified_ns" +
 		" AND cb7_source.kind='local'))"
 }
+
+// LocalCB7SQL preserves the existing reader seam while consumers adopt the
+// general local-archive name. It applies the identical physical-source guard.
+func LocalCB7SQL(publication string) string { return LocalComicArchiveSQL(publication) }
 
 func quoted(values []string) string {
 	out := ""

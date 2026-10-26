@@ -22,6 +22,10 @@ type SecuritySigned struct {
 // ActorBinding is an opaque server-authenticated digest of the original local
 // account/profile/family/epoch and revision. Hosted stores no server profiles.
 type SecurityContext struct {
+	SettingsScope      string    `json:"settingsScope"`
+	SettingsSection    string    `json:"settingsSection"`
+	Purpose            string    `json:"purpose"`
+	Target             string    `json:"target"`
 	Kind               string    `json:"kind"`
 	ServerID           string    `json:"serverId"`
 	PublicKey          string    `json:"publicKey"`
@@ -39,6 +43,7 @@ type SecurityContext struct {
 	Nonce              string    `json:"nonce"`
 	IssuedAt           time.Time `json:"issuedAt"`
 	ExpiresAt          time.Time `json:"expiresAt"`
+	AuthorityExpiresAt time.Time `json:"authorityExpiresAt"`
 }
 
 type SecurityReturnStart struct {
@@ -98,12 +103,12 @@ func VerifySecurityContext(q SecuritySigned, public []byte, now time.Time) (Secu
 	var out SecurityContext
 	raw, e := securityDecode(q, public, &out)
 	key, ke := base64.RawURLEncoding.Strict().DecodeString(out.PublicKey)
-	if e != nil || ke != nil || !bytes.Equal(key, public) || out.Kind != SecurityContextKind || !identifier.MatchString(out.ServerID) ||
+	if e != nil || ke != nil || !bytes.Equal(key, public) || out.Kind != SecurityContextKind || out.SettingsScope != "account" || out.SettingsSection != "profile" || !CredentialPurpose(out.Purpose, out.Target) || !identifier.MatchString(out.ServerID) ||
 		!identifier.MatchString(out.RegistrationID) || !identifier.MatchString(out.ClaimOperationID) || !Origin(out.Origin) || !Origin(out.HostedOrigin) ||
 		!identifier.MatchString(out.AccountID) || !identifier.MatchString(out.ProviderIdentityID) || out.ProviderRevision < 1 ||
 		!secret.MatchString(out.ActorBinding) || !identifier.MatchString(out.OpeningID) || len(out.OpeningID) < 16 ||
 		!identifier.MatchString(out.TaskID) || len(out.TaskID) < 16 || !identifier.MatchString(out.OperationID) || len(out.OperationID) < 16 ||
-		!secret.MatchString(out.Nonce) || !securityTime(out.IssuedAt, out.ExpiresAt, now, 5*time.Minute) {
+		!secret.MatchString(out.Nonce) || out.AuthorityExpiresAt.IsZero() || out.ExpiresAt.After(out.AuthorityExpiresAt) || !securityTime(out.IssuedAt, out.ExpiresAt, now, 5*time.Minute) {
 		return SecurityContext{}, nil, ErrInvalid
 	}
 	return out, raw, nil
@@ -122,4 +127,16 @@ func VerifySecurityConfirmation(q SecuritySigned, public []byte, context, transa
 func (q SecurityReturnStart) Valid() bool {
 	challenge, e := base64.RawURLEncoding.Strict().DecodeString(q.CodeChallenge)
 	return secret.MatchString(q.State) && e == nil && len(challenge) == 32 && base64.RawURLEncoding.EncodeToString(challenge) == q.CodeChallenge
+}
+
+// A80 has three credential-change families. Recovery-code operations are part
+// of the existing second-factor flow, not another reauthentication category.
+func CredentialPurpose(purpose, target string) bool {
+	switch purpose {
+	case "password_set_or_change", "mfa_enroll", "mfa_disable", "recovery_codes":
+		return target == ""
+	case "email_change":
+		return len(target) >= 3 && len(target) <= 320
+	}
+	return false
 }

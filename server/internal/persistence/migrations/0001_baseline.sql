@@ -191,7 +191,7 @@ CREATE INDEX retained_title_identities_state ON retained_title_identities(state_
 CREATE TABLE reading_publications(
  item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  asset_id INTEGER NOT NULL UNIQUE REFERENCES catalog_assets(id) ON DELETE CASCADE,
- format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz','cb7','mobi','azw3')),
+ format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz','cb7','mobi','azw3','cbr')),
  PRIMARY KEY(item_id,asset_id),
  FOREIGN KEY(item_id,asset_id) REFERENCES catalog_asset_links(entity_id,asset_id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
 CREATE TABLE reading_source_values(
@@ -345,7 +345,7 @@ CREATE TABLE reading_annotations(
  source_revision TEXT NOT NULL CHECK(length(source_revision) BETWEEN 1 AND 256),
  id TEXT NOT NULL CHECK(length(id) BETWEEN 1 AND 64),
  kind TEXT NOT NULL CHECK(kind IN('bookmark','highlight')),
- format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz','cb7')),
+ format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz','cb7','cbr')),
  cfi TEXT CHECK(cfi IS NULL OR length(cfi)<=4096),
  section TEXT CHECK(section IS NULL OR length(section)<=1024),
  page_index INTEGER,
@@ -358,7 +358,7 @@ CREATE TABLE reading_annotations(
  PRIMARY KEY(owner_key,item_id,asset_id,source_revision,id),
  FOREIGN KEY(owner_key,item_id,asset_id,source_revision) REFERENCES reading_annotation_sets(owner_key,item_id,asset_id,source_revision) ON DELETE CASCADE,
  CHECK((kind='bookmark' AND quote='' AND colour='') OR (kind='highlight' AND length(quote)>0 AND colour IN('yellow','green','blue','pink'))),
- CHECK((format='epub' AND cfi IS NOT NULL AND page_index IS NULL) OR (format IN('pdf','cbz','cb7') AND cfi IS NULL AND section IS NULL AND page_index IS NOT NULL AND page_index BETWEEN 0 AND 1000000))) WITHOUT ROWID, STRICT;
+ CHECK((format='epub' AND cfi IS NOT NULL AND page_index IS NULL) OR (format IN('pdf','cbz','cb7','cbr') AND cfi IS NULL AND section IS NULL AND page_index IS NOT NULL AND page_index BETWEEN 0 AND 1000000))) WITHOUT ROWID, STRICT;
 CREATE TABLE reading_annotation_rects(
  owner_key TEXT NOT NULL,
  item_id INTEGER NOT NULL,
@@ -378,7 +378,7 @@ CREATE TABLE reading_progress(
  item_id INTEGER NOT NULL,
  asset_id INTEGER NOT NULL,
  source_revision TEXT NOT NULL CHECK(length(source_revision) BETWEEN 1 AND 256),
- format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz','cb7')),
+ format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz','cb7','cbr')),
  cfi TEXT CHECK(cfi IS NULL OR length(cfi)<=8192),
  section TEXT CHECK(section IS NULL OR length(section)<=4096),
  page_index INTEGER,
@@ -387,14 +387,14 @@ CREATE TABLE reading_progress(
  observed_at INTEGER NOT NULL CHECK(observed_at BETWEEN 0 AND 9007199254740991),
  PRIMARY KEY(owner_key,item_id,asset_id),
  FOREIGN KEY(item_id,asset_id) REFERENCES reading_publications(item_id,asset_id) ON DELETE CASCADE,
- CHECK((format='epub' AND page_index IS NULL) OR (format IN('pdf','cbz','cb7') AND page_index IS NOT NULL AND page_index BETWEEN 0 AND 9007199254740991 AND cfi IS NULL AND section IS NULL))) WITHOUT ROWID, STRICT;
+ CHECK((format='epub' AND page_index IS NULL) OR (format IN('pdf','cbz','cb7','cbr') AND page_index IS NOT NULL AND page_index BETWEEN 0 AND 9007199254740991 AND cfi IS NULL AND section IS NULL))) WITHOUT ROWID, STRICT;
 CREATE INDEX reading_progress_publication ON reading_progress(item_id,asset_id);
 CREATE INDEX reading_progress_recent ON reading_progress(owner_key,observed_at DESC,item_id DESC,asset_id DESC);
 CREATE TABLE retained_reading_progress(
  state_id INTEGER NOT NULL REFERENCES retained_title_state(id) ON DELETE CASCADE,
  source_id TEXT NOT NULL CHECK(length(source_id)>0),
  source_revision TEXT NOT NULL CHECK(length(source_revision) BETWEEN 1 AND 256),
- format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz','cb7')),
+ format TEXT NOT NULL CHECK(format IN('epub','pdf','cbz','cb7','cbr')),
  cfi TEXT CHECK(cfi IS NULL OR length(cfi)<=8192),
  section TEXT CHECK(section IS NULL OR length(section)<=4096),
  page_index INTEGER,
@@ -402,7 +402,7 @@ CREATE TABLE retained_reading_progress(
  revision INTEGER NOT NULL CHECK(revision BETWEEN 1 AND 9007199254740991),
  observed_at INTEGER NOT NULL CHECK(observed_at BETWEEN 0 AND 9007199254740991),
  PRIMARY KEY(state_id,source_id),
- CHECK((format='epub' AND page_index IS NULL) OR (format IN('pdf','cbz','cb7') AND page_index IS NOT NULL AND page_index BETWEEN 0 AND 9007199254740991 AND cfi IS NULL AND section IS NULL))) WITHOUT ROWID, STRICT;
+ CHECK((format='epub' AND page_index IS NULL) OR (format IN('pdf','cbz','cb7','cbr') AND page_index IS NOT NULL AND page_index BETWEEN 0 AND 9007199254740991 AND cfi IS NULL AND section IS NULL))) WITHOUT ROWID, STRICT;
 CREATE TABLE catalog_shows(
  entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
  local_key TEXT NOT NULL,

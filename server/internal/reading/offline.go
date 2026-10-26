@@ -84,9 +84,9 @@ func (s *Service) SelectOfflineTx(ctx context.Context, tx *sql.Tx, p identity.Pr
 	// The existing original-download opener is the isolated local/mounted storage
 	// transport. Direct remote Reading leases and online MOBI conversions are
 	// not that transfer authority; only the descriptor formats are offered.
-	// Managed offline CB7 stays unavailable: the classic 7z publication has no
+	// Managed offline CB7/CBR stays unavailable: classic archives have no
 	// ZIP member offsets, and a real bounded offline representation and client
-	// consumer do not exist yet. Raw 7z bytes never masquerade as ZIP resources.
+	// consumer do not exist yet. Raw classic-archive bytes never masquerade as ZIP resources.
 	if (selected.Format != "epub" && selected.Format != "pdf" && selected.Format != "cbz") || s.Storage.IsRemote(selected.path) {
 		return selected, ErrUnavailable
 	}

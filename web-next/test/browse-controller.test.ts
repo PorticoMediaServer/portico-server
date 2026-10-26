@@ -77,7 +77,7 @@ test('sparse distant windows never scan intermediate pages and later ranges carr
 test('an authority change discards an in-flight result and disposal cancels requests', async () => {
  let current = true;let resolve!: (v: unknown) => void;let signal: AbortSignal | undefined;
  const controller = new BrowseController({async request<T>(path: string, _method?: string, _body?: unknown, provided?: AbortSignal) {
-  if (path.includes('capabilities')) return caps as T;signal = provided;return await new Promise(r => {resolve = r;}) as T;
+  if (path.includes('capabilities')) return caps as T;signal = provided;return await new Promise<unknown>(r => {resolve = r;}) as T;
  }}, {libraryId: 'lib', pivot: 'movies'}, () => current);
  await controller.load();await tick();current = false;controller.dispose();assert.equal(signal?.aborted, true);resolve(payload(0));await tick();
  assert.equal(controller.collection.itemAt(0), undefined);
@@ -97,7 +97,7 @@ test('a different revision cannot enter the displayed collection', async () => {
 test('applied query changes retire old borrowed rows before the replacement page arrives', async () => {
  let resolve!: (value: unknown) => void;
  const controller = new BrowseController({async request<T>(path: string) {
-  return path.includes('capabilities') ? caps as T : await new Promise(r => {resolve = r;}) as T;
+  return path.includes('capabilities') ? caps as T : await new Promise<unknown>(r => {resolve = r;}) as T;
  }}, {libraryId: 'lib', pivot: 'movies'}, () => true);
  try {
   assert.equal(controller.getSnapshot().revision, undefined);
@@ -212,4 +212,85 @@ test('type counts are one server batch with exact lower bounds, never sums of li
   assert.deepEqual((counts[0] as {queries: unknown}).queries, [{id: 'all', query: membership}, {id: 'movie', query: {all: [membership, type]}}]);
   assert.deepEqual(result.map(count => [count.total, count.totalIsLowerBound]), [[10_007, false], [10_000, true]]);
  } finally {controller.dispose();}
+});
+
+// Authored UNRUN: a delayed filter draft is admitted by the original query,
+// while an ordinary first-page publication is not a replacement opening/query.
+test('a retained query callback cannot overwrite a successor query or a forged witness', async () => {
+ const controller = new BrowseController({async request<T>(path: string, _method?: string, body?: unknown) {
+  if (path.includes('capabilities')) return caps as T;
+  const request = body as {range: {start: number}; sort: unknown; query?: unknown};
+  return {...payload(request.range.start, 1), applied: {query: request.query ?? null, sort: request.sort, seek: null}} as T;
+ }}, {libraryId: 'lib', pivot: 'movies'}, () => true);
+ try {
+  await controller.load();await settle();const original = controller.getSnapshot();
+  assert.equal(controller.setQuery([], {field: 'title', direction: 'desc'}, {...original}), false, 'only an issued query can witness a draft');
+  assert.equal(controller.setQuery([], {field: 'title', direction: 'desc'}, original), true);
+  assert.equal(controller.setQuery([], {field: 'title', direction: 'asc'}, original), false);
+  assert.deepEqual(controller.query().sort, [{field: 'title', direction: 'desc'}]);
+ } finally {controller.dispose();}
+});
+
+test('a valid original draft survives an ordinary accepted-page publication', async () => {
+ let resolve!: (value: unknown) => void;
+ const controller = new BrowseController({async request<T>(path: string) {
+  return path.includes('capabilities') ? caps as T : await new Promise<unknown>(value => {resolve = value;}) as T;
+ }}, {libraryId: 'lib', pivot: 'movies'}, () => true);
+ try {
+  await controller.load();await tick();const original = controller.getSnapshot();
+  assert.equal(original.revision, undefined);resolve(payload(0, 1, 'accepted:original'));await settle();
+  assert.notEqual(controller.getSnapshot(), original);assert.equal(controller.getSnapshot().revision, 'accepted:original');
+  assert.equal(controller.acceptsQuery(original), true);
+  assert.equal(controller.setQuery([], {field: 'title', direction: 'desc'}, original), true);
+ } finally {controller.dispose();}
+});
+
+test('query input capture cannot re-enter and replace the query accepted in its getter', async () => {
+ const scoped = {...caps, fields: [{id: 'genre', labelKey: 'genre', type: 'enum', operators: ['in'], controlHint: 'facet-multi-select', applicableKinds: ['movie']}]};
+ const controller = new BrowseController({async request<T>(path: string, _method?: string, body?: unknown) {
+  if (path.includes('capabilities')) return scoped as T;
+  const request = body as {range: {start: number}; sort: unknown; query?: unknown};
+  return {...payload(request.range.start, 1), applied: {query: request.query ?? null, sort: request.sort, seek: null}} as T;
+ }}, {libraryId: 'lib', pivot: 'movies'}, () => true);
+ try {
+  await controller.load();await settle();const original = controller.getSnapshot();
+  const input = {field: 'genre', operator: 'in' as const, get value() {
+   controller.setQuery([], {field: 'title', direction: 'desc'}, original);return ['Drama'];
+  }};
+  assert.equal(controller.setQuery([input], undefined, original), false);
+  assert.deepEqual(controller.query().sort, [{field: 'title', direction: 'desc'}]);
+  assert.equal(controller.query().query, undefined);
+ } finally {controller.dispose();}
+});
+
+test('retiring the original browse opening refuses a query before inspecting its input', async () => {
+ let live = true, reads = 0;
+ const controller = new BrowseController({async request<T>(path: string) {return (path.includes('capabilities') ? caps : payload(0, 1)) as T;}},
+  {libraryId: 'lib', pivot: 'movies'}, () => live);
+ try {
+  await controller.load();await settle();const original = controller.getSnapshot();live = false;
+  const input = {field: 'genre', operator: 'in' as const, get value() {reads++;return ['Drama'];}};
+  assert.equal(controller.setQuery([input], undefined, original), false);assert.equal(reads, 0);
+ } finally {controller.dispose();}
+});
+
+test('publication listeners cannot replace a newer accepted query with the older reset', async () => {
+ const requested: string[] = [];
+ const controller = new BrowseController({async request<T>(path: string, _method?: string, body?: unknown) {
+  if (path.includes('capabilities')) return caps as T;
+  const request = body as {range: {start: number}; sort: {direction: string}[]; query?: unknown};
+  requested.push(request.sort[0]!.direction);
+  return {...payload(request.range.start, 1), applied: {query: request.query ?? null, sort: request.sort, seek: null}} as T;
+ }}, {libraryId: 'lib', pivot: 'movies'}, () => true);
+ let unsubscribe = () => {};
+ try {
+  await controller.load();await settle();requested.length = 0;let replaced = false;
+  unsubscribe = controller.subscribe(() => {
+   const shown = controller.getSnapshot();
+   if (!replaced && shown.sort?.direction === 'desc') {replaced = true;controller.setQuery([], {field: 'title', direction: 'asc'}, shown);}
+  });
+  controller.setQuery([], {field: 'title', direction: 'desc'}, controller.getSnapshot());await settle();
+  assert.equal(replaced, true);assert.deepEqual(requested, ['asc']);
+  assert.deepEqual(controller.query().sort, [{field: 'title', direction: 'asc'}]);
+ } finally {unsubscribe();controller.dispose();}
 });

@@ -14,7 +14,10 @@
   min-width: 0;
 }
 .cell:first-child { border-top: 0; }
+.labelBlock { display: grid; min-width: 0; }
 .label { font-size: 16px; font-weight: var(--type-body-strong-weight); }
+/* Authored .r .l > p (remote-sources.html:101): 14px/1.45 under the label. */
+.help { margin: 4px 0 0; max-width: 600px; font-size: 14px; line-height: 1.45; color: var(--color-text-tertiary); }
 .control { display: flex; align-items: center; gap: 12px; justify-content: flex-end; }
 /* Authored .r.chg (remote-sources.html:1016-1017): a 10% accent wash and a 3px
    accent bar inset 14px from the row's top and bottom. */
@@ -71,3 +74,6 @@
    15.5/600 label. Values only; the caller's box still owns the surface. */
 .rows[data-phone] .cell { gap: 12px; padding: 8px 14px; min-height: 58px; }
 .rows[data-phone] .label { font-size: 15.5px; font-weight: 600; }
+/* Authored phone .lr .tx small (remote-sources.html:277) for the published
+   phone help keys; no local phone copy is supplied here. */
+.rows[data-phone] .help { margin-top: 2px; max-width: none; font-size: 12.5px; line-height: 1.4; font-weight: 500; }

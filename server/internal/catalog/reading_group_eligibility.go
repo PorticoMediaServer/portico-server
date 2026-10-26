@@ -11,9 +11,9 @@ func readingEligiblePublicationSQL(entity, library, kind, formats string) string
  JOIN catalog_asset_links reading_link ON reading_link.entity_id=reading_title.id AND reading_link.asset_id=reading_publication.asset_id
  WHERE reading_title.id=` + entity + ` AND reading_title.library_id=` + library + `
  AND reading_title.retired=0 AND ((` + kind + `='book' AND reading_title.kind=20) OR (` + kind + `='comic' AND reading_title.kind=21))
- AND reading_publication.format IN(SELECT value FROM json_each(` + formats + `)) AND ` + readingcap.LocalCB7SQL("reading_publication") + `
+ AND reading_publication.format IN(SELECT value FROM json_each(` + formats + `)) AND ` + readingcap.LocalComicArchiveSQL("reading_publication") + `
  AND reading_publication.asset_id=(SELECT candidate.asset_id FROM reading_publications candidate WHERE candidate.item_id=reading_title.id
- AND candidate.format IN(SELECT value FROM json_each(` + formats + `)) AND ` + readingcap.LocalCB7SQL("candidate") + `
+ AND candidate.format IN(SELECT value FROM json_each(` + formats + `)) AND ` + readingcap.LocalComicArchiveSQL("candidate") + `
  ORDER BY EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=candidate.item_id
  AND available.asset_id=(SELECT token FROM catalog_assets WHERE id=candidate.asset_id) AND available.available=1) DESC,candidate.asset_id LIMIT 1))`
 }

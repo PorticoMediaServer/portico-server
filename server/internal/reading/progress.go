@@ -45,7 +45,7 @@ func (l Location) Validate() error {
 		if l.Section != "" && !safePath(l.Section) {
 			return ErrInvalid
 		}
-	case "pdf", "cbz", "cb7":
+	case "pdf", "cbz", "cb7", "cbr":
 		if l.CFI != "" || l.Section != "" || l.PageIndex == nil || *l.PageIndex < 0 || *l.PageIndex > 1000000 {
 			return ErrInvalid
 		}
@@ -187,7 +187,7 @@ func (f *Source) saveProgress(expected int64, location Location, offline *Offlin
 				return nil, false, ErrInvalid
 			}
 		}
-	case "cbz", "cb7":
+	case "cbz", "cb7", "cbr":
 		c, err := f.comic()
 		if err != nil {
 			return nil, false, f.StopAndRecheck(err)

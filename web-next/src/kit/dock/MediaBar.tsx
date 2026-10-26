@@ -7,6 +7,7 @@ import {dockText} from './text';
 import {GestureRelease, PlayerMorph} from './motion';
 import {signalDockMotion} from './geometry-event';
 import {useDockHandover, useDockReducedMotion} from './use-motion';
+import {MEDIA_BAR_DISMISS_MS, MEDIA_BAR_REDUCED_MS, MEDIA_BAR_SNAP_MS, dismissOffsets, dragOpacity, paintedOpacity, paintedX, releaseOpacity} from './media-bar-drag';
 import type {DockRendererProps} from './types';
 import styles from './dock.module.css';
 
@@ -15,11 +16,16 @@ export function MediaBar(props: DockRendererProps) {
   const [held, setHeld] = useState(false), [holding, setHolding] = useState(false), reduced = useDockReducedMotion(root), send = useDockActions({view, binding});
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null), animation = useRef<Animation | null>(null), suppressClick = useRef(false);
   const gesture = useRef<{id: number; x: number; y: number; lastX: number; lastY: number; time: number; vx: number; vy: number; dx: number; dy: number; moved: boolean} | null>(null);
+  const epoch = useRef(0);
   const movement = useRef(new PlayerMorph(0, springs.settle));
   useDockHandover(root, `${view.playback.fence.sessionId}:${view.playback.fence.generation}:${view.mode}`);
   const clearHold = () => { if (holdTimer.current) clearTimeout(holdTimer.current); holdTimer.current = null; setHolding(false); };
   useEffect(() => () => { if (holdTimer.current) clearTimeout(holdTimer.current); animation.current?.cancel(); }, []);
-  useLayoutEffect(() => { setHeld(false); }, [view.playback.fence.sessionId, view.playback.fence.generation]);
+  useLayoutEffect(() => {
+    epoch.current += 1; animation.current?.cancel(); animation.current = null; gesture.current = null; clearHold();
+    if (root.current) {root.current.style.transform = '';root.current.style.opacity = '';signalDockMotion(root.current, {kind: 'reset'});}
+    setHeld(false);
+  }, [view.playback.fence.sessionId, view.playback.fence.generation, view.mode]);
   useLayoutEffect(() => {
     if (!root.current) return;
     const element = root.current;
@@ -30,11 +36,12 @@ export function MediaBar(props: DockRendererProps) {
   }, [held, holding, reduced]);
   const down = (event: PointerEvent<HTMLElement>) => {
     if (event.button !== 0 || held || remoteTerminal(view.remote)) return;
-    const current = animation.current ? movement.current.sample(performance.now()) : {position: 0, velocity: 0};
-    animation.current?.cancel(); animation.current = null; event.currentTarget.style.transform = current.position ? `translateX(${current.position}px)` : ''; suppressClick.current = false;
-    gesture.current = {id: event.pointerId, x: event.clientX - current.position, y: event.clientY, lastX: event.clientX, lastY: event.clientY, time: event.timeStamp, vx: current.velocity, vy: 0, dx: current.position, dy: 0, moved: current.position !== 0};
+    const element = event.currentTarget, painted = animation.current ? {position: paintedX(element), opacity: paintedOpacity(element)} : {position: 0, opacity: 1};
+    animation.current?.cancel(); animation.current = null; element.style.transform = painted.position ? `translateX(${painted.position}px)` : ''; element.style.opacity = painted.opacity === 1 ? '' : String(painted.opacity); suppressClick.current = false;
+    movement.current.track(painted.position, 0, performance.now());
+    gesture.current = {id: event.pointerId, x: event.clientX - painted.position, y: event.clientY, lastX: event.clientX, lastY: event.clientY, time: event.timeStamp, vx: 0, vy: 0, dx: painted.position, dy: 0, moved: painted.position !== 0};
     event.currentTarget.setPointerCapture(event.pointerId);
-    signalDockMotion(event.currentTarget, {kind: 'begin', offset: current.position});
+    signalDockMotion(event.currentTarget, {kind: 'begin', offset: painted.position});
     holdTimer.current = setTimeout(() => { suppressClick.current = true; setHolding(false); setHeld(true); }, 500); setHolding(true);
   };
   const move = (event: PointerEvent<HTMLElement>) => {
@@ -43,22 +50,37 @@ export function MediaBar(props: DockRendererProps) {
     g.lastX = event.clientX; g.lastY = event.clientY; g.time = event.timeStamp; g.dx = event.clientX - g.x; g.dy = event.clientY - g.y;
     if (Math.hypot(g.dx, g.dy) < 6 && !g.moved) return;
     g.moved = true; suppressClick.current = true; clearHold();
-    if (Math.abs(g.dx) >= Math.abs(g.dy)) { event.currentTarget.setPointerCapture(event.pointerId); event.currentTarget.style.transform = `translateX(${g.dx}px)`; signalDockMotion(event.currentTarget, {kind: 'track', offset: g.dx}); }
+    if (Math.abs(g.dx) >= Math.abs(g.dy)) { event.currentTarget.setPointerCapture(event.pointerId); event.currentTarget.style.transform = `translateX(${g.dx}px)`; event.currentTarget.style.opacity = String(dragOpacity(g.dx, event.currentTarget.clientWidth)); signalDockMotion(event.currentTarget, {kind: 'track', offset: g.dx}); }
   };
   const release = (event: PointerEvent<HTMLElement>, cancelled = false) => {
     clearHold(); const g = gesture.current; gesture.current = null; if (!g || g.id !== event.pointerId) return;
-    if (!g.moved) { signalDockMotion(event.currentTarget, {kind: 'reset'}); return; }
+    if (!g.moved) { event.currentTarget.style.transform = ''; event.currentTarget.style.opacity = ''; signalDockMotion(event.currentTarget, {kind: 'reset'}); return; }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    if (!cancelled && Math.abs(g.dy) > Math.abs(g.dx) && (g.dy < -35 || g.vy < -600)) { send({kind: 'expand'}); return; }
+    if (!cancelled && Math.abs(g.dy) > Math.abs(g.dx) && (g.dy < -35 || g.vy < -600)) { event.currentTarget.style.transform = ''; event.currentTarget.style.opacity = ''; signalDockMotion(event.currentTarget, {kind: 'reset'}); send({kind: 'expand'}); return; }
     const vx = event.timeStamp - g.time > 80 ? 0 : g.vx;
-    const decision = cancelled ? {dismiss: false, target: 0, velocity: vx} : GestureRelease.dismiss(g.dx, vx, event.currentTarget.getBoundingClientRect().width);
-    const element = event.currentTarget, start = performance.now(); movement.current.track(g.dx, decision.velocity, start); movement.current.retarget(decision.target, start, decision.velocity);
-    const duration = decision.dismiss ? 200 : 500;
-    const offsets = Array.from({length: 34}, (_, i) => reduced ? g.dx : movement.current.sample(start + duration * i / 33).position), opacity = offsets.map((_, i) => decision.dismiss ? 1 - i / 33 : 1);
-    const keyframes = offsets.map((offset, i) => reduced ? {opacity: opacity[i]} : {transform: `translateX(${offset}px)`, opacity: opacity[i]});
-    const job = element.animate(keyframes, {duration: reduced ? 160 : duration, easing: 'linear', fill: 'forwards'}); animation.current = job;
-    signalDockMotion(element, {kind: 'release', offsets, opacity, duration: reduced ? 160 : duration});
-    void job.finished.then(() => { if (animation.current !== job) return; if (decision.dismiss) send({kind: 'stop'}); element.style.transform = ''; signalDockMotion(element, {kind: 'reset'}); job.cancel(); animation.current = null; }).catch(() => {});
+    const element = event.currentTarget, layoutWidth = element.getBoundingClientRect().width, start = performance.now();
+    const decision = cancelled ? {dismiss: false, target: 0, velocity: vx} : GestureRelease.dismiss(g.dx, vx, layoutWidth);
+    const fromOpacity = paintedOpacity(element), out = decision.dismiss && !cancelled;
+    let duration: number, offsets: number[], opacity: number[], keyframes: Keyframe[];
+    if (reduced) {
+      duration = MEDIA_BAR_REDUCED_MS; offsets = [g.dx, g.dx];
+      opacity = [fromOpacity, out ? 0 : 1];
+      keyframes = opacity.map(value => ({opacity: value}));
+    } else if (out) {
+      duration = MEDIA_BAR_DISMISS_MS; offsets = dismissOffsets(g.dx, decision.target);
+      opacity = releaseOpacity(fromOpacity, 0);
+      keyframes = offsets.map((offset, i) => ({transform: `translateX(${offset}px)`, opacity: opacity[i]}));
+    } else {
+      duration = MEDIA_BAR_SNAP_MS; movement.current.track(g.dx, decision.velocity, start); movement.current.retarget(decision.target, start, decision.velocity);
+      offsets = Array.from({length: 34}, (_, i) => movement.current.sample(start + duration * i / 33).position);
+      opacity = releaseOpacity(fromOpacity, 1, offsets.length);
+      keyframes = offsets.map((offset, i) => ({transform: `translateX(${offset}px)`, opacity: opacity[i]}));
+    }
+    if (reduced) element.style.transform = '';
+    const epochAtRelease = epoch.current;
+    const job = element.animate(keyframes, {duration, easing: 'linear', fill: 'forwards'}); animation.current = job;
+    signalDockMotion(element, {kind: 'release', offsets, opacity, duration});
+    void job.finished.then(() => { if (animation.current !== job || epoch.current !== epochAtRelease) return; if (decision.dismiss) send({kind: 'stop'}); element.style.transform = ''; element.style.opacity = ''; signalDockMotion(element, {kind: 'reset'}); job.cancel(); animation.current = null; }).catch(() => {});
   };
   return <>
     <span ref={menuAnchor} className={styles.menuAnchor} style={style} aria-hidden="true" />

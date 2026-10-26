@@ -108,18 +108,21 @@ export function LibraryBrowse(bindings: LibraryBrowseBindings) {
   const cardActions = useCallback((member: BrowseMember, index: number) => wrapCard(bindings.selection.actions(member, index), member.entry), [wrapCard, bindings.selection]);
   const model = useMemo(() => state.capabilities && state.sort ? browseToolbarModel(state.capabilities, library.kind, state.predicates, state.sort, {...env, owner: bindings.owner, scope: controller.source.base?.length ? 'group' : 'library'}) : undefined,
     [state.capabilities, state.sort, state.predicates, library.kind, env, bindings.owner, controller]);
-  const sort = useCallback((sort: BrowseSortSelection) => {try {controller.setQuery(controller.getSnapshot().predicates, sort);} catch (error) {reportError(error);}}, [controller, reportError]);
+  const sort = useCallback((sort: BrowseSortSelection) => {try {controller.setQuery(state.predicates, sort, state);} catch (error) {reportError(error);}}, [controller, state, reportError]);
   if (!model) return null;
   const pivot = state.capabilities?.resolvedPivot ?? state.capabilities?.pivots.find(pivot => pivot.id === controller.source.pivot);
   const views = (pivot?.supportedViews ?? []).filter((view): view is BrowsePresentation['view'] => view === 'grid' || view === 'list');
   const view = views.find(view => view === appearance.view) ?? views[0];
   if (!view) return null;
   const chips = model.applied.flatMap((node, index) => 'field' in node ? [{id: String(index), parts: appliedFilterParts(node, id => {const field = state.capabilities!.fields.find(field => field.id === id);return field ? browseLabels.field(field) : id;}, env)}] : []);
-  const setPredicates = (nodes: readonly BrowseNode[]) => {try {controller.setQuery(nodes);} catch (error) {bindings.reportError(error);}};
-  const resultCount = snapshot.total === undefined || snapshot.refreshing ? undefined : t(snapshot.totalIsLowerBound ? 'lib.countAtLeast' : 'lib.count', {count: snapshot.total, pivot: controller.source.pivot});
+  const setPredicates = (nodes: readonly BrowseNode[]) => {try {controller.setQuery(nodes, undefined, state);} catch (error) {bindings.reportError(error);}};
+  // The retained count describes the same accepted generation still painted by
+  // the collection. A pending replacement cannot use it as its new match count.
+  const resultCount = snapshot.total === undefined ? undefined : t(snapshot.totalIsLowerBound ? 'lib.countAtLeast' : 'lib.count', {count: snapshot.total, pivot: controller.source.pivot});
+  const filterCount = snapshot.refreshing || snapshot.status !== 'ready' ? undefined : resultCount;
   const shape = bindings.shape ?? (bindings.pivot === 'collections' ? 'collection' : ['music', 'audiobook'].includes(library.kind) ? 'square' : 'poster');
   return <>
-    <BrowseToolbar model={model} labels={browseLabels} platform={compact ? 'phone' : 'desktop'} resultCount={resultCount} topInset={compact ? 94 : 76} sticky
+    <BrowseToolbar model={model} labels={browseLabels} platform={compact ? 'phone' : 'desktop'} resultCount={resultCount} accepted={snapshot} acceptedSource={controller.collection} topInset={compact ? 94 : 76} sticky
       onQuickChange={(id, checked) => {const quick = [...model.quick, ...model.filterQuick].find(quick => quick.id === id);if (quick) setPredicates(checked ? [...state.predicates, quick.query] : state.predicates.filter(node => JSON.stringify(node) !== JSON.stringify(quick.query)));}}
       onFilters={() => setFiltersOpen(true)} filtersOpen={filtersOpen} onSortChange={sort}
       onReshuffle={() => sort({...model.sort, seed: crypto.getRandomValues(new Uint32Array(1))[0]})}
@@ -132,7 +135,7 @@ export function LibraryBrowse(bindings: LibraryBrowseBindings) {
       reducedMotion={bindings.preferences?.reducedMotion ?? bindings.reducedMotion} actions={cardActions} familyForEntry={bindings.familyForEntry} onVisibleRange={selection.registerWindow} onSort={sort}
       empty={state.predicates.length ? <BrowseFilteredEmpty controller={controller} model={model} labels={browseLabels} predicates={state.predicates}
         library={library.name} onDrop={setPredicates} onClear={() => setPredicates([])}/> : bindings.empty}/>
-    <BrowseFilters controller={controller} model={model} labels={browseLabels} compact={compact} open={filtersOpen} resultCount={resultCount} canSaveView={bindings.canSaveView} onSaveView={bindings.onSaveView} onClose={() => setFiltersOpen(false)} reportError={bindings.reportError}/>
+    <BrowseFilters controller={controller} model={model} labels={browseLabels} compact={compact} open={filtersOpen} resultCount={filterCount} canSaveView={bindings.canSaveView} onSaveView={bindings.onSaveView} onClose={() => setFiltersOpen(false)} reportError={bindings.reportError}/>
     {cardMenu}
   </>;
 }

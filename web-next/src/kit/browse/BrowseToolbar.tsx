@@ -9,6 +9,7 @@ import {Icon, type IconName} from '../Icon';
 import type {AppliedChip, BrowseLabels, BrowsePlatform, BrowseView, CardSizeControl, SaveViewControl} from './types';
 import styles from './browse.module.css';
 import {nextBrowseSort} from './model';
+import {useAcceptedArrival, useAppearanceFade, type AcceptedAnswer} from './use-arrival';
 
 const t = defaultI18n.t;
 export function sortDirectionLabel(field: string, direction: 'asc' | 'desc'): string {
@@ -74,14 +75,20 @@ export function SaveViewButton({canSave, onSave}: SaveViewControl) {
   return <Button variant="text" size="small" icon="i-save" className={styles.saveView} disabled={!canSave} onClick={onSave}>{t('next.browse.saveView')}</Button>;
 }
 export type AppliedFilterChipsProps = Readonly<{items: readonly AppliedChip[]; onRemove: (id: string) => void; onClear: () => void; className?: string}>;
+/** One applied chip; motion 3.8 fades the chip in when its own identity appears under the toolbar. */
+function AppliedChipButton({chip, onRemove}: {chip: AppliedChip; onRemove: (id: string) => void}) {
+  const ref = useRef<HTMLButtonElement>(null), {id, parts} = chip;
+  useAppearanceFade(ref);
+  return <button ref={ref} type="button" className={styles.appliedChip} aria-label={t('next.browse.removeFilter', {field: parts.field.text})} onClick={() => onRemove(id)}>
+    <span className={styles.appliedField}>{parts.field.text}</span>
+    {parts.operator !== 'equals' && parts.operator !== 'in' && !(parts.operator === 'contains-any' && parts.values.length === 1) && <span className={styles.appliedOperator}>{parts.operatorPart.text}</span>}
+    {parts.values.map(value => <span key={value.id} className={styles.appliedValue}>{value.text}</span>)}<span className={styles.removeIcon}><Icon name="i-x" size={12}/></span>
+  </button>;
+}
 export function AppliedFilterChips({items, onRemove, onClear, className}: AppliedFilterChipsProps) {
   if (!items.length) return null;
   return <div className={[styles.applied, className].filter(Boolean).join(' ')} aria-label={t('next.browse.applied')}>
-    {items.map(({id, parts}) => <button type="button" className={styles.appliedChip} key={id} aria-label={t('next.browse.removeFilter', {field: parts.field.text})} onClick={() => onRemove(id)}>
-      <span className={styles.appliedField}>{parts.field.text}</span>
-      {parts.operator !== 'equals' && parts.operator !== 'in' && !(parts.operator === 'contains-any' && parts.values.length === 1) && <span className={styles.appliedOperator}>{parts.operatorPart.text}</span>}
-      {parts.values.map(value => <span key={value.id} className={styles.appliedValue}>{value.text}</span>)}<span className={styles.removeIcon}><Icon name="i-x" size={12}/></span>
-    </button>)}
+    {items.map(chip => <AppliedChipButton key={chip.id} chip={chip} onRemove={onRemove}/>)}
     <Button variant="text" size="xs" onClick={onClear}>{t('next.browse.clearAll')}</Button>
   </div>;
 }
@@ -95,9 +102,17 @@ export type BrowseToolbarProps = Readonly<{
   sortLabel?: string;
   /** The quick filters this surface draws, in the model's order; absent draws all offered. */
   quickIds?: readonly string[];
+  /** Presentation only: the collection's own accepted-answer witness and the collection it belongs to. */
+  accepted?: AcceptedAnswer; acceptedSource?: unknown;
 }>;
+/** The drawn count; motion 3.8 cross-fades it when an accepted answer lands, and it stays a plain span otherwise. */
+function ResultCount({children, accepted, source, className}: {children: ReactNode; accepted?: AcceptedAnswer; source?: unknown; className?: string}) {
+  const ref = useRef<HTMLSpanElement>(null);
+  useAcceptedArrival(ref, accepted, source);
+  return <span ref={ref} className={className}>{children}</span>;
+}
 export function BrowseToolbar({model, labels, resultCount, platform = 'desktop', sticky = false, topInset = 76, onQuickChange, onFilters, filtersOpen,
-  onSortChange, onReshuffle, view, cardSize, save, applied = [], onRemoveFilter, onClearFilters, onJump, selection, actions, className, sortLabel, quickIds}: BrowseToolbarProps) {
+  onSortChange, onReshuffle, view, cardSize, save, applied = [], onRemoveFilter, onClearFilters, onJump, selection, actions, className, sortLabel, quickIds, accepted, acceptedSource}: BrowseToolbarProps) {
   const sortLabels: BrowseLabels = sortLabel === undefined ? labels : {...labels, sort: (value: BrowseSortCapability) => value.id === model.sort.field ? sortLabel : labels.sort(value)};
   const quick = quickIds === undefined ? model.quick : model.quick.filter(item => quickIds.includes(item.id));
   const sort = <SortMenu sorts={model.sorts} value={model.sort} onValueChange={onSortChange} label={sortLabels.sort} onReshuffle={onReshuffle} showOrder={sortLabel === undefined}/>;
@@ -111,9 +126,9 @@ export function BrowseToolbar({model, labels, resultCount, platform = 'desktop',
       <span className={styles.separator} aria-hidden="true"/>
       {sortInFirstRow && sort}
       {actions}{quick.map(item => <QuickToggle key={item.id} selected={item.active} onCheckedChange={checked => onQuickChange(item.id, checked)}>{item.label?.text ?? labels.quick(item)}</QuickToggle>)}
-      {platform !== 'phone' && <div className={styles.toolbarEnd}>{platform === 'desktop' && <span className={styles.resultCount}>{resultCount}</span>}{platform === 'desktop' && sort}
+      {platform !== 'phone' && <div className={styles.toolbarEnd}>{platform === 'desktop' && <ResultCount className={styles.resultCount} accepted={accepted} source={acceptedSource}>{resultCount}</ResultCount>}{platform === 'desktop' && sort}
         {view && <ViewToggle {...view}/>} {cardSize && <CardSizeButton {...cardSize}/>} {save && <SaveViewButton {...save}/>}</div>}
-    </div>{platform === 'phone' && <div className={styles.phoneCount}><span>{resultCount}</span>{save && <SaveViewButton {...save}/>}<span className={styles.phoneView}>{!sortInFirstRow && sort}{view && <ViewToggle {...view}/>}</span></div>}
-    {applied.length > 0 && onRemoveFilter && onClearFilters && <div className={platform === 'tv' ? styles.tvAppliedRow : undefined}><AppliedFilterChips items={applied} onRemove={onRemoveFilter} onClear={onClearFilters}/>{platform === 'tv' && <span className={styles.resultCount}>{resultCount}</span>}</div>}</>}
+    </div>{platform === 'phone' && <div className={styles.phoneCount}><ResultCount accepted={accepted} source={acceptedSource}>{resultCount}</ResultCount>{save && <SaveViewButton {...save}/>}<span className={styles.phoneView}>{!sortInFirstRow && sort}{view && <ViewToggle {...view}/>}</span></div>}
+    {applied.length > 0 && onRemoveFilter && onClearFilters && <div className={platform === 'tv' ? styles.tvAppliedRow : undefined}><AppliedFilterChips items={applied} onRemove={onRemoveFilter} onClear={onClearFilters}/>{platform === 'tv' && <ResultCount className={styles.resultCount} accepted={accepted} source={acceptedSource}>{resultCount}</ResultCount>}</div>}</>}
   </div>;
 }

@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useId, useRef, useState, type CSSProperties} from 'react';
+import {useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode} from 'react';
 import {jobName} from '@core/server-admin/console-catalogue.ts';
 import type {MessageId} from '@i18n';
 import {DASHBOARD_LOAD_RANGES, DASHBOARD_LOAD_SERIES, type DashboardStatus} from '@core/admin/dashboard.ts';
@@ -20,7 +20,12 @@ import {useDashboardReport, type DashboardReportController} from './use-report';
 import {readNowPlaying} from './pages';
 import {PhonePage, PhoneStatistics, type DashboardPhoneChrome} from './phone';
 import {ProgressRing} from '../../kit/shell/Activity';
+import {useLayoutMotion} from '../../kit/layout/motion';
+import {useLayoutPresence} from '../../kit/layout/presence';
 import styles from './dashboard.module.css';
+const bindingLifetimes = new WeakMap<DashboardBindings, number>();
+let nextBindingLifetime = 0;
+function bindingLifetime(bindings: DashboardBindings) {let id = bindingLifetimes.get(bindings);if (id === undefined) {id = ++nextBindingLifetime;bindingLifetimes.set(bindings, id);}return id;}
 
 export type DashboardScreenProps = Readonly<{
   bindings: DashboardBindings; embedded?: boolean; phone?: boolean; chrome?: DashboardPhoneChrome;
@@ -65,27 +70,75 @@ function DashboardView({bindings: b, embedded = false, initialSection, phone = f
 }
 type SessionsState = ReadState<DashboardSessions> & {refresh: () => void};
 type LiveState = ReadState<TelemetryReading> & {refresh: () => void};
+type SessionListProps = Readonly<{
+  sessions: ReturnType<typeof orderedSessions>; bindings: DashboardBindings; phone: boolean;
+  empty: ReactNode; onRefresh: (session: ReturnType<typeof orderedSessions>[number], removedId?: string) => void;
+}>;
+/** Presentation only: the shared list presence keeps the drawn session rows and their
+ * departure paint. It owns no session authority and calls no command. */
+function SessionList({sessions, bindings: b, phone, empty, onRefresh}: SessionListProps) {
+  const stack = useRef<HTMLDivElement>(null);
+  const motion = useLayoutMotion();
+  const sessionKey = useCallback((session: {id: string}) => session.id, []);
+  const presence = useLayoutPresence(sessions, sessionKey, motion.reduced, 180, 320);
+  const previousIds = useRef<string[]>([]), focusedId = useRef<string | undefined>(undefined), restore = useRef<string[] | undefined>(undefined), keyboard = useRef(false);
+  const attach = useCallback((element: HTMLDivElement | null) => {stack.current = element;(presence.root as {current: HTMLDivElement | null}).current = element;}, [presence.root]);
+  useLayoutEffect(() => {
+    const ids = sessions.map(session => session.id), focused = focusedId.current;
+    const active = document.activeElement as HTMLElement | null;
+    const activeCard = active?.closest?.('[data-session-id]') as HTMLElement | null;
+    const removed = focused && !ids.includes(focused) ? focused : undefined;
+    if (removed && keyboard.current && activeCard?.dataset.sessionId === removed) {
+      const index = previousIds.current.indexOf(removed);
+      const candidates = index < 0 ? [...ids] : [...previousIds.current.slice(index + 1), ...previousIds.current.slice(0, index).reverse(), ...ids];
+      restore.current = candidates.filter(id => ids.includes(id));
+    } else if (removed) restore.current = undefined;
+    previousIds.current = ids;
+  }, [sessions]);
+  useLayoutEffect(() => {
+    if (restore.current === undefined) return;
+    const keys = restore.current;
+    restore.current = undefined;
+    const cards = [...(stack.current?.querySelectorAll<HTMLElement>('[data-session-id]') ?? [])];
+    for (const key of keys) {
+      const card = cards.find(value => value.dataset.sessionId === key && !value.hasAttribute('inert'));
+      const button = card?.querySelector<HTMLElement>('button[data-session-menu]:not(:disabled)');
+      if (button) {button.focus({preventScroll: true});return;}
+    }
+    stack.current?.focus({preventScroll: true});
+  }, [presence.present]);
+  return <div className={phone ? styles.phoneSessionStack : styles.sessionStack} ref={attach} tabIndex={-1} aria-label={t('next.dashboard.now')}
+    onKeyDownCapture={() => {keyboard.current = true;}}
+    onPointerDownCapture={() => {keyboard.current = false;}}
+    onFocusCapture={event => {const target = event.target as HTMLElement, card = target.closest<HTMLElement>('[data-session-id]'); if (card) {focusedId.current = card.dataset.sessionId;keyboard.current = target.matches(':focus-visible');}}}
+    onBlurCapture={event => {const next = event.relatedTarget as HTMLElement | null; if (!next || !event.currentTarget.contains(next)) focusedId.current = undefined;}}>
+    {presence.present.map(session => {
+      const key = session.id, leaving = presence.leaving.has(key);
+      return <div key={key} className={styles.sessionSlot} data-layout-item={key} data-session-id={key} data-leaving={leaving || undefined} inert={leaving} aria-hidden={leaving || undefined}>
+        <SessionCard session={session} bindings={b} layout={phone ? 'phone' : 'desktop'} retained={leaving} refresh={id => onRefresh(session, id)} />
+      </div>;
+    })}
+    {!presence.present.length && empty}
+  </div>;
+}
+
 function NowPlaying({bindings: b, state, phone = false}: {bindings: DashboardBindings; state: SessionsState; phone?: boolean}) {
   const [toast, showToast] = useState<ToastData | null>(null);
-  const stack = useRef<HTMLDivElement>(null), removed = useRef<{id: string; index: number} | undefined>(undefined);
-  const sessions = orderedSessions(state.value?.items ?? []), totals = state.value?.totals;
-  useEffect(() => {
-    const target = removed.current;
-    if (!target || state.loading || state.failed || !state.value || state.value.items.some(s => s.id === target.id)) return;
-    const buttons = stack.current?.querySelectorAll<HTMLButtonElement>('button[data-session-menu]');
-    (buttons?.[Math.min(target.index, buttons.length - 1)] ?? stack.current)?.focus({preventScroll: true}); removed.current = undefined;
-  }, [state.value, state.loading, state.failed]);
+  const sessions = useMemo(() => orderedSessions(state.value?.items ?? []), [state.value?.items]), totals = state.value?.totals;
+  const refresh = (session: ReturnType<typeof orderedSessions>[number], id?: string) => {
+    if (id) showToast({id, message: t('next.dashboard.stopped', {title: sessionStopTitle(session)}), icon: 'i-check', durationMs: 3200});
+    state.refresh();
+  };
+  const empty = phone
+    ? <div className={styles.phoneCalm}><span className={styles.phoneCalmLead}><Icon name="i-play" size={18} /></span><b>{t('next.dashboard.nobody')}</b>{b.role === 'owner' && <button type="button" className={styles.phoneCalmLink} onClick={b.effects.openHistory}>{t('next.dashboard.history')}</button>}</div>
+    : <p className={styles.empty}>{t('next.dashboard.nobody')}</p>;
   const count = totals && (phone
     ? totals.streams > 0
       ? <><span>{t('next.dashboard.peopleCount', {count: totals.people})}</span><i className={styles.dotSep} aria-hidden="true" /><small>{t('next.dashboard.locations', {home: totals.atHome, away: totals.away})}</small></>
       : <span>{t('next.shell.streams', {count: 0})}</span>
     : totals.streams > 0 && <><span>{t('next.dashboard.streams', {count: totals.streams})}</span><small>{t('next.dashboard.locations', {home: totals.atHome, away: totals.away})}</small></>);
   return <Section phone={phone} title={t('next.dashboard.now')} extra={count}>
-    <ReadFeedback openHome={b.effects.openHome} state={state} />{state.value && <div className={phone ? styles.phoneSessionStack : styles.sessionStack} ref={stack} tabIndex={-1} aria-label={t('next.dashboard.now')}>{sessions.map((s, index) => <SessionCard key={s.id} session={s} bindings={b} layout={phone ? 'phone' : 'desktop'} refresh={id => {if (id) {removed.current = {id, index}; showToast({id, message: t('next.dashboard.stopped', {title: sessionStopTitle(s)}), icon: 'i-check', durationMs: 3200});} state.refresh();}} />)}
-      {!sessions.length && (phone
-        ? <div className={styles.phoneCalm}><span className={styles.phoneCalmLead}><Icon name="i-play" size={18} /></span><b>{t('next.dashboard.nobody')}</b>{b.role === 'owner' && <button type="button" className={styles.phoneCalmLink} onClick={b.effects.openHistory}>{t('next.dashboard.history')}</button>}</div>
-        : <p className={styles.empty}>{t('next.dashboard.nobody')}</p>)}
-    </div>}
+    <ReadFeedback openHome={b.effects.openHome} state={state} />{state.value && <SessionList key={bindingLifetime(b)} sessions={sessions} bindings={b} phone={phone} empty={empty} onRefresh={refresh} />}
     <ToastHost toast={toast} onDismiss={() => showToast(null)} />
   </Section>;
 }

@@ -360,7 +360,7 @@ export const navigation = {
   phone: {height: 100, paddingTop: 50, solidHeight: 96, solidPaddingTop: 46, markHeight: 16, avatarSize: 30, solidAlpha: 0.82, blur: 24, saturation: 1.3,
     tabBar: {height: 84, paddingTop: 9, paddingX: 14, gap: 3, alpha: 0.82, blur: 24, borderAlpha: 0.08, label: 'tabBar' as TypeRole}},
   mobileWeb: {topHeight: 56, topPaddingLeft: 20, topPaddingRight: 16, tabBar: {height: 56, paddingTop: 7, paddingX: 14, gap: 2, alpha: 0.9, blur: 24, borderAlpha: 0.08}},
-  tv: {width: 260, openWidth: 560, itemSize: 64, openItemWidth: 320, insetLeft: 72, paddingTop: 58, paddingBottom: 56, itemGap: 8, labelGap: 22, itemRadius: 14, contentShift: 220, dimAlpha: 0.5},
+  tv: {width: 260, openWidth: 560, itemSize: 64, openItemWidth: 320, insetLeft: 72, paddingTop: 58, paddingBottom: 56, itemGap: 8, labelGap: 22, itemRadius: 14, contentShift: 270, dimAlpha: 0.5},
 } as const;
 /** desktop-activity.html#1–6. Glyph A is selected by accepted Q38. */
 export const activity = {
