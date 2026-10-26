@@ -19,6 +19,7 @@ import {watchPreviewFrame} from './preview';
 import {useCoarsePointer} from '../../kit/theme';
 import {WatchPictureInput} from './picture';
 import {watchQueueNeighbours} from './queue-neighbours';
+import {WatchDockPanelOpening, type WatchDockPanel} from './dock-panel-opening';
 import {WatchEndCardView} from './EndCard';
 import {LiveChrome} from '../live/LiveChrome';
 import type {LiveChromePort} from '../live/live-chrome-types';
@@ -44,7 +45,7 @@ function Control({icon, label, action, disabled, main, skip, large, buttonRef, a
 }
 
 /** Only drawn controls and geometry targets. The parent's MediaSurface remains its sole video. */
-export function WatchScreen({binding, snapshot, expanded, onCollapse, onControlsVisibleChange, surfaceSlotRef, surfaces, live, windowPort, geometry}: WatchScreenProps) {
+export function WatchScreen({binding, snapshot, expanded, onCollapse, onControlsVisibleChange, publishDockPanels, dockPanelsCurrent, surfaceSlotRef, surfaces, live, windowPort, geometry}: WatchScreenProps) {
   const size = useSyncExternalStore(subscribeWindow, windowSize, serverSize).split(':').map(Number), width = size[0]!, height = size[1]!;
   const coarsePointer = useCoarsePointer(), touchTablet = coarsePointer && width >= 600;
   const root = useRef<HTMLDivElement>(null), chrome = useRef<HTMLDivElement>(null), body = useRef<HTMLDivElement>(null), panelAnchor = useRef<HTMLButtonElement>(null), moreAnchor = useRef<HTMLButtonElement>(null);
@@ -164,6 +165,37 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     if (anchor) panelAnchor.current = anchor;
     setMore(false); setPanel(next); reveal();
   };
+  const dockOwnerRef = useRef<WatchDockPanelOpening | undefined>(undefined);
+  const [dockOwner, setDockOwner] = useState<WatchDockPanelOpening>();
+  const [dockOpening, setDockOpening] = useState(0);
+  const dockPanels = (surfaces?.available ?? []).filter((panel): panel is WatchDockPanel => panel === 'options' || panel === 'subtitles-audio');
+  const dockPanelKey = dockPanels.join('|');
+  useLayoutEffect(() => {
+    if (!publishDockPanels || !dockPanelsCurrent || !dockPanelsCurrent() || surfaces?.modal || mobile || !valid || !fence || presentation?.kind !== 'video' || !dockPanelKey) return;
+    const owner = new WatchDockPanelOpening({binding, authority: snapshot.authority, fence, panels: dockPanels,
+      snapshot: binding.runtime.getSnapshot, isCurrent: () => dockOwnerRef.current === owner && dockPanelsCurrent(),
+      expand: () => binding.runtime.open(fence), show: next => showPanel(next),
+      renew: () => setDockOpening(value => value + 1), reportError: binding.reportError});
+    dockOwnerRef.current = owner;
+    const off = binding.runtime.subscribe(owner.observe);
+    setDockOwner(owner);
+    return () => {
+      owner.dispose(); off();
+      if (dockOwnerRef.current === owner) dockOwnerRef.current = undefined;
+      setDockOwner(value => value === owner ? undefined : value);
+    };
+  }, [binding, snapshot.authority, sourceKey, mobile, valid, presentation?.kind, dockPanelKey, surfaces?.modal, publishDockPanels, dockPanelsCurrent]);
+  const drawnDockOwner = dockOwner && dockOwnerRef.current === dockOwner && dockOwner.owner.binding === binding
+    && dockOwner.owner.authority === snapshot.authority && !!fence && sameFence(dockOwner.owner.fence, fence)
+    && dockOwner.panels.join('|') === dockPanelKey && !surfaces?.modal && !mobile && valid ? dockOwner : undefined;
+  useLayoutEffect(() => {
+    if (!drawnDockOwner || expanded || !publishDockPanels) return;
+    const offer = drawnDockOwner.offer();
+    if (!offer) return;
+    const unpublish = publishDockPanels(offer);
+    return () => {offer.retire(); unpublish();};
+  }, [drawnDockOwner, expanded, dockOpening, publishDockPanels]);
+  useLayoutEffect(() => {if (expanded) drawnDockOwner?.commitExpanded();}, [drawnDockOwner, expanded]);
   const toggleFullscreen = () => {
     if (touchTablet) return;
     if (windowPort?.fullscreen) effect(windowPort.fullscreen.toggle);
