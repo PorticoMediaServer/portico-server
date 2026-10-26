@@ -264,17 +264,26 @@ export function SettingsEntry() {
     const controller = new SettingsController(options);
     const session = context.session(), transferOrigin = originalApi.baseUrl, transferRoute = originalApi.getRouteConnection();
     const transferPrincipal = Object.freeze({...viewer, family: session.sessionFamilyId});
+    let localOwnerTransfer: LocalOwnerTransferSource | undefined;
+    const ownerSwitch = identity.primaryProfile === true && role === 'owner' && identity.capabilities?.manageSignIn === true &&
+      (identity.signIn === 'local' || identity.signIn === 'portico') ? new SettingsOwnerSwitch(api, {serverId: viewer.serverId,
+        isCurrent: () => current() && !localOwnerTransfer?.inFlight && context.session().viewer.role === 'owner' &&
+          context.facts.identity.primaryProfile === true && context.facts.identity.capabilities?.manageSignIn === true && context.facts.identity.signIn === identity.signIn,
+        hostedOrigin: browserAccountOrigin(import.meta.env, globalThis.location),
+        selectionRevision: async () => (await browserAppSessions().read()).revision,
+      }) : undefined;
     const localOwnerCurrent = () => {
       if (!current() || route.scope !== 'server' || route.section !== 'signin' || identity.signIn !== 'local' || viewer.authority !== 'local' ||
         !transferRoute || transferRoute.pin.serverId !== transferPrincipal.serverId || transferRoute.getSnapshot().phase !== 'ready' ||
-        originalApi.baseUrl !== transferOrigin || originalApi.getRouteConnection() !== transferRoute) return false;
+        originalApi.baseUrl !== transferOrigin || originalApi.getRouteConnection() !== transferRoute ||
+        ownerSwitch?.getMove() || ownerSwitch?.getSnapshot().busy) return false;
       const now = context.session(), facts = context.facts.identity;
       return now.sessionFamilyId === transferPrincipal.family && now.viewer.serverId === transferPrincipal.serverId && now.viewer.authority === transferPrincipal.authority &&
         now.viewer.accountId === transferPrincipal.accountId && now.viewer.profileId === transferPrincipal.profileId && now.viewer.role === 'owner' &&
         facts.primaryProfile === true && facts.signIn === 'local' && facts.capabilities?.manageAccount === true &&
         facts.capabilities?.managePeople === true && facts.capabilities?.manageSignIn === true;
     };
-    const localOwnerTransfer = localOwnerCurrent() ? new LocalOwnerTransferSource(api, {
+    localOwnerTransfer = localOwnerCurrent() ? new LocalOwnerTransferSource(api, {
       accountId: viewer.accountId, profileId: viewer.profileId, isCurrent: localOwnerCurrent,
       onTransferred: async () => {
         if (!localOwnerCurrent()) return;
@@ -296,12 +305,7 @@ export function SettingsEntry() {
         capabilities: () => ({manageAccount: identity.capabilities?.manageAccount === true, managePeople: identity.capabilities?.managePeople === true,
           manageServer: identity.capabilities?.manageServer === true, manageSignIn: current() && identity.capabilities?.manageSignIn === true}),
         onAuthorityChanged: () => {if (current()) void router.navigate({to: '/sign-in', replace: true});},
-        ownerSwitch: identity.primaryProfile === true && role === 'owner' && identity.capabilities?.manageSignIn === true ? new SettingsOwnerSwitch(api, {serverId: viewer.serverId,
-          isCurrent: () => current() && context.session().viewer.role === 'owner' && context.facts.identity.primaryProfile === true && context.facts.identity.capabilities?.manageSignIn === true && context.facts.identity.signIn === identity.signIn,
-          hostedOrigin: browserAccountOrigin(import.meta.env, globalThis.location),
-          // The app's saved-selection revision, captured for the local direction.
-          selectionRevision: async () => (await browserAppSessions().read()).revision,
-        }) : undefined,
+        ownerSwitch,
       }) : undefined;
     const people: PeopleBindings | undefined = route.section === 'people' && identity.primaryProfile === true && identity.capabilities?.managePeople === true &&
       (role === 'owner' || role === 'admin') && (viewer.authority === 'local' || viewer.authority === 'hosted') ? {

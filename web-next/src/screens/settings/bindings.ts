@@ -24,6 +24,9 @@ export function createSettingsBindings(controller: SettingsController, options: 
    * they stay out rather than becoming dead controls. The local change-owner row
    * appears only when the owner-supplied guarded transfer source exists. */
   const signInSwitch = (rowId: string): {present: boolean; disabled?: boolean; help?: string} | undefined => {
+    // A real move hides both change directions, including the local early return.
+    const running = sections.signIn?.ownerSwitch?.getMove();
+    if (running && ['signin.changeOwner', 'signin.changeOwnerLocal', 'signin.switchToPortico', 'signin.startOverPortico', 'signin.switchToLocal', 'signin.startOverLocal'].includes(rowId)) return {present: false};
     // The local row exists only with the owner-supplied guarded source, and only
     // on a server whose current kind is local. Its help is Root 63's sentence.
     if (rowId === 'signin.changeOwnerLocal') {
@@ -34,8 +37,6 @@ export function createSettingsBindings(controller: SettingsController, options: 
     }
     // Only one sign-in change is ever in flight: while a real move is running its
     // switch, start-over and change-owner rows are gone until it ends.
-    const running = sections.signIn?.ownerSwitch?.getMove();
-    if (running && ['signin.changeOwner', 'signin.changeOwnerLocal', 'signin.switchToPortico', 'signin.startOverPortico', 'signin.switchToLocal', 'signin.startOverLocal'].includes(rowId)) return {present: false};
     if (rowId === 'signin.changeOwner') {
       if (!sections.signIn?.ownerSwitch) return {present: false};
       const snapshot = sections.signIn.getSnapshot();
