@@ -20,9 +20,9 @@ import type {ChannelDesired, ChannelProjection, ChannelReference} from '../playb
 import {channelMessage} from '../playback/linear-protocol.ts';
 import {PlaybackApiError, call, enc, idempotencyKey, type V1Http} from './http.ts';
 import {serviceText} from '../presentation/service-text.ts';
-import {SessionsClient, type StartContext, type StartPreparation} from './sessions.ts';
+import {SessionsClient, type StartContext, type StartPreparation, type Timers} from './sessions.ts';
 
-export type V1ChannelOptions = Readonly<{http: V1Http; key?: () => string; now?: () => number; pollMs?: number}>;
+export type V1ChannelOptions = Readonly<{http: V1Http; key?: () => string; now?: () => number; pollMs?: number; timers?: Timers}>;
 
 /** What the service applies: the playback id, whether the start can't proceed, and the projection. */
 export type ChannelView = Readonly<{playbackId: string; status?: string; linear: ChannelProjection}>;
@@ -150,7 +150,7 @@ export class V1ChannelControl implements ChannelPlayback {
 
   constructor(options: V1ChannelOptions) {
     this.http = options.http;
-    this.sessions = new SessionsClient(options.http);
+    this.sessions = new SessionsClient(options.http, options.timers);
     this.key = options.key ?? (() => idempotencyKey());
     this.now = options.now ?? Date.now;
     this.pollMs = options.pollMs ?? 1000;
