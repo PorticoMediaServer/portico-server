@@ -61,7 +61,7 @@ func signSecurity(key ed25519.PrivateKey, value any) (serverreturn.SecuritySigne
 // request returns its original signed bytes/expiry; another opening cancels its
 // predecessor in the same writer. The caller cannot choose key or actor facts.
 func (h *RouteIdentityHandler) SignSecurityReturn(parent context.Context, q serverreturn.SecurityContext, read SecurityActorReader) (out serverreturn.SecuritySigned, err error) {
-	if h == nil || h.keys == nil || h.runner == nil || read == nil || q.Kind != "" || q.PublicKey != "" || q.AccountID != "" || q.ActorBinding != "" || !q.IssuedAt.IsZero() {
+	if h == nil || h.keys == nil || h.runner == nil || read == nil || q.SettingsScope != "" || q.SettingsSection != "" || q.Kind != "" || q.PublicKey != "" || q.AccountID != "" || q.ActorBinding != "" || !q.IssuedAt.IsZero() {
 		return out, ErrInvalid
 	}
 	request, _ := json.Marshal(q)
@@ -104,6 +104,8 @@ func (h *RouteIdentityHandler) SignSecurityReturn(parent context.Context, q serv
 		if !errors.Is(e, sql.ErrNoRows) {
 			return e
 		}
+		q.SettingsScope = "account"
+		q.SettingsSection = "profile"
 		q.Kind = serverreturn.SecurityContextKind
 		q.PublicKey = base64.RawURLEncoding.EncodeToString(id.PublicKey)
 		q.AccountID = account

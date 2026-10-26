@@ -19,6 +19,8 @@ import (
 )
 
 type securityReturnPrepareRequest struct {
+	Purpose            string    `json:"purpose"`
+	Target             string    `json:"target"`
 	Origin             string    `json:"origin"`
 	OpeningID          string    `json:"openingId"`
 	TaskID             string    `json:"taskId"`
@@ -97,7 +99,7 @@ func (d Dependencies) securityReturnRoutes(mux *http.ServeMux) {
 			securityReturnFailure(w, e)
 			return
 		}
-		out, e := signer.SignSecurityReturn(r.Context(), serverreturn.SecurityContext{ServerID: prepared.ServerID, RegistrationID: prepared.Registration.ID, Origin: prepared.Registration.Origin, HostedOrigin: prepared.HostedOrigin, ClaimOperationID: prepared.ClaimOperationID, OpeningID: q.OpeningID, TaskID: q.TaskID, OperationID: q.OperationID, ProviderIdentityID: q.ProviderIdentityID, ProviderRevision: q.ProviderRevision, Nonce: q.Nonce, ExpiresAt: q.ExpiresAt}, actor(r))
+		out, e := signer.SignSecurityReturn(r.Context(), serverreturn.SecurityContext{Purpose: q.Purpose, Target: q.Target, ServerID: prepared.ServerID, RegistrationID: prepared.Registration.ID, Origin: prepared.Registration.Origin, HostedOrigin: prepared.HostedOrigin, ClaimOperationID: prepared.ClaimOperationID, OpeningID: q.OpeningID, TaskID: q.TaskID, OperationID: q.OperationID, ProviderIdentityID: q.ProviderIdentityID, ProviderRevision: q.ProviderRevision, Nonce: q.Nonce, ExpiresAt: q.ExpiresAt}, actor(r))
 		if e != nil {
 			securityReturnFailure(w, e)
 			return
