@@ -226,3 +226,218 @@ the `server.py`/`server/` module-name collision.
 - Foundation source only; no install, deploy, build, service or timer was run.
 - Existing Contabo M0 remains untouched and running until the owner cleans it up.
 - Guard/deploy changes remain for the owner's read before any host action.
+
+
+---
+
+# Walk tooling: one frame, measured
+
+Reserved tools for WALKS.md §1.3 (frame renderer) and §1.4 (web style extractor).
+They read the approved mock-ups, never write to them, and never touch an app.
+
+The mock-up HTML/CSS is the truth (WALKS §2b). These tools make its expected
+values citable: file, frame label, element selector, and the computed values
+next to the app's actual values.
+
+## What is here
+
+| Path | Purpose |
+|---|---|
+| `frame.mjs` | Render one exact frame to PNG plus the element/style/text/order JSON artifact. |
+| `web-style.mjs` | Pair mock-up elements with app elements and report measurable differences. |
+| `web/` | Helpers: label resolution, frame preparation, bounded extraction, comparison, paths. |
+
+Nothing here is imported by the app or by the checkpoint runner. No design file,
+font, screenshot or artwork is copied into a repository. Artifacts are written
+by `walks/render-frame` into `v3/walks/frame-artifacts/` (outside every repo) and
+mode 0600.
+
+## Requirements
+
+- Node 22 or newer.
+- An existing Playwright install, by reference: `PORTICO_WALKS_PLAYWRIGHT=/path/to/node_modules/playwright/index.mjs`.
+- Chromium: `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium` (or Playwright's own).
+- Manrope: the product's variable face is used by default from
+  `PORTICO_SERVER_REPO` (fallback `/home/justin/projects/Portico/apps/portico-server`)
+  or `PORTICO_WALKS_MANROPE`. If no local face loads, the tool fails
+  `manrope-unavailable`; it never measures fallback type.
+- The design root defaults to
+  `/home/justin/projects/Portico/.worktrees/design-ui-v1/design/ui-v1`
+  (`PORTICO_WALKS_DESIGN` overrides it).
+
+## Render one frame
+
+```sh
+walks/render-frame auth.html 4 --width 1440 --height 900 --surface web-desktop \
+  --data '.rchip,.in,.dots' --identifier '.rchip=profile-chip'
+```
+
+writes `v3/walks/frame-artifacts/auth-4.png` and `auth-4.json`. The PNG is the
+frame at its authored 1:1 design width (1440 web rows, 1920 TV screens, the
+tablet stage's own width, a phone row's 390-wide phones as drawn). `--width` and
+`--height` are the device the frame is compared against; they are recorded as
+`target`. `device` is always the size actually rendered, so a comparer can refuse
+a mismatch instead of guessing.
+
+For a frame that draws several devices (a phone row of three, an iPad pair), pass
+one exact device element and the renderer captures just it, with boxes relative
+to it:
+
+```sh
+walks/render-frame phone-guide.html g1 --element '.col:nth-child(1) .phone' \
+  --width 390 --height 844 --units points --surface ios-phone \
+  --data '.card,.t,.s'
+```
+
+`--units` is `pixels` (web CSS px, Android) or `points` (iOS, tvOS); it defaults
+to `pixels`. The artifact name gains a short element hash so several devices in
+one frame do not overwrite each other.
+
+Frame labels follow the mock-ups' own conventions, in this order:
+
+1. the frame's `data-f` gallery value (`4`, `24b`, `1p`);
+2. its own or its `.screen` id, with or without a short letter prefix (`f7`, `g1`, `7`);
+3. its 1-based position in the page.
+
+An unknown or ambiguous label fails with `label-unknown` or `label-ambiguous`
+and the available labels; the tool never guesses.
+
+## Shared measurement artifact
+
+The renderer is the only writer of this format. Both the web extractor and the
+native layout comparer read it; no second writer exists.
+
+```json
+{
+  "tool": "render-frame",
+  "surface": "web-desktop",
+  "source": {"file": "auth.html", "label": "4"},
+  "units": "pixels",
+  "device": {"width": 1440, "height": 900},
+  "target": {"width": 1440, "height": 900},
+  "dataMapping": "explicit",
+  "elements": [
+    {
+      "selector": ".au h1",
+      "label": "Portico demo",
+      "role": "heading",
+      "box": [64, 218, 440, 63],
+      "style": {
+        "fontFamily": "Manrope", "fontSize": "64px", "fontWeight": "800",
+        "lineHeight": "63px", "letterSpacing": "-2.24px",
+        "color": "rgb(237, 245, 250)", "backgroundColor": "rgba(0, 0, 0, 0)",
+        "textAlign": "start", "borderRadius": "0px",
+        "padding": [0, 0, 0, 0], "margin": [0, 0, 0, 0], "gap": "normal",
+        "opacity": 1, "display": "block",
+        "normalizedRGB": {"color": [237, 245, 250, 1], "backgroundColor": [0, 0, 0, 0]},
+        "backgroundImage": "none"
+      },
+      "textMode": "static"
+    }
+  ]
+}
+```
+
+- `source.file` is relative to the design root; `source.label` is the label that
+  selected the frame. Every element carries its exact `selector` (a unique short
+  selector, or the nth-child path when no short selector is unique).
+- `box` is `[x, y, width, height]`, relative to the captured frame or
+  `--element`, rounded to whole design units.
+- `style` holds `getComputedStyle` values, not authored shorthand. Colours stay
+  as computed `rgb()`/`rgba()`; `normalizedRGB` gives the same values as numbers
+  for comparers that sample screenshots, and `backgroundImage` classifies
+  `none`/`gradient`/`image`/`other` without keeping the URL. Alpha, gradients and
+  blur quality are out of scope (WALKS §2.5).
+- `role` is a closed semantic name: `button`, `link`, `img`, `heading`,
+  `textbox`, `searchbox`, `checkbox`, `radio`, `slider`, `combobox`,
+  `navigation`, `main`, `list`, `listitem`, `table`, `row`, `cell`, `text`,
+  `other`. An explicit short ARIA role wins; drawn action classes (`btn`, `chip`, `tab`, `card`, `icon-btn`, `ghost`, and the like) map to `button`; otherwise standard tag semantics apply.
+- `textMode` is required on every element: `static` for copy drawn from the
+  mock-up and `data` for content whose real value differs (title, poster, count,
+  identity, date, a repeated list child). A `--data` selector marks the element
+  and its subtree. Rendering refuses without an explicit mapping: pass `--data
+  <selector>` or `--no-data` when the frame truly has no data content. The
+  artifact therefore always says `dataMapping: "explicit"`.
+- `identifier` is optional and appears on elements matched by `--identifier
+  selector=identifier` (for example `--identifier '.btn.play=watch-title-play'`).
+  It is the app's own test identifier, so repeated cards or controls pair by
+  intent even when the drawn copy differs.
+- `normalizedRGB` is the element's flat opaque background as `[r, g, b]`, and is
+  omitted for translucent or gradient backgrounds. It wins over parsing
+  `style.backgroundColor`; the full alpha values remain in
+  `style.normalizedRGB`.
+
+Text is the visible copy (bounded to 200 characters). A comparer pairs by role,
+label, `identifier` and order, never by guessing real content.
+
+The artifact is the only shared interface. `web-style.mjs` owns web app
+comparisons. The native comparer (`deployment/testing/walks/native-layout.py` and
+`native/`) reads the same artifact for iOS, tvOS, Android and TV surfaces; a
+frame surface is either web or native, never both. Field spelling and units were
+agreed directly with the native comparer owner; `identifier`, `textMode`,
+`units`, the semantic roles and the colour precedence above are the settled
+contract.
+
+## Compare with the app
+
+```sh
+walks/web-style auth.html 4 \
+  --app http://127.0.0.1:8080/ \
+  --width 1440 --height 900 \
+  --app-wait 'main' \
+  --data '.rchip,.in,.dots' \
+  --pair '.btn.play => main .actions button:first-child' \
+  --pair '.tb .chip[aria-label="Filters"] => main [role="toolbar"] button:first-child' \
+  --order '.tabs .tab, .card .t => main nav[aria-label="Library views"] button, main [data-card-kind] .t' \
+  --out v3/walks/frame-artifacts
+```
+
+Each `--pair` is `frame selector => app selector`. Frame selectors are resolved
+inside the selected frame; app selectors are ordinary page selectors. Each side
+must resolve to exactly one element. Pairs are the walker's locators on purpose:
+a raw whole-tree diff would drown in wrapper elements that are not fidelity
+findings.
+
+Pair stable chrome, controls and copy. A pair whose box or text changes with real
+data (a title, a count, a synopsis) will be marked `data` by the `--data`
+mapping; pair the stable ancestor or control instead, and let `DATA` rows stand
+for the sample data. Text differences on `data` elements are never fidelity
+findings. Like the renderer, the extractor needs an explicit mapping (`--data` or
+`--no-data`); text and order labels are judged only against that mapping.
+
+`--order` compares the visible label sequence of two selector lists, so order
+changes are measured too.
+
+Optional: `--storage-state <0600 file>` for a signed-in walk account, used by
+reference only and never printed. `--strict-text` makes any copy difference a
+fidelity difference; otherwise differing text is reported as `DATA` (real data
+versus the frame's sample data), while missing expected text is always fidelity.
+
+## Output and citation
+
+Every difference row carries its citation in this shape:
+
+```text
+DIFF auth.html 4 .btn.play height: expected 48 actual 44 delta -4
+DATA auth.html 4 .card .t text: expected "Severance" actual "Alien"
+```
+
+The JSON report adds `kind`, `field`, `fidelity`, `citation`, `appSelector` and
+`expected`/`actual` for each row, plus the frame file, label, device viewport and
+the counts of refused cross-origin requests. `frame.mjs`'s JSON gives every
+mock-up element's box, computed type, colour, spacing, radius, order and a
+selector path, so an OFF-FRAME verdict can quote the frame's exact expected
+values (WALKS §2b). Work-list fix items can carry the same `citation` string.
+
+Exit codes: `0` no fidelity differences, `1` measured fidelity differences,
+`2` tool, label, font or navigation failure.
+
+## Safety
+
+- The design context allows only `file:`, `data:`, `blob:` and `about:` requests;
+  the app context allows only the app's own origin. Every other request is
+  refused and only counted, never recorded.
+- No URL query, header, cookie, token, input value, credential, page error or
+  stack is written to output.
+- The tools are read-only for apps and mock-ups. No app code, guard, contract or
+  shared renderer is changed here.
