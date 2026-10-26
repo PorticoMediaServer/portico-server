@@ -173,6 +173,19 @@ def _libraries(client, token, installation, fixtures):
         library_id, job_id = _library(client, token, installation, name, kind, media / relative)
         created[name] = library_id
         jobs.append(job_id)
+    # Optional walk publications, added only when the owner has staged the
+    # directory. Required Movies/Music/Books above never depend on these.
+    for name, kind, relative in (
+        ('Comics', 'comic', 'Walks/Comics'),
+        ('PDF', 'book', 'Walks/PDF'),
+        ('Magazines', 'book', 'Walks/Magazines'),
+        ('Mixed', 'book', 'Walks/Mixed'),
+    ):
+        if not (media / relative).is_dir():
+            continue
+        library_id, job_id = _library(client, token, installation, name, kind, media / relative)
+        created[name] = library_id
+        jobs.append(job_id)
     deadline = time.monotonic() + SCAN_TIMEOUT
     while time.monotonic() < deadline:
         states = []
@@ -190,7 +203,7 @@ def _libraries(client, token, installation, fixtures):
         raise StateError('library-scan-timeout')
     listed = _call(client, 'GET', '/v1/libraries', token=token, installation=installation)
     items = listed.get('items') if isinstance(listed, dict) else None
-    if not isinstance(items, list) or len(items) < 3:
+    if not isinstance(items, list) or len(items) < len(created):
         raise StateError('libraries-missing')
     return created
 
@@ -215,7 +228,7 @@ def _verify_member_browse(client, token, installation, libraries):
     if not isinstance(items, list):
         raise StateError('member-library-access')
     visible = {item.get('id') for item in items if isinstance(item, dict)}
-    if not {libraries['Movies'], libraries['Music'], libraries['Books']} <= visible:
+    if not set(libraries.values()) <= visible:
         raise StateError('member-library-access')
     content = _call(client, 'GET', '/v1/libraries/' + segment(libraries['Movies']) + '/content',
                     query={'limit': 5}, token=token, installation=installation)
@@ -229,9 +242,16 @@ def _verify_member_browse(client, token, installation, libraries):
     reading_items = reading.get('items') if isinstance(reading, dict) else None
     if not isinstance(reading_items, list) or not reading_items:
         raise StateError('member-library-access')
+    if 'Comics' in libraries:
+        comics = _call(client, 'GET', '/v1/libraries/' + segment(libraries['Comics']) + '/content',
+                       query={'limit': 5}, token=token, installation=installation)
+        comic_sections = comics.get('sections') if isinstance(comics, dict) else None
+        if not isinstance(comic_sections, list) or not any(isinstance(section, dict) and section.get('entries')
+                                                           for section in comic_sections):
+            raise StateError('member-library-access')
 
 def _members(client, token, installation, credentials, libraries):
-    allowed = [libraries['Movies'], libraries['Music'], libraries['Books']]
+    allowed = list(libraries.values())
     count = 0
     for member in credentials.members:
         _call(client, 'POST', '/v1/direct/members', {
