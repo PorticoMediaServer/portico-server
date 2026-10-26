@@ -28,17 +28,19 @@ export function useCardHold({selection, disabled = false, row}: {selection?: Car
     if (suppressed.current && (suppressed.current.receipt !== receipt || suppressed.current.row !== physical)) suppressed.current = null;
     const original: Entry = {receipt, row: physical, disabled: inactive, live: true};
     committed.current = original; setEntry(original);
+    const interrupt = () => {if (!original.live || committed.current !== original || (original.receipt && !original.receipt.current())) return; if (!original.live || committed.current !== original) return; if (gesture.current?.entry === original) stop(); if (suppressed.current?.receipt === original.receipt && suppressed.current?.row === original.row) suppressed.current = null;};
+    const removeListeners = () => {window.removeEventListener('blur', interrupt); window.removeEventListener('scroll', interrupt, true); document.removeEventListener('visibilitychange', interrupt);};
     const withdraw = (clearSuppression: boolean) => {
+      removeListeners();
       if (!original.live) return;
       original.live = false;
       if (gesture.current?.entry === original) stop();
       if (clearSuppression && suppressed.current?.receipt === original.receipt && suppressed.current?.row === original.row) suppressed.current = null;
       if (committed.current === original) committed.current = null;
     };
-    const interrupt = () => {if (!original.live || committed.current !== original || (original.receipt && !original.receipt.current())) return; if (gesture.current?.entry === original) stop(); if (suppressed.current?.receipt === original.receipt && suppressed.current?.row === original.row) suppressed.current = null;};
     window.addEventListener('blur', interrupt); window.addEventListener('scroll', interrupt, true); document.addEventListener('visibilitychange', interrupt);
     const off = original.receipt?.onRetire(() => withdraw(true));
-    return () => {off?.(); window.removeEventListener('blur', interrupt); window.removeEventListener('scroll', interrupt, true); document.removeEventListener('visibilitychange', interrupt); withdraw(false);};
+    return () => {off?.(); withdraw(false);};
   }, [identity, physical, eligible, inactive, selection?.active, receipt, stop]);
   const active = eligible && entry?.live && committed.current === entry && entry.receipt === receipt && entry.row === physical ? entry : null;
   const owns = (candidate: Entry | null) => !!candidate && candidate.live && committed.current === candidate

@@ -4,11 +4,13 @@ import assert from 'node:assert/strict';
 export async function checkBoundCardHooks(page, origin) {
   await page.goto(`${origin}/dev/kit?family=cards&case=reference&capture=true`, {waitUntil: 'networkidle'});
   await page.evaluate(async () => {
-    const windowAdd = window.addEventListener, documentAdd = document.addEventListener, captured = [];
-    window.addEventListener = function(type, fn, options) {if (['blur', 'scroll', 'keydown', 'keyup'].includes(type) && typeof fn === 'function') captured.push({type, fn}); return windowAdd.call(this, type, fn, options);};
-    document.addEventListener = function(type, fn, options) {if (type === 'visibilitychange' && typeof fn === 'function') captured.push({type, fn}); return documentAdd.call(this, type, fn, options);};
+    const windowAdd = window.addEventListener, documentAdd = document.addEventListener, windowRemove = window.removeEventListener, documentRemove = document.removeEventListener, captured = [];
+    window.addEventListener = function(type, fn, options) {if (['blur', 'scroll', 'keydown', 'keyup'].includes(type) && typeof fn === 'function') captured.push({type, fn, target: 'window', removed: false}); return windowAdd.call(this, type, fn, options);};
+    document.addEventListener = function(type, fn, options) {if (type === 'visibilitychange' && typeof fn === 'function') captured.push({type, fn, target: 'document', removed: false}); return documentAdd.call(this, type, fn, options);};
+    window.removeEventListener = function(type, fn, options) {for (const item of captured) if (item.target === 'window' && item.type === type && item.fn === fn) item.removed = true; return windowRemove.call(this, type, fn, options);};
+    document.removeEventListener = function(type, fn, options) {for (const item of captured) if (item.target === 'document' && item.type === type && item.fn === fn) item.removed = true; return documentRemove.call(this, type, fn, options);};
     const m = await import('/test/fixtures/card-bound-hooks.tsx'); window.disposeCardBoundHooks = m.mountCardBoundHooks();
-    window.cardCapturedListeners = captured; window.restoreCardListeners = () => {window.addEventListener = windowAdd; document.addEventListener = documentAdd;};
+    window.cardCapturedListeners = captured; window.restoreCardListeners = () => {window.addEventListener = windowAdd; document.addEventListener = documentAdd; window.removeEventListener = windowRemove; document.removeEventListener = documentRemove;};
   });
   try {
     await page.evaluate(() => {
@@ -19,11 +21,12 @@ export async function checkBoundCardHooks(page, origin) {
       window.requestAnimationFrame = fn => {callbacks.raf.push(fn); return raf(fn);};
       h.current().down(); h.current().move();
       window.setTimeout = timer; window.requestAnimationFrame = raf; window.cardOldScheduled = callbacks;
-      h.retire();
+      h.retained(true);
       for (const fn of callbacks.timer) fn(); for (const fn of callbacks.raf) fn(performance.now());
     });
     const immediate = await page.evaluate(() => {window.restoreCardListeners(); window.cardOldListeners = [...window.cardCapturedListeners]; return window.cardBoundHooks.observations();});
-    assert.equal(immediate.preview.at(-1), false, 'receipt retirement clears owned preview synchronously');
+    assert.equal(immediate.preview.at(-1), false, 'retained withdrawal clears owned preview synchronously');
+    assert.equal(await page.evaluate(() => window.cardOldListeners.every(item => item.removed)), true, 'original listeners removed synchronously');
     await page.waitForTimeout(550); assert.equal((await page.evaluate(() => window.cardBoundHooks.observations())).toggles, 0);
     await page.evaluate(() => {const h = window.cardBoundHooks; h.revive(); h.capture(); h.current().down(); h.current().move();
       for (const fn of window.cardOldScheduled.timer) fn(); for (const fn of window.cardOldScheduled.raf) fn(performance.now());
@@ -34,6 +37,7 @@ export async function checkBoundCardHooks(page, origin) {
     const published = await page.evaluate(() => window.cardBoundHooks.observations());
     assert.equal(published.toggles, 1, 'volatile descriptor publication preserves original hold');
     assert.equal(published.preview.at(-1), true, 'publication does not clear live preview');
+    assert.equal(await page.evaluate(() => window.cardBoundHooks.old().consume()), false, 'retired hold admission cannot consume successor suppression');
     assert.equal(await page.evaluate(() => window.cardBoundHooks.current().consume()), true, 'same receipt owns fired hold suppression');
     await page.evaluate(() => window.cardBoundHooks.retire());
     const retired = await page.evaluate(() => {const h = window.cardBoundHooks, before = h.observations(); h.old().move(); h.old().key(); h.old().down(); return {before, after: h.observations(), consumed: h.old().consume()};});
@@ -41,6 +45,16 @@ export async function checkBoundCardHooks(page, origin) {
     await page.evaluate(() => {const h = window.cardBoundHooks; h.revive(); h.current().move();});
     await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keyup', {key: 'Shift'})));
     assert.equal((await page.evaluate(() => window.cardBoundHooks.observations())).preview.at(-1), false);
+    await page.evaluate(() => {const h = window.cardBoundHooks; h.current().move(); h.missing(true);});
+    assert.equal((await page.evaluate(() => window.cardBoundHooks.observations())).preview.at(-1), false, 'missing bound receipt clears its original live preview');
+    await page.evaluate(() => {const h = window.cardBoundHooks; h.missing(false); h.current().move(); h.previewActive(false);});
+    assert.equal((await page.evaluate(() => window.cardBoundHooks.observations())).preview.at(-1), false, 'inactive selection clears original preview');
+    await page.evaluate(() => {const h = window.cardBoundHooks; h.previewActive(true); h.legacyMove();});
+    await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keyup', {key: 'Shift'})));
+    assert.equal((await page.evaluate(() => window.cardBoundHooks.legacyEvents())).at(-1), false, 'volatile legacy callback renewal retains Shift keyup');
+    await page.evaluate(() => {const h = window.cardBoundHooks; h.holdActive(false); h.current().down(); h.invalidate(); h.current().key(); h.validate(); h.revive(); h.current().down();});
+    await page.waitForTimeout(550);
+    assert.equal((await page.evaluate(() => window.cardBoundHooks.observations())).toggles, 2, 'reentrant retirement cannot cancel fresh successor hold');
     await page.evaluate(() => {const h = window.cardBoundHooks; h.missing(true); h.current().down(); h.current().move();});
     const missing = await page.evaluate(() => window.cardBoundHooks.observations());
     await page.waitForTimeout(550); assert.deepEqual(await page.evaluate(() => window.cardBoundHooks.observations()), missing);

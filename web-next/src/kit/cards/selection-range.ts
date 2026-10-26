@@ -3,7 +3,7 @@ import {useRetainedLayoutPaint} from '../layout/retained-paint';
 import type {CardInteractionAdmission} from './interaction-admission';
 import type {CardSelection} from './types';
 
-type Entry = {receipt?: CardInteractionAdmission; legacyPaint?: (enabled: boolean) => void; active: boolean; live: boolean; preview: boolean};
+type Entry = {receipt?: CardInteractionAdmission; legacyPaint?: (enabled: boolean) => void; active: boolean; live: boolean; preview: boolean; detach?: () => void};
 
 /** Paint intent only; original selection authority remains with its producer. */
 export function useSelectionRangePreview(selection?: CardSelection, disabled = false) {
@@ -15,13 +15,19 @@ export function useSelectionRangePreview(selection?: CardSelection, disabled = f
   const legacyPreview = useRef<{paint: (enabled: boolean) => void; shown: boolean} | null>(null);
   useLayoutEffect(() => {
     if (!eligible) {const previous = legacyPreview.current; legacyPreview.current = null; if (previous?.shown) previous.paint(false); setHover(false); setEntry(null); return;}
+    if (!source && !selection?.active) {const previous = legacyPreview.current; legacyPreview.current = null; if (previous?.shown) previous.paint(false); setHover(false);}
     const original: Entry = {receipt, legacyPaint: source ? undefined : selection?.onPreview, active: !!selection?.active, live: true, preview: false};
     committed.current = original; setEntry(original);
-    const retire = () => {if (!original.live) return; original.live = false; if (committed.current === original) {committed.current = null; setHover(false);}};
-    const off = receipt?.onRetire(retire);
+    const retire = (resetHover: boolean) => {if (!original.live) return; original.live = false; if (committed.current === original) {committed.current = null; if (resetHover) setHover(false);}};
+    const off = receipt?.onRetire(() => retire(true));
     return () => {
       off?.();
-      retire();
+      const clearOriginal = original.live && original.preview && original.receipt?.live;
+      original.detach?.();
+      retire(!!receipt);
+      // Only the original receipt can clear its own preview; ordinary descriptor
+      // publication does not change this effect's identity or run this cleanup.
+      if (clearOriginal) original.receipt?.preview(false);
     };
   }, [identity, eligible, inactive, selection?.active, receipt, source]);
   const current = eligible && entry?.live && committed.current === entry && entry.receipt === receipt ? entry : null;
@@ -39,8 +45,10 @@ export function useSelectionRangePreview(selection?: CardSelection, disabled = f
     const interrupt = () => {if (!owns(original)) return; setHover(false); paint(original, false);};
     window.addEventListener('keydown', key); window.addEventListener('keyup', key); window.addEventListener('blur', interrupt);
     window.addEventListener('scroll', interrupt, true); document.addEventListener('visibilitychange', interrupt);
-    const off = original.receipt?.onRetire(() => {window.removeEventListener('keydown', key); window.removeEventListener('keyup', key); window.removeEventListener('blur', interrupt); window.removeEventListener('scroll', interrupt, true); document.removeEventListener('visibilitychange', interrupt);});
-    return () => {off?.(); window.removeEventListener('keydown', key); window.removeEventListener('keyup', key); window.removeEventListener('blur', interrupt); window.removeEventListener('scroll', interrupt, true); document.removeEventListener('visibilitychange', interrupt);};
+    const detach = () => {window.removeEventListener('keydown', key); window.removeEventListener('keyup', key); window.removeEventListener('blur', interrupt); window.removeEventListener('scroll', interrupt, true); document.removeEventListener('visibilitychange', interrupt); if (original.detach === detach) original.detach = undefined;};
+    original.detach = detach;
+    const off = original.receipt?.onRetire(detach);
+    return () => {off?.(); detach();};
   }, [current, hover]);
   const leave = () => {if (!owns(current)) return; setHover(false); paint(current, false);};
   return {
