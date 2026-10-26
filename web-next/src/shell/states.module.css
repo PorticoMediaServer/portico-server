@@ -1,8 +1,6 @@
 /* Full-page shell states. The drawn page sits under the fixed navigation, so the
    layout owns the viewport height and the content keeps the frame's own top. */
 .page { min-height: 100dvh; }
-/* The libraries from last time, kept on the unreachable launch page. Names only: no
-   control here can do anything while the server is away. */
 .offlineDownloads { position: fixed; z-index: var(--layer-sticky); top: 56px; left: var(--shell-gutter, var(--gutter-desktop)); right: var(--shell-gutter, var(--gutter-desktop)); max-width: 520px; padding: 16px 18px; border-radius: 16px; background: color-mix(in srgb, var(--color-ink) 88%, transparent); backdrop-filter: blur(22px); }
 .offlineDownloads h2 { margin: 0 0 8px; }
 .offlineDownloads ul { display: grid; gap: 6px; margin: 0 0 12px; padding: 0; list-style: none; overflow: hidden; }
