@@ -75,7 +75,9 @@ def refresh_ledger(config,root):
     log=Path(config['evidence'])/'ledger-refresh.log';log.parent.mkdir(parents=True,exist_ok=True)
     with log.open('ab') as output:
         subprocess.run(command,check=True,stdout=output,stderr=subprocess.STDOUT,timeout=180)
-        subprocess.run(['python3',str(program/'v3/make-worklists.py')],check=True,stdout=output,stderr=subprocess.STDOUT,timeout=30)
+        with Path('/tmp/portico-v3-claims.lock').open('a') as claims:
+            fcntl.flock(claims,fcntl.LOCK_EX)
+            subprocess.run(['python3',str(program/'v3/make-worklists.py')],check=True,stdout=output,stderr=subprocess.STDOUT,timeout=30)
     print('Ledger and owner work lists refreshed from published main; owner notes preserved.')
 
 def main():
