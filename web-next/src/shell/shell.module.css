@@ -106,3 +106,8 @@
 .dashboardText b { display: block; font-size: var(--type-subheading-size); font-weight: var(--type-lockup-weight); letter-spacing: calc(var(--type-episode-title-tracking) * 2); margin-top: 1px; }
 .dashboardCard > span > svg { color: var(--color-text-tertiary); flex: none; }
 .dashboardCard:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 2px; }
+
+/* desktop-app.html frame 5 .capshade: the authored 52 px gradient from the page's
+   ink, ending clear, so the Windows caption symbols stay readable over a scroll. */
+.captionShade { position: fixed; inset: 0 0 auto var(--shell-nav-width); height: 52px; z-index: var(--layer-navigation); pointer-events: none; opacity: 0; background: linear-gradient(180deg, rgba(7,16,24,.9) 0, rgba(7,16,24,.66) 30px, rgba(7,16,24,0) 52px); }
+.captionShade[data-on] { opacity: 1; }
