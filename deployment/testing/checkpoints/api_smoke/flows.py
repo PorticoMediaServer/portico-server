@@ -38,6 +38,7 @@ REASONS = frozenset({
     'configuration-shape',
 })
 _IDENTIFIER = re.compile(r'[A-Za-z0-9._~-]{1,128}\Z')
+_HOME_ROW = re.compile(r'/v1/home/rows/[A-Za-z0-9._~-]{1,128}\Z')
 _HEX = frozenset('0123456789abcdefABCDEF')
 _FACT_KEY = re.compile(r'[a-z][a-zA-Z0-9]{0,31}\Z')
 
@@ -220,11 +221,28 @@ class Smoke:
         rows = document.get('rows')
         if not isinstance(rows, list) or not rows:
             raise FlowFail(reply, reason='no-home-rows')
-        with_entries, movie, title = 0, '', ''
-        for row in rows[:50]:
+        # GET /v1/home publishes the row manifest: every visible row is deferred
+        # and composes its own preview at endpoint. Follow bounded rows in the
+        # server's order until one publishes real entries, as the web client does.
+        with_entries, movie, title, followed = 0, '', '', 0
+        for row in rows[:24]:
             if not isinstance(row, dict):
                 continue
             entries = row.get('entries')
+            if not isinstance(entries, list) or not entries:
+                endpoint = row.get('endpoint') if row.get('deferred') else None
+                if not isinstance(endpoint, str) or not _HOME_ROW.fullmatch(endpoint):
+                    continue
+                if followed == 8:
+                    break
+                followed += 1
+                row_reply = self.client.call('home-real-rows', 'GET', endpoint, query={'limit': 20})
+                if row_reply.failure is not None or row_reply.status != 200:
+                    continue
+                row_document = row_reply.data
+                if not isinstance(row_document, dict):
+                    continue
+                entries = row_document.get('entries')
             if not isinstance(entries, list) or not entries:
                 continue
             with_entries += 1
@@ -235,8 +253,7 @@ class Smoke:
                     movie = entry['id']
                     title = entry.get('title') if isinstance(entry.get('title'), str) else ''
                     break
-            if movie:
-                break
+            break
         if with_entries == 0:
             raise FlowFail(reply, reason='no-home-entries')
         if movie and not self.movie:
@@ -737,9 +754,13 @@ class Smoke:
         reply = require(self.client.call('settings-console', 'GET', '/v1/admin/console/settings'), (200,))
         document = object_data(reply, 'console-settings-values')
         data = document.get('data')
-        requested = data.get('requested') if isinstance(data, dict) else None
-        if not isinstance(document.get('revision'), int):
+        if not isinstance(data, dict):
+            raise FlowFail(reply, reason='console-settings-values')
+        # The console envelope is {data, scope}; the settings revision and the
+        # requested/effective values live inside data (data.revision, data.requested).
+        if not isinstance(data.get('revision'), int):
             raise FlowFail(reply, reason='console-settings-revision')
+        requested = data.get('requested')
         if not isinstance(requested, dict):
             raise FlowFail(reply, reason='console-settings-values')
         return {'hasRevision': True, 'hasRequested': True}
