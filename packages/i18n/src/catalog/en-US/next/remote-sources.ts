@@ -159,6 +159,8 @@ export const remoteSourcesMessages = {
   'next.remoteSources.rcloneKindsNote': 'A remote from an existing rclone config file, per-kind forms and cloud-drive sign-in are not available on this server yet.',
   'next.remoteSources.connection': 'Connection',
   'next.remoteSources.reading': 'Reading',
+  'next.remoteSources.allowAdvancedMediaAnalysis': 'Allow advanced media analysis',
+  'next.remoteSources.allowAdvancedMediaAnalysisWarning': 'Advanced media analysis uses substantial bandwidth and may affect server performance or your connected storage account. Your provider may limit or block the account.',
   'next.remoteSources.name': 'Name',
   'next.remoteSources.address': 'Address',
   'next.remoteSources.username': 'User name',
