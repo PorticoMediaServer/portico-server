@@ -31,7 +31,7 @@ import {PlaybackApiError, idempotencyKey, type V1Http} from '@core/playback-v1/h
 import {PlaybackOptionsClient} from '@core/playback-v1/options.ts';
 import type {MediaPlayer, PlayerEvent, PlayerObservation, PlayerSource} from '@core/playback-v1/port.ts';
 import {localPlayerSource, localPlayerLoadReceipt, type LocalPlayerSource, type LocalPlayerLoadContext, type LocalPlayerLoadReceipt} from '@core/playback-v1/local-port.ts';
-import {PlaybackSessionController, SessionsClient, type SessionChange, type StartOptions, type StartTarget, type Timers} from '@core/playback-v1/sessions.ts';
+import {PlaybackSessionController, SessionsClient, type SessionChange, type StartContext, type StartOptions, type StartTarget, type Timers} from '@core/playback-v1/sessions.ts';
 import {requireSessionChangeCurrent, type SessionChangeContext} from '@core/playback-v1/change-context.ts';
 import {toPlaybackSession} from '@core/playback-v1/session-shape.ts';
 import {parseEqualizer, type EqualizerSettings} from './audio/equalizer';
@@ -834,18 +834,31 @@ export class WebPlayback implements PlaybackAdapter {
         return v ? v.durationMs / 1000 : 0;
       } catch { return 0; } // The engine reports the duration once it has the media.
     };
-    const start = async (target: StartTarget, options: StartOptions, key: string = (self.host.key ?? idempotencyKey)(), durationSeconds?: number, signal?: AbortSignal) => {
+    const start = async (target: StartTarget, options: StartOptions, key: string = (self.host.key ?? idempotencyKey)(), durationSeconds?: number, signal?: AbortSignal,
+      context?: Pick<StartContext, 'isCurrent' | 'capturePreparing' | 'onPreparing'>) => {
+      const callerCurrent = context?.isCurrent, callerPreparing = context?.onPreparing, callerCapture = context?.capturePreparing;
       const source = self.service, drawn = source?.getSnapshot(), originalCurrent = self.host.captureStartCurrent?.();
       const current = () => !self.disposed && self.service === source &&
         (!drawn || source?.getSnapshot().intentId === drawn.intentId && source.getSnapshot().playbackRun === drawn.playbackRun) &&
-        (originalCurrent?.() ?? true);
+        (!originalCurrent || originalCurrent() === true) && (!callerCurrent || callerCurrent() === true);
       const original = self.startRegistration?.begin(target, options, key, signal, current);
+      const lifetime = original?.context ?? {signal, isCurrent: current, capturePreparing: callerCapture};
+      const startContext: StartContext = {...lifetime, onPreparing: (wait, notice) => {
+        if (!current()) return;
+        // The queue owns its own original preparing state; direct PlaybackApi
+        // callers use the same canonical service publication for their intent.
+        if (callerPreparing) callerPreparing(wait, notice);
+        else if (source && drawn) source.reportStartPreparation(drawn.intentId, notice);
+      }};
       let session: Session;
       try {
-        // The canonical SDK alone decodes status/variants and owns the unchanged
-        // wait budget. A late real 201 still enters the original core cleanup.
-        session = self.remember(await self.client.start(original?.body ?? target, original ? {} : options, original?.key ?? key, original?.context ?? {signal, isCurrent: current}));
-      } finally {original?.finish();}
+        // The canonical SDK alone decodes status/variants and owns the retry
+        // policy. A late real 201 still enters the original core cleanup.
+        session = self.remember(await self.client.start(original?.body ?? target, original ? {} : options, original?.key ?? key, startContext));
+      } finally {
+        original?.finish();
+        if (!callerPreparing && source && drawn && current()) source.reportStartPreparation(drawn.intentId, undefined);
+      }
       const seconds = session.discTitle
         ? await duration(session.itemId ?? '', session.versionId, signal, session.discTitle)
         : durationSeconds ?? await duration(session.itemId ?? '', session.versionId, signal);

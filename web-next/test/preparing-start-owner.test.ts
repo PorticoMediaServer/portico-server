@@ -79,6 +79,43 @@ test('retry-only abort carries no resource and does not manufacture cleanup', as
   } finally {f.web.dispose();f.owner.dispose();}
 });
 
+test('the queue sixth context receives only the canonical preparation notice and keeps its original callbacks', async () => {
+  const f = fixture(), caller = new AbortController(), notices: string[] = [];
+  const context = {isCurrent: () => true, onPreparing: (_wait: number, notice: {messageId: string}) => {notices.push(notice.messageId);}};
+  try {
+    const pending = f.web.transport.start({itemId: 'movie'}, {}, 'original-key', 60, caller.signal, context);
+    const rejected = assert.rejects(pending, {name: 'AbortError'});
+    context.onPreparing = () => {assert.fail('successor callback');};await settle();
+    assert.deepEqual(notices, ['player.preparing.slowStart']);caller.abort();await rejected;await settle();
+    assert.equal(f.stops.length, 1);assert.equal(f.c.jobs.size, 0);
+  } finally {f.web.dispose();f.owner.dispose();}
+});
+
+test('the Web wrapper keeps the same request past 120 seconds of genuine server preparation', async () => {
+  const f = fixture();let notices = 0;
+  for (let index = 0; index < 13; index++) f.replies.push(Promise.resolve(response({retryAfterMs: 10_000})));
+  f.replies.push(Promise.resolve(response(real(), 201)));
+  try {
+    const pending = f.web.transport.start({itemId: 'movie'}, {}, 'original-key', 60, undefined,
+      {isCurrent: () => true, onPreparing: () => {notices++;}});
+    for (let index = 0; index < 13; index++) {await settle();f.c.fire();}
+    assert.equal((await pending).session.id, 'original_session');
+    assert.equal(notices, 13);assert.equal(f.calls.length, 14);assert.equal(f.stops.length, 0);
+    assert.ok(f.calls.every(call => call.headers?.['Idempotency-Key'] === 'original-key'));
+    assert.ok(f.calls.every(call => call.body === f.calls[0]!.body));assert.equal(f.c.jobs.size, 0);
+  } finally {f.web.dispose();f.owner.dispose();}
+});
+
+test('retiring only the original queue caller ends continuation without publishing to its successor', async () => {
+  const f = fixture();let live = true, notices = 0;
+  try {
+    const pending = f.web.transport.start({itemId: 'movie'}, {}, 'original-key', 60, undefined,
+      {isCurrent: () => live, onPreparing: () => {notices++;}});
+    const rejected = assert.rejects(pending, {name: 'AbortError'});await settle();live = false;f.c.fire();await rejected;await settle();
+    assert.equal(notices, 1);assert.equal(f.calls.length, 1);assert.equal(f.stops.length, 1);assert.equal(f.c.jobs.size, 0);
+  } finally {f.web.dispose();f.owner.dispose();}
+});
+
 test('a successor stack registration spends the old receipt even if that registration is later forgotten', async () => {
   const f = fixture(), caller = new AbortController(), successor = f.owner.attach();
   try {
