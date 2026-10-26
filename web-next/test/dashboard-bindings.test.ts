@@ -94,3 +94,11 @@ test('Move keeps the real session revision and absolute target on the canonical 
   assert.equal(calls.length, 2); assert.equal(calls[0].path, calls[1].path);
   assert.deepEqual(calls[1].body, {action: 'seek', expectedRevision: '7', positionMs: 25000}); b.dispose();
 });
+
+test('a valid controls document for another session cannot redirect a Move write', async () => {
+  const calls: string[] = [];
+  const other = {sessionId: 'replacement', revision: '8', state: 'playing', positionMs: 1000, durationMs: 60000, actions: ['seek']};
+  const b = createDashboardBindings(options({api: {...options().api, request: async (path, method) => {calls.push(`${method ?? 'GET'} ${path}`); return other as never;}}}));
+  await assert.rejects(b.effects.seek!('original', 25000, new AbortController().signal), /dashboard_controls_session_mismatch/);
+  assert.equal(calls.length, 1); assert.match(calls[0], /^GET /); b.dispose();
+});

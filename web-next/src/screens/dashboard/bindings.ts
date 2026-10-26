@@ -87,11 +87,19 @@ export function createDashboardBindings(options: DashboardBindingOptions): Dashb
     const path = routePath(action === 'status' ? 'get_networking_certificate' : action === 'config' ? 'post_networking_certificate_config' : 'post_networking_certificate_retry');
     return options.api.request<T>(path, action === 'status' ? 'GET' : 'POST', body, signal ? AbortSignal.any([signal, life.signal]) : life.signal).then(value => {assert(); return value;});
   }};
-  const operationControls = (signal: AbortSignal) => playbackControlsService(async <T>(path: string, method?: string, body?: unknown): Promise<T> => {
-    assert(); signal.throwIfAborted();
-    const value = await api.request<T>(path, method, body, signal);
-    assert(); signal.throwIfAborted(); return value;
-  });
+  const operationControls = (signal: AbortSignal) => {
+    const service = playbackControlsService(async <T>(path: string, method?: string, body?: unknown): Promise<T> => {
+      assert(); signal.throwIfAborted();
+      const value = await api.request<T>(path, method, body, signal);
+      assert(); signal.throwIfAborted(); return value;
+    });
+    return {...service, readAdmin: async (id: string) => {
+      const value = await service.readAdmin(id);
+      // A canonical reread may update the revision, never the original target.
+      if (value.sessionId !== id) throw new Error('dashboard_controls_session_mismatch');
+      return value;
+    }};
+  };
   let fence: string | undefined;
   let observed: string | undefined;
   const ownerRead = async <T>(work: () => Promise<T>) => {assert(true); const value = await work(); assert(true); return value;};
