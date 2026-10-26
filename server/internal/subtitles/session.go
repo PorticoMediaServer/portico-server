@@ -207,6 +207,10 @@ func (s *Service) selectCommit(ctx context.Context, p identity.Principal, item, 
 	if e != nil {
 		return PlaybackPlan{}, e
 	}
+	if e = s.checkSelectionAcceptanceTx(ctx, tx, session); e != nil {
+		return PlaybackPlan{}, e
+	}
+	accepting := selectionAcceptance(ctx)
 
 	digest := requestDigest([]any{session, m})
 	var priorDigest, priorSession string
@@ -292,6 +296,11 @@ func (s *Service) selectCommit(ctx context.Context, p identity.Principal, item, 
 				return PlaybackPlan{}, ErrConflict
 			}
 		}
+		if accepting != nil {
+			if e = accepting.BeforeGenerationTx(ctx, tx, session, scope.generation); e != nil {
+				return PlaybackPlan{}, e
+			}
+		}
 		if s.ChangeDeliveryTx != nil {
 			if e = s.ChangeDeliveryTx(ctx, tx, p, session, prepared.resource); e != nil {
 				return PlaybackPlan{}, e
@@ -306,6 +315,13 @@ func (s *Service) selectCommit(ctx context.Context, p identity.Principal, item, 
 		n, _ := result.RowsAffected()
 		if n != 1 {
 			return PlaybackPlan{}, ErrConflict
+		}
+		if accepting != nil {
+			mapped, e := accepting.AfterGenerationTx(ctx, tx, session, nextGeneration, m.ResourceID)
+			if e != nil {
+				return PlaybackPlan{}, e
+			}
+			m.ResourceID = mapped
 		}
 		renderID := ""
 		if prepared.ordinaryBurn {
@@ -332,6 +348,11 @@ func (s *Service) selectCommit(ctx context.Context, p identity.Principal, item, 
 		return out, e
 	}
 	out.AppliedRevision = applied
+	if accepting != nil {
+		if e = accepting.AcceptTx(ctx, tx, out); e != nil {
+			return PlaybackPlan{}, e
+		}
+	}
 	if e = gated2.Commit(); e != nil {
 		return out, e
 	}

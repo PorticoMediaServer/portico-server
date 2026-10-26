@@ -58,6 +58,9 @@ func (s *Service) selectPlayback(ctx context.Context, p identity.Principal, item
 	if e != nil {
 		return PlaybackPlan{}, e
 	}
+	if e = s.checkSelectionAcceptanceTx(ctx, tx, session); e != nil {
+		return PlaybackPlan{}, e
+	}
 	digest := requestDigest([]any{session, m})
 	var oldDigest, oldSession string
 	e = tx.QueryRowContext(ctx, `SELECT request_digest,session_id FROM subtitle_selection_operations WHERE actor=? AND operation_id=?`, actor(p), m.OperationID).Scan(&oldDigest, &oldSession)
