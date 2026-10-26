@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/mediaexec"
 	"portico.local/server/internal/mediatools"
 	"portico.local/server/internal/storage"
@@ -134,9 +135,23 @@ func serveRemoteDiscRanges(ctx context.Context, requests io.Reader, data io.Writ
 // The caller owns and closes that object after this invocation. A size/mtime
 // observation alone is deliberately insufficient authority to issue this job.
 func (t Tool) ProbeRemoteImage(ctx context.Context, object storage.RemoteObject) (Probe, error) {
+	return t.probeRemoteImage(ctx, object, nil)
+}
+
+// ProbeRemoteImageForPlay narrows the existing bounded metadata helper to the
+// original Play invocation. The mandatory check runs around each served range
+// and after the final observation; it does not acquire or authorize an object.
+func (t Tool) ProbeRemoteImageForPlay(ctx context.Context, object storage.RemoteObject, current func(context.Context) error) (Probe, error) {
+	if ctx == nil || current == nil || dbwork.Snapshot(ctx) != nil {
+		return Probe{}, ErrRemoteUnqualified
+	}
+	return t.probeRemoteImage(ctx, object, current)
+}
+
+func (t Tool) probeRemoteImage(ctx context.Context, object storage.RemoteObject, current func(context.Context) error) (Probe, error) {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	raw, err := t.remoteImageMetadata(ctx, object, "probe-image-stream", nil, nil)
+	raw, err := t.remoteImageMetadata(ctx, object, "probe-image-stream", nil, current)
 	if err != nil {
 		return Probe{}, err
 	}

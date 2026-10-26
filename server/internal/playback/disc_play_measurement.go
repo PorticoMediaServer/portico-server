@@ -3,7 +3,6 @@ package playback
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -19,10 +18,14 @@ import (
 // This is a process-private measured value, not a recoverable proof in rows.
 // The original preparation owns it until an admitted continuation completes its
 // accepting writers or retires. Background measurement can never bind a session.
+type discPlayFactProof interface {
+	CheckTx(context.Context, *sql.Tx) error
+}
+
 type discPlayMeasurement struct {
 	ctx      context.Context
 	input    *assets.PlaybackInput
-	probe    *disc.CapturedProbe
+	probe    discPlayFactProof
 	original func(context.Context, *sql.Tx) error
 	mu       sync.Mutex
 	snapshot playbackdisc.Snapshot
@@ -54,6 +57,9 @@ func measureCapturedDiscPlay(ctx context.Context, o capturedDiscMeasure) (_ *dis
 	if ctx == nil || dbwork.Snapshot(ctx) != nil || o.Reader == nil {
 		return nil, disc.ErrProtocol
 	}
+	if err = discPlayPreparationContext(ctx); err != nil {
+		return nil, err
+	}
 	var input *assets.PlaybackInput
 	defer func() {
 		if err != nil {
@@ -64,7 +70,7 @@ func measureCapturedDiscPlay(ctx context.Context, o capturedDiscMeasure) (_ *dis
 			}
 		}
 	}()
-	if o.DB == nil || o.Current == nil || o.AcceptTx == nil || o.Tools == nil || o.Template.ID != "" || o.Template.SessionID != "" || o.Template.Generation != 0 || o.Template.Input.Captured != nil || o.Template.Input.Conditional != nil {
+	if o.DB == nil || o.Current == nil || o.AcceptTx == nil || o.Tools == nil || !discPlayConfiguredInputs(o.Tool, o.Probe) || o.Template.ID != "" || o.Template.SessionID != "" || o.Template.Generation != 0 || o.Template.Input.Captured != nil || o.Template.Input.Conditional != nil {
 		return nil, disc.ErrProtocol
 	}
 	if err = o.Current(ctx); err != nil {
@@ -74,7 +80,7 @@ func measureCapturedDiscPlay(ctx context.Context, o capturedDiscMeasure) (_ *dis
 	if err != nil {
 		return nil, err
 	}
-	err = o.AcceptTx(ctx, view.Tx())
+	err = o.AcceptTx(view.Context(), view.Tx())
 	view.Rollback()
 	if err != nil {
 		return nil, err
@@ -91,20 +97,9 @@ func measureCapturedDiscPlay(ctx context.Context, o capturedDiscMeasure) (_ *dis
 	if err != nil {
 		return nil, err
 	}
-	title, ok := structure.MainTitle()
-	if o.TitleKey != "" {
-		ok = false
-		for _, candidate := range structure.Titles {
-			if candidate.Key(structure.Kind) == o.TitleKey {
-				if ok {
-					return nil, disc.ErrProtocol
-				}
-				title, ok = candidate, true
-			}
-		}
-	}
-	if !ok {
-		return nil, ErrStaleOffer
+	title, err := measuredDiscTitle(structure, o.TitleKey)
+	if err != nil {
+		return nil, err
 	}
 	input, err = capturedDiscInput(ctx, o.Tool, o.Reader, structure, title, o.Current)
 	if err != nil {
@@ -129,23 +124,9 @@ func measureCapturedDiscPlay(ctx context.Context, o capturedDiscMeasure) (_ *dis
 	if err = input.Validate(ctx); err != nil {
 		return nil, err
 	}
-	snapshot := o.Template
-	snapshot.Tools = pins
-	snapshot.Input = playbackdisc.Input{Captured: &playbackdisc.Captured{Receipt: o.Reader.Receipt()}}
-	snapshot.Media = playbackdisc.MediaFacts{Container: facts.Container, VideoCodec: facts.VideoCodec, AudioCodec: facts.AudioCodec,
-		Width: facts.Width, Height: facts.Height, DurationMs: title.DurationMs, OriginUS: facts.OriginUS, TimingKnown: facts.TimingKnown,
-		Streams: append([]assets.Stream(nil), facts.Streams...), Chapters: append([]assets.Chapter(nil), facts.Chapters...)}
-	snapshot.Disc = playbackdisc.DiscFacts{Structure: structure, SelectedTitleKey: title.Key(structure.Kind), StructureRevision: observation.Fingerprint()}
-	for _, part := range []struct {
-		value any
-		out   *string
-	}{{snapshot.Media.Streams, &snapshot.Disc.StreamRevision}, {snapshot.Media.Chapters, &snapshot.Disc.ChapterRevision}, {snapshot.Media, &snapshot.Disc.FactsRevision}} {
-		raw, e := json.Marshal(part.value)
-		if e != nil {
-			return nil, e
-		}
-		// Scope actual facts to this unique acquired input and selected title.
-		*part.out = identity.Digest("disc-play-facts-v1\x00" + observation.Fingerprint() + "\x00" + snapshot.Disc.SelectedTitleKey + "\x00" + string(raw))
+	snapshot, err := measuredDiscSnapshot(o.Template, playbackdisc.Input{Captured: &playbackdisc.Captured{Receipt: o.Reader.Receipt()}}, pins, structure, title, observation.Fingerprint(), facts)
+	if err != nil {
+		return nil, err
 	}
 	return &discPlayMeasurement{ctx: ctx, input: input, probe: observation, original: o.AcceptTx, snapshot: snapshot}, nil
 }
@@ -178,7 +159,7 @@ func (m *discPlayMeasurement) CheckTx(ctx context.Context, tx *sql.Tx, candidate
 // A preparation row can retain this private value; it cannot recover the proof
 // from stored facts, a receipt ID or matching bytes after a process restart.
 func (m *discPlayMeasurement) CheckPreparedTx(ctx context.Context, tx *sql.Tx) error {
-	if m == nil || ctx == nil || tx == nil || m.closed.Load() || m.ctx == nil {
+	if m == nil || ctx == nil || tx == nil || m.closed.Load() || m.ctx == nil || m.probe == nil || m.original == nil {
 		return disc.ErrProtocol
 	}
 	if err := ctx.Err(); err != nil {
