@@ -226,3 +226,8 @@
 .phoneDirectoryLabel { flex: 1; min-width: 0; font-size: var(--type-subheading-size); font-weight: var(--type-row-heading-weight); color: var(--color-text); }
 .phoneDirectoryCount { color: var(--color-text-tertiary); font-size: var(--type-caption-size); font-variant-numeric: tabular-nums; }
 .phoneDirectoryChevron { color: var(--color-line-strong); flex: none; }
+/* phone-web frame 6: a pushed Saved page's own bar, replacing the desktop heading and tabs. */
+.phoneNav { position: relative; z-index: var(--layer-content); display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; min-height: 56px; padding: 8px 12px 0; }
+.phoneNav > b { font-size: var(--type-subheading-size); font-weight: var(--type-row-heading-weight); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.phoneNavStart { display: flex; justify-content: flex-start; min-width: 0; }
+.phoneNavEnd { display: flex; justify-content: flex-end; min-width: 0; }

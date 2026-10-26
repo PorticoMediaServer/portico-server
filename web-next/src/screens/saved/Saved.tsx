@@ -33,6 +33,7 @@ import {SavedHistory, SavedResourceScreen} from './Resource';
 import {ResourceFields} from './ResourceFields';
 import {SavedDialog} from './SavedDialog';
 import {SavedPhoneDirectory} from './SavedPhoneDirectory';
+import {SavedPhoneNav} from './SavedPhoneNav';
 import type {SavedPresentation} from './presentation.ts';
 export type {SavedPresentation} from './presentation.ts';
 import type {SavedOperations} from './operations.ts';
@@ -124,9 +125,11 @@ export function SavedScreen(bindings: SavedBindings) {
   const server = <ServerDownloads key={viewKey} service={runtime.downloads} operations={operations} effects={effects} artwork={bindings.preparationArtwork} online={bindings.online} />;
   return <main className={styles.page}>
     {presentation.backdrop && <div className={styles.wash} aria-hidden="true"><AmbientArt source={presentation.backdrop} treatment="hero" /></div>}
-    <header className={styles.header}><h1>{t('saved.title')}</h1></header>
-    <Tabs className={styles.tabs} listClassName={styles.tabsList} value={active} aria-label={t('web.saved.sections')} onValueChange={value => { if (value in tabLabels) effects.selectRoute({view: value as keyof typeof tabLabels}); }}
-      items={tabs.map(tab => ({value: tab, label: t(tabLabels[tab])}))} />
+    {phone ? <SavedPhoneNav title={t(active in tabLabels ? tabLabels[active as keyof typeof tabLabels] : 'saved.title')} onBack={() => effects.selectRoute({view: 'home'})} /> : <>
+      <header className={styles.header}><h1>{t('saved.title')}</h1></header>
+      <Tabs className={styles.tabs} listClassName={styles.tabsList} value={active} aria-label={t('web.saved.sections')} onValueChange={value => { if (value in tabLabels) effects.selectRoute({view: value as keyof typeof tabLabels}); }}
+        items={tabs.map(tab => ({value: tab, label: t(tabLabels[tab])}))} />
+    </>}
     {route.view === 'downloads' ? localUsable && bindings.localDownloads
       ? <LocalDownloads key={viewKey} port={bindings.localDownloads} operations={operations} effects={effects} server={<ServerDownloads service={runtime.downloads} operations={operations} effects={effects} artwork={bindings.preparationArtwork} online={bindings.online} embedded managed={!!effects.saveReadyPreparation} />} /> : server
       : route.view === 'history' ? <SavedHistory key={viewKey} bindings={dataBindings} />
