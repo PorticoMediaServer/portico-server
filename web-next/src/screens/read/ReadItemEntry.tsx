@@ -25,6 +25,7 @@ import {useLibraryScreenContext} from '../browse/screen-context';
 import {ReadMetadata} from './ReadMetadata';
 import {createReadBindings} from './bindings';
 import {readDestination, type ReadItemEligibility} from './navigation';
+import {readVersionCanChoose, readVersionPick} from './read-version-choice';
 import styles from './read-item.module.css';
 
 type Captured = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
@@ -64,6 +65,8 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     return () => retire(value);
   }, [captured.context, sourceId, retry]);
   const anchor = useRef<HTMLButtonElement>(null);
+  const chooserAnchor = useRef<HTMLButtonElement>(null);
+  const [chooserMenu, setChooserMenu] = useState(false);
   useEffect(() => {
     if (!current(attempt)) return;
     const original = attempt;
@@ -89,10 +92,36 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     })().catch(error => {if (live()) {errorSink.current(error); original.ready = false; original.target = undefined; setDetail({attempt: original, failed: true});} void bindings.close().catch(() => {});});
     return () => {active = false; original.ready = false; original.target = undefined; publication?.dispose(); off(); void bindings.dispose().catch(() => {});};
   }, [attempt, eligibility.itemId]);
-  if (current(attempt) && detail.attempt === attempt && detail.failed) return <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
-    primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => refresh(attempt)}}/>;
-  const manifest = current(attempt) && detail.attempt === attempt ? detail.manifest : undefined, version = eligibility.versions.find(version => version.sourceId === sourceId);
-  if (!manifest || !version || manifest.sourceId !== sourceId) return <Skeleton height={480}/>;
+  const version = eligibility.versions.find(candidate => candidate.sourceId === sourceId);
+  /** An explicit version recovery is permitted while the original attempt is failed or not
+   * ready; factsCurrent() is deliberately not the gate because it can never become true then.
+   * The fence is the original route/context, the live attempt identity and the chosen row. */
+  const pickVersion = (nextSourceId: string) => {
+    if (renderIdentity.current.context !== captured.context) return;
+    const chosen = readVersionPick(eligibility.versions, renderIdentity.current.sourceId, nextSourceId);
+    if (!chosen) return;
+    const original = attemptRef.current;
+    if (original) retire(original);
+    setDetail({});
+    setSaving(false); setRereading(false);
+    setMenu(false); setChooserMenu(false);
+    setSourceId(chosen.sourceId);
+  };
+  const versionChooser = readVersionCanChoose(eligibility.versions) ? <div className={styles.versionRow}>
+    <Button ref={chooserAnchor} size="small" variant="glass" onClick={() => setChooserMenu(value => !value)} aria-label={t('next.reader.version')}>
+      {version?.format.toUpperCase() ?? t('next.reader.version')}<Icon name="i-down" size={14}/></Button>
+    <Menu open={chooserMenu} onOpenChange={setChooserMenu} title={t('next.reader.version')} anchorRef={chooserAnchor}>
+      {eligibility.versions.map(candidate => <MenuItem key={candidate.sourceId} selected={candidate.sourceId === sourceId} disabled={!candidate.inventoryAvailable}
+        onSelect={() => pickVersion(candidate.sourceId)} description={defaultI18n.bytes(candidate.size)}>{candidate.format.toUpperCase()}</MenuItem>)}
+    </Menu>
+  </div> : null;
+  if (current(attempt) && detail.attempt === attempt && detail.failed) return <>
+    <StateView title={t('next.states.pageFailed')} body={t('next.states.pageFailedBody')}
+      primary={{id: 'retry', label: t('next.states.tryAgain'), onPress: () => refresh(attempt)}}/>
+    {versionChooser}
+  </>;
+  const manifest = current(attempt) && detail.attempt === attempt ? detail.manifest : undefined;
+  if (!manifest || !version || manifest.sourceId !== sourceId) return <>{<Skeleton height={480}/>}{versionChooser}</>;
   const title = manifest.metadata.title ?? '', author = manifest.metadata.author;
   const metadata = manifest.metadata, series = metadata.series;
   const original = detail.attempt;
@@ -186,7 +215,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     under={<>{(canEdit || canSaveFile || favorite) && <><Button ref={editorAnchor} size="small" variant="glass" icon="i-more" iconOnly aria-label={t('next.controls.more')} onClick={() => setMore(value => !value)}/><Menu open={more} onOpenChange={setMore} title={title} anchorRef={editorAnchor}>{favorite && <MenuItem icon="i-heart" selected={favorite.selected} disabled={favorite.busy} onSelect={favorite.onSelect}>{favorite.label}</MenuItem>}{canSaveFile && <MenuItem disabled={saving} onSelect={() => {void saveFile();}}>{t('next.reader.saveFile')}</MenuItem>}{canEdit && <MenuGroup ownerOnly label={<span>{t('next.browse.server')}<ServerMark size={22}/></span>}><MenuItem onSelect={() => {if (context.isCurrent()) setEditing(true);}}>{t('entry.editMetadata')}</MenuItem><MenuItem disabled={rereading} onSelect={() => {if (context.isCurrent()) void reread();}}>{t('next.reader.readFileAgain')}</MenuItem></MenuGroup>}</Menu></>}{chooseVersion ? <><Button ref={anchor} size="small" variant="glass" onClick={() => setMenu(value => !value)} aria-label={t('next.reader.version')}>
       {version.format.toUpperCase()}<Icon name="i-down" size={14}/></Button>
       <Menu open={menu} onOpenChange={setMenu} title={t('next.reader.version')} anchorRef={anchor}>{eligibility.versions.map(candidate => <MenuItem key={candidate.sourceId}
-        selected={candidate.sourceId === sourceId} disabled={!candidate.inventoryAvailable} onSelect={() => {if (candidate.sourceId === sourceId || !factsCurrent() || !original) return; retire(original); setSourceId(candidate.sourceId);}} description={defaultI18n.bytes(candidate.size)}>
+        selected={candidate.sourceId === sourceId} disabled={!candidate.inventoryAvailable} onSelect={() => {if (!factsCurrent()) return; pickVersion(candidate.sourceId);}} description={defaultI18n.bytes(candidate.size)}>
         {candidate.format.toUpperCase()}</MenuItem>)}</Menu></> : null}</>}/>
     {editing && canEdit && <ReadMetadata context={context} reading={captured.context} sourceId={manifest.sourceId} format={manifest.format} itemId={eligibility.itemId} anchor={editorAnchor} onClose={() => {if (!current(original)) return; setEditing(false); refresh(original);}}/>}
     <ReadBookSections contents={detail.targets?.length ? <><h2>{t('next.reader.contents')}</h2><ReaderContents entries={detailContents(manifest.contents ?? [], index => open(index))}/></> : <span hidden/>} details={details}/></>;
