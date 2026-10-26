@@ -74,12 +74,14 @@ type captureTarget struct {
 	assetID               string
 	itemID                string
 
-	observation  ObservationRef
-	scanRevision string
-	size         int64
-	sequential   bool
-	path         string
-	remoteRoot   string
+	observation      ObservationRef
+	scanRevision     string
+	size             int64
+	sequential       bool
+	sourceSequential bool
+	captureMode      captureReadMode
+	path             string
+	remoteRoot       string
 
 	profile  SourceReadProfile
 	settings advancedRow
@@ -110,6 +112,8 @@ type capturePhysicalRow struct {
 	scanRevision                            string
 	size                                    int64
 	sequential                              bool
+	sourceSequential                        bool
+	captureMode                             captureReadMode
 }
 
 type captureActorRow struct {
@@ -179,6 +183,9 @@ func capturePolicyWitness(t *captureTarget) string {
 		t.configDigest, strconv.FormatInt(t.sourceGeneration, 10), t.libraryRoot, t.remoteRoot, t.networkWitness, t.itemID, strconv.FormatBool(t.profile.Saved), strconv.FormatInt(t.settings.revision, 10), strconv.FormatInt(t.settings.values.CacheBytes, 10),
 		strconv.FormatInt(t.settings.values.CacheFloorBytes, 10), strconv.FormatInt(t.settings.appliedBytes, 10),
 		strconv.FormatInt(t.settings.appliedFloor, 10), strconv.FormatBool(t.applied),
+	}
+	if t.captureMode != captureClassifiedSequential || !t.sourceSequential {
+		parts = append(parts, "portico.remote-capture.transport.v1", string(t.captureMode), strconv.FormatBool(t.sourceSequential))
 	}
 	if t.profile.AllowAdvancedMediaAnalysis {
 		parts = append(parts, "portico.remote-capture.analysis-consent.v1", "true")
@@ -384,11 +391,12 @@ func (p *captureProducer) resolveTargetTx(ctx context.Context, tx *sql.Tx, asset
 	if out.floor == 0 && c.mountID != "" {
 		out.floor = settings.appliedFloor
 	}
-	sequential, err := sourceObjectSequentialTx(ctx, tx, c.remoteID, fullPath)
-	if err != nil || !sequential {
-		return out, storage.ErrRemoteRange
+	plan, err := captureReadPlanTx(ctx, tx, c.remoteID, fullPath)
+	if err != nil {
+		return out, err
 	}
-	out.sequential = true
+	out.sequential = true // the acquisition, not the source's range classification
+	out.sourceSequential, out.captureMode = plan.sourceSequential, plan.mode
 	return out, nil
 }
 
@@ -398,7 +406,7 @@ func sameTarget(a, b captureTarget) bool {
 		a.incarnation == b.incarnation && a.libraryGeneration == b.libraryGeneration && a.rootIdentity == b.rootIdentity &&
 		a.inventoryObjectID == b.inventoryObjectID && a.inventoryRevision == b.inventoryRevision &&
 		a.inventoryRelativePath == b.inventoryRelativePath && a.assetID == b.assetID && a.itemID == b.itemID &&
-		a.observation == b.observation && a.scanRevision == b.scanRevision && a.size == b.size && a.sequential == b.sequential &&
+		a.observation == b.observation && a.scanRevision == b.scanRevision && a.size == b.size && a.sequential == b.sequential && a.sourceSequential == b.sourceSequential && a.captureMode == b.captureMode &&
 		a.path == b.path && a.remoteRoot == b.remoteRoot && a.profile == b.profile &&
 		a.settings.revision == b.settings.revision && a.settings.saved == b.settings.saved &&
 		a.settings.values.CacheBytes == b.settings.values.CacheBytes && a.settings.values.CacheFloorBytes == b.settings.values.CacheFloorBytes &&
@@ -427,8 +435,8 @@ func captureRowTx(ctx context.Context, tx *sql.Tx, captureID string) (captureRow
 	if err != nil {
 		return out, err
 	}
-	err = tx.QueryRowContext(ctx, `SELECT capture_id,source_id,config_generation,mount_id,library_source_id,library_id,incarnation,library_generation,root_identity,inventory_object_id,inventory_revision,inventory_relative_path,config_digest,source_generation,library_root,remote_root,network_witness,observation_source,observation_generation,observation_object,observation_revision,scan_revision,size,sequential FROM remote_source_capture_physical WHERE capture_id=?`, captureID).Scan(
-		&out.physical.captureID, &out.physical.sourceID, &out.physical.configGeneration, &out.physical.mountID, &out.physical.librarySourceID, &out.physical.libraryID, &out.physical.incarnation, &out.physical.libraryGeneration, &out.physical.rootIdentity, &out.physical.inventoryObjectID, &out.physical.inventoryRevision, &out.physical.inventoryRelativePath, &out.physical.configDigest, &out.physical.sourceGeneration, &out.physical.libraryRoot, &out.physical.remoteRoot, &out.physical.networkWitness, &out.physical.observationSource, &out.physical.observationGeneration, &out.physical.observationObject, &out.physical.observationRevision, &out.physical.scanRevision, &out.physical.size, &out.physical.sequential)
+	err = tx.QueryRowContext(ctx, `SELECT capture_id,source_id,config_generation,mount_id,library_source_id,library_id,incarnation,library_generation,root_identity,inventory_object_id,inventory_revision,inventory_relative_path,config_digest,source_generation,library_root,remote_root,network_witness,observation_source,observation_generation,observation_object,observation_revision,scan_revision,size,sequential,source_sequential,capture_mode FROM remote_source_capture_physical WHERE capture_id=?`, captureID).Scan(
+		&out.physical.captureID, &out.physical.sourceID, &out.physical.configGeneration, &out.physical.mountID, &out.physical.librarySourceID, &out.physical.libraryID, &out.physical.incarnation, &out.physical.libraryGeneration, &out.physical.rootIdentity, &out.physical.inventoryObjectID, &out.physical.inventoryRevision, &out.physical.inventoryRelativePath, &out.physical.configDigest, &out.physical.sourceGeneration, &out.physical.libraryRoot, &out.physical.remoteRoot, &out.physical.networkWitness, &out.physical.observationSource, &out.physical.observationGeneration, &out.physical.observationObject, &out.physical.observationRevision, &out.physical.scanRevision, &out.physical.size, &out.physical.sequential, &out.physical.sourceSequential, &out.physical.captureMode)
 	if err != nil {
 		return out, err
 	}
@@ -513,7 +521,7 @@ func (p *captureProducer) checkBindingTx(ctx context.Context, tx *sql.Tx, b owne
 		inventoryObjectID: rows.physical.inventoryObjectID, inventoryRevision: rows.physical.inventoryRevision,
 		inventoryRelativePath: rows.physical.inventoryRelativePath, assetID: rows.actor.assetID, itemID: rows.actor.itemID,
 		observation:  ObservationRef{SourceID: rows.physical.observationSource, Generation: rows.physical.observationGeneration, Object: rows.physical.observationObject, Revision: rows.physical.observationRevision},
-		scanRevision: rows.physical.scanRevision, size: rows.physical.size, sequential: rows.physical.sequential,
+		scanRevision: rows.physical.scanRevision, size: rows.physical.size, sequential: rows.physical.sequential, sourceSequential: rows.physical.sourceSequential, captureMode: rows.physical.captureMode,
 		profile: SourceReadProfile{SourceID: rows.physical.sourceID, Saved: rows.policy.profileRevision > 0, Revision: rows.policy.profileRevision, ScanDepth: rows.policy.profileScanDepth,
 			WholeFileReads: rows.policy.profileWholeFileReads == 1, AllowAdvancedMediaAnalysis: rows.policy.profileAnalysisConsent, Limits: ReadLimits{Connections: rows.policy.profileConnections, RequestsPerSecond: rows.policy.profileRequests, BytesPerSecond: rows.policy.profileBytes}},
 		settings: advancedRow{saved: true, revision: rows.policy.settingsRevision, values: SourceAdvanced{CacheBytes: rows.policy.cacheBytes, CacheFloorBytes: rows.policy.cacheFloorBytes}, appliedBytes: rows.policy.appliedBytes, appliedFloor: rows.policy.appliedFloorBytes},
@@ -942,6 +950,50 @@ func captureCeilingAllows(prefix, reserved, capture, growth, limit int64) bool {
 	return growth <= remaining
 }
 
+// authorizeTargetTx is shared by preflight and actual reservation. A chosen
+// capture ID or source tuple is never authority; both paths re-prove the same
+// original family/device and normal playback/content callback in their Tx.
+func (p *captureProducer) authorizeTargetTx(ctx context.Context, tx *sql.Tx, request ownedcapture.Request, target *captureTarget) (time.Time, error) {
+	family, err := p.identities.SessionFamilyTx(ctx, tx, request.Principal)
+	if err != nil {
+		return time.Time{}, ownedcapture.ErrCurrent
+	}
+	if request.Principal.DeviceID != "" && request.Principal.DeviceID != family.DeviceID {
+		return time.Time{}, ownedcapture.ErrCurrent
+	}
+	authorized, err := p.authorize(ctx, tx, request.Principal, target.itemID)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if err = authorized.PermitsRequest(ctx); err != nil {
+		return time.Time{}, err
+	}
+	if authorized.ServerID != request.Principal.ServerID || authorized.AccountID != request.Principal.AccountID ||
+		authorized.ProfileID != request.Principal.ProfileID || authorized.Authority != request.Principal.Authority ||
+		authorized.Role != request.Principal.Role || authorized.Grant != request.Principal.Grant || authorized.Epoch != request.Principal.Epoch {
+		return time.Time{}, ownedcapture.ErrCurrent
+	}
+	if authorized.DeviceID != "" && family.DeviceID != "" && authorized.DeviceID != family.DeviceID {
+		return time.Time{}, ownedcapture.ErrCurrent
+	}
+	target.principal = authorized
+	target.family = family
+	expires := authorized.ExpiresAt
+	if !request.Principal.ExpiresAt.IsZero() && (expires.IsZero() || request.Principal.ExpiresAt.Before(expires)) {
+		expires = request.Principal.ExpiresAt
+	}
+	if !family.AuthorizationHorizon.IsZero() && (expires.IsZero() || family.AuthorizationHorizon.Before(expires)) {
+		expires = family.AuthorizationHorizon
+	}
+	if expires.IsZero() || !expires.After(time.Now()) {
+		return time.Time{}, ownedcapture.ErrCurrent
+	}
+	if limit := time.Now().Add(ownedcapture.MaxCaptureLifetime); expires.After(limit) {
+		expires = limit
+	}
+	return expires, nil
+}
+
 func (p *captureProducer) Admit(ctx context.Context, captureID string, request ownedcapture.Request, dest ownedcapture.Destination) (ownedcapture.Acquisition, error) {
 	if ctx == nil || len(captureID) != 64 || dbwork.InWriteTx(ctx) || dbwork.Snapshot(ctx) != nil {
 		return nil, ownedcapture.ErrInput
@@ -1005,43 +1057,11 @@ func (p *captureProducer) Admit(ctx context.Context, captureID string, request o
 	if currentBudget != budget {
 		return nil, ownedcapture.ErrCurrent
 	}
-	family, err := p.identities.SessionFamilyTx(ctx, gated.Tx(), request.Principal)
-	if err != nil {
-		return nil, ownedcapture.ErrCurrent
-	}
-	if request.Principal.DeviceID != "" && request.Principal.DeviceID != family.DeviceID {
-		return nil, ownedcapture.ErrCurrent
-	}
-	authorized, err := p.authorize(ctx, gated.Tx(), request.Principal, target.itemID)
+	expires, err := p.authorizeTargetTx(ctx, gated.Tx(), request, &target)
 	if err != nil {
 		return nil, err
 	}
-	if err = authorized.PermitsRequest(ctx); err != nil {
-		return nil, err
-	}
-	if authorized.ServerID != request.Principal.ServerID || authorized.AccountID != request.Principal.AccountID ||
-		authorized.ProfileID != request.Principal.ProfileID || authorized.Authority != request.Principal.Authority ||
-		authorized.Role != request.Principal.Role || authorized.Grant != request.Principal.Grant || authorized.Epoch != request.Principal.Epoch {
-		return nil, ownedcapture.ErrCurrent
-	}
-	if authorized.DeviceID != "" && family.DeviceID != "" && authorized.DeviceID != family.DeviceID {
-		return nil, ownedcapture.ErrCurrent
-	}
-	target.principal = authorized
-	target.family = family
-	expires := authorized.ExpiresAt
-	if !request.Principal.ExpiresAt.IsZero() && (expires.IsZero() || request.Principal.ExpiresAt.Before(expires)) {
-		expires = request.Principal.ExpiresAt
-	}
-	if !family.AuthorizationHorizon.IsZero() && (expires.IsZero() || family.AuthorizationHorizon.Before(expires)) {
-		expires = family.AuthorizationHorizon
-	}
-	if expires.IsZero() || !expires.After(time.Now()) {
-		return nil, ownedcapture.ErrCurrent
-	}
-	if limit := time.Now().Add(ownedcapture.MaxCaptureLifetime); expires.After(limit) {
-		expires = limit
-	}
+	authorized, family := target.principal, target.family
 	life, cancelLife := context.WithDeadline(ctx, expires)
 	cancel = cancelLife
 	if err = p.sources.trackCaptureLife(target.sourceID, target.profile, target.settings.revision, life, cancel); err != nil {
@@ -1052,7 +1072,7 @@ func (p *captureProducer) Admit(ctx context.Context, captureID string, request o
 		Purpose: SourcePlayback, Observation: target.observation, OnChanged: cancel,
 		CheckTx: func(check context.Context, tx *sql.Tx, binding SourceReadBinding) error {
 			if binding.Purpose != SourcePlayback || binding.Observation != target.observation || binding.Path != target.path ||
-				binding.Root != target.remoteRoot || binding.ScanRevision != target.scanRevision || binding.Size != target.size || binding.Profile != target.profile || !binding.Sequential {
+				binding.Root != target.remoteRoot || binding.ScanRevision != target.scanRevision || binding.Size != target.size || binding.Profile != target.profile || binding.Sequential != target.sourceSequential || binding.captureMode != target.captureMode {
 				return storage.ErrRemoteChanged
 			}
 			if err := p.checkTargetTx(check, tx, target); err != nil {
@@ -1064,7 +1084,7 @@ func (p *captureProducer) Admit(ctx context.Context, captureID string, request o
 			return nil
 		},
 	}
-	lease, err = p.sources.CaptureReadSourceTx(life, gated.Tx(), admission)
+	lease, err = p.sources.captureOwnedReadSourceTx(life, gated.Tx(), admission)
 	if err != nil {
 		return nil, err
 	}
@@ -1095,8 +1115,8 @@ func (p *captureProducer) Admit(ctx context.Context, captureID string, request o
 		captureID, target.sourceID, acquisitionID, reservationID, target.size, volume, now, expires.UnixMilli()); err != nil {
 		return nil, err
 	}
-	if _, err = gated.Tx().ExecContext(ctx, `INSERT INTO remote_source_capture_physical(capture_id,source_id,config_generation,mount_id,library_source_id,library_id,incarnation,library_generation,root_identity,inventory_object_id,inventory_revision,inventory_relative_path,config_digest,source_generation,library_root,remote_root,network_witness,observation_source,observation_generation,observation_object,observation_revision,scan_revision,size,sequential) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`,
-		captureID, target.sourceID, target.configGeneration, target.mountID, target.librarySourceID, target.libraryID, target.incarnation, target.libraryGeneration, target.rootIdentity, target.inventoryObjectID, target.inventoryRevision, target.inventoryRelativePath, target.configDigest, target.sourceGeneration, target.libraryRoot, target.remoteRoot, target.networkWitness, target.observation.SourceID, target.observation.Generation, target.observation.Object, target.observation.Revision, target.scanRevision, target.size); err != nil {
+	if _, err = gated.Tx().ExecContext(ctx, `INSERT INTO remote_source_capture_physical(capture_id,source_id,config_generation,mount_id,library_source_id,library_id,incarnation,library_generation,root_identity,inventory_object_id,inventory_revision,inventory_relative_path,config_digest,source_generation,library_root,remote_root,network_witness,observation_source,observation_generation,observation_object,observation_revision,scan_revision,size,sequential,source_sequential,capture_mode) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)`,
+		captureID, target.sourceID, target.configGeneration, target.mountID, target.librarySourceID, target.libraryID, target.incarnation, target.libraryGeneration, target.rootIdentity, target.inventoryObjectID, target.inventoryRevision, target.inventoryRelativePath, target.configDigest, target.sourceGeneration, target.libraryRoot, target.remoteRoot, target.networkWitness, target.observation.SourceID, target.observation.Generation, target.observation.Object, target.observation.Revision, target.scanRevision, target.size, target.sourceSequential, target.captureMode); err != nil {
 		return nil, err
 	}
 	if _, err = gated.Tx().ExecContext(ctx, `INSERT INTO remote_source_capture_actor(capture_id,server_id,account_id,profile_id,family_id,device_id,authority,role,grant,epoch,item_id,asset_id,authority_witness) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,

@@ -3813,7 +3813,11 @@ CREATE TABLE remote_source_capture_physical(
  observation_revision INTEGER NOT NULL,
  scan_revision TEXT NOT NULL,
  size INTEGER NOT NULL CHECK(size>0),
- sequential INTEGER NOT NULL CHECK(sequential=1)) STRICT;
+ sequential INTEGER NOT NULL CHECK(sequential=1),
+ source_sequential INTEGER NOT NULL DEFAULT 1 CHECK(source_sequential IN(0,1)),
+ capture_mode TEXT NOT NULL DEFAULT 'classified_sequential' CHECK(
+  (capture_mode='classified_sequential' AND source_sequential=1) OR
+  (capture_mode='managed_no_conditional_v1' AND source_sequential=0))) STRICT;
 CREATE TABLE remote_source_capture_actor(
  capture_id TEXT PRIMARY KEY,
  server_id TEXT NOT NULL,

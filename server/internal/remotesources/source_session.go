@@ -37,6 +37,8 @@ type SourceReadBinding struct {
 	Sequential               bool
 	Profile                  SourceReadProfile
 	LeaseID                  int64
+	// captureMode is source-issued only; it does not alter Sequential.
+	captureMode captureReadMode
 }
 
 type SourceSessionAdmission struct {
@@ -67,6 +69,10 @@ type SourceReadLease struct {
 }
 
 func (s *Service) CaptureReadSourceTx(ctx context.Context, tx *sql.Tx, admission SourceSessionAdmission) (*SourceReadLease, error) {
+	return s.captureReadSourceTx(ctx, tx, admission, "")
+}
+
+func (s *Service) captureReadSourceTx(ctx context.Context, tx *sql.Tx, admission SourceSessionAdmission, captureMode captureReadMode) (*SourceReadLease, error) {
 	if s == nil || s.db == nil || tx == nil || admission.CheckTx == nil || admission.OnChanged == nil {
 		return nil, storage.ErrRemoteConfig
 	}
@@ -121,7 +127,16 @@ func (s *Service) CaptureReadSourceTx(ctx context.Context, tx *sql.Tx, admission
 	if id < 1 {
 		return nil, storage.ErrRemoteLimit
 	}
-	binding := SourceReadBinding{Purpose: admission.Purpose, Observation: ref, Path: filepath.Join(root, filepath.FromSlash(ref.Object)), Root: root, ScanRevision: scan.Observation.ScanRevision, Size: scan.Observation.Facts.Size, Sequential: sequential, Profile: profile, LeaseID: id}
+	binding := SourceReadBinding{Purpose: admission.Purpose, Observation: ref, Path: filepath.Join(root, filepath.FromSlash(ref.Object)), Root: root, ScanRevision: scan.Observation.ScanRevision, Size: scan.Observation.Facts.Size, Sequential: sequential, Profile: profile, LeaseID: id, captureMode: captureMode}
+	if captureMode != "" {
+		plan, err := captureReadPlanTx(ctx, tx, ref.SourceID, binding.Path)
+		if err != nil {
+			return nil, err
+		}
+		if admission.Purpose != SourcePlayback || !assets.DiscImage(ref.Object) || binding.Size <= 0 || plan.mode != captureMode || plan.sourceSequential != sequential {
+			return nil, storage.ErrRemoteChanged
+		}
+	}
 	if err = admission.CheckTx(ctx, tx, binding); err != nil {
 		return nil, err
 	}
@@ -192,6 +207,15 @@ func (l *SourceReadLease) CheckTx(ctx context.Context, tx *sql.Tx) error {
 	if err != nil {
 		return l.checkFailure(ctx, err)
 	}
+	if l.binding.captureMode != "" {
+		plan, err := captureReadPlanTx(ctx, tx, l.binding.Observation.SourceID, l.binding.Path)
+		if err != nil {
+			return l.checkFailure(ctx, err)
+		}
+		if plan.mode != l.binding.captureMode || plan.sourceSequential != l.binding.Sequential {
+			return l.fail(storage.ErrRemoteChanged)
+		}
+	}
 	if generation != l.binding.Observation.Generation || root != l.binding.Root || profile != l.binding.Profile || scan.Ref != l.binding.Observation || scan.Observation.ScanRevision != l.binding.ScanRevision || scan.Observation.Facts.Size != l.binding.Size || sequential != l.binding.Sequential {
 		return l.fail(storage.ErrRemoteChanged)
 	}
@@ -222,7 +246,7 @@ func (l *SourceReadLease) CheckTx(ctx context.Context, tx *sql.Tx) error {
 		if se != nil {
 			return l.fail(se)
 		}
-		if network.Fingerprint != slot.networkFingerprint || sequential != slot.sequential {
+		if network.Fingerprint != slot.networkFingerprint || sequential != slot.sequential || slot.captureMode != l.binding.captureMode {
 			slot.cancel()
 			return l.fail(storage.ErrRemoteChanged)
 		}
@@ -288,6 +312,13 @@ func (l *SourceReadLease) fail(err error) error {
 			delete(readers, l.binding.LeaseID)
 			if len(readers) == 0 {
 				delete(l.service.readLeases, l.binding.Observation.SourceID)
+			}
+		}
+		if l.binding.captureMode != "" && len(readers) == 0 {
+			if slot := l.service.serveLeases[l.binding.Observation.SourceID]; slot != nil && slot.captureMode == l.binding.captureMode && slot.generation == l.binding.Observation.Generation && slot.profile == l.binding.Profile && slot.root == l.binding.Root {
+				// cancel never releases the slot: physical Wait still owns it.
+				slot.retiring = true
+				slot.cancel()
 			}
 		}
 		l.service.serveMu.Unlock()
@@ -423,6 +454,9 @@ func (l *SourceReadLease) process(ctx context.Context) (*rcloneprogram.ServeProc
 	return process, nil
 }
 func (l *SourceReadLease) OpenRange(ctx context.Context) (*SourceRange, error) {
+	if l.binding.captureMode != "" {
+		return nil, storage.ErrRemoteRange
+	}
 	l.openMu.Lock()
 	defer l.openMu.Unlock()
 	if err := l.canOpen(); err != nil {
