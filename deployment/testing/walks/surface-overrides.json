@@ -846,6 +846,123 @@
         "caption": "Music, Now playing and Settings in the browser",
         "markup": "columns: .phone saf with .wv"
       }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-45C7F84",
+      "frame": "states#16",
+      "action": "exclude",
+      "reason": "states frame is the native phone app: three .phone columns and no Safari or webview column",
+      "evidence": {
+        "file": "states.html",
+        "label": "f16",
+        "caption": "16. Empty on a phone. Left: a member on a server with nothing shared yet.",
+        "markup": "columns: .phone x3, saf=0, wv=0"
+      }
+    },
+    {
+      "surface": "android-phone",
+      "id": "S-GAP-45C7F84",
+      "frame": "states#16",
+      "action": "include",
+      "reason": "native phone frame per its caption and column markup; this row is not mobile web",
+      "evidence": {
+        "file": "states.html",
+        "label": "f16",
+        "caption": "16. Empty on a phone. Left: a member on a server with nothing shared yet.",
+        "markup": "columns: .phone x3, saf=0, wv=0"
+      }
+    },
+    {
+      "surface": "ios-phone",
+      "id": "S-GAP-45C7F84",
+      "frame": "states#16",
+      "action": "include",
+      "reason": "native phone frame per its caption and column markup; this row is not mobile web",
+      "evidence": {
+        "file": "states.html",
+        "label": "f16",
+        "caption": "16. Empty on a phone. Left: a member on a server with nothing shared yet.",
+        "markup": "columns: .phone x3, saf=0, wv=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-FA6D8EF",
+      "frame": "states#17",
+      "action": "exclude",
+      "reason": "states frame is the native phone app: three .phone columns and no Safari or webview column",
+      "evidence": {
+        "file": "states.html",
+        "label": "f17",
+        "caption": "17. More empty pages, phone. Left: no search results: today's words, then the same sheets.",
+        "markup": "columns: .phone x3, saf=0, wv=0"
+      }
+    },
+    {
+      "surface": "android-phone",
+      "id": "S-GAP-FA6D8EF",
+      "frame": "states#17",
+      "action": "include",
+      "reason": "native phone frame per its caption and column markup; this row is not mobile web",
+      "evidence": {
+        "file": "states.html",
+        "label": "f17",
+        "caption": "17. More empty pages, phone. Left: no search results: today's words, then the same sheets.",
+        "markup": "columns: .phone x3, saf=0, wv=0"
+      }
+    },
+    {
+      "surface": "ios-phone",
+      "id": "S-GAP-FA6D8EF",
+      "frame": "states#17",
+      "action": "include",
+      "reason": "native phone frame per its caption and column markup; this row is not mobile web",
+      "evidence": {
+        "file": "states.html",
+        "label": "f17",
+        "caption": "17. More empty pages, phone. Left: no search results: today's words, then the same sheets.",
+        "markup": "columns: .phone x3, saf=0, wv=0"
+      }
+    },
+    {
+      "surface": "web-phone",
+      "id": "S-GAP-FEBE201",
+      "frame": "states#21",
+      "action": "exclude",
+      "reason": "states frame is the native phone app: three .phone columns and no Safari or webview column",
+      "evidence": {
+        "file": "states.html",
+        "label": "f21",
+        "caption": "21. Loading on a phone. The same three pages at phone size, built from the phone components.",
+        "markup": "columns: .phone x3, saf=0, wv=0"
+      }
+    },
+    {
+      "surface": "android-phone",
+      "id": "S-GAP-FEBE201",
+      "frame": "states#21",
+      "action": "include",
+      "reason": "native phone frame per its caption and column markup; this row is not mobile web",
+      "evidence": {
+        "file": "states.html",
+        "label": "f21",
+        "caption": "21. Loading on a phone. The same three pages at phone size, built from the phone components.",
+        "markup": "columns: .phone x3, saf=0, wv=0"
+      }
+    },
+    {
+      "surface": "ios-phone",
+      "id": "S-GAP-FEBE201",
+      "frame": "states#21",
+      "action": "include",
+      "reason": "native phone frame per its caption and column markup; this row is not mobile web",
+      "evidence": {
+        "file": "states.html",
+        "label": "f21",
+        "caption": "21. Loading on a phone. The same three pages at phone size, built from the phone components.",
+        "markup": "columns: .phone x3, saf=0, wv=0"
+      }
     }
   ]
 }
