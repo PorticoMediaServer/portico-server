@@ -3,7 +3,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {
  parseNotification as read_parseNotification,parseNotificationInbox as read_parseNotificationInbox,parseNotificationDelta as read_parseNotificationDelta,parseNotificationBatchResult,
- parseNotificationSummary as read_parseNotificationSummary,parseNotificationBroadcastResult,notificationActionSupported,
+ parseNotificationSummary as read_parseNotificationSummary,parseNotificationBroadcastResult,notificationActionSupported,parseNotificationVocabulary,notificationCommands,
  mergeNotifications,parseFeedbackCapabilities,parseFeedbackSubmission as read_parseFeedbackSubmission,parseFeedbackList as read_parseFeedbackList,parseFeedbackReport as read_parseFeedbackReport,
  type Notification,
 } from '../src/notifications.ts';
@@ -167,6 +167,84 @@ test('the summary and the broadcast report parse to their published shapes',()=>
  assert.equal(broadcast.delivered,3);
  assert.throws(()=>parseNotificationBroadcastResult({audience:'profile',delivered:-1,created:0,updated:0,
   revision:1,dedupeKey:'k',ids:[]}));
+});
+
+// The exact document GET /v1/notifications/capabilities publishes today.
+const publishedVocabulary={
+ audiences:['profile','account-admin','all'],
+ severities:['info','warning','critical'],
+ states:['unread','read','archived','all'],
+ sources:['feedback','downloads','dvr','security','scan','networking','storage','broadcast'],
+ commands:['retry-job','open-download','dismiss-conflict','review-device','open-feedback','run-scan'],
+ views:['home','library','item','show','season','episode','person','collection','downloads','recordings',
+  'recording','live','search','feedback','notifications','settings','settings-storage','settings-network',
+  'settings-security','settings-jobs','admin-jobs','admin-feedback','admin-devices'],
+ maxLimit:100,heartbeatMs:20000,maxWaitMs:60000};
+
+test('the published vocabularies parse frozen, with only known commands supported',()=>{
+ const parsed=parseNotificationVocabulary(publishedVocabulary);
+ assert.deepEqual(parsed.audiences,publishedVocabulary.audiences);
+ assert.deepEqual(parsed.sources,publishedVocabulary.sources);
+ assert.deepEqual(parsed.views,publishedVocabulary.views);
+ assert.equal(parsed.maxLimit,100);
+ // The listeners these described are gone; the values are kept exact and grant nothing.
+ assert.equal(parsed.heartbeatMs,20000);
+ assert.equal(parsed.maxWaitMs,60000);
+ assert.deepEqual(parsed.supportedCommands,[...notificationCommands]);
+ assert.ok(Object.isFrozen(parsed));
+ for(const list of [parsed.audiences,parsed.severities,parsed.states,parsed.sources,parsed.commands,parsed.views,parsed.supportedCommands])
+  assert.ok(Object.isFrozen(list));
+ // A field a newer server adds is read rather than refused, exactly like the other documents.
+ assert.equal(parseNotificationVocabulary({...publishedVocabulary,futureField:1}).maxLimit,100);
+});
+
+test('a command this build does not know stays published but is never supported',()=>{
+ const parsed=parseNotificationVocabulary(publishedVocabulary);
+ assert.deepEqual(parsed.commands,publishedVocabulary.commands);
+ assert.deepEqual(parseNotificationVocabulary({...publishedVocabulary,commands:['run-scan','teleport-server']}).supportedCommands,['run-scan']);
+ assert.equal(parseNotificationVocabulary({...publishedVocabulary,commands:['run-scan','teleport-server']}).commands.length,2);
+ // Publication order follows the server, support order follows this build's allowlist.
+ assert.deepEqual(parseNotificationVocabulary({...publishedVocabulary,commands:['run-scan','retry-job']}).supportedCommands,['retry-job','run-scan']);
+ assert.deepEqual(parseNotificationVocabulary({...publishedVocabulary,commands:[]}).supportedCommands,[]);
+});
+
+test('a vocabulary outside its closed shape is refused, never half-read',()=>{
+ assert.throws(()=>parseNotificationVocabulary([]));
+ const missing=({...publishedVocabulary} as Record<string,unknown>); delete missing.views;
+ assert.throws(()=>parseNotificationVocabulary(missing));
+ assert.throws(()=>parseNotificationVocabulary({...publishedVocabulary,commands:{}}));
+ assert.throws(()=>parseNotificationVocabulary({...publishedVocabulary,states:null}));
+ assert.throws(()=>parseNotificationVocabulary({...publishedVocabulary,maxLimit:0}));
+ assert.throws(()=>parseNotificationVocabulary({...publishedVocabulary,maxLimit:'100'}));
+ assert.throws(()=>parseNotificationVocabulary({...publishedVocabulary,heartbeatMs:-1}));
+ assert.throws(()=>parseNotificationVocabulary({...publishedVocabulary,maxWaitMs:1.5}));
+ // A list longer than one vocabulary can carry is a size limit, not a newer server.
+ assert.throws(()=>parseNotificationVocabulary({...publishedVocabulary,commands:Array.from({length:33},(_,i)=>`command-${i}`)}));
+ assert.throws(()=>parseNotificationVocabulary({...publishedVocabulary,views:Array.from({length:65},(_,i)=>`view-${i}`)}));
+ assert.throws(()=>parseNotificationVocabulary({...publishedVocabulary,audiences:['profile','account-admin','all','everyone','nobody']}));
+ // A token longer than the longest one an action may carry is malformed.
+ assert.throws(()=>parseNotificationVocabulary({...publishedVocabulary,commands:['x'.repeat(81)]}));
+ assert.throws(()=>parseNotificationVocabulary({...publishedVocabulary,views:['']}));
+ assert.throws(()=>parseNotificationVocabulary({...publishedVocabulary,commands:[7]}));
+});
+
+test('a vocabulary token is non-empty, well-formed text with no control characters',()=>{
+ for(const token of ['run\u0000scan','run\u0007scan','\u001f','run\u007fscan','\u009f','\ud800','\udc00','run\ud800scan',''])
+  assert.throws(()=>parseNotificationVocabulary({...publishedVocabulary,commands:[token]}));
+ // Well-formed text outside ASCII stays exactly as published; no pattern narrowing.
+ const published=parseNotificationVocabulary({...publishedVocabulary,commands:['run😀scan','команда']});
+ assert.deepEqual(published.commands,['run😀scan','команда']);
+ assert.deepEqual(published.supportedCommands,[]);
+});
+
+test('a repeated vocabulary token is one permission, and the parsed document cannot be edited',()=>{
+ const parsed=parseNotificationVocabulary({...publishedVocabulary,
+  audiences:['profile','profile','account-admin'],commands:['run-scan','run-scan'],views:['home','home']});
+ assert.deepEqual(parsed.audiences,['profile','account-admin']);
+ assert.deepEqual(parsed.commands,['run-scan']);
+ assert.deepEqual(parsed.views,['home']);
+ assert.throws(()=>{(parsed.commands as unknown as string[]).push('run-scan');});
+ assert.throws(()=>{(parsed as unknown as {maxLimit:number}).maxLimit=1;});
 });
 
 const capabilities={

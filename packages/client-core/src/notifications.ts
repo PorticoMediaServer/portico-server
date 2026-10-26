@@ -19,6 +19,7 @@ import {wireInstants} from './wire-units.ts';
  * the document's own revision, cursor, counts and size limits stay exact.
  */
 import {keepReadable,noteSkipped,oneOf,oneOfOr} from './tolerant.ts';
+import type {GetNotificationsCapabilitiesResponse} from '../../contracts/src/types.ts';
 
 /** The complete command allowlist. A server may publish more; see capabilities. */
 export const notificationCommands=['retry-job','open-download','dismiss-conflict','review-device','open-feedback','run-scan'] as const;
@@ -213,6 +214,74 @@ export function parseNotificationBroadcastResult(value:unknown):NotificationBroa
  if(!text(value.audience,40)||!text(value.dedupeKey,240))invalid();
  if(!Array.isArray(value.ids)||value.ids.length>50)invalid();
  return value as NotificationBroadcastResult;
+}
+
+/* The published vocabularies. */
+
+/** The field set of the generated `GetNotificationsCapabilitiesResponse["data"]`
+ * descriptor, so this build cannot quietly read a document the contract does not
+ * publish. The generated runtime decoder is not called here: it validates the
+ * `{scope,data}` envelope, which the caller's envelope guard owns, and this
+ * module is handed the payload alone like every other parser here. */
+type PublishedVocabulary=GetNotificationsCapabilitiesResponse['data'];
+/** `GET /v1/notifications/capabilities`, frozen: the server's own audiences,
+ * severities, states, sources, commands, views and bounds. Every list is exactly
+ * as published, deduplicated and in the server's order; `supportedCommands` is
+ * this build's intersection with it, because a newer server may publish a
+ * command this client must draw disabled rather than guess at. */
+export type NotificationVocabulary=Readonly<{
+ [K in keyof PublishedVocabulary]: PublishedVocabulary[K] extends readonly string[] ? readonly string[] : number;
+}> & Readonly<{supportedCommands:readonly NotificationCommand[]}>;
+
+/** Client resource bounds per published list: [items, one token]. They are far
+ * above the 3 audiences, 3 severities, 4 states, 8 sources, 6 commands and 23
+ * views the server publishes today, so a newer server is read rather than
+ * refused, while a document that cannot be a vocabulary is still refused. The
+ * token bound is the longest one an action may carry, so a vocabulary token can
+ * never name something this client would not also read there. */
+const vocabularyBounds={audiences:[4,40],severities:[8,40],states:[8,20],sources:[32,60],commands:[32,80],views:[64,80]} as const;
+
+/** A published token is a non-empty, well-formed UTF-16 string with no control
+ * characters. It is deliberately not narrowed to a pattern: a command or view a
+ * newer server adds stays exactly as published and inert unless this build knows
+ * it, so a token is never rewritten to fit a regex. */
+function wellFormed(value:unknown,max:number):value is string{
+ if(!text(value,max)||!value)return false;
+ for(let index=0;index<value.length;index++){
+  const code=value.charCodeAt(index);
+  if(code<0x20||(code>=0x7f&&code<=0x9f))return false;
+  if(code>=0xd800&&code<=0xdbff){
+   const next=value.charCodeAt(index+1);
+   if(!(next>=0xdc00&&next<=0xdfff))return false;
+   index++;
+  }else if(code>=0xdc00&&code<=0xdfff)return false;
+ }
+ return true;
+}
+
+function vocabularyList(value:unknown,max:number,token:number):readonly string[]{
+ if(!Array.isArray(value)||value.length>max)invalid();
+ const out:string[]=[];
+ // A repeated token is the same permission, not a second one; first wins.
+ for(const entry of value){if(!wellFormed(entry,token))invalid();if(!out.includes(entry))out.push(entry);}
+ return Object.freeze(out);
+}
+
+export function parseNotificationVocabulary(value:unknown):NotificationVocabulary{
+ if(!obj(value))invalid();
+ const audiences=vocabularyList(value.audiences,...vocabularyBounds.audiences);
+ const severities=vocabularyList(value.severities,...vocabularyBounds.severities);
+ const states=vocabularyList(value.states,...vocabularyBounds.states);
+ const sources=vocabularyList(value.sources,...vocabularyBounds.sources);
+ const commands=vocabularyList(value.commands,...vocabularyBounds.commands);
+ const views=vocabularyList(value.views,...vocabularyBounds.views);
+ // `maxLimit` below one cannot be a page size. `heartbeatMs` and `maxWaitMs`
+ // describe listeners the server no longer publishes; they are read and kept
+ // exact, and grant this client no request.
+ if(!whole(value.maxLimit)||value.maxLimit<1||!whole(value.heartbeatMs)||!whole(value.maxWaitMs))invalid();
+ return Object.freeze({audiences,severities,states,sources,commands,views,
+  maxLimit:value.maxLimit,heartbeatMs:value.heartbeatMs,maxWaitMs:value.maxWaitMs,
+  supportedCommands:Object.freeze(notificationCommands.filter(command=>commands.includes(command)))});
 }
 
 /**
