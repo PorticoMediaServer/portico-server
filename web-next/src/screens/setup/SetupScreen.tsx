@@ -40,13 +40,11 @@ function SetupBody({flow}: {flow: SetupFlow}) {
       {state.phase === 'loading' && <p className={styles.lede} role="status">{t('web.setup.preparing')}</p>}
       {state.phase === 'waiting' && <p className={styles.lede} role="status">{t('web.setup.preparing')}</p>}
       {state.phase === 'error' && (addressFailure ? <>
-        <h1>{t('web.setup.welcome')}</h1>
         <p className={styles.error} role="alert"><Icon name="i-warn" size={20}/>{t('web.setup.notOnNetwork')}</p>
-        <p className={styles.lede}>{state.serverName}</p>
+        <div className={styles.field}><TextField variant="auth" label={t('web.general.serverName')} value={state.name || state.serverName} readOnly/></div>
         <Button variant="primary" size="hero" disabled>{t('accounts.signIn.handoff')}</Button>
       </> : servicesFailure ? <>
-        <h1>{t('web.setup.welcome')}</h1>
-        <p className={styles.error} role="alert"><Icon name="i-warn" size={20}/>{t('web.setup.servicesUnavailableBody')}</p>
+        <p className={styles.error} role="alert"><Icon name="i-clock" size={20}/>{t('web.setup.servicesUnavailableBody')}</p>
         <div className={styles.btnRow}>
           {servicesFailure.retry && <Button variant="primary" size="hero" loading={state.busy} disabled={state.busy}
             onClick={() => void flow.retryFailure(servicesFailure)}>{t('action.tryAgain')}</Button>}

@@ -239,6 +239,7 @@ export class BrowserSetupClaim {
       await this.ports.journal.change(old => {if (!operation.current() || !equal(old, receipt.pending)) throw cancelled(); return undefined;});
       if (!operation.current()) throw cancelled();
       await opening.assertOriginal();
+      if (receipt.pending) await this.current(receipt.pending, operation, false);
       if (!operation.current()) throw cancelled();
       if (this.attemptId === receipt.pending?.attemptId) this.attemptId = undefined;
     } finally {this.busy = false;}

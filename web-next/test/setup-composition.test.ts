@@ -8,6 +8,7 @@ import {rememberNativeSession} from '@core/server-connections.ts';
 import {routeBase64, routeBytes, webRouteCrypto} from '@core/route-identity.ts';
 import type {SetupDraft} from '@core/setup-onboarding.ts';
 import {BrowserSetupComposition, type SetupTarget} from '../src/platform/setup-composition.ts';
+import {SetupStageFailure} from '../src/platform/setup-failure.ts';
 
 const vector = JSON.parse(readFileSync(new URL('../../server/internal/claimweb/testdata/owner_start.json', import.meta.url), 'utf8'));
 const original = JSON.parse(vector.claimPayload);
@@ -76,4 +77,57 @@ test('disposal retires a late local admission rather than retaining an unexposed
  const flow=new BrowserSetupComposition('https://accounts.example',()=>{}, {...f.ports,remember:async(...args)=>{await rememberNativeSession(...args);flow.dispose();}});
  await flow.connect(async()=>f.target,new AbortController().signal);await assert.rejects(flow.acceptLocal(f.target,f.session));
  assert.equal(await f.sessions.selected(),undefined);assert.ok(f.draft());assert.ok(f.calls.some(v=>v.path==='/v1/sessions/current'));
+});
+
+// Source regression vectors for the staged auth1d continuation. Execution belongs
+// to the normal checkpoint; these do not qualify setup or return at runtime.
+test('a staged retry keeps the original request and name, then spends its own failure', async t => {
+ const f=await fixture(t);f.hosted();let claims=0;
+ const navigated:string[]=[];
+ const composition=new BrowserSetupComposition('https://accounts.example',url=>navigated.push(url),{...f.ports,claim:()=>({
+  prepare:async()=>{if(++claims===1)throw new ApiError(503,'claim_unavailable','unavailable',true);return 'https://accounts.example/claim#code=owned';},cancel:async()=>{},
+ })});t.after(()=>composition.dispose());
+ await composition.connect(async()=>f.target,new AbortController().signal);
+ let failure:unknown;
+ try {await composition.continueHosted(f.target,{name:'Original name'});} catch(error) {failure=error;}
+ assert.ok(failure instanceof SetupStageFailure);assert.equal(failure.stage,'claim');assert.ok(failure.retry);
+ const original=f.draft(), first=f.calls.find(call=>call.path==='/v1/setup');
+ await failure.retry();
+ assert.equal(claims,2);assert.equal(navigated.length,1);assert.deepEqual(f.draft(),original);
+ assert.deepEqual(f.calls.filter(call=>call.path==='/v1/setup').map(call=>call.body),[first!.body,first!.body]);
+ const before=f.calls.length;
+ await assert.rejects(failure.retry());assert.equal(f.calls.length,before);assert.equal(navigated.length,1);
+});
+
+for(const replacement of ['selection','opening'] as const) test('a staged '+replacement+' replacement refuses before retry I/O',async t=>{
+ const f=await fixture(t);f.hosted();let active=true,claims=0;
+ const composition=new BrowserSetupComposition('https://accounts.example',()=>assert.fail('late navigation'),{...f.ports,claim:()=>({
+  prepare:async()=>{claims++;throw new ApiError(503,'claim_unavailable','unavailable',true);},cancel:async()=>{},
+ })},()=>active);t.after(()=>composition.dispose());
+ await composition.connect(async()=>f.target,new AbortController().signal);
+ let failure:unknown;
+ try {await composition.continueHosted(f.target,{name:'Original name'});} catch(error) {failure=error;}
+ assert.ok(failure instanceof SetupStageFailure);assert.ok(failure.retry);
+ const before=f.calls.length, draft=f.draft();
+ if(replacement==='selection')f.replaceSelection();else active=false;
+ await assert.rejects(failure.retry());
+ assert.equal(f.calls.length,before);assert.equal(claims,1);assert.deepEqual(f.draft(),draft);
+});
+
+test('local recovery cannot borrow a replacement selection and receives the original abort',async t=>{
+ const f=await fixture(t);f.hosted();let local=0;let capturedSignal:AbortSignal|undefined;
+ const composition=new BrowserSetupComposition('https://accounts.example',()=>assert.fail('unexpected navigation'),{...f.ports,claim:()=>({
+  prepare:async(_api,_origin,opening)=>{
+   assert.ok(opening);capturedSignal=opening.signal;
+   opening.capture(Object.freeze({retry:async()=>{throw new Error('not used');},useLocal:async()=>{local++;}}));
+   throw new ApiError(503,'claim_unavailable','unavailable',true);
+  },cancel:async()=>{},
+ })});t.after(()=>composition.dispose());
+ await composition.connect(async()=>f.target,new AbortController().signal);
+ let failure:unknown;
+ try {await composition.continueHosted(f.target,{name:'Original name'});} catch(error) {failure=error;}
+ assert.ok(failure instanceof SetupStageFailure);assert.ok(failure.useLocal);assert.ok(capturedSignal);
+ f.replaceSelection();const before=f.calls.length;
+ await assert.rejects(failure.useLocal());assert.equal(local,0);assert.equal(f.calls.length,before);
+ composition.dispose();assert.equal(capturedSignal.aborted,true);
 });

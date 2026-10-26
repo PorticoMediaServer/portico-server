@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {SetupFlow, type SetupPorts, type SetupServer} from '../src/screens/setup/setup-flow.ts';
 import {defaultSetupServerName, localPasswordValid, setupErrorMessage, validLocalUsername} from '../src/screens/setup/setup-model.ts';
+import {SetupStageFailure} from '../src/platform/setup-failure.ts';
+import type {SetupDraft} from '@core/setup-onboarding.ts';
 
 function session(serverId = 'server-1') {
   const now = Date.now();
@@ -131,5 +133,60 @@ test('the setup values keep the drawn boundary rules', () => {
   assert.equal(validLocalUsername('demo@example.com'), false);
   assert.equal(localPasswordValid('a long enough password 1', 'a long enough password 1'), true);
   assert.equal(localPasswordValid('a long enough password 1', 'another password 2'), false);
-  assert.match(setupErrorMessage({status: 403}), /could not be authorized/);
+  assert.match(setupErrorMessage(new SetupStageFailure('browser-start', {status: 403})), /could not be authorized/);
+  assert.doesNotMatch(setupErrorMessage(new SetupStageFailure('claim', {status: 403})), /could not be authorized at this address/);
+  assert.doesNotMatch(setupErrorMessage({status: 403}), /could not be authorized at this address/);
+});
+
+// Auth1d source vectors. The server refuses browser-start while onboarding is
+// pending, so an accepted recovery must use its original protected continuation.
+for (const replace of [false, true]) test(`local recovery ${replace ? 'refuses a replaced draft' : 'uses the captured setup proof without browser-start'}`, async () => {
+  let draft: SetupDraft | undefined;
+  const failure = new SetupStageFailure('claim', {code: 'claim_unavailable', status: 503}, undefined, async () => {});
+  const f = fixture({hosted: async () => {
+    draft = {version: 1, serverId: 'server-1', requestId: '11111111-2222-4333-8444-555555555555', setupToken: 'original-private-proof', name: 'Portico demo', authMode: 'hosted'};
+    throw failure;
+  }});
+  f.server.draft.read = async () => draft;
+  f.server.draft.change = async update => {draft = update(draft);};
+  const requests: {path: string; body: unknown}[] = [];
+  f.server.api.request = (async (path: string, _method: string, body: unknown) => {
+    requests.push({path, body});
+    if (path === '/v1/setup/resume') return {serverId: 'server-1', requestId: draft!.requestId, claimRequired: true, authMode: 'hosted', revision: '1'};
+    if (path === '/v1/setup') return session();
+    throw new Error('No new browser setup proof may be requested.');
+  }) as SetupServer['api']['request'];
+  try {
+    await f.flow.start(); await f.flow.submitHosted();
+    assert.equal(f.flow.getSnapshot().failure, failure);
+    await f.flow.useLocalFailure(failure);
+    assert.equal(f.flow.getSnapshot().phase, 'form');
+    if (replace) draft = {...draft!, requestId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee'};
+    const original = draft;
+    f.flow.setUsername('owner'); f.flow.setPassword('a long enough password 1'); f.flow.setConfirm('a long enough password 1');
+    await f.flow.submitLocal();
+    assert.equal(requests.some(value => value.path === '/v1/setup/browser'), false);
+    if (replace) {assert.equal(requests.length, 0); assert.equal(draft, original); assert.equal(f.accepted(), 0);}
+    else {
+      assert.deepEqual(requests.map(value => value.path), ['/v1/setup/resume', '/v1/setup']);
+      assert.equal((requests[1].body as {setupToken: string}).setupToken, 'original-private-proof');
+      assert.equal((requests[1].body as {requestId: string}).requestId, original!.requestId);
+      assert.equal(f.flow.getSnapshot().phase, 'library'); assert.equal(f.accepted(), 1);
+    }
+  } finally {f.flow.dispose();}
+});
+
+test('a recovery callback cannot publish the local form after replacing its original proof', async () => {
+  let draft: SetupDraft | undefined;
+  const failure = new SetupStageFailure('claim', {code: 'claim_unavailable', status: 503}, undefined, async () => {draft = {...draft!, setupToken: 'foreign-proof'};});
+  const f = fixture({hosted: async () => {
+    draft = {version: 1, serverId: 'server-1', requestId: '11111111-2222-4333-8444-555555555555', setupToken: 'original-proof', name: 'Portico demo', authMode: 'hosted'};
+    throw failure;
+  }});
+  f.server.draft.read = async () => draft;
+  try {
+    await f.flow.start(); await f.flow.submitHosted(); await f.flow.useLocalFailure(failure);
+    assert.equal(f.flow.getSnapshot().phase, 'error'); assert.equal(f.flow.getSnapshot().mode, 'hosted');
+    assert.equal(draft?.setupToken, 'foreign-proof'); assert.equal(f.requests(), 0);
+  } finally {f.flow.dispose();}
 });
