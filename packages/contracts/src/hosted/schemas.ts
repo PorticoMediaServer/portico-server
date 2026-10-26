@@ -461,11 +461,15 @@ export const schemas = {
                 },
                 "provider": {
                   "type": "string"
+                },
+                "revision": {
+                  "type": "string"
                 }
               },
               "required": [
                 "id",
-                "provider"
+                "provider",
+                "revision"
               ],
               "type": "object"
             },
@@ -1299,11 +1303,15 @@ export const schemas = {
             },
             "provider": {
               "type": "string"
+            },
+            "revision": {
+              "type": "string"
             }
           },
           "required": [
             "id",
-            "provider"
+            "provider",
+            "revision"
           ],
           "type": "object"
         },
@@ -1509,6 +1517,306 @@ export const schemas = {
       "expiresAt",
       "accountId",
       "familyId"
+    ],
+    "type": "object"
+  },
+  "AccountSecurityReturnCancelRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "AccountSecurityReturnCancelResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "AccountSecurityReturnCompleteRequest": {
+    "properties": {
+      "code": {
+        "type": "string"
+      },
+      "confirmation": {
+        "properties": {
+          "payload": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "payload",
+          "signature"
+        ],
+        "type": "object"
+      },
+      "factor": {
+        "type": "string"
+      },
+      "verifier": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "code",
+      "verifier",
+      "confirmation",
+      "factor"
+    ],
+    "type": "object"
+  },
+  "AccountSecurityReturnCompleteResponse": {
+    "properties": {
+      "recentProof": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "familyId": {
+            "type": "string"
+          },
+          "proof": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "proof",
+          "expiresAt",
+          "accountId",
+          "familyId"
+        ],
+        "type": "object"
+      },
+      "securityResult": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "challengeId": {
+            "type": "string"
+          },
+          "deletionPreview": {
+            "properties": {
+              "affectedServers": {
+                "items": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "canDelete": {
+                "type": "boolean"
+              },
+              "deletionToken": {
+                "type": "string"
+              },
+              "expiresAt": {
+                "format": "date-time",
+                "type": "string"
+              },
+              "ownedServers": {
+                "items": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "deletionToken",
+              "expiresAt",
+              "ownedServers",
+              "affectedServers",
+              "canDelete"
+            ],
+            "type": "object"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "familyId": {
+            "type": "string"
+          },
+          "maskedAddress": {
+            "type": "string"
+          },
+          "otpAuthUri": {
+            "type": "string"
+          },
+          "recoveryCodes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "resendsRemaining": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "secret": {
+            "type": "string"
+          },
+          "signOut": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "familyId",
+          "status"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [],
+    "type": "object"
+  },
+  "AccountSecurityReturnPrepareRequest": {
+    "properties": {
+      "codeChallenge": {
+        "type": "string"
+      },
+      "context": {
+        "properties": {
+          "payload": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "payload",
+          "signature"
+        ],
+        "type": "object"
+      },
+      "state": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "context",
+      "state",
+      "codeChallenge"
+    ],
+    "type": "object"
+  },
+  "AccountSecurityReturnPrepareResponse": {
+    "properties": {
+      "expiresAt": {
+        "format": "date-time",
+        "type": "string"
+      },
+      "intentId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "intentId",
+      "expiresAt"
+    ],
+    "type": "object"
+  },
+  "AccountSecurityReturnStartRequest": {
+    "properties": {
+      "requestId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "requestId"
+    ],
+    "type": "object"
+  },
+  "AccountSecurityReturnStartResponse": {
+    "properties": {
+      "authorizationUrl": {
+        "type": "string"
+      },
+      "context": {
+        "properties": {
+          "payload": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "payload",
+          "signature"
+        ],
+        "type": "object"
+      },
+      "expiresAt": {
+        "format": "date-time",
+        "type": "string"
+      },
+      "intentId": {
+        "type": "string"
+      },
+      "mode": {
+        "type": "string"
+      },
+      "nativeNonce": {
+        "type": "string"
+      },
+      "provider": {
+        "type": "string"
+      },
+      "registeredOrigin": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string"
+      },
+      "transactionId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "authorizationUrl",
+      "expiresAt",
+      "mode",
+      "nativeNonce",
+      "transactionId",
+      "intentId",
+      "registeredOrigin",
+      "state",
+      "context",
+      "provider"
     ],
     "type": "object"
   },
@@ -2181,6 +2489,9 @@ export const schemas = {
       "provider": {
         "type": "string"
       },
+      "securityReturn": {
+        "type": "boolean"
+      },
       "status": {
         "type": "string"
       },
@@ -2336,10 +2647,51 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "IdentitySecurityCancelRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "IdentitySecurityCancelResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "IdentitySecurityReturnRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "IdentitySecurityReturnResponse": {
+    "properties": {
+      "location": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "location"
+    ],
+    "type": "object"
+  },
   "IdentityStartRequest": {
     "properties": {
       "completion": {
         "type": "string"
+      },
+      "expectedIdentity": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "revision"
+        ],
+        "type": "object"
       },
       "intent": {
         "properties": {
@@ -2557,6 +2909,9 @@ export const schemas = {
       "provider": {
         "type": "string"
       },
+      "securityReturn": {
+        "type": "boolean"
+      },
       "status": {
         "type": "string"
       },
@@ -2609,6 +2964,9 @@ export const schemas = {
       },
       "provider": {
         "type": "string"
+      },
+      "securityReturn": {
+        "type": "boolean"
       },
       "status": {
         "type": "string"
@@ -2672,6 +3030,9 @@ export const schemas = {
       },
       "provider": {
         "type": "string"
+      },
+      "securityReturn": {
+        "type": "boolean"
       },
       "status": {
         "type": "string"

@@ -57,6 +57,69 @@ func TestMeasuredDiscTitleMetadataIsStableAndFactsVersioned(t *testing.T) {
 	}
 }
 
+func TestMeasuredDiscTitleKeySelectsExactMetadataIDBeforeFacts(t *testing.T) {
+	p := measuredTitleStructure()
+	before, _ := json.Marshal(p)
+	for _, title := range p.Titles {
+		want := title.Key(p.Kind)
+		ref := measuredTitleRef(t, "asset", "object", "observation", want, strings.Repeat("a", 64), p)
+		key, err := MeasuredDiscTitleKey("asset", "object", "observation", p, ref.ID)
+		if err != nil || key != want {
+			t.Fatal("explicit title ID selected a fallback or different title", key, want, err)
+		}
+		// Selection requires no facts revision. The final measured reference
+		// keeps its metadata ID while independently versioning changed facts.
+		final := measuredTitleRef(t, "asset", "object", "observation", key, strings.Repeat("b", 64), p)
+		if final.ID != ref.ID || final.Revision == ref.Revision {
+			t.Fatal("pre-facts selection changed metadata identity or claimed facts equality")
+		}
+	}
+	after, _ := json.Marshal(p)
+	if string(before) != string(after) {
+		t.Fatal("title lookup mutated the original structure")
+	}
+}
+
+func TestMeasuredDiscTitleKeyRefusesStaleOrInvalidMetadataWithoutFallback(t *testing.T) {
+	for _, change := range []string{"asset", "object", "source", "structure", "unknown-id", "empty-id", "uppercase-id", "duplicate-title", "encrypted", "unbound-object"} {
+		t.Run(change, func(t *testing.T) {
+			p := measuredTitleStructure()
+			asset, object, source := "asset", "object", "observation"
+			ref := measuredTitleRef(t, asset, object, source, "dvd:2", strings.Repeat("a", 64), p)
+			id := ref.ID
+			switch change {
+			case "asset":
+				asset = "other-asset"
+			case "object":
+				object = "other-object"
+			case "source":
+				source = "other-observation"
+			case "structure":
+				p.Titles[0].DurationMs++
+			case "unknown-id":
+				id = strings.Repeat("0", 64)
+			case "empty-id":
+				id = ""
+			case "uppercase-id":
+				id = strings.Repeat("A", 64)
+			case "duplicate-title":
+				p.Titles[1].Title = p.Titles[0].Title
+			case "encrypted":
+				p.Encryption, p.Titles = "css", []disc.Title{}
+			case "unbound-object":
+				object = ""
+			}
+			key, err := MeasuredDiscTitleKey(asset, object, source, p, id)
+			if err == nil || key != "" {
+				t.Fatal("stale or malformed metadata fell back to a title", key, err)
+			}
+			if change == "encrypted" && !errors.Is(err, disc.ErrEncrypted) {
+				t.Fatal("lookup lost the decoder's encryption refusal", err)
+			}
+		})
+	}
+}
+
 func TestMeasuredDiscTitleMetadataDoesNotRetargetAcrossPhysicalStructureOrTitle(t *testing.T) {
 	for _, change := range []string{"asset", "object", "observation", "title", "chapter", "duration"} {
 		t.Run(change, func(t *testing.T) {
@@ -133,6 +196,9 @@ func TestMeasuredBlurayTitleUsesItsExactPlaylistKey(t *testing.T) {
 		Streams: []disc.Stream{{ClipSequence: 0, PID: 256, Kind: "video", Coding: 0x1b}}, Chapters: []disc.Chapter{{StartMs: 0}},
 	}}}
 	first := measuredTitleRef(t, "asset", "object", "observation", "bd:00000", strings.Repeat("a", 64), p)
+	if key, err := MeasuredDiscTitleKey("asset", "object", "observation", p, first.ID); err != nil || key != "bd:00000" {
+		t.Fatal("metadata lookup did not retain the exact Blu-ray playlist key", key, err)
+	}
 	raw, _ := json.Marshal(p)
 	var copied disc.Probe
 	if err := json.Unmarshal(raw, &copied); err != nil {

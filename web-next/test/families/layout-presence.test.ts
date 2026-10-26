@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {registerHooks} from 'node:module';
 import {easings, reducedMotion} from '@design';
+import type {LayoutRetentionPolicy} from '../../src/kit/layout/retention.ts';
 
 type Ref = {current: unknown};
 type Effect = {deps: readonly unknown[]; cleanup?: () => void};
@@ -83,6 +84,7 @@ class ControlledAnimation {
 class LayoutNode {
   dataset: {layoutItem: string};
   left = 0;
+  inert = false;
   animations: ControlledAnimation[] = [];
   constructor(key: string) { this.dataset = {layoutItem: key}; }
   getBoundingClientRect() { return {left: this.left, top: 0} as DOMRect; }
@@ -93,14 +95,14 @@ class LayoutNode {
 const getKey = (key: string) => key;
 function fixture(t: TestContext) {
   t.mock.timers.enable({apis: ['setTimeout']});
-  let now = 0, items: readonly string[] = [], reduced = false;
+  let now = 0, items: readonly string[] = [], reduced = false, policy: LayoutRetentionPolicy | undefined;
   t.mock.method(performance, 'now', () => now);
   const hooks = new HookFrame(), root = {children: [] as LayoutNode[]};
-  const render = (next = items, reduce = reduced) => {
-    items = next; reduced = reduce;
-    return hooks.render(() => useLayoutPresence(items, getKey, reduced, 180, 320), presence => {
+  const render = (next = items, reduce = reduced, nextPolicy = policy) => {
+    items = next; reduced = reduce; policy = nextPolicy;
+    return hooks.render(() => useLayoutPresence(items, getKey, reduced, 180, 320, policy), presence => {
       const previous = new Map(root.children.map(node => [node.dataset.layoutItem, node]));
-      root.children = presence.present.map((key, index) => { const node = previous.get(key) ?? new LayoutNode(key); node.left = index * 100; return node; });
+      root.children = presence.present.map((key, index) => { const node = previous.get(key) ?? new LayoutNode(key); node.left = index * 100; node.inert = presence.leaving.has(key); return node; });
       presence.root.current = root as unknown as HTMLDivElement;
     });
   };
@@ -200,4 +202,56 @@ test('an item returning before its exit deadline retains its DOM identity and in
   assert.deepEqual(returned.present, ['a', 'b']); assert.equal(returned.leaving.size, 0);
   assert.equal(f.node('a'), original);
   assert.deepEqual(f.advance(100).present, ['a', 'b']);
+});
+
+
+test('overlapping removals share forty outgoing slots without clipping any current live row', t => {
+  const f = fixture(t), first = Array.from({length: 80}, (_, i) => `old-${i}`), second = Array.from({length: 80}, (_, i) => `next-${i}`);
+  const policy = {maxRetained: 40, staggerMs: 40};f.render(first, false, policy);
+  const one = f.render(second);assert.equal(one.leaving.size, 40);assert.equal(one.present.length, 120);
+  assert.ok(second.every(key => one.present.includes(key)));
+  const originalLast = one.exits.get('old-39')!;assert.equal(originalLast.delay, 1560);assert.equal(originalLast.deadline, 1740);
+  const two = f.render(['current']);assert.equal(two.leaving.size, 40);assert.equal(two.present.length, 41);
+  assert.equal(two.exits.get('old-39'), originalLast, 'a new cohort cannot renew an admitted row');
+  assert.equal(two.exits.has('next-0'), false, 'a full outgoing budget admits no extra paint');
+  f.advance(180);const three = f.render([]);assert.equal(three.leaving.size, 40);
+  assert.equal(three.exits.has('current'), false);assert.equal(three.exits.get('old-39'), originalLast);
+  assert.deepEqual(f.advance(1560).present, []);
+});
+
+test('cohort layout stays put until its final stagger and later admissions cannot renew it', t => {
+  const f = fixture(t), policy = {maxRetained: 4, staggerMs: 40};f.render(['a', 'b'], false, policy);
+  const first = f.render(['x', 'y']), a = first.exits.get('a')!, b = first.exits.get('b')!;
+  assert.equal(a.deadline, 180);assert.equal(b.delay, 40);assert.equal(b.deadline, 220);
+  assert.equal(a.retireAt, 220);assert.equal(b.retireAt, 220);
+  f.advance(20);const later = f.render(['new']);assert.equal(later.exits.get('a'), a);assert.equal(later.exits.get('b'), b);
+  assert.equal(later.leaving.size, 4);assert.equal(later.exits.get('x')!.deadline, 200);assert.equal(later.exits.get('x')!.retireAt, 240);
+  const held = f.advance(160);assert.equal(held.exits.get('a'), a, 'the already transparent first row holds its cohort layout slot');
+  assert.equal(f.advance(40).exits.has('b'), false);assert.equal(f.render().exits.has('x'), true);
+  assert.deepEqual(f.advance(20).present, ['new']);
+});
+
+test('replacement original scope drops retained paint and its old timer cannot recreate it', t => {
+  const f = fixture(t), original = {}, replacement = {};f.render(['old'], false, {maxRetained: 40, scope: original});f.render([]);
+  const fresh = f.render(['new'], false, {maxRetained: 40, scope: replacement});assert.deepEqual(fresh.present, ['new']);assert.equal(fresh.leaving.size, 0);
+  assert.deepEqual(f.advance(1000).present, ['new']);assert.equal(f.hooks.ownedNodes.length, 0);
+});
+
+test('active reduction shortens retention without renewing original admission or delay', t => {
+  const f = fixture(t), policy = {maxRetained: 40, staggerMs: 40};f.render(['a', 'b', 'c'], false, policy);
+  const original = f.render([]), c = original.exits.get('c')!;f.advance(20);
+  const reduced = f.render([], true), next = reduced.exits.get('c')!;
+  assert.equal(next.token, c.token);assert.equal(next.delay, 80);assert.equal(next.deadline, 260);assert.equal(next.retireAt, 180);assert.equal(next.cohortDeadline, 260);
+  assert.deepEqual(f.advance(160).present, []);
+});
+
+
+test('a captured owner handoff runs before removed controls become inert', t => {
+  const f = fixture(t);let calls = 0;
+  const policy = {maxRetained: 40, beforeLeave: (remaining: ReadonlySet<string>) => {
+    calls++;assert.equal(f.node('a').inert, false);assert.ok(remaining.has('b'));assert.equal(remaining.has('a'), false);
+  }};
+  f.render(['a', 'b'], false, policy);assert.equal(calls, 0);
+  const next = f.render(['b']);assert.equal(calls, 1);assert.equal(f.node('a').inert, true);assert.ok(next.leaving.has('a'));
+  f.advance(180);assert.equal(calls, 1, 'a retirement tick cannot repeat the original focus handoff');
 });

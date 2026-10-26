@@ -12658,6 +12658,31 @@ export const routes = [
     "admission": "security-fence"
   },
   {
+    "id": "post_direct_security_return_check",
+    "method": "POST",
+    "path": "/v1/direct/security-return/check",
+    "summary": "Check only the original Account Settings UI return scope",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "sign_in_kind_local",
+      "portico_services_unavailable",
+      "password_change_required",
+      "factor_setup_required",
+      "internal"
+    ],
+    "status": 204,
+    "http": true,
+    "admission": "security-fence"
+  },
+  {
     "id": "post_direct_security_return_confirm",
     "method": "POST",
     "path": "/v1/direct/security-return/confirm",
@@ -20561,6 +20586,7 @@ export const routePaths = {
   "post_direct_profiles_id_select": "/v1/direct/profiles/{id}/select",
   "post_direct_remembered_accounts": "/v1/direct/remembered-accounts",
   "post_direct_security_return_cancel": "/v1/direct/security-return/cancel",
+  "post_direct_security_return_check": "/v1/direct/security-return/check",
   "post_direct_security_return_confirm": "/v1/direct/security-return/confirm",
   "post_direct_security_return_prepare": "/v1/direct/security-return/prepare",
   "post_direct_sign_in": "/v1/direct/sign-in",
