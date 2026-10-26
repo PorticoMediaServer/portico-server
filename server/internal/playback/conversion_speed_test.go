@@ -60,6 +60,7 @@ func TestActivityRealConverterProducesFreshSpeedAndCleansObservation(t *testing.
 	player := New(db)
 	player.ConfigureHLS(h)
 	p := identity.Principal{Hash: "session", Viewer: identity.Viewer{AccountID: "owner", ProfileID: "profile", Authority: "local", Role: "owner"}}
+	insertFixtureAccount(t, db, p.AccountID, p.ProfileID)
 	session, err := player.Create(p, item, "automatic", "speed-fixture")
 	if err != nil || session.Mode != "hls" {
 		t.Fatal(session, err)

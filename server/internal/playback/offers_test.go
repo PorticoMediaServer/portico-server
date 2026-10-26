@@ -52,6 +52,7 @@ func TestRealMultiAudioFactsPublicationOffersAndRevision(t *testing.T) {
 	}
 	writeStreams(facts.Streams)
 	p := identity.Principal{Hash: "session", Viewer: identity.Viewer{AccountID: "owner", ProfileID: "profile", Authority: "local", Role: "owner"}}
+	insertFixtureAccount(t, db, p.AccountID, p.ProfileID)
 	service := New(db)
 	scope := OffersScope{"server", "lib", item, "fence"}
 	first, e := service.Offers(context.Background(), p, scope, "", "")
