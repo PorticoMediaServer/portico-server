@@ -87,6 +87,10 @@ test('a bridge start forwards every real preparation notice before it adopts or 
   const server = new FakePlaybackServer({prepareRounds: () => {starts++; return 2;}});
   const clock = preparationTimers();
   const api = new V1PlaybackApi(fakeHttp(server), {timers: clock.timers});
+  let adopts = 0, durations = 0;
+  const realAdopt = api.adopt.bind(api), realDuration = api.duration.bind(api);
+  api.adopt = (session, seconds) => {adopts++; return realAdopt(session, seconds);};
+  api.duration = (itemId, versionId, signal, discTitle) => {durations++; return realDuration(itemId, versionId, signal, discTitle);};
   const waits: number[] = [], notices: unknown[] = [];
   let resolved = false;
   const started = api.start({itemId: 'movie'}, {state: 'playing'}, 'registration-source-000001', undefined, undefined,
@@ -94,14 +98,17 @@ test('a bridge start forwards every real preparation notice before it adopts or 
   await settleBridge();
   assert.equal(resolved, false, 'a retry-only 202 resolves nothing');
   assert.deepEqual(waits, [500]);
+  assert.equal(adopts, 0); assert.equal(durations, 0);
   clock.fire(); await settleBridge();
   assert.equal(resolved, false, 'the same original start is still preparing');
   assert.deepEqual(waits, [500, 500]);
+  assert.equal(adopts, 0); assert.equal(durations, 0);
   for (const notice of notices) {assert.deepEqual(notice, {messageId: 'player.preparing.slowStart', retryAfterMs: 500}); assert.ok(Object.isFrozen(notice));}
   assert.equal(server.eventLog().filter(event => event.resource?.kind === 'session').length, 0, 'retry-only responses fabricate no session');
   clock.fire();
   const adopted = await started;
   assert.equal(starts, 1, 'every 202 asked for the same original start');
+  assert.equal(adopts, 1); assert.equal(durations, 1);
   const sessionEvents = server.eventLog().filter(event => event.resource?.kind === 'session');
   assert.ok(sessionEvents.some(event => event.resource?.id === adopted.session.id));
   assert.equal(api.selectionRegistration(adopted.session.id, adopted.playback)!.current(), true);
@@ -111,10 +118,12 @@ test('bridge callback retirement stops preparation polling without a fabricated 
   let starts = 0;
   const server = new FakePlaybackServer({prepareRounds: () => {starts++; return 3;}});
   const clock = preparationTimers();
-  const api = new V1PlaybackApi(fakeHttp(server), {timers: clock.timers});
+  const base = fakeHttp(server);
+  let posts = 0;
+  const api = new V1PlaybackApi({send: request => {if (request.method === 'POST') posts++; return base.send(request);}}, {timers: clock.timers});
   const caller = new AbortController(); let notices = 0;
   await assert.rejects(api.start({itemId: 'movie'}, {state: 'playing'}, 'registration-source-000002', undefined, caller.signal,
     {onPreparing: () => {notices++; caller.abort();}}), {name: 'AbortError'});
-  assert.equal(notices, 1); assert.equal(starts, 1); assert.equal(clock.pending(), 0);
+  assert.equal(notices, 1); assert.equal(posts, 1, 'a retired callback sends no further POST'); assert.equal(starts, 1); assert.equal(clock.pending(), 0);
   assert.equal(server.eventLog().filter(event => event.resource?.kind === 'session').length, 0);
 });
