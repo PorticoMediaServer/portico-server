@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import type {AppSessionRecord} from '@core/app-sessions.ts';
 import {defaultI18n} from '@i18n';
 import {AuthError} from '../kit/accounts';
@@ -138,11 +138,20 @@ export function SwitchProfileServerHost({opening, close}: {opening: SwitchProfil
 /** Transfer a captured Hosted row to the existing canonical sign-in state
  * machine. It owns route proof, membership, challenges and profile selection. */
 export function HostedServerOpening({selection, cancel}: {selection: HostedSwitchSelection; cancel: () => void}) {
-  const [instance, setInstance] = useState<Readonly<{entry: ReturnType<typeof createBrowserAccountEntry>; form: AccountSignInForm}>>();
-  useEffect(() => {
+  type Owner = {selection: HostedSwitchSelection; live: boolean; entry: ReturnType<typeof createBrowserAccountEntry>; form: AccountSignInForm};
+  const current = useRef<Owner | undefined>(undefined), [instance, setInstance] = useState<Owner>();
+  useLayoutEffect(() => {
     const entry = createBrowserAccountEntry(), form = new AccountSignInForm(entry);
-    setInstance({entry, form}); void entry.openHostedServer(selection.server, selection.access, selection.revision);
-    return () => {form.dispose(); entry.dispose();};
+    const owner: Owner = {selection, live: true, entry, form};
+    current.current = owner; setInstance(owner);
+    void entry.openHostedServer(selection.server, selection.access, selection.revision);
+    // Retire the exact operation during commit, before passive cleanup or a
+    // held continuation can run. Strict replay creates another entry and form.
+    return () => {
+      owner.live = false; if (current.current === owner) current.current = undefined;
+      try {form.dispose();} finally {entry.dispose();}
+    };
   }, [selection]);
-  return instance ? <AccountSignInView {...instance} initialize={false} onCancel={cancel} /> : null;
+  const owner = instance?.selection === selection && instance.live && current.current === instance ? instance : undefined;
+  return owner ? <AccountSignInView entry={owner.entry} form={owner.form} initialize={false} onCancel={cancel} /> : null;
 }
