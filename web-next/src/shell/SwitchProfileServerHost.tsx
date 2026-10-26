@@ -44,21 +44,32 @@ export function SwitchProfileServerHost({opening, close}: {opening: SwitchProfil
     holder.current = undefined; setPublished(undefined); setBusy(true); setError(undefined);
     try {
       const record = await browserAppSessions().read(); if (!valid()) return;
+      if (record.selectedServerId !== opening.serverId) {dismiss(); return;}
       const names = await browserServerDisplay().choices(record.servers.map(row => ({signIn: row.signIn, pin: row.connection.pin, origin: row.connection.logicalOrigin})), operation.signal);
       if (!valid()) return;
       const nameById = new Map(names.map(row => [row.id, row.label]));
       const account = opening.portico ? browserAccount() : undefined;
-      if (account) await account.service.synchronize();
-      if (!valid()) return;
-      const session = account?.service.getSnapshot().session;
-      const access = account && session?.familyId ? createAccountServerAccess(account, accountIdentity(session)) : undefined;
-      offAccount.current?.(); offAccount.current = undefined;
-      if (access) offAccount.current = access.observe?.(() => {if (!access.isCurrent()) dismiss();});
-      if (!valid()) return;
+      let access: AccountServerAccess | undefined;
       let directory: Awaited<ReturnType<ReturnType<typeof createAccountServerDirectory>['read']>> | undefined;
-      if (access && account) {
-        try {directory = await createAccountServerDirectory(account, accountIdentity(session!)).read(operation.signal);}
-        catch (failure) {if (!valid() || !access.isCurrent()) return; setError(failure);}
+      offAccount.current?.(); offAccount.current = undefined;
+      if (account) {
+        try {
+          await account.service.synchronize(); if (!valid()) return;
+          const session = account.service.getSnapshot().session;
+          if (session?.familyId) {
+            const scope = accountIdentity(session);
+            access = createAccountServerAccess(account, scope);
+            const original = access;
+            offAccount.current = original.observe?.(() => {if (!original.isCurrent()) dismiss();});
+            if (!valid() || !original.isCurrent()) return;
+            directory = await createAccountServerDirectory(account, scope).read(operation.signal);
+          }
+        } catch (failure) {
+          if (!valid()) return;
+          // Hosted unavailability cannot hide this browser's real local sign-ins.
+          // Do not use an unsynchronized account session as directory authority.
+          access = undefined; offAccount.current?.(); offAccount.current = undefined; setError(failure);
+        }
       }
       if (!valid() || access && !access.isCurrent()) return;
       const servers: Choice[] = [], locals: Choice[] = [];
@@ -100,14 +111,15 @@ export function SwitchProfileServerHost({opening, close}: {opening: SwitchProfil
   const choose = async (entry: SwitchProfileServerEntry) => {
     const value = published, choice = value && [...value.servers, ...value.locals].find(row => row.view === entry);
     if (!current() || !value || holder.current !== value || claimed.current || busy || !choice?.select || entry.current || !entry.available) return;
-    claimed.current = true; setBusy(true); setError(undefined);
+    claimed.current = true; setBusy(true); setError(undefined); let changed = false;
     try {
       const fresh = await browserAppSessions().read();
-      if (!current() || holder.current !== value || fresh.revision !== value.record.revision || fresh.selectedServerId !== value.record.selectedServerId) return;
+      if (!current() || holder.current !== value) return;
+      if (fresh.revision !== value.record.revision || fresh.selectedServerId !== value.record.selectedServerId) {changed = true; return;}
       await choice.select();
       if (current()) dismiss();
     } catch (failure) {if (current()) setError(failure);}
-    finally {claimed.current = false; if (current()) setBusy(false);}
+    finally {claimed.current = false; if (current()) {setBusy(false); if (changed) void refresh();}}
   };
   const profiles: readonly SwitchProfileServerProfile[] = Object.freeze(opening.profiles.map(profile => Object.freeze({...profile, current: profile.id === opening.profileId})));
   return <SwitchProfileServerDialog open onClose={dismiss} profilesLabel={t('web.account.profilesOnServer', {server: opening.serverName})}
