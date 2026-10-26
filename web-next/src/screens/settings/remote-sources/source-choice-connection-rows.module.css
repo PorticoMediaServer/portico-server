@@ -1,0 +1,61 @@
+/* The connection-limit cells keep the caller's own .limits grid: the root is
+   display:contents, so no wrapper box, surface, radius or gap is added here. */
+.rows { display: contents; }
+
+.cell {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  position: relative;
+  min-width: 0;
+}
+/* Authored .r.chg (remote-sources.html:1016-1017): a 10% accent wash and a 3px
+   accent bar inset 14px from the row's top and bottom. */
+.cell[data-changed] {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--color-accent) 10%, transparent), transparent 56%);
+}
+.cell[data-changed]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--color-accent);
+}
+/* Authored changed-number ring (remote-sources.html:751, .nf .n.ch). Selected by
+   this cell's own data attribute and the field's stable data-variant, never by a
+   kit class, and it stands down while the control holds focus so the kit's
+   canonical focus-visible ring is what draws. */
+.cell[data-changed] div[data-variant="setting"] > div:not(:focus-within) {
+  box-shadow: inset 0 0 0 1.5px var(--color-accent);
+}
+/* Authored .was (remote-sources.html:1018): 13px/600 in text-3, 10px gap. */
+.marker {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+.marker > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Authored .lk (remote-sources.html:111): 13px/700 in accent-strong, drawn as its
+   own button outside any field label, with the kit's canonical focus ring. */
+.reset {
+  border: 0;
+  padding: 0;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-accent-strong);
+  cursor: pointer;
+}
+.reset:hover:not(:disabled) { text-decoration: underline; }
+.reset:focus-visible { outline: var(--spec-focus-ring-width-web) solid var(--color-focus); outline-offset: 3px; }
+.reset:disabled { cursor: default; opacity: .5; }
