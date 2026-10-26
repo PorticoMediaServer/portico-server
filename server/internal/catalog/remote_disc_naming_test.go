@@ -18,7 +18,8 @@ import (
 // records the reference the commit writes and refuses every byte-level call, so a
 // test fails loudly if naming ever reaches for the image.
 type namingRemote struct {
-	references []string
+	references   []string
+	wantRevision string
 }
 
 func (r *namingRemote) Handles(path string) bool { return strings.HasPrefix(path, "/remote") }
@@ -40,12 +41,20 @@ func (r *namingRemote) CheckScan(context.Context, string, string) error {
 func (r *namingRemote) ValidateScan(context.Context, *sql.Tx, string, string) error {
 	return storage.ErrRemoteConfig
 }
-func (r *namingRemote) RecordReference(_ context.Context, _ *sql.Tx, path, _ string) error {
+func (r *namingRemote) RecordReference(_ context.Context, _ *sql.Tx, path, revision string) error {
+	// The caller must forward the original observed revision, never an empty proof.
+	if revision == "" || revision != r.wantRevision {
+		return storage.ErrRemoteChanged
+	}
 	r.references = append(r.references, path)
 	return nil
 }
 func (r *namingRemote) Acquire(context.Context, string, string) (storage.RemoteObject, error) {
 	return nil, storage.ErrRemoteConfig
+}
+
+func (f namingFixture) observed() assets.Facts {
+	return assets.Facts{ObservedSize: 734003200, ObservedModifiedNS: 1700000000000000000, ObservedRevision: f.revision}
 }
 
 type namingFixture struct {
@@ -62,7 +71,7 @@ type namingFixture struct {
 
 // namingFixture builds one running remote scan with one inventoried disc image
 // and its queued analysis row, without any inventory page walk.
-func namingFixture(t *testing.T, kind, relative string) namingFixture {
+func newNamingFixture(t *testing.T, kind, relative string) namingFixture {
 	t.Helper()
 	root := t.TempDir()
 	db, err := persistence.Open(filepath.Join(root, "catalog.sqlite"))
@@ -104,10 +113,11 @@ func namingFixture(t *testing.T, kind, relative string) namingFixture {
 		t.Fatal(err)
 	}
 	asset := "naming-asset"
-	if _, err = db.Exec(`INSERT INTO catalog_assets(token,path,size,modified_ns,container,video_codec,audio_codec,width,height,duration,available) VALUES(?,'/remote/image.iso',734003200,1700000000000000000,'iso','','',0,0,0,1)`, asset); err != nil {
+	if _, err = db.Exec(`INSERT INTO catalog_assets(token,path,size,modified_ns,container,video_codec,audio_codec,width,height,duration,available) VALUES(?,?,734003200,1700000000000000000,'iso','','',0,0,0,1)`, asset, filepath.Join("/remote", relative)); err != nil {
 		t.Fatal(err)
 	}
 	object, revision := "naming-object", "revision-1"
+	remote.wantRevision = revision
 	if _, err = db.Exec(`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,object_identity,revision,evidence_json,size,modified_ns,seen_job,unsupported_reason,directory_path) VALUES(?,?,?,'incarnation',?,'identity',?,'{}',734003200,1700000000000000000,?,'',?)`, object, sourceID, asset, relative, revision, job, filepath.Dir(relative)); err != nil {
 		t.Fatal(err)
 	}
@@ -120,8 +130,8 @@ func namingFixture(t *testing.T, kind, relative string) namingFixture {
 // Root64: a remote disc image is published as an ordinary title from its name,
 // with no technical fact written and no byte of the image read.
 func TestCommitInventoryNamingPublishesRemoteDiscImageFromItsName(t *testing.T) {
-	f := namingFixture(t, "movie", "Heat (1995).iso")
-	if err := f.service.CommitInventoryNaming(context.Background(), f.job, f.object, f.revision, f.policy, assets.Facts{ObservedSize: 734003200, ObservedModifiedNS: 1700000000000000000}); err != nil {
+	f := newNamingFixture(t, "movie", "Heat (1995).iso")
+	if err := f.service.CommitInventoryNaming(context.Background(), f.job, f.object, f.revision, f.policy, f.observed()); err != nil {
 		t.Fatal(err)
 	}
 	var title, kind string
@@ -176,8 +186,8 @@ func TestCommitInventoryNamingPublishesRemoteDiscImageFromItsName(t *testing.T) 
 // The library kind decides the title: a TV name becomes its show, season and
 // episode, still from naming alone.
 func TestCommitInventoryNamingFollowsTheLibraryKind(t *testing.T) {
-	f := namingFixture(t, "tv", "Show Name/Season 01/Show Name - s01e02 - Episode Title.iso")
-	if err := f.service.CommitInventoryNaming(context.Background(), f.job, f.object, f.revision, f.policy, assets.Facts{ObservedSize: 734003200, ObservedModifiedNS: 1700000000000000000}); err != nil {
+	f := newNamingFixture(t, "tv", "Show Name/Season 01/Show Name - s01e02 - Episode Title.iso")
+	if err := f.service.CommitInventoryNaming(context.Background(), f.job, f.object, f.revision, f.policy, f.observed()); err != nil {
 		t.Fatal(err)
 	}
 	var show, episode string
@@ -198,20 +208,20 @@ func TestCommitInventoryNamingRefusesOtherObjects(t *testing.T) {
 		{"book library", "book", "Heat (1995).iso"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			f := namingFixture(t, tc.kind, tc.relative)
+			f := newNamingFixture(t, tc.kind, tc.relative)
 			if tc.name == "local library" {
 				if _, err := f.db.Exec(`UPDATE library_sources SET kind='local',remote_source_id=NULL WHERE id=?`, f.source); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if err := f.service.CommitInventoryNaming(context.Background(), f.job, f.object, f.revision, f.policy, assets.Facts{ObservedSize: 734003200, ObservedModifiedNS: 1700000000000000000}); err == nil {
+			if err := f.service.CommitInventoryNaming(context.Background(), f.job, f.object, f.revision, f.policy, f.observed()); err == nil {
 				t.Fatal("naming-only publication accepted an object it must refuse")
 			}
 		})
 	}
 	t.Run("ordinary file", func(t *testing.T) {
-		f := namingFixture(t, "movie", "Heat (1995).mkv")
-		if err := f.service.CommitInventoryNaming(context.Background(), f.job, f.object, f.revision, f.policy, assets.Facts{ObservedSize: 734003200, ObservedModifiedNS: 1700000000000000000}); err == nil {
+		f := newNamingFixture(t, "movie", "Heat (1995).mkv")
+		if err := f.service.CommitInventoryNaming(context.Background(), f.job, f.object, f.revision, f.policy, f.observed()); err == nil {
 			t.Fatal("naming-only publication accepted a non-disc file")
 		}
 	})
@@ -221,47 +231,46 @@ func TestCommitInventoryNamingRefusesOtherObjects(t *testing.T) {
 // observation it read, so it can never publish an unqueued, changed or
 // unavailable object.
 func TestCommitInventoryNamingReprovesQueueAndObservation(t *testing.T) {
-	observed := assets.Facts{ObservedSize: 734003200, ObservedModifiedNS: 1700000000000000000}
+	observed := f.observed()
 	cases := []struct {
 		name   string
 		break_ func(t *testing.T, f namingFixture)
-		facts  assets.Facts
 	}{
 		{"missing queue row", func(t *testing.T, f namingFixture) {
 			if _, err := f.db.Exec(`DELETE FROM inventory_analysis_queue WHERE job_id=? AND object_id=?`, f.job, f.object); err != nil {
 				t.Fatal(err)
 			}
-		}, observed},
+		}},
 		{"queue no longer pending", func(t *testing.T, f namingFixture) {
 			if _, err := f.db.Exec(`UPDATE inventory_analysis_queue SET state='done' WHERE job_id=? AND object_id=?`, f.job, f.object); err != nil {
 				t.Fatal(err)
 			}
-		}, observed},
-		{"changed observation", func(t *testing.T, f namingFixture) {}, assets.Facts{ObservedSize: 1, ObservedModifiedNS: 1700000000000000000}},
+		}},
+		{"changed observation", func(t *testing.T, f namingFixture) {}},
 		{"unsupported reason", func(t *testing.T, f namingFixture) {
 			if _, err := f.db.Exec(`UPDATE inventory_objects SET unsupported_reason='unsupported_remote_disc' WHERE id=?`, f.object); err != nil {
 				t.Fatal(err)
 			}
-		}, observed},
+		}},
 		{"unavailable asset", func(t *testing.T, f namingFixture) {
 			if _, err := f.db.Exec(`UPDATE catalog_assets SET available=0 WHERE token='naming-asset'`); err != nil {
 				t.Fatal(err)
 			}
-		}, observed},
+		}},
 		{"asset names another path", func(t *testing.T, f namingFixture) {
 			if _, err := f.db.Exec(`UPDATE catalog_assets SET path='/remote/Other.iso' WHERE token='naming-asset'`); err != nil {
 				t.Fatal(err)
 			}
-		}, observed},
+		}},
 		{"asset size disagrees with object", func(t *testing.T, f namingFixture) {
 			if _, err := f.db.Exec(`UPDATE catalog_assets SET size=size-1 WHERE token='naming-asset'`); err != nil {
 				t.Fatal(err)
 			}
-		}, observed},
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f := namingFixture(t, "movie", "Heat (1995).iso")
+			f := newNamingFixture(t, "movie", "Heat (1995).iso")
 			tc.break_(t, f)
 			if err := f.service.CommitInventoryNaming(context.Background(), f.job, f.object, f.revision, f.policy, tc.facts); err == nil {
 				t.Fatal("naming-only publication accepted an unqueued, changed or unavailable object")
