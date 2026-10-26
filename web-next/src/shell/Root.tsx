@@ -6,6 +6,7 @@ import {Shell} from './Shell';
 import {useShellBindings} from './bindings';
 import {finishRouteMotion, routeMotionOwnedByBrowser} from './route-motion';
 import {BootstrapContent} from './BootstrapState';
+import {DestinationErrorBoundary} from './DestinationError';
 
 function RouteContent() {
   const content = useRef<HTMLDivElement>(null);
@@ -13,7 +14,9 @@ function RouteContent() {
   const target = useMemo(() => ({get current() { return routeMotionOwnedByBrowser() ? null : content.current; }}), []);
   useRouteFade(target, routeKey);
   useLayoutEffect(() => { finishRouteMotion(); }, [routeKey]);
-  return <main id="portico-content" ref={content} data-route-content tabIndex={-1}><BootstrapContent><Outlet /></BootstrapContent></main>;
+  // The destination boundary wraps only the outlet, so the shell (top bar, rail, phone nav) stays
+  // mounted through a destination failure and a ShellRoot failure still reaches the app last resort.
+  return <main id="portico-content" ref={content} data-route-content tabIndex={-1}><BootstrapContent><DestinationErrorBoundary routeKey={routeKey}><Outlet /></DestinationErrorBoundary></BootstrapContent></main>;
 }
 export function ShellRoot() {
   const binding = useShellBindings();
