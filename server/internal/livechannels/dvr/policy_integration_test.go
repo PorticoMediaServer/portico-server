@@ -30,7 +30,7 @@ func TestRecordingIntentUsesGrantAndSnapshotsDefaults(t *testing.T) {
 		{`INSERT INTO live_source_identities VALUES(?)`, []any{src}},
 		{`INSERT INTO live_generations VALUES(?,?,'Guide',2,1,1,?)`, []any{gen, src, now.Format(time.RFC3339)}},
 		{`INSERT INTO live_sources VALUES(?,'Aerial',1,'active',2,?,?)`, []any{src, gen, now.Format(time.RFC3339)}},
-		{`INSERT INTO live_channel_versions VALUES(?,?,'channel','Channel','1','',1,x'00','','')`, []any{gen, ch}},
+		{`INSERT INTO live_channel_versions(generation_id,channel_id,provider_key,name,number,source_number,group_name,position,locator_sealed,available_start,available_end) VALUES(?,?,'channel','Channel','1',NULL,'',1,x'00','','')`, []any{gen, ch}},
 		{`INSERT INTO live_programmes VALUES(?,?,?,'programme','Episode',?,?,'lineage')`, []any{gen, prog, ch, start, end}},
 		{`INSERT INTO live_programme_metadata(generation_id,id,series_id,episode_id,new_evidence,description) VALUES(?,?,'series','episode','new','')`, []any{gen, prog}},
 	}
