@@ -467,3 +467,40 @@ test('a queue occurrence that moved before acceptance cannot carry or revive the
  f.engine.update({itemId:'last',session:{id:'next-session',generation:1}});
  assert.equal(f.service.getSnapshot().timer,null,'a moved original occurrence is not an accepted handoff');
 });
+// Merged-source edges: the native owner can expire a boundary while the install is waiting, and a
+// caller's original occurrence must never be replaced by a source that changes during setup.
+test('a native expiry reported during the install leaves no armed timer and reports the stop',async t=>{
+ const f=setup(t);await settle();f.engine.native=true;
+ // The owner's own answer carries the expiry for this exact revision; no listener round trip needed.
+ f.engine.answer=policy=>{f.engine.state={...f.engine.state,nativeListening:{timerStopped:true,expiredTimerRevision:policy.timerRevision}};return true;};
+ await f.service.setTimer('item');
+ const snapshot=f.service.getSnapshot();
+ assert.equal(snapshot.timer,null,'the owner expiry means this timer is not armed');
+ assert.equal(snapshot.timerLoading,false);
+ assert.equal(snapshot.stopped,true,'the stop the owner reported is the state the screen sees');
+});
+test('a stale explicit occurrence refuses before any timer mutation',async t=>{
+ const f=setup(t);await settle();
+ const before=f.service.getSnapshot(),policies=f.engine.policies.length;
+ const stale={sessionId:'older-session',generation:1,itemId:'song',playbackRun:1,queue:{queueId:'queue',entryId:'entry-1'}};
+ await assert.rejects(f.service.setTimer('item',stale),(error:any)=>error?.name==='AbortError'&&/source retired/.test(error.message));
+ assert.equal(f.service.getSnapshot(),before,'the refusal published no snapshot change');
+ assert.equal(f.engine.policies.length,policies,'the refusal sent no policy to the native owner');
+ assert.equal(f.service.getSnapshot().timer,null);
+ assert.equal(f.service.getSnapshot().timerLoading,false);
+});
+test('a source replaced by a synchronous listener during setup is never the timer target',async t=>{
+ const f=setup(t);await settle();
+ let replaced=false;
+ f.service.subscribe(()=>{if(!replaced){replaced=true;f.engine.update({session:{id:'replacement-session',generation:1}});}});
+ await assert.rejects(f.service.setTimer('item'),(error:any)=>error?.name==='AbortError'&&/source retired/.test(error.message));
+ assert.equal(replaced,true);assert.equal(f.service.getSnapshot().timer,null);
+ assert.deepEqual(f.service.getSnapshot().timer,null,'the replacement occurrence was not pinned');
+ const g=setup(t);await settle();
+ await g.service.setTimer(15);g.setNow(900000);g.service.tick();
+ assert.equal(g.service.getSnapshot().stopped,true);
+ let swapped=false;
+ g.service.subscribe(()=>{if(!swapped){swapped=true;g.engine.update({session:{id:'swap',generation:1}});}});
+ await assert.rejects(g.service.setTimer('item'),(error:any)=>error?.name==='AbortError');
+ assert.equal(swapped,true);assert.equal(g.service.getSnapshot().timer,null);
+});
