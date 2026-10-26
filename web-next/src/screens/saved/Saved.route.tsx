@@ -49,6 +49,7 @@ function BoundSaved({captured, owner}: {captured: ProtectedLibraryScreen; owner:
     const viewer = captured.context.session().viewer;
     if (viewer.authority !== 'local' && viewer.authority !== 'hosted') return;
     const lifetime = new AbortController(), originalRoute = Object.freeze({...route});
+    const originalReader = Object.freeze({...savedReaderRoute(originalRoute)});
     const current = () => !lifetime.signal.aborted && context.isCurrent() && owner.runtime.operations.current && savedLocationCurrent(routeKey);
     const signal = (input?: AbortSignal) => input ? AbortSignal.any([lifetime.signal, input]) : lifetime.signal;
     const original: ScreenContext = {...context, isCurrent: current};
@@ -57,7 +58,9 @@ function BoundSaved({captured, owner}: {captured: ProtectedLibraryScreen; owner:
       {serverId: viewer.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId},
       () => captured.context.viewerFence, current, playback);
     const select: typeof borrowed.select = async (value, restore) => {
-      if (!current() || !sameSavedRoute(value, originalRoute)) throw new DOMException('Saved route changed', 'AbortError');
+      // SavedScreen passes its exact normalized reader to a retry (bare /saved
+      // remains the home URL). Admit only those two captured representations.
+      if (!current() || !sameSavedRoute(value, originalRoute) && !sameSavedRoute(value, originalReader)) throw new DOMException('Saved route changed', 'AbortError');
       await borrowed.select(originalRoute, restore);
       if (!current()) throw new DOMException('Saved route changed', 'AbortError');
     };
