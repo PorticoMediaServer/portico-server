@@ -8,7 +8,7 @@ final class Checkpoint: XCTestCase {
         #if os(tvOS)
         let app = XCUIApplication(bundleIdentifier: "tv.getportico.portico.tv")
         #else
-        let app = XCUIApplication(bundleIdentifier: "tv.getportico.portico")
+        let app = XCUIApplication(bundleIdentifier: "tv.getportico.portico.ios")
         #endif
         app.launch()
         defer { app.terminate() }
@@ -37,4 +37,14 @@ final class Checkpoint: XCTestCase {
         add(shot)
         print("PORTICO_APPLE_RECEIPT {\"welcome\":true,\"inputDriver\":true,\"credentialsUsed\":false,\"qualification\":\"zero-credential input only\"}")
     }
+
+    #if os(tvOS)
+    /// The retained tvOS flow set. An unavailable flow is not a pass: the assertion fails
+    /// only on a product failure, and a run with unavailable rows skips with their count.
+    func testRetainedTVFlows() throws {
+        let receipt = TVFlows.run(testCase: self)
+        XCTAssertEqual(receipt.failed, 0, "Apple TV product flows failed: \(receipt.failed)")
+        if receipt.unavailable > 0 { throw XCTSkip("Apple TV flows unavailable: \(receipt.unavailable)") }
+    }
+    #endif
 }

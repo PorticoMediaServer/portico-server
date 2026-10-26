@@ -2,25 +2,21 @@ import XCTest
 
 // Bounded retained-family phone check for the Mac simulator, source only.
 //
-// This file adds no target, product, scheme or wrapper change. It is written to
-// join the existing `PorticoTVCheckpoint` UI-test target beside Checkpoint.swift,
-// and the whole phone class sits behind `#if os(iOS)`, so adding the file to that
-// target changes nothing for tvOS and breaks no existing compile.
+// This file adds no target, product, scheme, dependency or wrapper change. It is compiled into
+// the existing `PorticoTVCheckpoint` UI-test target through the hook applied in
+// Driver.xcodeproj: a PBXFileReference, a PBXBuildFile and a member of that target's Sources
+// phase, beside Checkpoint.swift and TVFlows.swift.
 //
-// Proposed hook, owned by Release:
+// The same target carries one additional **optional** configuration, `Debug-iOS`, for the phone
+// simulator: `SDKROOT=iphonesimulator`, `SUPPORTED_PLATFORMS=iphonesimulator`,
+// `TARGETED_DEVICE_FAMILY=1`, `IPHONEOS_DEPLOYMENT_TARGET=18.0`. The default configuration stays
+// `Debug` (tvOS), so the shared `PorticoTVCheckpoint` scheme is unchanged and no new target,
+// scheme or product exists. iPad is not covered by this file or that configuration.
 //
-//  1. Driver.xcodeproj: add a PBXFileReference for `PhoneFlows.swift`, a
-//     PBXBuildFile for it, and append that build file to the PBXSourcesBuildPhase
-//     of the existing `PorticoTVCheckpoint` target (the one that already builds
-//     Checkpoint.swift). No new target, product or scheme is needed.
-//  2. That shared target is configured `SDKROOT=appletvos`,
-//     `SUPPORTED_PLATFORMS=appletvsimulator`, `TARGETED_DEVICE_FAMILY=3`, so this
-//     class compiles out on tvOS. Running it on the phone needs an iOS build
-//     configuration on the same target (`SDKROOT=iphonesimulator`,
-//     `SUPPORTED_PLATFORMS=iphonesimulator`, `TARGETED_DEVICE_FAMILY=1`), which is
-//     Release's choice of configuration, not a source change here.
-//  3. The machine wrapper adds only the test identifier
-//     `PhoneFlows/testRetainedPhoneCore` for the phone lane.
+// The machine wrapper chooses a run by test identifier only: `PhoneFlows/testRetainedPhoneCore`
+// for the phone, `Checkpoint/testRetainedWelcomeRemoteInput` for the zero-credential Welcome
+// input check, and on tvOS `Checkpoint/testRetainedTVFlows`. Selecting the iPhone configuration
+// is the wrapper's business; this source assumes no runtime activation of its own.
 //
 // The check drives the retained, already signed-in app: launch, Home, Libraries,
 // Movies, the fixture detail, Settings and its own Back. It never installs,

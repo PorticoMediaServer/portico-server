@@ -3,18 +3,17 @@ import XCTest
 
 /// Apple TV (tvOS) M0 flow source for the existing headless checkpoint target.
 ///
-/// Proposed Driver target hook (NOT applied in this diff; no project or harness mutation):
-///   1. Add apple/TVFlows.swift to Driver.xcodeproj's PorticoTVCheckpoint target as a
-///      PBXFileReference, a PBXBuildFile, and a member of the target's Sources phase.
-///      XCTest and XCUIRemote come from the existing UI-testing target; no dependency change.
-///   2. Add one test to Checkpoint.swift and leave testRetainedWelcomeRemoteInput untouched:
-///        func testRetainedTVFlows() throws {
-///            let receipt = TVFlows.run(testCase: self)
-///            XCTAssertEqual(receipt.failed, 0, "Apple TV product flows failed: \(receipt.failed)")
-///            if receipt.unavailable > 0 { throw XCTSkip("Apple TV flows unavailable: \(receipt.unavailable)") }
-///        }
-///   3. The runner parses the single PORTICO_APPLE_TV_RECEIPT line. An unavailable flow is
-///      never a pass, and the counts are the only cross-run summary.
+/// Driver target hook, applied in Driver.xcodeproj: a PBXFileReference, a PBXBuildFile and a
+/// member of the existing PorticoTVCheckpoint target's Sources phase, beside Checkpoint.swift and
+/// PhoneFlows.swift. XCTest and XCUIRemote come from that same UI-testing target; no dependency,
+/// product, scheme or target was added. The optional `Debug-iOS` configuration on the target is
+/// phone-only and does not affect this tvOS source, and the default `Debug` configuration and the
+/// shared scheme stay exactly as they were.
+///
+/// The test that runs this source is tvOS-only and lives in Checkpoint.swift:
+///     Checkpoint/testRetainedTVFlows
+/// which asserts zero failed flows and skips when any flow is unavailable. The machine wrapper
+/// selects runs by test identifier only, and this source performs no runtime activation itself.
 ///
 /// Only the exact retained bundle is launched. Nothing is installed, reset or re-authenticated;
 /// no password, address, code or account value is read. No screenshot is attached here: a
