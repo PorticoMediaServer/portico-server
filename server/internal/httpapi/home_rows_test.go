@@ -64,6 +64,12 @@ func homeAPIFixtureWithConsole(t *testing.T) (http.Handler, identity.Envelope, c
 
 func TestItemRecommendationsReadStoredPolicyWithoutToolValidation(t *testing.T) {
 	handler, owner, names, console, db := homeAPIFixtureWithConsole(t)
+	// Prime the router's one-time connection-policy cache before observing
+	// the recommendations consumer. Cold router setup reads its own settings
+	// independently of this handler; the regression isolates repeated requests.
+	if warm := homeAPIRequest(t, handler, owner.AccessToken, "GET", "/v1/system", ""); warm.Code != 200 {
+		t.Fatalf("router policy warm-up: %d", warm.Code)
+	}
 	toolCalls := 0
 	console.FFmpegValidation = func(context.Context, string) operations.FFmpegStatus {
 		toolCalls++
