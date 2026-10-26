@@ -15,6 +15,7 @@ import {InvitationShortCodeDialog} from '../../kit/accounts';
 import {randomId} from '@core/random-id.ts';
 import {InviteAttempts, defaultInviteChoices, inviteBody, type InviteAttempt, type InviteChoices} from './people-invite';
 import {PeopleInviteForm} from './people-invite-form';
+import {PeopleInvitations} from './PeopleInvitations';
 import type {ServerInvitation} from '@core/direct-account.ts';
 
 const invitationStates = ['pending', 'accepted', 'revoked', 'expired'] as const;
@@ -56,6 +57,7 @@ export function PeopleScreen({bindings, initialStatus, rowActions}: {bindings: P
 function PeopleWorkspace({bindings, initialStatus, rowActions}: {bindings: PeopleBindings; initialStatus?: SettingsPeopleQuery['status']; rowActions?: (person: SettingsPersonRow) => ReactNode}) {
   const {client} = bindings;
   const [issued, setIssued] = useState<ServerInvitation>(), [inviteOpen, setInviteOpen] = useState(false);
+  const [invitationVersion, setInvitationVersion] = useState(0);
   const [formOpen, setFormOpen] = useState(false), [choices, setChoices] = useState<InviteChoices>(defaultInviteChoices);
   /** The drawn ladder is whole days on the server and hours in the dialog. */
   const openedChoices = (): InviteChoices => {
@@ -99,6 +101,7 @@ function PeopleWorkspace({bindings, initialStatus, rowActions}: {bindings: Peopl
       if (!invitationState(created.state)) throw new Error('invitation_state_unknown');
       owner.created(); setFormBusy(false); formActive.current = false;
       setRetained(undefined); setFormOpen(false); setIssued(created); setInviteOpen(true);
+      setInvitationVersion(value => value + 1);
     } catch (error) {
       if (!currentForm()) return;
       const status = (error as {status?: number})?.status;
@@ -257,6 +260,8 @@ function PeopleWorkspace({bindings, initialStatus, rowActions}: {bindings: Peopl
         {id: 'remove', label: t(table.select!.bulk[2].label), destructive: true, onAction: (ids, element) => ask('remove', ids, element)},
       ]} />}
     </SettingsGroup>
+    {bindings.invitations && <PeopleInvitations invitations={bindings.invitations} libraries={bindings.libraries} authority={bindings.authority}
+      version={invitationVersion} openInvite={bindings.invite ?? openInvite} openHome={bindings.openHome} reportError={bindings.reportError} />}
     {personId && <SettingsPanel open onClose={() => {setPersonId(undefined); setPerson(undefined);}} title={person?.username ?? personRow?.username ?? t(section.title)} audience={t(bindings.actor.role === 'owner' ? 'next.shell.serverVisibility.ownerShared' : 'next.shell.serverVisibility.administrator')}
       returnFocusRef={opener} selectedTab={tab} onTabChange={setTab} saveState={saving ? 'saving' : saved ? 'saved' : undefined}
       error={error ? t('next.states.pageFailedBody') : undefined} tabs={personSpec.tabs!.map(tab => ({id: tab.id, title: t(tab.title), content: !person ? <p role="status">{t('next.settings.loading')}</p> : <SettingsRows holder={tab} state={state} change={change} reset={() => {}} advancedOpen={advanced} onAdvancedChange={setAdvanced}
