@@ -3,6 +3,7 @@ package mailoutbox
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"io"
 	"mime"
@@ -43,7 +44,18 @@ func TestRenderStableSafeMultipart(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	parts := multipart.NewReader(message.Body, params["boundary"])
+	// The wordmark rides in a related part beside the alternative body.
+	relatedParams := params
+	related := multipart.NewReader(message.Body, relatedParams["boundary"])
+	altPart, e := related.NextRawPart()
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, params, e = mime.ParseMediaType(altPart.Header.Get("Content-Type"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	parts := multipart.NewReader(altPart, params["boundary"])
 	n := 0
 	for {
 		part, e := parts.NextRawPart()
@@ -77,7 +89,10 @@ func TestRenderStableSafeMultipart(t *testing.T) {
 	}
 	message, _ = mail.ReadMessage(bytes.NewReader(raw))
 	_, params, _ = mime.ParseMediaType(message.Header.Get("Content-Type"))
-	parts = multipart.NewReader(message.Body, params["boundary"])
+	relatedBody := multipart.NewReader(message.Body, params["boundary"])
+	altPart, _ = relatedBody.NextRawPart()
+	_, params, _ = mime.ParseMediaType(altPart.Header.Get("Content-Type"))
+	parts = multipart.NewReader(altPart, params["boundary"])
 	_, _ = parts.NextRawPart()
 	part, _ := parts.NextRawPart()
 	html, _ := io.ReadAll(quotedprintable.NewReader(part))
@@ -273,7 +288,18 @@ func decodeMailParts(t *testing.T, raw []byte) (message *mail.Message, text, htm
 	if e != nil {
 		t.Fatal(e)
 	}
-	parts := multipart.NewReader(message.Body, params["boundary"])
+	// The wordmark rides in a related part beside the alternative body.
+	relatedParams := params
+	related := multipart.NewReader(message.Body, relatedParams["boundary"])
+	first, e := related.NextRawPart()
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, params, e = mime.ParseMediaType(first.Header.Get("Content-Type"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	parts := multipart.NewReader(first, params["boundary"])
 	got := []string{}
 	for {
 		part, e := parts.NextRawPart()
@@ -356,7 +382,70 @@ func TestCodePreheaderUsesRealTTL(t *testing.T) {
 	}
 }
 
-// MAIL-07: header basics. Date, MIME-Version and multipart/alternative are
+// MAIL-08: the wordmark travels with the message. The related root wraps the
+// alternative body, the image part names the exact CID the HTML src uses, its
+// bytes are the embedded canonical PNG, there are no extra parts, and the whole
+// message stays inside the transport's 256 KiB bound.
+func TestMailWordmarkIsRelatedInlinePNG(t *testing.T) {
+	created := time.Date(2026, 9, 6, 12, 20, 0, 0, time.UTC)
+	d := Delivery{Intent: Intent{ID: "mail_fixture_0123456789", Kind: Registration, ResourceID: "resource_1234567890", Revision: 1,
+		ExpiresAt: created.Add(10 * time.Minute), Payload: Payload{To: "recipient@example.test", Code: "482913"}}, CreatedAt: created}
+	raw, e := Render(d, "sender@example.test", "")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(raw) >= 256*1024 {
+		t.Fatalf("message exceeds the transport bound: %d bytes", len(raw))
+	}
+	message, e := mail.ReadMessage(bytes.NewReader(raw))
+	if e != nil {
+		t.Fatal(e)
+	}
+	kind, params, e := mime.ParseMediaType(message.Header.Get("Content-Type"))
+	if e != nil || kind != "multipart/related" || params["type"] != "multipart/alternative" || params["boundary"] == "" {
+		t.Fatalf("related root %q %v", kind, params)
+	}
+	related := multipart.NewReader(message.Body, params["boundary"])
+	body, e := related.NextRawPart()
+	if e != nil {
+		t.Fatal(e)
+	}
+	if kind, _, e := mime.ParseMediaType(body.Header.Get("Content-Type")); e != nil || kind != "multipart/alternative" {
+		t.Fatalf("alternative root %q", kind)
+	}
+	image, e := related.NextRawPart()
+	if e != nil {
+		t.Fatal(e)
+	}
+	if kind, _, e := mime.ParseMediaType(image.Header.Get("Content-Type")); e != nil || kind != "image/png" {
+		t.Fatalf("image part %q", kind)
+	}
+	if got := image.Header.Get("Content-ID"); got != "<"+WordmarkCID+">" {
+		t.Fatalf("Content-ID %q does not name the HTML src", got)
+	}
+	if disposition := image.Header.Get("Content-Disposition"); !strings.HasPrefix(disposition, "inline") {
+		t.Fatalf("image disposition %q", disposition)
+	}
+	if image.Header.Get("Content-Transfer-Encoding") != "base64" {
+		t.Fatalf("image encoding %q", image.Header.Get("Content-Transfer-Encoding"))
+	}
+	decoded, e := io.ReadAll(base64.NewDecoder(base64.StdEncoding, image))
+	if e != nil {
+		t.Fatal(e)
+	}
+	if !bytes.Equal(decoded, brandWordmarkPNG) {
+		t.Fatal("the carried image is not the embedded canonical PNG")
+	}
+	if _, e = related.NextRawPart(); e != io.EOF {
+		t.Fatalf("unexpected extra related part: %v", e)
+	}
+	_, _, html := decodeMailParts(t, raw)
+	if !strings.Contains(html, `src="cid:`+WordmarkCID+`"`) {
+		t.Fatal("HTML does not name the carried image")
+	}
+}
+
+// MAIL-07: header basics. Date, MIME-Version and the related/alternative pair are
 // always present; Message-ID uses the sending domain; Reply-To is omitted
 // unless configured; account mail never includes List-Unsubscribe.
 func TestMailHeaderBasics(t *testing.T) {
@@ -372,7 +461,7 @@ func TestMailHeaderBasics(t *testing.T) {
 	if message.Header.Get("Date") == "" || message.Header.Get("MIME-Version") != "1.0" {
 		t.Fatal("Date/MIME-Version missing")
 	}
-	if ct := message.Header.Get("Content-Type"); !strings.HasPrefix(ct, "multipart/alternative") {
+	if ct := message.Header.Get("Content-Type"); !strings.HasPrefix(ct, "multipart/related") || !strings.Contains(ct, "multipart/alternative") {
 		t.Fatalf("Content-Type %q", ct)
 	}
 	if got := message.Header.Get("Message-ID"); got != "<mail_fixture_0123456789@send.example.test>" {
@@ -428,8 +517,8 @@ func TestCodeEmailMatchesDrawnFrame18(t *testing.T) {
 	_, text, html := decodeMailParts(t, raw)
 	for _, want := range []string{
 		`max-width:560px`,
-		`width:128px;background:#071018;padding:12px;border-radius:8px`,
-		`src="https://getportico.tv/brand/portico-wordmark-white.svg"`,
+		`width:128px;height:auto;background:#071018;padding:12px;border-radius:8px`,
+		`src="cid:portico-wordmark@getportico.tv"`,
 		`padding:40px;background:#10212d;border:1px solid #28404f;border-radius:16px`,
 		`font-size:46px;line-height:1;font-weight:800;letter-spacing:.14em`,
 		`class="exp" style="font-size:15px;font-weight:700;line-height:1.7;margin:0 0 26px;color:#5cb3e2">Enter it in Portico. It expires in 10 minutes.`,

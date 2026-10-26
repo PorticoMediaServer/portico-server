@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	_ "embed"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -17,6 +19,7 @@ import (
 	"net/mail"
 	"net/textproto"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -135,6 +138,12 @@ func sendingDomain(from string) string {
 	return strings.ToLower(parts[1])
 }
 
+// brandWordmarkPNG is the canonical 512x117 brand raster, carried as the mail's
+// related image part so the wordmark needs no network fetch.
+//
+//go:embed brand-wordmark.png
+var brandWordmarkPNG []byte
+
 // Tokens are confined to fragments. Mail retries keep the exact link and ID.
 func Render(d Delivery, from, replyTo string) ([]byte, error) {
 	if e := d.Intent.Validate(); e != nil {
@@ -221,15 +230,16 @@ func Render(d Delivery, from, replyTo string) ([]byte, error) {
 		text += "Never share this message. If you did not request a verification or password reset, ignore that request.\n"
 	}
 	var html bytes.Buffer
-	e := template.Must(template.New("mail").Parse(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark light"><style>@media(prefers-color-scheme:light){body,.surface,.em{background:#edf5fa!important;color:#071018!important}.em{box-shadow:none!important}.card{background:#ffffff!important;color:#071018!important;border-color:#d3dee6!important}.exp{color:#1c6f9e!important}.btn{background:#071018!important;color:#edf5fa!important}.small{color:#28404f!important}.muted{color:#28404f!important}}@media(max-width:480px){.card{padding:24px!important}}</style></head><body style="margin:0;background:#071018;color:#edf5fa;font-family:Manrope,Arial,sans-serif">{{if .Preheader}}<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">{{.Preheader}}</div>{{end}}<table role="presentation" width="100%" class="surface" style="background:#071018;border-collapse:collapse"><tr><td align="center" style="padding:0"><table role="presentation" width="100%" style="max-width:560px;border-collapse:collapse"><tr><td class="em" style="padding:32px 16px 36px;background:#071018;border-radius:14px;box-shadow:inset 0 0 0 1px rgba(237,245,250,.06)"><img class="wmk" src="{{.Wordmark}}" alt="Portico" width="128" style="display:block;width:128px;background:#071018;padding:12px;border-radius:8px;margin:0 0 24px"><table role="presentation" width="100%" style="border-collapse:separate;border-spacing:0"><tr><td class="card" style="padding:40px;background:#10212d;border:1px solid #28404f;border-radius:16px">{{if .Code}}<div style="font-size:46px;line-height:1;font-weight:800;letter-spacing:.14em;font-variant-numeric:tabular-nums;margin:0 0 8px;word-break:break-all;">{{.Code}}</div>{{end}}{{if .CodeNote}}<p class="exp" style="font-size:15px;font-weight:700;line-height:1.7;margin:0 0 26px;color:#5cb3e2">{{.CodeNote}}</p>{{end}}<h1 style="margin:0 0 18px;font-size:28px;line-height:1.25;font-weight:800;letter-spacing:-.02em">{{.Heading}}</h1><p style="font-size:16px;line-height:1.7;margin:0 0 28px">{{.Body}}</p><a class="btn" href="{{.Link}}" style="display:inline-block;background:#edf5fa;color:#071018;padding:14px 24px;border-radius:8px;font-weight:800;font-size:16px;text-decoration:none">{{.Button}}</a>{{if .CodeFallback}}<p style="font-size:14px;line-height:1.6;margin:22px 0 0">Or enter this code in Portico:<br><span style="font-size:22px;font-weight:700;letter-spacing:.14em;font-variant-numeric:tabular-nums">{{.CodeFallback}}</span></p>{{end}}{{if .Note}}<p class="small" style="font-size:14px;line-height:1.6;margin:22px 0 0;color:#bdccd6">{{.Note}}</p>{{end}}<p class="foot muted" style="font-size:12px;line-height:1.6;color:#96a9b5;margin:32px 0 0">Valid until {{.Expiry}}.<br>Never share this message. If you did not request verification or a password reset, ignore that request.</p></td></tr></table></td></tr></table></td></tr></table></body></html>`)).Execute(&html, map[string]string{"Heading": heading, "Body": body, "Button": button, "Link": link, "Expiry": expiry, "Wordmark": BrandWordmarkURL, "Code": codeFirstHTML(code, d.Kind), "CodeNote": codeNote, "CodeFallback": codeFallbackHTML(code, d.Kind), "Note": note, "Preheader": preheader})
+	e := template.Must(template.New("mail").Parse(`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark light"><style>@media(prefers-color-scheme:light){body,.surface,.em{background:#edf5fa!important;color:#071018!important}.em{box-shadow:none!important}.card{background:#ffffff!important;color:#071018!important;border-color:#d3dee6!important}.exp{color:#1c6f9e!important}.btn{background:#071018!important;color:#edf5fa!important}.small{color:#28404f!important}.muted{color:#28404f!important}}@media(max-width:480px){.card{padding:24px!important}}</style></head><body style="margin:0;background:#071018;color:#edf5fa;font-family:Manrope,Arial,sans-serif">{{if .Preheader}}<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">{{.Preheader}}</div>{{end}}<table role="presentation" width="100%" class="surface" style="background:#071018;border-collapse:collapse"><tr><td align="center" style="padding:0"><table role="presentation" width="100%" style="max-width:560px;border-collapse:collapse"><tr><td class="em" style="padding:32px 16px 36px;background:#071018;border-radius:14px;box-shadow:inset 0 0 0 1px rgba(237,245,250,.06)"><img class="wmk" src="{{.Wordmark}}" alt="Portico" width="128" height="29" style="display:block;width:128px;height:auto;background:#071018;padding:12px;border-radius:8px;margin:0 0 24px"><table role="presentation" width="100%" style="border-collapse:separate;border-spacing:0"><tr><td class="card" style="padding:40px;background:#10212d;border:1px solid #28404f;border-radius:16px">{{if .Code}}<div style="font-size:46px;line-height:1;font-weight:800;letter-spacing:.14em;font-variant-numeric:tabular-nums;margin:0 0 8px;word-break:break-all;">{{.Code}}</div>{{end}}{{if .CodeNote}}<p class="exp" style="font-size:15px;font-weight:700;line-height:1.7;margin:0 0 26px;color:#5cb3e2">{{.CodeNote}}</p>{{end}}<h1 style="margin:0 0 18px;font-size:28px;line-height:1.25;font-weight:800;letter-spacing:-.02em">{{.Heading}}</h1><p style="font-size:16px;line-height:1.7;margin:0 0 28px">{{.Body}}</p><a class="btn" href="{{.Link}}" style="display:inline-block;background:#edf5fa;color:#071018;padding:14px 24px;border-radius:8px;font-weight:800;font-size:16px;text-decoration:none">{{.Button}}</a>{{if .CodeFallback}}<p style="font-size:14px;line-height:1.6;margin:22px 0 0">Or enter this code in Portico:<br><span style="font-size:22px;font-weight:700;letter-spacing:.14em;font-variant-numeric:tabular-nums">{{.CodeFallback}}</span></p>{{end}}{{if .Note}}<p class="small" style="font-size:14px;line-height:1.6;margin:22px 0 0;color:#bdccd6">{{.Note}}</p>{{end}}<p class="foot muted" style="font-size:12px;line-height:1.6;color:#96a9b5;margin:32px 0 0">Valid until {{.Expiry}}.<br>Never share this message. If you did not request verification or a password reset, ignore that request.</p></td></tr></table></td></tr></table></td></tr></table></body></html>`)).Execute(&html, map[string]any{"Heading": heading, "Body": body, "Button": button, "Link": link, "Expiry": expiry, "Wordmark": template.URL(BrandWordmarkURL), "Code": codeFirstHTML(code, d.Kind), "CodeNote": codeNote, "CodeFallback": codeFallbackHTML(code, d.Kind), "Note": note, "Preheader": preheader})
 	if e != nil {
 		return nil, e
 	}
-	var bodyBuffer bytes.Buffer
-	multi := multipart.NewWriter(&bodyBuffer)
 	// The ID is restricted to safe characters by the enqueue repository.
 	digest := sha256.Sum256([]byte(d.ID))
 	boundary := "portico-" + hex.EncodeToString(digest[:20])
+	related := "portico-rel-" + hex.EncodeToString(digest[:20])
+	var alternative bytes.Buffer
+	multi := multipart.NewWriter(&alternative)
 	if e = multi.SetBoundary(boundary); e != nil {
 		return nil, e
 	}
@@ -252,12 +262,49 @@ func Render(d Delivery, from, replyTo string) ([]byte, error) {
 	if e = multi.Close(); e != nil {
 		return nil, e
 	}
+	// The wordmark rides along as a related part of the alternative body.
+	var bodyBuffer bytes.Buffer
+	outer := multipart.NewWriter(&bodyBuffer)
+	if e = outer.SetBoundary(related); e != nil {
+		return nil, e
+	}
+	altHeader := textproto.MIMEHeader{}
+	altHeader.Set("Content-Type", "multipart/alternative; boundary="+strconv.Quote(boundary))
+	w, err := outer.CreatePart(altHeader)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = w.Write(alternative.Bytes()); err != nil {
+		return nil, err
+	}
+	imageHeader := textproto.MIMEHeader{}
+	imageHeader.Set("Content-Type", `image/png; name="portico-wordmark.png"`)
+	imageHeader.Set("Content-Transfer-Encoding", "base64")
+	imageHeader.Set("Content-ID", "<"+WordmarkCID+">")
+	imageHeader.Set("Content-Disposition", `inline; filename="portico-wordmark.png"`)
+	imageHeader.Set("Content-Location", "portico-wordmark.png")
+	if w, err = outer.CreatePart(imageHeader); err != nil {
+		return nil, err
+	}
+	encoded := base64.StdEncoding.EncodeToString(brandWordmarkPNG)
+	for len(encoded) > 76 {
+		if _, err = w.Write([]byte(encoded[:76] + "\r\n")); err != nil {
+			return nil, err
+		}
+		encoded = encoded[76:]
+	}
+	if _, err = w.Write([]byte(encoded + "\r\n")); err != nil {
+		return nil, err
+	}
+	if e = outer.Close(); e != nil {
+		return nil, e
+	}
 	var out bytes.Buffer
 	fmt.Fprintf(&out, "From: %s\r\nTo: %s\r\nSubject: %s\r\n", (&mail.Address{Name: "Portico", Address: from}).String(), (&mail.Address{Address: d.Payload.To}).String(), mime.QEncoding.Encode("UTF-8", subject))
 	if replyTo != "" {
 		fmt.Fprintf(&out, "Reply-To: %s\r\n", (&mail.Address{Address: replyTo}).String())
 	}
-	fmt.Fprintf(&out, "Date: %s\r\nMessage-ID: <%s@%s>\r\nMIME-Version: 1.0\r\nContent-Type: multipart/alternative; boundary=%q\r\n", d.CreatedAt.UTC().Format(time.RFC1123Z), d.ID, domain, boundary)
+	fmt.Fprintf(&out, "Date: %s\r\nMessage-ID: <%s@%s>\r\nMIME-Version: 1.0\r\nContent-Type: multipart/related; boundary=%q; type=\"multipart/alternative\"\r\n", d.CreatedAt.UTC().Format(time.RFC1123Z), d.ID, domain, related)
 	fmt.Fprintf(&out, "\r\n")
 	out.Write(bodyBuffer.Bytes())
 	return out.Bytes(), nil
