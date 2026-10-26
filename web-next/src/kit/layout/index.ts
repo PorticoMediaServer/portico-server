@@ -6,7 +6,7 @@ export {FocusPreviewHero, PreviewDebounce, usePreviewDebounce} from './FocusPrev
 export type {FocusPreviewHeroProps} from './FocusPreviewHero';
 export {Row, Shelf, FlowSections, FocusAnchor} from './Row';
 export type {RowProps, ShelfProps, ShelfItemContext, FlowSection, FocusAnchorProps} from './Row';
-export {applyRemovalFocus, removalFocusEligible, removalFocusStop, resolveRemovalFocus, useRemovalFocus} from './focus-context';
+export {applyRemovalFocus, removalFocusEligible, removalFocusStops, resolveRemovalFocus, useRemovalFocus} from './focus-context';
 export type {RemovalFocusContext, RemovalFocusHandlers, RemovalFocusTarget} from './focus-context';
 export {WindowedGrid} from './WindowedGrid';
 export type {WindowedGridHandle, WindowedGridProps, GridItemContext} from './WindowedGrid';
