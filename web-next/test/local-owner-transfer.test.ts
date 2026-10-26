@@ -10,7 +10,7 @@ const row = (accountId: string, role = 'member') => ({accountId, username: accou
   disabled: false, status: 'active', hasMoveCode: false, allowedLibraries: [], libraryNames: [], maxStreams: 1, maxStreamsMode: 'limit',
   serverMaxStreams: null, effectiveMaxStreams: 1, profileCount: 1, profileNames: ['Main'], liveState: 'idle'});
 function fixture() {
-  let current = true, revision = 3, link = false, fail: unknown, complete = 0;
+  let current = true, revision = 3, link = false, fail: unknown, complete = 0, reconciled = 0, navigated = 0;
   let post: (() => Promise<void>) | undefined;
   const calls: {path: string; method?: string; body?: unknown}[] = [];
   const api: ProfileAPI = {request: async <T>(path: string, method?: string, body?: unknown): Promise<T> => {
@@ -25,8 +25,14 @@ function fixture() {
     throw new Error('Unexpected transfer request');
   }};
   const source = new LocalOwnerTransferSource(api, {accountId: 'owner', profileId: 'owner-main', isCurrent: () => current,
-    onTransferred: () => {complete++; current = false;}});
-  return {source, calls, get complete() {return complete;}, retire: () => {current = false;},
+    onTransferred: publish => {
+      // The exact old context is spent even after its view/authority ended.
+      complete++;
+      if (current) {reconciled++; if (publish) navigated++;}
+      current = false;
+    }});
+  return {source, calls, get complete() {return complete;}, get reconciled() {return reconciled;}, get navigated() {return navigated;},
+    retire: () => {current = false;}, restoreParent: () => {current = true;},
     revised: () => {revision++;}, linked: () => {link = true;}, fail: (error: unknown) => {fail = error;}, wait: (value: () => Promise<void>) => {post = value;}};
 }
 const caller = () => {
@@ -88,7 +94,7 @@ test('the synchronous opening claim admits only one transfer flight', async () =
     assert.equal(f.calls.filter(value => value.path === '/v1/direct/ownership').length, 1); assert.equal(f.complete, 1);
   } finally {f.source.dispose();}
 });
-test('retiring a pending opening cannot lend its in-flight claim to a successor', async () => {
+test('retiring a pending opening cannot lend its claim and a known 204 still spends the exact source', async () => {
   const f = fixture(), life = caller(); let release!: () => void;
   f.wait(() => new Promise<void>(resolve => {release = resolve;}));
   try {
@@ -97,6 +103,22 @@ test('retiring a pending opening cannot lend its in-flight claim to a successor'
     port.close(); life.retire();
     const count = f.calls.length;
     await assert.rejects(f.source.open(caller())); assert.equal(f.calls.length, count);
-    release(); await assert.rejects(pending); assert.equal(f.complete, 0);
+    release(); await pending;
+    assert.equal(f.complete, 1); assert.equal(f.reconciled, 1); assert.equal(f.navigated, 0);
+    f.restoreParent();
+    const after = f.calls.length; await assert.rejects(f.source.open(caller())); assert.equal(f.calls.length, after);
+  } finally {f.source.dispose();}
+});
+for (const retirement of ['command', 'authority'] as const) test('known 204 after '+retirement+' retirement spends only the original context', async () => {
+  const f = fixture(), rowCaller = caller(), commandCaller = caller(); let release!: () => void;
+  f.wait(() => new Promise<void>(resolve => {release = resolve;}));
+  try {
+    const port = await f.source.open(rowCaller), pending = port.accept(input, commandCaller);
+    for (let i = 0; i < 8 && !release; i++) await Promise.resolve();
+    if (retirement === 'command') commandCaller.retire(); else f.retire();
+    release(); await pending;
+    assert.equal(f.complete, 1); assert.equal(f.reconciled, retirement === 'command' ? 1 : 0); assert.equal(f.navigated, 0);
+    f.restoreParent();
+    const count = f.calls.length; await assert.rejects(f.source.open(caller())); assert.equal(f.calls.length, count);
   } finally {f.source.dispose();}
 });
