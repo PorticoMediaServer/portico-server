@@ -1,10 +1,10 @@
 import {HttpLocalApi, type LocalSession} from '@core/index.ts';
 import {type AppSessionStore, knownServerRoutes} from '@core/app-sessions.ts';
-import {parseClaimStatus, type ClaimExpected} from '@core/claim-onboarding.ts';
+import {parseClaimStatus, type ClaimExpected, type ClaimStatus} from '@core/claim-onboarding.ts';
 import {installationIdentity} from '@core/installation.ts';
 import {prepareSetupClaimHandoff, type SetupClaimHandoff} from '@core/setup-claim-client.ts';
 import {verifySetupClaimStart} from '@core/setup-claim-start.ts';
-import {resumeServerSetup, type SetupDraft, type SetupDraftStore} from '@core/setup-onboarding.ts';
+import {resumeServerSetup, type PendingAccountSetup, type SetupDraft, type SetupDraftStore} from '@core/setup-onboarding.ts';
 import {parseDirectSignIn, type DirectSignIn} from '@core/profile-management.ts';
 import {assertFirstContactIdentity, routeBase64, routeBytes, routeOrigin, sameServerPin, type ServerPin} from '@core/route-identity.ts';
 import {connectPairedServer, connectPairedPorticoServer, rememberNativeSession, type ConnectionEnvironment} from '@core/server-connections.ts';
@@ -36,6 +36,16 @@ const invalid = () => new CodedError('invalid_return', 'This setup continuation 
 const cancelled = () => new CodedError('cancelled', 'The pending setup or server selection changed.');
 const same = (a: Pending | undefined, b: Pending) => !!a && JSON.stringify(a) === JSON.stringify(b);
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
+export type SetupClaimRecovery = Readonly<{retry: () => Promise<string>; useLocal: () => Promise<void>}>;
+type PrepareOpening = Readonly<{setup: PendingAccountSetup; assertOriginal: () => Promise<void>; isCurrent: () => boolean;
+  capture: (receipt: SetupClaimRecovery) => void}>;
+type RecoveryReceipt = Readonly<{origin: string; pin: ServerPin; installationId: string; selectionRevision: number;
+  draft: Readonly<SetupDraft>; setupRevision: string; pending?: Pending; identity?: Readonly<ClaimStatus['identity']>}>;
+const copyPending = (value: Pending): Pending => Object.freeze({...value, pin: Object.freeze({...value.pin}),
+  ...(value.expected ? {expected: Object.freeze({...value.expected})} : {})});
+const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+const absentClaim = (status: ClaimStatus) => status.state === 'unconfigured' && !status.operation && !status.accountId &&
+  !status.installationAcknowledged && !status.approvalRequired && !status.approvalRequest && status.actions.length === 1 && status.actions[0] === 'prepare';
 
 /** Initial setup has no Local owner or authorization family. Its only authority
  * is the original protected setup request/token and Server-supplied revision. */
@@ -70,57 +80,154 @@ export class BrowserSetupClaim {
     if (id) await this.ports.journal.change(old => old?.attemptId === id ? undefined : old);
   }
   async dispose() {await this.cancel();}
-  async prepare(api: HttpLocalApi, hostedOrigin: string): Promise<string> {
+  async prepare(api: HttpLocalApi, hostedOrigin: string, opening?: PrepareOpening): Promise<string> {
+    return this.prepareOriginal(api, hostedOrigin, opening);
+  }
+  private async prepareOriginal(api: HttpLocalApi, hostedOrigin: string, opening?: PrepareOpening, original?: RecoveryReceipt): Promise<string> {
     this.ports.journal.assertAvailable();
     const origin = this.ports.pageOrigin(), route = api.getRouteConnection();
     if (api.baseUrl !== origin || routeOrigin(origin) !== origin || !route || route.getSnapshot().phase !== 'ready' ||
       routeOrigin(hostedOrigin) !== hostedOrigin || !hostedOrigin.startsWith('https://')) throw invalid();
-    const operation = this.operation();
+    const owned = this.operation();
+    const operation = {...owned, current: () => owned.current() && (!opening || opening.isCurrent())};
+    const checkOpening = async () => {if (!operation.current()) throw cancelled(); await opening?.assertOriginal(); if (!operation.current()) throw cancelled();};
     try {
+      await checkOpening();
+      if (original) await this.assertRecovery(api, original, operation, opening);
       const draft = await this.ports.draft(route.pin.serverId).read(), selection = await this.ports.sessions.read();
+      await checkOpening();
       if (!operation.current() || !draft || draft.version !== 1 || draft.serverId !== route.pin.serverId || draft.authMode !== 'hosted' || !draft.setupToken) throw invalid();
       assertFirstContactIdentity(origin, route.pin, {knownRoutes: knownServerRoutes(selection)});
       const captured = new HttpLocalApi(origin, draft.setupToken); captured.useRoutes(route);
       const resumed = await resumeServerSetup(captured, this.ports.draft(route.pin.serverId), operation.signal);
-      if (!('claimRequired' in resumed) || resumed.requestId !== draft.requestId) throw invalid();
+      await checkOpening();
+      if (!('claimRequired' in resumed) || resumed.requestId !== draft.requestId || opening &&
+        (resumed.serverId !== opening.setup.serverId || resumed.requestId !== opening.setup.requestId || resumed.revision !== opening.setup.revision)) throw invalid();
       let pending = await this.ports.journal.read();
+      await checkOpening();
+      if (original && !equal(pending, original.pending)) throw cancelled();
+      let identity: Readonly<ClaimStatus['identity']> | undefined = original?.identity;
+      const captureRecovery = () => {
+        if (!opening) return;
+        const receipt: RecoveryReceipt = Object.freeze({origin, pin: Object.freeze({...route.pin}), installationId: this.ports.installationId(),
+          selectionRevision: selection.revision, draft: Object.freeze({...draft}), setupRevision: resumed.revision,
+          ...(pending ? {pending: copyPending(pending)} : {}), ...(identity ? {identity: Object.freeze({...identity})} : {})});
+        opening.capture(Object.freeze({retry: () => this.prepareOriginal(api, hostedOrigin, opening, receipt),
+          useLocal: () => this.recoverOriginalLocal(api, receipt, opening)}));
+      };
+      if (pending && (pending.origin !== origin || pending.hostedOrigin !== hostedOrigin || !sameServerPin(pending.pin, route.pin) ||
+        pending.setupRequestId !== resumed.requestId || pending.setupRevision !== resumed.revision)) throw invalid();
+      captureRecovery();
       if (!pending) {
         const verifier = routeBase64(crypto.getRandomValues(new Uint8Array(32))), createdAt = this.now();
         const codeChallenge = routeBase64(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))));
+        await checkOpening();
         pending = {version: 1, kind: 'setup', attemptId: routeBase64(crypto.getRandomValues(new Uint8Array(32))), origin, hostedOrigin, pin: {...route.pin},
           expectedRevision: selection.revision, setupRequestId: draft.requestId, setupToken: draft.setupToken, setupRevision: resumed.revision,
           installationId: this.ports.installationId(), state: routeBase64(crypto.getRandomValues(new Uint8Array(32))), verifier, codeChallenge,
           createdAt, expiresAt: new Date(createdAt + 300_000).toISOString()};
         const fresh = pending;
         await this.ports.journal.change(old => {if (!operation.current() || old) throw cancelled(); return fresh;});
+        await checkOpening(); captureRecovery();
       }
       if (pending.origin !== origin || pending.hostedOrigin !== hostedOrigin || !sameServerPin(pending.pin, route.pin) || pending.setupRequestId !== resumed.requestId || pending.setupRevision !== resumed.revision) throw invalid();
       this.attemptId = pending.attemptId;
       await this.current(pending, operation);
+      await checkOpening();
       if (!pending.expected) {
         let status = parseClaimStatus(await captured.request(routePath('get_networking_claim'), 'GET', undefined, operation.signal), pending.pin);
-        await this.current(pending, operation);
+        await this.current(pending, operation); await checkOpening();
+        // Without a private original operation receipt, an existing operation is
+        // unknown. A read must never turn it into this attempt's cancel target.
+        if (!absentClaim(status) || identity && !equal(identity, status.identity)) throw invalid();
+        identity = Object.freeze({...status.identity}); captureRecovery();
         if (status.actions.includes('prepare')) {
           status = parseClaimStatus(await captured.request(routePath('post_networking_claim_prepare'), 'POST', {purpose: 'setup', expected: status.identity}, operation.signal), pending.pin);
-          await this.current(pending, operation);
+          await this.current(pending, operation); await checkOpening();
         }
         if (status.state !== 'prepared' || !status.operation || status.approvalRequest?.purpose !== 'setup' || status.approvalRequest.currentOwnerAccountId !== '' ||
           status.approvalRequest.previousOwnerRole !== '' || status.approvalRequest.returnRegistrationId !== '') throw invalid();
         const old = pending, updated = {...pending, expected: {...status.operation}};
         await this.ports.journal.change(current => {if (!operation.current() || !same(current, old)) throw cancelled(); return updated;});
         pending = updated;
+        captureRecovery();
       }
       const binding = {pin: pending.pin, origin, hostedOrigin, operationId: pending.expected!.operationId, localGeneration: pending.expected!.localGeneration,
         setupRequestId: pending.setupRequestId, setupRevision: pending.setupRevision, state: pending.state, codeChallenge: pending.codeChallenge, installationId: pending.installationId};
       return await (this.ports.prepare ?? prepareSetupClaimHandoff)(captured, pending.expected!, binding, {
-        assertPendingCurrent: async () => {await this.current(pending!, operation);},
+        assertPendingCurrent: async () => {await this.current(pending!, operation); await checkOpening();},
         bindPending: async handoff => {
-          await this.current(pending!, operation);
+          await this.current(pending!, operation); await checkOpening();
           const old = pending!, updated = {...old, handoff, expiresAt: new Date(Math.min(Date.parse(old.expiresAt), Date.parse(handoff.expiresAt))).toISOString()};
           await this.ports.journal.change(current => {if (!operation.current() || !same(current, old)) throw cancelled(); return updated;});
           pending = updated;
+          await checkOpening(); captureRecovery();
         },
       }, {signal: operation.signal, now: () => this.now()});
+    } finally {this.busy = false;}
+  }
+  private async assertRecovery(api: HttpLocalApi, receipt: RecoveryReceipt, operation: {current: () => boolean}, opening?: PrepareOpening) {
+    const live = () => {
+      const route = api.getRouteConnection();
+      if (!operation.current() || receipt.origin !== this.ports.pageOrigin() || api.baseUrl !== receipt.origin ||
+        receipt.installationId !== this.ports.installationId() || !route || route.getSnapshot().phase !== 'ready' || !sameServerPin(route.pin, receipt.pin)) throw cancelled();
+    };
+    live(); await opening?.assertOriginal(); live();
+    this.ports.journal.assertAvailable();
+    const record = await this.ports.journal.read(); live();
+    if (!equal(record, receipt.pending)) throw cancelled();
+    const draft = await this.ports.draft(receipt.pin.serverId).read(); live();
+    if (!equal(draft, receipt.draft)) throw cancelled();
+    const selection = await this.ports.sessions.read(); live();
+    if (selection.revision !== receipt.selectionRevision) throw cancelled();
+    await opening?.assertOriginal(); live();
+  }
+  /** Unlike cancel(), this is a server operation. Its target is captured during
+   * prepare/resume, never acquired by reading the latest operation on click. */
+  private async recoverOriginalLocal(api: HttpLocalApi, receipt: RecoveryReceipt, opening: PrepareOpening): Promise<void> {
+    const owned = this.operation(), operation = {...owned, current: () => owned.current() && opening.isCurrent()};
+    const current = () => this.assertRecovery(api, receipt, operation, opening);
+    const captured = new HttpLocalApi(receipt.origin, receipt.draft.setupToken), route = api.getRouteConnection();
+    if (!route) {this.busy = false; throw cancelled();} captured.useRoutes(route);
+    const resume = async () => {
+      await current();
+      const setup = await resumeServerSetup(captured, {read: async () => receipt.draft, change: async () => {throw cancelled();}}, operation.signal);
+      await current();
+      if (!('claimRequired' in setup) || setup.serverId !== receipt.pin.serverId || setup.requestId !== receipt.draft.requestId || setup.revision !== receipt.setupRevision) throw cancelled();
+    };
+    const read = async () => {await current(); const status = parseClaimStatus(await captured.request(routePath('get_networking_claim'), 'GET', undefined, operation.signal), receipt.pin); await current(); return status;};
+    try {
+      await resume();
+      const status = await read(), expected = receipt.pending?.expected;
+      let absenceGeneration: string;
+      if (expected) {
+        const approval = status.approvalRequest;
+        if (status.state !== 'prepared' || status.installationAcknowledged || status.accountId !== 'account-unbound' || !equal(status.operation, expected) ||
+          status.identity.localGeneration !== expected.localGeneration || !status.actions.includes('cancel') || !approval || approval.purpose !== 'setup' ||
+          approval.operationId !== expected.operationId || approval.localGeneration !== expected.localGeneration || approval.currentOwnerAccountId !== '' ||
+          approval.previousOwnerRole !== '' || approval.returnRegistrationId !== '') throw cancelled();
+        await current();
+        const result = parseClaimStatus(await captured.request(routePath('post_networking_claim_cancel'), 'POST', {expected}, operation.signal), receipt.pin);
+        await current();
+        absenceGeneration = (BigInt(expected.localGeneration) + 1n).toString();
+        // CancelAcknowledged clears the active pointer and advances the reset
+        // generation. A pending/ambiguous response is not completed recovery.
+        if (!absentClaim(result) || result.identity.localGeneration !== absenceGeneration) throw cancelled();
+      } else {
+        if (!absentClaim(status) || receipt.identity && !equal(status.identity, receipt.identity)) throw cancelled();
+        absenceGeneration = status.identity.localGeneration;
+      }
+      await resume();
+      const after = await read();
+      if (!absentClaim(after) || after.identity.localGeneration !== absenceGeneration) throw cancelled();
+      await current();
+      // Keep the original setup proof. Retire only this exact browser record
+      // after positive server evidence; cancel() remains browser-only cleanup.
+      await this.ports.journal.change(old => {if (!operation.current() || !equal(old, receipt.pending)) throw cancelled(); return undefined;});
+      if (!operation.current()) throw cancelled();
+      await opening.assertOriginal();
+      if (!operation.current()) throw cancelled();
+      if (this.attemptId === receipt.pending?.attemptId) this.attemptId = undefined;
     } finally {this.busy = false;}
   }
   async pendingReturn() {
