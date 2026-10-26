@@ -45,18 +45,26 @@ function computedName(art: HTMLElement): string {
 
 /** Applies the owner's claim to the real destination artwork once. Another
  * writer's computed name is refused, and reduce keeps no geometry name. */
-export function applyTitleArtworkClaim(art: HTMLElement | null | undefined, claim: SourceArtClaim | undefined): () => void {
-  if (!art || !claim || !claim.name.startsWith(SOURCE_ART_PREFIX) || reducePreferred()) return () => {};
+export function applyTitleArtworkClaim(art: HTMLElement | null | undefined, claim: SourceArtClaim | undefined, reduce = reducePreferred()): () => void {
+  if (!art || !claim || !claim.name.startsWith(SOURCE_ART_PREFIX) || reduce) return () => {};
   const bounds = art.getBoundingClientRect();
   const current = computedName(art);
   if (current && current !== claim.name) return () => {};
-  if (!art.isConnected || !(bounds.width > 0) || !(bounds.height > 0) || !realArtwork(art)) return () => {};
+  if (!art.isConnected || !Number.isFinite(bounds.width) || !Number.isFinite(bounds.height) || !(bounds.width > 0) || !(bounds.height > 0) || !realArtwork(art)) return () => {};
   art.style.viewTransitionName = claim.name;
   return () => {if (art.style.viewTransitionName === claim.name) art.style.viewTransitionName = '';};
 }
 
-export function useTitleArtworkClaim(art: RefObject<HTMLElement | null>, claim: SourceArtClaim | undefined, titleKey: string): void {
-  useLayoutEffect(() => applyTitleArtworkClaim(art.current, claim), [art, claim?.name, titleKey]);
+export function useTitleArtworkClaim(art: RefObject<HTMLElement | null>, claim: SourceArtClaim | undefined, titleKey: string, reduce: boolean): void {
+  useLayoutEffect(() => {
+    const node = art.current;
+    if (!node) return;
+    const clear = applyTitleArtworkClaim(node, claim, reduce);
+    const parent = node.parentNode;
+    const replaced = parent ? new MutationObserver(() => {if (!node.isConnected) clear();}) : undefined;
+    if (parent && replaced) replaced.observe(parent, {childList: true});
+    return () => {replaced?.disconnect(); clear();};
+  }, [art, claim?.name, titleKey, reduce]);
 }
 
 function painted(element: HTMLElement): Readonly<{opacity: number; transform: string}> {
@@ -68,46 +76,45 @@ function painted(element: HTMLElement): Readonly<{opacity: number; transform: st
 /** One authored entrance per committed title presentation, owned by the real copy
  * node. Replacement and reduce changes retarget from the painted pose before the
  * old animation is cancelled; reduce drops travel and stagger. */
-export function useTitleCopyEntrance(copy: RefObject<HTMLElement | null>, titleKey: string): void {
-  const running = useRef<Animation[]>([]);
+export function useTitleCopyEntrance(copy: RefObject<HTMLElement | null>, titleKey: string, reduce: boolean): void {
+  const running = useRef(new Map<HTMLElement, Animation>());
   const latest = useRef<() => void>(() => {});
   latest.current = () => {
     const root = copy.current;
     if (!root) return;
-    const timing = titleCopyTiming(reducePreferred());
-    const frames = Array.from(root.children, child => {
-      const element = child as HTMLElement;
-      return {element, ...painted(element)};
-    });
-    for (const animation of running.current) animation.cancel();
-    running.current = [];
+    const timing = titleCopyTiming(reduce);
+    const children = Array.from(root.children) as HTMLElement[];
+    // Detached or replaced nodes lose their animation; nothing else is touched.
+    for (const [element, animation] of running.current) {
+      if (!children.includes(element)) {animation.cancel(); running.current.delete(element);}
+    }
+    const owned = new Set(running.current.keys());
+    const frames = children.map(element => ({element, from: owned.has(element) ? painted(element) : {opacity: 0, transform: 'none'}}));
+    for (const animation of running.current.values()) animation.cancel();
+    running.current.clear();
     for (const [index, frame] of frames.entries()) {
       if (!frame.element.animate) continue;
       const from = timing.risePx > 0
-        ? {opacity: frame.opacity, transform: frame.transform === 'none' ? `translateY(${timing.risePx}px)` : frame.transform}
-        : {opacity: frame.opacity};
+        ? {opacity: frame.from.opacity, transform: frame.from.transform === 'none' ? `translateY(${timing.risePx}px)` : frame.from.transform}
+        : {opacity: frame.from.opacity};
       const to = timing.risePx > 0 ? {opacity: 1, transform: 'none'} : {opacity: 1};
-      running.current.push(frame.element.animate([from, to], {
+      running.current.set(frame.element, frame.element.animate([from, to], {
         duration: timing.duration, delay: timing.risePx > 0 ? timing.staggerMs * index : 0, easing: timing.easing, fill: 'backwards'
       }));
     }
   };
-  useLayoutEffect(() => { latest.current(); }, [copy, titleKey]);
+  // One entrance per committed title presentation, plus live reduction retarget.
+  useLayoutEffect(() => { latest.current(); }, [copy, titleKey, reduce]);
   useLayoutEffect(() => {
     const root = copy.current;
-    const replaced = new MutationObserver(() => latest.current());
+    // Ordinary metadata adding a child never replays the existing entrance; an
+    // actual child replacement (a removal) retargets from the painted pose.
+    const replaced = new MutationObserver(records => {if (records.some(record => record.removedNodes.length > 0)) latest.current();});
     if (root) replaced.observe(root, {childList: true});
-    const reduced = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : undefined;
-    const onReduce = () => latest.current();
-    reduced?.addEventListener('change', onReduce);
-    const attributes = new MutationObserver(onReduce);
-    for (const element of [document.documentElement, document.body]) {
-      if (element) attributes.observe(element, {attributes: true, attributeFilter: ['data-reduce-motion']});
-    }
     return () => {
-      replaced.disconnect(); attributes.disconnect(); reduced?.removeEventListener('change', onReduce);
-      for (const animation of running.current) animation.cancel();
-      running.current = [];
+      replaced.disconnect();
+      for (const animation of running.current.values()) animation.cancel();
+      running.current.clear();
     };
   }, [copy]);
 }

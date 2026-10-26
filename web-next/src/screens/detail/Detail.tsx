@@ -31,6 +31,7 @@ import {TitleProse, TitleFactsLine} from '../../kit/title/TitleParts';
 import {TitlePeople, CreditLine, CreditNames} from './People';
 import {useTitleArtworkClaim, useTitleCopyEntrance} from './title-artwork-motion';
 import type {SourceArtClaim} from '../../kit/cards/source-art-transition';
+import {useLayoutMotion} from '../../kit/layout/motion';
 import motionStyles from './title-hero-motion.module.css';
 import {FileManagement} from './FileManagement';
 import {TitleTabs} from './TitleTabs';
@@ -88,9 +89,10 @@ export function TitleBody({binding, compact = false, artworkClaim}: {binding: De
 function TitleHero({binding, data, artworkClaim, showBackdrops}: {binding: DetailBindings; data: DetailProjection; artworkClaim?: SourceArtClaim; showBackdrops: boolean}) {
   const width = useShellWidth(), phone = width < 1024, {item, facts, metadata} = data, art = binding.context.artwork;
   const artworkRef = useRef<HTMLDivElement>(null), copyRef = useRef<HTMLDivElement>(null);
+  const {reduced} = useLayoutMotion();
   // The route owner supplies the one claim; nothing is taken during render.
-  useTitleArtworkClaim(artworkRef, artworkClaim, item.id);
-  useTitleCopyEntrance(copyRef, item.id);
+  useTitleArtworkClaim(artworkRef, artworkClaim, item.id, reduced);
+  useTitleCopyEntrance(copyRef, item.id, reduced);
   const directed = metadata.credits.filter(credit => credit.role.toLowerCase() === 'director');
   const starring = metadata.credits.filter(credit => credit.department.toLowerCase() === 'acting' || credit.role.toLowerCase() === 'cast').slice(0, 4);
   const parts = titlePageFacts({year: item.year, durationSeconds: item.duration, genres: metadata.genres.map(genre => genre.name), contentRating: facts?.contentRating}, env);
