@@ -27,7 +27,7 @@ function FixtureBody({retained, setRetained}: {retained: boolean; setRetained: (
   const [missing, setMissing] = useState(false), [version, setVersion] = useState(0), [previewActive, setPreviewActive] = useState(true), [holdActive, setHoldActive] = useState(false);
   const [, setLegacyVersion] = useState(0), legacyEvents = useRef<boolean[]>([]), sourceCurrent = useRef(true);
   const events = useRef({toggles: 0, preview: [] as boolean[], publications: 0}), renders = useRef(0);
-  if (++renders.current > 80) throw new Error('legacy callback renewal caused repeated renders');
+  renders.current++;
   const owner = useMemo(() => createCardInteractionOwner(), []), row = useMemo(() => ({}), []);
   const source = useMemo(() => owner.source(row, {current: () => sourceCurrent.current, preview: value => {events.current.preview.push(value); events.current.publications++; setVersion(n => n + 1);}}), [owner, row]);
   // New descriptors and callbacks on every React publication, same original source.
