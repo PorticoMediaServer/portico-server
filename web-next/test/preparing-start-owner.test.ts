@@ -119,6 +119,19 @@ test('a synchronous reentrant caller cannot claim the original key before reques
   } finally {reg.dispose();owner.dispose();}
 });
 
+test('a registration caused by a currentness callback is refused before cleanup dispatch', async () => {
+  let armed = false, stops = 0;
+  let reg!: ReturnType<WebPreparingStarts['attach']>;
+  const owner = new WebPreparingStarts({isCurrent: () => {
+    if (armed) {armed = false;reg.remember('original_session');reg.forget('original_session');}return true;
+  }, stop: async () => {stops++;}});
+  reg = owner.attach();
+  try {
+    const start = reg.begin({itemId: 'movie'}, {}, 'original-key', undefined, () => true), cleanup = start.context.capturePreparing!(preparing())!;
+    armed = true;await cleanup();start.finish();assert.equal(stops, 0);
+  } finally {reg.dispose();owner.dispose();}
+});
+
 test('original nested body/key stay frozen across preparation, while returned 201 is remembered normally', async () => {
   const f = fixture(), options: StartOptions = {audio: {trackId: 'track-a'}, subtitles: {trackId: 'sub-a', delivery: 'sidecar'}};
   f.replies.push(Promise.resolve(response({...real(), retryAfterMs: 500})), Promise.resolve(response(real(), 201)));
