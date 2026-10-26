@@ -9,8 +9,10 @@ const formatBytes = (bytes: number) => bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 
 
 /** The drawn Advanced groups (remote-sources.html#4b, #4c), over the values the
  * server actually applies: the folders' check interval, the start and watch
- * passes, the full re-check, the mount's real read cache, and the whole-file
- * analysis stages. Rows the server cannot honour are not drawn. */
+ * passes, the full re-check, the mount's real read cache, and the analysis
+ * stages that run only under the source's own advanced-analysis consent, which
+ * the single consent control above already states in its canonical words. Rows
+ * the server cannot honour are not drawn. */
 export function SourceAdvancedRows({values, cacheSupported, transportSupported, cacheApplied, cacheError, cacheUsedBytes, observedInterval, disabled, onChange}: Readonly<{
   values: SourceAdvanced; cacheSupported: boolean; transportSupported: boolean; cacheApplied: boolean; cacheError?: string;
   cacheUsedBytes?: number; observedInterval: number; disabled: boolean; onChange: (values: SourceAdvanced) => void;
@@ -66,7 +68,6 @@ export function SourceAdvancedRows({values, cacheSupported, transportSupported, 
       <Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.4.label')} checked={values.doubleCheckFolders} disabled={disabled} onCheckedChange={value => set('doubleCheckFolders', value)}/></label>
 
     <p className={styles.advTitle}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.title')}</p>
-    <p className={styles.note}>{t('next.remoteSources.advWholeFileHint')}</p>
     <div className={styles.runSkip} role="group" aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.label')}>
       <div className={styles.runSkipHead}>
         <span/>

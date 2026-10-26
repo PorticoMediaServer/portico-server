@@ -8,6 +8,7 @@ import {servicesI18n} from './i18n';
 import type {WorkspaceApi, WorkspaceServers} from './workspace-api';
 import {servicesServerDirectoryCopy} from './server-directory';
 import styles from './server-directory.module.css';
+import servicesStyles from './services.module.css';
 
 export function ServersPanel({api}: {api: WorkspaceApi}) {
   const i18n = useMemo(servicesI18n, []), {t} = i18n;
@@ -85,7 +86,7 @@ export function ServersPanel({api}: {api: WorkspaceApi}) {
         <Button size="small" variant="glass" icon="i-right" iconOnly aria-label={t('web.hostedAccount.stillWorksSetup')} onClick={() => location.assign('/#setup')} />
       </ServicesWorkspaceRow>
     </ServicesGroup> : null}
-    <Dialog open={Boolean(leaving)} onOpenChange={open => { if (!open && !busy) setLeaving(undefined); }} title={t('web.hostedAccount.leaveTitle', {server: leaving?.name ?? ''})}
+    <Dialog open={Boolean(leaving)} onOpenChange={open => { if (!open && !busy) setLeaving(undefined); }} className={servicesStyles.overlaySpacing} title={t('web.hostedAccount.leaveTitle', {server: leaving?.name ?? ''})}
       description={t('web.hostedAccount.leaveBody', {server: leaving?.name ?? ''})} showCloseButton={false} stackFooter footer={<><Button size="small" disabled={busy} onClick={() => setLeaving(undefined)}>{t('action.cancel')}</Button><ServicesDangerAction loading={busy} onClick={() => void leave()}>{t('web.hostedAccount.leaveServer')}</ServicesDangerAction></>}><></></Dialog>
   </>;
 }

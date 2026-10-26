@@ -69,9 +69,9 @@ function BoundDevicesPanel({api, frame, service}: Props & {service: AccountSessi
       </ServicesWorkspaceRow>;
     })}</ServicesGroup>}
     {(state.hasPrevious || state.nextCursor) && <div className={styles.pager}><Button size="small" disabled={busy || !state.hasPrevious} onClick={() => void service.previous()}>{t('web.hostedAccount.newer')}</Button><Button size="small" disabled={busy || !state.nextCursor} onClick={() => void service.next()}>{t('web.hostedAccount.older')}</Button></div>}
-    <Dialog open={Boolean(ending)} onOpenChange={open => { if (!open) setEnding(undefined); }} title={t('web.hostedAccount.signOutDeviceTitle', {device: ending ? name(ending) : ''})} description={t('web.hostedAccount.signOutBody')} showCloseButton={false} stackFooter
+    <Dialog open={Boolean(ending)} onOpenChange={open => { if (!open) setEnding(undefined); }} title={t('web.hostedAccount.signOutDeviceTitle', {device: ending ? name(ending) : ''})} description={t('web.hostedAccount.signOutBody')} showCloseButton={false} stackFooter className={styles.overlaySpacing}
       footer={<><Button size="small" onClick={() => setEnding(undefined)}>{t('action.cancel')}</Button><ServicesDangerAction onClick={() => { const id = ending!; setEnding(undefined); void service.revoke(id); }}>{t('action.signOut')}</ServicesDangerAction></>}><></></Dialog>
-    <Dialog open={all} onOpenChange={open => { if (!open) setAll(false); }} title={t('web.hostedAccount.signOutOthersTitle')} description={t('web.hostedAccount.signOutOthersBody')} showCloseButton={false} stackFooter
+    <Dialog open={all} onOpenChange={open => { if (!open) setAll(false); }} title={t('web.hostedAccount.signOutOthersTitle')} description={t('web.hostedAccount.signOutOthersBody')} showCloseButton={false} stackFooter className={styles.overlaySpacing}
       footer={<><Button size="small" onClick={() => setAll(false)}>{t('action.cancel')}</Button><ServicesDangerAction onClick={() => void endOthers()}>{t('web.hostedAccount.signOutOthers')}</ServicesDangerAction></>}><></></Dialog>
   </>, actions);
 }

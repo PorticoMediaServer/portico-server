@@ -1,4 +1,4 @@
-import {useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import {useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {playbackIdentity} from '@core/presentation/kit-model/index.ts';
 import {sameFence, type PlaybackFence} from '../../../../packages/player-core/src/index.ts';
@@ -18,6 +18,7 @@ import {WatchMusicNowPlaying} from './music/NowPlaying';
 import {WatchCapacityWait} from './CapacityWait';
 import {WatchStartFailure} from './StartFailure';
 import type {WatchBindings, WatchSurfaces, WatchGeometry} from './types';
+import type {WatchDockPanelOffer} from './dock-panel-opening';
 import type {LiveChromePort} from '../live/live-chrome-types';
 import {createWatchPlayOn, remotePictureKeepsCaptions, type WatchPlaybackContext, type WatchPlayOnBinding} from './play-on-binding';
 import {createWindowChromePublisher, type WindowChromePublisher} from '../../platform/window-chrome';
@@ -169,11 +170,25 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
   const remotePlaying = remoteState?.remote?.phase === 'playing';
   const media = useMemo(() => new PlaybackMediaOwner<HTMLVideoElement>(), []);
   const cache = useMemo(() => new PlaybackPresentations(runtime), [runtime]);
+  const dockPanelsCurrent = useCallback(() => context?.isCurrent() === true && cast?.controller.getSnapshot().remote?.phase !== 'playing', [context, cast]);
+  const subscribeDockPanels = useCallback((changed: () => void) => cast?.controller.subscribe(changed) ?? (() => {}), [cast]);
+  const [heldDockPanels, setHeldDockPanels] = useState<Readonly<{offer: WatchDockPanelOffer; context: WatchPlaybackContext | undefined; current: () => boolean}>>();
+  const publishDockPanels = useCallback((offer: WatchDockPanelOffer) => {
+    const held = {offer, context, current: dockPanelsCurrent}; setHeldDockPanels(held);
+    return () => setHeldDockPanels(value => value === held ? undefined : value);
+  }, [context, dockPanelsCurrent]);
+  const offeredPanels = (surfaces?.available ?? []).filter(panel => panel === 'subtitles-audio' || panel === 'options').join('|');
+  const dockPanels = heldDockPanels && heldDockPanels.context === context && heldDockPanels.current === dockPanelsCurrent && heldDockPanels.offer.binding === binding
+    && dockPanelsCurrent() && heldDockPanels.offer.panels.join('|') === offeredPanels
+    && heldDockPanels.offer.current() ? heldDockPanels.offer : undefined;
   const presentations = useMemo(() => snapshot && binding ? cache.update(snapshot, playbackPresentation(snapshot, binding.environment, binding.artwork, binding.skips)).map(value =>
-    castAvailable && snapshot.fence && fenceKey(value.fence) === fenceKey(snapshot.fence) ? {...value, controls: [...value.controls, 'play-on' as const]} : value) : noPresentations, [snapshot, binding, cache, castAvailable]);
+    snapshot.fence && fenceKey(value.fence) === fenceKey(snapshot.fence) ? {...value, controls: [...new Set([...value.controls,
+      ...(castAvailable ? ['play-on' as const] : []), ...(dockPanels?.panels ?? [])])]} : value) : noPresentations, [snapshot, binding, cache, castAvailable, dockPanels]);
   const dockBinding: DockBinding | undefined = useMemo(() => runtime && binding ? {
     getSnapshot: () => runtime.dock.getSnapshot(), onAction: action => {
-      if (action.kind === 'play-on' && cast && castAvailable) {
+      if (!action.remote && (action.kind === 'subtitles-audio' || action.kind === 'options')) {
+        if (dockPanels && sameFence(dockPanels.fence, action.fence)) dockPanels.request(action.kind);
+      } else if (action.kind === 'play-on' && cast && castAvailable) {
         const live = runtime.getSnapshot();
         if (!live.disposed && live.fence && fenceKey(live.fence) === fenceKey(action.fence)) {
           castAnchor.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -181,7 +196,7 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
         }
       } else void runtime.onAction(action).catch(binding.reportError);
     },
-  } : undefined, [runtime, binding, cast, castAvailable]);
+  } : undefined, [runtime, binding, cast, castAvailable, dockPanels]);
   const expanded = !!snapshot?.dock.local?.expanded;
   // A reused sequence from another runtime/session must never inherit an expiry.
   const noticeRuntime = useRef<{runtime?: WebShellPlaybackRuntime; epoch: number}>({epoch: 0});
@@ -342,6 +357,7 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
     {binding && snapshot?.startFailure && <WatchStartFailure failure={snapshot.startFailure} authority={snapshot.authority} context={context} reportError={binding.reportError}/>}
     {binding && snapshot && <WatchMusicNowPlaying binding={binding} snapshot={snapshot} expanded={expanded && !remotePlaying} onCollapse={collapse} phone={phone} />}
     {binding && snapshot && <WatchScreen binding={binding} snapshot={snapshot} expanded={expanded && !remotePlaying} onCollapse={collapse} surfaceSlotRef={expandedSlot} onControlsVisibleChange={setControlsVisible}
+      publishDockPanels={publishDockPanels} dockPanelsCurrent={dockPanelsCurrent} subscribeDockPanels={subscribeDockPanels}
       surfaces={drawnSurfaces} geometry={geometry} live={live}
       windowPort={windowPort} />}
     {cast && binding && visuals && <div className={styles.remote}><CastPlayback controller={cast.controller} visuals={visuals} phone={phone} anchorRef={castAnchor} reportError={binding.reportError} receivers={cast.receivers} linkTv={cast.linkTv} /></div>}
