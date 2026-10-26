@@ -7,7 +7,11 @@ export type LayoutExit<T> = Readonly<{
 export type LayoutRetention<T> = Readonly<{
   live: readonly T[]; present: readonly T[]; exits: ReadonlyMap<string, LayoutExit<T>>; scope?: unknown;
 }>;
-export type LayoutRetentionPolicy = Readonly<{maxRetained?: number; staggerMs?: number; visibleOnly?: boolean; scope?: unknown}>;
+export type LayoutRetentionPolicy = Readonly<{
+  maxRetained?: number; staggerMs?: number; visibleOnly?: boolean; scope?: unknown;
+  /** Original caller context only, before the withdrawal commit makes rows inert. */
+  beforeLeave?: (remaining: ReadonlySet<string>) => void;
+}>;
 
 export function retainLayout<T>(previous: LayoutRetention<T>, incoming: readonly T[], keyOf: (item: T) => string,
   now: number, reduced: boolean, exitMs: number, reducedMs: number, policy?: LayoutRetentionPolicy,

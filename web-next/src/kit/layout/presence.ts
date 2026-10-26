@@ -11,8 +11,12 @@ export function useLayoutPresence<T>(items: readonly T[], getKey: (item: T) => s
   // A replacement original scope can never render the previous scope's paint.
   const present = state.scope === policy?.scope ? state.present : items;
   const incoming = new Set(items.map(getKey));
-  const leaving = new Set(present.flatMap(item => incoming.has(getKey(item)) ? [] : [getKey(item)]));
-  const max = policy?.maxRetained, stagger = policy?.staggerMs, visibleOnly = policy?.visibleOnly, scope = policy?.scope;
+  // An owner with a captured before-inert focus context performs that handoff
+  // in layout before the withdrawal commit. Its original callbacks separately
+  // refuse removed data; no outgoing control remains active for a painted frame.
+  const leaving = policy?.beforeLeave ? new Set(state.scope === policy.scope ? state.exits.keys() : [])
+    : new Set(present.flatMap(item => incoming.has(getKey(item)) ? [] : [getKey(item)]));
+  const max = policy?.maxRetained, stagger = policy?.staggerMs, visibleOnly = policy?.visibleOnly, scope = policy?.scope, beforeLeave = policy?.beforeLeave;
   useLayoutEffect(() => {current.current = state;}, [state]);
   useLayoutEffect(() => {
     const identity = {};owner.current = identity;
@@ -35,12 +39,15 @@ export function useLayoutPresence<T>(items: readonly T[], getKey: (item: T) => s
       }
       const now = performance.now();
       const next = retainLayout(current.current, items, getKey, now, reduced, exitMs, reducedMotion.durationMs, {maxRetained: max, staggerMs: stagger, visibleOnly, scope}, visible);
+      const remaining = new Set(items.map(getKey));
+      if (beforeLeave && current.current.scope === scope && current.current.live.some(item => !remaining.has(getKey(item)))) beforeLeave(remaining);
+      if (owner.current !== identity) return;
       current.current = next;setState(next);
       if (next.exits.size) timer = setTimeout(reconcile, Math.max(1, Math.min(...[...next.exits.values()].map(exit => exit.retireAt - now))));
     };
     reconcile();
     return () => {if (owner.current === identity) owner.current = null;if (timer !== undefined) clearTimeout(timer);};
-  }, [items, getKey, reduced, exitMs, max, stagger, visibleOnly, scope]);
+  }, [items, getKey, reduced, exitMs, max, stagger, visibleOnly, scope, beforeLeave]);
   useLayoutEffect(() => {
     const attached = new Set(Array.from(root.current?.children ?? []));
     for (const [element, animation] of animations.current) if (!attached.has(element)) {animations.current.delete(element);animation.cancel();}

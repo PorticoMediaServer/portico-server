@@ -84,6 +84,7 @@ class ControlledAnimation {
 class LayoutNode {
   dataset: {layoutItem: string};
   left = 0;
+  inert = false;
   animations: ControlledAnimation[] = [];
   constructor(key: string) { this.dataset = {layoutItem: key}; }
   getBoundingClientRect() { return {left: this.left, top: 0} as DOMRect; }
@@ -101,7 +102,7 @@ function fixture(t: TestContext) {
     items = next; reduced = reduce; policy = nextPolicy;
     return hooks.render(() => useLayoutPresence(items, getKey, reduced, 180, 320, policy), presence => {
       const previous = new Map(root.children.map(node => [node.dataset.layoutItem, node]));
-      root.children = presence.present.map((key, index) => { const node = previous.get(key) ?? new LayoutNode(key); node.left = index * 100; return node; });
+      root.children = presence.present.map((key, index) => { const node = previous.get(key) ?? new LayoutNode(key); node.left = index * 100; node.inert = presence.leaving.has(key); return node; });
       presence.root.current = root as unknown as HTMLDivElement;
     });
   };
@@ -238,4 +239,15 @@ test('active reduction shortens retention without renewing original admission or
   const reduced = f.render([], true), next = reduced.exits.get('c')!;
   assert.equal(next.token, c.token);assert.equal(next.delay, 80);assert.equal(next.deadline, 260);assert.equal(next.retireAt, 180);
   assert.deepEqual(f.advance(160).present, []);
+});
+
+
+test('a captured owner handoff runs before removed controls become inert', t => {
+  const f = fixture(t);let calls = 0;
+  const policy = {maxRetained: 40, beforeLeave: (remaining: ReadonlySet<string>) => {
+    calls++;assert.equal(f.node('a').inert, false);assert.ok(remaining.has('b'));assert.equal(remaining.has('a'), false);
+  }};
+  f.render(['a', 'b'], false, policy);assert.equal(calls, 0);
+  const next = f.render(['b']);assert.equal(calls, 1);assert.equal(f.node('a').inert, true);assert.ok(next.leaving.has('a'));
+  f.advance(180);assert.equal(calls, 1, 'a retirement tick cannot repeat the original focus handoff');
 });

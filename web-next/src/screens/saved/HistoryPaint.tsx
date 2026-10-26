@@ -14,13 +14,14 @@ export function HistoryPaint({exit, reduced, scope, children}: {exit?: LayoutExi
     const opacity = old?.scope === scope ? Number(getComputedStyle(element).opacity) : 1;
     old?.animation.cancel();owned.current = undefined;
     if (!exit && (!old || old.scope !== scope)) {element.style.opacity = '';return;}
-    const now = performance.now(), delay = exit && !reduced ? Math.max(0, exit.admittedAt + exit.delay - now) : 0;
+    const now = performance.now(), delay = exit && !reduced && !exit.reduced ? Math.max(0, exit.admittedAt + exit.delay - now) : 0;
     const duration = exit ? Math.max(0, Math.min(exit.retireAt - now - delay, reduced ? 160 : Infinity)) : reduced ? 160 : 180;
     if (!duration) {element.style.opacity = exit ? '0' : '';return;}
     const animation = element.animate([{opacity}, {opacity: exit ? 0 : 1}], {delay, duration, easing: 'linear', fill: 'both'});
     const job = {node: element, animation, scope};owned.current = job;
     const finish = () => {
       if (owned.current !== job) return;
+      if (!element.isConnected || node.current !== element) {owned.current = undefined;animation.cancel();return;}
       element.style.opacity = exit ? '0' : '';owned.current = undefined;animation.cancel();
     };
     void animation.finished.then(finish, () => {if (owned.current === job) owned.current = undefined;});

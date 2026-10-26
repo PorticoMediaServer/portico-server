@@ -163,18 +163,8 @@ type HistoryRemoval = Readonly<{scope: object; apply(keys: ReadonlySet<string>):
 export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
   const service = bindings.runtime.personal;
   const scope = useMemo(() => Object.freeze({}), [service, bindings.runtime, bindings.operations, bindings.artwork, bindings.effects]);
-  const removal = useRef<HistoryRemoval | undefined>(undefined), clear = useRef<HTMLButtonElement>(null);
-  const subscribe = useCallback((listener: () => void) => service.subscribe(() => {
-    // The original service has published its accepted rows, but React has not
-    // committed inert/removal yet. Focus belongs to the exact old DOM context.
-    try {
-      const next = service.getSnapshot(), original = removal.current;
-      if (original?.scope === scope && bindings.operations.current && sameSavedRoute(next.route, bindings.route))
-        original.apply(new Set(next.entries.filter(entry => entry.media && entry.updatedAt && Number.isFinite(Date.parse(entry.updatedAt))).map(entry => entry.id)));
-    } catch { /* A focus refusal cannot turn a successful data publication into an error. */ }
-    listener();
-  }), [service, scope]);
-  const snapshot = useSyncExternalStore(subscribe, service.getSnapshot, service.getSnapshot), [confirm, setConfirm] = useState(false), [busy, setBusy] = useState(false), cancel = useRef<HTMLButtonElement>(null);
+  const clear = useRef<HTMLButtonElement>(null);
+  const snapshot = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot), [confirm, setConfirm] = useState(false), [busy, setBusy] = useState(false), cancel = useRef<HTMLButtonElement>(null);
   const wash = useMemo(() => {
     if (!bindings.presentation.backdrops) return [];
     if (bindings.presentation.backdrop) return [bindings.presentation.backdrop];
@@ -200,7 +190,7 @@ export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
       </div>
       <div className={styles.toolbarEnd}><Button ref={clear} variant="text" size="small" onClick={() => setConfirm(true)}>{t('web.saved.clearHistory')}</Button></div>
     </div>
-    <HistoryTimeline items={items} scope={scope} reduced={bindings.presentation.reducedMotion} empty={empty} removal={removal} sectionStart={clear} />
+    <HistoryTimeline items={items} scope={scope} reduced={bindings.presentation.reducedMotion} empty={empty} sectionStart={clear} operations={bindings.operations} />
     {snapshot.nextCursor && <Button className={styles.showMore} size="small" loading={snapshot.loading} onClick={() => { void service.next(); }}>{t('action.showMore')}</Button>}
     <Dialog open={confirm} onOpenChange={open => { if (!busy) setConfirm(open); }} title={t('web.saved.clearHistoryTitle')} description={t('web.saved.clearHistoryBody')} initialFocusRef={cancel}
       footer={<><Button ref={cancel} size="small" disabled={busy} onClick={() => setConfirm(false)}>{t('action.cancel')}</Button><Button size="small" className={styles.destructive} loading={busy} onClick={() => {
@@ -212,9 +202,11 @@ export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
 
 /** All accepted live rows stay mounted. Only genuinely visible removed rows may
  * occupy the shared 40-slot outgoing budget across overlapping batches. */
-function HistoryTimeline({items, scope, reduced, empty, removal, sectionStart}: {items: readonly HistoryItem[]; scope: object; reduced: boolean; empty: ReactNode; removal: RefObject<HistoryRemoval | undefined>; sectionStart: RefObject<HTMLButtonElement | null>}) {
+function HistoryTimeline({items, scope, reduced, empty, sectionStart, operations}: {items: readonly HistoryItem[]; scope: object; reduced: boolean; empty: ReactNode; sectionStart: RefObject<HTMLButtonElement | null>; operations: SavedViewBindings['operations']}) {
   const systemReduced = useReducedMotion(), reduce = reduced || systemReduced;
-  const presence = useLayoutPresence(items, historyItemKey, reduce, 180, 320, {maxRetained: 40, staggerMs: 40, visibleOnly: true, scope});
+  const removal = useRef<HistoryRemoval | undefined>(undefined);
+  const beforeLeave = useCallback((remaining: ReadonlySet<string>) => {const original = removal.current;if (original?.scope === scope && operations.current) original.apply(remaining);}, [scope, operations]);
+  const presence = useLayoutPresence(items, historyItemKey, reduce, 180, 320, {maxRetained: 40, staggerMs: 40, visibleOnly: true, scope, beforeLeave});
   const keyboard = useRef(false), focused = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => {
     const root = presence.root.current;if (!root) return;
@@ -238,7 +230,7 @@ function HistoryTimeline({items, scope, reduced, empty, removal, sectionStart}: 
     onKeyDownCapture={() => {keyboard.current = true;}} onPointerDownCapture={() => {keyboard.current = false;}}
     onFocusCapture={event => {const target = event.target as HTMLElement;focused.current = target;keyboard.current = target.matches(':focus-visible');}}
     onBlurCapture={event => {const next = event.relatedTarget as Node | null;if (next && !event.currentTarget.contains(next)) focused.current = null;}}
- className={styles.historyRoster} data-reduced-motion={reduce || undefined}>
+    className={styles.historyRoster} data-reduced-motion={reduce || undefined}>
     {presence.present.map(item => {
       const heading = !headings.has(item.dayKey);headings.add(item.dayKey);
       const leaving = presence.leaving.has(item.key);
@@ -273,7 +265,7 @@ function HistoryRow({bindings, entry, media, source, paintOnly = false}: {bindin
   const remaining = left === undefined ? undefined : left >= 60 ? t(left % 60 ? 'next.kit.duration.hoursMinutes' : 'next.kit.duration.hours', {hours: Math.floor(left / 60), minutes: left % 60}) : t('next.kit.duration.minutes', {minutes: left});
   const square = shapeFor(media.kind) === 'square';
   return <div className={styles.historyRow} data-shape={square ? 'square' : 'wide'}>
-    <button className={styles.historyArt} data-shape={square ? 'square' : 'wide'} disabled={paintOnly} onClick={paintOnly ? undefined : () => {if (bindings.operations.current) bindings.effects.openEntry(media);}} aria-label={title}>
+    <button className={styles.historyArt} data-shape={square ? 'square' : 'wide'} disabled={paintOnly} onClick={paintOnly ? undefined : () => {if (bindings.operations.current && bindings.runtime.personal.getSnapshot().entries.includes(entry)) bindings.effects.openEntry(media);}} aria-label={title}>
       {square ? <><span className={styles.historyBackdrop}><Artwork source={source} alt="" /></span><span className={styles.historyCover}><Artwork source={source} alt="" /></span></> : <Artwork source={source} alt="" />}
     </button>
     <div className={styles.historyCopy}><b>{title}</b>{subtitles.length ? <small>{subtitles.map((part, index) => <span key={`${index}:${part}`}>{part}</span>)}</small> : null}</div>
