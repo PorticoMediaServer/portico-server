@@ -10,7 +10,7 @@
 .bell { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; color: var(--color-text-secondary); position: relative; }
 .unread { position: absolute; top: 9px; right: 10px; width: 7px; height: 7px; border-radius: 50%; background: var(--color-accent-strong); box-shadow: 0 0 0 2px var(--color-ink); }
 .workspaceGrid { position: relative; z-index: 1; display: grid; grid-template-columns: 296px minmax(0, 952px); gap: 0 64px; padding: 112px 64px 96px; align-items: start; }
-.aside h1 { font-size: 30px; font-weight: 800; letter-spacing: -.035em; margin: 6px 0 18px; }
+.aside h1 { font-size: 30px; line-height: normal; font-weight: 800; letter-spacing: -.035em; margin: 6px 0 18px; }
 .who { display: flex; align-items: center; gap: 14px; padding: 14px; border-radius: 14px; background: var(--color-raised); box-shadow: inset 0 0 0 1px var(--color-line); margin: 0 0 22px; }
 .who > span:last-child { min-width: 0; }
 .who b { display: block; font-size: 16px; font-weight: 800; letter-spacing: -.01em; overflow-wrap: anywhere; }
