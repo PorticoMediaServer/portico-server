@@ -299,8 +299,9 @@ export class ShellBootstrap {
     cleanups.push(() => preferences.dispose());
     const notificationScope = createNotificationScope(api, {serverId: session.viewer.serverId, signal, isCurrent,
       onRetired: () => { if (isCurrent()) this.restart(); }});
+    cleanups.push(() => notificationScope.dispose());
     const home = new HomeService(api), inbox = new InboxService(notificationScope);
-    cleanups.push(() => { home.dispose(); inbox.dispose(); notificationScope.dispose(); });
+    cleanups.push(() => home.dispose(), () => inbox.dispose());
     const facts = await readFacts(api, session, preferences, inbox, signal);
     if (!isCurrent()) return;
     const homeFence = watchHomeViewerFence(home, isCurrent, () => this.restart());
