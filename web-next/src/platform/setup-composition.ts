@@ -11,8 +11,10 @@ import {CodedError} from '@core/server-messages.ts';
 import {decodePostLibrariesResponse} from '../../../packages/contracts/src/decoders.ts';
 import {routeBody, routePath, encodedRoutePath} from '../../../packages/contracts/src/routes.ts';
 import {browserAppSessions, browserConnectionEnvironment, restoreBrowserConnection} from './server-connections';
-import {createBrowserSetupClaim, type BrowserSetupClaim} from './setup-claim';
+import {createBrowserSetupClaim, type BrowserSetupClaim, type SetupClaimRecovery} from './setup-claim';
 import {secureBrowserPending} from './secure-pending';
+import {SetupStageFailure, type SetupFailureStage} from './setup-failure';
+import {randomId} from '@core/random-id.ts';
 
 export type SetupTarget = Readonly<{server: ServerSignIn; api: HttpLocalApi; pin: ServerPin; draft: SetupDraftStore; dispose: () => void; admittedOwner?: true}>;
 type CompositionPorts = Readonly<{
@@ -23,6 +25,11 @@ type CompositionPorts = Readonly<{
 const defaultPorts: CompositionPorts = {sessions: browserAppSessions, environment: browserConnectionEnvironment, restore: restoreBrowserConnection,
   remember: rememberNativeSession, claim: createBrowserSetupClaim, draft: id => secureBrowserPending<SetupDraft>('portico.initialize.' + id)};
 const changed = () => new CodedError('cancelled', 'The pending setup or selected server changed.');
+const sameDraft = (a: SetupDraft | undefined, b: SetupDraft | undefined) => JSON.stringify(a) === JSON.stringify(b);
+type HostedOpening = {readonly server: SetupTarget; readonly name: string; readonly requestId: string; readonly abort: AbortController;
+  readonly origin: string; readonly pin: ServerPin; readonly route: NonNullable<ReturnType<HttpLocalApi['getRouteConnection']>>;
+  live: boolean; busy: boolean; draftCaptured: boolean; draft?: Readonly<SetupDraft>; setup?: PendingAccountSetup;
+  recovery?: SetupClaimRecovery; failure?: object};
 
 /** The screen owns form state; this lifetime owns real credential adoption and
  * the initialized owner's API. No setup bearer may create a library. */
@@ -33,8 +40,14 @@ export class BrowserSetupComposition {
   private owner?: {api: HttpLocalApi; session: LocalSession};
   private claim?: Pick<BrowserSetupClaim,'prepare'|'cancel'>;
   private handoffDelivered = false;
-  constructor(private readonly hostedOrigin: string, private readonly navigate: (url: string) => void = url => location.assign(url), private readonly ports: CompositionPorts = defaultPorts) {}
-  private current() {if (!this.active || this.abort.signal.aborted) throw changed();}
+  private hosted?: HostedOpening;
+  constructor(private readonly hostedOrigin: string, private readonly navigate: (url: string) => void = url => location.assign(url), private readonly ports: CompositionPorts = defaultPorts,
+    private readonly openingCurrent: () => boolean = () => true) {}
+  private current() {
+    let opening = false; try {opening = this.openingCurrent();} catch { /* A throwing authority refuses. */ }
+    if (!this.active || this.abort.signal.aborted || !opening) throw changed();
+  }
+  private retireHosted() {const old = this.hosted;if (old) {old.live = false;old.abort.abort();this.hosted = undefined;}}
   private install() {const value = installationIdentity(); if (!value) throw changed(); return value.installationId;}
   private async assert(server: SetupTarget) {
     this.current(); const capture = this.captures.get(server);
@@ -46,7 +59,7 @@ export class BrowserSetupComposition {
   /** Capture before the first pairing await. An unrelated selection cannot be
    * overwritten by a late setup response, including a completed-server resume. */
   connect = async (connect: (signal: AbortSignal) => Promise<SetupTarget>, signal: AbortSignal): Promise<SetupTarget> => {
-    this.current(); const state = await this.ports.sessions().read(), install = this.install(); this.current();
+    this.current(); this.retireHosted(); const state = await this.ports.sessions().read(), install = this.install(); this.current();
     const server = await connect(AbortSignal.any([signal, this.abort.signal]));
     try {
       this.current(); const current = await this.ports.sessions().read(); this.current();
@@ -103,30 +116,102 @@ export class BrowserSetupComposition {
       }
     }
   };
-  continueHosted = async (server: SetupTarget, input: Readonly<{name: string}>): Promise<void> => {
-    // Require secure/encrypted atomic storage before acquiring or saving the secret.
-    const claim = this.claim ??= this.ports.claim();
-    const draft = this.ports.draft(server.pin.serverId); draft.assertAvailable();
-    await this.assert(server);
-    const old = await draft.read(); await this.assert(server);
-    const issue = old ? {serverId: old.serverId, setupToken: old.setupToken} : await server.api.request<{serverId: string; setupToken: string}>(routePath('start_browser_setup'), 'POST', {}, this.abort.signal);
-    await this.assert(server);
-    if (issue.serverId !== server.pin.serverId || typeof issue.setupToken !== 'string' || !issue.setupToken) throw changed();
-    const pending = await initializeServer(server.api, draft, {setupToken: issue.setupToken, name: input.name, authMode: 'hosted', interactive: true}, this.abort.signal);
-    await this.assert(server);
-    if (!('claimRequired' in pending) || pending.requestId !== (await draft.read())?.requestId) throw changed();
-    await this.assert(server);
-    const url = await claim.prepare(server.api, this.hostedOrigin); await this.assert(server);
-    this.handoffDelivered = true; this.navigate(url);
-  };
-  resumeHosted = async (server: SetupTarget, pending: PendingAccountSetup): Promise<void> => {
-    const claim = this.claim ??= this.ports.claim();
-    await this.assert(server);
-    const draft = await server.draft.read(); await this.assert(server);
-    if (!draft || pending.serverId !== server.pin.serverId || pending.requestId !== draft.requestId || draft.authMode !== 'hosted') throw changed();
-    const url = await claim.prepare(server.api, this.hostedOrigin); await this.assert(server);
-    this.handoffDelivered = true; this.navigate(url);
-  };
+  private hostedCurrent(held: HostedOpening) {
+    this.current();
+    if (this.hosted !== held || !held.live || held.abort.signal.aborted || held.server.api.baseUrl !== held.origin
+      || held.server.api.getRouteConnection() !== held.route || held.route.getSnapshot().phase !== 'ready'
+      || !sameServerPin(held.server.pin, held.pin) || !sameServerPin(held.route.pin, held.pin)) throw changed();
+  }
+  private async assertHosted(held: HostedOpening) {
+    this.hostedCurrent(held); await this.assert(held.server); this.hostedCurrent(held);
+    if (held.draftCaptured) {
+      const now = await this.ports.draft(held.server.pin.serverId).read(); this.hostedCurrent(held);
+      if (!sameDraft(now, held.draft)) throw changed();
+    }
+  }
+  private hostedFailure(held: HostedOpening, stage: SetupFailureStage, error: unknown): SetupStageFailure {
+    const token = {}, recovery = held.recovery;
+    held.failure = token;
+    const run = async (local: boolean) => {
+      this.hostedCurrent(held);
+      if (held.busy || held.failure !== token) throw changed();
+      held.busy = true; held.failure = undefined;
+      try {
+        await this.assertHosted(held);
+        if (local) {
+          if (!recovery) throw changed();
+          await recovery.useLocal(); await this.assertHosted(held);
+          this.retireHosted();
+        } else if (recovery) {
+          const url = await recovery.retry(); await this.assertHosted(held);
+          this.navigate(url); this.handoffDelivered = true;
+        } else await this.prepareHosted(held);
+      } catch (next) {
+        this.hostedCurrent(held);
+        throw next instanceof SetupStageFailure ? next : this.hostedFailure(held, stage, next);
+      } finally {held.busy = false;}
+    };
+    return new SetupStageFailure(stage, error, () => run(false), recovery ? () => run(true) : undefined);
+  }
+  private async prepareHosted(held: HostedOpening): Promise<void> {
+    let stage: SetupFailureStage = held.setup ? 'claim' : 'browser-start';
+    const server = held.server, store = this.ports.draft(server.pin.serverId);
+    const signal = AbortSignal.any([this.abort.signal, held.abort.signal]);
+    try {
+      store.assertAvailable(); await this.assertHosted(held);
+      if (!held.draftCaptured) {
+        const draft = await store.read(); await this.assertHosted(held);
+        held.draft = draft ? Object.freeze({...draft}) : undefined; held.draftCaptured = true;
+      }
+      const original = held.draft;
+      if (original && original.authMode !== 'hosted') throw changed();
+      if (held.setup && (!original || original.serverId !== held.setup.serverId || original.requestId !== held.setup.requestId)) throw changed();
+      const issue = original ? {serverId: original.serverId, setupToken: original.setupToken}
+        : await server.api.request<{serverId: string; setupToken: string}>(routePath('start_browser_setup'), 'POST', {}, signal);
+      await this.assertHosted(held);
+      if (issue.serverId !== server.pin.serverId || typeof issue.setupToken !== 'string' || !issue.setupToken) throw changed();
+      stage = 'initialize';
+      const guarded: SetupDraftStore = {
+        read: async () => {await this.assertHosted(held);const value = await store.read();await this.assertHosted(held);return value;},
+        change: async update => {
+          await this.assertHosted(held);
+          await store.change(old => {
+            this.hostedCurrent(held);
+            if (!sameDraft(old, held.draft)) throw changed();
+            const next = update(old);
+            if (!next || next.serverId !== server.pin.serverId || next.requestId !== (original?.requestId ?? held.requestId)
+              || next.setupToken !== issue.setupToken || next.authMode !== 'hosted' || next.name !== (original?.name ?? held.name)) throw changed();
+            held.draft = Object.freeze({...next}); return next;
+          });
+          await this.assertHosted(held);
+        },
+      };
+      const setup = await initializeServer(server.api, guarded, {setupToken: issue.setupToken, name: held.name, authMode: 'hosted', interactive: true}, signal,
+        async () => original?.requestId ?? held.requestId);
+      await this.assertHosted(held);
+      if (!('claimRequired' in setup) || setup.serverId !== server.pin.serverId || setup.requestId !== held.draft?.requestId
+        || held.setup && (held.setup.requestId !== setup.requestId || held.setup.revision !== setup.revision)) throw changed();
+      held.setup = Object.freeze({...setup}); stage = 'claim';
+      const claim = this.claim ??= this.ports.claim();
+      const url = await claim.prepare(server.api, this.hostedOrigin, {setup: held.setup, signal,
+        assertOriginal: () => this.assertHosted(held), isCurrent: () => {
+          try {this.hostedCurrent(held);return true;} catch {return false;}
+        }, capture: recovery => {this.hostedCurrent(held);held.recovery = recovery;}});
+      await this.assertHosted(held);
+      this.navigate(url); this.handoffDelivered = true;
+    } catch (error) {this.hostedCurrent(held);throw this.hostedFailure(held, stage, error);}
+  }
+  private async startHosted(server: SetupTarget, name: string, setup?: PendingAccountSetup) {
+    this.current(); if (this.hosted?.busy) throw changed(); this.retireHosted();
+    const route = server.api.getRouteConnection(); if (!route || route.getSnapshot().phase !== 'ready') throw changed();
+    const held: HostedOpening = {server, name, requestId: setup?.requestId ?? randomId(), abort: new AbortController(), live: true, busy: true,
+      origin: server.api.baseUrl, pin: Object.freeze({...server.pin}), route,
+      draftCaptured: false, ...(setup ? {setup: Object.freeze({...setup})} : {})};
+    this.hosted = held;
+    try {await this.prepareHosted(held);} finally {held.busy = false;}
+  }
+  continueHosted = (server: SetupTarget, input: Readonly<{name: string}>): Promise<void> => this.startHosted(server, input.name);
+  resumeHosted = (server: SetupTarget, pending: PendingAccountSetup): Promise<void> => this.startHosted(server, server.server.name, pending);
   /** Only the admitted owner's fixed folder-listing endpoint, never setup bearer IO. */
   readonly libraryFolders: LibraryContentApi = {request: async <T>(path: string, method = 'GET', body?: unknown, signal?: AbortSignal): Promise<T> => {
     const route = routePath('get_admin_filesystem');
@@ -164,7 +249,7 @@ export class BrowserSetupComposition {
     await assert();
   };
   dispose = () => {
-    if (!this.active) return; this.active = false; this.abort.abort(); this.owner = undefined;
+    if (!this.active) return; this.active = false; this.retireHosted(); this.abort.abort(); this.owner = undefined;
     if (!this.handoffDelivered) void this.claim?.cancel().catch(() => {});
   };
 }
