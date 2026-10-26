@@ -1,5 +1,5 @@
-import {useLayoutEffect, useRef, useState, type CSSProperties} from 'react';
-import {springs, springTiming} from '@design';
+import {useEffect, useLayoutEffect, useRef, useState, type CSSProperties} from 'react';
+import {easings, reducedMotion, springs, springTiming} from '@design';
 import type {WebPlaybackRuntimeSnapshot} from '../../platform/playback';
 import {fenceKey} from '../../shell/playback-model';
 export {useReducedMotion as usePromptReducedMotion} from '../../kit/overlays/shared';
@@ -49,4 +49,48 @@ export function usePromptPresence<T>(value: T | undefined, key: string | undefin
   }, [active, reduced, held]);
   useLayoutEffect(() => () => {last.current = undefined;}, []);
   return {present, phase, paintKey: active ? `${scope.key}\u0000${key}` : held ? `${held.scope.key}\u0000${held.key}` : undefined};
+}
+
+/** Presentation only: the prompt's 12 px rise and fade, retargeted from the pose that
+ * is actually painted, including a reversal during either motion. */
+export function usePromptMotion(phase: PromptPhase, paintKey: string | undefined, reduced: boolean) {
+  const element = useRef<HTMLDivElement | null>(null);
+  const painted = useRef<Readonly<{node: HTMLDivElement; animation: Animation}> | null>(null);
+  const identity = useRef<string | undefined>(undefined);
+  useLayoutEffect(() => {
+    const node = element.current;
+    if (!node) {painted.current?.animation.cancel(); painted.current = null; identity.current = undefined; return;}
+    // A changed paint key is a new offered occurrence, even if the node is reused.
+    const fresh = identity.current !== paintKey || painted.current?.node !== node;
+    identity.current = paintKey;
+    // Match the shared layout-owned signal immediately, before its state settles.
+    const still = reduced || window.matchMedia('(prefers-reduced-motion: reduce)').matches || !!node.closest('[data-reduce-motion="true"]')
+      || document.documentElement.dataset.reduceMotion === 'true' || document.body.dataset.reduceMotion === 'true';
+    const prior = !fresh ? painted.current : null;
+    const style = getComputedStyle(node), opacity = Number.parseFloat(style.opacity);
+    const pose = {opacity: Number.isFinite(opacity) ? opacity : 1, translate: style.translate && style.translate !== 'none' ? style.translate : '0px'};
+    painted.current?.animation.cancel();
+    painted.current = null;
+    if (phase === 'idle') return;
+    const startOpacity = prior ? pose.opacity : phase === 'in' ? 0 : 1;
+    const endOpacity = phase === 'in' ? 1 : 0;
+    if (still) {
+      // Reduced motion is a fade only: drop the individual translate at once, even
+      // when a normal rise or an earlier exit is reversed mid-motion.
+      node.style.translate = 'none';
+      const animation = node.animate([{opacity: startOpacity}, {opacity: endOpacity}],
+        {duration: reducedMotion.durationMs, easing: easings.linear, fill: phase === 'out' ? 'forwards' : 'none'});
+      painted.current = {node, animation};
+      return;
+    }
+    node.style.removeProperty('translate');
+    const startTranslate = prior ? pose.translate : phase === 'in' ? '0px 12px' : '0px';
+    // Leaving fades without moving; returning rises from whatever pose is painted.
+    const endTranslate = phase === 'out' ? startTranslate : '0px';
+    const animation = node.animate([{opacity: startOpacity, translate: startTranslate}, {opacity: endOpacity, translate: endTranslate}],
+      {duration: phase === 'in' ? 180 : 120, easing: easings.out, fill: phase === 'out' ? 'forwards' : 'none'});
+    painted.current = {node, animation};
+  }, [phase, paintKey, reduced]);
+  useEffect(() => () => {painted.current?.animation.cancel(); painted.current = null;}, []);
+  return element;
 }
