@@ -30,6 +30,7 @@ type sourceProcessLease struct {
 	proxy              *remotemedia.PolicyProxy
 	cache              string
 	sequential         bool
+	captureMode        captureReadMode
 	networkFingerprint string
 	capabilities       backendCapabilities
 	lastUsed           atomic.Int64
@@ -99,6 +100,10 @@ func (s *Service) retireIdleServes(now time.Time) {
 }
 
 func (s *Service) reserveSourceProcess(ctx context.Context, source, generation string, profileRevision int64) (*sourceProcessLease, error) {
+	return s.reserveSourceProcessMode(ctx, source, generation, profileRevision, "")
+}
+
+func (s *Service) reserveSourceProcessMode(ctx context.Context, source, generation string, profileRevision int64, captureMode captureReadMode) (*sourceProcessLease, error) {
 	if s == nil || s.db == nil || source == "" || generation == "" || profileRevision < 0 {
 		return nil, storage.ErrRemoteConfig
 	}
@@ -144,7 +149,7 @@ func (s *Service) reserveSourceProcess(ctx context.Context, source, generation s
 		return nil, storage.ErrBusy
 	}
 	life, cancel := context.WithCancel(ctx)
-	lease := &sourceProcessLease{service: s, source: source, generation: generation, root: root, profile: profile, transport: transport, life: life, cancel: cancel}
+	lease := &sourceProcessLease{service: s, source: source, generation: generation, root: root, profile: profile, transport: transport, life: life, cancel: cancel, captureMode: captureMode}
 	lease.touch()
 	s.serveLeases[source] = lease
 	return lease, nil

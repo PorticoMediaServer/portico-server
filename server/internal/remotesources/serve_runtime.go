@@ -254,6 +254,36 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 		}
 		process := slot.process
 		same := slot.generation == binding.Observation.Generation && slot.profile == binding.Profile && slot.root == binding.Root
+		if same && slot.captureMode != binding.captureMode {
+			if expectedEpoch != "" {
+				s.serveMu.Unlock()
+				return nil, storage.ErrRemoteChanged
+			}
+			// A VFS-backed reader cannot supply an original owned-capture body.
+			// Do not replace an active reader/operation or start a second process.
+			// An idle slot can retire, but it remains reserved until physical Wait.
+			idle := process != nil && process.OperationCounts().Active == 0
+			for id := range s.readLeases[binding.Observation.SourceID] {
+				if id != binding.LeaseID {
+					idle = false
+				}
+			}
+			if idle {
+				slot.retiring = true
+				slot.cancel()
+			}
+			s.serveMu.Unlock()
+			if idle {
+				// No body has opened and no physical epoch was lent to this
+				// caller. Join the idle process before reserving the same slot
+				// in the new mode, within the original caller's deadline.
+				if err := process.Wait(ctx); err != nil && !errors.Is(err, rcloneprogram.ErrServeStopped) {
+					return nil, err
+				}
+				return s.ensureSourceServe(ctx, binding, expectedEpoch)
+			}
+			return nil, storage.ErrBusy
+		}
 		if !same {
 			s.serveMu.Unlock()
 			slot.cancel()
@@ -301,7 +331,7 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 	if expectedEpoch != "" {
 		return nil, storage.ErrRemoteOffline
 	}
-	slot, err := s.reserveSourceProcess(life, binding.Observation.SourceID, binding.Observation.Generation, binding.Profile.Revision)
+	slot, err := s.reserveSourceProcessMode(life, binding.Observation.SourceID, binding.Observation.Generation, binding.Profile.Revision, binding.captureMode)
 	if err != nil {
 		if errors.Is(err, storage.ErrBusy) {
 			if waited, e := s.waitSourceTest(ctx, binding.Observation.SourceID); waited {
@@ -337,6 +367,11 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 		return nil, err
 	}
 	defer clear(material.Configuration)
+	if slot.captureMode != "" {
+		if err = checkCaptureServeConfiguration(material.Configuration, material.Remote); err != nil {
+			return nil, err
+		}
+	}
 	backend, host, port, err := serveTransport(material.Configuration, material.Remote)
 	if err != nil {
 		return nil, err
@@ -394,7 +429,7 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 	if ops.budget.Counts().Capacity != slot.profile.Limits.Connections {
 		return nil, storage.ErrRemoteChanged
 	}
-	spec := rcloneprogram.ServeCommandSpec{SourceID: slot.source, SourceGeneration: slot.generation, ApprovedProgramDigest: material.ApprovedProgramDigest, PrivateDirectory: s.private, Configuration: material.Configuration, Remote: material.Remote, Port: endpoint, MetadataPort: metadata, Username: identity.Token(), Password: identity.Token(), Connections: slot.profile.Limits.Connections, RequestsPerSecond: slot.profile.Limits.RequestsPerSecond, BytesPerSecond: slot.profile.Limits.BytesPerSecond, SharedOperations: ops.budget, SequentialReads: slot.sequential,
+	spec := rcloneprogram.ServeCommandSpec{SourceID: slot.source, SourceGeneration: slot.generation, ApprovedProgramDigest: material.ApprovedProgramDigest, PrivateDirectory: s.private, Configuration: material.Configuration, Remote: material.Remote, Port: endpoint, MetadataPort: metadata, Username: identity.Token(), Password: identity.Token(), Connections: slot.profile.Limits.Connections, RequestsPerSecond: slot.profile.Limits.RequestsPerSecond, BytesPerSecond: slot.profile.Limits.BytesPerSecond, SharedOperations: ops.budget, SequentialReads: slot.sequential || slot.captureMode != "",
 		DirCacheSeconds: slot.transport.DirCacheSeconds, ReadBufferBytes: slot.transport.ReadBufferBytes,
 		ConnectTimeoutSeconds: slot.transport.ConnectTimeoutSeconds, IdleTimeoutSeconds: slot.transport.IdleTimeoutSeconds,
 		Retries: slot.transport.Retries, LowLevelRetries: slot.transport.LowLevelRetries,
@@ -411,7 +446,7 @@ func (s *Service) ensureSourceServe(ctx context.Context, binding SourceReadBindi
 		}}
 	// Cache controls are existing source facts. Start-only mode always uses the
 	// upstream no-cache path; neither mode creates Portico whole-file spools.
-	if material.CacheBytes > 0 && !slot.sequential {
+	if material.CacheBytes > 0 && !slot.sequential && slot.captureMode == "" {
 		cache, err := os.MkdirTemp(s.private, "serve-cache-")
 		if err != nil {
 			return nil, err
