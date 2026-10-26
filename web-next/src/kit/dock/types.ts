@@ -31,13 +31,15 @@ export type DockPresentation = Readonly<{
 export type DockView = Readonly<{mode: DockMode; playback: DockPlayback; remote?: RemoteDock; presentation: DockPresentation}>;
 export type DockRendererProps = Readonly<{
   view: DockView; binding: DockBinding; t?: DockTranslate; className?: string; style?: CSSProperties;
-  artSlotRef?: RefObject<HTMLSpanElement | null>; videoSurface?: boolean;
+  artSlotRef?: RefObject<HTMLSpanElement | null>; videoSurface?: boolean; artworkSurface?: boolean;
   identityRef?: RefObject<HTMLButtonElement | null>;
 }>;
 export type DockHostProps = Readonly<{
   state: DockState; presentations: readonly DockPresentation[]; binding: DockBinding; layout: DockLayout;
   t?: DockTranslate; className?: string; style?: CSSProperties;
-  artSlotRef?: RefObject<HTMLSpanElement | null>; videoSurface?: boolean;
+  artSlotRef?: RefObject<HTMLSpanElement | null>; videoSurface?: boolean; artworkSurface?: boolean;
+  /** Paint the SAME actual current music occupant while its full view is open; caller makes it inert. */
+  retainExpandedMusic?: boolean;
   tvExpanded?: boolean; onTVExpandedChange?: (expanded: boolean) => void;
   tvReturnFocusRef?: RefObject<HTMLElement | null>;
 }>;

@@ -3,9 +3,9 @@ import {clockText} from '@core/presentation/kit-model/text.ts';
 import type {DockAction, DockBinding, DockIntent, DockPresentation, DockView} from './types';
 
 export {clockText};
-export function dockView(state: DockState, presentations: readonly DockPresentation[]): DockView | null {
+export function dockView(state: DockState, presentations: readonly DockPresentation[], retainExpandedMusic = false): DockView | null {
   const remote = state.remote, playback = remote?.playback ?? state.local;
-  if (!playback || (!remote && playback.expanded)) return null;
+  if (!playback || (!remote && playback.expanded && !(retainExpandedMusic && playback.kind === 'music'))) return null;
   const presentation = presentations.find(item => sameFence(item.fence, playback.fence));
   if (!presentation) return null;
   return {mode: remote?.kind ?? playback.kind, playback, presentation, ...(remote ? {remote} : {})};

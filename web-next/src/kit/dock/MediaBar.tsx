@@ -93,7 +93,7 @@ export function MediaBar(props: DockRendererProps) {
       {remoteTerminal(view.remote) ? <TerminalActions {...props} phone /> : view.remote && view.remote.phase !== 'playing' ? <Control icon="i-stop" label={t('next.dock.stopConnecting')} onClick={() => send({kind: 'stop'})} /> : <Transport {...props} phone />}
       <Progress {...props} line />
     </section>
-    <Menu open={held} onOpenChange={open => setHeld(open)} title={t('next.dock.nowPlaying')} presentation="anchored" anchorRef={menuAnchor} returnFocusRef={anchor} placement="top-start" width={250} sideOffset={8} className={styles.holdMenu} items={[
+    <Menu open={held && !view.playback.expanded} onOpenChange={open => setHeld(open)} title={t('next.dock.nowPlaying')} presentation="anchored" anchorRef={menuAnchor} returnFocusRef={anchor} placement="top-start" width={250} sideOffset={8} className={styles.holdMenu} items={[
       {id: 'open', label: t('next.dock.open'), icon: 'i-up', onSelect: () => send({kind: 'expand'})},
       ...(view.presentation.controls.includes('play-on') ? [{id: 'play-on', label: t('next.dock.playOn'), icon: 'i-cast' as const, onSelect: () => send({kind: 'play-on'})}] : []),
       {id: 'stop', label: t('next.dock.stop'), icon: 'i-stop', destructive: true, onSelect: () => send({kind: 'stop'})},

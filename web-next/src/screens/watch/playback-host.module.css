@@ -13,3 +13,10 @@
 .dock[data-music-expanded='true'] { inset: 0; }
 :global(body:has([data-navigation='rail'])) .dock[data-music-expanded='true'] { left: 0; }
 :global(body:has([data-navigation='sidebar'])) .dock[data-music-expanded='true'] { left: 0; }
+
+/* Current music bar paint remains at its real collapsed slot while Now playing owns the viewport. */
+.localDock[data-music-retained] { position: fixed; left: 0; right: 0; bottom: 0; }
+:global(body:has([data-navigation='rail'])) .localDock[data-music-retained] { left: 84px; }
+:global(body:has([data-navigation='sidebar'])) .localDock[data-music-retained] { left: 248px; }
+.dock[data-phone='true'] .localDock[data-music-retained] { left: 8px; right: 8px; bottom: calc(56px + env(safe-area-inset-bottom, 0px) + 8px); }
+:global(body:has([data-navigation='rail'])) .dock[data-phone='true'] .localDock[data-music-retained] { left: 92px; bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); }

@@ -23,19 +23,19 @@ export function useDockActions({view, binding}: DockRendererProps) {
 export const playbackLabel = (view: DockView, t: DockTranslate) => t(view.presentation.finished ? 'next.dock.replay' : view.playback.playing ? 'next.dock.pause' : 'next.dock.play');
 export const playbackIcon = (view: DockView): IconName => view.presentation.finished ? 'i-back' : view.playback.playing ? 'i-pause' : 'i-play';
 export const playbackAction = (view: DockView) => view.presentation.finished ? 'replay' as const : view.playback.playing ? 'pause' as const : 'play' as const;
-export function ArtSlot({view, artSlotRef, videoSurface = false, phone = false}: Pick<DockRendererProps, 'view' | 'artSlotRef' | 'videoSurface'> & {phone?: boolean}) {
+export function ArtSlot({view, artSlotRef, videoSurface = false, artworkSurface = false, phone = false}: Pick<DockRendererProps, 'view' | 'artSlotRef' | 'videoSurface' | 'artworkSurface'> & {phone?: boolean}) {
   const video = ['video', 'live', 'cast', 'play-on'].includes(view.mode);
   if (video && !view.remote && !videoSurface) throw new TypeError('Local video dock requires its persistent media surface.');
   return <span ref={artSlotRef} data-dock-art-slot className={[styles.artSlot, video && styles.videoArt].filter(Boolean).join(' ')}>
-    {!(videoSurface && !view.remote && video) && <Artwork source={view.presentation.artwork} alt="" className={styles.cover} brightness={view.remote && (!phone && !remoteTerminal(view.remote) || phone && remoteTerminal(view.remote)) ? phone ? .55 : .62 : undefined} saturation={view.remote && (!phone && !remoteTerminal(view.remote) || phone && remoteTerminal(view.remote)) ? phone ? .4 : .8 : undefined} />}
+    {!(videoSurface && !view.remote && video || artworkSurface && !view.remote && view.mode === 'music') && <Artwork source={view.presentation.artwork} alt="" className={styles.cover} brightness={view.remote && (!phone && !remoteTerminal(view.remote) || phone && remoteTerminal(view.remote)) ? phone ? .55 : .62 : undefined} saturation={view.remote && (!phone && !remoteTerminal(view.remote) || phone && remoteTerminal(view.remote)) ? phone ? .4 : .8 : undefined} />}
     {view.remote ? (phone || !remoteTerminal(view.remote)) && <span className={styles.castMark} data-pending={!remoteReady(view.remote) && !remoteTerminal(view.remote) || undefined}>{remoteReady(view.remote) || remoteTerminal(view.remote) ? <Icon name={phone ? 'i-tvdev' : 'i-cast'} size={phone ? 18 : 24} /> : <span className={styles.ring} />}</span>
       : video && <span className={styles.expandMark}><Icon name="i-zoom" size={phone ? 12 : 22} /></span>}
   </span>;
 }
-export function Identity({view, binding, t = dockText, artSlotRef, identityRef, videoSurface, phone = false}: DockRendererProps & {phone?: boolean}) {
+export function Identity({view, binding, t = dockText, artSlotRef, identityRef, videoSurface, artworkSurface, phone = false}: DockRendererProps & {phone?: boolean}) {
   const send = useDockActions({view, binding}), terminal = remoteTerminal(view.remote), pending = view.remote && !remoteReady(view.remote);
   const subtitle: readonly FactPart[] = view.presentation.finished ? [...view.presentation.identity.subtitle.filter(part => part.id === 'episode-label'), {id: 'finished', role: 'status', text: t('next.dock.finished')}] : phone && view.mode === 'music' && !view.playback.playing ? [...view.presentation.identity.subtitle, {id: 'paused', role: 'status', text: t('next.dock.paused')}] : view.presentation.identity.subtitle;
-  const content = <><ArtSlot view={view} artSlotRef={artSlotRef} videoSurface={videoSurface} phone={phone} /><span className={styles.identityText}><b>{view.presentation.identity.title}</b>
+  const content = <><ArtSlot view={view} artSlotRef={artSlotRef} videoSurface={videoSurface} artworkSurface={artworkSurface} phone={phone} /><span className={styles.identityText}><b>{view.presentation.identity.title}</b>
     <small data-status={view.remote?.phase} aria-live={view.remote ? 'polite' : undefined}>{phone && view.remote?.phase === 'playing' ? <>{view.presentation.deviceName}<span className={styles.gap} aria-hidden="true" />{clockText(positionOf(view))}</> : phone && view.remote?.phase === 'stopped' ? t('next.dock.stoppedAt', {position: clockText(positionOf(view)) ?? ''}) : remoteText(view, t) ?? <Facts parts={subtitle} />}</small></span></>;
   return terminal || pending ? <div className={styles.identity}>{content}</div> : <button ref={identityRef} type="button" className={styles.identity} aria-label={t(view.remote ? 'next.dock.castControls' : view.mode === 'music' || view.mode === 'audiobook' ? 'next.dock.openNowPlaying' : 'next.dock.expand')} onClick={() => send({kind: 'expand'})}>{content}<span className={styles.expandTip} role="tooltip">{t('next.dock.expand')}</span></button>;
 }
@@ -46,11 +46,11 @@ export function Transport({view, binding, t = dockText, phone = false}: DockRend
   const previous = model.previousLabel ?? t(book ? 'next.dock.previousChapter' : video && model.identity.subtitle.some(p => p.id === 'episode-label') ? 'next.dock.previousEpisode' : 'next.dock.previous');
   const next = model.nextLabel ?? t(book ? 'next.dock.nextChapter' : video && model.identity.subtitle.some(p => p.id === 'episode-label') ? 'next.dock.nextEpisode' : 'next.dock.next');
   const playing = playbackAction(view), main = <Control primary={!phone} icon={playbackIcon(view)} iconSize={phone ? 24 : 22} label={playbackLabel(view, t)} disabled={!can(playing)} onClick={() => send({kind: playing})} />;
-  if (phone) return <div className={styles.transport}>
+  if (phone) return <div className={styles.transport} data-dock-expansion-copy>
     {video || view.remote ? <Control icon="i-rew" iconSize={27} label={t('next.dock.back', {seconds: model.skipBackSeconds})} skip={model.skipBackSeconds} disabled={!can('seek')} onClick={() => skip(-model.skipBackSeconds)} /> : <Control icon="i-prev" iconSize={22} label={previous} disabled={!can('previous')} onClick={() => send({kind: 'previous'})} />}
     {main}{view.remote ? <Control icon="i-stop" label={t('next.dock.stop')} onClick={() => send({kind: 'stop'})} /> : <><Control icon="i-next" iconSize={22} label={next} disabled={!can('next')} onClick={() => send({kind: 'next'})} /><Control icon="i-x" iconSize={18} label={t('next.dock.stopClose')} className={styles.close} onClick={() => send({kind: 'stop'})} /></>}
   </div>;
-  return <div className={styles.transport}>
+  return <div className={styles.transport} data-dock-expansion-copy>
     {view.mode === 'music' && <Control icon="i-shuffle" label={t('next.dock.shuffle')} active={model.shuffle ?? false} disabled={!can('shuffle')} onClick={() => send({kind: 'shuffle', shuffle: !model.shuffle})} />}
     {!view.remote && <Control icon="i-prev" label={previous} disabled={!can('previous')} onClick={() => send({kind: 'previous'})} />}
     {view.mode !== 'music' && <Control icon="i-back" label={t('next.dock.back', {seconds: model.skipBackSeconds})} skip={model.skipBackSeconds} disabled={!can('seek')} onClick={() => skip(-model.skipBackSeconds)} />}
@@ -63,8 +63,8 @@ export function Transport({view, binding, t = dockText, phone = false}: DockRend
 export function Progress({view, binding, t = dockText, line = false}: DockRendererProps & {line?: boolean}) {
   const send = useDockActions({view, binding}), bounds = seekBounds(view), position = positionOf(view), duration = view.presentation.durationSeconds;
   const current = clockText(position), end = clockText(duration), progress = progressOf(view);
-  if (line) return <span className={styles.progressLine} aria-hidden="true"><i style={{transform: `scaleX(${progress})`}} /></span>;
-  return <div className={styles.scrub} data-pending={!remoteReady(view.remote) || undefined}>
+  if (line) return <span className={styles.progressLine} data-dock-expansion-copy aria-hidden="true"><i style={{transform: `scaleX(${progress})`}} /></span>;
+  return <div className={styles.scrub} data-dock-expansion-copy data-pending={!remoteReady(view.remote) || undefined}>
     <span>{current}</span><span className={styles.track}><i style={{transform: `scaleX(${progress})`}} />
       {bounds && <input type="range" min={bounds.start} max={bounds.end} step={1} value={Math.min(bounds.end, Math.max(bounds.start, position))} disabled={!view.presentation.controls.includes('seek') || !remoteReady(view.remote)} aria-label={t(view.remote ? 'next.dock.remotePosition' : 'next.dock.position')} aria-valuetext={current && end ? t('next.dock.positionOf', {position: current, duration: end}) : current} onChange={event => { const seconds = seekTarget(view, event.currentTarget.valueAsNumber); if (seconds !== null) send({kind: 'seek', seconds}); }} />}
     </span><span>{end}</span>
@@ -79,9 +79,9 @@ export function TerminalActions({view, binding, t = dockText, phone = false}: Do
 export function EndControls({view, binding, t = dockText}: DockRendererProps) {
   const send = useDockActions({view, binding}), model = view.presentation;
   const tool = (kind: 'subtitles-audio' | 'options' | 'play-on' | 'lyrics' | 'queue' | 'chapters', icon: IconName, key: DockMessageId) => model.controls.includes(kind) ? <Control icon={icon} label={t(key)} onClick={() => send({kind})} /> : null;
-  if (view.remote) return <div className={styles.endControls}>{remoteReady(view.remote) && tool('subtitles-audio', 'd-cc', 'next.dock.subtitlesAudio')}
+  if (view.remote) return <div className={styles.endControls} data-dock-expansion-copy>{remoteReady(view.remote) && tool('subtitles-audio', 'd-cc', 'next.dock.subtitlesAudio')}
     <Button size="dock" variant="glass" onClick={() => send({kind: 'stop'})}>{t('next.dock.stop')}</Button>{remoteReady(view.remote) && <Control icon="i-up" label={t('next.dock.castControls')} onClick={() => send({kind: 'expand'})} />}</div>;
-  return <div className={styles.endControls}>
+  return <div className={styles.endControls} data-dock-expansion-copy>
     {view.mode === 'music' && <>{tool('lyrics', 'i-lyrics', 'next.dock.lyrics')}{tool('queue', 'i-queue', 'next.dock.queue')}</>}
     {view.mode === 'audiobook' && <>{model.controls.includes('speed') && model.rate !== undefined && <button className={styles.pill} type="button" aria-label={t('next.dock.speed', {rate: model.rate})} onClick={() => send({kind: 'speed'})}>{t('next.dock.rate', {rate: model.rate})}</button>}
       {model.controls.includes('sleep') && <button className={styles.pill} type="button" aria-label={t('next.dock.sleep')} onClick={() => send({kind: 'sleep'})}><Icon name="i-moon" size={16} />{model.sleepLabel ?? t('next.dock.sleep')}</button>}{tool('chapters', 'i-chapters', 'next.dock.chapters')}</>}

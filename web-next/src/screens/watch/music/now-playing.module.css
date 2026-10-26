@@ -1,5 +1,5 @@
 /* listening-notices frames 2 and 3: the expanded web Now playing host. */
-.frame { position: absolute; inset: 0; z-index: 3; display: block; padding: 0; color: var(--color-text); background: var(--color-ink); }
+.frame { position: fixed; inset: 0; z-index: 3; display: block; padding: 0; color: var(--color-text); background: var(--color-ink); }
 .top { position: absolute; z-index: 5; inset: 0 0 auto; height: 84px; display: flex; align-items: center; gap: 16px; padding: 0 32px; }
 .round { width: 44px; height: 44px; display: grid; place-items: center; border: 0; border-radius: 50%; color: var(--color-text); background: rgba(237,245,250,.1); cursor: pointer; }
 .from { font-size: 14px; color: var(--color-text-secondary); }
@@ -57,3 +57,6 @@
 [data-reduce-motion="true"] .fade1,
 [data-reduce-motion="true"] .fade2,
 [data-reduce-motion="true"] .fade3 { animation: music-fade var(--motion-reduced) linear both; }
+
+/* The original measured owner drives these same groups while it retains the current music view. */
+.frame[data-music-motion-owned] .fade1, .frame[data-music-motion-owned] .fade2, .frame[data-music-motion-owned] .fade3 { animation: none; }

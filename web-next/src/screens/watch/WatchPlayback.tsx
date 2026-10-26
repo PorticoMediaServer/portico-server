@@ -15,6 +15,7 @@ import {WatchUpNextPrompt} from './UpNextPrompt';
 import {WatchStillWatchingPrompt} from './StillWatchingPrompt';
 import {watchStillWatching} from './still-watching';
 import {WatchMusicNowPlaying} from './music/NowPlaying';
+import {MusicExpansionSurface, useMusicExpansion} from './music/expansion-owner';
 import {WatchCapacityWait} from './CapacityWait';
 import {WatchStartFailure} from './StartFailure';
 import {StartPreparationNotice} from './StartPreparationNotice';
@@ -161,7 +162,7 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
   const feedbackTarget = binding && snapshot ? watchFeedbackTarget(binding, snapshot) : undefined;
   const width = useShellWidth(), phone = width < 1024;
   const host = useRef<HTMLDivElement>(null), video = useRef<HTMLVideoElement>(null), dockSlot = useRef<HTMLSpanElement>(null), expandedSlot = useRef<HTMLDivElement>(null);
-  const castAnchor = useRef<HTMLElement | null>(null);
+  const castAnchor = useRef<HTMLElement | null>(null), musicBar = useRef<HTMLDivElement | null>(null);
   const [castOwner, setCastOwner] = useState<{runtime: WebShellPlaybackRuntime; context: WatchPlaybackContext; value: WatchPlayOnBinding} | null>(null);
   useEffect(() => {
     // Desktop's native media owner has no browser-video Cast/AirPlay transport. Its real
@@ -181,6 +182,7 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
   const media = useMemo(() => new PlaybackMediaOwner<HTMLVideoElement>(), []);
   const cache = useMemo(() => new PlaybackPresentations(runtime), [runtime]);
   const dockPanelsCurrent = useCallback(() => context?.isCurrent() === true && cast?.controller.getSnapshot().remote?.phase !== 'playing', [context, cast]);
+  const musicMotion = useMusicExpansion(binding, snapshot, dockPanelsCurrent, dockSlot, musicBar, remotePlaying);
   const subscribeDockPanels = useCallback((changed: () => void) => cast?.controller.subscribe(changed) ?? (() => {}), [cast]);
   const [heldDockPanels, setHeldDockPanels] = useState<Readonly<{offer: WatchDockPanelOffer; context: WatchPlaybackContext | undefined; current: () => boolean}>>();
   const publishDockPanels = useCallback((offer: WatchDockPanelOffer) => {
@@ -358,7 +360,7 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
     ...(pipOperations && (pipReady || pipActive) ? {pictureInPicture: {active: pipActive, toggle: () => pipOperations.toggle()}} : {}),
   } : undefined;
   return <div ref={host} className={styles.dock} data-phone={phone} data-shell-dock data-watch-playback-host data-music-expanded={!phone && expanded && !remotePlaying && snapshot?.presentation?.kind === 'music' ? 'true' : undefined}>
-    {snapshot && dockBinding && <div className={styles.localDock} data-covered={!!remote}><DockHost state={snapshot.dock} presentations={presentations} binding={dockBinding} layout={phone ? 'phone' : 'desktop'} artSlotRef={dockSlot} videoSurface={!!activeVideo} />
+    {snapshot && dockBinding && <div ref={musicBar} className={styles.localDock} data-covered={!!remote} data-music-retained={!!musicMotion.scope || undefined} inert={musicMotion.open || undefined} aria-hidden={musicMotion.open || undefined}><DockHost state={snapshot.dock} presentations={presentations} binding={dockBinding} layout={phone ? 'phone' : 'desktop'} artSlotRef={dockSlot} videoSurface={!!activeVideo} artworkSurface={!!musicMotion.scope} retainExpandedMusic={!!musicMotion.scope} />
       {!expanded && !remote && noticeIdentity && <CurrentListeningNotice key={noticeIdentity} snapshot={snapshot} phone={phone}/>}
       <DockNotice notice={currentNotice} nowMs={now} binding={dockBinding} phone={phone} /></div>}
     <MediaSurface finished={snapshot?.presentation?.finished} expanded={expanded} dockSlot={dockSlot} expandedSlot={expandedSlot} hidden={!activeVideo} nativeRenderActive={snapshot?.nativeVideoSurfaceActive} className={styles.surface}>
@@ -367,7 +369,8 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
     {snapshot?.capacityWait && <WatchCapacityWait wait={snapshot.capacityWait} />}
     {snapshot && <StartPreparationNotice preparation={currentStartPreparation(snapshot, remotePlaying)} />}
     {binding && snapshot?.startFailure && <WatchStartFailure failure={snapshot.startFailure} authority={snapshot.authority} context={context} reportError={binding.reportError}/>}
-    {binding && snapshot && <WatchMusicNowPlaying binding={binding} snapshot={snapshot} expanded={expanded && !remotePlaying} onCollapse={collapse} phone={phone} />}
+    <MusicExpansionSurface motion={musicMotion}/>
+    {binding && snapshot && <WatchMusicNowPlaying motion={musicMotion} isCurrent={dockPanelsCurrent} binding={binding} snapshot={snapshot} expanded={expanded && !remotePlaying} onCollapse={collapse} phone={phone} />}
     {binding && snapshot && <WatchScreen binding={binding} snapshot={snapshot} expanded={expanded && !remotePlaying} onCollapse={collapse} surfaceSlotRef={expandedSlot} onControlsVisibleChange={setControlsVisible}
       publishDockPanels={publishDockPanels} dockPanelsCurrent={dockPanelsCurrent} subscribeDockPanels={subscribeDockPanels}
       surfaces={drawnSurfaces} geometry={geometry} live={live}
