@@ -409,3 +409,162 @@ test('See all quiet refresh retains all1203 authorized cards beyond five pages',
   assert.equal(pager.getSnapshot().nextCursor,'');
  }finally{pager.dispose()}
 });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void, reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((accept, refuse) => {resolve = accept; reject = refuse;});
+  return {promise, resolve, reject};
+}
+
+test('quiet reads settle in order: the later-started answer wins and owns deferred shelves', async () => {
+  const reads: ReturnType<typeof deferred<unknown>>[] = [];
+  let shelfCalls = 0;
+  const service = new HomeService(api(path => {
+    if (path === '/v1/home') {const read = deferred<unknown>(); reads.push(read); return read.promise;}
+    if (path.startsWith('/v1/home/rows/shelf')) {shelfCalls++; return row('shelf', ['s' + shelfCalls], {deferred: false});}
+    throw new Error(path);
+  }));
+  const initial = service.load();
+  reads.shift()!.resolve(document([row('recent', ['a'])]));
+  await initial;
+
+  const first = service.revalidate();
+  const second = service.revalidate();
+  assert.equal(reads.length, 2, 'two distinct quiet reads were issued');
+  // The later-started read finishes first and publishes revision 3.
+  reads[1]!.resolve(document([row('recent', ['new', 'a'], {revision: {catalog: 3, viewer: 1}}), row('shelf', [], {deferred: true, limit: 2})], {revision: {catalog: 3, viewer: 1}}));
+  await second;
+  assert.equal(ids(service, 'recent'), 'new,a');
+  // The older read finishes later with revision 2; it must not replace the newer document or hydrate.
+  reads[0]!.resolve(document([row('recent', ['old'], {revision: {catalog: 2, viewer: 1}}), row('shelf', [], {deferred: true, limit: 2})], {revision: {catalog: 2, viewer: 1}}));
+  await first;
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(ids(service, 'recent'), 'new,a', 'a delayed older answer cannot roll the document back');
+  assert.equal(service.getSnapshot().document!.revision.catalog, 3);
+  assert.equal(shelfCalls, 1, 'only the later-started read may start its deferred shelves');
+  service.dispose();
+});
+
+test('a delayed failure from a superseded quiet read is not reported against its successor', async () => {
+  const reads: ReturnType<typeof deferred<unknown>>[] = [];
+  const service = new HomeService(api(path => {
+    if (path === '/v1/home') {const read = deferred<unknown>(); reads.push(read); return read.promise;}
+    throw new Error(path);
+  }));
+  const initial = service.load();
+  reads.shift()!.resolve(document([row('recent', ['a'])]));
+  await initial;
+  const older = service.revalidate();
+  const newer = service.revalidate();
+  reads[1]!.resolve(document([row('recent', ['new'], {revision: {catalog: 4, viewer: 1}})], {revision: {catalog: 4, viewer: 1}}));
+  await newer;
+  reads[0]!.reject(Object.assign(new Error('stale read failed'), {status: 503}));
+  await older; // resolves quietly; a late old failure is not the current document's failure
+  assert.equal(ids(service, 'recent'), 'new');
+  assert.equal(service.getSnapshot().phase, 'ready');
+  service.dispose();
+});
+
+test('explicit load/clear and dispose invalidate outstanding quiet reads', async () => {
+  const reads: ReturnType<typeof deferred<unknown>>[] = [];
+  const service = new HomeService(api(path => {
+    if (path === '/v1/home') {const read = deferred<unknown>(); reads.push(read); return read.promise;}
+    throw new Error(path);
+  }));
+  const initial = service.load();
+  reads.shift()!.resolve(document([row('recent', ['a'])]));
+  await initial;
+
+  const quiet = service.revalidate();
+  const reload = service.load({clear: true});
+  reads[1]!.resolve(document([row('recent', ['loaded'], {revision: {catalog: 5, viewer: 1}})], {revision: {catalog: 5, viewer: 1}}));
+  await reload;
+  reads[0]!.resolve(document([row('recent', ['stale'], {revision: {catalog: 2, viewer: 1}})], {revision: {catalog: 2, viewer: 1}}));
+  await quiet;
+  assert.equal(ids(service, 'recent'), 'loaded', 'an explicit load invalidates the outstanding quiet ticket');
+
+  const disposedRead = service.revalidate();
+  service.dispose();
+  const queued = reads.pop()!;
+  queued.resolve(document([row('recent', ['after-dispose'])]));
+  await disposedRead;
+  assert.ok(true, 'a disposed service resolves its outstanding quiet read quietly');
+});
+
+test('a superseded quiet response never invokes its settle callback', async () => {
+  const reads: ReturnType<typeof deferred<unknown>>[] = [];
+  const service = new HomeService(api(path => {
+    if (path === '/v1/home') {const read = deferred<unknown>(); reads.push(read); return read.promise;}
+    throw new Error(path);
+  }));
+  const initial = service.load();
+  reads.shift()!.resolve(document([row('recent', ['a'])]));
+  await initial;
+  let settles = 0;
+  const older = service.revalidate({settle: async () => {settles++;}});
+  const newer = service.revalidate();
+  reads[1]!.resolve(document([row('recent', ['new'], {revision: {catalog: 6, viewer: 1}})], {revision: {catalog: 6, viewer: 1}}));
+  await newer;
+  reads[0]!.resolve(document([row('recent', ['stale'], {revision: {catalog: 2, viewer: 1}})], {revision: {catalog: 2, viewer: 1}}));
+  await older;
+  assert.equal(settles, 0, 'an already-superseded response does not enter the old caller settle');
+  assert.equal(ids(service, 'recent'), 'new');
+  service.dispose();
+});
+
+test('a settle that was already awaiting cannot let its older answer replace a successor', async () => {
+  const reads: ReturnType<typeof deferred<unknown>>[] = [];
+  const service = new HomeService(api(path => {
+    if (path === '/v1/home') {const read = deferred<unknown>(); reads.push(read); return read.promise;}
+    throw new Error(path);
+  }));
+  const initial = service.load();
+  reads.shift()!.resolve(document([row('recent', ['a'])]));
+  await initial;
+  let releaseSettle!: () => void;
+  const older = service.revalidate({settle: () => new Promise<void>(resolve => {releaseSettle = resolve;})});
+  reads[0]!.resolve(document([row('recent', ['mid'], {revision: {catalog: 2, viewer: 1}})], {revision: {catalog: 2, viewer: 1}}));
+  await new Promise(resolve => setImmediate(resolve));
+  const newer = service.revalidate();
+  reads[1]!.resolve(document([row('recent', ['new'], {revision: {catalog: 7, viewer: 1}})], {revision: {catalog: 7, viewer: 1}}));
+  await newer;
+  releaseSettle();
+  await older;
+  assert.equal(ids(service, 'recent'), 'new', 'the post-settle current check rejects the older commit');
+  service.dispose();
+});
+
+test('a superseded deferred-row denial cannot remove a successor row; a current denial still removes it', async () => {
+  const reads: ReturnType<typeof deferred<unknown>>[] = [];
+  const shelves: ReturnType<typeof deferred<unknown>>[] = [];
+  const service = new HomeService(api(path => {
+    if (path === '/v1/home') {const read = deferred<unknown>(); reads.push(read); return read.promise;}
+    if (path.startsWith('/v1/home/rows/shelf')) {const read = deferred<unknown>(); shelves.push(read); return read.promise;}
+    throw new Error(path);
+  }));
+  const initial = service.load();
+  reads.shift()!.resolve(document([row('recent', ['a'])]));
+  await initial;
+
+  const older = service.revalidate();
+  reads[0]!.resolve(document([row('recent', ['a']), row('shelf', [], {deferred: true, limit: 2})]));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(shelves.length, 1, 'the older read started its deferred shelf');
+  const newer = service.revalidate();
+  reads[1]!.resolve(document([row('recent', ['new']), row('shelf', ['s2'])]));
+  await newer;
+  shelves[0]!.reject(Object.assign(new Error('shelf forbidden'), {status: 403}));
+  await older;
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(service.getSnapshot().document!.rows.some(row => row.id === 'shelf'), true, 'a superseded denial cannot remove the successor shelf');
+  assert.equal(ids(service, 'recent'), 'new');
+
+  const current = service.revalidate();
+  reads[2]!.resolve(document([row('recent', ['new']), row('shelf', [], {deferred: true, limit: 2})]));
+  await new Promise(resolve => setImmediate(resolve));
+  shelves[1]!.reject(Object.assign(new Error('current shelf forbidden'), {status: 403}));
+  await current;
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(service.getSnapshot().document!.rows.some(row => row.id === 'shelf'), false, 'a current denial still removes its deferred row');
+  service.dispose();
+});

@@ -88,6 +88,8 @@ export class HomeService {
   private state: HomeSnapshot = Object.freeze({phase: 'idle', paging: none});
   private listeners = new Set<() => void>();
   private generation = 0;
+  /** Quiet reads are numbered too: a settled read older than the newest accepted quiet read is stale. */
+  private quiet = 0;
   private reading?: {controller: AbortController; promise: Promise<void>};
   private pages = new Map<string, AbortController>();
   private disposed = false;
@@ -114,14 +116,14 @@ export class HomeService {
     for (const listener of listeners) listener();
   }
 
-  private hydrateRows(fresh: HomeDocument): void {
+  private hydrateRows(fresh: HomeDocument, quiet?: number): void {
     const epoch = ++this.hydrationGeneration;
     for (const controller of this.hydrations) controller.abort();
     this.hydrations.clear();
     const queue = fresh.rows.filter(row => row.deferred);
     const mine = this.generation;
     const consume = async () => {
-      while (queue.length && !this.disposed && epoch === this.hydrationGeneration) {
+      while (queue.length && !this.disposed && epoch === this.hydrationGeneration && (quiet === undefined || quiet === this.quiet)) {
         const descriptor = queue.shift()!;
         const controller = new AbortController();
         this.hydrations.add(controller);
@@ -137,14 +139,14 @@ export class HomeService {
             }),
           ]);
           const shown = this.state.document;
-          if (this.disposed || mine !== this.generation || epoch !== this.hydrationGeneration || controller.signal.aborted || !shown || shown.viewerFence !== fresh.viewerFence || shown.serverId !== fresh.serverId || row.viewerFence !== fresh.viewerFence || row.children?.some(child => child.viewerFence !== fresh.viewerFence)) continue;
+          if (this.disposed || mine !== this.generation || (quiet !== undefined && quiet !== this.quiet) || epoch !== this.hydrationGeneration || controller.signal.aborted || !shown || shown.viewerFence !== fresh.viewerFence || shown.serverId !== fresh.serverId || row.viewerFence !== fresh.viewerFence || row.children?.some(child => child.viewerFence !== fresh.viewerFence)) continue;
           const replacements = row.children ?? [row];
           const rows = shown.rows.flatMap(old => old.id === descriptor.id || descriptor.id === 'for_you' && old.family === 'for_you' ? [] : [old]);
           const at = shown.rows.findIndex(old => old.id === descriptor.id || descriptor.id === 'for_you' && old.family === 'for_you');
           rows.splice(Math.max(0, at), 0, ...replacements.filter(next => hasHomeRowContent(next) || next.critical));
           this.publish({document: mergeHomeDocument(shown, Object.freeze({...shown, rows: Object.freeze(rows)})), error: undefined});
         } catch (error) {
-          if(permissionDenied(error)&&epoch===this.hydrationGeneration&&mine===this.generation)this.removeRow(descriptor.id);
+          if(permissionDenied(error)&&!this.disposed&&mine===this.generation&&(quiet===undefined||quiet===this.quiet)&&epoch===this.hydrationGeneration&&!controller.signal.aborted)this.removeRow(descriptor.id);
           // A failed shelf keeps its previous cards. Other shelves continue;
           // the next quiet Home refresh retries the deferred endpoint.
         } finally { if (timer) clearTimeout(timer); controller.signal.removeEventListener('abort', abort); this.hydrations.delete(controller); }
@@ -186,6 +188,8 @@ export class HomeService {
     if (this.reading && !options.clear) return this.reading.promise;
     this.reading?.controller.abort();
     const mine = ++this.generation, controller = new AbortController();
+    // An explicit load/clear invalidates every outstanding quiet read.
+    this.quiet++;
     for (const page of this.pages.values()) page.abort();
     this.pages.clear();
     this.publish({phase: 'loading', error: undefined, paging: none, ...(options.clear ? {document: undefined} : {})});
@@ -211,17 +215,23 @@ export class HomeService {
   /** The quiet read: merge the server's current Home into what is shown. Rejects when the read failed; nothing changes then. */
   async revalidate(context?: {signal?: AbortSignal; settle?: () => Promise<void>}): Promise<void> {
     if (this.disposed || this.state.phase !== 'ready' || !this.state.document) return;
-    const mine = this.generation, controller = new AbortController(), stop = () => controller.abort();
+    const mine = this.generation, ticket = ++this.quiet, controller = new AbortController(), stop = () => controller.abort();
+    const current = () => !this.disposed && mine === this.generation && ticket === this.quiet && !controller.signal.aborted;
     context?.signal?.addEventListener('abort', stop, {once: true});
     try {
       const fresh = await this.read(controller.signal);
+      // A response that was already superseded must not invoke another caller's
+      // settle callback or wait on its obsolete completion.
+      if (!current()) return;
       await context?.settle?.();
-      if (this.disposed || mine !== this.generation || controller.signal.aborted || !this.state.document || this.state.phase !== 'ready') return;
+      if (!current() || !this.state.document || this.state.phase !== 'ready') return;
       const merged = mergeHomeDocument(this.state.document, fresh);
       if (merged !== this.state.document) this.publish({document: merged});
-      this.hydrateRows(fresh);
+      // A read superseded after its settle may not start or own deferred shelves.
+      if (current()) this.hydrateRows(fresh, ticket);
     } catch (error) {
-      if (this.disposed || mine !== this.generation || controller.signal.aborted) return;
+      // A late failure from a superseded read is not the current document's failure.
+      if (!current()) return;
       throw error;
     } finally { context?.signal?.removeEventListener('abort', stop); }
   }
@@ -384,6 +394,7 @@ export class HomeService {
 
   dispose(): void {
     this.disposed = true;
+    this.quiet++;
     this.hydrationGeneration++;
     for (const controller of this.hydrations) controller.abort();
     this.hydrations.clear();
