@@ -13,14 +13,10 @@ import (
 )
 
 // sourceChoiceApply is the committed half of a startChoice command. It is used
-// only after the accepting transaction commits, for the existing mount-cache
-// and transport effects. It is never stored and never replayed.
+// only after the accepting transaction commits, for the transport effect that
+// does not cross the held cache/reference seam. It is never stored or replayed.
 type sourceChoiceApply struct {
 	source           Source
-	values           SourceAdvanced
-	current          SourceAdvanced
-	revision         int64
-	cacheChanged     bool
 	transportChanged bool
 }
 
@@ -28,9 +24,12 @@ type sourceChoiceApply struct {
 // owns the transaction, owner/generation/revision checks and optional-field
 // merge. Zero scan interval clears the real enabled library schedules so
 // "Only when I ask" stops automatic work rather than merely storing zero.
-func applySourceAdvancedValuesTx(ctx context.Context, tx *sql.Tx, source string, current advancedRow, values SourceAdvanced) (advancedRow, error) {
+func (s *Service) applySourceAdvancedValuesTx(ctx context.Context, tx *sql.Tx, source string, current advancedRow, values SourceAdvanced) (advancedRow, error) {
 	if tx == nil || source == "" || !values.valid() {
 		return advancedRow{}, storage.ErrRemoteConfig
+	}
+	if current.revision == 1<<63-1 {
+		return advancedRow{}, storage.ErrRemoteLimit
 	}
 	revision := current.revision
 	nextRevision := revision + 1
@@ -76,9 +75,9 @@ func applySourceAdvancedValuesTx(ctx context.Context, tx *sql.Tx, source string,
 	}, nil
 }
 
-// applySourceChoiceTx writes the exact recorded association, both settings
-// halves and the reference in the caller's one accepting transaction. The
-// caller inserts the operation receipt and commits.
+// applySourceChoiceTx writes both settings halves in the caller's one accepting
+// transaction. The recorded reference and cache application are held until the
+// original causal mount-command receipt seam is grounded.
 func (s *Service) applySourceChoiceTx(ctx context.Context, tx *sql.Tx, identities *identity.Service, owner identity.Principal, source string, in SourceReadSettingsChange) (Source, SourceReadSettings, sourceChoiceApply, error) {
 	var zero Source
 	var zeroSettings SourceReadSettings
@@ -98,15 +97,14 @@ func (s *Service) applySourceChoiceTx(ctx context.Context, tx *sql.Tx, identitie
 	if strconv.FormatInt(row.Generation, 10) != in.ExpectedGeneration {
 		return zero, zeroSettings, zeroApply, storage.ErrRemoteChanged
 	}
+	if !sourceChoiceGeneration(choice.ExpectedConfigurationGeneration) {
+		return zero, zeroSettings, zeroApply, storage.ErrRemoteConfig
+	}
 	effective, err := observationGenerationTx(ctx, tx, source)
 	if err != nil {
-		return zero, zeroSettings, zeroApply, err
-	}
-	if effective != in.ExpectedGeneration {
 		return zero, zeroSettings, zeroApply, storage.ErrRemoteChanged
 	}
-	configGeneration, err := strconv.ParseInt(effective, 10, 64)
-	if err != nil || configGeneration < 1 {
+	if effective != choice.ExpectedConfigurationGeneration {
 		return zero, zeroSettings, zeroApply, storage.ErrRemoteChanged
 	}
 	definition, err := readSourceChoiceDefinitionTx(ctx, tx, choice.Name, choice.DefinitionRevision)
@@ -142,52 +140,31 @@ func (s *Service) applySourceChoiceTx(ctx context.Context, tx *sql.Tx, identitie
 	if readResult.Profile.Revision < 1 {
 		return zero, zeroSettings, zeroApply, storage.ErrRemoteChanged
 	}
-	written, err := applySourceAdvancedValuesTx(ctx, tx, source, advanced, values)
+	written, err := s.applySourceAdvancedValuesTx(ctx, tx, source, advanced, values)
 	if err != nil {
 		return zero, zeroSettings, zeroApply, err
 	}
 	if written.revision < 1 {
 		return zero, zeroSettings, zeroApply, storage.ErrRemoteChanged
 	}
-	fingerprint, err := s.sourceChoiceConfigFingerprintTx(ctx, tx, source)
-	if err != nil {
-		return zero, zeroSettings, zeroApply, err
-	}
-	now := time.Now().UnixMilli()
-	if _, err = tx.ExecContext(ctx, `INSERT INTO remote_source_choice_refs(source_id,source_row_generation,config_generation,mount_id,config_fingerprint,name,definition_revision,applied_read_revision,applied_advanced_revision,operation_id,applied_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(source_id) DO UPDATE SET source_row_generation=excluded.source_row_generation,config_generation=excluded.config_generation,mount_id=excluded.mount_id,config_fingerprint=excluded.config_fingerprint,name=excluded.name,definition_revision=excluded.definition_revision,applied_read_revision=excluded.applied_read_revision,applied_advanced_revision=excluded.applied_advanced_revision,operation_id=excluded.operation_id,applied_ms=excluded.applied_ms`,
-		source, row.Generation, configGeneration, row.MountID, fingerprint, definition.Name, definition.DefinitionRevision, readResult.Profile.Revision, written.revision, in.OperationID, now); err != nil {
-		return zero, zeroSettings, zeroApply, err
-	}
+	// Cache application and the recorded reference are held until the causal
+	// mount-command receipt seam is grounded. Writing the reference here would
+	// bind a pre-cache generation that the ordinary mount/native save changes.
 	_, settings, err := s.readSourceReadSettingsProjectionTx(ctx, tx, source)
 	if err != nil {
 		return zero, zeroSettings, zeroApply, err
 	}
-	if settings.ChoiceBaseline == nil {
-		return zero, zeroSettings, zeroApply, storage.ErrRemoteChanged
-	}
 	apply := sourceChoiceApply{
 		source:           row,
-		values:           values,
-		current:          advanced.values,
-		revision:         written.revision,
-		cacheChanged:     advanced.values.CacheBytes != values.CacheBytes || advanced.values.CacheFloorBytes != values.CacheFloorBytes,
 		transportChanged: advanced.values.transport() != values.transport(),
 	}
 	return row, settings, apply, nil
 }
 
-// finishSourceChoice runs the bounded post-commit effects that cannot live in
-// the accepting transaction. A mount cache refusal stays an honest
-// cacheApplied=false through the Advanced GET; it never rewrites the accepted
-// receipt or re-runs from a replay.
-func (s *Service) finishSourceChoice(ctx context.Context, identities *identity.Service, owner identity.Principal, apply sourceChoiceApply) {
-	if apply.source.MountID != "" && apply.cacheChanged {
-		applied, _ := s.applyCache(ctx, identities, owner, cacheApply{admitted: apply.source, revision: apply.revision, values: apply.values})
-		if applied {
-			floor := effectiveFloor(apply.values.CacheFloorBytes, apply.current.CacheFloorBytes)
-			_, _ = dbwork.ExecWrite(ctx, s.db, dbwork.ClassInteractive, `UPDATE remote_source_settings SET cache_applied_bytes=?,cache_applied_floor_bytes=? WHERE source_id=? AND revision=?`, apply.values.CacheBytes, floor, apply.source.ID, apply.revision)
-		}
-	}
+// finishSourceChoice runs only the transport effect that is independent of the
+// held cache/reference seam. Cache application and recorded-reference creation
+// remain unwired until the original causal mount-command receipt is grounded.
+func (s *Service) finishSourceChoice(apply sourceChoiceApply) {
 	if apply.transportChanged {
 		s.transportCommitted(apply.source.ID)
 	}

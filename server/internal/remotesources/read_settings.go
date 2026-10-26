@@ -47,14 +47,15 @@ func (v *SourceReadValues) UnmarshalJSON(raw []byte) error {
 }
 
 type SourceReadSettings struct {
-	SourceID               string                   `json:"sourceId"`
-	Generation             string                   `json:"generation"`
-	Revision               int64                    `json:"revision"`
-	Saved                  bool                     `json:"saved"`
-	Values                 SourceReadValues         `json:"values"`
-	ChoiceDefinitions      []SourceChoiceDefinition `json:"choiceDefinitions,omitempty"`
-	ChoiceApplicableFields []string                 `json:"choiceApplicableFields,omitempty"`
-	ChoiceBaseline         *SourceChoiceBaseline    `json:"choiceBaseline,omitempty"`
+	SourceID                string                   `json:"sourceId"`
+	Generation              string                   `json:"generation"`
+	ConfigurationGeneration string                   `json:"configurationGeneration,omitempty"`
+	Revision                int64                    `json:"revision"`
+	Saved                   bool                     `json:"saved"`
+	Values                  SourceReadValues         `json:"values"`
+	ChoiceDefinitions       []SourceChoiceDefinition `json:"choiceDefinitions,omitempty"`
+	ChoiceApplicableFields  []string                 `json:"choiceApplicableFields,omitempty"`
+	ChoiceBaseline          *SourceChoiceBaseline    `json:"choiceBaseline,omitempty"`
 }
 
 type SourceReadSettingsChange struct {
@@ -104,17 +105,17 @@ func (v *SourceReadSettingsChange) UnmarshalJSON(raw []byte) error {
 
 func decodeSourceStartChoice(raw json.RawMessage) (SourceStartChoice, bool) {
 	var fields map[string]json.RawMessage
-	if json.Unmarshal(raw, &fields) != nil || len(fields) != 3 {
+	if json.Unmarshal(raw, &fields) != nil || len(fields) != 4 {
 		return SourceStartChoice{}, false
 	}
-	for _, name := range []string{"name", "definitionRevision", "expectedAdvancedRevision"} {
+	for _, name := range []string{"name", "definitionRevision", "expectedAdvancedRevision", "expectedConfigurationGeneration"} {
 		value, ok := fields[name]
 		if !ok || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
 			return SourceStartChoice{}, false
 		}
 	}
 	for name := range fields {
-		if name != "name" && name != "definitionRevision" && name != "expectedAdvancedRevision" {
+		if name != "name" && name != "definitionRevision" && name != "expectedAdvancedRevision" && name != "expectedConfigurationGeneration" {
 			return SourceStartChoice{}, false
 		}
 	}
@@ -140,7 +141,14 @@ func readSettingsTx(ctx context.Context, tx *sql.Tx, source string) (Source, Sou
 		return row, SourceReadSettings{}, err
 	}
 	profile, err := SourceReadProfileTx(ctx, tx, source)
-	return row, SourceReadSettings{SourceID: source, Generation: strconv.FormatInt(row.Generation, 10), Revision: profile.Revision, Saved: profile.Saved, Values: sourceReadValues(profile)}, err
+	if err != nil {
+		return row, SourceReadSettings{}, err
+	}
+	settings := SourceReadSettings{SourceID: source, Generation: strconv.FormatInt(row.Generation, 10), Revision: profile.Revision, Saved: profile.Saved, Values: sourceReadValues(profile)}
+	if configuration, e := observationGenerationTx(ctx, tx, source); e == nil {
+		settings.ConfigurationGeneration = configuration
+	}
+	return row, settings, nil
 }
 
 func (s *Service) ReadSourceReadSettings(ctx context.Context, identities *identity.Service, owner identity.Principal, source string) (SourceReadSettings, error) {
@@ -196,6 +204,9 @@ func (s *Service) SaveSourceReadSettings(ctx context.Context, identities *identi
 		return Receipt{}, err
 	}
 	defer writer.Rollback()
+	if err = currentLocalOwnerTx(ctx, writer.Tx(), identities, owner); err != nil {
+		return Receipt{}, err
+	}
 	var row Source
 	var settings SourceReadSettings
 	var apply sourceChoiceApply
@@ -222,7 +233,7 @@ func (s *Service) SaveSourceReadSettings(ctx context.Context, identities *identi
 		return Receipt{}, err
 	}
 	if in.StartChoice != nil {
-		s.finishSourceChoice(ctx, identities, owner, apply)
+		s.finishSourceChoice(apply)
 	}
 	return receipt, s.finishReadSettings(ctx, source, settings.Revision)
 }

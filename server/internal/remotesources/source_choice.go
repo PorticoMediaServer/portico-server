@@ -58,6 +58,21 @@ func (a sourceChoiceApplicability) applies(field string) bool {
 	return a[field]
 }
 
+// sourceChoiceGeneration is the closed positive 19-digit generation form used
+// by the existing raw source generation and the separately captured effective
+// configuration generation.
+func sourceChoiceGeneration(value string) bool {
+	if len(value) < 1 || len(value) > 19 || value[0] == '0' {
+		return false
+	}
+	for _, c := range value {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // sourceChoiceReadingMatches enforces the accepted body rule: the complete
 // legacy values must exactly equal the chosen definition's read half. No union,
 // merge or silent rewrite is allowed.

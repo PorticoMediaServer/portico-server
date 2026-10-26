@@ -449,7 +449,7 @@ func (s *Service) SaveSourceAdvanced(ctx context.Context, identities *identity.S
 	if !v.valid() {
 		return SourceAdvancedSettings{}, storage.ErrRemoteConfig
 	}
-	settings, err := applySourceAdvancedValuesTx(ctx, tx, source, current, v)
+	settings, err := s.applySourceAdvancedValuesTx(ctx, tx, source, current, v)
 	if err != nil {
 		return SourceAdvancedSettings{}, err
 	}

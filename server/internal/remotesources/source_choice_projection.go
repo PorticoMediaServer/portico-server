@@ -45,7 +45,9 @@ func readSourceChoiceDefinitionsTx(ctx context.Context, tx *sql.Tx) ([]SourceCho
 	for _, name := range names {
 		definition, err := readSourceChoiceDefinitionTx(ctx, tx, name, 1)
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, storage.ErrRemoteConfig
+			// Optional definitions are absent; keep current read/Advanced facts
+			// and omit the explicit-choice projection.
+			return nil, nil
 		}
 		if err != nil {
 			return nil, err
@@ -81,6 +83,9 @@ func (s *Service) sourceChoiceConfigFingerprintTx(ctx context.Context, tx *sql.T
 // the baseline. Legacy sources therefore receive no fabricated Started-from,
 // count, or reset baseline.
 func (s *Service) sourceChoiceBaselineTx(ctx context.Context, tx *sql.Tx, source Source, reading SourceReadProfile, advanced advancedRow) (*SourceChoiceBaseline, error) {
+	if !reading.Saved || !advanced.saved {
+		return nil, nil
+	}
 	ref, err := readSourceChoiceRefTx(ctx, tx, source.ID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -106,6 +111,9 @@ func (s *Service) sourceChoiceBaselineTx(ctx context.Context, tx *sql.Tx, source
 	if err != nil {
 		return nil, err
 	}
+	if !validSourceReadProfile(definition.Reading.profile(source.ID)) || !definition.Advanced.valid() {
+		return nil, nil
+	}
 	if ref.AppliedReadRevision > reading.Revision || ref.AppliedAdvancedRevision > advanced.revision {
 		return nil, nil
 	}
@@ -115,17 +123,18 @@ func (s *Service) sourceChoiceBaselineTx(ctx context.Context, tx *sql.Tx, source
 		changed = []string{}
 	}
 	return &SourceChoiceBaseline{
-		SourceID:           source.ID,
-		Generation:         strconv.FormatInt(source.Generation, 10),
-		Name:               definition.Name,
-		DefinitionRevision: definition.DefinitionRevision,
-		ReadRevision:       reading.Revision,
-		AdvancedRevision:   advanced.revision,
-		Reading:            definition.Reading,
-		Advanced:           definition.Advanced,
-		CurrentAdvanced:    advanced.values,
-		ApplicableFields:   sourceChoiceApplicableFields(source),
-		ChangedFields:      changed,
+		SourceID:                source.ID,
+		Generation:              strconv.FormatInt(source.Generation, 10),
+		ConfigurationGeneration: effective,
+		Name:                    definition.Name,
+		DefinitionRevision:      definition.DefinitionRevision,
+		ReadRevision:            reading.Revision,
+		AdvancedRevision:        advanced.revision,
+		Reading:                 definition.Reading,
+		Advanced:                definition.Advanced,
+		CurrentAdvanced:         advanced.values,
+		ApplicableFields:        sourceChoiceApplicableFields(source),
+		ChangedFields:           changed,
 	}, nil
 }
 
@@ -149,12 +158,15 @@ func (s *Service) readSourceReadSettingsProjectionTx(ctx context.Context, tx *sq
 	if err != nil {
 		return row, settings, err
 	}
-	baseline, err := s.sourceChoiceBaselineTx(ctx, tx, row, reading, advanced)
-	if err != nil {
-		return row, settings, err
-	}
 	settings.ChoiceDefinitions = definitions
 	settings.ChoiceApplicableFields = sourceChoiceApplicableFields(row)
+	var baseline *SourceChoiceBaseline
+	if definitions != nil {
+		baseline, err = s.sourceChoiceBaselineTx(ctx, tx, row, reading, advanced)
+		if err != nil {
+			return row, settings, err
+		}
+	}
 	settings.ChoiceBaseline = baseline
 	return row, settings, nil
 }
