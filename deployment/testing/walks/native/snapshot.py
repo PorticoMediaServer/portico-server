@@ -1,5 +1,12 @@
 """The agent-device snapshot: what the app actually drew, by bounded fields only.
 
+The helper's field names vary by path and version, so the documented facts are
+read explicitly rather than assumed: drawn text is `label` or `value` (today's T3
+agent-device writes text nodes with `value` only), geometry is `rect` as an object
+in device pixels, the semantic role is `kind` next to the Android class in `type`,
+and the screen size is `viewport`. A snapshot with no recognisable geometry, or
+none of those shapes, is blocked rather than converted.
+
 Two guards, in this order:
 
 * a password field means a credential screen; the snapshot is refused whole and
@@ -76,10 +83,14 @@ def load(path, surface):
                 box = _box(node[key])
                 if box is not None:
                     break
+        text = node.get('label')
+        if not isinstance(text, str) or not text.strip():
+            text = node.get('value')
+        role = node.get('kind') or node.get('type') or 'other'
         elements.append({
             'index': index,
-            'label': str(node.get('label') or ''),
-            'role': str(node.get('type') or 'other'),
+            'label': text if isinstance(text, str) else '',
+            'role': str(role),
             'identifier': str(node.get('identifier') or ''),
             'box': box,
             'hittable': node.get('hittable') is True,
@@ -87,8 +98,9 @@ def load(path, surface):
     if not any(element['box'] is not None for element in elements):
         raise BlockedEnv('snapshot-geometry-missing')
     size = data.get('device') if isinstance(data.get('device'), dict) else {}
+    viewport = data.get('viewport') if isinstance(data.get('viewport'), dict) else {}
     return {
         'elements': elements,
-        'width': size.get('width'),
-        'height': size.get('height'),
+        'width': viewport.get('width', size.get('width')),
+        'height': viewport.get('height', size.get('height')),
     }

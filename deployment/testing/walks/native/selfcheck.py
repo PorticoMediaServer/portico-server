@@ -295,4 +295,30 @@ def run():
         if paired['counts']['matched'] != 2 or paired['differences']:
             failures += 1
 
+        # 19. The documented Android schema: text only in `value`, `rect` objects,
+        # `kind` roles and a `viewport`. Fields as the device helper writes them; the
+        # copy here is synthetic so no device content is retained.
+        cases += 1
+        documented = {'success': True, 'data': {
+            'viewport': {'width': 100, 'height': 200}, 'truncated': False,
+            'nodes': [
+                {'type': 'android.widget.Button', 'kind': 'button', 'value': 'Home',
+                 'rect': {'x': 0, 'y': 0, 'width': 100, 'height': 40}, 'hittable': True},
+                {'type': 'android.widget.TextView', 'kind': 'text', 'value': 'Continue Watching',
+                 'rect': {'x': 10, 'y': 50, 'width': 80, 'height': 20}},
+            ]}}
+        loaded = drawn(documented)
+        receipt = compare.compare(load(_frame()), loaded, {})
+        if loaded['width'] != 100 or loaded['elements'][0]['label'] != 'Home' \
+                or receipt['counts']['matched'] != 2 or receipt['differences']:
+            failures += 1
+
+        # 20. A viewport narrower than the frame's device size is a setup mismatch,
+        # reported by the caller's dimension check rather than scaled.
+        cases += 1
+        if drawn({'success': True, 'data': {
+                'viewport': {'width': 90, 'height': 200}, 'truncated': False,
+                'nodes': documented['data']['nodes']}})['width'] != 90:
+            failures += 1
+
     return {'cases': cases, 'passed': cases - failures, 'failed': failures}
