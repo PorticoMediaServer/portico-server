@@ -106,10 +106,19 @@ export type ReaderDisplayProps = ReaderDisplayControlsProps & Readonly<{
   anchorRef: RefObject<HTMLElement | null>;
 }>;
 
+/** Desktop Aa is authored against the viewport (desktop-read 7): 404 wide,
+ * 20 from the right and 80 from the top, independent of its opener. */
+const desktopDisplayGeometry = {getBoundingClientRect: () => {
+  const width = typeof document === 'undefined' ? 1440 : document.documentElement.clientWidth;
+  return new DOMRect(width - 20, 80, 0, 0);
+}};
+
 /** Desktop popover and compact sheet share the same controlled values and callbacks. */
 export function ReaderDisplayPopover({label, open, onOpenChange, anchorRef, ...controls}: ReaderDisplayProps) {
-  return <Popover open={open} onOpenChange={onOpenChange} title={label} accessibilityLabel={label} anchorRef={anchorRef} width={controls.layout === 'tablet' ? 448 : 404} sideOffset={8}
-    className={`${styles.popover} ${controls.layout === 'tablet' ? styles.tabletPopover : ''}`}>
+  const desktop = controls.layout !== 'tablet';
+  return <Popover open={open} onOpenChange={onOpenChange} title={label} accessibilityLabel={label} anchorRef={anchorRef}
+    geometry={desktop ? desktopDisplayGeometry : undefined} width={desktop ? 404 : 448} sideOffset={desktop ? 0 : 8}
+    className={`${styles.popover} ${desktop ? styles.desktopPopover : styles.tabletPopover}`}>
     <ReaderDisplayControls {...controls} />
   </Popover>;
 }
