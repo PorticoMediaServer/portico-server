@@ -28,7 +28,7 @@ export function RemoteFolderPicker({service, sourceId, sourceName, open, onOpenC
   // Completion offers only the folders this page already listed: no extra read,
   // no guess at a path the storage has not shown.
   const pathsId = useId();
-  const read = useCallback(async (relative?: string, hidden = showHidden, cursor?: string) => {
+  const read = useCallback(async (relative: string | undefined, hidden: boolean, cursor?: string) => {
     request.current?.abort();
     const active = new AbortController();
     request.current = active;
@@ -47,7 +47,7 @@ export function RemoteFolderPicker({service, sourceId, sourceName, open, onOpenC
     } finally {
       if (!active.signal.aborted && request.current === active) setBusy(false);
     }
-  }, [service, sourceId, showHidden]);
+  }, [service, sourceId]);
   useEffect(() => {
     if (open) { setChosen([]); setShowHidden(false); setFailed(''); void read(undefined, false); }
     return () => { request.current?.abort(); request.current = undefined; };
@@ -128,7 +128,7 @@ export function RemoteFolderPicker({service, sourceId, sourceName, open, onOpenC
       {failed && <div className={styles.explorerError} role="alert"><Icon name="i-warn" size={20}/>
         <div><b>{t('next.remoteSources.folderListFailedTitle', {name: folderName})}</b>
           <p>{t('next.remoteSources.folderListFailedHelp')}</p>
-          <Button size="xs" variant="glass" disabled={busy} onClick={() => void read(page?.relative || undefined, showHidden, failed === 'more' ? page?.nextCursor : undefined)}>{t('next.remoteSources.retry')}</Button>
+          <Button size="xs" variant="glass" disabled={busy} onClick={() => void read(failed === 'more' ? page?.relative || undefined : cleanPath(typed) || undefined, showHidden, failed === 'more' ? page?.nextCursor : undefined)}>{t('next.remoteSources.retry')}</Button>
         </div></div>}
       {busy && !page && <>
         <div className={styles.skeleton} aria-hidden="true">
