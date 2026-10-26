@@ -296,6 +296,17 @@ func (f *discPlayFactory) initialize(ctx context.Context, e *discPlayFactoryEntr
 		}
 	}()
 	seed := e.seed
+	pins, err := f.o.Tools(ctx)
+	if err != nil {
+		return err
+	}
+	tools := func(check context.Context) (playbackdisc.ToolPins, error) {
+		actual, err := f.o.Tools(check)
+		if err == nil && actual != pins {
+			err = ErrStaleOffer
+		}
+		return actual, err
+	}
 	ticket, err := f.o.Captures.NewPlayCaptureTicket(ctx, ownedcapture.Request{Principal: seed.Principal, AssetID: seed.AssetID})
 	if err != nil {
 		return err
@@ -425,7 +436,7 @@ func (f *discPlayFactory) initialize(ctx context.Context, e *discPlayFactoryEntr
 	supervise.Go("playback.disc-play-prepare", func() {
 		defer close(e.done)
 		defer func() { <-f.o.ProbeSlots }()
-		if err := e.operation.prepare(f.o.Tool, f.o.Probe, f.o.Tools, seed.TitleKey); err != nil {
+		if err := e.operation.prepare(f.o.Tool, f.o.Probe, tools, seed.TitleKey); err != nil {
 			e.cancel()
 			_ = e.operation.Close(context.Background())
 		}

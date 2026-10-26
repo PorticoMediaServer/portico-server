@@ -109,6 +109,11 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 		c.Principal.Hash, c.DeviceID = hash, r.device
 		c.Remote = r.location == "remote" || r.location == "cellular"
 	}
+	if change.Subtitles != nil || change.SubtitleOffsetMs != nil {
+		if view, private, err := s.privateSubtitlePatch(ctx, c, r, change); private || err != nil {
+			return view, err
+		}
+	}
 	stored := r.stored()
 	next := stored
 	if change.State != "" {

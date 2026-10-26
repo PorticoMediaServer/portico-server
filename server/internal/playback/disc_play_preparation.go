@@ -181,6 +181,9 @@ func (p *discPlayPreparation) prepare(tool disc.Tool, probe assets.Probe, tools 
 	if err = p.checkClaim(p.ctx); err != nil {
 		return err
 	}
+	if _, err = tools(p.ctx); err != nil {
+		return err
+	}
 	p.mu.Lock()
 	operation := p.operation
 	p.mu.Unlock()

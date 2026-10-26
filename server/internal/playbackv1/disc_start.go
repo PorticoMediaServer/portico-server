@@ -182,7 +182,7 @@ func (s *Service) discStartCheck(c Caller, key, body string, base row, asset, ca
 			if e != nil {
 				return e
 			}
-			if !ownsQueue(c, q) || q.ownerKind != bound.ownerKind || q.ownerID != bound.ownerID || q.custody != bound.generation || q.revision != bound.revision || q.currentEntry != bound.currentEntry || q.session != bound.session && (!own || q.session != candidate) {
+			if !ownsQueue(c, q) || q.ownerKind != bound.ownerKind || q.ownerID != bound.ownerID || q.custody != bound.generation || q.revision != bound.revision || (q.currentEntry != bound.originalEntry && (!own || q.currentEntry != bound.currentEntry)) || q.session != bound.session && (!own || q.session != candidate) {
 				return ErrRevision
 			}
 		}

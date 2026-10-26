@@ -17,16 +17,34 @@ func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p id
 	if err := s.checkDiscSessionTx(ctx, tx, session); err != nil {
 		return err
 	}
-	if resource != nil {
-		if _, _, private, err := privateDiscBindingTx(ctx, tx, session); err != nil {
-			return err
-		} else if private {
-			// Local inventory resource scopes cannot qualify a private captured
-			// title. Keep this branch closed until the exact snapshot/resource
-			// binding is available; Off still replans the same measured input.
+	_, _, private, err := privateDiscBindingTx(ctx, tx, session)
+	if err != nil {
+		return err
+	}
+	if private {
+		transition, ok := ctx.Value(discSubtitleTransitionKey{}).(*DiscSubtitleTransition)
+		if !ok || transition.service != s || transition.parent.SessionID != session {
 			return subtitles.ErrUnsupported
 		}
-		if err := subtitles.CheckDiscResourceSessionTx(ctx, tx, session, resource.ID); err != nil {
+		transition.mu.Lock()
+		exact := transition.tx == tx && transition.claim != nil && !transition.child
+		transition.mu.Unlock()
+		if !exact {
+			return subtitles.ErrUnsupported
+		}
+		if err = transition.CheckTx(ctx, tx); err != nil {
+			return err
+		}
+	}
+	if resource != nil {
+		if private {
+			if s.Subtitles == nil {
+				return subtitles.ErrUnavailable
+			}
+			if err = s.Subtitles.CheckDiscResourceSessionTx(ctx, tx, session, resource.ID); err != nil {
+				return err
+			}
+		} else if err = subtitles.CheckDiscResourceSessionTx(ctx, tx, session, resource.ID); err != nil {
 			return err
 		}
 	}
@@ -87,6 +105,9 @@ func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p id
 	plan, err := planDelivery(input)
 	if err != nil {
 		return err
+	}
+	if private && plan.Mode != "hls" {
+		return subtitles.ErrUnsupported
 	}
 	if old.Trace != nil && old.Trace.Audio != nil && plan.Trace != nil && plan.Trace.Audio != nil {
 		plan.Trace.Audio.ChosenBy = old.Trace.Audio.ChosenBy

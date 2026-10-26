@@ -15,6 +15,12 @@ import (
 // original horizon. Only the established same-family continuation seam can
 // follow a rotated token; no latest account/profile/family lookup is permitted.
 func (s *Service) checkActiveDiscSnapshotTx(ctx context.Context, tx *sql.Tx, snapshot playbackdisc.Snapshot) error {
+	return s.checkDiscSnapshotGenerationTx(ctx, tx, snapshot, snapshot.Generation)
+}
+
+// Only the opaque same-writer derived transition may pass another generation.
+// Normal readers always use the exact immutable snapshot generation above.
+func (s *Service) checkDiscSnapshotGenerationTx(ctx context.Context, tx *sql.Tx, snapshot playbackdisc.Snapshot, generation int) error {
 	if s == nil || ctx == nil || tx == nil || s.ContinueAuthorityTx == nil {
 		return playbackdisc.ErrCurrent
 	}
@@ -34,7 +40,7 @@ func (s *Service) checkActiveDiscSnapshotTx(ctx context.Context, tx *sql.Tx, sna
 	err := tx.QueryRowContext(ctx, `SELECT ps.session_hash,s.account_id,s.profile_id,s.authority,s.role,s.epoch,pid(i.public_id),ps.expires_at
  FROM playback_sessions ps JOIN catalog_entities i ON i.id=ps.item_id JOIN authorization_access s ON s.hash=ps.session_hash
  WHERE ps.id=? AND ps.generation=? AND ps.asset_id=? AND ps.request_id=? AND ps.state NOT IN('stopped','ended','failed')`,
-		snapshot.SessionID, snapshot.Generation, snapshot.Source.AssetID, snapshot.Operation.LegacyRequestID).Scan(&principal.Hash, &principal.AccountID, &principal.ProfileID, &principal.Authority, &principal.Role, &principal.Epoch, &item, &expires)
+		snapshot.SessionID, generation, snapshot.Source.AssetID, snapshot.Operation.LegacyRequestID).Scan(&principal.Hash, &principal.AccountID, &principal.ProfileID, &principal.Authority, &principal.Role, &principal.Epoch, &item, &expires)
 	if err != nil {
 		return err
 	}
@@ -56,14 +62,14 @@ func (s *Service) checkActiveDiscSnapshotTx(ctx context.Context, tx *sql.Tx, sna
 		return playbackdisc.ErrCurrent
 	}
 	var family, device string
-	var generation int64
+	var tokenGeneration int64
 	err = tx.QueryRowContext(ctx, `SELECT t.family_id,t.generation,d.device_id FROM authorization_family_tokens t
  JOIN authorization_session_families f ON f.id=t.family_id JOIN identity_device_families d ON d.family_id=f.id
- WHERE t.token_hash=? AND t.retired=0 AND t.generation=f.current_generation AND f.revoked=0`, principal.Hash).Scan(&family, &generation, &device)
+ WHERE t.token_hash=? AND t.retired=0 AND t.generation=f.current_generation AND f.revoked=0`, principal.Hash).Scan(&family, &tokenGeneration, &device)
 	if err != nil {
 		return err
 	}
-	if family != snapshot.Actor.FamilyID || device != snapshot.Actor.DeviceID || generation < snapshot.Actor.TokenGeneration {
+	if family != snapshot.Actor.FamilyID || device != snapshot.Actor.DeviceID || tokenGeneration < snapshot.Actor.TokenGeneration {
 		return playbackdisc.ErrCurrent
 	}
 	// A pending private candidate cannot become readable merely by possessing a
@@ -73,7 +79,7 @@ func (s *Service) checkActiveDiscSnapshotTx(ctx context.Context, tx *sql.Tx, sna
  WHERE v.media_session_id=? AND v.media_generation=? AND v.account_id=? AND v.profile_id=? AND v.authority=? AND v.device_id=?
  AND v.ended_ms=0 AND v.lease_expires_ms>? AND pid(i.public_id)=? AND v.queue_id=? AND v.entry_id=?
  AND (SELECT count(*) FROM playback_v1_sessions same WHERE same.media_session_id=v.media_session_id AND same.media_generation=v.media_generation AND same.ended_ms=0)=1`,
-		snapshot.SessionID, snapshot.Generation, snapshot.Actor.AccountID, snapshot.Actor.ProfileID, snapshot.Actor.Authority, snapshot.Actor.DeviceID,
+		snapshot.SessionID, generation, snapshot.Actor.AccountID, snapshot.Actor.ProfileID, snapshot.Actor.Authority, snapshot.Actor.DeviceID,
 		time.Now().UnixMilli(), item, snapshot.Operation.QueueID, snapshot.Operation.QueueEntryID).Scan(&session, &startKey, &body)
 	if err != nil {
 		return err

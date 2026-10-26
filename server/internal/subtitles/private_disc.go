@@ -171,12 +171,6 @@ func (s *Service) listPrivateDiscTx(ctx context.Context, tx *sql.Tx, p identity.
 			r.Enabled = false
 			r.Reason = "renderer_unavailable"
 		}
-		// Burn-in changes the legacy generation. It stays unavailable until
-		// that writer binds an explicitly accepted derived snapshot.
-		if r.Renderer != "external_text" {
-			r.Enabled = false
-			r.Reason = "renderer_unavailable"
-		}
 		out.Resources = append(out.Resources, r)
 	}
 	return out, rows.Err()

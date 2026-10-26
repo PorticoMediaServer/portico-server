@@ -1278,6 +1278,11 @@ func run() (runErr error) {
 		}()
 		ownedCaptures.Start(ctx)
 		apiDependencies.DiscCaptures = ownedCaptures
+		conditional, err := remotesources.NewDiscConditionalSource(remotesources.CaptureProducerOptions{Sources: sources, Identities: ident, AuthorizeTx: apiDependencies.AuthorizeSubtitles})
+		if err != nil {
+			return err
+		}
+		apiDependencies.DiscConditional = conditional
 	}
 	readingService := httpapi.NewReadingService(apiDependencies)
 	// The worker distinguishes bytes the artwork pipeline refused as an image
