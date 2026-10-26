@@ -189,8 +189,11 @@ export class ListeningService {
   }
   this.publish({timer,timerLoading:false});
  }
- async setTimer(choice:SleepChoice){this.interact();this.clearTimer();if(choice==='off')return;
-  const p=this.playback.getSnapshot(),c=this.state.context,original=this.occurrence();if(!c||!p.session||!original||p.channel||!['song','audiobook_file'].includes(c.kind))throw new Error('Start a music or audiobook item before setting a timer.');
+ async setTimer(choice:SleepChoice,expected?:ListeningTimerOccurrence){
+  const captured=expected??this.occurrence(),original=captured?Object.freeze({...captured,queue:captured.queue?Object.freeze({...captured.queue}):null}):undefined;
+  const check=()=>{if(original&&!this.sameOccurrence(original,this.occurrence()))throw Object.assign(new Error('Listening timer source retired'),{name:'AbortError'});};
+  check();this.interact();check();this.clearTimer();check();if(choice==='off')return;
+  const p=this.playback.getSnapshot(),c=this.state.context;if(!c||!p.session||!original||p.channel||!['song','audiobook_file'].includes(c.kind))throw new Error('Start a music or audiobook item before setting a timer.');
   if(typeof choice==='number'){if(![15,30,45,60,90].includes(choice))throw new Error('Invalid timer choice.');await this.installTimer(Object.freeze({choice,label:`${choice} minutes`,deadline:this.now()+choice*60000,wallDeadline:Date.now()+choice*60000,libraryId:c.libraryId}));return;}
   if(choice==='item'){await this.installTimer(Object.freeze({choice,label:'End of this item',itemId:c.itemId,libraryId:c.libraryId,occurrence:original}));return;}
   if(choice==='book'){
