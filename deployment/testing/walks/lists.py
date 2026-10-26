@@ -131,7 +131,12 @@ def grouped(rows):
 
 def render_group(group,rows):
     match=FRAME.match(group)
-    hint=f" — frame `{match.group(1)}.html` {match.group(2)}" if match else ''
+    if match:
+        hint=f" — frame `{match.group(1)}.html` {match.group(2)}"
+    elif group.startswith('s/'):
+        hint=' — frame `settings.html` (settings spec group)'
+    else:
+        hint=''
     lines=[f'### `{group}`{hint}',f'_{len(rows)} row{"s" if len(rows)!=1 else ""}_','']
     for row in rows:
         lines.append(f"- `{row['id']}` — {clean(row['feature'],220)} — source `{clean(row['pointer'],240)}`")
