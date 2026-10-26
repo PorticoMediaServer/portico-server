@@ -37,12 +37,17 @@ const cancelled = () => new CodedError('cancelled', 'The pending setup or server
 const same = (a: Pending | undefined, b: Pending) => !!a && JSON.stringify(a) === JSON.stringify(b);
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 export type SetupClaimRecovery = Readonly<{retry: () => Promise<string>; useLocal: () => Promise<void>}>;
-type PrepareOpening = Readonly<{setup: PendingAccountSetup; assertOriginal: () => Promise<void>; isCurrent: () => boolean;
+export type PrepareOpening = Readonly<{setup: PendingAccountSetup; signal: AbortSignal; assertOriginal: () => Promise<void>; isCurrent: () => boolean;
   capture: (receipt: SetupClaimRecovery) => void}>;
 type RecoveryReceipt = Readonly<{origin: string; pin: ServerPin; installationId: string; selectionRevision: number;
   draft: Readonly<SetupDraft>; setupRevision: string; pending?: Pending; identity?: Readonly<ClaimStatus['identity']>}>;
 const copyPending = (value: Pending): Pending => Object.freeze({...value, pin: Object.freeze({...value.pin}),
-  ...(value.expected ? {expected: Object.freeze({...value.expected})} : {})});
+  ...(value.expected ? {expected: Object.freeze({...value.expected})} : {}),
+  ...(value.handoff ? {handoff: Object.freeze({...value.handoff,
+    expected: Object.freeze({...value.handoff.expected}),
+    binding: Object.freeze({...value.handoff.binding, pin: Object.freeze({...value.handoff.binding.pin})}),
+    claim: Object.freeze({...value.handoff.claim}), start: Object.freeze({...value.handoff.start}),
+  })} : {})});
 const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const absentClaim = (status: ClaimStatus) => status.state === 'unconfigured' && !status.operation && !status.accountId &&
   !status.installationAcknowledged && !status.approvalRequired && !status.approvalRequest && status.actions.length === 1 && status.actions[0] === 'prepare';
@@ -65,7 +70,10 @@ export class BrowserSetupClaim {
   private async current(record: Pending, operation: ReturnType<BrowserSetupClaim['operation']>, journal = true) {
     this.ports.journal.assertAvailable();
     if (journal && !same(await this.ports.journal.read(), record)) throw cancelled();
-    const draft = await this.ports.draft(record.pin.serverId).read(), selection = await this.ports.sessions.read();
+    if (!operation.current()) throw cancelled();
+    const draft = await this.ports.draft(record.pin.serverId).read();
+    if (!operation.current()) throw cancelled();
+    const selection = await this.ports.sessions.read();
     if (!operation.current() || record.version !== 1 || record.kind !== 'setup' || record.origin !== this.ports.pageOrigin() ||
       record.installationId !== this.ports.installationId() || selection.revision !== record.expectedRevision ||
       !draft || draft.version !== 1 || draft.authMode !== 'hosted' || draft.serverId !== record.pin.serverId || draft.requestId !== record.setupRequestId || draft.setupToken !== record.setupToken ||
@@ -89,12 +97,15 @@ export class BrowserSetupClaim {
     if (api.baseUrl !== origin || routeOrigin(origin) !== origin || !route || route.getSnapshot().phase !== 'ready' ||
       routeOrigin(hostedOrigin) !== hostedOrigin || !hostedOrigin.startsWith('https://')) throw invalid();
     const owned = this.operation();
-    const operation = {...owned, current: () => owned.current() && (!opening || opening.isCurrent())};
+    const signal = opening ? AbortSignal.any([owned.signal, opening.signal]) : owned.signal;
+    const operation = {signal, current: () => owned.current() && !signal.aborted && (!opening || opening.isCurrent())};
     const checkOpening = async () => {if (!operation.current()) throw cancelled(); await opening?.assertOriginal(); if (!operation.current()) throw cancelled();};
     try {
       await checkOpening();
       if (original) await this.assertRecovery(api, original, operation, opening);
-      const draft = await this.ports.draft(route.pin.serverId).read(), selection = await this.ports.sessions.read();
+      const draft = await this.ports.draft(route.pin.serverId).read();
+      await checkOpening();
+      const selection = await this.ports.sessions.read();
       await checkOpening();
       if (!operation.current() || !draft || draft.version !== 1 || draft.serverId !== route.pin.serverId || draft.authMode !== 'hosted' || !draft.setupToken) throw invalid();
       assertFirstContactIdentity(origin, route.pin, {knownRoutes: knownServerRoutes(selection)});
@@ -166,7 +177,7 @@ export class BrowserSetupClaim {
       }, {signal: operation.signal, now: () => this.now()});
     } finally {this.busy = false;}
   }
-  private async assertRecovery(api: HttpLocalApi, receipt: RecoveryReceipt, operation: {current: () => boolean}, opening?: PrepareOpening) {
+  private async assertRecovery(api: HttpLocalApi, receipt: RecoveryReceipt, operation: {signal: AbortSignal; current: () => boolean}, opening?: PrepareOpening) {
     const live = () => {
       const route = api.getRouteConnection();
       if (!operation.current() || receipt.origin !== this.ports.pageOrigin() || api.baseUrl !== receipt.origin ||
@@ -176,6 +187,7 @@ export class BrowserSetupClaim {
     this.ports.journal.assertAvailable();
     const record = await this.ports.journal.read(); live();
     if (!equal(record, receipt.pending)) throw cancelled();
+    if (receipt.pending) {await this.current(receipt.pending, operation); live();}
     const draft = await this.ports.draft(receipt.pin.serverId).read(); live();
     if (!equal(draft, receipt.draft)) throw cancelled();
     const selection = await this.ports.sessions.read(); live();
@@ -185,7 +197,8 @@ export class BrowserSetupClaim {
   /** Unlike cancel(), this is a server operation. Its target is captured during
    * prepare/resume, never acquired by reading the latest operation on click. */
   private async recoverOriginalLocal(api: HttpLocalApi, receipt: RecoveryReceipt, opening: PrepareOpening): Promise<void> {
-    const owned = this.operation(), operation = {...owned, current: () => owned.current() && opening.isCurrent()};
+    const owned = this.operation(), signal = AbortSignal.any([owned.signal, opening.signal]);
+    const operation = {signal, current: () => owned.current() && !signal.aborted && opening.isCurrent()};
     const current = () => this.assertRecovery(api, receipt, operation, opening);
     const captured = new HttpLocalApi(receipt.origin, receipt.draft.setupToken), route = api.getRouteConnection();
     if (!route) {this.busy = false; throw cancelled();} captured.useRoutes(route);
