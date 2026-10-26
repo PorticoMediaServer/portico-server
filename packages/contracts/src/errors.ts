@@ -589,6 +589,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "profile_changed",
+    "status": 409,
+    "message": "The request could not be completed.",
+    "retry": "never"
+  },
+  {
     "code": "queue_building",
     "status": 503,
     "message": "This part of the queue is still loading. Try again in a moment.",

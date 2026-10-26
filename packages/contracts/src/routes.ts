@@ -12374,7 +12374,8 @@ export const routes = [
       "not_permitted",
       "not_found",
       "internal",
-      "rate_limited"
+      "rate_limited",
+      "profile_changed"
     ],
     "status": 200,
     "http": true,
@@ -19617,6 +19618,9 @@ export const routes = [
       "queue_building"
     ],
     "status": 201,
+    "successStatuses": [
+      202
+    ],
     "admission": "playback"
   },
   {

@@ -1365,6 +1365,8 @@ table remote_source_capture_physical
 table remote_source_capture_policy
 table remote_source_capture_quota
 table remote_source_captures
+table remote_source_choice_definitions
+table remote_source_choice_refs
 table remote_source_contacts
 table remote_source_operations
 table remote_source_read_profiles
@@ -2567,6 +2569,8 @@ trigger remote_object_refs_retention_delete
 trigger remote_object_refs_retention_insert
 trigger remote_source_capture_charge_delete
 trigger remote_source_capture_charge_insert
+trigger remote_source_choice_definition_immutable_delete
+trigger remote_source_choice_definition_immutable_update
 trigger remote_sources_bound_check
 trigger remote_sources_bound_delete
 trigger remote_sources_bound_insert
