@@ -79,7 +79,7 @@ final class PhoneFlows: XCTestCase {
     private var withheld = 0
 
     func testRetainedPhoneCore() throws {
-        let app = XCUIApplication(bundleIdentifier: "tv.getportico.portico")
+        let app = XCUIApplication(bundleIdentifier: "tv.getportico.portico.ios")
         app.launch()
         defer { app.terminate() }
 
