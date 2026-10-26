@@ -25,6 +25,43 @@ function result(path:string,changes:Record<string,unknown>={}):any{
 function service(fn:(path:string,signal?:AbortSignal)=>Promise<unknown>,timeoutMs=1000){return new SearchService({scope,timeoutMs,api:{request:<T>(path:string,_m?:string,_b?:unknown,signal?:AbortSignal)=>fn(path,signal) as Promise<T>}});}
 function deferred(){let resolve!:(value:unknown)=>void;const promise=new Promise<unknown>(r=>resolve=r);return {promise,resolve};}
 
+test('an offered continuation uses an independent unrecorded child and leaves the parent All projection untouched',async()=>{
+ const paths:string[]=[];
+ const parent=service(async path=>{paths.push(path);return result(path,new URL(path,'https://server.test').searchParams.has('cursor')?{}
+  :{groups:[group('movies',['original'],'next-movies'),group('shows',['show'],'next-shows')]});});
+ try{
+  await parent.select('harbor',{groups:['movies','shows'],record:true});const original=parent.getSnapshot();
+  const child=parent.forkContinuation('movies');assert.ok(child);assert.equal(child.getSnapshot(),original);
+  try{await child.next('movies');assert.equal(parent.getSnapshot(),original);
+   const sent=new URL(paths[1]!,'https://server.test');assert.equal(sent.searchParams.get('cursor'),'next-movies');
+   assert.equal(sent.searchParams.get('group'),'movies');assert.equal(sent.searchParams.get('record'),null, 'unrecorded reads omit the history flag');
+   assert.notEqual(child.getSnapshot(),parent.getSnapshot());
+  }finally{child.dispose();}
+ }finally{parent.dispose();}
+});
+
+test('missing or unoffered continuation cursors confer no child read',async()=>{
+ const parent=service(async path=>result(path));
+ try{assert.equal(parent.forkContinuation('movies'),undefined);await parent.select('harbor');
+  assert.equal(parent.forkContinuation('movies'),undefined);assert.equal(parent.forkContinuation('books'),undefined);
+ }finally{parent.dispose();}
+});
+
+test('retiring one child cancels only its original request and cannot overwrite a parent or another group',async()=>{
+ const held=deferred();let movieSignal:AbortSignal|undefined;
+ const parent=service(async(path,signal)=>{const selected=new URL(path,'https://server.test').searchParams.get('group');
+  if(selected==='movies'){movieSignal=signal;return held.promise;}
+  return result(path,selected?{}:{groups:[group('movies',['m'],'next-movies'),group('shows',['s'],'next-shows')]});
+ });
+ try{await parent.select('harbor',{groups:['movies','shows']});const original=parent.getSnapshot();
+  const movies=parent.forkContinuation('movies')!,shows=parent.forkContinuation('shows')!;
+  try{const pending=movies.next('movies');movies.dispose();assert.equal(movieSignal?.aborted,true);
+   await shows.next('shows');const other=shows.getSnapshot();held.resolve(result('/v1/search?q=harbor&group=movies&record=0&limit=20'));
+   await pending;assert.equal(parent.getSnapshot(),original);assert.equal(shows.getSnapshot(),other);
+  }finally{movies.dispose();shows.dispose();}
+ }finally{parent.dispose();}
+});
+
 test('pause retains only the arrived page with its actual cursor and aborts a pending continuation',async()=>{
  const held=deferred();const paths:string[]=[];let signal:AbortSignal|undefined;
  const s=service(async(path,provided)=>{paths.push(path);if(paths.length===2){signal=provided;return held.promise;}return result(path,{groups:[group('movies',[paths.length===1?'first':'fresh'],paths.length===1?'next-cursor':'')]});});

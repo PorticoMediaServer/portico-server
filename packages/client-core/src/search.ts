@@ -211,6 +211,19 @@ export class SearchService{
  private publish(patch:Partial<SearchSnapshot>){this.state=Object.freeze({...this.state,...patch});for(const listener of this.listeners)listener();}
  select(q:string,options:Omit<SearchQuery,'q'>|SearchGroup={}):Promise<void>{this.active();const checked=query(q,typeof options==='string'?{group:options}:options);if(!checked.q){this.cancel();return Promise.resolve();}return this.load({query:checked,cursor:null,history:[]});}
  next(group:SearchGroup):Promise<void>{this.active();const data=this.state.data,result=data?.groups.find(g=>g.id===group);if(this.state.phase!=='ready'||!result?.nextCursor||!this.operation)return Promise.resolve();return this.load({query:query(data!.query.q,{...this.operation.query,group,groups:undefined}),cursor:result.nextCursor,history:[...this.operation.history,{query:this.operation.query,cursor:this.operation.cursor}].slice(-64),fence:data!});}
+ /** An independent continuation lifetime for a genuinely offered group. The seed is the
+  * already validated displayed read; callers cannot supply a cursor or substitute a fence.
+  * The parent projection stays unchanged while the child uses ordinary next/retry/abort. */
+ forkContinuation(group:SearchGroup):SearchService|undefined{
+  this.active();
+  const data=this.state.data,result=data?.groups.find(value=>value.id===group);
+  if(this.state.phase!=='ready'||!result?.nextCursor||!this.operation||!this.displayedOperation)return;
+  const child=new SearchService({api:this.api,scope:this.scope,pageSize:this.pageSize,timeoutMs:this.timeoutMs});
+  // Continuing an offered read is never another explicit history-recording intent.
+  const seed={...this.displayedOperation,query:{...this.displayedOperation.query,record:false}};
+  child.state=this.state;child.operation=seed;child.displayedOperation=seed;
+  return child;
+ }
  previous():Promise<void>{this.active();const op=this.operation;if(this.state.phase!=='ready'||!op?.history.length||!this.state.data)return Promise.resolve();return this.load({...op.history.at(-1)!,history:op.history.slice(0,-1),fence:this.state.data});}
  refresh():Promise<void>{this.active();const q=this.state.query;return q?this.load({query:q,cursor:null,history:[]}):Promise.resolve();}
  retry():Promise<void>{this.active();if(this.state.phase==='refresh-required')return this.refresh();return this.operation?this.load(this.operation):Promise.resolve();}

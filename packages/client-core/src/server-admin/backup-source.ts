@@ -1,3 +1,4 @@
+import {throwIfAborted} from '../abort-lifetime.ts';
 import {deleteBackup, getBackups, getBackupSettings, inspectBackupSource, isAuthenticationFailure, restoreBackup, startBackup, updateBackupSettings, waitForBackupCompletion, waitForServerAnswer, type BackupSettings, type BackupSettingsPatch, type BackupTransport} from '../backups.ts';
 import {isRestoreRefusalCode, type RestoreRefusalCode, type BackupsDocument, type RestoreSource, type RestoreStaged} from '../administration.ts';
 import {randomId} from '../random-id.ts';
@@ -41,7 +42,7 @@ export class SettingsBackupSource {
     this.publish({...this.state, busy: true});
     try {
       this.requireCurrent();
-      requestSignal.throwIfAborted();
+      throwIfAborted(requestSignal);
       const settings = await updateBackupSettings(this.api, this.serverId, patch, requestSignal);
       if (!this.current() || requestSignal.aborted) return false;
       this.publish({...this.state, settings});return true;
@@ -70,9 +71,9 @@ export class SettingsBackupSource {
     this.lifetime.signal.addEventListener('abort', abort, {once: true});signal.addEventListener('abort', abort, {once: true});
     if (signal.aborted) request.abort();
     try {
-      request.signal.throwIfAborted();
+      throwIfAborted(request.signal);
       const inspection = await inspectBackupSource(this.api, this.serverId, selected, request.signal);
-      this.requireCurrent();request.signal.throwIfAborted();return inspection;
+      this.requireCurrent();throwIfAborted(request.signal);return inspection;
     } catch (error) {
       if (this.current() && !request.signal.aborted) {const code = (error as {code?: unknown})?.code;this.publish({...this.state, restoreError: typeof code === 'string' && isRestoreRefusalCode(code) ? code : true, restoreEncrypted: undefined});}
       this.refuse(error);
@@ -88,7 +89,7 @@ export class SettingsBackupSource {
     const request = this.linkSignals([signal, candidate.signal]);
     try {
       const inspection = await this.inspect(selected, request.signal);
-      request.signal.throwIfAborted();this.requireCurrent();
+      throwIfAborted(request.signal);this.requireCurrent();
       const captured = {source: selected, signal, candidate, transferred: false};
       const selection: SettingsRestoreSelection = Object.freeze({encrypted: inspection.encrypted,
         isCurrent: () => this.current() && this.candidate === candidate && !candidate.signal.aborted && !captured.signal.aborted &&
@@ -165,10 +166,10 @@ export class SettingsBackupSource {
     const request = this.linkSignals([signal]);
     this.publish({...this.state, busy: true});
     try {
-      request.signal.throwIfAborted();
+      throwIfAborted(request.signal);
       this.requireCurrent();
       await deleteBackup(this.api, this.serverId, backupId, request.signal);
-      this.requireCurrent();request.signal.throwIfAborted();
+      this.requireCurrent();throwIfAborted(request.signal);
       const document = await getBackups(this.api, this.serverId, this.lifetime.signal);
       if (!this.current()) return false;
       this.publish({...this.state, document});return true;
