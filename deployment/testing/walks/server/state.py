@@ -95,6 +95,7 @@ def _setup(client, port, credentials, fixtures, commit):
           token=owner_token, installation=installation)
     _conversion(client, owner_token, installation)
     libraries = _libraries(client, owner_token, installation, fixtures)
+    magazine_issues = _prime_magazine_issues(client, owner_token, installation, libraries)
     home_rows = _verify_home(client, owner_token, installation)
     reading_items = _verify_reading(client, owner_token, installation, libraries['Books'])
     member_count = _members(client, owner_token, installation, credentials, libraries)
@@ -111,6 +112,7 @@ def _setup(client, port, credentials, fixtures, commit):
         'libraries': len(libraries),
         'members': member_count,
         'readingItems': reading_items,
+        'magazineIssues': magazine_issues,
         'conversionMode': 'all',
     }
 
@@ -179,6 +181,7 @@ def _libraries(client, token, installation, fixtures):
         ('Comics', 'comic', 'Walks/Comics'),
         ('PDF', 'book', 'Walks/PDF'),
         ('Magazines', 'book', 'Walks/Magazines'),
+        ('Magazine Issues', 'book', 'Walks/MagazineIssues'),
         ('Mixed', 'book', 'Walks/Mixed'),
     ):
         if not (media / relative).is_dir():
@@ -206,6 +209,57 @@ def _libraries(client, token, installation, fixtures):
     if not isinstance(items, list) or len(items) < len(created):
         raise StateError('libraries-missing')
     return created
+
+def _prime_magazine_issues(client, token, installation, libraries):
+    """Prime the optional Magazine Issues library through the ordinary API.
+
+    One reading session proves the EPUB's own publicationType is magazine; the
+    periodical groups read then proves ordinary issue readiness. The session is
+    always closed, and no fixture bytes, SQL or metadata body is fabricated.
+    """
+    library = libraries.get('Magazine Issues')
+    if not library:
+        return 0
+    page = _call(client, 'GET', '/v1/reading/items',
+                 query={'libraryId': library, 'limit': 5}, token=token, installation=installation)
+    items = page.get('items') if isinstance(page, dict) else None
+    item_id = source_id = ''
+    if isinstance(items, list):
+        for item in items[:5]:
+            if not isinstance(item, dict) or item.get('format') != 'epub':
+                continue
+            if isinstance(item.get('id'), str) and isinstance(item.get('sourceId'), str):
+                item_id, source_id = item['id'], item['sourceId']
+                break
+    if not item_id or not source_id:
+        raise StateError('magazine-epub-missing')
+    session = None
+    try:
+        manifest = _call(client, 'POST', '/v1/reading/sessions',
+                         {'itemId': item_id, 'sourceId': source_id},
+                         token=token, installation=installation, expect=(200,))
+        session = manifest.get('sessionId') if isinstance(manifest, dict) else None
+        if not isinstance(session, str) or not session:
+            raise StateError('magazine-session-shape')
+        metadata = manifest.get('metadata') if isinstance(manifest, dict) else None
+        publication_type = metadata.get('publicationType') if isinstance(metadata, dict) else None
+        value = publication_type.get('value') if isinstance(publication_type, dict) else None
+        if value != 'magazine':
+            raise StateError('magazine-type-missing')
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            periodicals = _call(client, 'GET', '/v1/libraries/' + segment(library) + '/reading/periodicals',
+                                query={'publicationType': 'magazine', 'limit': 5},
+                                token=token, installation=installation)
+            groups = periodicals.get('groups') if isinstance(periodicals, dict) else None
+            if isinstance(groups, list) and groups:
+                return len(groups)
+            time.sleep(2)
+        raise StateError('magazine-group-missing')
+    finally:
+        if isinstance(session, str) and session:
+            _call(client, 'DELETE', '/v1/reading/sessions/' + segment(session),
+                  token=token, installation=installation, expect=(204, 200))
 
 def _verify_home(client, token, installation):
     home = _call(client, 'GET', '/v1/home', token=token, installation=installation)
