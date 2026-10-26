@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"portico.local/hosted/internal/identity"
 	"portico.local/hosted/internal/postgres"
+	"portico.local/hosted/internal/serverreturn"
 	"strings"
 	"time"
 )
@@ -88,8 +89,17 @@ func (h *Handler) oidcRoutes(mux *http.ServeMux) {
 			}
 			providers = append(providers, IdentityProvider{Enabled: enabled, ID: id, Native: native, NativeClientIDs: nativeIDs})
 		}
+		credentialReauthentication := ""
+		if h.Security != nil && h.OIDC != nil && h.OIDC.Security != nil && serverreturn.Origin(h.AccountOrigin) {
+			for _, provider := range providers {
+				if provider.Enabled {
+					credentialReauthentication = "account-settings-v1"
+					break
+				}
+			}
+		}
 		mail := h.Security != nil && h.Security.MailEnabled
-		write(w, 200, IdentityOptions{AccountSecurity: h.Security != nil, NativeCompletion: postgres.NativeCompletionCode, Password: h.Security != nil, Providers: providers, Recovery: mail, Registration: mail, VerifiedContactRequired: true})
+		write(w, 200, IdentityOptions{AccountSecurity: h.Security != nil, CredentialProviderReauthentication: credentialReauthentication, NativeCompletion: postgres.NativeCompletionCode, Password: h.Security != nil, Providers: providers, Recovery: mail, Registration: mail, VerifiedContactRequired: true})
 	})
 	if h.OIDC == nil {
 		return

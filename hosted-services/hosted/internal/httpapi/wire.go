@@ -80,6 +80,8 @@ type SignInRequest struct {
 // IdentityOptions lists the sign-in methods this deployment offers.
 type IdentityOptions struct {
 	AccountSecurity bool `json:"accountSecurity"`
+	// Exact supported credential continuation; older runtimes omit this fact.
+	CredentialProviderReauthentication string `json:"credentialProviderReauthentication,omitempty"`
 	// NativeCompletion is "code": native apps may start provider sign-in with
 	// completion "code" to use the completion-code return.
 	NativeCompletion        string             `json:"nativeCompletion"`
