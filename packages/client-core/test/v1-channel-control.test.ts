@@ -221,10 +221,10 @@ function preparationQueue() {
 }
 
 /** A complete official channel session, as §18.6 serves it, before any freeze. */
-function completeChannelBody(id: string): Record<string, unknown> {
+function completeChannelBody(id: string, url = ''): Record<string, unknown> {
   return {id, revision: '1', kind: 'channel', role: 'local', state: 'playing', channelId: v1ChannelId(channel),
     lease: {expiresAt: '2030-01-01T00:00:00Z', reportEveryMs: 10_000},
-    presentation: {generation: 1, mode: 'stream', engine: 'native', url: '', startPositionMs: 0, quality: {mode: 'original'}, subtitles: [],
+    presentation: {generation: 1, mode: 'stream', engine: 'native', url, startPositionMs: 0, quality: {mode: 'original'}, subtitles: [],
       decision: {video: {action: 'copy', reasons: []}, audio: {action: 'copy', reasons: []}},
       linear: {name: 'News', programme: {id: 'p1', title: 'Morning', startMs: 0, endMs: 3_600_000}, originMs: 1000, windowStartMs: 0, windowEndMs: 0, liveEdgeMs: 0, state: 'preparing'}}};
 }
@@ -392,7 +392,7 @@ test('the channel receipt issuer captures the actual original key and body befor
       return {isCurrent: original.isCurrent, capturePreparing: offered => {
         captured++; assert.equal(offered.channelId, original.body.channelId);
         return () => {abandoned++;};
-      }, retireUninstalled: () => {assert.fail('the accepted original needs no retirement');}, finish: () => {finished++;}};
+      }, claimInstall: () => true, retireUninstalled: () => {assert.fail('the accepted original needs no retirement');}, finish: () => {finished++;}};
     }});
     await settle();
     assert.equal(originals.length, 1); assert.equal(keys, 1); assert.equal(captured, 1); assert.equal(finished, 0);
@@ -417,7 +417,7 @@ test('retirement inside the original channel receipt issuer cannot dispatch a re
   await control.open(channel, {state: () => assert.fail('no session is installed'), error: message => assert.fail(message)}, {
     captureStart: original => {
       control.close(); assert.equal(original.signal.aborted, true);
-      return {isCurrent: () => false, capturePreparing: () => {assert.fail('no preparation was received');}, retireUninstalled: () => {assert.fail('no real session was returned');}, finish: () => {finished++;}};
+      return {isCurrent: () => false, capturePreparing: () => {assert.fail('no preparation was received');}, claimInstall: () => {assert.fail('no resource was returned');}, retireUninstalled: () => {assert.fail('no real session was returned');}, finish: () => {finished++;}};
     },
   });
   assert.equal(posts, 0); assert.equal(finished, 1);
@@ -436,7 +436,7 @@ test('a late channel 201 uses the original host refusal without a bare stop fall
   let original: Promise<void> | undefined, successor: Promise<void> | undefined;
   try {
     original = control.open(channel, {state: () => assert.fail('the retired opening cannot install'), error: message => assert.fail(message)}, {
-      captureStart: start => ({isCurrent: start.isCurrent, capturePreparing: () => undefined,
+      captureStart: start => ({isCurrent: start.isCurrent, capturePreparing: () => undefined, claimInstall: () => {assert.fail('retired start cannot claim installation');},
         // The actual host must prove noninstallation. This fake refuses to stop
         // a resource its successor just adopted; it supplies no authority.
         retireUninstalled: session => {refused.push(session);}, finish: () => {finished++;}}),
@@ -452,3 +452,61 @@ test('a late channel 201 uses the original host refusal without a bare stop fall
     assert.deepEqual(deletes, [], 'host refusal never downgrades to DELETE of the adopted occurrence');
   } finally {release(); await Promise.allSettled([original, successor]); control.close();}
 });
+
+
+test('channel installation is claimed before the internal go-live PATCH, with the callback captured before await', async () => {
+  const events: string[] = [];
+  let enter!: () => void, release!: () => void;
+  const entered = new Promise<void>(resolve => {enter = resolve;}), held = new Promise<void>(resolve => {release = resolve;});
+  const body = completeChannelBody('ps_install', '/actual-channel-stream');
+  const receipt = {isCurrent: () => true, capturePreparing: () => undefined,
+    claimInstall: (session: Readonly<{id: string; generation: number}>) => {
+      assert.ok(Object.isFrozen(session)); assert.deepEqual(session, {id: 'ps_install', generation: 1});
+      events.push('claim'); return true;
+    }, retireUninstalled: () => assert.fail('accepted installation must not retire'), finish: () => {events.push('finish');}};
+  const control = new V1ChannelControl({key: () => 'channel-install-key-0001', pollMs: 60_000, http: {send: async request => {
+    if (request.method === 'POST') {enter(); await held; return {status: 201, headers: {}, body};}
+    if (request.method === 'PATCH') {events.push('patch'); return {status: 200, headers: {}, body};}
+    return {status: 204, headers: {}};
+  }}});
+  let opening: Promise<void> | undefined;
+  try {
+    opening = control.open(channel, {state: () => {events.push('state');}, error: message => assert.fail(message)}, {captureStart: () => receipt});
+    await entered;
+    receipt.claimInstall = () => assert.fail('a caller mutation cannot replace the captured callback');
+    release(); await opening; await settle();
+    assert.equal(events.filter(event => event === 'claim').length, 1);
+    assert.ok(events.indexOf('claim') < events.indexOf('patch'));
+    assert.ok(events.indexOf('claim') < events.indexOf('state'));
+    assert.equal(events.filter(event => event === 'finish').length, 1);
+  } finally {release(); await opening?.catch(() => {}); control.close();}
+});
+
+for (const refusal of ['false', 'throw', 'retire'] as const) {
+  test(`a channel install claim that ${refusal === 'retire' ? 'retires the original' : `returns ${refusal}`} cannot adopt or use bare cleanup`, async () => {
+    const requests: V1Request[] = [], retired: Readonly<{id: string; generation: number}>[] = [];
+    let claims = 0, finished = 0;
+    const body = completeChannelBody('ps_refused', '/actual-channel-stream');
+    const control = new V1ChannelControl({key: () => 'channel-install-key-0002', pollMs: 60_000, http: {send: async request => {
+      requests.push(request); return {status: 201, headers: {}, body};
+    }}});
+    try {
+      await control.open(channel, {state: () => assert.fail('no sink adoption'), error: message => assert.fail(message)}, {
+        captureStart: original => ({isCurrent: original.isCurrent, capturePreparing: () => undefined,
+          claimInstall: session => {
+            claims++; assert.ok(Object.isFrozen(session));
+            if (refusal === 'throw') throw new Error('claim unavailable');
+            if (refusal === 'retire') {control.close(); return true;}
+            return false;
+          }, retireUninstalled: session => {retired.push(session);}, finish: () => {finished++;}}),
+      });
+      await settle();
+      assert.equal(claims, 1); assert.equal(finished, 1);
+      assert.deepEqual(retired, [{id: 'ps_refused', generation: 1}]);
+      assert.ok(Object.isFrozen(retired[0]));
+      assert.equal(await control.observe(1), false, 'no internal session was installed');
+      control.pause(); control.goLive(); await settle();
+      assert.deepEqual(requests.map(request => request.method), ['POST'], 'no go-live, controls, report, or bare DELETE');
+    } finally {control.close();}
+  });
+}

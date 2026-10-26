@@ -39,6 +39,10 @@ export type OriginalChannelStart = Readonly<{
 export type ChannelStartReceipt = Readonly<{
   isCurrent(): boolean;
   capturePreparing: NonNullable<StartContext['capturePreparing']>;
+  /** Synchronously claim this actual resource before internal installation or
+   * a go-live PATCH. Only literal true permits installation; the host shares
+   * its original registration with every current/in-flight channel start. */
+  claimInstall(session: Readonly<{id: string; generation: number}>): boolean;
   /** Facts of a late actual 200/201, never a fabricated Session. The host
    * re-proves this original principal/id/generation and never-installed
    * registration before any bounded cleanup. No raw DELETE fallback. */
@@ -200,6 +204,7 @@ export class V1ChannelControl implements ChannelPlayback {
     this.active = a;
     const currentStart = () => this.current(a) && starting() && this.current(a);
     let admitted = currentStart, finish: ChannelStartReceipt['finish'] | undefined;
+    let claimInstall: ChannelStartReceipt['claimInstall'] | undefined;
     let retireUninstalled: ChannelStartReceipt['retireUninstalled'] | undefined, retiring: Promise<void> | undefined;
     const retireLate = (session: Readonly<{id: string; generation: number}>) => {
       if (!captureStart) {void this.stop(session.id); return;}
@@ -216,8 +221,9 @@ export class V1ChannelControl implements ChannelPlayback {
       const captured = captureStart?.(Object.freeze({body, key, signal: a.startAbort.signal, isCurrent: currentStart}));
       finish = captured?.finish;
       retireUninstalled = captured?.retireUninstalled;
+      claimInstall = captured?.claimInstall;
       const hostCurrent = captured?.isCurrent, originalPreparing = captured?.capturePreparing;
-      if (captureStart && (typeof finish !== 'function' || typeof hostCurrent !== 'function' || typeof originalPreparing !== 'function' || typeof retireUninstalled !== 'function')) throw new Error('invalid_channel_start_receipt');
+      if (captureStart && (typeof finish !== 'function' || typeof hostCurrent !== 'function' || typeof originalPreparing !== 'function' || typeof retireUninstalled !== 'function' || typeof claimInstall !== 'function')) throw new Error('invalid_channel_start_receipt');
       admitted = () => {try {return currentStart() && (!hostCurrent || hostCurrent() === true) && currentStart();} catch {return false;}};
       await stopping.catch(() => {});
       if (!admitted()) {cancel();return;}
@@ -229,6 +235,9 @@ export class V1ChannelControl implements ChannelPlayback {
       const s = result.body;
       sink.preparation?.(undefined);
       if (!admitted()) {retireLate(result);cancel();return;}
+      let install = !captureStart;
+      try {if (claimInstall) install = claimInstall(Object.freeze({id: s.id, generation: s.presentation.generation})) === true;} catch { /* A host refusal cannot install or downgrade its cleanup proof. */ }
+      if (!install || !admitted()) {retireLate(result);cancel();return;}
       a.id = s.id;
       this.accept(a, s);
       this.schedule(a);
