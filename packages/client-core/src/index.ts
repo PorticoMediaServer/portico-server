@@ -989,13 +989,15 @@ export class PlaybackService {
   private syncListeningPolicy():Promise<boolean>{
     const native=this.nativeV1,original=Object.freeze({sessionId:this.snapshot.session?.id,generation:this.snapshot.session?.generation,run:this.snapshot.playbackRun,owner:this.snapshot.nativeListening?.owner});
     const originalSource=()=>this.snapshot.session?.id===original.sessionId&&this.snapshot.session?.generation===original.generation&&this.snapshot.playbackRun===original.run&&this.snapshot.nativeListening?.owner===original.owner;
-    if(!this.listeningPolicy||!native?.configure)return Promise.resolve(true);
+    if(!this.listeningPolicy||!native)return Promise.resolve(true);
+    if(!native.configure)return Promise.resolve(this.listeningPolicy.timer===null);
     const value={...this.listeningPolicy,effects:this.snapshot.audioEffects.settings},key=JSON.stringify(value);
     if(key===this.nativePolicyKey)return Promise.resolve(true);
     if(this.nativePolicyPending?.key===key&&this.nativePolicyPending.native===native)return this.nativePolicyPending.promise;
     this.nativePolicyKey='';
     const revision=++this.nativePolicyRevision;
-    const promise=Promise.resolve().then(()=>native.configure!({...value,revision})).then(()=>{
+    const promise=Promise.resolve().then(()=>native.configure!({...value,revision})).then(accepted=>{
+      if(accepted!==true)throw new Error('Native listening policy was not accepted');
       if(revision!==this.nativePolicyRevision||this.nativeV1!==native)return false;
       this.nativePolicyKey=key;return true;
     }).catch(()=>{

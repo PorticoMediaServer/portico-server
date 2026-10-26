@@ -352,7 +352,7 @@ test('b4: failed policy pauses and each Play retries configuration before native
   const {playback,player,owner,stop}=setup();
   let rejects=true;
   const policies:NativeListeningPolicy[]=[];
-  (owner as ReferenceOwner&{configure(p:NativeListeningPolicy):Promise<void>}).configure=async p=>{policies.push(p);if(rejects)throw new Error('timer bridge refused');};
+  (owner as ReferenceOwner&{configure(p:NativeListeningPolicy):Promise<boolean>}).configure=async p=>{policies.push(p);if(rejects)throw new Error('timer bridge refused');return true;};
   playback.setListeningPolicy({preferences:null,activityRevision:1,activityAtMs:Date.now(),timerRevision:1,timer:null});
   await player.playEntries(['song-1','song-2'].map(queueItemInput));await settle();
   assert.equal(playback.getSnapshot().intent,'paused');

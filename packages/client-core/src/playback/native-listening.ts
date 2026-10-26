@@ -102,7 +102,7 @@ export interface NativeListeningV1Control {
  advance(reason:NativeQueueAdvance,entryId?:string):Promise<void>;
  refresh():Promise<void>;
  deadlines(value:ListeningDeadlines):Promise<void>;
- configure?(policy:NativeListeningPolicy):Promise<void>;
+ configure?(policy:NativeListeningPolicy):Promise<boolean>;
  /** Ends native ownership; `stop` also stops the session on the server. */
  detach(stop:boolean):Promise<void>;
  /** The device's event stream says the session changed (an administrator ended it): the owner
