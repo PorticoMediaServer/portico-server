@@ -513,7 +513,7 @@
 :root[data-reduce-motion="true"] .primary:active,
 :root[data-reduce-motion="true"] .primary:active + .artAligned { transform:none; }
 :root[data-reduce-motion="true"] .artShadow { transform:none; }
-::root[data-reduce-motion="true"] .live::after,
+:root[data-reduce-motion="true"] .live::after,
 :root[data-reduce-motion="true"] .videoGenre::after,
 :root[data-reduce-motion="true"] .musicGenre::after,
 :root[data-reduce-motion="true"] .series::after,
