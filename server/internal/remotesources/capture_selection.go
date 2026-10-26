@@ -9,6 +9,8 @@ import (
 	"portico.local/server/internal/ownedcapture"
 )
 
+var _ ownedcapture.PlaybackCaptureResolver = (*captureProducer)(nil)
+
 // ResolvePlaybackCaptureTx is the optional ticket preflight port on the actual
 // source producer. The store issues the opaque eventual capture ID; the source
 // issues the policy/physical selection under current original authority. There
