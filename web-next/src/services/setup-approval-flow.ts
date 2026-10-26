@@ -102,8 +102,8 @@ export class SetupApprovalFlow {
       const location = await this.controller.complete();
       this.current(generation, identity);
       if (!location) return; // Not installed yet: stay put, with no polling.
-      await currentAccountWork(this.account, async () => {this.current(generation, identity);}, identity);
-      this.current(generation, identity);
+      // The protected controller already performs the final authenticated check
+      // before spending this attempt. Do not add fallible I/O after that spend.
       this.publish({phase: 'returning', busy: false, approved: true, display: this.state.display});
       this.current(generation, identity);
       this.navigate(location);
