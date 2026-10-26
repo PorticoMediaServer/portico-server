@@ -14,19 +14,9 @@ run_tv(device, flow, legacy, flavour) runs, in order:
   launch-restored-family, home-real-rows, movies-browse, fire-os-menu-back (firetv only),
   dpad-focus-walk, movie-detail, movie-playback-session, settings-open.
 
-Owner integration, deliberately not applied in this file (android.py, native-checkpoint.py and
-install.py stay untouched here):
-  1. in android.py main(): tv=load('tv_flows',Path(__file__).with_name('tv_flows.py'))
-  2. in android.py flow(): before `except Refusal`,
-       except tv.Failure as e:record.update(status='fail',reason=str(e))
-       except tv.Unavailable as e:record.update(status='unavailable',reason=str(e),dependency='authoritative hierarchy/focus/media read unavailable; no proof claimed')
-     and after `def flow(...)`, attach
-       flow.unavailable=lambda name,reason,dependency:flows.append({'surface':surface,'id':name,'status':'unavailable','reason':reason,'dependency':dependency})
-     and, so pass receipts keep their counts, `value=fn()` then
-       if isinstance(value,dict):record['evidence']=value
-  3. in android.py main(): `if a.mode=='tv':tv.run_tv(d,flow,legacy,a.flavour)` and keep the
-     existing phone path unchanged under `else`.
-  4. in install.py: add 'tv_flows.py' beside 'android.py' in the native tool copy list.
+android.py dispatches every TV allocation here and install.py copies this module with the other
+native tools. The caller's recorder supplies `flow.unavailable(name, reason, dependency)` for a
+dependent flow and stores a returned dict as closed pass evidence.
 """
 import re,time
 
