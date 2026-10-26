@@ -15,8 +15,8 @@ function router() {
   const updates: boolean[] = [], rendered: Array<() => void> = [];
   return {
     updates,
+    rendered: () => rendered.slice(),
     fireRendered: () => {for (const listener of [...rendered]) listener();},
-    rendering: () => rendered.length,
     router: {
       state: {matches: [] as readonly unknown[]},
       update: (value: {defaultViewTransition: boolean}) => {updates.push(value.defaultViewTransition);},
@@ -31,59 +31,76 @@ function router() {
 const traversal = (hasUAVisualTransition?: boolean, navigationType = 'traverse') =>
   Object.assign(new Event('navigate'), {hasUAVisualTransition, navigationType});
 
-test('UA-owned traversal suppresses until the actual rendered commit releases it', () => {
+test('UA-owned traversal suppresses each owned route and the layout finish releases it', () => {
   const {page, navigation} = browser('iPhone Version/18.0 Mobile Safari/604.1'), fixture = router();
-  const off = bindShellRouteMotion(fixture.router, page);
-  page.dispatchEvent(new Event('popstate'));
-  assert.equal(routeMotionOwnedByBrowser(), true);
-  assert.deepEqual(fixture.updates, [false], 'the UA traversal disables Portico motion before any render');
-  assert.equal(fixture.rendering(), 1, 'one captured rendered subscription exists');
-  navigation.dispatchEvent(traversal(true, 'push'));
-  assert.deepEqual(fixture.updates, [false], 'a second owned navigation does not stack another update');
-  fixture.fireRendered();
-  assert.equal(routeMotionOwnedByBrowser(), false);
-  assert.deepEqual(fixture.updates, [false, true], 'the original render commit releases motion once');
-  assert.equal(fixture.rendering(), 1, 'the binder keeps its single subscription for later routes');
-  off();
-  assert.equal(fixture.rendering(), 0, 'cleanup removes the actual rendered subscription');
+  let off: (() => void) | undefined;
+  try {
+    off = bindShellRouteMotion(fixture.router, page);
+    page.dispatchEvent(new Event('popstate'));
+    assert.equal(routeMotionOwnedByBrowser(), true);
+    assert.deepEqual(fixture.updates, [false], 'the owned traversal disables Portico motion before any render');
+    assert.equal(fixture.rendered().length, 1, 'one captured rendered subscription exists');
+    navigation.dispatchEvent(traversal(true, 'push'));
+    assert.deepEqual(fixture.updates, [false, false], 'each owned navigation asks for default motion off, without stacking an owner');
+    assert.equal(routeMotionOwnedByBrowser(), true);
+    fixture.fireRendered();
+    assert.deepEqual(fixture.updates, [false, false], 'an owned rendered commit does not release; the layout finish does');
+    assert.equal(routeMotionOwnedByBrowser(), true);
+    finishRouteMotion();
+    assert.equal(routeMotionOwnedByBrowser(), false);
+    assert.deepEqual(fixture.updates, [false, false, true], 'the actual layout finish restores default view transitions once');
+  } finally {
+    off?.();
+    finishRouteMotion();
+  }
 });
 
-test('ordinary non-traversal history stays source-defined and does not claim ownership', () => {
+test('ordinary history and an unowned rendered commit follow the binder source', () => {
   const {page} = browser('Desktop Firefox'), fixture = router();
-  const off = bindShellRouteMotion(fixture.router, page);
-  page.dispatchEvent(new Event('popstate'));
-  assert.equal(routeMotionOwnedByBrowser(), false);
-  assert.deepEqual(fixture.updates, [], 'a normal push/replace history entry leaves Portico motion alone');
-  fixture.fireRendered();
-  assert.deepEqual(fixture.updates, [], 'a rendered commit with no UA ownership changes nothing');
-  off();
+  let off: (() => void) | undefined;
+  try {
+    off = bindShellRouteMotion(fixture.router, page);
+    page.dispatchEvent(new Event('popstate'));
+    assert.equal(routeMotionOwnedByBrowser(), false);
+    assert.deepEqual(fixture.updates, [], 'a normal push/replace history entry leaves Portico motion alone');
+    fixture.fireRendered();
+    assert.deepEqual(fixture.updates, [true], 'an unowned rendered commit does release default view transitions');
+  } finally {
+    off?.();
+    finishRouteMotion();
+  }
 });
 
-test('old cleanup and a late rendered event cannot release a successor owner', () => {
-  const {page} = browser('Desktop Safari'), older = router(), newer = router();
-  const offOlder = bindShellRouteMotion(older.router, page);
-  page.dispatchEvent(new Event('popstate'));
-  assert.equal(routeMotionOwnedByBrowser(), false, 'desktop popstate alone is not UA-owned');
-  (page as Window & {navigation: EventTarget}).navigation.dispatchEvent(traversal(true));
-  assert.equal(routeMotionOwnedByBrowser(), true);
-  assert.deepEqual(older.updates, [false]);
+test('a captured old rendered callback cannot release a successor owner', () => {
+  const {page, navigation} = browser('Desktop Safari'), older = router(), newer = router();
+  let offOlder: (() => void) | undefined, offNewer: (() => void) | undefined;
+  try {
+    offOlder = bindShellRouteMotion(older.router, page);
+    navigation.dispatchEvent(traversal(true));
+    assert.equal(routeMotionOwnedByBrowser(), true);
+    assert.deepEqual(older.updates, [false]);
+    const oldRendered = older.rendered()[0];
+    assert.ok(oldRendered, 'the older binder registered one rendered callback');
 
-  const offNewer = bindShellRouteMotion(newer.router, page);
-  (page as Window & {navigation: EventTarget}).navigation.dispatchEvent(traversal(true));
-  assert.deepEqual(newer.updates, [false], 'the successor suppresses for its own route');
-  assert.equal(routeMotionOwnedByBrowser(), true);
-  offOlder();
-  assert.deepEqual(newer.updates, [false], 'retiring the older binder never resets the successor');
-  assert.equal(routeMotionOwnedByBrowser(), true);
-  older.fireRendered();
-  assert.deepEqual(newer.updates, [false], 'a captured old rendered callback is not registered and changes nothing');
-  assert.equal(routeMotionOwnedByBrowser(), true);
+    offNewer = bindShellRouteMotion(newer.router, page);
+    navigation.dispatchEvent(traversal(true));
+    assert.deepEqual(newer.updates, [false], 'the successor suppresses for its own route');
+    assert.equal(routeMotionOwnedByBrowser(), true);
 
-  newer.fireRendered();
-  assert.deepEqual(newer.updates, [false, true], 'only the successor render commit releases its own suppression');
-  assert.equal(routeMotionOwnedByBrowser(), false);
-  offNewer();
-  finishRouteMotion();
-  assert.deepEqual(newer.updates, [false, true, true], 'unbind re-asserts the default once; finish after retirement is a no-op');
-  assert.equal(routeMotionOwnedByBrowser(), false);
+    offOlder();
+    oldRendered();
+    assert.deepEqual(newer.updates, [false], 'the captured old callback cannot release the owned successor');
+    assert.equal(routeMotionOwnedByBrowser(), true);
+    assert.deepEqual(older.rendered(), [], 'the older subscription was actually removed');
+
+    newer.fireRendered();
+    assert.deepEqual(newer.updates, [false], 'the successor rendered commit does not release while it is owned');
+    finishRouteMotion();
+    assert.equal(routeMotionOwnedByBrowser(), false);
+    assert.deepEqual(newer.updates, [false, true], 'the successor layout finish releases its own suppression once');
+  } finally {
+    offOlder?.();
+    offNewer?.();
+    finishRouteMotion();
+  }
 });
