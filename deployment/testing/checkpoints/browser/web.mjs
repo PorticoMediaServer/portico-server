@@ -47,6 +47,28 @@ export async function runWeb(session){
   return {browseCards,detailTitle:true,playControl:true};
  });
 
+ await session.flow('home-see-all',async()=>{
+  await home(page,input);
+  const row=page.locator('[data-home-row]:not([data-home-row="continue"]):not([data-home-row="continue_books"])')
+   .filter({has:page.getByRole('button',{name:'See all'})}).first();
+  await row.waitFor();
+  const rowId=await row.getAttribute('data-home-row');
+  await row.getByRole('button',{name:'See all'}).first().click();
+  const expanded=page.locator('[data-home-row]').filter({has:page.getByRole('button',{name:'Home',exact:true})}).first();
+  await expanded.waitFor();
+  if(rowId&&(await expanded.getAttribute('data-home-row'))!==rowId)throw new Error('See all changed the row identity');
+  const heading=expanded.getByRole('heading').first();
+  await heading.waitFor();
+  if(!(await heading.innerText()).trim())throw new Error('See all heading empty');
+  const cards=expanded.locator('[data-card-kind]');
+  await cards.first().waitFor();
+  const visibleCards=await countVisible(cards);
+  if(visibleCards<1)throw new Error('See all rendered no visible cards');
+  await expanded.getByRole('button',{name:'Home',exact:true}).first().click();
+  await page.locator('[data-home-document]').waitFor();
+  return {rowIdentityPreserved:Boolean(rowId),visibleCards};
+ });
+
  await session.flow('video-start-progress',async()=>{
   const play=page.locator('[data-title-id]').getByRole('button').filter({hasText:/^(Play|Resume)/}).first();
   await play.click();
