@@ -41,6 +41,7 @@ export function CardFrame({children, kind, primaryClassName, playIcon = 'i-play'
   const {model, onNavigate, onPlay, onMore, onNotInterested, selection, disabled, className, style, primaryRef} = props;
   const hasAuxiliary = !!(onPlay || onMore || onNotInterested || selection);
   const auxiliaryRef = useRef<HTMLSpanElement>(null);
+  const shadowRef = useRef<HTMLSpanElement>(null);
   useLayoutEffect(() => {
     const art = artworkRef?.current, frame = auxiliaryRef.current;
     if (!hasAuxiliary || !art || !frame) return;
@@ -58,6 +59,21 @@ export function CardFrame({children, kind, primaryClassName, playIcon = 'i-play'
     for (const child of primary.children) observer.observe(child);
     return () => observer.disconnect();
   }, [artworkRef, hasAuxiliary]);
+  // The fading shadow layer matches the artwork's own box, read from layout only.
+  useLayoutEffect(() => {
+    const art = artworkRef?.current, shadow = shadowRef.current;
+    if (!art || !shadow) return;
+    const primary = art.parentElement!;
+    const align = () => {
+      const bounds = getComputedStyle(art);
+      Object.assign(shadow.style, {left: `${art.offsetLeft}px`, top: `${art.offsetTop}px`, width: bounds.width, height: bounds.height});
+    };
+    align();
+    const observer = new ResizeObserver(align);
+    observer.observe(primary);
+    for (const child of primary.children) observer.observe(child);
+    return () => observer.disconnect();
+  }, [artworkRef]);
   const rangeInteraction = useSelectionRangePreview(selection, disabled);
   const selectionHintId = useId();
   const selectionHint = selection?.hint ?? (selection && !selection.active ? {text: defaultI18n.t('next.selection.select')} : undefined);
@@ -71,6 +87,7 @@ export function CardFrame({children, kind, primaryClassName, playIcon = 'i-play'
     <button type="button" disabled={disabled} ref={primaryRef} className={cx(styles.primary, primaryClassName)} aria-label={model.title} aria-pressed={selection?.active ? selection.checked : undefined} onClick={click} onFocus={props.onFocus} onBlur={event => {holdGesture.cancel(); props.onBlur?.(event);}}
       onKeyDown={event => { if (event.key === 'Escape') { holdGesture.cancel(); if (selection?.active) { event.preventDefault(); event.stopPropagation(); selection.onExit(); } } }}
       {...holdGesture.handlers}>
+      {artworkRef && <span ref={shadowRef} className={styles.artShadow} aria-hidden="true" />}
       {children}
     </button>
     {hasAuxiliary && <span className={cx(styles.auxiliary, !!artworkRef && styles.artAligned)}><span ref={auxiliaryRef} className={artworkRef ? styles.artAuxiliary : styles.cardAuxiliary}>
