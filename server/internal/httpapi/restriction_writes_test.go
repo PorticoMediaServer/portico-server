@@ -388,6 +388,28 @@ func perHidden(method, path, body string, kinds ...string) writeRoute {
 	})
 }
 
+// playlistItemKinds are the item kinds the playlist write routes accept as media
+// leaves (catalog.playlistItemAllowed: playable, not an extra). A hidden book or
+// comic is refused for its kind before any membership check runs, so it would
+// prove nothing about these routes.
+var playlistItemKinds = []string{"movie", "episode", "song", "audiobook_file"}
+
+// itemProbes builds one probe per hidden item of the given kinds. Unlike
+// perHidden it does not path-escape: the playlist routes name the destination in
+// the path and the probed item in the body.
+func itemProbes(m *restrictionEnv, method, path, body string, kinds []string) []idProbe {
+	out := []idProbe{}
+	for _, kind := range kinds {
+		for _, id := range m.hiddenItems[kind] {
+			op := "matrix-" + kind + "-" + id
+			out = append(out, idProbe{hidden: id, method: method,
+				path: strings.ReplaceAll(path, "OP", op),
+				body: strings.ReplaceAll(strings.ReplaceAll(body, "ID", id), "OP", op)})
+		}
+	}
+	return out
+}
+
 const (
 	reasonOwnSession  = "acts on the caller's own session, device, profile or account; names no catalogue id"
 	reasonSignIn      = "sign-in, registration, setup or recovery; runs before or outside a profile session"
@@ -515,10 +537,18 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"POST /v1/notifications/{id}/read":                 writeExempt("marks only the caller's notification objects as read (notifications_routes_test)"),
 		"POST /v1/optimization-jobs/{id}/cancel":           writeExempt("owner-only prepared job/version mutation, no new catalogue selection (preparedmedia service owner checks)"),
 		"POST /v1/optimization-jobs/{id}/retry":            writeExempt("owner-only prepared job/version mutation, no new catalogue selection (preparedmedia service owner checks)"),
-		"POST /v1/playlists":                               writeExempt(reasonOwnObject),
 		"POST /v1/music/mixes/{id}/playlist":               {check: musicMixForbiddenCopyCheck},
+		// Both playlist writes name an item id in the body, so both can reach
+		// catalogue membership. The older probe here sent itemIds with
+		// expectedRevision 0, which the add action answers 400 for before it reads
+		// any item: it proved nothing. These send one real item at the playlist's
+		// own current revision.
+		"POST /v1/playlists": writeProbes(func(m *restrictionEnv) []idProbe {
+			return itemProbes(m, "POST", "/v1/playlists", `{"operationId":"OP","name":"Matrix","itemIds":["ID"]}`, playlistItemKinds)
+		}),
 		"POST /v1/playlists/{id}/entries": writeProbes(func(m *restrictionEnv) []idProbe {
-			return perHidden("POST", "/v1/playlists/"+m.playlist+"/entries", `{"operationId":"OP","expectedRevision":0,"itemIds":["ID"]}`, "item").probes(m)
+			body := fmt.Sprintf(`{"operationId":"OP","expectedRevision":%d,"itemId":"ID"}`, m.playlistRevision)
+			return itemProbes(m, "POST", "/v1/playlists/"+m.playlist+"/entries", body, playlistItemKinds)
 		}),
 		"POST /v1/prepared-versions/{id}/delete":             writeExempt("owner-only prepared job/version mutation, no new catalogue selection (preparedmedia service owner checks)"),
 		"POST /v1/quick-connect/cancel":                      writeExempt(reasonSignIn),

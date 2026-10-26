@@ -837,10 +837,14 @@ type restrictionEnv struct {
 	visibleMovie    string
 	people          []string
 	playlist        string
-	savedResource   string
-	markers         []string
-	statuses        map[string][]int
-	marker          *regexp.Regexp
+	// playlistRevision is the fixture playlist's revision when the probes are
+	// built, so a write probe reaches the action's own item checks instead of
+	// stopping at the earlier revision fence.
+	playlistRevision int64
+	savedResource    string
+	markers          []string
+	statuses         map[string][]int
+	marker           *regexp.Regexp
 	// The restricted session's own device, and what was recorded in its name
 	// before it was restricted: reports about titles it can no longer see, and
 	// notices whose links lead to them.
@@ -1216,6 +1220,9 @@ func buildRestrictionMatrix(t *testing.T) *restrictionEnv {
 		t.Fatal(err)
 	}
 	if _, err = cat.MutatePlaylist(actor, m.playlist, "add", "", catalog.PlaylistMutation{OperationID: "matrix-playlist-visible", ExpectedRevision: addedHidden.Revision, ItemID: m.visibleMovie}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.QueryRow(`SELECT revision FROM catalog_playlists WHERE token=?`, m.playlist).Scan(&m.playlistRevision); err != nil {
 		t.Fatal(err)
 	}
 	for _, q := range []struct {

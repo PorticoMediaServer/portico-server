@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"net/http"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/identity"
@@ -157,23 +158,28 @@ func (d Dependencies) playlistRoutes(mux *http.ServeMux) {
 				return
 			}
 			out, e := d.Catalog.MutatePlaylist(resourceActor(p), r.PathValue("id"), route.action, r.PathValue("entryId"), m, func(tx *sql.Tx) error {
-				library := ""
-				for _, item := range m.ItemIDs {
-					var lib string
-					if e := tx.QueryRow(`SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.public_id=pid_blob(?)`, item).Scan(&lib); e != nil {
-						return e
+				if e := d.resourceAuthorize(tx, p, ""); e != nil {
+					return e
+				}
+				// Library access alone cannot admit a restricted title. Re-prove
+				// each submitted leaf under the original actor in this accepting
+				// transaction, including receipt replay, just as collection adds do.
+				itemAuthority := func(item string) error {
+					_, err := d.playbackAuthorityTx(r.Context(), tx, p, item)
+					if errors.Is(err, sql.ErrNoRows) || errors.Is(err, identity.ErrNotVisible) || errors.Is(err, identity.ErrContentRestricted) || errors.Is(err, identity.ErrForbidden) {
+						return sql.ErrNoRows
 					}
-					if e := d.resourceAuthorize(tx, p, lib); e != nil {
+					return err
+				}
+				for _, item := range m.ItemIDs {
+					if e := itemAuthority(item); e != nil {
 						return e
 					}
 				}
 				if route.action == "add" && m.ItemID != "" {
-					if e := tx.QueryRow(`SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.public_id=pid_blob(?)`, m.ItemID).Scan(&library); e != nil {
+					if e := itemAuthority(m.ItemID); e != nil {
 						return e
 					}
-				}
-				if e := d.resourceAuthorize(tx, p, library); e != nil {
-					return e
 				}
 				if route.action == "share" {
 					return d.shareTargetTx(tx, m.Authority, m.AccountID, m.ProfileID)
