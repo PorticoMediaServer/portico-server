@@ -56,6 +56,23 @@ and closes only its acknowledged Reading session. No catalog CBR admission,
 app rendering, complete-image decode or fidelity is established. An ordinary
 build without the existing CB7 tag can refuse `cb7-not-admitted` without creating
 a session. The helper has not itself qualified any deployed artifact.
+
+`reading-metadata.py` plans by default and edits only with `--apply`. Its caller
+must resolve the original magazine PDF fixture's exact library/item and supply
+the intended series from its private fixture manifest/setup specification:
+
+```
+python3 reading-metadata.py --context <owned-context.json> --origin <admitted-loopback-origin> --run-id <original-run> --library <exact-library> --item <exact-pdf-item> --series <owner-fixture-intent> --output <private-receipt.json> [--apply]
+```
+
+It reads the actual generic metadata schema and revision, then sends one CAS edit
+with locked publication type and series. It never retries an uncertain mutation.
+`acknowledged` records an accepting response; `confirmed` additionally requires a
+same-scope readback of the returned revision and both exact locked owner values.
+Receipts contain closed facts, never series text or identity values. This is an
+explicit owner fixture edit, not PDF parser provenance, a scan/grouping verdict
+or a rendered-page result. Wait for the containing Reading metadata producer fix
+to be deployed before use; source availability alone does not establish it.
 `Portico_CertTest_API36` is never a target. All child processes, emulators and
 scratch started by a run are retired in `finally` paths.
 
