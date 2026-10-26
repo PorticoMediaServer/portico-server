@@ -23,6 +23,9 @@ var ErrNested = errors.New("dbwork: nested write transaction")
 // was told to discard.
 var ErrAborted = errors.New("dbwork: transaction aborted by a nested writer")
 
+// ErrTransactionContext refuses a missing or conflicting transaction carrier.
+var ErrTransactionContext = errors.New("dbwork: transaction context is invalid or mismatched")
+
 func strict() bool { return os.Getenv(StrictEnv) == "1" }
 
 type writeKey struct{}
@@ -104,6 +107,52 @@ func Snapshot(ctx context.Context) *sql.Tx {
 // withSnapshot attaches a read-only transaction to ctx.
 func withSnapshot(ctx context.Context, tx *sql.Tx) context.Context {
 	return context.WithValue(ctx, snapshotKey{}, tx)
+}
+
+// BindSnapshot carries the exact supplied transaction for a synchronous local
+// callback. It opens nothing and grants no authority. A live gated writer keeps
+// its actual shared writer/class and change tracking; other transactions receive
+// only a read snapshot carrier. A foreign transaction already in ctx is refused.
+//
+// The result is ephemeral: do not retain it as an operation/reader lifetime.
+// Binding neither owns nor extends the SQL transaction or caller's context.
+func BindSnapshot(ctx context.Context, tx *sql.Tx) (context.Context, error) {
+	if ctx == nil || tx == nil {
+		return nil, ErrTransactionContext
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if held := Snapshot(ctx); held != nil && held != tx {
+		return nil, ErrTransactionContext
+	}
+	// Check the read carrier too: Snapshot prefers a writer, which must not
+	// conceal a conflicting read snapshot nested in the same context.
+	if held, _ := ctx.Value(snapshotKey{}).(*sql.Tx); held != nil && held != tx {
+		return nil, ErrTransactionContext
+	}
+	if value, ok := liveWrites.Load(tx); ok {
+		w := value.(*Write)
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		if w.done || w.owned == nil {
+			return nil, sql.ErrTxDone
+		}
+		if w.owned.failed() {
+			return nil, ErrAborted
+		}
+		bound := context.WithValue(ctx, writeKey{}, w.owned)
+		if w.changes != nil {
+			bound = context.WithValue(bound, changeKey{}, w.changes)
+		}
+		return bound, nil
+	}
+	if carriedWrite(ctx) != nil {
+		// Preserve an existing legacy WithWrite carrier; never manufacture a
+		// write class for an untracked transaction passed without that carrier.
+		return ctx, nil
+	}
+	return withSnapshot(ctx, tx), nil
 }
 
 type classKey struct{}

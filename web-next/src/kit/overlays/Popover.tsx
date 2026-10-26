@@ -7,15 +7,22 @@ import {classes, focusElement, focusable, useDismissReason, useExclusiveAnchor, 
 import type {AnchoredOverlayProps, OverlayChange, OverlayStyle} from './types';
 import styles from './overlays.module.css';
 
-export type PopoverProps = AnchoredOverlayProps & {role?: 'dialog' | 'menu'; onContentKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void};
+/** A caller-supplied virtual anchor, queried when Radix positions an external
+ * anchor surface. It requires `anchorRef` and cannot be combined with a trigger;
+ * the real `anchorRef` still owns ARIA, outside interaction and return focus. */
+export type PopoverGeometry = Readonly<{getBoundingClientRect: () => DOMRect}>;
 
-export function Popover({open, onOpenChange, title, children, description, trigger, anchorRef, modal = false, placement = 'bottom-end', sideOffset = 8, alignOffset = 0, width = 300, initialFocusRef, returnFocusRef, accessibilityLabel, className, testID, role = 'dialog', onContentKeyDown}: PopoverProps) {
+export type PopoverProps = AnchoredOverlayProps & {role?: 'dialog' | 'menu'; onContentKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void; geometry?: PopoverGeometry};
+
+export function Popover({open, onOpenChange, title, children, description, trigger, anchorRef, geometry, modal = false, placement = 'bottom-end', sideOffset = 8, alignOffset = 0, width = 300, initialFocusRef, returnFocusRef, accessibilityLabel, className, testID, role = 'dialog', onContentKeyDown}: PopoverProps) {
   const portalTarget = useOverlayPortalTarget();
   const triggerElement = useRef<HTMLButtonElement | null>(null);
   const id = useId(), reason = useDismissReason(), focus = useSurfaceFocus(open, initialFocusRef, returnFocusRef ?? anchorRef ?? triggerElement);
   const withinDialog = useInDialog(open, anchorRef ?? triggerElement);
   const present = usePresence(open, 160), motionRef = useSurfaceMotion(open, 'menu');
-  const anchor = useMemo(() => ({current: {getBoundingClientRect: () => anchorRef?.current?.getBoundingClientRect() ?? new DOMRect()}}), [anchorRef]);
+  const anchor = useMemo(() => ({current: {
+    getBoundingClientRect: () => geometry?.getBoundingClientRect() ?? anchorRef?.current?.getBoundingClientRect() ?? new DOMRect(),
+  }}), [anchorRef, geometry]);
   useOverlayKeys(open, onOpenChange); const superseded = useExclusiveAnchor(open, onOpenChange);
   if (superseded) focus.suppressRestore.current = true;
   useLayoutEffect(() => {
@@ -26,6 +33,7 @@ export function Popover({open, onOpenChange, title, children, description, trigg
     if (open) element.setAttribute('aria-controls', `${id}-content`); else element.removeAttribute('aria-controls');
     return () => names.forEach((name, index) => { const previous = original[index]; if (previous === null || previous === undefined) element.removeAttribute(name); else element.setAttribute(name, previous); });
   }, [trigger, anchorRef, open, role, id]);
+  if (geometry && (trigger || !anchorRef)) throw new TypeError('Popover geometry requires an anchorRef and cannot be combined with a trigger.');
   if (!trigger && !anchorRef) throw new TypeError('Popover requires a trigger or an anchor ref.');
   return <RadixPopover.Root open={open} onOpenChange={value => { if (value === open) return; onOpenChange(value, reason.current); reason.current = 'action'; }} modal={modal}>
     {trigger ? <RadixPopover.Trigger asChild ref={triggerElement} aria-haspopup={role} aria-controls={open ? `${id}-content` : undefined}>{trigger}</RadixPopover.Trigger> : <RadixPopover.Anchor virtualRef={anchor} />}

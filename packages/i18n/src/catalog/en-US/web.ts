@@ -217,6 +217,7 @@ export const webMessages = {
   'web.hostedSecurity.recoveryCodesHelp': 'Making new codes stops the old ones working',
   'web.hostedSecurity.makeCodes': 'Make new codes',
   'web.hostedSecurity.providerOnly': 'Changes here are confirmed with your password. Accounts that only sign in with Google or Apple manage their security with that service.',
+  'web.hostedSecurity.providerConfirm': 'Confirm with your sign-in service to change your password, email or two-step settings.',
   'web.hostedSecurity.emailChanged': 'Email address changed',
   'web.hostedSecurity.twoStepOn': 'Two-step verification is on',
   'web.hostedSecurity.twoStepOff': 'Two-step verification is off',
