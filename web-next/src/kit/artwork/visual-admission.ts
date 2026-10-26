@@ -66,7 +66,8 @@ type Entry = {
   paint?: () => void;
 };
 
-type Group = {queue: Entry[]; timer?: unknown; admittedAt?: number; generation: number};
+type TimerSlot = {handle: unknown; live: boolean; generation: number};
+type Group = {queue: Entry[]; timer?: TimerSlot; admittedAt?: number; generation: number};
 
 const DEFAULT_STEP_MS = 40;
 
@@ -91,10 +92,33 @@ export function createPaintAdmission(options: AdmissionOptions = {}): PaintAdmis
 
   const groupOf = (scope: unknown, name: string): Group | undefined => scoped.get(scope)?.get(name);
 
+  // Retire the exact timer generation first, then clear its own handle. A callback
+  // the host already queued can never clear or reschedule a replacement wait.
   const stop = (group: Group) => {
-    if (group.timer !== undefined) {
-      try {clearTimer(group.timer);} catch { /* the timer is gone either way */ }
-      group.timer = undefined;
+    const slot = group.timer;
+    if (!slot) return;
+    group.timer = undefined;
+    slot.live = false;
+    try {clearTimer(slot.handle);} catch { /* the timer is gone either way */ }
+  };
+
+  const schedule = (scope: unknown, name: string, group: Group, waitMs: number) => {
+    const generation = group.generation;
+    const slot: TimerSlot = {handle: undefined, live: true, generation};
+    group.timer = slot;
+    const handle = setTimer(() => {
+      if (!slot.live) return;
+      slot.live = false;
+      if (group.timer === slot) group.timer = undefined;
+      if (disposed || groupOf(scope, name) !== group || group.generation !== generation) return;
+      flush(scope, name);
+    }, waitMs);
+    slot.handle = handle;
+    // A supplied timer may settle synchronously, or the group may already have been
+    // replaced; only then is the late handle cleared.
+    if (group.timer !== slot || !slot.live) {
+      slot.live = false;
+      try {clearTimer(handle);} catch { /* the timer is gone either way */ }
     }
   };
 
@@ -121,14 +145,7 @@ export function createPaintAdmission(options: AdmissionOptions = {}): PaintAdmis
     if (group.admittedAt !== undefined) {
       const remaining = stepMs - (now() - group.admittedAt);
       if (remaining > 0) {
-        if (group.timer === undefined) {
-          const generation = group.generation;
-          group.timer = setTimer(() => {
-            group.timer = undefined;
-            if (disposed || groupOf(scope, name) !== group || group.generation !== generation) return;
-            flush(scope, name);
-          }, remaining);
-        }
+        if (!group.timer) schedule(scope, name, group, remaining);
         return;
       }
     }
@@ -147,17 +164,16 @@ export function createPaintAdmission(options: AdmissionOptions = {}): PaintAdmis
       if (disposed) return {ready() {}, retire() {}};
       const scope = target.scope;
       const name = typeof target.group === 'string' && target.group !== '' ? target.group : undefined;
-      const grouped = name !== undefined && scope !== undefined && scope !== null;
-      const entry: Entry = {
-        order: typeof target.order === 'number' && Number.isFinite(target.order) ? target.order : Number.MAX_SAFE_INTEGER,
-        seq: seq++, live: true, ready: false,
-      };
+      const order = typeof target.order === 'number' && Number.isFinite(target.order) ? target.order : undefined;
+      const grouped = name !== undefined && scope !== undefined && scope !== null && order !== undefined;
+      const entry: Entry = {order: order ?? 0, seq: seq++, live: true, ready: false};
       live++;
       if (!grouped) {
         // No real group from the owner: this slot paints independently, exactly once.
         return {
           ready(paint) {
-            if (disposed || !entry.live) return;
+            if (disposed || !entry.live || entry.ready) return;
+            entry.ready = true;
             entry.live = false;
             live = Math.max(0, live - 1);
             try {paint();} catch { /* a paint callback never changes admission */ }
@@ -178,7 +194,7 @@ export function createPaintAdmission(options: AdmissionOptions = {}): PaintAdmis
       flush(scope, name!);
       return {
         ready(paint) {
-          if (disposed || !entry.live) return;
+          if (disposed || !entry.live || entry.ready) return;
           entry.ready = true;
           entry.paint = paint;
           flush(scope, name!);
