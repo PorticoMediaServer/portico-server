@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/disc"
 	"portico.local/server/internal/identity"
@@ -30,6 +31,7 @@ type discPlayStart struct {
 	LegacyRequestID string // raw original v1.<private candidate>.1; scoped below
 	Queue           playbackdisc.Operation
 	Replaces        playbackdisc.Key
+	TitleRequest    catalog.DiscTitleRef
 	TitleKey        string
 	Check           func(context.Context, *sql.Tx) error
 }
@@ -77,7 +79,7 @@ func newDiscPlayFactory(o discPlayFactoryOptions) (*discPlayFactory, error) {
 func sameDiscPlayStart(a, b discPlayStart) bool {
 	// Check closures are not authority and are never swapped on an attachment.
 	// The original closure remains the one captured by the first invocation.
-	return sameDiscPlayPrincipal(a.Principal, b.Principal) && a.Key == b.Key && a.BodyDigest == b.BodyDigest && a.ItemID == b.ItemID && a.AssetID == b.AssetID && a.PartIndex == b.PartIndex && a.CandidateID == b.CandidateID && a.LegacyRequestID == b.LegacyRequestID && a.Queue == b.Queue && a.Replaces == b.Replaces && a.TitleKey == b.TitleKey
+	return sameDiscPlayPrincipal(a.Principal, b.Principal) && a.Key == b.Key && a.BodyDigest == b.BodyDigest && a.ItemID == b.ItemID && a.AssetID == b.AssetID && a.PartIndex == b.PartIndex && a.CandidateID == b.CandidateID && a.LegacyRequestID == b.LegacyRequestID && a.Queue == b.Queue && a.Replaces == b.Replaces && a.TitleKey == b.TitleKey && a.TitleRequest == b.TitleRequest
 }
 
 func sameDiscPlayPrincipal(a, b identity.Principal) bool {
@@ -436,7 +438,7 @@ func (f *discPlayFactory) initialize(ctx context.Context, e *discPlayFactoryEntr
 	supervise.Go("playback.disc-play-prepare", func() {
 		defer close(e.done)
 		defer func() { <-f.o.ProbeSlots }()
-		if err := e.operation.prepare(f.o.Tool, f.o.Probe, tools, seed.TitleKey); err != nil {
+		if err := e.operation.prepare(f.o.Tool, f.o.Probe, tools, seed.TitleKey, seed.TitleRequest); err != nil {
 			e.cancel()
 			_ = e.operation.Close(context.Background())
 		}

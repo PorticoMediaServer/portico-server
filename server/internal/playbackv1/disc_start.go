@@ -7,10 +7,15 @@ import (
 	"errors"
 
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/disc"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/mediasource"
+	"portico.local/server/internal/ownedcapture"
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/playbackdisc"
+	"portico.local/server/internal/storage"
 )
 
 // PreparedStart is internal to the actual route composition, not a fabricated
@@ -47,7 +52,7 @@ func (s *Service) StartPrepared(ctx context.Context, c Caller, key string, req S
 		return PreparedStart{Preparing: true, RetryAfterMs: PreparingRetryMs}, nil
 	}
 	if err != nil {
-		return PreparedStart{}, err
+		return PreparedStart{}, discStartError(err)
 	}
 	return PreparedStart{Session: &v, Preparing: preparing, RetryAfterMs: v.RetryAfterMs}, nil
 }
@@ -118,7 +123,11 @@ func (s *Service) prepareDiscStart(ctx context.Context, c Caller, key, body stri
 			return ctx, ErrNotFound
 		}
 		check := s.discStartCheck(c, key, body, base, asset, candidate, req.ReplacesSessionID, replacing, ctx)
-		operation, err = s.Playback.BeginDiscPlay(ctx, playback.DiscPlayOriginal{Principal: c.Principal, DeviceID: c.DeviceID, Key: key, BodyDigest: body, ItemID: base.item, AssetID: asset, CandidateID: candidate, PartIndex: base.partIndex, Queue: queue, Replaces: replacing, Check: check})
+		originalTitle := catalog.DiscTitleRef{}
+		if req.DiscTitle != nil {
+			originalTitle = *req.DiscTitle
+		}
+		operation, err = s.Playback.BeginDiscPlay(ctx, playback.DiscPlayOriginal{Principal: c.Principal, DeviceID: c.DeviceID, Key: key, BodyDigest: body, ItemID: base.item, AssetID: asset, CandidateID: candidate, PartIndex: base.partIndex, Queue: queue, Replaces: replacing, TitleRequest: originalTitle, Check: check})
 		if err != nil {
 			return ctx, err
 		}
@@ -158,6 +167,11 @@ func (s *Service) discStartCheck(c Caller, key, body string, base row, asset, ca
 		if tx == nil || c.Admit == nil {
 			return identity.ErrForbidden
 		}
+		boundContext, bindingErr := dbwork.BindSnapshot(ctx, tx)
+		if bindingErr != nil {
+			return bindingErr
+		}
+		ctx = boundContext
 		var own bool
 		err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM playback_v1_sessions WHERE id=? AND device_id=? AND start_key=? AND start_digest=? AND account_id=? AND profile_id=? AND authority=? AND item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND version_id=? AND queue_id=? AND entry_id=? AND part_index=? AND ended_ms=0)`, candidate, c.DeviceID, key, body, c.Principal.AccountID, c.Principal.ProfileID, c.Principal.Authority, base.item, asset, base.queueID, base.entryID, base.partIndex).Scan(&own)
 		if err != nil {
@@ -219,5 +233,22 @@ func (s *Service) discStartCheck(c Caller, key, body string, base row, asset, ca
 			}
 		}
 		return ctx.Err()
+	}
+}
+
+// Map only the new private input outcomes onto existing ordinary errors.
+// None of capacity, source retirement, expiry or unsupported input becomes202.
+func discStartError(err error) error {
+	switch {
+	case errors.Is(err, playbackdisc.ErrConflict):
+		return errors.Join(err, ErrIdempotencyMismatch)
+	case errors.Is(err, playback.ErrStaleOffer):
+		return errors.Join(err, ErrRevision)
+	case errors.Is(err, playbackdisc.ErrCurrent), errors.Is(err, playbackdisc.ErrCapacity), errors.Is(err, ownedcapture.ErrCurrent), errors.Is(err, storage.ErrRemoteChanged), errors.Is(err, storage.ErrRemoteOffline), errors.Is(err, storage.ErrRemoteLimit), errors.Is(err, mediasource.ErrSourceChanged), errors.Is(err, context.DeadlineExceeded):
+		return errors.Join(err, catalog.ErrSourceBusy)
+	case errors.Is(err, disc.ErrRemoteUnqualified), errors.Is(err, storage.ErrRemoteRange):
+		return errors.Join(err, playback.ErrIncompatible)
+	default:
+		return err
 	}
 }

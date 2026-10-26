@@ -93,7 +93,7 @@ func openPrivateDiscPresentation(ctx context.Context, o discPlayReaderOptions) (
 		}
 	}()
 	var retired atomic.Bool
-	currentTx := func(check context.Context, tx *sql.Tx) (checkErr error) {
+	pinCurrentTx := func(check context.Context, tx *sql.Tx) (checkErr error) {
 		defer func() {
 			if checkErr != nil {
 				retired.Store(true)
@@ -111,6 +111,22 @@ func openPrivateDiscPresentation(ctx context.Context, o discPlayReaderOptions) (
 			return playbackdisc.ErrCurrent
 		}
 		return life.Err()
+	}
+	var conditionalProof interface {
+		CheckTx(context.Context, *sql.Tx) error
+	}
+	currentTx := func(check context.Context, tx *sql.Tx) error {
+		if err := pinCurrentTx(check, tx); err != nil {
+			return err
+		}
+		if conditionalProof != nil {
+			if err := conditionalProof.CheckTx(check, tx); err != nil {
+				retired.Store(true)
+				cancel()
+				return err
+			}
+		}
+		return nil
 	}
 	current := func(check context.Context) error {
 		if tx := dbwork.Snapshot(check); tx != nil {
@@ -143,10 +159,21 @@ func openPrivateDiscPresentation(ctx context.Context, o discPlayReaderOptions) (
 		input, err = capturedDiscInput(life, o.Tool, reader, original.Disc.Structure, title, current)
 	} else {
 		object, e := o.Conditional.Open(life, original.Source, func(check context.Context, tx *sql.Tx) error {
-			return currentTx(check, tx)
+			return pinCurrentTx(check, tx)
 		})
 		if e != nil {
 			return nil, e
+		}
+		if object == nil {
+			return nil, disc.ErrRemoteUnqualified
+		}
+		var ok bool
+		conditionalProof, ok = object.(interface {
+			CheckTx(context.Context, *sql.Tx) error
+		})
+		if !ok {
+			object.Close()
+			return nil, disc.ErrRemoteUnqualified
 		}
 		version := object.Version()
 		if version.ID() != original.Input.Conditional.Version.ID() || version.Evidence().Kind != mediasource.StrongETag && version.Evidence().Kind != mediasource.ImmutableProviderVersion || object.Snapshot().Size != original.Source.Size || object.Snapshot().ModifiedNS != original.Source.ModifiedNS {

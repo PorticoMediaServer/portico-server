@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"time"
 
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/disc"
 	"portico.local/server/internal/identity"
@@ -22,6 +23,7 @@ type DiscPlayOriginal struct {
 	PartIndex                                               int
 	Queue                                                   playbackdisc.Operation
 	Replaces                                                playbackdisc.Key
+	TitleRequest                                            catalog.DiscTitleRef
 	TitleKey                                                string
 	Check                                                   func(context.Context, *sql.Tx) error
 }
@@ -37,7 +39,7 @@ type DiscPlayOperation struct {
 // work is started. Recovery retires old unaccepted rows, never resumes them.
 // Limits are explicit from composition and use the EXISTING probe-slot budget.
 func (s *Service) ConfigureDiscPlay(ctx context.Context, identities *identity.Service, captures *ownedcapture.Service, conditional DiscConditionalSource, limits playbackdisc.PreparationLimits) error {
-	if s == nil || identities == nil || s.hls == nil || s.hls.ctx == nil || s.discFactory != nil {
+	if s == nil || identities == nil || s.hls == nil || s.hls.ctx == nil || s.probe == nil || s.discFactory != nil {
 		return disc.ErrRemoteUnqualified
 	}
 	if s.discInputs == nil {
@@ -116,12 +118,24 @@ func (s *Service) BeginDiscPlay(ctx context.Context, original DiscPlayOriginal) 
 	if !deadline.After(time.Now()) {
 		return nil, context.DeadlineExceeded
 	}
-	life, cancel := context.WithDeadline(f.o.Lifetime, deadline)
+	if err := f.o.Lifetime.Err(); err != nil {
+		return nil, err
+	}
+	// Retain original admitted request metadata, not its HTTP cancellation or
+	// deadline. The server root independently cancels this exact finite scope.
+	life, cancel := context.WithDeadline(context.WithoutCancel(ctx), deadline)
+	stopRoot := context.AfterFunc(f.o.Lifetime, cancel)
+	context.AfterFunc(life, func() { stopRoot() })
 	// Observe cancellation during admission/initialization. A successful 202
 	// response ending its HTTP context cannot renew or destroy this finite scope;
 	// only a later CURRENT original POST may accept its exact prepared facts.
 	stop := context.AfterFunc(ctx, cancel)
-	seed := discPlayStart{Principal: original.Principal, Key: playbackdisc.PreparationKey{DeviceID: original.DeviceID, StartKeyDigest: identity.Digest(original.Key)}, BodyDigest: original.BodyDigest, ItemID: original.ItemID, AssetID: original.AssetID, PartIndex: original.PartIndex, CandidateID: original.CandidateID, LegacyRequestID: "v1." + original.CandidateID + ".1", Queue: original.Queue, Replaces: original.Replaces, TitleKey: original.TitleKey, Check: original.Check}
+	seed := discPlayStart{Principal: original.Principal, Key: playbackdisc.PreparationKey{DeviceID: original.DeviceID, StartKeyDigest: identity.Digest(original.Key)}, BodyDigest: original.BodyDigest, ItemID: original.ItemID, AssetID: original.AssetID, PartIndex: original.PartIndex, CandidateID: original.CandidateID, LegacyRequestID: "v1." + original.CandidateID + ".1", Queue: original.Queue, Replaces: original.Replaces, TitleKey: original.TitleKey, TitleRequest: original.TitleRequest, Check: func(check context.Context, tx *sql.Tx) error {
+		if err := f.o.Lifetime.Err(); err != nil {
+			return err
+		}
+		return original.Check(check, tx)
+	}}
 	e, err := f.beginCaptured(life, seed)
 	stop()
 	if err != nil || ctx.Err() != nil {

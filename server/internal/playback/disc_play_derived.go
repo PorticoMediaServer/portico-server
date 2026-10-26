@@ -7,6 +7,7 @@ import (
 	"errors"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"portico.local/server/internal/dbwork"
@@ -24,9 +25,13 @@ import (
 // opaque same-writer derived claim; normal reader predicates stay unchanged.
 type discSubtitleTransitionKey struct{}
 
-type DiscSubtitleTransition struct {
+type DiscSubtitleTransition struct{ *discSubtitleTransitionState }
+
+type discSubtitleTransitionState struct {
 	service   *Service
 	ctx       context.Context
+	cancel    context.CancelFunc
+	contexts  []func()
 	principal identity.Principal
 	parent    playbackdisc.Snapshot
 	pin       playbackdisc.Pin
@@ -40,10 +45,11 @@ type DiscSubtitleTransition struct {
 	child     bool
 	once      sync.Once
 	closeErr  error
+	closed    atomic.Bool
 }
 
 func (s *Service) PrepareDiscSubtitleTransition(ctx context.Context, p identity.Principal, session string, current func(context.Context, *sql.Tx, int) error) (out *DiscSubtitleTransition, private bool, err error) {
-	if ctx == nil || dbwork.Snapshot(ctx) != nil || current == nil {
+	if s == nil || s.db == nil || ctx == nil || dbwork.Snapshot(ctx) != nil || current == nil {
 		return nil, true, disc.ErrProtocol
 	}
 	view, e := dbwork.BeginSnapshot(ctx, s.db)
@@ -79,13 +85,14 @@ func (s *Service) PrepareDiscSubtitleTransition(ctx context.Context, p identity.
 	if err != nil || !private {
 		return nil, private, err
 	}
-	t := &DiscSubtitleTransition{service: s, ctx: ctx, principal: p, parent: original, pin: pin, current: current, childID: identity.Token()}
+	life, cancel := context.WithDeadline(ctx, pin.ExpiresAt)
+	t := &DiscSubtitleTransition{&discSubtitleTransitionState{service: s, ctx: life, cancel: cancel, principal: p, parent: original, pin: pin, current: current, childID: identity.Token()}}
 	defer func() {
 		if err != nil {
 			t.Close()
 		}
 	}()
-	pins, e := s.discInputs.tools(ctx)
+	pins, e := s.discInputs.tools(t.ctx)
 	if e != nil {
 		return nil, true, e
 	}
@@ -93,9 +100,9 @@ func (s *Service) PrepareDiscSubtitleTransition(ctx context.Context, p identity.
 		return nil, true, ErrStaleOffer
 	}
 	if original.Input.Captured != nil {
-		t.reader, err = s.discInputs.captures.Open(ctx, original.Input.Captured.Receipt)
+		t.reader, err = s.discInputs.captures.Open(t.ctx, original.Input.Captured.Receipt)
 	} else if original.Input.Conditional != nil && s.discInputs.conditional != nil {
-		t.object, err = s.discInputs.conditional.Open(ctx, original.Source, t.CheckTx)
+		t.object, err = s.discInputs.conditional.Open(t.ctx, original.Source, t.checkCallerSourceTx)
 		if err == nil && (t.object == nil || t.object.Version().ID() != original.Input.Conditional.Version.ID()) {
 			err = disc.ErrRemoteUnqualified
 		}
@@ -108,8 +115,8 @@ func (s *Service) PrepareDiscSubtitleTransition(ctx context.Context, p identity.
 	return t, true, nil
 }
 
-func (t *DiscSubtitleTransition) CheckTx(ctx context.Context, tx *sql.Tx) error {
-	if t == nil || t.service == nil || t.current == nil || tx == nil {
+func (t *DiscSubtitleTransition) checkCallerSourceTx(ctx context.Context, tx *sql.Tx) error {
+	if t == nil || t.discSubtitleTransitionState == nil || t.closed.Load() || t.service == nil || t.current == nil || tx == nil {
 		return disc.ErrProtocol
 	}
 	if err := t.ctx.Err(); err != nil {
@@ -127,8 +134,26 @@ func (t *DiscSubtitleTransition) CheckTx(ctx context.Context, tx *sql.Tx) error 
 	if err := t.service.checkDiscSnapshotGenerationTx(ctx, tx, t.parent, generation); err != nil {
 		return err
 	}
+	return ctx.Err()
+}
+
+func (t *DiscSubtitleTransition) CheckTx(ctx context.Context, tx *sql.Tx) error {
+	if err := t.checkCallerSourceTx(ctx, tx); err != nil {
+		return err
+	}
 	if t.reader != nil {
 		if err := t.reader.CheckTx(ctx, tx); err != nil {
+			return err
+		}
+	}
+	if t.object != nil {
+		retained, ok := t.object.(interface {
+			CheckTx(context.Context, *sql.Tx) error
+		})
+		if !ok {
+			return disc.ErrRemoteUnqualified
+		}
+		if err := retained.CheckTx(ctx, tx); err != nil {
 			return err
 		}
 	}
@@ -190,6 +215,9 @@ func (t *DiscSubtitleTransition) claimTx(ctx context.Context, tx *sql.Tx) error 
 }
 
 func (t *DiscSubtitleTransition) AfterGenerationTx(ctx context.Context, tx *sql.Tx, session string, generation int, resource string) (string, error) {
+	if t == nil || t.discSubtitleTransitionState == nil || t.closed.Load() {
+		return "", disc.ErrProtocol
+	}
 	t.mu.Lock()
 	exact := t.tx == tx && t.claim != nil && !t.child
 	claim := t.claim
@@ -237,10 +265,19 @@ func (t *DiscSubtitleTransition) AfterGenerationTx(ctx context.Context, tx *sql.
 }
 
 func (t *DiscSubtitleTransition) Close() error {
-	if t == nil {
+	if t == nil || t.discSubtitleTransitionState == nil {
 		return nil
 	}
 	t.once.Do(func() {
+		t.closed.Store(true)
+		t.cancel()
+		t.mu.Lock()
+		contexts := t.contexts
+		t.contexts = nil
+		t.mu.Unlock()
+		for _, cancel := range contexts {
+			cancel()
+		}
 		if t.reader != nil {
 			t.closeErr = t.reader.Close()
 		}
@@ -259,5 +296,22 @@ func (t *DiscSubtitleTransition) Close() error {
 // Context carries only this original process transition to the existing
 // delivery callback. It never replaces the normal resource/current checks.
 func (t *DiscSubtitleTransition) Context(ctx context.Context) context.Context {
-	return context.WithValue(ctx, discSubtitleTransitionKey{}, t)
+	if t == nil || t.discSubtitleTransitionState == nil || t.closed.Load() {
+		return ctx
+	}
+	life, cancel := context.WithDeadline(ctx, t.pin.ExpiresAt)
+	stop := context.AfterFunc(t.ctx, cancel)
+	t.mu.Lock()
+	if t.closed.Load() || len(t.contexts) >= 16 {
+		t.mu.Unlock()
+		stop()
+		cancel()
+		return life
+	}
+	t.contexts = append(t.contexts, func() { stop(); cancel() })
+	t.mu.Unlock()
+	if t.ctx.Err() != nil {
+		cancel()
+	}
+	return context.WithValue(life, discSubtitleTransitionKey{}, t)
 }

@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"sync"
 
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/subtitles"
 )
@@ -15,21 +16,28 @@ import (
 // prepare/cache outside SQL, but its generation and V1 revision are not
 // committed separately. This original command is never recovered from rows.
 type privateSubtitleAcceptance struct {
-	service    *Service
-	ctx        context.Context
-	caller     Caller
-	original   row
-	change     Change
-	next       storedRequest
-	transition *playback.DiscSubtitleTransition
-	mu         sync.Mutex
-	tx         *sql.Tx
-	published  bool
-	request    string
-	result     row
+	service         *Service
+	ctx             context.Context
+	caller          Caller
+	original        row
+	change          Change
+	next            storedRequest
+	transition      *playback.DiscSubtitleTransition
+	mu              sync.Mutex
+	tx              *sql.Tx
+	published       bool
+	request         string
+	result          row
+	restart         bool
+	restartPosition int64
 }
 
 func (a *privateSubtitleAcceptance) current(ctx context.Context, tx *sql.Tx, generation int) error {
+	bound, err := dbwork.BindSnapshot(ctx, tx)
+	if err != nil {
+		return err
+	}
+	ctx = bound
 	if err := a.ctx.Err(); err != nil {
 		return err
 	}
@@ -53,7 +61,7 @@ func (a *privateSubtitleAcceptance) current(ctx context.Context, tx *sql.Tx, gen
 		expectedRevision++
 	}
 	expectedGeneration := a.original.generation
-	if generation != a.original.mediaGeneration {
+	if generation != a.original.mediaGeneration || published && a.change.Seek != nil && a.original.presentationView().converting() {
 		expectedGeneration++
 	}
 	if r.revision != expectedRevision || r.generation != expectedGeneration || r.media != a.original.media || r.mediaGeneration != generation || r.request != expectedRequest || r.item != a.original.item || r.device != a.original.device || r.startKey != a.original.startKey || r.startDigest != a.original.startDigest || r.queueID != a.original.queueID || r.entryID != a.original.entryID || r.ended != 0 {
@@ -101,6 +109,11 @@ func (a *privateSubtitleAcceptance) AfterGenerationTx(ctx context.Context, tx *s
 }
 
 func (a *privateSubtitleAcceptance) AcceptTx(ctx context.Context, tx *sql.Tx, plan subtitles.PlaybackPlan) error {
+	bound, err := dbwork.BindSnapshot(ctx, tx)
+	if err != nil {
+		return err
+	}
+	ctx = bound
 	if err := a.CheckTx(ctx, tx); err != nil {
 		return err
 	}
@@ -129,6 +142,11 @@ func (a *privateSubtitleAcceptance) AcceptTx(ctx context.Context, tx *sql.Tx, pl
 		a.service.adoptReplaced(ctx, &view, r.media, plan.Presentation, playback.V1Choice{AdminMaxVideoBitrateBPS: a.caller.AdminMaxVideoBitrateBPS, Remote: a.caller.Remote})
 		view.StartPositionMs = position
 		r.generation++
+	} else if a.change.Seek != nil && view.converting() {
+		r.generation++
+		view.StartPositionMs = position
+		a.restart = true
+		a.restartPosition = position
 	}
 	// Persist the ACTUAL mapped child resource in the current request. It must
 	// never retain the retired parent's resource ID as a future command target.
@@ -155,7 +173,7 @@ func (a *privateSubtitleAcceptance) AcceptTx(ctx context.Context, tx *sql.Tx, pl
 		bandwidth = int64(*a.change.ThroughputKbps)
 	}
 	now := a.service.now()
-	res, err := tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET state=?,request=?,presentation=?,media_generation=?,position_ms=?,start_position_ms=?,bandwidth_kbps=?,revision=revision+1,updated_ms=?,`+pausedSinceUpdate+` WHERE id=? AND revision=? AND media_session_id=? AND media_generation=? AND ended_ms=0`, state, string(request), string(presentation), plan.Generation, position, view.StartPositionMs, bandwidth, now.UnixMilli(), state, now.UnixMilli(), r.id, r.revision, r.media, plan.Generation)
+	res, err := tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET state=?,request=?,presentation=?,media_generation=?,generation=?,position_ms=?,start_position_ms=?,bandwidth_kbps=?,revision=revision+1,updated_ms=?,`+pausedSinceUpdate+` WHERE id=? AND revision=? AND media_session_id=? AND media_generation=? AND ended_ms=0`, state, string(request), string(presentation), plan.Generation, r.generation, position, view.StartPositionMs, bandwidth, now.UnixMilli(), state, now.UnixMilli(), r.id, r.revision, r.media, plan.Generation)
 	if err != nil {
 		return err
 	}
@@ -169,7 +187,7 @@ func (a *privateSubtitleAcceptance) AcceptTx(ctx context.Context, tx *sql.Tx, pl
 	if err = a.CheckTx(ctx, tx); err != nil {
 		return err
 	}
-	r.state, r.request, r.presentation, r.mediaGeneration, r.position, r.startPosition, r.bandwidth, r.updated = state, string(request), string(presentation), plan.Generation, position, view.StartPositionMs, bandwidth, now.UnixMilli()
+	r.state, r.request, r.presentation, r.mediaGeneration, r.position, r.startPosition, r.bandwidth, r.updated = state, string(request), string(presentation), plan.Generation, r.generation, position, view.StartPositionMs, bandwidth, now.UnixMilli()
 	r.revision++
 	if err = a.service.sessionEventsTx(ctx, tx, r, now, false); err != nil {
 		return err
@@ -252,6 +270,9 @@ func (s *Service) privateSubtitlePatch(ctx context.Context, c Caller, r row, cha
 	}
 	if a.result.id == "" {
 		return SessionView{}, true, ErrRevision
+	}
+	if a.restart {
+		s.Playback.RestartConversion(ctx, r.media, float64(a.restartPosition)/1000)
 	}
 	s.cancelPreparedFor(ctx, r.id)
 	s.hub.wake()

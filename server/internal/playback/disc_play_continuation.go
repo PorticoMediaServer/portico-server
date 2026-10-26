@@ -21,6 +21,8 @@ type discPlayBorrow struct {
 	caller       context.Context
 	current      playbackdisc.PreparationContinuationCheck
 	released     atomic.Bool
+	contextMu    sync.Mutex
+	contexts     []func()
 	acceptMu     sync.Mutex
 	activationTx *sql.Tx
 	activated    playbackdisc.PreparationAccepted
@@ -45,7 +47,17 @@ func (p *discPlayPreparation) borrowPrepared(ctx context.Context, current playba
 		p.custody.Unlock()
 		return nil, playbackdisc.ErrCurrent
 	}
-	b := &discPlayBorrow{owner: p, measurement: p.measurement, claim: p.operation.Claim, caller: ctx, current: current}
+	deadline, finite := p.ctx.Deadline()
+	if !finite {
+		p.custody.Unlock()
+		return nil, disc.ErrProtocol
+	}
+	life, cancel := context.WithDeadline(ctx, deadline)
+	stop := context.AfterFunc(p.ctx, cancel)
+	if p.ctx.Err() != nil {
+		cancel()
+	}
+	b := &discPlayBorrow{owner: p, measurement: p.measurement, claim: p.operation.Claim, caller: life, current: current, contexts: []func(){func() { stop(); cancel() }}}
 	p.borrow = b
 	return b, nil
 }
@@ -179,6 +191,13 @@ func (b *discPlayBorrow) release(ctx context.Context) error {
 	}
 	if !b.released.CompareAndSwap(false, true) {
 		return nil
+	}
+	b.contextMu.Lock()
+	contexts := b.contexts
+	b.contexts = nil
+	b.contextMu.Unlock()
+	for _, cancel := range contexts {
+		cancel()
 	}
 	p := b.owner
 	p.mu.Lock()

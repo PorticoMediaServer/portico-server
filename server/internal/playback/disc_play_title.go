@@ -23,7 +23,25 @@ func (b *discPlayBorrow) withContext(ctx context.Context) (context.Context, erro
 	if err := b.held(); err != nil {
 		return nil, err
 	}
-	return context.WithValue(ctx, discPlayBorrowKey{}, b), nil
+	deadline, finite := b.caller.Deadline()
+	if !finite {
+		return nil, playbackdisc.ErrCurrent
+	}
+	life, cancel := context.WithDeadline(ctx, deadline)
+	stop := context.AfterFunc(b.caller, cancel)
+	b.contextMu.Lock()
+	if b.released.Load() || len(b.contexts) >= 16 {
+		b.contextMu.Unlock()
+		stop()
+		cancel()
+		return nil, playbackdisc.ErrCurrent
+	}
+	b.contexts = append(b.contexts, func() { stop(); cancel() })
+	b.contextMu.Unlock()
+	if b.caller.Err() != nil {
+		cancel()
+	}
+	return context.WithValue(life, discPlayBorrowKey{}, b), nil
 }
 
 func measuredDiscTitleRef(snapshot playbackdisc.Snapshot) (*catalog.DiscTitleRef, error) {

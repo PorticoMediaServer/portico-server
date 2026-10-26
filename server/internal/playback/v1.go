@@ -28,6 +28,7 @@ type V1Choice struct {
 	UseStoredResume bool
 	// PendingActivation hides a candidate and defers personal state until acceptance.
 	PendingActivation bool
+	SubtitleOff       bool // actual initial V1 request; never an authority flag
 	// AssetID is the version to play; empty plays the item's first available one.
 	AssetID string
 	// AudioStream is the absolute source stream index the viewer chose.

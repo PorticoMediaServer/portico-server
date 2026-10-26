@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/disc"
 	"portico.local/server/internal/identity"
@@ -19,15 +20,16 @@ import (
 // This constructor accepts only an original, already admitted conditional
 // object. It supplies no weak-version promotion or full-capture fallback.
 type conditionalDiscMeasure struct {
-	DB       *sql.DB
-	Object   storage.RemoteObject
-	Tool     disc.Tool
-	Probe    assets.Probe
-	Template playbackdisc.Snapshot
-	TitleKey string
-	Current  func(context.Context) error
-	AcceptTx func(context.Context, *sql.Tx) error
-	Tools    func(context.Context) (playbackdisc.ToolPins, error)
+	DB        *sql.DB
+	Object    storage.RemoteObject
+	Tool      disc.Tool
+	Probe     assets.Probe
+	Template  playbackdisc.Snapshot
+	Requested catalog.DiscTitleRef
+	TitleKey  string
+	Current   func(context.Context) error
+	AcceptTx  func(context.Context, *sql.Tx) error
+	Tools     func(context.Context) (playbackdisc.ToolPins, error)
 }
 
 type conditionalDiscFactProof struct {
@@ -61,7 +63,16 @@ func (p *conditionalDiscFactProof) CheckTx(ctx context.Context, tx *sql.Tx) erro
 	if tx == nil {
 		return disc.ErrProtocol
 	}
-	return p.check(ctx)
+	if err := p.check(ctx); err != nil {
+		return err
+	}
+	retained, ok := p.object.(interface {
+		CheckTx(context.Context, *sql.Tx) error
+	})
+	if !ok {
+		return disc.ErrRemoteUnqualified
+	}
+	return retained.CheckTx(ctx, tx)
 }
 
 // measureConditionalDiscPlay consumes Object only after the outside-SQL check.
@@ -123,7 +134,7 @@ func measureConditionalDiscPlay(ctx context.Context, o conditionalDiscMeasure) (
 	if err != nil {
 		return nil, err
 	}
-	title, err := measuredDiscTitle(structure, o.TitleKey)
+	title, err := measuredRequestedDiscTitle(o.Template, structure, o.TitleKey, o.Requested)
 	if err != nil {
 		return nil, err
 	}
@@ -165,6 +176,15 @@ func measureConditionalDiscPlay(ctx context.Context, o conditionalDiscMeasure) (
 	measured, err := measuredDiscSnapshot(o.Template, playbackdisc.Input{Conditional: &playbackdisc.Conditional{Version: version}}, pins, structure, title, revision, facts)
 	if err != nil {
 		return nil, err
+	}
+	if o.Requested.ID != "" {
+		ref, e := measuredDiscTitleRef(measured)
+		if e != nil {
+			return nil, e
+		}
+		if *ref != o.Requested {
+			return nil, ErrStaleOffer
+		}
 	}
 	return &discPlayMeasurement{ctx: ctx, input: input, probe: proof, original: o.AcceptTx, snapshot: measured}, nil
 }
@@ -254,4 +274,20 @@ func discPlayConfiguredInputs(tool disc.Tool, probe assets.Probe) bool {
 		}
 	}
 	return true
+}
+
+func measuredRequestedDiscTitle(template playbackdisc.Snapshot, structure disc.Probe, key string, requested catalog.DiscTitleRef) (disc.Title, error) {
+	if requested.ID != "" {
+		selected, err := catalog.MeasuredDiscTitleKey(template.Source.AssetID, template.Source.InventoryObjectID, template.Source.InventoryRevision, structure, requested.ID)
+		if err != nil {
+			return disc.Title{}, ErrStaleOffer
+		}
+		if key != "" && key != selected {
+			return disc.Title{}, ErrStaleOffer
+		}
+		key = selected
+	} else if requested.Revision != "" {
+		return disc.Title{}, ErrStaleOffer
+	}
+	return measuredDiscTitle(structure, key)
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/disc"
 	"portico.local/server/internal/ownedcapture"
@@ -118,7 +119,17 @@ func (p *discPlayPreparation) checkTicketTx(ctx context.Context, tx *sql.Tx, ope
 
 // checkOriginalTx retains only worker/original-source proof. It cannot supply
 // the separate current-POST continuation required for binding or acceptance.
-func (p *discPlayPreparation) checkOriginalTx(ctx context.Context, tx *sql.Tx, candidate playbackdisc.Preparation) error {
+func (p *discPlayPreparation) checkOriginalTx(ctx context.Context, tx *sql.Tx, candidate playbackdisc.Preparation) (err error) {
+	defer func() {
+		if err != nil && p != nil && p.ctx != nil && (ctx == nil || ctx.Err() == nil || p.ctx.Err() != nil) {
+			p.mu.Lock()
+			if p.failure == nil && !p.accepted {
+				p.failure = err
+			}
+			p.mu.Unlock()
+			p.cancel()
+		}
+	}()
 	if ctx == nil || tx == nil {
 		return disc.ErrProtocol
 	}
@@ -161,7 +172,7 @@ func (p *discPlayPreparation) checkClaim(ctx context.Context) error {
 // The source producer itself restricts a ticket to a genuine capture-only
 // acquisition mode. A conditional origin must take the separate range path.
 // No session, decoder grant, queue transfer or background acceptance occurs.
-func (p *discPlayPreparation) prepare(tool disc.Tool, probe assets.Probe, tools func(context.Context) (playbackdisc.ToolPins, error), titleKey string) (err error) {
+func (p *discPlayPreparation) prepare(tool disc.Tool, probe assets.Probe, tools func(context.Context) (playbackdisc.ToolPins, error), titleKey string, requested catalog.DiscTitleRef) (err error) {
 	if !p.started.CompareAndSwap(false, true) {
 		return playbackdisc.ErrCurrent
 	}
@@ -194,7 +205,7 @@ func (p *discPlayPreparation) prepare(tool disc.Tool, probe assets.Probe, tools 
 		if e != nil {
 			return e
 		}
-		measured, err = measureConditionalDiscPlay(p.ctx, conditionalDiscMeasure{DB: p.db, Object: object, Tool: tool, Probe: probe, Template: template, TitleKey: titleKey, Current: p.checkClaim, AcceptTx: p.checkClaimTx, Tools: tools})
+		measured, err = measureConditionalDiscPlay(p.ctx, conditionalDiscMeasure{DB: p.db, Object: object, Tool: tool, Probe: probe, Template: template, TitleKey: titleKey, Requested: requested, Current: p.checkClaim, AcceptTx: p.checkClaimTx, Tools: tools})
 	} else {
 		receipt, e := p.captures.CapturePlayTicket(p.ctx, p.ticket, p.checkClaimTx)
 		if e != nil {
@@ -207,7 +218,7 @@ func (p *discPlayPreparation) prepare(tool disc.Tool, probe assets.Probe, tools 
 		if e != nil {
 			return e
 		}
-		measured, err = measureCapturedDiscPlay(p.ctx, capturedDiscMeasure{DB: p.db, Reader: reader, Tool: tool, Probe: probe, Template: template, TitleKey: titleKey, Current: p.checkClaim, AcceptTx: p.checkClaimTx, Tools: tools})
+		measured, err = measureCapturedDiscPlay(p.ctx, capturedDiscMeasure{DB: p.db, Reader: reader, Tool: tool, Probe: probe, Template: template, TitleKey: titleKey, Requested: requested, Current: p.checkClaim, AcceptTx: p.checkClaimTx, Tools: tools})
 	}
 	if err != nil {
 		return err

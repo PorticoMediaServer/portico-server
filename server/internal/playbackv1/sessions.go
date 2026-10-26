@@ -755,7 +755,7 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	// A private resource is not a shared catalogue track. Initial automatic
 	// text selection is initialized from sealed streams by the legacy writer;
 	// explicit/carry selection needs the separate accepted private transition.
-	if t.disc != nil && (!video || t.part != 0 || request.Subtitles != nil || request.SubtitleOffsetMs != 0 || carry != nil && carry.SubtitleMode == "on") {
+	if t.disc != nil && (!video || t.part != 0 || request.Subtitles != nil && request.Subtitles.TrackID != TrackOff && request.Subtitles.TrackID != "" || request.SubtitleOffsetMs != 0 || carry != nil && carry.SubtitleMode == "on") {
 		return playback.Session{}, Presentation{}, playback.ErrIncompatible
 	}
 	// The subtitle track, known before planning: a styled or image track an
@@ -793,6 +793,7 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 
 	var media playback.Session
 	if t.disc != nil {
+		choice.SubtitleOff = request.Subtitles != nil && (request.Subtitles.TrackID == TrackOff || request.Subtitles.TrackID == "")
 		media, err = t.disc.CreateV1(ctx, c.Principal, t.item, t.requestID, choice, t.replacing)
 	} else {
 		media, err = s.Playback.CreateV1(ctx, c.Principal, t.item, t.requestID, choice, t.replacing)

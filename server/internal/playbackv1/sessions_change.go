@@ -111,7 +111,7 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 	}
 	if change.Subtitles != nil || change.SubtitleOffsetMs != nil {
 		if view, private, err := s.privateSubtitlePatch(ctx, c, r, change); private || err != nil {
-			return view, err
+			return view, discStartError(err)
 		}
 	}
 	stored := r.stored()
