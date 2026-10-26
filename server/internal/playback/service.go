@@ -51,7 +51,8 @@ type Session struct {
 	State             string     `json:"state,omitempty"`
 }
 type Service struct {
-	discInputs *discPlayInputs // exact private disc readers; no start producer
+	discFactory *discPlayFactory
+	discInputs  *discPlayInputs // exact private disc readers; no start producer
 
 	// prefetched counts bytes served to private presentations (audio_plan_v2.go).
 	prefetchMu      sync.Mutex
@@ -1000,6 +1001,9 @@ func (s *Service) resolveGrant(ctx context.Context, grant string, initialAudio b
 func (s *Service) Cleanup() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	if s.discFactory != nil {
+		_ = s.discFactory.sweepExpired(ctx)
+	}
 	if s.discInputs != nil {
 		s.discInputs.cleanup.Lock()
 		defer s.discInputs.cleanup.Unlock()

@@ -1115,6 +1115,10 @@ func (s *Service) startItem(ctx context.Context, c Caller, key, startDigest stri
 func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDigest string, req StartRequest, base row, stored storedRequest) (SessionView, bool, error) {
 	release := s.admission.hold(c.Principal.AccountID)
 	defer release()
+	ctx, preparationErr := s.prepareDiscStart(ctx, c, key, startDigest, req, base, stored)
+	if preparationErr != nil {
+		return SessionView{}, false, preparationErr
+	}
 	var continuation *playback.DiscPlayContinuation
 	if s.Playback != nil {
 		var err error

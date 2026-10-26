@@ -13,6 +13,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/ownedcapture"
 	"portico.local/server/internal/playbackdisc"
+	"portico.local/server/internal/storage"
 	"portico.local/server/internal/supervise"
 )
 
@@ -34,15 +35,17 @@ type discPlayStart struct {
 }
 
 type discPlayFactoryOptions struct {
-	DB         *sql.DB
-	Identity   *identity.Service
-	Store      *playbackdisc.Store
-	Captures   *ownedcapture.Service
-	Tool       disc.Tool
-	Probe      assets.Probe
-	Tools      func(context.Context) (playbackdisc.ToolPins, error)
-	Limits     playbackdisc.PreparationLimits
-	ProbeSlots chan struct{} // the existing configured playback probe budget
+	Lifetime    context.Context
+	DB          *sql.DB
+	Identity    *identity.Service
+	Store       *playbackdisc.Store
+	Captures    *ownedcapture.Service
+	Tool        disc.Tool
+	Probe       assets.Probe
+	Tools       func(context.Context) (playbackdisc.ToolPins, error)
+	Limits      playbackdisc.PreparationLimits
+	Conditional DiscConditionalSource
+	ProbeSlots  chan struct{} // the existing configured playback probe budget
 }
 
 type discPlayFactoryEntry struct {
@@ -65,7 +68,7 @@ type discPlayFactory struct {
 }
 
 func newDiscPlayFactory(o discPlayFactoryOptions) (*discPlayFactory, error) {
-	if o.DB == nil || o.Identity == nil || o.Store == nil || o.Captures == nil || o.Tools == nil || !discPlayConfiguredInputs(o.Tool, o.Probe) || cap(o.ProbeSlots) < 1 || o.Limits.Active < 1 || o.Limits.Active > 256 || o.Limits.Active > cap(o.ProbeSlots) || o.Limits.Retained < o.Limits.Active || o.Limits.Retained > 65536 || o.Limits.PerDevice < 1 || o.Limits.PerDevice > o.Limits.Active {
+	if o.Lifetime == nil || o.Lifetime.Done() == nil || o.DB == nil || o.Identity == nil || o.Store == nil || o.Captures == nil || o.Tools == nil || !discPlayConfiguredInputs(o.Tool, o.Probe) || cap(o.ProbeSlots) < 1 || o.Limits.Active < 1 || o.Limits.Active > 256 || o.Limits.Active > cap(o.ProbeSlots) || o.Limits.Retained < o.Limits.Active || o.Limits.Retained > 65536 || o.Limits.PerDevice < 1 || o.Limits.PerDevice > o.Limits.Active {
 		return nil, disc.ErrProtocol
 	}
 	return &discPlayFactory{o: o, entries: make(map[playbackdisc.PreparationKey]*discPlayFactoryEntry)}, nil
@@ -132,7 +135,7 @@ func (f *discPlayFactory) beginCaptured(ctx context.Context, seed discPlayStart)
 	f.mu.Unlock()
 	// An initialization failure is still an original-key tombstone. No later
 	// request may renew its deadline or reinterpret the same key under new facts.
-	err := f.initializeCaptured(life, e)
+	err := f.initialize(life, e)
 	if err != nil {
 		e.failure = err
 		cancel()
@@ -285,7 +288,7 @@ func (f *discPlayFactory) sweepExpired(ctx context.Context) error {
 	return err
 }
 
-func (f *discPlayFactory) initializeCaptured(ctx context.Context, e *discPlayFactoryEntry) (err error) {
+func (f *discPlayFactory) initialize(ctx context.Context, e *discPlayFactoryEntry) (err error) {
 	started := false
 	defer func() {
 		if !started {
@@ -296,6 +299,26 @@ func (f *discPlayFactory) initializeCaptured(ctx context.Context, e *discPlayFac
 	ticket, err := f.o.Captures.NewPlayCaptureTicket(ctx, ownedcapture.Request{Principal: seed.Principal, AssetID: seed.AssetID})
 	if err != nil {
 		return err
+	}
+	var conditional playbackdisc.Source
+	if f.o.Conditional != nil {
+		view, e := dbwork.BeginSnapshot(ctx, f.o.DB)
+		if e != nil {
+			return e
+		}
+		if e = seed.Check(view.Context(), view.Tx()); e == nil {
+			conditional, e = f.o.Conditional.ResolveTx(view.Context(), view.Tx(), seed.Principal, seed.AssetID, ticket.ID())
+		}
+		view.Rollback()
+		// Only a source-issued absence of the conditional adapter may try the
+		// capture producer. That producer independently refuses every origin
+		// for which its full-copy mode is not actually unavoidable/admitted.
+		if e != nil && !errors.Is(e, storage.ErrRemoteRange) {
+			return e
+		}
+		if e == nil && conditional.AssetID != seed.AssetID {
+			return disc.ErrProtocol
+		}
 	}
 	deadline, _ := ctx.Deadline()
 	var pending playbackdisc.Preparation
@@ -328,9 +351,17 @@ func (f *discPlayFactory) initializeCaptured(ctx context.Context, e *discPlayFac
 		if family.DeviceID != seed.Key.DeviceID || !family.AuthorizationHorizon.After(time.Now()) || seed.Principal.ExpiresAt.UnixMilli() < deadline.UnixMilli() {
 			return identity.ErrUnauthorized
 		}
-		actual, err := f.o.Captures.ResolvePlayCaptureTx(checkCtx, tx, ticket)
-		if err != nil {
-			return err
+		actual := conditional
+		if conditional.AssetID != "" {
+			if err = f.o.Conditional.CheckTx(checkCtx, tx, conditional); err != nil {
+				return err
+			}
+		} else {
+			captured, e := f.o.Captures.ResolvePlayCaptureTx(checkCtx, tx, ticket)
+			if e != nil {
+				return e
+			}
+			actual = playbackdisc.Source(captured)
 		}
 		var tokenExpiry string
 		if err = tx.QueryRowContext(checkCtx, `SELECT expires_at FROM authorization_family_tokens WHERE token_hash=? AND family_id=? AND generation=? AND retired=0`, seed.Principal.Hash, family.ID, family.TokenGeneration).Scan(&tokenExpiry); err != nil {
@@ -352,7 +383,7 @@ func (f *discPlayFactory) initializeCaptured(ctx context.Context, e *discPlayFac
 		binding = playbackdisc.PreparationBinding{
 			Actor: playbackdisc.Actor{ServerID: seed.Principal.ServerID, Authority: seed.Principal.Authority, AccountID: seed.Principal.AccountID, ProfileID: seed.Principal.ProfileID,
 				DeviceID: family.DeviceID, FamilyID: family.ID, Grant: seed.Principal.Grant, SessionHash: seed.Principal.Hash, Epoch: int64(seed.Principal.Epoch), TokenGeneration: family.TokenGeneration, OriginalHorizonMs: family.AuthorizationHorizon.UnixMilli()},
-			StartBodyDigest: seed.BodyDigest, ItemID: seed.ItemID, AssetID: seed.AssetID, PartIndex: seed.PartIndex, Source: playbackdisc.Source(actual), Queue: queue,
+			StartBodyDigest: seed.BodyDigest, ItemID: seed.ItemID, AssetID: seed.AssetID, PartIndex: seed.PartIndex, Source: actual, Queue: queue,
 			ReplacesLegacySessionID: seed.Replaces.SessionID, ReplacesGeneration: seed.Replaces.Generation, OriginalTokenExpiresMs: expires.UnixMilli(), DeadlineMs: deadline.UnixMilli(),
 		}
 		pending, err = f.o.Store.AdmitPreparationTx(checkCtx, tx, identity.Token(), seed.Key, binding, f.o.Limits, check)
@@ -385,7 +416,7 @@ func (f *discPlayFactory) initializeCaptured(ctx context.Context, e *discPlayFac
 		return err
 	}
 	claim = claimed
-	e.operation, err = newDiscPlayPreparation(ctx, discPlayPreparationOptions{DB: f.o.DB, Store: f.o.Store, Captures: f.o.Captures, Ticket: ticket, Claim: claim, Original: check})
+	e.operation, err = newDiscPlayPreparation(ctx, discPlayPreparationOptions{DB: f.o.DB, Store: f.o.Store, Captures: f.o.Captures, Ticket: ticket, Conditional: f.o.Conditional, ConditionalSource: conditional, Claim: claim, Original: check})
 	if err != nil {
 		return err
 	}
@@ -394,7 +425,7 @@ func (f *discPlayFactory) initializeCaptured(ctx context.Context, e *discPlayFac
 	supervise.Go("playback.disc-play-prepare", func() {
 		defer close(e.done)
 		defer func() { <-f.o.ProbeSlots }()
-		if err := e.operation.prepareCaptured(f.o.Tool, f.o.Probe, f.o.Tools, seed.TitleKey); err != nil {
+		if err := e.operation.prepare(f.o.Tool, f.o.Probe, f.o.Tools, seed.TitleKey); err != nil {
 			e.cancel()
 			_ = e.operation.Close(context.Background())
 		}

@@ -19,14 +19,16 @@ import (
 // ID can recreate this value. The actual start owner must retain it by its
 // original key and close it outside SQL on every terminal outcome.
 type discPlayPreparation struct {
-	ctx      context.Context
-	cancel   context.CancelFunc
-	db       *sql.DB
-	store    *playbackdisc.Store
-	captures *ownedcapture.Service
-	ticket   *ownedcapture.PlayCaptureTicket
-	original playbackdisc.PreparationCheck
-	start    discPlayStart // immutable first invocation; never replaced on a retry
+	ctx               context.Context
+	cancel            context.CancelFunc
+	db                *sql.DB
+	store             *playbackdisc.Store
+	captures          *ownedcapture.Service
+	ticket            *ownedcapture.PlayCaptureTicket
+	conditional       DiscConditionalSource
+	conditionalSource playbackdisc.Source
+	original          playbackdisc.PreparationCheck
+	start             discPlayStart // immutable first invocation; never replaced on a retry
 
 	mu          sync.Mutex
 	operation   playbackdisc.Preparation
@@ -45,12 +47,14 @@ type discPlayPreparation struct {
 }
 
 type discPlayPreparationOptions struct {
-	DB       *sql.DB
-	Store    *playbackdisc.Store
-	Captures *ownedcapture.Service
-	Ticket   *ownedcapture.PlayCaptureTicket
-	Claim    playbackdisc.PreparationClaim
-	Original playbackdisc.PreparationCheck
+	DB                *sql.DB
+	Store             *playbackdisc.Store
+	Captures          *ownedcapture.Service
+	Ticket            *ownedcapture.PlayCaptureTicket
+	Conditional       DiscConditionalSource
+	ConditionalSource playbackdisc.Source
+	Claim             playbackdisc.PreparationClaim
+	Original          playbackdisc.PreparationCheck
 }
 
 func newDiscPlayPreparation(ctx context.Context, o discPlayPreparationOptions) (*discPlayPreparation, error) {
@@ -61,7 +65,7 @@ func newDiscPlayPreparation(ctx context.Context, o discPlayPreparationOptions) (
 		return nil, err
 	}
 	life, cancel := context.WithCancel(ctx)
-	p := &discPlayPreparation{ctx: life, cancel: cancel, db: o.DB, store: o.Store, captures: o.Captures, ticket: o.Ticket, original: o.Original}
+	p := &discPlayPreparation{ctx: life, cancel: cancel, db: o.DB, store: o.Store, captures: o.Captures, ticket: o.Ticket, original: o.Original, conditional: o.Conditional, conditionalSource: o.ConditionalSource}
 	view, err := dbwork.BeginSnapshot(life, o.DB)
 	if err != nil {
 		cancel()
@@ -95,6 +99,12 @@ func newDiscPlayPreparation(ctx context.Context, o discPlayPreparationOptions) (
 func (p *discPlayPreparation) checkTicketTx(ctx context.Context, tx *sql.Tx, operation playbackdisc.Preparation) error {
 	if err := p.ctx.Err(); err != nil {
 		return err
+	}
+	if p.conditionalSource.AssetID != "" {
+		if p.conditional == nil || p.conditionalSource != operation.Binding.Source {
+			return playbackdisc.ErrCurrent
+		}
+		return p.conditional.CheckTx(ctx, tx, p.conditionalSource)
 	}
 	actual, err := p.captures.ResolvePlayCaptureTx(ctx, tx, p.ticket)
 	if err != nil {
@@ -151,7 +161,7 @@ func (p *discPlayPreparation) checkClaim(ctx context.Context) error {
 // The source producer itself restricts a ticket to a genuine capture-only
 // acquisition mode. A conditional origin must take the separate range path.
 // No session, decoder grant, queue transfer or background acceptance occurs.
-func (p *discPlayPreparation) prepareCaptured(tool disc.Tool, probe assets.Probe, tools func(context.Context) (playbackdisc.ToolPins, error), titleKey string) (err error) {
+func (p *discPlayPreparation) prepare(tool disc.Tool, probe assets.Probe, tools func(context.Context) (playbackdisc.ToolPins, error), titleKey string) (err error) {
 	if !p.started.CompareAndSwap(false, true) {
 		return playbackdisc.ErrCurrent
 	}
@@ -171,33 +181,34 @@ func (p *discPlayPreparation) prepareCaptured(tool disc.Tool, probe assets.Probe
 	if err = p.checkClaim(p.ctx); err != nil {
 		return err
 	}
-	receipt, err := p.captures.CapturePlayTicket(p.ctx, p.ticket, p.checkClaimTx)
-	if err != nil {
-		return err
-	}
 	p.mu.Lock()
-	p.receipt = receipt
 	operation := p.operation
 	p.mu.Unlock()
-	reader, err := p.captures.Open(p.ctx, receipt)
-	if err != nil {
-		return err
-	}
-	readerOwned := true
-	defer func() {
-		if readerOwned {
-			reader.Close()
+	template := playbackdisc.Snapshot{Actor: operation.Binding.Actor, Operation: operation.Binding.Queue, Source: operation.Binding.Source}
+	var measured *discPlayMeasurement
+	if p.conditionalSource.AssetID != "" {
+		object, e := p.conditional.Open(p.ctx, p.conditionalSource, p.checkClaimTx)
+		if e != nil {
+			return e
 		}
-	}()
-	measured, err := measureCapturedDiscPlay(p.ctx, capturedDiscMeasure{
-		DB: p.db, Reader: reader, Tool: tool, Probe: probe,
-		Template: playbackdisc.Snapshot{Actor: operation.Binding.Actor, Operation: operation.Binding.Queue, Source: operation.Binding.Source},
-		TitleKey: titleKey, Current: p.checkClaim, AcceptTx: p.checkClaimTx, Tools: tools,
-	})
+		measured, err = measureConditionalDiscPlay(p.ctx, conditionalDiscMeasure{DB: p.db, Object: object, Tool: tool, Probe: probe, Template: template, TitleKey: titleKey, Current: p.checkClaim, AcceptTx: p.checkClaimTx, Tools: tools})
+	} else {
+		receipt, e := p.captures.CapturePlayTicket(p.ctx, p.ticket, p.checkClaimTx)
+		if e != nil {
+			return e
+		}
+		p.mu.Lock()
+		p.receipt = receipt
+		p.mu.Unlock()
+		reader, e := p.captures.Open(p.ctx, receipt)
+		if e != nil {
+			return e
+		}
+		measured, err = measureCapturedDiscPlay(p.ctx, capturedDiscMeasure{DB: p.db, Reader: reader, Tool: tool, Probe: probe, Template: template, TitleKey: titleKey, Current: p.checkClaim, AcceptTx: p.checkClaimTx, Tools: tools})
+	}
 	if err != nil {
 		return err
 	}
-	readerOwned = false // the successful measurement now owns the entire wrapper
 	good := false
 	defer func() {
 		if !good {

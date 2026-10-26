@@ -13,12 +13,13 @@ import (
 )
 
 type discPlayInputs struct {
-	store    *playbackdisc.Store
-	captures *ownedcapture.Service
-	tool     disc.Tool
-	tools    func(context.Context) (playbackdisc.ToolPins, error)
-	cleanup  sync.Mutex
-	after    string // bounded maintenance cursor; advances only after COMMIT
+	store       *playbackdisc.Store
+	captures    *ownedcapture.Service
+	tool        disc.Tool
+	tools       func(context.Context) (playbackdisc.ToolPins, error)
+	conditional DiscConditionalSource
+	cleanup     sync.Mutex
+	after       string // bounded maintenance cursor; advances only after COMMIT
 }
 
 // ConfigureDiscInputs installs no start producer or preparation202 branch. It
@@ -71,10 +72,10 @@ func (h *HLS) openPrivateDiscInput(ctx context.Context, id string) (*assets.Play
 		return nil, true, disc.ErrRemoteUnqualified
 	}
 	s, inputs := h.discPlayback, h.discPlayback.discInputs
-	input, err := openCapturedDiscPresentation(ctx, discPlayReaderOptions{
+	input, err := openPrivateDiscPresentation(ctx, discPlayReaderOptions{
 		DB: h.db, Store: inputs.store, Captures: inputs.captures,
 		Key: key, Snapshot: snapshot,
-		Tool: inputs.tool, Tools: inputs.tools, Current: s.checkActiveDiscSnapshotTx,
+		Tool: inputs.tool, Tools: inputs.tools, Current: s.checkActiveDiscSnapshotTx, Conditional: inputs.conditional,
 	})
 	return input, true, err
 }

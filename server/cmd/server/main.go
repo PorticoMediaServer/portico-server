@@ -16,8 +16,8 @@ import (
 	"os/signal"
 	"path/filepath"
 	adminops "portico.local/server/internal/administration"
-	"portico.local/server/internal/assets"
 	"portico.local/server/internal/archive7z"
+	"portico.local/server/internal/assets"
 	"portico.local/server/internal/audiofacts"
 	"portico.local/server/internal/backup"
 	"portico.local/server/internal/buildinfo"
@@ -741,14 +741,18 @@ func run() (runErr error) {
 	recordingsRoot := ""
 	doneRecording := reporter.step("recording", "Open recording storage")
 	recordingStore, e := dvr.New(db, liveSources, recordingaccess.Policy{Cached: control}.Durable)
-	if e != nil { return e }
+	if e != nil {
+		return e
+	}
 	var recorder *recordingmedia.Driver
 	e = recordingroot.Activate(ctx, db, adminOperations, ident, state, operatorRecordingsRoot, func(root string) (recordingroot.StartupBinding, error) {
 		prepared, err := recordingmedia.New(root, ffmpegTool, ffprobeTool, filepath.SplitList(os.Getenv("PORTICO_LINEAR_DECODER_LIBRARIES")))
-		if err != nil { return recordingroot.StartupBinding{}, err }
+		if err != nil {
+			return recordingroot.StartupBinding{}, err
+		}
 		return recordingroot.StartupBinding{
 			Rollback: func() { _ = prepared.Close() },
-			Verify: prepared.ValidateRootBinding,
+			Verify:   prepared.ValidateRootBinding,
 			Publish: func() {
 				recorder = prepared
 				recordingsRoot = root
@@ -757,7 +761,9 @@ func run() (runErr error) {
 			},
 		}, nil
 	})
-	if e != nil { return errors.New("private recording storage configuration could not be accepted") }
+	if e != nil {
+		return errors.New("private recording storage configuration could not be accepted")
+	}
 	recordingLocks, e := livechannels.NewPhysicalLocks(storagepaths.Path(state, "live-source-locks"))
 	if e != nil {
 		_ = recorder.Close()
@@ -1072,7 +1078,9 @@ func run() (runErr error) {
 		console.AppliedTemporaryDirectory = &appliedConversionSetting
 		console.AppliedFFmpegPath = &startupMedia.FFmpegPath
 		console.RecordingRoot, e = recordingroot.Runtime(adminOperations, recordingStore, recordingsRoot, operatorRecordingsRoot != "")
-		if e != nil { return errors.New("recording folder admission could not be initialized") }
+		if e != nil {
+			return errors.New("recording folder admission could not be initialized")
+		}
 	}
 	doneConsole(e)
 	if e != nil {
@@ -1263,6 +1271,11 @@ func run() (runErr error) {
 	}
 	if ownedCaptures != nil {
 		defer ownedCaptures.Close()
+		defer func() {
+			stop, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			_ = player.CloseDiscPlay(stop)
+		}()
 		ownedCaptures.Start(ctx)
 		apiDependencies.DiscCaptures = ownedCaptures
 	}

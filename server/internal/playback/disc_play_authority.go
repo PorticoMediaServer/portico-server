@@ -21,6 +21,14 @@ func (s *Service) checkActiveDiscSnapshotTx(ctx context.Context, tx *sql.Tx, sna
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if snapshot.Input.Conditional != nil {
+		if s.discInputs == nil || s.discInputs.conditional == nil {
+			return playbackdisc.ErrCurrent
+		}
+		if err := s.discInputs.conditional.CheckTx(ctx, tx, snapshot.Source); err != nil {
+			return err
+		}
+	}
 	var principal identity.Principal
 	var item, expires string
 	err := tx.QueryRowContext(ctx, `SELECT ps.session_hash,s.account_id,s.profile_id,s.authority,s.role,s.epoch,pid(i.public_id),ps.expires_at

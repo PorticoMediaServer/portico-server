@@ -13,6 +13,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/disc"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/mediasource"
 	"portico.local/server/internal/ownedcapture"
 	"portico.local/server/internal/playbackdisc"
 )
@@ -21,21 +22,22 @@ import (
 // token/deadline and worker/continuation checks. The consumer supplies the exact
 // accepted legacy key AND snapshot ID. No asset/digest/latest lookup is offered.
 type discPlayReaderOptions struct {
-	DB       *sql.DB
-	Store    *playbackdisc.Store
-	Captures *ownedcapture.Service
-	Key      playbackdisc.Key
-	Snapshot string
-	Tool     disc.Tool
-	Tools    func(context.Context) (playbackdisc.ToolPins, error)
-	Current  playbackdisc.Check
+	DB          *sql.DB
+	Store       *playbackdisc.Store
+	Captures    *ownedcapture.Service
+	Key         playbackdisc.Key
+	Snapshot    string
+	Tool        disc.Tool
+	Tools       func(context.Context) (playbackdisc.ToolPins, error)
+	Current     playbackdisc.Check
+	Conditional DiscConditionalSource
 }
 
-// openCapturedDiscPresentation opens a NEW independently checked reader for an
+// openPrivateDiscPresentation opens a NEW independently checked reader for an
 // ACTIVE immutable snapshot. It never borrows a preparation's descriptor or
 // 120s context. The normalized presentation pin commits before descriptor/hash
 // work or helper launch. Retain the returned whole input until its child exits.
-func openCapturedDiscPresentation(ctx context.Context, o discPlayReaderOptions) (_ *assets.PlaybackInput, err error) {
+func openPrivateDiscPresentation(ctx context.Context, o discPlayReaderOptions) (_ *assets.PlaybackInput, err error) {
 	if ctx == nil || ctx.Done() == nil || dbwork.Snapshot(ctx) != nil || o.DB == nil || o.Store == nil || o.Captures == nil || o.Current == nil || o.Tools == nil || o.Key.SessionID == "" || o.Key.Generation < 1 || o.Snapshot == "" {
 		return nil, disc.ErrProtocol
 	}
@@ -54,7 +56,7 @@ func openCapturedDiscPresentation(ctx context.Context, o discPlayReaderOptions) 
 		if e != nil {
 			return e
 		}
-		if original.Input.Captured == nil || original.Input.Conditional != nil || original.Tools != tools {
+		if original.Tools != tools || (original.Input.Captured == nil) == (original.Input.Conditional == nil) || original.Input.Conditional != nil && o.Conditional == nil {
 			return disc.ErrRemoteUnqualified
 		}
 		var until int64
@@ -91,58 +93,75 @@ func openCapturedDiscPresentation(ctx context.Context, o discPlayReaderOptions) 
 		}
 	}()
 	var retired atomic.Bool
-	current := func(check context.Context) (checkErr error) {
+	currentTx := func(check context.Context, tx *sql.Tx) (checkErr error) {
 		defer func() {
 			if checkErr != nil {
 				retired.Store(true)
 				cancel()
 			}
 		}()
-		if retired.Load() || life.Err() != nil {
+		if tx == nil || retired.Load() || life.Err() != nil {
 			return playbackdisc.ErrCurrent
 		}
-		validate := func(check context.Context, tx *sql.Tx) error {
-			actual, e := o.Store.ResolvePinTx(check, tx, pin, o.Current)
-			if e != nil {
-				return e
-			}
-			if !reflect.DeepEqual(actual, original) {
-				return playbackdisc.ErrCurrent
-			}
-			return life.Err()
-		}
-		if tx := dbwork.Snapshot(check); tx != nil {
-			return validate(check, tx)
-		}
-		view, e := dbwork.BeginSnapshot(check, o.DB)
+		actual, e := o.Store.ResolvePinTx(check, tx, pin, o.Current)
 		if e != nil {
 			return e
 		}
+		if !reflect.DeepEqual(actual, original) {
+			return playbackdisc.ErrCurrent
+		}
+		return life.Err()
+	}
+	current := func(check context.Context) error {
+		if tx := dbwork.Snapshot(check); tx != nil {
+			return currentTx(check, tx)
+		}
+		view, e := dbwork.BeginSnapshot(check, o.DB)
+		if e != nil {
+			retired.Store(true)
+			cancel()
+			return e
+		}
 		defer view.Rollback()
-		return validate(view.Context(), view.Tx())
+		return currentTx(view.Context(), view.Tx())
 	}
 	if err = current(life); err != nil {
 		return nil, err
 	}
-	reader, err := o.Captures.Open(life, original.Input.Captured.Receipt)
-	if err != nil {
-		return nil, err
-	}
-	readerOwned := true
-	defer func() {
-		if readerOwned {
-			reader.Close()
-		}
-	}()
 	title, err := measuredDiscTitle(original.Disc.Structure, original.Disc.SelectedTitleKey)
 	if err != nil {
 		return nil, err
 	}
-	input, err := capturedDiscInput(life, o.Tool, reader, original.Disc.Structure, title, current)
+	var input *assets.PlaybackInput
+	if original.Input.Captured != nil {
+		reader, e := o.Captures.Open(life, original.Input.Captured.Receipt)
+		if e != nil {
+			return nil, e
+		}
+		// The captured constructor consumes the complete reader on every valid
+		// outside-SQL path. Never detach its raw file from source/receipt proof.
+		input, err = capturedDiscInput(life, o.Tool, reader, original.Disc.Structure, title, current)
+	} else {
+		object, e := o.Conditional.Open(life, original.Source, func(check context.Context, tx *sql.Tx) error {
+			return currentTx(check, tx)
+		})
+		if e != nil {
+			return nil, e
+		}
+		version := object.Version()
+		if version.ID() != original.Input.Conditional.Version.ID() || version.Evidence().Kind != mediasource.StrongETag && version.Evidence().Kind != mediasource.ImmutableProviderVersion || object.Snapshot().Size != original.Source.Size || object.Snapshot().ModifiedNS != original.Source.ModifiedNS {
+			object.Close()
+			return nil, mediasource.ErrSourceChanged
+		}
+		retained, e := conditionalDiscInput(life, o.Tool, object, original.Disc.Structure, title, current)
+		if e != nil {
+			return nil, e
+		}
+		input = retained.Input
+	}
 	if err != nil {
 		return nil, err
 	}
-	readerOwned = false
 	inputOwned := true
 	defer func() {
 		if inputOwned {
