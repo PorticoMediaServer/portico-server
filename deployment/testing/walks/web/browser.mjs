@@ -23,10 +23,10 @@ export async function launch(){
 /** One isolated context. The design side allows only local files; the app side
  * allows its own origin and reports how many other requests it refused, without
  * ever recording their URLs. */
-export async function openContext(browser,{width,height,allowOrigin=null,storageState}){
+export async function openContext(browser,{width,height,allowOrigin=null,storageState,serviceWorkers='block'}){
  let context;
  try{
-  context=await browser.newContext({viewport:{width,height},deviceScaleFactor:1,locale:'en-US',timezoneId:'UTC',colorScheme:'dark',reducedMotion:'reduce',serviceWorkers:'block',...(storageState?{storageState}:{})});
+  context=await browser.newContext({viewport:{width,height},deviceScaleFactor:1,locale:'en-US',timezoneId:'UTC',colorScheme:'dark',reducedMotion:'reduce',serviceWorkers,...(storageState?{storageState}:{})});
  }catch{throw new ToolError('context-create');}
  const blocked={count:0};
  await context.route('**/*',route=>{
@@ -36,7 +36,7 @@ export async function openContext(browser,{width,height,allowOrigin=null,storage
   blocked.count++;
   return route.abort().catch(()=>{});
  });
- return {context,blocked};
+ return {context,blocked,serviceWorkers};
 }
 
 export async function openPage(context){
@@ -65,7 +65,7 @@ export async function settle(page){
 }
 
 export async function requireManrope(page){
- const loaded=await page.evaluate(()=>['400','600','800'].every(weight=>document.fonts.check(weight+' 16px Manrope')));
+ const loaded=await page.evaluate(()=>[...document.fonts].some(face=>face.family.replace(/["']/g,'')==='Manrope'&&face.status==='loaded')&&['400','600','800'].every(weight=>document.fonts.check(weight+' 16px Manrope')));
  if(!loaded)throw new ToolError('manrope-unavailable');
 }
 

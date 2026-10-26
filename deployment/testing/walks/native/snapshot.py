@@ -40,11 +40,16 @@ def _box(value):
 
 
 def _credential(node):
-    return node.get('password') is True
+    return (node.get('password') is True
+            or node.get('kind') == 'secure-text-field'
+            or node.get('type') in ('SecureTextField', 'XCUIElementTypeSecureTextField'))
 
 
 def _editable(node):
-    return node.get('editable') is True
+    return (node.get('editable') is True
+            or node.get('kind') in ('text-field', 'search-field', 'secure-text-field')
+            or node.get('type') in ('android.widget.EditText', 'TextField', 'SecureTextField', 'SearchField',
+                                    'XCUIElementTypeTextField', 'XCUIElementTypeSecureTextField', 'XCUIElementTypeSearchField'))
 
 
 def load(path, surface):

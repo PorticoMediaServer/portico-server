@@ -321,4 +321,15 @@ def run():
                 'nodes': documented['data']['nodes']}})['width'] != 90:
             failures += 1
 
+        # Semantic input roles must block BEFORE the new text-value fallback,
+        # even when a malformed/legacy helper omits its boolean editable flag.
+        expect_code(lambda: drawn({'success': True, 'data': {'truncated': False,
+            'nodes': [{'kind': 'text-field', 'value': 'never-read',
+                       'rect': {'x': 0, 'y': 0, 'width': 100, 'height': 40}}]}}),
+                    'editable-screen-unsupported')
+        expect_code(lambda: drawn({'success': True, 'data': {'truncated': False,
+            'nodes': [{'type': 'XCUIElementTypeSecureTextField', 'value': 'never-read',
+                       'rect': {'x': 0, 'y': 0, 'width': 100, 'height': 40}}]}}),
+                    'credential-bearing-snapshot')
+
     return {'cases': cases, 'passed': cases - failures, 'failed': failures}

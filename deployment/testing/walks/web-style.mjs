@@ -64,7 +64,9 @@ async function main(){
   const info=await prepareFrame(designPage,args.label);
   await requireManrope(designPage);
   blockedDesign=design.blocked.count;
-  const app=await openContext(browser,{width,height,allowOrigin:appOrigin,storageState});
+  // Normal app workers can supply fonts; measurements must match that runtime.
+  // Page routing cannot fully observe worker traffic, so this is not an egress test.
+  const app=await openContext(browser,{width,height,allowOrigin:appOrigin,storageState,serviceWorkers:'allow'});
   const appPage=await openPage(app.context);
   try{await appPage.goto(args.app,{waitUntil:'domcontentloaded'});}
   catch{throw new ToolError('app-navigation');}
@@ -74,6 +76,7 @@ async function main(){
    try{await appPage.locator(args['app-wait']).first().waitFor();}
    catch{throw new ToolError('app-wait-timeout');}
   }
+  await settle(appPage);
   await requireManrope(appPage);
   blockedApp=app.blocked.count;
   for(const pair of pairs){
@@ -98,7 +101,7 @@ async function main(){
   const fidelity=rows.filter(entry=>entry.fidelity).length,data=rows.length-fidelity;
   const report={schema:'portico-walk-style/1',frame:{file:target.file,label:args.label,index:info.index},
    device:{width,height},app:{path:appPath(args.app),pairs:pairs.length,orders:orders.length},
-   blocked:{design:blockedDesign,app:blockedApp},dataMapping:'explicit',
+   blocked:{design:blockedDesign,app:blockedApp},serviceWorkers:'normal-app',networkCoverage:'page-routes-only-not-egress-qualification',dataMapping:'explicit',
    summary:{fidelity,data,pairs:pairs.length,orders:orders.length},diffs:rows};
   for(const entry of rows.slice(0,100))console.log(formatLine(entry));
   if(out)writePrivate(path.join(out,path.basename(target.file).replace(/\.html?$/i,'')+'-'+String(args.label).toLowerCase().replace(/[^a-z0-9._-]+/g,'-')+'-style.json'),JSON.stringify(report,null,2)+'\n');
