@@ -167,6 +167,8 @@ class LoopbackMedia:
             chunks = []
             size = 0
             while size <= limit:
+                if response.isclosed():
+                    break
                 remaining = self._timeout()
                 if remaining <= 0:
                     raise MediaError('media-budget')

@@ -45,6 +45,7 @@ class Boundaries(unittest.TestCase):
                 self.body = io.BytesIO(bodies.pop(0))
                 self.fp = None
             def getheader(self, name): return 'application/octet-stream'
+            def isclosed(self): return False
             def read1(self, limit): return self.body.read(limit)
         class Connection:
             def __init__(self, *args, **kwargs): self.sock = self

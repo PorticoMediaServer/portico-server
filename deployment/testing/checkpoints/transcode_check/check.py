@@ -23,7 +23,7 @@ from api_smoke.client import sleep_within
 from .media import MAX_SAMPLE, MediaError
 
 MODES = frozenset({'direct', 'stream'})
-ACTIONS = frozenset({'original', 'copy', 'convert'})
+ACTIONS = frozenset({'direct', 'copy', 'transcode', 'burn'})
 CONTAINERS = frozenset({'mp4', 'mkv', 'fmp4_hls', 'mpegts_hls', 'flac'})
 ROUTES = frozenset({'original', 'repackaged', 'converted'})
 POLICY_MODES = frozenset({'prefer', 'allow', 'never'})
@@ -172,7 +172,10 @@ class Check:
         reply = self._call('transcode-capacity', 'GET', '/v1/admin/transcode/capacity')
         if reply.status != 200 or not isinstance(reply.data, dict):
             raise CheckFailure('capacity-' + (reply.code or 'shape'))
-        data = reply.data
+        # Owner telemetry is a projected console {data, scope} envelope.
+        data = reply.data.get('data')
+        if not isinstance(data, dict) or not isinstance(data.get('enabled'), bool):
+            raise CheckFailure('capacity-shape')
         toolchain = data.get('toolchain') if isinstance(data.get('toolchain'), dict) else {}
         encoders = toolchain.get('encoders') if isinstance(toolchain.get('encoders'), dict) else {}
         filters = toolchain.get('filters') if isinstance(toolchain.get('filters'), dict) else {}

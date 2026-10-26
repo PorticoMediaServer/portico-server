@@ -45,7 +45,7 @@ VIEW_BODY = {
     'id': 'sess-1', 'state': 'playing', 'revision': 'r1',
     'presentation': {'mode': 'stream', 'container': 'fmp4_hls', 'url': '/v1/media/grant',
                      'generation': 2, 'videoHeight': 480, 'bitrateKbps': 400,
-                     'decision': {'video': {'action': 'convert', 'reasons': ['bitrate_above_request']},
+                     'decision': {'video': {'action': 'transcode', 'reasons': ['bitrate_above_request']},
                                   'audio': {'action': 'copy', 'reasons': []}}},
     'playbackInfo': {'route': 'converted', 'reason': {'kind': 'quality'},
                      'delivered': {'video': {'codec': 'h264', 'height': 480}}},
@@ -118,14 +118,14 @@ def routes(start=None, view=VIEW_BODY, stop=204, readback=404, view_error=None, 
         'playback-stop-read': readback_handler,
     }
     if capacity:
-        table['transcode-capacity'] = lambda m, p, k: reply(data={
+        table['transcode-capacity'] = lambda m, p, k: reply(data={'scope': {}, 'data': {
             'enabled': True, 'toolchain': {'encoders': {'libx264': True},
                                            'filters': {'scale': True}, 'muxers': {'hls': True}},
             'dependencies': {'ffmpeg': {'ok': True}, 'ffprobe': {'ok': True}},
             'temporaryDirectory': {'ready': True, 'fallback': False},
             'presets': [{'id': 'a'}], 'warnings': [],
             'hardware': {'configured': 'software', 'probes': [{'backend': 'vaapi'}]},
-            'directStreamRemux': True, 'planningPolicy': 'software'})
+            'directStreamRemux': True, 'planningPolicy': 'software'}})
     return table
 
 
@@ -238,7 +238,7 @@ class CheckTests(unittest.TestCase):
         self.assertEqual(mode_class('stream'), 'stream')
         self.assertEqual(mode_class('hls'), 'other')
         self.assertEqual(route_class('converted'), 'converted')
-        self.assertEqual(action_class('convert'), 'convert')
+        self.assertEqual(action_class('transcode'), 'transcode')
         self.assertEqual(policy_mode('never'), 'never')
         self.assertEqual(status_class(206), 206)
         self.assertEqual(bucket(4096), 'at-least-256')
