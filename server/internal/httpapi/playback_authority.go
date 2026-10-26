@@ -59,8 +59,8 @@ func (d Dependencies) configurePlaybackEvidence() {
 	d.Playback.AuthorityTx = d.playbackAuthorityTx
 	d.Playback.ContinueAuthorityTx = d.playbackFamilyAuthorityTx
 	if d.Identity != nil && d.DiscCaptures != nil {
-		// Optional private reader composition. Unsupported host/tool closures
-		// remain closed; this installs no preparation/start response producer.
+		// The optional host composition refuses unsupported tool/storage closures.
+		// Only an original remote video Play can enter its private factory.
 		_ = d.Playback.ConfigureDiscInputs(d.Identity.ID(), d.DiscCaptures)
 		if d.TelemetryContext != nil {
 			// Explicit process/key and active-copy budgets. Active work borrows

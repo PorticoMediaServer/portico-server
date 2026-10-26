@@ -6,7 +6,6 @@ import (
 	"errors"
 	"time"
 
-	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/disc"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/playbackdisc"
@@ -63,36 +62,15 @@ type DiscPlayContinuation struct {
 // alone does not issue it: this live POST must supply its separate proof and
 // hold the resulting borrow through both real session writers.
 func (e *discPlayFactoryEntry) continuationContext(ctx context.Context, service *Service, current playbackdisc.PreparationContinuationCheck) (context.Context, bool, error) {
-	p, ready, err := e.prepared(ctx)
+	p, ready, err := e.prepared(ctx, current)
 	if err != nil {
 		return ctx, false, err
 	}
 	if service == nil || service.discInputs == nil || service.db != p.db || service.discInputs.store != p.store || service.discInputs.captures != p.captures {
 		return ctx, false, disc.ErrProtocol
 	}
-	if current == nil {
-		return ctx, false, disc.ErrProtocol
-	}
 	if !ready {
-		// Even a retry-only response belongs to this admitted original POST.
-		// Worker currentness alone cannot turn a refused/canceled/capacity
-		// continuation into another preparation response.
-		view, err := dbwork.BeginSnapshot(ctx, p.db)
-		if err != nil {
-			return ctx, false, err
-		}
-		defer view.Rollback()
-		p.mu.Lock()
-		claim := p.operation.Claim
-		p.mu.Unlock()
-		operation, err := p.store.CheckPreparationClaimTx(view.Context(), view.Tx(), claim, p.checkOriginalTx)
-		if err == nil {
-			err = current(view.Context(), view.Tx(), operation)
-		}
-		if err == nil {
-			err = ctx.Err()
-		}
-		return ctx, false, err
+		return ctx, false, nil // original worker AND this live POST were checked
 	}
 	b, err := p.borrowPrepared(ctx, current)
 	if err != nil {

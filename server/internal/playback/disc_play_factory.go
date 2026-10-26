@@ -86,11 +86,11 @@ func sameDiscPlayPrincipal(a, b identity.Principal) bool {
 	return a.Viewer == b.Viewer && a.Hash == b.Hash && a.Epoch == b.Epoch && a.DeviceID == b.DeviceID && a.Grant == b.Grant && a.ExpiresAt.Equal(b.ExpiresAt)
 }
 
-// beginCaptured admits one actual original capture-only Play operation. A
+// begin admits one actual original Play preparation. A
 // duplicate attaches BEFORE a source preflight/ticket/row/slot is created. The
 // supplied context is the original finite admitted scope, not a renewed poll.
-// A source with a qualified conditional adapter must use the range factory.
-func (f *discPlayFactory) beginCaptured(ctx context.Context, seed discPlayStart) (*discPlayFactoryEntry, error) {
+// Source preflight selects the qualified range branch before capture-only admission.
+func (f *discPlayFactory) begin(ctx context.Context, seed discPlayStart) (*discPlayFactoryEntry, error) {
 	if ctx == nil || dbwork.Snapshot(ctx) != nil || seed.Check == nil || seed.Principal.Hash == "" || seed.Principal.ExpiresAt.IsZero() || seed.Key.DeviceID == "" || seed.CandidateID == "" || seed.LegacyRequestID != "v1."+seed.CandidateID+".1" {
 		return nil, disc.ErrProtocol
 	}
@@ -177,8 +177,8 @@ func (f *discPlayFactory) findOriginal(ctx context.Context, key playbackdisc.Pre
 	}
 }
 
-func (e *discPlayFactoryEntry) prepared(ctx context.Context) (*discPlayPreparation, bool, error) {
-	if ctx == nil || dbwork.Snapshot(ctx) != nil {
+func (e *discPlayFactoryEntry) prepared(ctx context.Context, current playbackdisc.PreparationContinuationCheck) (*discPlayPreparation, bool, error) {
+	if ctx == nil || dbwork.Snapshot(ctx) != nil || current == nil {
 		return nil, false, disc.ErrProtocol
 	}
 	select {
@@ -193,8 +193,18 @@ func (e *discPlayFactoryEntry) prepared(ctx context.Context) (*discPlayPreparati
 	if p == nil {
 		return nil, false, playbackdisc.ErrCurrent
 	}
+	deadline, finite := p.ctx.Deadline()
+	if !finite {
+		return nil, false, disc.ErrProtocol
+	}
+	life, cancel := context.WithDeadline(ctx, deadline)
+	stop := context.AfterFunc(p.ctx, cancel)
+	defer func() { stop(); cancel() }()
+	p.claimPublication.Lock()
+	defer p.claimPublication.Unlock()
 	p.mu.Lock()
 	failure, closed := p.failure, p.closed || p.retiring || p.accepted
+	claim := p.operation.Claim
 	p.mu.Unlock()
 	if failure != nil {
 		return nil, false, failure
@@ -202,7 +212,29 @@ func (e *discPlayFactoryEntry) prepared(ctx context.Context) (*discPlayPreparati
 	if closed || p.ctx.Err() != nil {
 		return nil, false, playbackdisc.ErrCurrent
 	}
-	if err := p.checkClaim(ctx); err != nil {
+	view, err := dbwork.BeginSnapshot(life, p.db)
+	if err != nil {
+		return nil, false, err
+	}
+	operation, err := p.store.CheckPreparationClaimTx(view.Context(), view.Tx(), claim, p.checkOriginalTx)
+	if err == nil {
+		err = current(view.Context(), view.Tx(), operation)
+	}
+	view.Rollback()
+	if err != nil {
+		// A refused live continuation is terminal. Only cancellation of this
+		// HTTP request leaves the already finite background scope alone.
+		if ctx.Err() == nil {
+			p.mu.Lock()
+			if p.failure == nil {
+				p.failure = err
+			}
+			p.mu.Unlock()
+			p.cancel()
+		}
+		return nil, false, err
+	}
+	if err := life.Err(); err != nil {
 		return nil, false, err
 	}
 	select {
@@ -215,7 +247,7 @@ func (e *discPlayFactoryEntry) prepared(ctx context.Context) (*discPlayPreparati
 		}
 		return p, true, nil
 	default:
-		return nil, false, nil // only genuine still-running preparation
+		return p, false, nil // only genuine still-running preparation
 	}
 }
 

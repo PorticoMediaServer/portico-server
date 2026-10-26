@@ -136,7 +136,7 @@ func (s *Service) BeginDiscPlay(ctx context.Context, original DiscPlayOriginal) 
 		}
 		return original.Check(check, tx)
 	}}
-	e, err := f.beginCaptured(life, seed)
+	e, err := f.begin(life, seed)
 	stop()
 	if err != nil || ctx.Err() != nil {
 		cancel()

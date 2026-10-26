@@ -42,6 +42,9 @@ type discPlayPreparation struct {
 	closeErr    error
 	borrow      *discPlayBorrow
 	started     atomic.Bool
+	// Polls cannot observe the committed ready CAS before the same sealed
+	// measurement has been paired with its exact new revision in memory.
+	claimPublication sync.Mutex
 	// A measurement or a real POST borrow owns this lock. Close waits until
 	// the helper has exited or the accepting outer transaction has finished.
 	custody sync.Mutex
@@ -168,9 +171,9 @@ func (p *discPlayPreparation) checkClaim(ctx context.Context) error {
 	return p.checkClaimTx(view.Context(), view.Tx())
 }
 
-// prepareCaptured owns the actual one-ticket capture, reader and measurement.
-// The source producer itself restricts a ticket to a genuine capture-only
-// acquisition mode. A conditional origin must take the separate range path.
+// prepare owns one original range or capture-only measurement. The source
+// preflight fixes the branch; the capture producer independently restricts full
+// acquisition to its actual admitted capture-only mode.
 // No session, decoder grant, queue transfer or background acceptance occurs.
 func (p *discPlayPreparation) prepare(tool disc.Tool, probe assets.Probe, tools func(context.Context) (playbackdisc.ToolPins, error), titleKey string, requested catalog.DiscTitleRef) (err error) {
 	if !p.started.CompareAndSwap(false, true) {
@@ -230,6 +233,16 @@ func (p *discPlayPreparation) prepare(tool disc.Tool, probe assets.Probe, tools 
 		}
 	}()
 	var next playbackdisc.PreparationClaim
+	p.claimPublication.Lock()
+	defer func() {
+		if err != nil {
+			p.mu.Lock()
+			p.failure = err
+			p.mu.Unlock()
+			p.cancel()
+		}
+		p.claimPublication.Unlock()
+	}()
 	err = dbwork.WithWriteTxContext(p.ctx, p.db, dbwork.ClassPlaybackStart, func(check context.Context, tx *sql.Tx) error {
 		var e error
 		next, e = p.store.MarkPreparationPreparedTx(check, tx, operation.Claim, func(check context.Context, tx *sql.Tx, candidate playbackdisc.Preparation) error {
