@@ -12,6 +12,8 @@ async function loadManrope(signal: AbortSignal): Promise<Blob> {
   if (!response.ok || !response.body) throw new ReaderError('source_unavailable');
   const reader = response.body.getReader(), chunks: Uint8Array<ArrayBuffer>[] = [];
   let size = 0;
+  const cancel = () => {void reader.cancel().catch(() => {});};
+  signal.addEventListener('abort', cancel, {once: true});
   try {
     for (;;) {
       throwIfAborted(signal);
@@ -26,22 +28,30 @@ async function loadManrope(signal: AbortSignal): Promise<Blob> {
     throwIfAborted(signal);
     if (hash !== manropeHash) throw new ReaderError('invalid_source');
     return blob;
-  } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+  } finally { signal.removeEventListener('abort', cancel); await reader.cancel().catch(() => {}); reader.releaseLock(); }
 }
 
 /** Call from the actual connected host lifetime. One verified Literata Blob
  * supplies both the app FontFace and createEpubAdapter({fonts}); no copied font. */
 export async function loadReadFonts({document, signal}: Readonly<{document: Document; signal: AbortSignal}>): Promise<ReadFonts> {
   const life = new AbortController(), active = life.signal;
-  let face: FontFace | undefined, disposed = false;
+  let face: FontFace | undefined, disposed = false, timedOut = false;
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  const clearDeadline = () => {if (deadline !== undefined) {clearTimeout(deadline); deadline = undefined;}};
   const dispose = () => {
     if (disposed) return;
-    disposed = true; life.abort(signal.reason); signal.removeEventListener('abort', dispose);
+    disposed = true; clearDeadline(); life.abort(signal.reason); signal.removeEventListener('abort', dispose);
     if (face) document.fonts.delete(face);
   };
   signal.addEventListener('abort', dispose, {once: true});
+  deadline = setTimeout(() => {timedOut = true; dispose();}, 30_000);
   if (signal.aborted) dispose();
-  try {
+  let onAbort: (() => void) | undefined;
+  const aborted = new Promise<never>((_, reject) => {
+    onAbort = () => reject(new ReaderError(timedOut ? 'source_unavailable' : 'aborted'));
+    if (active.aborted) onAbort(); else active.addEventListener('abort', onAbort, {once: true});
+  });
+  const bootstrap = async () => {
     throwIfAborted(active);
     const [literata, manrope] = await Promise.all([loadLiterataFont({signal: active}), loadManrope(active)]);
     const bytes = await literata.arrayBuffer(); throwIfAborted(active);
@@ -49,5 +59,11 @@ export async function loadReadFonts({document, signal}: Readonly<{document: Docu
     await face.load(); throwIfAborted(active);
     document.fonts.add(face);
     return Object.freeze({fonts: Object.freeze({literata, manrope}), dispose});
+  };
+  try {
+    const result = await Promise.race([bootstrap(), aborted]);
+    clearDeadline();
+    return result;
   } catch (error) { dispose(); throw error; }
+  finally {if (onAbort) active.removeEventListener('abort', onAbort);}
 }

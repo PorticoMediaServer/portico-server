@@ -65,3 +65,45 @@ test('trusted font loading and late cancellation need no modern AbortSignal help
   while (!env.waiting) await new Promise<void>(resolve => setImmediate(resolve));
   life.abort(); env.release(); await assert.rejects(pending); assert.equal(env.faces.size, 0);
 });
+
+test('font bootstrap deadline aborts stalled headers and a fresh call can retry', async t => {
+  const env = await environment(t); t.mock.timers.enable({apis: ['setTimeout']});
+  const healthyFetch = globalThis.fetch, seen: AbortSignal[] = [];
+  globalThis.fetch = (_input, options) => new Promise<Response>((_, reject) => {
+    const signal = options!.signal!; seen.push(signal);
+    signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), {once: true});
+  });
+  const pending = loadReadFonts({document: env.document, signal: new AbortController().signal});
+  const failure = assert.rejects(pending, (error: unknown) => (error as {code?: string}).code === 'source_unavailable');
+  assert.equal(seen.length, 2); t.mock.timers.tick(30_000); await failure;
+  assert.ok(seen.every(signal => signal.aborted)); assert.equal(env.faces.size, 0);
+  globalThis.fetch = healthyFetch;
+  const retry = await loadReadFonts({document: env.document, signal: new AbortController().signal});
+  assert.equal(env.faces.size, 1); t.mock.timers.tick(30_000); assert.equal(env.faces.size, 1); retry.dispose();
+});
+
+test('stalled partial font bodies abort under the same deadline', async t => {
+  const env = await environment(t); t.mock.timers.enable({apis: ['setTimeout']});
+  const seen: AbortSignal[] = [];
+  globalThis.fetch = async (_input, options) => {
+    const signal = options!.signal!; seen.push(signal);
+    const stream = new ReadableStream<Uint8Array>({start(controller) {
+      controller.enqueue(new Uint8Array([0]));
+      signal.addEventListener('abort', () => controller.error(new DOMException('aborted', 'AbortError')), {once: true});
+    }});
+    return new Response(stream);
+  };
+  const pending = loadReadFonts({document: env.document, signal: new AbortController().signal});
+  const failure = assert.rejects(pending, (error: unknown) => (error as {code?: string}).code === 'source_unavailable');
+  await new Promise<void>(resolve => setImmediate(resolve)); assert.equal(seen.length, 2);
+  t.mock.timers.tick(30_000); await failure; assert.ok(seen.every(signal => signal.aborted)); assert.equal(env.faces.size, 0);
+});
+
+test('never-resolving FontFace.load times out and a late face cannot be installed', async t => {
+  const env = await environment(t); t.mock.timers.enable({apis: ['setTimeout']}); env.hold();
+  const pending = loadReadFonts({document: env.document, signal: new AbortController().signal});
+  const failure = assert.rejects(pending, (error: unknown) => (error as {code?: string}).code === 'source_unavailable');
+  while (!env.waiting) await new Promise<void>(resolve => setImmediate(resolve));
+  t.mock.timers.tick(30_000); await failure; env.release(); await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(env.faces.size, 0);
+});
