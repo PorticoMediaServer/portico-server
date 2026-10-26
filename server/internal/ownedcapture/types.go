@@ -30,36 +30,6 @@ var (
 type Request struct {
 	Principal identity.Principal
 	AssetID   string
-	ownerScan *ownerScanRequest
-}
-
-// OwnerScanTarget names one original explicitly admitted scan execution and its
-// queued physical object. It is a lookup precondition, never authority by itself.
-// Source/root/config/read/actor witnesses remain in the producer's normalized
-// admission. An ambient job or a different execution cannot borrow that row.
-type OwnerScanTarget struct {
-	AdmissionID, JobID, ExecutionID   string
-	ExecutionRevision                 int64
-	ObjectID, ObjectRevision, AssetID string
-	ScanPolicyRevision                int64
-}
-
-func (v OwnerScanTarget) valid() bool {
-	for _, s := range []string{v.AdmissionID, v.JobID, v.ExecutionID, v.ObjectID, v.ObjectRevision, v.AssetID} {
-		if !opaque.MatchString(s) {
-			return false
-		}
-	}
-	return v.ExecutionRevision > 0 && v.ScanPolicyRevision > 0
-}
-
-// OwnerScanProducer is an optional private source composition. Resolution must
-// prove the exact original owner/main-profile/family/device/epoch and ORIGINAL
-// horizon, actual job execution/object membership and every source/read policy
-// in this transaction. Admit must repeat that proof before reservation/bytes;
-// CheckTx/Lease must retain it after immutable custody. No latest owner fallback.
-type OwnerScanProducer interface {
-	ResolveOwnerScanTx(context.Context, *sql.Tx, OwnerScanTarget) error
 }
 
 // Binding contains normalized adapter-issued witnesses only. No path, URL,
@@ -71,9 +41,6 @@ type Binding struct {
 	ObjectID, ObjectRevision, AssetID string
 	AcquisitionID, ReservationID      string
 	PolicyWitness, AuthorityWitness   string
-	// A value (not pointer) keeps receipt comparisons exact. Normal playback
-	// remains all-zero; its legacy scope serialization must remain unchanged.
-	OwnerScan OwnerScanTarget `json:"-"`
 }
 
 var captureID = regexp.MustCompile(`^[a-f0-9]{64}$`)
@@ -85,7 +52,7 @@ func (b Binding) valid() bool {
 			return false
 		}
 	}
-	return b.OwnerScan == (OwnerScanTarget{}) || b.OwnerScan.valid() && b.OwnerScan.AssetID == b.AssetID && b.OwnerScan.ObjectID == b.ObjectID && b.OwnerScan.ObjectRevision == b.ObjectRevision
+	return true
 }
 
 // SourceLease is issued by the original source producer. Its cancellation and

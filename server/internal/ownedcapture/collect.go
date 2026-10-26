@@ -151,7 +151,7 @@ func (s *Service) Collect(ctx context.Context) error {
 	if e := s.destination.check(); e != nil {
 		return e
 	}
-	rows, e := s.db.QueryContext(ctx, `SELECT `+sourceColumns+` FROM `+sourceTables+` WHERE l.state!='deleted' AND s.capture_id>? ORDER BY s.capture_id LIMIT 64`, s.cursor)
+	rows, e := s.db.QueryContext(ctx, `SELECT `+sourceColumns+` FROM owned_capture_sources s JOIN owned_capture_lifecycle l ON l.capture_id=s.capture_id WHERE l.state!='deleted' AND s.capture_id>? ORDER BY s.capture_id LIMIT 64`, s.cursor)
 	if e != nil {
 		return e
 	}
