@@ -1,4 +1,4 @@
-import {useEffect, useRef, type RefObject} from 'react';
+import {useLayoutEffect, useRef, type RefObject} from 'react';
 import {easings, motion, reducedMotion} from '@design';
 import styles from './shell.module.css';
 
@@ -10,7 +10,7 @@ type Painted = Readonly<{left: number; top: number; width: number; opacity: numb
  * `<ul>`, never calls routes or reads session/library data. */
 export function DesktopNavigationUnderline({list}: {list: RefObject<HTMLUListElement | null>}) {
   const underline = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const bar = underline.current, destinations = list.current;
     if (!bar || !destinations) return;
     let placed: Box | undefined, animation: Animation | undefined, disposed = false;
@@ -41,21 +41,30 @@ export function DesktopNavigationUnderline({list}: {list: RefObject<HTMLUListEle
       settle(next);
       placed = next;
       if (!from || immediate || !bar.animate) return;
+      const final = bar.getBoundingClientRect();
       if (reduced()) {
-        animation = bar.animate([{opacity: from.opacity}, {opacity: 1}], {duration: reducedMotion.durationMs, easing: reducedMotion.easing});
+        // No travel: a changed destination hands off with an actual opacity crossfade.
+        if (from.left !== final.left || from.top !== final.top || from.width !== final.width)
+          animation = bar.animate([{opacity: 0}, {opacity: 1}], {duration: reducedMotion.durationMs, easing: reducedMotion.easing});
         return;
       }
-      const final = bar.getBoundingClientRect();
       animation = bar.animate([
         {transform: `translate(${from.left - final.left}px, ${from.top - final.top}px) scaleX(${final.width ? from.width / final.width : 1})`, opacity: from.opacity},
         {transform: 'none', opacity: 1}
       ], {duration: motion.slow, easing: easings.inOut});
     };
     const resize = new ResizeObserver(() => move(true));
-    resize.observe(destinations);
-    for (const child of destinations.children) resize.observe(child);
-    for (const label of destinations.querySelectorAll('[aria-hidden="true"] span')) resize.observe(label);
-    const mutation = new MutationObserver(() => move(false));
+    const observeTargets = () => {
+      resize.disconnect();
+      resize.observe(destinations);
+      for (const child of destinations.children) resize.observe(child);
+      for (const label of destinations.querySelectorAll('[aria-hidden="true"] span')) resize.observe(label);
+    };
+    observeTargets();
+    const mutation = new MutationObserver(records => {
+      if (records.some(record => record.type === 'childList')) observeTargets();
+      move(false);
+    });
     mutation.observe(destinations, {attributes: true, attributeFilter: ['aria-current', 'data-active'], childList: true, subtree: true});
     const media = matchMedia('(prefers-reduced-motion: reduce)');
     const onMedia = () => move(false);
