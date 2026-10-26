@@ -261,3 +261,25 @@ test('Root67 a retired controller opening cannot publish over an installed sessi
     } finally {off();}
   } finally {controller.dispose();}
 });
+
+test('Root67 currentness callbacks cannot abort and then authorize their original request', async () => {
+  const caller = new AbortController(); let calls = 0;
+  await assert.rejects(new SessionsClient({send: async () => {calls++; return reply(real(), 201);}})
+    .start({itemId: 'movie'}, {}, 'original_key_0000021', {signal: caller.signal, isCurrent: () => {caller.abort(); return true;}}), {name: 'AbortError'});
+  assert.equal(calls, 0);
+});
+
+test('Root67 currentness reentrancy immediately before dispatch keeps the successor', async () => {
+  const c = clock(), engine = player(), sent: string[] = [];
+  let checks = 0, successor: ReturnType<PlaybackSessionController['start']> | undefined;
+  const controller = new PlaybackSessionController({timers: c.timers, player: engine.port, key: () => 'original_key_0000022',
+    http: {send: async request => {const itemId = (request.body as {itemId: string}).itemId; sent.push(itemId); return reply({...real(), itemId}, 201);}}});
+  try {
+    await assert.rejects(controller.start({itemId: 'original'}, {}, undefined, {isCurrent: () => {
+      if (++checks === 3) successor = controller.start({itemId: 'successor'});
+      return true;
+    }}), {name: 'AbortError'});
+    await successor;
+    assert.deepEqual(sent, ['successor']); assert.equal(controller.getSnapshot().session?.itemId, 'successor');
+  } finally {controller.dispose();}
+});

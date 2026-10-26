@@ -137,7 +137,7 @@ export class SessionsClient {
     freezeWire(body);
     const request = Object.freeze({method: 'POST' as const, path: routePath('start_playback_session'),
       headers: Object.freeze({'Idempotency-Key': key}), body, signal});
-    const current = () => {try {return !signal?.aborted && isCurrent?.() !== false;} catch {return false;}};
+    const current = () => {try {return (isCurrent ? isCurrent() === true : true) && !signal?.aborted;} catch {return false;}};
     const check = () => {if (!current()) throw startRetired();};
     const deadline = now() + MAX_PREPARE_MS;
     let waited = 0;
@@ -333,7 +333,7 @@ export class PlaybackSessionController {
     if (this.disposed || signal?.aborted) return undefined;
     const before = this.startToken;
     const originalCurrent = context.isCurrent, capturePreparing = context.capturePreparing;
-    const admitted = () => {try {return !signal?.aborted && originalCurrent?.() !== false;} catch {return false;}};
+    const admitted = () => {try {return (originalCurrent ? originalCurrent() === true : true) && !signal?.aborted;} catch {return false;}};
     // Even a currentness callback may reenter; it cannot let this older invocation
     // claim over the successor. Claim before touching request getters or publishing.
     if (!admitted() || this.disposed || before !== this.startToken) return undefined;
@@ -348,7 +348,7 @@ export class PlaybackSessionController {
     this.publish({phase: 'starting', error: undefined, ended: undefined, changing: false});
     try {
       const session = await this.client.start(originalTarget, body, this.key(), {signal,
-        isCurrent: () => token === this.startToken && !this.disposed && admitted(),
+        isCurrent: () => admitted() && token === this.startToken && !this.disposed,
         onPreparing: () => { if (token === this.startToken) this.publish({phase: 'preparing'}); },
         capturePreparing});
       if (token !== this.startToken || this.disposed || signal?.aborted) {
