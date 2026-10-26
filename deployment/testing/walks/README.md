@@ -441,3 +441,5 @@ Exit codes: `0` no fidelity differences, `1` measured fidelity differences,
   stack is written to output.
 - The tools are read-only for apps and mock-ups. No app code, guard, contract or
   shared renderer is changed here.
+
+Device custody for walks: reuse `deployment/testing/checkpoints/avd_custody.py` — it holds `/tmp/portico-avd-<exact-name>.lock` for the whole window, proves the serial-to-AVD identity and requires exactly one agent-device session before anything is installed. `DEVICE_IN_USE` means skip, never force.
