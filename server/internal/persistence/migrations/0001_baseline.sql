@@ -9948,3 +9948,16 @@ CREATE TABLE identity_security_return_openings(
  confirmation_signature TEXT NOT NULL DEFAULT ''
 ) STRICT;
 CREATE INDEX identity_security_return_actor ON identity_security_return_openings(actor_binding,phase);
+CREATE TRIGGER identity_security_return_original_immutable BEFORE UPDATE ON identity_security_return_openings
+WHEN NEW.operation_id<>OLD.operation_id OR NEW.actor_binding<>OLD.actor_binding
+ OR NEW.request_hash<>OLD.request_hash OR NEW.opening_id<>OLD.opening_id OR NEW.task_id<>OLD.task_id
+ OR NEW.payload<>OLD.payload OR NEW.signature<>OLD.signature OR NEW.expires_ms<>OLD.expires_ms
+ OR (OLD.phase='cancelled' AND NEW.phase<>'cancelled')
+ OR (OLD.phase='confirmed' AND NEW.phase NOT IN('confirmed','cancelled'))
+ OR (OLD.phase<>'prepared' AND (NEW.transaction_id<>OLD.transaction_id OR NEW.code_digest<>OLD.code_digest
+   OR NEW.confirmation_payload<>OLD.confirmation_payload OR NEW.confirmation_signature<>OLD.confirmation_signature))
+BEGIN SELECT RAISE(ABORT,'original Security return cannot be replaced or reopened'); END;
+CREATE TRIGGER identity_security_return_confirmation_complete BEFORE UPDATE ON identity_security_return_openings
+WHEN NEW.phase='confirmed' AND (length(NEW.transaction_id)<20 OR length(NEW.code_digest)<>43
+ OR NEW.confirmation_payload='' OR NEW.confirmation_signature='')
+BEGIN SELECT RAISE(ABORT,'Security return confirmation requires its complete original tuple'); END;
