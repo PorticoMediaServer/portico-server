@@ -30,7 +30,17 @@ test('explicit sort/direction, including no explicit direction, are not rebound 
   }
 });
 test('Favorites and other Saved destinations keep their own original query', () => {
-  for (const original of [{view: 'favorites'}, {view: 'playlists'}, {view: 'history', period: '7d'}, {view: 'downloads'}] as const) {
+  for (const original of [{view: 'favorites'}, {view: 'history', period: '7d'}, {view: 'downloads'}] as const) {
     assert.equal(savedReaderRoute(original), original);
   }
+});
+
+
+test('the playlist directory shares Last changed/Newest first between its reader and toolbar route', () => {
+  const original = Object.freeze({view: 'playlists'} as const), reader = savedReaderRoute(original);
+  assert.deepEqual(reader, {view: 'playlists', sort: 'updated', direction: 'desc'});
+  assert.equal(sameSavedRoute(reader as SavedRoute, original), false, 'the exact request/visible-route fence stays intact');
+  assert.deepEqual(savedReaderRoute({view: 'playlists', direction: 'asc'}), {view: 'playlists', sort: 'updated', direction: 'asc'});
+  const explicit = Object.freeze({view: 'playlists', sort: 'title', direction: 'asc'} as const);
+  assert.equal(savedReaderRoute(explicit), explicit);
 });

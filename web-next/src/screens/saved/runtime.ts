@@ -18,7 +18,7 @@ const watchlistReader = Object.freeze({view: 'watchlist', sort: 'added', directi
  * sort/direction; never rewrite only the request behind an exact route witness. */
 export const savedReaderRoute = (route: SavedScreenRoute): Exclude<SavedScreenRoute, {view: 'home'}> => {
   if (route.view === 'home') return watchlistReader;
-  if (route.view === 'watchlist' && route.sort === undefined) return Object.freeze({...route, sort: 'added', direction: route.direction ?? 'desc'});
+  if ((route.view === 'watchlist' || route.view === 'playlists') && route.sort === undefined) return Object.freeze({...route, sort: route.view === 'playlists' ? 'updated' : 'added', direction: route.direction ?? 'desc'});
   return route;
 };
 
