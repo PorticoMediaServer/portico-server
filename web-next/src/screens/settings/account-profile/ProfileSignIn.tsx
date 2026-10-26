@@ -3,6 +3,8 @@ import {defaultI18n} from '@i18n';
 import {IdentityClient, type TwoFactorEnrolment} from '@core/identity-client.ts';
 import type {TwoFactorState} from '@core/identity-restrictions.ts';
 import type {SecurityState, IdentityProvider} from '@core/hosted-security.ts';
+import type {LocalSession} from '@core/index.ts';
+import type {AccountSecurityServerScope} from '../../../platform/account-security';
 import type {ProfileAPI} from '@core/profile-management.ts';
 import {passwordStrength} from '@core/password-strength.ts';
 import {Button, Switch, TextField} from '../../../kit/controls';
@@ -28,7 +30,7 @@ const t=defaultI18n.t;
 type Task='password'|'enrol'|'disable'|'codes';
 type Opening={
   live:boolean;busy:boolean;readonly abort:AbortController;readonly current:()=>boolean;
-  readonly local:IdentityClient;readonly accountId:string;readonly revision:number;readonly link:string;
+  readonly server:AccountSecurityServerScope;readonly local:IdentityClient;readonly accountId:string;readonly revision:number;readonly link:string;
   hosted?:ServicesAccount;identity?:AccountIdentity;providerReady?:boolean;enabledProviders?:IdentityProvider[];
 };
 type LocalIntent={readonly owner:Opening;readonly task:Task;live:boolean;enrolPassword?:string};
@@ -37,14 +39,14 @@ const ended=()=>new DOMException('The original account security opening ended.',
 
 /** Sign-in belongs to the account, not the selected editable profile. The actual
  * main-profile document and original Settings lifetime gate every read and action. */
-export function ProfileSignIn({profiles,api,commandApi,signIn,isCurrent,onEnded,onFacts}:{
-  profiles:ProfileSettingsSource;api:ProfileAPI;commandApi:ProfileAPI;signIn:'local'|'portico';isCurrent:()=>boolean;onEnded:()=>void;onFacts?:(facts:ProfileSecurityFacts)=>void;
+export function ProfileSignIn({profiles,api,commandApi,signIn,isCurrent,onEnded,onFacts,session}:{
+  profiles:ProfileSettingsSource;api:ProfileAPI;commandApi:ProfileAPI;signIn:'local'|'portico';isCurrent:()=>boolean;onEnded:()=>void;onFacts?:(facts:ProfileSecurityFacts)=>void;session:()=>LocalSession;
 }){
  const providerReturn=useOriginalAccountSecurity();
  const document=useSyncExternalStore(profiles.subscribe,profiles.getSnapshot).document;
  const account=document?.account;
  const scope=document?.canManage&&document.capabilities.manageAccount&&account&&!account.disabled?
-  JSON.stringify([account.id,account.revision,account.role,account.hostedAccountId??'',profiles.getSnapshot().inUseId]):'';
+  JSON.stringify([document.serverId,session().sessionFamilyId,account.id,account.revision,account.role,account.hostedAccountId??'',profiles.getSnapshot().inUseId]):'';
  const active=useRef<Opening|undefined>(undefined),localIntentRef=useRef<LocalIntent|undefined>(undefined),hostedIntentRef=useRef<HostedIntent|undefined>(undefined),sequence=useRef(0);
  const [opening,setOpening]=useState<Opening>(),[factor,setFactor]=useState<TwoFactorState>(),[hostedState,setHostedState]=useState<SecurityState>();
  const [task,setTask]=useState<Task>(),[hostedTask,setHostedTask]=useState<HostedIntent>();
@@ -56,13 +58,17 @@ export function ProfileSignIn({profiles,api,commandApi,signIn,isCurrent,onEnded,
   if(localIntentRef.current){localIntentRef.current.live=false;localIntentRef.current.enrolPassword=undefined;}localIntentRef.current=undefined;hostedIntentRef.current=undefined;
   setOpening(undefined);setFactor(undefined);setHostedState(undefined);setTask(undefined);setHostedTask(undefined);setEnrolment(undefined);setCodes(undefined);clearSecrets();setBusy(false);setError(undefined);
   if(!scope||!account||!isCurrent())return;
-  const expected={accountId:account.id,revision:account.revision,role:account.role,link:account.hostedAccountId??'',profileId:profiles.getSnapshot().inUseId};
+  const familyId=session().sessionFamilyId;
+  const expected={serverId:document!.serverId,familyId,accountId:account.id,revision:account.revision,role:account.role,link:account.hostedAccountId??'',profileId:profiles.getSnapshot().inUseId};
+  const ownedSession=session();
+  if(ownedSession.viewer.serverId!==expected.serverId||ownedSession.viewer.accountId!==expected.accountId||ownedSession.viewer.profileId!==expected.profileId||ownedSession.viewer.authority!=='local'||ownedSession.sessionFamilyId!==familyId)return;
   const abort=new AbortController();
-  const held:Opening={live:true,busy:false,abort,accountId:expected.accountId,revision:expected.revision,link:expected.link,
+  const server=Object.freeze({serverId:expected.serverId,familyId,accountId:expected.accountId,profileId:expected.profileId??''});
+  const held:Opening={server,live:true,busy:false,abort,accountId:expected.accountId,revision:expected.revision,link:expected.link,
    current:()=>{
     if(!held.live||active.current!==held||abort.signal.aborted||!isCurrent())return false;
-    const now=profiles.getSnapshot(),doc=now.document;
-    return !!doc&&doc.canManage&&doc.capabilities.manageAccount&&!doc.account.disabled&&doc.account.id===expected.accountId&&doc.account.revision===expected.revision&&
+    const now=profiles.getSnapshot(),doc=now.document,principal=session();
+    return principal.sessionFamilyId===expected.familyId&&principal.viewer.serverId===expected.serverId&&principal.viewer.accountId===expected.accountId&&principal.viewer.profileId===expected.profileId&&principal.viewer.authority==='local'&&!!doc&&doc.serverId===expected.serverId&&doc.canManage&&doc.capabilities.manageAccount&&!doc.account.disabled&&doc.account.id===expected.accountId&&doc.account.revision===expected.revision&&
      doc.account.role===expected.role&&(doc.account.hostedAccountId??'')===expected.link&&now.inUseId===expected.profileId;
    },local:new IdentityClient({request:(path,method,body,input)=>{
     if(!held.current())throw ended();
@@ -77,7 +83,7 @@ export function ProfileSignIn({profiles,api,commandApi,signIn,isCurrent,onEnded,
    }else{
     if(providerReturn){
      const original=providerReturn.original;
-     if(!providerReturn.current()||!original.server||original.server.session.viewer.accountId!==expected.accountId||original.server.session.viewer.profileId!==expected.profileId||original.session.account.id!==expected.link)throw ended();
+     if(!providerReturn.current()||!original.server||original.server.pin.serverId!==expected.serverId||original.server.session.sessionFamilyId!==expected.familyId||original.server.session.viewer.accountId!==expected.accountId||original.server.session.viewer.profileId!==expected.profileId||original.session.account.id!==expected.link)throw ended();
      held.identity=Object.freeze({accountId:original.session.account.id,familyId:original.session.familyId!});held.providerReady=true;held.enabledProviders=[original.provider.provider];setHostedState(original.state);return;
     }
     // This branch alone touches Hosted. A local account performs zero Hosted IO.
@@ -94,7 +100,7 @@ export function ProfileSignIn({profiles,api,commandApi,signIn,isCurrent,onEnded,
    }
   })().catch(failure=>{if(held.current())setError(failure);});
   return()=>{held.live=false;const intent=localIntentRef.current;if(intent?.owner===held){intent.live=false;intent.enrolPassword=undefined;localIntentRef.current=undefined;}if(hostedIntentRef.current?.owner===held)hostedIntentRef.current=undefined;abort.abort();if(active.current===held)active.current=undefined;};
- },[api,commandApi,profiles,scope,signIn,isCurrent,retry,providerReturn]);
+ },[api,commandApi,profiles,scope,signIn,isCurrent,retry,providerReturn,session]);
  const held=opening&&active.current===opening&&opening.current()?opening:undefined;
  const hostedCurrent=()=>{
   const identity=held?.identity,current=held?.hosted?.service.getSnapshot().session;
@@ -168,7 +174,7 @@ export function ProfileSignIn({profiles,api,commandApi,signIn,isCurrent,onEnded,
    <HostedSecurityAction label={t('next.settingsSpec.account.profile.groups.5.rows.2.children.0.control.label')} disabled={!available||busy} onOpen={()=>open('codes')}/>
   </SettingsRow>}
   {hostedState&&!hostedState.hasPassword&&<ServicesQuiet>{t(held?.providerReady&&hostedState.providers.some(v=>v.revision&&held.enabledProviders?.includes(v.provider))?'web.hostedSecurity.providerConfirm':'web.hostedSecurity.providerOnly')}</ServicesQuiet>}
-  {held&&held.hosted&&held.identity&&hostedState&&!hostedState.hasPassword&&hostedTask&&hostedTask.current()&&<ProviderSecurityStartDialog key={hostedTask.id} account={held.hosted} identity={held.identity} state={hostedState} task={hostedTask.kind} enabledProviders={held.enabledProviders??[]} isCurrent={hostedTask.current} server={{accountId:held.accountId,profileId:profiles.getSnapshot().inUseId??''}} onClose={()=>{if(hostedTask.current()){hostedIntentRef.current=undefined;setHostedTask(undefined);setRetry(value=>value+1);}}}/>}
+  {held&&held.hosted&&held.identity&&hostedState&&!hostedState.hasPassword&&hostedTask&&hostedTask.current()&&<ProviderSecurityStartDialog key={hostedTask.id} account={held.hosted} identity={held.identity} state={hostedState} task={hostedTask.kind} enabledProviders={held.enabledProviders??[]} isCurrent={hostedTask.current} server={held.server} onClose={()=>{if(hostedTask.current()){hostedIntentRef.current=undefined;setHostedTask(undefined);setRetry(value=>value+1);}}}/>}
   {held&&held.hosted&&held.identity&&hostedState&&hostedState.hasPassword&&hostedTask&&hostedTask.current()&&<HostedSecurityTask key={hostedTask.id} account={held.hosted} identity={held.identity} state={hostedState} task={hostedTask.kind} isCurrent={hostedTask.current}
    onClose={()=>{if(hostedTask.current()){hostedIntentRef.current=undefined;setHostedTask(undefined);setRetry(value=>value+1);}}}
    onSecurityEnded={values=>{if(hostedTask.current()){

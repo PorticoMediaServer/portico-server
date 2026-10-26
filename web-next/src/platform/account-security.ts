@@ -63,10 +63,11 @@ async function originalServer(pending: AccountSecurityPending, signal?: AbortSig
 
 /** Capture happens on the existing Account Settings opening before any prepare
  * request. A selected local profile is UI return context only. */
+export type AccountSecurityServerScope = Readonly<{serverId: string; familyId: string; accountId: string; profileId: string}>;
 export async function captureAccountSecurity(input: {
   account: ServicesAccount; identity: AccountIdentity; state: SecurityState;
   purpose: CredentialSecurityPurpose; target: string; providerId: string;
-  assertCurrent: () => void; server?: Readonly<{accountId: string; profileId: string}>;
+  assertCurrent: () => void; server?: AccountSecurityServerScope;
 }, journal = browserSecurityJournal()): Promise<AccountSecurityPending> {
   journal.assertAvailable(); input.assertCurrent();
   const account = input.account, expectedIdentity = Object.freeze({...input.identity}), assertCurrent = input.assertCurrent, providerId = input.providerId, hostedOrigin = input.account.api.origin;
@@ -81,7 +82,7 @@ export async function captureAccountSecurity(input: {
   if (originalServerScope) {
     const record = await browserAppSessions().read(); assertCurrent();
     const selected = record.servers.find(v => v.connection.pin.serverId === record.selectedServerId), connection = selected?.connection;
-    if (!connection || selected?.signIn !== 'portico' || !connection.selectionId || connection.pendingRefresh || connection.hosted?.origin !== hostedOrigin || connection.hosted.accountId !== expectedIdentity.accountId || connection.session.viewer.authority !== 'local' || connection.session.viewer.accountId !== originalServerScope.accountId || connection.session.viewer.profileId !== originalServerScope.profileId) ended();
+    if (!connection || record.selectedServerId !== originalServerScope.serverId || connection.pin.serverId !== originalServerScope.serverId || connection.session.viewer.serverId !== originalServerScope.serverId || connection.session.sessionFamilyId !== originalServerScope.familyId || selected?.signIn !== 'portico' || !connection.selectionId || connection.pendingRefresh || connection.hosted?.origin !== hostedOrigin || connection.hosted.accountId !== expectedIdentity.accountId || connection.session.viewer.authority !== 'local' || connection.session.viewer.accountId !== originalServerScope.accountId || connection.session.viewer.profileId !== originalServerScope.profileId) ended();
     server = {revision: record.revision, selectionId: connection.selectionId, pin: {...connection.pin}, session: noRefresh(connection.session)};
     expiry = Math.min(expiry, Date.parse(server.session.expiresAt), Date.parse(server.session.authorizationHorizon));
   }
