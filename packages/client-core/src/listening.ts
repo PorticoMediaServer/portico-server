@@ -11,6 +11,13 @@ import type {QueueScope,QueueItemInput} from './queues.ts';
 import {parseQueueItem} from './queues.ts';
 import {PlayerChaptersService} from './player-chapters.ts';
 import {defaultAudiobookPreferences,type AudiobookPreferences} from './audiobook-preferences.ts';
+import {requireSessionChangeCurrent,sessionChangeCurrent,type SessionChangeContext} from './playback-v1/change-context.ts';
+
+async function listeningRead<T>(signals:readonly (AbortSignal|undefined)[],read:(signal:AbortSignal)=>Promise<T>):Promise<T>{
+ const controller=new AbortController(),abort=()=>controller.abort();
+ for(const signal of signals){if(signal?.aborted)abort();else signal?.addEventListener('abort',abort,{once:true});}
+ try{return await read(controller.signal);}finally{for(const signal of signals)signal?.removeEventListener('abort',abort);}
+}
 
 export const listeningRates=[.5,.75,1,1.25,1.5,1.75,2] as const;
 export const audiobookRates=[...listeningRates,2.5,3] as const;
@@ -90,7 +97,7 @@ export class ListeningService {
  constructor(scope:QueueScope,request:ListeningRequest,playback:PlaybackService,now:()=>number=()=>performance.now(),listens?:(itemId:string,sessionId:string)=>boolean,audiobook:()=>AudiobookPreferences=()=>defaultAudiobookPreferences,queueOccurrence?:(sessionId:string,generation:number)=>ListeningTimerOccurrence['queue']){this.scope=scope;this.request=request;this.playback=playback;this.now=now;this.listens=listens;this.audiobook=audiobook;this.queueOccurrence=queueOccurrence;this.lastActivity=this.now();}
  getSnapshot=()=>this.state;
  subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
- private publish(patch:Partial<ListeningSnapshot>){if(this.disposed)return;this.state=Object.freeze({...this.state,...patch});this.syncNativePolicy();for(const fn of this.listeners)fn();}
+ private publish(patch:Partial<ListeningSnapshot>,sync=true){if(this.disposed)return;this.state=Object.freeze({...this.state,...patch});if(sync)this.syncNativePolicy();for(const fn of this.listeners)fn();}
  private syncNativePolicy(){
   const source=this.playback.getSnapshot(),serverSource=!!source.session&&source.session.mode!=='local'&&!source.channel;
   const timer=serverSource?(this.pendingTimer?.timer??this.state.timer):null;
@@ -176,26 +183,39 @@ export class ListeningService {
   this.applyRate();this.tick();
  }
  clearTimer(message:string|null=null){++this.timerGeneration;this.pendingTimer=undefined;this.acceptedBookNext=undefined;this.chapters?.dispose();this.chapters=undefined;this.publish({timer:null,timerLoading:false,message});}
- private async installTimer(timer:ListeningTimer){
+ private async installTimer(timer:ListeningTimer,context?:SessionChangeContext){
+  requireSessionChangeCurrent(context);
   if(timer.occurrence&&this.automaticFlights.size)throw new Error('Playback is already moving to another item. Choose the timer again.');
-  const revision=++this.timerGeneration;this.pendingTimer=Object.freeze({revision,timer});this.publish({timer:null,timerLoading:true});
-  const accepted=await this.syncNativePolicy();
-  if(this.disposed||revision!==this.timerGeneration)return;
-  this.pendingTimer=undefined;
-  const native=this.playback.getSnapshot().nativeListening;
-  if(accepted!==false&&native?.expiredTimerRevision===revision){this.publish({timer:null,timerLoading:false,stopped:native.timerStopped===true});return;}
-  if(accepted===false||timer.occurrence&&!this.sameOccurrence(timer.occurrence,this.occurrence())){
-   this.clearTimer();throw new Error('The playback source changed before the timer was accepted.');
-  }
-  this.publish({timer,timerLoading:false});
+  const revision=++this.timerGeneration;this.pendingTimer=Object.freeze({revision,timer});
+  // A closing opening can retire only this still-pending install. It cannot
+  // clear a newer timer, nor an already accepted timer after this call returns.
+  const retire=()=>{if(!this.disposed&&revision===this.timerGeneration&&this.pendingTimer?.revision===revision)this.clearTimer();};
+  context?.signal?.addEventListener('abort',retire,{once:true});
+  try{
+   // Notify first, then recheck the opening before dispatch: a synchronous
+   // listener may close the sheet or install a newer timer from that update.
+   requireSessionChangeCurrent(context);this.publish({timer:null,timerLoading:true},false);
+   requireSessionChangeCurrent(context);if(this.disposed||revision!==this.timerGeneration)return;
+   const accepted=await this.syncNativePolicy();
+   requireSessionChangeCurrent(context);
+   if(this.disposed||revision!==this.timerGeneration)return;
+   this.pendingTimer=undefined;
+   const native=this.playback.getSnapshot().nativeListening;
+   if(accepted!==false&&native?.expiredTimerRevision===revision){this.publish({timer:null,timerLoading:false,stopped:native.timerStopped===true});return;}
+   if(accepted===false||timer.occurrence&&!this.sameOccurrence(timer.occurrence,this.occurrence())){
+    this.clearTimer();throw new Error('The playback source changed before the timer was accepted.');
+   }
+   this.publish({timer,timerLoading:false});
+  }catch(error){retire();throw error;}finally{context?.signal?.removeEventListener('abort',retire);}
  }
- async setTimer(choice:SleepChoice,expected?:ListeningTimerOccurrence){
+ async setTimer(choice:SleepChoice,expected?:ListeningTimerOccurrence,context?:SessionChangeContext){
   const captured=expected??this.occurrence(),original=captured?Object.freeze({...captured,queue:captured.queue?Object.freeze({...captured.queue}):null}):undefined;
-  const check=()=>{if(original&&!this.sameOccurrence(original,this.occurrence()))throw Object.assign(new Error('Listening timer source retired'),{name:'AbortError'});};
+  context=context?Object.freeze({signal:context.signal,isCurrent:context.isCurrent}):undefined;
+  const check=()=>{requireSessionChangeCurrent(context);if(this.disposed||original&&!this.sameOccurrence(original,this.occurrence()))throw Object.assign(new Error('Listening timer source retired'),{name:'AbortError'});};
   check();this.interact();check();this.clearTimer();check();if(choice==='off')return;
   const p=this.playback.getSnapshot(),c=this.state.context;if(!c||!p.session||!original||p.channel||!['song','audiobook_file'].includes(c.kind))throw new Error('Start a music or audiobook item before setting a timer.');
-  if(typeof choice==='number'){if(![15,30,45,60,90].includes(choice))throw new Error('Invalid timer choice.');await this.installTimer(Object.freeze({choice,label:`${choice} minutes`,deadline:this.now()+choice*60000,wallDeadline:Date.now()+choice*60000,libraryId:c.libraryId}));return;}
-  if(choice==='item'){await this.installTimer(Object.freeze({choice,label:'End of this item',itemId:c.itemId,libraryId:c.libraryId,occurrence:original}));return;}
+  if(typeof choice==='number'){if(![15,30,45,60,90].includes(choice))throw new Error('Invalid timer choice.');check();await this.installTimer(Object.freeze({choice,label:`${choice} minutes`,deadline:this.now()+choice*60000,wallDeadline:Date.now()+choice*60000,libraryId:c.libraryId}),context);return;}
+  if(choice==='item'){check();await this.installTimer(Object.freeze({choice,label:'End of this item',itemId:c.itemId,libraryId:c.libraryId,occurrence:original}),context);return;}
   if(choice==='book'){
    if(!c.bookId||!c.lastBookItemId||c.bookEndAvailable!==true)throw new Error('The final book part is unavailable. Choose a minute, item or verified chapter timer instead.');
    const occurrence=original,revision=this.timerGeneration;
@@ -203,7 +223,7 @@ export class ListeningService {
    const items:string[]=[],seen=new Set<string>(),cursors=new Set<string>();let cursor='',timeline:BookTimeline|undefined;
    this.publish({timerLoading:true});
    try{do{
-    const page=await readBookTimeline(this.request,this.scope,c.bookId,{cursor,limit:100,signal:this.abort.signal});
+    check();const page=await listeningRead([this.abort.signal,context?.signal],signal=>readBookTimeline(this.request,this.scope,c.bookId,{cursor,limit:100,signal}));check();
     if(this.disposed||revision!==this.timerGeneration)return;
     if(!this.sameOccurrence(occurrence,this.occurrence())){this.clearTimer();throw new Error('The playback source changed. Choose the timer again.');}
     if(page.libraryId!==c.libraryId||page.totalCount>1000||timeline&&(page.revision.catalog!==timeline.revision.catalog||page.revision.viewer!==timeline.revision.viewer||page.totalCount!==timeline.totalCount))throw new Error('Book order changed. Choose the timer again.');
@@ -212,20 +232,20 @@ export class ListeningService {
     cursor=page.nextCursor;if(cursor){if(!page.parts.length||cursors.has(cursor))throw new Error('Book order changed. Choose the timer again.');cursors.add(cursor);}
    }while(cursor);
    if(!timeline||items.length!==timeline.totalCount||!items.includes(c.itemId)||items.at(-1)!==c.lastBookItemId)throw new Error('The final book part is unavailable.');
-   await this.installTimer(Object.freeze({choice,label:'End of this book',bookId:c.bookId,itemId:c.lastBookItemId,libraryId:c.libraryId,occurrence,bookBoundary:Object.freeze({revision:timeline.revision,items:Object.freeze(items)})}));return;
+   check();await this.installTimer(Object.freeze({choice,label:'End of this book',bookId:c.bookId,itemId:c.lastBookItemId,libraryId:c.libraryId,occurrence,bookBoundary:Object.freeze({revision:timeline.revision,items:Object.freeze(items)})}),context);return;
    }catch(error){if(!this.disposed&&revision===this.timerGeneration)this.clearTimer();throw error;}
   }
   if(choice!=='chapter')throw new Error('Invalid timer choice.');
   const generation=this.timerGeneration,position=p.positionSeconds,sessionId=p.session.id,sessionGeneration=p.session.generation;
-  const chapters=this.chapters=new PlayerChaptersService({scope:{serverId:this.scope.serverId,viewerId:JSON.stringify([this.scope.authority,this.scope.accountId,this.scope.profileId])},api:{request:<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal)=>this.request(path,body,method as 'GET',signal) as Promise<T>}});
+  const chapters=this.chapters=new PlayerChaptersService({scope:{serverId:this.scope.serverId,viewerId:JSON.stringify([this.scope.authority,this.scope.accountId,this.scope.profileId])},api:{request:<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal)=>{check();return listeningRead([this.abort.signal,context?.signal,signal],joined=>this.request(path,body,method as 'GET',joined)) as Promise<T>;}}});
   this.publish({timerLoading:true});
-  try{await chapters.select({libraryId:c.libraryId,itemId:c.itemId,sessionId,sessionGeneration});for(let page=0;page<41;page++){
-    if(this.disposed||generation!==this.timerGeneration)return;const state=chapters.getSnapshot(),data=state.data;if(state.phase!=='ready'||!data||data.status!=='available')throw new Error(state.error?.message??'Verified chapter timing is unavailable for this source.');
+  try{check();await chapters.select({libraryId:c.libraryId,itemId:c.itemId,sessionId,sessionGeneration});for(let page=0;page<41;page++){
+    check();if(this.disposed||generation!==this.timerGeneration)return;const state=chapters.getSnapshot(),data=state.data;if(state.phase!=='ready'||!data||data.status!=='available')throw new Error(state.error?.message??'Verified chapter timing is unavailable for this source.');
     const chapter=data.chapters.find(ch=>position>=ch.startSeconds&&position<ch.endSeconds);
-    if(chapter){const latest=this.playback.getSnapshot();if(latest.session?.id!==sessionId||latest.session.generation!==sessionGeneration||latest.pendingSeek||latest.failedSeek||latest.positionSeconds<chapter.startSeconds||latest.positionSeconds>=chapter.endSeconds)throw new Error('Playback moved to another chapter. Choose the timer again.');await this.installTimer(Object.freeze({choice,label:`End of chapter: ${chapter.title}`,itemId:c.itemId,sessionId,generation:sessionGeneration,endSeconds:chapter.endSeconds,libraryId:c.libraryId,occurrence:original}));return;}
+    if(chapter){const latest=this.playback.getSnapshot();if(latest.session?.id!==sessionId||latest.session.generation!==sessionGeneration||latest.pendingSeek||latest.failedSeek||latest.positionSeconds<chapter.startSeconds||latest.positionSeconds>=chapter.endSeconds)throw new Error('Playback moved to another chapter. Choose the timer again.');check();await this.installTimer(Object.freeze({choice,label:`End of chapter: ${chapter.title}`,itemId:c.itemId,sessionId,generation:sessionGeneration,endSeconds:chapter.endSeconds,libraryId:c.libraryId,occurrence:original}),context);return;}
     if(!data.nextCursor)break;await chapters.next();
    }throw new Error('No verified chapter contains the current position.');
-  }catch(e){if(!this.disposed&&generation===this.timerGeneration){this.publish({timerLoading:false,error:e instanceof Error?e.message:'Chapter timer unavailable.'});throw e;}}
+  }catch(e){if(!sessionChangeCurrent(context)){if(!this.disposed&&generation===this.timerGeneration)this.clearTimer();requireSessionChangeCurrent(context);}if(!this.disposed&&generation===this.timerGeneration){this.publish({timerLoading:false,error:e instanceof Error?e.message:'Chapter timer unavailable.'});throw e;}}
   finally{chapters.dispose();if(this.chapters===chapters)this.chapters=undefined;}
  }
  /** Called before natural advancement, and on foreground ticks/observations. */
