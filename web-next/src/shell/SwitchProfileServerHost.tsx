@@ -72,6 +72,7 @@ export function SwitchProfileServerHost({opening, close}: {opening: SwitchProfil
         }
       }
       if (!valid() || access && !access.isCurrent()) return;
+      const directoryAccess = access;
       const servers: Choice[] = [], locals: Choice[] = [];
       const shown = new Set<string>();
       const selectSaved = (id: string) => opening.selectServer ? async () => {await opening.selectServer!(id);} : undefined;
@@ -83,9 +84,9 @@ export function SwitchProfileServerHost({opening, close}: {opening: SwitchProfil
         const immutable = Object.freeze({...server, ...(server.routes ? {routes: structuredClone(server.routes)} : {})});
         servers.push(Object.freeze({view: Object.freeze({id: server.id, name: server.name, detail, current: isCurrent,
           detailTone: server.status === 'active' && !isCurrent ? 'online' : undefined, dimmed: server.status !== 'active', available: true}),
-          select: saved && opening.selectServer ? selectSaved(server.id) : access ? async () => {
-            if (!access.isCurrent()) throw new DOMException('Account changed', 'AbortError');
-            opening.selectHosted(Object.freeze({server: immutable, access}));
+          select: saved && opening.selectServer ? selectSaved(server.id) : directoryAccess ? async () => {
+            if (!directoryAccess.isCurrent()) throw new DOMException('Account changed', 'AbortError');
+            opening.selectHosted(Object.freeze({server: immutable, access: directoryAccess}));
           } : undefined}));
         shown.add(server.id);
       }
