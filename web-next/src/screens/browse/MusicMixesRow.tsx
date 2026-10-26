@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
+import {useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import {musicMixDisplayName} from '@core/music-mixes.ts';
 import {Shelf} from '../../kit/layout';
@@ -9,6 +9,7 @@ import {useShellWidth} from '../../shell/viewport';
 import type {ShellArtwork} from '../../shell/artwork';
 import type {MusicMixRow} from './music-mixes';
 import type {MusicMixesBinding} from './music-mixes-binding';
+import {readMusicMixesForView} from './music-mixes-view-read';
 import styles from './music-mixes.module.css';
 
 const t = defaultI18n.t;
@@ -22,9 +23,7 @@ export function MusicMixesRow({binding, artwork, more, empty, target = false, re
   const [menu, setMenu] = useState<Readonly<{row: MusicMixRow; anchor: HTMLButtonElement}>>();
   const menuRef = useRef<typeof menu>(undefined);menuRef.current = menu;
   const ready = snapshot.phase === 'ready' && snapshot.rows.length > 0;
-  useEffect(() => {
-    if (binding.getSnapshot().phase === 'idle') void binding.load().catch(reportError);
-  }, [binding, reportError]);
+  useLayoutEffect(() => readMusicMixesForView(binding, reportError), [binding, reportError]);
   useEffect(() => {
     if (!target || !ready || targeted.current === binding) return;
     const element = root.current, button = element?.querySelector<HTMLButtonElement>('article button');

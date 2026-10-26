@@ -124,9 +124,13 @@ func bindLife(parent, other context.Context) (context.Context, func()) {
 // Capture never probes/reopens/resumes a provider. Producer.Admit must return
 // one already admitted from-start sequential body; only complete EOF bytes seal.
 func (s *Service) Capture(ctx context.Context, request Request) (receipt Receipt, err error) {
+	return s.capture(ctx, request, nil)
+}
+
+func (s *Service) capture(ctx context.Context, request Request, original PlayCaptureCheck) (receipt Receipt, err error) {
 	// Acquisition and immutable sealing must never join an outer transaction;
 	// publication here must be committed before any usable receipt is returned.
-	if dbwork.Snapshot(ctx) != nil {
+	if ctx == nil || dbwork.Snapshot(ctx) != nil {
 		return receipt, ErrInput
 	}
 	if !s.enter() {
@@ -135,6 +139,9 @@ func (s *Service) Capture(ctx context.Context, request Request) (receipt Receipt
 	defer s.wg.Done()
 	ctx, done := bindLife(ctx, s.life)
 	defer done()
+	if err = s.checkPlayCapture(ctx, original); err != nil {
+		return receipt, err
+	}
 	id := uniqueID()
 	custody, err := s.gate("acquisition", id)
 	if err != nil {
@@ -146,6 +153,9 @@ func (s *Service) Capture(ctx context.Context, request Request) (receipt Receipt
 		return receipt, err
 	}
 	defer acquisition.Close()
+	if err = s.checkPlayCapture(ctx, original); err != nil {
+		return receipt, err
+	}
 	sourceLife := acquisition.Context()
 	if sourceLife == nil || sourceLife.Done() == nil {
 		return receipt, ErrInput
@@ -165,7 +175,10 @@ func (s *Service) Capture(ctx context.Context, request Request) (receipt Receipt
 	// The admission row precedes all owned scratch, so a crash never leaves an
 	// unjournaled retained staging file. Source reservation recovery owns the
 	// prior no-scratch Admit/row gap and must keep it charged until safely retired.
-	err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
+	err = dbwork.WithWriteTxContext(ctx, s.db, dbwork.ClassBackgroundMedia, func(ctx context.Context, tx *sql.Tx) error {
+		if e := checkPlayCaptureTx(ctx, tx, original); e != nil {
+			return e
+		}
 		if e := acquisition.CheckTx(ctx, tx); e != nil {
 			return e
 		}
@@ -207,8 +220,9 @@ func (s *Service) Capture(ctx context.Context, request Request) (receipt Receipt
 		return receipt, err
 	}
 	hash := sha256.New()
-	sink := &persistedWriter{ctx: ctx, writer: writer, source: acquisition, destination: s.destination}
-	n, copyErr := io.CopyBuffer(io.MultiWriter(sink, hash), io.LimitReader(&checkedReader{ctx, acquisition}, size+1), make([]byte, 64<<10))
+	checkOriginal := func(check context.Context) error { return s.checkPlayCapture(check, original) }
+	sink := &persistedWriter{ctx: ctx, writer: writer, source: acquisition, destination: s.destination, original: checkOriginal}
+	n, copyErr := io.CopyBuffer(io.MultiWriter(sink, hash), io.LimitReader(&checkedReader{ctx: ctx, source: acquisition, original: checkOriginal}, size+1), make([]byte, 64<<10))
 	if copyErr != nil {
 		return receipt, copyErr
 	}
@@ -225,7 +239,10 @@ func (s *Service) Capture(ctx context.Context, request Request) (receipt Receipt
 	}
 	// Journal the actual completed-byte hash BEFORE sealing, including the crash
 	// window before SQL publication. It is not a usable receipt or provider proof.
-	err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
+	err = dbwork.WithWriteTxContext(ctx, s.db, dbwork.ClassBackgroundMedia, func(ctx context.Context, tx *sql.Tx) error {
+		if e := checkPlayCaptureTx(ctx, tx, original); e != nil {
+			return e
+		}
 		if e := acquisition.CheckTx(ctx, tx); e != nil {
 			return e
 		}
@@ -245,6 +262,9 @@ func (s *Service) Capture(ctx context.Context, request Request) (receipt Receipt
 	if err = s.destination.check(); err != nil {
 		return receipt, err
 	}
+	if err = checkOriginal(ctx); err != nil {
+		return receipt, err
+	}
 	object, err := writer.Seal(ctx)
 	if err != nil {
 		return receipt, err
@@ -257,7 +277,10 @@ func (s *Service) Capture(ctx context.Context, request Request) (receipt Receipt
 		return receipt, err
 	}
 	receipt = Receipt{ID: id, ArtifactID: uniqueID(), Binding: b, Object: object, Version: version, ExpiresAt: expires}
-	err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
+	err = dbwork.WithWriteTxContext(ctx, s.db, dbwork.ClassBackgroundMedia, func(ctx context.Context, tx *sql.Tx) error {
+		if e := checkPlayCaptureTx(ctx, tx, original); e != nil {
+			return e
+		}
 		if e := acquisition.CheckTx(ctx, tx); e != nil {
 			return e
 		}
@@ -269,6 +292,9 @@ func (s *Service) Capture(ctx context.Context, request Request) (receipt Receipt
 			return ErrCurrent
 		}
 		if e = acquisition.CommitTx(ctx, tx); e != nil {
+			return e
+		}
+		if e = checkPlayCaptureTx(ctx, tx, original); e != nil {
 			return e
 		}
 		_, e = tx.ExecContext(ctx, `INSERT INTO owned_capture_receipts(capture_id,artifact_id,digest,size,version_id) VALUES(?,?,?,?,?)`, id, receipt.ArtifactID, digest, size, version.ID())
@@ -291,19 +317,38 @@ func (s *Service) Capture(ctx context.Context, request Request) (receipt Receipt
 	if err = acquisition.Check(ctx); err != nil {
 		return Receipt{}, err
 	}
+	if err = checkOriginal(ctx); err != nil {
+		return Receipt{}, err
+	}
 	return receipt, nil
 }
 
 type checkedReader struct {
-	ctx    context.Context
-	source Acquisition
+	ctx      context.Context
+	source   Acquisition
+	original func(context.Context) error
 }
 
 func (r *checkedReader) Read(p []byte) (int, error) {
 	if e := r.source.Check(r.ctx); e != nil {
 		return 0, e
 	}
-	return r.source.Read(p)
+	if r.original != nil {
+		if e := r.original(r.ctx); e != nil {
+			return 0, e
+		}
+	}
+	n, err := r.source.Read(p)
+	if n < 0 || n > len(p) {
+		return 0, ErrIncomplete
+	}
+	if r.original != nil {
+		if e := r.original(r.ctx); e != nil {
+			clear(p[:n])
+			return 0, e
+		}
+	}
+	return n, err
 }
 
 type persistedWriter struct {
@@ -312,9 +357,15 @@ type persistedWriter struct {
 	writer      io.Writer
 	source      Acquisition
 	total       int64
+	original    func(context.Context) error
 }
 
 func (w *persistedWriter) Write(p []byte) (int, error) {
+	if w.original != nil {
+		if e := w.original(w.ctx); e != nil {
+			return 0, e
+		}
+	}
 	if e := w.destination.check(); e != nil {
 		return 0, e
 	}
@@ -322,6 +373,9 @@ func (w *persistedWriter) Write(p []byte) (int, error) {
 	if n > 0 {
 		w.total += int64(n)
 		e = errors.Join(e, w.source.Persisted(w.ctx, w.total))
+	}
+	if w.original != nil {
+		e = errors.Join(e, w.original(w.ctx))
 	}
 	return n, e
 }
