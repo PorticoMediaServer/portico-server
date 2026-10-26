@@ -299,6 +299,9 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
   const invalidateCloud = () => {const next = ++cloudRevisionRef.current;setCloudRevision(next);return next;};
   const keyFile = useRef<HTMLInputElement>(null);
   const driveResult = driveServiceAccountDraft(drive);
+  // A signed-in OAuth client is tested with its own token, not the key draft:
+  // the drawn flow dims Test until the sign-in is done, then lets it run.
+  const driveTestReady = driveMode === 'oauth' ? oauthPhase === 'ready' && !!oauthToken && !!drive.locationId.trim() : driveResult.ok;
   const cloudResult = cloudTokenDraft(cloud);
   const [result, setResult] = useState<DAVConnectionResult>();
   const [rcloneResult, setRcloneResult] = useState<RcloneTestResult>();
@@ -1040,7 +1043,7 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
           value={drive.locationId} maxLength={200} disabled={busy} autoCapitalize="off" spellCheck={false} className={styles.monoInput} onChange={event => updateDrive({locationId: event.target.value})}/>
         <p className={styles.note}>{t('next.remoteSources.driveCannotSee')}</p>
         <p className={styles.note}>{t('next.remoteSources.driveChecks')}</p>
-        <div className={styles.testRow}><Button size="compact" variant="glass" disabled={busy || !driveResult.ok} onClick={() => void testDrive()}>{busy ? t('next.remoteSources.testing') : t('next.remoteSources.test')}</Button>
+        <div className={styles.testRow}><Button size="compact" variant="glass" disabled={busy || !driveTestReady} onClick={() => void testDrive()}>{busy ? t('next.remoteSources.testing') : t('next.remoteSources.test')}</Button>
           {rcloneResult && <span className={styles.testCard} data-tone="good"><Icon name="i-check" size={18}/>{rcloneResult.version ? t('next.remoteSources.testedRclone', {version: rcloneResult.version}) : t('next.remoteSources.testedRcloneUnknown')}</span>}
         </div>
       </> : sourceKind === 's3' ? <>
