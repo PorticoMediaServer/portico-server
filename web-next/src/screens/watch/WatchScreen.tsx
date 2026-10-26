@@ -1,4 +1,4 @@
-import {Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type RefObject} from 'react';
+import {Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type RefObject} from 'react';
 import {defaultI18n} from '@i18n';
 import {playbackIdentity, type FactPart} from '@core/presentation/kit-model/index.ts';
 import {sameFence, type PlaybackFence} from '../../../../packages/player-core/src/index.ts';
@@ -23,6 +23,7 @@ import {WatchDockPanelOpening, type WatchDockPanel} from './dock-panel-opening';
 import {WatchEndCardView} from './EndCard';
 import {LiveChrome} from '../live/LiveChrome';
 import type {LiveChromePort} from '../live/live-chrome-types';
+import {WatchPromptFocus, type PromptFocusHost} from './prompt-focus';
 
 const t = defaultI18n.t;
 const subscribeWindow = (changed: () => void) => { window.addEventListener('resize', changed); return () => window.removeEventListener('resize', changed); };
@@ -49,6 +50,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const size = useSyncExternalStore(subscribeWindow, windowSize, serverSize).split(':').map(Number), width = size[0]!, height = size[1]!;
   const coarsePointer = useCoarsePointer(), touchTablet = coarsePointer && width >= 600;
   const root = useRef<HTMLDivElement>(null), chrome = useRef<HTMLDivElement>(null), body = useRef<HTMLDivElement>(null), panelAnchor = useRef<HTMLButtonElement>(null), moreAnchor = useRef<HTMLButtonElement>(null);
+  const promptSeek = useRef<HTMLInputElement | null>(null);
   const bodyScroll = useRef<{identity?: string; top: number; left: number; anchor?: HTMLElement; offset?: number}>({top: 0, left: 0});
   const [panel, setPanel] = useState<WatchPanel | null>(null), [more, setMore] = useState(false), [shortcuts, setShortcuts] = useState(false), [visible, setVisible] = useState(true), [fullWindow, setFullWindow] = useState(false), [liveGuideOpen, setLiveGuideOpen] = useState(false);
   const [controlsExit, setControlsExit] = useState<'idle' | 'tap'>('idle');
@@ -291,6 +293,22 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     {!touchTablet && (portrait || !windowPort?.fullscreen || !mobile) && <Control icon="i-full" label={t('next.states.shortcut.fullscreen')} active={fullWindow || windowPort?.fullscreen?.active} action={toggleFullscreen} />}
   </>;
   const stillWatching = surfaces?.modal === 'still-watching';
+  const promptSource = useMemo<Omit<PromptFocusHost, 'source' | 'seekPresent' | 'focusAllowed' | 'controlsVisible'> | undefined>(() => {
+    if (!fence) return;
+    const original = {binding, authority: snapshot.authority, fence, intentId: snapshot.playback.intentId, run: snapshot.playback.playbackRun};
+    return {root, seek: promptSeek, current: () => {
+      try {
+        const live = original.binding.runtime.getSnapshot();
+        return !live.disposed && live.authority === original.authority && sameFence(live.fence, original.fence)
+          && live.playback.intentId === original.intentId && live.playback.playbackRun === original.run
+          && live.presentation?.kind === 'video' && sameFence(live.presentation.fence, original.fence)
+          && live.dock.local?.expanded === true && sameFence(live.dock.local.fence, original.fence) && live.dock.remote?.phase !== 'playing';
+      } catch {return false;}
+    }};
+  }, [binding, snapshot.authority, sourceKey, snapshot.playback.intentId, snapshot.playback.playbackRun]);
+  const promptHost = useMemo<PromptFocusHost | undefined>(() => promptSource ? {...promptSource, source: promptSource, seekPresent: !endCard && chromeVisible && !!bounds,
+    controlsVisible: chromeVisible, focusAllowed: !panel && !externalPanel && !more && !shortcuts && !stillWatching} : undefined,
+  [promptSource, !!endCard, !!bounds, chromeVisible, panel, externalPanel, more, shortcuts, stillWatching]);
   return <div ref={root} className={styles.watch} hidden={!open} tabIndex={-1} data-watch-screen data-mode={mode} data-still-watching={stillWatching || undefined} data-touch-expanded={coarsePointer && width >= 1024 || undefined} data-controls-visible={chromeVisible} data-controls-exit={controlsExit} data-panel-open={!!panel} data-scrubbing={!!activeScrub && mobile}
     onPointerDownCapture={() => { keyboardFocus.current = false; }}
     onPointerMove={event => { if (event.pointerType === 'mouse') reveal(); }} onFocusCapture={reveal}>
@@ -362,7 +380,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
                 style={{...(marker.kind === 'credits' ? {right: `${(duration - marker.endSeconds) / duration * 100}%`} : {left: `${marker.startSeconds / duration * 100}%`}), width: `${(marker.endSeconds - marker.startSeconds) / duration * 100}%`}} />)}
               {preview && bounds && previewSeconds !== null && <ScrubPreview frame={preview.frame} source={preview.source} seconds={previewSeconds} phone={mobile}
                 percent={(previewSeconds - bounds.start) / (bounds.end - bounds.start) * 100} />}
-              <input type="range" min={bounds?.start ?? 0} max={bounds?.end ?? 1} step={.1} value={bounds ? Math.min(bounds.end, Math.max(bounds.start, drawnPosition)) : 0} disabled={!bounds}
+              <input ref={promptSeek} tabIndex={0} type="range" min={bounds?.start ?? 0} max={bounds?.end ?? 1} step={.1} value={bounds ? Math.min(bounds.end, Math.max(bounds.start, drawnPosition)) : 0} disabled={!bounds}
                 aria-label={t('player.position')} aria-valuetext={t('player.clockOf', {position: watchClock(drawnPosition), duration: watchClock(duration)})}
                 onPointerDown={event => {
                   if (scrubDrag.current || !bounds || !fence) return;
@@ -420,7 +438,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     </div>
     {open && surfaces?.loss && <LossNotice notice={surfaces.loss.notice} enabled={surfaces.loss.enabled} layout={mobile ? 'phone' : 'desktop'} />}
     <div className={styles.notices}>{open && surfaces?.notices}</div>
-    <div className={styles.prompts}>{open && surfaces?.prompts}</div>
+    <div className={styles.prompts}><WatchPromptFocus.Provider value={open ? promptHost : undefined}>{open && surfaces?.prompts}</WatchPromptFocus.Provider></div>
     <div ref={body} className={styles.body} style={rectStyle(geometry?.body)} data-watch-retained-body onScroll={event => {
       if (!bodyVisible || !open) return;
       const element = event.currentTarget, top = element.getBoundingClientRect().top;
