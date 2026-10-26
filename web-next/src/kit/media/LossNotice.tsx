@@ -1,7 +1,8 @@
-import {useEffect, useRef, useState} from 'react';
+import {useEffect, useMemo, useRef, useState, type RefObject} from 'react';
 import {Icon} from '../Icon';
 import type {MediaLayout} from './types';
 import styles from './media.module.css';
+import {useNoticePresence, type NoticeSlot} from './notice-presence';
 
 export type PlaybackLossNotice = Readonly<{
   /** Stable playback-run identity, not generation: track/quality changes share this fence. */
@@ -12,6 +13,9 @@ export type PlaybackLossNotice = Readonly<{
   loss: string; replacement: string;
 }>;
 
+type LossPaint = Readonly<{notice: PlaybackLossNotice; layout: MediaLayout}>;
+const lossKey = (value: LossPaint) => value.notice.playbackId;
+
 /** Once per playback, six seconds, never focusable. A player choice cannot trigger a notice. */
 export function LossNotice({notice, enabled, layout = 'desktop'}: {notice?: PlaybackLossNotice; enabled: boolean; layout?: MediaLayout}) {
   const shown = useRef(new Set<string>()), [visible, setVisible] = useState<PlaybackLossNotice | undefined>();
@@ -20,9 +24,19 @@ export function LossNotice({notice, enabled, layout = 'desktop'}: {notice?: Play
     shown.current.add(notice.playbackId); setVisible(notice);
   }, [notice, enabled]);
   useEffect(() => { if (!visible) return; const timer = setTimeout(() => setVisible(undefined), 6000); return () => clearTimeout(timer); }, [visible]);
-  if (!enabled || !visible || notice?.playbackId !== visible.playbackId) return null;
-  return <div key={visible.playbackId} className={styles.lossNotice} data-layout={layout} role="status" aria-live="polite" aria-atomic="true">
-    <span className={styles.lossIcon}><Icon name={visible.kind === 'picture' ? 'i-image' : 'i-vol'} size={layout === 'tv' ? 28 : layout === 'phone' ? 16 : 20} /></span>
-    <span><b>{visible.loss}</b>{visible.replacement && <> {visible.replacement}</>}</span><i className={styles.lossCountdown} />
-  </div>;
+  const live = useMemo(() => enabled && visible && notice?.playbackId === visible.playbackId
+    ? Object.freeze({notice: visible, layout}) : undefined,
+  [enabled, visible, layout, notice?.playbackId]);
+  const paint = useNoticePresence(live, lossKey, 'immediate');
+  const body = (slot: NoticeSlot<LossPaint>, ref: RefObject<HTMLDivElement | null>, outgoing: boolean) => {
+    const value = slot.value.notice, drawn = slot.value.layout;
+    return <div key={slot.key} ref={ref} className={styles.lossNotice} data-layout={drawn} data-paint={outgoing ? 'outgoing' : undefined}
+      aria-hidden={outgoing || undefined} inert={outgoing || undefined}
+      role={outgoing ? undefined : 'status'} aria-live={outgoing ? undefined : 'polite'} aria-atomic={outgoing ? undefined : 'true'}>
+      <span className={styles.lossIcon}><Icon name={value.kind === 'picture' ? 'i-image' : 'i-vol'} size={drawn === 'tv' ? 28 : drawn === 'phone' ? 16 : 20} /></span>
+      <span><b>{value.loss}</b>{value.replacement && <> {value.replacement}</>}</span>{!outgoing && <i className={styles.lossCountdown} />}
+    </div>;
+  };
+  if (!paint.current && !paint.outgoing) return null;
+  return <>{paint.outgoing && body(paint.outgoing, paint.outgoingRef, true)}{paint.current && body(paint.current, paint.currentRef, false)}</>;
 }
