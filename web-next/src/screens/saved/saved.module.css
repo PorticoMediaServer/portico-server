@@ -114,7 +114,7 @@
 .header { position: relative; z-index: var(--layer-content); padding: 116px var(--shell-gutter, var(--gutter-desktop)) 0; }
 .header h1 { margin: 0; font-size: calc(var(--type-lockup-size) * 28 / 23); line-height: calc(var(--type-lockup-size) * 28 / 23); font-weight: var(--type-lockup-weight); letter-spacing: var(--type-lockup-tracking); }
 /* collections.html .dw .phd h1: 56px, line-height 1 and the authored -.045em, desktop only. */
-@media (min-width: 1024px) { .header h1 { font-size: 56px; line-height: 1; letter-spacing: -.045em; } }
+@media (min-width: 1024px) { .header h1 { font-size: var(--type-fixed-size-56px); line-height: var(--type-fixed-line-1); letter-spacing: var(--type-fixed-tracking-minus-point-045em); } }
 .tabs { position: relative; z-index: var(--layer-content); margin-top: 28px; }
 .tabsList { gap: 34px; padding: 0 var(--shell-gutter, var(--gutter-desktop)); }
 .downloadColumns { position: relative; z-index: var(--layer-content); display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 0 48px; padding: 0 var(--shell-gutter, var(--gutter-desktop)); }
@@ -248,8 +248,8 @@
    and track values (118px cards, 12px gap, 8/20/10 track padding, 4px head margin). */
 .phonePreview { margin-top: 2px; }
 .phonePreviewHead { display: flex; align-items: baseline; gap: 14px; width: 100%; padding: 0 20px; margin: 0 0 4px; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; }
-.phonePreviewHead > b { font-size: 19px; font-weight: 700; letter-spacing: -.015em; }
-.phonePreviewHead > span { font-size: 13px; color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
+.phonePreviewHead > b { font-size: var(--type-fixed-size-19px); font-weight: var(--type-fixed-weight-700); letter-spacing: var(--type-fixed-tracking-minus-point-015em); }
+.phonePreviewHead > span { font-size: var(--type-fixed-size-13px); color: var(--color-text-tertiary); font-variant-numeric: tabular-nums; }
 .phonePreviewHead > svg { color: var(--color-text-tertiary); margin-left: auto; }
 .phonePreviewRail { display: flex; gap: 12px; overflow-x: auto; padding: 8px 20px 10px; scrollbar-width: none; }
 .phonePreviewRail::-webkit-scrollbar { display: none; }
@@ -262,6 +262,6 @@
    so the drawn height, inset, text size and background actually win. Desktop only. */
 @media (min-width: 1024px) {
   button.newPlaylist[data-size="small"] { --control-height: 40px; --control-inset: 15px; --control-radius: 10px; --control-gap: 8px;
-    font-size: 14.5px; white-space: nowrap; background: var(--color-raised-high); }
+    font-size: var(--type-fixed-size-14point-5px); white-space: nowrap; background: var(--color-raised-high); }
   button.newPlaylist[data-size="small"]:hover:not(:disabled) { background: var(--color-raised-bright); }
 }

@@ -2,7 +2,7 @@
 import {mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {dirname, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {colors, profileArtColors, spacing, spacingGrid, radii, platformRadii, motion, easings, springs, springTiming, reducedMotion, layout, layers, targets, typography, typeScale, watchEndType, componentSpec} from '../src/index.ts';
+import {colors, profileArtColors, spacing, spacingGrid, radii, platformRadii, motion, easings, springs, springTiming, reducedMotion, layout, layers, targets, typography, fixedTypeMetrics, typeScale, watchEndType, componentSpec} from '../src/index.ts';
 
 export const tokenCssPath = fileURLToPath(new URL('../../../web-next/src/kit/tokens.css', import.meta.url));
 const kebab = value => value.replace(/[A-Z]/g, letter => '-' + letter.toLowerCase());
@@ -73,7 +73,7 @@ export function renderTokens() {
     return [`--spring-${name}-duration: ${ms(timing.durationMs)}`, `--spring-${name}-easing: ${timing.css}`,
       ...Object.entries(spring).map(([key, value]) => `--spring-${name}-${key}: ${value}`)];
   });
-  const root = [...entries(colors, 'color', scalar), ...entries(profileArtColors, 'profile-art', scalar), ...entries(spacing, 'space', px),
+  const root = [...entries(fixedTypeMetrics, 'type-fixed', scalar), ...entries(colors, 'color', scalar), ...entries(profileArtColors, 'profile-art', scalar), ...entries(spacing, 'space', px),
     ...spacingGrid.map(value => `--space-px-${value}: ${px(value)}`), ...entries(radii, 'radius', px),
     ...Object.entries(platformRadii).flatMap(([platform, values]) => entries(values, `radius-${platform}`, px)),
     ...entries(motion, 'motion', ms), ...entries(easings, 'ease', scalar), ...springEntries,
