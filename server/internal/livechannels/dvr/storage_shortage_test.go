@@ -70,7 +70,7 @@ func TestStorageShortageWaitsForQueuedDeletionsBeforeFailingARecording(t *testin
 		{`INSERT INTO live_source_identities VALUES(?)`, []any{src}},
 		{`INSERT INTO live_generations VALUES(?,?,'Guide',2,1,1,?)`, []any{gen, src, now.Format(time.RFC3339)}},
 		{`INSERT INTO live_sources VALUES(?,'Aerial',1,'active',2,?,?)`, []any{src, gen, now.Format(time.RFC3339)}},
-		{`INSERT INTO live_channel_versions VALUES(?,?,'channel','Channel','1','',1,x'00','','')`, []any{gen, ch}},
+		{`INSERT INTO live_channel_versions(generation_id,channel_id,provider_key,name,number,source_number,group_name,position,locator_sealed,available_start,available_end) VALUES(?,?,'channel','Channel','1',NULL,'',1,x'00','','')`, []any{gen, ch}},
 	} {
 		if _, err = db.Exec(q.q, q.args...); err != nil {
 			t.Fatal(err)
@@ -178,7 +178,7 @@ func TestRecordingsDueOnAFullDiskWaitForRetentionWithinOnePass(t *testing.T) {
 		{`INSERT INTO live_source_identities VALUES(?)`, []any{src}},
 		{`INSERT INTO live_generations VALUES(?,?,'Guide',4,1,1,?)`, []any{gen, src, now.Format(time.RFC3339)}},
 		{`INSERT INTO live_sources VALUES(?,'Aerial',1,'active',4,?,?)`, []any{src, gen, now.Format(time.RFC3339)}},
-		{`INSERT INTO live_channel_versions VALUES(?,?,'channel','Channel','1','',1,CAST('https://provider.invalid/stream' AS BLOB),'','')`, []any{gen, ch}},
+		{`INSERT INTO live_channel_versions(generation_id,channel_id,provider_key,name,number,source_number,group_name,position,locator_sealed,available_start,available_end) VALUES(?,?,'channel','Channel','1',NULL,'',1,CAST('https://provider.invalid/stream' AS BLOB),'','')`, []any{gen, ch}},
 		{`INSERT OR REPLACE INTO dvr_storage_policy VALUES(1,1,1,0,0,0)`, nil},
 	} {
 		if _, err = db.Exec(q.q, q.args...); err != nil {

@@ -17,11 +17,11 @@ func searchPrivacyCatalog(t *testing.T) (*Service, SearchRequest) {
 	c.Exec(`INSERT INTO live_source_identities(id) VALUES('active'),('disabled')`)
 	c.Exec(`INSERT INTO live_generations VALUES('current','active','Current',1,2,0,'now'),('old','active','Old',1,1,0,'now'),('disabled','disabled','Disabled',1,1,0,'now')`)
 	c.Exec(`INSERT INTO live_sources VALUES('active','Active',1,'active',1,'current','now'),('disabled','Disabled',1,'disabled',1,'disabled','now')`)
-	c.Exec(`INSERT INTO live_channel_versions VALUES
-	 ('current','news','news','Northwind News','101','News',0,X'00','',''),
-	 ('current','news24','news24','Northwind News 24','102','News',1,X'00','',''),
-	 ('old','old','old','Northwind Old','103','News',0,X'00','',''),
-	 ('disabled','disabled','disabled','Northwind Disabled','104','News',0,X'00','','')`)
+	c.Exec(`INSERT INTO live_channel_versions(generation_id,channel_id,provider_key,name,number,source_number,group_name,position,locator_sealed,available_start,available_end) VALUES
+	 ('current','news','news','Northwind News','101',NULL,'News',0,X'00','',''),
+	 ('current','news24','news24','Northwind News 24','102',NULL,'News',1,X'00','',''),
+	 ('old','old','old','Northwind Old','103',NULL,'News',0,X'00','',''),
+	 ('disabled','disabled','disabled','Northwind Disabled','104',NULL,'News',0,X'00','','')`)
 	return New(c.DB), SearchRequest{Viewer: Viewer{Profile: "kids", Fence: "policy", Libraries: []string{"movies"}}, Q: "Northwind", Limit: 1}
 }
 
