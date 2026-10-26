@@ -456,25 +456,29 @@ func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
 	timelineRate := newTimelineLimiter()
 	sessionErrors := []string{"invalid_request", "unauthorized", "not_found", "session_ended", "revision_required", "revision_mismatch"}
 	v1Route(r, apikit.Metadata{Admission: lanePlayback, ID: "start_playback_session", Method: "POST", Path: "/v1/playback/sessions", Summary: "Start playback (201), or report that it is being prepared (202)",
-		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 8 << 10, Status: 201,
+		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 8 << 10, Status: 201, SuccessStatuses: []int{202},
 		Errors: []string{"invalid_request", "unauthorized", "not_found", "idempotency_key_required", "idempotency_key_reused", "stream_limit_reached", "conversion_capacity", "transcode_not_allowed", "source_unavailable", "unsupported_media", "connection_too_slow", "feature_restricted", "no_tuner_available", "queue_building"}},
-		func(ctx context.Context, q *http.Request, in playbackv1.StartRequest) (playbackv1.SessionView, error) {
+		func(ctx context.Context, q *http.Request, in playbackv1.StartRequest) (playbackStartResponse, error) {
 			c := d.v1ServiceCaller(q, callerFrom(ctx))
 			v, preparing, err := d.playbackV1().Start(ctx, c, q.Header.Get("Idempotency-Key"), in)
 			if err != nil {
 				if errors.Is(err, playback.ErrOwnerAccountCap) {
 					if detail, e := d.playbackV1().AccountStreamLimit(ctx, c); e == nil {
-						return v, &apierror.Error{Code: "stream_limit_reached", Reason: "owner_account_cap", Current: detail, Cause: err}
+						return playbackStartResponse{}, &apierror.Error{Code: "stream_limit_reached", Reason: "owner_account_cap", Current: detail, Cause: err}
 					}
 				}
-				return v, err
+				return playbackStartResponse{}, err
+			}
+			out, err := startSessionResponse(v, preparing)
+			if err != nil {
+				return playbackStartResponse{}, err
 			}
 			if preparing {
 				apikit.SetStatus(ctx, 202)
 				apikit.SetHeader(ctx, "Retry-After", "1")
 			}
 			setSessionHeaders(ctx, v)
-			return v, nil
+			return out, nil
 		})
 	v1Route(r, apikit.Metadata{Admission: laneSecurityFence, ID: "get_playback_session", Method: "GET", Path: "/v1/playback/sessions/{id}", Summary: "Read a playback session",
 		Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Media, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_found"}},
