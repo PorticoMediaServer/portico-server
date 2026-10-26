@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
@@ -18,7 +19,7 @@ import (
 )
 
 func TestListeningHTTPPreferenceEnvelopeAndCAS(t *testing.T) {
-	f := tl6CurrentPlaybackHTTP(t)
+	f := listeningPreferencesHTTP(t)
 	read := f.call("GET", "/v1/listening/preferences", nil)
 	if read.Code != 200 || !bytes.Contains(read.Body.Bytes(), []byte(`"profileId":"profile"`)) {
 		t.Fatal(read.Code, read.Body.String())
@@ -62,12 +63,57 @@ func TestListeningHTTPPreferenceEnvelopeAndCAS(t *testing.T) {
 	if stale.Code != 409 || !bytes.Contains(stale.Body.Bytes(), []byte(`"listening_preferences_conflict"`)) {
 		t.Fatal(stale.Code, stale.Body.String())
 	}
-	for _, id := range []string{"item-b", "missing"} {
+	for _, id := range []string{f.itemB, "missing"} {
 		response := f.call("GET", "/v1/items/"+id+"/listening", nil)
 		if response.Code == 200 || bytes.Contains(response.Body.Bytes(), []byte(`"libraryId":"b"`)) {
 			t.Fatal("listening metadata leak", response.Code, response.Body.String())
 		}
 	}
+}
+
+// listeningPreferencesHTTP is the ordinary HTTP/auth fixture this route needs:
+// one visible music library, one retired library b whose song must stay absent,
+// and the real owner profile. Playback bytes are never involved, so the reviewed
+// media-helper gate stays untouched for the tests that do need it.
+type listeningPreferencesHTTPFixture struct {
+	handler http.Handler
+	owner   string
+	itemB   string
+}
+
+func (f listeningPreferencesHTTPFixture) call(method, path string, body any) *httptest.ResponseRecorder {
+	var raw []byte
+	if body != nil {
+		if encoded, err := json.Marshal(body); err == nil {
+			raw = encoded
+		}
+	}
+	r := httptest.NewRequest(method, path, bytes.NewReader(raw))
+	r.Header.Set("Authorization", "Bearer "+f.owner)
+	if body != nil {
+		r.Header.Set("Content-Type", "application/json")
+	}
+	w := httptest.NewRecorder()
+	f.handler.ServeHTTP(w, r)
+	return w
+}
+
+func listeningPreferencesHTTP(t *testing.T) listeningPreferencesHTTPFixture {
+	t.Helper()
+	d, owner, _ := tl6SupportFixture(t)
+	c := catalogtest.New(t, d.DB)
+	c.Library("a", "Visible", "music", "/a")
+	hidden := c.Library("b", "Hidden", "music", "/b")
+	artist := c.Artist(hidden, "Hidden Artist")
+	album := c.Album(artist, "Hidden Release", 2020)
+	song := c.Song(album, 1, "/b/01.mp3", "Hidden Track")
+	c.Drain()
+	// The library itself is withdrawn, so its song is absent to this viewer while
+	// the item row and its libraryId still exist in the catalogue.
+	if _, err := d.DB.Exec(`UPDATE catalog_libraries SET retired=1 WHERE library_id='b'`); err != nil {
+		t.Fatal(err)
+	}
+	return listeningPreferencesHTTPFixture{handler: New(d), owner: owner.AccessToken, itemB: song.Public}
 }
 
 // Selection counts are exact on the wire, with no totalAtLeast key.
