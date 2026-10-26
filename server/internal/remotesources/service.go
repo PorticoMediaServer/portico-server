@@ -53,6 +53,7 @@ type Service struct {
 	sourceTests         map[string]*sourceTestScope
 	sourceRemovals      map[string]bool
 	readLeases          map[string]map[int64]*SourceReadLease
+	captureReaders      map[string]map[*captureRetirement]struct{}
 	serveClosed         bool
 	serveLife           context.Context
 	readLeaseSequence   atomic.Int64
@@ -82,6 +83,13 @@ type Service struct {
 	contacts         map[contactKey]sourceContact
 	contactsReserved int
 	contactSeq       uint64
+	// captureActive names source acquisitions whose original caller is still
+	// live; captureGrowth retains the shared disk reservation until builder
+	// physical cleanup calls ReleaseTx or bounded no-journal recovery settles it.
+	captureMu       sync.Mutex
+	captureRecovery string
+	capturesActive  map[string]bool
+	captureGrowth   map[string]*diskGrowthReservation
 }
 type activeRead struct {
 	cancel context.CancelFunc
@@ -719,6 +727,9 @@ func (s *Service) Run(ctx context.Context) {
 		// bounded batches; a read or file never writes per operation. If a batch
 		// remains, wake promptly instead of waiting for the full safety tick.
 		contactPending := s.flushSourceContacts(ctx)
+		// Bounded source recovery for a capture charge whose builder journal row
+		// never appeared. The builder owns all owned-scratch/artifact cleanup.
+		s.recoverCaptureCharges(ctx)
 		// One bounded page per wake, resumable until every row has been checked.
 		s.reconcileSourceCachePage(ctx)
 		// Completed/failed old scan listings are disposable adapter cache; current

@@ -467,6 +467,9 @@ func (s *Service) SaveSourceAdvanced(ctx context.Context, identities *identity.S
 			return SourceAdvancedSettings{}, err
 		}
 	}
+	if err = dbwork.AfterCommit(tx, func() { s.retireCaptureSettings(source, revision+1) }); err != nil {
+		return SourceAdvancedSettings{}, err
+	}
 	if err = gated.Commit(); err != nil {
 		return SourceAdvancedSettings{}, err
 	}

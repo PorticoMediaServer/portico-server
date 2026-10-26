@@ -190,9 +190,9 @@ func (c *rangeCache) append(ctx context.Context, stream io.Reader, end int64) er
 	if err := budget.load(ctx, c.service, c.source, configured); err != nil {
 		return err
 	}
-	if !budget.reserve(configured, floor, growth) {
+	if !budget.reserve(ctx, c.service, c.source, configured, floor, growth) {
 		c.service.evictSourceCache(ctx, c.source, configured, c.key, growth)
-		if !budget.reserve(configured, floor, growth) {
+		if !budget.reserve(ctx, c.service, c.source, configured, floor, growth) {
 			return storage.ErrRemoteLimit
 		}
 	}
@@ -397,8 +397,8 @@ func (s *Service) evictSourceCache(ctx context.Context, source string, limit int
 		return nil
 	}
 	budget := s.budgetFor(source)
-	var total int64
-	if err := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(used_bytes),0) FROM remote_source_cache_entries WHERE source_id=?`, source).Scan(&total); err != nil {
+	total, err := s.chargedCache(ctx, source)
+	if err != nil {
 		return err
 	}
 	if total+need <= limit {
@@ -723,8 +723,13 @@ func (b *sourceCacheBudget) load(ctx context.Context, service *Service, source s
 	if b.loaded {
 		return nil
 	}
+	view, err := dbwork.BeginSnapshot(ctx, service.db)
+	if err != nil {
+		return err
+	}
+	defer view.Rollback()
 	var used int64
-	if err := service.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(used_bytes),0) FROM remote_source_cache_entries WHERE source_id=?`, source).Scan(&used); err != nil {
+	if err = view.Tx().QueryRowContext(ctx, `SELECT COALESCE(SUM(used_bytes),0) FROM remote_source_cache_entries WHERE source_id=?`, source).Scan(&used); err != nil {
 		return err
 	}
 	b.used = used
@@ -732,19 +737,66 @@ func (b *sourceCacheBudget) load(ctx context.Context, service *Service, source s
 	return nil
 }
 
-// reserve accepts growth only when the source's own budget and the host floor
-// both still hold, counting other writers' reservations.
-func (b *sourceCacheBudget) reserve(limit, floor, growth int64) bool {
-	if growth <= 0 || limit <= 0 || growth > limit {
+// reserve accepts prefix growth only when the source's own budget, the host
+// floor and the durable full capture charge all still hold. The capture scalar
+// is read fresh under b.mu; it is never folded into b.used.
+func (b *sourceCacheBudget) reserve(ctx context.Context, service *Service, source string, limit, floor, growth int64) bool {
+	if growth <= 0 || limit <= 0 {
 		return false
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.used+b.reserved+growth > limit {
+	capture, err := captureQuotaRead(ctx, service, source)
+	if err != nil {
+		return false
+	}
+	if b.used < 0 || b.reserved < 0 || capture < 0 || b.used > limit || b.reserved > limit || capture > limit {
+		return false
+	}
+	remaining := limit - b.used
+	if b.reserved > remaining {
+		return false
+	}
+	remaining -= b.reserved
+	if capture > remaining {
+		return false
+	}
+	remaining -= capture
+	if growth > remaining {
 		return false
 	}
 	b.reserved += growth
 	return true
+}
+
+// captureQuotaRead reads the O(1) durable capture scalar on the background read
+// handle, never on a writer connection. It is called with the source budget
+// mutex held and closes its snapshot before returning.
+func captureQuotaRead(ctx context.Context, service *Service, source string) (int64, error) {
+	view, err := dbwork.BeginSnapshot(ctx, service.db)
+	if err != nil {
+		return 0, err
+	}
+	defer view.Rollback()
+	var bytes int64
+	if err = view.Tx().QueryRowContext(ctx, `SELECT COALESCE((SELECT capture_bytes FROM remote_source_capture_quota WHERE source_id=?),0)`, source).Scan(&bytes); err != nil {
+		return 0, err
+	}
+	if bytes < 0 {
+		return 0, storage.ErrRemoteLimit
+	}
+	return bytes, nil
+}
+
+// sourceCacheChargedTx accounts for committed prefix plus full capture charges for
+// one source without a SUM over capture receipts.
+func sourceCacheChargedTx(ctx context.Context, tx *sql.Tx, source string) (int64, error) {
+	var used int64
+	err := tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT SUM(used_bytes) FROM remote_source_cache_entries WHERE source_id=?1),0)+COALESCE((SELECT capture_bytes FROM remote_source_capture_quota WHERE source_id=?1),0)`, source).Scan(&used)
+	if err == nil && used < 0 {
+		err = storage.ErrRemoteLimit
+	}
+	return used, err
 }
 
 func (b *sourceCacheBudget) accept(growth int64) {
@@ -874,7 +926,22 @@ func (c *rangeCache) discardUnownedLocked() {
 }
 
 func (s *Service) cacheUsed(ctx context.Context, source string) (int64, error) {
+	view, err := dbwork.BeginSnapshot(ctx, s.db)
+	if err != nil {
+		return 0, err
+	}
+	defer view.Rollback()
 	var used int64
-	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(used_bytes),0) FROM remote_source_cache_entries WHERE source_id=?`, source).Scan(&used)
+	err = view.Tx().QueryRowContext(ctx, `SELECT COALESCE(SUM(used_bytes),0) FROM remote_source_cache_entries WHERE source_id=?`, source).Scan(&used)
 	return used, err
+}
+
+// chargedCache is quota accounting, not a measurement of physical cache bytes.
+func (s *Service) chargedCache(ctx context.Context, source string) (int64, error) {
+	view, err := dbwork.BeginSnapshot(ctx, s.db)
+	if err != nil {
+		return 0, err
+	}
+	defer view.Rollback()
+	return sourceCacheChargedTx(ctx, view.Tx(), source)
 }

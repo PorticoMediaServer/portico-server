@@ -3778,6 +3778,84 @@ CREATE TABLE remote_source_contacts(
  last_check_ms INTEGER NOT NULL DEFAULT 0 CHECK(last_check_ms>=0),
  CHECK(last_failure_ms=0 OR last_error_code IN('offline','credentials_required','rate_limited','quota_exceeded')),
  CHECK(last_failure_ms>0 OR last_error_code='')) STRICT;
+
+CREATE TABLE remote_source_captures(
+ capture_id TEXT PRIMARY KEY,
+ source_id TEXT NOT NULL,
+ acquisition_id TEXT NOT NULL UNIQUE,
+ reservation_id TEXT NOT NULL UNIQUE,
+ charged_bytes INTEGER NOT NULL CHECK(charged_bytes>0),
+ state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN('pending','committed')),
+ volume_key TEXT NOT NULL DEFAULT '' CHECK(length(volume_key)<=256),
+ created_ms INTEGER NOT NULL CHECK(created_ms>0),
+ expires_ms INTEGER NOT NULL CHECK(expires_ms>created_ms),
+ committed_ms INTEGER NOT NULL DEFAULT 0 CHECK(committed_ms>=0)) STRICT;
+CREATE INDEX remote_source_captures_pending ON remote_source_captures(state,capture_id);
+CREATE TABLE remote_source_capture_physical(
+ capture_id TEXT PRIMARY KEY,
+ source_id TEXT NOT NULL,
+ config_generation TEXT NOT NULL,
+ mount_id TEXT NOT NULL DEFAULT '',
+ library_source_id TEXT NOT NULL,
+ library_id TEXT NOT NULL,
+ incarnation TEXT NOT NULL,
+ library_generation INTEGER NOT NULL,
+ root_identity TEXT NOT NULL,
+ inventory_object_id TEXT NOT NULL,
+ inventory_revision TEXT NOT NULL,
+ inventory_relative_path TEXT NOT NULL,
+ source_generation INTEGER NOT NULL CHECK(source_generation>0),
+ library_root TEXT NOT NULL, remote_root TEXT NOT NULL, network_witness TEXT NOT NULL,
+ config_digest TEXT NOT NULL CHECK(length(config_digest)=64 AND config_digest NOT GLOB '*[^0-9a-f]*'),
+ observation_source TEXT NOT NULL,
+ observation_generation TEXT NOT NULL,
+ observation_object TEXT NOT NULL,
+ observation_revision INTEGER NOT NULL,
+ scan_revision TEXT NOT NULL,
+ size INTEGER NOT NULL CHECK(size>0),
+ sequential INTEGER NOT NULL CHECK(sequential=1)) STRICT;
+CREATE TABLE remote_source_capture_actor(
+ capture_id TEXT PRIMARY KEY,
+ server_id TEXT NOT NULL,
+ account_id TEXT NOT NULL,
+ profile_id TEXT NOT NULL,
+ family_id TEXT NOT NULL,
+ device_id TEXT NOT NULL,
+ authority TEXT NOT NULL,
+ role TEXT NOT NULL,
+ grant TEXT NOT NULL DEFAULT '',
+ epoch INTEGER NOT NULL,
+ item_id TEXT NOT NULL,
+ asset_id TEXT NOT NULL,
+ authority_witness TEXT NOT NULL) STRICT;
+CREATE TABLE remote_source_capture_policy(
+ capture_id TEXT PRIMARY KEY,
+ profile_revision INTEGER NOT NULL,
+ profile_scan_depth TEXT NOT NULL,
+ profile_whole_file_reads INTEGER NOT NULL CHECK(profile_whole_file_reads IN(0,1)),
+ profile_connections INTEGER NOT NULL,
+ profile_requests_per_second INTEGER NOT NULL,
+ profile_bytes_per_second INTEGER NOT NULL,
+ cache_settings_revision INTEGER NOT NULL,
+ cache_bytes INTEGER NOT NULL CHECK(cache_bytes>0),
+ cache_floor_bytes INTEGER NOT NULL,
+ applied_bytes INTEGER NOT NULL,
+ applied_floor_bytes INTEGER NOT NULL,
+ applied INTEGER NOT NULL CHECK(applied IN(0,1)),
+ config_digest TEXT NOT NULL CHECK(length(config_digest)=64 AND config_digest NOT GLOB '*[^0-9a-f]*'),
+ policy_witness TEXT NOT NULL) STRICT;
+CREATE TABLE remote_source_capture_quota(
+ source_id TEXT PRIMARY KEY,
+ capture_bytes INTEGER NOT NULL DEFAULT 0 CHECK(capture_bytes>=0)) STRICT;
+CREATE TRIGGER remote_source_capture_charge_insert AFTER INSERT ON remote_source_captures BEGIN
+ INSERT INTO remote_source_capture_quota(source_id,capture_bytes) VALUES(NEW.source_id,NEW.charged_bytes)
+ ON CONFLICT(source_id) DO UPDATE SET capture_bytes=capture_bytes+excluded.capture_bytes;
+ SELECT RAISE(ABORT,'capture quota negative') WHERE (SELECT capture_bytes FROM remote_source_capture_quota WHERE source_id=NEW.source_id)<0;
+END;
+CREATE TRIGGER remote_source_capture_charge_delete AFTER DELETE ON remote_source_captures BEGIN
+ UPDATE remote_source_capture_quota SET capture_bytes=capture_bytes-OLD.charged_bytes WHERE source_id=OLD.source_id;
+ SELECT RAISE(ABORT,'capture quota missing or negative') WHERE (SELECT capture_bytes FROM remote_source_capture_quota WHERE source_id=OLD.source_id) IS NULL OR (SELECT capture_bytes FROM remote_source_capture_quota WHERE source_id=OLD.source_id)<0;
+END;
 CREATE TABLE remote_source_operations(operation_id TEXT PRIMARY KEY,actor TEXT NOT NULL,fingerprint TEXT NOT NULL,response TEXT NOT NULL,created_at INTEGER NOT NULL) STRICT;
 CREATE TABLE remote_listing_sessions(id TEXT PRIMARY KEY,job_id TEXT NOT NULL,source_id TEXT NOT NULL,generation TEXT NOT NULL,directory TEXT NOT NULL,ready INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL,UNIQUE(job_id,directory)) STRICT;
 CREATE TABLE remote_native_listings(listing_id TEXT PRIMARY KEY REFERENCES remote_listing_sessions(id) ON DELETE CASCADE,owner TEXT NOT NULL,state TEXT NOT NULL CHECK(state IN('running','complete','failed')),error_code TEXT NOT NULL DEFAULT '',entries INTEGER NOT NULL DEFAULT 0,bytes INTEGER NOT NULL DEFAULT 0,updated_at INTEGER NOT NULL) STRICT;

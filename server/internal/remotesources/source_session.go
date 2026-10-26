@@ -289,6 +289,7 @@ func (l *SourceReadLease) fail(err error) error {
 func (s *Service) stopReadLeases(source string, reason error, keep *SourceReadProfile) {
 	s.serveMu.Lock()
 	var readers []*SourceReadLease
+	var captured []context.CancelFunc
 	for id, group := range s.readLeases {
 		if source != "" && source != id {
 			continue
@@ -299,7 +300,20 @@ func (s *Service) stopReadLeases(source string, reason error, keep *SourceReadPr
 			}
 		}
 	}
+	for id, group := range s.captureReaders {
+		if source != "" && id != source {
+			continue
+		}
+		for lease := range group {
+			if keep == nil || lease.profile != *keep {
+				captured = append(captured, lease.cancel)
+			}
+		}
+	}
 	s.serveMu.Unlock()
+	for _, cancel := range captured {
+		cancel()
+	}
 	for _, lease := range readers {
 		lease.fail(reason)
 	}
