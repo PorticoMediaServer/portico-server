@@ -1,4 +1,5 @@
 import {useLayoutEffect, useRef, useState, type RefObject} from 'react';
+import {easings} from '@design';
 import {dockWordsOwner} from './dock-words';
 
 export function useDockReducedMotion(ref: RefObject<HTMLElement | null>) {
@@ -31,7 +32,7 @@ export function useDockHandover(ref: RefObject<HTMLElement | null>, identity: st
     animation.current?.cancel();
     animation.current = content.animate(
       motionChange || reduced ? [{opacity}, {opacity: 1}] : [{opacity, transform}, {opacity: 1, transform: 'none'}],
-      {duration: motionChange || reduced ? 160 : 180, easing: motionChange || reduced ? 'linear' : 'ease-out', fill: 'both'});
+      {duration: motionChange || reduced ? 160 : 180, easing: motionChange || reduced ? 'linear' : easings.out, fill: 'both'});
   }, [identity, reduced, ref]);
   useLayoutEffect(() => () => animation.current?.cancel(), []);
 }
