@@ -38,6 +38,20 @@ const (
 	plannerStatisticsInterval = 5 * time.Minute
 )
 
+// Focused lifecycle knobs. Production keeps the real retention loop, the real
+// planner refresh and the shipped intervals; tests may replace them to prove the
+// housekeeping body advances while retention is blocked and that cancellation
+// stops both tracked loops.
+var (
+	retentionRun                  = tableretention.Run
+	plannerRefresh                = persistence.RefreshPlannerStatistics
+	plannerRefreshInterval        = plannerStatisticsInterval
+	housekeepingPollInterval      = dbwork.CheckpointPollInterval
+	housekeepingAncillaryInterval = dbwork.CheckpointRegularInterval
+	housekeepingTickHook          = func() {}
+	plannerRefreshHook            = func() {}
+)
+
 // integritySchedule reads the owner's choice. Off unless asked for, because on a
 // multi-gigabyte library this is minutes of I/O and the owner should be the one
 // deciding when to spend it.
@@ -79,8 +93,10 @@ func runDatabaseHousekeeping(ctx context.Context, db *sql.DB) {
 			log.Printf("This state directory holds %d schema objects this build does not define; they are left untouched. First: %s", len(unknown), strings.Join(unknown[:min(3, len(unknown))], ", "))
 		}
 	}
-	// Owner-paused retention must never pause WAL pressure monitoring.
-	supervise.Loop(ctx, "cmd.record-retention", func(ctx context.Context) { tableretention.Run(ctx, db) })
+	// Owner-paused retention must never pause WAL pressure monitoring. Start it
+	// as a tracked child of this same lifecycle so the goroutine here can reach
+	// its own ticker instead of running retention's never-ending timer inline.
+	supervise.Supervise(ctx, "cmd.record-retention", func(ctx context.Context) { retentionRun(ctx, db) })
 	interval, integrity := integritySchedule()
 	lastIntegrity := time.Time{}
 	lastReceiptSweep := time.Now()
@@ -100,7 +116,7 @@ func runDatabaseHousekeeping(ctx context.Context, db *sql.DB) {
 	if err != nil {
 		log.Printf("Checkpoint pressure monitoring could not resolve the database file; regular checks remain active: %v", err)
 	}
-	ticker := time.NewTicker(dbwork.CheckpointPollInterval)
+	ticker := time.NewTicker(housekeepingPollInterval)
 	defer ticker.Stop()
 	ancillary := ancillaryMaintenanceCadence{last: time.Now()}
 	for {
@@ -117,19 +133,21 @@ func runDatabaseHousekeeping(ctx context.Context, db *sql.DB) {
 				log.Printf("Write-ahead log truncated from %d frames", result.BeforeLogFrames)
 			}
 		}
+		housekeepingTickHook()
 		// Only WAL size probes become more frequent. Preserve the previous
 		// cadence for backlog draining, receipt pruning and structural checks.
 		if !ancillary.due(time.Now()) {
 			continue
 		}
-		if time.Since(lastPlannerRefresh) >= plannerStatisticsInterval {
+		if time.Since(lastPlannerRefresh) >= plannerRefreshInterval {
 			// A startup-only refresh freezes one-row bootstrap estimates while
 			// sessions and catalogues grow. Reuse the yielding, short-writer
 			// refresh; it counts only stale tables and samples index keys.
 			lastPlannerRefresh = time.Now()
-			if err := persistence.RefreshPlannerStatistics(ctx, db); err != nil && ctx.Err() == nil {
+			if err := plannerRefresh(ctx, db); err != nil && ctx.Err() == nil {
 				log.Printf("Planner statistics refresh will retry: %v", err)
 			}
+			plannerRefreshHook()
 		}
 		if err := persistence.ReclaimSpace(ctx, db); err != nil {
 			log.Printf("warn: Database space reclamation: %v", err)
@@ -183,7 +201,7 @@ func runDatabaseHousekeeping(ctx context.Context, db *sql.DB) {
 type ancillaryMaintenanceCadence struct{ last time.Time }
 
 func (c *ancillaryMaintenanceCadence) due(now time.Time) bool {
-	if now.Sub(c.last) < dbwork.CheckpointRegularInterval {
+	if now.Sub(c.last) < housekeepingAncillaryInterval {
 		return false
 	}
 	c.last = now
