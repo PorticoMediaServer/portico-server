@@ -39,6 +39,7 @@ export class BrowseController {
   readonly collection: WindowedCollection<BrowseMember>;
   readonly source: BrowseSource;
   private state: BrowseState = Object.freeze({phase: 'loading', predicates: [], queryRevision: 0});
+  private issued = new WeakSet<BrowseState>();
   private listeners = new Set<() => void>();
   private life = new AbortController();
   private epoch = 0;
@@ -73,6 +74,7 @@ export class BrowseController {
   private publish(patch: Partial<BrowseState>) {
     if (!this.current()) return;
     this.state = Object.freeze({...this.state, ...patch});
+    this.issued.add(this.state);
     for (const listener of this.listeners) listener();
   }
   async load() {
@@ -88,15 +90,31 @@ export class BrowseController {
       const sort = this.sorts[0];
       if (!pivot?.browsable || !pivot.supportedViews.some(view => view === 'grid' || view === 'list') || !sort || caps.queryLimits.maximumLimit < 60) throw new Error('browse-capability-required');
       this.publish({phase: 'ready', capabilities: caps, sort});
+      if (!this.current() || epoch !== this.epoch) return;
       this.reset();
     } catch (error) { if (epoch === this.epoch) this.publish({phase: 'error', error}); }
   }
-  setQuery(predicates: readonly BrowseNode[], sort: BrowseSortSelection = this.state.sort!) {
-    if (!this.current() || !this.state.capabilities || !sort) return;
-    const captured = Object.freeze(predicates.map(captureNode)), selected = sort === this.state.sort ? sort : Object.freeze({...sort});
-    this.builder(this.state.capabilities, captured, selected).build();
-    if (selected !== this.state.sort) this.sorts = [selected];
+  acceptsQuery(original: BrowseState): boolean {
+    return this.current() && this.issued.has(original) && original.phase === 'ready' && this.state.phase === 'ready'
+      && this.state.queryRevision === original.queryRevision && this.state.capabilities === original.capabilities
+      && this.state.predicates === original.predicates && this.state.sort === original.sort;
+  }
+  setQuery(predicates: readonly BrowseNode[], sort?: BrowseSortSelection, original: BrowseState = this.state): boolean {
+    // A rendered control or delayed draft belongs to its original applied query.
+    // Page/count publication may advance without replacing that query; another
+    // query, capabilities or opening must never lend the callback its state.
+    const current = () => this.acceptsQuery(original);
+    if (!current() || !original.capabilities) return false;
+    const chosen = sort ?? original.sort;
+    if (!chosen) return false;
+    const captured = Object.freeze(predicates.map(captureNode)), selected = chosen === original.sort ? chosen : Object.freeze({...chosen});
+    this.builder(original.capabilities, captured, selected).build();
+    // Capturing/validating caller-owned input cannot re-enter and then overwrite
+    // a query accepted in the meantime.
+    if (!current()) return false;
+    if (selected !== original.sort) this.sorts = [selected];
     this.reset({predicates: captured, sort: selected});
+    return true;
   }
   private builder(caps: BrowseCapabilities, predicates: readonly BrowseNode[], sort: BrowseSortSelection) {
     const builder = new BrowseQueryBuilder(caps, this.source.pivot);
@@ -112,6 +130,7 @@ export class BrowseController {
     this.members = new WeakMap();
     this.whole = undefined;
     this.publish({...next, revision: undefined, queryRevision: this.state.queryRevision + 1});
+    if (!this.current() || epoch !== this.epoch) return;
     let revision: string | undefined, stale = false;
     this.collection.invalidate(async (start, count, signal) => {
       if (!this.current() || epoch !== this.epoch) throw closed();
