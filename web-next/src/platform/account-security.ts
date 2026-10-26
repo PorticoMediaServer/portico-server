@@ -4,6 +4,7 @@ import type {HostedSession, LocalSession} from '@core/index.ts';
 import {restoreExactNativeSession} from '@core/server-connections.ts';
 import {routeBase64, routeBytes, webRouteCrypto} from '@core/route-identity.ts';
 import {parseSecuritySigned, parseSecurityReturnCode, securityReturnEntry, verifySecurityConfirmation, verifySecurityContext, type CredentialSecurityPurpose, type SecurityPrepare} from '@core/security-return.ts';
+import {accountSecurityRequest, accountSecurityUIURL} from './account-security-policy';
 import {BrowserAccountApi} from './account';
 import {browserAppSessions, browserConnectionEnvironment} from './server-connections';
 import {currentAccountWork, type AccountIdentity} from './account-work';
@@ -41,13 +42,8 @@ async function originalServer(pending: AccountSecurityPending, signal?: AbortSig
   // transport candidate for this UI continuation. A faster LAN/discovered route
   // cannot change its Origin/Host context, and no route hint is persisted.
   const scopedFetch: typeof fetch = async (input, init) => {
-    const message = input instanceof Request ? input.clone() : input;
-    const target = new URL(typeof message === 'string' ? message : message instanceof URL ? message.href : message.url);
-    const method = (init?.method ?? (message instanceof Request ? message.method : 'GET')).toUpperCase();
-    const inheritedSignal = init?.signal ?? (message instanceof Request ? message.signal : undefined);
-    const request = {...init, method, headers: new Headers(init?.headers ?? (message instanceof Request ? message.headers : undefined)),
-      ...(signal ? {signal: inheritedSignal ? AbortSignal.any([signal, inheritedSignal]) : signal} : {})};
-    if (target.origin !== pageOrigin || beforeRead && method !== 'GET' && !(method === 'POST' && target.pathname === routePath('prove_network_identity'))) ended();
+    const {message, request} = accountSecurityRequest(input, init, pageOrigin, Boolean(beforeRead));
+    if (signal) request.signal = request.signal ? AbortSignal.any([signal, request.signal]) : signal;
     if (beforeRead) await beforeRead();signal?.throwIfAborted();
     return (environment.fetcher ?? fetch)(message, request);
   };
@@ -149,7 +145,12 @@ export class OriginalProviderSecurity {
   private live = true;
   private constructor(readonly pending: AccountSecurityPending, readonly proof: RecentProof, readonly client: HostedAccountClient, private readonly journal: AccountSecurityJournal) {}
   get original() {return this.pending.original;}
-  current = () => this.live && Date.parse(this.original.expiresAt) > Date.now();
+  acceptsUIURL(href: string) {
+    const origin = this.original.kind === 'server-account' ? this.pending.prepare?.origin : this.original.hostedOrigin;
+    if (!origin) return false;
+    return accountSecurityUIURL(this.original.kind, origin, href);
+  }
+  current = () => this.live && Date.parse(this.original.expiresAt) > Date.now() && this.acceptsUIURL(location.href);
   private async assertOriginal(signal?: AbortSignal) {
     if (!this.current()) ended();
     signal?.throwIfAborted(); checkDeadline(this.original);
