@@ -107,7 +107,7 @@ export function SecurityPanel({account, api, identity, username, onDeleted, onSe
       {task && <SecurityTask key={task} account={account} identity={identity} state={state} task={task} onSecurityEnded={onSecurityEnded} onClose={() => { setTask(undefined); void api.security(life.current?.signal).then(setState, setError); }} />}
       {deleting && <DeleteAccount account={account} identity={identity} target={state.contactAddress || username} onDeleted={onDeleted} onClose={() => setDeleting(false)} />}
     </>}
-    <Dialog open={Boolean(disconnecting)} onOpenChange={open => { if (!open && !busy) setDisconnecting(undefined); }} stackFooter title={t('web.hostedSecurity.disconnectTitle', {provider: disconnecting ? providerName(disconnecting.provider) : ''})}
+    <Dialog open={Boolean(disconnecting)} onOpenChange={open => { if (!open && !busy) setDisconnecting(undefined); }} stackFooter className={styles.overlaySpacing} title={t('web.hostedSecurity.disconnectTitle', {provider: disconnecting ? providerName(disconnecting.provider) : ''})}
       description={t('web.hostedSecurity.disconnectBody', {provider: disconnecting ? providerName(disconnecting.provider) : ''})} footer={<><Button size="small" disabled={busy} onClick={() => setDisconnecting(undefined)}>{t('action.cancel')}</Button><ServicesDangerAction loading={busy} onClick={() => void disconnect()}>{t('web.hostedSecurity.disconnect')}</ServicesDangerAction></>}><></></Dialog>
   </>;
 }
@@ -180,7 +180,7 @@ function SecurityTask({account, identity, state, task, onClose, onSecurityEnded}
   const commitLabel = t(confirm ? 'web.hostedSecurity.confirm' : task === 'password_set_or_change' ? 'account.changePasswordTitle' : task === 'email_change' ? 'services.security.sendCode' : task === 'mfa_disable' ? 'web.hostedSecurity.turnOff' : 'action.continue');
   const commitAction = task === 'mfa_disable' && !confirm ? <ServicesDangerAction disabled={!current() || !ready} loading={busy} onClick={() => void submit()}>{commitLabel}</ServicesDangerAction>
     : <Button size="small" variant="primary" disabled={!current() || !ready} loading={busy} onClick={() => void submit()}>{commitLabel}</Button>;
-  return <Dialog open onOpenChange={open => { if (!open && !busy) onClose(); }} title={title} showCloseButton={false}
+  return <Dialog open onOpenChange={open => { if (!open && !busy) onClose(); }} className={styles.overlaySpacing} title={title} showCloseButton={false}
     footer={codes ? <Button size="small" variant="primary" onClick={onClose}>{t('action.done')}</Button> : <><Button size="small" disabled={busy} onClick={onClose}>{t('action.cancel')}</Button>{commitAction}</>}>
     {error ? <HostedError error={error} /> : null}
     {codes ? <><ServicesQuiet>{t('services.security.codesBody')}</ServicesQuiet><ServicesRecoveryCodes codes={codes}
@@ -236,7 +236,7 @@ function DeleteAccount({account, identity, target, onClose, onDeleted}: {account
     } catch (value) { if (!signal.aborted) setError(value); }
     finally { pending.current = false; if (!signal.aborted) setBusy(false); }
   };
-  return <Dialog open onOpenChange={open => { if (!open && !busy) onClose(); }} title={t('web.deleteAccount.confirmTitle')} description={t('web.deleteAccount.help')} showCloseButton={false} stackFooter
+  return <Dialog open onOpenChange={open => { if (!open && !busy) onClose(); }} className={styles.overlaySpacing} title={t('web.deleteAccount.confirmTitle')} description={t('web.deleteAccount.help')} showCloseButton={false} stackFooter
     footer={<><Button size="small" disabled={busy} onClick={onClose}>{t('action.cancel')}</Button>{preview?.ownedServers.length ? <Button size="small" variant="primary" onClick={() => location.assign('/account?tab=servers')}>{t('account.delete.manageServers')}</Button> : null}{preview?.canDelete && <ServicesDangerAction icon="i-trash" loading={busy} disabled={!target || typed.trim().toLowerCase() !== target.toLowerCase()} onClick={() => void remove()}>{t('web.deleteAccount.confirmAction')}</ServicesDangerAction>}</>}>
     {error ? <HostedError error={error} /> : null}
     {!preview && !error && <ServicesQuiet>{t('web.deleteAccount.checking')}</ServicesQuiet>}
