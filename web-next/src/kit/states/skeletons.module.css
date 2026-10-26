@@ -1,5 +1,5 @@
 .page { position: relative; isolation: isolate; width: 100%; height: 100%; background: var(--color-ink); color: var(--color-text); overflow: hidden; font-family: var(--font); line-height: normal; }
-.block { position: relative; overflow: hidden; border-radius: 10px; background: var(--color-raised); flex: none; }
+.block { position: relative; overflow: hidden; border-radius: 10px; background: var(--color-raised); flex: none; animation: skeleton-in var(--motion-quick) linear both; }
 .line { height: 14px; border-radius: 7px; }
 .small { height: 11px; border-radius: 6px; }
 .sheen { background: linear-gradient(100deg,var(--color-raised) 35%,#183142 50%,var(--color-raised) 65%); background-size: 300% 100%; background-position: 50% 0; }
@@ -24,6 +24,9 @@
 .track { display: flex; overflow: hidden; padding-top: 12px; padding-bottom: 14px; }
 .rowCell { flex: none; }
 .arrived { animation: arrived var(--motion-standard) linear both; }
+/* The shapes themselves appear after the existing quiet gate with the authored 120ms
+   opacity entrance; the still backgrounds and the separate 180ms arrived crossfade stay. */
+@keyframes skeleton-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes arrived { from { opacity: 0; } to { opacity: 1; } }
 .titleArt { position: absolute; inset: 0 0 auto; height: 660px; }
 .titleWords { position: absolute; left: 64px; top: 250px; width: 620px; }
@@ -55,6 +58,6 @@
 .phone .titleWords > .block { margin: 0 auto; }
 .phone .titleActions { gap: 10px; margin-top: 0; }
 @media (min-width: 1024px) and (max-width: 1439px) { .heroWords, .titleWords { left: clamp(32px,calc(32px + (100vw - 1024px) / 13),64px); } }
-@media (prefers-reduced-motion: reduce) { .arrived { animation-duration: var(--motion-reduced); } .sheen { background: var(--color-raised); } }
-:global([data-reduce-motion=true]) .arrived { animation-duration: var(--motion-reduced); }
+@media (prefers-reduced-motion: reduce) { .arrived, .block { animation-duration: var(--motion-reduced); } .sheen { background: var(--color-raised); } }
+:global([data-reduce-motion=true]) .arrived, :global([data-reduce-motion=true]) .block { animation-duration: var(--motion-reduced); }
 :global([data-reduce-motion=true]) .sheen { background: var(--color-raised); }
