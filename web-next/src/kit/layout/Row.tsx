@@ -1,10 +1,11 @@
-import {useCallback, useEffect, useId, useRef, useState, type CSSProperties, type HTMLAttributes, type ReactNode} from 'react';
+import {useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type HTMLAttributes, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import {Icon} from '../Icon';
 import {layoutType, platformType, type LayoutPlatform} from './Lockup';
 import {anchoredOffset} from './geometry';
 import {cancelLayoutScroll, scrollLayout, useLayoutMotion} from './motion';
 import {useLayoutPresence} from './presence';
+import {useListRemovalFocus} from './use-list-removal-focus';
 import styles from './layout.module.css';
 
 export type RowProps = Omit<HTMLAttributes<HTMLElement>, 'title'> & {heading: ReactNode; subtitle?: ReactNode; actions?: ReactNode; actionsPlacement?: 'trailing' | 'inline'; onSeeAll?: () => void; seeAllHref?: string; seeAllLabel?: string; platform?: LayoutPlatform};
@@ -26,12 +27,17 @@ export type ShelfProps<T> = Omit<RowProps, 'children'> & {
   items: readonly T[]; getKey: (item: T) => string; renderItem: (item: T, context: ShelfItemContext) => ReactNode;
   onItemFocus?: (item: T, index: number) => void; onVisibleRange?: (first: number, last: number) => void;
   itemWidth?: number; reducedMotion?: boolean;
+  /** Original consumer/source lifetime; replacement withdraws the old DOM focus context. */
+  focusScope?: object;
 };
 
-export function Shelf<T>({items, getKey, renderItem, onItemFocus, onVisibleRange, itemWidth, reducedMotion = false, platform = 'desktop', ...props}: ShelfProps<T>) {
+export function Shelf<T>({items, getKey, renderItem, onItemFocus, onVisibleRange, itemWidth, focusScope, reducedMotion = false, platform = 'desktop', ...props}: ShelfProps<T>) {
   const [focusedKey, setFocusedKey] = useState<string | null>(null), [edges, setEdges] = useState({left: false, right: false});
   const motion = useLayoutMotion(reducedMotion);
-  const presence = useLayoutPresence(items, getKey, motion.reduced, 180, 320), track = presence.root;
+  const focus = useListRemovalFocus(focusScope);
+  const presence = useLayoutPresence(items, getKey, motion.reduced, 180, 320, focus), track = presence.root;
+  const attach = useCallback((element: HTMLDivElement | null) => {focus.root.current = element;(track as {current: HTMLDivElement | null}).current = element;}, [focus.root, track]);
+  useLayoutEffect(() => {setFocusedKey(null);}, [focus.lifetime]);
   const measure = useCallback(() => {
     const element = track.current; if (!element) return;
     setEdges({left: element.scrollLeft > 1, right: element.scrollLeft + element.clientWidth < element.scrollWidth - 1});
@@ -44,10 +50,10 @@ export function Shelf<T>({items, getKey, renderItem, onItemFocus, onVisibleRange
     const element = track.current; if (!element) return;
     const observer = new ResizeObserver(measure); observer.observe(element); measure();
     return () => { observer.disconnect(); cancelLayoutScroll(element); };
-  }, [measure, presence.present, track]);
+  }, [measure, presence.present, track, focus.lifetime]);
   const step = (direction: number) => { const element = track.current; if (element) scrollLayout(element, Math.max(0, Math.min(element.scrollWidth - element.clientWidth, element.scrollLeft + direction * (element.clientWidth - (platform === 'tv' ? 296 : platform === 'desktop' ? 128 : 40)))), 0, motion.reduced); };
   return <Row {...props} platform={platform} data-reduced-motion={motion.reduced}>
-    <div ref={track} className={styles.track} onScroll={measure} onKeyDown={event => {
+    <div key={focus.lifetime} ref={attach} className={styles.track} tabIndex={-1} onScroll={measure} onKeyDown={event => {
       if ((event.target as HTMLElement).closest('input,textarea,select,[contenteditable="true"]')) return;
       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
       const element = track.current, item = (event.target as HTMLElement).closest<HTMLElement>('[data-shelf-index]');

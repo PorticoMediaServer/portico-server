@@ -404,7 +404,7 @@ export function TitleRecommendationRow({row, binding, guard, subtitleVisible = t
 
 export function TitleRow({heading, subtitle, entries, binding, guard}: {heading: ReactNode; subtitle?: ReactNode; entries: readonly ContentEntry[]; binding: Pick<DetailBindings, 'context'>; guard?: () => void}) {
   const phone = useShellWidth() < 1024;
-  return <Shelf heading={heading} subtitle={phone ? undefined : subtitle} items={entries} getKey={entry => entry.id} renderItem={entry => {
+  return <Shelf focusScope={binding.context} heading={heading} subtitle={phone ? undefined : subtitle} items={entries} getKey={entry => entry.id} renderItem={entry => {
     const props = {model: entryCard(entry, env), artwork: binding.context.artwork.foreground(entry.posterUrl, 380, 2 / 3), onNavigate: () => runScreenCommand(binding.context, () => { if (binding.context.isCurrent()) { guard?.(); binding.context.effects.openEntry(entry); } }), watched: entry.watched};
     return ['album', 'book'].includes(entry.kind) ? <SquareCard {...props} /> : <PosterCard {...props} />;
   }} />;

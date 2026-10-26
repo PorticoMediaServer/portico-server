@@ -1,6 +1,7 @@
-import {useEffect, useLayoutEffect, useRef, useState, type RefObject} from 'react';
+import {useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject} from 'react';
 import {easings, motion, reducedMotion} from '@design';
 import type {OverlayChange, OverlayDismissReason} from './types';
+import {captureListFocusReturn, type ListFocusReturn} from '../layout/removal-focus-owner';
 
 export const classes = (...values: (string | undefined | false)[]) => values.filter(Boolean).join(' ');
 export const focusableSelector = 'button:not([disabled]),[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
@@ -64,11 +65,45 @@ export function useOverlayKeys(open: boolean, onOpenChange: OverlayChange, escap
 export function useSurfaceFocus(open: boolean, initialFocusRef?: RefObject<HTMLElement | null>, returnFocusRef?: RefObject<HTMLElement | null>) {
   const opener = useRef<HTMLElement | null>(null);
   const suppressRestore = useRef(false);
-  useLayoutEffect(() => { if (open) { opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; suppressRestore.current = false; } }, [open]);
+  type Opening = {target: HTMLElement | null; list?: ListFocusReturn; content: HTMLElement | null};
+  const [opening, setOpening] = useState<Opening | null>(null);
+  const current = useRef<Opening | null>(null);
+  const content = useRef<HTMLElement | null>(null);
+  const contentRef = useCallback((element: HTMLElement | null) => {
+    content.current = element;
+    const record = current.current;
+    // A Portal can mount after its owner's layout setup. Publish its first actual node only;
+    // a later replacement node cannot inherit the previous opening's return receipt.
+    if (element && record && !record.content) {record.content = element;record.list?.attach(element);}
+  }, []);
+  useLayoutEffect(() => {
+    if (!open) return;
+    current.current?.list?.dispose();
+    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const target = returnFocusRef?.current ?? opener.current;
+    const record: Opening = {target, list: captureListFocusReturn(target), content: content.current};
+    current.current = record;suppressRestore.current = false;setOpening(record);
+    if (record.content) record.list?.attach(record.content);
+    return () => {record.list?.detach();};
+    // Refs are inputs to this original opening, not permission to adopt another return target.
+  }, [open]);
   return {
-    suppressRestore,
-    onOpenAutoFocus(event: Event) { if (initialFocusRef?.current) { event.preventDefault(); focusElement(initialFocusRef.current); } },
-    onCloseAutoFocus(event: Event) { event.preventDefault(); if (!suppressRestore.current) focusElement(returnFocusRef?.current ?? opener.current); },
+    suppressRestore, contentRef,
+    onOpenAutoFocus(event: Event) {
+      const record = current.current;
+      if (!record || record.content !== event.target) {event.preventDefault();return;}
+      const initial = initialFocusRef?.current;
+      if (initial && record.content?.contains(initial)) { event.preventDefault(); focusElement(initial); }
+    },
+    onCloseAutoFocus(event: Event) {
+      event.preventDefault();
+      if (!opening || current.current !== opening || opening.content !== event.target) return;
+      if (!suppressRestore.current) {
+        if (opening.list) opening.list.restore();
+        else focusElement(opening.target);
+      }
+      opening.list?.dispose();
+    },
   };
 }
 

@@ -12,12 +12,18 @@ import {servicesI18n} from './i18n';
 import type {WorkspaceApi} from './workspace-api';
 import styles from './services.module.css';
 import {AccountExportRow} from './AccountExportRow';
+import {accountSecurityBrowserAvailable} from '../platform/account-security-policy';
+import {useOriginalAccountSecurity} from '../platform/account-security-context';
+import {ProviderSecurityStartDialog} from './ProviderSecurityStartDialog';
+import type {OriginalProviderSecurity} from '../platform/account-security';
+import {ProviderPasswordFields} from '../screens/settings/account-profile/ProviderPasswordFields';
 
 export type HostedSecurityTaskKind = Task;
 type Task = 'password_set_or_change' | 'email_change' | 'mfa_enroll' | 'mfa_disable' | 'recovery_codes';
-export function SecurityPanel({account, api, identity, username, onDeleted, onSecurityEnded, error: parentError}: {account: ServicesAccount; api: WorkspaceApi; identity: AccountIdentity; username: string; onDeleted?: () => void; onSecurityEnded?: (codes?: readonly string[]) => void; error?: unknown}) {
+export function SecurityPanel({account, api, identity, username, identityTransaction, onDeleted, onSecurityEnded, error: parentError}: {account: ServicesAccount; api: WorkspaceApi; identity: AccountIdentity; username: string; identityTransaction?: string; onDeleted?: () => void; onSecurityEnded?: (codes?: readonly string[]) => void; error?: unknown}) {
   const {t} = useMemo(servicesI18n, []);
-  const [state, setState] = useState<SecurityState>(), [offered, setOffered] = useState<IdentityProvider[]>([]);
+  const retained = useOriginalAccountSecurity();
+  const [state, setState] = useState<SecurityState>(), [offered, setOffered] = useState<IdentityProvider[]>([]), [providerReady,setProviderReady]=useState(false);
   const [error, setError] = useState<unknown>(), [task, setTask] = useState<Task>(), [deleting, setDeleting] = useState(false);
   const [disconnecting, setDisconnecting] = useState<{id: string; provider: IdentityProvider}>(), [busy, setBusy] = useState(false);
   const [connected, setConnected] = useState<IdentityProvider>();
@@ -26,7 +32,7 @@ export function SecurityPanel({account, api, identity, username, onDeleted, onSe
   useEffect(() => {
     const controller = new AbortController(); life.current = controller;
     void (async () => {
-      const returning = new URLSearchParams(location.search).get('identityTransaction');
+      const returning = identityTransaction ?? new URLSearchParams(location.search).get('identityTransaction');
       if (returning && /^[A-Za-z0-9_-]{1,160}$/.test(returning)) {
         // This is the actual Hosted browser callback query, never a native completion header.
         const tx = await currentAccountWork(account, () => account.client.transaction(returning, controller.signal), identity);
@@ -39,9 +45,9 @@ export function SecurityPanel({account, api, identity, username, onDeleted, onSe
       const value = await api.security(controller.signal);
       if (!controller.signal.aborted) setState(value);
     })().catch(value => { if (!controller.signal.aborted) setError(value); });
-    void account.client.options(controller.signal).then(value => { if (!controller.signal.aborted) setOffered(value.providers.filter(item => item.enabled).map(item => item.id)); }, () => {});
+    void account.client.options(controller.signal).then(value => { if (!controller.signal.aborted) {setOffered(value.providers.filter(item => item.enabled).map(item => item.id));setProviderReady(value.credentialProviderReauthentication==='account-settings-v1'&&accountSecurityBrowserAvailable());} }, () => {});
     return () => controller.abort();
-  }, [api, account, scope, identity]);
+  }, [api, account, scope, identity, identityTransaction]);
   const work = async (operation: (token: string, signal: AbortSignal) => Promise<void>) => {
     if (busy || !life.current) return;
     const signal = life.current.signal; setBusy(true); setError(undefined);
@@ -64,35 +70,41 @@ export function SecurityPanel({account, api, identity, username, onDeleted, onSe
     const next = await api.security(signal);
     if (!signal.aborted) { setState(next); setDisconnecting(undefined); }
   });
+  const taskCurrent = useMemo(() => () => {
+    const session = account.service.getSnapshot().session;
+    return !!life.current && !life.current.signal.aborted && !!session && sameAccount(accountIdentity(session), identity);
+  }, [account, scope, identity]);
+  const credentialAvailable = !retained && state && (state.hasPassword || providerReady && state.providers.some(v => v.revision && offered.includes(v.provider)));
   const onlyProvider = state && !state.hasPassword && state.providers.length === 1;
   return <>{parentError || error ? <HostedError error={parentError ?? error} /> : null}
     {connected && <ServicesNotice tone="success">{t('web.hostedSecurity.providerConnected', {provider: providerName(connected)})}</ServicesNotice>}
     {state && <>
       <ServicesGroup title={t('web.hostedSecurity.signingIn')}>
         <ServicesWorkspaceRow phoneIcon="i-key" title={t('web.password')} help={state.hasPassword ? t('web.hostedSecurity.passwordHelp') : state.providers.length ? t('web.hostedSecurity.noPassword', {providers: state.providers.map(value => providerName(value.provider)).join(', ')}) : t('web.hostedSecurity.noPasswordOther')}>
-          {state.hasPassword && <Button size="small" onClick={() => setTask('password_set_or_change')}>{t('web.hostedSecurity.change')}</Button>}
+          {credentialAvailable && <Button size="small" onClick={() => setTask('password_set_or_change')}>{t(state.hasPassword ? 'web.hostedSecurity.change' : 'account.setPassword')}</Button>}
         </ServicesWorkspaceRow>
         <ServicesWorkspaceRow phoneIcon="i-mail" title={t('web.hostedSecurity.email')} help={<>{state.contactAddress}{state.contactAddress && <br />}{t('services.security.emailHelp')}</>} helpPhone={state.contactAddress}>
-          {state.hasPassword && <Button size="small" onClick={() => setTask('email_change')}>{t('web.hostedSecurity.change')}</Button>}
+          {credentialAvailable && <Button size="small" onClick={() => setTask('email_change')}>{t('web.hostedSecurity.change')}</Button>}
         </ServicesWorkspaceRow>
         {[...state.providers].sort((a, b) => a.provider.localeCompare(b.provider)).map(provider => <Fragment key={provider.id}><ServicesWorkspaceRow icon={provider.provider === 'apple' ? 'i-apple' : 'i-google'} title={t('web.hostedSecurity.signInWith', {provider: providerName(provider.provider)})}
           help={t('web.hostedSecurity.connected')}>
-          <Button size="small" disabled={onlyProvider || busy} onClick={() => setDisconnecting(provider)}>{t('web.hostedSecurity.disconnect')}</Button>
+          <Button size="small" disabled={onlyProvider || busy || Boolean(retained)} onClick={() => setDisconnecting(provider)}>{t('web.hostedSecurity.disconnect')}</Button>
         </ServicesWorkspaceRow>{onlyProvider && <ServicesRowNote>{t('web.hostedSecurity.lastMethod')}</ServicesRowNote>}</Fragment>)}
         {offered.filter(provider => !state.providers.some(item => item.provider === provider)).sort((a, b) => a.localeCompare(b)).map(provider => <ServicesWorkspaceRow key={provider} icon={provider === 'apple' ? 'i-apple' : 'i-google'} title={t('web.hostedSecurity.signInWith', {provider: providerName(provider)})}
-          help={t('web.hostedSecurity.connectHelp', {provider: providerName(provider)})}><Button size="small" disabled={busy} onClick={() => void connect(provider)}>{t('web.hostedSecurity.connect')}</Button></ServicesWorkspaceRow>)}
+          help={t('web.hostedSecurity.connectHelp', {provider: providerName(provider)})}><Button size="small" disabled={busy || Boolean(retained)} onClick={() => void connect(provider)}>{t('web.hostedSecurity.connect')}</Button></ServicesWorkspaceRow>)}
       </ServicesGroup>
-      {!state.hasPassword && <ServicesNotice tone="info">{t('web.hostedSecurity.providerOnly')}</ServicesNotice>}
+      {!state.hasPassword && <ServicesNotice tone="info">{t((retained || providerReady && state.providers.some(v=>v.revision&&offered.includes(v.provider)))?'web.hostedSecurity.providerConfirm':'web.hostedSecurity.providerOnly')}</ServicesNotice>}
       <ServicesGroup title={t('web.twoStep.title')} description={t('web.hostedSecurity.twoStepHelp')}>
         <ServicesWorkspaceRow phoneIcon={state.mfaEnabled ? 'i-shieldok' : 'i-shield'} phoneTone={state.mfaEnabled ? 'green' : undefined} title={t('web.twoStep.title')} badge={<ServicesBadge tone={state.mfaEnabled ? 'healthy' : 'default'}>{t(state.mfaEnabled ? 'web.hostedSecurity.on' : 'web.hostedSecurity.off')}</ServicesBadge>}
           help={state.mfaEnabled ? t('web.hostedSecurity.codesLeft', {count: state.recoveryCodesRemaining}) : t('web.hostedSecurity.recommended')}>
-          {state.hasPassword && <Button size="small" onClick={() => setTask(state.mfaEnabled ? 'mfa_disable' : 'mfa_enroll')}>{t(state.mfaEnabled ? 'web.hostedSecurity.turnOff' : 'web.twoStep.turnOn')}</Button>}
+          {credentialAvailable && <Button size="small" onClick={() => setTask(state.mfaEnabled ? 'mfa_disable' : 'mfa_enroll')}>{t(state.mfaEnabled ? 'web.hostedSecurity.turnOff' : 'web.twoStep.turnOn')}</Button>}
         </ServicesWorkspaceRow>
-        {state.mfaEnabled && state.hasPassword && <ServicesWorkspaceRow phoneIcon="i-key" title={t('web.hostedSecurity.recoveryCodes')} help={t('web.hostedSecurity.recoveryCodesHelp')}><Button size="small" onClick={() => setTask('recovery_codes')}>{t('web.hostedSecurity.makeCodes')}</Button></ServicesWorkspaceRow>}
+        {state.mfaEnabled && credentialAvailable && <ServicesWorkspaceRow phoneIcon="i-key" title={t('web.hostedSecurity.recoveryCodes')} help={t('web.hostedSecurity.recoveryCodesHelp')}><Button size="small" onClick={() => setTask('recovery_codes')}>{t('web.hostedSecurity.makeCodes')}</Button></ServicesWorkspaceRow>}
       </ServicesGroup>
       <AccountExportRow account={account} api={api} identity={identity}/>
-      <ServicesGroup title={t('web.deleteAccount.title')} danger><ServicesWorkspaceRow phoneIcon="i-trash" title={t('web.deleteAccount.row')} help={t('web.deleteAccount.help')}><ServicesDangerAction compact icon="i-trash" onClick={() => setDeleting(true)}>{t('web.deleteAccount.action')}</ServicesDangerAction></ServicesWorkspaceRow></ServicesGroup>
-      {task && <SecurityTask key={task} account={account} identity={identity} state={state} task={task} onSecurityEnded={onSecurityEnded} onClose={() => { setTask(undefined); void api.security(life.current?.signal).then(setState, setError); }} />}
+      <ServicesGroup title={t('web.deleteAccount.title')} danger><ServicesWorkspaceRow phoneIcon="i-trash" title={t('web.deleteAccount.row')} help={t('web.deleteAccount.help')}><ServicesDangerAction compact icon="i-trash" disabled={Boolean(retained)} onClick={() => setDeleting(true)}>{t('web.deleteAccount.action')}</ServicesDangerAction></ServicesWorkspaceRow></ServicesGroup>
+      {task && !state.hasPassword && <ProviderSecurityStartDialog key={task} account={account} identity={identity} state={state} task={task} enabledProviders={offered} isCurrent={taskCurrent} onClose={() => {setTask(undefined); void api.security(life.current?.signal).then(setState,setError);}}/>}
+      {task && state.hasPassword && <SecurityTask key={task} account={account} identity={identity} state={state} task={task} onSecurityEnded={onSecurityEnded} onClose={() => { setTask(undefined); void api.security(life.current?.signal).then(setState, setError); }} />}
       {deleting && <DeleteAccount account={account} identity={identity} target={state.contactAddress || username} onDeleted={onDeleted} onClose={() => setDeleting(false)} />}
     </>}
     <Dialog open={Boolean(disconnecting)} onOpenChange={open => { if (!open && !busy) setDisconnecting(undefined); }} stackFooter className={styles.overlaySpacing} title={t('web.hostedSecurity.disconnectTitle', {provider: disconnecting ? providerName(disconnecting.provider) : ''})}
@@ -100,9 +112,15 @@ export function SecurityPanel({account, api, identity, username, onDeleted, onSe
   </>;
 }
 
-function SecurityTask({account, identity, state, task, onClose, onSecurityEnded, isCurrent}: {account: ServicesAccount; identity: AccountIdentity; state: SecurityState; task: Task; onClose: () => void; onSecurityEnded?: (codes?: readonly string[]) => void; isCurrent?: () => boolean}) {
-  const {t} = useMemo(servicesI18n, []), [operationId] = useState(() => crypto.randomUUID());
-  const [password, setPassword] = useState(''), [factor, setFactor] = useState(''), [value, setValue] = useState(''), [code, setCode] = useState('');
+function SecurityTask({account, provider, identity, state, task, onClose, onSecurityEnded, isCurrent}: {account?: ServicesAccount; provider?: OriginalProviderSecurity; identity: AccountIdentity; state: SecurityState; task: Task; onClose: () => void; onSecurityEnded?: (codes?: readonly string[]) => void; isCurrent?: () => boolean}) {
+  const {t} = useMemo(servicesI18n, []), [operationId] = useState(() => provider?.original.intent.operationId ?? crypto.randomUUID());
+  const [password, setPassword] = useState(''), [factor, setFactor] = useState(''), [value, setValue] = useState(provider?.original.intent.target ?? ''), [code, setCode] = useState('');
+  const client = provider?.client ?? account?.client;
+  const withToken = <T,>(work: (token: string) => Promise<T>, signal: AbortSignal) => {
+    if (provider) return provider.withToken(work, signal);
+    if (!account) return Promise.reject<T>(new Error('The account security opening ended.'));
+    return currentAccountWork(account, session => work(session.accessToken), identity);
+  };
   const [result, setResult] = useState<SecurityResult>(), [error, setError] = useState<unknown>(), [busy, setBusy] = useState(false);
   type Flight = {controller: AbortController; pending: boolean};
   const life = useRef<Flight | null>(null), [flight, setFlight] = useState<Flight | null>(null);
@@ -111,43 +129,51 @@ function SecurityTask({account, identity, state, task, onClose, onSecurityEnded,
     const active: Flight = {controller: new AbortController(), pending: false};
     life.current = active; setFlight(active); setBusy(false);
     return () => {if (life.current === active) life.current = null; active.controller.abort();};
-  }, [account, identity.accountId, identity.familyId, task, operationId, isCurrent]);
-  const parentCurrent = () => {try {return isCurrent?.() !== false;} catch {return false;}};
+  }, [account, provider, identity.accountId, identity.familyId, task, operationId, isCurrent]);
+  const parentCurrent = () => {try {return isCurrent?.() !== false && (!provider || provider.current() && provider.original.intent.purpose === task && provider.original.intent.operationId === operationId && provider.original.session.account.id === identity.accountId && provider.original.session.familyId === identity.familyId);} catch {return false;}};
   const current = () => Boolean(flight && life.current === flight && !flight.controller.signal.aborted && parentCurrent());
   const assertCurrent = () => {if (!current()) throw new DOMException('Account security opening ended', 'AbortError');};
   const codes = result?.recoveryCodes, confirm = result?.challengeId;
   const edit = (write:(value:string)=>void,value:string) => {if(current()&&!flight?.pending)write(value);};
-  const close = () => {if(!current()||flight?.pending)return;setPassword('');setFactor('');setValue('');setCode('');setResult(undefined);onClose();};
-  const title = t(codes ? 'web.hostedSecurity.newCodesTitle' : confirm ? task === 'mfa_enroll' ? 'web.hostedSecurity.addToAuthenticator' : 'web.hostedSecurity.checkEmail' : task === 'password_set_or_change' ? 'account.changePasswordTitle' : task === 'email_change' ? 'web.hostedSecurity.changeEmailTitle' : task === 'mfa_disable' ? 'web.twoStep.turnOffConfirmTitle' : task === 'mfa_enroll' ? 'web.twoStep.turnOnTitle' : 'web.hostedSecurity.newCodesTitle');
+  const close = () => {if(!flight||life.current!==flight||flight.controller.signal.aborted||flight.pending)return;setPassword('');setFactor('');setValue('');setCode('');setResult(undefined);if(provider){setBusy(true);void provider.close().catch(()=>undefined).finally(onClose);}else onClose();};
+  const title = t(codes ? 'web.hostedSecurity.newCodesTitle' : confirm ? task === 'mfa_enroll' ? 'web.hostedSecurity.addToAuthenticator' : 'web.hostedSecurity.checkEmail' : task === 'password_set_or_change' ? provider ? 'account.setPassword' : 'account.changePasswordTitle' : task === 'email_change' ? 'web.hostedSecurity.changeEmailTitle' : task === 'mfa_disable' ? 'web.twoStep.turnOffConfirmTitle' : task === 'mfa_enroll' ? 'web.twoStep.turnOnTitle' : 'web.hostedSecurity.newCodesTitle');
   const submit = async () => {
     if (!flight || !current() || flight.pending) return;
     const signal = flight.controller.signal, proofPassword = password, proofFactor = factor, submittedValue = value, submittedCode = code;
     flight.pending = true; setBusy(true); setError(undefined);setPassword('');setFactor('');setCode('');
     if(task === 'password_set_or_change')setValue('');
     try {
-      const intent: SecurityIntent = {purpose: task as SecurityPurpose, target: task === 'email_change' ? submittedValue.trim() : '', operationId};
-      const proof = confirm ? undefined : await currentAccountWork(account, session =>
-        {assertCurrent();return account.client.passwordProof(intent, proofPassword, proofFactor, identity, session.accessToken, signal);}, identity);
+      if (!client) throw new Error('The account security opening ended.');
+      const intent: SecurityIntent = provider?.original.intent ?? {purpose: task as SecurityPurpose, target: task === 'email_change' ? submittedValue.trim() : '', operationId};
+      const proof = confirm ? undefined : provider ? provider.proof : await withToken(token =>
+        {assertCurrent();return client.passwordProof(intent, proofPassword, proofFactor, identity, token, signal);}, signal);
       // A proof response may have arrived after another tab changed the account. Acquire and
       // check the current family again before the separate mutation is allowed to leave.
       assertCurrent();
-      const session = await currentAccountWork(account, async session => {assertCurrent();return session;}, identity);
-      assertCurrent();
-      signal.throwIfAborted();
-      const output = confirm ?
-        await account.client.confirm(task === 'mfa_enroll' ? 'mfa' : 'email', confirm, submittedCode, operationId, identity, session.accessToken, signal) :
-        await account.client.action(intent, proof!.proof, task === 'password_set_or_change' ? submittedValue : '', identity, session.accessToken, signal);
+      const token = await withToken(async token => {assertCurrent();return token;}, signal);
+      assertCurrent();signal.throwIfAborted();
+      // A successful credential change may itself end this family. Its known
+      // acknowledgement is handled before any post-command family read.
+      const output = confirm ? await client.confirm(task === 'mfa_enroll' ? 'mfa' : 'email', confirm, submittedCode, operationId, identity, token, signal)
+        : await client.action(intent, proof!.proof, task === 'password_set_or_change' ? submittedValue : '', identity, token, signal);
       if (output.signOut) {
-        const current = account.service.getSnapshot().session;
-        const original = current && sameAccount(accountIdentity(current), identity);
-        const cleanup = account.service.logoutIfCurrent(identity);
-        if (original && parentCurrent()) onSecurityEnded?.(output.recoveryCodes);
-        await cleanup;
+        if (provider) {
+          const original = life.current === flight && !signal.aborted;
+          const cleanup = provider.terminal();
+          if (original) onSecurityEnded?.(output.recoveryCodes);
+          await cleanup;
+        } else if (account) {
+          const current = account.service.getSnapshot().session;
+          const original = current && sameAccount(accountIdentity(current), identity);
+          const cleanup = account.service.logoutIfCurrent(identity);
+          if (original && parentCurrent()) onSecurityEnded?.(output.recoveryCodes);
+          await cleanup;
+        }
         return;
       }
       signal.throwIfAborted();
       assertCurrent();
-      await currentAccountWork(account, async () => {assertCurrent();}, identity);
+      await withToken(async () => {assertCurrent();}, signal);
       assertCurrent();
       if (signal.aborted) return;
       setPassword(''); setFactor('');
@@ -163,10 +189,11 @@ function SecurityTask({account, identity, state, task, onClose, onSecurityEnded,
     const requestId = resendOperation.current ??= crypto.randomUUID();
     flight.pending = true; setBusy(true); setError(undefined);
     try {
-      const output = await currentAccountWork(account, session => {
+      const output = await withToken(token => {
         signal.throwIfAborted();assertCurrent();
-        return account.client.resendEmailChange(confirm, requestId, identity, session.accessToken, signal);
-      }, identity);
+        if (!client) throw new Error('The account security opening ended.');
+        return client.resendEmailChange(confirm, requestId, identity, token, signal);
+      }, signal);
       signal.throwIfAborted();assertCurrent();
       if (output.expiresAt !== originalExpiry) throw new Error('The account service returned a different email challenge.');
       if (resendOperation.current === requestId) resendOperation.current = undefined;
@@ -174,8 +201,8 @@ function SecurityTask({account, identity, state, task, onClose, onSecurityEnded,
     } catch (value) { if (current()) setError(value); }
     finally { flight.pending = false; if (current()) setBusy(false); }
   };
-  const ready = confirm ? code.length === 6 : Boolean(password) && (!state.mfaEnabled || Boolean(factor.trim())) && (task === 'password_set_or_change' ? passwordStrength(value).acceptable : task !== 'email_change' || /^\S+@\S+\.\S+$/.test(value.trim()));
-  const commitLabel = t(confirm ? 'web.hostedSecurity.confirm' : task === 'password_set_or_change' ? 'account.changePasswordTitle' : task === 'email_change' ? 'services.security.sendCode' : task === 'mfa_disable' ? 'web.hostedSecurity.turnOff' : 'action.continue');
+  const ready = confirm ? code.length === 6 : (provider ? Date.parse(provider.proof.expiresAt) > Date.now() : Boolean(password) && (!state.mfaEnabled || Boolean(factor.trim()))) && (task === 'password_set_or_change' ? passwordStrength(value).acceptable : task !== 'email_change' || /^\S+@\S+\.\S+$/.test(value.trim()));
+  const commitLabel = t(confirm ? 'web.hostedSecurity.confirm' : task === 'password_set_or_change' ? provider ? 'account.setPassword' : 'account.changePasswordTitle' : task === 'email_change' ? 'services.security.sendCode' : task === 'mfa_disable' ? 'web.hostedSecurity.turnOff' : 'action.continue');
   const commitAction = task === 'mfa_disable' && !confirm ? <ServicesDangerAction disabled={!current() || !ready} loading={busy} onClick={() => void submit()}>{commitLabel}</ServicesDangerAction>
     : <Button size="small" variant="primary" disabled={!current() || !ready} loading={busy} onClick={() => void submit()}>{commitLabel}</Button>;
   return <Dialog open onOpenChange={open => { if (!open) close(); }} className={styles.overlaySpacing} title={title} showCloseButton={false}
@@ -188,10 +215,11 @@ function SecurityTask({account, identity, state, task, onClose, onSecurityEnded,
         {task === 'password_set_or_change' && <ServicesQuiet>{t('web.hostedSecurity.othersSignedOut')}</ServicesQuiet>}
         {task === 'mfa_disable' && <ServicesQuiet>{t('services.security.disableBody')}</ServicesQuiet>}
         {task === 'email_change' && <ServicesQuiet>{t('services.security.emailPending')}</ServicesQuiet>}
-        <AuthPasswordField label={t(task === 'password_set_or_change' ? 'account.currentPassword' : 'web.password')} autoComplete="current-password" value={password} onChange={event => edit(setPassword,event.currentTarget.value)} disabled={busy} />
-        {task === 'password_set_or_change' && <><AuthPasswordField label={<ServicesLabel detail={t('services.password.minimum')}>{t('auth.newPassword')}</ServicesLabel>} autoComplete="new-password" value={value} onChange={event => edit(setValue,event.currentTarget.value)} disabled={busy} /><ServicesStrength password={value} id="security-strength" /></>}
-        {task === 'email_change' && <TextField label={t('web.hostedSecurity.newEmail')} type="email" autoComplete="email" value={value} onChange={event => edit(setValue,event.currentTarget.value)} description={t('services.security.emailCode')} disabled={busy} />}
-        {state.mfaEnabled && <TextField label={task === 'password_set_or_change' ? <ServicesLabel detail={t('services.security.twoStepOnHint')}>{t('services.security.authenticatorCode')}</ServicesLabel> : t('services.security.authenticatorCode')} autoComplete="one-time-code" value={factor} onChange={event => edit(setFactor,event.currentTarget.value)} disabled={busy} />}
+        {!provider && <AuthPasswordField label={t(task === 'password_set_or_change' ? 'account.currentPassword' : 'web.password')} autoComplete="current-password" value={password} onChange={event => edit(setPassword,event.currentTarget.value)} disabled={busy} />}
+        {provider && task === 'password_set_or_change' && <ProviderPasswordFields newPassword={value} factor="" twoFactor={false} disabled={busy} onNewPasswordChange={value=>edit(setValue,value)} onFactorChange={()=>{}}/>}
+        {!provider && task === 'password_set_or_change' && <><AuthPasswordField label={<ServicesLabel detail={t('services.password.minimum')}>{t('auth.newPassword')}</ServicesLabel>} autoComplete="new-password" value={value} onChange={event => edit(setValue,event.currentTarget.value)} disabled={busy} /><ServicesStrength password={value} id="security-strength" /></>}
+        {task === 'email_change' && <TextField label={t('web.hostedSecurity.newEmail')} type="email" autoComplete="email" value={value} onChange={event => edit(setValue,event.currentTarget.value)} description={t('services.security.emailCode')} disabled={busy || Boolean(provider)} />}
+        {!provider && state.mfaEnabled && <TextField label={task === 'password_set_or_change' ? <ServicesLabel detail={t('services.security.twoStepOnHint')}>{t('services.security.authenticatorCode')}</ServicesLabel> : t('services.security.authenticatorCode')} autoComplete="one-time-code" value={factor} onChange={event => edit(setFactor,event.currentTarget.value)} disabled={busy} />}
       </form>}
   </Dialog>;
 }

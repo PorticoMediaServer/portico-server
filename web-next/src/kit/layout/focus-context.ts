@@ -31,8 +31,10 @@ const none: RemovalFocusTarget = Object.freeze({kind: 'none', element: null});
  */
 export function removalFocusStops(item: HTMLElement): readonly HTMLElement[] {
   const stops: HTMLElement[] = [];
-  if (item.matches(primary) || item.hasAttribute('tabindex')) stops.push(item);
+  if (item.matches(primary)) stops.push(item);
   stops.push(...item.querySelectorAll<HTMLElement>(primary));
+  // A sparse slot's tabindex=-1 is a real fallback, not a reason to bypass its primary control.
+  if (!item.matches(primary) && item.hasAttribute('tabindex')) stops.push(item);
   return stops;
 }
 

@@ -90,7 +90,7 @@ export function LibraryDiscoveryScreen({service, route, header, empty, artwork, 
       const square = snapshot.projection!.scope.libraryKind === 'music' || snapshot.projection!.scope.libraryKind === 'audiobook';
       const cardWidth = appearance.cardWidth, musicGenres = snapshot.projection!.scope.libraryKind === 'music' && section.id === 'genres';
       const shape = musicGenres ? cardWidth / 152 : square ? 1 : 2 / 3;
-      return <PagedShelf key={section.id} heading={serverTextLabel(defaultI18n, {code: section.heading.key, fallback: section.heading.fallback, params: section.heading.params})}
+      return <PagedShelf key={section.id} focusScope={service} heading={serverTextLabel(defaultI18n, {code: section.heading.key, fallback: section.heading.fallback, params: section.heading.params})}
         platform={width >= 1024 ? 'desktop' : 'phone-web'} reducedMotion={preferences?.reducedMotion ?? reducedMotion} items={section.entries} getKey={entry => entry.id} cardWidth={cardWidth} artworkRatio={shape}
         hasMore={!!section.nextCursor} continuation={section.nextCursor} onMore={() => {void service.next(section.id);}} onSeeAll={section.seeAll ? () => onSeeAll(section) : undefined}
         onVisibleRange={registerWindow ? (first, last) => registerWindow(section, first, last) : undefined} renderItem={(entry, context) => <CatalogueSelectionEntry selection={selection} entry={entry} position={(orderBase.get(section.id) ?? 0) + context.index}>{cardSelection => <BrowseEntryCard entry={entry} artwork={artwork} env={env} width={cardWidth}
