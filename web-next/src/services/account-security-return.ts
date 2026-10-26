@@ -35,7 +35,7 @@ async function verifyStart(started: HostedSecurityReturnStart, hostedOrigin: str
   return verifySecurityContext(started.context, {serverId: string('serverId'), publicKey: key, fingerprint}, {prepare, hostedOrigin, accountId: string('accountId')});
 }
 
-export async function beginHostedSecurityBridge(intentId: string, signal: AbortSignal, journal = browserSecurityJournal()) {
+export async function beginHostedSecurityBridge(intentId: string, signal: AbortSignal, journal = browserSecurityJournal(), beforeNavigate?: () => void, onOriginal?: (record: HostedSecurityBridge) => void) {
   journal.assertAvailable();
   if (!/^sri_[A-Za-z0-9_-]{43}$/.test(intentId) || location.protocol !== 'https:') invalid();
   const before = await journal.read(), now = Date.now(); signal.throwIfAborted();
@@ -46,6 +46,7 @@ export async function beginHostedSecurityBridge(intentId: string, signal: AbortS
   } else {
     record = await journal.create({version: 1, kind: 'hosted-bridge', intentId, requestId: crypto.randomUUID(), hostedOrigin: location.origin, createdAt: new Date(now).toISOString(), expiresAt: new Date(now + 300000).toISOString()}, () => signal.throwIfAborted()) as HostedSecurityBridge;
   }
+  onOriginal?.(record);signal.throwIfAborted();
   const client = originalSecurityClient(record.hostedOrigin);
   // Retry only this stored request. Never choose the cookie's current operation.
   const started = await client.startSecurityReturn(record.intentId, record.requestId, signal);
@@ -55,12 +56,13 @@ export async function beginHostedSecurityBridge(intentId: string, signal: AbortS
   }
   await verifyStart(started, record.hostedOrigin); signal.throwIfAborted();
   record = await journal.replace(record, {...record, started}, () => signal.throwIfAborted()) as HostedSecurityBridge;
+  onOriginal?.(record);
   await journal.assertOriginal(record); signal.throwIfAborted();
   if (!started.authorizationUrl) invalid();
-  location.assign(started.authorizationUrl);
+  beforeNavigate?.();location.assign(started.authorizationUrl);
 }
 
-export async function finishHostedSecurityBridge(record: HostedSecurityBridge, transactionId: string, signal: AbortSignal, journal: AccountSecurityJournal = browserSecurityJournal()) {
+export async function finishHostedSecurityBridge(record: HostedSecurityBridge, transactionId: string, signal: AbortSignal, journal: AccountSecurityJournal = browserSecurityJournal(), beforeNavigate?: () => void) {
   const captured = parseSecurityJournal(record);
   if ('original' in captured) invalid();
   record = captured;
@@ -73,13 +75,18 @@ export async function finishHostedSecurityBridge(record: HostedSecurityBridge, t
   const returned = await client.finishSecurityReturn(started, signal);
   await journal.assertOriginal(record); signal.throwIfAborted();
   await journal.clear(record); signal.throwIfAborted();
-  location.assign(returned);
+  beforeNavigate?.();location.assign(returned);
 }
 
 export async function cancelHostedSecurityBridge(record: HostedSecurityBridge, journal = browserSecurityJournal()) {
   const captured = parseSecurityJournal(record, true);
   if ('original' in captured) invalid();
   record = captured;
+  const expected = JSON.stringify({...captured, started: undefined});
+  try {
+    const saved = await journal.read(true);
+    if (saved && !('original' in saved) && JSON.stringify({...saved, started: undefined}) === expected) record = saved;
+  } catch {/* Expired exact local cleanup remains possible. */}
   if (record.started) await originalSecurityClient(record.hostedOrigin).cancelSecurityTransaction(record.started.transactionId).catch(() => undefined);
   await journal.clear(record);
 }

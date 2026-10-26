@@ -24,7 +24,7 @@ export function AccountSecurityReturnEntry({arrival}: {arrival: AccountSecurityE
   const [pending, setPending] = useState<AccountSecurityPending>(), [proof, setProof] = useState<OriginalProviderSecurity>();
   const [factor, setFactor] = useState(''), [busy, setBusy] = useState(true), [error, setError] = useState<unknown>();
   const [ordinary, setOrdinary] = useState<{identityTransaction?: string}>(), [ended, setEnded] = useState<{codes?: readonly string[]}>();
-  type Opening = {live: boolean; busy: boolean; abort: AbortController; record?: AccountSecurityPending; bridge?: HostedSecurityBridge; retryFactor?: string};
+  type Opening = {live: boolean; busy: boolean; closed?: boolean; handedOff?: boolean; abort: AbortController; record?: AccountSecurityPending; bridge?: HostedSecurityBridge; retryFactor?: string};
   const life = useRef<Opening | undefined>(undefined);
   const originalDestination = () => arrival.kind === 'server' ? '/settings?scope=account&section=profile' : '/account?tab=security';
   const back = () => location.assign(originalDestination());
@@ -53,18 +53,18 @@ export function AccountSecurityReturnEntry({arrival}: {arrival: AccountSecurityE
     void (async () => {
       const signal = original.abort.signal, journal = browserSecurityJournal();
       if (arrival.kind === 'server') {
-        const record = await acceptSecurityReturn(arrival.captured.href + arrival.captured.fragment, signal, journal);
+        const record = await acceptSecurityReturn(arrival.captured.href + arrival.captured.fragment, signal, journal, record => {original.record = record;});
         if (!current(original)) return;
         original.record = record; setPending(record);
         if (!record.original.state.mfaEnabled) await complete(original, record, '');
       } else {
         const captured = arrival.captured;
         if (captured.kind === 'invalid') throw invalid();
-        if (captured.kind === 'begin') {await beginHostedSecurityBridge(captured.intentId, signal, journal); return;}
+        if (captured.kind === 'begin') {await beginHostedSecurityBridge(captured.intentId, signal, journal, () => {original.handedOff = true;}, record => {original.bridge = record;}); return;}
         const record = await journal.read(); signal.throwIfAborted();
         if (record && !('original' in record)) {
           original.bridge = record;
-          await finishHostedSecurityBridge(record, captured.transactionId, signal, journal); return;
+          await finishHostedSecurityBridge(record, captured.transactionId, signal, journal, () => {original.handedOff = true;}); return;
         }
         if (record && 'original' in record) {
           if (record.original.kind !== 'hosted-account' || record.transactionId !== captured.transactionId || record.original.hostedOrigin !== location.origin) throw invalid();
@@ -81,13 +81,13 @@ export function AccountSecurityReturnEntry({arrival}: {arrival: AccountSecurityE
           if (current(original)) setOrdinary(tx.mode === 'link' ? {identityTransaction: captured.transactionId} : {});
         }
       }
-    })().catch(value => {if (current(original)) setError(value);}).finally(() => {original.busy = false; if (current(original)) setBusy(false);});
-    return () => {original.live = false; original.abort.abort(); if (life.current === original) life.current = undefined;};
+    })().catch(value => {if (current(original)) {original.handedOff=false;setError(value);}}).finally(() => {original.busy = false; if (current(original)) setBusy(false);});
+    return () => {original.live = false; original.abort.abort(); if (!original.closed && !original.handedOff) {if (original.record) void cancelOriginalAccountSecurity(original.record).catch(()=>undefined); if (original.bridge) void cancelHostedSecurityBridge(original.bridge).catch(()=>undefined);} if (life.current === original) life.current = undefined;};
   }, [arrival]);
   const cancel = async () => {
     const original = life.current;
     if (!original || !current(original) || original.busy) return;
-    original.busy = true;original.live = false; original.abort.abort(); setBusy(true);setFactor('');
+    original.closed = true;original.busy = true;original.live = false; original.abort.abort(); setBusy(true);setFactor('');
     if (original.record) await cancelOriginalAccountSecurity(original.record).catch(() => undefined);
     if (original.bridge) await cancelHostedSecurityBridge(original.bridge).catch(() => undefined);
     back();
@@ -96,7 +96,7 @@ export function AccountSecurityReturnEntry({arrival}: {arrival: AccountSecurityE
   if (ended?.codes?.length) return <SignedOutRecoveryCodes codes={ended.codes} onDone={back}/>;
   if (ended) return <AccountSecurityReturnFrame title={t('auth.welcomeHome')} busy={false} onCancel={back}><ServicesNotice>{t('services.signin.ended')}</ServicesNotice></AccountSecurityReturnFrame>;
   if (proof) return <OriginalAccountSecurityWorkspace proof={proof}><HostedSecurityTask provider={proof} identity={{accountId: proof.original.session.account.id, familyId: proof.original.session.familyId!}} state={proof.original.state} task={proof.original.intent.purpose}
-    isCurrent={proof.current} onClose={back} onSecurityEnded={codes => {setProof(undefined); setEnded({...(codes ? {codes: Object.freeze([...codes])} : {})});}}/></OriginalAccountSecurityWorkspace>;
+    isCurrent={proof.current} onClose={() => {if(life.current)life.current.closed=true;back();}} onSecurityEnded={codes => {if(life.current)life.current.closed=true;setProof(undefined); setEnded({...(codes ? {codes: Object.freeze([...codes])} : {})});}}/></OriginalAccountSecurityWorkspace>;
   const needsFactor = pending?.original.state.mfaEnabled === true;
   const opening = life.current;
   return <AccountSecurityReturnFrame title={pending ? credentialTaskTitle(pending.original.intent.purpose) : t('web.claim.loading')} error={error} busy={busy} onCancel={() => void cancel()}

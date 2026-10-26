@@ -28,7 +28,7 @@ const lifetime = new AppLifetime();
 /** Desktop closes the real app before removing native brokers/platform ports.
  * This retires mounted owners, never signs out or clears protected credentials. */
 export function disposeApp(): void {
-  try { lifetime.dispose(); } finally { try { retireSettingsPlatform(); } finally { capturedReturn=undefined;accountArrival.dispose(); } }
+  try { lifetime.dispose(); } finally { try { retireSettingsPlatform(); } finally { capturedReturn=undefined;securityEntry=undefined;accountArrival.dispose(); } }
 }
 // Core services own real effects; test their lifecycle directly instead of double mounting them.
 async function start() {

@@ -40,14 +40,18 @@ async function originalServer(pending: AccountSecurityPending, signal?: AbortSig
   // The registered browser origin is the only return target and the only
   // transport candidate for this UI continuation. A faster LAN/discovered route
   // cannot change its Origin/Host context, and no route hint is persisted.
-  const readonlyFetch: typeof fetch | undefined = beforeRead ? async (input, init) => {
-    const target = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
-    const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase();
-    if (target.origin !== pageOrigin || method !== 'GET' && !(method === 'POST' && target.pathname === routePath('prove_network_identity'))) ended();
-    await beforeRead();signal?.throwIfAborted();
-    return (environment.fetcher ?? fetch)(input, init);
-  } : environment.fetcher;
-  const restored = await restoreExactNativeSession({...environment, fetcher: readonlyFetch, discover: undefined, storage: {
+  const scopedFetch: typeof fetch = async (input, init) => {
+    const message = input instanceof Request ? input.clone() : input;
+    const target = new URL(typeof message === 'string' ? message : message instanceof URL ? message.href : message.url);
+    const method = (init?.method ?? (message instanceof Request ? message.method : 'GET')).toUpperCase();
+    const inheritedSignal = init?.signal ?? (message instanceof Request ? message.signal : undefined);
+    const request = {...init, method, headers: new Headers(init?.headers ?? (message instanceof Request ? message.headers : undefined)),
+      ...(signal ? {signal: inheritedSignal ? AbortSignal.any([signal, inheritedSignal]) : signal} : {})};
+    if (target.origin !== pageOrigin || beforeRead && method !== 'GET' && !(method === 'POST' && target.pathname === routePath('prove_network_identity'))) ended();
+    if (beforeRead) await beforeRead();signal?.throwIfAborted();
+    return (environment.fetcher ?? fetch)(message, request);
+  };
+  const restored = await restoreExactNativeSession({...environment, fetcher: scopedFetch, discover: undefined, storage: {
     read: async () => {
       const actual = await storage.read();
       if (!actual || actual.selectionId !== expected.selectionId || actual.pin.serverId !== expected.pin.serverId || actual.session.accessToken !== expected.session.accessToken || actual.session.tokenGeneration !== expected.session.tokenGeneration) ended();
@@ -226,11 +230,12 @@ export class OriginalProviderSecurity {
   }
 }
 
-export async function acceptSecurityReturn(href: string, signal: AbortSignal, journal = browserSecurityJournal()) {
+export async function acceptSecurityReturn(href: string, signal: AbortSignal, journal = browserSecurityJournal(), onOriginal?: (record: AccountSecurityPending) => void) {
   const record = await journal.read();
   if (!record || !('original' in record) || record.original.kind !== 'server-account' || !record.prepare || !record.context || !record.state || !record.intentId) ended();
   const original = record.original, returned = parseSecurityReturnCode(href, {origin: record.prepare.origin, state: record.state});
   if (record.transactionId && record.transactionId !== returned.transactionId) ended();
+  onOriginal?.(record);signal.throwIfAborted();
   const api = await originalServer(record, signal);
   try {
     const context = await verifySecurityContext(record.context, original.server!.pin, {prepare: record.prepare, hostedOrigin: original.hostedOrigin, accountId: original.session.account.id});
