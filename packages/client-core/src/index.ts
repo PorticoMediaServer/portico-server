@@ -985,9 +985,10 @@ export class PlaybackService {
   /** ListeningService is the sole policy producer; render preferences join the
    * same snapshot before crossing the native boundary. Identical observations
    * never reset native deadlines or native-only remote-control activity. */
-  setListeningPolicy(value:ListeningPolicy){this.listeningPolicy=value;this.syncListeningPolicy();}
+  setListeningPolicy(value:ListeningPolicy){this.listeningPolicy=value;return this.syncListeningPolicy();}
   private syncListeningPolicy():Promise<boolean>{
-    const native=this.nativeV1;
+    const native=this.nativeV1,original=Object.freeze({sessionId:this.snapshot.session?.id,generation:this.snapshot.session?.generation,run:this.snapshot.playbackRun,owner:this.snapshot.nativeListening?.owner});
+    const originalSource=()=>this.snapshot.session?.id===original.sessionId&&this.snapshot.session?.generation===original.generation&&this.snapshot.playbackRun===original.run&&this.snapshot.nativeListening?.owner===original.owner;
     if(!this.listeningPolicy||!native?.configure)return Promise.resolve(true);
     const value={...this.listeningPolicy,effects:this.snapshot.audioEffects.settings},key=JSON.stringify(value);
     if(key===this.nativePolicyKey)return Promise.resolve(true);
@@ -1001,7 +1002,7 @@ export class PlaybackService {
       // A failed bridge policy must not leave audible playback behind a timer
       // the UI assumes is armed. A late error cannot pause a different owner.
       if(revision!==this.nativePolicyRevision||this.nativeV1!==native)return false;
-      this.nativePolicyKey='';this.pause();this.listeningNotice('listening_policy_failed');return false;
+      this.nativePolicyKey='';if(originalSource()){this.pause();this.listeningNotice('listening_policy_failed');}return false;
     }).finally(()=>{if(this.nativePolicyPending?.revision===revision)this.nativePolicyPending=undefined;});
     this.nativePolicyPending={key,native,revision,promise};return promise;
   }

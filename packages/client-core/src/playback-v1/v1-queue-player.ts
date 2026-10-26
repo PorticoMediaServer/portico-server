@@ -240,7 +240,7 @@ export class V1QueuePlayer implements QueueController {
     // The listening service speaks plain v1 REST (preferences, selections); it has no controller lane.
     this.scope = Object.freeze({...options.viewer, controllerId: 'v1', controllerEpoch: 'v1', commandLaneId: 'v1'});
     // PERF-24: a video session never asks for listening details.
-    this.listening = new ListeningService(this.scope, (path, body, method, signal) => this.request(path, body, method, signal), options.playback, undefined, (itemId, sessionId) => this.session?.id !== sessionId || this.session.itemId !== itemId || this.session.kind === 'audio', options.audiobookPreferences);
+    this.listening = new ListeningService(this.scope, (path, body, method, signal) => this.request(path, body, method, signal), options.playback, undefined, (itemId, sessionId) => this.session?.id !== sessionId || this.session.itemId !== itemId || this.session.kind === 'audio', options.audiobookPreferences, (sessionId,generation) => this.session?.id===sessionId&&this.session.presentation.generation===generation&&this.session.queue?Object.freeze({...this.session.queue}):null);
     const self = this;
     this.workspace = Object.freeze({service: {
       getSnapshot: () => self.queueState,
@@ -680,7 +680,7 @@ export class V1QueuePlayer implements QueueController {
   }
 
   /** Starts the session for one entry (a start that wasn't made with the create or advance). */
-  private async startEntry(queueId: string, entryId: string, intent: number, startSeconds?: number, generation: number = this.generation, choices?: PlaybackChoices, state: 'playing' | 'paused' = 'playing', signal?: AbortSignal, isCurrent?: () => boolean, subtitles?: StartOptions['subtitles']) {
+  private async startEntry(queueId: string, entryId: string, intent: number, startSeconds?: number, generation: number = this.generation, choices?: PlaybackChoices, state: 'playing' | 'paused' = 'playing', signal?: AbortSignal, isCurrent?: () => boolean, subtitles?: StartOptions['subtitles'], automatic = false) {
     const current = () => !this.disposed && generation === this.generation && !signal?.aborted && isCurrent?.() !== false;
     const entry = this.window.find(e => e.entryId === entryId);
     const r = await this.whileBuilding(() => {
@@ -707,6 +707,7 @@ export class V1QueuePlayer implements QueueController {
       this.api.forget(r.session.id); this.abandon(r.session);
       throw new ContractError('paused restore session');
     }
+    if(automatic)this.listening.acceptAutomaticTransition(r.session);
     // The presentation's timeline is the whole title: the engine starts at the chosen position.
     await this.adoptPlayback(r.session, startSeconds === undefined ? r.playback : {...r.playback, resumeSeconds: startSeconds}, intent, current);
   }
@@ -762,7 +763,7 @@ export class V1QueuePlayer implements QueueController {
     this.nativeSession = session.id;
     try {
       await this.playback.adoptNativeQueueSession(session.itemId ?? '', intent, native, () => native.adopt({
-        session, queueId: header?.id ?? null, queueRevision: header?.revision ?? null, durationSeconds, lastSeq,
+        session, playbackRun:this.playback.getSnapshot().playbackRun, queueId: header?.id ?? null, queueRevision: header?.revision ?? null, durationSeconds, lastSeq,
         leaseMs: Math.max(0, 120_000 - (Date.now() - this.sessionStartedAt)), transitions: this.transitions,
         intent: session.state === 'paused' ? 'paused' : 'playing',
       }, event => this.nativeEvent(epoch, event)));
@@ -824,6 +825,8 @@ export class V1QueuePlayer implements QueueController {
     const header = this.header;
     if (!header) throw new Error('Load the queue first.');
     if (this.disposed) return;
+    const releaseTimerEdge=this.listening.beginAutomaticTransition();
+    if(reason!=='completion')this.listening.cancelBoundaryTimer();
     const generation = ++this.generation;
     const current = this.window.find(e => e.entryId === entryId);
     const intent = this.playback.beginQueueIntent(current?.itemId);
@@ -835,14 +838,14 @@ export class V1QueuePlayer implements QueueController {
       this.window = await this.client.window(r.queue.id, WINDOW_BEFORE, WINDOW_AFTER);
       if (generation !== this.generation) { this.abandon(r.session); return; }
       this.accept(r.queue);
-      if (r.session) await this.adopt(r.session, intent, generation);
-      else if (r.queue.current) await this.startEntry(r.queue.id, r.queue.current.entryId, intent, undefined, generation);
+      if (r.session) {if(reason==='completion')this.listening.acceptAutomaticTransition(r.session);await this.adopt(r.session, intent, generation);}
+      else if (r.queue.current) await this.startEntry(r.queue.id, r.queue.current.entryId, intent, undefined, generation,undefined,'playing',undefined,undefined,undefined,reason==='completion');
     } catch (e) {
       if (generation !== this.generation) return;
       if (e instanceof PlaybackApiError && e.status === 412) { await this.refresh().catch(() => {}); }
       this.fail(current?.itemId ?? '', e, serviceText('queuePlayer.moveFailed'));
       throw e;
-    }
+    } finally {releaseTimerEdge?.();}
   }
 
   /** A retained row chooses only its actual loaded VOD occurrence. The caller's
@@ -984,6 +987,7 @@ export class V1QueuePlayer implements QueueController {
   async playEntry(queueId: string, entryId: string, expectedRevision: string): Promise<void> {
     this.listening.interact();
     if (queueId !== this.header?.id || expectedRevision !== this.header.revision) throw new Error('Refresh the queue before selecting an item.');
+    this.listening.cancelBoundaryTimer();
     if (this.nativeOwns()) { await this.native!.advance('entry', entryId); return; }
     await this.advance('entry', entryId);
   }
@@ -991,6 +995,7 @@ export class V1QueuePlayer implements QueueController {
   async next(queueId: string, expectedRevision: string): Promise<void> {
     this.listening.interact();
     if (queueId !== this.header?.id || expectedRevision !== this.header.revision) throw new Error('Refresh the queue before advancing.');
+    this.listening.cancelBoundaryTimer();
     if (this.nativeOwns()) { await this.native!.advance('next'); return; }
     await this.advance('next');
   }
@@ -999,6 +1004,7 @@ export class V1QueuePlayer implements QueueController {
    * passout check like an advance at the end would. */
   async advanceFromCredits(queueId: string, expectedRevision: string): Promise<void> {
     if (queueId !== this.header?.id || expectedRevision !== this.header.revision) throw new Error('Refresh the queue before advancing.');
+    this.listening.cancelBoundaryTimer();
     // A native listening owner plays music, which has no credits; it only knows a viewer's move.
     if (this.nativeOwns()) { await this.native!.advance('next'); return; }
     await this.advance('completion');
@@ -1355,6 +1361,7 @@ export class V1QueuePlayer implements QueueController {
     if (!this.listening.mayTransition(Math.max(0, p.duration - p.positionSeconds) / Math.max(.25, p.audioEffects.rate))) { this.discardAudio(); return; }
     if (prepared.expiresAtMs <= Date.now()) { this.discardAudio(); return; }
     this.audioCommitting = true;
+    const releaseTimerEdge=this.listening.beginAutomaticTransition();
     const generation = this.generation, intent = p.intentId;
     try {
       let r: Awaited<ReturnType<QueueClient['commitNext']>>;
@@ -1362,6 +1369,7 @@ export class V1QueuePlayer implements QueueController {
       // A lost answer: the commit is idempotent by token, so asking again gets the same session.
       catch (e) { if (e instanceof PlaybackApiError) throw e; r = await this.client.commitNext(prepared.queueId, token); }
       if (this.disposed || generation !== this.generation) return;
+      this.listening.acceptAutomaticTransition(r.session);
       const old = this.session;
       this.header = r.queue;
       this.session = r.session;
@@ -1377,7 +1385,7 @@ export class V1QueuePlayer implements QueueController {
     } catch (e) {
       if (generation === this.generation && !this.disposed) this.discardAudio();
     } finally {
-      this.audioCommitting = false;
+      this.audioCommitting = false;releaseTimerEdge();
     }
   }
 

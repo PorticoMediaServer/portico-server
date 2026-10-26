@@ -6,6 +6,7 @@ import {unreadableServerResponse} from './server-messages.ts';
  * when JavaScript is suspended. The queue alone selects accepted occurrences. */
 import type {SavedScope} from './saved.ts';
 import type {PlaybackService} from './index.ts';
+import type {ListeningTimerOccurrence,ListeningBookBoundary} from './playback/native-listening.ts';
 import type {QueueScope,QueueItemInput} from './queues.ts';
 import {parseQueueItem} from './queues.ts';
 import {PlayerChaptersService} from './player-chapters.ts';
@@ -20,7 +21,7 @@ export type ListeningJourney=Readonly<{target:ListeningTarget;actions:readonly (
 export type ListeningItem=Readonly<{itemId:string;libraryId:string;kind:string;bookId?:string;lastBookItemId?:string;bookEndAvailable?:boolean;albumId?:string;artistId?:string}>;
 export type ListeningRequest=(path:string,body?:unknown,method?:'GET'|'POST'|'PUT',signal?:AbortSignal)=>Promise<unknown>;
 export type SleepChoice='off'|'chapter'|'item'|'book'|15|30|45|60|90;
-export type ListeningTimer=Readonly<{choice:SleepChoice;label:string;deadline?:number;wallDeadline?:number;libraryId?:string;endSeconds?:number;itemId?:string;bookId?:string;sessionId?:string;generation?:number}>;
+export type ListeningTimer=Readonly<{choice:SleepChoice;label:string;deadline?:number;wallDeadline?:number;libraryId?:string;endSeconds?:number;itemId?:string;bookId?:string;sessionId?:string;generation?:number;occurrence?:ListeningTimerOccurrence;bookBoundary?:ListeningBookBoundary}>;
 export type ListeningSnapshot=Readonly<{eqApplied:boolean;levelingApplied:boolean;rewind?:Readonly<{seconds:number;fromSeconds:number;toSeconds:number;messageKey:'listening.rewound'}>; phase:'loading'|'ready'|'saving'|'error'|'disposed';preferences:ListeningPreferences|null;context:ListeningItem|null;rate:number;timer:ListeningTimer|null;timerLoading:boolean;stopped:boolean;message:string|null;error:string|null}>;
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const id=(v:unknown):v is string=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
@@ -77,21 +78,25 @@ export class ListeningService {
  private pausedBook?:{session:string;generation:number;item:string;intentId:number;run:number;seekRevision:number;at:number};
  /** A speed chosen in the player: for this playback only (`playbackRun`), never saved. */
  private heldRate?:{run:number;kind:string;rate:number};
+ private pendingTimer?:Readonly<{revision:number;timer:ListeningTimer}>;
+ private automaticFlights=new Set<object>();
+ private acceptedBookNext?:Readonly<{revision:number;from:ListeningTimerOccurrence;to:ListeningTimerOccurrence}>;
+ private queueOccurrence?:(sessionId:string,generation:number)=>ListeningTimerOccurrence['queue'];
  private activityRevision=0;private activityAtMs=Date.now();
  private readonly scope:QueueScope;private readonly request:ListeningRequest;private readonly playback:PlaybackService;private readonly now:()=>number;
  /** PERF-24: whether an item can be a listening item (a song or audiobook file), when the caller
   * knows; video never asks for listening details. */
  private listens?:(itemId:string,sessionId:string)=>boolean;
- constructor(scope:QueueScope,request:ListeningRequest,playback:PlaybackService,now:()=>number=()=>performance.now(),listens?:(itemId:string,sessionId:string)=>boolean,audiobook:()=>AudiobookPreferences=()=>defaultAudiobookPreferences){this.scope=scope;this.request=request;this.playback=playback;this.now=now;this.listens=listens;this.audiobook=audiobook;this.lastActivity=this.now();}
+ constructor(scope:QueueScope,request:ListeningRequest,playback:PlaybackService,now:()=>number=()=>performance.now(),listens?:(itemId:string,sessionId:string)=>boolean,audiobook:()=>AudiobookPreferences=()=>defaultAudiobookPreferences,queueOccurrence?:(sessionId:string,generation:number)=>ListeningTimerOccurrence['queue']){this.scope=scope;this.request=request;this.playback=playback;this.now=now;this.listens=listens;this.audiobook=audiobook;this.queueOccurrence=queueOccurrence;this.lastActivity=this.now();}
  getSnapshot=()=>this.state;
  subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
  private publish(patch:Partial<ListeningSnapshot>){if(this.disposed)return;this.state=Object.freeze({...this.state,...patch});this.syncNativePolicy();for(const fn of this.listeners)fn();}
  private syncNativePolicy(){
   const source=this.playback.getSnapshot(),serverSource=!!source.session&&source.session.mode!=='local'&&!source.channel;
-  const timer=serverSource?this.state.timer:null;
-  this.playback.setListeningPolicy?.({preferences:serverSource&&this.state.preferences?{bookRate:this.rateFor('audiobook_file'),passoutMinutes:this.state.preferences.passoutMinutes}:null,audiobook:this.audiobook(),
+  const timer=serverSource?(this.pendingTimer?.timer??this.state.timer):null;
+  return this.playback.setListeningPolicy?.({preferences:serverSource&&this.state.preferences?{bookRate:this.rateFor('audiobook_file'),passoutMinutes:this.state.preferences.passoutMinutes}:null,audiobook:this.audiobook(),
    activityRevision:this.activityRevision,activityAtMs:this.activityAtMs,timerRevision:this.timerGeneration,
-   timer:timer?{choice:timer.choice,label:timer.label,...(timer.wallDeadline===undefined?{}:{wallDeadline:timer.wallDeadline}),...(timer.endSeconds===undefined?{}:{endSeconds:timer.endSeconds}),...(timer.itemId?{itemId:timer.itemId}:{}),...(timer.bookId?{bookId:timer.bookId}:{}),...(timer.sessionId?{sessionId:timer.sessionId,generation:timer.generation}:{}),...(timer.libraryId?{libraryId:timer.libraryId}:{})}:null});
+   timer:timer?{choice:timer.choice,label:timer.label,...(timer.wallDeadline===undefined?{}:{wallDeadline:timer.wallDeadline}),...(timer.endSeconds===undefined?{}:{endSeconds:timer.endSeconds}),...(timer.itemId?{itemId:timer.itemId}:{}),...(timer.bookId?{bookId:timer.bookId}:{}),...(timer.sessionId?{sessionId:timer.sessionId,generation:timer.generation}:{}),...(timer.libraryId?{libraryId:timer.libraryId}:{}),...(timer.occurrence?{occurrence:timer.occurrence}:{}),...(timer.bookBoundary?{bookBoundary:timer.bookBoundary}:{})}:null});
  }
  refreshAudiobookPreferences(){if(!this.disposed)this.syncNativePolicy();}
  retryContext(){if(this.disposed)return;this.itemId='';this.publish({error:null});this.observe();}
@@ -120,6 +125,24 @@ export class ListeningService {
   if(this.state.context!==c||current.session?.mode==='local'||current.channel||current.itemId!==s.itemId||current.session?.id!==s.session?.id||current.session?.generation!==s.session?.generation||current.playbackRun!==s.playbackRun)return;
   if(key!==this.lastRateKey){this.lastRateKey=key;if(s.session&&!s.channel&&!this.playback.isNativeListening?.())this.playback.setPlaybackRate(rate);}
  }
+ private occurrence():ListeningTimerOccurrence|undefined{
+  const p=this.playback.getSnapshot();if(!p.session||!p.itemId||p.channel||p.session.mode==='local')return;
+  return Object.freeze({sessionId:p.session.id,generation:p.session.generation,itemId:p.itemId,playbackRun:p.playbackRun,
+   queue:this.queueOccurrence?.(p.session.id,p.session.generation)??((this.pendingTimer?.timer??this.state.timer)?.occurrence?.sessionId===p.session.id&&(this.pendingTimer?.timer??this.state.timer)?.occurrence?.generation===p.session.generation?(this.pendingTimer?.timer??this.state.timer)!.occurrence!.queue:null),...(p.nativeListening?{owner:p.nativeListening.owner}:{})});
+ }
+ private sameOccurrence(a:ListeningTimerOccurrence|undefined,b:ListeningTimerOccurrence|undefined){return !!a&&!!b&&a.sessionId===b.sessionId&&a.generation===b.generation&&a.itemId===b.itemId&&a.playbackRun===b.playbackRun&&a.queue?.queueId===b.queue?.queueId&&a.queue?.entryId===b.queue?.entryId&&a.owner===b.owner;}
+ /** A real source-transition request is in flight. A new end boundary cannot undo a write that may land. */
+ beginAutomaticTransition(){const token={};this.automaticFlights.add(token);return()=>this.automaticFlights.delete(token);}
+ /** Called only with the actual accepted session of a still-owned completion/commit operation. */
+ acceptAutomaticTransition(next:Readonly<{id:string;itemId?:string;presentation:Readonly<{generation:number}>;queue?:Readonly<{queueId:string;entryId:string}>}>){
+  const t=this.state.timer,from=this.occurrence();
+  if(t?.choice!=='book'||!this.sameOccurrence(t.occurrence,from)||!from?.queue||!next.queue||next.queue.queueId!==from.queue.queueId||next.queue.entryId===from.queue.entryId)return;
+  const parts=t.bookBoundary?.items,index=parts?.indexOf(from.itemId)??-1;
+  if(!parts||index<0||parts[index+1]!==next.itemId)return;
+  this.acceptedBookNext=Object.freeze({revision:this.timerGeneration,from,to:Object.freeze({...from,sessionId:next.id,generation:next.presentation.generation,itemId:next.itemId!,queue:Object.freeze({...next.queue})})});
+ }
+ /** Deliberate queue navigation retires an end boundary even if it starts the same item again. */
+ cancelBoundaryTimer(){if((this.pendingTimer?.timer??this.state.timer)?.occurrence)this.clearTimer();}
  private observe(){if(this.disposed)return;const p=this.playback.getSnapshot();let item=!p.session||p.channel||p.session.mode==='local'?'':p.itemId??'';
   const eqApplied=p.audioEffects.eqApplied,levelingApplied=p.audioEffects.levelingApplied;
   if(this.state.eqApplied!==eqApplied||this.state.levelingApplied!==levelingApplied)this.publish({eqApplied,levelingApplied});
@@ -132,7 +155,16 @@ export class ListeningService {
     if(!this.disposed&&this.playback.getSnapshot()===p&&rewind>0&&!p.pendingSeek&&!p.failedSeek){const toSeconds=Math.max(0,p.positionSeconds-rewind);if(toSeconds<p.positionSeconds){this.playback.seek(toSeconds);this.publish({rewind:Object.freeze({seconds:p.positionSeconds-toSeconds,fromSeconds:p.positionSeconds,toSeconds,messageKey:'listening.rewound'})});}}
    }}
   }else this.pausedBook=undefined;
-  if(this.sessionKey!==sessionKey){this.sessionKey=sessionKey;const t=this.state.timer;if(t?.sessionId&&(t.sessionId!==p.session?.id||t.generation!==p.session?.generation))this.clearTimer(item?'Chapter timer cleared because the playback source changed.':null);}
+  if(this.sessionKey!==sessionKey)this.sessionKey=sessionKey;
+  const boundary=this.pendingTimer?.timer??this.state.timer,actual=this.occurrence();
+  if(boundary?.occurrence&&!this.sameOccurrence(boundary.occurrence,actual)){
+   const accepted=this.acceptedBookNext;
+   // The native owner alone carries its book chain while JS sleeps. A new run/owner never inherits it.
+   const nativeBook=boundary.choice==='book'&&!!actual?.owner&&actual.owner===boundary.occurrence.owner&&actual.playbackRun===boundary.occurrence.playbackRun;
+   if(boundary.choice==='book'&&accepted?.revision===this.timerGeneration&&this.sameOccurrence(accepted.from,boundary.occurrence)&&this.sameOccurrence(accepted.to,actual)){
+    this.acceptedBookNext=undefined;this.publish({timer:Object.freeze({...boundary,occurrence:actual})});
+   }else if(!nativeBook)this.clearTimer();
+  }
   if(item!==this.itemId){const old=this.state.context;this.itemId=item;const generation=++this.contextGeneration;this.publish({context:null,rewind:undefined});
    if(!item){this.clearTimer();this.publish({stopped:false,message:null});}
    else if(this.listens&&!this.listens(item,p.session?.id??'')){this.clearTimer();}
@@ -143,13 +175,43 @@ export class ListeningService {
   }
   this.applyRate();this.tick();
  }
- clearTimer(message:string|null=null){++this.timerGeneration;this.chapters?.dispose();this.chapters=undefined;this.publish({timer:null,timerLoading:false,message});}
- private installTimer(timer:ListeningTimer){++this.timerGeneration;this.publish({timer,timerLoading:false});}
+ clearTimer(message:string|null=null){++this.timerGeneration;this.pendingTimer=undefined;this.acceptedBookNext=undefined;this.chapters?.dispose();this.chapters=undefined;this.publish({timer:null,timerLoading:false,message});}
+ private async installTimer(timer:ListeningTimer){
+  if(timer.occurrence&&this.automaticFlights.size)throw new Error('Playback is already moving to another item. Choose the timer again.');
+  const revision=++this.timerGeneration;this.pendingTimer=Object.freeze({revision,timer});this.publish({timer:null,timerLoading:true});
+  const accepted=await this.syncNativePolicy();
+  if(this.disposed||revision!==this.timerGeneration)return;
+  this.pendingTimer=undefined;
+  const native=this.playback.getSnapshot().nativeListening;
+  if(accepted!==false&&native?.expiredTimerRevision===revision){this.publish({timer:null,timerLoading:false,stopped:native.timerStopped===true});return;}
+  if(accepted===false||timer.occurrence&&!this.sameOccurrence(timer.occurrence,this.occurrence())){
+   this.clearTimer();throw new Error('The playback source changed before the timer was accepted.');
+  }
+  this.publish({timer,timerLoading:false});
+ }
  async setTimer(choice:SleepChoice){this.interact();this.clearTimer();if(choice==='off')return;
-  const p=this.playback.getSnapshot(),c=this.state.context;if(!c||!p.session||p.channel||!['song','audiobook_file'].includes(c.kind))throw new Error('Start a music or audiobook item before setting a timer.');
-  if(typeof choice==='number'){if(![15,30,45,60,90].includes(choice))throw new Error('Invalid timer choice.');this.installTimer(Object.freeze({choice,label:`${choice} minutes`,deadline:this.now()+choice*60000,wallDeadline:Date.now()+choice*60000,libraryId:c.libraryId}));return;}
-  if(choice==='item'){this.installTimer(Object.freeze({choice,label:'End of this item',itemId:c.itemId,libraryId:c.libraryId}));return;}
-  if(choice==='book'){if(!c.bookId||!c.lastBookItemId||c.bookEndAvailable!==true)throw new Error('The final book part is unavailable. Choose a minute, item or verified chapter timer instead.');this.installTimer(Object.freeze({choice,label:'End of this book',bookId:c.bookId,itemId:c.lastBookItemId,libraryId:c.libraryId}));return;}
+  const p=this.playback.getSnapshot(),c=this.state.context,original=this.occurrence();if(!c||!p.session||!original||p.channel||!['song','audiobook_file'].includes(c.kind))throw new Error('Start a music or audiobook item before setting a timer.');
+  if(typeof choice==='number'){if(![15,30,45,60,90].includes(choice))throw new Error('Invalid timer choice.');await this.installTimer(Object.freeze({choice,label:`${choice} minutes`,deadline:this.now()+choice*60000,wallDeadline:Date.now()+choice*60000,libraryId:c.libraryId}));return;}
+  if(choice==='item'){await this.installTimer(Object.freeze({choice,label:'End of this item',itemId:c.itemId,libraryId:c.libraryId,occurrence:original}));return;}
+  if(choice==='book'){
+   if(!c.bookId||!c.lastBookItemId||c.bookEndAvailable!==true)throw new Error('The final book part is unavailable. Choose a minute, item or verified chapter timer instead.');
+   const occurrence=original,revision=this.timerGeneration;
+   if(!occurrence?.queue)throw new Error('Start the ordered book queue before choosing its end.');
+   const items:string[]=[],seen=new Set<string>(),cursors=new Set<string>();let cursor='',timeline:BookTimeline|undefined;
+   this.publish({timerLoading:true});
+   try{do{
+    const page=await readBookTimeline(this.request,this.scope,c.bookId,{cursor,limit:100,signal:this.abort.signal});
+    if(this.disposed||revision!==this.timerGeneration)return;
+    if(!this.sameOccurrence(occurrence,this.occurrence())){this.clearTimer();throw new Error('The playback source changed. Choose the timer again.');}
+    if(page.libraryId!==c.libraryId||page.totalCount>1000||timeline&&(page.revision.catalog!==timeline.revision.catalog||page.revision.viewer!==timeline.revision.viewer||page.totalCount!==timeline.totalCount))throw new Error('Book order changed. Choose the timer again.');
+    timeline=page;
+    for(const part of page.parts){if(seen.has(part.itemId))throw new Error('Book order changed. Choose the timer again.');seen.add(part.itemId);items.push(part.itemId);if(items.length>page.totalCount)throw new Error('Book order changed. Choose the timer again.');}
+    cursor=page.nextCursor;if(cursor){if(!page.parts.length||cursors.has(cursor))throw new Error('Book order changed. Choose the timer again.');cursors.add(cursor);}
+   }while(cursor);
+   if(!timeline||items.length!==timeline.totalCount||!items.includes(c.itemId)||items.at(-1)!==c.lastBookItemId)throw new Error('The final book part is unavailable.');
+   await this.installTimer(Object.freeze({choice,label:'End of this book',bookId:c.bookId,itemId:c.lastBookItemId,libraryId:c.libraryId,occurrence,bookBoundary:Object.freeze({revision:timeline.revision,items:Object.freeze(items)})}));return;
+   }catch(error){if(!this.disposed&&revision===this.timerGeneration)this.clearTimer();throw error;}
+  }
   if(choice!=='chapter')throw new Error('Invalid timer choice.');
   const generation=this.timerGeneration,position=p.positionSeconds,sessionId=p.session.id,sessionGeneration=p.session.generation;
   const chapters=this.chapters=new PlayerChaptersService({scope:{serverId:this.scope.serverId,viewerId:JSON.stringify([this.scope.authority,this.scope.accountId,this.scope.profileId])},api:{request:<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal)=>this.request(path,body,method as 'GET',signal) as Promise<T>}});
@@ -157,7 +219,7 @@ export class ListeningService {
   try{await chapters.select({libraryId:c.libraryId,itemId:c.itemId,sessionId,sessionGeneration});for(let page=0;page<41;page++){
     if(this.disposed||generation!==this.timerGeneration)return;const state=chapters.getSnapshot(),data=state.data;if(state.phase!=='ready'||!data||data.status!=='available')throw new Error(state.error?.message??'Verified chapter timing is unavailable for this source.');
     const chapter=data.chapters.find(ch=>position>=ch.startSeconds&&position<ch.endSeconds);
-    if(chapter){const latest=this.playback.getSnapshot();if(latest.session?.id!==sessionId||latest.session.generation!==sessionGeneration||latest.positionSeconds>=chapter.endSeconds)throw new Error('Playback moved to another chapter. Choose the timer again.');this.installTimer(Object.freeze({choice,label:`End of chapter: ${chapter.title}`,itemId:c.itemId,sessionId,generation:sessionGeneration,endSeconds:chapter.endSeconds,libraryId:c.libraryId}));return;}
+    if(chapter){const latest=this.playback.getSnapshot();if(latest.session?.id!==sessionId||latest.session.generation!==sessionGeneration||latest.pendingSeek||latest.failedSeek||latest.positionSeconds<chapter.startSeconds||latest.positionSeconds>=chapter.endSeconds)throw new Error('Playback moved to another chapter. Choose the timer again.');await this.installTimer(Object.freeze({choice,label:`End of chapter: ${chapter.title}`,itemId:c.itemId,sessionId,generation:sessionGeneration,endSeconds:chapter.endSeconds,libraryId:c.libraryId,occurrence:original}));return;}
     if(!data.nextCursor)break;await chapters.next();
    }throw new Error('No verified chapter contains the current position.');
   }catch(e){if(!this.disposed&&generation===this.timerGeneration){this.publish({timerLoading:false,error:e instanceof Error?e.message:'Chapter timer unavailable.'});throw e;}}
@@ -185,7 +247,7 @@ export class ListeningService {
   * selected item/chapter/book end or a deadline that precedes that edge. */
  mayTransition(remainingSeconds:number){
   if(!this.mayAdvance())return false;
-  const t=this.state.timer,p=this.playback.getSnapshot();
+  const t=this.pendingTimer?.timer??this.state.timer,p=this.playback.getSnapshot();
   if(!p.session||p.session.mode==='local'||p.channel)return Number.isFinite(remainingSeconds)&&remainingSeconds>=0;
   if(t?.choice==='chapter'||t&&(t.choice==='item'||t.choice==='book')&&t.itemId===p.itemId)return false;
   if(!Number.isFinite(remainingSeconds)||remainingSeconds<0)return false;
@@ -195,8 +257,8 @@ export class ListeningService {
  }
  /** Listening queues continue unless stopped by a timer or awaiting their item's context.
   * Loading preferences does not decide whether an album or audiobook part continues. */
- mayAdvance(){this.tick();return !this.disposed&&!this.state.stopped&&(!this.itemId||!!this.state.context);}
- dispose(){if(this.disposed)return;this.disposed=true;this.abort.abort();this.unsubscribe?.();clearInterval(this.interval);this.chapters?.dispose();this.state=Object.freeze({...this.state,phase:'disposed',eqApplied:false,levelingApplied:false,preferences:null,context:null,timer:null,stopped:false});this.listeners.clear();}
+ mayAdvance(){this.tick();return !this.pendingTimer?.timer.occurrence&&!this.disposed&&!this.state.stopped&&(!this.itemId||!!this.state.context);}
+ dispose(){if(this.disposed)return;this.disposed=true;this.pendingTimer=undefined;this.acceptedBookNext=undefined;this.automaticFlights.clear();this.abort.abort();this.unsubscribe?.();clearInterval(this.interval);this.chapters?.dispose();this.state=Object.freeze({...this.state,phase:'disposed',eqApplied:false,levelingApplied:false,preferences:null,context:null,timer:null,stopped:false});this.listeners.clear();}
 }
 
 export async function readListeningItem(request:ListeningRequest,scope:QueueScope,itemId:string,signal?:AbortSignal){return parseItem(listeningData(await request(encodedRoutePath("get_items_id_listening", {"id": encodeURIComponent(itemId)}),undefined,'GET',signal),scope),itemId);}

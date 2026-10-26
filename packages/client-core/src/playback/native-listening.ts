@@ -6,11 +6,15 @@ export type ListeningDeadlines = Readonly<{sleepAtMs:number|null;passoutAtMs:num
 export const noListeningDeadlines:ListeningDeadlines=Object.freeze({sleepAtMs:null,passoutAtMs:null});
 /** Non-authorizing policy. The native owner applies it to the session it plays; neither policy
  * revisions nor activity send playback commands. */
+/** A timer follows this accepted occurrence, not another start of the same catalogue item. */
+export type ListeningTimerOccurrence=Readonly<{sessionId:string;generation:number;itemId:string;playbackRun:number;queue:Readonly<{queueId:string;entryId:string}>|null;owner?:string}>;
+/** Ordered membership read from the original scoped book timeline, never queue indices. */
+export type ListeningBookBoundary=Readonly<{revision:Readonly<{catalog:number;viewer:number}>;items:readonly string[]}>;
 export type ListeningPolicy=Readonly<{
  audiobook?:AudiobookPreferences;
  preferences:Readonly<{bookRate:number;passoutMinutes:number}>|null;
  activityRevision:number;activityAtMs:number;timerRevision:number;
- timer:Readonly<{choice:string|number;label:string;wallDeadline?:number;endSeconds?:number;itemId?:string;bookId?:string;sessionId?:string;generation?:number;libraryId?:string}>|null;
+ timer:Readonly<{choice:string|number;label:string;wallDeadline?:number;endSeconds?:number;itemId?:string;bookId?:string;sessionId?:string;generation?:number;libraryId?:string;occurrence?:ListeningTimerOccurrence;bookBoundary?:ListeningBookBoundary}>|null;
 }>;
 export type NativeListeningPolicy=ListeningPolicy&Readonly<{revision:number;effects:AudioEffectsSettings}>;
 export type ListeningAction='pause'|'resume'|'seek'|'rate'|'retry'|'next'|'previous';
@@ -64,6 +68,8 @@ export class ListeningDeadlineClock {
  * `transition`: a new session (and the queue header it came with), which JS adopts as its own.
  */
 export type NativeListeningV1Context=Readonly<{
+ /** Original client playback run; older hosts may play but cannot arm occurrence-bound end timers without it. */
+ playbackRun?:number;
  /** The v1 session (`parseSession`'s shape; it is also the wire shape). */
  session:Session;
  queueId:string|null; queueRevision:string|null;
