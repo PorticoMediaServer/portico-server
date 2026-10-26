@@ -27,7 +27,7 @@ import {useLibraryScreenContext} from '../browse/screen-context';
 import {ReadMetadata} from './ReadMetadata';
 import {createReadBindings} from './bindings';
 import {readDestination, type ReadItemEligibility} from './navigation';
-import {readVersionCanChoose, readVersionPick} from './read-version-choice';
+import {readBackDestination, readVersionAdmission, readVersionCanChoose, type ReadVersion} from './read-version-choice';
 import styles from './read-item.module.css';
 
 type Captured = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
@@ -97,32 +97,39 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   }, [attempt, eligibility.itemId]);
   // The reading branch owns no shell navigation on a phone, so the page keeps one
   // Back of its own before loading, failure and ready content alike.
-  const back = captured.context.effects.back, openHome = captured.context.effects.openHome;
-  const phoneBack = phone && (back || openHome) ? <div className={styles.phoneTopBar} data-read-phone-back>
-    <Button variant="icon" icon="i-left" iconOnly aria-label={t('next.states.back')}
-      onClick={() => runScreenCommand(captured.context, () => {if (back) back(); else openHome?.();})}/>
+  const phoneBack = phone && context.effects.back ? <div className={styles.phoneTopBar} data-read-phone-back>
+    <Button className={styles.phoneBack} size="small" variant="icon" icon="i-left" iconOnly aria-label={t('next.states.back')}
+      onClick={() => runScreenCommand(context, () => {
+        if (!context.isCurrent()) return;
+        if (readBackDestination(router.history.canGoBack()) === 'back') context.effects.back?.();
+        else context.effects.openHome?.();
+      })}/>
   </div> : null;
   const version = eligibility.versions.find(candidate => candidate.sourceId === sourceId);
   /** An explicit version recovery is permitted while the original attempt is failed or not
    * ready; factsCurrent() is deliberately not the gate because it can never become true then.
    * The fence is the original route/context, the live attempt identity and the chosen row. */
-  const pickVersion = (nextSourceId: string) => {
-    if (renderIdentity.current.context !== captured.context) return;
-    const chosen = readVersionPick(eligibility.versions, renderIdentity.current.sourceId, nextSourceId);
-    if (!chosen) return;
-    const original = attemptRef.current;
-    if (original) retire(original);
+  const pickVersion = (candidate: ReadVersion, renderedAttempt: ReadAttempt | undefined, renderedSourceId: string | undefined) => {
+    if (!readVersionAdmission({
+      liveRoute: context.isCurrent(), renderedContext: captured.context, currentContext: renderIdentity.current.context,
+      renderedSourceId, currentSourceId: renderIdentity.current.sourceId,
+      renderedAttempt, currentAttempt: attemptRef.current, attemptRetired: !!renderedAttempt?.fileLife.signal.aborted,
+      candidate, offered: eligibility.versions,
+    })) return;
+    if (renderedAttempt) retire(renderedAttempt);
+    // A reentrant callback may already have started a successor; only the original may be replaced.
+    if (attemptRef.current && attemptRef.current !== renderedAttempt) return;
     setDetail({});
     setSaving(false); setRereading(false);
     setMenu(false); setChooserMenu(false);
-    setSourceId(chosen.sourceId);
+    setSourceId(candidate.sourceId);
   };
   const versionChooser = readVersionCanChoose(eligibility.versions) ? <div className={styles.versionRow}>
     <Button ref={chooserAnchor} size="small" variant="glass" onClick={() => setChooserMenu(value => !value)} aria-label={t('next.reader.version')}>
       {version?.format.toUpperCase() ?? t('next.reader.version')}<Icon name="i-down" size={14}/></Button>
     <Menu open={chooserMenu} onOpenChange={setChooserMenu} title={t('next.reader.version')} anchorRef={chooserAnchor}>
       {eligibility.versions.map(candidate => <MenuItem key={candidate.sourceId} selected={candidate.sourceId === sourceId} disabled={!candidate.inventoryAvailable}
-        onSelect={() => pickVersion(candidate.sourceId)} description={defaultI18n.bytes(candidate.size)}>{candidate.format.toUpperCase()}</MenuItem>)}
+        onSelect={() => pickVersion(candidate, attempt, sourceId)} description={defaultI18n.bytes(candidate.size)}>{candidate.format.toUpperCase()}</MenuItem>)}
     </Menu>
   </div> : null;
   if (current(attempt) && detail.attempt === attempt && detail.failed) return <>
@@ -215,7 +222,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     {id: 'format', label: t('next.reader.format'), value: manifest.format.toUpperCase()},
     {id: 'size', label: t('next.reader.fileSize'), value: defaultI18n.bytes(manifest.size)},
   ]}/>;
-  return <>{phoneBack}<ReadBookHero cover=context.artwork.foreground(manifest.metadata.coverUrl, 784, 2 / 3)} title={title} author={author ? {name: author} : undefined} series={seriesPresentation} facts={[
+  return <>{phoneBack}<ReadBookHero cover={context.artwork.foreground(manifest.metadata.coverUrl, 784, 2 / 3)} title={title} author={author ? {name: author} : undefined} series={seriesPresentation} facts={[
       ...(metadata.wordCount !== undefined ? [{id: 'words', text: t('next.reader.wordCount', {count: metadata.wordCount}), role: 'context' as const}] : []),
       ...(metadata.pageCount !== undefined ? [{id: 'pages', text: t('next.reader.pageCount', {count: metadata.pageCount}), role: 'context' as const}] : []),
       ...(metadata.estimatedSeconds !== undefined && metadata.estimatedSeconds > 0 ? [{id: 'estimate', text: t('next.reader.aboutDuration', {duration: defaultI18n.duration(metadata.estimatedSeconds)}), role: 'context' as const}] : []),
@@ -226,7 +233,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
     under={<>{(canEdit || canSaveFile || favorite) && <><Button ref={editorAnchor} size="small" variant="glass" icon="i-more" iconOnly aria-label={t('next.controls.more')} onClick={() => setMore(value => !value)}/><Menu open={more} onOpenChange={setMore} title={title} anchorRef={editorAnchor}>{favorite && <MenuItem icon="i-heart" selected={favorite.selected} disabled={favorite.busy} onSelect={favorite.onSelect}>{favorite.label}</MenuItem>}{canSaveFile && <MenuItem disabled={saving} onSelect={() => {void saveFile();}}>{t('next.reader.saveFile')}</MenuItem>}{canEdit && <MenuGroup ownerOnly label={<span>{t('next.browse.server')}<ServerMark size={22}/></span>}><MenuItem onSelect={() => {if (context.isCurrent()) setEditing(true);}}>{t('entry.editMetadata')}</MenuItem><MenuItem disabled={rereading} onSelect={() => {if (context.isCurrent()) void reread();}}>{t('next.reader.readFileAgain')}</MenuItem></MenuGroup>}</Menu></>}{chooseVersion ? <><Button ref={anchor} size="small" variant="glass" onClick={() => setMenu(value => !value)} aria-label={t('next.reader.version')}>
       {version.format.toUpperCase()}<Icon name="i-down" size={14}/></Button>
       <Menu open={menu} onOpenChange={setMenu} title={t('next.reader.version')} anchorRef={anchor}>{eligibility.versions.map(candidate => <MenuItem key={candidate.sourceId}
-        selected={candidate.sourceId === sourceId} disabled={!candidate.inventoryAvailable} onSelect={() => {if (!factsCurrent()) return; pickVersion(candidate.sourceId);}} description={defaultI18n.bytes(candidate.size)}>
+        selected={candidate.sourceId === sourceId} disabled={!candidate.inventoryAvailable} onSelect={() => {if (!factsCurrent()) return; pickVersion(candidate, attempt, sourceId);}} description={defaultI18n.bytes(candidate.size)}>
         {candidate.format.toUpperCase()}</MenuItem>)}</Menu></> : null}</>}/>
     {editing && canEdit && <ReadMetadata context={context} reading={captured.context} sourceId={manifest.sourceId} format={manifest.format} itemId={eligibility.itemId} anchor={editorAnchor} onClose={() => {if (!current(original)) return; setEditing(false); refresh(original);}}/>}
     <ReadBookSections contents={detail.targets?.length ? <><h2>{t('next.reader.contents')}</h2><ReaderContents entries={detailContents(manifest.contents ?? [], index => open(index))}/></> : <span hidden/>} details={details}/></>;
