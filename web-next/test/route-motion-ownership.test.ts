@@ -104,3 +104,26 @@ test('a captured old rendered callback cannot release a successor owner', () => 
     finishRouteMotion();
   }
 });
+
+test('retiring the final binder removes its signals and leaves ownership released', () => {
+  const {page, navigation} = browser('Desktop Safari'), fixture = router();
+  let off: (() => void) | undefined;
+  try {
+    off = bindShellRouteMotion(fixture.router, page);
+    navigation.dispatchEvent(traversal(true));
+    assert.equal(routeMotionOwnedByBrowser(), true);
+    assert.deepEqual(fixture.updates, [false]);
+    off();
+    off = undefined;
+    const released = fixture.updates.slice();
+    page.dispatchEvent(new Event('popstate'));
+    navigation.dispatchEvent(traversal(true));
+    finishRouteMotion();
+    assert.deepEqual(fixture.updates, released, 'a retired final binder emits no further updates');
+    assert.equal(routeMotionOwnedByBrowser(), false);
+    assert.equal(fixture.rendered().length, 0, 'no rendered subscription survives retirement');
+  } finally {
+    off?.();
+    finishRouteMotion();
+  }
+});
