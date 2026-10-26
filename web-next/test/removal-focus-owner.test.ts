@@ -69,9 +69,23 @@ test('an unrelated focus change between modal retirement and close cancels its f
   const portal = new ElementFixture(f.document);receipt.attach(dom(portal));f.document.activeElement = portal;f.key();f.root.hidden = true;f.owner.beforeLeave(new Set(['b','c']));
   f.root.hidden = false;const outside = new ElementFixture(f.document);outside.button = true;outside.focus();receipt.restore();assert.equal(f.document.activeElement, outside);receipt.dispose();
 });
-test('same-key replacement and a strict-effect replay never receive an old opening return', t => {
+test('a strict-effect replay never receives an old opening return', t => {
   const f = fixture(t);f.active(0);const receipt = captureListFocusReturn(dom(f.rows[0].children[0]))!;
   f.owner.activate();f.owner.commit(dom(f.root));f.document.activeElement = f.document.body;receipt.restore();assert.equal(f.document.activeElement, f.document.body);receipt.dispose();
+});
+test('a replacement node with the same key cannot become the old opening target', t => {
+  const f = fixture(t);f.active(0);const receipt = captureListFocusReturn(dom(f.rows[0].children[0]))!;
+  const replacement = new ElementFixture(f.document);replacement.dataset.layoutItem = 'a';
+  const button = new ElementFixture(f.document);button.button = true;replacement.append(button);replacement.parentElement = f.root;
+  f.root.children[0] = replacement;f.owner.commit(dom(f.root));f.document.activeElement = f.document.body;
+  receipt.restore();assert.equal(f.document.activeElement, f.document.body);receipt.dispose();
+});
+test('nested modal isolation leaves the original outer close handoff available', t => {
+  const f = fixture(t);f.active(0);const outer = captureListFocusReturn(dom(f.rows[0].children[0]))!;
+  const outerNode = new ElementFixture(f.document), opener = new ElementFixture(f.document);opener.button = true;outerNode.append(opener);outer.attach(dom(outerNode));opener.focus();
+  const inner = captureListFocusReturn(dom(opener))!;const innerNode = new ElementFixture(f.document), button = new ElementFixture(f.document);button.button = true;innerNode.append(button);inner.attach(dom(innerNode));button.focus();innerNode.dispatchEvent(new Event('keydown'));
+  f.root.hidden = true;f.owner.beforeLeave(new Set(['b','c']));inner.restore();assert.equal(f.document.activeElement, button);
+  f.root.hidden = false;f.document.activeElement = f.document.body;outer.restore();assert.equal(f.document.activeElement, f.rows[1].children[0]);inner.dispose();outer.dispose();
 });
 test('root replacement invalidates both a queued portal return and its nested provenance', t => {
   const f = fixture(t);f.active(0);const receipt = captureListFocusReturn(dom(f.rows[0].children[0]))!;
@@ -97,7 +111,7 @@ function gridBoundary(t: TestContext) {
   return {...f, boundary, update};
 }
 test('grid accepted generation hands focus off while the original sparse node is still connected', t => {
-  const f = gridBoundary(t);f.active(0);f.update({generation: 2, keys: new Set(['b','c'])});
+  const f = gridBoundary(t);f.rows[1].tabIndex = true;f.active(0);f.update({generation: 2, keys: new Set(['b','c'])});
   assert.equal(f.document.activeElement, f.rows[1].children[0]);assert.equal(f.rows[0].isConnected, true);
 });
 for (const [name, change] of [
