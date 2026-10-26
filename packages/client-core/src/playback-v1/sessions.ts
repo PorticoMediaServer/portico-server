@@ -138,9 +138,10 @@ export class SessionsClient {
   /** The channel adapter retains the actual declared linear projection beside
    * its final response identity. Both use this same status/retry/lifetime path;
    * an existing channel may have no media URL until its ordinary join/read.
-   * a retry-only body can never be returned as a completed start. */
-  async startResponse(target: StartTarget, options: StartOptions, key: string, extra: StartContext = {}): Promise<Readonly<{id: string; generation: number; body: unknown}>> {
-    return this.startOriginal(target, options, key, extra, body => ({...startIdentity(body), body}));
+   * A retry-only body can never be returned as a completed start. The adapter's
+   * decoder runs inside the original receipt's failure/cleanup boundary. */
+  async startResponse<T>(target: StartTarget, options: StartOptions, key: string, extra: StartContext, decode: (body: unknown) => T): Promise<Readonly<{id: string; generation: number; body: T}>> {
+    return this.startOriginal(target, options, key, extra, body => ({...startIdentity(body), body: decode(body)}));
   }
 
   private async startOriginal<T>(target: StartTarget, options: StartOptions, key: string, extra: StartContext, read: (body: unknown) => T): Promise<T> {

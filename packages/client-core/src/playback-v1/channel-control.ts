@@ -180,20 +180,20 @@ export class V1ChannelControl implements ChannelPlayback {
     this.wanted = state;
     const a: Active = {serial: ++this.serial, channel: originalChannel, startAbort: new AbortController(), joined: false, seq: 0, lastReport: 0, tail: Promise.resolve(), closed: false};
     this.active = a;
+    const currentStart = () => this.current(a) && starting() && this.current(a);
     const cancel = () => {if (this.current(a)) this.close();};
     signal?.addEventListener('abort', cancel, {once: true});
     try {
       await this.stopping.catch(() => {});
       if (!this.current(a) || !starting()) {cancel();return;}
       const result = await this.sessions.startResponse({channelId: v1ChannelId(originalChannel), channelGeneration: originalChannel.generation}, {state}, this.key(), {
-        signal: a.startAbort.signal, isCurrent: () => this.current(a) && starting(), capturePreparing,
-        onPreparing: (_wait, preparation) => {if (this.current(a) && starting()) sink.preparation?.(preparation);},
-      });
-      if (!this.current(a) || !starting()) {void this.stop(result.id);cancel();return;}
-      const s = parseChannelSession(result.body, this.now);
-      if (!this.current(a) || !starting()) {void this.stop(s.id);cancel();return;}
+        signal: a.startAbort.signal, isCurrent: currentStart, capturePreparing,
+        onPreparing: (_wait, preparation) => {if (currentStart()) sink.preparation?.(preparation);},
+      }, body => parseChannelSession(body, this.now));
+      if (!currentStart()) {void this.stop(result.id);cancel();return;}
+      const s = result.body;
       sink.preparation?.(undefined);
-      if (!this.current(a) || !starting()) {void this.stop(s.id);cancel();return;}
+      if (!currentStart()) {void this.stop(s.id);cancel();return;}
       a.id = s.id;
       this.accept(a, s);
       this.schedule(a);
@@ -201,7 +201,7 @@ export class V1ChannelControl implements ChannelPlayback {
       if (!starting()) {cancel();return;}
       if (this.current(a)) {
         sink.preparation?.(undefined);
-        if (this.current(a) && starting()) {this.active = undefined; a.closed = true; a.startAbort.abort(); sink.error(message(e), true);}
+        if (currentStart()) {this.active = undefined; a.closed = true; a.startAbort.abort(); sink.error(message(e), true);}
       }
     } finally {signal?.removeEventListener('abort', cancel);}
   }
