@@ -41,6 +41,14 @@ test('only genuine transport failures become the drawn wait; guards keep the err
   for (const code of ['identity_mismatch', 'access_refused', 'unauthorized', 'forbidden', 'owner_required', 'unsupported_version', 'invalid_response', 'cancelled']) assert.equal(launchFailure(routeError(code), true), 'other', code);
 });
 
+test('a fresh load that cannot reach the server never draws cached library names', () => {
+  // A record written by an older build may still carry names; the drawn page has no bar for them.
+  const legacy = {...facts, libraries: ['Movies', 'Anime', 'Music']} as typeof facts;
+  const markup = renderToStaticMarkup(createElement(LaunchUnreachableScreen, {facts: legacy, now: facts.startedAt, onRetry: () => {}, onSwitchServer: () => {}}));
+  assert.doesNotMatch(markup, /Movies|Anime|Music/);
+  assert.doesNotMatch(markup, /data-last-known-bar/);
+});
+
 test('states.html#3: the drawn page names the server, counts its real tries and offers only real actions', () => {
   const now = facts.startedAt, markup = renderToStaticMarkup(createElement(LaunchUnreachableScreen, {facts, now, onRetry: () => {}, onSwitchServer: () => {}}));
   assert.match(markup, new RegExp(defaultI18n.t('next.states.cantReach', {server: 'Portico demo'}).replace(/'/g, '&#x27;')));

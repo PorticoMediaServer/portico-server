@@ -4370,6 +4370,9 @@ playback_disc_snapshots.generation
 playback_disc_snapshots.id
 playback_disc_snapshots.input_kind
 playback_disc_snapshots.session_id
+playback_disc_subtitle_resources.resource_id
+playback_disc_subtitle_resources.snapshot_id
+playback_disc_subtitle_resources.stream_index
 playback_hls_demand.highest_served
 playback_hls_demand.session_id
 playback_hls_demand.throttled

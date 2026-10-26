@@ -93,8 +93,16 @@ func TestResetFileWrongTryCancellationExpiryReissueAndRollback(t *testing.T) {
 	ctx := context.Background()
 	code := requestResetFileCode(t, s)
 	for i := 0; i < 5; i++ {
-		if _, e := s.VerifyOwnerReset(ctx, OwnerResetVerify{Code: "wrong"}); !errors.Is(e, ErrUnauthorized) {
-			t.Fatal(e)
+		_, e := s.VerifyOwnerReset(ctx, OwnerResetVerify{Code: "wrong"})
+		if i < 4 {
+			if !errors.Is(e, ErrUnauthorized) {
+				t.Fatal(e)
+			}
+		} else {
+			var limited *SetupProtocolError
+			if !errors.As(e, &limited) || limited.Code != "rate_limited" || limited.Interval < 1 || limited.Interval > 60 {
+				t.Fatal("missing fifth-attempt cooldown", e)
+			}
 		}
 	}
 	if _, e := s.VerifyOwnerReset(ctx, OwnerResetVerify{Code: code}); !errors.Is(e, ErrUnauthorized) {
@@ -113,8 +121,11 @@ func TestResetFileWrongTryCancellationExpiryReissueAndRollback(t *testing.T) {
 	if _, e := db.Exec(`UPDATE owner_reset_file SET expires_at=0`); e != nil {
 		t.Fatal(e)
 	}
+	if _, e := s.VerifyOwnerReset(ctx, OwnerResetVerify{Code: replacement}); !errors.Is(e, ErrOwnerResetExpired) {
+		t.Fatal("exact expired proof did not report its terminal outcome", e)
+	}
 	if _, e := s.VerifyOwnerReset(ctx, OwnerResetVerify{Code: replacement}); !errors.Is(e, ErrUnauthorized) {
-		t.Fatal("expired code usable", e)
+		t.Fatal("retired expired proof disclosed a successor outcome", e)
 	}
 	// A transaction failure must not consume a valid code or revoke sessions.
 	if _, e := db.Exec(`UPDATE owner_reset_file SET issued_at=0`); e != nil {
@@ -200,8 +211,8 @@ func TestResetFileRefusesUnsafeFilesAndParents(t *testing.T) {
 					t.Fatal(e)
 				}
 			}
-			if _, e := s.RequestOwnerReset(context.Background(), OwnerResetRequest{}); e == nil {
-				t.Fatal("unsafe target accepted")
+			if _, e := s.RequestOwnerReset(context.Background(), OwnerResetRequest{}); !errors.Is(e, ErrOwnerResetFileWrite) {
+				t.Fatal("unsafe target did not report the closed file-write outcome", e)
 			}
 			raw, e := os.ReadFile(external)
 			if e != nil || string(raw) != "preserved" {
@@ -486,5 +497,32 @@ func TestResetFileLocalMethodIgnoresStaleHostedOnboarding(t *testing.T) {
 	}
 	if out.ResetFileOwnerSession || !out.PasswordChangeRequired || out.Session == nil || out.Account.HostedAccountID != "" {
 		t.Fatal("stale onboarding changed Local reset authority or invented identity")
+	}
+}
+
+func TestOwnerResetExpiryIsNotAnOracleForGuessedOrRetiredCode(t *testing.T) {
+	for _, mode := range []string{"guessed", "owner-epoch", "used"} {
+		t.Run(mode, func(t *testing.T) {
+			s, db, _ := directFixture(t)
+			proof := requestResetFileCode(t, s)
+			if _, err := db.Exec(`UPDATE owner_reset_file SET expires_at=0`); err != nil {
+				t.Fatal(err)
+			}
+			switch mode {
+			case "guessed":
+				proof = "not-the-private-code"
+			case "owner-epoch":
+				if _, err := db.Exec(`UPDATE accounts SET epoch=epoch+1 WHERE id='account'`); err != nil {
+					t.Fatal(err)
+				}
+			case "used":
+				if _, err := db.Exec(`UPDATE owner_reset_file SET code_hash=''`); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := s.VerifyOwnerReset(context.Background(), OwnerResetVerify{Code: proof}); !errors.Is(err, ErrUnauthorized) {
+				t.Fatal("non-current proof disclosed expiry", err)
+			}
+		})
 	}
 }

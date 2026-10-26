@@ -3,6 +3,19 @@ import {parseDirectSignIn,type DirectSignIn,type ProfileAPI} from './profile-man
 import {identityCode} from './route-identity.ts';
 import {parseTwoFactorState} from './identity-restrictions.ts';
 
+/** Only the original owner-reset request may classify these closed outcomes.
+ * Do not infer expiry or a usable reset from status, raw text or another route. */
+export type OwnerResetFailurePurpose='request'|'verify';
+export type OwnerResetFailure='invalid'|'expired'|'limited'|'write';
+export function ownerResetFailure(error:unknown,purpose:OwnerResetFailurePurpose|undefined):OwnerResetFailure|undefined{
+ const code=error&&typeof error==='object'?(error as {code?:unknown}).code:undefined;
+ if(purpose==='request'&&code==='owner_reset_file_unavailable')return 'write';
+ if(purpose==='verify'&&code==='owner_reset_expired')return 'expired';
+ if(purpose&&code==='rate_limited')return 'limited';
+ if(purpose==='verify'&&code==='unauthorized')return 'invalid';
+ return undefined;
+}
+
 export type ResetFileLocation=Readonly<{systemKind:'linux'|'windows'|'macos'|'docker';dataDirectory:string;fileDirectory:string;fileName:'reset-code.txt';retryAfterSeconds:number}>;
 export function parseResetFileLocation(raw:unknown):ResetFileLocation {
  const v=raw as Record<string,unknown>;

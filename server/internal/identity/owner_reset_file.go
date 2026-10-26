@@ -22,6 +22,15 @@ const ownerResetLifetime = 15 * time.Minute
 const resetReissueSeconds int64 = 60
 const resetFileName = "reset-code.txt"
 
+var ErrOwnerResetExpired = errors.New("owner reset code expired")
+var ErrOwnerResetFileWrite = errors.New("owner reset file could not be written")
+
+type ownerResetFileWriteError struct{ cause error }
+
+func (e *ownerResetFileWriteError) Error() string        { return ErrOwnerResetFileWrite.Error() }
+func (e *ownerResetFileWriteError) Unwrap() error        { return e.cause }
+func (e *ownerResetFileWriteError) Is(target error) bool { return target == ErrOwnerResetFileWrite }
+
 type OwnerResetRequest struct {
 	Username string `json:"username,omitempty"`
 }
@@ -218,7 +227,7 @@ func (s *Service) RequestOwnerReset(ctx context.Context, _ OwnerResetRequest) (O
 		// The file is durable before the digest commits. An interrupted transaction
 		// can leave an unusable private file, never a publicly usable credential.
 		if e = s.publishResetFile(code, expires); e != nil {
-			return e
+			return &ownerResetFileWriteError{cause: e}
 		}
 		if _, e = tx.ExecContext(ctx, `INSERT INTO owner_reset_file(singleton,account_id,epoch,portico,code_hash,issued_at,expires_at,failed_attempts) VALUES(1,?,?,?,?,?,?,0) ON CONFLICT(singleton) DO UPDATE SET account_id=excluded.account_id,epoch=excluded.epoch,portico=excluded.portico,code_hash=excluded.code_hash,issued_at=excluded.issued_at,expires_at=excluded.expires_at,failed_attempts=0`, account, epoch, linked, s.setupHash("owner-reset", code), now, expires.Unix()); e != nil {
 			return e
@@ -237,12 +246,14 @@ func (s *Service) VerifyOwnerReset(ctx context.Context, q OwnerResetVerify) (Dir
 	}
 	var out DirectSignIn
 	invalid := false
+	expired := false
+	var limited *SetupProtocolError
 	err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
 		var account, hash string
 		var epoch, tries int
 		var linked bool
-		var expires int64
-		e := tx.QueryRowContext(ctx, `SELECT account_id,epoch,portico,code_hash,expires_at,failed_attempts FROM owner_reset_file WHERE singleton=1`).Scan(&account, &epoch, &linked, &hash, &expires, &tries)
+		var expires, issued int64
+		e := tx.QueryRowContext(ctx, `SELECT account_id,epoch,portico,code_hash,expires_at,failed_attempts,issued_at FROM owner_reset_file WHERE singleton=1`).Scan(&account, &epoch, &linked, &hash, &expires, &tries, &issued)
 		if e != nil && !errors.Is(e, sql.ErrNoRows) {
 			return e
 		}
@@ -253,6 +264,19 @@ func (s *Service) VerifyOwnerReset(ctx context.Context, q OwnerResetVerify) (Dir
 		match := subtle.ConstantTimeCompare([]byte(stored), []byte(s.setupHash("owner-reset", q.Code))) == 1
 		if e != nil || hash == "" || expires <= time.Now().Unix() || tries >= 5 || !match {
 			invalid = true
+			// Expiry is disclosed only for possession of the exact still-stored
+			// original code AND unchanged owner identity. Arbitrary, used and
+			// unknown inputs retain the one neutral invalid-code outcome.
+			if e == nil && len(hash) == 43 && match && tries < 5 && expires <= time.Now().Unix() {
+				owner, readErr := s.directAccountTx(ctx, tx, account)
+				if readErr == nil && owner.epoch == epoch && owner.account.Role == TierOwner {
+					live, linkErr := s.ownerResetPorticoTx(ctx, tx, account)
+					expired = linkErr == nil && live == linked
+				}
+			}
+			if e == nil && hash != "" && !match && tries == 4 && expires > time.Now().Unix() {
+				limited = &SetupProtocolError{Code: "rate_limited", Interval: int(max(1, issued+resetReissueSeconds-time.Now().Unix()))}
+			}
 			if e == nil && hash != "" {
 				_, e = tx.ExecContext(ctx, `UPDATE owner_reset_file SET failed_attempts=MIN(5,failed_attempts+1),code_hash=CASE WHEN failed_attempts>=4 OR expires_at<=? THEN '' ELSE code_hash END WHERE singleton=1`, time.Now().Unix())
 			}
@@ -322,6 +346,12 @@ func (s *Service) VerifyOwnerReset(ctx context.Context, q OwnerResetVerify) (Dir
 	})
 	if err != nil {
 		return DirectSignIn{}, err
+	}
+	if expired {
+		return DirectSignIn{}, ErrOwnerResetExpired
+	}
+	if limited != nil {
+		return DirectSignIn{}, limited
 	}
 	if invalid {
 		return DirectSignIn{}, ErrUnauthorized

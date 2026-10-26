@@ -98,7 +98,7 @@
 .guideCellDetail > span:last-child { overflow: hidden; text-overflow: ellipsis; }
 .guideClip { flex: none; color: var(--color-text-tertiary); margin: 0 -3px 0 -6px; }
 .guideRecordDot { flex: none; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--color-record); }
-.guideRecordDot[data-pulse] { animation: guidePulse 2s ease-in-out infinite; box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-record) 22%, transparent); }
+.guideRecordDot[data-pulse] { box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-record) 22%, transparent); }
 .guideRecording { color: var(--color-record); font-weight: var(--type-row-heading-weight); }
 .guideFlag { flex: none; padding: 2px 7px; border-radius: 5px; font-size: calc(var(--type-micro-size) + .5px); font-weight: var(--type-lockup-weight); line-height: normal; }
 .guideFlag[data-flag='new'] { background: var(--color-accent); color: var(--color-action-ink); }
@@ -108,7 +108,6 @@
 .guideProgress i { display: block; height: 100%; background: var(--color-accent-strong); }
 .guideNowLine { position: absolute; top: -6px; bottom: 0; width: 2px; margin-left: -1px; background: var(--color-accent-strong); box-shadow: 0 0 14px color-mix(in srgb, var(--color-accent-strong) 55%, transparent); pointer-events: none; z-index: -1; }
 .guideKbd { line-height: normal; margin: 0; padding: 18px var(--shell-gutter, var(--gutter-desktop)) 44px; font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
-@keyframes guidePulse { 50% { opacity: .35; } }
 @media (max-width: 1023px) {
   .guideHeader { padding-top: 44px; flex-wrap: wrap; }
   .guideHeader h1 { font-size: var(--type-banner-title-size); line-height: calc(1.15em); letter-spacing: calc(var(--type-lockup-long-tracking) + .01em); }
@@ -182,7 +181,7 @@
 .programmeChannelText small { display: block; margin-top: 1px; font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
 .programmeFavorite { flex: none; color: var(--color-accent-strong); }
 .programmeLive { margin-left: 14px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: var(--type-label-size); font-weight: var(--type-row-heading-weight); color: var(--color-record); }
-.programmeLive::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--color-record); animation: programmePulse 2s ease-in-out infinite; }
+.programmeLive::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--color-record); }
 .programmeTitle { position: relative; z-index: var(--layer-content); margin: 24px 0 10px; font-size: calc(var(--type-lockup-size) * 28 / 23); line-height: calc(var(--type-lockup-size) * 28 / 23 * .94); font-weight: var(--type-lockup-weight); letter-spacing: var(--type-lockup-tracking); text-wrap: balance; text-shadow: 0 2px 30px color-mix(in srgb, var(--color-ink) 50%, transparent); }
 .programmeEpisode { position: relative; z-index: var(--layer-content); margin: 0 0 12px; font-size: var(--type-subheading-size); font-weight: var(--type-row-heading-weight); color: var(--color-text); }
 .programmeMeta { position: relative; z-index: var(--layer-content); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; margin: 0 0 14px; font-size: var(--type-body-size); color: var(--color-text-secondary); }
@@ -202,7 +201,7 @@
 .programmeAction { height: 48px; padding: 0 16px; border-radius: 12px; font-size: var(--type-tab-size); gap: 9px; white-space: nowrap; }
 .programmeActionOpen { background: color-mix(in srgb, var(--color-text) 24%, transparent); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--color-text) 45%, transparent); }
 .programmeFavoriteAction { width: 48px; min-width: 48px; padding: 0; }
-.recordingDot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--color-record); animation: programmePulse 2s ease-in-out infinite; }
+.recordingDot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--color-record); }
 .programmeFavoriteAction[aria-pressed='true'] { color: var(--color-accent-strong); }
 .seriesBox { position: relative; z-index: var(--layer-content); display: grid; gap: 12px; margin-top: 16px; padding: 18px 20px 20px; border-radius: 14px; background: var(--color-raised-high); box-shadow: 0 20px 40px -24px color-mix(in srgb, var(--color-shadow) 80%, transparent); }
 .seriesHead { display: flex; align-items: baseline; gap: 12px; }
@@ -224,8 +223,6 @@
 .airingRemind.airingRemind { width: 38px; min-width: 38px; height: 38px; padding: 0; border-radius: 50%; }
 .airingsNote { margin: 10px 0 0; font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
 .gap { display: inline-block; width: 12px; }
-@keyframes programmePulse { 50% { opacity: .35; } }
-@media (prefers-reduced-motion: reduce) { .programmeLive::before, .recordingDot { animation: none; } }
 @media (max-width: 599px) {
   .programmeIn { padding: 26px 22px 32px; }
   .programmeTitle { font-size: calc(var(--type-display-size) * 19 / 17); line-height: calc(var(--type-display-size) * 19 / 17 * 1.05); letter-spacing: calc(var(--type-lockup-tracking) * 7 / 9); }

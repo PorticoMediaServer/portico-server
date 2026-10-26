@@ -12031,7 +12031,8 @@ export const routes = [
       "not_permitted",
       "not_found",
       "internal",
-      "rate_limited"
+      "rate_limited",
+      "owner_reset_file_unavailable"
     ],
     "status": 200,
     "http": true,
@@ -12053,7 +12054,8 @@ export const routes = [
       "not_permitted",
       "not_found",
       "internal",
-      "rate_limited"
+      "rate_limited",
+      "owner_reset_expired"
     ],
     "status": 200,
     "http": true,
@@ -12692,6 +12694,36 @@ export const routes = [
       "internal"
     ],
     "status": 201,
+    "http": true,
+    "admission": "security-fence"
+  },
+  {
+    "id": "post_direct_two_factor_recovery_codes",
+    "method": "POST",
+    "path": "/v1/direct/two-factor/recovery-codes",
+    "summary": "Replace account recovery codes",
+    "access": "device",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "current_password_incorrect",
+      "account_locked",
+      "two_factor_missing",
+      "two_factor_required",
+      "two_factor_invalid",
+      "sign_in_kind_portico",
+      "password_change_required",
+      "factor_setup_required",
+      "authentication_busy",
+      "internal"
+    ],
+    "status": 200,
     "http": true,
     "admission": "security-fence"
   },
@@ -20456,6 +20488,7 @@ export const routePaths = {
   "post_direct_sign_in": "/v1/direct/sign-in",
   "post_direct_sign_out_everywhere": "/v1/direct/sessions/sign-out-everywhere",
   "post_direct_two_factor_enrol": "/v1/direct/two-factor/enrol",
+  "post_direct_two_factor_recovery_codes": "/v1/direct/two-factor/recovery-codes",
   "post_direct_two_factor_verify": "/v1/direct/two-factor/verify",
   "post_dvr_recordings": "/v1/dvr/recordings",
   "post_dvr_recordings_id_cancel": "/v1/dvr/recordings/{id}/cancel",

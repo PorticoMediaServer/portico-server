@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState} from 'react';
+import {useEffect, useRef, useState, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import {passwordStrength} from '@core/password-strength.ts';
 import {AuthError, AuthStage} from './AuthStage';
@@ -9,14 +9,14 @@ import styles from './accounts.module.css';
 
 const t = defaultI18n.t;
 export type LocalPasswordRecoveryProps = Readonly<{
-  serverName: string; busy?: boolean; error?: unknown; initialUsername?: string;
+  serverName: string; busy?: boolean; error?: unknown; notice?:ReactNode; initialUsername?: string;
   onWriteFile: (username: string) => void;
   onMemberReset: (username: string, code: string, password: string) => void;
   onBack: () => void;
 }>;
 /** Auth 20. This Local-only view offers two distinct proofs; neither requests
  * an email or persists the one-use code/password outside its live input. */
-export function LocalPasswordRecovery({serverName, busy, error, initialUsername = '', onWriteFile, onMemberReset, onBack}: LocalPasswordRecoveryProps) {
+export function LocalPasswordRecovery({serverName, busy, error, notice, initialUsername = '', onWriteFile, onMemberReset, onBack}: LocalPasswordRecoveryProps) {
   const [owner, setOwner] = useState(initialUsername), [member, setMember] = useState(initialUsername);
   const [code, setCode] = useState(''), [password, setPassword] = useState('');
   const [memberOpen, setMemberOpen] = useState(false);
@@ -27,7 +27,7 @@ export function LocalPasswordRecovery({serverName, busy, error, initialUsername 
     <p className={styles.eyebrow}>{serverName}</p>
     <h1>{t('accounts.recovery.title')}</h1>
     <p className={styles.lede}><span className={styles.desktopRecoveryCopy}>{t('accounts.recovery.body')}</span><span className={styles.phoneRecoveryCopy}>{t('accounts.recovery.phoneBody')}</span></p>
-    <AuthError error={error} />
+    {notice??<AuthError error={error}/>}
     <div className={styles.localRecoveryPanels}>
       <form onSubmit={event => {event.preventDefault(); if (owner && !busy) onWriteFile(owner);}}>
         <h3>{t('accounts.recovery.owner')}</h3>

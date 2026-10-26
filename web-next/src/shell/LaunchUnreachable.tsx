@@ -58,11 +58,6 @@ export function LaunchUnreachableScreen({facts, onRetry, onSwitchServer, now: fi
   };
   const firstFailure = t('next.states.triesSince', {count: facts.attempt, time: defaultI18n.time(facts.firstFailureAt)});
   return <>
-    {facts.libraries && facts.libraries.length > 0 && <div className={styles.lastKnownBar} data-last-known-bar role="status">
-      <ServerMark size={22} />
-      <b>{facts.serverName ?? ''}</b>
-      <span className={styles.lastKnownLibraries}>{facts.libraries.join(' · ')}</span>
-    </div>}
     {offline && offline.items.length > 0 && <section className={styles.offlineDownloads} data-offline-downloads aria-label={t('next.shell.downloads')}>
       <h2>{t('next.shell.downloads')}</h2>
       <ul>{offline.items.map(row => <li key={row.id} data-playing={playing?.phase === 'playing' && playing.itemId === row.itemId || undefined}><b>{row.title}</b>{row.artist ? <span>{row.artist}</span> : null}

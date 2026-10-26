@@ -66,16 +66,14 @@
 .moreRow { display: flex; justify-content: center; padding: 6px 0 0; border-top: 1px solid var(--color-line-soft); }
 .skeleton { display: grid; gap: 2px; }
 .skeletonRow { display: flex; align-items: center; gap: 10px; height: 42px; padding: 0 6px; border-bottom: 1px solid var(--color-line-soft); }
-.skeletonBox { width: 20px; height: 20px; border-radius: 6px; background: var(--color-raised-high); animation: explorer-pulse 1.4s ease-in-out infinite; }
-.skeletonShine { height: 12px; border-radius: 6px; background: var(--color-raised-high); animation: explorer-pulse 1.4s ease-in-out infinite; }
+.skeletonBox { width: 20px; height: 20px; border-radius: 6px; background: var(--color-raised-high); }
+.skeletonShine { height: 12px; border-radius: 6px; background: var(--color-raised-high); }
 .skeletonShine[data-width="short"] { width: 96px; }
 .skeletonShine[data-width="long"] { width: 168px; }
 .chosenList { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
 .chosenLabel { font-size: var(--type-caption-size); color: var(--color-text-tertiary); }
 .chosenChip { display: inline-flex; align-items: center; gap: 6px; max-width: 260px; height: 28px; padding: 0 8px; border: 0; border-radius: 999px; background: color-mix(in srgb, var(--color-accent) 14%, transparent); color: var(--color-text); font: inherit; font-size: var(--type-label-size); font-weight: var(--type-body-strong-weight); cursor: pointer; }
 .chosenChip svg { color: var(--color-text-tertiary); flex: none; }
-@keyframes explorer-pulse { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
-@media (prefers-reduced-motion: reduce) { .skeletonBox, .skeletonShine { animation: none; } }
 
 /* The wizard's folders and done steps (remote-sources.html#5, #5c, #6). */
 .lab2 { font-size: var(--type-caption-size); font-weight: var(--type-body-strong-weight); color: var(--color-text-tertiary); text-transform: none; }

@@ -58,8 +58,6 @@ export type LaunchUnreachable = Readonly<{
   startedAt: number;
   nextRetryAt: number;
   retrying: boolean;
-  /** The library names from the last successful launch for this family, for the top bar only. */
-  libraries?: readonly string[];
 }>;
 export type ShellBootstrapSnapshot = Readonly<{phase: 'restoring' | 'signed-out' | 'ready' | 'error' | 'unreachable'; binding?: ShellBindings; context?: ShellAssemblyContext; entry?: boolean; error?: unknown; unreachable?: LaunchUnreachable}>;
 
@@ -117,7 +115,7 @@ async function readFacts(api: HttpLocalApi, session: LocalSession, preferences: 
     }),
   ]);
   if (system.id !== session.viewer.serverId) throw new Error('The server identity changed.');
-  rememberShell(session.sessionFamilyId, system.name, libraries.items.map(library => library.name));
+  rememberShell(session.sessionFamilyId, system.name);
   await inbox.load();
   signal.throwIfAborted();
   return {identity: {viewer: session.viewer, libraries: libraries.items, serverName: system.name, serverVersion: system.version, signIn:system.signIn, ...profile,
@@ -228,7 +226,7 @@ export class ShellBootstrap {
     const known = saved?.family ? lastKnownShell(saved.family) : undefined;
     return Object.freeze({
       ...(saved ? {serverName: saved.serverId ? browserServerDisplay().name(saved.serverId) : undefined, address: saved.address, owner: saved.owner} : {address: '', owner: false}),
-      ...(known ? {serverName: known.serverName, libraries: known.libraries} : {}),
+      ...(known ? {serverName: known.serverName} : {}),
       category,
       ...(code ? {code} : {}),
       ...wait, retrying: false,

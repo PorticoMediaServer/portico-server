@@ -197432,6 +197432,25 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "newAccount": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "name",
+          "password"
+        ],
+        "type": "object"
+      },
       "porticoIdentity": {
         "properties": {
           "certificate": {
@@ -198848,6 +198867,35 @@ export const schemas = {
       "secret",
       "uri",
       "recoveryCodes"
+    ],
+    "type": "object"
+  },
+  "PostDirectTwoFactorRecoveryCodesRequest": {
+    "properties": {
+      "code": {
+        "type": "string"
+      },
+      "password": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "password",
+      "code"
+    ],
+    "type": "object"
+  },
+  "PostDirectTwoFactorRecoveryCodesResponse": {
+    "properties": {
+      "codes": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "codes"
     ],
     "type": "object"
   },

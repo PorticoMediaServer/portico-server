@@ -438,3 +438,26 @@ test('Root69 the controller forwards each preparation notice to its original cal
     assert.ok(Object.isFrozen(notices[0]));
   } finally {controller.dispose();}
 });
+
+test('Root69 an adapter decode failure keeps the original 202 cleanup and preserves the rejection', async () => {
+  const c = clock(); let calls = 0, abandoned = 0;
+  const failure = new Error('adapter decode failed');
+  const http: V1Http = {send: async () => ++calls === 1 ? reply({...real(), retryAfterMs: 500}) : reply(real(), 201)};
+  const pending = new SessionsClient(http, c.timers).startResponse({itemId: 'movie'}, {}, 'original_key_0000033',
+    {capturePreparing: () => () => {abandoned++;}}, () => {throw failure;});
+  const rejected = assert.rejects(pending, error => error === failure);
+  await settle(); c.fire(); await rejected;
+  assert.equal(calls, 2); assert.equal(abandoned, 1, 'the original real-202 receipt cleans up exactly once');
+  assert.equal(c.jobs.size, 0);
+});
+
+test('Root69 an adapter decode success keeps the exact original identity and its decoded view', async () => {
+  const c = clock(); let calls = 0;
+  const decoded = {linear: 'projection'};
+  const http: V1Http = {send: async () => ++calls === 1 ? reply({...real(), retryAfterMs: 500}) : reply(real(), 201)};
+  const pending = new SessionsClient(http, c.timers).startResponse({itemId: 'movie'}, {}, 'original_key_0000034', {}, () => decoded);
+  await settle(); c.fire();
+  const result = await pending;
+  assert.deepEqual(result, {id: 'original_session', generation: 1, body: decoded});
+  assert.equal(calls, 2); assert.equal(c.jobs.size, 0);
+});

@@ -956,6 +956,7 @@ export const enUS = {
   'account.changePassword': 'Change password…',
   'account.changePasswordTitle': 'Change password',
   'account.currentPassword': 'Current password',
+  'account.setPassword': 'Set a password',
   'account.confirmPassword': 'Confirm new password',
   'account.passwordRule': 'At least 8 characters.',
   'account.passwordMismatch': 'The new passwords don’t match.',

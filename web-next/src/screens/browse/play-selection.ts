@@ -1,5 +1,5 @@
 import {playCatalogueQuerySelection, enqueueCatalogueQuerySelection} from '@core/catalogue-query-selection.ts';
-import {BrowseSelectionModel, browseSelectionKey, readCatalogueSelectionItem, playCatalogueSelection, enqueueCatalogueSelection, selectionCapabilities,
+import {BrowseSelectionModel, browseSelectionKey, readCatalogueSelectionItem, playCatalogueSelection, enqueueCatalogueSelection, selectionCapabilities, selectableSelectionKind,
   type CatalogueSelectionQueuePort, type CatalogueSelectionIdentity,
   type BrowseSelectionScope, type BrowseSelectionContext, type SelectionItem, type SelectionOperation, type SelectionQuery,
   type SelectionSnapshot} from '@core/selection-model/index.ts';
@@ -181,11 +181,13 @@ export function createLibraryPlaySelection(input: LibraryPlaySelectionOptions) {
   const registerWindow = (first: number, last: number): Promise<readonly LibraryPlayRow[]> => {
     start();
     if (!current()) return Promise.reject(cancelled());
-    if (!model || !expected) return Promise.reject(unavailable());
+    // A visible range can arrive before the first accepted page revision. It
+    // grants nothing while waiting; only an actual action can be unavailable.
+    if (!model || !expected) return Promise.resolve(Object.freeze([]));
     if (!Number.isSafeInteger(first) || !Number.isSafeInteger(last) || first < 0 || last < first || last - first >= 60) return Promise.reject(unavailable());
     prune();
     const entries = Array.from({length: last - first + 1}, (_, offset) => ({position: first + offset, entry: source.collection.itemAt(first + offset)?.entry}))
-      .flatMap(({entry, position}) => entry?.libraryId && source.contains(entry) ? [Object.freeze({entry, position})] : []);
+      .flatMap(({entry, position}) => entry?.libraryId && source.contains(entry) && selectableSelectionKind(entry.kind, 'catalogue') ? [Object.freeze({entry, position})] : []);
     if (window?.first === first && window.last === last && window.entries.length === entries.length && window.entries.every((value, index) => value.entry === entries[index].entry)) return window.promise!;
     clearWindow();error = undefined;
     const visible = new Set(entries.map(value => value.entry));

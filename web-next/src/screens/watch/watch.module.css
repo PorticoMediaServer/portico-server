@@ -1,6 +1,7 @@
 /* Exact geometry: desktop-player f1, phone-player r1/r4, tablet-play f1/f3.
  * This layer is transparent: the parent's one MediaSurface paints the picture beneath it. */
 .watch {
+  --watch-controls-exit: var(--motion-slow);
   --watch-title-size: 34px; --watch-title-line: 1.08; --watch-title-weight: 800; --watch-title-tracking: -.035em;
   --watch-subtitle-size: 15px; --watch-subtitle-weight: 400;
   --watch-time-size: 13.5px; --watch-time-weight: 600; --watch-pill-weight: 700;
@@ -77,11 +78,14 @@
 .notices { position: absolute; top: 104px; right: 40px; pointer-events: auto; }
 .prompts { position: absolute; inset: 0; pointer-events: none; }
 .prompts > * { pointer-events: auto; }
-.top, .bottom, .center, .shade { opacity: 1; transition: opacity var(--motion-standard) var(--ease-out); }
-.watch[data-controls-visible='false'] .top, .watch[data-controls-visible='false'] .bottom, .watch[data-controls-visible='false'] .center, .watch[data-controls-visible='false'] .shade { opacity: 0; visibility: hidden; pointer-events: none; }
+/* Keep only the outgoing paint through its fade. The original groups become
+   inert in the same commit; no retained tree or new input/timer owner is made. */
+.watch[data-controls-exit='tap'] { --watch-controls-exit: var(--motion-standard); }
+.top, .bottom, .center, .shade { opacity: 1; visibility: visible; transition: opacity var(--motion-standard) var(--ease-out), visibility 0s; }
+.watch[data-controls-visible='false'] .top, .watch[data-controls-visible='false'] .bottom, .watch[data-controls-visible='false'] .center, .watch[data-controls-visible='false'] .shade { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity var(--watch-controls-exit) var(--ease-out), visibility 0s var(--watch-controls-exit); }
 /* phone-player f6e: while the admitted Still watching modal holds, the player's
    top bar, transport and bottom bar are not drawn; the stage and scrim remain. */
-.watch[data-still-watching='true'] .top, .watch[data-still-watching='true'] .center, .watch[data-still-watching='true'] .bottom { opacity: 0; visibility: hidden; pointer-events: none; }
+.watch[data-still-watching='true'] .top, .watch[data-still-watching='true'] .center, .watch[data-still-watching='true'] .bottom { opacity: 0; visibility: hidden; pointer-events: none; transition: none; }
 :global(body:has([data-watch-screen]:not([hidden]))) { overflow: hidden; }
 .watch[data-scrubbing='true'] .controls { visibility: hidden; pointer-events: none; }
 .watch[data-mode='portrait'] { --watch-picture-top: env(safe-area-inset-top, 0px); --watch-picture-height: calc(100vw * 9 / 16); }
@@ -143,12 +147,13 @@
   .center { display: flex; position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); justify-content: center; }
   .volume { display: none; }
 }
-@media (prefers-reduced-motion: reduce) { .top, .bottom, .center, .shade, .control { transition: none; } }
-:global([data-reduce-motion='true']) .top, :global([data-reduce-motion='true']) .bottom, :global([data-reduce-motion='true']) .center, :global([data-reduce-motion='true']) .shade, :global([data-reduce-motion='true']) .control { transition: none; }
+/* §2.6 keeps these opacity-only chrome fades under either reduction setting. */
+@media (prefers-reduced-motion: reduce) { .control { transition: none; } }
+:global([data-reduce-motion='true']) .control { transition: none; }
 
 /* The drawn live player branch; the generic VOD/phone chrome is unchanged when no live port exists. */
-.liveOverlay { position: absolute; inset: 0; pointer-events: none; transition: opacity var(--motion-standard) var(--ease-out); }
-.liveOverlay[data-visible='false'] { opacity: 0; visibility: hidden; pointer-events: none; }
+.liveOverlay { position: absolute; inset: 0; opacity: 1; visibility: visible; pointer-events: none; transition: opacity var(--motion-standard) var(--ease-out), visibility 0s; }
+.liveOverlay[data-visible='false'] { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity var(--watch-controls-exit) var(--ease-out), visibility 0s var(--watch-controls-exit); }
 
 /* desktop-player f4b: the finished film's own backdrop, blurred under a veil. */
 .endAmbient { position: absolute; inset: -14%; width: 128%; height: 128%; overflow: hidden; opacity: .55; filter: blur(80px) saturate(1.5); pointer-events: none; }

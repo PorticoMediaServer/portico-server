@@ -27,7 +27,7 @@ export type ArtistScreenProps = Readonly<{context: ScreenContext; libraryId: str
  * layout effect so a replayed setup never reuses a disposed one. */
 type Lease = Readonly<{service: LibraryContentService; api: LibraryContentApi; signal: AbortSignal; isCurrent: () => boolean; dispose: () => void}>;
 type Witness = () => boolean;
-type Similar = Readonly<{bySound: boolean; entries: readonly ContentEntry[]}>;
+type Similar = Readonly<{page: ContentProjection; token: object; bySound: boolean; entries: readonly ContentEntry[]}>;
 
 /** desktop-listen's artist page on its canonical library route (`?view=artist&entityId=`): the
  * artist's circle, the facts the view publishes, Play/Shuffle of the whole server-side artist
@@ -49,7 +49,7 @@ export function ArtistScreen({context, libraryId, artistId}: ArtistScreenProps) 
 
 function ArtistBody({context, libraryId, artistId, lease}: {context: ScreenContext; libraryId: string; artistId: string; lease: Lease}) {
   const phone = useShellWidth() < 1024, {service} = lease;
-  const [menu, setMenu] = useState<{anchor: HTMLButtonElement}>(), more = useRef<HTMLButtonElement>(null);
+  const [menu, setMenu] = useState<{page: ContentProjection; anchor: HTMLButtonElement}>(), more = useRef<HTMLButtonElement>(null);
   const content = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -69,18 +69,27 @@ function ArtistBody({context, libraryId, artistId, lease}: {context: ScreenConte
     && projection.scope.libraryId === libraryId && projection.scope.view === 'artist' && projection.scope.entityId === artistId
     ? {catalog: projection.revision.catalog, viewer: projection.revision.viewer} : undefined;
   const [similar, setSimilar] = useState<Similar>();
+  const similarRead = useRef<object | undefined>(undefined);
+  useLayoutEffect(() => {
+    const token = {};similarRead.current = token;
+    return () => {if (similarRead.current === token) similarRead.current = undefined;};
+  }, [lease, projection, artistId, libraryId, context]);
   useEffect(() => {
     setSimilar(undefined);
     const viewer = context.identity?.viewer;
-    if (!admitted || !viewer || (viewer.authority !== 'local' && viewer.authority !== 'hosted')) return;
+    const page = projection, token = similarRead.current;
+    if (!page || !token || !admitted || !viewer || (viewer.authority !== 'local' && viewer.authority !== 'hosted')) return;
     const request = new AbortController();
+    const current = () => !request.signal.aborted && lease.isCurrent() && context.isCurrent() && similarRead.current === token &&
+      service.getSnapshot().phase === 'ready' && service.getSnapshot().projection === page;
+    if (!current()) return;
     void readListeningSimilar(lease.api, {serverId: context.scope.serverId, authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId,
-      controllerId: 'v1', controllerEpoch: 'v1', commandLaneId: 'v1'}, artistId, {limit: 12, by: 'sound', signal: AbortSignal.any([lease.signal, request.signal])})
+    }, artistId, {limit: 12, by: 'sound', signal: AbortSignal.any([lease.signal, request.signal])})
       .then(value => {
-        if (request.signal.aborted || !lease.isCurrent() || !admitted || value.itemId !== artistId || value.libraryId !== libraryId
+        if (!current() || value.itemId !== artistId || value.libraryId !== libraryId
           || value.revision.catalog !== admitted.catalog || value.revision.viewer !== admitted.viewer) return;
-        setSimilar({bySound: value.bySound, entries: value.entries});
-      }, error => {if (!request.signal.aborted && lease.isCurrent()) context.effects.reportError(error);});
+        setSimilar({page, token, bySound: value.bySound, entries: value.entries});
+      }, error => {if (current()) context.effects.reportError(error);});
     return () => request.abort();
   }, [lease, artistId, libraryId, context, projection, admitted?.catalog, admitted?.viewer]);
   const section = (id: string): ContentSection | undefined => projection && admitted
@@ -97,7 +106,7 @@ function ArtistBody({context, libraryId, artistId, lease}: {context: ScreenConte
     const live = service.getSnapshot();
     if (live.phase !== 'ready') return false;
     const page = live.projection;
-    return !!page && page.entity?.kind === 'artist' && page.entity.id === artistId && page.scope.libraryId === libraryId
+    return page === projection && page.entity?.kind === 'artist' && page.entity.id === artistId && page.scope.libraryId === libraryId
       && page.scope.view === 'artist' && page.scope.entityId === artistId
       && page.revision.catalog === admitted.catalog && page.revision.viewer === admitted.viewer;
   };
@@ -130,19 +139,22 @@ function ArtistBody({context, libraryId, artistId, lease}: {context: ScreenConte
             })}>{t('title.shuffle')}</Button>
           </>}
           {context.effects.playRadio && <Button ref={more} variant="glass" icon="i-more" iconOnly aria-label={t('card.more', {title: artist.title})}
-            onClick={event => setMenu({anchor: event.currentTarget})}/>}
+            onClick={event => {if (witness()) setMenu({page: projection, anchor: event.currentTarget});}}/>}
         </div>
       </div>
     </header>
-    {menu && <Menu open onOpenChange={open => {if (!open) setMenu(undefined);}} anchorRef={{current: menu.anchor}} returnFocusRef={{current: menu.anchor}} title={artist.title}>
+    {menu?.page === projection && <Menu open onOpenChange={open => {if (!open) setMenu(current => current === menu ? undefined : current);}} anchorRef={{current: menu.anchor}} returnFocusRef={{current: menu.anchor}} title={artist.title}>
       <MusicEntryMenu context={context} seed={{id: artist.id, title: artist.title}} signal={lease.signal} current={witness}/>
     </Menu>}
     {top && <ArtistTopSongs context={context} lease={lease} libraryId={libraryId} top={top} witness={witness} phone={phone} />}
     <section className={details.length > 0 ? styles.split : styles.full}>
       <div className={styles.albums}>
-        {albums.length > 0 && <TitleRow heading={t('music.albums')} entries={albums} binding={{context}} />}
+        {albums.length > 0 && <TitleRow heading={t('music.albums')} entries={albums} binding={{context}}
+          guard={() => {if (!witness()) throw new DOMException('Artist page changed', 'AbortError');}} />}
         {albumsSection?.nextCursor && <div className={styles.more}><Button size="small" onClick={() => runScreenCommand(context, () => {
-          if (!witness()) throw new DOMException('Artist page changed', 'AbortError');
+          const now = service.getSnapshot();
+          if (!witness() || (now.appended.find(row => row.id === 'items') ?? now.projection?.sections.find(row => row.id === 'items')) !== albumsSection)
+            throw new DOMException('Artist page changed', 'AbortError');
           return service.next('items');
         })}>{t('title.nextPage')}</Button></div>}
       </div>
@@ -151,8 +163,10 @@ function ArtistBody({context, libraryId, artistId, lease}: {context: ScreenConte
         <dl className={styles.facts}>{details.map(([label, value]) => <Fragment key={label}><dt>{label}</dt><dd>{value}</dd></Fragment>)}</dl>
       </aside>}
     </section>
-    {similar && similar.entries.length > 0 && <TitleRow heading={t('music.similarArtists')} subtitle={t(similar.bySound ? 'music.moreLikeThisBySound' : 'music.moreLikeThisHint')}
-      entries={similar.entries} binding={{context}}/>}
+    {similar?.page === projection && similarRead.current === similar.token && similar.entries.length > 0 && <TitleRow heading={t('music.similarArtists')} subtitle={t(similar.bySound ? 'music.moreLikeThisBySound' : 'music.moreLikeThisHint')}
+      entries={similar.entries} binding={{context}} guard={() => {
+        if (!witness() || similarRead.current !== similar.token) throw new DOMException('Artist related read changed', 'AbortError');
+      }} />}
   </div>;
 }
 

@@ -1,8 +1,8 @@
 .entry { display: flex; flex-direction: column; align-items: center; gap: 14px; margin: 70px var(--shell-gutter, var(--gutter-desktop)) 0; text-align: center; }
-.entry > button { height: 52px; padding: 0 24px; border-radius: 12px; font-size: var(--type-body-size); }
+.entry > button { height: 52px; padding: 0 24px; border-radius: 12px; font-size: 16px; }
 .entry > p { max-width: 420px; margin: 0; font-size: calc(var(--type-body-size) - 1px); line-height: calc((var(--type-body-size) - 1px) * 1.5); color: var(--color-text-tertiary); }
 .dialog { padding: 28px 28px 24px; }
-.dialog > header > h2 { font-size: calc(var(--type-body-size) + 9px); margin-bottom: 6px; }
+.dialog > header > h2 { font-size: calc(var(--type-body-size) + 9px); line-height: normal; margin-bottom: 6px; }
 .dialog > p { font-size: calc(var(--type-body-size) - .5px); line-height: calc((var(--type-body-size) - .5px) * 1.5); }
 .body { min-height: 0; }
 .rows { position: relative; list-style: none; margin: 16px -10px 0; padding: 0 10px; max-height: 574px; overflow-y: auto; scrollbar-width: thin; }

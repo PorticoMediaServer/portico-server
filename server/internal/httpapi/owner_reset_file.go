@@ -130,10 +130,14 @@ func registerResetFileHTTPContracts(registry *apikit.Registry) error {
 	meta := func(id, path string, access apikit.Access) apikit.Metadata {
 		return apikit.Metadata{ID: id, Method: "POST", Path: path, Summary: "Reset account access", Access: access, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal", "rate_limited"}}
 	}
-	if e := apikit.RegisterHTTP[identity.OwnerResetRequest, identity.OwnerResetLocation](registry, meta("post_auth_owner_reset_request", "/v1/auth/owner-reset/request", apikit.Public)); e != nil {
+	ownerRequest := meta("post_auth_owner_reset_request", "/v1/auth/owner-reset/request", apikit.Public)
+	ownerRequest.Errors = append(ownerRequest.Errors, "owner_reset_file_unavailable")
+	if e := apikit.RegisterHTTP[identity.OwnerResetRequest, identity.OwnerResetLocation](registry, ownerRequest); e != nil {
 		return e
 	}
-	if e := apikit.RegisterHTTP[identity.OwnerResetVerify, ownerResetResponse](registry, meta("post_auth_owner_reset_verify", "/v1/auth/owner-reset/verify", apikit.Public)); e != nil {
+	ownerVerify := meta("post_auth_owner_reset_verify", "/v1/auth/owner-reset/verify", apikit.Public)
+	ownerVerify.Errors = append(ownerVerify.Errors, "owner_reset_expired")
+	if e := apikit.RegisterHTTP[identity.OwnerResetVerify, ownerResetResponse](registry, ownerVerify); e != nil {
 		return e
 	}
 	memberReset := meta("post_direct_members_id_reset_code", "/v1/direct/members/{id}/reset-code", apikit.Device)

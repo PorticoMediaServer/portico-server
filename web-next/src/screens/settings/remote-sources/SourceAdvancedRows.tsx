@@ -5,6 +5,7 @@ import {SettingNumber} from '../../../kit/settings';
 import type {ReactNode} from 'react';
 import type {SourceChoiceField} from '@core/remote-source-choice.ts';
 import markerStyles from './source-advanced-markers.module.css';
+import rowStyles from './source-advanced-rows.module.css';
 import styles from './remote-sources.module.css';
 
 const t = defaultI18n.t;
@@ -37,11 +38,14 @@ export function SourceAdvancedRows({values, cacheSupported, transportSupported, 
    *  A field is marked only when the projection publishes it and it actually changed. */
   const changed = (field: SourceChoiceField) =>
     !!markers && markers.applicable.includes(field) && markers.changed.includes(field);
+  /** One drawn Advanced row: the canonical label and help on the left, the control on the right. */
+  const anatomy = (label: string, help: string | undefined, node: ReactNode) =>
+    <div className={rowStyles.row} data-advanced-row><div className={rowStyles.l}><b>{label}</b>{help && <p>{help}</p>}</div><div className={rowStyles.control}>{node}</div></div>;
   const row = (field: SourceChoiceField, node: ReactNode) => {
     if (!markers) return node;
     if (!markers.applicable.includes(field)) return null;
     const isChanged = markers.changed.includes(field), preset = isChanged ? markers.value(field) : undefined;
-    return <div key={field} className={markerStyles.row} data-changed={isChanged || undefined}>{node}
+    return <div key={field} className={markerStyles.row} data-advanced-row data-changed={isChanged || undefined}>{node}
       {isChanged && preset !== undefined && <span className={markerStyles.preset}><span>{t('next.remoteSources.presetValue', {value: preset})}</span>
         {markers.onReset && <button type="button" className={markerStyles.reset} disabled={disabled} onClick={() => markers.onReset?.(field)}>{t('action.reset')}</button>}</span>}
     </div>;
@@ -78,23 +82,22 @@ export function SourceAdvancedRows({values, cacheSupported, transportSupported, 
   ];
   return <>
     <p className={styles.advTitle}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.title')}</p>
-    {row('scanIntervalSeconds', <RichSelect disabled={disabled} aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.0.label')}
+    <div className={rowStyles.group}>
+    {row('scanIntervalSeconds', anatomy(t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.0.label'), undefined, <RichSelect disabled={disabled} aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.0.label')}
       value={intervalValue}
       options={intervalOptions}
-      onValueChange={value => set('scanIntervalSeconds', Number(value))}/>)}
+      onValueChange={value => set('scanIntervalSeconds', Number(value))}/>))}
     {observedUnknown && <p className={styles.note}>{t('next.remoteSources.advObservedHelp')}</p>}
-    {row('watchForChanges', <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.1.label')}<small className={styles.note}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.1.help')}</small></span>
-      <Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.1.label')} checked={values.watchForChanges} disabled={disabled} onCheckedChange={value => set('watchForChanges', value)}/></label>)}
-    {row('scanOnStart', <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.2.label')}<small className={styles.note}>{t('next.remoteSources.advStartHint')}</small></span>
-      <Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.2.label')} checked={values.scanOnStart} disabled={disabled} onCheckedChange={value => set('scanOnStart', value)}/></label>)}
-    {row('fullRecheckDays', <RichSelect disabled={disabled} aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.3.label')}
+    {row('watchForChanges', anatomy(t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.1.label'), t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.1.help'), <Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.1.label')} checked={values.watchForChanges} disabled={disabled} onCheckedChange={value => set('watchForChanges', value)}/>))}
+    {row('scanOnStart', anatomy(t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.2.label'), t('next.remoteSources.advStartHint'), <Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.2.label')} checked={values.scanOnStart} disabled={disabled} onCheckedChange={value => set('scanOnStart', value)}/>))}
+    {row('fullRecheckDays', anatomy(t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.3.label'), undefined, <RichSelect disabled={disabled} aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.3.label')}
       value={String(values.fullRecheckDays)}
       options={fullRechecks.map(option => ({value: option.value, label: t(option.label), description: t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.3.help')}))}
-      onValueChange={value => set('fullRecheckDays', Number(value))}/>)}
+      onValueChange={value => set('fullRecheckDays', Number(value))}/>))}
 
-    {row('doubleCheckFolders', <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.4.label')}<small className={styles.note}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.4.help')}</small></span>
-      <Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.4.label')} checked={values.doubleCheckFolders} disabled={disabled} onCheckedChange={value => set('doubleCheckFolders', value)}/></label>)}
+    {row('doubleCheckFolders', anatomy(t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.4.label'), t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.4.help'), <Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.0.rows.4.label')} checked={values.doubleCheckFolders} disabled={disabled} onCheckedChange={value => set('doubleCheckFolders', value)}/>))}
 
+    </div>
     <p className={styles.advTitle}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.title')}</p>
     <div className={styles.runSkip} role="group" aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.2.label')}>
       <div className={styles.runSkipHead}>
@@ -123,14 +126,16 @@ export function SourceAdvancedRows({values, cacheSupported, transportSupported, 
 
     {cacheSupported && <>
       <p className={styles.advTitle}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.2.title')}</p>
-      {row('cacheBytes', <RichSelect disabled={disabled} aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.1.label')}
+      <div className={rowStyles.group}>
+      {row('cacheBytes', anatomy(t('next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.1.label'), undefined, <RichSelect disabled={disabled} aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.1.label')}
         value={String(values.cacheBytes / (1024 * 1024 * 1024))}
         options={cacheSizes.map((size, index) => ({value: size, label: t(`next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.1.control.options.${index}.label` as never)}))}
-        onValueChange={value => set('cacheBytes', gb(value))}/>)}
-      {row('cacheFloorBytes', <RichSelect disabled={disabled} aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.2.rows.0.label')}
+        onValueChange={value => set('cacheBytes', gb(value))}/>))}
+      {row('cacheFloorBytes', anatomy(t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.2.rows.0.label'), undefined, <RichSelect disabled={disabled} aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.2.rows.0.label')}
         value={String(values.cacheFloorBytes / (1024 * 1024 * 1024))}
         options={floors.map((size, index) => ({value: size, label: t(`next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.2.rows.0.control.options.${index}.label` as never)}))}
-        onValueChange={value => set('cacheFloorBytes', gb(value))}/>)}
+        onValueChange={value => set('cacheFloorBytes', gb(value))}/>))}
+      </div>
       {cacheUsedBytes !== undefined && <p className={styles.note} role="status">{t('next.remoteSources.advCacheUsed', {used: formatBytes(cacheUsedBytes)})}</p>}
       {!cacheApplied && <p className={styles.note} role="status">{t('next.remoteSources.advCachePending')}</p>}
       {cacheError && <p className={styles.error} role="alert">{t(cacheError === 'source_changed' ? 'next.remoteSources.advCacheChanged'
@@ -140,19 +145,19 @@ export function SourceAdvancedRows({values, cacheSupported, transportSupported, 
     {transportSupported && <>
       <p className={styles.advTitle}>{t('next.remoteSources.advRcloneSettings')}</p>
       <p className={styles.note}>{t('next.remoteSources.advRcloneHelp')}</p>
-      <div className={styles.transportGrid}>
-        {row('dirCacheSeconds', <SettingNumber changed={changed('dirCacheSeconds')} label={t('next.remoteSources.advKeepFolderLists')} value={Math.round(values.dirCacheSeconds / 60)} min={0} max={1440}
-          unit={t('next.remoteSources.advMinutesUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('dirCacheSeconds', Math.round(value) * 60);}}/> )}
-        {row('readBufferBytes', <SettingNumber changed={changed('readBufferBytes')} label={t('next.remoteSources.advReadBuffer')} value={Math.round(values.readBufferBytes / (1024 * 1024))} min={0} max={1024}
-          unit={t('next.remoteSources.advMegabytesUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('readBufferBytes', Math.round(value) * 1024 * 1024);}}/> )}
-        {row('connectTimeoutSeconds', <SettingNumber changed={changed('connectTimeoutSeconds')} label={t('next.remoteSources.advConnectTimeout')} value={values.connectTimeoutSeconds} min={0} max={600}
-          unit={t('next.remoteSources.advSecondsUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('connectTimeoutSeconds', Math.round(value));}}/> )}
-        {row('idleTimeoutSeconds', <SettingNumber changed={changed('idleTimeoutSeconds')} label={t('next.remoteSources.advIdleTimeout')} value={values.idleTimeoutSeconds} min={0} max={3600}
-          unit={t('next.remoteSources.advSecondsUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('idleTimeoutSeconds', Math.round(value));}}/> )}
-        {row('retries', <SettingNumber changed={changed('retries')} label={t('next.remoteSources.advRetries')} value={values.retries} min={0} max={10}
-          unit={t('next.remoteSources.advTimesUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('retries', Math.round(value));}}/> )}
-        {row('lowLevelRetries', <SettingNumber changed={changed('lowLevelRetries')} label={t('next.remoteSources.advLowRetries')} value={values.lowLevelRetries} min={0} max={10}
-          unit={t('next.remoteSources.advTimesUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('lowLevelRetries', Math.round(value));}}/> )}
+      <div className={rowStyles.group}>
+        {row('dirCacheSeconds', anatomy(t('next.remoteSources.advKeepFolderLists'), undefined, <SettingNumber changed={changed('dirCacheSeconds')} label={t('next.remoteSources.advKeepFolderLists')} value={Math.round(values.dirCacheSeconds / 60)} min={0} max={1440}
+          unit={t('next.remoteSources.advMinutesUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('dirCacheSeconds', Math.round(value) * 60);}}/>))}
+        {row('readBufferBytes', anatomy(t('next.remoteSources.advReadBuffer'), undefined, <SettingNumber changed={changed('readBufferBytes')} label={t('next.remoteSources.advReadBuffer')} value={Math.round(values.readBufferBytes / (1024 * 1024))} min={0} max={1024}
+          unit={t('next.remoteSources.advMegabytesUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('readBufferBytes', Math.round(value) * 1024 * 1024);}}/>))}
+        {row('connectTimeoutSeconds', anatomy(t('next.remoteSources.advConnectTimeout'), undefined, <SettingNumber changed={changed('connectTimeoutSeconds')} label={t('next.remoteSources.advConnectTimeout')} value={values.connectTimeoutSeconds} min={0} max={600}
+          unit={t('next.remoteSources.advSecondsUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('connectTimeoutSeconds', Math.round(value));}}/>))}
+        {row('idleTimeoutSeconds', anatomy(t('next.remoteSources.advIdleTimeout'), undefined, <SettingNumber changed={changed('idleTimeoutSeconds')} label={t('next.remoteSources.advIdleTimeout')} value={values.idleTimeoutSeconds} min={0} max={3600}
+          unit={t('next.remoteSources.advSecondsUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('idleTimeoutSeconds', Math.round(value));}}/>))}
+        {row('retries', anatomy(t('next.remoteSources.advRetries'), undefined, <SettingNumber changed={changed('retries')} label={t('next.remoteSources.advRetries')} value={values.retries} min={0} max={10}
+          unit={t('next.remoteSources.advTimesUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('retries', Math.round(value));}}/>))}
+        {row('lowLevelRetries', anatomy(t('next.remoteSources.advLowRetries'), undefined, <SettingNumber changed={changed('lowLevelRetries')} label={t('next.remoteSources.advLowRetries')} value={values.lowLevelRetries} min={0} max={10}
+          unit={t('next.remoteSources.advTimesUnit')} disabled={disabled} onCommit={value => {if (value !== null) set('lowLevelRetries', Math.round(value));}}/>))}
       </div>
     </>}
   </>;
