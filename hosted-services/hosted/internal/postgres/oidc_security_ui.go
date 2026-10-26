@@ -2,8 +2,10 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 
 	"portico.local/hosted/internal/identity"
 	"portico.local/hosted/internal/security"
@@ -75,11 +77,12 @@ func (o *OIDCLogin) CancelSecurityTransaction(ctx context.Context, id, binding s
 	if e != nil {
 		return identity.ErrCredentials
 	}
-	r, e := o.lock(ctx, tx, id, binding)
+	// Match CompleteFlow's binding -> account/family -> transaction order.
+	facts, e := AuthorizeCurrentFamilyTx(ctx, tx, a)
 	if e != nil {
 		return e
 	}
-	facts, e := AuthorizeCurrentFamilyTx(ctx, tx, a)
+	r, e := o.lock(ctx, tx, id, binding)
 	if e != nil {
 		return e
 	}
@@ -96,8 +99,27 @@ func (o *OIDCLogin) CancelSecurityTransaction(ctx context.Context, id, binding s
 			return e
 		}
 	}
-	if _, e = tx.ExecContext(ctx, `DELETE FROM account_recent_proofs WHERE account_id=$1 AND family_id=$2 AND captured_access_hash=$3 AND intent_digest=$4`, a.AccountID, a.FamilyID, a.TokenHash, intentDigest(intent)); e != nil {
+	// A distinct transaction may intentionally carry the same Security intent.
+	// Only this transaction's sealed completion receipt identifies its own proof;
+	// never delete by shared intent (which also matches password proofs).
+	var receipt []byte
+	purpose := "oidc:" + id
+	e = tx.QueryRowContext(ctx, `SELECT ciphertext FROM account_security_receipts WHERE account_id=$1 AND family_id=$2 AND access_hash=$3 AND operation_id=$4 AND purpose=$5`, a.AccountID, a.FamilyID, a.TokenHash, intent.OperationID, purpose).Scan(&receipt)
+	if e != nil && !errors.Is(e, sql.ErrNoRows) {
 		return e
+	}
+	if e == nil {
+		sealed, err := o.Keys.Open(receipt, "security-receipt:"+a.AccountID+":"+intent.OperationID+":"+purpose)
+		if err != nil {
+			return err
+		}
+		var issued OIDCCompletion
+		if json.Unmarshal([]byte(sealed), &issued) != nil || issued.Proof == nil || issued.Proof.AccountID != a.AccountID || issued.Proof.FamilyID != a.FamilyID || issued.Proof.Proof == "" {
+			return identity.ErrInvalid
+		}
+		if _, e = tx.ExecContext(ctx, `DELETE FROM account_recent_proofs WHERE proof_hash=$1 AND account_id=$2 AND family_id=$3 AND captured_access_hash=$4 AND credential_kind IN ('provider','provider_security_return')`, security.Hash(issued.Proof.Proof), a.AccountID, a.FamilyID, a.TokenHash); e != nil {
+			return e
+		}
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE identity_security_returns SET cancelled_at=COALESCE(cancelled_at,clock_timestamp()) WHERE transaction_id=$1`, id); e != nil {
 		return e

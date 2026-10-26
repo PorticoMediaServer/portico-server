@@ -264,6 +264,11 @@ func (o *OIDCLogin) CompleteFlow(ctx context.Context, id, binding, access string
 }
 func (o *OIDCLogin) completeSecurityTx(ctx context.Context, tx *sql.Tx, r oidcRow, binding, access string, q OIDCCompleteInput, issuer, subject, owner, link string, revision int64, revoked sql.NullTime) (OIDCCompletion, error) {
 	var out OIDCCompletion
+	// A cancelled original must not replay its sealed proof receipt. A verified
+	// transaction may issue once; only its proof_issued state may replay it.
+	if r.Status != "verified" && r.Status != "proof_issued" {
+		return out, identity.ErrChallenge
+	}
 	var expected identity.CurrentFamilyExpectation
 	var expectedLink sql.NullString
 	var expectedRevision sql.NullInt64
