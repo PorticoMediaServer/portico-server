@@ -58,12 +58,16 @@ func (s *Service) loadSessionDeliverySourceTx(ctx context.Context, tx *sql.Tx, s
 		return DeliverySource{}, playbackdisc.ErrCurrent
 	}
 	facts := snapshot.Media
-	return discSourceFacts(asset, assets.Facts{
+	return discSourceFacts(asset, discSnapshotMedia(facts)), nil
+}
+
+func discSnapshotMedia(facts playbackdisc.MediaFacts) assets.Facts {
+	return assets.Facts{
 		Container: facts.Container, VideoCodec: facts.VideoCodec, AudioCodec: facts.AudioCodec,
 		Width: facts.Width, Height: facts.Height, Duration: float64(facts.DurationMs) / 1000,
 		OriginUS: facts.OriginUS, TimingKnown: facts.TimingKnown,
 		Streams: facts.Streams, Chapters: facts.Chapters,
-	}), nil
+	}
 }
 
 func (s *Service) checkDiscSessionTx(ctx context.Context, tx *sql.Tx, session string) error {

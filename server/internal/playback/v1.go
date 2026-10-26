@@ -19,7 +19,10 @@ import (
 // their saved default for where the request comes from); the owner's ceilings,
 // the member's remote cap and the upload budget always narrow it.
 type V1Choice struct {
-	DiscTitle *catalog.DiscTitleRef
+	// Process-private original POST borrow. Only Media's preparation factory
+	// can supply it; it is neither a wire choice nor a recoverable row proof.
+	discBorrow *discPlayBorrow
+	DiscTitle  *catalog.DiscTitleRef
 	// UseStoredResume is server-private intent, set only for an initial stored
 	// resume. Replans, transfers and already chosen positions leave it false.
 	UseStoredResume bool

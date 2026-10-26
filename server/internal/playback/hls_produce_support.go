@@ -211,6 +211,7 @@ func (h *HLS) downgradeCopyPlan(ctx context.Context, id string, plan *DeliveryPl
 	}
 	defer gate.Rollback()
 	tx := gate.Tx()
+	ctx = gate.Context()
 	var enabled bool
 	if err = tx.QueryRowContext(ctx, `SELECT transcoding_enabled FROM playback_owner_policy WHERE singleton=1`).Scan(&enabled); err != nil {
 		return nil, err
