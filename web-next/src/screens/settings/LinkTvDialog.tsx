@@ -1,9 +1,9 @@
 import {useRef, useState} from 'react';
 import {defaultI18n} from '@i18n';
 import {Dialog} from '../../kit/overlays';
-import {Button} from '../../kit/controls';
 import type {PlayOnLinkPreview} from '../../platform/playback/play-on';
 import {watchLinkTv} from '../watch/receivers';
+import {LinkTvForm} from './LinkTvForm';
 
 const t = defaultI18n.t;
 
@@ -35,22 +35,9 @@ export function LinkTvDialog({open, onOpenChange, api, returnFocusRef}: {
     } catch { setPhase('failed'); }
   };
   return <Dialog open={open} onOpenChange={value => { if (!value) reset(); onOpenChange(value); }} title={t('next.cast.linkTv')} returnFocusRef={returnFocusRef}>
-    {phase === 'done' ? <p role="status">{t('next.cast.linkTvApproved')}</p> : <>
-      {preview ? <>
-        <p><b>{t('next.cast.linkTvReview', {device: preview.deviceName})}</b>{preview.platform && <small>{preview.platform}</small>}</p>
-        <div style={{display: 'flex', gap: 8, marginTop: 12}}>
-          <Button size="small" disabled={phase === 'busy'} onClick={() => { void decide('approve'); }}>{t('next.cast.linkTvApprove')}</Button>
-          <Button size="small" variant="glass" disabled={phase === 'busy'} onClick={() => { void decide('deny'); }}>{t('next.cast.linkTvDeny')}</Button>
-        </div>
-      </> : <>
-        <label htmlFor="settings-link-tv">{t('next.cast.linkTvCode')}</label>
-        <input id="settings-link-tv" value={code} maxLength={10} autoComplete="off" autoCapitalize="characters" spellCheck={false} disabled={phase === 'busy'}
-          onChange={event => { setCode(event.currentTarget.value.toUpperCase()); if (phase === 'failed') setPhase('code'); }} />
-        <p>{t('next.cast.linkTvHint')}</p>
-        <Button size="small" disabled={phase === 'busy' || code.trim().length < 4} onClick={() => { void look(); }}>
-          {phase === 'busy' ? t('next.cast.linkTvConnecting') : t('next.cast.linkTvConnect')}</Button>
-      </>}
-      {phase === 'failed' && <p role="status">{t('next.cast.linkTvFailed')}</p>}
-    </>}
+    <LinkTvForm code={code} phase={phase} preview={preview}
+      onCodeChange={value => { setCode(value.toUpperCase()); if (phase === 'failed') setPhase('code'); }}
+      onReview={() => { void look(); }}
+      onDecide={decision => { void decide(decision); }} />
   </Dialog>;
 }
