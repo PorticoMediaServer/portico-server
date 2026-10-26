@@ -265,7 +265,15 @@ func (r *Runtime) OpenSubtitleInput(ctx context.Context, item, source, session s
 	// An I02 adapter can provide a retained remote-storage descriptor or direct
 	// media input. No path-to-local fallback is attempted for a handled source.
 	var local subtitles.RenderInput
-	if r.RemoteStorage != nil && r.RemoteStorage.Handles(s.path) {
+	// A positively remote analysis invocation cannot become local merely because
+	// its original source disappeared from the adapter's path registry.
+	remoteAnalysis := false
+	if routing, ok := r.RemoteStorage.(interface {
+		AnalysisSource(context.Context) (bool, bool)
+	}); ok {
+		_, remoteAnalysis = routing.AnalysisSource(ctx)
+	}
+	if r.RemoteStorage != nil && (remoteAnalysis || r.RemoteStorage.Handles(s.path)) {
 		local, e = r.RemoteStorage.Open(ctx, item, source, s.path, s.size, s.modified)
 		if e == nil {
 			local = &selectedRemoteInput{RenderInput: local, runtime: r, source: s}

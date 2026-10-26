@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -81,8 +82,28 @@ func segmentSourceModesTx(ctx context.Context, tx *sql.Tx) (string, error) {
 		if err = rows.Scan(&id, &mode); err != nil {
 			return "", err
 		}
-		parts = append(parts, id+"="+mode)
+		parts = append(parts, "mode:"+id+"="+mode)
+	}
+	if err = rows.Err(); err != nil {
+		return "", err
+	}
+	rows.Close()
+	// Consent changes must wake and re-consider files that were excluded while
+	// off; an inventory change or the daily pass must not be required first.
+	profiles, err := tx.QueryContext(ctx, `SELECT p.source_id,p.revision,p.allow_advanced_media_analysis FROM remote_source_read_profiles p WHERE EXISTS(SELECT 1 FROM library_sources s WHERE s.remote_source_id=p.source_id AND s.enabled=1) ORDER BY p.source_id LIMIT 500`)
+	if err != nil {
+		return "", err
+	}
+	defer profiles.Close()
+	for profiles.Next() {
+		var source string
+		var revision int64
+		var allowed bool
+		if err = profiles.Scan(&source, &revision, &allowed); err != nil {
+			return "", err
+		}
+		parts = append(parts, fmt.Sprintf("consent:%s=%d:%t", source, revision, allowed))
 	}
 	sort.Strings(parts)
-	return strings.Join(parts, ","), rows.Err()
+	return strings.Join(parts, ","), profiles.Err()
 }

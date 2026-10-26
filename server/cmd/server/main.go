@@ -46,6 +46,7 @@ import (
 	librarychannels "portico.local/server/internal/livechannels/library"
 	"portico.local/server/internal/localmetadata"
 	"portico.local/server/internal/lyrics"
+	"portico.local/server/internal/mediaanalysis"
 	"portico.local/server/internal/mediaexec"
 	"portico.local/server/internal/medialimits"
 	"portico.local/server/internal/metadata"
@@ -675,7 +676,10 @@ func run() (runErr error) {
 		return e
 	}
 	defer subtitleRenderer.Close()
-	subtitleRenderer.RemoteStorage = subtitlevideo.RemoteStorageAdapter{Match: sources.Handles, Selected: sources.OpenSubtitlePlaybackInput, Acquire: func(ctx context.Context, path, purpose string) (subtitlevideo.RemoteObject, error) {
+	subtitleRenderer.RemoteStorage = subtitlevideo.RemoteStorageAdapter{Match: sources.Handles, Selected: sources.OpenSubtitlePlaybackInput, Analysis: sources.OpenMediaAnalysisInput, AnalysisInvocation: func(ctx context.Context) (bool, bool) {
+		invocation, ok := mediaanalysis.ReadInvocationFromContext(ctx)
+		return ok, ok && invocation.Facts().Consent.Remote
+	}, Acquire: func(ctx context.Context, path, purpose string) (subtitlevideo.RemoteObject, error) {
 		return sources.Acquire(ctx, path, purpose)
 	}}
 	doneAnalysis := reporter.step("analysis", "Open media analysis storage")

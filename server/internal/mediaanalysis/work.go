@@ -65,6 +65,11 @@ func (s *Service) RunOne(ctx context.Context, request Request) (done bool, warni
 	if err != nil {
 		return false, "", err
 	}
+	if !b.Consent.Allowed {
+		return true, "", nil
+	}
+	ctx, read := s.scanReadContext(ctx, b)
+	defer read.Close()
 	var input Input
 	if b.Container == "strm" {
 		if err = gated.Commit(); err != nil {
@@ -241,6 +246,7 @@ func (s *Service) RunOne(ctx context.Context, request Request) (done bool, warni
 		}
 		defer input.Close()
 	}
+	input = &authorityInput{Input: input, invocation: read}
 	if input.Size() <= 0 || input.Size() > s.options.MaxInputBytes {
 		return fail(ErrBudget)
 	}
@@ -374,11 +380,14 @@ func (s *Service) publish(ctx context.Context, b binding, stage, id, evidence, t
 	}
 	tx := gated3.Tx()
 	defer gated3.Rollback()
+	if e = checkReadPublicationTx(ctx, tx); e != nil {
+		return e
+	}
 	current, e := s.bindingTx(ctx, tx, b.Request)
 	if e != nil {
 		return e
 	}
-	if current.AssetID != b.AssetID || current.Source.Incarnation != b.Source.Incarnation || current.Source.Generation != b.Source.Generation || current.DurationUS != b.DurationUS || current.ProbeEvidence != b.ProbeEvidence || b.Container == "strm" && evidence != b.ProbeEvidence || stage == catalog.SonicOperation && current.SonicBinding != b.SonicBinding {
+	if current.Consent != b.Consent || current.AssetID != b.AssetID || current.Source.Incarnation != b.Source.Incarnation || current.Source.Generation != b.Source.Generation || current.DurationUS != b.DurationUS || current.ProbeEvidence != b.ProbeEvidence || b.Container == "strm" && evidence != b.ProbeEvidence || stage == catalog.SonicOperation && current.SonicBinding != b.SonicBinding {
 		return ErrConflict
 	}
 	p, e := catalog.ScanPolicyTx(ctx, tx, b.Source.LibraryID)

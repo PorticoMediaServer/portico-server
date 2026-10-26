@@ -157,6 +157,11 @@ func resolveSource(ctx context.Context, tx *sql.Tx, a Access, t Target) (Source,
 		}
 		v.Evidence = v.ProbeEvidence
 		if a.captured != nil {
+			if a.captured.invocation != nil {
+				if e = a.captured.invocation.checkRetainedTx(ctx, tx); e != nil {
+					return v, e
+				}
+			}
 			old := a.captured.source
 			if old.ID != v.ID || old.ObjectID != v.ObjectID || old.Revision != v.Revision || old.Incarnation != v.Incarnation || old.Configuration != v.Configuration {
 				return v, ErrConflict

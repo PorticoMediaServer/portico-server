@@ -30,10 +30,27 @@ type RemoteStorageAdapter struct {
 	// Selected continues a real Select invocation with its retained source
 	// admission. Refusal never falls back to a generic path acquisition.
 	Selected func(context.Context, string, string, string, int64, int64) (subtitles.RenderInput, error)
+	// Analysis never falls through to a generic playback acquisition.
+	Analysis func(context.Context, string, string, string, int64, int64) (subtitles.RenderInput, error)
+	// Routing discriminator only. Analysis must independently resolve its sealed
+	// original invocation; a true result is never byte authority.
+	AnalysisInvocation func(context.Context) (analysis, remote bool)
 }
 
 func (a RemoteStorageAdapter) Handles(path string) bool { return a.Match != nil && a.Match(path) }
+func (a RemoteStorageAdapter) AnalysisSource(ctx context.Context) (analysis, remote bool) {
+	if a.AnalysisInvocation == nil {
+		return false, false
+	}
+	return a.AnalysisInvocation(ctx)
+}
 func (a RemoteStorageAdapter) Open(ctx context.Context, item, source, path string, size, modified int64) (subtitles.RenderInput, error) {
+	if analysis, _ := a.AnalysisSource(ctx); analysis {
+		if a.Analysis == nil {
+			return nil, subtitles.ErrUnavailable
+		}
+		return a.Analysis(ctx, item, source, path, size, modified)
+	}
 	if _, selected := subtitles.PlaybackSourceInvocationFromContext(ctx); selected {
 		if a.Selected == nil {
 			return nil, subtitles.ErrUnavailable

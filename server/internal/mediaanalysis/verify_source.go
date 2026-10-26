@@ -42,6 +42,11 @@ func (s *Service) verifySTRM(ctx context.Context, b binding) (Input, bool, strin
 	}
 	input, e := s.options.Open(ctx, b.ItemID, b.AssetID)
 	if e == nil {
+		if invocation, ok := ReadInvocationFromContext(ctx); ok {
+			input = &authorityInput{Input: input, invocation: invocation}
+		}
+	}
+	if e == nil {
 		e = input.Validate(ctx)
 	}
 	if e == nil && (b.ProbeEvidence == "" || input.Evidence() != b.ProbeEvidence) {
