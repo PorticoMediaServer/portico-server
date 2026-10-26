@@ -177,11 +177,15 @@ export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
     }
     const out: HistorySection[] = [];
     for (const group of grouped.values()) {
-      const entries = group.entries.filter(entry => entry.media).map(entry => ({entry, media: entry.media!}));
+      const entries = group.entries.filter(entry => entry.media).map(entry => {
+        const media = entry.media!;
+        const square = shapeFor(media.kind) === 'square';
+        return {entry, media, source: bindings.artwork.foreground(square ? media.posterUrl : media.backdropUrl ?? media.posterUrl, 320, square ? 1 : 16 / 9)};
+      });
       if (entries.length) out.push({key: group.day.toDateString(), day: group.day, entries});
     }
     return out;
-  }, [snapshot.entries]);
+  }, [snapshot.entries, bindings.artwork]);
   if (!sameSavedRoute(snapshot.route, bindings.route)) return null;
   const period = bindings.route.view === 'history' ? bindings.route.period ?? '30d' : '30d';
   const empty = snapshot.error && !snapshot.entries.length
@@ -206,8 +210,8 @@ export function SavedHistory({bindings}: {bindings: SavedViewBindings}) {
       }}>{t('web.saved.clearHistoryAction')}</Button></>}><span /></Dialog>
   </>;
 }
-type HistorySection = Readonly<{key: string; day: Date; entries: readonly Readonly<{entry: PersonalResourceEntry; media: ContentEntry}>[]}>;
-type HistoryItem = Readonly<{kind: 'day'; key: string; day: Date}> | Readonly<{kind: 'row'; key: string; entry: PersonalResourceEntry; media: ContentEntry}>;
+type HistorySection = Readonly<{key: string; day: Date; entries: readonly Readonly<{entry: PersonalResourceEntry; media: ContentEntry; source: ArtworkSource | undefined}>[]}>;
+type HistoryItem = Readonly<{kind: 'day'; key: string; day: Date}> | Readonly<{kind: 'row'; key: string; entry: PersonalResourceEntry; media: ContentEntry; source: ArtworkSource | undefined}>;
 const historyItemKey = (item: HistoryItem) => item.key;
 /** The accepted snapshot transition is the presence source. Presence is bounded to the
  * first 40 rows (outgoing paint only); every later live row renders without it. */
@@ -219,7 +223,7 @@ function HistoryTimeline({bindings, sections, reduced, empty, more}: {bindings: 
       if (rows >= 40) { rest.push(section); continue; }
       const keep = section.entries.slice(0, 40 - rows);
       items.push({kind: 'day', key: `day:${section.key}`, day: section.day});
-      for (const row of keep) items.push({kind: 'row', key: `row:${row.entry.id}`, entry: row.entry, media: row.media});
+      for (const row of keep) items.push({kind: 'row', key: `row:${row.entry.id}`, entry: row.entry, media: row.media, source: row.source});
       rows += keep.length;
       if (keep.length < section.entries.length) rest.push({...section, entries: section.entries.slice(keep.length)});
     }
@@ -243,11 +247,11 @@ function HistoryTimeline({bindings, sections, reduced, empty, more}: {bindings: 
         data-leaving={leaving || undefined} inert={leaving} aria-hidden={leaving || undefined}><h2>{historyDayLabel(item.day)}</h2></div>;
       return <div key={item.key} className={styles.historyItem} data-layout-item={item.key} data-leaving={leaving || undefined}
         inert={leaving} aria-hidden={leaving || undefined} style={leaving && delays.get(item.key) ? {transitionDelay: `${delays.get(item.key)}ms`} : undefined}>
-        <HistoryRow bindings={bindings} entry={item.entry} media={item.media} paintOnly={leaving} />
+        <HistoryRow bindings={bindings} entry={item.entry} media={item.media} source={item.source} paintOnly={leaving} />
       </div>;
     })}
     {rest.map(section => <section key={`rest:${section.key}`} className={styles.historyDay}><h2>{historyDayLabel(section.day)}</h2>
-      {section.entries.map(({entry, media}) => <HistoryRow key={entry.id} bindings={bindings} entry={entry} media={media} />)}
+      {section.entries.map(({entry, media, source}) => <HistoryRow key={entry.id} bindings={bindings} entry={entry} media={media} source={source} />)}
     </section>)}
     {empty}
     {more}
@@ -263,14 +267,14 @@ function historySubtitle(media: ContentEntry): readonly string[] {
   if (media.kind === 'movie') return [t('next.browse.kind.movie'), ...(media.year === undefined ? [] : [String(media.year)])];
   return media.year === undefined ? [] : [String(media.year)];
 }
-function HistoryRow({bindings, entry, media, paintOnly = false}: {bindings: SavedViewBindings; entry: PersonalResourceEntry; media: ContentEntry; paintOnly?: boolean}) {
+function HistoryRow({bindings, entry, media, source, paintOnly = false}: {bindings: SavedViewBindings; entry: PersonalResourceEntry; media: ContentEntry; source: ArtworkSource | undefined; paintOnly?: boolean}) {
   // The row names the show for an episode, the title itself otherwise.
   const title = media.kind === 'episode' ? media.show?.name ?? media.displayTitle ?? media.title : media.displayTitle ?? media.title;
   const subtitles = historySubtitle(media), position = entry.positionSeconds ?? 0, duration = media.duration;
   const progress = duration && duration > 0 ? Math.min(1, position / duration) : undefined;
   const left = !entry.completed && duration !== undefined && duration > position ? Math.round((duration - position) / 60) : undefined;
   const remaining = left === undefined ? undefined : left >= 60 ? t(left % 60 ? 'next.kit.duration.hoursMinutes' : 'next.kit.duration.hours', {hours: Math.floor(left / 60), minutes: left % 60}) : t('next.kit.duration.minutes', {minutes: left});
-  const square = shapeFor(media.kind) === 'square', source = bindings.artwork.foreground(square ? media.posterUrl : media.backdropUrl ?? media.posterUrl, 320, square ? 1 : 16 / 9);
+  const square = shapeFor(media.kind) === 'square';
   return <div className={styles.historyRow} data-shape={square ? 'square' : 'wide'}>
     {paintOnly ? <span className={styles.historyArt} data-shape={square ? 'square' : 'wide'} aria-hidden="true">
       {square ? <><span className={styles.historyBackdrop}><Artwork source={source} alt="" /></span><span className={styles.historyCover}><Artwork source={source} alt="" /></span></> : <Artwork source={source} alt="" />}
