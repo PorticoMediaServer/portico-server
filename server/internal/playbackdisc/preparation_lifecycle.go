@@ -112,7 +112,7 @@ func (s *Store) acceptedPreparationResultTx(ctx context.Context, tx *sql.Tx, v P
 	}
 	var legacy Key
 	var current bool
-	if err := tx.QueryRowContext(ctx, `SELECT p.session_id,p.generation,l.state='active' AND l.sealed=1 AND l.expires_ms>? FROM playback_disc_snapshots p JOIN playback_disc_lifecycle l ON l.snapshot_id=p.id WHERE p.id=?`, time.Now().UnixMilli(), out.SnapshotID).Scan(&legacy.SessionID, &legacy.Generation, &current); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT p.session_id,p.generation,l.state='active' AND l.sealed=1 AND l.expires_ms>? FROM playback_disc_snapshots p JOIN playback_disc_lifecycle l ON l.snapshot_id=p.id JOIN playback_sessions media ON media.id=p.session_id WHERE p.id=? AND media.generation=p.generation AND media.asset_id=? AND media.account_id=? AND media.profile_id=? AND media.request_id=?`, time.Now().UnixMilli(), out.SnapshotID, v.Binding.AssetID, v.Binding.Actor.AccountID, v.Binding.Actor.ProfileID, v.Binding.Queue.LegacyRequestID).Scan(&legacy.SessionID, &legacy.Generation, &current); err != nil {
 		return err
 	}
 	if !current || legacy != out.Legacy {
@@ -133,14 +133,14 @@ func (s *Store) acceptedPreparationResultTx(ctx context.Context, tx *sql.Tx, v P
 	if a != v.Binding.Actor || physical != v.Binding.Source || queue != v.Binding.Queue {
 		return ErrCurrent
 	}
-	var rawKey, body, device, account, profile, authority, item, queueID, entryID string
+	var rawKey, body, device, account, profile, authority, item, version, queueID, entryID string
 	var actual Key
 	var part int
-	if err := tx.QueryRowContext(ctx, `SELECT p.start_key,p.start_digest,p.device_id,p.account_id,p.profile_id,p.authority,p.media_session_id,p.media_generation,p.part_index,pid(i.public_id),p.queue_id,p.entry_id FROM playback_v1_sessions p JOIN catalog_entities i ON i.id=p.item_id WHERE p.id=? AND p.ended_ms=0 AND p.lease_expires_ms>?`, out.SessionID, time.Now().UnixMilli()).Scan(&rawKey, &body, &device, &account, &profile, &authority, &actual.SessionID, &actual.Generation, &part, &item, &queueID, &entryID); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT p.start_key,p.start_digest,p.device_id,p.account_id,p.profile_id,p.authority,p.media_session_id,p.media_generation,p.part_index,pid(i.public_id),p.version_id,p.queue_id,p.entry_id FROM playback_v1_sessions p JOIN catalog_entities i ON i.id=p.item_id WHERE p.id=? AND p.ended_ms=0 AND p.lease_expires_ms>?`, out.SessionID, time.Now().UnixMilli()).Scan(&rawKey, &body, &device, &account, &profile, &authority, &actual.SessionID, &actual.Generation, &part, &item, &version, &queueID, &entryID); err != nil {
 		return err
 	}
 	keyHash := sha256.Sum256([]byte(rawKey))
-	if hex.EncodeToString(keyHash[:]) != v.Key.StartKeyDigest || body != v.Binding.StartBodyDigest || device != v.Key.DeviceID || account != a.AccountID || profile != a.ProfileID || authority != a.Authority || actual != out.Legacy || part != v.Binding.PartIndex || item != v.Binding.ItemID || queueID != queue.QueueID || entryID != queue.QueueEntryID {
+	if hex.EncodeToString(keyHash[:]) != v.Key.StartKeyDigest || body != v.Binding.StartBodyDigest || device != v.Key.DeviceID || account != a.AccountID || profile != a.ProfileID || authority != a.Authority || actual != out.Legacy || part != v.Binding.PartIndex || item != v.Binding.ItemID || part == 0 && version != v.Binding.AssetID || queueID != queue.QueueID || entryID != queue.QueueEntryID {
 		return ErrCurrent
 	}
 	return nil
