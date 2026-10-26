@@ -35,37 +35,66 @@ for (const mode of ['signin', 'create', 'forgot'] as const) test('a failed optio
 });
 
 test('a concurrent initialize and retry share one flight and one request', async () => {
-  const p = port(attempt => attempt === 1 ? new Error('service unavailable') : options);
+  let release!: (value: unknown) => void;
+  let second = false;
+  const p = port(attempt => {
+    if (attempt === 1) return new Error('service unavailable');
+    if (!second) { second = true; return new Promise(resolve => {release = resolve;}); }
+    return options;
+  });
   const flow = new ServicesAuthFlow(p.value, () => {});
   await flow.initialize();
-  await Promise.all([flow.retryInitialization(), flow.initialize(), flow.retryInitialization()]);
-  assert.equal(p.reads(), 2);
+  const first = flow.retryInitialization(), also = flow.initialize(), again = flow.retryInitialization();
+  for (let i = 0; i < 6; i++) await Promise.resolve();
+  assert.equal(p.reads(), 2);                       // second flight is in progress
+  assert.equal(flow.getSnapshot().optionsFailed, true);
+  release(options);
+  await Promise.all([first, also, again]);
+  assert.equal(p.reads(), 2);                       // single flight, one extra read
   assert.equal(flow.getSnapshot().options?.password, true);
   flow.dispose();
 });
 
-test('a 429 retry deadline suppresses the request without sleeping', async () => {
-  const p = port(attempt => attempt === 1 ? new ApiError(429, 'rate_limited', 'rate_limited', true, {retryAfterSeconds: 5}) : options);
-  const flow = new ServicesAuthFlow(p.value, () => {});
-  await flow.initialize();
-  assert.equal(flow.getSnapshot().optionsFailed, true);
-  assert.equal(flow.getSnapshot().retryAt > Date.now(), true);
-  await flow.retryInitialization();
-  assert.equal(p.reads(), 1);                     // still the original deadline
+test('a successful initialization stays memoized', async () => {
+  const p = port(() => options), flow = new ServicesAuthFlow(p.value, () => {});
+  await flow.initialize(); await flow.initialize();
+  assert.equal(p.reads(), 1);
   flow.dispose();
 });
 
-test('a disposed form retries nothing and a late original response cannot publish', async () => {
+test('a 429 deadline allows exactly one retry at its exact instant, with no sleeps', async () => {
+  const realNow = Date.now;
+  let now = 1_000_000_000_000;
+  Date.now = () => now;
+  try {
+    const p = port(attempt => attempt === 1 ? new ApiError(429, 'rate_limited', 'rate_limited', true, 5) : options);
+    const flow = new ServicesAuthFlow(p.value, () => {});
+    await flow.initialize();
+    assert.equal(flow.getSnapshot().retryAt, now + 5000);
+    await flow.retryInitialization();
+    assert.equal(p.reads(), 1);                   // before the deadline
+    now += 4999; await flow.retryInitialization();
+    assert.equal(p.reads(), 1);
+    now += 1;                                     // the exact deadline instant
+    await flow.retryInitialization();
+    assert.equal(p.reads(), 2);                   // one permitted retry, no waiting
+    assert.equal(flow.getSnapshot().options?.password, true);
+    flow.dispose();
+  } finally { Date.now = realNow; }
+});
+
+test('a disposed form retries nothing, and the released original leaves the snapshot unchanged', async () => {
   let release!: (value: unknown) => void;
   const p = port(attempt => attempt === 1 ? new Promise(resolve => {release = resolve;}) as never : options);
   const flow = new ServicesAuthFlow(p.value, () => {});
   const pending = flow.initialize();
   flow.dispose();
+  const before = flow.getSnapshot();
   await flow.retryInitialization();
   assert.equal(p.reads(), 1);
   release(options);
   await pending.catch(() => {});
+  assert.deepEqual(flow.getSnapshot(), before);
   assert.equal(flow.getSnapshot().options, undefined);
-  assert.equal(flow.getSnapshot().optionsFailed, undefined);
   assert.equal(p.authenticated(), 0);
 });
