@@ -10,7 +10,7 @@ import (
 )
 
 func TestHomeDestinationPickerHTTPUsesLiveActorAndBoundedContract(t *testing.T) {
-	handler, owner, member := editorHTTPFixture(t)
+	handler, owner, _ := editorHTTPFixture(t)
 	body, _ := json.Marshal(catalog.HomeDestinationPickerRequest{Kind: "playlist", Query: "", Limit: 40})
 	response := editorRequest(t, handler, "POST", "/v1/home/destination-picker", owner, "application/json", body)
 	if response.Code != 200 {
@@ -24,10 +24,32 @@ func TestHomeDestinationPickerHTTPUsesLiveActorAndBoundedContract(t *testing.T) 
 	if len(page.Rows) > 40 || page.ViewerFence == "" {
 		t.Fatal(page)
 	}
-	invalid, _ := json.Marshal(catalog.HomeDestinationPickerRequest{Kind: "playlist", Query: "", Limit: 41})
-	refused := editorRequest(t, handler, "POST", "/v1/home/destination-picker", member, "application/json", invalid)
-	if refused.Code == 200 {
-		t.Fatal("oversized picker read accepted")
+	// A malformed request is a request error, not a stale page: only the cursor
+	// that cannot be decoded below says invalid_cursor. Both codes are already
+	// declared on this route, so the wire set does not change.
+	code := func(body catalog.HomeDestinationPickerRequest) (int, string) {
+		t.Helper()
+		raw, _ := json.Marshal(body)
+		w := editorRequest(t, handler, "POST", "/v1/home/destination-picker", owner, "application/json", raw)
+		return w.Code, bodyErrorCode(w.Body.String())
+	}
+	tooMany := make([]string, 201)
+	for i := range tooMany {
+		tooMany[i] = fmt.Sprintf("item-%03d", i)
+	}
+	for name, body := range map[string]catalog.HomeDestinationPickerRequest{
+		"oversized window": {Kind: "playlist", Query: "", Limit: 41},
+		"oversized id set": {Kind: "playlist", Query: "", Limit: 40, ItemIDs: tooMany},
+		"duplicate id set": {Kind: "playlist", Query: "", Limit: 40, ItemIDs: []string{"item-a", "item-a"}},
+		"unknown kind":     {Kind: "library", Query: "", Limit: 40},
+	} {
+		status, got := code(body)
+		if status != http.StatusBadRequest || got != "invalid_request" {
+			t.Fatalf("%s answered %d %q, want 400 invalid_request", name, status, got)
+		}
+	}
+	if status, got := code(catalog.HomeDestinationPickerRequest{Kind: "playlist", Query: "", Limit: 40, Cursor: "not-a-cursor"}); status != http.StatusBadRequest || got != "invalid_cursor" {
+		t.Fatalf("a cursor that cannot be decoded answered %d %q, want 400 invalid_cursor", status, got)
 	}
 	unauthenticated := editorRequest(t, handler, "POST", "/v1/home/destination-picker", "", "application/json", body)
 	if unauthenticated.Code == 200 {
