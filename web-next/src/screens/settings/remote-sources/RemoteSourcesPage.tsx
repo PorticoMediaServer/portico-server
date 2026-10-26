@@ -22,6 +22,57 @@ import {ProgramPicker} from './ProgramPicker';
 import {useOwnedResource} from './resources';
 
 const t = defaultI18n.t;
+
+/** The read profile's five drawn values; the independent analysis consent is its own draft. */
+function readValuesWithoutConsent(values: SourceReadValues): SourceReadValues {
+  const {allowAdvancedMediaAnalysis, ...read} = values;
+  return allowAdvancedMediaAnalysis === undefined ? values : read;
+}
+/** A save body carries consent only when this server actually published one. */
+function readValuesWithConsent(values: SourceReadValues, consent: boolean | undefined): SourceReadValues {
+  return consent === undefined ? values : {...values, allowAdvancedMediaAnalysis: consent};
+}
+/** One source-specific analysis control; an older server without the fact draws no control,
+ * never an off/false checkbox it cannot have recorded. */
+function AnalysisConsent({consent, disabled, onChange}: {consent: boolean | undefined; disabled: boolean; onChange: (value: boolean) => void}) {
+  if (consent === undefined) return null;
+  return <label className={styles.switchRow}>
+    <span>{t('next.remoteSources.allowAdvancedMediaAnalysis')}<small className={styles.note}>{t('next.remoteSources.allowAdvancedMediaAnalysisWarning')}</small></span>
+    <Switch aria-label={t('next.remoteSources.allowAdvancedMediaAnalysis')} checked={consent} disabled={disabled} onCheckedChange={onChange}/>
+  </label>;
+}
+
+/** Keep the read profile's captured legacy whole-file compatibility value while a choice or an
+ * unsaved default replaces only the drawn read values. Consent is never part of this. */
+function withLegacyWholeFileReads(values: SourceReadValues, legacy: boolean): SourceReadValues {
+  return values.wholeFileReads === legacy ? values : {...values, wholeFileReads: legacy};
+}
+type HeldProfile = Readonly<{token: object; profile: SourceReadSettings; consent?: boolean; values: SourceReadValues}>;
+/** One layout-owned admission per exact source/generation. The held profile and its consent
+ * draft exist only inside that admission, so a replacement withholds them before the passive
+ * read and a late old read/save can neither publish nor release the successor's record. */
+function useProfileAdmission({service, sourceId, generation, isCurrent}: {service: RemoteSourceService; sourceId: string; generation: string; isCurrent: () => boolean}) {
+  const [admission, setAdmission] = useState<Readonly<{token: object; service: RemoteSourceService; sourceId: string; generation: string}>>();
+  const admissionRef = useRef<object>();
+  const [held, setHeld] = useState<HeldProfile>();
+  const heldRef = useRef<HeldProfile>(); heldRef.current = held;
+  useLayoutEffect(() => {
+    const token = {};
+    admissionRef.current = token;
+    setAdmission({token, service, sourceId, generation});
+    setHeld(undefined);
+    return () => {
+      if (admissionRef.current === token) admissionRef.current = undefined;
+      setHeld(current => current?.token === token ? undefined : current);
+    };
+  }, [service, sourceId, generation]);
+  const admitted = !!admission && admission.service === service && admission.sourceId === sourceId
+    && admission.generation === generation && admissionRef.current === admission.token;
+  const current = () => admitted && admissionRef.current === admission?.token && isCurrent();
+  return {admitted, token: admitted ? admission?.token : undefined,
+    held: held && admitted && held.token === admission?.token ? held : undefined,
+    setHeld, current, holds: (record: HeldProfile) => current() && heldRef.current === record};
+}
 const emptyDraft: WebDavDraft = {name: '', root: '', username: '', password: '', insecureLocal: false};
 type SourceKind = 'webdav' | 'rclone' | 'config' | 's3' | 'drive' | 'cloud';
 type RcloneDraft = {name: string; remote: string; config: string};
@@ -310,6 +361,7 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
   const nextSourceId = useRef('');
   const [profile, setProfile] = useState<SourceReadSettings>();
   const [values, setValues] = useState<SourceReadValues>(sourceReadPreset('once'));
+  const [consent, setConsent] = useState<boolean>();
   // The drawn mobile-web step (remote-sources.html#14b) shows the choice in force
   // and opens the four choices from Change; the wide layout keeps them inline.
   // A confirm belongs to the opening it was rendered in: the wizard's token, its
@@ -356,7 +408,7 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
   const reset = () => {
     setStep('what'); setFamily('webdav'); setSourceKind('webdav'); setDraft(emptyDraft); setRclone(emptyRclone); setProgram(undefined); setProviders([]); setConfigView(undefined); setConfigRemote(''); setConfigName(''); setS3(emptyS3); setDrive(emptyDrive); setS3Name(''); setDriveName(''); setS3Tested(undefined); setDriveTested(undefined); setCloud(emptyCloud); setCloudName(''); setCloudTested(undefined); setDriveMode('service'); setOauthClientId(''); setOauthClientSecret(''); setOauthToken(''); setOauthState(''); setOauthPhase('idle'); setOauthAddress(''); setOauthError(''); oauthLease.current = null; oauthGeneration.current++; invalidateS3(); invalidateDrive(); invalidateCloud();
     setResult(undefined); setRcloneResult(undefined); setError(''); setCreated(undefined);
-    setProfile(undefined); setValues(sourceReadPreset('once')); setBusy(false); setLoadingProfile(false);
+    setProfile(undefined); setValues(sourceReadPreset('once')); setConsent(undefined); setBusy(false); setLoadingProfile(false);
     setReadingOpening(null); setPendingReading(sourceReadPreset('once')); readingOpeningRef.current = null;
     setChosen([]); setPicking(false); setAttachMode('new'); setLibraryName(''); setKind('movie'); setExistingId('');
     setFinishBusy(false); setFinishError(''); setSummary({folders: 0}); setLeaving(''); setLeaveRemove(false); setLeaveError(''); setLeaveChoice('keep');
@@ -599,7 +651,7 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
         setError(state.error || t('next.remoteSources.unconfirmed'));return;
       }
       nextSourceId.current = receipt.sourceId;setStep('reading');setLoadingProfile(true);
-      try {const next = await service.readProfile(receipt.sourceId, String(receipt.generation), guard);if (guard()) {setProfile(next);setValues(next.saved ? next.values : sourceReadPreset('once'));}}
+      try {const next = await service.readProfile(receipt.sourceId, String(receipt.generation), guard);if (guard()) {setProfile(next);setConsent(next.values.allowAdvancedMediaAnalysis);setValues(next.saved ? readValuesWithoutConsent(next.values) : withLegacyWholeFileReads(sourceReadPreset('once'), next.values.wholeFileReads));}}
       catch (value) {if (guard()) setError(remoteErrorText(value));}
       finally {if (guard()) setLoadingProfile(false);}
     } finally {if (guard()) {pending.current=false;setBusy(false);}}
@@ -647,7 +699,7 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
         setError(state.error || t('next.remoteSources.unconfirmed'));return;
       }
       nextSourceId.current = receipt.sourceId;setStep('reading');setLoadingProfile(true);
-      try {const next = await service.readProfile(receipt.sourceId, String(receipt.generation), guard);if (guard()) {setProfile(next);setValues(next.saved ? next.values : sourceReadPreset('once'));}}
+      try {const next = await service.readProfile(receipt.sourceId, String(receipt.generation), guard);if (guard()) {setProfile(next);setConsent(next.values.allowAdvancedMediaAnalysis);setValues(next.saved ? readValuesWithoutConsent(next.values) : withLegacyWholeFileReads(sourceReadPreset('once'), next.values.wholeFileReads));}}
       catch (value) {if (guard()) setError(remoteErrorText(value));}
       finally {if (guard()) setLoadingProfile(false);}
     } finally {if (guard()) {pending.current=false;setBusy(false);}}
@@ -703,7 +755,7 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
         setError(state.error || t('next.remoteSources.unconfirmed'));return;
       }
       nextSourceId.current = receipt.sourceId;setStep('reading');setLoadingProfile(true);
-      try {const next = await service.readProfile(receipt.sourceId, String(receipt.generation), guard);if (guard()) {setProfile(next);setValues(next.saved ? next.values : sourceReadPreset('once'));}}
+      try {const next = await service.readProfile(receipt.sourceId, String(receipt.generation), guard);if (guard()) {setProfile(next);setConsent(next.values.allowAdvancedMediaAnalysis);setValues(next.saved ? readValuesWithoutConsent(next.values) : withLegacyWholeFileReads(sourceReadPreset('once'), next.values.wholeFileReads));}}
       catch (value) {if (guard()) setError(remoteErrorText(value));}
       finally {if (guard()) setLoadingProfile(false);}
     } finally {if (guard()) {pending.current=false;setBusy(false);}}
@@ -719,7 +771,7 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
       const state = service.getSnapshot();
       if (state.error || !state.receipt) {if (guard()) setError(state.error || t('next.remoteSources.unconfirmed'));return;}
       const source = state.receipt.source;setCreated(source);nextSourceId.current = source.id;setStep('reading');setLoadingProfile(true);setDraft(current => ({...current, password: ''}));
-      try {const next = await service.readProfile(source.id, String(source.generation), guard);if (guard()) {setProfile(next);setValues(next.saved ? next.values : sourceReadPreset('once'));}}
+      try {const next = await service.readProfile(source.id, String(source.generation), guard);if (guard()) {setProfile(next);setConsent(next.values.allowAdvancedMediaAnalysis);setValues(next.saved ? readValuesWithoutConsent(next.values) : withLegacyWholeFileReads(sourceReadPreset('once'), next.values.wholeFileReads));}}
       catch (value) {if (guard()) setError(remoteErrorText(value));}
       finally {if (guard()) setLoadingProfile(false);}
     } finally {if (guard()) {pending.current=false;setBusy(false);}}
@@ -742,7 +794,7 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
         setError(state.error || t('next.remoteSources.unconfirmed'));return;
       }
       nextSourceId.current = receipt.sourceId;setStep('reading');setLoadingProfile(true);
-      try {const next = await service.readProfile(receipt.sourceId, String(receipt.generation), guard);if (guard()) {setProfile(next);setValues(next.saved ? next.values : sourceReadPreset('once'));}}
+      try {const next = await service.readProfile(receipt.sourceId, String(receipt.generation), guard);if (guard()) {setProfile(next);setConsent(next.values.allowAdvancedMediaAnalysis);setValues(next.saved ? readValuesWithoutConsent(next.values) : withLegacyWholeFileReads(sourceReadPreset('once'), next.values.wholeFileReads));}}
       catch (value) {if (guard()) setError(remoteErrorText(value));}
       finally {if (guard()) setLoadingProfile(false);}
     } finally {if (guard()) {pending.current=false;setBusy(false);}}
@@ -762,7 +814,7 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
         setError(state.error || t('next.remoteSources.unconfirmed'));return;
       }
       nextSourceId.current = receipt.sourceId;setStep('reading');setLoadingProfile(true);
-      try {const next = await service.readProfile(receipt.sourceId, String(receipt.generation), guard);if (guard()) {setProfile(next);setValues(next.saved ? next.values : sourceReadPreset('once'));}}
+      try {const next = await service.readProfile(receipt.sourceId, String(receipt.generation), guard);if (guard()) {setProfile(next);setConsent(next.values.allowAdvancedMediaAnalysis);setValues(next.saved ? readValuesWithoutConsent(next.values) : withLegacyWholeFileReads(sourceReadPreset('once'), next.values.wholeFileReads));}}
       catch (value) {if (guard()) setError(remoteErrorText(value));}
       finally {if (guard()) setLoadingProfile(false);}
     } finally {if (guard()) {pending.current=false;setBusy(false);}}
@@ -773,10 +825,10 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
     pending.current = true;
     setError('');setBusy(true);
     try {
-      const next = await service.saveProfile(profile, values, guard);
+      const next = await service.saveProfile(profile, readValuesWithConsent(values, consent), guard);
       if (!guard()) return;
       if (service.getSnapshot().error) {setError(service.getSnapshot().error);return;}
-      setProfile(next);
+      setProfile(next);setConsent(next.values.allowAdvancedMediaAnalysis);
       const savedSource = created ?? service.getSnapshot().sources.find(source => source.id === next.sourceId);
       if (advancedTouched && savedSource) {
         const current = await service.readAdvanced(savedSource.id, guard);
@@ -902,7 +954,7 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
     if (!opening.guard() || live.step !== 'reading') return;
     if (!live.source || !live.profile || live.source.id !== opening.sourceId || live.source.generation !== opening.sourceGeneration) return;
     if (live.profile.generation !== opening.profileGeneration || live.profile.revision !== opening.profileRevision) return;
-    setValues(pendingReading);
+    setValues(withLegacyWholeFileReads(pendingReading, values.wholeFileReads));
   };
   const readingChangeDialog = phone && readingOpening ? <Dialog open width={560} title={t('next.remoteSources.changeTitle')} description={t('next.remoteSources.changeBody')}
     onOpenChange={value => {if (!value) retireReading(readingOpening);}}
@@ -1116,13 +1168,13 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
             <span><b>{t(presetName ? presetLabel(presetName) : 'next.settingsSpec.server.remote-sources.panels.source.tabs.1.groups.0.rows.0.control.options.4.label')}</b>
               {presetName && <small>{t(presetHint(presetName))}</small>}</span>
           </div>
-          : <ReadingChoices values={values} origin={result?.origin ?? sourceNow?.origin} rangeSupport={result?.rangeSupport ?? sourceNow?.rangeSupport ?? 'unknown'} disabled={busy} onChange={setValues}/>}
+          : <ReadingChoices values={values} origin={result?.origin ?? sourceNow?.origin} rangeSupport={result?.rangeSupport ?? sourceNow?.rangeSupport ?? 'unknown'} disabled={busy} onChange={next => setValues(withLegacyWholeFileReads(next, values.wholeFileReads))}/>}
       <div className={styles.limits}>
         <SettingNumber label={t('next.remoteSources.connections')} value={values.connections} min={1} max={32} unit={t('next.remoteSources.atOnce')} disabled={busy} onCommit={value => {if (value !== null) setValues({...values, connections: value});}}/>
         <SettingNumber label={t('next.remoteSources.requestsPerSecond')} value={values.requestsPerSecond} min={1} max={50} unit={t('next.remoteSources.aSecond')} disabled={busy} onCommit={value => {if (value !== null) setValues({...values, requestsPerSecond: value});}}/>
         <SettingNumber label={t('next.remoteSources.downloadSpeed')} value={values.bytesPerSecond ? values.bytesPerSecond / 1_000_000 : null} min={1} max={1000} optional unit={t('next.remoteSources.megabytesPerSecond')} disabled={busy} onCommit={value => setValues({...values, bytesPerSecond: value === null ? 0 : Math.round(value) * 1_000_000})}/>
       </div>
-      <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.label')}<small className={styles.note}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.help')}</small></span><Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.label')} checked={values.wholeFileReads} disabled={busy} onCheckedChange={value => setValues({...values, wholeFileReads: value})}/></label>
+      <AnalysisConsent consent={consent} disabled={busy} onChange={setConsent}/>
       <button type="button" className={styles.advRow} aria-expanded={advancedOpen} onClick={() => setAdvancedOpen(value => !value)}>
         <span><b>{t('next.remoteSources.advanced')}</b><small>{t('next.remoteSources.advancedHelp')}</small></span>
         <Icon name="i-down" size={18}/>
@@ -1232,8 +1284,9 @@ function ManageSourceDialog(props: ManageSourceProps) {
 function ManageSourceLoaded({service, source, api, serverId, viewerId, openSection, isCurrent, reportError, onClose, onRemoved, libraries, openingId}: ManageSourceProps & Readonly<{libraries: LibraryManagementService; openingId: number}>) {
   const [draft, setDraft] = useState<WebDavDraft>({name: source.name, root: '', username: '', password: '', insecureLocal: source.insecureLocal});
   const [result, setResult] = useState<DAVConnectionResult>();
-  const [profile, setProfile] = useState<SourceReadSettings>();
-  const [values, setValues] = useState<SourceReadValues>(sourceReadPreset('list'));
+  const admission = useProfileAdmission({service, sourceId: source.id, generation: String(source.generation), isCurrent});
+  const held = admission.held;
+  const flight = useRef<object>();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [typed, setTyped] = useState('');
@@ -1291,15 +1344,17 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
     // The guard belongs to this rendered dialog, not to a later one.
     const captured = lifetime.current;
     const guard = () => active.current && lifetime.current === captured && isCurrent();
-    service.readProfile(source.id, String(source.generation), guard).then(next => {
-      if (!guard()) return;
-      setProfile(next);
-      setValues(next.saved ? next.values : sourceReadPreset('list'));
-    }).catch(value => {if (guard()) setError(remoteErrorText(value));});
+    const exact = admission.token;
+    if (!admission.admitted || !exact) return;
+    service.readProfile(source.id, String(source.generation), () => admission.current() && guard()).then(next => {
+      if (!admission.current() || !guard() || next.sourceId !== source.id || next.generation !== String(source.generation)) return;
+      admission.setHeld({token: exact, profile: next, consent: next.values.allowAdvancedMediaAnalysis,
+        values: next.saved ? readValuesWithoutConsent(next.values) : withLegacyWholeFileReads(sourceReadPreset('list'), next.values.wholeFileReads)});
+    }).catch(value => {if (admission.current() && guard()) setError(remoteErrorText(value));});
     service.readStatus(source.id, guard).then(next => {if (guard()) setStatus(next);}).catch(() => {});
     service.readAdvanced(source.id, guard).then(next => {if (guard()) setAdvanced({settings: next, values: next.values});}).catch(() => {});
     void libraries.loadLibraries();
-  }, [service, source.id, source.generation, isCurrent, libraries]);
+  }, [service, source.id, source.generation, isCurrent, libraries, admission.admitted, admission.token]);
   useEffect(() => {if (!attachTo && status?.libraries.length) setAttachTo(status.libraries[0].libraryId);}, [attachTo, status]);
   useEffect(() => {if (!attachTo && librarySnapshot.directory.data?.items.length) setAttachTo(librarySnapshot.directory.data.items[0].id);}, [attachTo, librarySnapshot.directory.data]);
   const changeProgram = async (choice: Readonly<{useIncluded?: boolean; executable?: string}>) => {
@@ -1358,13 +1413,19 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
     } finally {if (guard()) {pending.current=false;setBusy(false);}}
   };
   const saveReading = async () => {
-    const guard = attemptGuard();
-    if (pending.current || !guard() || !profile) return;
-    pending.current = true;
+    const guard = attemptGuard(), exact = admission.token, snapshot = held;
+    if (!guard() || !exact || !snapshot || snapshot.token !== exact || flight.current === exact) return;
+    flight.current = exact;
+    const current = () => admission.current() && admission.holds(snapshot) && guard();
     setError('');setBusy(true);
-    try {const next = await service.saveProfile(profile, values, guard);if (!guard()) return;if (service.getSnapshot().error) {setError(service.getSnapshot().error);return;}setProfile(next);}
-    catch (value) {if (!guard()) return;if (authFailure(value)) {active.current=false;lifetime.current++;reportError(value);return;}if (refreshFailure(value)) done(); else setError(remoteErrorText(value));}
-    finally {if (guard()) {pending.current=false;setBusy(false);}}
+    try {
+      const next = await service.saveProfile(snapshot.profile, readValuesWithConsent(snapshot.values, snapshot.consent), current);
+      if (!current()) return;
+      if (service.getSnapshot().error) {setError(service.getSnapshot().error);return;}
+      admission.setHeld({token: exact, profile: next, consent: next.values.allowAdvancedMediaAnalysis, values: readValuesWithoutConsent(next.values)});
+    }
+    catch (value) {if (!current()) return;if (authFailure(value)) {active.current=false;lifetime.current++;reportError(value);return;}if (refreshFailure(value)) done(); else setError(remoteErrorText(value));}
+    finally {if (flight.current === exact) flight.current = undefined;if (current()) {pending.current=false;setBusy(false);}}
   };
   const disconnect = async () => {
     const guard = attemptGuard();
@@ -1471,18 +1532,20 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
       <Button size="compact" variant="primary" disabled={busy || !draft.name.trim() || (!result && !draft.root.trim())} onClick={() => void saveConnection()}>{t('next.remoteSources.save')}</Button>
     </section>
     <section className={styles.group}><h3>{t('next.remoteSources.reading')}</h3>
+      {!held ? <p className={styles.muted} role="status">{t('next.remoteSources.loading')}</p> : <>
       <div className={styles.choiceSummary}>
         <span>{t('next.remoteSources.howTreated')}</span>
-        <b>{t(presetLabel(sourceReadPresetName(values) ?? 'once'))}</b>
-        <Button size="xs" variant="glass" disabled={busy} onClick={() => {setPendingValues(values);setChanging(true);}}>{t('next.remoteSources.change')}</Button>
+        <b>{t(presetLabel(sourceReadPresetName(held.values) ?? 'once'))}</b>
+        <Button size="xs" variant="glass" disabled={busy} onClick={() => {setPendingValues(held.values);setChanging(true);}}>{t('next.remoteSources.change')}</Button>
       </div>
       <div className={styles.limits}>
-        <SettingNumber label={t('next.remoteSources.connections')} value={values.connections} min={1} max={32} unit={t('next.remoteSources.atOnce')} disabled={busy} onCommit={value => {if (value !== null) setValues({...values, connections: value});}}/>
-        <SettingNumber label={t('next.remoteSources.requestsPerSecond')} value={values.requestsPerSecond} min={1} max={50} unit={t('next.remoteSources.aSecond')} disabled={busy} onCommit={value => {if (value !== null) setValues({...values, requestsPerSecond: value});}}/>
-        <SettingNumber label={t('next.remoteSources.downloadSpeed')} value={values.bytesPerSecond ? values.bytesPerSecond / 1_000_000 : null} min={1} max={1000} optional unit={t('next.remoteSources.megabytesPerSecond')} disabled={busy} onCommit={value => setValues({...values, bytesPerSecond: value === null ? 0 : Math.round(value) * 1_000_000})}/>
+        <SettingNumber label={t('next.remoteSources.connections')} value={held.values.connections} min={1} max={32} unit={t('next.remoteSources.atOnce')} disabled={busy} onCommit={value => {if (value !== null && held) admission.setHeld(current => current && current.token === held.token ? {...current, values: {...current.values, connections: value}} : current);}}/>
+        <SettingNumber label={t('next.remoteSources.requestsPerSecond')} value={held.values.requestsPerSecond} min={1} max={50} unit={t('next.remoteSources.aSecond')} disabled={busy} onCommit={value => {if (value !== null && held) admission.setHeld(current => current && current.token === held.token ? {...current, values: {...current.values, requestsPerSecond: value}} : current);}}/>
+        <SettingNumber label={t('next.remoteSources.downloadSpeed')} value={held.values.bytesPerSecond ? held.values.bytesPerSecond / 1_000_000 : null} min={1} max={1000} optional unit={t('next.remoteSources.megabytesPerSecond')} disabled={busy} onCommit={value => {if (held) admission.setHeld(current => current && current.token === held.token ? {...current, values: {...current.values, bytesPerSecond: value === null ? 0 : Math.round(value) * 1_000_000}} : current);}}/>
       </div>
-      <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.label')}<small className={styles.note}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.help')}</small></span><Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.label')} checked={values.wholeFileReads} disabled={busy} onCheckedChange={value => setValues({...values, wholeFileReads: value})}/></label>
-      <Button size="compact" variant="primary" disabled={busy || !profile} onClick={() => void saveReading()}>{t('next.remoteSources.save')}</Button>
+      <AnalysisConsent consent={held.consent} disabled={busy} onChange={value => {if (held) admission.setHeld(current => current && current.token === held.token ? {...current, consent: value} : current);}}/>
+      <Button size="compact" variant="primary" disabled={busy} onClick={() => void saveReading()}>{t('next.remoteSources.save')}</Button>
+      </>}
     </section>
     <section className={styles.group}><h3>{t('next.remoteSources.advanced')}</h3>
       <p className={styles.note}>{t('next.remoteSources.advancedHelp')}</p>
@@ -1538,10 +1601,10 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
           <Button size="compact" variant="primary" disabled={busy || typed.trim() !== source.name} onClick={() => void disconnect()}>{t('next.remoteSources.disconnect')}</Button></div>
       </>}
     </section>
-    <Dialog open={changing} width={560} title={t('next.remoteSources.changeTitle')} description={t('next.remoteSources.changeBody')}
+    <Dialog open={changing && !!held} width={560} title={t('next.remoteSources.changeTitle')} description={t('next.remoteSources.changeBody')}
       onOpenChange={setChanging}
       footer={<><Button size="compact" variant="glass" onClick={() => setChanging(false)}>{t('next.remoteSources.cancel')}</Button>
-        <Button size="compact" variant="primary" onClick={() => {setValues(pendingValues);setChanging(false);}}>{t('next.remoteSources.useChoice')}</Button></>}>
+        <Button size="compact" variant="primary" onClick={() => {if (held) admission.setHeld(current => current && current.token === held.token ? {...current, values: withLegacyWholeFileReads(pendingValues, current.values.wholeFileReads)} : current);setChanging(false);}}>{t('next.remoteSources.useChoice')}</Button></>}>
       <ReadingChoices values={pendingValues} origin={source.origin} rangeSupport={source.rangeSupport} disabled={false} onChange={setPendingValues}/>
     </Dialog>
     {picking && <RemoteFolderPicker service={service} sourceId={source.id} sourceName={source.name} open={picking}
@@ -1557,8 +1620,9 @@ function ManageRcloneDialog({service, source, isCurrent, reportError, onClose, o
   const [draft, setDraft] = useState<RcloneDraft>({name: source.name, remote: '', config: ''});
   const [program, setProgram] = useState<RcloneProgram>();
   const [result, setResult] = useState<RcloneTestResult>();
-  const [profile, setProfile] = useState<SourceReadSettings>();
-  const [values, setValues] = useState<SourceReadValues>(sourceReadPreset('list'));
+  const admission = useProfileAdmission({service, sourceId: source.id, generation: String(source.generation), isCurrent});
+  const profileHeld = admission.held;
+  const profileFlight = useRef<object>();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [typed, setTyped] = useState('');
@@ -1580,19 +1644,21 @@ function ManageRcloneDialog({service, source, isCurrent, reportError, onClose, o
     // The guard stays with this lease, not with a later source or service.
     const captured = lease;
     const guard = () => !retired.current && leaseRef.current === captured && isCurrent();
-    service.readProfile(source.id, String(source.generation), guard).then(next => {
-      if (!guard()) return;
-      setProfile(next);
-      setValues(next.saved ? next.values : sourceReadPreset('list'));
+    const exact = admission.token;
+    if (!admission.admitted || !exact) return;
+    service.readProfile(source.id, String(source.generation), () => admission.current() && guard()).then(next => {
+      if (!admission.current() || !guard() || next.sourceId !== source.id || next.generation !== String(source.generation)) return;
+      admission.setHeld({token: exact, profile: next, consent: next.values.allowAdvancedMediaAnalysis,
+        values: next.saved ? readValuesWithoutConsent(next.values) : withLegacyWholeFileReads(sourceReadPreset('list'), next.values.wholeFileReads)});
     }).catch(value => {
-      if (!guard()) return;
+      if (!guard() || !admission.current()) return;
       if (authFailure(value)) {retired.current=true;pending.current=false;reportRef.current(value);return;}
       setError(remoteErrorText(value));
     });
     service.rcloneProgram().then(next => {if (guard()) setProgram(next);}).catch(value => {
       if (guard() && authFailure(value)) {retired.current=true;pending.current=false;reportRef.current(value);}
     });
-  }, [service, source.id, source.generation, isCurrent, lease]);
+  }, [service, source.id, source.generation, isCurrent, lease, admission.admitted, admission.token]);
   const test = async () => {
     const guard = held(lease);
     if (pending.current || !guard()) return;
@@ -1629,13 +1695,19 @@ function ManageRcloneDialog({service, source, isCurrent, reportError, onClose, o
     } finally {if (guard()) {pending.current=false;setBusy(false);}}
   };
   const saveReading = async () => {
-    const guard = held(lease);
-    if (pending.current || !guard() || !profile) return;
-    pending.current = true;
+    const guard = held(lease), exact = admission.token, snapshot = profileHeld;
+    if (!guard() || !exact || !snapshot || snapshot.token !== exact || profileFlight.current === exact) return;
+    profileFlight.current = exact;
+    const current = () => guard() && admission.current() && admission.holds(snapshot);
     setError('');setBusy(true);
-    try {const next = await service.saveProfile(profile, values, guard);if (!guard()) return;if (service.getSnapshot().error) {setError(service.getSnapshot().error);return;}setProfile(next);}
-    catch (value) {if (!guard()) return;if (authFailure(value)) {refuse(value);return;}if (refreshFailure(value)) done(); else setError(remoteErrorText(value));}
-    finally {if (guard()) {pending.current=false;setBusy(false);}}
+    try {
+      const next = await service.saveProfile(snapshot.profile, readValuesWithConsent(snapshot.values, snapshot.consent), current);
+      if (!current()) return;
+      if (service.getSnapshot().error) {setError(service.getSnapshot().error);return;}
+      admission.setHeld({token: exact, profile: next, consent: next.values.allowAdvancedMediaAnalysis, values: readValuesWithoutConsent(next.values)});
+    }
+    catch (value) {if (!current()) return;if (authFailure(value)) {refuse(value);return;}if (refreshFailure(value)) done(); else setError(remoteErrorText(value));}
+    finally {if (profileFlight.current === exact) profileFlight.current = undefined;if (current()) {pending.current=false;setBusy(false);}}
   };
   const disconnect = async () => {
     const guard = held(lease);
@@ -1669,14 +1741,16 @@ function ManageRcloneDialog({service, source, isCurrent, reportError, onClose, o
       <Button size="compact" variant="primary" disabled={busy || !draft.name.trim() || !draft.remote.trim() || !draft.config.trim()} onClick={() => void saveConnection()}>{t('next.remoteSources.save')}</Button>
     </section>
     <section className={styles.group}><h3>{t('next.remoteSources.reading')}</h3>
-      <ReadingChoices values={values} origin={source.origin} rangeSupport={source.rangeSupport} disabled={busy} onChange={setValues}/>
+      {!profileHeld ? <p className={styles.muted} role="status">{t('next.remoteSources.loading')}</p> : <>
+      <ReadingChoices values={profileHeld.values} origin={source.origin} rangeSupport={source.rangeSupport} disabled={busy} onChange={next => admission.setHeld(current => current && current.token === profileHeld.token ? {...current, values: withLegacyWholeFileReads(next, current.values.wholeFileReads)} : current)}/>
       <div className={styles.limits}>
-        <SettingNumber label={t('next.remoteSources.connections')} value={values.connections} min={1} max={32} unit={t('next.remoteSources.atOnce')} disabled={busy} onCommit={value => {if (value !== null) setValues({...values, connections: value});}}/>
-        <SettingNumber label={t('next.remoteSources.requestsPerSecond')} value={values.requestsPerSecond} min={1} max={50} unit={t('next.remoteSources.aSecond')} disabled={busy} onCommit={value => {if (value !== null) setValues({...values, requestsPerSecond: value});}}/>
-        <SettingNumber label={t('next.remoteSources.downloadSpeed')} value={values.bytesPerSecond ? values.bytesPerSecond / 1_000_000 : null} min={1} max={1000} optional unit={t('next.remoteSources.megabytesPerSecond')} disabled={busy} onCommit={value => setValues({...values, bytesPerSecond: value === null ? 0 : Math.round(value) * 1_000_000})}/>
+        <SettingNumber label={t('next.remoteSources.connections')} value={profileHeld.values.connections} min={1} max={32} unit={t('next.remoteSources.atOnce')} disabled={busy} onCommit={value => {if (value !== null && profileHeld) admission.setHeld(current => current && current.token === profileHeld.token ? {...current, values: {...current.values, connections: value}} : current);}}/>
+        <SettingNumber label={t('next.remoteSources.requestsPerSecond')} value={profileHeld.values.requestsPerSecond} min={1} max={50} unit={t('next.remoteSources.aSecond')} disabled={busy} onCommit={value => {if (value !== null && profileHeld) admission.setHeld(current => current && current.token === profileHeld.token ? {...current, values: {...current.values, requestsPerSecond: value}} : current);}}/>
+        <SettingNumber label={t('next.remoteSources.downloadSpeed')} value={profileHeld.values.bytesPerSecond ? profileHeld.values.bytesPerSecond / 1_000_000 : null} min={1} max={1000} optional unit={t('next.remoteSources.megabytesPerSecond')} disabled={busy} onCommit={value => {if (profileHeld) admission.setHeld(current => current && current.token === profileHeld.token ? {...current, values: {...current.values, bytesPerSecond: value === null ? 0 : Math.round(value) * 1_000_000}} : current);}}/>
       </div>
-      <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.label')}<small className={styles.note}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.help')}</small></span><Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.label')} checked={values.wholeFileReads} disabled={busy} onCheckedChange={value => setValues({...values, wholeFileReads: value})}/></label>
-      <Button size="compact" variant="primary" disabled={busy || !profile} onClick={() => void saveReading()}>{t('next.remoteSources.save')}</Button>
+      <AnalysisConsent consent={profileHeld.consent} disabled={busy} onChange={value => {if (profileHeld) admission.setHeld(current => current && current.token === profileHeld.token ? {...current, consent: value} : current);}}/>
+      <Button size="compact" variant="primary" disabled={busy} onClick={() => void saveReading()}>{t('next.remoteSources.save')}</Button>
+      </>}
     </section>
 
   </Dialog>;
@@ -1687,12 +1761,13 @@ function SourceReadingDialog({service, source, isCurrent, reportError, onClose}:
   service: RemoteSourceService; source: RemoteSource; isCurrent: () => boolean;
   reportError: (error: unknown) => void; onClose: () => void;
 }>) {
-  const [profile, setProfile] = useState<SourceReadSettings>();
-  const [values, setValues] = useState<SourceReadValues>(sourceReadPreset('list'));
+  const admission = useProfileAdmission({service, sourceId: source.id, generation: String(source.generation), isCurrent});
+  const held = admission.held;
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const scope = useMemo(() => ({service, source, isCurrent}), [service, source, isCurrent]);
-  const token = useRef<object | null>(scope), flight = useRef(false);
+  const token = useRef<object | null>(scope);
+  const profileFlight = useRef<object>();
   const state = useSyncExternalStore(service.subscribe, service.getSnapshot, service.getSnapshot);
   const listed = useCallback(() => service.getSnapshot().sources.some(row => row === source), [service, source]);
   const current = useCallback((captured: object | null) => captured !== null && token.current === captured && isCurrent() && listed(), [isCurrent, listed]);
@@ -1702,45 +1777,46 @@ function SourceReadingDialog({service, source, isCurrent, reportError, onClose}:
     return () => {if (token.current === captured) token.current = null;};
   }, [scope]);
   useEffect(() => {
-    const captured = scope;
-    if (!current(captured)) return;
-    void service.readProfile(source.id, String(source.generation), () => current(captured)).then(next => {
-      if (!current(captured)) return;
-      setProfile(next);setValues(next.values);
+    const captured = scope, exact = admission.token;
+    if (!current(captured) || !admission.admitted || !exact) return;
+    void service.readProfile(source.id, String(source.generation), () => current(captured) && admission.current()).then(next => {
+      if (!current(captured) || !admission.current() || next.sourceId !== source.id || next.generation !== String(source.generation)) return;
+      admission.setHeld({token: exact, profile: next, consent: next.values.allowAdvancedMediaAnalysis,
+        values: next.saved ? readValuesWithoutConsent(next.values) : withLegacyWholeFileReads(sourceReadPreset('list'), next.values.wholeFileReads)});
     }).catch(value => {
-      if (!current(captured)) return;
+      if (!current(captured) || !admission.current()) return;
       if (authFailure(value)) {token.current = null;reportError(value);} else setError(remoteErrorText(value));
     });
-  }, [service, source, scope, current, reportError]);
+  }, [service, source, scope, current, reportError, admission.admitted, admission.token]);
   const save = async () => {
-    const captured = scope;
-    if (!current(captured) || flight.current || !profile || state.busy || state.ambiguous) return;
-    const original = profile, draft = Object.freeze({...values});
-    flight.current = true;setBusy(true);setError('');
+    const captured = scope, exact = admission.token, snapshot = held;
+    if (!current(captured) || !exact || !snapshot || snapshot.token !== exact || state.busy || state.ambiguous || profileFlight.current === exact) return;
+    profileFlight.current = exact;
+    const owns = () => current(captured) && admission.current() && admission.holds(snapshot);
+    setBusy(true);setError('');
     try {
-      await service.saveProfile(original, draft, () => current(captured));
-      if (current(captured)) close();
+      await service.saveProfile(snapshot.profile, readValuesWithConsent(snapshot.values, snapshot.consent), owns);
+      if (owns()) close();
     } catch (value) {
-      if (!current(captured)) return;
+      if (!owns()) return;
       if (authFailure(value)) {token.current = null;reportError(value);}
       else if (refreshFailure(value)) close();
       else setError(remoteErrorText(value));
-    } finally {flight.current = false;if (current(captured)) setBusy(false);}
+    } finally {if (profileFlight.current === exact) profileFlight.current = undefined;if (owns()) setBusy(false);}
   };
-  const disabled = busy || state.busy || state.ambiguous || !profile || !listed();
+  const disabled = busy || state.busy || state.ambiguous || !held || !listed();
   return <Dialog open title={source.name} description={t('next.remoteSources.reading')} onOpenChange={open => {if (!open) close();}}
     footer={<><Button size="compact" variant="glass" onClick={close}>{t('action.cancel')}</Button><Button size="compact" variant="primary" disabled={disabled} onClick={() => void save()}>{t('next.remoteSources.save')}</Button></>}>
     {error && <p className={styles.error} role="alert">{error}</p>}
-    {!profile && !error && <p className={styles.muted} role="status">{t('next.remoteSources.loading')}</p>}
-    <fieldset disabled={disabled} className={styles.readingFields}>
-      <ReadingChoices values={values} origin={source.origin} rangeSupport={source.rangeSupport} disabled={disabled} onChange={setValues}/>
+    {!held && !error && <p className={styles.muted} role="status">{t('next.remoteSources.loading')}</p>}
+    {held && <fieldset disabled={disabled} className={styles.readingFields}>
+      <ReadingChoices values={held.values} origin={source.origin} rangeSupport={source.rangeSupport} disabled={disabled} onChange={next => admission.setHeld(current => current && current.token === held.token ? {...current, values: withLegacyWholeFileReads(next, current.values.wholeFileReads)} : current)}/>
       <div className={styles.limits}>
-        <SettingNumber label={t('next.remoteSources.connections')} value={values.connections} min={1} max={32} unit={t('next.remoteSources.atOnce')} disabled={disabled} onCommit={value => {if (value !== null) setValues({...values, connections: value});}}/>
-        <SettingNumber label={t('next.remoteSources.requestsPerSecond')} value={values.requestsPerSecond} min={1} max={50} unit={t('next.remoteSources.aSecond')} disabled={disabled} onCommit={value => {if (value !== null) setValues({...values, requestsPerSecond: value});}}/>
-        <SettingNumber label={t('next.remoteSources.downloadSpeed')} value={values.bytesPerSecond ? values.bytesPerSecond / 1_000_000 : null} min={1} max={1000} optional unit={t('next.remoteSources.megabytesPerSecond')} disabled={disabled} onCommit={value => setValues({...values, bytesPerSecond: value === null ? 0 : Math.round(value) * 1_000_000})}/>
+        <SettingNumber label={t('next.remoteSources.connections')} value={held.values.connections} min={1} max={32} unit={t('next.remoteSources.atOnce')} disabled={disabled} onCommit={value => {if (value !== null && held) admission.setHeld(current => current && current.token === held.token ? {...current, values: {...current.values, connections: value}} : current);}}/>
+        <SettingNumber label={t('next.remoteSources.requestsPerSecond')} value={held.values.requestsPerSecond} min={1} max={50} unit={t('next.remoteSources.aSecond')} disabled={disabled} onCommit={value => {if (value !== null && held) admission.setHeld(current => current && current.token === held.token ? {...current, values: {...current.values, requestsPerSecond: value}} : current);}}/>
+        <SettingNumber label={t('next.remoteSources.downloadSpeed')} value={held.values.bytesPerSecond ? held.values.bytesPerSecond / 1_000_000 : null} min={1} max={1000} optional unit={t('next.remoteSources.megabytesPerSecond')} disabled={disabled} onCommit={value => {if (held) admission.setHeld(current => current && current.token === held.token ? {...current, values: {...current.values, bytesPerSecond: value === null ? 0 : Math.round(value) * 1_000_000}} : current);}}/>
       </div>
-      <label className={styles.switchRow}><span>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.label')}<small className={styles.note}>{t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.help')}</small></span><Switch aria-label={t('next.settingsSpec.server.remote-sources.panels.source.tabs.3.groups.1.rows.1.label')} checked={values.wholeFileReads} disabled={disabled} onCheckedChange={value => setValues({...values, wholeFileReads: value})}/></label>
-
-    </fieldset>
+      <AnalysisConsent consent={held.consent} disabled={disabled} onChange={value => {if (held) admission.setHeld(current => current && current.token === held.token ? {...current, consent: value} : current);}}/>
+    </fieldset>}
   </Dialog>;
 }
