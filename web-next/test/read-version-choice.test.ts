@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readVersionAlternatives, readVersionCanChoose, readVersionPick} from '../src/screens/read/read-version-choice.ts';
+import {readBackDestination, readVersionAdmission, readVersionAlternatives, readVersionCanChoose, readVersionPick} from '../src/screens/read/read-version-choice.ts';
 
 const epub = {sourceId: 'epub-source', format: 'epub' as const, size: 900, inventoryAvailable: true};
 const pdf = {sourceId: 'pdf-source', format: 'pdf' as const, size: 1200, inventoryAvailable: true};
@@ -26,4 +26,28 @@ test('a one-version item shows no chooser', () => {
   assert.equal(readVersionCanChoose([epub]), false);
   assert.equal(readVersionCanChoose([]), false);
   assert.deepEqual(readVersionAlternatives([epub], epub.sourceId), []);
+});
+
+test('the component admits an explicit recovery only from the exact render it was offered on', () => {
+  const offered = [epub, pdf];
+  const route = {} as never, attempt = {} as never;
+  const base = {liveRoute: true, renderedContext: route, currentContext: route, renderedSourceId: 'epub-source', currentSourceId: 'epub-source',
+    renderedAttempt: attempt, currentAttempt: attempt, attemptRetired: false, candidate: pdf, offered};
+  assert.equal(readVersionAdmission(base), true);
+  // A retained menu callback after the attempt was replaced must not retire the successor.
+  assert.equal(readVersionAdmission({...base, currentAttempt: {} as never}), false);
+  // A replaced source or version list refuses the old row.
+  assert.equal(readVersionAdmission({...base, currentSourceId: 'pdf-source'}), false);
+  assert.equal(readVersionAdmission({...base, offered: [epub, {...pdf, size: 999}]}), false);
+  assert.equal(readVersionAdmission({...base, offered: [epub, stale]}), false);
+  // A stale route/context and a retired original also refuse, while a failed original stays admissible.
+  assert.equal(readVersionAdmission({...base, liveRoute: false}), false);
+  assert.equal(readVersionAdmission({...base, currentContext: {} as never}), false);
+  assert.equal(readVersionAdmission({...base, attemptRetired: true}), false);
+  assert.equal(readVersionAdmission({...base, candidate: epub}), false, 'the current version is not a change');
+});
+
+test('Back returns in-app only when the captured route really has a predecessor', () => {
+  assert.equal(readBackDestination(true), 'back');
+  assert.equal(readBackDestination(false), 'home');
 });
