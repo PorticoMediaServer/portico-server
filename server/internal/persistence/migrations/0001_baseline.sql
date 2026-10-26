@@ -2353,7 +2353,8 @@ CREATE TABLE analysis_results (
  configuration_generation INTEGER NOT NULL, policy_revision INTEGER NOT NULL,
  stage TEXT NOT NULL, algorithm TEXT NOT NULL, evidence TEXT NOT NULL,
  tool_digest TEXT NOT NULL, duration_us INTEGER NOT NULL, summary_json TEXT NOT NULL,
- created_ms INTEGER NOT NULL, retired_ms INTEGER NOT NULL DEFAULT 0
+ created_ms INTEGER NOT NULL, retired_ms INTEGER NOT NULL DEFAULT 0,
+ CHECK(state!='active' OR sealed=1)
 ) STRICT;
 CREATE TABLE analysis_heads (
  object_id TEXT NOT NULL, source_revision TEXT NOT NULL, stage TEXT NOT NULL,

@@ -57,6 +57,23 @@ func (s *Store) PinTx(ctx context.Context, tx *sql.Tx, key Key, id, pinID string
 	return Pin{ID: pinID, SnapshotID: id, SessionID: key.SessionID, Generation: key.Generation, ExpiresAt: time.UnixMilli(until).UTC()}, nil
 }
 
+// ResolvePinTx repeats the exact original reader/grant pin and active snapshot
+// proof. A released, expired or borrowed pin never authorizes continued input.
+func (s *Store) ResolvePinTx(ctx context.Context, tx *sql.Tx, p Pin, check Check) (Snapshot, error) {
+	if ctx == nil || tx == nil || !text(p.ID, 256, false) || p.ExpiresAt.UnixMilli() <= time.Now().UnixMilli() {
+		return Snapshot{}, ErrCurrent
+	}
+	var held bool
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM playback_disc_reader_pins p JOIN playback_disc_lifecycle l ON l.snapshot_id=p.snapshot_id WHERE p.id=? AND p.snapshot_id=? AND p.expires_ms=? AND p.expires_ms>? AND p.expires_ms<=l.expires_ms AND l.state='active' AND l.sealed=1)`, p.ID, p.SnapshotID, p.ExpiresAt.UnixMilli(), time.Now().UnixMilli()).Scan(&held)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	if !held {
+		return Snapshot{}, ErrCurrent
+	}
+	return s.ResolveTx(ctx, tx, Key{p.SessionID, p.Generation}, p.SnapshotID, check)
+}
+
 // ReleasePinTx accepts only that reader's exact original pin even after actor or
 // session retirement. It never needs a replacement principal or latest key.
 func (s *Store) ReleasePinTx(ctx context.Context, tx *sql.Tx, p Pin) error {

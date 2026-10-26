@@ -66,7 +66,7 @@ func (s *Store) sessionTx(ctx context.Context, tx *sql.Tx, v Snapshot) (int64, e
 	var current bool
 	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources ls ON ls.id=o.source_id JOIN catalog_assets a ON a.token=o.asset_id JOIN remote_sources r ON r.id=ls.remote_source_id
  LEFT JOIN mount_backend_configs m ON m.mount_id=r.mount_id LEFT JOIN remote_source_read_profiles rp ON rp.source_id=r.id
- WHERE o.id=? AND o.asset_id=? AND o.source_id=? AND o.revision=? AND o.size=? AND o.modified_ns=? AND o.root_incarnation=? AND o.retired=0 AND o.state='available' AND o.unsupported_reason=''
+ WHERE o.id=? AND o.asset_id=? AND o.source_id=? AND o.revision=? AND o.size=? AND o.modified_ns=? AND o.root_incarnation=? AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND (lower(o.relative_path) GLOB '*.iso' OR lower(o.relative_path) GLOB '*.img')
  AND a.available=1 AND a.size=o.size AND a.modified_ns=o.modified_ns AND ls.library_id=? AND ls.kind='remote' AND ls.enabled=1 AND ls.identity_confirmed=1 AND ls.health='healthy' AND ls.generation=? AND ls.incarnation=? AND ls.root_identity=?
  AND r.id=? AND r.removed=0 AND r.generation=? AND (CASE WHEN r.kind IN('rclone','sftp','smb') THEN CAST(m.generation AS TEXT) ELSE CAST(r.generation AS TEXT) END)=? AND COALESCE(rp.revision,0)=?)`, v.Source.InventoryObjectID, v.Source.AssetID, v.Source.LibrarySourceID, v.Source.InventoryRevision, v.Source.Size, v.Source.ModifiedNS, v.Source.Incarnation, v.Source.LibraryID, v.Source.LibraryGeneration, v.Source.Incarnation, v.Source.RootIdentity, v.Source.RemoteSourceID, v.Source.RawConfigurationGeneration, v.Source.EffectiveConfiguration, v.Source.ProfileRevision).Scan(&current)
 	if err != nil {
@@ -209,6 +209,8 @@ func (s *Store) readTx(ctx context.Context, tx *sql.Tx, key Key, id string, l li
 // ActivateTx is called only by the original v1 presentation accepting writer,
 // after its queue/custody/cast/idempotency proofs. The mandatory Check retains
 // the original process proof; normalized facts cannot reconstruct one.
+// Its returned value grants no bytes: consumers start only after the OUTERMOST
+// accepting transaction commits, never from an uncommitted activation result.
 func (s *Store) ActivateTx(ctx context.Context, tx *sql.Tx, key Key, id string, check Check) (Snapshot, error) {
 	if e := writeTx(ctx, tx); e != nil {
 		return Snapshot{}, e
