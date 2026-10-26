@@ -13,6 +13,7 @@ const row = (id: string) => {
 };
 
 test('the Device section owns only its route and address rows beyond the value rows', () => {
+  assert.equal(isDeviceSyntheticRow('device.linkTv'), true);
   assert.equal(isDeviceSyntheticRow('device.server'), true);
   assert.equal(isDeviceSyntheticRow('device.serverVersion'), true);
   assert.equal(isDeviceSyntheticRow('device.help'), true);
@@ -61,4 +62,10 @@ test('the web device facade reports the real installation name and version, read
     assert.deepEqual(device.getSnapshot().document?.defaults, {lossNotices: true});
     assert.deepEqual(device.getSnapshot().document?.values, {});
   } finally { setInstallationIdentity(undefined); }
+});
+
+
+test('Link a TV is exposed only with its original captured API control', () => {
+  assert.deepEqual(deviceRowState(row('device.linkTv'), {serverName: 'Current server'}), {present: false});
+  assert.deepEqual(deviceRowState(row('device.linkTv'), {serverName: 'Current server', linkTvAvailable: true}), {present: true});
 });
