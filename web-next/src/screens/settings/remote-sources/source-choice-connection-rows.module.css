@@ -1,14 +1,21 @@
-/* The connection-limit cells keep the caller's own .limits grid: the root is
-   display:contents, so no wrapper box, surface, radius or gap is added here. */
-.rows { display: contents; }
-
+/* The Connection-limits box (remote-sources.html#4b/#4c): the caller's .limits
+   owns the box surface, and each row is one full-width line with the drawn label
+   on the left and the unchanged control on the right (.r, line 97: 1fr auto,
+   28px gap, 18px 22px padding, soft separator). */
+.rows { display: grid; }
 .cell {
   display: grid;
-  gap: 6px;
-  align-content: start;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 28px;
+  align-items: center;
+  padding: 18px 22px;
+  border-top: 1px solid var(--color-line-soft);
   position: relative;
   min-width: 0;
 }
+.cell:first-child { border-top: 0; }
+.label { font-size: 16px; font-weight: var(--type-body-strong-weight); }
+.control { display: flex; align-items: center; gap: 12px; justify-content: flex-end; }
 /* Authored .r.chg (remote-sources.html:1016-1017): a 10% accent wash and a 3px
    accent bar inset 14px from the row's top and bottom. */
 .cell[data-changed] {
@@ -25,7 +32,7 @@
   background: var(--color-accent);
 }
 /* Authored changed-number ring (remote-sources.html:751, .nf .n.ch). Selected by
-   this cell's own data attribute and the field's stable data-variant, never by a
+   this row's own data attribute and the field's stable data-variant, never by a
    kit class, and it stands down while the control holds focus so the kit's
    canonical focus-visible ring is what draws. */
 .cell[data-changed] div[data-variant="setting"] > div:not(:focus-within) {

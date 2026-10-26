@@ -32,13 +32,12 @@
 .testCard { display: inline-flex; align-items: center; gap: 7px; padding: 8px 10px; border-radius: 8px; font-size: var(--type-caption-size); font-weight: var(--type-body-strong-weight); color: var(--color-text-secondary); background: color-mix(in srgb, var(--color-text) 7%, transparent); }
 .testCard[data-tone="good"] { color: var(--color-healthy); background: color-mix(in srgb, var(--color-healthy) 10%, transparent); }
 .testCard[data-tone="warning"] { color: var(--color-amber); background: color-mix(in srgb, var(--color-amber) 10%, transparent); }
-.limits { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; padding: 14px; border-radius: 10px; background: var(--color-raised); }
+.limits { display: grid; gap: 0; padding: 0; border-radius: 14px; background: var(--color-raised); overflow: hidden; }
 .group { display: grid; gap: 12px; padding: 16px 0; border-top: 1px solid var(--color-line); }
 .group h3, .danger h3 { margin: 0; font-size: var(--type-body-size); font-weight: var(--type-button-weight); }
 .danger { display: grid; gap: 10px; margin-top: 12px; padding: 16px; border: 1px solid color-mix(in srgb, var(--color-record) 42%, transparent); border-radius: 10px; }
 .danger p { margin: 0; color: var(--color-text-tertiary); font-size: var(--type-caption-size); line-height: var(--type-troubleshooting-log-line); }
 .actions { display: flex; justify-content: flex-end; gap: 10px; }
-@media (max-width: 720px) { .limits { grid-template-columns: 1fr; } }
 
 /* The folder explorer inside a saved source (remote-sources.html#18-20). */
 .explorer { display: flex; flex-direction: column; gap: 12px; }
