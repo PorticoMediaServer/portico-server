@@ -12,6 +12,7 @@ import {servicesI18n} from './i18n';
 import type {WorkspaceApi} from './workspace-api';
 import styles from './services.module.css';
 import {AccountExportRow} from './AccountExportRow';
+import {accountSecurityBrowserAvailable} from '../platform/account-security-policy';
 import {useOriginalAccountSecurity} from '../platform/account-security-context';
 import {ProviderSecurityStartDialog} from './ProviderSecurityStartDialog';
 import type {OriginalProviderSecurity} from '../platform/account-security';
@@ -22,7 +23,7 @@ type Task = 'password_set_or_change' | 'email_change' | 'mfa_enroll' | 'mfa_disa
 export function SecurityPanel({account, api, identity, username, identityTransaction, onDeleted, onSecurityEnded, error: parentError}: {account: ServicesAccount; api: WorkspaceApi; identity: AccountIdentity; username: string; identityTransaction?: string; onDeleted?: () => void; onSecurityEnded?: (codes?: readonly string[]) => void; error?: unknown}) {
   const {t} = useMemo(servicesI18n, []);
   const retained = useOriginalAccountSecurity();
-  const [state, setState] = useState<SecurityState>(), [offered, setOffered] = useState<IdentityProvider[]>([]);
+  const [state, setState] = useState<SecurityState>(), [offered, setOffered] = useState<IdentityProvider[]>([]), [providerReady,setProviderReady]=useState(false);
   const [error, setError] = useState<unknown>(), [task, setTask] = useState<Task>(), [deleting, setDeleting] = useState(false);
   const [disconnecting, setDisconnecting] = useState<{id: string; provider: IdentityProvider}>(), [busy, setBusy] = useState(false);
   const [connected, setConnected] = useState<IdentityProvider>();
@@ -44,7 +45,7 @@ export function SecurityPanel({account, api, identity, username, identityTransac
       const value = await api.security(controller.signal);
       if (!controller.signal.aborted) setState(value);
     })().catch(value => { if (!controller.signal.aborted) setError(value); });
-    void account.client.options(controller.signal).then(value => { if (!controller.signal.aborted) setOffered(value.providers.filter(item => item.enabled).map(item => item.id)); }, () => {});
+    void account.client.options(controller.signal).then(value => { if (!controller.signal.aborted) {setOffered(value.providers.filter(item => item.enabled).map(item => item.id));setProviderReady(value.credentialProviderReauthentication==='account-settings-v1'&&accountSecurityBrowserAvailable());} }, () => {});
     return () => controller.abort();
   }, [api, account, scope, identity, identityTransaction]);
   const work = async (operation: (token: string, signal: AbortSignal) => Promise<void>) => {
@@ -73,7 +74,7 @@ export function SecurityPanel({account, api, identity, username, identityTransac
     const session = account.service.getSnapshot().session;
     return !!life.current && !life.current.signal.aborted && !!session && sameAccount(accountIdentity(session), identity);
   }, [account, scope, identity]);
-  const credentialAvailable = !retained && state && (state.hasPassword || state.providers.some(v => v.revision));
+  const credentialAvailable = !retained && state && (state.hasPassword || providerReady && state.providers.some(v => v.revision && offered.includes(v.provider)));
   const onlyProvider = state && !state.hasPassword && state.providers.length === 1;
   return <>{parentError || error ? <HostedError error={parentError ?? error} /> : null}
     {connected && <ServicesNotice tone="success">{t('web.hostedSecurity.providerConnected', {provider: providerName(connected)})}</ServicesNotice>}
@@ -92,7 +93,7 @@ export function SecurityPanel({account, api, identity, username, identityTransac
         {offered.filter(provider => !state.providers.some(item => item.provider === provider)).sort((a, b) => a.localeCompare(b)).map(provider => <ServicesWorkspaceRow key={provider} icon={provider === 'apple' ? 'i-apple' : 'i-google'} title={t('web.hostedSecurity.signInWith', {provider: providerName(provider)})}
           help={t('web.hostedSecurity.connectHelp', {provider: providerName(provider)})}><Button size="small" disabled={busy || Boolean(retained)} onClick={() => void connect(provider)}>{t('web.hostedSecurity.connect')}</Button></ServicesWorkspaceRow>)}
       </ServicesGroup>
-      {!state.hasPassword && <ServicesNotice tone="info">{t(state.providers.some(v=>v.revision)?'web.hostedSecurity.providerConfirm':'web.hostedSecurity.providerOnly')}</ServicesNotice>}
+      {!state.hasPassword && <ServicesNotice tone="info">{t((retained || providerReady && state.providers.some(v=>v.revision&&offered.includes(v.provider)))?'web.hostedSecurity.providerConfirm':'web.hostedSecurity.providerOnly')}</ServicesNotice>}
       <ServicesGroup title={t('web.twoStep.title')} description={t('web.hostedSecurity.twoStepHelp')}>
         <ServicesWorkspaceRow phoneIcon={state.mfaEnabled ? 'i-shieldok' : 'i-shield'} phoneTone={state.mfaEnabled ? 'green' : undefined} title={t('web.twoStep.title')} badge={<ServicesBadge tone={state.mfaEnabled ? 'healthy' : 'default'}>{t(state.mfaEnabled ? 'web.hostedSecurity.on' : 'web.hostedSecurity.off')}</ServicesBadge>}
           help={state.mfaEnabled ? t('web.hostedSecurity.codesLeft', {count: state.recoveryCodesRemaining}) : t('web.hostedSecurity.recommended')}>
@@ -102,7 +103,7 @@ export function SecurityPanel({account, api, identity, username, identityTransac
       </ServicesGroup>
       <AccountExportRow account={account} api={api} identity={identity}/>
       <ServicesGroup title={t('web.deleteAccount.title')} danger><ServicesWorkspaceRow phoneIcon="i-trash" title={t('web.deleteAccount.row')} help={t('web.deleteAccount.help')}><ServicesDangerAction compact icon="i-trash" disabled={Boolean(retained)} onClick={() => setDeleting(true)}>{t('web.deleteAccount.action')}</ServicesDangerAction></ServicesWorkspaceRow></ServicesGroup>
-      {task && !state.hasPassword && <ProviderSecurityStartDialog key={task} account={account} identity={identity} state={state} task={task} isCurrent={taskCurrent} onClose={() => {setTask(undefined); void api.security(life.current?.signal).then(setState,setError);}}/>}
+      {task && !state.hasPassword && <ProviderSecurityStartDialog key={task} account={account} identity={identity} state={state} task={task} enabledProviders={offered} isCurrent={taskCurrent} onClose={() => {setTask(undefined); void api.security(life.current?.signal).then(setState,setError);}}/>}
       {task && state.hasPassword && <SecurityTask key={task} account={account} identity={identity} state={state} task={task} onSecurityEnded={onSecurityEnded} onClose={() => { setTask(undefined); void api.security(life.current?.signal).then(setState, setError); }} />}
       {deleting && <DeleteAccount account={account} identity={identity} target={state.contactAddress || username} onDeleted={onDeleted} onClose={() => setDeleting(false)} />}
     </>}

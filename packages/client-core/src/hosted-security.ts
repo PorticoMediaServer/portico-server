@@ -9,7 +9,7 @@ export type AccountMode = 'browser' | 'native';
 /** `nativeCompletion` (SEC-01): the service returns a native provider sign-in with a completion code
  * when the start asks for it. Only a service that says so is asked: an older one refuses unknown
  * start fields. */
-export type IdentityOptions = {password:boolean;registration:boolean;recovery:boolean;accountSecurity:boolean;verifiedContactRequired:boolean;nativeCompletion?:'code';providers:{id:IdentityProvider;enabled:boolean;native:boolean;nativeClientIds:string[]}[]};
+export type IdentityOptions = {credentialProviderReauthentication?:'account-settings-v1';password:boolean;registration:boolean;recovery:boolean;accountSecurity:boolean;verifiedContactRequired:boolean;nativeCompletion?:'code';providers:{id:IdentityProvider;enabled:boolean;native:boolean;nativeClientIds:string[]}[]};
 export type IdentityTransaction = {transactionId:string;provider:IdentityProvider;mode:'login'|'reauthenticate'|'link';status:'started'|'exchanging'|'onboarding'|'contact_pending'|'verified'|'completed'|'proof_issued'|'failed';expiresAt:string;contactVerified:boolean;needsUsername:boolean;onboardingToken?:string;suggestedName?:string;verifiedEmail?:string;mfaRequired:boolean;securityReturn?:true};
 export type Registration = {kind:'registration';registrationId:string;status:'contact_pending'|'verified'|'completed';revision:string;maskedAddress:string;expiresAt:string;contactVerified:boolean};
 export type MFAChallenge = {mfaRequired:true;challengeId:string;challengeToken:string;expiresAt:string};
@@ -46,7 +46,7 @@ export function parseIdentityOptions(v:unknown):IdentityOptions {
  if(!object(v)||!Array.isArray(v.providers)||v.providers.length>2)return invalid();
  const providers=v.providers.map(p=>{if(!object(p))return invalid();return{id:provider(p.id),enabled:boolean(p.enabled),native:p.native===true,nativeClientIds:Array.isArray(p.nativeClientIds)&&p.nativeClientIds.length<=8?p.nativeClientIds.map(x=>text(x,255)):[]};});
  if(new Set(providers.map(p=>p.id)).size!==providers.length)return invalid();
- return{password:boolean(v.password),registration:v.registration===true,recovery:v.recovery===true,accountSecurity:v.accountSecurity===true,verifiedContactRequired:boolean(v.verifiedContactRequired),...(v.nativeCompletion==='code'?{nativeCompletion:'code' as const}:{}),providers};
+ return{...(v.credentialProviderReauthentication==='account-settings-v1'?{credentialProviderReauthentication:'account-settings-v1' as const}:{}),password:boolean(v.password),registration:v.registration===true,recovery:v.recovery===true,accountSecurity:v.accountSecurity===true,verifiedContactRequired:boolean(v.verifiedContactRequired),...(v.nativeCompletion==='code'?{nativeCompletion:'code' as const}:{}),providers};
 }
 export function parseIdentityTransaction(v:unknown,expected?:string):IdentityTransaction {
  if(!object(v))return invalid();const transactionId=identifier(v.transactionId);

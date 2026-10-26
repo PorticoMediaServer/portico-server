@@ -42,8 +42,7 @@ async function start() {
   let normal: {App: typeof import('./App')['App']; Bootstrap: typeof import('./shell/bootstrap')['ShellBootstrap']; assemble: typeof import('./shell/assembly')['assembleShellBindings']} | undefined;
   return lifetime.start(async signal => {
     if (securityEntry) return;
-    const page = new URL(location.href);
-    if (page.pathname === '/settings' && page.searchParams.get('scope') === 'account' && page.searchParams.get('section') === 'profile') await retireOrdinarySecurityOpening().catch(() => undefined);
+    await retireOrdinarySecurityOpening().catch(() => undefined);
     signal.throwIfAborted();
     try { await initializeAppInstallation(import.meta.env.VITE_APP_VERSION ?? '', signal); }
     catch (error) { signal.throwIfAborted(); failure = {error}; }

@@ -1,5 +1,5 @@
 import {useLayoutEffect, useRef, useState} from 'react';
-import type {SecurityState} from '@core/hosted-security.ts';
+import type {SecurityState, IdentityProvider} from '@core/hosted-security.ts';
 import {Button} from '../kit/controls';
 import {Dialog} from '../kit/overlays';
 import {HostedError} from '../kit/accounts/ServicesAuth';
@@ -18,9 +18,9 @@ export function credentialTaskTitle(task: HostedSecurityTaskKind, hasPassword = 
 
 /** Existing Account Settings owns this dialog. Only the selected provider and
  * original credential task cross the whole-tab navigation in protected storage. */
-export function ProviderSecurityStartDialog({account, identity, state, task, onClose, isCurrent, server}: {
+export function ProviderSecurityStartDialog({account, identity, state, task, enabledProviders, onClose, isCurrent, server}: {
   account: ServicesAccount; identity: AccountIdentity; state: SecurityState; task: HostedSecurityTaskKind;
-  onClose: () => void; isCurrent: () => boolean; server?: Readonly<{accountId: string; profileId: string}>;
+  enabledProviders: readonly IdentityProvider[]; onClose: () => void; isCurrent: () => boolean; server?: Readonly<{accountId: string; profileId: string}>;
 }) {
   const {t} = servicesI18n(), [email, setEmail] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState<unknown>();
   type Opening = {live: boolean; busy: boolean; leaving?: boolean; record?: AccountSecurityPending};
@@ -56,7 +56,7 @@ export function ProviderSecurityStartDialog({account, identity, state, task, onC
     } catch (value) {original.leaving = false; if (active(original)) setError(value);}
     finally {original.busy = false; if (active(original)) setBusy(false);}
   };
-  const providers = state.providers.filter(v => v.revision && (!current.current?.record || v.id === current.current.record.original.provider.id));
+  const providers = state.providers.filter(v => v.revision && enabledProviders.includes(v.provider) && (!current.current?.record || v.id === current.current.record.original.provider.id));
   const locked = busy || Boolean(current.current?.record);
   return <Dialog open title={credentialTaskTitle(task)} className={styles.overlaySpacing} showCloseButton={false} onOpenChange={open => {if (!open) void close();}}
     footer={<Button size="small" disabled={busy} onClick={() => void close()}>{t('action.cancel')}</Button>}>

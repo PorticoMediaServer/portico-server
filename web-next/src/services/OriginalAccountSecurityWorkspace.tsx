@@ -1,4 +1,4 @@
-import {useLayoutEffect, useState, type ReactNode} from 'react';
+import {useLayoutEffect, useRef, useState, type ReactNode} from 'react';
 import {CredentialSessionService, type CredentialRecord} from '@core/index.ts';
 import {parseBrowserCredentialRecord, type BrowserCredentialAuthority} from '@core/credential-format.ts';
 import {HostedAccountClient} from '@core/hosted-security.ts';
@@ -41,10 +41,13 @@ async function hostedReadView(proof: OriginalProviderSecurity, signal: AbortSign
 /** The same Account Settings page remains behind its canonical credential
  * dialog. Only original existing access is restored, with no normal bootstrap
  * renewal or new sign-in grant. Closing creates a normal new page opening. */
-export function OriginalAccountSecurityWorkspace({proof, children}: {proof: OriginalProviderSecurity; children: ReactNode}) {
+export function OriginalAccountSecurityWorkspace({proof, children, onRetired}: {proof: OriginalProviderSecurity; children: ReactNode; onRetired: () => void}) {
+  const retired = useRef(onRetired);retired.current=onRetired;
   const [page, setPage] = useState<ReactNode>(), [error, setError] = useState<unknown>();
   useLayoutEffect(() => {
-    const life = new AbortController(); let retire: (() => void) | undefined;
+    const life = new AbortController(); let retire: (() => void) | undefined, offRoute: (() => void) | undefined;
+    const moved = () => {if (!life.signal.aborted && !proof.current()) retired.current();};
+    addEventListener('popstate',moved);
     const current = () => !life.signal.aborted && proof.current();
     void (async () => {
       if (!proof.original.server) {
@@ -54,7 +57,7 @@ export function OriginalAccountSecurityWorkspace({proof, children}: {proof: Orig
       }
       const original = proof.original.server, origin = proof.pending.prepare?.origin;
       if (!origin) ended();
-      const [app, shell, assembly] = await Promise.all([import('../App'), import('../shell/bootstrap'), import('../shell/assembly')]);
+      const [app, shell, assembly, routes] = await Promise.all([import('../App'), import('../shell/bootstrap'), import('../shell/assembly'), import('../router')]);
       life.signal.throwIfAborted();
       const bootstrap = new shell.ShellBootstrap(assembly.assembleShellBindings, {
         selected: {read: async () => proof.withUIRead(async () => selectedViewerRecord(origin, original.session), life.signal)},
@@ -64,11 +67,12 @@ export function OriginalAccountSecurityWorkspace({proof, children}: {proof: Orig
         },
         readonlyAccess: true,
       });
+      offRoute=routes.router.subscribe('onBeforeNavigate',event=>{if(!proof.acceptsUIURL(event.toLocation.href))retired.current();});
       retire = bootstrap.dispose;
       if (!current()) {retire();return;}
       setPage(<app.App bootstrap={bootstrap}/>);
     })().catch(value => {if (!life.signal.aborted) setError(value);});
-    return () => {life.abort();retire?.();};
+    return () => {life.abort();removeEventListener('popstate',moved);offRoute?.();retire?.();};
   }, [proof]);
   return <OriginalAccountSecurityContext value={proof}>
     {page ?? <ServicesAuthStage>{error ? <HostedError error={error}/> : null}</ServicesAuthStage>}

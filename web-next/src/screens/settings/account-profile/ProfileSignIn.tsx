@@ -2,7 +2,7 @@ import {useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import {defaultI18n} from '@i18n';
 import {IdentityClient, type TwoFactorEnrolment} from '@core/identity-client.ts';
 import type {TwoFactorState} from '@core/identity-restrictions.ts';
-import type {SecurityState} from '@core/hosted-security.ts';
+import type {SecurityState, IdentityProvider} from '@core/hosted-security.ts';
 import type {ProfileAPI} from '@core/profile-management.ts';
 import {passwordStrength} from '@core/password-strength.ts';
 import {Button, Switch, TextField} from '../../../kit/controls';
@@ -13,6 +13,7 @@ import {AuthCodeBoxes} from '../../../kit/accounts';
 import {HostedError, ServicesQuiet} from '../../../kit/accounts/ServicesAuth';
 import {ServicesAuthenticator, ServicesRecoveryCodes} from '../../../kit/accounts/ServicesWorkspace';
 import {servicesAccount, accountIdentity, currentAccountWork, sameAccount, type AccountIdentity, type ServicesAccount} from '../../../services/session';
+import {accountSecurityBrowserAvailable} from '../../../platform/account-security-policy';
 import {useOriginalAccountSecurity} from '../../../platform/account-security-context';
 import {ProviderSecurityStartDialog} from '../../../services/ProviderSecurityStartDialog';
 import {HostedSecurityTask, type HostedSecurityTaskKind} from '../../../services/SecurityPanel';
@@ -28,7 +29,7 @@ type Task='password'|'enrol'|'disable'|'codes';
 type Opening={
   live:boolean;busy:boolean;readonly abort:AbortController;readonly current:()=>boolean;
   readonly local:IdentityClient;readonly accountId:string;readonly revision:number;readonly link:string;
-  hosted?:ServicesAccount;identity?:AccountIdentity;
+  hosted?:ServicesAccount;identity?:AccountIdentity;providerReady?:boolean;enabledProviders?:IdentityProvider[];
 };
 type LocalIntent={readonly owner:Opening;readonly task:Task;live:boolean;enrolPassword?:string};
 type HostedIntent={readonly owner:Opening;readonly kind:HostedSecurityTaskKind;readonly id:number;readonly current:()=>boolean};
@@ -77,19 +78,19 @@ export function ProfileSignIn({profiles,api,commandApi,signIn,isCurrent,onEnded,
     if(providerReturn){
      const original=providerReturn.original;
      if(!providerReturn.current()||!original.server||original.server.session.viewer.accountId!==expected.accountId||original.server.session.viewer.profileId!==expected.profileId||original.session.account.id!==expected.link)throw ended();
-     held.identity=Object.freeze({accountId:original.session.account.id,familyId:original.session.familyId!});setHostedState(original.state);return;
+     held.identity=Object.freeze({accountId:original.session.account.id,familyId:original.session.familyId!});held.providerReady=true;held.enabledProviders=[original.provider.provider];setHostedState(original.state);return;
     }
     // This branch alone touches Hosted. A local account performs zero Hosted IO.
     const hosted=servicesAccount();held.hosted=hosted;
     const result=await currentAccountWork(hosted,async session=>{
      if(!held.current()||session.account.id!==expected.link)throw ended();
      const identity=Object.freeze(accountIdentity(session));
-     const state=await hosted.client.state(identity,session.accessToken,abort.signal);
+     const [state,options]=await Promise.all([hosted.client.state(identity,session.accessToken,abort.signal),hosted.client.options(abort.signal)]);
      if(!held.current())throw ended();
-     return {identity,state};
+     return {identity,state,options};
     });
     if(!held.current())return;
-    held.identity=result.identity;setHostedState(result.state);
+    held.identity=result.identity;held.providerReady=result.options.credentialProviderReauthentication==='account-settings-v1'&&accountSecurityBrowserAvailable();held.enabledProviders=result.options.providers.filter(v=>v.enabled).map(v=>v.id);setHostedState(result.state);
    }
   })().catch(failure=>{if(held.current())setError(failure);});
   return()=>{held.live=false;const intent=localIntentRef.current;if(intent?.owner===held){intent.live=false;intent.enrolPassword=undefined;localIntentRef.current=undefined;}if(hostedIntentRef.current?.owner===held)hostedIntentRef.current=undefined;abort.abort();if(active.current===held)active.current=undefined;};
@@ -103,7 +104,7 @@ export function ProfileSignIn({profiles,api,commandApi,signIn,isCurrent,onEnded,
  const intentCurrent=(value:LocalIntent|undefined)=>!!held&&!!value&&value.live&&value.owner===held&&localIntentRef.current===value&&held.current();
  const close=()=>{if(!held||held.busy||!intentCurrent(intent))return;intent!.live=false;intent!.enrolPassword=undefined;localIntentRef.current=undefined;setTask(undefined);setEnrolment(undefined);setCodes(undefined);clearSecrets();setError(undefined);};
  const openHosted=(kind:HostedSecurityTaskKind)=>{
-  if(!held||held.busy||localIntentRef.current||hostedIntentRef.current||!hostedCurrent()||!hostedState||!hostedState.hasPassword&&!hostedState.providers.some(v=>v.revision))return;
+  if(!held||held.busy||localIntentRef.current||hostedIntentRef.current||!hostedCurrent()||!hostedState||!hostedState.hasPassword&&!(held.providerReady&&hostedState.providers.some(v=>v.revision&&held.enabledProviders?.includes(v.provider))))return;
   const next:HostedIntent={owner:held,kind,id:++sequence.current,current:()=>hostedIntentRef.current===next&&held.current()};
   hostedIntentRef.current=next;setHostedTask(next);
  };
@@ -146,7 +147,7 @@ export function ProfileSignIn({profiles,api,commandApi,signIn,isCurrent,onEnded,
  const mfa=signIn==='local'?factor?.enabled:hostedState?.mfaEnabled;
  const remaining=signIn==='local'?factor?.recoveryCodesRemaining:hostedState?.recoveryCodesRemaining;
  useLayoutEffect(()=>{if(held?.current())onFacts?.({mfa,remaining,email:hostedState?.contactAddress});},[held,mfa,remaining,hostedState?.contactAddress,onFacts]);
- const available=!!held&&(signIn==='local'?!!factor:!!hostedState&&hostedCurrent()&&(hostedState.hasPassword||hostedState.providers.some(v=>v.revision)));
+ const available=!!held&&(signIn==='local'?!!factor:!!hostedState&&hostedCurrent()&&(hostedState.hasPassword||held.providerReady&&hostedState.providers.some(v=>v.revision&&held.enabledProviders?.includes(v.provider))));
  const guardField=(change:(value:string)=>void)=>(value:string)=>{if(intentCurrent(intent)&&!held!.busy)change(value);};
  const ready=!!held&&!busy&&(task==='password'?!!password&&passwordStrength(next).acceptable&&(!factor?.enabled||!!code.trim()):task==='enrol'?enrolment?!!intent?.enrolPassword&&code.length===6:!!password:!!password&&!!code.trim());
  const title=t(task==='password'?'account.changePasswordTitle':task==='disable'?'web.twoStep.turnOffConfirmTitle':task==='codes'||codes?'web.hostedSecurity.newCodesTitle':enrolment?'web.hostedSecurity.addToAuthenticator':'web.twoStep.turnOnTitle');
@@ -166,8 +167,8 @@ export function ProfileSignIn({profiles,api,commandApi,signIn,isCurrent,onEnded,
   {mfa&&<SettingsRow id="profile.recoveryCodes" dependent label={t('next.settingsSpec.account.profile.groups.5.rows.2.children.0.label')} help={remaining===undefined?undefined:t('web.hostedSecurity.codesLeft',{count:remaining})}>
    <HostedSecurityAction label={t('next.settingsSpec.account.profile.groups.5.rows.2.children.0.control.label')} disabled={!available||busy} onOpen={()=>open('codes')}/>
   </SettingsRow>}
-  {hostedState&&!hostedState.hasPassword&&<ServicesQuiet>{t(hostedState.providers.some(v=>v.revision)?'web.hostedSecurity.providerConfirm':'web.hostedSecurity.providerOnly')}</ServicesQuiet>}
-  {held&&held.hosted&&held.identity&&hostedState&&!hostedState.hasPassword&&hostedTask&&hostedTask.current()&&<ProviderSecurityStartDialog key={hostedTask.id} account={held.hosted} identity={held.identity} state={hostedState} task={hostedTask.kind} isCurrent={hostedTask.current} server={{accountId:held.accountId,profileId:profiles.getSnapshot().inUseId??''}} onClose={()=>{if(hostedTask.current()){hostedIntentRef.current=undefined;setHostedTask(undefined);setRetry(value=>value+1);}}}/>}
+  {hostedState&&!hostedState.hasPassword&&<ServicesQuiet>{t(held?.providerReady&&hostedState.providers.some(v=>v.revision&&held.enabledProviders?.includes(v.provider))?'web.hostedSecurity.providerConfirm':'web.hostedSecurity.providerOnly')}</ServicesQuiet>}
+  {held&&held.hosted&&held.identity&&hostedState&&!hostedState.hasPassword&&hostedTask&&hostedTask.current()&&<ProviderSecurityStartDialog key={hostedTask.id} account={held.hosted} identity={held.identity} state={hostedState} task={hostedTask.kind} enabledProviders={held.enabledProviders??[]} isCurrent={hostedTask.current} server={{accountId:held.accountId,profileId:profiles.getSnapshot().inUseId??''}} onClose={()=>{if(hostedTask.current()){hostedIntentRef.current=undefined;setHostedTask(undefined);setRetry(value=>value+1);}}}/>}
   {held&&held.hosted&&held.identity&&hostedState&&hostedState.hasPassword&&hostedTask&&hostedTask.current()&&<HostedSecurityTask key={hostedTask.id} account={held.hosted} identity={held.identity} state={hostedState} task={hostedTask.kind} isCurrent={hostedTask.current}
    onClose={()=>{if(hostedTask.current()){hostedIntentRef.current=undefined;setHostedTask(undefined);setRetry(value=>value+1);}}}
    onSecurityEnded={values=>{if(hostedTask.current()){
