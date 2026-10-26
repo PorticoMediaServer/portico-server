@@ -118240,7 +118240,8 @@
                     "cbz",
                     "mobi",
                     "azw3",
-                    "cb7"
+                    "cb7",
+                    "cbr"
                   ],
                   "type": "string"
                 },
@@ -150553,7 +150554,8 @@
                         "cbz",
                         "mobi",
                         "azw3",
-                        "cb7"
+                        "cb7",
+                        "cbr"
                       ],
                       "type": "string"
                     },
@@ -150677,7 +150679,8 @@
                             "epub",
                             "pdf",
                             "cbz",
-                            "cb7"
+                            "cb7",
+                            "cbr"
                           ],
                           "type": "string"
                         },
@@ -150794,7 +150797,8 @@
                           "cbz",
                           "mobi",
                           "azw3",
-                          "cb7"
+                          "cb7",
+                          "cbr"
                         ],
                         "type": "string"
                       },
@@ -150957,7 +150961,8 @@
                               "cbz",
                               "mobi",
                               "azw3",
-                              "cb7"
+                              "cb7",
+                              "cbr"
                             ],
                             "type": "string"
                           },
@@ -151135,7 +151140,8 @@
                                 "cbz",
                                 "mobi",
                                 "azw3",
-                                "cb7"
+                                "cb7",
+                                "cbr"
                               ],
                               "type": "string"
                             },
@@ -151327,7 +151333,8 @@
                                 "cbz",
                                 "mobi",
                                 "azw3",
-                                "cb7"
+                                "cb7",
+                                "cbr"
                               ],
                               "type": "string"
                             },
@@ -151506,7 +151513,8 @@
                               "cbz",
                               "mobi",
                               "azw3",
-                              "cb7"
+                              "cb7",
+                              "cbr"
                             ],
                             "type": "string"
                           },
@@ -151761,7 +151769,8 @@
                     "cbz",
                     "mobi",
                     "azw3",
-                    "cb7"
+                    "cb7",
+                    "cbr"
                   ],
                   "type": "string"
                 },
@@ -151950,7 +151959,8 @@
                             "cbz",
                             "mobi",
                             "azw3",
-                            "cb7"
+                            "cb7",
+                            "cbr"
                           ],
                           "type": "string"
                         },
@@ -152193,7 +152203,8 @@
                         "cbz",
                         "mobi",
                         "azw3",
-                        "cb7"
+                        "cb7",
+                        "cbr"
                       ],
                       "type": "string"
                     },
@@ -152554,7 +152565,8 @@
                     "cbz",
                     "mobi",
                     "azw3",
-                    "cb7"
+                    "cb7",
+                    "cbr"
                   ],
                   "type": "string"
                 },
@@ -152813,7 +152825,8 @@
                           "enum": [
                             "pdf",
                             "cbz",
-                            "cb7"
+                            "cb7",
+                            "cbr"
                           ],
                           "type": "string"
                         },
@@ -152973,7 +152986,8 @@
                           "epub",
                           "pdf",
                           "cbz",
-                          "cb7"
+                          "cb7",
+                          "cbr"
                         ],
                         "type": "string"
                       },
@@ -201607,7 +201621,8 @@
                                 "epub",
                                 "pdf",
                                 "cbz",
-                                "cb7"
+                                "cb7",
+                                "cbr"
                               ],
                               "type": "string"
                             },
@@ -220647,6 +220662,34 @@
         "required": [],
         "type": "object"
       },
+      "PostDirectSecurityReturnCheckRequest": {
+        "properties": {
+          "context": {
+            "properties": {
+              "payload": {
+                "type": "string"
+              },
+              "signature": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "payload",
+              "signature"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "context"
+        ],
+        "type": "object"
+      },
+      "PostDirectSecurityReturnCheckResponse": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
       "PostDirectSecurityReturnConfirmRequest": {
         "properties": {
           "code": {
@@ -220717,11 +220760,19 @@
           "providerRevision": {
             "type": "string"
           },
+          "purpose": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
           "taskId": {
             "type": "string"
           }
         },
         "required": [
+          "purpose",
+          "target",
           "origin",
           "openingId",
           "taskId",
@@ -234573,6 +234624,31 @@
                   "pageIndex"
                 ],
                 "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "format": {
+                    "const": "cbr",
+                    "type": "string"
+                  },
+                  "pageIndex": {
+                    "maximum": 1000000,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "progression": {
+                    "maximum": 1,
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "format",
+                  "progression",
+                  "pageIndex"
+                ],
+                "type": "object"
               }
             ]
           },
@@ -234630,7 +234706,8 @@
                           "epub",
                           "pdf",
                           "cbz",
-                          "cb7"
+                          "cb7",
+                          "cbr"
                         ],
                         "type": "string"
                       },
@@ -234793,7 +234870,8 @@
                           "epub",
                           "pdf",
                           "cbz",
-                          "cb7"
+                          "cb7",
+                          "cbr"
                         ],
                         "type": "string"
                       },
@@ -235035,6 +235113,31 @@
                           "pageIndex"
                         ],
                         "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "format": {
+                            "const": "cbr",
+                            "type": "string"
+                          },
+                          "pageIndex": {
+                            "maximum": 1000000,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "progression": {
+                            "maximum": 1,
+                            "minimum": 0,
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "format",
+                          "progression",
+                          "pageIndex"
+                        ],
+                        "type": "object"
                       }
                     ]
                   },
@@ -235233,7 +235336,8 @@
               "epub",
               "pdf",
               "cbz",
-              "cb7"
+              "cb7",
+              "cbr"
             ],
             "type": "string"
           },
@@ -249554,7 +249658,8 @@
                         "enum": [
                           "pdf",
                           "cbz",
-                          "cb7"
+                          "cb7",
+                          "cbr"
                         ],
                         "type": "string"
                       },
@@ -249673,7 +249778,8 @@
                   "epub",
                   "pdf",
                   "cbz",
-                  "cb7"
+                  "cb7",
+                  "cbr"
                 ],
                 "type": "string"
               },
@@ -249718,7 +249824,8 @@
                           "epub",
                           "pdf",
                           "cbz",
-                          "cb7"
+                          "cb7",
+                          "cbr"
                         ],
                         "type": "string"
                       },
@@ -255709,7 +255816,8 @@
                                 "epub",
                                 "pdf",
                                 "cbz",
-                                "cb7"
+                                "cb7",
+                                "cbr"
                               ],
                               "type": "string"
                             },
@@ -256094,7 +256202,8 @@
                                 "epub",
                                 "pdf",
                                 "cbz",
-                                "cb7"
+                                "cb7",
+                                "cbr"
                               ],
                               "type": "string"
                             },
@@ -348955,6 +349064,94 @@
         "x-scope": "session"
       }
     },
+    "/v1/direct/security-return/check": {
+      "post": {
+        "operationId": "post_direct_security_return_check",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "context": {
+                    "properties": {
+                      "payload": {
+                        "type": "string"
+                      },
+                      "signature": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "payload",
+                      "signature"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "context"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Check only the original Account Settings UI return scope",
+        "x-access": "device",
+        "x-admission": "security-fence",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "sign_in_kind_local",
+          "portico_services_unavailable",
+          "password_change_required",
+          "factor_setup_required",
+          "internal"
+        ],
+        "x-lane": "security",
+        "x-max-body-bytes": 65536,
+        "x-scope": "session"
+      }
+    },
     "/v1/direct/security-return/confirm": {
       "post": {
         "operationId": "post_direct_security_return_confirm",
@@ -349100,11 +349297,19 @@
                   "providerRevision": {
                     "type": "string"
                   },
+                  "purpose": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "string"
+                  },
                   "taskId": {
                     "type": "string"
                   }
                 },
                 "required": [
+                  "purpose",
+                  "target",
                   "origin",
                   "openingId",
                   "taskId",
@@ -353552,7 +353757,8 @@
                                           "epub",
                                           "pdf",
                                           "cbz",
-                                          "cb7"
+                                          "cb7",
+                                          "cbr"
                                         ],
                                         "type": "string"
                                       },
@@ -353852,7 +354058,8 @@
                                           "epub",
                                           "pdf",
                                           "cbz",
-                                          "cb7"
+                                          "cb7",
+                                          "cbr"
                                         ],
                                         "type": "string"
                                       },
@@ -354296,7 +354503,8 @@
                                           "epub",
                                           "pdf",
                                           "cbz",
-                                          "cb7"
+                                          "cb7",
+                                          "cbr"
                                         ],
                                         "type": "string"
                                       },
@@ -457695,7 +457903,8 @@
                               "cbz",
                               "mobi",
                               "azw3",
-                              "cb7"
+                              "cb7",
+                              "cbr"
                             ],
                             "type": "string"
                           },
@@ -481426,7 +481635,8 @@
                                       "cbz",
                                       "mobi",
                                       "azw3",
-                                      "cb7"
+                                      "cb7",
+                                      "cbr"
                                     ],
                                     "type": "string"
                                   },
@@ -481789,7 +481999,8 @@
                                   "cbz",
                                   "mobi",
                                   "azw3",
-                                  "cb7"
+                                  "cb7",
+                                  "cbr"
                                 ],
                                 "type": "string"
                               },
@@ -482102,7 +482313,8 @@
                               "cbz",
                               "mobi",
                               "azw3",
-                              "cb7"
+                              "cb7",
+                              "cbr"
                             ],
                             "type": "string"
                           },
@@ -534868,7 +535080,8 @@
                                   "cbz",
                                   "mobi",
                                   "azw3",
-                                  "cb7"
+                                  "cb7",
+                                  "cbr"
                                 ],
                                 "type": "string"
                               },
@@ -534992,7 +535205,8 @@
                                       "epub",
                                       "pdf",
                                       "cbz",
-                                      "cb7"
+                                      "cb7",
+                                      "cbr"
                                     ],
                                     "type": "string"
                                   },
@@ -535215,7 +535429,8 @@
                                     "cbz",
                                     "mobi",
                                     "azw3",
-                                    "cb7"
+                                    "cb7",
+                                    "cbr"
                                   ],
                                   "type": "string"
                                 },
@@ -535378,7 +535593,8 @@
                                         "cbz",
                                         "mobi",
                                         "azw3",
-                                        "cb7"
+                                        "cb7",
+                                        "cbr"
                                       ],
                                       "type": "string"
                                     },
@@ -535556,7 +535772,8 @@
                                           "cbz",
                                           "mobi",
                                           "azw3",
-                                          "cb7"
+                                          "cb7",
+                                          "cbr"
                                         ],
                                         "type": "string"
                                       },
@@ -535748,7 +535965,8 @@
                                           "cbz",
                                           "mobi",
                                           "azw3",
-                                          "cb7"
+                                          "cb7",
+                                          "cbr"
                                         ],
                                         "type": "string"
                                       },
@@ -535927,7 +536145,8 @@
                                         "cbz",
                                         "mobi",
                                         "azw3",
-                                        "cb7"
+                                        "cb7",
+                                        "cbr"
                                       ],
                                       "type": "string"
                                     },
@@ -536195,7 +536414,8 @@
                               "cbz",
                               "mobi",
                               "azw3",
-                              "cb7"
+                              "cb7",
+                              "cbr"
                             ],
                             "type": "string"
                           },
@@ -536492,6 +536712,31 @@
                           "pageIndex"
                         ],
                         "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "format": {
+                            "const": "cbr",
+                            "type": "string"
+                          },
+                          "pageIndex": {
+                            "maximum": 1000000,
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "progression": {
+                            "maximum": 1,
+                            "minimum": 0,
+                            "type": "number"
+                          }
+                        },
+                        "required": [
+                          "format",
+                          "progression",
+                          "pageIndex"
+                        ],
+                        "type": "object"
                       }
                     ]
                   },
@@ -536549,7 +536794,8 @@
                                   "epub",
                                   "pdf",
                                   "cbz",
-                                  "cb7"
+                                  "cb7",
+                                  "cbr"
                                 ],
                                 "type": "string"
                               },
@@ -536712,7 +536958,8 @@
                                   "epub",
                                   "pdf",
                                   "cbz",
-                                  "cb7"
+                                  "cb7",
+                                  "cbr"
                                 ],
                                 "type": "string"
                               },
@@ -536943,6 +537190,31 @@
                                   "properties": {
                                     "format": {
                                       "const": "cb7",
+                                      "type": "string"
+                                    },
+                                    "pageIndex": {
+                                      "maximum": 1000000,
+                                      "minimum": 0,
+                                      "type": "integer"
+                                    },
+                                    "progression": {
+                                      "maximum": 1,
+                                      "minimum": 0,
+                                      "type": "number"
+                                    }
+                                  },
+                                  "required": [
+                                    "format",
+                                    "progression",
+                                    "pageIndex"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "format": {
+                                      "const": "cbr",
                                       "type": "string"
                                     },
                                     "pageIndex": {
@@ -537597,7 +537869,8 @@
                         "epub",
                         "pdf",
                         "cbz",
-                        "cb7"
+                        "cb7",
+                        "cbr"
                       ],
                       "type": "string"
                     },
@@ -538019,7 +538292,8 @@
                                     "enum": [
                                       "pdf",
                                       "cbz",
-                                      "cb7"
+                                      "cb7",
+                                      "cbr"
                                     ],
                                     "type": "string"
                                   },
@@ -538318,7 +538592,8 @@
                                 "enum": [
                                   "pdf",
                                   "cbz",
-                                  "cb7"
+                                  "cb7",
+                                  "cbr"
                                 ],
                                 "type": "string"
                               },
@@ -538855,7 +539130,8 @@
                                     "epub",
                                     "pdf",
                                     "cbz",
-                                    "cb7"
+                                    "cb7",
+                                    "cbr"
                                   ],
                                   "type": "string"
                                 },
@@ -539011,7 +539287,8 @@
                           "epub",
                           "pdf",
                           "cbz",
-                          "cb7"
+                          "cb7",
+                          "cbr"
                         ],
                         "type": "string"
                       },
@@ -539064,7 +539341,8 @@
                                     "epub",
                                     "pdf",
                                     "cbz",
-                                    "cb7"
+                                    "cb7",
+                                    "cbr"
                                   ],
                                   "type": "string"
                                 },

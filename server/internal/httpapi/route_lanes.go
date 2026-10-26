@@ -566,6 +566,7 @@ var routeLanes = map[string]string{
 	"POST /v1/direct/profiles/{id}/select":                                        "auth",
 	"POST /v1/direct/remembered-accounts":                                         "auth",
 	"POST /v1/direct/security-return/cancel":                                      "security-fence",
+	"POST /v1/direct/security-return/check":                                       "security-fence",
 	"POST /v1/direct/security-return/confirm":                                     "security-fence",
 	"POST /v1/direct/security-return/prepare":                                     "security-fence",
 	"POST /v1/direct/sessions/sign-out-everywhere":                                "auth",
