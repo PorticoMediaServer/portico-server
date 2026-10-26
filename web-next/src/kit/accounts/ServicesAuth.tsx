@@ -13,8 +13,8 @@ export function ServicesAuthStage({children, variant = 'auth', legal = variant !
   return <AuthStage service legal={legal} shape={variant === 'state' ? 'round' : 'side'} layout={variant === 'state' ? 'center' : 'column'}
     className={styles.stage} contentClassName={[styles.content, styles[variant]].join(' ')}>{children}</AuthStage>;
 }
-export function ServicesHeading({children, singleLine = false}: {children: ReactNode; singleLine?: boolean}) {
-  return <h1 className={styles.heading} data-single-line={singleLine || undefined}>{children}</h1>;
+export function ServicesHeading({children, singleLine = false, phoneAccountForm = false}: {children: ReactNode; singleLine?: boolean; phoneAccountForm?: boolean}) {
+  return <h1 className={styles.heading} data-single-line={singleLine || undefined} data-phone-account-form={phoneAccountForm || undefined}>{children}</h1>;
 }
 export function ServicesLead({children}: {children: ReactNode}) { return <p className={styles.lead}>{children}</p>; }
 export function ServicesQuiet({children}: {children: ReactNode}) { return <p className={styles.quiet}>{children}</p>; }

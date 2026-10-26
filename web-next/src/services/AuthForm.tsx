@@ -65,7 +65,7 @@ function MountedAuthForm({account, flow, initialUsername = '', embedded = false,
     {mode === 'sent' && <ServicesStateIcon tone="info" icon="i-mail" size={26} />}
     {mode === 'ready' && <ServicesStateIcon />}
     {mode === 'provider' && state.provider && <ServicesProviderContext provider={state.provider} email={state.verifiedEmail} />}
-    {!(invitation && mode === 'signin') && <><ServicesHeading singleLine>{title}</ServicesHeading>{mode === 'verify' && state.registration ? <ServicesRegistrationLead address={state.registration.maskedAddress} /> : mode !== 'provider-stopped' && <ServicesLead>{body}</ServicesLead>}</>}
+    {!(invitation && mode === 'signin') && <><ServicesHeading singleLine phoneAccountForm={mode === 'create' || mode === 'forgot'}>{title}</ServicesHeading>{mode === 'verify' && state.registration ? <ServicesRegistrationLead address={state.registration.maskedAddress} /> : mode !== 'provider-stopped' && <ServicesLead>{body}</ServicesLead>}</>}
     {mode === 'signin' && before}
     {mode === 'provider-stopped' && state.provider && <>
       <ServicesNotice icon="i-clock">{t('services.provider.stopped', {provider: t(state.provider === 'apple' ? 'accounts.provider.apple' : 'accounts.provider.google')})}</ServicesNotice>
