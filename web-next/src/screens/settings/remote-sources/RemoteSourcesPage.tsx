@@ -853,6 +853,7 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
     <Button size="compact" variant="primary" loading={finishBusy} disabled={finishBusy || (!!chosen.length && attachMode === 'new' && !libraryName.trim())} onClick={() => void finish()}>{t('next.remoteSources.finish')}</Button>
   </>;
   const doneFooter = <>
+    <Button size="compact" variant="glass" onClick={() => close(true)}>{t('next.remoteSources.done')}</Button>
     <Button size="compact" variant="glass" onClick={reset}>{t('next.remoteSources.addAnother')}</Button>
     {sourceNow && <Button size="compact" variant="primary" onClick={() => {active.current=false;onCreated(sourceNow);}}>{t('next.remoteSources.openSource', {name: sourceNow.name})}</Button>}
   </>;
@@ -1519,14 +1520,7 @@ function ManageSourceLoaded({service, source, api, serverId, viewerId, openSecti
       <ReadingChoices values={pendingValues} origin={source.origin} rangeSupport={source.rangeSupport} disabled={false} onChange={setPendingValues}/>
     </Dialog>
     {picking && <RemoteFolderPicker service={service} sourceId={source.id} sourceName={source.name} open={picking}
-      onOpenChange={setPicking} onChoose={folders => {setPicking(false);void attach(folders);}}/>}    <section className={styles.danger}><h3>{t('next.remoteSources.disconnect')}</h3><p>{t('next.remoteSources.disconnectBody')}</p>
-      {!confirming ? <Button size="compact" variant="text" onClick={() => setConfirming(true)}>{t('next.remoteSources.disconnect')}</Button> : <>
-        <p>{t('next.remoteSources.disconnectConfirm')}</p>
-        <TextField label={t('next.remoteSources.name')} value={typed} disabled={busy} onChange={event => setTyped(event.target.value)}/>
-        <div className={styles.actions}><Button size="compact" variant="glass" disabled={busy} onClick={() => {setConfirming(false);setTyped('');}}>{t('next.remoteSources.cancel')}</Button>
-          <Button size="compact" variant="primary" disabled={busy || typed.trim() !== source.name} onClick={() => void disconnect()}>{t('next.remoteSources.disconnect')}</Button></div>
-      </>}
-    </section>
+      onOpenChange={setPicking} onChoose={folders => {setPicking(false);void attach(folders);}}/>}
   </Dialog>;
 }
 
