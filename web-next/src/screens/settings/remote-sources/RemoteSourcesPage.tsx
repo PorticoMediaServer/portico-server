@@ -19,6 +19,7 @@ import {DriveKeyPane, DriveModePane} from './DrivePanes';
 import {RemoteFolderPicker} from './RemoteFolderPicker';
 import {ProgramPicker} from './ProgramPicker';
 import {SourceHeader} from './SourceHeader';
+import {SourceDone} from './SourceDone';
 import {SourceReadingDialog, SourceReadingFields} from './SourceReadingDialog';
 import {ReadingProfileOpening} from './reading-profile-opening';
 import {sourceChoiceComparison} from '@core/remote-source-choice.ts';
@@ -1124,22 +1125,21 @@ function AddSourceLoaded({service, api, serverId, viewerId, open, isCurrent, rep
       <div className={styles.switchRow}><span>{t('next.remoteSources.scanWhenFinished')}<small className={styles.note}>{t('next.remoteSources.scanWhenFinishedHelp')}</small></span>
         <span className={styles.staticValue}>{t('next.remoteSources.on')}</span></div>
     </>}
-    {step === 'done' && <div className={styles.doneList}>
-      <div className={styles.doneHead}><Icon name="i-okc" size={34}/><h3>{t('next.remoteSources.doneTitle', {name: sourceNow?.name ?? ''})}</h3></div>
-      <p className={styles.note}>{summary.library ? t('next.remoteSources.doneLede', {name: summary.library}) : t('next.remoteSources.summaryNoLibraryHelp')}</p>
-      <ul className={styles.doneRows}>
-        <li><b>{t('next.remoteSources.summaryConnected')}</b><small>{t('next.remoteSources.summaryConnectedHelp')}</small></li>
-        <li><b>{t('next.remoteSources.summaryLimits', {connections: values.connections, requests: values.requestsPerSecond})}</b>
-          <small>{values.bytesPerSecond ? t('next.remoteSources.downloadSpeed') + ': ' + (values.bytesPerSecond / 1_000_000) + ' ' + t('next.remoteSources.megabytesPerSecond') + '. ' : t('next.remoteSources.noLimit') + '. '}{t('next.remoteSources.summaryLimitsHelp', {name: sourceNow?.name ?? ''})}</small></li>
-        {recordedReading && <li><b>{t('next.remoteSources.summaryTreatment', {preset: presetName ? t(presetLabel(presetName)) : t('next.remoteSources.custom')})}</b>
-          <small>{t('next.remoteSources.summaryTreatmentHelp', {name: sourceNow?.name ?? ''})}</small></li>}
-        {summary.library
-          ? <li><b>{t('next.remoteSources.summaryLibrary', {library: summary.library})}</b>
-            <small>{t(summary.folders === 1 ? 'next.remoteSources.summaryLibraryOne' : 'next.remoteSources.summaryLibraryMany', {count: summary.folders, source: sourceNow?.name ?? ''})}</small></li>
-          : <li><b>{t('next.remoteSources.summaryNoLibrary')}</b><small>{t('next.remoteSources.summaryNoLibraryHelp')}</small></li>}
-        {summary.library && <li><b>{t('next.remoteSources.summaryScan')}</b><small>{t('next.remoteSources.summaryScanHelp')}</small></li>}
-      </ul>
-    </div>}
+    {step === 'done' && <SourceDone
+      title={t('next.remoteSources.doneTitle', {name: sourceNow?.name ?? ''})}
+      lede={summary.library ? t('next.remoteSources.doneLede', {name: summary.library}) : t('next.remoteSources.summaryNoLibraryHelp')}
+      rows={[
+        {label: t('next.remoteSources.summaryConnected'), detail: t('next.remoteSources.summaryConnectedHelp')},
+        {label: t('next.remoteSources.summaryLimits', {connections: values.connections, requests: values.requestsPerSecond}),
+          detail: `${values.bytesPerSecond ? t('next.remoteSources.downloadSpeed') + ': ' + (values.bytesPerSecond / 1_000_000) + ' ' + t('next.remoteSources.megabytesPerSecond') + '. ' : t('next.remoteSources.noLimit') + '. '}${t('next.remoteSources.summaryLimitsHelp', {name: sourceNow?.name ?? ''})}`},
+        ...(recordedReading ? [{label: t('next.remoteSources.summaryTreatment', {preset: presetName ? t(presetLabel(presetName)) : t('next.remoteSources.custom')}),
+          detail: t('next.remoteSources.summaryTreatmentHelp', {name: sourceNow?.name ?? ''})}] : []),
+        summary.library
+          ? {label: t('next.remoteSources.summaryLibrary', {library: summary.library}),
+            detail: t(summary.folders === 1 ? 'next.remoteSources.summaryLibraryOne' : 'next.remoteSources.summaryLibraryMany', {count: summary.folders, source: sourceNow?.name ?? ''})}
+          : {label: t('next.remoteSources.summaryNoLibrary'), detail: t('next.remoteSources.summaryNoLibraryHelp')},
+        ...(summary.library ? [{label: t('next.remoteSources.summaryScan'), detail: t('next.remoteSources.summaryScanHelp')}] : []),
+      ]}/>}
     {picking && sourceNow && <RemoteFolderPicker service={service} sourceId={sourceNow.id} sourceName={sourceNow.name} open={picking}
       onOpenChange={setPicking} onChoose={folders => setChosen(current => [...current, ...folders.filter(folder => !current.some(value => value.relative === folder.relative))])}/>}
     <Dialog open={leaving !== ''} role="alertdialog" width={520} title={t('next.remoteSources.leaveTitle')}
