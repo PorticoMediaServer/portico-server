@@ -52,7 +52,7 @@ func TestPublishedProfileDecidesDeliveryAndIsExplained(t *testing.T) {
 	if err != nil || session.Mode != "hls" {
 		t.Fatal(session, err)
 	}
-	plan, err := loadDeliveryPlan(db, session.ID)
+	plan, err := loadDeliveryPlan(ctx, db, session.ID)
 	if err != nil || plan.Strategy != DeliveryVideoConversion || !plan.ToneMap || plan.Trace == nil || plan.Trace.Client.Published {
 		t.Fatal(plan, err)
 	}
@@ -77,7 +77,7 @@ func TestPublishedProfileDecidesDeliveryAndIsExplained(t *testing.T) {
 	if err != nil || session.Mode != "direct" {
 		t.Fatal(session, err)
 	}
-	plan, err = loadDeliveryPlan(db, session.ID)
+	plan, err = loadDeliveryPlan(ctx, db, session.ID)
 	if err != nil || plan.Strategy != DeliveryOriginal || plan.Engine != EngineNative || plan.AudioStream != 1 || plan.Trace.Client.Revision != document.Revision || plan.Trace.Client.Engine != EngineNative || plan.Trace.Video.DynamicRange != assets.RangeHDR10 {
 		t.Fatal(plan, err)
 	}
@@ -111,7 +111,7 @@ func TestReportedRouteFailureEscalatesTheNextPlan(t *testing.T) {
 	if err != nil || second.Mode != "hls" {
 		t.Fatal("the failed route was offered again", second, err)
 	}
-	plan, _ := loadDeliveryPlan(db, second.ID)
+	plan, _ := loadDeliveryPlan(ctx, db, second.ID)
 	if plan.Strategy != DeliveryCopyRemux || !rejected(*plan, DeliveryOriginal, RejectClientFailure) {
 		t.Fatal(plan.Strategy, plan.Trace.Routes)
 	}
@@ -125,7 +125,7 @@ func TestReportedRouteFailureEscalatesTheNextPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan, _ = loadDeliveryPlan(db, third.ID); plan.Strategy != DeliveryAudioConversion {
+	if plan, _ = loadDeliveryPlan(ctx, db, third.ID); plan.Strategy != DeliveryAudioConversion {
 		t.Fatal(plan.Strategy)
 	}
 	if _, err = s.RecordRouteFailure(ctx, p, third.ID, "decode_error", ""); err != nil {
@@ -135,7 +135,7 @@ func TestReportedRouteFailureEscalatesTheNextPlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan, _ = loadDeliveryPlan(db, fourth.ID); plan.Strategy != DeliveryVideoConversion {
+	if plan, _ = loadDeliveryPlan(ctx, db, fourth.ID); plan.Strategy != DeliveryVideoConversion {
 		t.Fatal(plan.Strategy)
 	}
 	// The last resort has nothing above it.
@@ -176,7 +176,7 @@ func TestAudioTrackChoiceReachesThePlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, _ := loadDeliveryPlan(db, session.ID)
+	plan, _ := loadDeliveryPlan(context.Background(), db, session.ID)
 	if plan.AudioStream != 2 || plan.Trace.Audio.ChosenBy != "preferred_language" || plan.Trace.Audio.Tracks != 3 {
 		t.Fatal(plan.AudioStream, plan.Trace.Audio)
 	}
@@ -239,7 +239,7 @@ func TestConversionOffStillRepackages(t *testing.T) {
 	if err != nil || session.Mode != "hls" {
 		t.Fatal("a copy-only stream was refused with conversion off", session, err)
 	}
-	if plan, _ := loadDeliveryPlan(db, session.ID); plan.Strategy != DeliveryCopyRemux || plan.VideoAction != "copy" || plan.AudioAction != "copy" {
+	if plan, _ := loadDeliveryPlan(context.Background(), db, session.ID); plan.Strategy != DeliveryCopyRemux || plan.VideoAction != "copy" || plan.AudioAction != "copy" {
 		t.Fatal(plan.Strategy, plan.VideoAction, plan.AudioAction)
 	}
 	updateCatalogAsset(t, db, asset, func(a *compactcatalog.Asset) { a.VideoCodec = "vp9" })

@@ -106,7 +106,7 @@ func TestSourceTraceSurvivesActualDeliveryPlanStorage(t *testing.T) {
 	if _, err = db.Exec(`UPDATE catalog_assets SET width=640,height=360 WHERE token=?`, asset); err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := loadDeliveryPlan(db, session)
+	loaded, err := loadDeliveryPlan(context.Background(), db, session)
 	if err != nil || loaded == nil || !reflect.DeepEqual(trace, loaded.Trace) {
 		t.Fatalf("stored source snapshot changed: %+v %v", loaded, err)
 	}

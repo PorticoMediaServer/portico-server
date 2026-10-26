@@ -77,7 +77,7 @@ func streamAction(action string) string {
 // transaction. A session without a stored plan returns nil rather than an
 // invented one; the reader publishes no delivery block at all in that case.
 func SessionDeliveryTx(ctx context.Context, tx *sql.Tx, settings DeliverySettings, session string) (*SessionDelivery, error) {
-	plan, err := loadDeliveryPlan(tx, session)
+	plan, err := loadDeliveryPlan(ctx, tx, session)
 	if err != nil {
 		if errors.Is(err, ErrStaleOffer) {
 			return nil, nil

@@ -67,7 +67,7 @@ func TestConversionTargetSurvivesSessionReadback(t *testing.T) {
 	if err := tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := loadDeliveryPlan(db, id)
+	loaded, err := loadDeliveryPlan(context.Background(), db, id)
 	if err != nil || loaded.ConversionTarget == nil || loaded.OutputVideoCodec != "hevc" || loaded.OutputContainer != "fmp4_hls" || loaded.AudioChannels != 8 {
 		t.Fatal(loaded, err)
 	}

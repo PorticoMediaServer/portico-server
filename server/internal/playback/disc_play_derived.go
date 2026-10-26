@@ -237,7 +237,7 @@ func (t *DiscSubtitleTransition) AfterGenerationTx(ctx context.Context, tx *sql.
 		return "", err
 	}
 	if resource != "" {
-		plan, e := loadDeliveryPlan(tx, session)
+		plan, e := loadDeliveryPlan(ctx, tx, session)
 		if e != nil {
 			return "", e
 		}

@@ -1,6 +1,7 @@
 package playback
 
 import (
+	"context"
 	"errors"
 	"path/filepath"
 	"reflect"
@@ -359,7 +360,7 @@ func TestDeliverySessionSnapshotRestartPinAndLegacy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	plan, err := loadDeliveryPlan(db, session.ID)
+	plan, err := loadDeliveryPlan(context.Background(), db, session.ID)
 	if err != nil || plan == nil {
 		t.Fatal(plan, err)
 	}
@@ -379,7 +380,7 @@ func TestDeliverySessionSnapshotRestartPinAndLegacy(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-	after, err := loadDeliveryPlan(db, session.ID)
+	after, err := loadDeliveryPlan(context.Background(), db, session.ID)
 	if err != nil || !reflect.DeepEqual(plan, after) {
 		t.Fatal(after, err)
 	}
@@ -388,13 +389,13 @@ func TestDeliverySessionSnapshotRestartPinAndLegacy(t *testing.T) {
 		t.Fatal(repeated, err)
 	}
 	updateCatalogAsset(t, db, token, func(a *compactcatalog.Asset) { a.ModifiedNS = 31 })
-	if _, err = loadDeliveryPlan(db, session.ID); err != ErrStaleOffer {
+	if _, err = loadDeliveryPlan(context.Background(), db, session.ID); err != ErrStaleOffer {
 		t.Fatal("changed fingerprint accepted", err)
 	}
 	if _, err = db.Exec(`DELETE FROM playback_delivery_plans WHERE session_id=?`, session.ID); err != nil {
 		t.Fatal(err)
 	}
-	if legacy, err := loadDeliveryPlan(db, session.ID); err != nil || legacy != nil {
+	if legacy, err := loadDeliveryPlan(context.Background(), db, session.ID); err != nil || legacy != nil {
 		t.Fatal("legacy fallback not explicit", legacy, err)
 	}
 }

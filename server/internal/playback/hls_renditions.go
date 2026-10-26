@@ -553,7 +553,7 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 			h.renditionFailed(ctx, id, generation, r, code)
 		}
 	}
-	plan, err := loadDeliveryPlan(h.db, id)
+	plan, err := loadDeliveryPlan(ctx, h.db, id)
 	if err != nil {
 		failed(FailureSourceUnreadable)
 		return

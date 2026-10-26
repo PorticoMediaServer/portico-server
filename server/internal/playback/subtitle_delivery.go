@@ -48,7 +48,7 @@ func (s *Service) ChangeSubtitleDeliveryTx(ctx context.Context, tx *sql.Tx, p id
 			return err
 		}
 	}
-	old, err := loadDeliveryPlan(tx, session)
+	old, err := loadDeliveryPlan(ctx, tx, session)
 	if err != nil {
 		return err
 	}

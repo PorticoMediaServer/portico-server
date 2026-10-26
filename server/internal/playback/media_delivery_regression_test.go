@@ -1,6 +1,7 @@
 package playback
 
 import (
+	"context"
 	"errors"
 	"math"
 	"os"
@@ -102,7 +103,7 @@ func TestActiveRenditionDemandDoesNotPretendDelivery(t *testing.T) {
 	}
 	h.mu.Unlock()
 	delayInitialProducer(t, h)
-	p, err := loadDeliveryPlan(h.db, session.ID)
+	p, err := loadDeliveryPlan(context.Background(), h.db, session.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

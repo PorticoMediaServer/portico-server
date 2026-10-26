@@ -333,7 +333,7 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 	if _, e = dbwork.ExecWrite(ctx, h.db, dbwork.ClassEstablishedPlayback, `INSERT INTO playback_artifacts(session_id,directory,status) VALUES(?,?,'building') ON CONFLICT(session_id) DO UPDATE SET status='building',error=''`, id, dir); e != nil {
 		return
 	}
-	delivery, e := loadDeliveryPlan(h.db, id)
+	delivery, e := loadDeliveryPlan(ctx, h.db, id)
 	if e != nil {
 		h.failed(ctx, id)
 		return
@@ -964,7 +964,7 @@ func (h *HLS) failed(ctx context.Context, id string) bool {
 }
 func (h *HLS) Ready(ctx context.Context, id string) error {
 	if h.finite != nil {
-		plan, err := loadDeliveryPlan(h.db, id)
+		plan, err := loadDeliveryPlan(ctx, h.db, id)
 		if err != nil {
 			return err
 		}
@@ -1052,7 +1052,7 @@ func (h *HLS) FileContext(ctx context.Context, grant, name string) (string, erro
 		}
 		return "", ErrSegmentPreparing
 	}
-	delivery, err := loadDeliveryPlan(h.db, id)
+	delivery, err := loadDeliveryPlan(ctx, h.db, id)
 	if err != nil {
 		return "", err
 	}

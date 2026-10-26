@@ -1125,12 +1125,19 @@ func (p DeliveryPlan) conversionGraph(burn *decoder.BurnIn) (decoder.ConversionG
 	return decoder.BuildConversion(request)
 }
 
+// planRowQuery is the narrow read port for one immutable plan load. Every lookup in
+// this load carries the caller's context so cancellation and deadlines reach the
+// database instead of waiting on a background context for a pool slot.
+type planRowQuery interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
 // Legacy sessions without a snapshot return nil; callers must choose an explicit
 // legacy compatibility path rather than invent a new immutable decision.
-func loadDeliveryPlan(q audioQuery, session string) (*DeliveryPlan, error) {
+func loadDeliveryPlan(ctx context.Context, q planRowQuery, session string) (*DeliveryPlan, error) {
 	p := &DeliveryPlan{}
 	var codes, policy, trace, renditions, burn string
-	err := q.QueryRow(`SELECT profile,source_id,source_size,source_modified_ns,facts_revision,source_container,source_video,source_audio,duration,mode,strategy,reason,output_container,video_action,audio_action,output_video,output_audio,audio_channels,reason_codes,quality_id,target_height,target_width,video_bitrate,audio_bitrate,tone_map,tone_map_algorithm,hardware_backend,hardware_device,hardware_native,software_preset,policy_json,trace_json,audio_stream,deinterlace,max_frame_rate,downmix,renditions_json,burn_in_json FROM playback_delivery_plans WHERE session_id=?`, session).Scan(&p.Profile, &p.SourceID, &p.SourceSize, &p.SourceModifiedNS, &p.FactsRevision, &p.SourceContainer, &p.SourceVideoCodec, &p.SourceAudioCodec, &p.Duration, &p.Mode, &p.Strategy, &p.Reason, &p.OutputContainer, &p.VideoAction, &p.AudioAction, &p.OutputVideoCodec, &p.OutputAudioCodec, &p.AudioChannels, &codes, &p.QualityID, &p.TargetHeight, &p.TargetWidth, &p.VideoBitrateBPS, &p.AudioBitrateBPS, &p.ToneMap, &p.ToneMapAlgorithm, &p.HardwareBackend, &p.HardwareDevice, &p.HardwareNative, &p.SoftwarePreset, &policy, &trace, &p.AudioStream, &p.Deinterlace, &p.MaxFrameRate, &p.Downmix, &renditions, &burn)
+	err := q.QueryRowContext(ctx, `SELECT profile,source_id,source_size,source_modified_ns,facts_revision,source_container,source_video,source_audio,duration,mode,strategy,reason,output_container,video_action,audio_action,output_video,output_audio,audio_channels,reason_codes,quality_id,target_height,target_width,video_bitrate,audio_bitrate,tone_map,tone_map_algorithm,hardware_backend,hardware_device,hardware_native,software_preset,policy_json,trace_json,audio_stream,deinterlace,max_frame_rate,downmix,renditions_json,burn_in_json FROM playback_delivery_plans WHERE session_id=?`, session).Scan(&p.Profile, &p.SourceID, &p.SourceSize, &p.SourceModifiedNS, &p.FactsRevision, &p.SourceContainer, &p.SourceVideoCodec, &p.SourceAudioCodec, &p.Duration, &p.Mode, &p.Strategy, &p.Reason, &p.OutputContainer, &p.VideoAction, &p.AudioAction, &p.OutputVideoCodec, &p.OutputAudioCodec, &p.AudioChannels, &codes, &p.QualityID, &p.TargetHeight, &p.TargetWidth, &p.VideoBitrateBPS, &p.AudioBitrateBPS, &p.ToneMap, &p.ToneMapAlgorithm, &p.HardwareBackend, &p.HardwareDevice, &p.HardwareNative, &p.SoftwarePreset, &policy, &trace, &p.AudioStream, &p.Deinterlace, &p.MaxFrameRate, &p.Downmix, &renditions, &burn)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -1168,7 +1175,7 @@ func loadDeliveryPlan(q audioQuery, session string) (*DeliveryPlan, error) {
 		}
 	}
 	var valid bool
-	err = q.QueryRow(`SELECT EXISTS(SELECT 1 FROM playback_source_pins pin JOIN playback_sessions s ON s.id=pin.session_id JOIN catalog_assets a ON a.token=pin.asset_id WHERE s.id=? AND s.asset_id=? AND s.mode=? AND pin.asset_id=s.asset_id AND (EXISTS(SELECT 1 FROM prepared_media_session_pins pp WHERE pp.session_id=s.id) OR (a.size=pin.size AND a.modified_ns=pin.modified_ns)) AND pin.size=? AND pin.modified_ns=?)`, session, p.SourceID, p.Mode, p.SourceSize, p.SourceModifiedNS).Scan(&valid)
+	err = q.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM playback_source_pins pin JOIN playback_sessions s ON s.id=pin.session_id JOIN catalog_assets a ON a.token=pin.asset_id WHERE s.id=? AND s.asset_id=? AND s.mode=? AND pin.asset_id=s.asset_id AND (EXISTS(SELECT 1 FROM prepared_media_session_pins pp WHERE pp.session_id=s.id) OR (a.size=pin.size AND a.modified_ns=pin.modified_ns)) AND pin.size=? AND pin.modified_ns=?)`, session, p.SourceID, p.Mode, p.SourceSize, p.SourceModifiedNS).Scan(&valid)
 	if err != nil {
 		return nil, err
 	}
@@ -1177,7 +1184,7 @@ func loadDeliveryPlan(q audioQuery, session string) (*DeliveryPlan, error) {
 	}
 	var prepared PreparedDelivery
 	var raw string
-	err = q.QueryRow(`SELECT v.id,v.revision,pin.digest,pin.size,v.source_revision,v.facts_json FROM prepared_media_session_pins pin JOIN prepared_media_versions v ON v.id=pin.version_id WHERE pin.session_id=? AND v.state IN('published','deleting')`, session).Scan(&prepared.VersionID, &prepared.Revision, &prepared.Digest, &prepared.Size, &prepared.SourceRevision, &raw)
+	err = q.QueryRowContext(ctx, `SELECT v.id,v.revision,pin.digest,pin.size,v.source_revision,v.facts_json FROM prepared_media_session_pins pin JOIN prepared_media_versions v ON v.id=pin.version_id WHERE pin.session_id=? AND v.state IN('published','deleting')`, session).Scan(&prepared.VersionID, &prepared.Revision, &prepared.Digest, &prepared.Size, &prepared.SourceRevision, &raw)
 	if err == nil {
 		if err = prepared.Facts.DecodeStored([]byte(raw)); err != nil {
 			return nil, err
@@ -1186,7 +1193,7 @@ func loadDeliveryPlan(q audioQuery, session string) (*DeliveryPlan, error) {
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
-	if err = loadConversionTarget(q, session, p); err != nil {
+	if err = loadConversionTarget(ctx, q, session, p); err != nil {
 		return nil, err
 	}
 	for i := range p.Renditions {

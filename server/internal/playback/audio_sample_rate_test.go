@@ -1,6 +1,7 @@
 package playback
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -197,7 +198,7 @@ func TestConvertedAudioSampleRateIsStoredWithThePlan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stored, err := loadDeliveryPlan(db, session.ID)
+	stored, err := loadDeliveryPlan(context.Background(), db, session.ID)
 	if err != nil || stored == nil || stored.AudioAction != "convert" || stored.AudioSampleRate != 48000 || stored.Policy == nil {
 		t.Fatalf("stored plan %+v %v", stored, err)
 	}

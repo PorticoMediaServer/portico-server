@@ -30,7 +30,7 @@ func TestSubtitleReplanKeepsThePresentationCeilings(t *testing.T) {
 		}); err != nil {
 			t.Fatalf("subtitle re-plan: %v", err)
 		}
-		plan, err := loadDeliveryPlan(db, session)
+		plan, err := loadDeliveryPlan(ctx, db, session)
 		if err != nil || plan == nil {
 			t.Fatal(plan, err)
 		}
@@ -51,7 +51,7 @@ func TestSubtitleReplanKeepsThePresentationCeilings(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			started, err := loadDeliveryPlan(db, session.ID)
+			started, err := loadDeliveryPlan(ctx, db, session.ID)
 			if err != nil || started == nil || started.VideoAction != "convert" || started.VideoBitrateBPS < 1 || started.VideoBitrateBPS > test.bitrate || started.TargetHeight > test.height {
 				t.Fatalf("the presentation did not start under its ceilings: %+v %v", started, err)
 			}

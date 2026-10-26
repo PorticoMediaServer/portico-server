@@ -24,7 +24,7 @@ func ReadPlaybackInfoTx(ctx context.Context, tx *sql.Tx, session string, generat
 	if err != nil {
 		return nil, err
 	}
-	plan, err := loadDeliveryPlan(tx, session)
+	plan, err := loadDeliveryPlan(ctx, tx, session)
 	if errors.Is(err, ErrStaleOffer) {
 		return nil, nil
 	}
