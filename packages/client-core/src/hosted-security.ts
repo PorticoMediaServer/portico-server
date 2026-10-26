@@ -213,8 +213,10 @@ export class HostedAccountClient {
   if(returned.transactionId!==transactionId)return invalid();return raw.location;
  }
  async completeSecurityReturn(transactionId:string,input:{code:string;verifier:string;confirmation:SecuritySigned;factor:string},scope:AccountScope,token:string,signal?:AbortSignal):Promise<RecentProof>{
-  const raw=await this.request(hostedEncodedRoutePath("account_security_return_complete",{id:pathID(transactionId)}),'POST',hostedRouteBody("account_security_return_complete",input),signal,token);
-  if(!object(raw)||Object.keys(raw).join(',')!=='recentProof'||!raw.recentProof)return invalid();return parseRecentProof(raw.recentProof,scope);
+  const expected={accountId:identifier(scope.accountId),familyId:identifier(scope.familyId)},confirmation=input.confirmation;
+  const captured=Object.freeze({code:input.code,verifier:input.verifier,factor:input.factor,confirmation:Object.freeze({payload:confirmation.payload,signature:confirmation.signature})});
+  const raw=await this.request(hostedEncodedRoutePath("account_security_return_complete",{id:pathID(transactionId)}),'POST',hostedRouteBody("account_security_return_complete",captured),signal,token);
+  if(!object(raw)||Object.keys(raw).join(',')!=='recentProof'||!raw.recentProof)return invalid();return parseRecentProof(raw.recentProof,expected);
  }
  async cancelSecurityTransaction(transactionId:string,signal?:AbortSignal){
   if(this.mode!=='browser'||!/^oid_[A-Za-z0-9_-]{43}$/.test(transactionId))return invalid();
