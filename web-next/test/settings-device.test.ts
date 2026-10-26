@@ -4,6 +4,8 @@ import {defaultI18n} from '../../packages/i18n/src/index.ts';
 import {setInstallationIdentity} from '@core/installation.ts';
 import {settingsRowIndex} from '@core/presentation/settings-spec.ts';
 import {deviceHelpAddress, deviceHelpURL, deviceRowState, isDeviceSyntheticRow} from '../src/screens/settings/device-rows-model.ts';
+import {settingsBinding} from '@core/presentation/settings-bindings.ts';
+import {readDeviceSettingsBinding} from '../src/screens/settings/device-bindings.ts';
 import {webSettingsPlatform} from '../src/platform/web-settings-platform.ts';
 
 const row = (id: string) => {
@@ -60,7 +62,7 @@ test('the web device facade reports the real installation name and version, read
     // installation name and version stay read-only facts.
     assert.equal(typeof device.apply, 'function');
     assert.deepEqual(device.getSnapshot().document?.defaults, {lossNotices: true});
-    assert.deepEqual(device.getSnapshot().document?.values, {});
+    assert.deepEqual(device.getSnapshot().document?.values, {lossNotices: true});
   } finally { setInstallationIdentity(undefined); }
 });
 
@@ -68,4 +70,15 @@ test('the web device facade reports the real installation name and version, read
 test('Link a TV is exposed only with its original captured API control', () => {
   assert.deepEqual(deviceRowState(row('device.linkTv'), {serverName: 'Current server'}), {present: false});
   assert.deepEqual(deviceRowState(row('device.linkTv'), {serverName: 'Current server', linkTvAvailable: true}), {present: true});
+});
+
+
+test('unsaved picture and sound notices read their effective default and retain an explicit off choice', async () => {
+  const port = webSettingsPlatform().device!, binding = settingsBinding('device.lossNotices')!;
+  assert.equal(readDeviceSettingsBinding(binding, port, {}, 'device.lossNotices')?.current, true);
+  const original = port.getSnapshot().document!;
+  await port.apply!(original.revision, {lossNotices: false}, new AbortController().signal);
+  const read = readDeviceSettingsBinding(binding, port, {}, 'device.lossNotices');
+  assert.equal(read?.current, false); assert.equal(read?.default, true);
+  assert.notEqual(port.getSnapshot().document!.revision, original.revision);
 });

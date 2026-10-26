@@ -19,7 +19,7 @@ function read(): Record_ {
     const revision = typeof value.revision === 'number' && Number.isSafeInteger(value.revision) && value.revision > 0 ? value.revision : 1;
     const values: Record<string, SettingsValue> = {};
     if (value.values && typeof value.values === 'object') for (const [key, entry] of Object.entries(value.values as Record<string, unknown>)) {
-      if (key in DEFAULTS && (typeof entry === 'boolean' || typeof entry === 'string' || (typeof entry === 'number' && Number.isFinite(entry)))) values[key] = entry as SettingsValue;
+      if (key in DEFAULTS && typeof entry === typeof DEFAULTS[key] && (typeof entry === 'boolean' || typeof entry === 'string' || (typeof entry === 'number' && Number.isFinite(entry)))) values[key] = entry as SettingsValue;
     }
     return {revision, values};
   } catch { return {revision: 1, values: {}}; }
@@ -41,7 +41,7 @@ export function webSettingsPlatform(): SettingsPlatform {
     getSnapshot: () => {
       const identity = installationIdentity();
       const facts = identity ? {name: {value: identity.name, readOnly: true}, appVersion: identity.appVersion} : {};
-      return {facts, document: {revision: String(state.revision), values: state.values, defaults: DEFAULTS}};
+      return {facts, document: {revision: String(state.revision), values: {...DEFAULTS, ...state.values}, defaults: DEFAULTS}};
     },
     apply: async (expectedRevision, patch) => {
       if (String(state.revision) !== expectedRevision) throw new DOMException('Device settings changed', 'AbortError');
