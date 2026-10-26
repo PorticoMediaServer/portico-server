@@ -348,6 +348,8 @@ func (h *HLS) produce(ctx context.Context, id string, from int) {
 		return
 	}
 	defer input.Close()
+	ctx, releaseInput := input.BorrowContext(ctx)
+	defer releaseInput()
 	if remoteInput != nil {
 		defer remoteInput.Close()
 	}

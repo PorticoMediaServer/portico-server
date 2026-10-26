@@ -566,6 +566,8 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 		return
 	}
 	defer input.Close()
+	ctx, releaseInput := input.BorrowContext(ctx)
+	defer releaseInput()
 	if remoteInput != nil {
 		defer remoteInput.Close()
 	}
