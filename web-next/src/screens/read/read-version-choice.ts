@@ -64,6 +64,7 @@ function readSameSource(rendered: ReadVersionSource, committed: ReadVersionSourc
 export type ReadVersionPreRetire = Readonly<{
   liveRoute: boolean;
   route: ReadRouteEntry | undefined;
+  committedRoute: ReadRouteEntry | undefined;
   currentRoute: ReadRouteEntry | undefined;
   rendered: ReadVersionSelection;
   committed: ReadVersionSource | undefined;
@@ -72,12 +73,19 @@ export type ReadVersionPreRetire = Readonly<{
   candidate: ReadVersion;
 }>;
 
+/** The callback's own rendered entry must still be the entry committed by the last
+ * layout commit and the live router entry. Old callbacks therefore refuse after a new
+ * `__TSR_key`, while callbacks from the new entry's render work. */
+function readSameRouteWitness(facts: Readonly<{route: ReadRouteEntry | undefined; committedRoute: ReadRouteEntry | undefined; currentRoute: ReadRouteEntry | undefined}>): boolean {
+  return readSameRouteEntry(facts.route, facts.committedRoute) && readSameRouteEntry(facts.route, facts.currentRoute);
+}
+
 /** Admission before retirement: the original route entry, context, source and eligibility
  * list are unchanged, and the row's own attempt is the real live attempt that is still
  * the current one. Recovery from a failed or not-ready attempt is allowed because its
  * liveness does not depend on `factsCurrent()`. */
 export function readVersionPreRetire(facts: ReadVersionPreRetire): boolean {
-  if (!facts.liveRoute || !readSameRouteEntry(facts.route, facts.currentRoute)) return false;
+  if (!facts.liveRoute || !readSameRouteWitness(facts)) return false;
   if (!facts.attemptLive || !facts.rendered.attempt || facts.rendered.attempt !== facts.currentAttempt) return false;
   if (!readSameSource(facts.rendered, facts.committed)) return false;
   return readVersionPickable(facts.rendered.versions, facts.rendered.sourceId, facts.candidate);
@@ -86,6 +94,7 @@ export function readVersionPreRetire(facts: ReadVersionPreRetire): boolean {
 export type ReadVersionPostRetire = Readonly<{
   liveRoute: boolean;
   route: ReadRouteEntry | undefined;
+  committedRoute: ReadRouteEntry | undefined;
   currentRoute: ReadRouteEntry | undefined;
   rendered: ReadVersionSelection;
   committed: ReadVersionSource | undefined;
@@ -98,7 +107,7 @@ export type ReadVersionPostRetire = Readonly<{
  * requires the original route/context/source/list witness to be unchanged and no
  * successor to exist. */
 export function readVersionPostRetire(facts: ReadVersionPostRetire): boolean {
-  if (!facts.liveRoute || !readSameRouteEntry(facts.route, facts.currentRoute)) return false;
+  if (!facts.liveRoute || !readSameRouteWitness(facts)) return false;
   if (facts.successor !== undefined) return false;
   if (!readSameSource(facts.rendered, facts.committed)) return false;
   return readVersionPickable(facts.rendered.versions, facts.rendered.sourceId, facts.candidate);
@@ -109,7 +118,7 @@ export function readVersionPostRetire(facts: ReadVersionPostRetire): boolean {
  * write the chosen source. */
 export type ReadVersionRecovery = ReadVersionPreRetire & Readonly<{
   retire: (attempt: unknown) => void;
-  afterRetire: () => Readonly<{liveRoute: boolean; currentRoute: ReadRouteEntry | undefined; successor: unknown; committed: ReadVersionSource | undefined}>;
+  afterRetire: () => Readonly<{liveRoute: boolean; committedRoute: ReadRouteEntry | undefined; currentRoute: ReadRouteEntry | undefined; successor: unknown; committed: ReadVersionSource | undefined}>;
 }>;
 
 export function readVersionRecovery(facts: ReadVersionRecovery): boolean {
@@ -117,9 +126,32 @@ export function readVersionRecovery(facts: ReadVersionRecovery): boolean {
   facts.retire(facts.rendered.attempt);
   const after = facts.afterRetire();
   return readVersionPostRetire({
-    liveRoute: after.liveRoute, route: facts.route, currentRoute: after.currentRoute,
+    liveRoute: after.liveRoute, route: facts.route, committedRoute: after.committedRoute, currentRoute: after.currentRoute,
     rendered: facts.rendered, committed: after.committed, successor: after.successor, candidate: facts.candidate,
   });
+}
+
+/** Back's caller decision: the callback's own rendered entry must still be committed and
+ * live, then `canGoBack` selects in-app Back or Home. An old callback returns undefined
+ * after a new entry, while the new entry's callback decides normally. */
+export function readBackCommit(route: ReadRouteEntry | undefined, committedRoute: ReadRouteEntry | undefined,
+  currentRoute: ReadRouteEntry | undefined, canGoBack: boolean): 'back' | 'home' | undefined {
+  if (!readSameRouteEntry(route, committedRoute) || !readSameRouteEntry(route, currentRoute)) return undefined;
+  return readBackDestination(canGoBack);
+}
+
+/** An attempt that can be retired while abort callbacks are still registered. */
+export type ReadRetirable = {live: boolean; ready: boolean; rereading?: boolean; target?: unknown};
+
+/** Retirement must publish the attempt dead and detached before aborting: an abort
+ * listener that reenters must never observe the retiring attempt as live or current. */
+export function readRetireAttempt(attempt: ReadRetirable, detach: () => void, abort: () => void): void {
+  attempt.live = false;
+  attempt.ready = false;
+  attempt.rereading = false;
+  attempt.target = undefined;
+  detach();
+  abort();
 }
 
 /** Back returns in-app only when the captured route really has a predecessor. */
