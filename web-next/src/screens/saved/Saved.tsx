@@ -77,7 +77,7 @@ export function SavedScreen(bindings: SavedBindings) {
   const {runtime, route, presentation, effects} = bindings;
   const viewKey = savedViewKey(runtime.scope, route), operations = useSavedViewOperations(runtime.operations, viewKey);
   // `home` is the phone directory; every reader below uses its canonical My List.
-  const readerRoute = savedReaderRoute(route), phone = useShellWidth() < 600;
+  const readerRoute = useMemo(() => savedReaderRoute(route), [route]), phone = useShellWidth() < 600;
   const viewBindings: SavedViewBindings = {...bindings, operations};
   const [creating, setCreating] = useState<Readonly<{viewKey: string; kind: 'playlist' | 'collection'}>>();
   useEffect(() => {
