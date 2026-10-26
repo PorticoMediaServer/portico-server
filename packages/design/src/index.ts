@@ -167,6 +167,14 @@ const handheldType = {
   integrationKeyName: type(15.5, 'normal', 700, -.005), integrationKeyFacts: type(13.5, 19.575, 400),
   stopBody: type(15, 23.25, 500), stopField: type(16, 'normal', 600), stopHelp: type(13.5, 'normal', 400),
 };
+/** The end-card (PostPlay) type roles from desktop-player.html's post-play block:
+ * kicker 15, title 76, compact title 56, feature 32, name 14 and year 13, with
+ * the drawn line heights and tracking. These are separate from the ordinary
+ * type roles because the card uses compact-title and split name/year values. */
+export const watchEndType = Object.freeze({
+ kickerSize: 15, titleSize: 76, titleCompactSize: 56, titleLine: 1.02, titleTracking: -0.035,
+ featureSize: 32, nameSize: 14, nameLine: 1.25, yearSize: 13,
+});
 export type TypeRole = keyof typeof handheldType;
 /** The legacy web's desktop display cap (42px); TitleHero and Text clamp up to it. */
 export const displayDesktopSize = 42;
