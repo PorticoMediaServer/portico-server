@@ -212,7 +212,7 @@
 .optionSeparator {height: 1px; margin: 4px 10px; background: color-mix(in srgb, var(--color-text) 8%, transparent);}
 .scrollButton {height: 24px; display: flex; justify-content: center; align-items: center;}
 @keyframes menuIn {from {opacity: 0; transform: translateY(4px) scale(.98);} to {opacity: 1; transform: none;}}
-@keyframes menuOut {from {opacity: 1; transform: none;} to {opacity: 0; transform: translateY(4px) scale(.98);}}
+@keyframes menuOut {from {opacity: 1;} to {opacity: 0;}}
 
 .slider {position: relative; display: inline-flex; align-items: center; width: 84px; height: 24px; flex: none; touch-action: none; user-select: none; cursor: pointer;}
 .sliderTrack {position: relative; height: 4px; border-radius: 4px; flex: 1; background: color-mix(in srgb, var(--color-text) 20%, transparent);}

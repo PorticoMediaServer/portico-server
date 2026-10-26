@@ -116,10 +116,16 @@ export function useSurfaceMotion(open: boolean, kind: 'dialog' | 'menu' | 'panel
     if (previousElement.current !== element) { first.current = true; previousElement.current = element; }
     const reduced = prefersReduced || window.matchMedia('(prefers-reduced-motion: reduce)').matches || !!element.closest('[data-reduce-motion="true"]') || document.documentElement.dataset.reduceMotion === 'true';
     const style = getComputedStyle(element), entering = open;
-    const initialTransform = kind === 'dialog' ? 'scale(.98)' : kind === 'menu' ? 'translateY(-4px) scale(.98)' : kind === 'panel' ? 'translateX(24px)' : kind === 'toast' ? 'translateY(24px)' : kind === 'banner' ? 'translateY(-100%)' : 'none';
+    // A menu enters from the side the content currently reports. Radix writes data-side when the
+    // positioner resolves, so the first frame may still carry the requested side; the observation
+    // below replays the entrance if the resolved side arrives different.
+    const menuEntry = () => element.dataset.side === 'top' ? 'translateY(4px) scale(.98)' : 'translateY(-4px) scale(.98)';
+    const initialTransform = kind === 'dialog' ? 'scale(.98)' : kind === 'menu' ? menuEntry() : kind === 'panel' ? 'translateX(24px)' : kind === 'toast' ? 'translateY(24px)' : kind === 'banner' ? 'translateY(-100%)' : 'none';
     const from = {opacity: first.current && entering ? 0 : Number(style.opacity), transform: reduced ? 'none' : first.current && entering ? initialTransform : style.transform};
     animation.current?.cancel(); first.current = false;
-    const targetTransform = reduced || entering ? 'none' : exitTransform?.current ?? (kind === 'panel' ? initialTransform : from.transform);
+    // Menus and side panels leave from their settled pose on opacity alone. A caller that
+    // publishes its own exit target (toasts, banners) still wins; the rest keep their painted one.
+    const targetTransform = reduced || entering ? 'none' : exitTransform?.current ?? from.transform;
     const current = element.animate([from, {opacity: entering ? 1 : 0, transform: targetTransform}], {duration: reduced ? reducedMotion.durationMs : entering ? motion.standard : motion.quick, easing: entering ? easings.out : easings.in, fill: 'both'});
     animation.current = current;
     current.onfinish = () => {
@@ -127,7 +133,25 @@ export function useSurfaceMotion(open: boolean, kind: 'dialog' | 'menu' | 'panel
       element.style.opacity = entering ? '1' : '0'; element.style.transform = targetTransform;
       current.cancel(); animation.current = null;
     };
-    return () => { /* The next run reads the painted value before cancelling. */ };
+    // Only a menu whose resolved side arrives after its first frame is replayed; nothing here
+    // infers a side from the viewport, and focus and pointer behaviour are untouched.
+    const entrySide = element.dataset.side;
+    const sideObserver = kind === 'menu' && entering
+      ? new MutationObserver(() => {
+        if (animation.current !== current || element.dataset.side === entrySide) return;
+        sideObserver?.disconnect();
+        current.cancel();
+        const replay = element.animate([{opacity: 0, transform: reduced ? 'none' : menuEntry()}, {opacity: 1, transform: 'none'}],
+          {duration: reduced ? reducedMotion.durationMs : motion.standard, easing: easings.out, fill: 'both'});
+        animation.current = replay;
+        replay.onfinish = () => {
+          if (animation.current !== replay) return;
+          element.style.opacity = '1'; element.style.transform = 'none'; replay.cancel(); animation.current = null;
+        };
+      })
+      : undefined;
+    sideObserver?.observe(element, {attributes: true, attributeFilter: ['data-side']});
+    return () => {sideObserver?.disconnect(); /* The next run reads the painted value before cancelling. */};
   }, [element, open, kind, exitTransform, prefersReduced]);
   useEffect(() => () => animation.current?.cancel(), []);
   return setElement;
