@@ -3,6 +3,19 @@ import type {ReadItemEligibility} from './navigation';
 /** The already-authorized eligibility row, never a fresh probe. */
 export type ReadVersion = ReadItemEligibility['versions'][number];
 
+/** A real router entry. It is identified exactly as the reader already identifies the
+ * current root: `state.location.state.__TSR_key`, never `history.location.key`. */
+export type ReadRouteEntry = Readonly<{href: string; key: string}>;
+
+export function readRouteEntry(location: Readonly<{href: string; state: {__TSR_key?: string}}>): ReadRouteEntry | undefined {
+  const key = location.state.__TSR_key;
+  return typeof key === 'string' && key.length > 0 ? {href: location.href, key} : undefined;
+}
+
+export function readSameRouteEntry(left: ReadRouteEntry | undefined, right: ReadRouteEntry | undefined): boolean {
+  return !!left && !!right && left.href === right.href && left.key === right.key;
+}
+
 /** A chooser exists only when the item really has more than one version. */
 export function readVersionCanChoose(versions: readonly ReadVersion[]): boolean {
   return versions.length > 1;
@@ -21,33 +34,92 @@ export function readVersionPick(versions: readonly ReadVersion[], chosen: string
   return matches.length === 1 && matches[0]!.inventoryAvailable ? matches[0] : undefined;
 }
 
-/** The component's own admission for one explicit version change. It refuses a
- * callback from an older render (retained menu), a replaced source or version list,
- * and a successor attempt, while still allowing recovery from a failed or
- * not-ready original. */
-export type ReadVersionAdmission = Readonly<{
+/** The eligibility facts a rendered chooser row was offered on and the committed
+ * eligibility identity it must still match. */
+export type ReadVersionSource = Readonly<{
+  context: unknown;
+  sourceId: string | undefined;
+  versions: readonly ReadVersion[];
+}>;
+
+type ReadVersionSelection = ReadVersionSource & Readonly<{attempt: unknown}>;
+
+/** The row itself must still be the exact, unique, available, non-current row. */
+function readVersionPickable(versions: readonly ReadVersion[], sourceId: string | undefined, candidate: ReadVersion): boolean {
+  if (sourceId === undefined || candidate.sourceId === sourceId || !candidate.inventoryAvailable) return false;
+  const matches = versions.filter(version => version.sourceId === candidate.sourceId);
+  return matches.length === 1 && matches[0] === candidate;
+}
+
+/** The callback's own captured eligibility must be the committed eligibility: a replaced
+ * list (even with equal contents) invalidates the old row instead of comparing the
+ * callback against its own closure. */
+function readSameSource(rendered: ReadVersionSource, committed: ReadVersionSource | undefined): boolean {
+  if (!committed) return false;
+  if (rendered.context !== committed.context) return false;
+  if (rendered.sourceId === undefined || rendered.sourceId !== committed.sourceId) return false;
+  return rendered.versions === committed.versions;
+}
+
+export type ReadVersionPreRetire = Readonly<{
   liveRoute: boolean;
-  renderedContext: unknown;
-  currentContext: unknown;
-  renderedSourceId: string | undefined;
-  currentSourceId: string | undefined;
-  renderedAttempt: unknown;
+  route: ReadRouteEntry | undefined;
+  currentRoute: ReadRouteEntry | undefined;
+  rendered: ReadVersionSelection;
+  committed: ReadVersionSource | undefined;
   currentAttempt: unknown;
   attemptLive: boolean;
   candidate: ReadVersion;
-  offered: readonly ReadVersion[];
-  currentOffered: readonly ReadVersion[] | undefined;
 }>;
 
-export function readVersionAdmission(facts: ReadVersionAdmission): boolean {
-  if (!facts.liveRoute || facts.renderedContext !== facts.currentContext) return false;
-  if (facts.renderedSourceId === undefined || facts.renderedSourceId !== facts.currentSourceId) return false;
-  if (!facts.attemptLive || facts.renderedAttempt !== facts.currentAttempt) return false;
-  // The committed eligibility identity, not the callback's own captured list, must still be the
-  // same list this row came from; a replaced list therefore invalidates the old row.
-  if (facts.currentOffered === undefined || facts.offered !== facts.currentOffered) return false;
-  const matches = facts.offered.filter(version => version.sourceId === facts.candidate.sourceId);
-  return matches.length === 1 && matches[0] === facts.candidate && facts.candidate.inventoryAvailable && facts.candidate.sourceId !== facts.currentSourceId;
+/** Admission before retirement: the original route entry, context, source and eligibility
+ * list are unchanged, and the row's own attempt is the real live attempt that is still
+ * the current one. Recovery from a failed or not-ready attempt is allowed because its
+ * liveness does not depend on `factsCurrent()`. */
+export function readVersionPreRetire(facts: ReadVersionPreRetire): boolean {
+  if (!facts.liveRoute || !readSameRouteEntry(facts.route, facts.currentRoute)) return false;
+  if (!facts.attemptLive || !facts.rendered.attempt || facts.rendered.attempt !== facts.currentAttempt) return false;
+  if (!readSameSource(facts.rendered, facts.committed)) return false;
+  return readVersionPickable(facts.rendered.versions, facts.rendered.sourceId, facts.candidate);
+}
+
+export type ReadVersionPostRetire = Readonly<{
+  liveRoute: boolean;
+  route: ReadRouteEntry | undefined;
+  currentRoute: ReadRouteEntry | undefined;
+  rendered: ReadVersionSelection;
+  committed: ReadVersionSource | undefined;
+  successor: unknown;
+  candidate: ReadVersion;
+}>;
+
+/** Admission after retirement. The original attempt has been retired by definition, so
+ * this deliberately does not require it to still be live or `attemptRef` current; it
+ * requires the original route/context/source/list witness to be unchanged and no
+ * successor to exist. */
+export function readVersionPostRetire(facts: ReadVersionPostRetire): boolean {
+  if (!facts.liveRoute || !readSameRouteEntry(facts.route, facts.currentRoute)) return false;
+  if (facts.successor !== undefined) return false;
+  if (!readSameSource(facts.rendered, facts.committed)) return false;
+  return readVersionPickable(facts.rendered.versions, facts.rendered.sourceId, facts.candidate);
+}
+
+/** The component's whole explicit recovery: pre-retire admission, retirement, then the
+ * unchanged post-retire witness. `true` is the only result that permits the caller to
+ * write the chosen source. */
+export type ReadVersionRecovery = ReadVersionPreRetire & Readonly<{
+  retire: (attempt: unknown) => void;
+  afterRetire: () => Readonly<{liveRoute: boolean; currentRoute: ReadRouteEntry | undefined; successor: unknown; committed: ReadVersionSource | undefined}>;
+}>;
+
+export function readVersionRecovery(facts: ReadVersionRecovery): boolean {
+  if (!readVersionPreRetire(facts)) return false;
+  facts.retire(facts.rendered.attempt);
+  const after = facts.afterRetire();
+  return readVersionPostRetire({
+    liveRoute: after.liveRoute, route: facts.route, currentRoute: after.currentRoute,
+    rendered: facts.rendered, committed: after.committed, successor: after.successor, candidate: facts.candidate,
+  });
 }
 
 /** Back returns in-app only when the captured route really has a predecessor. */

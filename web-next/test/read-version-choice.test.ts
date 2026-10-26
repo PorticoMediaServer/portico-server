@@ -1,10 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readBackDestination, readVersionAdmission, readVersionAlternatives, readVersionCanChoose, readVersionPick} from '../src/screens/read/read-version-choice.ts';
+import {readBackDestination, readRouteEntry, readSameRouteEntry, readVersionAlternatives, readVersionCanChoose,
+  readVersionPick, readVersionPostRetire, readVersionPreRetire, readVersionRecovery, type ReadRouteEntry} from '../src/screens/read/read-version-choice.ts';
 
 const epub = {sourceId: 'epub-source', format: 'epub' as const, size: 900, inventoryAvailable: true};
 const pdf = {sourceId: 'pdf-source', format: 'pdf' as const, size: 1200, inventoryAvailable: true};
 const stale = {sourceId: 'stale-source', format: 'pdf' as const, size: 800, inventoryAvailable: false};
+const route = {} as never;
+const entry = (key: string, href = `/item/book?entry=${key}`): ReadRouteEntry => ({href, key});
+const location = (value: ReadRouteEntry) => ({href: value.href, state: {__TSR_key: value.key}});
 
 test('a rejected default EPUB leaves the available PDF choosable', () => {
   const versions = [epub, pdf];
@@ -28,26 +32,79 @@ test('a one-version item shows no chooser', () => {
   assert.deepEqual(readVersionAlternatives([epub], epub.sourceId), []);
 });
 
-test('the component admits an explicit recovery only from the exact render it was offered on', () => {
-  const offered = [epub, pdf];
-  const route = {} as never, attempt = {} as never;
-  const base = {liveRoute: true, renderedContext: route, currentContext: route, renderedSourceId: 'epub-source', currentSourceId: 'epub-source',
-    renderedAttempt: attempt, currentAttempt: attempt, attemptLive: true, candidate: pdf, offered, currentOffered: offered};
-  assert.equal(readVersionAdmission(base), true);
-  // A retained menu callback after the attempt was replaced must not retire the successor.
-  assert.equal(readVersionAdmission({...base, currentAttempt: {} as never}), false);
-  // A replaced source or version list refuses the old row.
-  assert.equal(readVersionAdmission({...base, currentSourceId: 'pdf-source'}), false);
-  assert.equal(readVersionAdmission({...base, offered: [epub, {...pdf, size: 999}], currentOffered: [epub, {...pdf, size: 999}]}), false);
-  // A replaced committed list invalidates the callback's own captured list even when it matches itself.
-  assert.equal(readVersionAdmission({...base, currentOffered: [epub]}), false);
-  assert.equal(readVersionAdmission({...base, offered: [epub, stale]}), false);
-  // A stale route/context and a retired original also refuse, while a failed original stays admissible.
-  assert.equal(readVersionAdmission({...base, liveRoute: false}), false);
-  assert.equal(readVersionAdmission({...base, currentContext: {} as never}), false);
-  assert.equal(readVersionAdmission({...base, attemptLive: false}), false);
-  assert.equal(readVersionAdmission({...base, renderedAttempt: undefined, currentAttempt: undefined}), false, 'both undefined never admits');
-  assert.equal(readVersionAdmission({...base, candidate: epub}), false, 'the current version is not a change');
+test('the actual source sequence admits failed A then dispatches B after retirement', () => {
+  const versions = [epub, pdf];
+  const opened = entry('entry-a');
+  const attemptA = {live: true, aborted: false, sourceId: epub.sourceId};
+  const rendered = {context: route, sourceId: epub.sourceId, versions, attempt: attemptA};
+  const committed = {context: route, sourceId: epub.sourceId, versions};
+  let currentAttempt: unknown = attemptA;
+  const facts = {
+    liveRoute: true, route: opened, currentRoute: opened, rendered, committed,
+    currentAttempt, attemptLive: !attemptA.aborted && attemptA.live, candidate: pdf,
+    retire: (value: unknown) => {
+      assert.equal(value, attemptA, 'retirement may only target the attempt the row was rendered with');
+      attemptA.live = false; attemptA.aborted = true; currentAttempt = undefined;
+    },
+    afterRetire: () => ({liveRoute: true, currentRoute: opened, successor: currentAttempt, committed}),
+  };
+  // This is the sequence the component calls; it must reach setSourceId for a failed A.
+  assert.equal(readVersionRecovery(facts), true);
+  assert.equal(attemptA.live, false, 'the original attempt really was retired');
+  assert.equal(currentAttempt, undefined, 'retirement cleared the attempt ref');
+  // The post-retire leg must not require the retired attempt to still be live or current.
+  assert.equal(readVersionPostRetire({
+    liveRoute: true, route: opened, currentRoute: opened, rendered, committed, successor: undefined, candidate: pdf,
+  }), true);
+});
+
+test('a retained row is refused after a successor, replacement or navigation', () => {
+  const versions = [epub, pdf];
+  const opened = entry('entry-a'), elsewhere = entry('entry-b');
+  const attemptA = {live: true, aborted: false}, attemptB = {live: true, aborted: false};
+  const rendered = {context: route, sourceId: epub.sourceId, versions, attempt: attemptA};
+  const committed = {context: route, sourceId: epub.sourceId, versions};
+  const base = {liveRoute: true, route: opened, currentRoute: opened, rendered, committed, currentAttempt: attemptA, attemptLive: true, candidate: pdf};
+  assert.equal(readVersionPreRetire(base), true);
+  // A successor attempt exists: the old callback must not retire it.
+  assert.equal(readVersionPreRetire({...base, currentAttempt: attemptB}), false);
+  // The original was already retired.
+  assert.equal(readVersionPreRetire({...base, attemptLive: false}), false);
+  // The committed source or list was replaced (even with equal contents).
+  assert.equal(readVersionPreRetire({...base, committed: {...committed, sourceId: pdf.sourceId}}), false);
+  assert.equal(readVersionPreRetire({...base, committed: {...committed, versions: [...versions]}}), false);
+  // Another route entry replaced the original.
+  assert.equal(readVersionPreRetire({...base, currentRoute: elsewhere}), false);
+  assert.equal(readVersionPreRetire({...base, liveRoute: false}), false);
+  // Both attempts undefined never admits.
+  assert.equal(readVersionPreRetire({...base, rendered: {...rendered, attempt: undefined}, currentAttempt: undefined}), false);
+  // The row itself must still be the unique, available, non-current row.
+  assert.equal(readVersionPreRetire({...base, candidate: epub}), false);
+  assert.equal(readVersionPreRetire({...base, rendered: {...rendered, versions: [epub, stale]}}), false);
+});
+
+test('post-retire still refuses a successor or a replaced witness', () => {
+  const versions = [epub, pdf];
+  const opened = entry('entry-a'), elsewhere = entry('entry-b');
+  const attemptA = {live: false, aborted: true};
+  const rendered = {context: route, sourceId: epub.sourceId, versions, attempt: attemptA};
+  const committed = {context: route, sourceId: epub.sourceId, versions};
+  const base = {liveRoute: true, route: opened, currentRoute: opened, rendered, committed, successor: undefined, candidate: pdf};
+  assert.equal(readVersionPostRetire(base), true);
+  assert.equal(readVersionPostRetire({...base, successor: {}}), false);
+  assert.equal(readVersionPostRetire({...base, currentRoute: elsewhere}), false);
+  assert.equal(readVersionPostRetire({...base, committed: {...committed, versions: [...versions]}}), false);
+});
+
+test('the route witness is the real __TSR_key entry, not history.location.key', () => {
+  assert.deepEqual(readRouteEntry(location(entry('entry-a'))), entry('entry-a'));
+  assert.equal(readRouteEntry({href: '/item/book', state: {}}), undefined);
+  assert.equal(readRouteEntry({href: '/item/book', state: {__TSR_key: ''}}), undefined);
+  assert.equal(readRouteEntry({href: '/item/book', state: {__TSR_key: 7 as never}}), undefined);
+  assert.equal(readSameRouteEntry(entry('entry-a'), entry('entry-a')), true);
+  assert.equal(readSameRouteEntry(entry('entry-a'), entry('entry-b')), false);
+  assert.equal(readSameRouteEntry(entry('entry-a'), {...entry('entry-a'), href: '/other'}), false);
+  assert.equal(readSameRouteEntry(undefined, entry('entry-a')), false);
 });
 
 test('Back returns in-app only when the captured route really has a predecessor', () => {

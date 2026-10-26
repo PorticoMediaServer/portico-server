@@ -27,7 +27,7 @@ import {useLibraryScreenContext} from '../browse/screen-context';
 import {ReadMetadata} from './ReadMetadata';
 import {createReadBindings} from './bindings';
 import {readDestination, type ReadItemEligibility} from './navigation';
-import {readBackDestination, readVersionAdmission, readVersionCanChoose, type ReadVersion} from './read-version-choice';
+import {readBackDestination, readRouteEntry, readSameRouteEntry, readVersionCanChoose, readVersionRecovery, type ReadRouteEntry, type ReadVersion, type ReadVersionSource} from './read-version-choice';
 import styles from './read-item.module.css';
 
 type Captured = NonNullable<ReturnType<typeof useProtectedWebScreenContext>>;
@@ -41,6 +41,9 @@ export function ReadItemEntry({itemId, eligibility}: {itemId: string; eligibilit
 function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility: ReadItemEligibility}) {
   const context = useLibraryScreenContext(captured);
   const phone = usePhone();
+  // The actual router entry this screen was mounted on. Both Back and the version
+  // chooser must still be on it; `context.isCurrent()` alone is not a route witness.
+  const [originalEntry] = useState<ReadRouteEntry | undefined>(() => readRouteEntry(router.state.location));
   const [editing, setEditing] = useState(false), [more, setMore] = useState(false);
   const editorAnchor = useRef<HTMLButtonElement>(null);
   const errorSink = useRef(captured.binding.home.effects.reportError); errorSink.current = captured.binding.home.effects.reportError;
@@ -49,7 +52,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const [saving, setSaving] = useState(false), [rereading, setRereading] = useState(false);
   const [attempt, setAttempt] = useState<ReadAttempt>();
   const attemptRef = useRef<ReadAttempt | undefined>(undefined);
-  const committed = useRef<{context: Captured['context']; sourceId: string | undefined; versions: ReadItemEligibility['versions']}>();
+  const committed = useRef<ReadVersionSource | undefined>(undefined);
   useLayoutEffect(() => {committed.current = {context: captured.context, sourceId, versions: eligibility.versions};}, [captured.context, sourceId, eligibility.versions]);
   const renderIdentity = useRef({context: captured.context, sourceId, retry});
   renderIdentity.current = {context: captured.context, sourceId, retry};
@@ -99,13 +102,12 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   }, [attempt, eligibility.itemId]);
   // The reading branch owns no shell navigation on a phone, so the page keeps one
   // Back of its own before loading, failure and ready content alike.
-  const backEntry = {href: router.state.location.href, key: router.history.location.key};
   const phoneBack = phone && context.effects.back ? <div className={styles.phoneTopBar} data-read-phone-back>
     <Button className={styles.phoneBack} size="small" variant="icon" icon="i-left" iconOnly aria-label={t('next.states.back')}
       onClick={() => runScreenCommand(context, () => {
         if (!context.isCurrent()) return;
         // Only the original entry may navigate: a later route makes this callback stale.
-        if (router.state.location.href !== backEntry.href || router.history.location.key !== backEntry.key) return;
+        if (!readSameRouteEntry(originalEntry, readRouteEntry(router.state.location))) return;
         if (readBackDestination(router.history.canGoBack()) === 'back') context.effects.back?.();
         else context.effects.openHome?.();
       })}/>
@@ -113,20 +115,25 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const version = eligibility.versions.find(candidate => candidate.sourceId === sourceId);
   /** An explicit version recovery is permitted while the original attempt is failed or not
    * ready; factsCurrent() is deliberately not the gate because it can never become true then.
-   * The fence is the original route/context, the live attempt identity and the chosen row. */
+   * Pre-retire admission requires the original route/context/source/list and the real live
+   * attempt; post-retire admission requires only that unchanged witness and no successor,
+   * because retirement necessarily clears the attempt's liveness and ref. */
   const pickVersion = (candidate: ReadVersion, renderedAttempt: ReadAttempt | undefined, renderedSourceId: string | undefined) => {
-    const admit = () => readVersionAdmission({
-      liveRoute: context.isCurrent(), renderedContext: captured.context, currentContext: committed.current?.context,
-      renderedSourceId, currentSourceId: committed.current?.sourceId,
-      renderedAttempt, currentAttempt: attemptRef.current,
-      attemptLive: !!renderedAttempt && renderedAttempt.live && !renderedAttempt.fileLife.signal.aborted,
-      candidate, offered: eligibility.versions, currentOffered: committed.current?.versions,
+    if (!renderedAttempt) return;
+    const admitted = readVersionRecovery({
+      liveRoute: context.isCurrent(),
+      route: originalEntry,
+      currentRoute: readRouteEntry(router.state.location),
+      rendered: {context: captured.context, sourceId: renderedSourceId, versions: eligibility.versions, attempt: renderedAttempt},
+      committed: committed.current,
+      currentAttempt: attemptRef.current,
+      attemptLive: renderedAttempt.live && !renderedAttempt.fileLife.signal.aborted,
+      candidate,
+      retire: attempt => {if (attempt === renderedAttempt) retire(renderedAttempt);},
+      afterRetire: () => ({liveRoute: context.isCurrent(), currentRoute: readRouteEntry(router.state.location),
+        successor: attemptRef.current, committed: committed.current}),
     });
-    if (!admit() || !renderedAttempt) return;
-    retire(renderedAttempt);
-    // Retirement can reenter; re-check the original route/context/source/list and that no
-    // successor exists before any state write.
-    if (!admit() || attemptRef.current) return;
+    if (!admitted) return;
     setDetail({});
     setSaving(false); setRereading(false);
     setMenu(false); setChooserMenu(false);
