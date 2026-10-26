@@ -34,7 +34,7 @@ func TestChannelChoicesPagePastRestrictedPrefix(t *testing.T) {
 	}
 	for i := 0; i < 400; i++ {
 		id := fmt.Sprintf("%064x", i+1)
-		if _, err = db.Exec(`INSERT INTO live_channel_versions VALUES(?,?,'provider','Channel','1','',?,x'00','','')`, gen, id, i); err != nil {
+		if _, err = db.Exec(`INSERT INTO live_channel_versions(generation_id,channel_id,provider_key,name,number,source_number,group_name,position,locator_sealed,available_start,available_end) VALUES(?,?,'provider','Channel','1',NULL,'',?,x'00','','')`, gen, id, i); err != nil {
 			t.Fatal(err)
 		}
 	}
