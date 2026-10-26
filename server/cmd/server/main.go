@@ -1251,6 +1251,17 @@ func run() (runErr error) {
 		claimHandler.Remote().Wake()
 		invalidateCustomSource()
 	}, WebDirectory: os.Getenv("PORTICO_WEB_DIR"), Analysis: analysisService, Prepared: preparedVersions, Downloads: offlineDownloads, DVR: recordingStore, Subtitles: subtitleService, Lyrics: lyricService, LyricsBulk: lyricFetch, LyricsProbe: ffprobeTool, LibraryChannels: generatedChannels, Console: console, Scheduler: scheduler, Measurements: measurements, Networking: claimHandler, CustomCertificate: customCertificate, RouteIdentity: networking.NewRouteIdentityHandler(claimKeys, claimRunner, claimHandler.Certificates(), customCertificate), LiveChannels: liveSources, PlaybackRuntime: currentPlayback, AudioMedia: subtitleRenderer, Storage: storeIO, Mounts: managed, RemoteSources: sources, DB: db, Watchdog: watchdog, Identity: ident, Catalog: cat, Ingestion: scanner, Playback: player, Hosted: control, Metadata: meta, Origins: origins, SetupHosts: setupHosts}
+	// Private capture custody is independent of the still-closed remote disc
+	// admission path. Its lifecycle reconciles exact owned receipts on restart.
+	ownedCaptures, e := initializeOwnedCaptures(apiDependencies, cache)
+	if e != nil {
+		return e
+	}
+	if ownedCaptures != nil {
+		defer ownedCaptures.Close()
+		ownedCaptures.Start(ctx)
+		apiDependencies.DiscCaptures = ownedCaptures
+	}
 	readingService := httpapi.NewReadingService(apiDependencies)
 	// The worker distinguishes bytes the artwork pipeline refused as an image
 	// from transient acquisition failures, without the reading package
