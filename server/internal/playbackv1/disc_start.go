@@ -239,7 +239,10 @@ func (s *Service) discStartCheck(c Caller, key, body string, base row, asset, ca
 			if e != nil {
 				return e
 			}
-			if need := planKbps(plan); need <= 0 || need*1000 > limit {
+			if plan == nil {
+				return playback.ErrIncompatible
+			}
+			if need := planKbps(*plan); need <= 0 || need*1000 > limit {
 				return playback.ErrIncompatible
 			}
 		}
