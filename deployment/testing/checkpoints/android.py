@@ -85,6 +85,10 @@ def safe_diagnostics(raw):
   rows.append(row)
   if len(rows)>=256:break
  return rows
+def admission_refusal(surface):
+ '''The production driver guard: closed unavailable rows while no lease producer exists.'''
+ refusal=load('device_runtime',Path(__file__).with_name('device_runtime.py'))
+ return refusal.unavailable_rows([surface])
 def main():
  p=argparse.ArgumentParser(description=__doc__);p.add_argument('--target',type=Path,required=True);p.add_argument('--mode',choices=ALLOWED,required=True);p.add_argument('--out',type=Path,required=True);p.add_argument('--flavour',choices=['google','firetv'],default='google');p.add_argument('--disabled',type=json.loads,default=[]);a=p.parse_args();os.umask(0o077)
  if a.target.is_symlink() or a.target.stat().st_mode&0o077 or a.target.stat().st_uid!=os.getuid():p.error('private owned target required')
@@ -92,7 +96,14 @@ def main():
  if a.flavour=='firetv' and a.mode!='tv':p.error('Fire OS requires TV allocation')
  tv=load('tv_flows',Path(__file__).with_name('tv_flows.py')) if a.mode=='tv' else None
  phone=load('phone_flows',Path(__file__).with_name('phone_flows.py')) if a.mode=='phone' else None
- out=a.out;out.mkdir(parents=True,exist_ok=False);private=ROOT/'.private/v3-checkpoints'/('flow-'+out.parent.name+'-'+out.name);private.mkdir(mode=0o700,exist_ok=False);server=ROOT/'.worktrees/ui-2026/v3-release/server';legacy=load('legacy_android_flows',server/'smoke/android/flows.py');target=json.loads(a.target.read_text());d=Device(target,a.mode,out,private,server);flows=[];log=(private/'native-logcat.log').open('wb');capture=subprocess.Popen(['adb','-s',d.serial,'logcat','-v','brief','-T','1','ReactNativeJS:W','AndroidRuntime:E','*:S'],stdout=log,stderr=subprocess.STDOUT)
+ out=a.out;out.mkdir(parents=True,exist_ok=False);private=ROOT/'.private/v3-checkpoints'/('flow-'+out.parent.name+'-'+out.name);private.mkdir(mode=0o700,exist_ok=False);server=ROOT/'.worktrees/ui-2026/v3-release/server';legacy=load('legacy_android_flows',server/'smoke/android/flows.py');target=json.loads(a.target.read_text())
+ rows=admission_refusal(surface)
+ if rows:
+  # No admitted lease producer exists, so a standalone driver refuses before its device
+  # probe, log capture, launch or force-stop. A target file is a description, never
+  # admission; a syntactically complete old target is refused the same way.
+  (out/'result.json').write_text(json.dumps({'flows':rows,'coverage':'refused before any device action'},indent=2)+'\n');print(json.dumps({'surface':surface,'flows':rows}));return 0
+ d=Device(target,a.mode,out,private,server);flows=[];log=(private/'native-logcat.log').open('wb');capture=subprocess.Popen(['adb','-s',d.serial,'logcat','-v','brief','-T','1','ReactNativeJS:W','AndroidRuntime:E','*:S'],stdout=log,stderr=subprocess.STDOUT)
  failures=(Refusal,tv.Failure) if tv else (Refusal,phone.Refusal)
  unavailable_errors=(tv.Unavailable,) if tv else (phone.Unavailable,)
  def flow(name,fn):
@@ -114,11 +125,9 @@ def main():
   if a.mode=='tv':tv.run_tv(d,flow,legacy,a.flavour)
   else:
    def launch():
-    # Exact allocated AVD was checked above; am start avoids stale agent claims
-    # from unrelated emulators that previously reused this serial. UI remains
-    # driven by the exact device_open launcher/session and authoritative refs.
-    subprocess.run(['adb','-s',d.serial,'shell','am','start','-W','-n',PACKAGE+'/.MainActivity'],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=20)
-    d.wait_text(legacy.HOME_ROWS.pattern,25)
+    # A hard stop at the mutation site: there is no adb bypass and no launch without an
+    # admitted lease. Behaviour below is unreachable until a real lease producer exists.
+    raise Refusal('runtime-admission-unavailable')
    flow('launch-restored-family',launch)
    if not any(row['id']=='launch-restored-family' and row['status']=='pass' for row in flows):
     flow.unavailable('remaining-phone-flows','retained-launch-unavailable','no reset or re-auth fallback')

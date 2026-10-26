@@ -133,3 +133,28 @@ kept verbatim, raw callback text unable to escape, and handback
 What is *not* enforced: a session opened outside the helper, an `adb` or launcher call made
 around it, and any physical handback. Cooperative callers are covered; the claimant check
 catches another lane's live session, not an arbitrary external tool.
+
+## Machine runtime qualification: temporarily unavailable
+
+No admitted device lease producer is wired, so the machine checkpoint and the standalone
+driver **refuse before any device I/O**. This is a temporary machine-runtime qualification
+gap: it is **not** a broad walking hold — cooperative scripted walks with `avd_custody.py`
+remain usable — and it is **not** a completed admission integration. A real producer is a
+separate, reviewed implementation that must perform the supported session open under the
+AVD lock and hand back an admitted session.
+
+Both entry points call one shared guard, `device_runtime.refused()` / `require_lease()`,
+which always refuses. The checkpoint records `unavailable` for the Android phone, TV and
+Fire surfaces and the driver records one for its surface: no serial probe, boot, clock
+read or correction, `adb reverse`, install, launch, log capture or force-stop. Package
+builds are unaffected and still run. The device phase is removed from the source and
+remains readable in Git history; no other harness code changed.
+
+There is no registration API and no placeholder opt-in. A mapping, a plan document, a
+target name, an AVD, a syntactically complete `--platform/--serial/--config/--session`
+list, and an arbitrary object carrying `open` are all descriptions the gate never consults
+— a callable attribute is not proof that a session was admitted. The old phone bypass is
+gone: the launch no longer calls `adb shell am start`.
+
+Existing `native-state.json` dropped ids are read into the result **unchanged**; history
+and counters are never rewritten by this gate. Agent-session retirement stays unproven.

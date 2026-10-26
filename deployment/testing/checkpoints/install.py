@@ -14,7 +14,7 @@ def main():
     native=directory/'native-tools/checkpoints'
     if args.android:
         native.mkdir(parents=True,exist_ok=True)
-        for name in ['native-build.py','native-checkpoint.py','android.py','phone_flows.py','tv_flows.py','run.py','firetv-artifact.py']:atomic(native/name,source.with_name(name).read_bytes())
+        for name in ['native-build.py','native-checkpoint.py','android.py','avd_custody.py','device_runtime.py','phone_flows.py','tv_flows.py','run.py','firetv-artifact.py']:atomic(native/name,source.with_name(name).read_bytes())
         helper=native.parent/'visual-qa/auth-driver/private_driver.py';helper.parent.mkdir(parents=True,exist_ok=True);atomic(helper,source.parent.parent.joinpath('visual-qa/auth-driver/private_driver.py').read_bytes())
     units=Path.home()/'.config/systemd/user';units.mkdir(parents=True,exist_ok=True)
     jobs=[('portico-v3-checkpoints','','*-*-* 00,04,08,12,16,20:47:00 UTC','75min'),('portico-v3-ci-audit',' --audit-ci','*-*-* *:50:00 UTC','5min'),('portico-v3-ledger',' --refresh-ledger','*-*-* 00,02,04,06,08,10,12,14,16,18,20,22:35:00 UTC','5min')]
