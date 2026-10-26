@@ -3,6 +3,7 @@ import {defaultI18n} from '@i18n';
 import {Button} from '../../kit/controls/Button';
 import {TextField} from '../../kit/controls/Fields';
 import {Dialog} from '../../kit/overlays/Dialog';
+import {SecureRefusalDialog} from './SecureRefusalDialog';
 import {ownerSwitchContextAllowed} from '../../platform/secure-pending';
 import type {SettingsOwnerSwitch} from './owner-switch';
 import styles from './owner-signin-switch.module.css';
@@ -44,9 +45,7 @@ export function OwnerSignInSwitch({source, isCurrent, onError, startOver = false
   const busy = state.busy || pending.current;
   return <>
     <Button className={startOver ? styles.destructive : undefined} variant="glass" size="small" disabled={state.busy || !!state.preview || state.confirmed} onClick={start}>{t(startOver ? 'next.settingsSpec.server.signin.groups.1.rows.3.control.label' : 'next.settingsSpec.server.signin.groups.1.rows.2.control.label')}</Button>
-    <Dialog children={null} open={secure} onOpenChange={value => {if (!value) setSecure(false);}} title={t('accounts.ownerSwitch.secureTitle')}
-      description={t('accounts.ownerSwitch.secureBody', {localUrl: 'http://localhost:32500'})}
-      footer={<Button variant="glass" onClick={() => setSecure(false)}>{t('action.cancel')}</Button>}/>
+    <SecureRefusalDialog open={secure} onOpenChange={value => {if (!value) setSecure(false);}} />
     <Dialog open={open && !!preview} onOpenChange={value => {if (!value) close();}} width={600}
       title={t(startOver ? 'next.settingsSpec.server.signin.panels.startOverPortico.title' : 'next.settingsSpec.server.signin.panels.switchToPortico.title')} dismissOnBack={!busy && !state.confirmed}
       dismissOnOutsidePress={!busy && !state.confirmed} showCloseButton={!busy && !state.confirmed}
