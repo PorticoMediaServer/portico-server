@@ -42,12 +42,20 @@ const deadline = (v: unknown, allowExpired: boolean): string => {
 const reference = (v: unknown, prefix: string) => typeof v === 'string' && new RegExp('^' + prefix + '_[A-Za-z0-9_-]{43}$').test(v) ? v : invalid();
 const nonce = (v: unknown): string => {if (typeof v !== 'string') invalid(); routeBytes(v, 32); return v;};
 const copy = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
+function frozen<T>(v: T): T {
+  if (v && typeof v === 'object') {for (const item of Object.values(v)) frozen(item); Object.freeze(v);}
+  return v;
+}
 const fingerprint = (v: SecurityJournalRecord) => JSON.stringify(v);
 export const securityRecordId = (v: SecurityJournalRecord) => 'original' in v ? v.original.openingId : v.intentId;
 
 /** Validate the encrypted journal as data. It never discovers another opening,
  * renews credentials, or treats a URL hint as a source of account authority. */
 export function parseSecurityJournal(raw: unknown, allowExpired = false): SecurityJournalRecord {
+  if (!object(raw)) invalid();
+  // Snapshot getters/caller-owned data once before validation. All subsequent
+  // reads use this plain, private JSON value.
+  try {raw = copy(raw);} catch {invalid();}
   if (!object(raw)) invalid();
   if (raw.kind === 'hosted-bridge') {
     exactKeys(raw, ['version', 'kind', 'intentId', 'requestId', 'hostedOrigin', 'createdAt', 'expiresAt'], ['started']);
@@ -62,9 +70,9 @@ export function parseSecurityJournal(raw: unknown, allowExpired = false): Securi
       // Provider navigation is independently validated by HostedAccountClient.
       const url = new URL(s.authorizationUrl);
       if (url.protocol !== 'https:' || url.username || url.password || url.port || url.hostname !== (s.provider === 'apple' ? 'appleid.apple.com' : 'accounts.google.com')) invalid();
-      return {...out, started: {transactionId: reference(s.transactionId, 'oid'), expiresAt: deadline(s.expiresAt, allowExpired), mode: 'reauthenticate', provider: s.provider as IdentityProvider, intentId: out.intentId, registeredOrigin: origin(s.registeredOrigin), state: nonce(s.state), context: parseSecuritySigned(s.context), authorizationUrl: s.authorizationUrl}};
+      return frozen({...out, started: {transactionId: reference(s.transactionId, 'oid'), expiresAt: deadline(s.expiresAt, allowExpired), mode: 'reauthenticate', provider: s.provider as IdentityProvider, intentId: out.intentId, registeredOrigin: origin(s.registeredOrigin), state: nonce(s.state), context: parseSecuritySigned(s.context), authorizationUrl: s.authorizationUrl}});
     }
-    return out;
+    return frozen(out);
   }
   exactKeys(raw, ['original'], ['transactionId', 'context', 'prepare', 'intentId', 'state', 'verifier', 'returned']);
   const a = raw.original;
@@ -121,7 +129,7 @@ export function parseSecurityJournal(raw: unknown, allowExpired = false): Securi
   }
   if (!server && (extra.context || extra.prepare || extra.intentId || extra.state || extra.verifier || extra.returned)) invalid();
   if (extra.intentId && (!extra.context || !extra.prepare || !extra.state || !extra.verifier)) invalid();
-  return copy({...out, ...extra});
+  return frozen(copy({...out, ...extra}));
 }
 
 /** One encrypted, per-tab original; writes compare the complete predecessor and
@@ -132,30 +140,41 @@ export class AccountSecurityJournal {
   async read(allowExpired = false) {const raw = await this.store.read(); return raw === undefined ? undefined : parseSecurityJournal(raw, allowExpired);}
   async create(value: SecurityJournalRecord, assertCurrent: () => void) {
     const next = parseSecurityJournal(value);
-    await this.store.change(old => {assertCurrent(); if (old !== undefined) invalid(); return next;}, assertCurrent);
+    const commit = () => {parseSecurityJournal(next); assertCurrent();};
+    await this.store.change(old => {commit(); if (old !== undefined) invalid(); return next;}, commit);
     return next;
   }
   async replace(previous: SecurityJournalRecord, next: SecurityJournalRecord, assertCurrent: () => void) {
+    // Capture each canonical complete operand before the storage call. Never
+    // reread a caller-owned predecessor after waiting for a lock/encryption.
+    const predecessor = parseSecurityJournal(previous, true), expected = fingerprint(predecessor);
     const value = parseSecurityJournal(next);
-    if (securityRecordId(previous) !== securityRecordId(value) || ('original' in previous ? !('original' in value) || JSON.stringify(previous.original) !== JSON.stringify(value.original) : 'original' in value || JSON.stringify({...previous, started: undefined}) !== JSON.stringify({...value, started: undefined}))) invalid();
-    await this.store.change(old => {assertCurrent(); if (fingerprint(parseSecurityJournal(old)) !== fingerprint(previous)) invalid(); return value;}, assertCurrent);
+    if (securityRecordId(predecessor) !== securityRecordId(value) || ('original' in predecessor ? !('original' in value) || JSON.stringify(predecessor.original) !== JSON.stringify(value.original) : 'original' in value || JSON.stringify({...predecessor, started: undefined}) !== JSON.stringify({...value, started: undefined}))) invalid();
+    const commit = () => {parseSecurityJournal(value); assertCurrent();};
+    await this.store.change(old => {commit(); if (fingerprint(parseSecurityJournal(old)) !== expected) invalid(); return value;}, commit);
     return value;
   }
   async assertOriginal(expected: SecurityJournalRecord) {
+    const captured = fingerprint(parseSecurityJournal(expected));
     const value = await this.read();
-    if (!value || fingerprint(value) !== fingerprint(expected)) invalid();
+    if (!value || fingerprint(value) !== captured) invalid();
   }
   async retireAccount(original: OriginalSecurityAccount) {
+    const captured = parseSecurityJournal({original}, true);
+    if (!('original' in captured)) invalid();
+    const expected = JSON.stringify(captured.original);
     await this.store.change(old => {
-      if (!object(old) || !object(old.original)) return old;
-      return JSON.stringify(old.original) === JSON.stringify(original) ? undefined : old;
+      if (old === undefined) return old;
+      const current = parseSecurityJournal(old, true);
+      return 'original' in current && JSON.stringify(current.original) === expected ? undefined : old;
     });
   }
   async clear(expected: SecurityJournalRecord) {
+    const captured = fingerprint(parseSecurityJournal(expected, true));
     await this.store.change(old => {
       if (old === undefined) return old;
       // Expiry must not prevent exact cleanup, and a successor is never removed.
-      return JSON.stringify(old) === fingerprint(expected) ? undefined : old;
+      return fingerprint(parseSecurityJournal(old, true)) === captured ? undefined : old;
     });
   }
 }
