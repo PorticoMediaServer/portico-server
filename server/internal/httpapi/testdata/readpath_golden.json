@@ -546,7 +546,7 @@
   "body": "{\"pivot\":\"series\",\"sort\":[{\"field\":\"added\",\"direction\":\"desc\"}],\"limit\":8}",
   "viewer": "open",
   "status": 200,
-  "response": "{\"applied\":{\"query\":null,\"sort\":[{\"direction\":\"asc\",\"field\":\"title\"}]},\"entries\":[{\"addedAt\":null,\"count\":1,\"id\":\"series:series-04\",\"kind\":\"book_series\",\"missing\":false,\"navigation\":{\"category\":\"series:series-04\",\"view\":\"browse\"},\"title\":\"series-04\"},{\"addedAt\":null,\"count\":1,\"id\":\"series:series-08\",\"kind\":\"book_series\",\"missing\":false,\"navigation\":{\"category\":\"series:series-08\",\"view\":\"browse\"},\"title\":\"series-08\"}],\"pageInfo\":{\"hasMore\":false,\"nextCursor\":\"\",\"revision\":\"\\u003cvolatile\\u003e\",\"start\":0,\"total\":2,\"totalIsLowerBound\":false},\"pivot\":\"series\",\"positionIndex\":[]}"
+  "response": "{\"applied\":{\"query\":null,\"sort\":[{\"direction\":\"asc\",\"field\":\"title\"}]},\"entries\":[{\"addedAt\":null,\"count\":1,\"id\":\"series:series-04\",\"kind\":\"book_series\",\"libraryId\":\"fixture-books\",\"missing\":false,\"navigation\":{\"category\":\"series:series-04\",\"view\":\"browse\"},\"title\":\"series-04\"},{\"addedAt\":null,\"count\":1,\"id\":\"series:series-08\",\"kind\":\"book_series\",\"libraryId\":\"fixture-books\",\"missing\":false,\"navigation\":{\"category\":\"series:series-08\",\"view\":\"browse\"},\"title\":\"series-08\"}],\"pageInfo\":{\"hasMore\":false,\"nextCursor\":\"\",\"revision\":\"\\u003cvolatile\\u003e\",\"start\":0,\"total\":2,\"totalIsLowerBound\":false},\"pivot\":\"series\",\"positionIndex\":[]}"
  },
  {
   "name": "browse:fixture-books:series:added:desc/restricted",
@@ -564,7 +564,7 @@
   "body": "{\"pivot\":\"series\",\"sort\":[{\"field\":\"communityRating\",\"direction\":\"desc\"}],\"limit\":8}",
   "viewer": "open",
   "status": 200,
-  "response": "{\"applied\":{\"query\":null,\"sort\":[{\"direction\":\"asc\",\"field\":\"title\"}]},\"entries\":[{\"addedAt\":null,\"count\":1,\"id\":\"series:series-04\",\"kind\":\"book_series\",\"missing\":false,\"navigation\":{\"category\":\"series:series-04\",\"view\":\"browse\"},\"title\":\"series-04\"},{\"addedAt\":null,\"count\":1,\"id\":\"series:series-08\",\"kind\":\"book_series\",\"missing\":false,\"navigation\":{\"category\":\"series:series-08\",\"view\":\"browse\"},\"title\":\"series-08\"}],\"pageInfo\":{\"hasMore\":false,\"nextCursor\":\"\",\"revision\":\"\\u003cvolatile\\u003e\",\"start\":0,\"total\":2,\"totalIsLowerBound\":false},\"pivot\":\"series\",\"positionIndex\":[]}"
+  "response": "{\"applied\":{\"query\":null,\"sort\":[{\"direction\":\"asc\",\"field\":\"title\"}]},\"entries\":[{\"addedAt\":null,\"count\":1,\"id\":\"series:series-04\",\"kind\":\"book_series\",\"libraryId\":\"fixture-books\",\"missing\":false,\"navigation\":{\"category\":\"series:series-04\",\"view\":\"browse\"},\"title\":\"series-04\"},{\"addedAt\":null,\"count\":1,\"id\":\"series:series-08\",\"kind\":\"book_series\",\"libraryId\":\"fixture-books\",\"missing\":false,\"navigation\":{\"category\":\"series:series-08\",\"view\":\"browse\"},\"title\":\"series-08\"}],\"pageInfo\":{\"hasMore\":false,\"nextCursor\":\"\",\"revision\":\"\\u003cvolatile\\u003e\",\"start\":0,\"total\":2,\"totalIsLowerBound\":false},\"pivot\":\"series\",\"positionIndex\":[]}"
  },
  {
   "name": "browse:fixture-books:series:communityRating:desc/restricted",
@@ -582,7 +582,7 @@
   "body": "{\"pivot\":\"series\",\"sort\":[{\"field\":\"duration\",\"direction\":\"desc\"}],\"limit\":8}",
   "viewer": "open",
   "status": 200,
-  "response": "{\"applied\":{\"query\":null,\"sort\":[{\"direction\":\"asc\",\"field\":\"title\"}]},\"entries\":[{\"addedAt\":null,\"count\":1,\"id\":\"series:series-04\",\"kind\":\"book_series\",\"missing\":false,\"navigation\":{\"category\":\"series:series-04\",\"view\":\"browse\"},\"title\":\"series-04\"},{\"addedAt\":null,\"count\":1,\"id\":\"series:series-08\",\"kind\":\"book_series\",\"missing\":false,\"navigation\":{\"category\":\"series:series-08\",\"view\":\"browse\"},\"title\":\"series-08\"}],\"pageInfo\":{\"hasMore\":false,\"nextCursor\":\"\",\"revision\":\"\\u003cvolatile\\u003e\",\"start\":0,\"total\":2,\"totalIsLowerBound\":false},\"pivot\":\"series\",\"positionIndex\":[]}"
+  "response": "{\"applied\":{\"query\":null,\"sort\":[{\"direction\":\"asc\",\"field\":\"title\"}]},\"entries\":[{\"addedAt\":null,\"count\":1,\"id\":\"series:series-04\",\"kind\":\"book_series\",\"libraryId\":\"fixture-books\",\"missing\":false,\"navigation\":{\"category\":\"series:series-04\",\"view\":\"browse\"},\"title\":\"series-04\"},{\"addedAt\":null,\"count\":1,\"id\":\"series:series-08\",\"kind\":\"book_series\",\"libraryId\":\"fixture-books\",\"missing\":false,\"navigation\":{\"category\":\"series:series-08\",\"view\":\"browse\"},\"title\":\"series-08\"}],\"pageInfo\":{\"hasMore\":false,\"nextCursor\":\"\",\"revision\":\"\\u003cvolatile\\u003e\",\"start\":0,\"total\":2,\"totalIsLowerBound\":false},\"pivot\":\"series\",\"positionIndex\":[]}"
  },
  {
   "name": "browse:fixture-books:series:duration:desc/restricted",
@@ -600,7 +600,7 @@
   "body": "{\"pivot\":\"series\",\"sort\":[{\"field\":\"lastPlayed\",\"direction\":\"desc\"}],\"limit\":8}",
   "viewer": "open",
   "status": 200,
-  "response": "{\"applied\":{\"query\":null,\"sort\":[{\"direction\":\"asc\",\"field\":\"title\"}]},\"entries\":[{\"addedAt\":null,\"count\":1,\"id\":\"series:series-04\",\"kind\":\"book_series\",\"missing\":false,\"navigation\":{\"category\":\"series:series-04\",\"view\":\"browse\"},\"title\":\"series-04\"},{\"addedAt\":null,\"count\":1,\"id\":\"series:series-08\",\"kind\":\"book_series\",\"missing\":false,\"navigation\":{\"category\":\"series:series-08\",\"view\":\"browse\"},\"title\":\"series-08\"}],\"pageInfo\":{\"hasMore\":false,\"nextCursor\":\"\",\"revision\":\"\\u003cvolatile\\u003e\",\"start\":0,\"total\":2,\"totalIsLowerBound\":false},\"pivot\":\"series\",\"positionIndex\":[]}"
+  "response": "{\"applied\":{\"query\":null,\"sort\":[{\"direction\":\"asc\",\"field\":\"title\"}]},\"entries\":[{\"addedAt\":null,\"count\":1,\"id\":\"series:series-04\",\"kind\":\"book_series\",\"libraryId\":\"fixture-books\",\"missing\":false,\"navigation\":{\"category\":\"series:series-04\",\"view\":\"browse\"},\"title\":\"series-04\"},{\"addedAt\":null,\"count\":1,\"id\":\"series:series-08\",\"kind\":\"book_series\",\"libraryId\":\"fixture-books\",\"missing\":false,\"navigation\":{\"category\":\"series:series-08\",\"view\":\"browse\"},\"title\":\"series-08\"}],\"pageInfo\":{\"hasMore\":false,\"nextCursor\":\"\",\"revision\":\"\\u003cvolatile\\u003e\",\"start\":0,\"total\":2,\"totalIsLowerBound\":false},\"pivot\":\"series\",\"positionIndex\":[]}"
  },
  {
   "name": "browse:fixture-books:series:lastPlayed:desc/restricted",
@@ -618,7 +618,7 @@
   "body": "{\"pivot\":\"series\",\"sort\":[{\"field\":\"personalRating\",\"direction\":\"desc\"}],\"limit\":8}",
   "viewer": "open",
   "status": 200,
-  "response": "{\"applied\":{\"query\":null,\"sort\":[{\"direction\":\"asc\",\"field\":\"title\"}]},\"entries\":[{\"addedAt\":null,\"count\":1,\"id\":\"series:series-04\",\"kind\":\"book_series\",\"missing\":false,\"navigation\":{\"category\":\"series:series-04\",\"view\":\"browse\"},\"title\":\"series-04\"},{\"addedAt\":null,\"count\":1,\"id\":\"series:series-08\",\"kind\":\"book_series\",\"missing\":false,\"navigation\":{\"category\":\"series:series-08\",\"view\":\"browse\"},\"title\":\"series-08\"}],\"pageInfo\":{\"hasMore\":false,\"nextCursor\":\"\",\"revision\":\"\\u003cvolatile\\u003e\",\"start\":0,\"total\":2,\"totalIsLowerBound\":false},\"pivot\":\"series\",\"positionIndex\":[]}"
+  "response": "{\"applied\":{\"query\":null,\"sort\":[{\"direction\":\"asc\",\"field\":\"title\"}]},\"entries\":[{\"addedAt\":null,\"count\":1,\"id\":\"series:series-04\",\"kind\":\"book_series\",\"libraryId\":\"fixture-books\",\"missing\":false,\"navigation\":{\"category\":\"series:series-04\",\"view\":\"browse\"},\"title\":\"series-04\"},{\"addedAt\":null,\"count\":1,\"id\":\"series:series-08\",\"kind\":\"book_series\",\"libraryId\":\"fixture-books\",\"missing\":false,\"navigation\":{\"category\":\"series:series-08\",\"view\":\"browse\"},\"title\":\"series-08\"}],\"pageInfo\":{\"hasMore\":false,\"nextCursor\":\"\",\"revision\":\"\\u003cvolatile\\u003e\",\"start\":0,\"total\":2,\"totalIsLowerBound\":false},\"pivot\":\"series\",\"positionIndex\":[]}"
  },
  {
   "name": "browse:fixture-books:series:personalRating:desc/restricted",
@@ -636,7 +636,7 @@
   "body": "{\"pivot\":\"series\",\"limit\":8,\"range\":{\"start\":5}}",
   "viewer": "open",
   "status": 200,
-  "response": "{\"applied\":{\"query\":null,\"sort\":[{\"direction\":\"asc\",\"field\":\"title\"}]},\"entries\":[{\"addedAt\":null,\"count\":1,\"id\":\"series:series-08\",\"kind\":\"book_series\",\"missing\":false,\"navigation\":{\"category\":\"series:series-08\",\"view\":\"browse\"},\"title\":\"series-08\"}],\"pageInfo\":{\"hasMore\":false,\"nextCursor\":\"\",\"revision\":\"\\u003cvolatile\\u003e\",\"start\":1,\"total\":2,\"totalIsLowerBound\":false},\"pivot\":\"series\",\"positionIndex\":[]}"
+  "response": "{\"applied\":{\"query\":null,\"sort\":[{\"direction\":\"asc\",\"field\":\"title\"}]},\"entries\":[{\"addedAt\":null,\"count\":1,\"id\":\"series:series-08\",\"kind\":\"book_series\",\"libraryId\":\"fixture-books\",\"missing\":false,\"navigation\":{\"category\":\"series:series-08\",\"view\":\"browse\"},\"title\":\"series-08\"}],\"pageInfo\":{\"hasMore\":false,\"nextCursor\":\"\",\"revision\":\"\\u003cvolatile\\u003e\",\"start\":1,\"total\":2,\"totalIsLowerBound\":false},\"pivot\":\"series\",\"positionIndex\":[]}"
  },
  {
   "name": "browse:fixture-books:series:range/restricted",
@@ -654,7 +654,7 @@
   "body": "{\"pivot\":\"series\",\"limit\":8,\"seek\":{\"prefix\":\"W\"}}",
   "viewer": "open",
   "status": 200,
-  "response": "{\"applied\":{\"query\":null,\"sort\":[{\"direction\":\"asc\",\"field\":\"title\"}]},\"entries\":[{\"addedAt\":null,\"count\":1,\"id\":\"series:series-04\",\"kind\":\"book_series\",\"missing\":false,\"navigation\":{\"category\":\"series:series-04\",\"view\":\"browse\"},\"title\":\"series-04\"},{\"addedAt\":null,\"count\":1,\"id\":\"series:series-08\",\"kind\":\"book_series\",\"missing\":false,\"navigation\":{\"category\":\"series:series-08\",\"view\":\"browse\"},\"title\":\"series-08\"}],\"pageInfo\":{\"hasMore\":false,\"nextCursor\":\"\",\"revision\":\"\\u003cvolatile\\u003e\",\"start\":0,\"total\":2,\"totalIsLowerBound\":false},\"pivot\":\"series\",\"positionIndex\":[]}"
+  "response": "{\"applied\":{\"query\":null,\"sort\":[{\"direction\":\"asc\",\"field\":\"title\"}]},\"entries\":[{\"addedAt\":null,\"count\":1,\"id\":\"series:series-04\",\"kind\":\"book_series\",\"libraryId\":\"fixture-books\",\"missing\":false,\"navigation\":{\"category\":\"series:series-04\",\"view\":\"browse\"},\"title\":\"series-04\"},{\"addedAt\":null,\"count\":1,\"id\":\"series:series-08\",\"kind\":\"book_series\",\"libraryId\":\"fixture-books\",\"missing\":false,\"navigation\":{\"category\":\"series:series-08\",\"view\":\"browse\"},\"title\":\"series-08\"}],\"pageInfo\":{\"hasMore\":false,\"nextCursor\":\"\",\"revision\":\"\\u003cvolatile\\u003e\",\"start\":0,\"total\":2,\"totalIsLowerBound\":false},\"pivot\":\"series\",\"positionIndex\":[]}"
  },
  {
   "name": "browse:fixture-books:series:seek/restricted",
@@ -672,7 +672,7 @@
   "body": "{\"pivot\":\"series\",\"sort\":[{\"field\":\"title\",\"direction\":\"asc\"}],\"limit\":8}",
   "viewer": "open",
   "status": 200,
-  "response": "{\"applied\":{\"query\":null,\"sort\":[{\"direction\":\"asc\",\"field\":\"title\"}]},\"entries\":[{\"addedAt\":null,\"count\":1,\"id\":\"series:series-04\",\"kind\":\"book_series\",\"missing\":false,\"navigation\":{\"category\":\"series:series-04\",\"view\":\"browse\"},\"title\":\"series-04\"},{\"addedAt\":null,\"count\":1,\"id\":\"series:series-08\",\"kind\":\"book_series\",\"missing\":false,\"navigation\":{\"category\":\"series:series-08\",\"view\":\"browse\"},\"title\":\"series-08\"}],\"pageInfo\":{\"hasMore\":false,\"nextCursor\":\"\",\"revision\":\"\\u003cvolatile\\u003e\",\"start\":0,\"total\":2,\"totalIsLowerBound\":false},\"pivot\":\"series\",\"positionIndex\":[]}"
+  "response": "{\"applied\":{\"query\":null,\"sort\":[{\"direction\":\"asc\",\"field\":\"title\"}]},\"entries\":[{\"addedAt\":null,\"count\":1,\"id\":\"series:series-04\",\"kind\":\"book_series\",\"libraryId\":\"fixture-books\",\"missing\":false,\"navigation\":{\"category\":\"series:series-04\",\"view\":\"browse\"},\"title\":\"series-04\"},{\"addedAt\":null,\"count\":1,\"id\":\"series:series-08\",\"kind\":\"book_series\",\"libraryId\":\"fixture-books\",\"missing\":false,\"navigation\":{\"category\":\"series:series-08\",\"view\":\"browse\"},\"title\":\"series-08\"}],\"pageInfo\":{\"hasMore\":false,\"nextCursor\":\"\",\"revision\":\"\\u003cvolatile\\u003e\",\"start\":0,\"total\":2,\"totalIsLowerBound\":false},\"pivot\":\"series\",\"positionIndex\":[]}"
  },
  {
   "name": "browse:fixture-books:series:title:asc/restricted",
@@ -690,7 +690,7 @@
   "body": "{\"pivot\":\"series\",\"sort\":[{\"field\":\"title\",\"direction\":\"desc\"}],\"limit\":8}",
   "viewer": "open",
   "status": 200,
-  "response": "{\"applied\":{\"query\":null,\"sort\":[{\"direction\":\"desc\",\"field\":\"title\"}]},\"entries\":[{\"addedAt\":null,\"count\":1,\"id\":\"series:series-08\",\"kind\":\"book_series\",\"missing\":false,\"navigation\":{\"category\":\"series:series-08\",\"view\":\"browse\"},\"title\":\"series-08\"},{\"addedAt\":null,\"count\":1,\"id\":\"series:series-04\",\"kind\":\"book_series\",\"missing\":false,\"navigation\":{\"category\":\"series:series-04\",\"view\":\"browse\"},\"title\":\"series-04\"}],\"pageInfo\":{\"hasMore\":false,\"nextCursor\":\"\",\"revision\":\"\\u003cvolatile\\u003e\",\"start\":0,\"total\":2,\"totalIsLowerBound\":false},\"pivot\":\"series\",\"positionIndex\":[]}"
+  "response": "{\"applied\":{\"query\":null,\"sort\":[{\"direction\":\"desc\",\"field\":\"title\"}]},\"entries\":[{\"addedAt\":null,\"count\":1,\"id\":\"series:series-08\",\"kind\":\"book_series\",\"libraryId\":\"fixture-books\",\"missing\":false,\"navigation\":{\"category\":\"series:series-08\",\"view\":\"browse\"},\"title\":\"series-08\"},{\"addedAt\":null,\"count\":1,\"id\":\"series:series-04\",\"kind\":\"book_series\",\"libraryId\":\"fixture-books\",\"missing\":false,\"navigation\":{\"category\":\"series:series-04\",\"view\":\"browse\"},\"title\":\"series-04\"}],\"pageInfo\":{\"hasMore\":false,\"nextCursor\":\"\",\"revision\":\"\\u003cvolatile\\u003e\",\"start\":0,\"total\":2,\"totalIsLowerBound\":false},\"pivot\":\"series\",\"positionIndex\":[]}"
  },
  {
   "name": "browse:fixture-books:series:title:desc/restricted",
@@ -708,7 +708,7 @@
   "body": "{\"pivot\":\"series\",\"sort\":[{\"field\":\"year\",\"direction\":\"desc\"}],\"limit\":8}",
   "viewer": "open",
   "status": 200,
-  "response": "{\"applied\":{\"query\":null,\"sort\":[{\"direction\":\"asc\",\"field\":\"title\"}]},\"entries\":[{\"addedAt\":null,\"count\":1,\"id\":\"series:series-04\",\"kind\":\"book_series\",\"missing\":false,\"navigation\":{\"category\":\"series:series-04\",\"view\":\"browse\"},\"title\":\"series-04\"},{\"addedAt\":null,\"count\":1,\"id\":\"series:series-08\",\"kind\":\"book_series\",\"missing\":false,\"navigation\":{\"category\":\"series:series-08\",\"view\":\"browse\"},\"title\":\"series-08\"}],\"pageInfo\":{\"hasMore\":false,\"nextCursor\":\"\",\"revision\":\"\\u003cvolatile\\u003e\",\"start\":0,\"total\":2,\"totalIsLowerBound\":false},\"pivot\":\"series\",\"positionIndex\":[]}"
+  "response": "{\"applied\":{\"query\":null,\"sort\":[{\"direction\":\"asc\",\"field\":\"title\"}]},\"entries\":[{\"addedAt\":null,\"count\":1,\"id\":\"series:series-04\",\"kind\":\"book_series\",\"libraryId\":\"fixture-books\",\"missing\":false,\"navigation\":{\"category\":\"series:series-04\",\"view\":\"browse\"},\"title\":\"series-04\"},{\"addedAt\":null,\"count\":1,\"id\":\"series:series-08\",\"kind\":\"book_series\",\"libraryId\":\"fixture-books\",\"missing\":false,\"navigation\":{\"category\":\"series:series-08\",\"view\":\"browse\"},\"title\":\"series-08\"}],\"pageInfo\":{\"hasMore\":false,\"nextCursor\":\"\",\"revision\":\"\\u003cvolatile\\u003e\",\"start\":0,\"total\":2,\"totalIsLowerBound\":false},\"pivot\":\"series\",\"positionIndex\":[]}"
  },
  {
   "name": "browse:fixture-books:series:year:desc/restricted",
