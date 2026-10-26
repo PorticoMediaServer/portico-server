@@ -1,15 +1,31 @@
 import type {MetricName, TelemetryPoint, TelemetryReading} from '@core/telemetry.ts';
+import {defaultI18n} from '@i18n';
 import {LOAD_TILES, loadValue} from '@core/server-admin/dashboard.ts';
 
 const warmingUp = 'Waiting for a second reading before a rate can be reported.';
 export type HealthTile = Readonly<{
-  metric: MetricName; label: (typeof LOAD_TILES)[number]['label']; value?: string;
+  metric: MetricName; label: (typeof LOAD_TILES)[number]['label'] | 'next.dashboard.sentToViewers'; value?: string;
   points: readonly TelemetryPoint[]; status: 'available' | 'limited' | 'unavailable';
 }>;
 
-/** The server's exact six metrics and statuses, without promoting an unknown value to zero. */
+/** Both viewer traffic streams must be available and have the same actual timestamps. */
+function viewerTraffic(reading?: TelemetryReading): Pick<HealthTile, 'value' | 'points' | 'status'> {
+  if (!reading || reading.status.homeMbps?.status !== 'available' || reading.status.awayMbps?.status !== 'available')
+    return {status: 'unavailable', points: []};
+  const home = reading.series.homeMbps ?? [], away = reading.series.awayMbps ?? [];
+  const h = home.at(-1), a = away.at(-1);
+  if (!h || !a || h.t !== a.t || !Number.isFinite(h.v) || !Number.isFinite(a.v)) return {status: 'unavailable', points: []};
+  // Do not connect across a missing component: without per-point status the
+  // only safe line is one whose complete published timestamps pair exactly.
+  const paired = home.length === away.length && home.every((point, i) => point.t === away[i].t && Number.isFinite(point.v) && Number.isFinite(away[i].v));
+  return {status: 'available', value: defaultI18n.t('next.dashboard.mbps', {value: String(Number((h.v + a.v).toFixed(1)))}),
+    points: paired ? home.map((point, i) => ({t: point.t, v: point.v + away[i].v})) : []};
+}
+
+/** Exact published metrics and statuses, without promoting an unknown value to zero. */
 export function healthTiles(reading?: TelemetryReading): readonly HealthTile[] {
   return LOAD_TILES.map(tile => {
+    if (tile.metric === 'netOut') return {metric: tile.metric, label: 'next.dashboard.sentToViewers', ...viewerTraffic(reading)};
     const metric = reading?.status[tile.metric];
     const measured = metric && metric.status !== 'unavailable' && Number.isFinite(metric.value) && metric.detail !== warmingUp;
     return {metric: tile.metric, label: tile.label, value: measured ? loadValue(tile, metric) : undefined,

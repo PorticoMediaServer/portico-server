@@ -30,7 +30,7 @@ export function PhoneHealth({reading, loading, failed, range, onRangeChange, onR
     {current && <div className={styles.tiles}>{tiles.map(tile => {
       const path = healthPath(tile.points, from, until);
       return <div className={styles.tile} key={tile.metric}>
-        <div className={styles.key}><span>{t(tile.metric === 'netOut' ? 'next.states.network' : tile.label)}</span><b>{tile.value ?? t('next.kit.browse.unavailable')}</b></div>
+        <div className={styles.key}><span>{t(tile.label)}</span><b>{tile.value ?? t('next.kit.browse.unavailable')}</b></div>
         <div className={`${styles.spark} ${path ? '' : styles.empty}`}>
           {path && <svg viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true"><path d={path} fill="none" stroke="currentColor" strokeWidth="1.6" vectorEffect="non-scaling-stroke" strokeLinejoin="round" /></svg>}
         </div>
