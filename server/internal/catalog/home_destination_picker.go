@@ -44,15 +44,19 @@ type HomeDestinationPickerPage struct {
 func (s *Service) HomeDestinationPickerTx(ctx context.Context, tx *sql.Tx, server string, v Viewer, a ResourceActor, in HomeDestinationPickerRequest) (HomeDestinationPickerPage, error) {
 	out := HomeDestinationPickerPage{ServerID: server, ViewerFence: v.Fence, Kind: in.Kind, Query: in.Query, Rows: []HomeDestinationPickerRow{}}
 	if tx == nil {
-		return out, ErrCursor
+		return out, jobInvalid("picker requires a catalogue snapshot")
 	}
+	// A malformed request is not a stale page: neither the destination window
+	// nor the ids the caller chose are a cursor. Only a cursor that cannot be
+	// decoded below is one, which keeps this read in step with the receipt read's
+	// own request validation.
 	if (in.Kind != "playlist" && in.Kind != "collection") || in.Limit < 1 || in.Limit > 40 || !utf8.ValidString(in.Query) || utf8.RuneCountInString(in.Query) > 100 || strings.IndexFunc(in.Query, unicode.IsControl) >= 0 || len(in.ItemIDs) > 200 {
-		return out, ErrCursor
+		return out, jobInvalid("picker takes a playlist or collection kind, 1 to 40 rows, a name search of up to 100 characters, and at most 200 item ids")
 	}
 	seen := map[string]bool{}
 	for _, id := range in.ItemIDs {
 		if id == "" || len(id) > 256 || seen[id] {
-			return out, ErrCursor
+			return out, jobInvalid("picker item ids must be distinct non-empty references")
 		}
 		seen[id] = true
 	}
