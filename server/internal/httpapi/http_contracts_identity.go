@@ -170,6 +170,13 @@ func registerIdentityHTTPContracts(registry *apikit.Registry) error {
 	}, identity.TwoFactorState](registry, apikit.Metadata{ID: "post_direct_two_factor_verify", Method: "POST", Path: "/v1/direct/two-factor/verify", Summary: "Run account two-factor verification verify", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
+	if err := apikit.RegisterHTTP[struct {
+		Password string `json:"password"`
+		Code     string `json:"code"`
+	}, identity.RecoveryCodes](registry, apikit.Metadata{ID: "post_direct_two_factor_recovery_codes", Method: "POST", Path: "/v1/direct/two-factor/recovery-codes", Summary: "Replace account recovery codes", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneSecurityFence, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+		return err
+	}
+
 	// internal/httpapi/identity_routes.go:282
 	if err := apikit.RegisterHTTP[struct {
 		Password string "json:\"password\""

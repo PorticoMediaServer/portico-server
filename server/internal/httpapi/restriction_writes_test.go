@@ -807,6 +807,7 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"DELETE /v1/direct/two-factor":                      writeExempt(reasonOwnSession),
 		"POST /v1/direct/two-factor/enrol":                  writeExempt(reasonOwnSession),
 		"POST /v1/direct/two-factor/verify":                 writeExempt(reasonOwnSession),
+		"POST /v1/direct/two-factor/recovery-codes":         writeExempt(reasonOwnSession),
 
 		// Hierarchical People device retirement returns no catalogue content.
 		"POST /v1/direct/members/{id}/devices/sign-out":            writeExempt("live main-profile administrator hierarchy retires only that member's device families; no catalogue ids"),

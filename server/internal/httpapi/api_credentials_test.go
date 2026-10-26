@@ -622,6 +622,7 @@ func TestAdminKeyManagesTheAccountButNeverCredentials(t *testing.T) {
 		{"GET", "/v1/me/access-tokens", ``},
 		{"POST", "/v1/direct/password", `{}`},
 		{"POST", "/v1/direct/two-factor/enrol", `{}`},
+		{"POST", "/v1/direct/two-factor/recovery-codes", `{}`},
 		{"POST", "/v1/direct/ownership", `{}`},
 		{"POST", "/v1/direct/sign-in", `{}`},
 		{"POST", "/v1/direct/profiles/x/select", `{}`},
