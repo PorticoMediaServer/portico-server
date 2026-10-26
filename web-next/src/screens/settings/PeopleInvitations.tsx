@@ -93,7 +93,7 @@ function InvitationTable({view, invitations, libraries, authority, version, open
   const failure = (value: unknown, selected: InvitationScope) => {
     const status = value && typeof value === 'object' && 'status' in value ? value.status : undefined;
     if (status === 401 || status === 403) {authority.onAuthorityChanged();return;}
-    setError(before => view.scopeCurrent(selected) ? value : before);
+    setError((before: unknown) => view.scopeCurrent(selected) ? value : before);
   };
   const read = (ticket: InvitationRead, cursor: string) => {
     void invitations.read(ticket.scope.query, cursor, {signal: ticket.life.signal, isCurrent: () => view.readCurrent(ticket)}).then(value => {
