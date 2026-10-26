@@ -469,6 +469,8 @@ index notification_records_expiry
 index notification_records_live
 index notification_records_page
 index notification_records_resume
+index owned_capture_lifecycle_collect
+index owned_capture_reader_pins_capture
 index personal_activity_receipts_expiry
 index personal_batch_receipts_expiry
 index personal_chapter_completions_asset_id_fk
@@ -577,6 +579,7 @@ index remote_inventory_check_job
 index remote_listing_directory_history
 index remote_listing_retention
 index remote_source_cache_lru
+index remote_source_captures_pending
 index retained_title_identities_state
 index retained_title_state_profile
 index saved_entry_undo_expiry
@@ -1197,6 +1200,10 @@ table notification_inbox
 table notification_records
 table notification_revision
 table onboarding_state_v1
+table owned_capture_lifecycle
+table owned_capture_reader_pins
+table owned_capture_receipts
+table owned_capture_sources
 table owner_reset_file
 table personal_activity_receipts
 table personal_activity_revisions
@@ -1353,6 +1360,11 @@ table remote_scan_generations
 table remote_scan_observation_hashes
 table remote_scan_observations
 table remote_source_cache_entries
+table remote_source_capture_actor
+table remote_source_capture_physical
+table remote_source_capture_policy
+table remote_source_capture_quota
+table remote_source_captures
 table remote_source_contacts
 table remote_source_operations
 table remote_source_read_profiles
@@ -2359,6 +2371,9 @@ trigger networking_server_identities_bound_insert
 trigger notification_inbox_bound_check
 trigger notification_inbox_bound_delete
 trigger notification_inbox_bound_insert
+trigger owned_capture_receipt_complete
+trigger owned_capture_receipt_immutable
+trigger owned_capture_source_immutable
 trigger owner_change_account_insert
 trigger owner_change_account_rename
 trigger owner_change_link_insert
@@ -2550,6 +2565,8 @@ trigger remote_analysis_status_retention_delete
 trigger remote_analysis_status_retention_insert
 trigger remote_object_refs_retention_delete
 trigger remote_object_refs_retention_insert
+trigger remote_source_capture_charge_delete
+trigger remote_source_capture_charge_insert
 trigger remote_sources_bound_check
 trigger remote_sources_bound_delete
 trigger remote_sources_bound_insert

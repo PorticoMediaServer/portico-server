@@ -1968,6 +1968,9 @@ export const schemas = {
             "kind": {
               "type": "string"
             },
+            "libraryId": {
+              "type": "string"
+            },
             "position": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
@@ -3506,6 +3509,9 @@ export const schemas = {
               "type": "string"
             },
             "kind": {
+              "type": "string"
+            },
+            "libraryId": {
               "type": "string"
             },
             "position": {
@@ -5289,6 +5295,9 @@ export const schemas = {
               "type": "string"
             },
             "kind": {
+              "type": "string"
+            },
+            "libraryId": {
               "type": "string"
             },
             "position": {
@@ -14600,6 +14609,9 @@ export const schemas = {
             "kind": {
               "type": "string"
             },
+            "libraryId": {
+              "type": "string"
+            },
             "position": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
@@ -18344,6 +18356,9 @@ export const schemas = {
               "type": "string"
             },
             "kind": {
+              "type": "string"
+            },
+            "libraryId": {
               "type": "string"
             },
             "position": {
@@ -144524,6 +144539,9 @@ export const schemas = {
           "kind": {
             "type": "string"
           },
+          "libraryId": {
+            "type": "string"
+          },
           "position": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -144808,6 +144826,9 @@ export const schemas = {
               "type": "string"
             },
             "kind": {
+              "type": "string"
+            },
+            "libraryId": {
               "type": "string"
             },
             "position": {
@@ -147812,6 +147833,9 @@ export const schemas = {
                   "type": "string"
                 },
                 "kind": {
+                  "type": "string"
+                },
+                "libraryId": {
                   "type": "string"
                 },
                 "position": {
@@ -179936,6 +179960,9 @@ export const schemas = {
             "kind": {
               "type": "string"
             },
+            "libraryId": {
+              "type": "string"
+            },
             "position": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
@@ -181743,6 +181770,9 @@ export const schemas = {
               "type": "string"
             },
             "kind": {
+              "type": "string"
+            },
+            "libraryId": {
               "type": "string"
             },
             "position": {
@@ -228003,6 +228033,9 @@ export const schemas = {
             "kind": {
               "type": "string"
             },
+            "libraryId": {
+              "type": "string"
+            },
             "position": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
@@ -243923,6 +243956,9 @@ export const schemas = {
               "type": "string"
             },
             "kind": {
+              "type": "string"
+            },
+            "libraryId": {
               "type": "string"
             },
             "position": {

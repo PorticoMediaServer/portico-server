@@ -1099,6 +1099,9 @@ export const routes = [
       "not_permitted",
       "not_found",
       "revision_mismatch",
+      "playlist_capacity",
+      "idempotency_key_reused",
+      "rate_limited",
       "internal"
     ],
     "status": 200,
@@ -1121,6 +1124,9 @@ export const routes = [
       "not_permitted",
       "not_found",
       "revision_mismatch",
+      "playlist_capacity",
+      "idempotency_key_reused",
+      "rate_limited",
       "internal"
     ],
     "status": 200,
@@ -1143,6 +1149,9 @@ export const routes = [
       "not_permitted",
       "not_found",
       "revision_mismatch",
+      "playlist_capacity",
+      "idempotency_key_reused",
+      "rate_limited",
       "internal"
     ],
     "status": 200,
@@ -7303,6 +7312,7 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "stale_continuation",
       "internal"
     ],
     "status": 200,
@@ -7328,6 +7338,8 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "stale_continuation",
+      "invalid_cursor",
       "internal"
     ],
     "status": 200,
@@ -7353,6 +7365,8 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "stale_continuation",
+      "invalid_cursor",
       "internal"
     ],
     "status": 200,
@@ -10659,6 +10673,9 @@ export const routes = [
       "not_permitted",
       "not_found",
       "revision_mismatch",
+      "playlist_capacity",
+      "idempotency_key_reused",
+      "rate_limited",
       "internal"
     ],
     "status": 200,
@@ -13944,6 +13961,9 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "playlist_capacity",
+      "idempotency_key_reused",
+      "rate_limited",
       "internal"
     ],
     "status": 200,
@@ -13966,6 +13986,10 @@ export const routes = [
       "not_permitted",
       "not_found",
       "revision_mismatch",
+      "playlist_capacity",
+      "idempotency_key_reused",
+      "rate_limited",
+      "operation_expired",
       "internal"
     ],
     "status": 200,
@@ -16072,6 +16096,9 @@ export const routes = [
       "not_permitted",
       "not_found",
       "revision_mismatch",
+      "playlist_capacity",
+      "idempotency_key_reused",
+      "rate_limited",
       "internal"
     ],
     "status": 200,

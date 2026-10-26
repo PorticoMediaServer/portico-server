@@ -1975,6 +1975,9 @@
                 "kind": {
                   "type": "string"
                 },
+                "libraryId": {
+                  "type": "string"
+                },
                 "position": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -3513,6 +3516,9 @@
                   "type": "string"
                 },
                 "kind": {
+                  "type": "string"
+                },
+                "libraryId": {
                   "type": "string"
                 },
                 "position": {
@@ -5372,6 +5378,9 @@
                   "type": "string"
                 },
                 "kind": {
+                  "type": "string"
+                },
+                "libraryId": {
                   "type": "string"
                 },
                 "position": {
@@ -14900,6 +14909,9 @@
                 "kind": {
                   "type": "string"
                 },
+                "libraryId": {
+                  "type": "string"
+                },
                 "position": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -20386,6 +20398,9 @@
                   "type": "string"
                 },
                 "kind": {
+                  "type": "string"
+                },
+                "libraryId": {
                   "type": "string"
                 },
                 "position": {
@@ -149281,6 +149296,9 @@
               "kind": {
                 "type": "string"
               },
+              "libraryId": {
+                "type": "string"
+              },
               "position": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -149565,6 +149583,9 @@
                   "type": "string"
                 },
                 "kind": {
+                  "type": "string"
+                },
+                "libraryId": {
                   "type": "string"
                 },
                 "position": {
@@ -152575,6 +152596,9 @@
                       "type": "string"
                     },
                     "kind": {
+                      "type": "string"
+                    },
+                    "libraryId": {
                       "type": "string"
                     },
                     "position": {
@@ -201878,6 +201902,9 @@
                 "kind": {
                   "type": "string"
                 },
+                "libraryId": {
+                  "type": "string"
+                },
                 "position": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -203700,6 +203727,9 @@
                   "type": "string"
                 },
                 "kind": {
+                  "type": "string"
+                },
+                "libraryId": {
                   "type": "string"
                 },
                 "position": {
@@ -250462,6 +250492,9 @@
                 "kind": {
                   "type": "string"
                 },
+                "libraryId": {
+                  "type": "string"
+                },
                 "position": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -267042,6 +267075,9 @@
                   "type": "string"
                 },
                 "kind": {
+                  "type": "string"
+                },
+                "libraryId": {
                   "type": "string"
                 },
                 "position": {
@@ -500238,6 +500274,9 @@
                               "kind": {
                                 "type": "string"
                               },
+                              "libraryId": {
+                                "type": "string"
+                              },
                               "position": {
                                 "maximum": 9007199254740991,
                                 "minimum": -9007199254740991,
@@ -505652,6 +505691,9 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "playlist_capacity",
+          "idempotency_key_reused",
+          "rate_limited",
           "internal"
         ],
         "x-lane": "default",
@@ -505825,6 +505867,9 @@
           "not_permitted",
           "not_found",
           "revision_mismatch",
+          "playlist_capacity",
+          "idempotency_key_reused",
+          "rate_limited",
           "internal"
         ],
         "x-lane": "default",
@@ -506006,6 +506051,7 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "stale_continuation",
           "internal"
         ],
         "x-lane": "browsing",
@@ -506176,6 +506222,9 @@
           "not_permitted",
           "not_found",
           "revision_mismatch",
+          "playlist_capacity",
+          "idempotency_key_reused",
+          "rate_limited",
           "internal"
         ],
         "x-lane": "default",
@@ -510112,6 +510161,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "stale_continuation",
+          "invalid_cursor",
           "internal"
         ],
         "x-lane": "browsing",
@@ -510284,6 +510335,10 @@
           "not_permitted",
           "not_found",
           "revision_mismatch",
+          "playlist_capacity",
+          "idempotency_key_reused",
+          "rate_limited",
+          "operation_expired",
           "internal"
         ],
         "x-lane": "default",
@@ -510465,6 +510520,9 @@
           "not_permitted",
           "not_found",
           "revision_mismatch",
+          "playlist_capacity",
+          "idempotency_key_reused",
+          "rate_limited",
           "internal"
         ],
         "x-lane": "default",
@@ -510882,6 +510940,8 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "stale_continuation",
+          "invalid_cursor",
           "internal"
         ],
         "x-lane": "browsing",
@@ -511054,6 +511114,9 @@
           "not_permitted",
           "not_found",
           "revision_mismatch",
+          "playlist_capacity",
+          "idempotency_key_reused",
+          "rate_limited",
           "internal"
         ],
         "x-lane": "default",
@@ -511225,6 +511288,9 @@
           "not_permitted",
           "not_found",
           "revision_mismatch",
+          "playlist_capacity",
+          "idempotency_key_reused",
+          "rate_limited",
           "internal"
         ],
         "x-lane": "default",
@@ -514222,6 +514288,9 @@
                           "kind": {
                             "type": "string"
                           },
+                          "libraryId": {
+                            "type": "string"
+                          },
                           "position": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -516134,6 +516203,9 @@
                           "kind": {
                             "type": "string"
                           },
+                          "libraryId": {
+                            "type": "string"
+                          },
                           "position": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -517995,6 +518067,9 @@
                           "kind": {
                             "type": "string"
                           },
+                          "libraryId": {
+                            "type": "string"
+                          },
                           "position": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -518197,6 +518272,9 @@
                             "type": "string"
                           },
                           "kind": {
+                            "type": "string"
+                          },
+                          "libraryId": {
                             "type": "string"
                           },
                           "position": {
@@ -519824,6 +519902,9 @@
                           "kind": {
                             "type": "string"
                           },
+                          "libraryId": {
+                            "type": "string"
+                          },
                           "position": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -521439,6 +521520,9 @@
                           "kind": {
                             "type": "string"
                           },
+                          "libraryId": {
+                            "type": "string"
+                          },
                           "position": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -521624,6 +521708,9 @@
                           "type": "string"
                         },
                         "kind": {
+                          "type": "string"
+                        },
+                        "libraryId": {
                           "type": "string"
                         },
                         "position": {
@@ -523498,6 +523585,9 @@
                           "kind": {
                             "type": "string"
                           },
+                          "libraryId": {
+                            "type": "string"
+                          },
                           "position": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -523700,6 +523790,9 @@
                             "type": "string"
                           },
                           "kind": {
+                            "type": "string"
+                          },
+                          "libraryId": {
                             "type": "string"
                           },
                           "position": {
@@ -525348,6 +525441,9 @@
                           "kind": {
                             "type": "string"
                           },
+                          "libraryId": {
+                            "type": "string"
+                          },
                           "position": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -526958,6 +527054,9 @@
                             "type": "string"
                           },
                           "kind": {
+                            "type": "string"
+                          },
+                          "libraryId": {
                             "type": "string"
                           },
                           "position": {
