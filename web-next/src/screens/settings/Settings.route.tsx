@@ -55,6 +55,7 @@ import {hasWebPreferenceEffect} from './effects';
 import {createPrivacySettingsSurfaces} from './privacy-controls';
 import {PeopleScreen, type PeopleBindings} from './People';
 import {SignInSettingsSource} from './signin-source';
+import {LocalOwnerTransferSource} from './local-owner-transfer';
 import {SettingsStorageSource} from './server/storage-source';
 import {StorageDataFolder} from './server/StorageUsage';
 import {SettingsOwnerSwitch} from './owner-switch';
@@ -64,6 +65,7 @@ import {MoveCodesHost} from './MoveCodesHost';
 import {MoveInProgress, SignInMoveWatch} from './MoveInProgress';
 import {MoveCodesPortProvider, MoveCodeRowAction} from './move-codes-port';
 import {ChangeOwner} from './ChangeOwner';
+import {LocalChangeOwnerRow} from './LocalChangeOwnerRow';
 import {DeviceRowControl} from './device-rows';
 import {RemoteNowPlaying} from './RemoteNowPlaying';
 import {deviceRowState, isDeviceSyntheticRow} from './device-rows-model';
@@ -103,6 +105,9 @@ import {ProfileForgetDevices} from './account-profile/ProfileForgetDevices';
 
 // A carry contains calendar bounds only. The captured session object owns its lifetime.
 const historyContexts = new WeakMap<ShellAssemblyContext, ReportContext>();
+/** A confirmed transfer permanently spends this owner Settings context. Only
+ * the shell's actual authority reconciliation can supply a replacement. */
+const transferredOwnerContexts = new WeakSet<ShellAssemblyContext>();
 const noPreferences = () => () => {};
 /** Stable snapshot: the Remote sources page owns its reads and never enters the generic section loader. */
 const remoteSourcesPageSnapshot = Object.freeze({loading: false});
@@ -142,7 +147,7 @@ export function SettingsEntry() {
   const mediaRuntime = protectedContext?.binding.playback?.runtime;
   useLayoutEffect(() => {
     const reader = context?.preferences, snapshot = preferences;
-    if (!context || !reader || !snapshot || !context.isCurrent()) return;
+    if (!context || !reader || !snapshot || !context.isCurrent() || transferredOwnerContexts.has(context)) return;
     let active = true;
     const lifetime = new AbortController(), authorityListeners = new Set<() => void>();
     let preferencesAvailable = true, confirmedZone = reportTimeZone;
@@ -154,7 +159,7 @@ export function SettingsEntry() {
       confirmedZone = confirmed && shellLanguage(confirmed).region.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
     });
     const current = () => {
-      if (!active || !context.isCurrent() || !sameBuildInputs(facts, settingsBuildFacts(context))) return false;
+      if (!active || transferredOwnerContexts.has(context) || !context.isCurrent() || !sameBuildInputs(facts, settingsBuildFacts(context))) return false;
       const location = router.state.location;
       if (location.pathname !== '/settings' && location.pathname !== '/dashboard') return false;
       const selected = settingsLocationRoute(location);
@@ -260,20 +265,52 @@ export function SettingsEntry() {
       eligibility: {library: () => undefined, hasEngine: row => privacy.eligible(row) ? true : presetEnginesAvailable(row, engine) ?? engine(row)},
     };
     const controller = new SettingsController(options);
+    const session = context.session(), transferOrigin = originalApi.baseUrl, transferRoute = originalApi.getRouteConnection();
+    const transferPrincipal = Object.freeze({...viewer, family: session.sessionFamilyId});
+    let localOwnerTransfer: LocalOwnerTransferSource | undefined;
+    const ownerSwitch = identity.primaryProfile === true && role === 'owner' && identity.capabilities?.manageSignIn === true &&
+      (identity.signIn === 'local' || identity.signIn === 'portico') ? new SettingsOwnerSwitch(api, {serverId: viewer.serverId,
+        isCurrent: () => current() && !localOwnerTransfer?.inFlight && context.session().viewer.role === 'owner' &&
+          context.facts.identity.primaryProfile === true && context.facts.identity.capabilities?.manageSignIn === true && context.facts.identity.signIn === identity.signIn,
+        hostedOrigin: browserAccountOrigin(import.meta.env, globalThis.location),
+        selectionRevision: async () => (await browserAppSessions().read()).revision,
+      }) : undefined;
+    const localOwnerCurrent = () => {
+      if (!current() || route.scope !== 'server' || route.section !== 'signin' || identity.signIn !== 'local' || viewer.authority !== 'local' ||
+        !transferRoute || transferRoute.pin.serverId !== transferPrincipal.serverId || transferRoute.getSnapshot().phase !== 'ready' ||
+        originalApi.baseUrl !== transferOrigin || originalApi.getRouteConnection() !== transferRoute ||
+        ownerSwitch?.getMove() || ownerSwitch?.getSnapshot().busy) return false;
+      const now = context.session(), facts = context.facts.identity;
+      return now.sessionFamilyId === transferPrincipal.family && now.viewer.serverId === transferPrincipal.serverId && now.viewer.authority === transferPrincipal.authority &&
+        now.viewer.accountId === transferPrincipal.accountId && now.viewer.profileId === transferPrincipal.profileId && now.viewer.role === 'owner' &&
+        facts.primaryProfile === true && facts.signIn === 'local' && facts.capabilities?.manageAccount === true &&
+        facts.capabilities?.managePeople === true && facts.capabilities?.manageSignIn === true;
+    };
+    localOwnerTransfer = localOwnerCurrent() ? new LocalOwnerTransferSource(api, {
+      accountId: viewer.accountId, profileId: viewer.profileId, isCurrent: localOwnerCurrent,
+      onTransferred: async () => {
+        if (!localOwnerCurrent()) return;
+        // A confirmed write spends this exact owner Settings build immediately.
+        // Only the existing session reader may publish the actual retier.
+        transferredOwnerContexts.add(context);
+        active = false; lifetime.abort();
+        for (const listener of authorityListeners) {try {listener();} catch { /* Retire every captured command. */ }}
+        authorityListeners.clear();
+        setOwned(held => held?.current === current ? undefined : held);
+        const reconcile = context.auth.permissionDenied();
+        void router.navigate({to: '/', replace: true}).catch(() => {});
+        await reconcile;
+      },
+    }) : undefined;
     const signIn = identity.primaryProfile === true && role === 'owner' && identity.capabilities?.manageSignIn === true &&
       (identity.signIn === 'local' || identity.signIn === 'portico') ? new SignInSettingsSource(api, {
         serverId: viewer.serverId, signIn: identity.signIn, isCurrent: current,
+        localOwnerTransfer,
         capabilities: () => ({manageAccount: identity.capabilities?.manageAccount === true, managePeople: identity.capabilities?.managePeople === true,
           manageServer: identity.capabilities?.manageServer === true, manageSignIn: current() && identity.capabilities?.manageSignIn === true}),
         onAuthorityChanged: () => {if (current()) void router.navigate({to: '/sign-in', replace: true});},
-        ownerSwitch: identity.primaryProfile === true && role === 'owner' && identity.capabilities?.manageSignIn === true ? new SettingsOwnerSwitch(api, {serverId: viewer.serverId,
-          isCurrent: () => current() && context.session().viewer.role === 'owner' && context.facts.identity.primaryProfile === true && context.facts.identity.capabilities?.manageSignIn === true && context.facts.identity.signIn === identity.signIn,
-          hostedOrigin: browserAccountOrigin(import.meta.env, globalThis.location),
-          // The app's saved-selection revision, captured for the local direction.
-          selectionRevision: async () => (await browserAppSessions().read()).revision,
-        }) : undefined,
+        ownerSwitch,
       }) : undefined;
-    const session = context.session();
     const people: PeopleBindings | undefined = route.section === 'people' && identity.primaryProfile === true && identity.capabilities?.managePeople === true &&
       (role === 'owner' || role === 'admin') && (viewer.authority === 'local' || viewer.authority === 'hosted') ? {
         client: new SettingsPeopleClient(api, current), serverName: context.facts.serverName, libraries: identity.libraries,
@@ -386,6 +423,7 @@ export function SettingsEntry() {
         if (['signin.switchToPortico', 'signin.startOverPortico'].includes(row.id) && signIn?.ownerSwitch) return <OwnerSignInSwitch source={signIn.ownerSwitch} startOver={row.id === 'signin.startOverPortico'} isCurrent={current} onError={reportError}/>;
         if (['signin.switchToLocal', 'signin.startOverLocal'].includes(row.id) && signIn?.ownerSwitch) return <LocalMoveSwitch source={signIn.ownerSwitch} startOver={row.id === 'signin.startOverLocal'} isCurrent={current} onError={reportError}/>;
         if (row.id === 'signin.changeOwner' && signIn?.ownerSwitch) return <ChangeOwner source={signIn.ownerSwitch} isCurrent={current} onError={reportError}/>;
+        if (row.id === 'signin.changeOwnerLocal' && signIn?.localOwnerTransfer) return <LocalChangeOwnerRow source={signIn.localOwnerTransfer} isCurrent={current} onError={reportError}/>;
         if (row.id === 'profile.pinForget' && profiles) return <ProfileForgetDevices source={profiles} isCurrent={current} onFailure={reportError} />;
         if (row.id === 'profile.pinChange' && profiles) return <Button size="small" variant="glass" disabled={state.disabled} onClick={() => openProfilePIN(false)}>{defaultI18n.t(row.control.label ?? row.label)}</Button>;
         if (row.id === 'profile.list' && profiles) return <ProfileList source={profiles} isCurrent={current} onFailure={reportError} onSelect={() => {
