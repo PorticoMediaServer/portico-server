@@ -441,7 +441,7 @@ export class RemoteSourceService{
    choice?.signal.addEventListener('abort',abort,{once:true});
    if(choice?.signal.aborted)throw Object.assign(new Error('Scope changed.'),{code:'retired'});
    // Recheck after signal registration, before the exact original transport.
-   if(guard&&!guard())throw new Error('Scope changed.');
+   if(choice&&guard&&!guard())throw new Error('Scope changed.');
    choice?.onDispatch?.();
    const pending=this.api.request(path,method,body,c.signal);
    return await Promise.race([pending,aborted,new Promise<never>((_,reject)=>{timer=setTimeout(()=>{c.abort();reject(new Error('timeout'));},45000);})]);
@@ -866,7 +866,7 @@ async saveProfile(profile:SourceReadSettings,values:SourceReadValues,guard?:()=>
    current();this.fence(raw);if(!record(raw)||!record(raw.settings))invalid();
    const settings=sourceReadSettings(raw.settings),comparison=sourceChoiceAdopt(settings,intent.command,accepted);
    current();
-   if(comparison)return Object.freeze({kind:'applied',operationId:intent.operationId,settings,accepted,comparison});
+   if(comparison){this.choiceReads.set(settings,epoch);return Object.freeze({kind:'applied',operationId:intent.operationId,settings,accepted,comparison});}
    return Object.freeze({kind:'accepted-unavailable',operationId:intent.operationId,settings:accepted.settings,accepted});
   }catch(error){
    current();
