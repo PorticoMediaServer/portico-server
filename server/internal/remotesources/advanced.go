@@ -449,31 +449,13 @@ func (s *Service) SaveSourceAdvanced(ctx context.Context, identities *identity.S
 	if !v.valid() {
 		return SourceAdvancedSettings{}, storage.ErrRemoteConfig
 	}
-	if revision == 0 {
-		_, err = tx.ExecContext(ctx, `INSERT INTO remote_source_settings(source_id,revision,scan_interval_seconds,watch_for_changes,scan_on_start,full_recheck_days,cache_bytes,cache_floor_bytes,seek_previews,chapter_images,waveforms,loudness,checksums,intros_mode,double_check_folders,dir_cache_seconds,read_buffer_bytes,connect_timeout_seconds,idle_timeout_seconds,retries,low_level_retries) VALUES(?,1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-			source, v.ScanIntervalSeconds, v.WatchForChanges, v.ScanOnStart, v.FullRecheckDays, v.CacheBytes, v.CacheFloorBytes, v.SeekPreviews, v.ChapterImages, v.Waveforms, v.Loudness, v.Checksums, v.IntrosMode, v.DoubleCheckFolders, v.DirCacheSeconds, v.ReadBufferBytes, v.ConnectTimeoutSeconds, v.IdleTimeoutSeconds, v.Retries, v.LowLevelRetries)
-	} else {
-		_, err = tx.ExecContext(ctx, `UPDATE remote_source_settings SET revision=revision+1,scan_interval_seconds=?,watch_for_changes=?,scan_on_start=?,full_recheck_days=?,cache_bytes=?,cache_floor_bytes=?,seek_previews=?,chapter_images=?,waveforms=?,loudness=?,checksums=?,intros_mode=?,double_check_folders=?,dir_cache_seconds=?,read_buffer_bytes=?,connect_timeout_seconds=?,idle_timeout_seconds=?,retries=?,low_level_retries=? WHERE source_id=? AND revision=?`,
-			v.ScanIntervalSeconds, v.WatchForChanges, v.ScanOnStart, v.FullRecheckDays, v.CacheBytes, v.CacheFloorBytes, v.SeekPreviews, v.ChapterImages, v.Waveforms, v.Loudness, v.Checksums, v.IntrosMode, v.DoubleCheckFolders, v.DirCacheSeconds, v.ReadBufferBytes, v.ConnectTimeoutSeconds, v.IdleTimeoutSeconds, v.Retries, v.LowLevelRetries, source, revision)
-	}
+	settings, err := applySourceAdvancedValuesTx(ctx, tx, source, current, v)
 	if err != nil {
-		return SourceAdvancedSettings{}, err
-	}
-	if v.ScanIntervalSeconds > 0 {
-		// The drawn page owns these folders' check interval; the scanner reads
-		// library_sources, so the same rows are updated here, once.
-		next := time.Now().UTC().Add(time.Duration(v.ScanIntervalSeconds) * time.Second).Format(time.RFC3339Nano)
-		if _, err = tx.ExecContext(ctx, `UPDATE library_sources SET interval_seconds=?,next_scan_at=CASE WHEN next_scan_at='' OR next_scan_at>? THEN ? ELSE next_scan_at END WHERE remote_source_id=? AND interval_seconds IS NOT ?`, v.ScanIntervalSeconds, next, next, source, v.ScanIntervalSeconds); err != nil {
-			return SourceAdvancedSettings{}, err
-		}
-	}
-	if err = dbwork.AfterCommit(tx, func() { s.retireCaptureSettings(source, revision+1) }); err != nil {
 		return SourceAdvancedSettings{}, err
 	}
 	if err = gated.Commit(); err != nil {
 		return SourceAdvancedSettings{}, err
 	}
-	settings := advancedRow{values: v, saved: true, revision: revision + 1, appliedBytes: current.appliedBytes, appliedFloor: current.appliedFloor, observedIntervalSecond: current.observedIntervalSecond}
 	if row.MountID == "" {
 		// A source read directly by the server keeps its cache itself: the saved
 		// size is what its cache uses, and nothing mount-side has to apply it.
@@ -481,13 +463,13 @@ func (s *Service) SaveSourceAdvanced(ctx context.Context, identities *identity.S
 	}
 	cacheError := ""
 	if row.MountID != "" {
-		apply := cacheApply{admitted: row, revision: revision + 1, values: v}
+		apply := cacheApply{admitted: row, revision: settings.revision, values: v}
 		var applied bool
 		applied, cacheError = s.applyCache(ctx, identities, owner, apply)
 		if applied {
 			settings.appliedBytes, settings.appliedFloor = v.CacheBytes, effectiveFloor(v.CacheFloorBytes, current.appliedFloor)
 			// The projection belongs to the exact saved revision it describes.
-			result, e := dbwork.ExecWrite(ctx, s.db, dbwork.ClassInteractive, `UPDATE remote_source_settings SET cache_applied_bytes=?,cache_applied_floor_bytes=? WHERE source_id=? AND revision=?`, settings.appliedBytes, settings.appliedFloor, source, revision+1)
+			result, e := dbwork.ExecWrite(ctx, s.db, dbwork.ClassInteractive, `UPDATE remote_source_settings SET cache_applied_bytes=?,cache_applied_floor_bytes=? WHERE source_id=? AND revision=?`, settings.appliedBytes, settings.appliedFloor, source, settings.revision)
 			if e != nil {
 				applied = false
 				cacheError = cacheReasonCacheLost
@@ -496,9 +478,6 @@ func (s *Service) SaveSourceAdvanced(ctx context.Context, identities *identity.S
 				cacheError = cacheReasonChanged
 			}
 		}
-	}
-	if v.ScanIntervalSeconds > 0 {
-		settings.observedIntervalSecond = v.ScanIntervalSeconds
 	}
 	if current.values.transport() != v.transport() {
 		s.transportCommitted(source)

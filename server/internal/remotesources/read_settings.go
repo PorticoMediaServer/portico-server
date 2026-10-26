@@ -47,23 +47,27 @@ func (v *SourceReadValues) UnmarshalJSON(raw []byte) error {
 }
 
 type SourceReadSettings struct {
-	SourceID   string           `json:"sourceId"`
-	Generation string           `json:"generation"`
-	Revision   int64            `json:"revision"`
-	Saved      bool             `json:"saved"`
-	Values     SourceReadValues `json:"values"`
+	SourceID               string                   `json:"sourceId"`
+	Generation             string                   `json:"generation"`
+	Revision               int64                    `json:"revision"`
+	Saved                  bool                     `json:"saved"`
+	Values                 SourceReadValues         `json:"values"`
+	ChoiceDefinitions      []SourceChoiceDefinition `json:"choiceDefinitions,omitempty"`
+	ChoiceApplicableFields []string                 `json:"choiceApplicableFields,omitempty"`
+	ChoiceBaseline         *SourceChoiceBaseline    `json:"choiceBaseline,omitempty"`
 }
 
 type SourceReadSettingsChange struct {
-	OperationID        string           `json:"operationId"`
-	ExpectedGeneration string           `json:"expectedGeneration"`
-	ExpectedRevision   int64            `json:"expectedRevision"`
-	Values             SourceReadValues `json:"values"`
+	OperationID        string             `json:"operationId"`
+	ExpectedGeneration string             `json:"expectedGeneration"`
+	ExpectedRevision   int64              `json:"expectedRevision"`
+	Values             SourceReadValues   `json:"values"`
+	StartChoice        *SourceStartChoice `json:"startChoice,omitempty"`
 }
 
 func (v *SourceReadSettingsChange) UnmarshalJSON(raw []byte) error {
 	var fields map[string]json.RawMessage
-	if json.Unmarshal(raw, &fields) != nil || len(fields) != 4 {
+	if json.Unmarshal(raw, &fields) != nil || len(fields) < 4 || len(fields) > 5 {
 		return storage.ErrRemoteConfig
 	}
 	for _, name := range []string{"operationId", "expectedGeneration", "expectedRevision", "values"} {
@@ -72,13 +76,53 @@ func (v *SourceReadSettingsChange) UnmarshalJSON(raw []byte) error {
 			return storage.ErrRemoteConfig
 		}
 	}
+	for name, value := range fields {
+		if name != "operationId" && name != "expectedGeneration" && name != "expectedRevision" && name != "values" && name != "startChoice" {
+			return storage.ErrRemoteConfig
+		}
+		if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return storage.ErrRemoteConfig
+		}
+	}
 	type plain SourceReadSettingsChange
 	var decoded plain
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		return storage.ErrRemoteConfig
 	}
+	if rawChoice, ok := fields["startChoice"]; ok {
+		choice, valid := decodeSourceStartChoice(rawChoice)
+		if !valid {
+			return storage.ErrRemoteConfig
+		}
+		decoded.StartChoice = &choice
+	} else {
+		decoded.StartChoice = nil
+	}
 	*v = SourceReadSettingsChange(decoded)
 	return nil
+}
+
+func decodeSourceStartChoice(raw json.RawMessage) (SourceStartChoice, bool) {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) != nil || len(fields) != 3 {
+		return SourceStartChoice{}, false
+	}
+	for _, name := range []string{"name", "definitionRevision", "expectedAdvancedRevision"} {
+		value, ok := fields[name]
+		if !ok || bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return SourceStartChoice{}, false
+		}
+	}
+	for name := range fields {
+		if name != "name" && name != "definitionRevision" && name != "expectedAdvancedRevision" {
+			return SourceStartChoice{}, false
+		}
+	}
+	var out SourceStartChoice
+	if json.Unmarshal(raw, &out) != nil {
+		return SourceStartChoice{}, false
+	}
+	return out, true
 }
 
 func sourceReadValues(p SourceReadProfile) SourceReadValues {
@@ -111,7 +155,7 @@ func (s *Service) ReadSourceReadSettings(ctx context.Context, identities *identi
 	if err = currentLocalOwnerTx(ctx, snapshot.Tx(), identities, owner); err != nil {
 		return SourceReadSettings{}, err
 	}
-	_, out, err := readSettingsTx(ctx, snapshot.Tx(), source)
+	_, out, err := s.readSourceReadSettingsProjectionTx(ctx, snapshot.Tx(), source)
 	return out, err
 }
 
@@ -152,11 +196,17 @@ func (s *Service) SaveSourceReadSettings(ctx context.Context, identities *identi
 		return Receipt{}, err
 	}
 	defer writer.Rollback()
-	_, err = s.ApplySourceReadProfileTx(ctx, writer.Tx(), identities, owner, SourceReadProfileChange{SourceID: source, Generation: in.ExpectedGeneration, ExpectedRevision: in.ExpectedRevision, Profile: in.Values.profile(source)})
-	if err != nil {
-		return Receipt{}, err
+	var row Source
+	var settings SourceReadSettings
+	var apply sourceChoiceApply
+	if in.StartChoice != nil {
+		row, settings, apply, err = s.applySourceChoiceTx(ctx, writer.Tx(), identities, owner, source, in)
+	} else {
+		_, err = s.ApplySourceReadProfileTx(ctx, writer.Tx(), identities, owner, SourceReadProfileChange{SourceID: source, Generation: in.ExpectedGeneration, ExpectedRevision: in.ExpectedRevision, Profile: in.Values.profile(source)})
+		if err == nil {
+			row, settings, err = readSettingsTx(ctx, writer.Tx(), source)
+		}
 	}
-	row, settings, err := readSettingsTx(ctx, writer.Tx(), source)
 	if err != nil {
 		return Receipt{}, err
 	}
@@ -170,6 +220,9 @@ func (s *Service) SaveSourceReadSettings(ctx context.Context, identities *identi
 	}
 	if err = writer.Commit(); err != nil {
 		return Receipt{}, err
+	}
+	if in.StartChoice != nil {
+		s.finishSourceChoice(ctx, identities, owner, apply)
 	}
 	return receipt, s.finishReadSettings(ctx, source, settings.Revision)
 }

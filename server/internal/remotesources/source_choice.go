@@ -1,171 +1,103 @@
 package remotesources
 
 // Root ruling 57 version 1 maps the four drawn remote choices to one complete
-// explicit read and Advanced baseline. These are product defaults approved for
-// v1, not measured recommendations. This file is the pure mapping/comparison
-// half only: it performs no I/O, writes no schema and decides no applicability.
+// explicit read and Advanced baseline. The normalized definition table is the
+// sole values source; this file holds only the closed comparison and the
+// adapter-supplied applicability mapping. It performs no SQL and writes nothing.
 //
-// The source adapter supplies applicability. A field the adapter leaves out is
-// inapplicable to that provider: the guarded writer must preserve its saved
-// value and the comparison must not count it. This helper never guesses the
-// provider set and never treats "not mentioned" as applicable.
-
-// sourceChoiceField is one closed, editable Root57 setting ID. IDs are the
-// existing wire names shared by the read profile and the Advanced page.
-type sourceChoiceField string
-
-const (
-	sourceChoiceScanDepth             sourceChoiceField = "scanDepth"
-	sourceChoiceWholeFileReads        sourceChoiceField = "wholeFileReads"
-	sourceChoiceConnections           sourceChoiceField = "connections"
-	sourceChoiceRequestsPerSecond     sourceChoiceField = "requestsPerSecond"
-	sourceChoiceBytesPerSecond        sourceChoiceField = "bytesPerSecond"
-	sourceChoiceScanIntervalSeconds   sourceChoiceField = "scanIntervalSeconds"
-	sourceChoiceWatchForChanges       sourceChoiceField = "watchForChanges"
-	sourceChoiceScanOnStart           sourceChoiceField = "scanOnStart"
-	sourceChoiceFullRecheckDays       sourceChoiceField = "fullRecheckDays"
-	sourceChoiceDoubleCheckFolders    sourceChoiceField = "doubleCheckFolders"
-	sourceChoiceSeekPreviews          sourceChoiceField = "seekPreviews"
-	sourceChoiceChapterImages         sourceChoiceField = "chapterImages"
-	sourceChoiceWaveforms             sourceChoiceField = "waveforms"
-	sourceChoiceLoudness              sourceChoiceField = "loudness"
-	sourceChoiceChecksums             sourceChoiceField = "checksums"
-	sourceChoiceIntrosMode            sourceChoiceField = "introsMode"
-	sourceChoiceCacheBytes            sourceChoiceField = "cacheBytes"
-	sourceChoiceCacheFloorBytes       sourceChoiceField = "cacheFloorBytes"
-	sourceChoiceDirCacheSeconds       sourceChoiceField = "dirCacheSeconds"
-	sourceChoiceReadBufferBytes       sourceChoiceField = "readBufferBytes"
-	sourceChoiceConnectTimeoutSeconds sourceChoiceField = "connectTimeoutSeconds"
-	sourceChoiceIdleTimeoutSeconds    sourceChoiceField = "idleTimeoutSeconds"
-	sourceChoiceRetries               sourceChoiceField = "retries"
-	sourceChoiceLowLevelRetries       sourceChoiceField = "lowLevelRetries"
-)
-
-// sourceChoiceFieldOrder is the closed comparison order. It is the exact 24
-// editable rows: five read-profile rows then the nineteen Advanced rows.
-var sourceChoiceFieldOrder = [...]sourceChoiceField{
-	sourceChoiceScanDepth,
-	sourceChoiceWholeFileReads,
-	sourceChoiceConnections,
-	sourceChoiceRequestsPerSecond,
-	sourceChoiceBytesPerSecond,
-	sourceChoiceScanIntervalSeconds,
-	sourceChoiceWatchForChanges,
-	sourceChoiceScanOnStart,
-	sourceChoiceFullRecheckDays,
-	sourceChoiceDoubleCheckFolders,
-	sourceChoiceSeekPreviews,
-	sourceChoiceChapterImages,
-	sourceChoiceWaveforms,
-	sourceChoiceLoudness,
-	sourceChoiceChecksums,
-	sourceChoiceIntrosMode,
-	sourceChoiceCacheBytes,
-	sourceChoiceCacheFloorBytes,
-	sourceChoiceDirCacheSeconds,
-	sourceChoiceReadBufferBytes,
-	sourceChoiceConnectTimeoutSeconds,
-	sourceChoiceIdleTimeoutSeconds,
-	sourceChoiceRetries,
-	sourceChoiceLowLevelRetries,
-}
-
-// sourceChoiceDefinition is one immutable normalized v1 row. The eventual
-// owner-reserved table is keyed (name, definition_revision) and carries these
-// columns explicitly; this value is the source-side copy used by the guarded
-// writer and by comparison.
-type sourceChoiceDefinition struct {
-	Name     string
-	Revision int64
-	Reading  SourceReadValues
-	Advanced SourceAdvanced
-}
-
-const sourceChoiceV1Revision int64 = 1
-
-var sourceChoiceDefinitionsV1 = [...]sourceChoiceDefinition{
-	{
-		Name:     "list",
-		Revision: sourceChoiceV1Revision,
-		Reading:  SourceReadValues{ScanDepth: "file_list_only", WholeFileReads: false, Connections: 2, RequestsPerSecond: 2, BytesPerSecond: 0},
-		Advanced: SourceAdvanced{
-			ScanIntervalSeconds: 86400, WatchForChanges: false, ScanOnStart: false, FullRecheckDays: 30, DoubleCheckFolders: false,
-			SeekPreviews: false, ChapterImages: false, Waveforms: false, Loudness: false, Checksums: false, IntrosMode: "off",
-			CacheBytes: 0, CacheFloorBytes: 2 << 30,
-			DirCacheSeconds: 60, ReadBufferBytes: 8 << 20, ConnectTimeoutSeconds: 10, IdleTimeoutSeconds: 30, Retries: 1, LowLevelRetries: 2,
-		},
-	},
-	{
-		Name:     "once",
-		Revision: sourceChoiceV1Revision,
-		Reading:  SourceReadValues{ScanDepth: "basic", WholeFileReads: false, Connections: 4, RequestsPerSecond: 4, BytesPerSecond: 0},
-		Advanced: SourceAdvanced{
-			ScanIntervalSeconds: 21600, WatchForChanges: false, ScanOnStart: false, FullRecheckDays: 14, DoubleCheckFolders: false,
-			SeekPreviews: false, ChapterImages: false, Waveforms: false, Loudness: false, Checksums: false, IntrosMode: "off",
-			CacheBytes: 8 << 30, CacheFloorBytes: 2 << 30,
-			DirCacheSeconds: 60, ReadBufferBytes: 8 << 20, ConnectTimeoutSeconds: 10, IdleTimeoutSeconds: 30, Retries: 1, LowLevelRetries: 2,
-		},
-	},
-	{
-		Name:     "everything",
-		Revision: sourceChoiceV1Revision,
-		Reading:  SourceReadValues{ScanDepth: "complete", WholeFileReads: true, Connections: 8, RequestsPerSecond: 10, BytesPerSecond: 0},
-		Advanced: SourceAdvanced{
-			ScanIntervalSeconds: 3600, WatchForChanges: true, ScanOnStart: true, FullRecheckDays: 7, DoubleCheckFolders: true,
-			SeekPreviews: true, ChapterImages: true, Waveforms: true, Loudness: true, Checksums: true, IntrosMode: "inherit",
-			CacheBytes: 32 << 30, CacheFloorBytes: 2 << 30,
-			DirCacheSeconds: 60, ReadBufferBytes: 8 << 20, ConnectTimeoutSeconds: 10, IdleTimeoutSeconds: 30, Retries: 1, LowLevelRetries: 2,
-		},
-	},
-	{
-		Name:     "ask",
-		Revision: sourceChoiceV1Revision,
-		Reading:  SourceReadValues{ScanDepth: "basic", WholeFileReads: false, Connections: 2, RequestsPerSecond: 2, BytesPerSecond: 0},
-		Advanced: SourceAdvanced{
-			ScanIntervalSeconds: 0, WatchForChanges: false, ScanOnStart: false, FullRecheckDays: 0, DoubleCheckFolders: false,
-			SeekPreviews: false, ChapterImages: false, Waveforms: false, Loudness: false, Checksums: false, IntrosMode: "off",
-			CacheBytes: 0, CacheFloorBytes: 2 << 30,
-			DirCacheSeconds: 60, ReadBufferBytes: 8 << 20, ConnectTimeoutSeconds: 10, IdleTimeoutSeconds: 30, Retries: 1, LowLevelRetries: 2,
-		},
-	},
-}
-
-// sourceChoiceDefinitionAt resolves exactly one immutable version. There is no
-// latest/default fallback: an unknown name or revision is absent. The caller
-// maps absence to invalid_request.
-func sourceChoiceDefinitionAt(name string, revision int64) (sourceChoiceDefinition, bool) {
-	for _, definition := range sourceChoiceDefinitionsV1 {
-		if definition.Name == name && definition.Revision == revision {
-			return definition, true
-		}
-	}
-	return sourceChoiceDefinition{}, false
-}
+// A field the actual source adapter leaves out is inapplicable: the guarded
+// writer preserves its saved value and the comparison does not count it. This
+// helper never guesses the provider set and never treats "not mentioned" as
+// applicable.
 
 // sourceChoiceApplicability is the exact field set the actual source adapter
-// says it applies. A missing field is not written by the guarded writer and is
-// not counted. The helper never builds or infers this set.
-type sourceChoiceApplicability map[sourceChoiceField]bool
+// applies. The projection and writer both use the same derived set.
+type sourceChoiceApplicability map[string]bool
 
-func (a sourceChoiceApplicability) applies(field sourceChoiceField) bool {
+// The six transport knobs are consumed by the mounted rclone serve program,
+// not by the direct native DAV adapter. SourceTransport is explicitly the
+// mounted program's transport subset; service.dav(), acquisition.go's direct
+// DAV path and listDAVFolders never read them. A source with no mount therefore
+// preserves these values and does not count them as part of a choice.
+var sourceChoiceTransportFields = [...]string{
+	"dirCacheSeconds",
+	"readBufferBytes",
+	"connectTimeoutSeconds",
+	"idleTimeoutSeconds",
+	"retries",
+	"lowLevelRetries",
+}
+
+func sourceChoiceApplicabilityForSource(source Source) sourceChoiceApplicability {
+	applicable := make(sourceChoiceApplicability, len(sourceChoiceWireFields))
+	for _, field := range sourceChoiceWireFields {
+		applicable[field] = true
+	}
+	if source.MountID == "" {
+		for _, field := range sourceChoiceTransportFields {
+			delete(applicable, field)
+		}
+	}
+	return applicable
+}
+
+// sourceChoiceApplicableFields returns the adapter's set in the closed authored
+// order, suitable for SourceChoiceBaseline.ApplicableFields.
+func sourceChoiceApplicableFields(source Source) []string {
+	applicable := sourceChoiceApplicabilityForSource(source)
+	fields := make([]string, 0, len(sourceChoiceWireFields))
+	for _, field := range sourceChoiceWireFields {
+		if applicable.applies(field) {
+			fields = append(fields, field)
+		}
+	}
+	return fields
+}
+
+func (a sourceChoiceApplicability) applies(field string) bool {
 	return a[field]
 }
 
-// sourceChoiceReadingMatches enforces the accepted body rule for a startChoice:
-// the accompanying values must exactly equal the chosen definition's read half.
-// No union, merge or silent rewrite is allowed.
-func sourceChoiceReadingMatches(definition sourceChoiceDefinition, reading SourceReadValues) bool {
+// sourceChoiceReadingMatches enforces the accepted body rule: the complete
+// legacy values must exactly equal the chosen definition's read half. No union,
+// merge or silent rewrite is allowed.
+func sourceChoiceReadingMatches(definition SourceChoiceDefinition, reading SourceReadValues) bool {
 	return reading == definition.Reading
+}
+
+// sourceChoicePreserveInapplicable keeps the current saved value for a field
+// the adapter does not apply. The values struct is otherwise the exact SQL
+// definition.
+func sourceChoicePreserveInapplicable(values, current SourceAdvanced, applicable sourceChoiceApplicability) SourceAdvanced {
+	if !applicable.applies("dirCacheSeconds") {
+		values.DirCacheSeconds = current.DirCacheSeconds
+	}
+	if !applicable.applies("readBufferBytes") {
+		values.ReadBufferBytes = current.ReadBufferBytes
+	}
+	if !applicable.applies("connectTimeoutSeconds") {
+		values.ConnectTimeoutSeconds = current.ConnectTimeoutSeconds
+	}
+	if !applicable.applies("idleTimeoutSeconds") {
+		values.IdleTimeoutSeconds = current.IdleTimeoutSeconds
+	}
+	if !applicable.applies("retries") {
+		values.Retries = current.Retries
+	}
+	if !applicable.applies("lowLevelRetries") {
+		values.LowLevelRetries = current.LowLevelRetries
+	}
+	return values
 }
 
 // sourceChoiceChangedFields returns the applicable rows whose current value
 // differs from the exact recorded definition. The result is already a subset of
-// the adapter's applicability set; an empty result is nil, never a fabricated
-// zero-change claim for a legacy/incoherent baseline (the caller omits the
-// projection entirely in that case).
-func sourceChoiceChangedFields(definition sourceChoiceDefinition, applicable sourceChoiceApplicability, reading SourceReadValues, advanced SourceAdvanced) []sourceChoiceField {
-	var changed []sourceChoiceField
-	for _, field := range sourceChoiceFieldOrder {
+// the adapter's applicability set; an empty result is nil. The caller omits the
+// whole baseline for an absent/incoherent association rather than fabricating a
+// zero-change claim.
+func sourceChoiceChangedFields(definition SourceChoiceDefinition, applicable sourceChoiceApplicability, reading SourceReadValues, advanced SourceAdvanced) []string {
+	var changed []string
+	for _, field := range sourceChoiceWireFields {
 		if !applicable.applies(field) {
 			continue
 		}
@@ -180,55 +112,55 @@ func sourceChoiceChangedFields(definition sourceChoiceDefinition, applicable sou
 // values only: never SourceTransport.Effective, never the observed folder
 // interval, never an effective server limit and never the applied cache
 // projection.
-func sourceChoiceDiffers(field sourceChoiceField, definition sourceChoiceDefinition, reading SourceReadValues, advanced SourceAdvanced) bool {
+func sourceChoiceDiffers(field string, definition SourceChoiceDefinition, reading SourceReadValues, advanced SourceAdvanced) bool {
 	switch field {
-	case sourceChoiceScanDepth:
+	case "scanDepth":
 		return reading.ScanDepth != definition.Reading.ScanDepth
-	case sourceChoiceWholeFileReads:
+	case "wholeFileReads":
 		return reading.WholeFileReads != definition.Reading.WholeFileReads
-	case sourceChoiceConnections:
+	case "connections":
 		return reading.Connections != definition.Reading.Connections
-	case sourceChoiceRequestsPerSecond:
+	case "requestsPerSecond":
 		return reading.RequestsPerSecond != definition.Reading.RequestsPerSecond
-	case sourceChoiceBytesPerSecond:
+	case "bytesPerSecond":
 		return reading.BytesPerSecond != definition.Reading.BytesPerSecond
-	case sourceChoiceScanIntervalSeconds:
+	case "scanIntervalSeconds":
 		return advanced.ScanIntervalSeconds != definition.Advanced.ScanIntervalSeconds
-	case sourceChoiceWatchForChanges:
+	case "watchForChanges":
 		return advanced.WatchForChanges != definition.Advanced.WatchForChanges
-	case sourceChoiceScanOnStart:
+	case "scanOnStart":
 		return advanced.ScanOnStart != definition.Advanced.ScanOnStart
-	case sourceChoiceFullRecheckDays:
+	case "fullRecheckDays":
 		return advanced.FullRecheckDays != definition.Advanced.FullRecheckDays
-	case sourceChoiceDoubleCheckFolders:
+	case "doubleCheckFolders":
 		return advanced.DoubleCheckFolders != definition.Advanced.DoubleCheckFolders
-	case sourceChoiceSeekPreviews:
+	case "seekPreviews":
 		return advanced.SeekPreviews != definition.Advanced.SeekPreviews
-	case sourceChoiceChapterImages:
+	case "chapterImages":
 		return advanced.ChapterImages != definition.Advanced.ChapterImages
-	case sourceChoiceWaveforms:
+	case "waveforms":
 		return advanced.Waveforms != definition.Advanced.Waveforms
-	case sourceChoiceLoudness:
+	case "loudness":
 		return advanced.Loudness != definition.Advanced.Loudness
-	case sourceChoiceChecksums:
+	case "checksums":
 		return advanced.Checksums != definition.Advanced.Checksums
-	case sourceChoiceIntrosMode:
+	case "introsMode":
 		return advanced.IntrosMode != definition.Advanced.IntrosMode
-	case sourceChoiceCacheBytes:
+	case "cacheBytes":
 		return advanced.CacheBytes != definition.Advanced.CacheBytes
-	case sourceChoiceCacheFloorBytes:
+	case "cacheFloorBytes":
 		return advanced.CacheFloorBytes != definition.Advanced.CacheFloorBytes
-	case sourceChoiceDirCacheSeconds:
+	case "dirCacheSeconds":
 		return advanced.DirCacheSeconds != definition.Advanced.DirCacheSeconds
-	case sourceChoiceReadBufferBytes:
+	case "readBufferBytes":
 		return advanced.ReadBufferBytes != definition.Advanced.ReadBufferBytes
-	case sourceChoiceConnectTimeoutSeconds:
+	case "connectTimeoutSeconds":
 		return advanced.ConnectTimeoutSeconds != definition.Advanced.ConnectTimeoutSeconds
-	case sourceChoiceIdleTimeoutSeconds:
+	case "idleTimeoutSeconds":
 		return advanced.IdleTimeoutSeconds != definition.Advanced.IdleTimeoutSeconds
-	case sourceChoiceRetries:
+	case "retries":
 		return advanced.Retries != definition.Advanced.Retries
-	case sourceChoiceLowLevelRetries:
+	case "lowLevelRetries":
 		return advanced.LowLevelRetries != definition.Advanced.LowLevelRetries
 	default:
 		// The set is closed. An unknown field is reported as changed rather than
