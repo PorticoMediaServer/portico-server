@@ -9,6 +9,7 @@ import {CastPlayback} from '../../kit/player';
 import {ListeningNotice} from '../../kit/media/ListeningNotice';
 import {DockHost, DockNotice, MediaSurface, type DockBinding, type DockNoticeData, type DockPresentation} from '../../kit/dock';
 import {WatchScreen} from './WatchScreen';
+import {useVideoGesture} from './use-video-gesture';
 import {WatchSkipPrompt} from './SkipPrompt';
 import {WatchUndoPrompt} from './UndoPrompt';
 import {WatchUpNextPrompt} from './UpNextPrompt';
@@ -360,11 +361,14 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
     ...(document.fullscreenEnabled ? {fullscreen: {active: fullscreen, toggle: toggleFullscreen}} : {}),
     ...(pipOperations && (pipReady || pipActive) ? {pictureInPicture: {active: pipActive, toggle: () => pipOperations.toggle()}} : {}),
   } : undefined;
+  const videoCurrent = useCallback(() => musicCurrent() && (!policy || !watchStillWatching(policy, policy.getSnapshot())), [musicCurrent, policy]);
+  const videoGesture = useVideoGesture(binding, snapshot, phone && activeVideo && !snapshot?.nativeVideoSurfaceActive
+    && !fullscreen && !pipActive && !drawnSurfaces.modal && !remoteState?.remote, videoCurrent, dockSlot, expandedSlot, musicBar);
   return <div ref={host} className={styles.dock} data-phone={phone} data-shell-dock data-watch-playback-host data-music-expanded={!phone && expanded && !remotePlaying && snapshot?.presentation?.kind === 'music' ? 'true' : undefined}>
-    {snapshot && dockBinding && <div ref={musicBar} className={styles.localDock} data-covered={!!remote} data-music-retained={!!musicMotion.scope || undefined} inert={musicMotion.open || undefined} aria-hidden={musicMotion.open || undefined}><DockHost state={snapshot.dock} presentations={presentations} binding={dockBinding} layout={phone ? 'phone' : 'desktop'} artSlotRef={dockSlot} videoSurface={!!activeVideo} artworkSurface={!!musicMotion.scope} retainExpandedMusic={!!musicMotion.scope} />
+    {snapshot && dockBinding && <div ref={musicBar} className={styles.localDock} data-covered={!!remote} data-music-retained={!!musicMotion.scope || undefined} data-video-retained={videoGesture.retain && expanded || undefined} inert={musicMotion.open || videoGesture.retain && expanded || undefined} aria-hidden={musicMotion.open || videoGesture.retain && expanded || undefined}><DockHost state={snapshot.dock} presentations={presentations} binding={dockBinding} layout={phone ? 'phone' : 'desktop'} artSlotRef={dockSlot} videoSurface={!!activeVideo} artworkSurface={!!musicMotion.scope} retainExpandedMusic={!!musicMotion.scope} retainExpandedVideo={videoGesture.retain} videoGesture={videoGesture.port} videoGestureActive={videoGesture.active} />
       {!expanded && !remote && noticeIdentity && <CurrentListeningNotice key={noticeIdentity} snapshot={snapshot} phone={phone}/>}
       <DockNotice notice={currentNotice} nowMs={now} binding={dockBinding} phone={phone} /></div>}
-    <MediaSurface finished={snapshot?.presentation?.finished} expanded={expanded} dockSlot={dockSlot} expandedSlot={expandedSlot} hidden={!activeVideo} nativeRenderActive={snapshot?.nativeVideoSurfaceActive} className={styles.surface}>
+    <MediaSurface gesturePaint={videoGesture.paint} finished={snapshot?.presentation?.finished} expanded={expanded} dockSlot={dockSlot} expandedSlot={expandedSlot} hidden={!activeVideo} nativeRenderActive={snapshot?.nativeVideoSurfaceActive} className={styles.surface}>
       <video ref={video} playsInline preload="none" aria-label={playbackIdentityLabel(presentations, snapshot?.fence && fenceKey(snapshot.fence))} />
     </MediaSurface>
     {snapshot?.capacityWait && <WatchCapacityWait wait={snapshot.capacityWait} />}
@@ -372,7 +376,7 @@ export function WatchPlayback({binding, context, surfaces, geometry, live}: Watc
     {binding && snapshot?.startFailure && <WatchStartFailure failure={snapshot.startFailure} authority={snapshot.authority} context={context} reportError={binding.reportError}/>}
     <MusicExpansionSurface motion={musicMotion}/>
     {binding && snapshot && <WatchMusicNowPlaying motion={musicMotion} isCurrent={dockPanelsCurrent} binding={binding} snapshot={snapshot} expanded={expanded && !remotePlaying} onCollapse={collapse} phone={phone} />}
-    {binding && snapshot && <WatchScreen binding={binding} snapshot={snapshot} expanded={expanded && !remotePlaying} onCollapse={collapse} surfaceSlotRef={expandedSlot} onControlsVisibleChange={setControlsVisible}
+    {binding && snapshot && <WatchScreen videoGesture={videoGesture} binding={binding} snapshot={snapshot} expanded={expanded && !remotePlaying} onCollapse={collapse} surfaceSlotRef={expandedSlot} onControlsVisibleChange={setControlsVisible}
       publishDockPanels={publishDockPanels} dockPanelsCurrent={dockPanelsCurrent} subscribeDockPanels={subscribeDockPanels}
       surfaces={drawnSurfaces} geometry={geometry} live={live}
       windowPort={windowPort} />}

@@ -8,6 +8,7 @@ import {GestureRelease, PlayerMorph} from './motion';
 import {signalDockMotion} from './geometry-event';
 import {useDockHandover, useDockReducedMotion} from './use-motion';
 import {MEDIA_BAR_DISMISS_MS, MEDIA_BAR_REDUCED_MS, MEDIA_BAR_SNAP_MS, dismissOffsets, dragOpacity, paintedOpacity, paintedX, releaseOpacity} from './media-bar-drag';
+import type {VideoGesturePort} from './video-gesture-port';
 import type {DockRendererProps} from './types';
 import styles from './dock.module.css';
 
@@ -15,14 +16,14 @@ export function MediaBar(props: DockRendererProps) {
   const {view, binding, t = dockText, className, style} = props, root = useRef<HTMLElement | null>(null), anchor = useRef<HTMLButtonElement | null>(null), menuAnchor = useRef<HTMLSpanElement | null>(null);
   const [held, setHeld] = useState(false), [holding, setHolding] = useState(false), reduced = useDockReducedMotion(root), send = useDockActions({view, binding});
   const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null), animation = useRef<Animation | null>(null), suppressClick = useRef(false);
-  const gesture = useRef<{id: number; x: number; y: number; lastX: number; lastY: number; time: number; vx: number; vy: number; dx: number; dy: number; moved: boolean} | null>(null);
+  const gesture = useRef<{id: number; x: number; y: number; lastX: number; lastY: number; time: number; vx: number; vy: number; dx: number; dy: number; moved: boolean; vertical?: VideoGesturePort; verticalActive?: boolean} | null>(null);
   const epoch = useRef(0);
   const movement = useRef(new PlayerMorph(0, springs.settle));
   useDockHandover(root, `${view.playback.fence.sessionId}:${view.playback.fence.generation}:${view.mode}`);
   const clearHold = () => { if (holdTimer.current) clearTimeout(holdTimer.current); holdTimer.current = null; setHolding(false); };
   useEffect(() => () => { if (holdTimer.current) clearTimeout(holdTimer.current); animation.current?.cancel(); }, []);
   useLayoutEffect(() => {
-    epoch.current += 1; animation.current?.cancel(); animation.current = null; gesture.current = null; clearHold();
+    epoch.current += 1; animation.current?.cancel(); animation.current = null; gesture.current?.vertical?.cancel(); gesture.current = null; clearHold();
     if (root.current) {root.current.style.transform = '';root.current.style.opacity = '';signalDockMotion(root.current, {kind: 'reset'});}
     setHeld(false);
   }, [view.playback.fence.sessionId, view.playback.fence.generation, view.mode]);
@@ -35,14 +36,15 @@ export function MediaBar(props: DockRendererProps) {
     return () => job.cancel();
   }, [held, holding, reduced]);
   const down = (event: PointerEvent<HTMLElement>) => {
-    if (event.button !== 0 || held || remoteTerminal(view.remote)) return;
+    if (event.button !== 0 || held || remoteTerminal(view.remote) || props.videoGesture && gesture.current) return;
     const element = event.currentTarget, painted = animation.current ? {position: paintedX(element), opacity: paintedOpacity(element)} : {position: 0, opacity: 1};
     animation.current?.cancel(); animation.current = null; element.style.transform = painted.position ? `translateX(${painted.position}px)` : ''; element.style.opacity = painted.opacity === 1 ? '' : String(painted.opacity); suppressClick.current = false;
     movement.current.track(painted.position, 0, performance.now());
-    gesture.current = {id: event.pointerId, x: event.clientX - painted.position, y: event.clientY, lastX: event.clientX, lastY: event.clientY, time: event.timeStamp, vx: 0, vy: 0, dx: painted.position, dy: 0, moved: painted.position !== 0};
+    gesture.current = {id: event.pointerId, x: event.clientX - painted.position, y: event.clientY, lastX: event.clientX, lastY: event.clientY, time: event.timeStamp, vx: 0, vy: 0, dx: painted.position, dy: 0, moved: painted.position !== 0, vertical: props.videoGesture};
+    if (event.target instanceof Element && (!event.target.closest('button,input,[role="slider"]') || event.target.closest('[data-dock-identity]'))) gesture.current.vertical?.begin(event, element, 1);
     event.currentTarget.setPointerCapture(event.pointerId);
     signalDockMotion(event.currentTarget, {kind: 'begin', offset: painted.position});
-    holdTimer.current = setTimeout(() => { suppressClick.current = true; setHolding(false); setHeld(true); }, 500); setHolding(true);
+    holdTimer.current = setTimeout(() => { suppressClick.current = true; setHolding(false); props.videoGesture?.cancel(); setHeld(true); }, 500); setHolding(true);
   };
   const move = (event: PointerEvent<HTMLElement>) => {
     const g = gesture.current; if (!g || g.id !== event.pointerId || held) return;
@@ -50,10 +52,16 @@ export function MediaBar(props: DockRendererProps) {
     g.lastX = event.clientX; g.lastY = event.clientY; g.time = event.timeStamp; g.dx = event.clientX - g.x; g.dy = event.clientY - g.y;
     if (Math.hypot(g.dx, g.dy) < 6 && !g.moved) return;
     g.moved = true; suppressClick.current = true; clearHold();
-    if (Math.abs(g.dx) >= Math.abs(g.dy)) { event.currentTarget.setPointerCapture(event.pointerId); event.currentTarget.style.transform = `translateX(${g.dx}px)`; event.currentTarget.style.opacity = String(dragOpacity(g.dx, event.currentTarget.clientWidth)); signalDockMotion(event.currentTarget, {kind: 'track', offset: g.dx}); }
+    if ((g.verticalActive || Math.abs(g.dy) > Math.abs(g.dx)) && g.vertical?.move(event)) {g.verticalActive = true;event.preventDefault();return;}
+    if (Math.abs(g.dx) >= Math.abs(g.dy)) { g.vertical?.cancel(); event.currentTarget.setPointerCapture(event.pointerId); event.currentTarget.style.transform = `translateX(${g.dx}px)`; event.currentTarget.style.opacity = String(dragOpacity(g.dx, event.currentTarget.clientWidth)); signalDockMotion(event.currentTarget, {kind: 'track', offset: g.dx}); }
   };
   const release = (event: PointerEvent<HTMLElement>, cancelled = false) => {
     clearHold(); const g = gesture.current; gesture.current = null; if (!g || g.id !== event.pointerId) return;
+    if (g.vertical?.release(event, cancelled)) {
+      suppressClick.current = true;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+      event.currentTarget.style.transform = '';event.currentTarget.style.opacity = '';return;
+    }
     if (!g.moved) { event.currentTarget.style.transform = ''; event.currentTarget.style.opacity = ''; signalDockMotion(event.currentTarget, {kind: 'reset'}); return; }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     if (!cancelled && Math.abs(g.dy) > Math.abs(g.dx) && (g.dy < -35 || g.vy < -600)) { event.currentTarget.style.transform = ''; event.currentTarget.style.opacity = ''; signalDockMotion(event.currentTarget, {kind: 'reset'}); send({kind: 'expand'}); return; }
@@ -85,12 +93,12 @@ export function MediaBar(props: DockRendererProps) {
   return <>
     <span ref={menuAnchor} className={styles.menuAnchor} style={style} aria-hidden="true" />
     {held && <div className={styles.phoneScrim} onClick={() => setHeld(false)} />}
-    <section ref={root} className={[styles.phoneBar, held && styles.held, className].filter(Boolean).join(' ')} data-mode={view.mode} data-holding={holding || undefined} aria-label={t('next.dock.nowPlaying')} style={style}
-      onPointerDown={down} onPointerMove={move} onPointerUp={event => release(event)} onPointerCancel={event => release(event, true)}
+    <section ref={root} className={[styles.phoneBar, held && styles.held, className].filter(Boolean).join(' ')} data-mode={view.mode} data-holding={holding || undefined} aria-label={t('next.dock.nowPlaying')} style={{...style, ...(props.videoGesture ? {touchAction: 'none'} : {})}}
+      onPointerDown={down} onPointerMove={move} onPointerUp={event => release(event)} onPointerCancel={event => release(event, true)} onLostPointerCapture={event => {const g = gesture.current;if (g?.id === event.pointerId) {g.vertical?.cancel();gesture.current = null;clearHold();}}}
       onClickCapture={event => { if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); suppressClick.current = false; } }}
       onContextMenu={event => { event.preventDefault(); clearHold(); setHeld(true); }}>
-      <span className={styles.phoneIdentity} data-dock-identity><Identity {...props} identityRef={anchor} phone /></span>
-      {remoteTerminal(view.remote) ? <TerminalActions {...props} phone /> : view.remote && view.remote.phase !== 'playing' ? <Control icon="i-stop" label={t('next.dock.stopConnecting')} onClick={() => send({kind: 'stop'})} /> : <Transport {...props} phone />}
+      <span className={styles.phoneIdentity} data-dock-identity inert={props.videoGestureActive || undefined}><Identity {...props} identityRef={anchor} phone /></span>
+      {remoteTerminal(view.remote) ? <TerminalActions {...props} phone /> : view.remote && view.remote.phase !== 'playing' ? <Control icon="i-stop" label={t('next.dock.stopConnecting')} onClick={() => send({kind: 'stop'})} /> : props.videoGesture ? <span style={{display: 'contents'}} inert={props.videoGestureActive || undefined}><Transport {...props} phone /></span> : <Transport {...props} phone />}
       <Progress {...props} line />
     </section>
     <Menu open={held && !view.playback.expanded} onOpenChange={open => setHeld(open)} title={t('next.dock.nowPlaying')} presentation="anchored" anchorRef={menuAnchor} returnFocusRef={anchor} placement="top-start" width={250} sideOffset={8} className={styles.holdMenu} items={[

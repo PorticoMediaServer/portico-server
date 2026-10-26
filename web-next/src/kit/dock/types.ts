@@ -2,6 +2,7 @@ import type {CSSProperties, ReactNode, RefObject} from 'react';
 import type {FactPart, PlaybackIdentityModel} from '@core/presentation/kit-model/index.ts';
 import type {DockPlayback, DockState, PlaybackFence, RemoteDock} from '../../../../packages/player-core/src/index.ts';
 import type {AmbientArtSource, ArtworkPalette, ArtworkSource} from '../artwork';
+import type {VideoGesturePort, VideoSurfacePaint} from './video-gesture-port';
 import type {dockMessages} from '../../../../packages/i18n/src/catalog/en-US/next/dock.ts';
 
 export type DockMessageId = keyof typeof dockMessages;
@@ -33,6 +34,8 @@ export type DockRendererProps = Readonly<{
   view: DockView; binding: DockBinding; t?: DockTranslate; className?: string; style?: CSSProperties;
   artSlotRef?: RefObject<HTMLSpanElement | null>; videoSurface?: boolean; artworkSurface?: boolean;
   identityRef?: RefObject<HTMLButtonElement | null>;
+  videoGesture?: VideoGesturePort;
+  videoGestureActive?: boolean;
 }>;
 export type DockHostProps = Readonly<{
   state: DockState; presentations: readonly DockPresentation[]; binding: DockBinding; layout: DockLayout;
@@ -40,6 +43,10 @@ export type DockHostProps = Readonly<{
   artSlotRef?: RefObject<HTMLSpanElement | null>; videoSurface?: boolean; artworkSurface?: boolean;
   /** Paint the SAME actual current music occupant while its full view is open; caller makes it inert. */
   retainExpandedMusic?: boolean;
+  /** Retain this actual local-video dock as inert geometry while its full view owns input. */
+  retainExpandedVideo?: boolean;
+  videoGesture?: VideoGesturePort;
+  videoGestureActive?: boolean;
   tvExpanded?: boolean; onTVExpandedChange?: (expanded: boolean) => void;
   tvReturnFocusRef?: RefObject<HTMLElement | null>;
 }>;
@@ -48,4 +55,5 @@ export type MediaSurfaceProps = Readonly<{
   expandedSlot: RefObject<HTMLElement | null>; hidden?: boolean; finished?: boolean; className?: string;
   /** Actual current native frame observation from the runtime; ordinary web playback omits it. */
   nativeRenderActive?: boolean;
+  gesturePaint?: RefObject<VideoSurfacePaint | null>;
 }>;

@@ -9,6 +9,7 @@ import type {ArtworkSource} from '../../kit/artwork/types';
 import type {LiveChromePort} from '../live/live-chrome-types';
 import type {WatchEndCard} from './end-card';
 import type {PlaybackLossNotice} from '../../kit/media';
+import type {VideoGesturePort} from '../../kit/dock/video-gesture-port';
 import type {WatchDockPanelOffer} from './dock-panel-opening';
 
 /** Structurally matches the parent's binding. The screen never creates or mounts media. */
@@ -98,6 +99,8 @@ export type WatchScreenProps = Readonly<{
   subscribeDockPanels?: (changed: () => void) => () => void;
   /** Empty bounds target for the SAME MediaSurface the parent already owns. */
   surfaceSlotRef: Ref<HTMLDivElement>;
+  videoGesture?: Readonly<{port?: VideoGesturePort; screen: RefObject<HTMLDivElement | null>; preview: boolean; active: boolean;
+    admit: (gate: () => boolean) => () => void}>;
   surfaces?: WatchSurfaces;
   /** Genuine live channel facts and actions; absent for VOD or an unavailable guide. */
   live?: LiveChromePort;

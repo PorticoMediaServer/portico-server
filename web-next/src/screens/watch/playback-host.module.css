@@ -20,3 +20,6 @@
 :global(body:has([data-navigation='sidebar'])) .localDock[data-music-retained] { left: 248px; }
 .dock[data-phone='true'] .localDock[data-music-retained] { left: 8px; right: 8px; bottom: calc(56px + env(safe-area-inset-bottom, 0px) + 8px); }
 :global(body:has([data-navigation='rail'])) .dock[data-phone='true'] .localDock[data-music-retained] { left: 92px; bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); }
+
+/* Keep the original local video dock measurable under its full view. */
+.localDock[data-video-retained] { opacity: 0; pointer-events: none; }

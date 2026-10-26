@@ -11,9 +11,19 @@ type Frame = {left: number; top: number; width: number; height: number};
 const dimensions = ['left', 'top', 'width', 'height'] as const;
 
 /** Mount the owner's one real video element here for its entire life. Never portals or clones. */
-export function MediaSurface({children, expanded, dockSlot, expandedSlot, hidden = false, finished = false, nativeRenderActive = false, className}: MediaSurfaceProps) {
+export function MediaSurface({children, expanded, dockSlot, expandedSlot, hidden = false, finished = false, nativeRenderActive = false, gesturePaint, className}: MediaSurfaceProps) {
   const ref = useRef<HTMLDivElement | null>(null), reduced = useDockReducedMotion(ref);
   const animation = useRef<Animation | null>(null), first = useRef(true), epoch = useRef(0);
+  const resumePaint = useRef<() => void>(() => {});
+  useLayoutEffect(() => {
+    const element = ref.current;if (!element || !gesturePaint) return;
+    const adapter = {element, freeze: () => {
+      const current = element.getBoundingClientRect();epoch.current++;animation.current?.cancel();animation.current = null;
+      const frame = {left: current.left, top: current.top, width: current.width, height: current.height};
+      element.style.width = `${frame.width}px`;element.style.height = `${frame.height}px`;element.style.transform = `translate(${frame.left}px, ${frame.top}px)`;return frame;
+    }, resume: () => resumePaint.current()};
+    gesturePaint.current = adapter;return () => {if (gesturePaint.current === adapter) gesturePaint.current = null;};
+  }, [gesturePaint]);
   const physics = useRef<Partial<Record<keyof Frame, PlayerMorph>>>({});
   useLayoutEffect(() => {
     const element = ref.current; if (!element) return;
@@ -30,6 +40,7 @@ export function MediaSurface({children, expanded, dockSlot, expandedSlot, hidden
     const apply = (frame: Frame) => { element.style.width = `${frame.width}px`; element.style.height = `${frame.height}px`; element.style.transform = `translate(${frame.left}px, ${frame.top}px)`; };
     const measure = () => {
       bindIdentity();
+      if (element.dataset.videoGesture) return;
       const slot = (expanded ? expandedSlot : dockSlot).current;
       if (!slot) { element.style.visibility = 'hidden'; return; }
       const target = slot.getBoundingClientRect(); if (!target.width || !target.height) { element.style.visibility = 'hidden'; return; }
@@ -48,10 +59,12 @@ export function MediaSurface({children, expanded, dockSlot, expandedSlot, hidden
       const job = element.animate(keyframes, {duration, easing: 'linear', fill: 'forwards'}); animation.current = job;
       void job.finished.then(() => { if (token !== epoch.current) return; apply(target); job.cancel(); animation.current = null; }).catch(() => {});
     };
+    const resume = () => {first.current = true;measure();};resumePaint.current = resume;
     measure();
     let drag: {frame: Frame; offset: number} | null = null;
     const follow = (event: Event) => {
       const slot = dockSlot.current;
+      if (element.dataset.videoGesture) return;
       if (expanded || hidden || !slot || !(event.target instanceof HTMLElement) || !event.target.contains(slot)) return;
       const {detail} = event as CustomEvent<DockMotionDetail>;
       if (detail.kind === 'hold') {
@@ -83,8 +96,8 @@ export function MediaSurface({children, expanded, dockSlot, expandedSlot, hidden
     document.addEventListener(dockMotionEvent, follow);
     const observer = new ResizeObserver(measure); if (expandedSlot.current) observer.observe(expandedSlot.current); if (dockSlot.current) observer.observe(dockSlot.current);
     window.addEventListener('resize', measure); window.addEventListener('scroll', measure, true);
-    return () => { observer.disconnect(); document.removeEventListener(dockMotionEvent, follow); window.removeEventListener('resize', measure); window.removeEventListener('scroll', measure, true); identity?.removeEventListener('pointerenter', enter); identity?.removeEventListener('pointerleave', leave); identity?.removeEventListener('focusin', enter); identity?.removeEventListener('focusout', leave); };
-  }, [expanded, reduced, hidden, dockSlot, expandedSlot]);
+    return () => { if (resumePaint.current === resume) resumePaint.current = () => {}; observer.disconnect(); document.removeEventListener(dockMotionEvent, follow); window.removeEventListener('resize', measure); window.removeEventListener('scroll', measure, true); identity?.removeEventListener('pointerenter', enter); identity?.removeEventListener('pointerleave', leave); identity?.removeEventListener('focusin', enter); identity?.removeEventListener('focusout', leave); };
+  }, [expanded, reduced, hidden, dockSlot, expandedSlot, gesturePaint]);
   useLayoutEffect(() => () => { epoch.current++; animation.current?.cancel(); }, []);
   return <div ref={ref} className={[styles.mediaSurface, className].filter(Boolean).join(' ')} data-media-surface data-native-video-active={nativeRenderActive && !hidden && !finished || undefined} data-media-hidden={hidden || undefined} data-docked={!expanded || undefined} data-finished={finished || undefined} aria-hidden={!expanded || hidden || undefined}><div className={styles.surfacePicture} data-media-picture>{children}{!expanded && <span className={styles.surfaceExpand}><Icon name={finished ? 'i-back' : 'i-zoom'} size={22} /></span>}</div></div>;
 }

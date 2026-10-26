@@ -46,10 +46,13 @@ function Control({icon, label, action, disabled, main, skip, large, buttonRef, a
 }
 
 /** Only drawn controls and geometry targets. The parent's MediaSurface remains its sole video. */
-export function WatchScreen({binding, snapshot, expanded, onCollapse, onControlsVisibleChange, publishDockPanels, dockPanelsCurrent, subscribeDockPanels, surfaceSlotRef, surfaces, live, windowPort, geometry}: WatchScreenProps) {
+export function WatchScreen({binding, snapshot, expanded, onCollapse, onControlsVisibleChange, publishDockPanels, dockPanelsCurrent, subscribeDockPanels, surfaceSlotRef, surfaces, live, windowPort, geometry, videoGesture}: WatchScreenProps) {
   const size = useSyncExternalStore(subscribeWindow, windowSize, serverSize).split(':').map(Number), width = size[0]!, height = size[1]!;
   const coarsePointer = useCoarsePointer(), touchTablet = coarsePointer && width >= 600;
   const root = useRef<HTMLDivElement>(null), chrome = useRef<HTMLDivElement>(null), body = useRef<HTMLDivElement>(null), panelAnchor = useRef<HTMLButtonElement>(null), moreAnchor = useRef<HTMLButtonElement>(null);
+  const attachRoot = useCallback((node: HTMLDivElement | null) => {root.current = node;if (videoGesture) videoGesture.screen.current = node;}, [videoGesture?.screen]);
+  const gestureInput = useRef<{id: number; port: NonNullable<WatchScreenProps['videoGesture']>['port']} | undefined>(undefined);
+  const gestureClick = useRef(false), gestureGate = useRef(false);
   const promptSeek = useRef<HTMLInputElement | null>(null);
   const bodyScroll = useRef<{identity?: string; top: number; left: number; anchor?: HTMLElement; offset?: number}>({top: 0, left: 0});
   const [panel, setPanel] = useState<WatchPanel | null>(null), [more, setMore] = useState(false), [shortcuts, setShortcuts] = useState(false), [visible, setVisible] = useState(true), [fullWindow, setFullWindow] = useState(false), [liveGuideOpen, setLiveGuideOpen] = useState(false);
@@ -65,8 +68,8 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const controlsVisible = useRef(visible);
   controlsVisible.current = visible;
   const lastLayout = useRef<string | null>(null);
-  const current = useRef({binding, snapshot, expanded});
-  current.current = {binding, snapshot, expanded};
+  const current = useRef({binding, snapshot, expanded, gestureActive: !!videoGesture?.active});
+  current.current = {binding, snapshot, expanded, gestureActive: !!videoGesture?.active};
   const presentation = snapshot.presentation, fence = snapshot.fence;
   const playbackKey = settledPlaybackKey(fence?.playback);
   const settledPlayback = useRef<SettledPlayback | undefined>(undefined);
@@ -98,12 +101,12 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const can = (kind: string) => !!presentation?.controls.includes(kind as never);
   const send = useCallback((intent: WatchIntent) => {
     const value = current.current;
-    if (!value.expanded) return;
+    if (!value.expanded || value.gestureActive) return;
     void dispatchWatch(value.binding.runtime, value.snapshot, intent).catch(value.binding.reportError);
   }, []);
   const effect = (action: () => void | Promise<void>) => {
     const value = current.current, live = value.binding.runtime.getSnapshot();
-    if (!value.expanded || live.disposed || live.dock.remote?.phase === 'playing' || !value.snapshot.fence || !sameFence(live.fence, value.snapshot.fence) || live.authority !== value.snapshot.authority) return;
+    if (!value.expanded || value.gestureActive || live.disposed || live.dock.remote?.phase === 'playing' || !value.snapshot.fence || !sameFence(live.fence, value.snapshot.fence) || live.authority !== value.snapshot.authority) return;
     try { void Promise.resolve(action()).catch(value.binding.reportError); } catch (error) { value.binding.reportError(error); }
   };
   const clearTimer = useCallback(() => { if (timer.current !== undefined) clearTimeout(timer.current); timer.current = undefined; }, []);
@@ -207,10 +210,11 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     else if (width < 1024) { setFullWindow(value => !value); reveal(); }
   };
   const pictureTarget = () => ({runtime: binding.runtime, snapshot, reportError: binding.reportError,
-    isActive: () => current.current.binding.runtime === binding.runtime && current.current.expanded});
+    isActive: () => current.current.binding.runtime === binding.runtime && current.current.expanded && !current.current.gestureActive});
   useEffect(() => {
     if (!open) return;
     const keydown = (event: KeyboardEvent) => {
+      if (current.current.gestureActive) return;
       keyboardFocus.current = true;
       if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || watchShortcutTarget(event.target) || panel || externalPanel || more || shortcuts) return;
       if ((event.key === ' ' || event.key === 'Enter') && event.target instanceof Element && event.target.closest('button,a')) return;
@@ -293,6 +297,10 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     {!touchTablet && (portrait || !windowPort?.fullscreen || !mobile) && <Control icon="i-full" label={t('next.states.shortcut.fullscreen')} active={fullWindow || windowPort?.fullscreen?.active} action={toggleFullscreen} />}
   </>;
   const stillWatching = surfaces?.modal === 'still-watching';
+  useLayoutEffect(() => {gestureGate.current = valid && mobile && !panel && !externalPanel && !more && !shortcuts
+    && !liveGuideOpen && !scrubDrag.current && !stillWatching && !presentation?.finished && snapshot.playback.phase !== 'error';});
+  useLayoutEffect(() => videoGesture?.admit(() => gestureGate.current), [videoGesture?.admit, binding, sourceKey]);
+
   const promptSource = useMemo<Omit<PromptFocusHost, 'source' | 'seekPresent' | 'focusAllowed' | 'controlsVisible'> | undefined>(() => {
     if (!fence) return;
     const original = {binding, authority: snapshot.authority, fence, intentId: snapshot.playback.intentId, run: snapshot.playback.playbackRun};
@@ -307,13 +315,13 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     }};
   }, [binding, snapshot.authority, sourceKey, snapshot.playback.intentId, snapshot.playback.playbackRun]);
   const promptHost = useMemo<PromptFocusHost | undefined>(() => promptSource ? {...promptSource, source: promptSource, seekPresent: !endCard && chromeVisible && !!bounds,
-    controlsVisible: chromeVisible, focusAllowed: !panel && !externalPanel && !more && !shortcuts && !stillWatching} : undefined,
-  [promptSource, !!endCard, !!bounds, chromeVisible, panel, externalPanel, more, shortcuts, stillWatching]);
-  return <div ref={root} className={styles.watch} hidden={!open} tabIndex={-1} data-watch-screen data-mode={mode} data-still-watching={stillWatching || undefined} data-touch-expanded={coarsePointer && width >= 1024 || undefined} data-controls-visible={chromeVisible} data-controls-exit={controlsExit} data-panel-open={!!panel} data-scrubbing={!!activeScrub && mobile}
+    controlsVisible: chromeVisible, focusAllowed: !videoGesture?.active && !panel && !externalPanel && !more && !shortcuts && !stillWatching} : undefined,
+  [promptSource, !!endCard, !!bounds, chromeVisible, panel, externalPanel, more, shortcuts, stillWatching, videoGesture?.active]);
+  return <div ref={attachRoot} className={styles.watch} hidden={!open && !videoGesture?.preview} inert={!open || undefined} aria-hidden={!open || undefined} data-video-preview={!open && videoGesture?.preview || undefined} tabIndex={-1} data-watch-screen data-mode={mode} data-still-watching={stillWatching || undefined} data-touch-expanded={coarsePointer && width >= 1024 || undefined} data-controls-visible={chromeVisible} data-controls-exit={controlsExit} data-panel-open={!!panel} data-scrubbing={!!activeScrub && mobile}
     onPointerDownCapture={() => { keyboardFocus.current = false; }}
     onPointerMove={event => { if (event.pointerType === 'mouse') reveal(); }} onFocusCapture={reveal}>
     <div ref={surfaceSlotRef} className={styles.pictureSlot} style={rectStyle(geometry?.picture)} data-watch-picture-slot data-media-slot="expanded" aria-hidden="true" />
-    <div ref={chrome} className={styles.chrome} style={rectStyle(geometry?.controls)} inert={stillWatching || undefined}>
+    <div ref={chrome} data-video-gesture-copy className={styles.chrome} style={rectStyle(geometry?.controls)} inert={stillWatching || undefined}>
       {open && snapshot.playback.phase === 'error' && <PlaybackFailure key={playbackKey} error={snapshot.playback.error}
         onRetry={fence && binding.runtime.canRetryFailure(fence) ? () => binding.runtime.retryFailure(fence) : undefined}
         onVersions={surfaces?.available.includes('versions') ? () => showPanel('versions') : undefined}
@@ -321,10 +329,26 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
         closeLabel={surfaces?.convertingOwnerAction ? t('web.player.error.turnOnConverting') : undefined}
         onClose={surfaces?.convertingOwnerAction ?? onCollapse} onError={binding.reportError}>{surfaces?.streamLimit}</PlaybackFailure>}
       <PlaybackWaiting key={playbackKey} waiting={open && snapshot.playback.recovering === true && snapshot.playback.intent === 'playing' && snapshot.playback.phase !== 'error' && !snapshot.problem}/>
-      <button type="button" className={styles.pictureTap} aria-label={t('player.stageLabel', {title: identity?.title ?? ''})}
-        onPointerDown={event => { pointerKind.current = event.pointerType; event.preventDefault(); }}
-        onPointerCancel={() => pictureInput.cancel()}
+      <button type="button" className={styles.pictureTap} style={videoGesture?.port ? {touchAction: 'none'} : undefined} aria-label={t('player.stageLabel', {title: identity?.title ?? ''})}
+        onPointerDown={event => {
+          if (gestureInput.current) return;
+          pointerKind.current = event.pointerType;event.preventDefault();gestureClick.current = false;
+          const port = videoGesture?.port;
+          if (gestureGate.current && port?.begin(event, event.currentTarget, 0)) {
+            gestureInput.current = {id: event.pointerId, port};event.currentTarget.setPointerCapture(event.pointerId);
+          }
+        }}
+        onPointerMove={event => {const g = gestureInput.current;if (g?.id === event.pointerId && g.port?.move(event)) {
+          gestureClick.current = true;pictureInput.cancel();event.preventDefault();
+        }}}
+        onPointerUp={event => {const g = gestureInput.current;if (g?.id !== event.pointerId) return;gestureInput.current = undefined;
+          if (g.port?.release(event)) gestureClick.current = true;
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+        }}
+        onLostPointerCapture={event => {const g = gestureInput.current;if (g?.id === event.pointerId) {g.port?.cancel();gestureInput.current = undefined;gestureClick.current = true;}}}
+        onPointerCancel={event => {const g = gestureInput.current;if (g?.id === event.pointerId) {g.port?.release(event, true);gestureInput.current = undefined;gestureClick.current = true;}pictureInput.cancel();}}
         onClick={event => {
+          if (gestureClick.current || videoGesture?.active) {gestureClick.current = false;event.preventDefault();return;}
           if (externalPanel) {pictureInput.cancel();surfaces?.playOn?.close();return;}
           if (panel) { pictureInput.cancel(); setPanel(null); return; }
           if (more || shortcuts) return;
@@ -349,7 +373,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
         <Icon name={tapFeedback.direction === 'left' ? 'i-back' : 'i-fwd'} size={40} />
         <span>{t('duration.long.seconds', {seconds: tapFeedback.seconds})}</span>
       </div>}
-      {liveChrome ? open && <div className={styles.liveOverlay} data-visible={chromeVisible} inert={!chromeVisible || undefined}>
+      {liveChrome ? open && <div className={styles.liveOverlay} data-visible={chromeVisible} inert={!chromeVisible || videoGesture?.active || undefined}>
         <LiveChrome port={liveChrome} playing={!!presentation?.playing} onCollapse={onCollapse} onStop={() => send({kind: 'stop'})}
           onPlayPause={() => send({kind: mainKind})} onSkip={skip} onSeek={seconds => {if (can('seek')) send({kind: 'seek', seconds});}}
           onMore={anchor => {moreAnchor.current = anchor;setPanel(null);setMore(value => !value);}}
@@ -357,7 +381,7 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
       </div> : <>
         <div className={styles.shade} />
         {endCard?.backdrop && <><div className={styles.endAmbient} aria-hidden="true"><Artwork source={endCard.backdrop} alt="" width="100%" height="100%" /></div><div className={styles.endVeil} aria-hidden="true" /></>}
-        {!(endCard && mobile) && <div className={styles.top} inert={!chromeVisible || undefined}>
+        {!(endCard && mobile) && <div className={styles.top} inert={!chromeVisible || videoGesture?.active || undefined}>
           <Control large icon="i-down" label={t('player.minimize')} action={onCollapse} />
           <div className={styles.identity}><h2>{identity?.title}</h2><p>{identity && <Facts parts={identity.subtitle} />}</p></div>
           <div className={styles.together}>{surfaces?.together}</div>
@@ -372,8 +396,8 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
         </div>}
         {endCard ? <WatchEndCardView card={endCard} canReplay={can('replay')} onReplay={() => send({kind: 'replay'})} onClose={() => send({kind: 'stop'})} layout={mobile ? 'phone' : 'desktop'} reportError={binding.reportError}
           artwork={url => binding.artwork.foreground(url, 512, 16 / 9, {group: 'playback', priority: 'high'})} /> : <>
-        <div className={styles.center} inert={!chromeVisible || undefined}>{transport}</div>
-        <div className={styles.bottom} inert={!chromeVisible || undefined}>
+        <div className={styles.center} inert={!chromeVisible || videoGesture?.active || undefined}>{transport}</div>
+        <div className={styles.bottom} inert={!chromeVisible || videoGesture?.active || undefined}>
           <div className={styles.seek}>
             <span className={styles.rail}><i style={{width: `${bounds ? Math.min(100, Math.max(0, (drawnPosition - bounds.start) / (bounds.end - bounds.start) * 100)) : 0}%`}} />
               {presentation?.policy?.markers.map(marker => duration > 0 && <span key={marker.id} className={styles.marker} data-kind={marker.kind}
@@ -438,8 +462,8 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
     </div>
     {open && surfaces?.loss && <LossNotice notice={surfaces.loss.notice} enabled={surfaces.loss.enabled} layout={mobile ? 'phone' : 'desktop'} />}
     <div className={styles.notices}>{open && surfaces?.notices}</div>
-    <div className={styles.prompts}><WatchPromptFocus.Provider value={open ? promptHost : undefined}>{open && surfaces?.prompts}</WatchPromptFocus.Provider></div>
-    <div ref={body} className={styles.body} style={rectStyle(geometry?.body)} data-watch-retained-body onScroll={event => {
+    <div className={styles.prompts} inert={videoGesture?.active || undefined}><WatchPromptFocus.Provider value={open ? promptHost : undefined}>{open && surfaces?.prompts}</WatchPromptFocus.Provider></div>
+    <div ref={body} data-video-gesture-copy inert={videoGesture?.active || undefined} className={styles.body} style={rectStyle(geometry?.body)} data-watch-retained-body onScroll={event => {
       if (!bodyVisible || !open) return;
       const element = event.currentTarget, top = element.getBoundingClientRect().top;
       const anchor = Array.from(element.querySelectorAll<HTMLElement>('[data-episode-id],[data-entry-id],[data-item-id],h2,h3')).find(value => value.getBoundingClientRect().bottom > top);
