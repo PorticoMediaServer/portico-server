@@ -335,7 +335,7 @@ func (d Dependencies) serveReadingPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer f.Close()
-	if f.Format != "cbz" && f.Format != "cb7" {
+	if f.Format != "cbz" && f.Format != "cb7" && f.Format != "cbr" {
 		policyError(w, "not_found")
 		return
 	}

@@ -27,7 +27,7 @@ func (s *Session) liveFor(p identity.Principal, v Selection) error {
 func (s *Service) openRemote(ctx context.Context, p identity.Principal, v Selection, session *Session) (*Source, error) {
 	// Local-only archive staging must refuse before any remote controller,
 	// provider acquisition or version/manifest I/O, including session reopen.
-	if v.Format == "cb7" {
+	if v.Format == "cb7" || v.Format == "cbr" {
 		return nil, ErrArchiveFormat
 	}
 	if s.Remote == nil || p.ExpiresAt.IsZero() || !p.ExpiresAt.After(time.Now()) {
@@ -185,7 +185,7 @@ func (f *Source) epub() (*EPUB, error) {
 	return OpenEPUB(f.ctx, f, f.Size)
 }
 func (f *Source) comic() (*Comic, error) {
-	if f.Format == "cb7" {
+	if f.Format == "cb7" || f.Format == "cbr" {
 		if !f.LocalArchiveStaging() {
 			return nil, ErrArchiveFormat
 		}

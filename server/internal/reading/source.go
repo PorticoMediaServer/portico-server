@@ -80,11 +80,12 @@ const publicationChosenObject = `(SELECT o2.id FROM inventory_objects o2
  WHERE o2.asset_id=a.token AND o2.retired=0 AND o2.state='available' AND o2.unsupported_reason=''
  AND o2.root_incarnation=s2.incarnation AND o2.size=a.size AND o2.modified_ns=a.modified_ns
  AND s2.enabled=1 AND s2.health NOT IN('offline','root_changed','removing')
+ AND (p.format NOT IN('cb7','cbr') OR s2.kind='local')
  ORDER BY o2.id LIMIT 1)`
 
 var publicationEligible = `e.retired=0 AND cl.retired=0 AND e.kind IN(20,21)
  AND ((lib.kind='book' AND e.kind=20 AND p.format IN('epub','pdf','mobi','azw3')) OR (lib.kind='comic' AND e.kind=21 AND p.format IN(` + readingcap.ComicFormatsSQL() + `))) AND link.available=1 AND a.available=1 AND available.available=1
- AND (p.format<>'cb7' OR s.kind='local') AND ` + publicationObjectEligible
+ AND (p.format NOT IN('cb7','cbr') OR s.kind='local') AND ` + publicationObjectEligible
 
 var selectPublication = `SELECT ` + publicationFields + ` FROM catalog_entities e` + publicationJoins + `
  WHERE e.public_id=pid_blob(?) AND (?='' OR a.token=?) AND ` + publicationEligible + ` AND (p.format NOT IN('mobi','azw3') OR ?=1) ORDER BY a.id,o.id LIMIT 1`
@@ -119,7 +120,7 @@ func (s *Service) selectionValid(v Selection) error {
 	if v.Size <= 0 || v.Size > MaxSource || !filepath.IsAbs(v.root) || !filepath.IsLocal(v.relative) || v.relative == "." || v.rootIdentity == "" {
 		return ErrInvalid
 	}
-	if v.Format != "epub" && v.Format != "pdf" && v.Format != "cbz" && v.Format != "mobi" && v.Format != "azw3" && !(v.Format == "cb7" && readingcap.CB7()) {
+	if v.Format != "epub" && v.Format != "pdf" && v.Format != "cbz" && v.Format != "mobi" && v.Format != "azw3" && !(v.Format == "cb7" && readingcap.CB7()) && !(v.Format == "cbr" && readingcap.CBR()) {
 		return ErrInvalid
 	}
 	if filepath.Clean(filepath.Join(v.root, v.relative)) != filepath.Clean(v.path) {
@@ -205,7 +206,7 @@ func (s *Service) open(ctx context.Context, p identity.Principal, item, sourceID
 	// Remote reads use the retained interactive session resolver, never a
 	// playback/analysis scheduling pool as operation authority.
 	if s.Storage.IsRemote(v.path) {
-		if localOnly || v.Format == "cb7" {
+		if localOnly || v.Format == "cb7" || v.Format == "cbr" {
 			return nil, ErrUnavailable
 		}
 		return s.openRemote(ctx, p, v, nil)

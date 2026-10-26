@@ -295,7 +295,7 @@ func (s *Service) adoptTextCount(ctx context.Context, p identity.Principal, f *S
 // the same current observation before it publishes, and an unchanged count
 // writes nothing.
 func (s *Service) adoptComicPageCount(ctx context.Context, p identity.Principal, selected Selection, pages int) error {
-	if (selected.Format != "cbz" && selected.Format != "cb7") || pages < 1 || pages > MaxEntries {
+	if (selected.Format != "cbz" && selected.Format != "cb7" && selected.Format != "cbr") || pages < 1 || pages > MaxEntries {
 		return nil
 	}
 	cached, err := s.comicPageCountCached(ctx, selected, pages)

@@ -63,7 +63,7 @@ func Inspect(f *Source) (Publication, error) {
 		} else if pageList != nil {
 			out.Metadata.PageCount = pageList
 		}
-	case "cbz", "cb7":
+	case "cbz", "cb7", "cbr":
 		c, err := f.comic()
 		if err != nil {
 			return out, err
@@ -135,7 +135,7 @@ func acceptedEmbeddedSeries(value, number string) (string, *float64) {
 // the embedded title is deliberately not published here; the catalogue title
 // remains the path rule's title.
 func (s *Service) adoptEmbeddedFacts(ctx context.Context, p identity.Principal, selected Selection, author, series string, number *float64) error {
-	if (author == "" && series == "") || (selected.Format != "epub" && selected.Format != "cbz" && selected.Format != "cb7") {
+	if (author == "" && series == "") || (selected.Format != "epub" && selected.Format != "cbz" && selected.Format != "cb7" && selected.Format != "cbr") {
 		return nil
 	}
 	if s == nil || s.DB == nil {
@@ -405,7 +405,7 @@ func (s *Service) Versions(ctx context.Context, p identity.Principal, item strin
 	defer g.Rollback()
 	tx := g.Tx()
 	var library string
-	if err = tx.QueryRowContext(ctx, `SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries lib ON lib.id=cl.library_id WHERE e.public_id=pid_blob(?) AND e.retired=0 AND cl.retired=0 AND ((lib.kind='book' AND e.kind=20) OR (lib.kind='comic' AND e.kind=21)) AND EXISTS(SELECT 1 FROM reading_publications format_check WHERE format_check.item_id=e.id AND format_check.format IN(`+s.sourceFormatsSQL()+`) AND `+readingcap.LocalCB7SQL("format_check")+`)`, item).Scan(&library); err != nil {
+	if err = tx.QueryRowContext(ctx, `SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id JOIN libraries lib ON lib.id=cl.library_id WHERE e.public_id=pid_blob(?) AND e.retired=0 AND cl.retired=0 AND ((lib.kind='book' AND e.kind=20) OR (lib.kind='comic' AND e.kind=21)) AND EXISTS(SELECT 1 FROM reading_publications format_check WHERE format_check.item_id=e.id AND format_check.format IN(`+s.sourceFormatsSQL()+`) AND `+readingcap.LocalComicArchiveSQL("format_check")+`)`, item).Scan(&library); err != nil {
 		return nil, ErrUnavailable
 	}
 	if s.Authorize == nil {
@@ -414,12 +414,12 @@ func (s *Service) Versions(ctx context.Context, p identity.Principal, item strin
 	if err = s.Authorize(ctx, tx, p, library, item); err != nil {
 		return nil, err
 	}
-	// Generic availability is exact for every other format, but a cb7 copy can
+	// Generic availability is exact for every other format, but a local-only comic copy can
 	// share its asset token through another library source. Its advertised
 	// availability must come from this publication's own current local source
 	// observation, with the same state/size/mtime/enabled/health facts the
 	// opener checks.
-	availability := `(CASE WHEN p.format='cb7' THEN EXISTS(
+	availability := `(CASE WHEN p.format IN('cb7','cbr') THEN EXISTS(
  SELECT 1 FROM catalog_assets cb7_asset
  JOIN inventory_objects cb7_object ON cb7_object.asset_id=cb7_asset.token
  JOIN library_sources cb7_source ON cb7_source.id=cb7_object.source_id
@@ -429,7 +429,7 @@ func (s *Service) Versions(ctx context.Context, p identity.Principal, item strin
  AND cb7_object.size=cb7_asset.size AND cb7_object.modified_ns=cb7_asset.modified_ns
  AND cb7_source.enabled=1 AND cb7_source.health NOT IN('offline','root_changed','removing'))
  ELSE EXISTS(SELECT 1 FROM inventory_item_availability available WHERE available.item_id=p.item_id AND available.asset_id=a.token AND available.available=1) END)`
-	rows, err := tx.QueryContext(ctx, `SELECT a.token,p.format,a.size,`+availability+` FROM reading_publications p JOIN catalog_entities e ON e.id=p.item_id JOIN catalog_libraries cl ON cl.id=e.library_id JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id JOIN catalog_assets a ON a.id=link.asset_id WHERE e.public_id=pid_blob(?) AND p.format IN(`+s.sourceFormatsSQL()+`) AND `+readingcap.LocalCB7SQL("p")+` ORDER BY a.id LIMIT 129`, item)
+	rows, err := tx.QueryContext(ctx, `SELECT a.token,p.format,a.size,`+availability+` FROM reading_publications p JOIN catalog_entities e ON e.id=p.item_id JOIN catalog_libraries cl ON cl.id=e.library_id JOIN catalog_asset_links link ON link.entity_id=e.id AND link.asset_id=p.asset_id JOIN catalog_assets a ON a.id=link.asset_id WHERE e.public_id=pid_blob(?) AND p.format IN(`+s.sourceFormatsSQL()+`) AND `+readingcap.LocalComicArchiveSQL("p")+` ORDER BY a.id LIMIT 129`, item)
 	if err != nil {
 		return nil, err
 	}
