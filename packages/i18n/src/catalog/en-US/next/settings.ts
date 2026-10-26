@@ -232,5 +232,5 @@ export const settingsMessages = {
   'next.settings.librarySonic.complete': 'All {total} songs analyzed',
   'next.settings.librarySonic.unavailable': 'Can’t run on this server: the analysis engine didn’t load.',
   'next.settings.librarySonic.retryUnavailable': 'Still can’t load. The log in Troubleshooting has the reason.',
-  'next.settings.changeOwnerLocalBody': 'Another member becomes the owner. You become a member.',
+  'next.settings.changeOwnerLocalBody': 'Another local account becomes the owner. You become a member.',
 } as const;

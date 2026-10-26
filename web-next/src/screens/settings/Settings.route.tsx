@@ -592,6 +592,11 @@ export function SettingsEntry() {
         if (row.id === 'profile.pinForgot') return {present: !!profiles && identity.signIn === 'local' && current() && profiles.getSnapshot().document?.canManage === false && profiles.selected()?.pinRequired === true};
         if (row.id === 'profile.signOutElsewhere') return {present: !!otherDeviceSignOut && current() && profiles?.getSnapshot().document?.canManage === true, disabled: profiles?.getSnapshot().busy};
         if (row.id === 'profile.signOut') return {present: current()};
+        // These are domain-backed rows, not configuration bindings. Project the
+        // same captured visibility as their existing controls and eligibility.
+        if (row.id === 'signin.people') return {present: current() && (role === 'owner' || role === 'admin') && controller.sectionVisible(selected.section)};
+        if (row.id === 'signin.outside') return {present: current() && role === 'owner' && controller.sectionVisible(selected.section)};
+        if (row.id === 'signin.dataFolder') return {present: !!signinStorage && current() && controller.sectionVisible(selected.section)};
         if (restrictions && profiles && isProfileRestriction(row.id)) return restrictionRow(restrictions, profiles, row.id)!;
         if (row.id === 'storage.missingNow') return {present: !!missing && current()};
         if (row.id === 'storage.removeMissing') return {present: false};
