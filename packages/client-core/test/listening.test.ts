@@ -385,6 +385,8 @@ test('a book timeline that changes, repeats, belongs elsewhere or lacks the fina
  await assert.rejects(repeated.service.setTimer('book'),/Book order changed/);
  const elsewhere=setup(t,{context:audiobookContext,timeline:cursor=>bookTimeline(cursor,{libraryId:'other'})});await settle();
  await assert.rejects(elsewhere.service.setTimer('book'),/Book order changed/);
+ const huge=setup(t,{context:audiobookContext,timeline:cursor=>bookTimeline(cursor,{totalCount:1001})});await settle();
+ await assert.rejects(huge.service.setTimer('book'),/Book order changed/);
  const missing=setup(t,{context:audiobookContext,timeline:cursor=>bookTimeline(cursor,{parts:['song','mid'],totalCount:2})});await settle();
  await assert.rejects(missing.service.setTimer('book'),/final book part is unavailable/);assert.equal(missing.service.getSnapshot().timer,null);
  await missing.service.setTimer(30);assert.equal(missing.service.getSnapshot().timer?.choice,30);
@@ -432,4 +434,22 @@ test('a chapter timer keeps its exact occurrence and stops only at the verified 
  f.engine.update({positionSeconds:10,pendingSeek:{revision:1}});assert.equal(f.engine.pauses,0,'an unsettled seek is not the chapter edge');
  f.engine.update({positionSeconds:29});assert.equal(f.engine.pauses,0);
  f.engine.update({positionSeconds:30});assert.equal(f.engine.pauses,1);
+});
+test('an acceptance after the engine already moved cannot resurrect a cleared boundary',async t=>{
+ const f=setup(t,{context:audiobookContext,queue:()=>({queueId:'queue',entryId:'entry-2'})});await settle();
+ await f.service.setTimer('book');
+ f.engine.update({itemId:'last',session:{id:'next-session',generation:1}});
+ assert.equal(f.service.getSnapshot().timer,null);
+ f.service.acceptAutomaticTransition({id:'next-session',itemId:'last',presentation:{generation:1},queue:{queueId:'queue',entryId:'entry-2'}});
+ assert.equal(f.service.getSnapshot().timer,null,'a late acceptance cannot revive the retired boundary');
+});
+test('a part whose own listening context belongs to another book never carries the boundary',async t=>{
+ let entry='entry-1';
+ const context=(id:string)=>id==='last'?{...audiobookContext(id),bookId:'other-book'}:audiobookContext(id);
+ const f=setup(t,{context,queue:()=>({queueId:'queue',entryId:entry})});await settle();
+ await f.service.setTimer('book');
+ entry='entry-2';
+ f.service.acceptAutomaticTransition({id:'next-session',itemId:'last',presentation:{generation:1},queue:{queueId:'queue',entryId:'entry-2'}});
+ f.engine.update({itemId:'last',session:{id:'next-session',generation:1}});await settle();
+ assert.equal(f.service.getSnapshot().timer,null,'the next part reported another book');
 });
