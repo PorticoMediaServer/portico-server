@@ -10,9 +10,10 @@ import (
 // command still carries the original source generation, read revision,
 // operation id and complete read values; those values must match this choice.
 type SourceStartChoice struct {
-	Name                     string `json:"name"`
-	DefinitionRevision       int64  `json:"definitionRevision"`
-	ExpectedAdvancedRevision int64  `json:"expectedAdvancedRevision"`
+	Name                            string `json:"name"`
+	DefinitionRevision              int64  `json:"definitionRevision"`
+	ExpectedAdvancedRevision        int64  `json:"expectedAdvancedRevision"`
+	ExpectedConfigurationGeneration string `json:"expectedConfigurationGeneration"`
 }
 
 // SourceChoiceDefinition contains product defaults, never measured effective
@@ -30,17 +31,18 @@ type SourceChoiceDefinition struct {
 // assertion that the cache/transport has applied. Counts derive solely from
 // ChangedFields, with each applicable editable row present at most once.
 type SourceChoiceBaseline struct {
-	SourceID           string           `json:"sourceId"`
-	Generation         string           `json:"generation"`
-	Name               string           `json:"name"`
-	DefinitionRevision int64            `json:"definitionRevision"`
-	ReadRevision       int64            `json:"readRevision"`
-	AdvancedRevision   int64            `json:"advancedRevision"`
-	Reading            SourceReadValues `json:"reading"`
-	Advanced           SourceAdvanced   `json:"advanced"`
-	CurrentAdvanced    SourceAdvanced   `json:"currentAdvanced"`
-	ApplicableFields   []string         `json:"applicableFields"`
-	ChangedFields      []string         `json:"changedFields"`
+	SourceID                string           `json:"sourceId"`
+	Generation              string           `json:"generation"`
+	ConfigurationGeneration string           `json:"configurationGeneration"`
+	Name                    string           `json:"name"`
+	DefinitionRevision      int64            `json:"definitionRevision"`
+	ReadRevision            int64            `json:"readRevision"`
+	AdvancedRevision        int64            `json:"advancedRevision"`
+	Reading                 SourceReadValues `json:"reading"`
+	Advanced                SourceAdvanced   `json:"advanced"`
+	CurrentAdvanced         SourceAdvanced   `json:"currentAdvanced"`
+	ApplicableFields        []string         `json:"applicableFields"`
+	ChangedFields           []string         `json:"changedFields"`
 }
 
 // Keep this closed list aligned with the twenty-four authored Root57 rows.
@@ -76,8 +78,10 @@ func sourceChoiceSchema(t reflect.Type) map[string]any {
 		field["minLength"] = 1
 		field["maxLength"] = 160
 	}
-	if field, ok := props["generation"].(map[string]any); ok {
-		field["pattern"] = "^[1-9][0-9]{0,18}$"
+	for _, name := range []string{"generation", "configurationGeneration", "expectedConfigurationGeneration"} {
+		if field, ok := props[name].(map[string]any); ok {
+			field["pattern"] = "^[1-9][0-9]{0,18}$"
+		}
 	}
 	if _, ok := props["reading"]; ok {
 		reading, _ := apikit.Schema(reflect.TypeFor[SourceReadValues]())
