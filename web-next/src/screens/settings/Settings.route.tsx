@@ -56,6 +56,7 @@ import {createPrivacySettingsSurfaces} from './privacy-controls';
 import {PeopleScreen, type PeopleBindings} from './People';
 import {SignInSettingsSource} from './signin-source';
 import {LocalOwnerTransferSource} from './local-owner-transfer';
+import {MemberResetCodeSource} from './member-reset-code';
 import {guardedSettingsRequest, localOwnerTransferTransport} from './settings-request';
 import {SettingsStorageSource} from './server/storage-source';
 import {StorageDataFolder} from './server/StorageUsage';
@@ -327,9 +328,33 @@ export function SettingsEntry() {
         onAuthorityChanged: () => {if (current()) void router.navigate({to: '/sign-in', replace: true});},
         ownerSwitch,
       }) : undefined;
+    const memberResetPin = transferRoute?.pin.publicKey;
+    const memberResetCurrent = () => {
+      if (!current() || route.scope !== 'server' || route.section !== 'people' || identity.signIn !== 'local' || viewer.authority !== 'local' ||
+        originalApi.baseUrl !== transferOrigin || originalApi.getRouteConnection() !== transferRoute ||
+        !transferRoute || !memberResetPin || transferRoute.pin.publicKey !== memberResetPin ||
+        transferRoute.pin.serverId !== viewer.serverId || transferRoute.getSnapshot().phase !== 'ready') return false;
+      const now = context.session(), facts = context.facts.identity;
+      return now.sessionFamilyId === transferPrincipal.family && now.viewer.serverId === viewer.serverId && now.viewer.authority === viewer.authority &&
+        now.viewer.accountId === viewer.accountId && now.viewer.profileId === viewer.profileId && now.viewer.role === 'owner' &&
+        facts.primaryProfile === true && facts.signIn === 'local' && facts.capabilities?.managePeople === true && facts.capabilities?.manageAccount === true;
+    };
+    const memberResetCodes = memberResetCurrent() ? new MemberResetCodeSource({request: async <T,>(path: string, method?: string, body?: unknown, input?: AbortSignal): Promise<T> => {
+      if (!memberResetCurrent()) throw new DOMException('Settings reset authority retired', 'AbortError');
+      const value = await api.request<T>(path, method, body, input);
+      if (!memberResetCurrent()) throw new DOMException('Settings reset authority retired', 'AbortError');
+      return value;
+    }}, {
+        serverId: viewer.serverId, accountId: viewer.accountId, isCurrent: memberResetCurrent,
+        copy: async code => {
+          assert();
+          if (!globalThis.navigator?.clipboard?.writeText) throw new Error('Clipboard unavailable.');
+          await navigator.clipboard.writeText(code);
+        },
+      }) : undefined;
     const people: PeopleBindings | undefined = route.section === 'people' && identity.primaryProfile === true && identity.capabilities?.managePeople === true &&
       (role === 'owner' || role === 'admin') && (viewer.authority === 'local' || viewer.authority === 'hosted') ? {
-        client: new SettingsPeopleClient(api, current), serverName: context.facts.serverName, libraries: identity.libraries,
+        client: new SettingsPeopleClient(api, current), serverName: context.facts.serverName, libraries: identity.libraries, memberResetCodes,
         actor: {accountId: viewer.accountId, role}, streamLimits: peopleStreamLimits,
         invitations: new SettingsInvitations(api, current, api.baseUrl, viewer.serverId), signIn: identity.signIn, openHome, reportError,
         // The owner's invite expiry, in whole days on the server and hours in the
@@ -576,7 +601,7 @@ export function SettingsEntry() {
       ...(settings.loadContext ? {loadContext: (...args: Parameters<NonNullable<SettingsBindings['loadContext']>>) => current() ? settings.loadContext!(...args) : Promise.resolve()} : {}),
     };
     setFailure(false);setOwned({context, api, inputs, current, settings: publishedSettings, dashboard, profiles, profilePINCurrent, closeProfilePIN});
-    return () => {active = false;offPreferenceFence();pinRequest = undefined;lifetime.abort();setProfilePIN(held => held?.source === profiles ? undefined : held);profileDevices?.dispose();otherDeviceSignOut?.dispose();offRestrictions?.();restrictions?.dispose();offProfileFailures?.();profiles?.dispose();previewLife.abort();signinStorage?.dispose();signIn?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();intros?.dispose();server?.dispose();troubleshooting?.dispose();playbackProblems?.dispose();live?.dispose();integrationKeys?.dispose();webhooks?.dispose();updates?.dispose();missing?.dispose();hardware?.dispose();controller.dispose();};
+    return () => {active = false;offPreferenceFence();pinRequest = undefined;lifetime.abort();setProfilePIN(held => held?.source === profiles ? undefined : held);profileDevices?.dispose();otherDeviceSignOut?.dispose();offRestrictions?.();restrictions?.dispose();offProfileFailures?.();profiles?.dispose();previewLife.abort();signinStorage?.dispose();signIn?.dispose();memberResetCodes?.dispose();people?.invitations?.dispose();people?.client.dispose();for (const listener of authorityListeners) {try {listener();} catch { /* Retire the other captured readers too. */ }}authorityListeners.clear();dashboard?.dispose();libraries?.dispose();privacy.dispose();intros?.dispose();server?.dispose();troubleshooting?.dispose();playbackProblems?.dispose();live?.dispose();integrationKeys?.dispose();webhooks?.dispose();updates?.dispose();missing?.dispose();hardware?.dispose();controller.dispose();};
   // Each setup owns and retires exactly its own sources. No shared "latest"
   // slot participates in cleanup, including the owner's update reader.
   }, inputs);
