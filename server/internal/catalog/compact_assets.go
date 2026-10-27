@@ -4,6 +4,20 @@ import (
 	"portico.local/server/internal/assets"
 )
 
+// compactItemAssetSummary keeps compactItemAssets' exact availability and
+// maximum duration without transferring or allocating every linked source.
+// Unavailable links still contribute their duration; an empty or all-negative
+// duration set keeps the original loop's zero floor.
+func (s *Service) compactItemAssetSummary(id string) (bool, float64, error) {
+	var available bool
+	var duration float64
+	err := s.read().QueryRow(`SELECT COALESCE(MAX(l.available),0),COALESCE(MAX(CASE WHEN a.duration>0 THEN a.duration ELSE 0 END),0)
+ FROM catalog_entities e JOIN catalog_asset_links l ON l.entity_id=e.id
+ JOIN catalog_assets a ON a.id=l.asset_id
+ WHERE e.public_id=pid_blob(?)`, id).Scan(&available, &duration)
+	return available, duration, err
+}
+
 // compactItemAssets reads one item's asset-link facts and the assets'
 // independently recorded facts. Catalogue facts are written synchronously, so
 // there is no pending projection to fence; per-item availability is derived
