@@ -1,6 +1,7 @@
 import contextlib
 import importlib.util
 import io
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -37,11 +38,6 @@ class SelectionTests(unittest.TestCase):
         with patch.dict(ci.os.environ, {"CI_FULL_TREE": "1", "CI_BASE": "missing-commit"}), patch.object(ci, "git", return_value=["old/source.ts", "new/test.test.ts"]) as git:
             self.assertEqual(ci.changed(), {"old/source.ts", "new/test.test.ts"})
             git.assert_called_once_with("ls-files")
-
-    def test_full_module_runs_tests_without_a_name_or_diff_filter(self):
-        with patch.dict(ci.os.environ, {"CI_FULL_TREE": "1"}), patch.object(ci, "changed", side_effect=AssertionError("diff must not be read")), patch.object(ci, "run_all") as run:
-            ci.go_checks("apikit", "affected")
-            self.assertEqual(run.call_args.args[0], [(["go", "test", "-count=1", "./..."], self.root / "apikit"), (["go", "vet", "./..."], self.root / "apikit")])
 
     def test_catalogue_uses_named_counterpart_never_full_suite(self):
         self.file("server/internal/catalog/movie.go", "package catalog")
@@ -229,6 +225,354 @@ class BoundedCommandTests(unittest.TestCase):
 
     def test_the_bound_is_fifteen_minutes_with_a_five_second_grace(self):
         self.assertEqual((ci.COMMAND_TIMEOUT, ci.TERMINATE_GRACE), (15 * 60, 5))
+
+
+FAKE_GO = '''#!/usr/bin/env python3
+import json, os, sys, time
+
+PACKAGES = {packages!r}
+MODES = {modes!r}
+DECLARED = dict([
+    ("pass", ["TestGood"]),
+    ("fail", ["TestBad"]),
+    ("deadline", ["TestStuck", "TestAfter"]),
+    ("deadline-nolist", ["TestStuck", "TestAfter"]),
+    ("hang", ["TestHangs", "TestNotRun"]),
+])
+args = sys.argv[1:]
+with open(os.environ["FAKE_ARGV"], "a", encoding="utf-8") as log:
+    log.write(" ".join(args) + "\\n")
+if args[0] == "list":
+    for name in PACKAGES:
+        print("example.com/m/" + name + "\\t" + os.path.join(os.getcwd(), name))
+    raise SystemExit(0)
+assert args[0] == "test", args
+package = args[-1].rsplit("/", 1)[-1]
+mode = MODES[package]
+if "-list" in args:
+    if mode == "deadline-nolist":
+        print("cannot list declared tests", file=sys.stderr)
+        raise SystemExit(2)
+    for name in DECLARED.get(mode, []):
+        print(name)
+    raise SystemExit(0)
+
+
+def emit(**event):
+    print(json.dumps(dict(Package="example.com/m/" + package, **event)), flush=True)
+
+
+emit(Action="start")
+if mode == "pass":
+    emit(Action="run", Test="TestGood")
+    emit(Action="pass", Test="TestGood", Elapsed=0.01)
+    emit(Action="pass", Elapsed=0.02)
+elif mode == "fail":
+    emit(Action="run", Test="TestBad")
+    emit(Action="fail", Test="TestBad", Elapsed=0.01)
+    emit(Action="fail", Elapsed=0.02)
+    raise SystemExit(1)
+elif mode in ("deadline", "deadline-nolist"):
+    emit(Action="run", Test="TestStuck")
+    emit(Action="output", Test="TestStuck", Output="panic: test timed out after 13m0s\\n")
+    emit(Action="fail", Elapsed=780.0)
+    raise SystemExit(1)
+elif mode == "hang":
+    emit(Action="run", Test="TestHangs")
+    time.sleep(120)
+else:
+    emit(Action="fail", Elapsed=0.0)
+    raise SystemExit(1)
+'''
+
+
+class GoPackageRunnerTests(unittest.TestCase):
+    """One bounded `go test -json` per package, so a hang names its package only."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name) / "repo"
+        (self.root / "server").mkdir(parents=True)
+        self.bin = self.root / "bin"
+        self.bin.mkdir()
+        self.argv = self.root / "argv.log"
+        self.argv.write_text("")
+        environment = {"PATH": str(self.bin) + os.pathsep + os.environ.get("PATH", ""),
+                       "FAKE_ARGV": str(self.argv)}
+        environ = patch.dict(ci.os.environ, environment, clear=True)
+        environ.start()
+        self.addCleanup(environ.stop)
+        root = patch.object(ci, "ROOT", self.root)
+        root.start()
+        self.addCleanup(root.stop)
+        lanes = patch.object(ci, "GO_PACKAGE_JOBS", 1)
+        lanes.start()
+        self.addCleanup(lanes.stop)
+
+    def install_go(self, packages, modes):
+        script = self.bin / "go"
+        script.write_text(FAKE_GO.format(packages=packages, modes=modes), encoding="utf-8")
+        script.chmod(0o755)
+
+    def test_each_package_runs_alone_with_json_and_its_own_timeout(self):
+        self.install_go(["a", "b"], {"a": "fail", "b": "pass"})
+        with contextlib.redirect_stdout(io.StringIO()) as shown:
+            status = ci.go_test("server", [("./a", None), ("./b", None)])
+        self.assertEqual(status, 1)
+        calls = self.argv.read_text().splitlines()
+        self.assertEqual(len(calls), 2)
+        for call in calls:
+            self.assertIn("test -json -count=1 -timeout=780s", call)
+            self.assertNotIn(" -run ", call)
+            self.assertNotIn("./...", call)
+        text = shown.getvalue()
+        self.assertIn("FAIL  ./a  tests=1", text)
+        self.assertIn("failed TestBad", text)
+        self.assertIn("PASS  ./b  tests=1", text)
+        self.assertIn("exit: 1", text)
+
+    def test_a_package_deadline_is_named_with_its_never_ran_tests(self):
+        self.install_go(["a"], {"a": "deadline"})
+        with contextlib.redirect_stdout(io.StringIO()) as shown:
+            status = ci.go_test("server", [("./a", None)])
+        self.assertEqual(status, 124)
+        text = shown.getvalue()
+        self.assertIn("TIMEOUT  ./a", text)
+        self.assertIn("hung TestStuck", text)
+        self.assertIn("no result for TestStuck, TestAfter (2 of 2 declared)", text)
+        self.assertIn("exit: 124", text)
+
+    def test_an_unavailable_test_inventory_is_reported_not_pretended(self):
+        self.install_go(["a"], {"a": "deadline-nolist"})
+        with contextlib.redirect_stdout(io.StringIO()) as shown:
+            status = ci.go_test("server", [("./a", None)])
+        self.assertEqual(status, 124)
+        text = shown.getvalue()
+        self.assertIn("test inventory unavailable", text)
+        self.assertNotIn("declared)", text)
+
+    def test_watchdog_names_the_hung_package_and_its_unfinished_tests(self):
+        self.install_go(["a", "b"], {"a": "hang", "b": "pass"})
+        started = time.monotonic()
+        with contextlib.redirect_stdout(io.StringIO()) as shown, \
+                patch.object(ci, "GO_PACKAGE_BACKSTOP", 2.0), patch.object(ci, "GO_PACKAGE_JOBS", 2):
+            status = ci.go_test("server", [("./a", None), ("./b", None)])
+        self.assertLess(time.monotonic() - started, 30)
+        self.assertEqual(status, 124)
+        text = shown.getvalue()
+        self.assertIn("terminating that package only", text)
+        self.assertIn("WATCHDOG  ./a", text)
+        self.assertIn("hung TestHangs", text)
+        self.assertIn("no result for TestHangs, TestNotRun (2 of 2 declared)", text)
+        self.assertIn("PASS  ./b", text)
+
+    def test_structured_records_keep_every_test_event_and_package_result(self):
+        results = self.root / "results.jsonl"
+        self.install_go(["a", "b"], {"a": "fail", "b": "pass"})
+        with contextlib.redirect_stdout(io.StringIO()), \
+                patch.dict(ci.os.environ, {"CI_GO_RESULTS": str(results)}):
+            status = ci.go_test("server", [("./a", None), ("./b", None)])
+        self.assertEqual(status, 1)
+        records = [json.loads(line) for line in results.read_text().splitlines()]
+        self.assertEqual(records[0]["record"], "plan")
+        self.assertEqual(records[0]["packages"], ["./a", "./b"])
+        self.assertEqual(records[-1]["record"], "summary")
+        self.assertEqual(sorted(record["record"] for record in records[1:-1]),
+                         ["package", "package", "package-start", "package-start", "test", "test", "test", "test"])
+        starts = {record["package"] for record in records if record["record"] == "package-start"}
+        self.assertEqual(starts, {"./a", "./b"})
+        events = [(record["package"], record["test"], record["action"])
+                  for record in records if record["record"] == "test"]
+        self.assertIn(("./a", "TestBad", "run"), events)
+        self.assertIn(("./a", "TestBad", "fail"), events)
+        self.assertIn(("./b", "TestGood", "run"), events)
+        self.assertIn(("./b", "TestGood", "pass"), events)
+        packages = {record["package"]: record for record in records if record["record"] == "package"}
+        self.assertEqual(packages["./a"]["status"], "fail")
+        self.assertEqual(packages["./a"]["tests"], {"TestBad": "fail"})
+        self.assertEqual(packages["./b"]["tests"], {"TestGood": "pass"})
+        self.assertEqual(records[-1]["exit"], 1)
+
+    def test_an_interrupted_package_is_proven_from_its_own_records(self):
+        results = self.root / "results.jsonl"
+        self.install_go(["a"], {"a": "hang"})
+        with contextlib.redirect_stdout(io.StringIO()), \
+                patch.dict(ci.os.environ, {"CI_GO_RESULTS": str(results)}), \
+                patch.object(ci, "GO_PACKAGE_BACKSTOP", 2.0):
+            status = ci.go_test("server", [("./a", None)])
+        self.assertEqual(status, 124)
+        records = [json.loads(line) for line in results.read_text().splitlines()]
+        self.assertEqual(records[0]["record"], "plan")
+        self.assertEqual(records[1]["record"], "package-start")
+        self.assertEqual(records[1]["package"], "./a")
+        events = [(record["test"], record["action"]) for record in records if record["record"] == "test"]
+        self.assertEqual(events, [("TestHangs", "run")])
+        package = next(record for record in records if record["record"] == "package")
+        self.assertEqual(package["status"], "watchdog")
+        self.assertEqual(package["unfinished"], ["TestHangs"])
+        self.assertEqual(package["never_ran"], ["TestHangs", "TestNotRun"])
+        self.assertEqual(records[-1]["hangs"][0]["package"], "./a")
+
+    def test_report_directory_is_used_when_no_results_file_is_named(self):
+        directory = self.root / "reports"
+        self.install_go(["a"], {"a": "pass"})
+        with contextlib.redirect_stdout(io.StringIO()), \
+                patch.dict(ci.os.environ, {"CI_TEST_REPORT_DIR": str(directory)}):
+            self.assertEqual(ci.go_test("server", [("./a", None)], 2, 4), 0)
+        written = directory / "go-results-server-shard3-of-4.jsonl"
+        self.assertTrue(written.is_file())
+        records = [json.loads(line) for line in written.read_text().splitlines()]
+        self.assertEqual(records[0]["record"], "plan")
+        self.assertEqual(records[0]["shard"], {"index": 2, "total": 4})
+        self.assertEqual(records[0]["packages"], ["./a"])
+
+    def test_a_broken_report_location_keeps_the_console_result(self):
+        blocked = self.root / "not-a-directory"
+        blocked.write_text("")
+        self.install_go(["a"], {"a": "pass"})
+        with contextlib.redirect_stdout(io.StringIO()) as shown, \
+                patch.dict(ci.os.environ, {"CI_TEST_REPORT_DIR": str(blocked)}):
+            status = ci.go_test("server", [("./a", None)])
+        self.assertEqual(status, 0)
+        self.assertIn("structured record unavailable", shown.getvalue())
+        self.assertIn("PASS  ./a", shown.getvalue())
+
+    def test_a_hang_in_a_named_selection_reports_only_its_selected_tests(self):
+        self.install_go(["a"], {"a": "hang"})
+        with contextlib.redirect_stdout(io.StringIO()) as shown, \
+                patch.object(ci, "GO_PACKAGE_BACKSTOP", 2.0):
+            status = ci.go_test("server", [("./a", "^(TestHangs)$")])
+        self.assertEqual(status, 124)
+        text = shown.getvalue()
+        self.assertIn("no result for TestHangs (1 of 1 selected)", text)
+        self.assertNotIn("TestNotRun", text)
+
+    def test_a_hang_names_the_package_and_every_result_gathered_before_it(self):
+        self.install_go(["a", "b"], {"a": "fail", "b": "deadline"})
+        with contextlib.redirect_stdout(io.StringIO()) as shown:
+            status = ci.go_test("server", [("./a", None), ("./b", None)])
+        self.assertEqual(status, 124)
+        text = shown.getvalue()
+        self.assertIn("FAIL  ./a", text)
+        self.assertIn("TIMEOUT  ./b", text)
+
+    def test_a_plan_record_and_summary_name_packages_that_never_started(self):
+        results = self.root / "results.jsonl"
+        passed = ci.PackageResult("./a", None)
+        passed.action, passed.exit, passed.finished = "pass", 0, True
+        with contextlib.redirect_stdout(io.StringIO()) as shown, \
+                patch.dict(ci.os.environ, {"CI_GO_RESULTS": str(results)}):
+            report = ci.GoReport("server", ["./a", "./b"], 0, 1)
+            report.add(passed)
+            code = report.summary(interrupted=True)
+        self.assertEqual(code, 124)
+        self.assertIn("NEVER RAN  ./b", shown.getvalue())
+        records = [json.loads(line) for line in results.read_text().splitlines()]
+        self.assertEqual(records[0]["record"], "plan")
+        self.assertEqual(records[0]["packages"], ["./a", "./b"])
+        self.assertEqual(records[-1]["never_started"], ["./b"])
+
+    def test_inventory_lists_one_package_per_line(self):
+        self.install_go(["a", "nested/b"], {})
+        self.assertEqual(ci.module_packages("server"), ["./a", "./nested/b"])
+
+    def test_empty_inventory_fails_closed(self):
+        self.install_go([], {})
+        with self.assertRaisesRegex(RuntimeError, "reported no packages"):
+            ci.module_packages("server")
+
+    def test_full_module_shard_runs_its_slice_and_still_vets_the_whole_module(self):
+        with patch.dict(ci.os.environ, {"CI_FULL_TREE": "1", "CI_SHARD_INDEX": "1",
+                                        "CI_SHARD_TOTAL": "2"}), \
+                patch.object(ci, "module_packages", return_value=["./a", "./b", "./c"]) as inventory, \
+                patch.object(ci, "go_test", return_value=0) as tests, \
+                patch.object(ci, "run_all_status", return_value=0) as vet, \
+                contextlib.redirect_stdout(io.StringIO()):
+            ci.go_checks("server", "affected")
+        inventory.assert_called_once_with("server")
+        self.assertEqual(tests.call_args.args, ("server", [("./b", None)], 1, 2))
+        self.assertEqual(vet.call_args.args[0],
+                         [(["bash", str(self.root / "scripts/vet-go.sh")], self.root / "server")])
+
+    def test_apikit_full_module_shard_still_vets_with_go_vet(self):
+        with patch.dict(ci.os.environ, {"CI_FULL_TREE": "1", "CI_SHARD_INDEX": "0",
+                                        "CI_SHARD_TOTAL": "1"}), \
+                patch.object(ci, "module_packages", return_value=["./a"]), \
+                patch.object(ci, "go_test", return_value=0) as tests, \
+                patch.object(ci, "run_all_status", return_value=0) as vet, \
+                contextlib.redirect_stdout(io.StringIO()):
+            ci.go_checks("apikit", "affected")
+        self.assertEqual(tests.call_args.args, ("apikit", [("./a", None)], 0, 1))
+        self.assertEqual(vet.call_args.args[0], [(["go", "vet", "./..."], self.root / "apikit")])
+
+    def test_dependency_change_compiles_the_module_one_package_per_run(self):
+        with patch.dict(ci.os.environ, {"CI_FULL_TREE": "0"}), \
+                patch.object(ci, "changed", return_value={"server/go.mod"}), \
+                patch.object(ci, "module_packages", return_value=["./a", "./b"]), \
+                patch.object(ci, "go_test", return_value=0) as tests, \
+                patch.object(ci, "run_all_status", return_value=0) as vet:
+            ci.go_checks("server", "affected")
+        self.assertEqual(tests.call_args.args, ("server", [("./a", None), ("./b", None)]))
+        self.assertEqual(vet.call_args.args[0], [(["go", "vet", "./..."], self.root / "server")])
+
+    def test_mandatory_security_group_is_never_sharded_and_keeps_every_name(self):
+        names = ["TestRefreshRoundTripOverPlainHTTP",
+                 "TestUnknownAndKnownNamesHaveTheSameSignInCooloff",
+                 "TestAccountRestoreUsesAccountScopeUntilExplicitProfileSelection",
+                 "TestSessionFamilyHTTPLogoutAuthenticGenerations",
+                 "TestASecondProfileOfTheOwnersAccountIsNotAnAdministrator",
+                 "TestRestrictedProfileRouteMatrix", "TestRestrictedProfileWriteRouteMatrix"]
+        package = self.root / "server" / "internal" / "httpapi"
+        package.mkdir(parents=True)
+        (package / "authority_test.go").write_text(
+            "package httpapi\n\n" + "".join(f"func {name}(t *testing.T) {{}}\n" for name in names))
+        with patch.dict(ci.os.environ, {"CI_FULL_TREE": "1", "CI_SHARD_INDEX": "0",
+                                        "CI_SHARD_TOTAL": "4"}), \
+                patch.object(ci, "go_test", return_value=0) as tests, \
+                patch.object(ci, "run_all_status", return_value=0) as vet:
+            ci.go_checks("server", "auth")
+        selected = tests.call_args.args[1]
+        self.assertEqual([entry[0] for entry in selected], ["./internal/httpapi"])
+        pattern = selected[0][1]
+        self.assertTrue(pattern.startswith("^(") and pattern.endswith(")$"))
+        for name in names:
+            self.assertIn(name, pattern)
+        self.assertEqual(vet.call_args.args[0],
+                         [(["go", "vet", "./internal/httpapi"], self.root / "server")])
+
+    def test_missing_mandatory_go_security_test_fails_closed(self):
+        with patch.object(ci, "go_test"), patch.object(ci, "run_all_status"):
+            with self.assertRaisesRegex(RuntimeError, "missing mandatory security test"):
+                ci.go_checks("server", "auth")
+
+
+class ShardTests(unittest.TestCase):
+    def test_shards_cover_every_package_exactly_once(self):
+        packages = ["./e", "./c", "./a", "./d", "./b"]
+        shards = [ci.shard(packages, index, 4) for index in range(4)]
+        self.assertEqual(sorted(sum(shards, [])), sorted(packages))
+        self.assertEqual(len(set(sum(shards, []))), len(packages))
+
+    def test_shard_assignment_is_stable_across_input_order(self):
+        self.assertEqual(ci.shard(["./b", "./a", "./c"], 1, 2), ["./b"])
+        self.assertEqual(ci.shard(["./c", "./b", "./a"], 1, 2), ["./b"])
+        self.assertEqual(ci.shard(packages=["./a", "./b", "./c", "./d", "./e"], index=0, total=2),
+                         ["./a", "./c", "./e"])
+
+    def test_malformed_shard_settings_fail_closed(self):
+        for index, total in (("4", "4"), ("0", "0"), ("x", "2"), ("-1", "2"), ("0", "")):
+            with patch.dict(ci.os.environ, {"CI_SHARD_INDEX": index, "CI_SHARD_TOTAL": total}):
+                with self.assertRaisesRegex(RuntimeError, "invalid Go package shard"):
+                    ci.shard_settings()
+
+    def test_absent_shard_settings_mean_one_complete_shard(self):
+        environment = os.environ.copy()
+        environment.pop("CI_SHARD_INDEX", None)
+        environment.pop("CI_SHARD_TOTAL", None)
+        with patch.dict(ci.os.environ, environment, clear=True):
+            self.assertEqual(ci.shard_settings(), (0, 1))
+            self.assertEqual(ci.shard(["./a", "./b"]), ["./a", "./b"])
 
 
 if __name__ == "__main__":

@@ -42,10 +42,16 @@ jobs:
 
   go:
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 180
     strategy:
       fail-fast: false
-      matrix: {module: [apikit, server]}
+      matrix:
+        include:
+          - {module: apikit, shard: 0, shards: 1}
+          - {module: server, shard: 0, shards: 4}
+          - {module: server, shard: 1, shards: 4}
+          - {module: server, shard: 2, shards: 4}
+          - {module: server, shard: 3, shards: 4}
     services:
       postgres:
         image: postgres:17
@@ -70,6 +76,10 @@ jobs:
           tail -n 20 "$RUNNER_TEMP/go-build.log"
           exit "$status"
       - name: Full Go module tests and vet
+        env:
+          CI_SHARD_INDEX: ${{ matrix.shard }}
+          CI_SHARD_TOTAL: ${{ matrix.shards }}
+          CI_GO_RESULTS: ${{ runner.temp }}/go-results-${{ matrix.module }}-${{ matrix.shard }}.jsonl
         run: |
           status=0
           python3 scripts/ci-affected.py go --module '${{ matrix.module }}' > "$RUNNER_TEMP/full-ci.log" 2>&1 || status=$?
@@ -79,10 +89,11 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: ci-${{ github.job }}-${{ strategy.job-index || '0' }}
+          name: ci-go-${{ matrix.module }}-${{ matrix.shard }}
           path: |
             ${{ runner.temp }}/full-ci.log
             ${{ runner.temp }}/go-build.log
+            ${{ runner.temp }}/go-results-*.jsonl
             ${{ runner.temp }}/types*.log
           if-no-files-found: ignore
           retention-days: 7
