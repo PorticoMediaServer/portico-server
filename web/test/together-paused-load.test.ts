@@ -98,3 +98,18 @@ test('a hold that ends through a throwing unsubscribe still clears its deadline'
     globalThis.clearTimeout = realClearTimeout;
   }
 });
+
+
+test('a retained store callback cannot pause after its hold retired', () => {
+  let listener!: () => void;
+  let reads = 0, pauses = 0;
+  let state = {itemId: 'film', phase: 'idle', intent: 'paused'};
+  holdPaused({getSnapshot: () => {reads++; return state;},
+    subscribe: next => {listener = next; return () => {};},
+    pause: () => {pauses++;}}, 'film');
+  state = {...state, phase: 'ready'}; listener();
+  const retiredReads = reads;
+  state = {itemId: 'film', phase: 'starting', intent: 'playing'}; listener();
+  assert.equal(reads, retiredReads, 'the callback does not read after retirement');
+  assert.equal(pauses, 0, 'a retained callback cannot pause a later start');
+});

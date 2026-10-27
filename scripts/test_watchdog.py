@@ -758,6 +758,9 @@ class Runner:
                 # Retain this tree's identities only while its leader can still
                 # create descendants; a later exit is then cleanable to the end.
                 owned.capture()
+                # Reap adopted zombies while the test file can still inspect its cleanup.
+                # The file leader remains owned by subprocess.
+                owned.reap()
             if self._stop_requested(stop):
                 verdict = INTERRUPTED
                 break

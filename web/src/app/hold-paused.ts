@@ -20,6 +20,7 @@ export function holdPaused(service: {getSnapshot(): {itemId?: string | null; pha
     }
   };
   const hold = () => {
+    if (!live) return;
     const now = service.getSnapshot();
     // Another title, or this one has finished starting (or failed): the hold is over.
     if ((now.itemId ?? '') !== itemId && now.phase !== 'idle') { release(); return; }

@@ -1852,6 +1852,34 @@ class WatchdogTests(unittest.TestCase):
         self.assert_gone(detached)
         self.assertNotIn("NOT RUN later.test.mjs", output)
 
+    def test_adopted_zombie_is_reaped_while_its_test_file_is_running(self):
+        if not ci.test_watchdog._subreaper():
+            self.skipTest("requires Linux child subreaper support")
+        self.fixture("reap-live.test.mjs", """
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
+import {setTimeout} from 'node:timers/promises';
+test('the orphan is gone before this test file exits', async () => {
+  const code = `const {spawn}=require('node:child_process');
+    const child=spawn(process.execPath,['-e','setTimeout(()=>{},100)'],{stdio:'ignore'});
+    console.log(child.pid);process.exit(0);`;
+  const parent = spawn(process.execPath, ['-e', code]);
+  let output = '';
+  for await (const chunk of parent.stdout) output += chunk;
+  const pid = Number(output.trim()); assert.ok(pid > 0);
+  let gone = false;
+  for (let i=0;i<100;i++) {
+    try {process.kill(pid,0);} catch(error) {if(error.code==='ESRCH'){gone=true;break;}throw error;}
+    await setTimeout(20);
+  }
+  assert.equal(gone,true,'the supervisor reaps its adopted zombie while the file is alive');
+});
+""")
+        runner, output = self.run_files(["reap-live.test.mjs"])
+        self.assertEqual([r.status for r in runner.results], [ci.test_watchdog.PASS], output)
+        self.assertEqual(runner.results[0].passed, 1)
+
     def test_a_child_that_survives_cleanup_fails_the_file_and_starts_no_later_file(self):
         marker = self.root / "survivor-pid"
         self.detached_fixture("survivor.test.mjs", marker)

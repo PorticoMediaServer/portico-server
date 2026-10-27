@@ -98,24 +98,31 @@ const hookRuntime = (React: any) => {
     } while (dirty);
     return tree;
   };
+  const finishAll = (tasks: (() => void)[]) => {
+    let failed = false, failure: unknown;
+    for (const task of tasks) try {task();} catch (error) {if (!failed) {failed = true; failure = error;}}
+    if (failed) throw failure;
+  };
   const unmount = (name: string) => {
     const instance = instances.get(name);
     if (!instance?.mounted) return;
     instance.mounted = false;
     instances.delete(name);
+    const tasks: (() => void)[] = [];
     for (const slot of instance.slots) {
       const retire = slot?.cleanup;
       if (slot) slot.cleanup = undefined;
-      if (typeof retire === 'function') retire();
+      if (typeof retire === 'function') tasks.push(retire);
       const unsubscribe = slot?.unsubscribe;
       if (slot) slot.unsubscribe = undefined;
-      if (typeof unsubscribe === 'function') unsubscribe();
+      if (typeof unsubscribe === 'function') tasks.push(unsubscribe);
     }
+    finishAll(tasks);
   };
   return {
     mount, unmount,
-    /** Retires every mounted instance, last-created first, as a tree unmounts. */
-    unmountAll: () => {for (const name of [...instances.keys()].reverse()) unmount(name);},
+    /** Retires all independently mounted fixtures, even if one cleanup fails. */
+    unmountAll: () => finishAll([...instances.keys()].reverse().map(name => () => unmount(name))),
     /** Every instance's committed state, including retired ones, for a before/after compare. */
     snapshot: () => JSON.stringify(all.map(instance => instance.slots.map(slot => slot?.value ?? slot?.ref ?? null))),
   };
@@ -239,8 +246,9 @@ test('saved Add handlers cannot adopt a reopened or unmounted form lifetime', as
     assert.throws(() => retired.cancel(), /disposed/, 'the previous reader is disposed before its successor exists');
     assert.doesNotThrow(() => replaced.props.libraries.cancel(), 'the successor reader is live');
   } finally {
-    hooks.unmountAll();
-    if (previousWindow === undefined) delete (globalThis as any).window; else (globalThis as any).window = previousWindow;
+    try {hooks.unmountAll();} finally {
+      if (previousWindow === undefined) delete (globalThis as any).window; else (globalThis as any).window = previousWindow;
+    }
   }
 });
 

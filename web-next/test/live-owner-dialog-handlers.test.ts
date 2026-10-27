@@ -96,8 +96,9 @@ for (const [name, component, preview, savePath] of [
   ['remote', RemoteSourceDialog, remotePreview, '/v1/admin/live-sources/remote/save'],
   ['upload', UploadSourceDialog, uploadPreview, '/v1/admin/live-sources'],
 ] as const) {
-  test(`${name} stale saved/close handlers cannot affect replacement dialog`, async () => {
+  test(`${name} stale saved/close handlers cannot affect replacement dialog`, async t => {
     const frame = new HookFrame(), counters = {saved: 0, closed: 0}, pending = deferred<unknown>();
+    t.after(() => frame.unmount());
     const apiA = apiFor(preview, pending.promise), apiB = apiFor(preview, Promise.resolve(sourceReceipt()));
     const openingA = {live: true}, openingB = {live: true};
     const propsA = dialogProps(apiA, `${name}-a`, openingA, counters), propsB = dialogProps(apiB, `${name}-b`, openingB, counters);
