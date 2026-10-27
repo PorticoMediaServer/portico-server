@@ -126,3 +126,22 @@ func failureDuringClaim(ctx context.Context) bool {
 	owner, _ := ctx.Value(occurrenceOwnerKey{}).(*occurrenceOwner)
 	return owner != nil && owner.registry.held(owner.id, owner.entry)
 }
+
+// An old primary window may stop only the child slots of its exact installed
+// occurrence. Same id/ordinal alone is never a cancellation capability.
+// Caller holds h.mu; only captured context cancel functions are invoked.
+func (h *HLS) cancelOccurrenceRenditionsLocked(id string, parent *occurrenceRun) {
+	if parent == nil || h.activeRuns[id] != parent {
+		return
+	}
+	for key, child := range h.activeRuns {
+		if key == id || producerSession(key) != id || child == nil {
+			continue
+		}
+		if child.generation == parent.generation && child.requestID == parent.requestID && child.itemID == parent.itemID && child.assetID == parent.assetID {
+			if cancel := h.active[key]; cancel != nil {
+				cancel()
+			}
+		}
+	}
+}

@@ -314,3 +314,80 @@ test('renewal reentrancy cannot validate or publish into a successor',async()=>{
   off();controller.dispose();
  }
 });
+
+test('renewal proof GET and validation current ports cannot lend admission to a same-device successor',async()=>{
+ for(const seam of ['get','validation-current'] as const){
+  const old=receiver('Old TV','tv-a'),nextTV=receiver('Next TV','tv-a'),saved=new Map<string,string>();
+  const nextBinding={...binding,targetFamilyId:'target-successor',targetGeneration:'2'},nextStamp={...controllerStamp,controllerGeneration:controllerStamp.controllerGeneration+1};
+  let controller:CastController,armed=false,validating=false,currentCalls=0,successor:Promise<boolean>|undefined,renewalValidations=0,writes=0,timers=0;
+  let baseline:{writes:number;timers:number}|undefined;
+  const replace=()=>{armed=false;successor=controller.start(nextTV.transport,'successor',{title:'Next'},0);baseline={writes,timers};};
+  controller=new CastController({origin:context.origin,displayName:'Phone',controllerContext:context,describe:async()=> 'Film',
+   isCurrent:()=>{if(armed&&seam==='validation-current'&&validating&&++currentCalls===2)replace();return true;},
+   controllerStorage:{get:k=>{const original=saved.get(k);if(armed&&seam==='get')replace();return original;},set:(k,v)=>{writes++;saved.set(k,v);}},
+   setTimer:(fn,ms)=>{if(ms===15000)timers++;return setTimeout(fn,ms)},clearTimer:t=>clearTimeout(t as ReturnType<typeof setTimeout>),
+   api:{request:async<T,>(path:string,_method?:string,body?:unknown)=>{
+    if(path==='/v1/cast/bootstrap')return {bootstrap:{id:binding.bootstrapId,code:'ABC123'}} as T;
+    const request=body as {binding:typeof binding;attemptId:string};if(request.binding.targetFamilyId===nextBinding.targetFamilyId)renewalValidations++;
+    return {binding:request.binding,attemptId:request.attemptId,ticket:'b'.repeat(43)} as T;
+   }}});
+  const started=controller.start(old.transport,'movie',{title:'Film'},0);await settle();old.reply({type:'paired',binding,controlToken:'a'.repeat(48),controller:controllerStamp});assert.equal(await started,true);
+  const validate=(controller as any).validate.bind(controller);
+  (controller as any).validate=(...args:any[])=>{validating=true;try{return validate(...args)}finally{validating=false}};
+  armed=true;
+  old.reply({type:'renewal-offer',attemptId:'renew-old',binding:nextBinding,previousController:controllerStamp,controller:nextStamp});await settle();
+  assert.ok(successor);assert.equal(renewalValidations,0);assert.equal(old.sent.some(m=>m.type==='renewal-ack'),false);
+  assert.equal(controller.getSnapshot().controlPending,false);assert.equal(controller.getSnapshot().phase,'pairing');
+  assert.equal(writes,baseline!.writes);assert.equal(timers,baseline!.timers,'no old timer/status/pending work follows replacement');
+  if(seam==='get')assert.equal(timers,0,'storage GET replacement occurs before pending/timer mutation');
+  nextTV.reply({type:'paired',binding,controlToken:'a'.repeat(48),controller:controllerStamp});assert.equal(await successor,true);
+  assert.equal(controller.getSnapshot().itemId,'successor');
+  nextTV.reply({type:'renewal-offer',attemptId:'renew-next',binding:nextBinding,previousController:controllerStamp,controller:nextStamp});await settle();
+  assert.ok(nextTV.sent.some(m=>m.type==='renewal-ack'&&m.attemptId==='renew-next'),'successor renewal is independently usable');
+  controller.dispose();
+ }
+});
+
+test('release detaches renewal before clearTimer can install a successor',async()=>{
+ const old=receiver('Old','tv-a'),loser=receiver('Intermediate','tv-a'),nextTV=receiver('Successor','tv-a'),saved=new Map<string,string>();
+ let controller:CastController,armed=false,next:Promise<boolean>|undefined;
+ const timers=new Map<unknown,number>();
+ controller=new CastController({origin:context.origin,displayName:'Phone',controllerContext:context,describe:async()=> 'Film',
+  controllerStorage:{get:k=>saved.get(k),set:(k,v)=>saved.set(k,v)},
+  setTimer:(fn,ms)=>{const handle=setTimeout(fn,ms);timers.set(handle,ms);return handle},
+  clearTimer:handle=>{const ms=timers.get(handle);timers.delete(handle);clearTimeout(handle as ReturnType<typeof setTimeout>);if(armed&&ms===15000){armed=false;next=controller.start(nextTV.transport,'next',{title:'Next'},0)}},
+  api:{request:async<T,>(path:string,_method?:string,body?:unknown)=>{
+   if(path==='/v1/cast/bootstrap')return {bootstrap:{id:binding.bootstrapId,code:'ABC123'}} as T;
+   const request=body as {binding:typeof binding;attemptId:string};return {binding:request.binding,attemptId:request.attemptId,ticket:'b'.repeat(43)} as T;
+  }}});
+ const started=controller.start(old.transport,'movie',{title:'Film'},0);await settle();old.reply({type:'paired',binding,controlToken:'a'.repeat(48),controller:controllerStamp});assert.equal(await started,true);
+ const renewed={...binding,targetFamilyId:'target-successor',targetGeneration:'2'},stamp={...controllerStamp,controllerGeneration:controllerStamp.controllerGeneration+1};
+ old.reply({type:'renewal-offer',attemptId:'old-renew',binding:renewed,previousController:controllerStamp,controller:stamp});await settle();
+ assert.equal(controller.getSnapshot().controlPending,true);
+ armed=true;const intermediate=controller.start(loser.transport,'loser',{title:'Lost'},0);assert.equal(await intermediate,false);await settle();
+ assert.ok(next);assert.equal(old.ended,undefined,'old release cannot end an SDK connection after reentrant successor admission');assert.equal(loser.sent.length,0);assert.equal(controller.getSnapshot().phase,'pairing');assert.equal(controller.getSnapshot().controlPending,false);
+ nextTV.reply({type:'paired',binding,controlToken:'a'.repeat(48),controller:controllerStamp});assert.equal(await next,true);
+ nextTV.reply({type:'renewal-offer',attemptId:'next-renew',binding:renewed,previousController:controllerStamp,controller:stamp});await settle();
+ assert.ok(nextTV.sent.some(m=>m.type==='renewal-ack'&&m.attemptId==='next-renew'));
+ nextTV.reply({type:'renewal-complete',attemptId:'next-renew',controller:stamp});await settle();assert.equal(controller.getSnapshot().controlPending,false);assert.equal(controller.getSnapshot().itemId,'next');
+ controller.dispose();
+});
+
+test('only new original-correlated pending evidence re-arms the finite LOAD deadline',async()=>{
+ const tv=receiver('TV','tv-a');tv.autoAck=false;
+ const timers=new Map<number,{fn:()=>void;ms:number}>();let counter=0;
+ const controller=new CastController({origin:context.origin,displayName:'Phone',controllerContext:context,
+  controllerStorage:{get:()=>undefined,set:()=>{}},setTimer:(fn,ms)=>{timers.set(++counter,{fn,ms});return counter},clearTimer:id=>{timers.delete(id as number)},
+  api:{request:async<T,>(path:string,_method?:string,body?:unknown)=>path==='/v1/cast/bootstrap'?{bootstrap:{id:binding.bootstrapId,code:'ABC123'}} as T:{binding,attemptId:(body as {attemptId:string}).attemptId,ticket:'b'.repeat(43)} as T}});
+ const started=controller.start(tv.transport,'movie',{title:'Film'},0);await settle();tv.reply({type:'paired',binding,controlToken:'a'.repeat(48),controller:controllerStamp});await settle();
+ const command=tv.sent.find(m=>m.type==='load');assert.ok(command);
+ const originalTimer=[...timers].find(([,timer])=>timer.ms===150000)!;
+ const pending={type:'load-pending',requestId:command.requestId,itemId:'movie',startId:'original-start',sequence:1,controller:controllerStamp};
+ tv.reply(pending);const currentTimer=[...timers].find(([,timer])=>timer.ms===150000)!;assert.notEqual(currentTimer[0],originalTimer[0]);
+ for(const wrong of [pending,{...pending,sequence:2,startId:'other-start'},{...pending,sequence:2,requestId:'other-load'},{...pending,sequence:2,itemId:'other-item'},{...pending,sequence:2,controller:{...controllerStamp,controllerGeneration:controllerStamp.controllerGeneration+1}},{...pending,sequence:0}]){
+  tv.reply(wrong);assert.equal([...timers].find(([,timer])=>timer.ms===150000)![0],currentTimer[0]);
+ }
+ originalTimer[1].fn();await settle();assert.notEqual(controller.getSnapshot().phase,'error','a cancelled old deadline cannot terminate the continued original load');
+ currentTimer[1].fn();assert.equal(await started,false,'absence of further valid progress still has a finite no-answer outcome');
+ assert.equal(controller.getSnapshot().remoteIdentity,undefined);controller.dispose();
+});

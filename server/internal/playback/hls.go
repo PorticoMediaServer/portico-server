@@ -102,6 +102,7 @@ type HLS struct {
 // past its converted edge replaces it with a window that starts where the
 // viewer actually is, which is the whole point of the fixed segment grid.
 type hlsWindow struct {
+	run              *occurrenceRun
 	generation       int
 	publicationError error
 	videoConversion  bool
@@ -250,11 +251,7 @@ func (h *HLS) startGeneration(ctx context.Context, id string, from, expected int
 		}
 		window.relocating = true
 		window.cancel()
-		for key, cancel := range h.active {
-			if producerSession(key) == id && key != id {
-				cancel()
-			}
-		}
+		h.cancelOccurrenceRenditionsLocked(id, window.run)
 		h.mu.Unlock()
 		<-window.done
 		h.mu.Lock()
@@ -271,6 +268,7 @@ func (h *HLS) startGeneration(ctx context.Context, id string, from, expected int
 	ctx, cancel := context.WithCancel(h.ctx)
 	window := &hlsWindow{generation: generation, videoConversion: videoConversion, start: from, served: -1, produced: from - 1, cancel: cancel, done: make(chan struct{})}
 	run := &occurrenceRun{generation: generation, requestID: requestID, itemID: itemID, assetID: assetID, cancel: cancel, done: window.done}
+	window.run = run
 	if err := intent.install(run, func() { h.installOccurrenceLocked(id, run, cancel); h.windows[id] = window }); err != nil {
 		cancel()
 		return err
@@ -934,10 +932,9 @@ func (h *HLS) watchWindow(ctx context.Context, id, dir, staging string, from, li
 			exhausted := limit >= 0 && window.produced >= limit-1 && limit < h.timelines[id].count()-1
 			if (cfg.ThrottleBufferSeconds > 0 && window.produced >= from && ahead >= cfg.ThrottleBufferSeconds) || exhausted {
 				window.throttled = true
-				for key, stop := range h.active {
-					if key != id && producerSession(key) == id {
-						stop()
-					}
+				owner, _ := ctx.Value(occurrenceOwnerKey{}).(*occurrenceOwner)
+				if owner != nil {
+					h.cancelOccurrenceRenditionsLocked(id, owner.run)
 				}
 				h.mu.Unlock()
 				_, _ = h.producerWrite(ctx, id, dbwork.ClassEstablishedPlayback, `INSERT INTO playback_hls_demand(session_id,highest_served,throttled) VALUES(?,?,1) ON CONFLICT(session_id) DO UPDATE SET throttled=1`, id, produced)

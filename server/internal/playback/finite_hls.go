@@ -184,8 +184,36 @@ func (f *FiniteHLS) prepare(id string, a *finiteActor) error {
 		}
 		return err
 	}
-	if !f.liveGeneration(id, a.generation) {
-		return identity.ErrUnauthorized
+	return f.publishPreparation(ctx, id, a, source)
+}
+
+// publishPreparation is the accepting post-Analyze boundary. The original
+// registration stays published until both its writer and manifest have settled.
+func (f *FiniteHLS) publishPreparation(ctx context.Context, id string, a *finiteActor, source *vod.Source) error {
+	owner, _ := ctx.Value(occurrenceOwnerKey{}).(*occurrenceOwner)
+	if owner == nil || owner.id != id || owner.entry != a.entry || owner.run != a.run || a.run == nil || a.generation != a.run.generation {
+		return errOccurrenceClaimed
+	}
+	release, err := childprocess.AcquirePublication(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
+	gated, err := dbwork.Begin(ctx, f.h.db, dbwork.ClassPlaybackStart)
+	if err != nil {
+		return err
+	}
+	defer gated.Rollback()
+	tx := gated.Tx()
+	ctx = gated.Context()
+	var live bool
+	run := a.run
+	err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM playback_sessions p JOIN authorization_access s ON s.hash=p.session_hash LEFT JOIN accounts account ON account.id=s.account_id JOIN playback_source_pins pin ON pin.session_id=p.id WHERE p.id=? AND p.generation=? AND p.request_id=? AND p.item_id=? AND p.asset_id=? AND p.state NOT IN('stopped','ended','failed') AND p.expires_at>? AND s.expires_at>? AND s.revoked=0 AND (s.authority!='local' OR s.epoch=account.epoch) AND pin.asset_id=p.asset_id AND pin.size=? AND pin.modified_ns=?)`, id, run.generation, run.requestID, run.itemID, run.assetID, time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Format(time.RFC3339), source.Size, source.ModifiedNS).Scan(&live)
+	if err != nil {
+		return err
+	}
+	if !live || !owner.registry.ownsRun(id, owner.entry, run) {
+		return errOccurrenceClaimed
 	}
 	manifest := finiteManifest(source)
 	hash := fmt.Sprintf("%x", sha256.Sum256(manifest))
@@ -205,7 +233,7 @@ func (f *FiniteHLS) prepare(id string, a *finiteActor) error {
 	var size, modified int64
 	var fps float64
 	var vi, ai, width, height int
-	err = f.h.db.QueryRow(`SELECT manifest_hash,policy,source_size,source_modified_ns,fps,video_index,audio_index,width,height FROM playback_vod_plans WHERE session_id=?`, id).Scan(&previous, &previousPolicy, &size, &modified, &fps, &vi, &ai, &width, &height)
+	err = tx.QueryRowContext(ctx, `SELECT manifest_hash,policy,source_size,source_modified_ns,fps,video_index,audio_index,width,height FROM playback_vod_plans WHERE session_id=?`, id).Scan(&previous, &previousPolicy, &size, &modified, &fps, &vi, &ai, &width, &height)
 	if err == nil && (previousPolicy != vod.Policy || size != source.Size || modified != source.ModifiedNS || fps != source.FPS || vi != source.VideoIndex || ai != source.AudioIndex || width != source.Width || height != source.Height) {
 		return vod.ErrChanged
 	}
@@ -215,12 +243,6 @@ func (f *FiniteHLS) prepare(id string, a *finiteActor) error {
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
-	gated, err := dbwork.Begin(ctx, f.h.db, dbwork.ClassPlaybackStart)
-	if err != nil {
-		return err
-	}
-	tx := gated.Tx()
-	defer gated.Rollback()
 	if _, err = tx.Exec(`INSERT INTO playback_vod_plans(session_id,policy,source_size,source_modified_ns,duration,fps,video_index,audio_index,width,height,interval_count,manifest_hash,status,analysis_wall,analysis_cpu,probe_output_bytes) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'ready',?,?,?) ON CONFLICT(session_id) DO NOTHING`, id, vod.Policy, source.Size, source.ModifiedNS, source.Duration, source.FPS, source.VideoIndex, source.AudioIndex, source.Width, source.Height, vod.IntervalCount(source.Duration), hash, source.AnalysisWork.WallSeconds, source.AnalysisWork.CPUSeconds, source.AnalysisWork.ProbeOutputBytes); err != nil {
 		return err
 	}
@@ -231,9 +253,6 @@ func (f *FiniteHLS) prepare(id string, a *finiteActor) error {
 		}
 	}
 	if _, err = tx.Exec(`INSERT INTO playback_artifacts(session_id,directory,status) VALUES(?,?,'building') ON CONFLICT(session_id) DO UPDATE SET status='building',error=''`, id, dir); err != nil {
-		return err
-	}
-	if err = gated.Commit(); err != nil {
 		return err
 	}
 	// Atomic publication of an immutable index. A crash before this rename is
@@ -252,6 +271,11 @@ func (f *FiniteHLS) prepare(id string, a *finiteActor) error {
 		if err = os.Rename(path+".tmp", path); err != nil {
 			return err
 		}
+	}
+	// Keep the same accepting writer through rename: Stop/replan cannot win
+	// between its original tuple proof and this filesystem publication.
+	if err = gated.Commit(); err != nil {
+		return err
 	}
 	a.source = source
 	return nil
