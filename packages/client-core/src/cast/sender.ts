@@ -137,7 +137,7 @@ export class CastController {
     // The final external current predicate is followed by the original pure
     // proof BEFORE validation IO; a same-device successor cannot borrow it.
     if(!current())throw new Error('cast_scope_changed');
-    const result=await this.api.request<{binding?:unknown;attemptId?:unknown;ticket?:unknown}>('/v1/cast/controllers/validate','POST',{binding,attemptId});
+    const result=await this.api.request<{binding?:unknown;attemptId?:unknown;ticket?:unknown}>(routePath('social_post_v1_cast_controllers_validate'),'POST',{binding,attemptId});
     const accepted=castBinding(result.binding);
     if(!current()||!accepted||JSON.stringify(accepted)!==JSON.stringify(binding)||result.attemptId!==attemptId||typeof result.ticket!=='string'||!/^[A-Za-z0-9_-]{43,256}$/.test(result.ticket))throw new Error('cast_validation_refused');
     return result.ticket;

@@ -1029,8 +1029,7 @@ async networkPolicy(libraryId:string):Promise<NetworkPolicy>{const epoch=this.ep
   if(!this.live()||(guard&&!guard()))throw new Error('Scope changed.');
   if(!text(id,256)||id.length===0)throw new Error('Invalid source id.');
   const epoch=this.epoch;
-  // The generated route for this path has not reached the shared artefacts yet.
-  const raw=await this.request(`/v1/storage/sources/${encodeURIComponent(id)}/test`,'POST',undefined,guard);
+  const raw=await this.request(encodedRoutePath('test_storage_source',{id:encodeURIComponent(id)}),'POST',undefined,guard);
   if(!this.live()||(guard&&!guard())||epoch!==this.epoch)throw new Error('Scope changed.');
   this.fence(raw);
   if(!record(raw)||!record(raw.result))invalid();
