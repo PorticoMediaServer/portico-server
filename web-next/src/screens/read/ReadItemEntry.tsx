@@ -1,7 +1,7 @@
 import {useReadingFavorite} from './useReadingFavorite';
 import {ReadSavedAction} from './ReadSavedAction';
 import {ReadMarkAction} from './ReadMarkAction';
-import {useEffect, useLayoutEffect, useRef, useState, type CSSProperties} from 'react';
+import {useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties} from 'react';
 import {useLocation} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
 import {generatedCoverTint} from '@design';
@@ -47,7 +47,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const routeLocation = useLocation();
   const routeEntry = readRouteEntry(routeLocation);
   const committedEntry = useRef<ReadRouteEntry | undefined>(undefined);
-  useLayoutEffect(() => {committedEntry.current = routeEntry;}, [routeEntry?.href, routeEntry?.key]);
+  useLayoutEffect(() => {committedEntry.current = readRouteEntry(routeLocation);}, [routeLocation]);
   const [editing, setEditing] = useState(false), [more, setMore] = useState(false);
   const editorAnchor = useRef<HTMLButtonElement>(null);
   const errorSink = useRef(captured.binding.home.effects.reportError); errorSink.current = captured.binding.home.effects.reportError;
@@ -59,9 +59,13 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const committed = useRef<ReadVersionSource | undefined>(undefined);
   useLayoutEffect(() => {committed.current = {context: captured.context, sourceId, versions: eligibility.versions};}, [captured.context, sourceId, eligibility.versions]);
   const [detail, setDetail] = useState<Readonly<{attempt?: ReadAttempt; manifest?: ReadingManifest; progress?: ReadingProgress; client?: ReturnType<typeof createReadBindings>['client']; targets?: readonly ReaderContentsTarget[]; failed?: boolean}>>({});
-  const current = (value: ReadAttempt | undefined): value is ReadAttempt => !!value && value.live && attemptRef.current === value
-    && value.entry === router.state.location && value.context === captured.context
-    && value.sourceId === sourceId && value.retry === retry && value.context.isCurrent();
+  const current = useCallback((value: ReadAttempt | undefined): value is ReadAttempt => {
+    if (!value) return false;
+    const exact = () => value.live && attemptRef.current === value && value.entry === router.state.location
+      && value.context === captured.context && value.sourceId === sourceId && value.retry === retry;
+    // The captured context may reenter; it cannot revive a retired/replaced local attempt.
+    return exact() && value.context.isCurrent() && exact();
+  }, [captured.context, sourceId, retry]);
   const retire = (value: ReadAttempt) => readRetireAttempt(value,
     () => {if (attemptRef.current === value) attemptRef.current = undefined;}, () => value.fileLife.abort());
   const refresh = (value: ReadAttempt | undefined) => {if (!current(value)) return; retire(value); setRetry(count => count + 1);};
@@ -80,11 +84,11 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
   const chooserAnchor = useRef<HTMLButtonElement>(null);
   const [chooserMenu, setChooserMenu] = useState(false);
   useEffect(() => {
-    if (!current(attempt)) return;
-    const original = attempt;
+    const original = attempt, originalCurrent = current;
+    if (!originalCurrent(original)) return;
     const bindings = createReadBindings(original.context);
     let active = true;
-    const live = () => active && current(original) && bindings.authority.isCurrent();
+    const live = () => active && originalCurrent(original) && bindings.authority.isCurrent();
     let publication: Awaited<ReturnType<typeof createReadingPublication>> | undefined;
     const off = bindings.authority.subscribe(() => {if (active && attemptRef.current === original) {original.fileLife.abort(); original.ready = false; original.target = undefined; setDetail({attempt: original, failed: true});}});
     const requestedSource = original.sourceId;
@@ -103,7 +107,7 @@ function BoundReadItem({captured, eligibility}: {captured: Captured; eligibility
         targets: session.manifest.format === 'epub' ? (session.manifest.contents ?? []).map((_, index) => publication!.contentsTarget(index)) : []});
     })().catch(error => {if (live()) {errorSink.current(error); original.ready = false; original.target = undefined; setDetail({attempt: original, failed: true});} void bindings.close().catch(() => {});});
     return () => {active = false; original.ready = false; original.target = undefined; publication?.dispose(); off(); void bindings.dispose().catch(() => {});};
-  }, [attempt, eligibility.itemId]);
+  }, [attempt, eligibility.itemId, current]);
   // The reading branch owns no shell navigation on a phone, so the page keeps one
   // Back of its own before loading, failure and ready content alike.
   const phoneBack = phone && context.effects.back ? <div className={styles.phoneTopBar} data-read-phone-back>

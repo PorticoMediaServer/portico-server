@@ -1,4 +1,4 @@
-import {useLayoutEffect, useMemo, useRef, useState, type RefObject} from 'react';
+import {useCallback, useLayoutEffect, useMemo, useRef, useState, type RefObject} from 'react';
 import {createCardInteractionBinding, type CardInteractionAdmission} from './interaction-admission';
 import type {CardSelection} from './types';
 
@@ -10,16 +10,19 @@ export function useCardInteractionAdmission(selection: CardSelection | undefined
   if (!binding.current) binding.current = createCardInteractionBinding();
   const published = useRef<CardInteractionAdmission | undefined>(undefined);
   const [admission, setAdmission] = useState<CardInteractionAdmission>();
+  const publishAdmission = useCallback((next: CardInteractionAdmission | undefined) => {
+    if (published.current !== next) {published.current = next;setAdmission(next);}
+  }, []);
   useLayoutEffect(() => {
     const next = binding.current!.commit(source, root.current, disabled);
-    if (published.current !== next) {published.current = next;setAdmission(next);}
+    publishAdmission(next);
   });
   useLayoutEffect(() => () => {
     published.current = undefined;binding.current!.release();
   }, []);
   useLayoutEffect(() => admission?.onRetire(() => {
-    if (published.current === admission) {published.current = undefined;setAdmission(undefined);}
-  }), [admission]);
+    if (published.current === admission) publishAdmission(undefined);
+  }), [admission, publishAdmission]);
   // Never expose a prior row's receipt beneath a replacement source. The live
   // predicate is used by handlers, not during render (it may retire/publish).
   const bound = !disabled && admission?.live && admission.source === source ? admission : undefined;
