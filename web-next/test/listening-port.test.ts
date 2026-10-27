@@ -94,6 +94,7 @@ test('runtime retirement callback disposes the record without a manual dispose',
   const h = harness();
   await h.port.chapters.load();
   assert.equal(h.port.chapters.getSnapshot().phase, 'ready');
+  h.retire();          // the actual source/run drifts first, then the runtime notifies
   h.fireRetirement();
   const retired = h.port.chapters.getSnapshot();
   assert.equal(retired.target, null);
@@ -139,6 +140,17 @@ test('caller cancellation stops the command and suppresses later progress', asyn
   h.lifetimeController.abort();
   await assert.rejects(() => h.port.queue!.save(shown, 'Night drive', h.lifetime, () => {throw new Error('published after cancel');}), /stale_listening_port/);
   assert.equal(h.saves.length, 0);
+});
+
+test('one drawer cancelling does not retire the record or another drawer command', async () => {
+  const h = harness();
+  const other = new AbortController();
+  const shown = h.port.queue!.list.getSnapshot();
+  const cancelled = {signal: new AbortController().signal, isCurrent: () => false};
+  await assert.rejects(() => h.port.queue!.save(shown, 'First', cancelled), /stale_listening_port/);
+  assert.equal(h.port.isCurrent(), true);
+  await h.port.queue!.save(shown, 'Second', {signal: other.signal, isCurrent: () => true});
+  assert.deepEqual(h.saves.map(s => s.name), ['Second']);
 });
 
 test('lyrics stays withdrawn when the canonical preference is not true', async () => {

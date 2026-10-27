@@ -1413,15 +1413,21 @@ export class WebShellPlaybackRuntime {
     const source = this.source, request = source.api.request.bind(source.api), requestLyrics = source.api.requestLyrics.bind(source.api);
     const combined = (command?: AbortSignal) => AbortSignal.any([stack.life.signal, this.life.signal, lifetime.signal, ...(command ? [command] : [])]);
     /** Exact original record: runtime/stack/source plus the captured target, run and queue occurrence. */
-    const reprove = (): boolean => {
-      if (!this.current(stack) || !this.matches(fence) || this.group?.matches(fence) || lifetime.signal.aborted || !lifetime.isCurrent()) return false;
+    const internal = (): boolean => {
+      if (!this.current(stack) || !this.matches(fence) || this.group?.matches(fence) || this.source !== source) return false;
       const current = stack.queue.currentSession(), currentView = stack.queue.getSnapshot().view, currentPlayback = stack.service.getSnapshot();
-      return !!current && !!currentView && this.source === source && stack.libraryId === target.libraryId
+      return !!current && !!currentView && stack.libraryId === target.libraryId
         && current.id === target.sessionId && current.itemId === target.itemId && current.versionId === target.versionId
         && current.presentation.generation === target.sessionGeneration && current.role === 'local'
         && current.queue?.queueId === target.queueId && current.queue.entryId === target.entryId
         && currentView.queue.id === target.queueId && currentView.queue.currentEntryId === target.entryId
         && currentPlayback.playbackRun === target.playbackRun;
+    };
+    /** The host callback may retire runtime or source, so the exact owner is re-proved after it. */
+    const reprove = (): boolean => {
+      if (!internal()) return false;
+      if (lifetime.signal.aborted || !lifetime.isCurrent()) return false;
+      return internal();
     };
     const call = <T>(work: (signal: AbortSignal) => Promise<T>, command?: AbortSignal): Promise<T> => {
       if (!reprove()) return Promise.reject(new Error('stale_listening_port'));

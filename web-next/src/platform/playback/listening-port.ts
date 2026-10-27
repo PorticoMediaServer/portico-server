@@ -105,11 +105,14 @@ export function createWebListeningPort(input: WebListeningInput): WebListeningPo
   /** Mutable record state first, external predicates next, exact internal state after them. */
   const guard = (): boolean => {
     if (dead || record.signal.aborted) return false;
-    if (!input.lifetime.signal.aborted && input.lifetime.isCurrent() && input.current()) {
-      if (!dead && !record.signal.aborted) return true;
-    }
-    retire();
-    return false;
+    if (!input.lifetime.isCurrent()) {retire(); return false;}
+    // input.current() is the runtime/stack/source owner and may itself retire the host.
+    if (!input.current()) {retire(); return false;}
+    if (dead || record.signal.aborted) {retire(); return false;}
+    if (input.lifetime.signal.aborted || !input.lifetime.isCurrent()) {retire(); return false;}
+    // The host predicate can also have retired runtime/source: re-prove the same owner.
+    if (!input.current() || dead || record.signal.aborted) {retire(); return false;}
+    return true;
   };
   const require = () => {if (!guard()) stale();};
   const command = (lifetime: WebListeningLifetime) => {
@@ -191,14 +194,15 @@ export function createWebListeningPort(input: WebListeningInput): WebListeningPo
       if (shown !== lyrics.getSnapshot() || !shown.data) unavailable();
       if (resource !== null && !shown.data.resources.some(candidate => candidate.id === resource.id && candidate.revision === resource.revision)) unavailable();
       const c = command(lifetime);
-      // The service owns its own request controller; this command's signal stops this wait and
-      // its publication, without cancelling a different drawer's command.
-      let stop = () => {};
       try {
-        const cancelled = new Promise<never>((_, reject) => {stop = () => reject(new Error('stale_listening_port'));});
-        if (c.signal.aborted) stop(); else c.signal.addEventListener('abort', stop, {once: true});
-        await settled(Promise.race([lyrics.choose(resource), cancelled]), c.isCurrent);
-      } finally {c.signal.removeEventListener?.('abort', stop); c.done();}
+        // The published LyricsService.choose(resource) owns its own controller and has no
+        // command-scoped admission or publication seam, so this facade can only re-admit the
+        // result: it does not claim to suppress a publication that the service already started.
+        // Canonical prerequisite (client-core, not written here): choose(resource, {signal,
+        // isCurrent}) — or an equivalent per-command admission/publication seam — so an aborted
+        // command cannot update the shared facade while another drawer's command stays alive.
+        await settled(lyrics.choose(resource), c.isCurrent);
+      } finally {c.done();}
     },
     seek: async (shown: LyricsSnapshot, index: number, lifetime: WebListeningLifetime) => {
       require();
