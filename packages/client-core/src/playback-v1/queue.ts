@@ -46,6 +46,17 @@ function bindWindow(queueId: string, observedRevision: string | undefined, windo
   return window;
 }
 
+/** Original wire evidence for the current anchor; legacy parse defaults grant no edit authority. */
+const observedCurrent = new WeakSet<QueueHeader>();
+export function queueHasObservedCurrent(header: QueueHeader): boolean {return observedCurrent.has(header);}
+function parseObservedQueue(value: unknown): QueueHeader {
+  const header = parseQueue(value);
+  if (obj(value) && obj(value.current) && typeof value.current.position === 'number'
+    && Number.isSafeInteger(value.current.position) && value.current.position >= 0 && value.current.position < header.total
+    && typeof value.current.entryId === 'string' && header.current?.entryId === value.current.entryId) observedCurrent.add(header);
+  return header;
+}
+
 export class QueueClient {
   private http: V1Http;
   private key: () => string;
@@ -61,7 +72,7 @@ export class QueueClient {
   async batch(id: string, revision: string, source: Selector, placement: 'next' | 'end', signal?: AbortSignal): Promise<CreateResult> {
     const r=await call(this.http,{method:'POST',path:encodedRoutePath("batch_queue",{id:enc(id)}),headers:{'If-Match':revision},body:{placement,source},signal});
     if(!obj(r.body))throw new ContractError('batch queue');
-    const queue = parseQueue(r.body.queue);
+    const queue = parseObservedQueue(r.body.queue);
     const window = bindWindow(queue.id, queue.revision, Object.freeze(Array.isArray(r.body.window) ? r.body.window.map(parseEntry) : []));
     return Object.freeze({queue, window, ...(r.body.session ? {session: parseSession(r.body.session)} : {})});
   }
@@ -71,7 +82,7 @@ export class QueueClient {
     const retainQueueIds = retainedQueueIds(options.retainQueueIds);
     const r = await call(this.http, {method: 'POST', path: routePath("create_queue"), headers: {'Idempotency-Key': this.key()}, body: {owner: 'device', segments, ...(options.startPlayback ? {startPlayback: options.startPlayback} : {}), ...(retainQueueIds !== undefined ? {retainQueueIds} : {})}, signal: options.signal});
     const b = r.body as {queue?: unknown; window?: unknown; session?: unknown};
-    const queue = parseQueue(b.queue);
+    const queue = parseObservedQueue(b.queue);
     const window = bindWindow(queue.id, queue.revision, Object.freeze(Array.isArray(b.window) ? b.window.map(parseEntry) : []));
     return Object.freeze({queue, window, session: b.session !== undefined ? parseSession(b.session) : undefined});
   }
@@ -82,7 +93,7 @@ export class QueueClient {
   }
 
   async header(id: string, signal?: AbortSignal): Promise<QueueHeader> {
-    return parseQueue((await call(this.http, {method: 'GET', path: encodedRoutePath("get_queue", {"id": enc(id)}), signal})).body);
+    return parseObservedQueue((await call(this.http, {method: 'GET', path: encodedRoutePath("get_queue", {"id": enc(id)}), signal})).body);
   }
 
   /**
@@ -129,16 +140,17 @@ export class QueueClient {
     return parsePage((await call(this.http, {method: 'GET', path: encodedRoutePath("list_queue_entries", {"id": enc(id)}) + "?from=" + (Math.max(0, from)) + "&limit=" + (n), signal})).body, parseEntry);
   }
 
-  private async command(id: string, revision: string, method: 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown, signal?: AbortSignal): Promise<Readonly<{queue: QueueHeader; session?: Session}>> {
+  private async command(id: string, revision: string, method: 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown, signal?: AbortSignal, beforeSend?: () => void): Promise<Readonly<{queue: QueueHeader; session?: Session}>> {
     try {
-      const r = await call(this.http, {method, path, headers: {'If-Match': revision, 'Idempotency-Key': this.key(), ...(method === 'PATCH' ? {'Content-Type': 'application/merge-patch+json'} : {})}, body, signal});
+      const key = this.key(); beforeSend?.();
+      const r = await call(this.http, {method, path, headers: {'If-Match': revision, 'Idempotency-Key': key, ...(method === 'PATCH' ? {'Content-Type': 'application/merge-patch+json'} : {})}, body, signal});
       const b = r.body as {queue?: unknown; session?: unknown} | undefined;
       const header = obj(b) && b.queue !== undefined ? b.queue : b;
-      return Object.freeze({queue: parseQueue(header), session: obj(b) && b.session !== undefined ? parseSession(b.session) : undefined});
+      return Object.freeze({queue: parseObservedQueue(header), session: obj(b) && b.session !== undefined ? parseSession(b.session) : undefined});
     } catch (e) {
       if (e instanceof PlaybackApiError && e.status === 412 && e.current !== undefined) {
         let current: QueueHeader | undefined;
-        try { current = parseQueue(e.current); } catch { current = undefined; }
+        try { current = parseObservedQueue(e.current); } catch { current = undefined; }
         throw new PlaybackApiError(412, e.code, 'after_refresh', current);
       }
       throw e;
@@ -149,11 +161,11 @@ export class QueueClient {
   addSegment(id: string, revision: string, placement: Placement, segment: SegmentInput) {
     return this.command(id, revision, 'POST', encodedRoutePath("add_queue_segment", {"id": enc(id)}), {placement, ...segment});
   }
-  remove(id: string, revision: string, entryId: string, signal?: AbortSignal) {
-    return this.command(id, revision, 'DELETE', encodedRoutePath("remove_queue_entry", {"id": enc(id), "entryId": enc(entryId)}), undefined, signal);
+  remove(id: string, revision: string, entryId: string, signal?: AbortSignal, beforeSend?: () => void) {
+    return this.command(id, revision, 'DELETE', encodedRoutePath("remove_queue_entry", {"id": enc(id), "entryId": enc(entryId)}), undefined, signal, beforeSend);
   }
-  move(id: string, revision: string, entryId: string, to: Readonly<{before: string} | {after: string}>, signal?: AbortSignal) {
-    return this.command(id, revision, 'POST', encodedRoutePath("move_queue_entry", {"id": enc(id), "entryId": enc(entryId)}), to, signal);
+  move(id: string, revision: string, entryId: string, to: Readonly<{before: string} | {after: string}>, signal?: AbortSignal, beforeSend?: () => void) {
+    return this.command(id, revision, 'POST', encodedRoutePath("move_queue_entry", {"id": enc(id), "entryId": enc(entryId)}), to, signal, beforeSend);
   }
   /** Repeat and shuffle. Shuffle on makes the current entry position 0 of a new seeded order. */
   update(id: string, revision: string, change: Readonly<{repeat?: 'off' | 'one' | 'all'; shuffle?: Readonly<{on: boolean; seed?: string}>}>, signal?: AbortSignal) {
@@ -175,7 +187,7 @@ export class QueueClient {
     const r = await call(this.http, {method: 'POST', path: encodedRoutePath("commit_queue_next", {"id": enc(id)}), body: {token}, signal});
     const b = r.body as {queue?: unknown; session?: unknown} | undefined;
     if (!obj(b) || b.session === undefined) throw new ContractError('committed next');
-    return Object.freeze({queue: parseQueue(b.queue), session: parseSession(b.session)});
+    return Object.freeze({queue: parseObservedQueue(b.queue), session: parseSession(b.session)});
   }
   /** One save request. A long queue is copied in the background: replaying the same `key` reports
    * progress (NEW-37). `saveQueueAsPlaylist` does the replaying. */

@@ -50,7 +50,7 @@ import {requestInForce, type QualityRequest} from './quality.ts';
 import type {SessionChange, StartContext, StartOptions, StartPreparation, StartTarget} from './sessions.ts';
 import {requireSessionChangeCurrent, sessionChangeCurrent, type SessionChangeContext} from './change-context.ts';
 export type {SessionChangeContext} from './change-context.ts';
-import {QUEUE_WINDOW_MAX, QueueClient, saveQueueAsPlaylist, queueWindowScope, type CreateResult, type QueueAnchor, type QueuePlaylistSave, type SegmentInput} from './queue.ts';
+import {QUEUE_WINDOW_MAX, QueueClient, saveQueueAsPlaylist, queueWindowScope, queueHasObservedCurrent, type CreateResult, type QueueAnchor, type QueuePlaylistSave, type SegmentInput} from './queue.ts';
 import {audioTransitionsEnabled} from '../audio-effects.ts';
 import type {NativeListeningV1Control, NativeListeningV1Event} from '../playback/native-listening.ts';
 import {playableAudio} from './audio-render.ts';
@@ -65,6 +65,22 @@ export type V1Viewer = Readonly<{serverId: string; authority: 'local' | 'hosted'
 /** Captured by the player while this exact output is still selected. */
 export type V1QueuedEntrySelection = Readonly<{queueId: string; expectedRevision: string; entryId: string}>;
 export type V1QueueEditIntent = Readonly<{action: 'remove'; entryId: string} | {action: 'reorder'; entryIds: readonly string[]}>;
+/** A bounded presentation of a real issued positional queue page. */
+export type V1QueueEditPage = Readonly<{start: number; total: number; revision: string; items: readonly QueueEntry[]; nextCursor?: string; canPrevious: boolean}>;
+/** Host-supplied evidence belongs to its original output fence; local session role alone is insufficient. */
+export type V1QueueEditWindowContext = Readonly<{
+  signal: AbortSignal;
+  isCurrent: () => boolean;
+  /** Must verify its original host/output after reading any potentially reentrant getters. */
+  readOutput: () => Readonly<{kind: 'local'; target: V1PlaybackTarget}> | Readonly<{kind: 'remote' | 'unknown'}>;
+}>;
+export type V1QueueEditReader = Readonly<{
+  read: () => Promise<V1QueueEditPage>;
+  next: (page: V1QueueEditPage) => Promise<V1QueueEditPage>;
+  previous: (page: V1QueueEditPage) => Promise<V1QueueEditPage>;
+  edit: (page: V1QueueEditPage, intent: V1QueueEditIntent) => Promise<V1QueueEditPage>;
+  dispose: () => void;
+}>;
 export type V1QueuePolicyIntent = Readonly<{action: 'repeat'; repeat: 'off' | 'one' | 'all'} | {action: 'shuffle'; shuffled: boolean}>;
 export type V1PlaybackTarget = Readonly<{sessionId: string; generation: number; playbackRun: number; itemId: string; versionId: string; queueId: string; entryId: string}>;
 /** Captured caller lifetime; its predicate must remain current across this start's own output change. */
@@ -1099,6 +1115,104 @@ export class V1QueuePlayer implements QueueController {
     check(); ++this.refreshSequence; this.accept(header, window);
   }
 
+  /** A private, bounded positional reader for one original playback and queue opening. */
+  captureEditWindow(expected: V1PlaybackTarget, expectedRevision: string, context: V1QueueEditWindowContext): V1QueueEditReader {
+    if (!context || !context.signal || typeof context.isCurrent !== 'function' || typeof context.readOutput !== 'function') throw new ContractError('queue edit output witness');
+    const target = Object.freeze({...expected}), lifetime = Object.freeze({signal: context.signal, isCurrent: context.isCurrent}), readOutput = context.readOutput;
+    const client = this.client, opening = this.header, initialPlayback = this.playback.getSnapshot();
+    const readerLife = new AbortController(), signal = lifetime.signal ? AbortSignal.any([lifetime.signal, readerLife.signal]) : readerLife.signal;
+    const generation = this.generation, epoch = this.epoch, changes = this.changeSequence;
+    if (!opening?.current || !queueHasObservedCurrent(opening) || opening.id !== target.queueId || opening.revision !== expectedRevision
+      || opening.current.entryId !== target.entryId || !Number.isSafeInteger(opening.current.position)
+      || opening.current.position < 0 || opening.current.position >= opening.total) throw new ContractError('queue edit opening');
+    const anchor = Object.freeze({...opening.current});
+    let revision = expectedRevision, total = opening.total, sequence = this.policySequence, live = true, inFlight = false, started = false;
+    let acceptedRevision: string | undefined, acceptedTotal: number | undefined;
+    const owner = Object.freeze({});
+    const issued = new WeakMap<V1QueueEditPage, Readonly<{owner: object; target: V1PlaybackTarget; anchor: typeof anchor; revision: string; start: number; total: number; rows: readonly QueueEntry[]}>>(), resident: V1QueueEditPage[] = [];
+    let navigation: V1QueueEditPage | undefined; const history: number[] = [];
+    const invalidate = () => {resident.length = 0; navigation = undefined; history.length = 0;};
+    const retire = () => {live = false; invalidate(); readerLife.abort();};
+    const retired = () => new DOMException('Queue edit reader retired', 'AbortError');
+    const stable = () => {
+      const p = this.playback.getSnapshot(), session = this.session, header = this.header;
+      return live && !this.disposed && generation === this.generation && epoch === this.epoch && changes === this.changeSequence
+        && sequence === this.policySequence && !lifetime.signal?.aborted && !this.nativeOwns() && !this.playback.hasNativeOwner()
+        && ['starting', 'ready'].includes(p.phase) && !p.channel && !p.nativeListening && p.intentId === initialPlayback.intentId
+        && p.playbackRun === target.playbackRun && p.itemId === target.itemId && p.session?.id === target.sessionId && p.session.generation === target.generation
+        && session?.role === 'local' && session.id === target.sessionId && session.presentation.generation === target.generation
+        && session.itemId === target.itemId && session.versionId === target.versionId && session.queue?.queueId === target.queueId && session.queue.entryId === target.entryId
+        && header?.id === target.queueId && header.current?.entryId === anchor.entryId && header.current.position === anchor.position
+        && (header.revision === revision && header.total === total || acceptedRevision !== undefined && header.revision === acceptedRevision && header.total === acceptedTotal);
+    };
+    const check = () => {
+      try {
+        if (!stable() || lifetime.signal.aborted || lifetime.isCurrent() !== true || !stable()) throw retired();
+        const output = readOutput();
+        if (!output || output.kind !== 'local' || !output.target || output.target.sessionId !== target.sessionId
+          || output.target.generation !== target.generation || output.target.playbackRun !== target.playbackRun
+          || output.target.itemId !== target.itemId || output.target.versionId !== target.versionId
+          || output.target.queueId !== target.queueId || output.target.entryId !== target.entryId || !stable()
+          || lifetime.signal.aborted || lifetime.isCurrent() !== true || !stable()) throw retired();
+      } catch {retire(); throw retired();}
+    };
+    const headerMatches = (header: QueueHeader, rev: string, count: number) => queueHasObservedCurrent(header) && header.id === target.queueId && header.revision === rev
+      && header.total === count && header.current?.entryId === anchor.entryId && header.current.position === anchor.position;
+    const validate = (page: Awaited<ReturnType<QueueClient['entries']>>, from: number, rev: string, count: number, canPrevious: boolean): V1QueueEditPage => {
+      if (page.revision !== rev || page.total !== count || page.start !== from || !Number.isSafeInteger(from) || from < 0 || from > count
+        || page.items.length > 50 || from + page.items.length > count || new Set(page.items.map(row => row.entryId)).size !== page.items.length
+        || page.items.some((row, i) => queueEntryFacts(row).position !== from + i || queueEntryFacts(row).available === undefined)) throw new ContractError('queue edit page');
+      const end = from + page.items.length;
+      if (end < count ? page.nextCursor !== `from:${end}` || end <= from : page.nextCursor !== undefined) throw new ContractError('queue edit cursor');
+      return Object.freeze({start: from, total: count, revision: rev, items: page.items, canPrevious, ...(page.nextCursor ? {nextCursor: page.nextCursor} : {})});
+    };
+    const own = (page: V1QueueEditPage) => {const receipt = issued.get(page); if (!receipt || receipt.owner !== owner || receipt.target !== target || receipt.anchor !== anchor || receipt.revision !== revision || receipt.start !== page.start || receipt.total !== page.total || receipt.rows !== page.items || !resident.includes(page)) throw new ContractError('queue edit receipt');};
+    const issue = (page: V1QueueEditPage) => {issued.set(page, Object.freeze({owner, target, anchor, revision: page.revision, start: page.start, total: page.total, rows: page.items})); resident.push(page); if (resident.length > 2) resident.shift(); return page;};
+    const exclusive = async <T,>(work: () => Promise<T>): Promise<T> => {
+      try {check(); if (inFlight) throw new ContractError('queue edit reader busy'); inFlight = true;
+        try {return await work();} catch (error) {retire(); throw error;} finally {inFlight = false;}
+      } catch (error) {retire(); throw error;}
+    };
+    const load = async (from: number, direction: 'first' | 'next' | 'previous') => {
+      check(); const page = await client.entries(target.queueId, from, 50, signal); check();
+      const nextHistory = direction === 'first' ? [from] : direction === 'next' ? [...history, from].slice(-2) : history.slice(0, -1);
+      const parsed = validate(page, from, revision, total, nextHistory.length > 1);
+      const header = await client.header(target.queueId, signal); check();
+      if (!headerMatches(header, revision, total)) throw retired();
+      check(); history.splice(0, history.length, ...nextHistory); navigation = issue(parsed); return navigation;
+    };
+    check();
+    return Object.freeze({
+      read: () => exclusive(async () => {if (started) throw new ContractError('queue edit already read'); started = true; return load(anchor.position, 'first');}),
+      next: page => exclusive(async () => {own(page); if (navigation !== page) throw new ContractError('queue edit navigation'); const cursor = page.nextCursor; if (!cursor) throw new ContractError('queue edit end');
+        const from = page.start + page.items.length; if (cursor !== `from:${from}` || !Number.isSafeInteger(from) || from <= page.start || from >= total) throw new ContractError('queue edit cursor'); return load(from, 'next');}),
+      previous: page => exclusive(async () => {own(page); if (navigation !== page || !page.canPrevious || history.length !== 2) throw new ContractError('queue edit navigation'); return load(history[0]!, 'previous');}),
+      edit: (page, intent) => exclusive(async () => {
+        own(page); const plan = queueEditPlan(page.items, anchor.position, intent, true); check(); own(page);
+        const beforeHeader = await client.header(target.queueId, signal); check(); own(page);
+        if (!headerMatches(beforeHeader, revision, total)) throw retired();
+        invalidate(); sequence = ++this.policySequence; ++this.refreshSequence; check();
+        const result = plan.edit.action === 'remove'
+          ? await client.remove(target.queueId, revision, plan.edit.entryId, signal, check)
+          : await client.move(target.queueId, revision, plan.moved!.entryId, plan.moved!.after ? {after: plan.moved!.after} : {before: plan.moved!.before!}, signal, check);
+        acceptedRevision = result.queue.revision; const nextTotal = total - (plan.edit.action === 'remove' ? 1 : 0); acceptedTotal = nextTotal; check();
+        if (result.session || acceptedRevision === revision || !headerMatches(result.queue, acceptedRevision, nextTotal)) throw new ContractError('queue edit result');
+        const raw = await client.entries(target.queueId, page.start, 50, signal); check();
+        const nextPage = validate(raw, page.start, acceptedRevision, nextTotal, false);
+        const header = await client.header(target.queueId, signal); check();
+        if (!headerMatches(header, acceptedRevision, nextTotal)) throw retired();
+        verifyQueueEdit(plan, nextPage.items, true);
+        const window = await client.window(target.queueId, WINDOW_BEFORE, WINDOW_AFTER, signal); check();
+        const finalHeader = await client.header(target.queueId, signal); check();
+        if (!headerMatches(finalHeader, acceptedRevision, nextTotal)) throw retired();
+        queueEditWindow(finalHeader, window, target);
+        check(); this.invalidateAudioPreparation(); check(); ++this.refreshSequence; this.accept(finalHeader, window);
+        revision = acceptedRevision; total = nextTotal; acceptedRevision = undefined; acceptedTotal = undefined; check(); history.push(nextPage.start); navigation = issue(nextPage); return navigation;
+      }),
+      dispose: retire,
+    });
+  }
+
   /** Retained Up Next controls edit only their drawn, loaded upcoming rows.
    * Reorder supplies one contiguous block in its new order, with one real move.
    * The command and readback keep the opening output, revision and caller lifetime. */
@@ -1130,20 +1244,11 @@ export class V1QueuePlayer implements QueueController {
     const check = () => {if (!current()) throw new DOMException('Queue edit retired', 'AbortError');};
     check();
     if (!opening?.current || opening.revision !== expectedRevision) throw new ContractError('queue edit revision');
-    const rows = queueEditWindow(opening, drawn, target);
+    queueEditWindow(opening, drawn, target);
     const before = opening.current.position - drawn[0]!.position, after = drawn[drawn.length - 1]!.position - opening.current.position;
     if (before < 0 || after < 0 || before + after + 1 > QUEUE_WINDOW_MAX) throw new ContractError('queue edit span');
-    const upcoming = (entry: QueueEntry | undefined): entry is QueueEntry => !!entry && queueEntryFacts(entry).available === true && !!entry.itemId && entry.position > opening.current!.position;
-    let moved: ReturnType<typeof movedEntry>, block: readonly QueueEntry[] = [];
-    if (edit.action === 'remove') {
-      if (!upcoming(rows.get(edit.entryId))) throw new ContractError('queue edit entry');
-    } else {
-      const membership = new Set(edit.entryIds);
-      block = drawn.filter(entry => membership.has(entry.entryId));
-      if (block.length !== edit.entryIds.length || block.some((entry, index) => !upcoming(entry) || entry.position !== block[0]!.position + index)) throw new ContractError('queue edit block');
-      moved = movedEntry(block.map(entry => entry.entryId), edit.entryIds);
-      if (!moved) throw new ContractError('queue edit move');
-    }
+    const plan = queueEditPlan(drawn, opening.current.position, edit);
+    const {moved} = plan;
     check(); sequence = ++this.policySequence; ++this.refreshSequence;
     const result = edit.action === 'remove'
       ? await this.client.remove(target.queueId, expectedRevision, edit.entryId, lifetime.signal)
@@ -1157,19 +1262,8 @@ export class V1QueuePlayer implements QueueController {
     const window = await this.client.window(target.queueId, before, after, lifetime.signal); check();
     const header = await this.client.header(target.queueId, lifetime.signal); check();
     if (!accepted(header)) throw new DOMException('Queue edit changed', 'AbortError');
-    const finalRows = queueEditWindow(header, window, target);
-    if (edit.action === 'remove') {
-      if (finalRows.has(edit.entryId)) throw new ContractError('queue edit removal');
-    } else {
-      const order = edit.entryIds;
-      const after = window.filter(entry => entry.position >= block[0]!.position && entry.position <= block[block.length - 1]!.position);
-      if (after.length !== order.length || after.some((entry, index) => {
-        const wanted = order[index]!;
-        if (wanted !== moved!.entryId) return entry.entryId !== wanted;
-        // A source-order move remints this occurrence; adopt only its actual readback ID.
-        return queueEntryFacts(entry).available !== true || entry.itemId !== rows.get(wanted)!.itemId || (entry.entryId !== wanted && rows.has(entry.entryId));
-      })) throw new ContractError('queue edit order');
-    }
+    queueEditWindow(header, window, target);
+    verifyQueueEdit(plan, window);
     check(); this.invalidateAudioPreparation();
     check(); ++this.refreshSequence; this.accept(header, window);
   }
@@ -1487,6 +1581,47 @@ function queueEditWindow(header: QueueHeader, window: readonly QueueEntry[], tar
   const current = rows.get(target.entryId);
   if (!current || queueEntryFacts(current).available !== true || current.itemId !== target.itemId || current.position !== header.current.position) throw new ContractError('queue edit current');
   return rows;
+}
+
+type QueueEditPlan = Readonly<{edit: V1QueueEditIntent; rows: ReadonlyMap<string, QueueEntry>; block: readonly QueueEntry[]; moved?: ReturnType<typeof movedEntry>}>;
+/** Both admission modes validate the same original, consecutive upcoming occurrences. */
+function queueEditPlan(window: readonly QueueEntry[], anchor: number, intent: V1QueueEditIntent, positional = false): QueueEditPlan {
+  let edit: V1QueueEditIntent;
+  if (intent?.action === 'remove') edit = Object.freeze({action: 'remove', entryId: id(intent.entryId, 'queue edit entry')});
+  else if (intent?.action === 'reorder' && Array.isArray(intent.entryIds) && intent.entryIds.length >= 2 && intent.entryIds.length <= QUEUE_WINDOW_MAX) {
+    const entryIds = Object.freeze(intent.entryIds.map(value => id(value, 'queue edit entry')));
+    if (new Set(entryIds).size !== entryIds.length) throw new ContractError('queue edit membership');
+    edit = Object.freeze({action: 'reorder', entryIds});
+  } else throw new ContractError('queue edit');
+  const rows = new Map(window.map(row => [row.entryId, row]));
+  const upcoming = (entry: QueueEntry | undefined): entry is QueueEntry => !!entry && queueEntryFacts(entry).available === true && !!entry.itemId && entry.position > anchor && (!positional || !['pending', 'hidden', 'other'].includes(entry.kind));
+  let moved: ReturnType<typeof movedEntry>, block: readonly QueueEntry[] = [];
+  if (edit.action === 'remove') {if (!upcoming(rows.get(edit.entryId))) throw new ContractError('queue edit entry');}
+  else {
+    const membership = new Set(edit.entryIds); block = window.filter(entry => membership.has(entry.entryId));
+    if (block.length !== edit.entryIds.length || block.some((entry, index) => !upcoming(entry) || entry.position !== block[0]!.position + index)) throw new ContractError('queue edit block');
+    moved = movedEntry(block.map(entry => entry.entryId), edit.entryIds);
+    if (!moved) throw new ContractError('queue edit move');
+  }
+  return {edit, rows, block, moved};
+}
+function verifyQueueEdit(plan: QueueEditPlan, window: readonly QueueEntry[], positional = false): void {
+  const {edit, rows, block, moved} = plan;
+  if (edit.action === 'remove') {
+    if (window.some(entry => entry.entryId === edit.entryId)) throw new ContractError('queue edit removal');
+    if (positional) {const remaining = [...rows.values()].filter(entry => entry.entryId !== edit.entryId);
+      if (remaining.some((entry, index) => window[index]?.entryId !== entry.entryId)) throw new ContractError('queue edit removal order');}
+  }
+  else {
+    const after = window.filter(entry => entry.position >= block[0]!.position && entry.position <= block[block.length - 1]!.position);
+    if (positional && window.some(entry => (entry.position < block[0]!.position || entry.position > block[block.length - 1]!.position)
+      && [...rows.values()].some(original => original.position === entry.position && original.entryId !== entry.entryId))) throw new ContractError('queue edit surrounding rows');
+    if (after.length !== edit.entryIds.length || after.some((entry, index) => {
+      const wanted = edit.entryIds[index]!;
+      if (wanted !== moved!.entryId) return entry.entryId !== wanted;
+      return queueEntryFacts(entry).available !== true || entry.itemId !== rows.get(wanted)!.itemId || (entry.entryId !== wanted && rows.has(entry.entryId));
+    })) throw new ContractError('queue edit order');
+  }
 }
 
 /**

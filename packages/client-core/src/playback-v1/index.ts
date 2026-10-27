@@ -20,7 +20,7 @@ export {AdminSessionsClient, NowPlayingStore, type NowPlayingSnapshot} from './a
 export {localV1Http} from './local-http.ts';
 export {AppleMediaPlayer, type AppleFact, type AppleLease, type ApplePlayerOptions, type AppleVideoEngine} from './apple-media-player.ts';
 export {V1PlaybackApi, toPlaybackSession} from './legacy-bridge.ts';
-export {V1QueuePlayer, movedEntry, playbackV1ForKind, serverSupportsPlaybackV1, type QueueSessionTransport, type V1QueuePlayerOptions, type V1QueueEditIntent, type V1QueuedEntrySelection, type V1Viewer} from './v1-queue-player.ts';
+export {V1QueuePlayer, movedEntry, playbackV1ForKind, serverSupportsPlaybackV1, type QueueSessionTransport, type V1QueuePlayerOptions, type V1PlaybackTarget, type V1QueueEditIntent, type V1QueueEditPage, type V1QueueEditReader, type V1QueueEditWindowContext, type V1QueuedEntrySelection, type V1Viewer} from './v1-queue-player.ts';
 export {AutomaticQuality, audioStreamIndex, audioTrackId, fixedQualities, fixedQuality, fixedQualityOf, heightClass, isQualityChoice, offeredQualities, qualityChoiceOf, qualityChoiceOrder, qualityRequest, type AutomaticOptions, type FixedQuality, type FixedQualityId, type PlaybackChoices, type QualityChoice} from './choices.ts';
 export {sessionEndMessage} from '../session-end.ts';
 export {audioGainLinear, audioSeconds, audioTrimWindow, parseAudioRenderV2, playableAudio, type AudioDecodeCapability, type AudioGain, type AudioRenderMode, type AudioRenderV2, type AudioTrim, type Normalization, type PlayableAudioRender} from './audio-render.ts';
