@@ -291,6 +291,7 @@ func checkpoint(ctx context.Context, db *sql.DB, knownWALPath string) (out Check
 		out.Err = err
 		return out
 	}
+	copyFence, copyIdle := WriteGate().checkpointCopyFence()
 	if err = conn.QueryRowContext(ctx, `PRAGMA wal_checkpoint(PASSIVE)`).Scan(&out.Busy, &out.LogFrames, &out.Checkpoint); err != nil {
 		out.Err = err
 		return out
@@ -332,7 +333,6 @@ func checkpoint(ctx context.Context, db *sql.DB, knownWALPath string) (out Check
 	if !hardPressure && (WriteGate().ActiveOrWaiting() || ForegroundWorkActive()) {
 		return out
 	}
-	gateCtx := ctx
 	if hardPressure && scope != nil {
 		reopen, drained, backoff := scope.pause()
 		if reopen == nil {
@@ -346,10 +346,10 @@ func checkpoint(ctx context.Context, db *sql.DB, knownWALPath string) (out Check
 			out.BackoffMs = scope.pressureBackoff().Milliseconds()
 		}()
 		var drainCancel context.CancelFunc
-		gateCtx, drainCancel = context.WithTimeout(ctx, CheckpointReaderDrainDeadline)
+		drainCtx, drainCancel := context.WithTimeout(ctx, CheckpointReaderDrainDeadline)
 		defer drainCancel()
 		drainStart := time.Now()
-		err = waitReaderDrain(gateCtx, drained)
+		err = waitReaderDrain(drainCtx, drained)
 		out.DrainMs = time.Since(drainStart).Milliseconds()
 		if err != nil {
 			out.Outcome = "reader-timeout"
@@ -358,6 +358,28 @@ func checkpoint(ctx context.Context, db *sql.DB, knownWALPath string) (out Check
 			}
 			return out
 		}
+		// Readers that pinned the first PASSIVE pass have now drained. Copy
+		// their retained tail here, before taking the writer gate, as well.
+		// Reopen new readers first: their admission pause only bounds the
+		// old-reader drain, never the time slow storage needs for copying.
+		scope.resumePressureReaders()
+		copyFence, copyIdle = WriteGate().checkpointCopyFence()
+		if err = conn.QueryRowContext(ctx, `PRAGMA wal_checkpoint(PASSIVE)`).Scan(&out.Busy, &out.LogFrames, &out.Checkpoint); err != nil {
+			out.Err = err
+			return out
+		}
+	}
+	// TRUNCATE must only reset an already copied log. Its busy timeout bounds
+	// lock waiting, not page copying. A partial pass, or a writer in flight at
+	// the start of that pass, cannot establish a safe reset point.
+	if !copyIdle || out.Busy != 0 || out.Checkpoint != out.LogFrames {
+		return out
+	}
+	gateCtx := ctx
+	if hardPressure {
+		var gateCancel context.CancelFunc
+		gateCtx, gateCancel = context.WithTimeout(ctx, CheckpointReaderDrainDeadline)
+		defer gateCancel()
 	}
 	release, err := WriteGate().Acquire(gateCtx, ClassMaintenance)
 	if err != nil {
@@ -365,6 +387,13 @@ func checkpoint(ctx context.Context, db *sql.DB, knownWALPath string) (out Check
 		return out
 	}
 	defer release()
+	// A writer may have committed between PASSIVE and this acquisition. Even
+	// one new batch means TRUNCATE could copy a new tail under the gate. Let
+	// the next PASSIVE pass copy it instead. Count acquisitions, not delayed
+	// commit notifications: this covers autocommit, rollback and in-flight work.
+	if WriteGate().acquired.Load() != copyFence+1 {
+		return out
+	}
 	out.Mode = "truncate"
 	if err = conn.QueryRowContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&out.Busy, &out.LogFrames, &out.Checkpoint); err != nil {
 		out.Err = err

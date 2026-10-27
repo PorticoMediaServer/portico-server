@@ -31,13 +31,14 @@ func checkpointReaderScope(conn *sql.Conn) *readerScope {
 func (s *readerScope) pause() (reopen func(bool), drained <-chan struct{}, backoff time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.resume != nil {
+	if s.pressure != nil {
 		return nil, nil, CheckpointReaderDrainDeadline
 	}
 	if remaining := time.Until(s.nextPressure); remaining > 0 {
 		return nil, nil, remaining
 	}
 	s.resume = make(chan struct{})
+	s.pressure = s.resume
 	s.drained = make(chan struct{})
 	drained = s.drained
 	if len(s.active) == 0 {
@@ -48,7 +49,7 @@ func (s *readerScope) pause() (reopen func(bool), drained <-chan struct{}, backo
 	return func(success bool) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
-		if s.resume != resume {
+		if s.pressure != resume {
 			return
 		}
 		if success {
@@ -58,9 +59,24 @@ func (s *readerScope) pause() (reopen func(bool), drained <-chan struct{}, backo
 			s.pressureFailures = min(4, s.pressureFailures+1)
 			s.nextPressure = time.Now().Add(time.Second << (s.pressureFailures - 1))
 		}
+		if s.resume != nil {
+			close(s.resume)
+		}
+		s.resume, s.pressure, s.drained = nil, nil, nil
+	}, drained, 0
+}
+
+// Reopen requests as soon as the retained snapshots have drained. Copying the
+// released tail may take time on slow storage; neither readers nor writers
+// should wait for that I/O. The pressure owner remains reserved until its
+// deferred finish records the reset outcome and backoff.
+func (s *readerScope) resumePressureReaders() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.resume != nil {
 		close(s.resume)
 		s.resume, s.drained = nil, nil
-	}, drained, 0
+	}
 }
 
 func (s *readerScope) pressureBackoff() time.Duration {

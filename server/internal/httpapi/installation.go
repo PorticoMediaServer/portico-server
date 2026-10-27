@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"bytes"
-	"context"
 	"crypto/rand"
 	"io"
 	"io/fs"
@@ -40,14 +39,13 @@ func (d Dependencies) installationRoutes(mux *http.ServeMux) {
 		write(w, 200, map[string]bool{"alive": true})
 	})
 	d.httpHandle(mux, "GET /health/ready", func(w http.ResponseWriter, r *http.Request) {
-		ctx, cancel := context.WithTimeout(r.Context(), time.Second)
-		defer cancel()
+		result := d.readiness(r.Context())
 		w.Header().Set("Cache-Control", "no-store")
-		if d.DB == nil || d.DB.PingContext(ctx) != nil {
-			write(w, 503, map[string]bool{"ready": false})
+		if !result.Ready {
+			write(w, http.StatusServiceUnavailable, map[string]bool{"ready": false})
 			return
 		}
-		write(w, 200, map[string]bool{"ready": true})
+		write(w, http.StatusOK, map[string]bool{"ready": true})
 	})
 	// A browser draws styled subtitles itself and has no font with Chinese, Japanese and Korean
 	// letters. It fetches the one burned-in subtitles use, only when a subtitle needs it.

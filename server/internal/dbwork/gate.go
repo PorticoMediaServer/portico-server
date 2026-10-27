@@ -396,6 +396,16 @@ func (g *Gate) ResetPeak() {
 	g.mu.Unlock()
 }
 
+// checkpointCopyFence captures whether PASSIVE starts with no writer in
+// flight, and the acquisition generation a reset must still follow directly.
+// The active bit matters: an already acquired writer can commit during copying
+// without changing the acquisition counter again.
+func (g *Gate) checkpointCopyFence() (uint64, bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.acquired.Load(), !g.active
+}
+
 // traceHolders reports whether the gate records who holds it. Capturing a stack
 // on every acquisition would be a measurable cost on the write path, so it is
 // enabled only where the answer is worth it: tests.

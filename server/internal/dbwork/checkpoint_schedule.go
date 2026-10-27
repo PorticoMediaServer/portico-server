@@ -14,10 +14,9 @@ const (
 	CheckpointPollInterval    = time.Second
 	CheckpointRegularInterval = 30 * time.Second
 	// CheckpointCopyInterval is how often new commits are copied into the
-	// database by a PASSIVE checkpoint on a read connection. The writer's own
-	// automatic checkpoint (writerWALAutocheckpoint) is then only a backstop:
-	// copying pages inside a commit holds the write gate, and at the old
-	// 1,000-page threshold a rebuild's commits held it for up to seconds.
+	// database by a PASSIVE checkpoint on a read connection. Writer automatic
+	// checkpoints are disabled: page copying must not extend a committing
+	// scan's write-gate hold by the time it takes to copy the whole backlog.
 	CheckpointCopyInterval = 2 * time.Second
 	checkpointPathDeadline = 5 * time.Second
 )

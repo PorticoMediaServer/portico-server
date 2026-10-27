@@ -272,28 +272,18 @@ func (d Dependencies) concurrencyRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, map[string]any{"repair": report, "incomplete": false})
 	})
-	// Readiness is deliberately unauthenticated and free of database work: a
+	// Readiness is deliberately unauthenticated and carries no internals: a
 	// supervisor has to be able to ask "are you up?" of a server that is still
-	// opening its database, and the answer must not itself need the database.
+	// opening its database. The shared writer probe is the same one /health/ready
+	// uses, so a healthy read pool cannot hide a blocked writer.
 	d.httpHandle(mux, "GET /v1/readiness", func(w http.ResponseWriter, r *http.Request) {
-		ready := d.DB != nil
-		status := "ready"
-		if !ready {
-			status = "starting"
-		}
-		if d.Watchdog != nil {
-			report := d.Watchdog.Report()
-			if report.State == dbwork.CorruptState {
-				ready, status = false, "corrupt"
-			} else if report.State == dbwork.DegradedState {
-				status = "degraded"
-			}
-		}
-		if !ready {
+		result := d.readiness(r.Context())
+		w.Header().Set("Cache-Control", "no-store")
+		if !result.Ready {
 			w.Header().Set("Retry-After", "2")
-			write(w, 503, map[string]any{"ready": false, "status": status})
+			write(w, http.StatusServiceUnavailable, map[string]any{"ready": false, "status": result.Status})
 			return
 		}
-		write(w, 200, map[string]any{"ready": true, "status": status})
+		write(w, http.StatusOK, map[string]any{"ready": true, "status": result.Status})
 	})
 }

@@ -132,12 +132,11 @@ func sqliteFileURI(path string) string {
 	return "file:" + (&url.URL{Path: filepath.ToSlash(path)}).EscapedPath()
 }
 
-// writerWALAutocheckpoint is the writer connection's automatic checkpoint, in
-// pages (about 64 MiB): a backstop only. The maintenance schedule copies new
-// commits every CheckpointCopyInterval on a read connection, outside the
-// write gate; an automatic checkpoint runs inside the committing writer's
-// transaction and holds the gate while it copies.
-const writerWALAutocheckpoint = CheckpointTruncateFrames
+// Writer commits only append the WAL. An automatic checkpoint runs before
+// Commit returns, so even a small scan transaction could copy the entire
+// 64 MiB backlog while holding the gate needed by sign-in. The maintenance
+// controller owns copying and pressure resets outside that commit path.
+const writerWALAutocheckpoint = 0
 
 // WriterDSN is DSN for the one writer connection.
 func (p Policy) WriterDSN(path string) (string, error) {

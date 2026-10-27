@@ -80,13 +80,6 @@ func TestCheckpointPinnedReaderBoundsGateRestoresPolicyAndRecovers(t *testing.T)
 	done := make(chan CheckpointResult, 1)
 	start := time.Now()
 	go func() { done <- Checkpoint(ctx, db) }()
-	deadline := time.Now().Add(time.Second)
-	for !WriteGate().Stats().ByClass[ClassMaintenance.String()].Active {
-		if time.Now().After(deadline) {
-			t.Fatal("checkpoint never held maintenance gate")
-		}
-		time.Sleep(time.Millisecond)
-	}
 	fenceCtx, cancelFence := context.WithTimeout(ctx, 500*time.Millisecond)
 	free, err := WriteGate().Acquire(fenceCtx, ClassSecurityFence)
 	cancelFence()
@@ -95,10 +88,13 @@ func TestCheckpointPinnedReaderBoundsGateRestoresPolicyAndRecovers(t *testing.T)
 	}
 	free()
 	result := <-done
-	if result.Err != nil || result.Mode != "truncate" || result.Busy != 1 || time.Since(start) > 500*time.Millisecond {
+	// A pinned tail cannot be safely reset. PASSIVE must yield without taking
+	// the gate, rather than attempting TRUNCATE and hoping its busy timeout
+	// also bounds the page copying that follows a reader releasing its lock.
+	if result.Err != nil || result.Mode != "passive" || result.Checkpoint >= result.LogFrames || time.Since(start) > 500*time.Millisecond {
 		t.Fatalf("blocked checkpoint was not bounded: %+v duration%s", result, time.Since(start))
 	}
-	if hold := WriteGate().Stats().ByClass[ClassMaintenance.String()].MaxHeldMilli; hold > 300 {
+	if hold := WriteGate().Stats().ByClass[ClassMaintenance.String()].MaxHeldMilli; hold != 0 {
 		t.Fatalf("maintenance held gate for%dms", hold)
 	}
 	assertBusy := func() {

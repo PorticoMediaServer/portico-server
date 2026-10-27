@@ -34,6 +34,7 @@ type readerScope struct {
 	connections              int // guarded by readerScopes.mu
 	active                   map[*readerLease]struct{}
 	resume                   chan struct{}
+	pressure                 chan struct{} // owner survives reopening readers for out-of-gate copying
 	drained                  chan struct{}
 	waiting                  int
 	waits                    uint64
