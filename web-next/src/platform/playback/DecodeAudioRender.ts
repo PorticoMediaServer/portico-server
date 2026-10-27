@@ -40,6 +40,15 @@ type ReadyStart = {revision: number; primary: Playing; graph: MixGraph; intent: 
 type BufferHold = {revision: number; context: AudioContext; graph: MixGraph; primary: Playing; incoming?: Linked; retiring?: Playing; key: string; intent: number; seek: string; token?: string; suspended: boolean; rebased: boolean; resuming: boolean; suspending: boolean};
 
 const sessionKey = (s: PlaybackSnapshot['session']) => (s ? `${s.id}:${s.generation}` : '');
+/** The control facts a synchronous notification is not allowed to replace mid-call. */
+const sameControl = (a: PlaybackSnapshot, b: PlaybackSnapshot) =>
+  a.intent === b.intent && a.intentId === b.intentId && a.phase === b.phase &&
+  a.session === b.session && sessionKey(a.session) === sessionKey(b.session) &&
+  a.pendingSeek === b.pendingSeek && a.seekRevision === b.seekRevision &&
+  a.seekError === b.seekError && a.failedSeek === b.failedSeek &&
+  a.audioEffects.rendering === b.audioEffects.rendering && a.audioEffects.rate === b.audioEffects.rate &&
+  a.audioEffects.prepared === b.audioEffects.prepared && a.audioEffects.committed === b.audioEffects.committed;
+
 
 export type SameAlbum = (currentItemId: string | undefined, nextItemId: string) => boolean;
 
@@ -79,6 +88,7 @@ export class DecodeAudioRender {
   private readonly listening: ListeningEffectsPort;
   private graph?: MixGraph;
   private readyStart?: ReadyStart;
+  private resetting?: Readonly<{revision: number; control: PlaybackSnapshot}>;
   private hold?: BufferHold;
   private suspension?: Promise<void>;
   private resumePending?: object;
@@ -282,20 +292,26 @@ export class DecodeAudioRender {
 
   /** A candidate cancelled before its deck opened has no deck yet; its reader still closes. */
   private closePlaying(p?: Playing | Candidate) { if (!p) return; (p.deck as Deck | undefined)?.close(); p.reader.close(); }
-  private reset() {
-    ++this.revision; ++this.resumeAttempt;
-    this.resumePending = undefined; this.hold = undefined; this.readyStart = undefined;
-    this.graph?.close(); this.graph = undefined;
-    this.askedForGesture = false;
-    for (const p of [this.primary, this.candidate, this.incoming, this.retiring]) this.closePlaying(p);
+  private reset(control = this.service.getSnapshot()) {
+    const owner = {revision: ++this.revision, control}, graph = this.graph;
+    const decks = [...new Set([this.primary, this.candidate, this.incoming, this.retiring])];
+    this.resetting = owner; ++this.resumeAttempt;
+    // Detach every field before callbacks. Cleanup below owns only the captured old resources.
+    this.resumePending = undefined; this.hold = undefined; this.readyStart = undefined; this.graph = undefined;
     this.primary = this.candidate = this.incoming = this.retiring = undefined;
-    this.committing = undefined;
-    this.starting = false;
-    this.reportProcessing();
+    this.askedForGesture = false; this.committing = undefined; this.starting = false;
+    try {
+      graph?.close();
+      for (const deck of decks) this.closePlaying(deck);
+      if (this.revision === owner.revision) this.reportProcessing();
+    } finally { if (this.resetting === owner) this.resetting = undefined; }
   }
 
   apply(s: PlaybackSnapshot) {
     if (this.disposed || !this.renderWitness(s)()) return;
+    // A reset's own processing notification is not a fresh start request. A changed control
+    // state (pause/replacement) still enters independently and owns its own reset epoch.
+    if (this.resetting && sameControl(s, this.resetting.control)) return;
     this.snapshot = s;
     if (!s.session || !s.audioEffects.rendering || s.phase === 'error' || s.phase === 'ended' || s.failedSeek) { this.reset(); return; }
     const plan = s.session.audio;
@@ -307,10 +323,10 @@ export class DecodeAudioRender {
     if (this.primary?.key !== key || (seek && seekKey !== this.seekKey) || rateChanged) {
       const position = seek?.positionSeconds ?? (this.primary?.key === key ? this.position() : s.positionSeconds);
       const resetRevision = this.revision + 1;
-      this.reset();
-      if (this.revision !== resetRevision || !this.renderWitness(s)()) return;
+      this.reset(s);
+      if (this.revision !== resetRevision || this.primary || this.candidate || this.incoming || this.retiring || this.graph || this.starting || !this.renderWitness(s)()) return;
       this.seekKey = seekKey; this.lastRate = s.audioEffects.rate;
-      void this.start(plan, key, Math.max(0, Math.min(plan.durationFrames - 1, Math.round(position * plan.sampleRate))), s);
+      void this.start(plan, key, Math.max(0, Math.min(plan.durationFrames - 1, Math.round(position * plan.sampleRate))), s, resetRevision);
       return;
     }
     const current = this.renderWitness(s);
@@ -339,8 +355,9 @@ export class DecodeAudioRender {
     } else this.carrier.play();
   }
 
-  private async start(plan: PlayableAudioRender, key: string, fromFrame: number, original: PlaybackSnapshot) {
-    const revision = this.revision;
+  private async start(plan: PlayableAudioRender, key: string, fromFrame: number, original: PlaybackSnapshot, revision: number) {
+    // Never capture a successor's epoch on behalf of the old call, even before reader creation.
+    if (this.disposed || this.revision !== revision || this.primary || this.graph || this.starting || !this.renderWitness(original)()) return;
     this.starting = true;
     const reader = this.reader(plan, false);
     try {
@@ -505,12 +522,7 @@ export class DecodeAudioRender {
       const current = this.service.getSnapshot();
       return !this.disposed && this.primary === primary && this.incoming === incoming && this.retiring === retiring &&
         this.graph === graph && this.context === context && this.revision === revision && this.seekKey === seek &&
-        current.intent === expected.intent && current.intentId === expected.intentId && current.phase === expected.phase &&
-        current.session === expected.session && sessionKey(current.session) === sessionKey(expected.session) &&
-        current.pendingSeek === expected.pendingSeek && current.seekRevision === expected.seekRevision &&
-        current.seekError === expected.seekError && current.failedSeek === expected.failedSeek &&
-        current.audioEffects.rendering === expected.audioEffects.rendering && current.audioEffects.rate === expected.audioEffects.rate &&
-        current.audioEffects.prepared === expected.audioEffects.prepared && current.audioEffects.committed === expected.audioEffects.committed;
+        sameControl(current, expected);
     };
   }
 
