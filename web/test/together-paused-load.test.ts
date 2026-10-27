@@ -52,3 +52,49 @@ test('the web follower passes the group\'s paused state into the load', () => {
   assert.match(source, /load: \(itemId, positionSeconds, playing\) => \{/);
   assert.match(source, /if \(!playing\) holdPaused\(live\.current\.service, itemId\);/);
 });
+
+test('a hold released while subscribing never reads or pauses the start that follows', () => {
+  const listeners = new Set<() => void>();
+  let reads = 0, pauses = 0;
+  let state = {itemId: 'film', phase: 'ready', intent: 'paused'};
+  holdPaused({
+    getSnapshot: () => { reads++; return state; },
+    subscribe: (listener: () => void) => {
+      // The store answers its current state during subscribe: ready ends the hold at once.
+      listener();
+      // A new start arrives before subscribe returns. That hold is retired and must not see it.
+      state = {itemId: 'film', phase: 'starting', intent: 'playing'};
+      listeners.add(listener);
+      return () => { listeners.delete(listener); };
+    },
+    pause: () => { pauses++; state = {...state, intent: 'paused'}; },
+  }, 'film');
+  assert.equal(reads, 1, 'the retired hold reads only the snapshot that ended it');
+  assert.equal(pauses, 0, 'the retired hold does not pause the later start');
+  assert.equal(listeners.size, 0, 'the subscription it did make was released');
+});
+
+test('a hold that ends through a throwing unsubscribe still clears its deadline', () => {
+  const realSetTimeout = globalThis.setTimeout, realClearTimeout = globalThis.clearTimeout;
+  const timers = new Set<object>();
+  const cleared: object[] = [];
+  const listeners = new Set<() => void>();
+  let state = {itemId: 'film', phase: 'idle', intent: 'paused'};
+  try {
+    (globalThis as any).setTimeout = (run: () => void, ms: number) => { const timer = {run, ms}; timers.add(timer); return timer; };
+    (globalThis as any).clearTimeout = (timer: object) => { if (timers.delete(timer)) cleared.push(timer); };
+    holdPaused({
+      getSnapshot: () => state,
+      subscribe: (listener: () => void) => { listeners.add(listener); return () => { throw new Error('unsubscribe failed'); }; },
+      pause: () => { state = {...state, intent: 'paused'}; },
+    }, 'film');
+    assert.equal(timers.size, 1, 'the live hold armed its deadline');
+    state = {itemId: 'film', phase: 'ready', intent: 'paused'};
+    assert.throws(() => { for (const listener of [...listeners]) listener(); }, /unsubscribe failed/);
+    assert.equal(timers.size, 0, 'the deadline is cleared even though unsubscribe threw');
+    assert.equal(cleared.length, 1);
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+    globalThis.clearTimeout = realClearTimeout;
+  }
+});
