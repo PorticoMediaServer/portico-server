@@ -177,6 +177,7 @@ test('pump reports a decoder failure without starting another read', async () =>
   const deck = new Deck(f.ctx, {} as AudioNode, source, {frames: 1000, gain: 1});
   await deck.pump(1);
   assert.equal(deck.failure, failure);
+  await deck.pump(30);
   assert.equal(reads, 1);
   deck.close();
 });

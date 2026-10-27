@@ -1,7 +1,8 @@
 import type {PlaybackService, PlaybackSnapshot} from '@core/index';
 import {audioGainLinear, parseSeekIndex, playableAudio, type AudioRenderV2, type PlayableAudioRender, type SeekIndex} from '@core/playback-v1/audio-render.ts';
 import {RangeReader, audioByteCache, type ByteCache} from './audio/bytes';
-import {Deck, linkDecks, type PcmSource} from './audio/engine';
+import {Deck, linkDecks, edgeFrames, type PcmSource} from './audio/engine';
+import {MixGraph} from './audio/mix-graph';
 import {ConvertedSource} from './audio/converted';
 import {TrackStream} from './audio/track';
 import {Stretch} from './audio/stretch';
@@ -35,6 +36,7 @@ type Feed = {unlock(): void; close(): void; prefetchAll(): Promise<void>; open(f
 type Playing = {deck: Deck; plan: PlayableAudioRender; key: string; fromFrame: number; reader: Feed; token?: string; speed: number};
 type Candidate = {deck: Deck; plan: PlayableAudioRender; token: string; reader: Feed; ready: boolean; speed: number};
 type Linked = Candidate & {edge: number; fade: number};
+type BufferHold = {revision: number; context: AudioContext; graph: MixGraph; primary: Playing; incoming?: Linked; retiring?: Playing; key: string; seek: string; token?: string; suspended: boolean; rebased: boolean; resuming: boolean; suspending: boolean};
 
 const sessionKey = (s: PlaybackSnapshot['session']) => (s ? `${s.id}:${s.generation}` : '');
 
@@ -74,6 +76,69 @@ export class DecodeAudioRender {
   private processingReport = '';
   private resumeAttempt = 0;
   private readonly listening: ListeningEffectsPort;
+  private graph?: MixGraph;
+  private hold?: BufferHold;
+  private suspension?: Promise<void>;
+  private resumePending?: object;
+
+  private contextFrame(seconds = this.context.currentTime) { return Math.floor(seconds * this.context.sampleRate); }
+  private logicalFrame(seconds = this.context.currentTime) { return this.graph?.clock.at(this.contextFrame(seconds)) ?? 0; }
+  private decks(): Deck[] { return [...new Set([this.primary?.deck, this.incoming?.deck, this.retiring?.deck].filter((d): d is Deck => !!d))]; }
+  private suspendContext(): Promise<void> {
+    if (this.suspension) return this.suspension;
+    const run = this.context.suspend();
+    this.suspension = run;
+    void run.then(() => { if (this.suspension === run) this.suspension = undefined; }, () => { if (this.suspension === run) this.suspension = undefined; });
+    return run;
+  }
+  private holdCurrent(h: BufferHold): boolean {
+    const s = this.service.getSnapshot();
+    return !this.disposed && this.hold === h && this.revision === h.revision && this.context === h.context && this.graph === h.graph &&
+      this.primary === h.primary && this.incoming === h.incoming && this.retiring === h.retiring && this.seekKey === h.seek &&
+      sessionKey(s.session) === h.key && (!h.token || s.audioEffects.committed?.token === h.token) && !s.pendingSeek && s.phase !== 'error' && s.phase !== 'ended';
+  }
+  private beginHold(): void {
+    if (this.hold || !this.graph || !this.primary) return;
+    const s = this.service.getSnapshot();
+    const h: BufferHold = {revision: this.revision, context: this.context, graph: this.graph, primary: this.primary, incoming: this.incoming, retiring: this.retiring,
+      key: sessionKey(s.session), seek: this.seekKey, token: this.incoming?.token, suspended: false, rebased: false, resuming: false, suspending: false};
+    this.hold = h; ++this.resumeAttempt;
+    this.carrier.pause();
+    this.service.audioRenderStatus?.(0, true);
+    this.suspendHold(h);
+  }
+  private suspendHold(h: BufferHold): void {
+    if (!this.holdCurrent(h) || h.suspending) return;
+    h.suspending = true; h.suspended = false; h.rebased = false; h.resuming = false;
+    ++this.resumeAttempt;
+    void this.suspendContext().then(() => {
+      h.suspending = false;
+      if (!this.holdCurrent(h) || this.context.state !== 'suspended') return;
+      h.suspended = true;
+      // This uses the OLD epoch's clamped final suspension frame. No decoded frame is replayed.
+      h.graph.rebase(this.contextFrame(), this.contextFrame() + Math.max(1, Math.round(LEAD * this.context.sampleRate)));
+      h.rebased = true;
+      this.recoverHold(h);
+    }, () => {
+      h.suspending = false;
+      if (this.holdCurrent(h)) this.service.audioRenderFailed('audio_render_failed');
+    });
+  }
+  private recoverHold(h: BufferHold): void {
+    if (!this.holdCurrent(h) || !h.suspended || !h.rebased || h.resuming || this.context.state !== 'suspended') return;
+    const s = this.service.getSnapshot();
+    if (s.intent !== 'playing' || s.seekError) return;
+    const decks = this.decks(), held = h.graph.clock.frontier;
+    const end = Math.max(...decks.map(d => d.endFrame ?? held));
+    const required = Math.min(end, held + Math.ceil(START_SECONDS * this.context.sampleRate));
+    const ready = h.graph.preview(required).frontier;
+    if (ready < required || (required === end && decks.some(d => !d.sourceComplete))) return;
+    // The context has stayed suspended while decoding. One common fresh anchor, all owned gains.
+    for (const deck of decks) deck.rebuildAutomation(held);
+    h.graph.admit(Math.min(end, held + Math.round(AHEAD_SECONDS * this.context.sampleRate)));
+    h.resuming = true;
+    if (!this.resumeContext(h)) h.resuming = false;
+  }
 
   constructor(service: PlaybackService, url: (path: string) => string, element: HTMLVideoElement, sameAlbum: SameAlbum = () => false, byteCache: ByteCache = audioByteCache, private readonly recordDiagnostic?: AppLogRecorder) {
     this.service = service; this.url = url; this.element = element; this.sameAlbum = sameAlbum; this.byteCache = byteCache;
@@ -109,7 +174,7 @@ export class DecodeAudioRender {
    * background, and does not start it again by itself. While the listener still means it to
    * play, it is started again once; a browser that refuses changes nothing and is not asked twice. */
   private interrupted = () => {
-    if (this.disposed || this.starting || this.context.state === 'running' || this.context.state === 'closed') return;
+    if (this.disposed || this.hold || this.starting || this.context.state === 'running' || this.context.state === 'closed') return;
     if (document.visibilityState !== 'visible' || this.service.getSnapshot().intent !== 'playing' || this.service.getSnapshot().seekError) return;
     this.resumeContext();
   };
@@ -117,7 +182,14 @@ export class DecodeAudioRender {
    * again the schedule is brought up to date. An interruption is also answered as above. */
   private contextChanged = () => {
     if (this.disposed) return;
-    if (this.context.state === 'running') this.tick();
+    if (this.context.state === 'running') {
+      const s = this.service.getSnapshot();
+      // A delayed resume cannot bypass the current user's pause or a newer buffering ticket.
+      if (s.intent !== 'playing' || s.seekError || this.hold && !this.hold.resuming) {
+        if (this.hold) this.suspendHold(this.hold); else void this.suspendContext().catch(() => {}); return;
+      }
+      this.tick();
+    }
     else this.service.audioRenderStatus?.(0, false);
     this.interrupted();
   };
@@ -131,22 +203,35 @@ export class DecodeAudioRender {
     });
   };
 
-  private resumeContext(): void {
+  private resumeContext(hold?: BufferHold): boolean {
+    if (this.hold && this.hold !== hold || hold && !this.holdCurrent(hold) || this.resumePending) return false;
+    const context = this.context, graph = this.graph, pending = {};
+    this.resumePending = pending;
     const attempt = ++this.resumeAttempt, revision = this.revision;
     const before = this.service.getSnapshot(), key = sessionKey(before.session);
     const refused = () => {
       const current = this.service.getSnapshot();
       if (this.disposed || attempt !== this.resumeAttempt || revision !== this.revision || current.intentId !== before.intentId || sessionKey(current.session) !== key || current.intent !== 'playing') return;
+      if (hold && this.holdCurrent(hold)) hold.resuming = false;
       this.service.pause();
       this.listening.listeningNotice('audio_autoplay_blocked');
       this.recordDiagnostic?.('audio_autoplay_blocked', 'warn');
     };
-    void this.context.resume().then(() => { if (this.context.state !== 'running') refused(); }, refused);
+    void context.resume().then(() => {
+      if (this.resumePending === pending) this.resumePending = undefined;
+      const current = this.service.getSnapshot();
+      if (this.disposed || context !== this.context || graph !== this.graph || revision !== this.revision || attempt !== this.resumeAttempt || sessionKey(current.session) !== key) return;
+      if (current.intent !== 'playing' || current.seekError) { if (hold && this.holdCurrent(hold)) this.suspendHold(hold); else void this.suspendContext().catch(() => {}); return; }
+      if (context.state !== 'running') { refused(); return; }
+      if (hold && this.holdCurrent(hold)) this.hold = undefined;
+      this.tick();
+    }, () => { if (this.resumePending === pending) this.resumePending = undefined; refused(); });
     // AudioContext.resume may remain pending under autoplay policy. An actual media-element
     // NotAllowedError supplies refusal evidence; a running direct path needs no notice.
     this.carrier.play(error => {
       if (error && typeof error === 'object' && 'name' in error && error.name === 'NotAllowedError' && this.context.state !== 'running') refused();
     });
+    return true;
   }
 
   private reader(plan: PlayableAudioRender, prepared: boolean): Feed {
@@ -189,7 +274,9 @@ export class DecodeAudioRender {
   /** A candidate cancelled before its deck opened has no deck yet; its reader still closes. */
   private closePlaying(p?: Playing | Candidate) { if (!p) return; (p.deck as Deck | undefined)?.close(); p.reader.close(); }
   private reset() {
-    ++this.revision;
+    ++this.revision; ++this.resumeAttempt;
+    this.resumePending = undefined; this.hold = undefined;
+    this.graph?.close(); this.graph = undefined;
     this.askedForGesture = false;
     for (const p of [this.primary, this.candidate, this.incoming, this.retiring]) this.closePlaying(p);
     this.primary = this.candidate = this.incoming = this.retiring = undefined;
@@ -223,7 +310,8 @@ export class DecodeAudioRender {
   }
 
   private transport(s: PlaybackSnapshot) {
-    if (s.intent === 'paused' || s.seekError) { this.carrier.pause(); void this.context.suspend(); return; }
+    if (s.intent === 'paused' || s.seekError) { this.carrier.pause(); if (this.hold && (!this.hold.suspended || this.hold.resuming)) this.suspendHold(this.hold); else void this.suspendContext().catch(() => {}); return; }
+    if (this.hold) { this.recoverHold(this.hold); return; }
     if ((this.context.state as string === 'suspended' || this.context.state as string === 'interrupted') && !this.starting && !this.askedForGesture) {
       // An autoplay denial needs a gesture: say so rather than failing.
       this.askedForGesture = true;
@@ -244,7 +332,13 @@ export class DecodeAudioRender {
       await deck.pump(START_SECONDS);
       if (revision !== this.revision || this.disposed) return;
       if (deck.failure) throw deck.failure;
-      deck.start(Math.ceil((this.context.currentTime + LEAD) * this.context.sampleRate));
+      // An older requested suspension must settle before a successor installs any source nodes.
+      if (this.suspension) await this.suspension;
+      if (revision !== this.revision || this.disposed) return;
+      const graph = new MixGraph(this.context, this.contextFrame() + Math.max(1, Math.round(LEAD * this.context.sampleRate)));
+      this.graph = graph;
+      deck.attachGraph(graph); deck.start(0);
+      graph.admit(Math.round(AHEAD_SECONDS * this.context.sampleRate));
       this.starting = false;
       this.reportProcessing();
       this.service.ready(intent);
@@ -281,7 +375,9 @@ export class DecodeAudioRender {
           if (this.candidate !== pending || revision !== this.revision) { deck.close(); return; }
           deck.continueFrom(previous.deck);
         }
-        await deck.pump(PREPARE_SECONDS);
+        const overlap = Math.min(12, Math.max(0, s.audioEffects.settings.crossfadeSeconds));
+        // A full 12-second fade cannot be admitted from a ten-second candidate.
+        await deck.pump(Math.max(PREPARE_SECONDS, overlap));
         if (this.candidate !== pending) return;
         if (deck.failure) throw deck.failure;
         pending.ready = true;
@@ -294,14 +390,23 @@ export class DecodeAudioRender {
 
   private committed(s: PlaybackSnapshot) {
     const committed = s.audioEffects.committed, c = this.candidate, p = this.primary;
-    if (!committed || !c || committed.token !== c.token || !c.ready || this.incoming || !p || p.deck.endFrame === undefined) return;
+    if (this.hold || !this.graph || !committed || !c || committed.token !== c.token || !c.ready || this.incoming || !p || p.deck.endFrame === undefined) return;
     if (committed.session.audio?.id !== c.plan.id) { this.service.audioRenderFailed('audio_render_failed'); return; }
     // The whole next file may now be fetched; bring it into the cache before its edge.
     c.reader.unlock();
     void c.reader.prefetchAll();
     const sameAlbum = this.sameAlbum(s.itemId, committed.itemId);
-    const nowFrame = Math.ceil((this.context.currentTime + LEAD) * this.context.sampleRate);
-    const edge = linkDecks(this.context, p.deck, c.deck, {crossfadeSeconds: s.audioEffects.settings.crossfadeSeconds, sameAlbum, earliest: nowFrame});
+    const graph = this.graph;
+    const contextNow = this.contextFrame();
+    // Never link at a past physical time, or change an interval already heard.
+    const earliest = graph.clock.at(contextNow + Math.max(1, Math.round(LEAD * this.context.sampleRate)));
+    const planned = edgeFrames({endFrame: p.deck.endFrame, outFrames: p.deck.outFrames}, c.deck,
+      {crossfadeSeconds: Math.min(12, s.audioEffects.settings.crossfadeSeconds), sameAlbum, rate: this.context.sampleRate});
+    const start = Math.max(planned.start, earliest);
+    if (start < graph.clock.frontier && c.deck.decoded < Math.min(c.deck.outFrames, graph.clock.frontier - start)) { void c.deck.pump(AHEAD_SECONDS); return; }
+    c.deck.attachGraph(graph);
+    const edge = linkDecks(this.context, p.deck, c.deck, {crossfadeSeconds: Math.min(12, s.audioEffects.settings.crossfadeSeconds), sameAlbum, earliest});
+    graph.admit(this.logicalFrame() + Math.round(AHEAD_SECONDS * this.context.sampleRate));
     if (edge.late) listeningDiagnostic('audio_edge_late', undefined, this.recordDiagnostic);
     this.incoming = {...c, edge: edge.start, fade: edge.fade};
     this.candidate = undefined;
@@ -334,14 +439,30 @@ export class DecodeAudioRender {
 
   private tick() {
     if (this.disposed) return;
-    const s = this.service.getSnapshot(), p = this.primary;
+    const s = this.service.getSnapshot(), p = this.primary, graph = this.graph;
     this.reportProcessing();
-    if (!p || s.phase === 'error' || s.phase === 'ended') return;
+    if (!p || !graph || s.phase === 'error' || s.phase === 'ended' || this.starting) return;
     this.measureLag();
-    const frame = Math.floor(this.context.currentTime * this.context.sampleRate);
-    // What is heard: the boundary and the end are when the listener hears them, not when they are scheduled.
-    const heard = Math.floor(this.heardTime() * this.context.sampleRate);
-    // The boundary: the committed track is now the one playing.
+    const decks = this.decks();
+    for (const deck of decks) {
+      if (deck.failure) { this.service.audioRenderFailed('audio_render_failed'); this.reset(); return; }
+      // Exact shared pump promise: ticks never create an awaiting continuation for stalled IO.
+      void deck.pump(AHEAD_SECONDS);
+    }
+    if (this.hold) {
+      this.service.audioRenderStatus?.(0, true);
+      this.recoverHold(this.hold);
+      return;
+    }
+    const frame = this.logicalFrame(), heard = this.logicalFrame(this.heardTime());
+    if (!this.incoming && frame >= p.deck.tailDeadlineSeconds * this.context.sampleRate) p.deck.finishTail();
+    const endOfMix = Math.max(...decks.map(d => d.endFrame ?? frame));
+    graph.admit(Math.min(endOfMix, frame + Math.round(AHEAD_SECONDS * this.context.sampleRate)));
+    const missing = decks.some(d => !d.sourceComplete || graph.clock.frontier < (d.endFrame ?? 0));
+    // Nodes are already bounded by the common frontier, so even a late tick cannot overshoot.
+    if (missing && graph.clock.contextAt(graph.clock.frontier) - this.contextFrame() <= Math.ceil(0.05 * this.context.sampleRate)) {
+      this.beginHold(); return;
+    }
     const next = this.incoming;
     if (next && this.context.state === 'running' && heard >= next.edge) {
       this.retiring = p;
@@ -350,22 +471,18 @@ export class DecodeAudioRender {
       this.service.audioBoundary(next.token, this.position());
       return;
     }
-    if (this.retiring && (this.retiring.deck.ended || frame >= (this.retiring.deck.endFrame ?? 0) + this.context.sampleRate)) { this.closePlaying(this.retiring); this.retiring = undefined; }
-    if (p.deck.failure) { this.service.audioRenderFailed('audio_render_failed'); this.reset(); return; }
-    // Decode ahead (bounded), for the current deck and a linked successor.
-    void p.deck.pump(AHEAD_SECONDS);
-    if (this.incoming && this.incoming.deck.startFrame !== undefined && frame >= this.incoming.edge - AHEAD_SECONDS * this.context.sampleRate) void this.incoming.deck.pump(AHEAD_SECONDS);
+    if (this.retiring && this.retiring.deck.sourceComplete && heard >= (this.retiring.deck.endFrame ?? Infinity)) { this.closePlaying(this.retiring); this.retiring = undefined; }
+    const playing = s.intent === 'playing' && this.context.state === 'running' && this.contextFrame() >= graph.clock.contextStart && p.deck.startFrame !== undefined && frame >= p.deck.startFrame;
+    this.service.audioRenderStatus?.(playing ? s.audioEffects.rate : 0, false);
     const end = p.deck.endFrame ?? Infinity;
-    if (!this.incoming && this.context.currentTime >= p.deck.tailDeadlineSeconds) p.deck.finishTail();
-    const playing = s.intent === 'playing' && this.context.state === 'running' && p.deck.startFrame !== undefined && frame >= p.deck.startFrame;
-    const starving = playing && !p.deck.complete && p.deck.aheadSeconds < 0.05;
-    this.service.audioRenderStatus?.(playing && !starving ? s.audioEffects.rate : 0, starving);
     if (playing && !s.pendingSeek) {
       const position = this.position();
-      if (heard >= end && !this.incoming && !this.committing && !s.audioEffects.prepared) this.service.fact(s.intentId, position, 'ended');
+      if (p.deck.sourceComplete && heard >= end && !this.incoming && !this.committing && !s.audioEffects.prepared) this.service.fact(s.intentId, position, 'ended');
       else if (s.intentId !== this.factIntent || Math.abs(position - this.factPosition) >= 0.25) { this.factIntent = s.intentId; this.factPosition = position; this.service.fact(s.intentId, position, 'playing'); }
     }
-    // Commit shortly before the edge, once the candidate is buffered (§9.6 rule 5).
+    graph.discardBefore(heard, this.contextFrame(this.heardTime()));
+    // Link a deferred original candidate only after actual overlap PCM becomes ready.
+    this.committed(s);
     const c = this.candidate;
     if (s.intent === 'playing' && c?.ready && !this.committing && end !== Infinity) {
       const fade = Math.min(s.audioEffects.settings.crossfadeSeconds, 12);
