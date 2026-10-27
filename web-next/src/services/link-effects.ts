@@ -14,15 +14,52 @@ export type VerificationOutcome = 'confirmed' | 'elsewhere' | 'changed';
 export async function verifyEmail(account: ServicesAccount, token: string, signal: AbortSignal): Promise<VerificationOutcome> {
   const link = verificationLink(token);
   if (link?.kind === 'registration') {
-    const registration = await account.client.registration(undefined, signal).catch(error => {
-      if ((error as {status?: unknown})?.status === 404) return null;
-      throw error;
+    // Completion may adopt a session only for a browser that was signed out when this
+    // opening began, and only if no family appears before completion. Both facts are
+    // captured before the private read and retired monotonically for the whole proof.
+    const start = account.service.getSnapshot();
+    // Only a confirmed signed-out opening may complete; restoring/error/unread is not one.
+    let retired = !(start.phase === 'signedOut' && start.session === undefined);
+    const release = account.service.subscribe(() => {
+      if (!retired && account.service.getSnapshot().session !== undefined) retired = true;
     });
-    if (signal.aborted) throw signal.reason;
-    if (registration?.registrationId === link.resource) {
-      // An email link may not replace a family signed in from another tab.
-      await account.service.authenticateIfSignedOut(inner => account.client.verifyRegistration(link.resource, {code: link.code}, AbortSignal.any([signal, inner])));
-      return 'confirmed';
+    try {
+      // Capture this browser's own private registration before the public proof, so a
+      // concurrent sign-in or a consumed binding cannot substitute a successor.
+      const registration = await account.client.registration(undefined, signal).catch(error => {
+        if ((error as {status?: unknown})?.status === 404) return null;
+        throw error;
+      });
+      if (signal.aborted) throw signal.reason;
+      // The mailed link proves the address through the public capability, whichever
+      // browser opens it, and never signs this browser in.
+      const value = await account.client.request(routePath('email_link_confirm'), 'POST', routeBody('email_link_confirm', {token}), signal);
+      const result = value as {kind?: unknown; status?: unknown} | undefined;
+      if (!result || result.kind !== 'registration' || !['confirmed', 'already_confirmed'].includes(String(result.status)))
+        throw new ApiError(502, 'invalid_response', 'invalid_response', false);
+      // The caller may have retired this proof while the confirmation was queued.
+      signal.throwIfAborted();
+      // A family present at the opening, adopted during the proof, or reappearing after
+      // a sign-out keeps the confirmed-elsewhere result instead of adopting this one.
+      if (retired || registration?.registrationId !== link.resource) return 'elsewhere';
+      try {
+        // Complete only that captured registration, and only while the canonical
+        // coordinator still admits a signed-out original opening (its own third
+        // argument stays the only admission decision).
+        await account.service.authenticateIfSignedOut(
+          inner => account.client.verifyRegistration(link.resource, {code: link.code}, AbortSignal.any([signal, inner])),
+          {},
+          () => !signal.aborted && !retired && account.service.getSnapshot().session === undefined,
+        );
+        return 'confirmed';
+      } catch (error) {
+        // The address is confirmed; a concurrent adoption or family keeps its place.
+        const code = (error as {code?: unknown})?.code;
+        if (code === 'account_changed' || (code === 'cancelled' && !signal.aborted)) return 'elsewhere';
+        throw error;
+      }
+    } finally {
+      release();
     }
   }
   if (link?.kind === 'email_change') {
