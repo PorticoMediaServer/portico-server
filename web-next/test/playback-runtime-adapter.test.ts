@@ -203,7 +203,7 @@ class ChannelPort {
         // The canonical session view a channel cleanup read must decode: the
         // general playable Session omits channelId, so this is the official view.
         lease: {expiresAt: '2099-01-01T00:00:00Z', reportEveryMs: 10000},
-        presentation: {generation: 1, url: `/v2/media/linear/${id}/1/tok/index.m3u8`, mode: 'stream', container: 'fmp4_hls', engine: 'native', startPositionMs: 0, subtitles: [], decision: {video: {action: 'copy', reasons: []}},
+        presentation: {generation: 1, url: `/v1/media/linear/${id}/1/tok/index.m3u8`, mode: 'stream', container: 'fmp4_hls', engine: 'native', startPositionMs: 0, subtitles: [], decision: {video: {action: 'copy', reasons: []}},
           linear: {name: 'channel', originMs: 1000, windowStartMs: this.windowStartMs, windowEndMs: 120000, liveEdgeMs: 60000, state: 'active'}}};
       this.sessions.set(id, session); return response(session, 201);
     }
