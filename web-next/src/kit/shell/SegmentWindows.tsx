@@ -63,7 +63,11 @@ function AdjustSheet({opening, ending, duration, edit, context, onChange, onSave
   const live = useRef<AdjustLease | undefined>(undefined);
   const [lease, setLease] = useState<AdjustLease | undefined>(undefined);
   const token = edit?.opening;
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({onChange, duration, onSave, onDismiss, onPreview, onCancel, edit});
+  useLayoutEffect(() => {setupPorts.current = {onChange, duration, onSave, onDismiss, onPreview, onCancel, edit};});
   useLayoutEffect(() => {
+    const {onChange, duration, onSave, onDismiss, onPreview, onCancel, edit} = setupPorts.current;
     if (token === undefined) {live.current = undefined;setLease(undefined);return;}
     const next: AdjustLease = {opening: token, draft: edit!, valid: {start: true, end: true}, duration, onChange, onSave, onCancel, onDismiss, onPreview};
     live.current = next;setLease(next);

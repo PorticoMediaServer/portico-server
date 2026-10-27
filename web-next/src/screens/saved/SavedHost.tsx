@@ -1,4 +1,4 @@
-import {useLayoutEffect, useState, useSyncExternalStore} from 'react';
+import {useRef, useLayoutEffect, useState, useSyncExternalStore} from 'react';
 import {useMatch} from '@tanstack/react-router';
 import type {ShellAssemblyContext} from '../../shell/bootstrap';
 import {useProtectedWebScreenContext} from '../../route-registry-view';
@@ -13,7 +13,11 @@ export function useRetainedSavedOwner(context: ShellAssemblyContext): RetainedSa
 }
 function CapturedSavedOwner({captured}: {captured: ProtectedLibraryScreen}) {
   const context = captured.context, session = context.session(), viewer = session.viewer;
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({captured});
+  useLayoutEffect(() => {setupPorts.current = {captured};});
   useLayoutEffect(() => {
+    const {captured} = setupPorts.current;
     const original = context.session(), actor = original.viewer;
     if (actor.authority !== 'local' && actor.authority !== 'hosted' || !context.isCurrent()) return;
     let live = true;

@@ -20,7 +20,11 @@ export function MemberEmptyState({captured}: {captured: ProtectedLibraryScreen})
   const opening = useLocation({select: value => value}), context = captured.context, identity = context.facts.identity;
   const session = context.session(), viewer = session.viewer;
   const [published, publish] = useState<MemberEmptyLease>(), generation = useRef(0);
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({session, captured});
+  useLayoutEffect(() => {setupPorts.current = {session, captured};});
   useLayoutEffect(() => {
+    const {session, captured} = setupPorts.current;
     const original: MemberSession = {sessionFamilyId: session.sessionFamilyId, viewer: {...session.viewer}};
     let live = true;
     const current = () => live && context.isCurrent() && opening.pathname === '/' && router.state.location === opening

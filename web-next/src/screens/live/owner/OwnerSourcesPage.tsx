@@ -99,14 +99,22 @@ export function OwnerSourcesPage({source, libraryChannels}: {source: OwnerSource
     if (!sourceCurrent() || modalRef.current !== original || (isOpening(original) && !original.token.live)) return;
     retireOpening(original);modalRef.current = undefined;setModal(undefined);
   };
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({sourceCurrent});
+  useEffect(() => {setupPorts.current = {sourceCurrent};});
   useEffect(() => {
+    const {sourceCurrent} = setupPorts.current;
     // The borrowed source is owned and disposed by Settings.route's layout cleanup, never here.
     const token = admittedSource?.token;
     if (!token || !sourceCurrent() || loadedSource.current === token) return;
     loadedSource.current = token;
     void source.sources.load();void source.defaults.load();
   }, [source, admittedSource?.token]);
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts1 = useRef({admittedSource});
+  useEffect(() => {setupPorts1.current = {admittedSource};});
   useEffect(() => {
+    const {admittedSource} = setupPorts1.current;
     const exact = admittedSource;
     const current = () => sourceAdmissionAllowed(exact, sourceToken.current, source) && source.current();
     if (!exact || !current() || !snapshot.document?.refresh.some(row => row.state === 'refreshing')) return;

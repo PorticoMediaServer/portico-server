@@ -54,7 +54,11 @@ export function ProfileSignIn({profiles,api,commandApi,signIn,isCurrent,onEnded,
  const [password,setPassword]=useState(''),[next,setNext]=useState(''),[code,setCode]=useState('');
  const [busy,setBusy]=useState(false),[error,setError]=useState<unknown>(),[retry,setRetry]=useState(0);
  const clearSecrets=()=>{setPassword('');setNext('');setCode('');};
- useLayoutEffect(()=>{
+ // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({account, document});
+  useLayoutEffect(() => {setupPorts.current = {account, document};});
+  useLayoutEffect(()=>{
+    const {account, document} = setupPorts.current;
   if(localIntentRef.current){localIntentRef.current.live=false;localIntentRef.current.enrolPassword=undefined;}localIntentRef.current=undefined;hostedIntentRef.current=undefined;
   setOpening(undefined);setFactor(undefined);setHostedState(undefined);setTask(undefined);setHostedTask(undefined);setEnrolment(undefined);setCodes(undefined);clearSecrets();setBusy(false);setError(undefined);
   if(!scope||!account||!isCurrent())return;
