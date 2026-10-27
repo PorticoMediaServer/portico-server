@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/persistence"
 	"portico.local/server/internal/storage"
 )
@@ -128,10 +129,40 @@ func newNamingFixture(t *testing.T, kind, relative string) namingFixture {
 	return namingFixture{service: service, db: db, remote: remote, library: library.ID, source: sourceID, job: job, object: object, revision: revision, policy: policy}
 }
 
-// Root64: a remote disc image is published as an ordinary title from its name,
-// with no technical fact written and no byte of the image read.
+// associateNamingPositive reproduces the original discovery association before
+// the already-queued naming phase. Refusal fixtures remain raw and unlinked.
+func associateNamingPositive(t *testing.T, f namingFixture) {
+	t.Helper()
+	writer, err := dbwork.Begin(context.Background(), f.db, dbwork.ClassInteractive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Rollback()
+	ctx, tx := writer.Context(), writer.Tx()
+	source, err := InventoryFenceTx(ctx, tx, f.job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if source.ID != f.source || source.LibraryID != f.library {
+		t.Fatal("discovery association changed the original source", source)
+	}
+	var asset, relative string
+	if err = tx.QueryRowContext(ctx, `SELECT asset_id,relative_path FROM inventory_objects WHERE id=? AND source_id=? AND revision=? AND root_incarnation=? AND retired=0 AND asset_id='naming-asset'`, f.object, source.ID, f.revision, source.Incarnation).Scan(&asset, &relative); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.service.associateInventoryTx(ctx, tx, source, asset, filepath.Join(source.ResolvedPath, relative)); err != nil {
+		t.Fatal(err)
+	}
+	if err = writer.Commit(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Root64: discovery associates the remote disc image with its named title;
+// naming completes with technical work deferred and no byte of the image read.
 func TestCommitInventoryNamingPublishesRemoteDiscImageFromItsName(t *testing.T) {
 	f := newNamingFixture(t, "movie", "Heat (1995).iso")
+	associateNamingPositive(t, f)
 	if err := f.service.CommitInventoryNaming(context.Background(), f.job, f.object, f.revision, f.policy, f.observed()); err != nil {
 		t.Fatal(err)
 	}
@@ -184,20 +215,21 @@ func TestCommitInventoryNamingPublishesRemoteDiscImageFromItsName(t *testing.T) 
 	}
 }
 
-// The library kind decides the title: a TV name becomes its show, season and
-// episode, still from naming alone.
+// The library kind decides the association: a TV name supplies show and
+// position; absent descriptive metadata, the fresh episode keeps Episode N.
 func TestCommitInventoryNamingFollowsTheLibraryKind(t *testing.T) {
 	f := newNamingFixture(t, "tv", "Show Name/Season 01/Show Name - s01e02 - Episode Title.iso")
+	associateNamingPositive(t, f)
 	if err := f.service.CommitInventoryNaming(context.Background(), f.job, f.object, f.revision, f.policy, f.observed()); err != nil {
 		t.Fatal(err)
 	}
-	var show, episode string
+	var show, episode, kind string
 	var season, number int
-	if err := f.db.QueryRow(`SELECT show.title,ep.number,sea.number,ep.title FROM catalog_entities ep JOIN catalog_entities sea ON sea.id=ep.parent_id JOIN catalog_entities show ON show.id=sea.parent_id WHERE ep.kind=(SELECT id FROM catalog_kinds WHERE name='episode')`).Scan(&show, &number, &season, &episode); err != nil {
+	if err := f.db.QueryRow(`SELECT show.title,ep.number,sd.number,item.title,k.name FROM catalog_episodes ep JOIN catalog_entities item ON item.id=ep.entity_id JOIN catalog_seasons sd ON sd.entity_id=ep.season_id AND sd.show_id=ep.show_id JOIN catalog_entities sea ON sea.id=sd.entity_id AND item.parent_id=sea.id JOIN catalog_entities show ON show.id=ep.show_id AND sea.parent_id=show.id JOIN catalog_kinds k ON k.id=item.kind JOIN catalog_asset_links link ON link.entity_id=item.id JOIN catalog_assets asset ON asset.id=link.asset_id JOIN catalog_libraries library ON library.id=item.library_id WHERE asset.token='naming-asset' AND library.library_id=? AND show.library_id=item.library_id AND sea.library_id=item.library_id AND k.name='episode'`, f.library).Scan(&show, &number, &season, &episode, &kind); err != nil {
 		t.Fatalf("the TV disc image did not become an episode from its name: %v", err)
 	}
-	if show != "Show Name" || season != 1 || number != 2 || episode != "Episode Title" {
-		t.Fatalf("published %q s%d e%d %q, want the file name's episode", show, season, number, episode)
+	if show != "Show Name" || season != 1 || number != 2 || kind != "episode" || episode != "Episode 2" {
+		t.Fatalf("published %q s%d e%d %q %q, want the named episode with its no-metadata title", show, season, number, kind, episode)
 	}
 }
 
