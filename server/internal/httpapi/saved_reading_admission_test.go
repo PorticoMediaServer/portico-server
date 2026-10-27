@@ -2,12 +2,16 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/identity"
 )
 
 // Real Reading items keep their own identities and use personal Saved
@@ -76,6 +80,111 @@ func TestSavedCollectionAdmitsReadingAndProjectsReadingFacts(t *testing.T) {
 			defer gate.Rollback()
 			if err := r.d.savedResourceItemAuthorityTx(ctx, gate.Tx(), r.p, r.item); err == nil {
 				t.Fatal("retired Reading target retained a saved-entry grant")
+			}
+		})
+	}
+}
+
+// The detail route's Reading fallback is the exact personal authority, not a
+// wider grant: the profile's restrictions, library grant and live entity facts
+// still decide the leaf, and a refusal keeps the timed-media lookup's concealed
+// absence. Only kinds 20/21 take the fallback at all.
+func TestReadingDetailFallbackUsesReadingPersonalFences(t *testing.T) {
+	for _, format := range []string{"epub", "cbz"} {
+		t.Run(format, func(t *testing.T) {
+			kind := "book"
+			if format == "cbz" {
+				kind = "comic"
+			}
+			r := newReadingFixture(t, kind, format)
+			readingPublishFileFacts(t, r)
+			h := New(r.d)
+			ctx := context.Background()
+			var stored int
+			if err := r.f.db.QueryRow(`SELECT kind FROM catalog_entities WHERE public_id=pid_blob(?)`, r.item).Scan(&stored); err != nil {
+				t.Fatal(err)
+			}
+			if stored != 20 && stored != 21 {
+				t.Fatalf("fixture item kind %d is not a Reading leaf", stored)
+			}
+			// The timed-media lookup conceals this leaf, so a 200 below is the
+			// Reading fallback's own decision and not the ordinary path.
+			if _, err := r.f.cat.LibraryForItem(r.item); !errors.Is(err, sql.ErrNoRows) {
+				t.Fatalf("timed-media lookup did not conceal the Reading leaf: %v", err)
+			}
+			owner := readingOwnerLogin(t, r)
+			created, err := r.f.id.CreateDirectProfile(ctx, owner.AccountToken, "Detail reader", "mint")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var child identity.DirectProfile
+			for _, p := range created.Profiles {
+				if !p.Primary && p.Name == "Detail reader" {
+					child = p
+				}
+			}
+			if child.ID == "" {
+				t.Fatal("no real child profile")
+			}
+			selected, err := r.f.id.SelectDirectProfile(ctx, owner.AccountToken, child.ID, identity.DirectSelection{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			token := selected.Session.AccessToken
+			detail := func(id string) (int, string) {
+				w := readingHTTP(t, h, "GET", "/v1/items/"+id+"/detail", token, "", nil)
+				return w.Code, w.Body.String()
+			}
+			if status, body := detail(r.item); status != http.StatusOK {
+				t.Fatalf("Reading detail refused its own personal authority: %d %s", status, body)
+			}
+			refuse := func() {
+				t.Helper()
+				hiddenStatus, hiddenBody := detail(r.item)
+				absentStatus, absentBody := detail(absentTwin(r.item))
+				if hiddenStatus != http.StatusNotFound || absentStatus != http.StatusNotFound || normalizedAnswer(hiddenBody, r.item) != normalizedAnswer(absentBody, absentTwin(r.item)) {
+					t.Fatalf("hidden/absent Reading detail differs: %d %s, %d %s", hiddenStatus, hiddenBody, absentStatus, absentBody)
+				}
+				for _, marker := range []string{r.item, r.source, r.library, r.path} {
+					if marker != "" && strings.Contains(hiddenBody, marker) {
+						t.Fatalf("a refused Reading detail leaked %q: %s", marker, hiddenBody)
+					}
+				}
+			}
+			childRevision := child.Revision
+			edit := func(change identity.DirectProfileEdit) {
+				t.Helper()
+				change.ExpectedRevision = childRevision
+				snapshot, err := r.f.id.EditDirectProfile(ctx, owner.AccountToken, child.ID, change)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, p := range snapshot.Profiles {
+					if p.ID == child.ID {
+						childRevision = p.Revision
+						return
+					}
+				}
+				t.Fatal("child profile missing")
+			}
+			// The profile's own restriction, not the concealed timed-media kind.
+			if _, err = r.f.id.SetProfileRestrictions(ctx, owner.AccountToken, child.ID, identity.ProfileRestrictionEdit{ExpectedRevision: 1, AllowUnrated: false}); err != nil {
+				t.Fatal(err)
+			}
+			refuse()
+			if _, err = r.f.id.SetProfileRestrictions(ctx, owner.AccountToken, child.ID, identity.ProfileRestrictionEdit{ExpectedRevision: 2, AllowUnrated: true}); err != nil {
+				t.Fatal(err)
+			}
+			if status, body := detail(r.item); status != http.StatusOK {
+				t.Fatalf("restored restriction still refused: %d %s", status, body)
+			}
+			// The profile's library grant is the same fence the library's own
+			// routes use; losing it conceals the leaf again.
+			edit(identity.DirectProfileEdit{Policy: &identity.ProfilePolicy{AllowedLibraries: []string{}}})
+			refuse()
+			edit(identity.DirectProfileEdit{Policy: &identity.ProfilePolicy{AllowedLibraries: []string{r.library}}})
+			if status, body := detail(r.item); status != http.StatusOK {
+				t.Fatalf("restored library still refused: %d %s", status, body)
 			}
 		})
 	}

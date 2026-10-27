@@ -211,9 +211,17 @@ func TestPlaybackStartCanonicalSchemaValidatesCompleteActualResource(t *testing.
 		nested(value, "lease")["expiresAt"] = date
 		check(202, value, true)
 	}
-	// Optional pointer null keeps its normal absent semantics. Closing structs
-	// must not turn arbitrary/map leaves into invented fixed object shapes.
+	// The producer omits its nil optional pointer (SessionView.ObservedPlayback
+	// is `json:"observedPlayback,omitempty"`), so the actual wire body carries no
+	// such member. The map fixture models that omission. An explicit null is not
+	// the optional member's value: the schema does not declare it nullable, so
+	// it is refused rather than read as absence.
 	value := copyValue()
-	value["observedPlayback"] = nil
+	if _, sent := value["observedPlayback"]; sent {
+		t.Fatalf("the actual producer sent the absent optional member: %s", raw)
+	}
 	check(202, value, true)
+	nulled := copyValue()
+	nulled["observedPlayback"] = nil
+	check(202, nulled, false)
 }
