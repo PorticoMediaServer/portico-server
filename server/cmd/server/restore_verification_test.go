@@ -450,7 +450,17 @@ func TestRestoreIsRefusedForEveryMissingStartupRequirement(t *testing.T) {
 	}
 	for _, table := range seeded {
 		cases["seeded row is missing: "+table] = func(t *testing.T, _, folder string) {
-			changeBackupDatabase(t, folder, `PRAGMA foreign_keys=OFF`, `DELETE FROM "`+table+`"`)
+			statements := []string{`PRAGMA foreign_keys=OFF`}
+			if table == "remote_source_choice_definitions" {
+				// Corrupt only this disposable backup's rows, retaining its exact schema.
+				statements = append(statements, `DROP TRIGGER remote_source_choice_definition_immutable_delete`)
+			}
+			statements = append(statements, `DELETE FROM "`+table+`"`)
+			if table == "remote_source_choice_definitions" {
+				statements = append(statements, `CREATE TRIGGER remote_source_choice_definition_immutable_delete BEFORE DELETE ON remote_source_choice_definitions
+ BEGIN SELECT RAISE(ABORT,'source choice definitions are immutable'); END`)
+			}
+			changeBackupDatabase(t, folder, statements...)
 		}
 	}
 	for name, change := range cases {

@@ -13,8 +13,8 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ci-main-${{ github.run_id }}
-  cancel-in-progress: false
+  group: ci-${{ github.repository }}
+  cancel-in-progress: true
 env:
   CI_FULL_TREE: '1'
   GOTOOLCHAIN: go1.26.10

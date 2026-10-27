@@ -31,7 +31,7 @@ function accountFixture() {
     if (path.endsWith('/complete')) return {location: 'https://original.example/auth/portico-return#transaction=opaque_transaction'};
     return {code: 'claim_decided', status: 'decided'};
   }}, service: {synchronize: async () => {}, accessSession: async () => ({account: {id: 'actual-account'}, familyId, accessToken: 'memory-only-fixture'}),
-    getSnapshot: () => ({session: {account: {id: 'actual-account'}, familyId}})}} as unknown as ServicesAccount;
+    getSnapshot: () => ({session: {account: {id: 'actual-account'}, familyId, accessToken: 'memory-only-fixture'}})}} as unknown as ServicesAccount;
   return {account, calls, expiresAt, installed: () => {installed = true;}, replace: () => {familyId = 'replacement-family';},
     intercept: (work: typeof beforeResponse) => {beforeResponse = work;}};
 }

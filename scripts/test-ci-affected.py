@@ -1,6 +1,12 @@
+import contextlib
 import importlib.util
+import io
+import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -115,6 +121,114 @@ class SelectionTests(unittest.TestCase):
         with patch.dict(ci.os.environ, {"CI_BASE": "0" * 40}), patch.object(ci, "git", return_value=["src/a.ts"]) as git:
             self.assertEqual(ci.changed(), {"src/a.ts"})
             self.assertEqual(git.call_args.args[:4], ("diff", "--name-only", "--diff-filter=ACMRTD", "HEAD^"))
+
+
+class BoundedCommandTests(unittest.TestCase):
+    """A hung suite fails with a named command instead of holding the whole job."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+
+    def assert_gone(self, pid):
+        # A killed grandchild can stay a zombie until init reaps it; either state is gone.
+        # /proc is the precise check on Linux; os.kill is the portable fallback.
+        for _ in range(200):
+            try:
+                with open(f"/proc/{pid}/stat") as stat:
+                    if stat.read().split()[2] == "Z":
+                        return
+            except OSError:
+                pass
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return
+            time.sleep(0.05)
+        self.fail(f"process {pid} outlived the command timeout")
+
+    def assert_group_gone(self, pid):
+        # A zombie left for init can keep the group listed for a moment after the KILL.
+        for _ in range(100):
+            try:
+                os.killpg(pid, 0)
+            except ProcessLookupError:
+                return
+            time.sleep(0.05)
+        self.fail(f"process group {pid} outlived the command timeout")
+
+    def test_timeout_terminates_the_whole_command_group(self):
+        marker = self.root / "pids"
+        script = (
+            "import os, subprocess, sys, time\n"
+            "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)'])\n"
+            "with open(sys.argv[1], 'w') as pids:\n"
+            "    pids.write(f'{os.getpid()} {child.pid}')\n"
+            "time.sleep(120)\n"
+        )
+        started = time.monotonic()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(ci.CommandTimeout) as raised:
+                ci.run([sys.executable, "-c", script, str(marker)], cwd=self.root, timeout=0.5)
+        elapsed = time.monotonic() - started
+        self.assertEqual(raised.exception.returncode, 124)
+        self.assertEqual(raised.exception.timeout, 0.5)
+        self.assertLess(elapsed, ci.TERMINATE_GRACE + 10)
+        leader, descendant = (int(pid) for pid in marker.read_text().split())
+        for pid in (leader, descendant):
+            self.assert_gone(pid)
+        self.assert_group_gone(leader)
+
+    def test_leader_exit_on_term_does_not_spare_a_terminating_descendant(self):
+        marker = self.root / "pids"
+        script = (
+            "import os, subprocess, sys, time\n"
+            "child = subprocess.Popen([sys.executable, '-c',\n"
+            "    'import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(120)'])\n"
+            "with open(sys.argv[1], 'w') as pids:\n"
+            "    pids.write(f'{os.getpid()} {child.pid}')\n"
+            "time.sleep(120)\n"
+        )
+        started = time.monotonic()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(ci.CommandTimeout) as raised:
+                ci.run([sys.executable, "-c", script, str(marker)], cwd=self.root, timeout=0.5)
+        elapsed = time.monotonic() - started
+        self.assertEqual(raised.exception.returncode, 124)
+        leader, descendant = (int(pid) for pid in marker.read_text().split())
+        # The leader takes TERM, so only it is reaped during the grace; the descendant
+        # ignores TERM, so that grace must still run to its bound and end in a group KILL.
+        self.assertGreaterEqual(elapsed, ci.TERMINATE_GRACE - 1)
+        self.assertLess(elapsed, 2 * ci.TERMINATE_GRACE + 5)
+        for pid in (leader, descendant):
+            self.assert_gone(pid)
+        self.assert_group_gone(leader)
+
+    def test_successful_and_failing_commands_keep_their_semantics(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(ci.run([sys.executable, "-c", "pass"], cwd=self.root), 0)
+            with self.assertRaises(subprocess.CalledProcessError) as raised:
+                ci.run([sys.executable, "-c", "raise SystemExit(3)"], cwd=self.root)
+        self.assertEqual(raised.exception.returncode, 3)
+
+    def test_timeout_fails_the_run_but_later_commands_still_run(self):
+        commands = [(["slow"], self.root), (["failing"], self.root), (["security"], self.root)]
+        failures = [ci.CommandTimeout(["slow"], 1), subprocess.CalledProcessError(1, "failing"), None]
+        with patch.object(ci, "run", side_effect=failures) as run:
+            with self.assertRaises(SystemExit) as raised:
+                ci.run_all(commands)
+        self.assertEqual(raised.exception.code, 124)
+        self.assertEqual([call.args[0] for call in run.call_args_list], [args for args, _ in commands])
+
+    def test_only_an_ordinary_failure_still_exits_one(self):
+        with patch.object(ci, "run", side_effect=subprocess.CalledProcessError(2, "fail")):
+            with self.assertRaises(SystemExit) as raised:
+                ci.run_all([(["fail"], self.root)])
+        self.assertEqual(raised.exception.code, 1)
+
+    def test_the_bound_is_fifteen_minutes_with_a_five_second_grace(self):
+        self.assertEqual((ci.COMMAND_TIMEOUT, ci.TERMINATE_GRACE), (15 * 60, 5))
 
 
 if __name__ == "__main__":

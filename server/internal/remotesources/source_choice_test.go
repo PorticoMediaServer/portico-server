@@ -344,7 +344,6 @@ func TestSourceChoiceApplicableAndChangedFields17And23(t *testing.T) {
 }
 
 func TestSourceChoiceManualZeroGatesLaterFolders(t *testing.T) {
-	ctx := context.Background()
 	f := newTestSourceChoiceFixture(t)
 	f.sealDAV(t, "remote")
 	f.apply(t, "remote", "ask", nativeSaveOperation(500))

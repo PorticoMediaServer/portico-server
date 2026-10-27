@@ -560,11 +560,20 @@ func TestStatePermissionsCheckAndFix(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(loose), 0755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Chmod(filepath.Dir(loose), 0755); err != nil {
+		t.Fatal(err)
+	}
 	if err := writeTestFile(loose, []byte("Metadata/subtitles"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(loose, 0644); err != nil {
 		t.Fatal(err)
 	}
 	execPath := storagepaths.Path(state, "run-helper")
 	if err := writeTestFile(execPath, []byte("x"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(execPath, 0755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chmod(state, 0755); err != nil {

@@ -227,6 +227,10 @@ func TestInvitationKeyRejectsUnsafeEstablishedFiles(t *testing.T) {
 				if err := os.WriteFile(path, make([]byte, 32), 0644); err != nil {
 					t.Fatal(err)
 				}
+				// The refusal control must remain public even under a private umask.
+				if err := os.Chmod(path, 0644); err != nil {
+					t.Fatal(err)
+				}
 			case "directory":
 				if err := os.Mkdir(path, 0700); err != nil {
 					t.Fatal(err)
