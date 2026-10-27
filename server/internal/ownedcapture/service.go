@@ -2,6 +2,7 @@ package ownedcapture
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -13,7 +14,6 @@ import (
 	"time"
 
 	"portico.local/server/internal/dbwork"
-	"portico.local/server/internal/identity"
 	"portico.local/server/internal/livechannels"
 	"portico.local/server/internal/mediaartifact"
 	"portico.local/server/internal/supervise"
@@ -114,7 +114,18 @@ func (s *Service) Close() error {
 func (s *Service) gate(kind, id string) (*os.File, error) {
 	return s.locks.Lock(livechannels.Allocation{ID: framed("portico.owned-capture.lock.v1", []string{kind, id})[:48], Generation: 1})
 }
-func uniqueID() string { return identity.Digest(identity.Token()) }
+
+// uniqueID is the capture schema's only producer: 32 cryptographically random
+// bytes encoded as lower-case hex, so the value is 64 characters and satisfies
+// the persisted capture_id contract. The shared identity digest keeps its own
+// encoding for its own purposes.
+func uniqueID() string {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		panic(err)
+	}
+	return hex.EncodeToString(raw)
+}
 func bindLife(parent, other context.Context) (context.Context, func()) {
 	life, cancel := context.WithCancel(parent)
 	stop := context.AfterFunc(other, cancel)
