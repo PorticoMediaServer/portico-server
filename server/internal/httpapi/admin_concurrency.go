@@ -2,10 +2,14 @@ package httpapi
 
 import (
 	"context"
+	"math"
 	"net/http"
+	"reflect"
 	"runtime"
 	"runtime/debug"
+	"strconv"
 
+	"portico.local/apikit"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/hostlimits"
 	"portico.local/server/internal/operations"
@@ -86,21 +90,67 @@ type IntegrityDiagnostics struct {
 // collector is working to, and whether anything has panicked. Without these
 // three a hung server and a leaking one look identical from outside.
 type ProcessDiagnostics struct {
-	Goroutines        int             `json:"goroutines"`
-	HeapAllocBytes    uint64          `json:"heapAllocBytes"`
-	HeapInUseBytes    uint64          `json:"heapInUseBytes"`
-	HeapSysBytes      uint64          `json:"heapSysBytes"`
-	NextGCBytes       uint64          `json:"nextGCBytes"`
-	GCCycles          uint32          `json:"gcCycles"`
-	MemoryLimitBytes  int64           `json:"memoryLimitBytes"`
-	ContainedPanics   uint64          `json:"containedPanics"`
-	LoopRestarts      uint64          `json:"supervisedLoopRestarts"`
-	MaxProcs          int             `json:"maxProcs"`
-	DatabaseCalls     uint64          `json:"databaseCalls"`
-	OpenFileSoftLimit uint64          `json:"openFileSoftLimit"`
-	OpenFileHardLimit uint64          `json:"openFileHardLimit"`
-	ProcessCPU        operations.Fact `json:"processCpu"`
-	CapacityPolicy    string          `json:"capacityPolicy"`
+	Goroutines     int    `json:"goroutines"`
+	HeapAllocBytes uint64 `json:"heapAllocBytes"`
+	HeapInUseBytes uint64 `json:"heapInUseBytes"`
+	HeapSysBytes   uint64 `json:"heapSysBytes"`
+	NextGCBytes    uint64 `json:"nextGCBytes"`
+	GCCycles       uint32 `json:"gcCycles"`
+	// MemoryLimitBytes is the soft limit the collector is working to. Null
+	// means Go's unbounded sentinel or a finite limit beyond the shared
+	// safe-integer bound; MemoryLimitBytesExact then carries that finite value
+	// as a decimal string so it is never rounded as a JSON number.
+	MemoryLimitBytes      *int64          `json:"memoryLimitBytes"`
+	MemoryLimitBytesExact string          `json:"memoryLimitBytesExact,omitempty"`
+	ContainedPanics       uint64          `json:"containedPanics"`
+	LoopRestarts          uint64          `json:"supervisedLoopRestarts"`
+	MaxProcs              int             `json:"maxProcs"`
+	DatabaseCalls         uint64          `json:"databaseCalls"`
+	OpenFileSoftLimit     uint64          `json:"openFileSoftLimit"`
+	OpenFileHardLimit     uint64          `json:"openFileHardLimit"`
+	ProcessCPU            operations.Fact `json:"processCpu"`
+	CapacityPolicy        string          `json:"capacityPolicy"`
+}
+
+// diagnosticsSafeInteger is the largest integer both generated contract copies
+// decode exactly; larger JSON numbers have already lost precision in
+// JavaScript before validation.
+const diagnosticsSafeInteger = int64(9007199254740991)
+
+// memoryLimitBytes projects Go's soft memory limit onto the wire. MaxInt64 is
+// Go's unbounded sentinel, so it is null. A finite limit inside the shared
+// safe-integer bound stays the exact integer; a larger finite limit is null
+// plus its exact decimal string rather than an unsafe JSON number.
+func memoryLimitBytes(limit int64) *int64 {
+	if limit < 0 || limit > diagnosticsSafeInteger {
+		return nil
+	}
+	value := limit
+	return &value
+}
+
+func memoryLimitBytesExact(limit int64) string {
+	if limit <= diagnosticsSafeInteger || limit == math.MaxInt64 {
+		return ""
+	}
+	return strconv.FormatInt(limit, 10)
+}
+
+type processDiagnosticsShape ProcessDiagnostics
+
+// JSONSchema keeps the published integer bounded to the shared safe range and
+// declares the optional exact decimal companion. Unbounded and unrepresentable
+// limits are represented by the required nullable integer, never by a wide
+// JSON number.
+func (ProcessDiagnostics) JSONSchema() map[string]any {
+	shape, err := apikit.Schema(reflect.TypeFor[processDiagnosticsShape]())
+	if err != nil {
+		panic(err)
+	}
+	properties := shape["properties"].(map[string]any)
+	properties["memoryLimitBytes"] = map[string]any{"type": "integer", "nullable": true, "minimum": 0, "maximum": diagnosticsSafeInteger}
+	properties["memoryLimitBytesExact"] = map[string]any{"type": "string", "pattern": "^[1-9][0-9]*$"}
+	return shape
 }
 
 // processDiagnostics samples the runtime. ReadMemStats stops the world briefly,
@@ -110,22 +160,24 @@ func processDiagnostics() ProcessDiagnostics {
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
 	soft, hard := hostlimits.OpenFiles()
+	limit := debug.SetMemoryLimit(-1)
 	return ProcessDiagnostics{
-		Goroutines:        runtime.NumGoroutine(),
-		HeapAllocBytes:    mem.HeapAlloc,
-		HeapInUseBytes:    mem.HeapInuse,
-		HeapSysBytes:      mem.HeapSys,
-		NextGCBytes:       mem.NextGC,
-		GCCycles:          mem.NumGC,
-		MemoryLimitBytes:  debug.SetMemoryLimit(-1),
-		ContainedPanics:   supervise.Panics(),
-		LoopRestarts:      supervise.Restarts(),
-		MaxProcs:          runtime.GOMAXPROCS(0),
-		DatabaseCalls:     dbwork.DatabaseCalls(),
-		OpenFileSoftLimit: soft,
-		OpenFileHardLimit: hard,
-		ProcessCPU:        operations.ProcessCPU(),
-		CapacityPolicy:    "Resource pressure is advisory; explicit owner caps govern admission.",
+		Goroutines:            runtime.NumGoroutine(),
+		HeapAllocBytes:        mem.HeapAlloc,
+		HeapInUseBytes:        mem.HeapInuse,
+		HeapSysBytes:          mem.HeapSys,
+		NextGCBytes:           mem.NextGC,
+		GCCycles:              mem.NumGC,
+		MemoryLimitBytes:      memoryLimitBytes(limit),
+		MemoryLimitBytesExact: memoryLimitBytesExact(limit),
+		ContainedPanics:       supervise.Panics(),
+		LoopRestarts:          supervise.Restarts(),
+		MaxProcs:              runtime.GOMAXPROCS(0),
+		DatabaseCalls:         dbwork.DatabaseCalls(),
+		OpenFileSoftLimit:     soft,
+		OpenFileHardLimit:     hard,
+		ProcessCPU:            operations.ProcessCPU(),
+		CapacityPolicy:        "Resource pressure is advisory; explicit owner caps govern admission.",
 	}
 }
 
