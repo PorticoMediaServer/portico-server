@@ -57,6 +57,7 @@ func TestOccurrenceClaimCommitOwnsExactRunsAndDoesNotReopen(t *testing.T) {
 	if err != nil || claim != duplicate {
 		t.Fatalf("claim copies: %v", err)
 	}
+	claim.markCommitted()
 	if err = claim.commit(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -96,6 +97,7 @@ func TestOccurrenceClaimTimeoutDoesNotAbortCommittedFence(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
 	defer cancel()
+	claim.markCommitted()
 	if err = claim.commit(ctx); !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("join: %v", err)
 	}
