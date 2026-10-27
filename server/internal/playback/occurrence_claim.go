@@ -17,12 +17,14 @@ type occurrenceRegistry struct {
 	entries map[string]*occurrenceEntry
 }
 type occurrenceEntry struct {
-	epoch     uint64
-	blocked   bool
-	committed bool
-	intents   int
-	runs      map[*occurrenceRun]struct{}
-	claim     *occurrenceClaim
+	epoch        uint64
+	blocked      bool
+	committed    bool
+	intents      int
+	publications int
+	quiescent    chan struct{}
+	runs         map[*occurrenceRun]struct{}
+	claim        *occurrenceClaim
 }
 type occurrenceIntent struct {
 	registry *occurrenceRegistry
@@ -47,6 +49,8 @@ type occurrenceClaim struct {
 	epoch      uint64
 	runs       []*occurrenceRun
 	phase      uint8 // 0 held, 1 committed, 2 aborted
+	waiters    int
+	delivered  bool
 	cancelOnce sync.Once
 }
 
@@ -112,19 +116,49 @@ func (r *occurrenceRegistry) finished(id string, e *occurrenceEntry, run *occurr
 	r.pruneLocked(id, e)
 }
 func (r *occurrenceRegistry) pruneLocked(id string, e *occurrenceEntry) {
-	if r.entries[id] == e && e.intents == 0 && len(e.runs) == 0 && e.claim == nil {
+	if r.entries[id] == e && e.intents == 0 && e.publications == 0 && len(e.runs) == 0 && e.claim == nil {
 		delete(r.entries, id)
 	}
 }
 
-// claim fences new publication before the accepting transaction. Repeated
-// claims of the same generation share the same once-only phase latch.
-func (r *occurrenceRegistry) claim(id string, generation int) (*occurrenceClaim, error) {
+// publication admits one original run's provider/process publication. The
+// returned release is called when that publication has become owned or failed.
+// A claim closes admission and waits for already-admitted publications outside
+// the mutex; it never performs provider or database work under the mutex.
+func (r *occurrenceRegistry) publication(id string, e *occurrenceEntry, run *occurrenceRun) (func(), error) {
+	r.mu.Lock()
+	if r.entries[id] != e || e.blocked || e.committed {
+		r.mu.Unlock()
+		return nil, errOccurrenceClaimed
+	}
+	if _, ok := e.runs[run]; !ok {
+		r.mu.Unlock()
+		return nil, errOccurrenceClaimed
+	}
+	e.publications++
+	r.mu.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			r.mu.Lock()
+			e.publications--
+			if e.publications == 0 && e.quiescent != nil {
+				close(e.quiescent)
+				e.quiescent = nil
+			}
+			r.pruneLocked(id, e)
+			r.mu.Unlock()
+		})
+	}, nil
+}
+
+// claim fences new publication before the accepting transaction. Copies for
+// one generation share the phase latch and the same quiescence barrier.
+func (r *occurrenceRegistry) claim(ctx context.Context, id string, generation int) (*occurrenceClaim, error) {
 	if id == "" || generation < 1 {
 		return nil, errOccurrenceClaimed
 	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if r.entries == nil {
 		r.entries = make(map[string]*occurrenceEntry)
 	}
@@ -133,24 +167,62 @@ func (r *occurrenceRegistry) claim(id string, generation int) (*occurrenceClaim,
 		e = &occurrenceEntry{runs: make(map[*occurrenceRun]struct{})}
 		r.entries[id] = e
 	}
-	if e.claim != nil {
-		if e.claim.generation == generation {
-			return e.claim, nil
-		}
+	c := e.claim
+	if c != nil && c.generation != generation {
+		r.mu.Unlock()
 		return nil, errOccurrenceClaimed
 	}
-	if e.blocked || e.committed {
-		return nil, errOccurrenceClaimed
+	if c == nil {
+		if e.blocked || e.committed {
+			r.mu.Unlock()
+			return nil, errOccurrenceClaimed
+		}
+		e.blocked = true
+		e.epoch++
+		c = &occurrenceClaim{registry: r, id: id, generation: generation, entry: e, epoch: e.epoch}
+		for run := range e.runs {
+			if run.generation == generation {
+				c.runs = append(c.runs, run)
+			}
+		}
+		e.claim = c
 	}
-	e.blocked = true
-	e.epoch++
-	c := &occurrenceClaim{registry: r, id: id, generation: generation, entry: e, epoch: e.epoch}
-	for run := range e.runs {
-		if run.generation == generation {
-			c.runs = append(c.runs, run)
+	c.waiters++
+	var wait <-chan struct{}
+	if e.publications > 0 {
+		if e.quiescent == nil {
+			e.quiescent = make(chan struct{})
+		}
+		wait = e.quiescent
+	}
+	r.mu.Unlock()
+	var waitErr error
+	if wait != nil {
+		select {
+		case <-wait:
+		case <-ctx.Done():
+			waitErr = ctx.Err()
 		}
 	}
-	e.claim = c
+	r.mu.Lock()
+	c.waiters--
+	valid := c.phase == 0 && r.entries[id] == e && e.claim == c
+	if waitErr == nil && valid {
+		c.delivered = true
+	}
+	if waitErr != nil && valid && !c.delivered && c.waiters == 0 {
+		c.phase = 2
+		e.claim = nil
+		e.blocked = false
+		r.pruneLocked(id, e)
+	}
+	r.mu.Unlock()
+	if waitErr != nil {
+		return nil, waitErr
+	}
+	if !valid {
+		return nil, errOccurrenceClaimed
+	}
 	return c, nil
 }
 
