@@ -70,3 +70,23 @@ func TestReturningCastControllerRequiresOriginalAndCurrentBothFamilies(t *testin
 		t.Fatalf("refusal mutated target: %s %v", state, e)
 	}
 }
+
+func TestCastRotationDoesNotCarryExpiredSender(t *testing.T) {
+	f := socialHTTP(t)
+	var boot social.CastBootstrapResponse
+	f.decode(f.as(f.token, "POST", "/v1/cast/bootstrap", social.CastBootstrapRequest{ProtocolVersion: social.Protocol, ReceiverID: "sdk-tv-1"}), 201, &boot)
+	var target social.CastReceiverSession
+	f.decode(f.as("", "POST", "/v1/cast/redeem", social.CastRedeemRequest{ProtocolVersion: social.Protocol, Code: boot.Bootstrap.Code, ExpectedBootstrapID: boot.Bootstrap.ID, DeviceID: "sender-expired-tv"}), 200, &target)
+	proof := strings.Repeat("a", 48)
+	var bound social.CastControllerResponse
+	f.decode(f.as(target.Session.AccessToken, "POST", "/v1/cast/controllers/register", social.CastControllerRegister{BootstrapID: boot.Bootstrap.ID, ControlToken: proof}), 200, &bound)
+	expired := time.Now().Add(-time.Minute).UTC().Format(time.RFC3339)
+	if _, err := f.db.Exec(`UPDATE authorization_family_tokens SET expires_at=? WHERE token_hash=?; UPDATE authorization_access SET expires_at=? WHERE hash=?`, expired, identity.Digest(f.token), expired, identity.Digest(f.token)); err != nil {
+		t.Fatal(err)
+	}
+	var renewed social.CastReceiverSession
+	f.decode(f.as("", "POST", "/v1/cast/reconnect", social.CastReconnectRequest{ProtocolVersion: social.Protocol, DeviceToken: target.DeviceToken, DeviceID: "sender-expired-tv"}), 200, &renewed)
+	if w := f.as(renewed.Session.AccessToken, "POST", "/v1/cast/controllers/check", social.CastControllerCheck{BindingID: bound.Binding.ID, ControlToken: proof}); w.Code == 200 {
+		t.Fatal("expired sender relationship carried")
+	}
+}
