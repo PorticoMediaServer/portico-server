@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LyricsService, parseLyricsView, activeLyricLine, lyricSeekPosition } from '../src/lyrics.ts';
+import { LyricsService, parseLyricsView, activeLyricLine, lyricSeekPosition, type LyricRevision, type LyricsChooseContext } from '../src/lyrics.ts';
 import { readLyricsResponse } from '../src/lyrics-http.ts';
 import { HttpLocalApi } from '../src/index.ts';
 const scope = { serverId: 'server', viewerId: 'viewer-profile-session' }, target = { itemId: 'song', libraryId: 'music', sessionId: 'session', sessionGeneration: 2 };
@@ -30,7 +30,7 @@ test('validates song, viewer fence, playback generation, source and ordered time
     }
     const wrong = structuredClone(view());
     wrong.selection.resource.document.lines[1].atMs = 12000;
-    assert.equal(parseLyricsView(wrong, scope, target).selection.resource?.document.lines.length, 2);
+    assert.equal(parseLyricsView(wrong, scope, target).selection.resource?.document!.lines.length, 2);
     wrong.selection.resource.document.lines[1].atMs = 11999;
     assert.throws(() => parseLyricsView(wrong, scope, target));
     assert.throws(() => parseLyricsView(view(), scope, { ...target, sourceId: 'different' }));
@@ -147,4 +147,204 @@ test('a 404 lyrics read is the empty state, not an error', async () => {
     assert.equal(s.error, '');
     assert.equal(s.data, null);
     assert.equal(s.busy, false);
+});
+
+async function choiceHarness() {
+ const calls: { path: string; method?: string; body?: unknown; signal: AbortSignal; pending: ReturnType<typeof deferred<unknown>> }[] = [];
+ const transport = api((path, method, body, signal) => {
+  assert.ok(signal); const pending = deferred<unknown>(); calls.push({ path, method, body, signal, pending }); return pending.promise;
+ });
+ const service = new LyricsService(transport, scope, { ...target, sourceId: 'asset' });
+ const loading = service.refresh(); calls[0]!.pending.resolve(view()); await loading;
+ const controller = new AbortController(); let current = true;
+ const context = (): LyricsChooseContext => ({ snapshot: service.getSnapshot(), signal: controller.signal, isCurrent: () => current });
+ const selectedView = (selected: LyricRevision | null, selectionRevision = 2) => ({ ...view(), selection: { revision: selectionRevision, resource: selected } });
+ return { service, transport, calls, controller, context, selectedView, retire: () => { current = false; } };
+}
+const turn = () => new Promise<void>(resolve => setImmediate(resolve));
+
+for (const off of [false, true]) test(`scoped ${off ? 'Off' : 'resource'} uses exact offered source/CAS and validates PUT plus GET`, async t => {
+ const h = await choiceHarness(); t.after(() => h.service.dispose());
+ const shown = h.service.getSnapshot(), resource = off ? null : shown.data!.resources[0]!;
+ const chosen = h.service.choose(resource, h.context());
+ assert.equal(h.calls[1]!.path, '/v1/items/song/lyrics/selection'); assert.equal(h.calls[1]!.method, 'PUT');
+ assert.deepEqual(h.calls[1]!.body, { sourceId: 'asset', sourceVersion: source.version, sessionId: 'session', expectedSelectionRevision: 1, resourceId: resource?.id ?? '', revision: resource?.revision ?? 0 });
+ h.calls[1]!.pending.resolve({ revision: 2, resource: resource === null ? null : revision }); await turn();
+ assert.equal(h.calls[2]!.path, '/v1/items/song/lyrics?sessionId=session&sourceId=asset');
+ assert.equal(h.calls[2]!.signal, h.calls[1]!.signal, 'PUT and GET share the command controller');
+ h.calls[2]!.pending.resolve(h.selectedView(resource === null ? null : revision)); await chosen;
+ assert.equal(h.service.getSnapshot().data?.selection.revision, 2);
+ assert.equal(h.service.getSnapshot().data?.selection.resource?.id ?? null, resource?.id ?? null);
+ assert.equal(h.service.getSnapshot().busy, false); assert.equal(h.service.getSnapshot().preview, null);
+});
+
+test('scoped choice does not require resource management permission', async t => {
+ const h = await choiceHarness(); t.after(() => h.service.dispose());
+ const refreshed = h.service.refresh(); const read = view(); read.resources[0] = { ...revision, canManage: false }; h.calls[1]!.pending.resolve(read); await refreshed;
+ const row = h.service.getSnapshot().data!.resources[0]!; const chosen = h.service.choose(row, h.context());
+ assert.equal(h.calls[2]!.method, 'PUT'); h.calls[2]!.pending.resolve({ revision: 2, resource: { ...revision, canManage: false } }); await turn();
+ h.calls[3]!.pending.resolve(h.selectedView(revision)); await chosen;
+});
+
+test('scoped admission refuses old/forged snapshot, row, source and nontrue or aborted context without changing service', async t => {
+ const h = await choiceHarness(); t.after(() => h.service.dispose()); const shown = h.service.getSnapshot();
+ const dead = new AbortController(); dead.abort(); let evaluated = 0;
+ const cases = [
+  { resource: shown.data!.resources[0]!, context: { snapshot: shown, signal: dead.signal, isCurrent: () => { evaluated++; return true; } } },
+  { resource: shown.data!.resources[0]!, context: { ...h.context(), isCurrent: () => false } },
+  { resource: shown.data!.resources[0]!, context: { ...h.context(), isCurrent: (() => 1) as unknown as () => boolean } },
+  { resource: shown.data!.resources[0]!, context: { ...h.context(), snapshot: { ...shown } } },
+  { resource: { ...shown.data!.resources[0]! }, context: h.context() },
+  { resource: { ...shown.data!.resources[0]!, id: 'not-offered' }, context: h.context() },
+ ];
+ for (const input of cases) { await assert.rejects(h.service.choose(input.resource, input.context)); assert.strictEqual(h.service.getSnapshot(), shown); assert.equal(h.calls.length, 1); }
+ assert.equal(evaluated, 0);
+ // Constructor's established session guard must not be relaxed by the new command port.
+ assert.throws(() => new LyricsService(api(async () => view()), scope, { ...target, sessionGeneration: 0 }));
+});
+
+test('busy and concurrent scoped choice refuse without touching the first command', async t => {
+ const h = await choiceHarness(); t.after(() => h.service.dispose()); const ctx = h.context();
+ const first = h.service.choose(null, ctx), rejected = assert.rejects(first);
+ const busy = h.service.getSnapshot();
+ await assert.rejects(h.service.choose(null, ctx)); await assert.rejects(h.service.choose(null, h.context()));
+ assert.strictEqual(h.service.getSnapshot(), busy); assert.equal(h.calls.length, 2); assert.equal(h.calls[1]!.signal.aborted, false);
+ h.controller.abort(); await rejected;
+});
+
+for (const replace of [false, true]) test(`busy subscriber ${replace ? 'refreshes' : 'cancels caller'} before PUT and old work does not dispatch`, async t => {
+ const h = await choiceHarness(); t.after(() => h.service.dispose()); let replacement: Promise<void> | undefined, entered = false;
+ h.service.subscribe(() => { if (!entered && h.service.getSnapshot().busy) { entered = true; if (replace) replacement = h.service.refresh(); else h.controller.abort(); } });
+ await assert.rejects(h.service.choose(null, h.context()));
+ assert.equal(h.calls.filter(call => call.method === 'PUT').length, 0);
+ if (replace) { assert.ok(replacement); assert.equal(h.calls[1]!.method, 'GET'); h.calls[1]!.pending.resolve(view()); await replacement; }
+ else assert.equal(h.service.getSnapshot().busy, false);
+});
+
+test('TRUE-returning admission currentness may install a refresh but cannot dispatch the old choice', async t => {
+ const h = await choiceHarness(); t.after(() => h.service.dispose()); let replacement: Promise<void> | undefined;
+ const shown = h.service.getSnapshot();
+ await assert.rejects(h.service.choose(null, { snapshot: shown, signal: h.controller.signal, isCurrent: () => { replacement ??= h.service.refresh(); return true; } }));
+ assert.equal(h.calls.length, 2); assert.equal(h.calls[1]!.method, 'GET');
+ h.calls[1]!.pending.resolve(view()); await replacement; assert.equal(h.service.getSnapshot().busy, false);
+});
+
+for (const phase of ['PUT', 'GET'] as const) for (const reason of ['abort', 'currentness', 'cancel', 'dispose'] as const) {
+ test(`${reason} while ${phase} is held settles original command and ignored late completion cannot publish`, async t => {
+  const h = await choiceHarness(); t.after(() => h.service.dispose());
+  const chosen = h.service.choose(null, h.context()), rejected = assert.rejects(chosen);
+  if (phase === 'GET') { h.calls[1]!.pending.resolve({ revision: 2, resource: null }); await turn(); }
+  const held = h.calls.at(-1)!;
+  if (reason === 'abort') h.controller.abort();
+  else if (reason === 'cancel') h.service.cancel();
+  else if (reason === 'dispose') h.service.dispose();
+  else { h.retire(); held.pending.resolve(phase === 'PUT' ? { revision: 2, resource: null } : h.selectedView(null)); }
+  await rejected; const after = h.service.getSnapshot(); const count = h.calls.length;
+  held.pending.resolve(phase === 'PUT' ? { revision: 2, resource: null } : h.selectedView(null)); await turn();
+  assert.equal(h.calls.length, count); assert.strictEqual(h.service.getSnapshot(), after);
+  if (reason === 'cancel') assert.equal(after.data, null);
+  else if (reason !== 'dispose') assert.equal(after.busy, false);
+ });
+}
+
+test('retirement after PUT receipt parsing forbids the follow-up GET', async t => {
+ const h = await choiceHarness(); t.after(() => h.service.dispose()); const chosen = h.service.choose(null, h.context());
+ const rejected = assert.rejects(chosen);
+ h.calls[1]!.pending.resolve({ revision: 2, get resource() { h.controller.abort(); return null; } });
+ await rejected; assert.equal(h.calls.length, 2); assert.equal(h.service.getSnapshot().data?.selection.revision, 1);
+});
+
+test('one total 22s deadline covers PUT and GET and retired timers cannot affect the next command', async t => {
+ t.mock.timers.enable({ apis: ['setTimeout'] });
+ const h = await choiceHarness(); t.after(() => h.service.dispose());
+ const chosen = h.service.choose(null, h.context()), rejected = assert.rejects(chosen, /timed out/);
+ t.mock.timers.tick(21000); h.calls[1]!.pending.resolve({ revision: 2, resource: null }); await turn();
+ assert.equal(h.calls.length, 3); t.mock.timers.tick(999); assert.equal(h.service.getSnapshot().busy, true);
+ t.mock.timers.tick(1); await rejected; assert.equal(h.calls[2]!.signal.aborted, true); assert.equal(h.service.getSnapshot().busy, false);
+ h.calls[2]!.pending.reject(new Error('late timeout error')); await turn(); assert.equal(h.service.getSnapshot().error, '');
+});
+
+test('refresh and another drawer survive original cancellation and late transport error', async t => {
+ const h = await choiceHarness(); t.after(() => h.service.dispose());
+ const old = h.service.choose(null, h.context()), rejected = assert.rejects(old);
+ h.calls[1]!.pending.resolve({ revision: 2, resource: null }); await turn();
+ const refresh = h.service.refresh(); await rejected;
+ assert.equal(h.calls[3]!.signal.aborted, false); assert.equal(h.service.getSnapshot().busy, true);
+ h.calls[2]!.pending.reject(new Error('late old GET error')); await turn();
+ assert.equal(h.service.getSnapshot().busy, true); assert.equal(h.calls[3]!.signal.aborted, false);
+ h.calls[3]!.pending.resolve(h.selectedView(revision, 7)); await refresh;
+ const other = new AbortController(), shown = h.service.getSnapshot();
+ const second = h.service.choose(null, { snapshot: shown, signal: other.signal, isCurrent: () => true });
+ assert.equal((h.calls[4]!.body as { expectedSelectionRevision: number }).expectedSelectionRevision, 7);
+ h.controller.abort(); assert.equal(h.calls[4]!.signal.aborted, false);
+ h.calls[4]!.pending.resolve({ revision: 8, resource: null }); await turn(); h.calls[5]!.pending.resolve(h.selectedView(null, 8)); await second;
+ assert.equal(h.service.getSnapshot().data?.selection.revision, 8);
+});
+
+test('transport abort reentry installs a successor whose busy state and controller the old command cannot clear', async t => {
+ const h = await choiceHarness(); t.after(() => h.service.dispose());
+ const old = h.service.choose(null, h.context()), rejected = assert.rejects(old); let successor: Promise<void> | undefined;
+ h.calls[1]!.signal.addEventListener('abort', () => { successor = h.service.refresh(); }, { once: true });
+ h.controller.abort(); await rejected;
+ assert.ok(successor); assert.equal(h.calls[2]!.method, 'GET'); assert.equal(h.calls[2]!.signal.aborted, false);
+ h.calls[1]!.pending.resolve({ revision: 2, resource: null }); await turn();
+ assert.equal(h.calls.length, 3); assert.equal(h.service.getSnapshot().busy, true);
+ h.calls[2]!.pending.resolve(view()); await successor; assert.equal(h.service.getSnapshot().busy, false);
+});
+
+for (const defect of ['cas', 'wrong-resource', 'unexpected-off', 'fence', 'source', 'version', 'session', 'policy', 'new-selection', 'invalid-document'] as const) {
+ test(`scoped choice refuses ${defect} receipt/readback without adopting latest state`, async t => {
+  const h = await choiceHarness(); t.after(() => h.service.dispose()); const shown = h.service.getSnapshot(), row = shown.data!.resources[0]!;
+  const chosen = h.service.choose(row, h.context()), rejected = assert.rejects(chosen);
+  const receipt = { revision: defect === 'cas' ? 3 : 2, resource: defect === 'unexpected-off' ? null : defect === 'wrong-resource' ? { ...revision, id: 'other' } : revision };
+  h.calls[1]!.pending.resolve(receipt); await turn();
+  if (!['cas', 'wrong-resource', 'unexpected-off'].includes(defect)) {
+   const raw: Record<string, unknown> = h.selectedView(revision);
+   if (defect === 'fence') raw.scope = { ...view().scope, viewerFence: 'f'.repeat(64) };
+   if (defect === 'source') raw.source = { ...wireSource, id: 'other' };
+   if (defect === 'version') { raw.source = { ...wireSource, version: 'f'.repeat(64) }; raw.sources = [raw.source]; }
+   if (defect === 'session') raw.scope = { ...view().scope, sessionGeneration: 3 };
+   if (defect === 'policy') raw.librarySelection = { revision: 1, resource: { ...revision, scope: 'library' } };
+   if (defect === 'new-selection') raw.selection = { revision: 3, resource: null };
+   if (defect === 'invalid-document') raw.selection = { revision: 2, resource: { ...revision, document: { ...document, lines: [{ atMs: 99999999, text: 'outside' }] } } };
+   h.calls[2]!.pending.resolve(raw);
+  }
+  await rejected; assert.strictEqual(h.service.getSnapshot().data, shown.data); assert.equal(h.service.getSnapshot().busy, false);
+ });
+}
+
+test('scoped denial preserves the existing protected-data clearing policy', async t => {
+ const h = await choiceHarness(); t.after(() => h.service.dispose());
+ const chosen = h.service.choose(null, h.context()), rejected = assert.rejects(chosen);
+ h.calls[1]!.pending.reject(Object.assign(new Error('denied'), { status: 403 })); await rejected;
+ assert.equal(h.service.getSnapshot().data, null); assert.equal(h.service.getSnapshot().preview, null); assert.match(h.service.getSnapshot().error, /no longer access/);
+});
+
+test('scoped transport captures requestLyrics once and keeps the original receiver for PUT and GET', async () => {
+ let reads = 0, preferred = 0, fallback = 0;
+ const original = { request: async <T>() => { fallback++; return view() as T; }, get requestLyrics() {
+  reads++; return async function<T>(this: unknown, _path: string, method?: string) { assert.strictEqual(this, original); preferred++; return (method === 'PUT' ? { revision: 2, resource: null } : { ...view(), selection: { revision: preferred > 1 ? 2 : 1, resource: preferred > 1 ? null : revision } }) as T; };
+ } };
+ const service = new LyricsService(original, scope, target); await service.refresh(); reads = 0;
+ await service.choose(null, { snapshot: service.getSnapshot(), signal: new AbortController().signal, isCurrent: () => true });
+ assert.equal(reads, 1); assert.equal(preferred, 3); assert.equal(fallback, 0); service.dispose();
+});
+
+test('scoped real HttpLocalApi carries original signals/token through PUT and GET and rejects token replacement', async () => {
+ for (const replaceAt of ['none', 'PUT', 'GET'] as const) {
+  const calls: { method: string; signal: AbortSignal; authorization: string; pending: ReturnType<typeof deferred<Response>> }[] = [];
+  const client = new HttpLocalApi('https://example.test', 'token-a', async (_url, init) => {
+   assert.ok(init?.signal); const pending = deferred<Response>(); calls.push({ method: init.method ?? 'GET', signal: init.signal, authorization: (init.headers as Record<string, string>).Authorization, pending }); return pending.promise;
+  });
+  const service = new LyricsService(client, scope, target), json = (raw: unknown) => new Response(JSON.stringify(raw), { headers: { 'Content-Type': 'application/json' } });
+  const refresh = service.refresh(); calls[0]!.pending.resolve(json(view())); await refresh;
+  const controller = new AbortController(), chosen = service.choose(null, { snapshot: service.getSnapshot(), signal: controller.signal, isCurrent: () => true });
+  const result = replaceAt === 'none' ? chosen : assert.rejects(chosen, /old session/);
+  if (replaceAt === 'PUT') client.setAccessToken('token-b');
+  calls[1]!.pending.resolve(json({ revision: 2, resource: null })); await turn();
+  if (replaceAt !== 'PUT') { assert.equal(calls[2]!.method, 'GET'); if (replaceAt === 'GET') client.setAccessToken('token-b'); calls[2]!.pending.resolve(json({ ...view(), selection: { revision: 2, resource: null } })); }
+  await result; assert.ok(calls.every(call => call.authorization === 'Bearer token-a'));
+  assert.ok(calls.every(call => call.signal instanceof AbortSignal));
+  assert.equal(service.getSnapshot().data?.selection.revision, replaceAt === 'none' ? 2 : 1); service.dispose();
+ }
 });

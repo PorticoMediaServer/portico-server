@@ -97,6 +97,7 @@ const emptyChapters = (scope: PlayerChaptersSnapshot['scope']): PlayerChaptersSn
  * factory adds only target/lifetime guards, never a player, session, queue or engine. */
 export function createWebListeningPort(input: WebListeningInput): WebListeningPort {
   const record = new AbortController();
+  const originalRequest = input.request.bind(input), originalRequestLyrics = input.requestLyrics.bind(input);
   let dead = false;
   const attached = new Set<() => void>();
   const edits = new Set<WebQueueEditOpening>();
@@ -126,7 +127,13 @@ export function createWebListeningPort(input: WebListeningInput): WebListeningPo
     const onAbort = () => controller.abort();
     lifetime.signal.addEventListener('abort', onAbort, {once: true});
     return {signal: AbortSignal.any([record.signal, lifetime.signal, controller.signal]),
-      isCurrent: () => !controller.signal.aborted && !lifetime.signal.aborted && lifetime.isCurrent() && guard(),
+      isCurrent: () => {
+        if (controller.signal.aborted || lifetime.signal.aborted || record.signal.aborted || dead) return false;
+        if (lifetime.isCurrent() !== true) return false;
+        if (controller.signal.aborted || lifetime.signal.aborted || record.signal.aborted || dead) return false;
+        const live = guard();
+        return live && !controller.signal.aborted && !lifetime.signal.aborted && !record.signal.aborted && !dead;
+      },
       done: () => {lifetime.signal.removeEventListener('abort', onAbort);}};
   };
   const settled = async <T>(work: Promise<T>, current: () => boolean): Promise<T> => {
@@ -137,13 +144,13 @@ export function createWebListeningPort(input: WebListeningInput): WebListeningPo
   /** Bound original IO: admission before, combined signals, admission after the read. */
   const api: WebListeningApi = Object.freeze({
     request: <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => {
-      if (!guard()) return Promise.reject(new Error('stale_listening_port'));
-      return input.request<T>(path, method, body, AbortSignal.any([record.signal, ...(signal ? [signal] : [])]))
+      if (signal?.aborted || !guard() || signal?.aborted || record.signal.aborted || dead) return Promise.reject(new Error('stale_listening_port'));
+      return originalRequest<T>(path, method, body, AbortSignal.any([record.signal, ...(signal ? [signal] : [])]))
         .then(value => {if (!guard()) throw new Error('stale_listening_port'); return value;});
     },
     requestLyrics: <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => {
-      if (!guard()) return Promise.reject(new Error('stale_listening_port'));
-      return input.requestLyrics<T>(path, method, body, AbortSignal.any([record.signal, ...(signal ? [signal] : [])]))
+      if (signal?.aborted || !guard() || signal?.aborted || record.signal.aborted || dead) return Promise.reject(new Error('stale_listening_port'));
+      return originalRequestLyrics<T>(path, method, body, AbortSignal.any([record.signal, ...(signal ? [signal] : [])]))
         .then(value => {if (!guard()) throw new Error('stale_listening_port'); return value;});
     },
   });
@@ -194,14 +201,24 @@ export function createWebListeningPort(input: WebListeningInput): WebListeningPo
       const c = command(input.lifetime);
       try {await settled(lyrics.refresh(), c.isCurrent);} finally {c.done();}
     },
-    /** Held: published LyricsService.choose(resource) owns its request controller and has no
-     * command-scoped admission or publication seam, so an aborted caller could still publish
-     * into the shared live service. Until the canonical choose(resource,{signal,isCurrent})
-     * seam is public this path refuses before any service mutation. */
-    choose: async (_shown: LyricsSnapshot, _resource: LyricRevision | null, lifetime: WebListeningLifetime) => {
+    choose: async (shown: LyricsSnapshot, resource: LyricRevision | null, lifetime: WebListeningLifetime) => {
       require();
-      if (lifetime.signal.aborted || !lifetime.isCurrent()) stale();
-      unavailable();
+      if (input.lyricsEnabled() !== true) unavailable();
+      require();
+      const c = command(lifetime);
+      try {
+        if (!c.isCurrent()) stale();
+        const snapshot = lyrics.getSnapshot();
+        if (!c.isCurrent()) stale();
+        if (shown !== snapshot || snapshot.busy || !shown.data?.source) unavailable();
+        const data = shown.data, target = input.target;
+        if (!target.libraryId || !target.itemId || !target.sessionId || !target.sourceId || !Number.isSafeInteger(target.sessionGeneration) || target.sessionGeneration < 1
+          || data.scope.libraryId !== target.libraryId || data.scope.itemId !== target.itemId || data.scope.sessionId !== target.sessionId
+          || data.scope.sessionGeneration !== target.sessionGeneration || data.source?.id !== target.sourceId
+          || resource !== null && !data.resources.some(row => row === resource && !row.deleted)) unavailable();
+        if (!c.isCurrent()) stale();
+        await settled(lyrics.choose(resource, {snapshot: shown, signal: c.signal, isCurrent: c.isCurrent}), c.isCurrent);
+      } finally {c.done();}
     },
     seek: async (shown: LyricsSnapshot, index: number, lifetime: WebListeningLifetime) => {
       require();
@@ -253,8 +270,18 @@ export function createWebListeningPort(input: WebListeningInput): WebListeningPo
       if (lifetime.signal.aborted || !lifetime.isCurrent() || shown !== list.getSnapshot()) stale();
       if (!shown.queueId || !shown.revision || shown.queueId !== input.target.queueId) unavailable();
       const opening = input.openEdit(shown, lifetime);
-      edits.add(opening);
-      return opening;
+      let disposed = false;
+      // Forward this exact issuer's methods: its private page receipts and canonical
+      // reader stay inside the original opening, never reconstructed by the facade.
+      const owned = Object.freeze({...opening, dispose: () => {
+        if (disposed) return;
+        disposed = true;
+        edits.delete(owned); // detach only this registration before disposer reentry
+        opening.dispose();
+      }});
+      if (!guard() || lifetime.signal.aborted || lifetime.isCurrent() !== true || !guard() || lifetime.signal.aborted || dead || record.signal.aborted) {owned.dispose(); stale();}
+      edits.add(owned);
+      return owned;
     },
     policy: async (shown: WebQueueListSnapshot, intent: V1QueuePolicyIntent, lifetime: WebListeningLifetime) => {
       require();

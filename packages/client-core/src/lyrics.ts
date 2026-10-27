@@ -89,6 +89,8 @@ export type LyricsSnapshot = Readonly<{
     error: string;
     generation: number;
 }>;
+/** The exact drawn snapshot and the original drawer command, never a later opening. */
+export type LyricsChooseContext = Readonly<{ snapshot: LyricsSnapshot; signal: AbortSignal; isCurrent: () => boolean }>;
 export type LyricUpload = Readonly<{
     text?: string;
     contentBase64?: string;
@@ -189,13 +191,14 @@ export class LyricsService {
     private generation = 0;
     private disposed = false;
     private fence?: string;
+    private choice?: { retire(error: Error): void };
     private readonly api: LyricsApi;
     private readonly scope: ContentScope;
     private readonly target: LyricsTarget;
     constructor(api: LyricsApi, scope: ContentScope, target: LyricsTarget) {
         this.api = api;
-        this.scope = scope;
-        this.target = target;
+        this.scope = Object.freeze({ ...scope });
+        this.target = Object.freeze({ ...target });
         if (!id(scope.serverId) || !scope.viewerId || !id(target.itemId) || !id(target.libraryId) || target.sessionId && (!id(target.sessionId) || !integer(target.sessionGeneration) || target.sessionGeneration < 1))
             throw new Error('Lyrics require a bound song and viewer.');
     }
@@ -214,11 +217,16 @@ export class LyricsService {
     private async run(work: (signal: AbortSignal) => Promise<Partial<LyricsSnapshot>>) {
         if (this.disposed)
             return;
+        const previousGeneration = this.generation;
+        this.choice?.retire(new Error('Lyrics choice was replaced by another service operation.'));
+        if (this.disposed || this.generation !== previousGeneration || this.choice) return;
         const g = ++this.generation;
-        this.controller?.abort();
+        const previous = this.controller; this.controller = undefined; previous?.abort();
+        if (this.disposed || g !== this.generation) return;
         const controller = new AbortController();
         this.controller = controller;
         this.publish({ busy: true, error: '' });
+        if (this.disposed || g !== this.generation || this.controller !== controller) return;
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {
             let result = await Promise.race([work(controller.signal), new Promise<never>((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error('Lyrics request timed out.')); }, 22000); })]);
@@ -262,8 +270,97 @@ export class LyricsService {
     }
     // A song with no lyrics answers 404: that is the empty state ("No lyrics"), not a failure.
     refresh = () => this.run(async (signal) => { let raw: unknown; try { raw = await this.request(this.path() + this.query(), 'GET', undefined, signal); } catch (e) { if ((e as { status?: number } | null)?.status === 404) return { data: null, preview: null, candidates: [] }; throw e; } return { data: this.check(raw) }; });
-    choose = (resource: LyricRevision | null) => { const d = this.state.data; if (!d || !this.target.sessionId)
+    choose = (resource: LyricRevision | null, context?: LyricsChooseContext): Promise<void> => { if (context !== undefined) return this.chooseScoped(resource, context); const d = this.state.data; if (!d || !this.target.sessionId)
         return Promise.resolve(); const body = { ...this.bound(), expectedSelectionRevision: d.selection.revision, resourceId: resource?.id ?? '', revision: resource?.revision ?? 0 }; return this.mutate('/selection', 'PUT', body); };
+    private chooseScoped(resource: LyricRevision | null, context: LyricsChooseContext): Promise<void> {
+        const generation = this.generation, shown = context.snapshot, signal = context.signal, current = context.isCurrent;
+        const refused = () => new Error('Lyrics choice belongs to a retired or unavailable command.');
+        const admitted = () => !this.disposed && this.generation === generation && !this.choice && this.state === shown && !shown.busy;
+        if (!admitted() || signal.aborted) return Promise.reject(refused());
+        let allowed = false;
+        try { allowed = current.call(context) === true; } catch {}
+        if (!allowed || signal.aborted || !admitted()) return Promise.reject(refused());
+        const data = shown.data, source = data?.source;
+        if (!data || !source || !this.target.sessionId || !integer(this.target.sessionGeneration) || this.target.sessionGeneration < 1
+            || shown.generation !== generation || data.scope.sessionId !== this.target.sessionId || data.scope.sessionGeneration !== this.target.sessionGeneration
+            || data.scope.serverId !== this.scope.serverId || data.scope.libraryId !== this.target.libraryId || data.scope.itemId !== this.target.itemId
+            || this.target.sourceId && source.id !== this.target.sourceId || data.librarySelection !== undefined
+            || data.selection.revision >= Number.MAX_SAFE_INTEGER || resource !== null && (!data.resources.includes(resource) || resource.deleted)) return Promise.reject(refused());
+        const originalSource = Object.freeze({ ...source });
+        const requested = resource === null ? null : Object.freeze({ id: resource.id, revision: resource.revision, digest: resource.digest, scope: resource.scope });
+        const body = Object.freeze({ sourceId: originalSource.id, sourceVersion: originalSource.version, sessionId: this.target.sessionId,
+            expectedSelectionRevision: data.selection.revision, resourceId: requested?.id ?? '', revision: requested?.revision ?? 0 });
+        const putPath = this.path('/selection'), getPath = this.path() + this.query(), scope = this.scope, target = this.target;
+        // Capture the original method and receiver once, including getter reentry.
+        const transport = (this.api.requestLyrics ?? this.api.request).bind(this.api);
+        if (!admitted() || signal.aborted) return Promise.reject(refused());
+        let expected = shown, done = false, timer: ReturnType<typeof setTimeout> | undefined;
+        const controller = new AbortController();
+        let resolve!: () => void, reject!: (error: unknown) => void;
+        const completion = new Promise<void>((yes, no) => { resolve = yes; reject = no; });
+        const owns = () => !this.disposed && this.choice === operation && this.generation === generation && this.state === expected;
+        const clean = () => { if (timer !== undefined) clearTimeout(timer); timer = undefined; signal.removeEventListener('abort', abort); };
+        const stop = (error: Error, patch?: Partial<LyricsSnapshot>) => {
+            if (done) return;
+            done = true; const owned = owns();
+            if (this.choice === operation) this.choice = undefined;
+            clean(); reject(error);
+            // Restore only our still-visible busy bit before any subscriber/HTTP abort reentry.
+            try { if (owned && this.state.busy) this.publish({ busy: false, ...patch }); }
+            finally { controller.abort(); }
+        };
+        const operation = { retire: stop };
+        const abort = () => stop(refused());
+        const check = () => {
+            if (done) return false;
+            if (!owns() || signal.aborted) { stop(refused()); return false; }
+            let live = false; try { live = current.call(context) === true; } catch {}
+            if (!live || signal.aborted || !owns() || done) { stop(refused()); return false; }
+            return true;
+        };
+        this.choice = operation;
+        signal.addEventListener('abort', abort, { once: true });
+        if (!check()) return completion;
+        timer = setTimeout(() => stop(new Error('Lyrics request timed out.')), 22000);
+        // Reserve the completion and token before notifying synchronous subscribers.
+        expected = Object.freeze({ ...shown, busy: true, error: '', generation });
+        this.state = expected;
+        try { for (const listener of this.listeners) listener(); } catch (error) { stop(error instanceof Error ? error : refused()); }
+        if (!check()) return completion;
+        const sameResource = (actual: LyricRevision | null) => requested === null ? actual === null
+            : actual !== null && !actual.deleted && actual.id === requested.id && actual.revision === requested.revision && actual.digest === requested.digest && actual.scope === requested.scope;
+        const work = async () => {
+            if (!check()) return;
+            const receipt = await transport<unknown>(putPath, 'PUT', body, controller.signal);
+            if (!check()) return;
+            if (!obj(receipt) || !integer(receipt.revision) || receipt.revision !== body.expectedSelectionRevision + 1) invalid();
+            const selected = receipt.resource === null ? null : revision(receipt.resource, true);
+            if (!sameResource(selected)) invalid();
+            if (!check()) return;
+            const raw = await transport<unknown>(getPath, 'GET', undefined, controller.signal);
+            if (!check()) return;
+            const incoming = parseLyricsView(raw, scope, target);
+            if (incoming.scope.viewerFence !== data.scope.viewerFence || incoming.source?.id !== originalSource.id || incoming.source.version !== originalSource.version
+                || incoming.librarySelection !== undefined || incoming.selection.revision !== receipt.revision || !sameResource(incoming.selection.resource)) invalid();
+            if (!check()) return;
+            done = true; this.choice = undefined; clean();
+            this.fence = incoming.scope.viewerFence;
+            try { this.publish({ data: incoming, candidates: [], preview: null, busy: false, error: '' }); }
+            finally { resolve(); }
+        };
+        // Ignored-abort transport work remains observed and can never continue after retirement.
+        void work().catch(error => {
+            if (!check()) return;
+            const e = error as { status?: number; code?: string } | null;
+            const denied = e?.status === 401 || e?.status === 403, changed = e?.code === 'lyrics_source_changed';
+            if (denied) this.fence = undefined;
+            stop(error instanceof Error ? error : refused(), denied || changed ? {
+                data: null, preview: null, candidates: [], warnings: [],
+                error: denied ? 'This viewer can no longer access these lyrics.' : 'The song source changed. Start a new playback session or reopen the song.',
+            } : undefined);
+        });
+        return completion;
+    }
     private mutate(suffix: string, method: string, body: unknown) { return this.run(async (signal) => { await this.request(this.path(suffix), method, body, signal); const raw = await this.request(this.path() + this.query(), 'GET', undefined, signal); return { data: this.check(raw), candidates: [], preview: null }; }); }
     upload = (input: LyricUpload) => !this.state.data?.source ? Promise.resolve() : this.mutate('', 'POST', { ...this.bound(), ...input, resourceId: input.resourceId ?? '', expectedRevision: input.expectedRevision ?? 0 });
     setOffset = (resource: LyricRevision, milliseconds: number) => !this.state.data?.source ? Promise.resolve() : this.mutate('/' + encodeURIComponent(resource.id) + '/offset', 'PATCH', { ...this.bound(), expectedRevision: resource.revision, offsetMs: milliseconds });
@@ -282,7 +379,12 @@ export class LyricsService {
         invalid(); return { preview: r }; });
     configureProvider = (enabled: boolean) => { const revision = this.state.data?.providers.revision; if (revision === undefined)
         return Promise.resolve(); return this.run(async (signal) => { await this.request(routePath("put_lyrics_provider"), 'PUT', routeBody("put_lyrics_provider", { enabled, expectedRevision: revision }), signal); const raw = await this.request(this.path() + this.query(), 'GET', undefined, signal); return { data: this.check(raw), candidates: [] }; }); };
-    cancel = () => { this.generation++; this.controller?.abort(); this.fence = undefined; this.publish({ data: null, preview: null, candidates: [], warnings: [], busy: false, error: '' }); };
-    dispose = () => { this.disposed = true; this.generation++; this.controller?.abort(); this.listeners.clear(); };
+    cancel = () => {
+        const generation = this.generation; this.choice?.retire(new Error('Lyrics choice was cancelled.'));
+        if (this.disposed || generation !== this.generation || this.choice) return;
+        this.generation++; const controller = this.controller; this.controller = undefined; this.fence = undefined;
+        try { this.publish({ data: null, preview: null, candidates: [], warnings: [], busy: false, error: '' }); } finally { controller?.abort(); }
+    };
+    dispose = () => { this.disposed = true; this.generation++; const controller = this.controller; this.controller = undefined; this.listeners.clear(); this.choice?.retire(new Error('Lyrics service was disposed.')); controller?.abort(); };
 }
 const languageTag = language;
