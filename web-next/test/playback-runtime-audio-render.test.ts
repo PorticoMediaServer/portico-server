@@ -15,7 +15,7 @@ export function fakeContext(sampleRate = 48000) {
     createGain: () => ({gain: param(), connect() {}, disconnect() {}}),
     createBuffer: (channels: number, length: number, rate: number) => ({numberOfChannels: channels, length, sampleRate: rate, data: Array.from({length: channels}, () => new Float32Array(length)), copyToChannel(src: Float32Array, ch: number) { this.data[ch].set(src); }}),
     createBufferSource: () => {
-      const node: any = {buffer: null, onended: null, started: undefined, connect() {}, disconnect() {}, start(t: number) { node.started = t; scheduled.push({start: Math.round(t * sampleRate), frames: node.buffer.length, node}); }, stop() { node.stopped = true; }};
+      const node: any = {buffer: null, onended: null, started: undefined, connect() {}, disconnect() {}, start(t: number, offset = 0, duration?: number) { node.started = t; node.offset = Math.round(offset * sampleRate); scheduled.push({start: Math.round(Math.max(ctx.currentTime, t) * sampleRate), frames: duration === undefined ? node.buffer.length : Math.round(duration * sampleRate), node}); }, stop() { node.stopped = true; }};
       return node;
     },
   };
@@ -67,7 +67,7 @@ function setup() {
   (globalThis as any).fetch = async (url: string, init: RequestInit) => {
     requests.push(url);
     const asked = new Headers(init.headers).get('Range');
-    if (!asked) return new Response(files[url]!, {status: 200, headers: {'Content-Type': 'audio/flac', 'X-Audio-Trim-Start': '0', 'X-Audio-Trim-End': '0'}});
+    if (!asked) return new Response(new Uint8Array(files[url]!), {status: 200, headers: {'Content-Type': 'audio/flac', 'X-Audio-Trim-Start': '0', 'X-Audio-Trim-End': '0'}});
     const bytes = files[url]!, [a, b] = String((init.headers as Record<string, string>).Range).replace('bytes=', '').split('-').map(Number);
     const last = Math.min(bytes.length - 1, b!);
     return new Response(bytes.slice(a!, last + 1), {status: 206, headers: {'Content-Range': `bytes ${a}-${last}/${bytes.length}`}});
@@ -210,7 +210,7 @@ test('the position is what is heard: the output path’s latency is taken off th
   const start = (render as any).primary.deck.startFrame as number;
   const facts = t.calls.filter(c => c[0] === 'fact' && c[3] === 'playing');
   const heard = facts.at(-1)![2] as number;
-  assert.equal(heard, (Math.floor((t.f.ctx.currentTime - 0.2) * 44100) - start) / 44100, 'scheduled frames the speakers have not played yet are not counted');
+  assert.equal(heard, (Math.floor((t.f.ctx.currentTime - 0.2) * 44100) - Math.round(0.08 * 44100) - start) / 44100, 'scheduled frames the speakers have not played yet are not counted');
 });
 
 test('an MP3 started part-way asks for the server’s seek index once and never for a conversion', bounded, async ctx => {
@@ -240,4 +240,148 @@ test('an MP3 started part-way asks for the server’s seek index once and never 
   await fresh.open(0);
   fresh.close();
   assert.ok(!asked.includes('/long.idx'));
+});
+
+/** Controlled PCM at the existing reader port; real Deck, graph and renderer remain in use. */
+function stalledPcm(rate = 44100, frames = rate * 8, initial = rate * 2) {
+  let at = 0, available = initial, closed = false, reads = 0;
+  let wake: (() => void) | undefined;
+  const source = {sampleRate: rate, channels: 2,
+    async read(max: number) {
+      reads++;
+      while (!closed && at >= available && at < frames) await new Promise<void>(resolve => { wake = resolve; });
+      if (closed || at >= frames) return;
+      const n = Math.min(max, available - at, frames - at), from = at;
+      at += n;
+      return {frames: n, channels: Array.from({length: 2}, () => Float32Array.from({length: n}, (_, i) => (from + i) / frames))};
+    },
+    close() {closed = true; wake?.();},
+  };
+  return {source, get reads() {return reads;}, get closed() {return closed;}, release(until = frames) {available = until; const old = wake; wake = undefined; old?.();}};
+}
+function usePcm(render: unknown, source: ReturnType<typeof stalledPcm>['source']) {
+  (render as any).reader = () => ({unlock() {}, close: () => source.close(), prefetchAll: async () => {}, open: async () => source});
+}
+
+test('renderer stalls four seconds past its frontier, keeps one pump, and resumes each unheard frame in order', bounded, async ctx => {
+  const {DecodeAudioRender} = await import('../src/platform/playback/DecodeAudioRender.ts');
+  const t = setup(), pcm = stalledPcm(), render = new DecodeAudioRender(t.service, p => p, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
+  ctx.after(() => render.dispose()); usePcm(render, pcm.source);
+  render.apply(t.set({session: {id: 'slow', generation: 1, audio: {...t.a, durationFrames: 44100 * 8}}})); await settle();
+  const primary = (render as any).primary, graph = (render as any).graph;
+  assert.equal(graph.clock.frontier, 44100 * 2);
+  let suspend!: () => void;
+  t.f.ctx.suspend = () => new Promise<void>(resolve => {suspend = () => {t.f.ctx.state = 'suspended'; resolve();};});
+  t.f.advance(6.08); (render as any).tick();
+  assert.equal(render.transportPosition(), 2, 'silent elapsed context time is never source progress');
+  const pump = primary.deck.pump(30), reads = pcm.reads;
+  for (let i = 0; i < 3000; i++) assert.strictEqual(primary.deck.pump(30), pump);
+  assert.equal(pcm.reads, reads);
+  const oldStarts = t.f.scheduled.length;
+  pcm.release(); await settle();
+  assert.equal(t.f.scheduled.length, oldStarts, 'late PCM cannot start before actual suspension');
+  assert.equal(t.calls.some(c => c[0] === 'fact' && c[3] === 'ended'), false);
+  suspend(); await settle(); (render as any).tick();
+  assert.equal((render as any).hold, undefined);
+  const rebuilt = t.f.scheduled.slice(oldStarts);
+  const anchor = Math.floor(6.08 * 44100) + Math.round(0.08 * 44100);
+  assert(rebuilt.every(s => s.start >= anchor));
+  assert.deepEqual(rebuilt.map(s => s.start), Array.from({length: 6}, (_, i) => anchor + i * 44100));
+  assert.equal(rebuilt.reduce((n, s) => n + s.frames, 0), 44100 * 6);
+  assert.equal(render.transportPosition(), 2);
+});
+
+test('pause during a pending buffering suspension cannot be undone by refill or transport; explicit play recovers', bounded, async ctx => {
+  const {DecodeAudioRender} = await import('../src/platform/playback/DecodeAudioRender.ts');
+  const t = setup(), pcm = stalledPcm(), render = new DecodeAudioRender(t.service, p => p, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
+  ctx.after(() => render.dispose()); usePcm(render, pcm.source);
+  render.apply(t.set({session: {id: 'slow', generation: 1, audio: {...t.a, durationFrames: 44100 * 8}}})); await settle();
+  let suspend!: () => void, resumes = 0;
+  t.f.ctx.suspend = () => new Promise<void>(resolve => {suspend = () => {t.f.ctx.state = 'suspended'; resolve();};});
+  t.f.ctx.resume = async () => {resumes++; t.f.ctx.state = 'running';};
+  t.f.advance(2.08); (render as any).tick();
+  render.apply(t.set({intent: 'paused'})); pcm.release(); await settle(); suspend(); await settle();
+  assert.equal(resumes, 0); assert((render as any).hold);
+  render.apply(t.set({intent: 'playing'})); await settle();
+  assert.equal(resumes, 1); assert.equal((render as any).hold, undefined);
+});
+
+test('seek, source replacement and disposal retire a pending buffering ticket before it can rebuild or resume', bounded, async ctx => {
+  const {DecodeAudioRender} = await import('../src/platform/playback/DecodeAudioRender.ts');
+  for (const retire of ['seek', 'replace', 'dispose']) {
+    const t = setup(), pcm = stalledPcm(), render = new DecodeAudioRender(t.service, p => p, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
+    ctx.after(() => render.dispose()); usePcm(render, pcm.source);
+    render.apply(t.set({session: {id: 'slow', generation: 1, audio: {...t.a, durationFrames: 44100 * 8}}})); await settle();
+    let suspend!: () => void, resumes = 0;
+    t.f.ctx.suspend = () => new Promise<void>(resolve => {suspend = () => {t.f.ctx.state = 'suspended'; resolve();};});
+    t.f.ctx.resume = async () => {resumes++; t.f.ctx.state = 'running';};
+    t.f.advance(2.08); (render as any).tick(); const original = (render as any).hold;
+    if (retire === 'dispose') render.dispose();
+    else if (retire === 'seek') render.apply(t.set({intent: 'paused', pendingSeek: {revision: 2, positionSeconds: 4}}));
+    else render.apply(t.set({intent: 'paused', session: {id: 'replacement', generation: 2, audio: t.b}}));
+    suspend(); await settle();
+    assert.notEqual((render as any).hold, original);
+    assert.throws(() => original.graph.preview(44100), /retired/);
+    assert.equal(pcm.closed, true);
+    assert.equal(resumes, 0, 'old held operation never resumes a replacement');
+    render.dispose();
+  }
+});
+
+test('a recovery resume resolving after pause stays suspended and never publishes completion', bounded, async ctx => {
+  const {DecodeAudioRender} = await import('../src/platform/playback/DecodeAudioRender.ts');
+  const t = setup(), pcm = stalledPcm(), render = new DecodeAudioRender(t.service, p => p, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
+  ctx.after(() => render.dispose()); usePcm(render, pcm.source);
+  render.apply(t.set({session: {id: 'slow', generation: 1, audio: {...t.a, durationFrames: 44100 * 8}}})); await settle();
+  let resumed!: () => void, attempts = 0;
+  t.f.ctx.resume = () => {attempts++; return new Promise<void>(resolve => {resumed = () => {t.f.ctx.state = 'running'; resolve();};});};
+  t.f.advance(2.08); (render as any).tick(); await settle(); pcm.release(); await settle(); (render as any).tick();
+  assert.equal(attempts, 1);
+  render.apply(t.set({intent: 'paused'})); await settle(); resumed(); await settle();
+  // The old attempt does not acquire the current paused intent. A browser statechange supplies
+  // the same fresh pause guard in production; exercise it explicitly with this controlled clock.
+  (render as any).contextChanged(); await settle();
+  assert.equal(t.f.ctx.state, 'suspended'); assert((render as any).hold);
+  assert.equal(t.calls.some(c => c[0] === 'fact' && c[3] === 'ended'), false);
+});
+
+test('a full twelve-second fade uses one frontier and publishes a crossed boundary once after recovery', bounded, async ctx => {
+  const {DecodeAudioRender} = await import('../src/platform/playback/DecodeAudioRender.ts');
+  const rate = 44100, t = setup(), outgoing = stalledPcm(rate, rate * 40, rate * 30), incoming = stalledPcm(rate, rate * 40, rate * 12);
+  const render = new DecodeAudioRender(t.service, p => p, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
+  ctx.after(() => render.dispose());
+  let opens = 0;
+  (render as any).reader = () => {const pcm = opens++ === 0 ? outgoing : incoming; return {unlock() {}, close: () => pcm.source.close(), prefetchAll: async () => {}, open: async () => pcm.source};};
+  const settings = {...t.get().audioEffects.settings, gapless: false, crossfadeSeconds: 12};
+  const a = {...t.a, durationFrames: rate * 40}, b = {...t.b, durationFrames: rate * 40};
+  render.apply(t.set({session: {id: 'outgoing', generation: 1, audio: a}, audioEffects: {settings}})); await settle();
+  render.apply(t.set({audioEffects: {prepared: {token: 'fade', itemId: 'second', audio: b}}})); await settle();
+  assert.equal((render as any).candidate.deck.decoded, rate * 12, 'readiness includes the full accepted overlap');
+  render.apply(t.set({audioEffects: {committed: {token: 'fade', itemId: 'second', session: {id: 'incoming', generation: 1, audio: b}}}}));
+  assert.equal((render as any).incoming.edge, rate * 28);
+  assert.equal((render as any).incoming.fade, rate * 12);
+  let suspend!: () => void;
+  t.f.ctx.suspend = () => new Promise<void>(resolve => {suspend = () => {t.f.ctx.state = 'suspended'; resolve();};});
+  t.f.advance(31.08); (render as any).tick();
+  assert((render as any).hold);
+  assert.equal(t.calls.filter(c => c[0] === 'audioBoundary').length, 0, 'a late tick holds the crossed boundary until recovery');
+  assert(t.f.scheduled.every(s => s.start + s.frames <= Math.round(30.08 * rate)), 'neither linked voice renders beyond available outgoing PCM');
+  outgoing.release(); incoming.release(); await settle(); suspend(); await settle();
+  assert.equal(t.calls.filter(c => c[0] === 'audioBoundary' && c[1] === 'fade').length, 1);
+  assert.equal((render as any).primary.plan.id, b.id);
+  assert((render as any).retiring, 'outgoing fade suffix is retained, not stopped at the boundary');
+});
+
+test('a fresh gesture retries an autoplay-pending resume without replaying old refusal', bounded, async ctx => {
+  const {DecodeAudioRender} = await import('../src/platform/playback/DecodeAudioRender.ts');
+  const t = setup(), pending: ((error: unknown) => void)[] = [];
+  t.f.ctx.state = 'suspended'; t.f.ctx.resume = () => new Promise<void>((_, reject) => pending.push(reject));
+  const render = new DecodeAudioRender(t.service, p => p, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
+  ctx.after(() => render.dispose()); render.apply(t.get()); await settle();
+  assert.equal(pending.length, 1);
+  (render as any).gesture(); await settle(); assert.equal(pending.length, 2);
+  pending[0]!(new DOMException('old blocked attempt', 'NotAllowedError')); await settle();
+  assert.equal(t.calls.some(c => c[0] === 'pause'), false);
+  pending[1]!(new DOMException('current refusal', 'NotAllowedError')); await settle();
+  assert.equal(t.calls.filter(c => c[0] === 'pause').length, 1);
 });
