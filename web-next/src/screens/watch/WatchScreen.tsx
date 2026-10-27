@@ -13,6 +13,7 @@ import {settledPlaybackChanged, settledPlaybackKey, type SettledPlayback} from '
 import type {WatchPanel, WatchRect, WatchScreenProps} from './types';
 import styles from './watch.module.css';
 import {PlaybackWaiting} from '../../kit/states/PlaybackWaiting';
+import {fenceKey} from '../../shell/playback-model';
 import {PlaybackFailure} from '../../kit/states/PlaybackFailure';
 import {ScrubPreview} from './ScrubPreview';
 import {watchPreviewFrame} from './preview';
@@ -309,19 +310,22 @@ export function WatchScreen({binding, snapshot, expanded, onCollapse, onControls
   const admitGesture = videoGesture?.admit;
   useLayoutEffect(() => admitGesture?.(() => gestureGate.current), [admitGesture, binding, sourceKey]);
 
+  // The runtime mints a fresh fence object every progress tick; prompt ownership
+  // follows the fence's exact content, never that object identity.
+  const promptFenceKey = fence ? fenceKey(fence) : '';
   const promptSource = useMemo<Omit<PromptFocusHost, 'source' | 'seekPresent' | 'focusAllowed' | 'controlsVisible'> | undefined>(() => { /* Preserve the original ownership/invalidation keys. */ void sourceKey;
-    if (!fence) return;
-    const original = {binding, authority: snapshot.authority, fence, intentId: snapshot.playback.intentId, run: snapshot.playback.playbackRun};
+    if (!promptFenceKey) return;
+    const original = {binding, authority: snapshot.authority, fenceKey: promptFenceKey, intentId: snapshot.playback.intentId, run: snapshot.playback.playbackRun};
     return {root, seek: promptSeek, current: () => {
       try {
         const live = original.binding.runtime.getSnapshot();
-        return !live.disposed && live.authority === original.authority && sameFence(live.fence, original.fence)
+        return !live.disposed && live.authority === original.authority && !!live.fence && fenceKey(live.fence) === original.fenceKey
           && live.playback.intentId === original.intentId && live.playback.playbackRun === original.run
-          && live.presentation?.kind === 'video' && sameFence(live.presentation.fence, original.fence)
-          && live.dock.local?.expanded === true && sameFence(live.dock.local.fence, original.fence) && live.dock.remote?.phase !== 'playing';
+          && live.presentation?.kind === 'video' && !!live.presentation.fence && fenceKey(live.presentation.fence) === original.fenceKey
+          && live.dock.local?.expanded === true && !!live.dock.local.fence && fenceKey(live.dock.local.fence) === original.fenceKey && live.dock.remote?.phase !== 'playing';
       } catch {return false;}
     }};
-  }, [binding, snapshot.authority, sourceKey, fence, snapshot.playback.intentId, snapshot.playback.playbackRun]);
+  }, [binding, snapshot.authority, sourceKey, promptFenceKey, snapshot.playback.intentId, snapshot.playback.playbackRun]);
   const seekPresent = !endCard && chromeVisible && !!bounds, gestureInactive = !videoGesture?.active;
   const promptFocusAllowed = gestureInactive && !panel && !externalPanel && !more && !shortcuts && !stillWatching;
   const promptHost = useMemo<PromptFocusHost | undefined>(() => promptSource ? {...promptSource, source: promptSource, seekPresent,

@@ -23,8 +23,8 @@ export function useOwnedResource<T>(
   const [held, setHeld] = useState<Held<T> | null>(null);
   // A changed tuple admits a new identity before this render commits; the layout
   // pass below then runs exactly once for the resource's own dependency set.
-  const [admitted, admit] = useState<Admission>(() => ({deps}));
-  if (!sameDeps(admitted.deps, deps)) admit({deps});
+  const [admitted, admit] = useState<Admission>(() => ({deps: [...deps]}));
+  if (!sameDeps(admitted.deps, deps)) admit({deps: [...deps]});
   // The pass keeps this render's own factories; their identity is not part of the
   // resource's lifetime.
   const factories = useRef({create, dispose, onMount});
