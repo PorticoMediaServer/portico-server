@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -133,6 +134,45 @@ func TestAdministrativeGroupOwnsRealRuleAndLegacyRemainsDisabled(t *testing.T) {
 	if _, err = s.SaveRecordingGroup(ctx, allow, rule.ID, stale); err != ErrConflict {
 		t.Fatalf("stale edit: %v", err)
 	}
+	rule = updated
+	c.ExpectedRevision = rule.Revision
+	c.OperationID = "enable-rule"
+	c.Enabled = true
+	if _, err = s.SaveRecordingGroup(ctx, allow, rule.ID, c); err != ErrUnavailable {
+		t.Fatal("promised capture with no driver", err)
+	}
+	locks, err := livechannels.NewPhysicalLocks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.DVR.ConfigureCapture(ruleToggleDriver{}, locks); err != nil {
+		t.Fatal(err)
+	}
+	c.OperationID = "resume-with-driver"
+	resumed, err := s.SaveRecordingGroup(ctx, allow, rule.ID, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original.Enabled = true
+	if err = db.QueryRow(`SELECT config_json FROM dvr_rules WHERE id=?`, rule.ID).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if err = json.Unmarshal([]byte(raw), &retained); err != nil || !reflect.DeepEqual(retained, original) {
+		t.Fatalf("resume changed config: %+v %v", retained, err)
+	}
+	c.ExpectedRevision, c.OperationID, c.Enabled = resumed.Revision, "pause-with-driver", false
+	paused, err := s.SaveRecordingGroup(ctx, allow, rule.ID, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original.Enabled = false
+	if err = db.QueryRow(`SELECT config_json FROM dvr_rules WHERE id=?`, rule.ID).Scan(&raw); err != nil {
+		t.Fatal(err)
+	}
+	if err = json.Unmarshal([]byte(raw), &retained); err != nil || !reflect.DeepEqual(retained, original) {
+		t.Fatalf("pause changed config: %+v %v", retained, err)
+	}
+	updated = paused
 	c.ExpectedRevision, c.OperationID = updated.Revision, "change-policy"
 	c.Options.Keep = &KeepPolicy{Mode: "keep-days", KeepDays: 14}
 	updated, err = s.SaveRecordingGroup(ctx, allow, rule.ID, c)
@@ -173,45 +213,83 @@ func TestAdministrativeGroupOwnsRealRuleAndLegacyRemainsDisabled(t *testing.T) {
 	if _, err = db.Exec(`UPDATE dvr_recording_grants SET enabled=1 WHERE authority='local' AND account_id='account' AND profile_id='profile'`); err != nil {
 		t.Fatal(err)
 	}
+	// Changing current defaults cannot reinterpret an unchanged administrative
+	// projection of this already-snapshotted rule.
+	document, err := s.DVRSettings(ctx, allow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defaults := document.Settings
+	defaults.PrePaddingMs, defaults.PostPaddingMs = 120000, 180000
+	if _, err = s.SaveDVRSettings(ctx, allow, Change[DVRDefaults]{ExpectedRevision: document.Revision, OperationID: "change-current-defaults", Settings: defaults}); err != nil {
+		t.Fatal(err)
+	}
+	c.ExpectedRevision, c.OperationID = updated.Revision, "unchanged-after-defaults"
+	updated, err = s.SaveRecordingGroup(ctx, allow, rule.ID, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := func() dvr.RuleConfig {
+		t.Helper()
+		var data string
+		var value dvr.RuleConfig
+		if err := db.QueryRow(`SELECT config_json FROM dvr_rules WHERE id=?`, rule.ID).Scan(&data); err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal([]byte(data), &value); err != nil {
+			t.Fatal(err)
+		}
+		return value
+	}
+	if got := stored(); !reflect.DeepEqual(got, original) {
+		t.Fatalf("new defaults rewrote unchanged projection: %+v", got)
+	}
+	// Only an explicit changed null asks to snapshot today's default.
+	c.ExpectedRevision, c.OperationID, c.Options.PrePaddingMs = updated.Revision, "explicit-null-default", nil
+	updated, err = s.SaveRecordingGroup(ctx, allow, rule.ID, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original.Options.BeforeMs = 120000
+	if got := stored(); !reflect.DeepEqual(got, original) {
+		t.Fatalf("changed null touched unrelated fields: %+v", got)
+	}
+	// The canonical DVR API can create the complete maxima simultaneously;
+	// an unchanged administrative save must retain all of them, including
+	// both retention dimensions hidden behind the one projected Keep policy.
+	original.Options = dvr.Options{BeforeMs: 21600000, AfterMs: 21600000, Priority: 1000, RetentionDays: 3650, EpisodeLimit: 100000}
+	maxRule, err := s.DVR.SaveRule(ctx, groupAuthority(allow), c.Owner, dvr.RuleInput{ID: rule.ID, Mutation: dvr.Mutation{ExpectedRevision: updated.Revision, RequestID: strings.Repeat("8", 48)}, Config: original})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.ExpectedRevision, c.OperationID, c.Options = maxRule.Revision, "maxima-projection", groupFromRule(maxRule, c.Owner).Options
+	updated, err = s.SaveRecordingGroup(ctx, allow, rule.ID, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := stored(); !reflect.DeepEqual(got, original) {
+		t.Fatalf("maxima were clamped or erased: %+v", got)
+	}
+	for index, change := range []func(*RecordingGroupChange){
+		func(v *RecordingGroupChange) { n := 21600001; v.Options.PrePaddingMs = &n },
+		func(v *RecordingGroupChange) { n := 21600001; v.Options.PostPaddingMs = &n },
+		func(v *RecordingGroupChange) { v.Options.Priority = 1001 },
+		func(v *RecordingGroupChange) { v.Options.Priority = -1001 },
+		func(v *RecordingGroupChange) { v.Options.Keep = &KeepPolicy{Mode: "keep-count", KeepCount: 100001} },
+		func(v *RecordingGroupChange) { v.Options.Keep = &KeepPolicy{Mode: "keep-days", KeepDays: 3651} },
+	} {
+		bad := c
+		bad.ExpectedRevision = updated.Revision
+		bad.OperationID = fmt.Sprintf("over-bound-%d", index)
+		change(&bad)
+		if _, err = s.SaveRecordingGroup(ctx, allow, rule.ID, bad); err == nil {
+			t.Fatalf("over-bound option %d accepted", index)
+		}
+		if got := stored(); !reflect.DeepEqual(got, original) {
+			t.Fatalf("refused option %d changed durable config", index)
+		}
+	}
 	rule = updated
-	c.ExpectedRevision = rule.Revision
-	c.OperationID = "enable-rule"
-	c.Enabled = true
-	if _, err = s.SaveRecordingGroup(ctx, allow, rule.ID, c); err != ErrUnavailable {
-		t.Fatal("promised capture with no driver", err)
-	}
-	locks, err := livechannels.NewPhysicalLocks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = s.DVR.ConfigureCapture(ruleToggleDriver{}, locks); err != nil {
-		t.Fatal(err)
-	}
-	c.OperationID = "resume-with-driver"
-	resumed, err := s.SaveRecordingGroup(ctx, allow, rule.ID, c)
-	if err != nil {
-		t.Fatal(err)
-	}
-	original.Enabled = true
-	if err = db.QueryRow(`SELECT config_json FROM dvr_rules WHERE id=?`, rule.ID).Scan(&raw); err != nil {
-		t.Fatal(err)
-	}
-	if err = json.Unmarshal([]byte(raw), &retained); err != nil || !reflect.DeepEqual(retained, original) {
-		t.Fatalf("resume changed config: %+v %v", retained, err)
-	}
-	c.ExpectedRevision, c.OperationID, c.Enabled = resumed.Revision, "pause-with-driver", false
-	paused, err := s.SaveRecordingGroup(ctx, allow, rule.ID, c)
-	if err != nil {
-		t.Fatal(err)
-	}
-	original.Enabled = false
-	if err = db.QueryRow(`SELECT config_json FROM dvr_rules WHERE id=?`, rule.ID).Scan(&raw); err != nil {
-		t.Fatal(err)
-	}
-	if err = json.Unmarshal([]byte(raw), &retained); err != nil || !reflect.DeepEqual(retained, original) {
-		t.Fatalf("pause changed config: %+v %v", retained, err)
-	}
-	rule = paused
 	// Title identity can use the entire DVR domain and stays attached to the
 	// original channel when the limited administrative projection is saved.
 	longTitle := strings.Repeat("T", 512)
