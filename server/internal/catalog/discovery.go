@@ -56,7 +56,9 @@ type cursorValue struct {
 	// client round-trips is unchanged.
 	Keys []string `json:"keys,omitempty"`
 	// Total carries a list's exact count from the page that counted it, so a
-	// continuation doesn't count again (the revision fence keeps it current).
+	// continuation doesn't count again. It is carried only when the compiled
+	// restriction clause is revision-invariant (no live restriction); a
+	// restriction-bound page recounts after its cursor checks.
 	Total           int         `json:"total,omitempty"`
 	Fingerprint     string      `json:"fingerprint,omitempty"`
 	CatalogRevision int64       `json:"catalogRevision"`
