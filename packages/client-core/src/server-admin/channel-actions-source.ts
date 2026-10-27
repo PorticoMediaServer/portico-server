@@ -1,3 +1,4 @@
+import {clonePortableDto} from '../clone-portable-dto.ts';
 import {parseLibraryChannel,saveLibraryChannel,type LibraryChannel} from '../library-channels.ts';
 import {channelRequestID} from '../live-source-draft.ts';
 import {regenerationBody} from '../server-admin/panel-logic.ts';
@@ -34,7 +35,7 @@ export class SettingsChannelActionsSource{
     try{
       const requestId=this.operationId();
       if(kind==='toggle'){
-        const config=frozen({...structuredClone(channel.config),enabled:!channel.config.enabled}),revision=channel.revision;
+        const config=frozen({...clonePortableDto(channel.config),enabled:!channel.config.enabled}),revision=channel.revision;
         send=async(api,signal)=>{const result=await saveLibraryChannel(api,this.serverId,config,revision,requestId,signal);if(result.config.id!==config.id||result.config.enabled!==config.enabled||result.revision<=revision)throw new Error('invalid_channel_toggle_receipt');};
       }else if(kind==='regenerate'){
         if(!channel.replacementBoundary)return false;const body=frozen(regenerationBody(channel,requestId)),id=channel.config.id;

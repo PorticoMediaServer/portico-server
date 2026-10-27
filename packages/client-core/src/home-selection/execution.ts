@@ -1,3 +1,4 @@
+import {clonePortableDto} from '../clone-portable-dto.ts';
 import {createJob, getJob, getJobFailures, isJobTerminal, type Job, type JobArgs, type JobCommand, type JobFailure, type JobRequest, type JobSelector} from '../bulk-jobs.ts';
 import type {EventsClient} from '../playback-v1/events.ts';
 import type {HomeApi} from '../home.ts';
@@ -34,7 +35,7 @@ export async function selectionJobTasks(target: SelectionTarget, command: JobCom
       || !('query' in checked.selector) || !/^browse_[a-f0-9]{64}$/.test(checked.expected.catalogRevision)
       || target.summary.library.kind !== 'single' || target.summary.library.libraryId !== checked.selector.query.libraryId
       || !target.summary.types.length || target.summary.types.some(type => !['movie', 'episode', 'song', 'audiobook_file'].includes(type.kind))) throw selectionExecutionError('query-destination-unavailable');
-    const selector = structuredClone(checked.selector), capturedArgs = structuredClone(args), expected = {...checked.expected};
+    const selector = clonePortableDto(checked.selector), capturedArgs = clonePortableDto(args), expected = {...checked.expected};
     const operationId = (await requestId()).replaceAll('-', '');
     return [{request: {operationId, command, selector, args: capturedArgs, expected}, failures: [], observed: false}];
   }
