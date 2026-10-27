@@ -414,22 +414,63 @@ test('renewal-complete publish and final status predicates cannot borrow a same-
  }
 });
 
-test('still-owned LOAD settles locally on false currentness at deadline or reentrant timer clear',async()=>{
- for(const seam of ['deadline','clear'] as const){
+const originalTransferSource={sessionId:'source-original',generation:7,queueId:'queue-original',entryId:'entry-original',queueRevision:'"3"'} as const;
+const originalTransferChoices={source:originalTransferSource,queue:{queueId:originalTransferSource.queueId,entryId:originalTransferSource.entryId}};
+
+test('still-owned direct and transfer LOAD settle locally on false currentness without any IO',async()=>{
+ for(const transfer of [false,true])for(const seam of ['deadline','clear'] as const){
   const tv=receiver('TV','tv-a');tv.autoAck=false;
   const timers=new Map<number,{fn:()=>void;ms:number}>(),saved=new Map<string,string>();let counter=0,current=true,flip=false;
-  const requests:string[]=[];
+  const requests:{path:string;method?:string;body?:unknown}[]=[];
   const controller=new CastController({origin:context.origin,displayName:'Phone',controllerContext:context,isCurrent:()=>current,
    controllerStorage:{get:k=>saved.get(k),set:(k,v)=>saved.set(k,v)},setTimer:(fn,ms)=>{timers.set(++counter,{fn,ms});return counter},clearTimer:id=>{const timer=timers.get(id as number);timers.delete(id as number);if(flip&&timer?.ms===150000){flip=false;current=false}},
-   api:{request:async<T,>(path:string,_method?:string,body?:unknown)=>{requests.push(path);return path==='/v1/cast/bootstrap'?{bootstrap:{id:binding.bootstrapId,code:'ABC123'}} as T:{binding,attemptId:(body as any).attemptId,ticket:'b'.repeat(43)} as T}}});
-  const started=controller.start(tv.transport,'movie',{title:'Film'},0);await settle();tv.reply({type:'paired',binding,controlToken:'a'.repeat(48),controller:controllerStamp});await settle();
+   api:{request:async<T,>(path:string,method?:string,body?:unknown)=>{
+    requests.push({path,method,body});
+    if(path==='/v1/cast/bootstrap')return {bootstrap:{id:binding.bootstrapId,code:'ABC123',...(transfer?{transfer:{id:binding.bootstrapId,state:'pending'}}:{})}} as T;
+    if(path.includes('/v1/cast/bootstrap/'))return {bootstrap:{transfer:{id:binding.bootstrapId,state:method==='DELETE'?'cancelled':'bound'}}} as T;
+    return {binding,attemptId:(body as any).attemptId,ticket:'b'.repeat(43)} as T;
+   }}});
+  let settlements=0;
+  const started=controller.start(tv.transport,'movie',{title:'Film'},0,transfer?originalTransferChoices:undefined).then(result=>{settlements++;return result});
+  await settle();tv.reply({type:'paired',binding,controlToken:'a'.repeat(48),controller:controllerStamp});await settle();
   const load=tv.sent.find(m=>m.type==='load');assert.ok(load);
+  const flight=(controller as any).transferFlight,oldTimers=[...timers.values()];
+  if(transfer){assert.equal(flight.id,binding.bootstrapId);assert.deepEqual((load.queue as any).transferId,binding.bootstrapId);assert.deepEqual((requests[0].body as any).source,originalTransferSource);}
   const before=tv.sent.length,apiBefore=requests.length;
-  if(seam==='deadline'){current=false;[...timers.values()].find(timer=>timer.ms===150000)!.fn()}
+  if(seam==='deadline'){current=false;oldTimers.find(timer=>timer.ms===150000)!.fn()}
   else {flip=true;tv.reply({type:'load-pending',requestId:load.requestId,itemId:'movie',startId:'original',sequence:1,controller:controllerStamp})}
-  assert.equal(await started,false);assert.equal((controller as any).loads.size,0);assert.equal(timers.size,0);
-  assert.equal(tv.sent.length,before,'false currentness permits no recovery/status/Stop IO');assert.equal(requests.length,apiBefore);assert.equal(tv.ended,undefined);controller.dispose();
+  assert.equal(await started,false);assert.equal(settlements,1);assert.equal((controller as any).loads.size,0);assert.equal(timers.size,0);
+  assert.equal(tv.sent.length,before,'false currentness permits no Stop/status/replay');assert.equal(requests.length,apiBefore,'including no transfer GET/DELETE/retry');assert.equal(tv.ended,undefined);
+  assert.equal((controller as any).transport,undefined);assert.equal((controller as any).transferFlight,undefined);
+  if(transfer){assert.equal((controller as any).recoveryTransfer,flight,'retain exact uncertain original receipt');assert.equal(flight.id,binding.bootstrapId);assert.deepEqual(flight.source,originalTransferSource);assert.equal(flight.cancellation,undefined);}
+  assert.equal(controller.getSnapshot().acceptedSource,undefined,'no inferred transfer acceptance');
+  // A fresh admitted sender owns this same SDK transport independently. Late
+  // original timer/retry callbacks must not mutate or dispatch through it.
+  tv.autoAck=true;
+  const successor=new CastController({origin:context.origin,displayName:'Next',controllerContext:context,controllerStorage:{get:k=>saved.get(k),set:(k,v)=>saved.set(k,v)},
+   api:{request:async<T,>(path:string,_method?:string,body?:unknown)=>path==='/v1/cast/bootstrap'?{bootstrap:{id:binding.bootstrapId,code:'ABC123'}} as T:{binding,attemptId:(body as any).attemptId,ticket:'b'.repeat(43)} as T}});
+  const next=successor.start(tv.transport,'next',{title:'Next'},0);await settle();tv.reply({type:'paired',binding,controlToken:'a'.repeat(48),controller:controllerStamp});assert.equal(await next,true);
+  const snapshot=successor.getSnapshot(),sent=tv.sent.length;
+  for(const timer of oldTimers)timer.fn();await settle();
+  assert.equal(successor.getSnapshot(),snapshot);assert.equal(tv.sent.length,sent);assert.equal(tv.listeners,1);assert.equal(tv.ended,undefined);assert.equal(requests.length,apiBefore);assert.equal(settlements,1);
+  if(transfer)assert.equal((controller as any).recoveryTransfer,flight);
+  controller.dispose();successor.dispose();
  }
+});
+
+test('explicit admitted transfer cancellation still uses only its original issued receipt',async()=>{
+ const tv=receiver('TV','tv-a');tv.autoAck=false;const requests:{path:string;method?:string}[]=[],saved=new Map<string,string>();
+ const controller=new CastController({origin:context.origin,displayName:'Phone',controllerContext:context,controllerStorage:{get:k=>saved.get(k),set:(k,v)=>saved.set(k,v)},
+  api:{request:async<T,>(path:string,method?:string,body?:unknown)=>{
+   requests.push({path,method});
+   if(path==='/v1/cast/bootstrap')return {bootstrap:{id:binding.bootstrapId,code:'ABC123',transfer:{id:binding.bootstrapId,state:'pending'}}} as T;
+   if(path.includes('/v1/cast/bootstrap/'))return {bootstrap:{transfer:{id:binding.bootstrapId,state:'cancelled'}}} as T;
+   return {binding,attemptId:(body as any).attemptId,ticket:'b'.repeat(43)} as T;
+  }}});
+ const start=controller.start(tv.transport,'movie',{title:'Film'},0,originalTransferChoices);await settle();tv.reply({type:'paired',binding,controlToken:'a'.repeat(48),controller:controllerStamp});await settle();
+ controller.stop();await settle();assert.equal(await start,false);
+ assert.deepEqual(requests.filter(request=>request.method==='DELETE'),[{path:'/v1/cast/bootstrap/'+binding.bootstrapId,method:'DELETE'}]);
+ assert.equal(requests.some(request=>request.method==='GET'),false);assert.equal((controller as any).recoveryTransfer,undefined);assert.equal(controller.getSnapshot().transferPending,false);controller.dispose();
 });
 
 test('late pair send rejection and timeout cannot clear a waiter installed by release cleanup',async()=>{
