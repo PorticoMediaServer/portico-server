@@ -308,11 +308,11 @@
   function sameRemoteIdentity(a,b){return !!a&&!!b&&sameControllerStamp(a.controller,b.controller)&&!!a.occurrence&&!!b.occurrence&&a.occurrence.sessionId===b.occurrence.sessionId&&a.occurrence.generation===b.occurrence.generation&&a.occurrence.itemId===b.occurrence.itemId;}
   function requireLease(lease){if(!leaseCurrent(lease)){var e=new Error('controller_retired');e.retired=true;throw e;}}
   function commandQueue(lease,work){return serial(function(){requireLease(lease);if(lease&&playback!==lease.occurrence)throw new Error('occurrence_replaced');return work();});}
-  async function cleanupOccurrence(id,lease){
-    // Cleanup may address only this command's newly created occurrence, with
-    // its original credential/origin. Never Stop a successor's current deck.
-    if(!lease||playback&&playback.id===id)return;
-    await request(sessionPath(id),{method:'DELETE',origin:lease.origin,bearer:lease.bearer}).catch(function(){});
+  async function cleanupOccurrence(owned,lease){
+    // The original generation is checked by the server in the accepting
+    // writer. Refusal is final: never retry against a later occurrence.
+    if(!lease||!owned||!Number.isSafeInteger(owned.generation)||owned.generation<1||playback&&playback.id===owned.id)return;
+    await request(sessionPath(owned.id),{method:'DELETE',origin:lease.origin,bearer:lease.bearer,body:{expectedGeneration:owned.generation}}).catch(function(){});
   }
   /** One request, bounded in time and size. Resolves {status, body} for 2xx; throws with
    * {code, status, current} otherwise (`current` is a 412's session). */
@@ -848,7 +848,7 @@
       requireStart();if(playback!==previousOwner)throw new Error('occurrence_replaced');
       meta=requestedMeta;var load=loadRequest(started,image,true,lease);
     }catch(e){
-      if(ownedStart)await cleanupOccurrence(ownedStart.id,cleanupWitness);
+      if(ownedStart)await cleanupOccurrence(ownedStart,cleanupWitness);
       throw e;
     }
 

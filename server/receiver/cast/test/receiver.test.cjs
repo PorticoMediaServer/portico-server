@@ -4,7 +4,7 @@ async function harness(fixture={}){
  const calls=[],loads=[],metadataUpdates=[],interceptors={},events={},timers=new Map(),storage=new Map(),sent=[],ctxEvents={},senders=[],queueItems=[];let timer=0,at=0,state='PAUSED',listener,urlResolver;
  // The real SDK exposes QUEUE_NEXT/PREV enum values but rejects them as interceptors.
  const supportedInterceptors=new Set(['LOAD','PLAY','PAUSE','SEEK','STOP','PRELOAD','QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE','QUEUE_REORDER','GET_STATUS','MEDIA_STATUS','CLOUD_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS']);
- const manager={setMediaUrlResolver:fn=>urlResolver=fn,getMediaInformation:()=>loads.at(-1)?.media,setMediaInformation:(media,broadcast)=>metadataUpdates.push({media,broadcast}),getQueueManager:()=>({insertItems:items=>{for(const item of items)queueItems.push({...item,itemId:queueItems.length+1});},getItems:()=>queueItems,getCurrentItem:()=>queueItems[0],removeItems:ids=>{for(let i=queueItems.length-1;i>=0;i--)if(ids.includes(queueItems[i].itemId))queueItems.splice(i,1);}}),getCurrentTimeSec:()=>at,getPlayerState:()=>state,load:async x=>{if(fixture.loadFails||(fixture.nextLoadFails&&loads.length))throw new Error('decode_error');if(fixture.localInterceptors&&interceptors.LOAD){x=await interceptors.LOAD(x);if(!x)return;}loads.push(x);if(x.queueData){queueItems.length=0;for(const item of x.queueData.items)queueItems.push({...item,itemId:queueItems.length+1});}state=x.autoplay?'PLAYING':'PAUSED'},sendLocalMediaRequest:x=>{assert(Number.isSafeInteger(x.requestId)&&x.requestId>0);const handle=()=>{if(x.type==='PLAY')state='PLAYING';if(x.type==='PAUSE')state='PAUSED';if(x.type==='STOP')state='IDLE';if(x.type==='SEEK')at=x.currentTime;};if(fixture.localInterceptors&&interceptors[x.type])Promise.resolve(interceptors[x.type](x)).then(y=>{if(y)handle();});else handle();},pause:()=>state='PAUSED',play:()=>state='PLAYING',seek:x=>at=x,stop:()=>state='IDLE',setMessageInterceptor:(k,v)=>{assert(supportedInterceptors.has(k),'unsupported CAF interceptor '+k);interceptors[k]=v;},addEventListener:(k,v)=>events[k]=v,getAudioTracksManager:()=>({getTracks:()=>[],setActiveById:()=>{}}),getTextTracksManager:()=>({getTracks:()=>[],setActiveByIds:()=>{}})};
+ const manager={setMediaUrlResolver:fn=>urlResolver=fn,getMediaInformation:()=>loads.at(-1)?.media,setMediaInformation:(media,broadcast)=>metadataUpdates.push({media,broadcast}),getQueueManager:()=>({insertItems:items=>{for(const item of items)queueItems.push({...item,itemId:queueItems.length+1});},getItems:()=>queueItems,getCurrentItem:()=>queueItems[0],removeItems:ids=>{for(let i=queueItems.length-1;i>=0;i--)if(ids.includes(queueItems[i].itemId))queueItems.splice(i,1);}}),getCurrentTimeSec:()=>at,getPlayerState:()=>state,load:async x=>{if(fixture.loadFails||(fixture.nextLoadFails&&loads.length))throw new Error('decode_error');if(fixture.localInterceptors&&interceptors.LOAD){x=await interceptors.LOAD(x);if(!x)return;}loads.push(x);document.getElementById('player').ended=false;if(x.queueData){queueItems.length=0;for(const item of x.queueData.items)queueItems.push({...item,itemId:queueItems.length+1});}state=x.autoplay?'PLAYING':'PAUSED'},sendLocalMediaRequest:x=>{assert(Number.isSafeInteger(x.requestId)&&x.requestId>0);const handle=()=>{if(x.type==='PLAY')state='PLAYING';if(x.type==='PAUSE')state='PAUSED';if(x.type==='STOP')state='IDLE';if(x.type==='SEEK')at=x.currentTime;};if(fixture.localInterceptors&&interceptors[x.type])Promise.resolve(interceptors[x.type](x)).then(y=>{if(y)handle();});else handle();},pause:()=>state='PAUSED',play:()=>state='PLAYING',seek:x=>at=x,stop:()=>state='IDLE',setMessageInterceptor:(k,v)=>{assert(supportedInterceptors.has(k),'unsupported CAF interceptor '+k);interceptors[k]=v;},addEventListener:(k,v)=>events[k]=v,getAudioTracksManager:()=>({getTracks:()=>[],setActiveById:()=>{}}),getTextTracksManager:()=>({getTracks:()=>[],setActiveByIds:()=>{}})};
  const castContext={getDeviceCapabilities:()=>fixture.caps||{},getDeviceInformation:()=>fixture.info||{},canDisplayType:(mime,codecs,width,height,fps)=>{assert(!mime.includes(';'));return !!fixture.supports?.(mime,codecs,width,height,fps)},getPlayerManager:()=>manager,addCustomMessageListener:(ns,fn)=>listener=fn,sendCustomMessage:(ns,id,body)=>sent.push({id,body}),addEventListener:(k,v)=>ctxEvents[k]=v,getSenders:()=>senders,getSender:id=>({id,userAgent:fixture.senderUA||'Browser'}),start:()=>{}};
  const nodes={};const document={getElementById:id=>nodes[id]??=( {textContent:'',attrs:{},setAttribute(k,v){this.attrs[k]=v},removeAttribute(k){delete this.attrs[k]},addEventListener:()=>{}} )};
  const cast={framework:{CastReceiverContext:{getInstance:()=>castContext},messages:{MessageType:Object.fromEntries(['LOAD','PLAY','PAUSE','SEEK','STOP','PRELOAD','QUEUE_INSERT','QUEUE_LOAD','QUEUE_UPDATE','QUEUE_REMOVE','QUEUE_REORDER','QUEUE_NEXT','QUEUE_PREV','GET_STATUS','MEDIA_STATUS','CLOUD_STATUS','QUEUE_GET_ITEMS','QUEUE_GET_ITEM_IDS'].map(x=>[x,x]))},events:{EndedReason:{END_OF_STREAM:'END_OF_STREAM'},EventType:Object.fromEntries(['ERROR','BUFFERING','MEDIA_FINISHED','PLAYER_LOAD_COMPLETE','PLAYER_LOADING','LOADED_DATA','TIME_UPDATE','DURATION_CHANGE','MEDIA_STATUS','PAUSE','PLAYING','SEEKED'].map(x=>[x,x]))},system:{EventType:{SENDER_CONNECTED:'connect',SENDER_DISCONNECTED:'disconnect',SHUTDOWN:'shutdown'},MessageType:{JSON:'json'}}}};
@@ -65,12 +65,12 @@ async function harness(fixture={}){
  context.window={cast,porticoCastView:fixture.view,porticoCastText:fixture.text,addEventListener:(name,fn)=>{ctxEvents['window:'+name]=fn},crypto:crypto.webcrypto,location:{origin:'https://cast.getportico.tv'},localStorage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)}};
  if(!fixture.text)vm.runInNewContext(fs.readFileSync(require('node:path').join(__dirname,'..','receiver-text.js'),'utf8'),context);
  vm.runInNewContext(source,context);await new Promise(setImmediate);
- return {metadataUpdates,resolved:request=>urlResolver(request),receiver:context.window.porticoCastReceiver,calls,loads,interceptors,events,castContext,timers,manager,sent,ctxEvents,senders,nodes,storage,queueItems,message:async(senderId,data)=>{listener({senderId,data});for(let i=0;i<20;i++)await new Promise(setImmediate);},fire:id=>{const t=timers.get(id);timers.delete(id);t.fn();},uiState:()=>nodes.ui?.attrs['data-state']};
+ return {finish:()=>{document.getElementById('player').ended=true;state='IDLE';events.MEDIA_FINISHED({endedReason:'END_OF_STREAM'});},metadataUpdates,resolved:request=>urlResolver(request),receiver:context.window.porticoCastReceiver,calls,loads,interceptors,events,castContext,timers,manager,sent,ctxEvents,senders,nodes,storage,queueItems,message:async(senderId,data)=>{listener({senderId,data});for(let i=0;i<20;i++)await new Promise(setImmediate);},fire:id=>{const t=timers.get(id);timers.delete(id);t.fn();},uiState:()=>nodes.ui?.attrs['data-state']};
 }
 for(const [name,fixture,want]of[
  ['Chromecast 3',{supports:()=>false},['h264','vp8']],
  ['Ultra',{caps:{is_hdr_supported:true},supports:(_,codec)=>codec.startsWith('hev1')||codec.startsWith('vp09')},['h264','vp8','hevc','vp9']],
- ['Google TV 4K',{caps:{is_hdr_supported:true,is_dv_supported:true},supports:()=>true},['h264','vp8','hevc','vp9','av1']]])test('probes '+name,async()=>{const h=await harness(fixture),p=h.receiver.buildProfile(h.castContext);assert.equal(p.version,2);assert.deepEqual(Array.from(p.engines.native.video,x=>x.codec),want);assert.deepEqual(Array.from(p.engines.native.audioPassthrough,x=>x.codec),name==='Google TV 4K'?['ac3','eac3']:[]);assert(!p.engines.native.audio.some(x=>x.codec==='ac3'));assert.equal(p.engines.native.video.find(v=>v.codec==='hevc')?.maxHeight||p.engines.native.video[0].maxHeight,name==='Chromecast 3'?1080:2160);assert.equal(p.display.height,undefined);assert.equal(p.audioOutput.maxChannels,name==='Google TV 4K'?8:2);});
+ ['Google TV 4K',{caps:{is_hdr_supported:true,is_dv_supported:true},supports:()=>true},['h264','vp8','hevc','vp9','av1']]])test('probes '+name,async()=>{const h=await harness(fixture),p=h.receiver.buildProfile(h.castContext);assert.equal(p.version,2);assert.deepEqual(Array.from(p.engines.native.video,x=>x.codec),want);assert.deepEqual(Array.from(p.engines.native.audioPassthrough,x=>x.codec),name==='Google TV 4K'?['ac3','eac3']:[]);assert(!p.engines.native.audio.some(x=>x.codec==='ac3'));assert.equal(p.engines.native.video.find(v=>v.codec==='hevc')?.maxHeight||p.engines.native.video[0].maxHeight,name==='Chromecast 3'?1080:2160);assert.equal(p.display.height,undefined);assert.equal(p.audioOutput.maxChannels,0,'decoder answers do not measure the active output sink');});
 const settle0=async()=>{for(let i=0;i<30;i++)await new Promise(setImmediate);};
 const fireAll=async(h,ms)=>{for(const [id,t] of [...h.timers])if(ms===undefined||t.ms===ms){h.fire(id);await settle0();}};
 test('a load starts a Playback v1 session and plays its presentation; a lost start is repeated exactly (SV-012)',async()=>{
@@ -157,10 +157,10 @@ test('a second person must be allowed before the TV switches; the old pairing su
  await h.message('phone',{type:'pair',code:'ABCD',origin:''});await h.message('phone',{type:'load',itemId:'movie'});await settle();
  await h.message('guest',{type:'pair',code:'OTHER1',origin:'',displayName:'Sam’s Pixel'});await settle();
  assert.deepEqual(j(h.sent.find(m=>m.id==='guest').body),{type:'pair-pending'});
- assert.deepEqual(j(h.sent.find(m=>m.id==='phone'&&m.body.type==='takeover-requested').body),{type:'takeover-requested',requester:'Sam’s Pixel'});
+ const requested=h.sent.find(m=>m.id==='phone'&&m.body.type==='takeover-requested').body;assert.deepEqual(j(requested),{type:'takeover-requested',requester:'Sam’s Pixel',controller:{bindingId:'cct_current',controllerGeneration:1,connectionGeneration:1},requestId:'cbs_OTHER1'});
  assert.equal(h.nodes.takeover.hidden,false);assert.match(h.nodes['takeover-title'].textContent,/Sam’s Pixel wants to play/);
  assert.equal(h.receiver.state().playbackId,'ps_1');assert.equal(h.storage.get('portico.cast.deviceToken'),'device-ABCD');
- await h.message('phone',{type:'takeover',allow:false});await settle();
+ await h.message('phone',{type:'takeover',allow:false,controller:requested.controller,requestId:requested.requestId});await settle();
  assert.equal(h.sent.filter(m=>m.id==='guest').pop().body.code,'tv_busy');assert.equal(h.receiver.state().controller,'phone');
  assert.equal(h.storage.get('portico.cast.deviceToken'),'device-ABCD');assert.equal(h.nodes.takeover.hidden,true);
  await h.message('guest',{type:'pair',code:'OTHER2',origin:''});await settle();
@@ -202,7 +202,7 @@ test('the TV keeps playing when the last sender disconnects; Stop and the end of
  await fireAll(h,0);await fireAll(h,10000);
  assert(h.calls.filter(c=>c.url.endsWith('/timeline')).length>before,'progress is still reported');
  // The title finishing ends the session, so the idle timeout can close the app.
- h.events.MEDIA_FINISHED({endedReason:'END_OF_STREAM'});await settle();
+ h.finish();await settle();
  assert.equal(h.receiver.state().playbackId,null);assert.equal(h.uiState(),'idle');
  assert(h.calls.some(c=>c.method==='DELETE'&&c.url.endsWith('/v1/playback/sessions/ps_1')));
 });
@@ -219,7 +219,7 @@ test('a title that ends while its last report cannot be delivered still ends on 
  await h.message('phone',{type:'pair',code:'ABCD',origin:''});await h.message('phone',{type:'load',itemId:'movie'});await settle();
  h.senders.length=0;h.ctxEvents.disconnect({senderId:'phone'});await settle();
  // Nobody is connected to press Stop, and the server cannot be told the title finished.
- fixture.timelineDown=true;h.manager.stop();h.events.MEDIA_FINISHED({endedReason:'END_OF_STREAM'});await settle();
+ fixture.timelineDown=true;h.manager.stop();h.finish();await settle();
  assert.equal(h.receiver.state().playbackId,null,'the receiver does not go on holding a finished title');
  assert.equal(h.uiState(),'idle');
  assert(h.calls.some(c=>c.method==='DELETE'&&c.url.endsWith('/v1/playback/sessions/ps_1')),'the session is still closed on the server');
@@ -323,7 +323,7 @@ test('real progressive completion adopts only the server ordinary advance result
  const views=[];
  const h=await harness({queue:true,direct:true,audioOnly:true,container:'flac',view:{playing:s=>views.push(s)}});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,{title:'Old song',kind:'song'},null,{queueId:'q-1',entryId:'entry-1'});
  h.events.LOADED_DATA();assert.equal(views.at(-1).meta.title,'Old song');const before=views.length;
- h.events.MEDIA_FINISHED({endedReason:'END_OF_STREAM'});await settle();
+ h.finish();await settle();
  h.events.TIME_UPDATE();assert.equal(views.length,before,'clock ticks cannot reuse a previous first-picture state');
  h.events.LOADED_DATA();assert.equal(views.at(-1).meta,null,'new unknown identity is explicit before any clock snapshot');assert.equal(views.at(-1).artworkUrl,undefined);
  assert.equal(h.receiver.state().playbackId,'ps_2');assert.equal(h.loads.length,2);assert.equal(h.loads[1].media.contentType,'audio/flac');assert.equal(h.loads[1].media.metadata,undefined,'the next item never inherits the old identity');
@@ -335,25 +335,25 @@ test('real progressive completion adopts only the server ordinary advance result
 });
 test('progressive completion has no boundary wait and duplicate events cannot advance twice',async()=>{
  const h=await harness({queue:true,direct:true,audioOnly:true,container:'mp3'});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});
- h.events.MEDIA_FINISHED({endedReason:'END_OF_STREAM'});h.events.MEDIA_FINISHED({endedReason:'END_OF_STREAM'});await settle();
+ h.finish();h.finish();await settle();
  assert.equal(h.calls.filter(c=>c.url.endsWith(':advance')).length,1);assert.equal(h.loads.length,2);assert.equal(h.receiver.state().playbackId,'ps_2');
  assert(![...h.timers.values()].some(t=>t.ms===5000),'no progressive boundary timeout');
 });
 test('end of the actual server queue ends the occurrence without preparing another slot',async()=>{
  const h=await harness({queue:true,queueEnd:true,direct:true,audioOnly:true,container:'mp3'});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});
- h.events.MEDIA_FINISHED({endedReason:'END_OF_STREAM'});await settle();
+ h.finish();await settle();
  assert.equal(h.receiver.state().playbackId,null);assert(h.calls.some(c=>c.url.endsWith('/timeline')&&c.body.state==='ended'));
  assert(h.calls.some(c=>c.url==='/v1/playback/sessions/ps_1'&&c.method==='DELETE'));assert(!h.calls.some(c=>c.url.endsWith(':advance')));
 });
 test('non-finished events and a rejected ordinary advance cannot fabricate a next session',async()=>{
  const h=await harness({queue:true,rejectAdvance:true,direct:true,audioOnly:true,container:'mp3'});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});
  h.events.MEDIA_FINISHED({endedReason:'INTERRUPTED'});await settle();assert.equal(h.receiver.state().playbackId,'ps_1');assert(!h.calls.some(c=>c.url.endsWith(':advance')));
- h.events.MEDIA_FINISHED({endedReason:'END_OF_STREAM'});await settle();assert.equal(h.receiver.state().playbackId,null);assert.equal(h.loads.length,1);
+ h.finish();await settle();assert.equal(h.receiver.state().playbackId,null);assert.equal(h.loads.length,1);
 });
 
 test('a failed next media load ends the newly adopted server occurrence',async()=>{
  const h=await harness({queue:true,nextLoadFails:true,direct:true,audioOnly:true,container:'mp3'});await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});
- h.events.MEDIA_FINISHED({endedReason:'END_OF_STREAM'});await settle();
+ h.finish();await settle();
  assert.equal(h.receiver.state().playbackId,null);assert.equal(h.uiState(),'error');
  assert(h.calls.some(c=>c.url==='/v1/playback/sessions/ps_2'&&c.method==='DELETE'),'cleanup follows the adopted server authority');
 });
@@ -361,7 +361,7 @@ test('a failed next media load ends the newly adopted server occurrence',async()
 test('next display reads genuine authorized catalogue identity and exact structured artist/album',async()=>{
  const views=[],h=await harness({queue:true,direct:true,audioOnly:true,container:'mp3',catalog:{'song-2':{id:'song-2',title:'New song',kind:'song',song:{artist:'  Actual artist  ',albumTitle:'Actual album'}}},view:{playing:s=>views.push(s)}});
  await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,{title:'Old song',kind:'song',subtitle:'Never parse this as artist'},null,{queueId:'q-1',entryId:'entry-1'});
- h.events.LOADED_DATA();h.events.MEDIA_FINISHED({endedReason:'END_OF_STREAM'});await settle();h.events.LOADED_DATA();
+ h.events.LOADED_DATA();h.finish();await settle();h.events.LOADED_DATA();
  assert.equal(views.at(-1).meta.title,'New song');assert.equal(views.at(-1).meta.artist,'Actual artist');assert.equal(views.at(-1).meta.albumTitle,'Actual album');
  const read=h.calls.find(c=>c.url==='/v1/items/song-2');assert.equal(read.method,'GET');assert.equal(read.headers.Authorization,'Bearer bearer-ABCD');
  const update=h.metadataUpdates.at(-1);assert.equal(update.media.metadata.artist,'Actual artist');assert.equal(update.media.metadata.albumName,'Actual album');assert.equal(update.broadcast,false);assert(!JSON.stringify(update).includes('/v1/media/'));
@@ -423,14 +423,14 @@ test('catalogue film year uses only its genuine bounded numeric year and omits i
 test('refused and mismatched catalogue reads keep next identity absent without a notice',async()=>{
  for(const fixture of [{catalogStatus:403},{catalog:{'song-2':{id:'other',title:'Wrong title',kind:'song'}}}]){
   const views=[],notices=[],h=await harness({...fixture,queue:true,direct:true,audioOnly:true,container:'mp3',view:{playing:s=>views.push(s),notice:s=>notices.push(s)}});
-  await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,{title:'Old song'},null,{queueId:'q-1',entryId:'entry-1'});h.events.MEDIA_FINISHED({endedReason:'END_OF_STREAM'});await settle();h.events.LOADED_DATA();
+  await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,{title:'Old song'},null,{queueId:'q-1',entryId:'entry-1'});h.finish();await settle();h.events.LOADED_DATA();
   assert.equal(views.at(-1).meta,null);assert.equal(h.metadataUpdates.length,0);assert(!notices.some(Boolean));assert.equal(h.receiver.state().playbackId,'ps_2');
  }
 });
 test('late catalogue responses cannot cross a stopped or replaced occurrence',async()=>{
  let release;const gate=new Promise(resolve=>release=resolve),views=[];
  const h=await harness({queue:true,direct:true,audioOnly:true,container:'mp3',catalogWait:gate,catalog:{'song-2':{id:'song-2',title:'Stale song',kind:'song'}},view:{playing:s=>views.push(s)}});
- await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});h.events.MEDIA_FINISHED({endedReason:'END_OF_STREAM'});await settle();await h.interceptors.STOP({});
+ await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});h.finish();await settle();await h.interceptors.STOP({});
  release();await settle();assert.equal(h.receiver.state().playbackId,null);assert.equal(h.metadataUpdates.length,0);assert(!views.some(s=>s.meta?.title==='Stale song'));
 });
 
@@ -442,7 +442,7 @@ test('decoded multichannel and rate declarations require exact positive output c
  const n=await harness({supports:()=>true,mediaCapabilities:{decodingInfo:async()=>{throw new Error('unavailable')}}});
  const no=await n.receiver.probeAudioOutput(n.receiver.buildProfile(n.castContext));
  assert.equal(no.engines.native.audio.find(a=>a.codec==='flac').maxChannels,2);
- assert.equal(no.engines.native.audio.find(a=>a.codec==='flac').maxSampleRate,undefined);
+ assert.equal(no.engines.native.audio.find(a=>a.codec==='flac').maxSampleRate,96000,'a failed exact query retains the declared FLAC ceiling');
 });
 
 test('standard CAF queue reads and mutations cannot bypass controller authority',async()=>{
@@ -493,7 +493,7 @@ test('only the matching playable audio render plan describes the delivered audio
 test('ordinary advance keeps the matching delivered audio render MIME without applying client gain',async()=>{
  const h=await harness({queue:true,direct:true,audioOnly:true,container:'mov',audioRender:{mode:'converted',container:'flac',codec:'flac',loudnessAppliedDb:-12,gain:-12}});
  await h.receiver.redeem('ABCD');await h.receiver.startPlayback('song-1',0,null,null,{queueId:'q-1',entryId:'entry-1'});
- h.events.MEDIA_FINISHED({endedReason:'END_OF_STREAM'});await settle();
+ h.finish();await settle();
  assert.equal(h.receiver.state().playbackId,'ps_2');assert.equal(h.loads[1].media.contentType,'audio/flac');assert.equal(h.resolved(h.loads[1]),'/v1/media/grant');
  assert(!('gain' in h.loads[1].media));assert(!('volume' in h.loads[1].media));assert(!JSON.stringify(h.sent).includes('/v1/media/'));
 });
@@ -506,7 +506,7 @@ test('a CAF load rejection ends its owned server session and leaves an honest er
 test('device identity comes only from the SDK and decoder limits do not invent display geometry',async()=>{
  const known=await harness({info:{'model-name':'Google TV Streamer'},supports:()=>true}),p=known.receiver.buildProfile(known.castContext);
  assert.equal(p.client.model,'Google TV Streamer');assert.equal(p.display.width,undefined);assert.equal(p.display.height,undefined);
- assert.equal(p.audioOutput.route,undefined);
+ assert.equal(p.audioOutput.route,'');
  const unknown=await harness({info:{'model-name':'unknown'},supports:()=>true}),u=unknown.receiver.buildProfile(unknown.castContext);assert.equal(u.client.model,undefined);
 });
 
@@ -824,7 +824,7 @@ test('real preparing resource is cleaned with its original bearer when its contr
  const h=await harness({preparingReal:true});h.senders.push('phone');await h.message('phone',{type:'pair',code:'ABCD',origin:''});
  await h.message('phone',{type:'load',itemId:'movie',requestId:'preparing'});
  const timer=[...h.timers].find(([,v])=>v.ms===500);assert(timer);h.ctxEvents.disconnect({senderId:'phone'});h.fire(timer[0]);await settle0();
- const cleanup=h.calls.filter(x=>x.method==='DELETE'&&x.url.endsWith('/v1/playback/sessions/ps_1'));assert.equal(cleanup.length,1);assert.equal(cleanup[0].headers.Authorization,'Bearer bearer-ABCD');assert.equal(h.loads.length,0);
+ const cleanup=h.calls.filter(x=>x.method==='DELETE'&&x.url.endsWith('/v1/playback/sessions/ps_1'));assert.equal(cleanup.length,1);assert.equal(cleanup[0].headers.Authorization,'Bearer bearer-ABCD');assert.equal(cleanup[0].body.expectedGeneration,1);assert.equal(h.loads.length,0);
 });
 
 test('late real 202 after retirement cleans the captured resource; retry-only owns none',async()=>{
@@ -893,5 +893,5 @@ test('accepted start retired after the inner response check cleans only its orig
  let h;const fixture={retireAfterAccepted:()=>h.ctxEvents.disconnect({senderId:'phone'})};h=await harness(fixture);h.senders.push('phone');
  await h.message('phone',{type:'pair',code:'ABCD',origin:''});await h.message('phone',{type:'load',itemId:'movie',requestId:'late-accepted'});await settle0();
  const cleanup=h.calls.filter(x=>x.method==='DELETE'&&x.url.endsWith('/v1/playback/sessions/ps_1'));
- assert.equal(cleanup.length,1);assert.equal(cleanup[0].headers.Authorization,'Bearer bearer-ABCD');assert.equal(h.loads.length,0);
+ assert.equal(cleanup.length,1);assert.equal(cleanup[0].headers.Authorization,'Bearer bearer-ABCD');assert.equal(cleanup[0].body.expectedGeneration,1);assert.equal(h.loads.length,0);
 });

@@ -47,6 +47,19 @@ func newPlaybackV1(d Dependencies) *playbackv1.Service {
 	if s == nil {
 		return nil
 	}
+	s.StopAuthorityTx = func(ctx context.Context, tx *sql.Tx, c playbackv1.Caller) error {
+		if d.Identity == nil || tx == nil || c.DeviceID == "" {
+			return identity.ErrForbidden
+		}
+		family, err := d.Identity.SessionFamilyTx(ctx, tx, c.Principal)
+		if err != nil {
+			return err
+		}
+		if family.DeviceID != c.DeviceID {
+			return identity.ErrForbidden
+		}
+		return nil
+	}
 	s.ControlsAuthorityTx = func(ctx context.Context, tx *sql.Tx, c playbackv1.Caller) error {
 		_, err := d.captureOwnControlsRecipientTx(ctx, tx, c)
 		return err
@@ -507,6 +520,11 @@ func registerPlaybackV1Sessions(r *apikit.Registry, d Dependencies) {
 	v1Route(r, apikit.Metadata{Admission: laneSecurityFence, ID: "stop_playback_session", Method: "DELETE", Path: "/v1/playback/sessions/{id}", Summary: "Stop playback; idempotent",
 		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.Constant, BodyLimit: 1 << 10, OptionalBody: true, Status: 204, Errors: []string{"invalid_request", "unauthorized", "not_found"}},
 		func(ctx context.Context, q *http.Request, in playbackv1.StopRequest) (noBody, error) {
+			// The generation branch stays closed until its exact occurrence claim
+			// and same-writer fence are fully wired.
+			if in.ExpectedGeneration != nil {
+				return noBody{}, identity.ErrForbidden
+			}
 			return noBody{}, d.playbackV1().Stop(ctx, d.v1ServiceCaller(q, callerFrom(ctx)), q.PathValue("id"), in.PositionMs)
 		})
 	v1Route(r, apikit.Metadata{Admission: lanePlayback, ID: "report_playback_timeline", Method: "POST", Path: "/v1/playback/sessions/{id}/timeline", Summary: "Report progress; renews the lease",

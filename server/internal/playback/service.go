@@ -51,6 +51,7 @@ type Session struct {
 	State             string     `json:"state,omitempty"`
 }
 type Service struct {
+	occurrences occurrenceRegistry
 	discFactory *discPlayFactory
 	discInputs  *discPlayInputs // exact private disc readers; no start producer
 

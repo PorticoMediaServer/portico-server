@@ -291,12 +291,12 @@ func (f *FiniteHLS) run(id string, a *finiteActor) {
 				var attempts int
 				readErr := f.h.db.QueryRow(`SELECT attempts FROM playback_vod_intervals WHERE session_id=? AND ordinal=?`, id, index).Scan(&attempts)
 				if readErr == nil && attempts < 3 && !errors.Is(err, vod.ErrUnsupported) && !errors.Is(err, vod.ErrChanged) && !errors.Is(err, vod.ErrBudget) && !errors.Is(err, identity.ErrUnauthorized) {
-					_, updateErr := dbwork.ExecWrite(context.Background(), f.h.db, dbwork.ClassEstablishedPlayback, `UPDATE playback_vod_intervals SET status='absent',error_code='production_retryable' WHERE session_id=? AND ordinal=? AND status='working'`, id, index)
+					_, updateErr := dbwork.ExecWrite(context.Background(), f.h.db, dbwork.ClassEstablishedPlayback, `UPDATE playback_vod_intervals SET status='absent',error_code='production_retryable' WHERE session_id=? AND ordinal=? AND status='working' AND EXISTS(SELECT 1 FROM playback_sessions WHERE id=? AND generation=? AND request_id=? AND item_id=? AND asset_id=? AND state NOT IN ('stopped','ended','failed'))`, id, index, id, a.generation, a.run.requestID, a.run.itemID, a.run.assetID)
 					if updateErr == nil {
 						continue
 					}
 				}
-				_, _ = dbwork.ExecWrite(context.Background(), f.h.db, dbwork.ClassEstablishedPlayback, `UPDATE playback_vod_intervals SET status='failed',error_code='production_failed' WHERE session_id=? AND ordinal=? AND status!='committed'`, id, index)
+				_, _ = dbwork.ExecWrite(context.Background(), f.h.db, dbwork.ClassEstablishedPlayback, `UPDATE playback_vod_intervals SET status='failed',error_code='production_failed' WHERE session_id=? AND ordinal=? AND status!='committed' AND EXISTS(SELECT 1 FROM playback_sessions WHERE id=? AND generation=? AND request_id=? AND item_id=? AND asset_id=? AND state NOT IN ('stopped','ended','failed'))`, id, index, id, a.generation, a.run.requestID, a.run.itemID, a.run.assetID)
 				f.h.failed(fail, id)
 				return
 			}
@@ -315,12 +315,26 @@ func (f *FiniteHLS) run(id string, a *finiteActor) {
 	}
 }
 func (f *FiniteHLS) produce(id string, a *finiteActor, index int) error {
+	// Retain this run's publication ticket across the writer. A stop claim
+	// closes admission and waits outside the registry mutex for this writer.
+	releasePublication, err := f.h.occurrences.publication(id, a.entry, a.run)
+	if err != nil {
+		return err
+	}
+	defer releasePublication()
 	gated2, err := dbwork.Begin(a.ctx, f.h.db, dbwork.ClassPlaybackStart)
 	if err != nil {
 		return err
 	}
 	tx := gated2.Tx()
 	defer gated2.Rollback()
+	var current bool
+	if err = tx.QueryRowContext(a.ctx, `SELECT EXISTS(SELECT 1 FROM playback_sessions WHERE id=? AND generation=? AND request_id=? AND item_id=? AND asset_id=? AND state NOT IN ('stopped','ended','failed'))`, id, a.generation, a.run.requestID, a.run.itemID, a.run.assetID).Scan(&current); err != nil {
+		return err
+	}
+	if !current {
+		return identity.ErrUnauthorized
+	}
 	var generation int64
 	if err = tx.QueryRow(`UPDATE playback_vod_plans SET generation=generation+1 WHERE session_id=? RETURNING generation`, id).Scan(&generation); err != nil {
 		return err
@@ -346,6 +360,7 @@ func (f *FiniteHLS) produce(id string, a *finiteActor, index int) error {
 	if err = gated2.Commit(); err != nil {
 		return err
 	}
+	releasePublication()
 	input, err := f.input(a.ctx, id)
 	if err != nil {
 		return err
@@ -381,7 +396,7 @@ func (f *FiniteHLS) produce(id string, a *finiteActor, index int) error {
 			return vod.ErrChanged
 		}
 	}
-	result, err = dbwork.ExecWrite(context.Background(), f.h.db, dbwork.ClassEstablishedPlayback, `UPDATE playback_vod_intervals SET status='committed',bytes=?,sha256=?,decode_from=?,encode_wall=?,encode_cpu=?,probe_wall=? WHERE session_id=? AND ordinal=? AND status='working' AND generation=? AND EXISTS(SELECT 1 FROM playback_sessions WHERE id=? AND state NOT IN ('stopped','ended','failed'))`, window.Bytes, digest, window.DecodeFrom, window.EncodeWork.WallSeconds, window.EncodeWork.CPUSeconds, window.ProbeWork.WallSeconds, id, index, generation, id)
+	result, err = dbwork.ExecWrite(context.Background(), f.h.db, dbwork.ClassEstablishedPlayback, `UPDATE playback_vod_intervals SET status='committed',bytes=?,sha256=?,decode_from=?,encode_wall=?,encode_cpu=?,probe_wall=? WHERE session_id=? AND ordinal=? AND status='working' AND generation=? AND EXISTS(SELECT 1 FROM playback_sessions WHERE id=? AND generation=? AND request_id=? AND item_id=? AND asset_id=? AND state NOT IN ('stopped','ended','failed'))`, window.Bytes, digest, window.DecodeFrom, window.EncodeWork.WallSeconds, window.EncodeWork.CPUSeconds, window.ProbeWork.WallSeconds, id, index, generation, id, a.generation, a.run.requestID, a.run.itemID, a.run.assetID)
 	if err != nil {
 		return err
 	}
@@ -421,6 +436,11 @@ func (f *FiniteHLS) file(ctx context.Context, id, name string) (string, error) {
 	a.waiters++
 	f.mu.Unlock()
 	defer func() { f.mu.Lock(); a.waiters--; f.mu.Unlock() }()
+	releasePublication, err := f.h.occurrences.publication(id, a.entry, a.run)
+	if err != nil {
+		return "", err
+	}
+	defer releasePublication()
 	gated3, err := dbwork.Begin(ctx, f.h.db, dbwork.ClassPlaybackStart)
 	if err != nil {
 		return "", err
@@ -446,6 +466,7 @@ func (f *FiniteHLS) file(ctx context.Context, id, name string) (string, error) {
 	if err = gated3.Commit(); err != nil {
 		return "", err
 	}
+	releasePublication()
 	select {
 	case a.wake <- struct{}{}:
 	default:
@@ -455,7 +476,7 @@ func (f *FiniteHLS) file(ctx context.Context, id, name string) (string, error) {
 	tick := time.NewTicker(50 * time.Millisecond)
 	defer tick.Stop()
 	for {
-		if !f.live(id) {
+		if !f.liveGeneration(id, a.generation) {
 			return "", identity.ErrUnauthorized
 		}
 		var hash string
