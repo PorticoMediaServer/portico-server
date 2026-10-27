@@ -209,21 +209,18 @@ func Go(ctx context.Context, name string, signal *Signal, step Step) <-chan stru
 	return done
 }
 
-// Wrote is the "did anything happen?" probe a loop uses when its steps do not
-// say so themselves. Every change in this server commits through one write gate,
-// so a step that changed something moved the gate's acquisition count and a step
-// that found nothing to do did not. It is deliberately coarse: on a server where
-// writes are happening at all, one extra pass is not the cost worth optimising,
-// and on an idle server nothing writes so nothing runs.
+// Progress is the "did anything happen?" probe a loop uses when its steps do
+// not say so themselves. A lane can supply its own context-scoped committed
+// change count, so other actors cannot make an idle pass look productive. A
+// scheduler that intentionally follows all actors can use a process-wide count.
 type Progress struct {
 	count func() uint64
 	mark  uint64
 }
 
-// NewProgress starts watching. count is normally dbwork.ChangingCommits — the
-// count of transactions that actually changed rows, not the write gate's
-// acquisitions, because a transaction that wrote nothing still takes the gate
-// and a loop watching that would see itself and never settle.
+// NewProgress starts watching the caller's chosen changing-commit count, not
+// gate acquisitions: a transaction that wrote nothing still takes the gate,
+// and a loop watching acquisitions would see itself and never settle.
 func NewProgress(count func() uint64) *Progress {
 	p := &Progress{count: count}
 	p.Reset()

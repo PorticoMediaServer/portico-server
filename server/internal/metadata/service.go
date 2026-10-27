@@ -135,7 +135,7 @@ func (s *Service) Run(ctx context.Context) {
 	wake := worker.NewSignal()
 	unregister := dbwork.WakeOnTables(wake, "metadata_*", "screen_metadata_*", "mb_*", "tvdb_*", "audio_metadata_*", "audio_genre_*", "maintenance_*", "server_settings", "console_settings_revision", "admin_documents")
 	defer unregister()
-	progress := worker.NewProgress(dbwork.ChangingCommits)
+	ctx, progress := metadataProgress(ctx)
 	worker.Run(ctx, "metadata.providers", wake, func(ctx context.Context) time.Duration {
 		if s.Admission != nil {
 			allowed, e := s.Admission(ctx, nil, "metadata-refresh")
@@ -211,7 +211,7 @@ func (s *Service) RunArtwork(ctx context.Context) {
 			wake := worker.NewSignal()
 			unregister := dbwork.WakeOnTables(wake, "artwork_*", "metadata_runtime_settings", "metadata_artwork_size_*", "screen_metadata_consent", "metadata_owner_fields", "metadata_relationship_decisions", "screen_metadata_publications", "metadata_publication_heads", "maintenance_*", "server_settings", "console_settings_revision", "admin_documents")
 			defer unregister()
-			progress := worker.NewProgress(dbwork.ChangingCommits)
+			ctx, progress := metadataProgress(ctx)
 			worker.RunWith(ctx, "metadata.artwork-lane", urgent, wake, func(ctx context.Context) time.Duration {
 				if s.Admission != nil {
 					allowed, e := s.Admission(ctx, nil, "metadata-refresh")
@@ -258,4 +258,11 @@ func (s *Service) tmdbGet(ctx context.Context, route string) ([]byte, error) {
 		base = s.base
 	}
 	return s.tmdbPaced.Raw(ctx, s.client, base, route, 1<<20)
+}
+
+// Each worker follows only its own committed progress. The shared table wake
+// still provides the normal floored notification for work other lanes enqueue.
+func metadataProgress(ctx context.Context) (context.Context, *worker.Progress) {
+	ctx, count := dbwork.TrackCommitProgress(ctx)
+	return ctx, worker.NewProgress(count)
 }
