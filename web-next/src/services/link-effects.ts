@@ -1,8 +1,7 @@
 import {ApiError} from '@core/index.ts';
-import {parseSecurityResult} from '@core/hosted-security.ts';
 import {routeBody, routePath} from '../../../packages/contracts/src/hosted/routes.ts';
 import {verificationLink} from './fragments';
-import {accountIdentity, currentAccountWork, type ServicesAccount} from './session';
+import {accountIdentity, type ServicesAccount} from './session';
 
 export async function resetPassword(account: Pick<ServicesAccount, 'client'>, token: string,
   password: string, factor: string, signal: AbortSignal): Promise<void> {
@@ -26,18 +25,21 @@ export async function verifyEmail(account: ServicesAccount, token: string, signa
       return 'confirmed';
     }
   }
-  if (link?.kind === 'email_change' && account.service.getSnapshot().session) {
-    const session = await currentAccountWork(account, async session => session);
-    const identity = accountIdentity(session);
+  if (link?.kind === 'email_change') {
+    const session = account.service.getSnapshot().session;
+    const original = session?.familyId ? accountIdentity(session) : undefined;
     signal.throwIfAborted();
-    const raw = await account.client.request(routePath('account_security_email_confirm'), 'POST',
-      routeBody('account_security_email_confirm', {challengeId: link.resource, code: link.code, operationId: crypto.randomUUID()}), signal, session.accessToken);
+    const result = await account.client.request(routePath('email_link_confirm'), 'POST',
+      routeBody('email_link_confirm', {token}), signal) as {kind?: unknown; status?: unknown; accountId?: unknown} | undefined;
+    if (!result || result.kind !== 'email_change' || !['email_changed', 'already_confirmed'].includes(String(result.status)) ||
+      typeof result.accountId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(result.accountId))
+      throw new ApiError(502, 'invalid_response', 'invalid_response', false);
+    // A real new change revoked the affected account's families. Its known ACK
+    // retires only the original locally captured family, even after view exit.
+    // A receipt replay revokes nobody and must preserve a fresh valid sign-in.
+    if (result.status === 'email_changed' && original?.accountId === result.accountId)
+      await account.service.logoutIfCurrent(original);
     signal.throwIfAborted();
-    const result = parseSecurityResult(raw, identity);
-    if (result.status !== 'email_changed' || !result.signOut) throw new ApiError(502, 'invalid_response', 'invalid_response', false);
-    // Hosted invalidates every sign-in. Retire this browser's reviewed family,
-    // preserving an account another tab adopted while cleanup was queued.
-    await account.service.logoutIfCurrent(identity);
     return 'changed';
   }
   const value = await account.client.request(routePath('email_link_confirm'), 'POST', routeBody('email_link_confirm', {token}), signal);

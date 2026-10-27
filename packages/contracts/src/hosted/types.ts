@@ -80,7 +80,7 @@ export type DeviceAuthorizationTokenResponse = { "accessToken": string; "account
 export type DnsAddressesListRequest = {  };
 export type DnsAddressesListResponse = { "items": Array<{ "ipv4"?: string; "ipv6"?: string; "label": string; "lanIpv4"?: string; "lanIpv6"?: string; "namespace": string; "previousLabel"?: string; "previousLabelUntil"?: string; "sequence": string }> };
 export type EmailLinkConfirmRequest = { "token": string };
-export type EmailLinkConfirmResponse = { "kind": string; "status": string };
+export type EmailLinkConfirmResponse = { "accountId"?: string; "kind": string; "status": string };
 export type IdentityAppleNotificationRequest = { "payload": string };
 export type IdentityAppleNotificationResponse = { "accepted": boolean };
 export type IdentityCancelRequest = {  };
@@ -90,7 +90,7 @@ export type IdentityCurrentResponse = { "contactVerified": boolean; "expiresAt":
 export type IdentityMfaCompleteRequest = { "challengeId": string; "challengeToken": string; "factor": string };
 export type IdentityMfaCompleteResponse = { "accessToken": string; "account": { "displayName": string; "id": string; "username": string }; "expiresAt": string; "familyId"?: string; "refreshExpiresAt"?: string; "refreshToken"?: string };
 export type IdentityOptionsGetRequest = {  };
-export type IdentityOptionsGetResponse = { "accountSecurity": boolean; "nativeCompletion": string; "password": boolean; "providers": Array<{ "enabled": boolean; "id": string; "native": boolean; "nativeClientIds": Array<string> }>; "recovery": boolean; "registration": boolean; "verifiedContactRequired": boolean };
+export type IdentityOptionsGetResponse = { "accountSecurity": boolean; "credentialProviderReauthentication"?: string; "nativeCompletion": string; "password": boolean; "providers": Array<{ "enabled": boolean; "id": string; "native": boolean; "nativeClientIds": Array<string> }>; "recovery": boolean; "registration": boolean; "verifiedContactRequired": boolean };
 export type IdentitySecurityCancelRequest = {  };
 export type IdentitySecurityCancelResponse = {  };
 export type IdentitySecurityReturnRequest = {  };
@@ -209,7 +209,6 @@ export type SystemGetRequest = {  };
 export type SystemGetResponse = { "buildId": string; "builtAt": string; "proof": string; "sourceDigest": string; "version": string };
 export type TvAuthorizationTokenRequest = { "deviceCode": string };
 export type TvAuthorizationTokenResponse = { "ciphertext": string; "issuer": string; "kind": string; "nonce": string; "publicKey": string; "recipientKey": string; "requestId": string; "salt": string; "version": number };
-
 export type RouteContracts = {
 "account_create": { request: AccountCreateRequest; response: AccountCreateResponse };
 "account_deletion_accept": { request: AccountDeletionAcceptRequest; response: AccountDeletionAcceptResponse };

@@ -2415,6 +2415,9 @@ export const schemas = {
   },
   "EmailLinkConfirmResponse": {
     "properties": {
+      "accountId": {
+        "type": "string"
+      },
       "kind": {
         "type": "string"
       },
@@ -2590,6 +2593,9 @@ export const schemas = {
     "properties": {
       "accountSecurity": {
         "type": "boolean"
+      },
+      "credentialProviderReauthentication": {
+        "type": "string"
       },
       "nativeCompletion": {
         "type": "string"
