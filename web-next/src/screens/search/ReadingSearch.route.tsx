@@ -21,7 +21,11 @@ function BoundReadingSearch({captured}: {captured: ProtectedLibraryScreen}) {
   const location = useLocation({select: value => value}), search = useSearch({from: '/search/reading'}), {q} = indexedSearchQuery(search);
   const context = captured.context, session = context.session(), viewer = session.viewer;
   const [published, publish] = useState<Lease>(), generation = useRef(0);
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({session});
+  useLayoutEffect(() => {setupPorts.current = {session};});
   useLayoutEffect(() => {
+    const {session} = setupPorts.current;
     const original: Session = {sessionFamilyId: session.sessionFamilyId, viewer: {...session.viewer}};
     let live = true;
     const lifetime = new AbortController();

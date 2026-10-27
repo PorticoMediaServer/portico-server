@@ -46,7 +46,11 @@ export function BrowseFilters({controller, model, labels, compact, open, resultC
       if (cadence.current === original.cadence) cadence.current = undefined;
     };
   }, [controller, open]);
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts = useRef({owns, state, controller});
+  useLayoutEffect(() => {setupPorts.current = {owns, state, controller};});
   useLayoutEffect(() => {
+    const {owns, state, controller} = setupPorts.current;
     if (!owns(opening)) return;
     if (opening.query && !controller.acceptsQuery(opening.query)) {opening.pending = undefined;opening.cadence.reset();updateDrafts({});}
     opening.query = state;
@@ -68,7 +72,11 @@ export function BrowseFilters({controller, model, labels, compact, open, resultC
   const saveView = () => {if (drawn() && canSaveView) onSaveView?.();};
   const predicates = state.predicates, atomic = simple(predicates);
   const signature = JSON.stringify([predicates, queries, openFields]);
+  // Publish only at commit, then sample once for this setup's original lifetime.
+  const setupPorts1 = useRef({owns, state});
+  useLayoutEffect(() => {setupPorts1.current = {owns, state};});
   useLayoutEffect(() => {
+    const {owns, state} = setupPorts1.current;
     if (!owns(opening)) return;
     const original = opening, originalQuery = state;
     const stop = new AbortController();
