@@ -6,6 +6,13 @@ import * as routeSearch from '../../src/screens/read/route-search.ts';
 
 // Actual ReadHost callbacks and hook ownership with mocked existing ports. This
 // harness models commits and wiring, not React scheduling or session disposal.
+// The protected-context mock deliberately allows command-time isCurrent() false;
+// the real hook would hide the host on a subsequent render.
+function installHistory(t) {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  Object.defineProperty(globalThis, 'window', {value: {history: {length: 2}}, configurable: true});
+  t.after(() => {if (previous) Object.defineProperty(globalThis, 'window', previous); else Reflect.deleteProperty(globalThis, 'window');});
+}
 async function fixture({strict = false} = {}) {
   const h = createRenderer(), calls = [], errors = [], replayers = [];
   let item = 'book', source = 'source', match = true, allowed = true, onCurrent, onNavigate;
@@ -13,7 +20,7 @@ async function fixture({strict = false} = {}) {
   let binding = {home: {effects: {reportError: error => errors.push(error)}}};
   const makeLocation = (path = '/read/book', search = {sourceId: source}) => ({pathname: path, search});
   let location = makeLocation();
-  const router = {state: {location}, history: {back: () => calls.push({back: true})}, navigate: target => {calls.push(target); onNavigate?.(); return Promise.resolve();}};
+  const router = {state: {location}, history: {location: {state: {__TSR_index: 0}}, back: () => calls.push({back: true})}, navigate: target => {calls.push(target); onNavigate?.(); return Promise.resolve();}};
   const react = {...h.react};
   if (strict) react.useLayoutEffect = (effect, deps) => h.react.useLayoutEffect(() => {let cleanup = effect(); cleanup?.(); cleanup = effect(); replayers.push(() => {cleanup?.(); cleanup = effect();}); return () => cleanup?.();}, deps);
   const component = await componentModule(new URL('../../src/screens/read/ReadHost.tsx', import.meta.url), {
@@ -23,7 +30,7 @@ async function fixture({strict = false} = {}) {
   const render = () => tree(h.render(() => component.ReadHost()));
   const settle = () => {let view; for (let i = 0; i < 4; i++) view = render(); return view;};
   const close = () => one(settle(), 'ReadEntry').props.onClose;
-  const change = (nextItem = item, nextSource = source, path = `/read/${nextItem}`, visible = true) => {
+  const change = (nextItem = item, nextSource = source, path = `/read/${encodeURIComponent(nextItem)}`, visible = true) => {
     item = nextItem; source = nextSource; match = visible; location = makeLocation(path, {sourceId: source}); router.state.location = location; settle();
   };
   return {calls, errors, close, settle, change, replay: () => {for (const replay of replayers) replay(); settle();}, sameHref: () => change(), settings: () => change(item, source, '/settings', false),
@@ -31,31 +38,45 @@ async function fixture({strict = false} = {}) {
     setCurrent: fn => {onCurrent = fn;}, setNavigate: fn => {onNavigate = fn;}, setAllowed: value => {allowed = value;}};
 }
 
-test('Reader closes to the captured book with replace, including Settings detours', async () => {
-  const f = await fixture(); const close = f.close(); close(); close();
+test('Reader closes to the captured book with replace, including Settings detours', async t => {
+  installHistory(t); const f = await fixture(); const close = f.close(); close(); close();
   assert.deepEqual(f.calls, [{to: '/item/$itemId', params: {itemId: 'book'}, replace: true}]);
   const detail = await fixture(); detail.close()(); assert.equal(detail.calls[0].params.itemId, 'book');
   const detour = await fixture(); const before = detour.close(); detour.settings(); before(); assert.equal(detour.calls.length, 0);
   detour.change(); detour.close()(); assert.deepEqual(detour.calls, [{to: '/item/$itemId', params: {itemId: 'book'}, replace: true}]);
 });
 
-test('old callbacks refuse item, source, scope, hidden and same-href entry replacement', async () => {
-  for (const replace of [f => f.change('other'), f => f.change('book', 'other-source'), f => f.replaceContext(), f => f.settings(), f => f.sameHref()]) {
+test('old callbacks refuse item, source, scope, hidden and same-href entry replacement', async t => {
+  installHistory(t); for (const replace of [f => f.change('other'), f => f.change('book', 'other-source'), f => f.replaceContext(), f => f.settings(), f => f.sameHref()]) {
     const f = await fixture(); const old = f.close(); replace(f); old(); assert.equal(f.calls.length, 0);
     if (!f.settle().find(node => node.type === 'ReadEntry')?.props.active) f.change();
     f.close()(); assert.equal(f.calls.length, 1);
   }
 });
 
-test('reentrant context and navigation cannot spend or clear a successor', async () => {
-  const f = await fixture(); const old = f.close();
+test('command-time original context refusal does not navigate', async t => {
+  installHistory(t); const f = await fixture(), close = f.close();
+  f.setAllowed(false); close(); assert.deepEqual(f.calls, []);
+  f.setAllowed(true); close(); assert.equal(f.calls.length, 1);
+});
+
+test('reentrant context and navigation cannot spend or clear a successor', async t => {
+  installHistory(t); const f = await fixture(); const old = f.close();
   f.setCurrent(() => {f.setCurrent(undefined); f.change('new-book');}); old(); assert.equal(f.calls.length, 0);
   const current = f.close(); f.setNavigate(() => {f.setNavigate(undefined); f.change('successor');}); current();
   assert.equal(f.calls.length, 1); assert.equal(one(f.settle(), 'ReadEntry').props.itemId, 'successor');
   f.close()(); assert.equal(f.calls.length, 2); assert.equal(f.calls[1].params.itemId, 'successor');
 });
 
-test('layout replay retires the prior receipt and a fresh callback remains usable', async () => {
-  const f = await fixture({strict: true}); const old = f.close(); f.replay(); old(); assert.equal(f.calls.length, 0);
+test('layout replay retires the prior receipt and a fresh callback remains usable', async t => {
+  installHistory(t); const f = await fixture({strict: true}); const old = f.close(); f.replay(); old(); assert.equal(f.calls.length, 0);
   const fresh = f.close(); fresh(); fresh(); assert.equal(f.calls.length, 1); assert.equal(f.calls[0].replace, true);
+});
+
+
+test('same matched item on the wrong pathname is refused; encoded Reader path is accepted', async t => {
+  installHistory(t); const f = await fixture(); const old = f.close();
+  f.change('book', 'source', '/not-the-reader', true); old(); f.close()(); assert.deepEqual(f.calls, []);
+  f.change('book space/é', 'source'); f.close()();
+  assert.deepEqual(f.calls, [{to: '/item/$itemId', params: {itemId: 'book space/é'}, replace: true}]);
 });

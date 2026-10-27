@@ -24,7 +24,7 @@ export function ReadHost() {
   useEffect(() => {setRetained(previous => retainedReadTarget(previous, itemId ? {itemId, sourceId} : undefined, settings));}, [itemId, sourceId, settings]);
   const visible = !!match && !!retained && retained.itemId === itemId && retained.sourceId === sourceId;
   useLayoutEffect(() => {
-    if (!context || !binding || !retained || !visible || !itemId || readSearch(location.search).sourceId !== sourceId) return;
+    if (!context || !binding || !retained || !visible || !itemId || location.pathname !== `/read/${encodeURIComponent(itemId)}` || readSearch(location.search).sourceId !== sourceId) return;
     const original: CloseReceipt = {context, binding, target: retained, location, itemId, sourceId, live: true, claimed: false};
     committed.current = original; setPublished(original);
     return () => {original.live = false; if (committed.current === original) committed.current = null;};
@@ -33,10 +33,11 @@ export function ReadHost() {
   const original = visible && published?.live && published.context === context && published.binding === binding && published.target === retained
     && published.location === location && published.itemId === itemId && published.sourceId === sourceId ? published : undefined;
   const onClose = () => {
-    if (!original || !original.live || original.claimed || committed.current !== original || router.state.location !== original.location
-      || original.location.pathname !== location.pathname || readSearch(original.location.search).sourceId !== original.sourceId) return;
-    if (!original.context.isCurrent()) return;
-    if (!original.live || original.claimed || committed.current !== original || router.state.location !== original.location) return;
+    if (!original) return;
+    const matchesOriginal = () => original.live && !original.claimed && committed.current === original
+      && router.state.location === original.location && original.location.pathname === `/read/${encodeURIComponent(original.itemId)}`
+      && readSearch(original.location.search).sourceId === original.sourceId;
+    if (!matchesOriginal() || !original.context.isCurrent() || !matchesOriginal()) return;
     original.claimed = true;
     void router.navigate({to: '/item/$itemId', params: {itemId: original.itemId}, replace: true}).catch(error => {
       if (original.context.isCurrent()) original.binding.home.effects.reportError(error);
