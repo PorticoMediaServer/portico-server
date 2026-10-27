@@ -41,13 +41,21 @@ def main():
             entries.extend(json.loads(path.read_text()))
             module=importlib.import_module(section)
             for lib in getattr(module,'LIBRARIES',[]):
-                libraries.append({'name':'Synthetic '+lib['name'].removeprefix('Design Test ').removeprefix('Portico '), 'kind':lib['kind'], 'path':lib.get('path',lib.get('root'))})
+                declaration={'name':'Synthetic '+lib['name'].removeprefix('Design Test ').removeprefix('Portico '), 'kind':lib['kind'], 'path':lib.get('path',lib.get('root'))}
+                expected={k:v for k,v in lib.items() if k not in ('name','kind','path','root')}
+                if expected: declaration['expected']=expected
+                libraries.append(declaration)
     manifest={'schemaVersion':1,'seed':'portico-original-20261027','libraries':libraries,'entries':entries,
               'counts':dict(sorted(collections.Counter(e['kind'] for e in entries).items())),
               'provenance':'Original generated pictures, text, tones and local metadata; no external lookup.'}
     target=root/'manifest.json'
     tmp=target.with_suffix('.json.tmp')
-    tmp.write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n');tmp.replace(target)
+    # One entry per line keeps the committed catalogue reviewable.
+    header={k:v for k,v in manifest.items() if k!='entries'}
+    payload=json.dumps(header,ensure_ascii=False,indent=2)[:-2]+',\n  "entries": [\n'
+    payload+=',\n'.join('    '+json.dumps(e,ensure_ascii=False,separators=(',',':')) for e in entries)
+    payload+='\n  ]\n}\n'
+    tmp.write_text(payload);tmp.replace(target)
     print(json.dumps(manifest['counts'],sort_keys=True),flush=True)
 
 

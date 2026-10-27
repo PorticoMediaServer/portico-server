@@ -58,12 +58,10 @@ the disc entry says ``disc_layout:dvd`` + ``packaging:folder`` +
 ``container:VIDEO_TS``, while the chaptered film says ``chaptered_file:embedded``
 + ``not_a_disc``.
 
-Dolby Vision note: the committed DV fixtures are Annex B elementary streams
-(fixtures/video/hdr-generated/dv-8.1.hevc). They are muxed only when this
-FFmpeg advertises the checked ``dovi_profile`` BSF *and* the output carries a
-container DV configuration record; otherwise the item is skipped and reported
-as a gap rather than mislabelled. HDR10 (base-pq.hevc) and HLG (base-hlg.hevc)
-are muxed as verified HDR10/HLG and reference their fixture path in features.
+Dolby Vision retains the committed procedural, timestamped profile-7 MEL/FEL
+MP4s (fixtures/video/dovi-probe-r40), including their explicit container DOVI
+configuration. The generator verifies those records before retaining the files.
+HDR10 and HLG use the adjacent generated base-pq.hevc and base-hlg.hevc streams.
 """
 from pathlib import Path
 import hashlib
@@ -170,7 +168,7 @@ SPECIAL_FILMS = {
     },
     'A Field of Static': {
         'year': 2022, 'cert': 'TV-MA', 'rating': 8.0, 'runtime': 98,
-        'versions': [('HDR10', 'hdr10'), ('Dolby Vision', 'dv'),
+        'versions': [('HDR10', 'hdr10'), ('Dolby Vision MEL', 'dv'), ('Dolby Vision FEL', 'dv_fel'),
                      ('SDR', 'v1080')],
     },
     'Amber Frequency': {
@@ -636,6 +634,7 @@ def _templates(root, ffmpeg, full=True):
     files['hlg'] = _mux_hdr(ffmpeg, tpl / 'hlg.mp4',
                             HDR_SOURCE / 'base-hlg.hevc', 'hvc1')
     files['dv'] = _mux_dv(ffmpeg, tpl / 'dolby-vision.mp4')
+    files['dv_fel'] = _mux_dv(ffmpeg, tpl / 'dolby-vision-fel.mp4', 'FEL')
 
     # Seed for the single high-bitrate play-out: 24 s at 16 Mbit/s means one
     # 24 s keyframe interval is ~48 MiB, above the 36 MiB remux target.
@@ -696,17 +695,29 @@ def _mux_hdr(ffmpeg, out, source, tag):
     return Path(out)
 
 
-def _mux_dv(ffmpeg, out):
-    """Mux the committed profile-8.1 RPU stream with the qualified BSF."""
-    if Path(out).exists():
-        return Path(out)
-    source = HDR_SOURCE / 'dv-8.1.hevc'
-    if not source.exists() or 'dovi_profile' not in _bsfs(ffmpeg):
+def _mux_dv(ffmpeg, out, layer='MEL'):
+    """Retain a committed procedural DV container, including its real config.
+
+    Raw Annex-B RPU bytes and an ordinary stream copy do not create a DOVI
+    configuration record. Retaining these small original containers preserves
+    their explicit profile-7 configuration and authored packet timestamps.
+    """
+    source = HDR_SOURCE.parent / 'dovi-probe-r40' / f'source-{layer}.mp4'
+    if not source.is_file():
         return None
+    facts = json.loads(subprocess.run(
+        [_ffprobe(ffmpeg), '-v', 'error', '-show_streams', '-of', 'json', str(source)],
+        check=True, capture_output=True, text=True).stdout)
+    records = [sd for stream in facts.get('streams', [])
+               for sd in stream.get('side_data_list', [])
+               if sd.get('side_data_type') == 'DOVI configuration record']
+    if not any(sd.get('dv_profile') == 7 and sd.get('rpu_present_flag') == 1
+               and sd.get('el_present_flag') == 1 for sd in records):
+        raise RuntimeError('Retained Dolby Vision configuration was not found')
     out = Path(out)
-    _run_ff(ffmpeg, ['-y', '-framerate', '24', '-f', 'hevc', '-i',
-                     str(source), '-c', 'copy', '-bsf:v',
-                     'dovi_profile=mode=2', '-tag:v', 'dvh1', str(out)])
+    if out.exists():
+        out.unlink()
+    link(source, out)
     return out
 
 
@@ -886,7 +897,7 @@ def _films(root, tpl, ffmpeg, full):
 
         spec = detail['spec']
         for label, variant in detail['versions']:
-            if variant == 'dv' and tpl['dv'] is None:
+            if variant in ('dv', 'dv_fel') and tpl.get(variant) is None:
                 print('video: skipped Dolby Vision version: qualified '
                       'dovi_profile BSF not available in %s' % ffmpeg,
                       flush=True)
@@ -895,7 +906,7 @@ def _films(root, tpl, ffmpeg, full):
             features = ['film']
             if label:
                 features.append(f'version:{label}')
-            if variant in ('hdr10', 'hlg', 'dv', 'high'):
+            if variant in ('hdr10', 'hlg', 'dv', 'dv_fel', 'high'):
                 container = 'mp4'
             else:
                 container = VARIANT_INFO[variant][0]
@@ -917,10 +928,10 @@ def _films(root, tpl, ffmpeg, full):
                     features.append('high_bitrate_skipped')
                 features += ['container:mp4', 'video:h264',
                              'resolution:1920x800', 'audio:aac',
-                             'transcode_source:light']
+                             'transcode_source:remux-only']
             else:
                 link(tpl[variant], target)
-                if variant in ('hdr10', 'hlg', 'dv'):
+                if variant in ('hdr10', 'hlg', 'dv', 'dv_fel'):
                     features += ['container:mp4', 'video:hevc',
                                  'resolution:320x180', 'audio:none']
                 else:
@@ -949,10 +960,10 @@ def _films(root, tpl, ffmpeg, full):
                 features += ['dynamic_range:hlg',
                              'source:fixtures/video/hdr-generated/'
                              'base-hlg.hevc']
-            if variant == 'dv':
-                features += ['dynamic_range:dolby_vision', 'dv_profile:8.1',
-                             'source:fixtures/video/hdr-generated/'
-                             'dv-8.1.hevc']
+            if variant in ('dv', 'dv_fel'):
+                features += ['dynamic_range:dolby_vision', 'dv_profile:7',
+                             'dv_layer:' + ('FEL' if variant == 'dv_fel' else 'MEL'),
+                             'source:fixtures/video/dovi-probe-r40/source-' + ('FEL' if variant == 'dv_fel' else 'MEL') + '.mp4']
                 if not _has_dv_config(target):
                     features.append('dolby_vision_signalling:unverified')
                 else:

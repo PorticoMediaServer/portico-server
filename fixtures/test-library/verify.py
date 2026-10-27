@@ -147,33 +147,69 @@ class Client:
                 return payload
             return json.loads(payload) if payload else None
 
-    def read(self, path, attempts=4):
+    def read(self, path, attempts=12):
         last = None
         for attempt in range(attempts):
             try:
                 return self.call("GET", path)
             except Refusal as refusal:
                 last = refusal
-                if refusal.status not in (412, 423, 503, 504) or attempt == attempts - 1:
+                if refusal.status not in (409, 412, 423, 503, 504) or attempt == attempts - 1:
                     raise
                 time.sleep(0.6 * (attempt + 1))
         raise last
 
 
 def sign_in(client, username, password):
-    signed = client.call("POST", "/v1/direct/sign-in", {"username": username, "password": password})
-    session = signed.get("session", signed)
-    client.token = session["accessToken"]
-    return signed
+    last = None
+    for attempt in range(8):
+        try:
+            signed = client.call("POST", "/v1/direct/sign-in",
+                                 {"username": username, "password": password})
+            session = signed.get("session", signed)
+            client.token = session["accessToken"]
+            return signed
+        except Refusal as refusal:
+            last = refusal
+            if refusal.status not in (429, 503, 504) or attempt == 7:
+                raise
+            time.sleep(min(20, 3 * (attempt + 1)))
+    raise last
 
 
 def select(client, profile_id, pin=None):
     body = {"installationId": client.installation, "trust": False}
     if pin:
         body["pin"] = pin
-    selected = client.call("POST", "/v1/direct/profiles/" + urllib.parse.quote(profile_id, safe="") +
-                           "/select", body)
-    client.token = selected["session"]["accessToken"]
+    last = None
+    for attempt in range(8):
+        try:
+            selected = client.call("POST", "/v1/direct/profiles/" +
+                                   urllib.parse.quote(profile_id, safe="") + "/select", body)
+            client.token = selected["session"]["accessToken"]
+            return
+        except Refusal as refusal:
+            last = refusal
+            if refusal.status not in (401, 403, 409, 429, 503, 504) or attempt == 7:
+                raise
+            time.sleep(min(15, 1.5 * (attempt + 1)))
+    raise last
+
+
+def open_profile(base, username, password, profile_id, pin=None):
+    last = None
+    for attempt in range(4):
+        client = Client(base, str(uuid.uuid4()))
+        try:
+            sign_in(client, username, password)
+            select(client, profile_id, pin)
+            return client
+        except Refusal as refusal:
+            last = refusal
+            if refusal.status not in (401, 403, 409, 429, 503, 504) or attempt == 4:
+                raise
+            time.sleep(min(20, 3 * (attempt + 1)))
+    raise last
 
 
 def browse(client, library_id, pivot, maximum=26000):
@@ -390,20 +426,24 @@ def main(argv=None):
         art_checked = without_art = 0
         for name, entry in report["libraries"].items():
             library = by_name.get(name) or {"id": entry["id"], "kind": entry["kind"]}
-            found, cursor = [], ""
-            while len(found) < 12:
-                body = {"pivot": {"movie": "movies", "tv": "episodes", "anime": "episodes",
-                                  "music": "songs", "audiobook": "books",
-                                  "book": "books", "comic": "comics"}[entry["kind"]],
-                        "limit": 12}
-                if cursor:
-                    body["cursor"] = cursor
-                page = owner.call("POST", "/v1/libraries/" + urllib.parse.quote(library["id"], safe="") +
-                                  "/browse", body, ok=(200,))
-                found.extend(page.get("entries") or [])
-                cursor = (page.get("pageInfo") or {}).get("nextCursor") or ""
-                if not cursor:
-                    break
+            if entry["kind"] in ("book", "comic"):
+                found = reading_items(owner, library["id"], 12)
+                for item in found:
+                    item.setdefault("kind", entry["kind"])
+            else:
+                found, cursor = [], ""
+                while len(found) < 12:
+                    body = {"pivot": {"movie": "movies", "tv": "episodes", "anime": "episodes",
+                                      "music": "songs", "audiobook": "books"}[entry["kind"]],
+                            "limit": 12}
+                    if cursor:
+                        body["cursor"] = cursor
+                    page = owner.call("POST", "/v1/libraries/" + urllib.parse.quote(library["id"], safe="") +
+                                      "/browse", body, ok=(200,))
+                    found.extend(page.get("entries") or [])
+                    cursor = (page.get("pageInfo") or {}).get("nextCursor") or ""
+                    if not cursor:
+                        break
             for item in found:
                 kinds[item.get("kind")] = kinds.get(item.get("kind"), 0) + 1
                 try:
@@ -448,6 +488,10 @@ def main(argv=None):
                     entry["sampleBookParts"] = len(files.get("files") or [])
                     check("audiobook-parts:" + name, entry["sampleBookParts"] > 0,
                           entry["sampleBookParts"])
+                    timeline = owner.read("/v1/books/" + urllib.parse.quote(books[0]["id"], safe="") +
+                                          "/timeline")
+                    progress = (timeline.get("data") or {}).get("progress")
+                    check("audiobook-progress:" + name, progress is not None, bool(progress))
         report["coverage"] = {"kinds": kinds, "containers": sorted(containers),
                               "videoCodecs": sorted(video_codecs), "audioCodecs": sorted(audio_codecs),
                               "artworkChecked": art_checked, "artworkMissing": without_art}
@@ -509,10 +553,8 @@ def main(argv=None):
                 report["warnings"].append({"check": "member-sign-in", "username": member["username"],
                                            "code": refusal.code, "status": refusal.status})
         for label, profile_id, pin, username, password in targets:
-            client = Client(args.base)
             try:
-                sign_in(client, username, password)
-                select(client, profile_id, pin)
+                client = open_profile(args.base, username, password, profile_id, pin)
             except Refusal as refusal:
                 check("profile-select:" + label, False, refusal.code)
                 continue
@@ -609,7 +651,9 @@ def main(argv=None):
             check("live-guide-sources", bool(guide.get("sources")),
                   len(guide.get("sources") or []))
         else:
-            check("live-source", False, "no live source registered", warn=True)
+            live_expected = any(isinstance(entry, dict) and entry.get("kind") == "live-channel"
+                                for entry in expected["entries"])
+            check("live-source", False, "no live source registered", warn=not live_expected)
 
         report["finishedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         report["ok"] = not report["failures"]

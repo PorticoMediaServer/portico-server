@@ -49,8 +49,9 @@ def connect(base,cfg):
     return client
 
 
-def start(client,item,converted=False):
+def start(client,item,converted=False,extra=None):
     body={'itemId':item,'startFrom':'beginning'}
+    body.update(extra or {})
     if converted: body['quality']={'mode':'limit','maxVideoBitrateKbps':180,'maxHeight':360,'maxAudioBitrateKbps':32}
     key={'Idempotency-Key':str(uuid.uuid4())}
     deadline=time.monotonic()+90
@@ -80,6 +81,7 @@ def main():
     p.add_argument('--credentials',type=Path,default=Path('/home/justin/projects/Portico/.private/walks/credentials.json'))
     p.add_argument('--report',type=Path,required=True)
     p.add_argument('--ffmpeg',default=shutil.which('ffmpeg'))
+    p.add_argument('--manifest',type=Path,default=Path(__file__).with_name('manifest.json'))
     p.add_argument('--concurrency-seconds',type=int,default=600)
     p.add_argument('--clients',type=int,default=10)
     args=p.parse_args(); cfg=private_json(args.credentials)
@@ -100,19 +102,51 @@ def main():
                 elif kind=='episode':episodes.append(entry)
                 elif kind=='song':songs.append(entry)
                 elif kind in ('audiobook_file','part'):books.append(entry)
-        selected=[('film',films[0] if films else None),('episode',episodes[0] if episodes else None),
-                  ('song',songs[0] if songs else None),('audiobook',books[0] if books else None)]
-        for kind,entry in selected:
+        manifest=json.loads(args.manifest.read_text())
+        variants={}
+        for entry in manifest['entries']:
+            if entry['kind']=='movie':variants.setdefault(entry['title'],[]).append(entry)
+        light_titles={title for title,versions in variants.items()
+                      if all('transcode_source:light' in version.get('features',[]) for version in versions)}
+        films=[entry for entry in films if entry.get('title') in light_titles]
+        if not films:raise RuntimeError('No qualified light film source')
+        episode=None;episode_extra={}
+        for entry in episodes[:60]:
+            opts=client.read('/v1/items/'+entry['id']+'/playback-options')
+            version=next((v for v in opts.get('versions',[]) if v.get('subtitles')),None)
+            if version:
+                sub=next((t for t in version['subtitles'] if t.get('source')!='embedded'),version['subtitles'][0])
+                episode=entry;episode_extra={'versionId':version['id'],'subtitles':{'trackId':sub['id']}}
+                break
+        audiobook=None;book_extra={}
+        for entry in books[:46]:
+            opts=client.read('/v1/items/'+entry['id']+'/playback-options')
+            chapters=opts.get('chapters') or []
+            if len(chapters)>=2:
+                audiobook=entry;book_extra={'startPositionMs':chapters[1]['startMs']};break
+        selected=[('film',films[0],{}),('episode',episode,episode_extra),
+                  ('song',songs[0] if songs else None,{}),('audiobook',audiobook,book_extra)]
+        for kind,entry,extra in selected:
             if not entry:
                 report['errors'].append({'step':kind,'error':'missing_item'});continue
             for converted in [False,True]:
                 s=None
                 try:
-                    s=start(client,entry['id'],converted)
+                    s=start(client,entry['id'],converted,extra)
                     presentation=s['presentation'];mode=presentation['mode']
                     url=client.base+presentation['url']
                     passed=decode(args.ffmpeg,url,scratch/(kind+str(converted)+'.log'))
-                    report['checks'].append({'kind':kind,'requested':'conversion' if converted else 'original','mode':mode,'decoded':passed})
+                    actions={k:v.get('action') for k,v in (presentation.get('decision') or {}).items() if isinstance(v,dict)}
+                    rendered=(presentation.get('audioRender') or {}).get('mode')
+                    did_convert='transcode' in actions.values() or rendered=='converted'
+                    subtitle_bytes=0
+                    for track in presentation.get('subtitles') or []:
+                        req=urllib.request.Request(client.base+track['url'],headers={'Authorization':'Bearer '+client.token,'X-Portico-Installation-Id':client.installation})
+                        with client.opener.open(req,timeout=30) as response:subtitle_bytes+=len(response.read(1024*1024))
+                    if kind=='episode' and not presentation.get('subtitle'):raise RuntimeError('Selected subtitles missing')
+                    if converted and not did_convert:raise RuntimeError('Conversion not applied')
+                    if not converted and mode!='direct':raise RuntimeError('Original route was not direct')
+                    report['checks'].append({'kind':kind,'requested':'conversion' if converted else 'original','mode':mode,'actions':actions,'audioRender':rendered,'subtitleBytes':subtitle_bytes,'chapterStartMs':extra.get('startPositionMs'),'decoded':passed})
                     if not passed:report['errors'].append({'step':kind,'error':'decode_failed','converted':converted})
                 except Exception as e:
                     report['errors'].append({'step':kind,'converted':converted,'error':getattr(e,'code',type(e).__name__),'status':getattr(e,'status',None)})
@@ -133,7 +167,7 @@ def main():
                         c.read('/v1/home');requests+=1
                         seq+=1
                         request(c,'POST','/v1/playback/sessions/'+s['id']+'/timeline',
-                            {'seq':seq,'generation':s['presentation']['generation'],'state':'playing','positionMs':1000,'rate':1},ok=(204,))
+                            {'seq':seq,'generation':s['presentation']['generation'],'state':'playing','positionMs':int((time.monotonic()-begun)*1000)%max(1000,int(films[index%len(films)].get('durationMs') or 10000)),'rate':1},ok=(204,))
                         requests+=1
                         if decoder.poll() is not None:
                             failures.append('decoder_ended_early');break

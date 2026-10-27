@@ -195,7 +195,7 @@ class Client:
             except ValueError:
                 return payload
 
-    def read(self, path, attempts=5, timeout=60):
+    def read(self, path, attempts=12, timeout=60):
         """A read that tolerates a catalogue fence while a scan publishes."""
         last = None
         for attempt in range(attempts):
@@ -203,7 +203,7 @@ class Client:
                 return self.call("GET", path, timeout=timeout)
             except Refusal as refusal:
                 last = refusal
-                if refusal.status not in (412, 423, 503, 504) or attempt == attempts - 1:
+                if refusal.status not in (409, 412, 423, 503, 504) or attempt == attempts - 1:
                     raise
                 time.sleep(min(4.0, 0.5 * (attempt + 1)))
         raise last
@@ -226,19 +226,56 @@ def items(document):
 
 
 def sign_in(client, username, password):
-    signed = client.call("POST", "/v1/direct/sign-in", {"username": username, "password": password},
-                         ok=(200,))
-    session = signed.get("session", signed)
-    return signed, session["accessToken"]
+    """Sign-in is a short write; the scan queue can answer 503 while busy."""
+    last = None
+    for attempt in range(8):
+        try:
+            signed = client.call("POST", "/v1/direct/sign-in",
+                                 {"username": username, "password": password}, ok=(200,))
+            session = signed.get("session", signed)
+            return signed, session["accessToken"]
+        except Refusal as refusal:
+            last = refusal
+            if refusal.status not in (429, 503, 504) or attempt == 7:
+                raise
+            time.sleep(min(20, 3 * (attempt + 1)))
+    raise last
 
 
 def select_profile(client, profile_id, pin=None):
     body = {"installationId": client.installation, "trust": False}
     if pin is not None:
         body["pin"] = pin
-    selected = client.call("POST", "/v1/direct/profiles/" + urllib.parse.quote(profile_id, safe="") + "/select",
-                           body, ok=(200,))
-    return selected["session"]["accessToken"]
+    last = None
+    for attempt in range(8):
+        try:
+            selected = client.call(
+                "POST", "/v1/direct/profiles/" + urllib.parse.quote(profile_id, safe="") + "/select",
+                body, ok=(200,))
+            return selected["session"]["accessToken"]
+        except Refusal as refusal:
+            last = refusal
+            if refusal.status not in (401, 403, 409, 429, 503, 504) or attempt == 7:
+                raise
+            time.sleep(min(15, 1.5 * (attempt + 1)))
+    raise last
+
+
+def open_profile(base, username, password, profile_id, pin=None):
+    """Fresh installation, ordinary sign-in, then the target profile."""
+    last = None
+    for attempt in range(5):
+        client = Client(base, str(uuid.uuid4()))
+        try:
+            sign_in(client, username, password)
+            client.token = select_profile(client, profile_id, pin)
+            return client
+        except Refusal as refusal:
+            last = refusal
+            if refusal.status not in (401, 403, 409, 429, 503, 504) or attempt == 4:
+                raise
+            time.sleep(min(20, 3 * (attempt + 1)))
+    raise last
 
 
 def bootstrap_setup(client, owner):
@@ -610,7 +647,8 @@ def start_history(client, item_id, fraction, report, duration_ms=None):
             report.setdefault("warnings", []).append({"step": "history-start", "itemId": item_id,
                                                        "code": refusal.code, "status": refusal.status})
             return False
-        if session.get("presentation") or session.get("state") not in (None, "preparing"):
+        presentation = session.get("presentation") or {}
+        if presentation.get("url") or session.get("state") not in (None, "preparing"):
             break
         if time.monotonic() >= deadline:
             report.setdefault("warnings", []).append({"step": "history-start", "itemId": item_id,
@@ -618,6 +656,16 @@ def start_history(client, item_id, fraction, report, duration_ms=None):
             return False
         time.sleep(1.5)
     session_id = session.get("id")
+    deadline = time.monotonic() + 45
+    while session_id and time.monotonic() < deadline:
+        presentation = session.get("presentation") or {}
+        if presentation.get("url") or session.get("state") not in (None, "preparing"):
+            break
+        time.sleep(1.0)
+        try:
+            session = client.read("/v1/playback/sessions/" + urllib.parse.quote(session_id, safe=""))
+        except Refusal:
+            break
     generation = ((session.get("presentation") or {}).get("generation")) or 1
     duration_ms = int(duration_ms or 0)
     if duration_ms <= 0:
@@ -915,6 +963,12 @@ def ensure_backup(owner, report):
     try:
         owner.call("POST", "/v1/admin/backups", {"operationId": op_id("backup")}, ok=(202,))
         report["created"]["backups"].append("queued")
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline:
+            time.sleep(2)
+            current = owner.read("/v1/admin/backups")
+            if current.get("backups") or current.get("lastBackup"):
+                break
     except Refusal as refusal:
         report.setdefault("warnings", []).append({"step": "backup", "code": refusal.code,
                                                    "status": refusal.status})
@@ -1337,13 +1391,13 @@ def main(argv=None):
         targets.extend(member_profile_ids)
 
         for label, profile_id, pin, username, password in targets:
-            client = Client(args.base, str(uuid.uuid4()))
             try:
-                sign_in(client, username, password)
-                select_profile(client, profile_id, pin)
+                client = open_profile(args.base, username, password, profile_id, pin)
             except Refusal as refusal:
-                report["warnings"].append({"step": "profile-select", "profile": label,
-                                            "code": refusal.code, "status": refusal.status})
+                report.setdefault("failures", []).append({"step": "profile-select",
+                                                           "profile": label,
+                                                           "code": refusal.code,
+                                                           "status": refusal.status})
                 continue
             if args.light:
                 report["profiles"].append({"label": label, "profileId": profile_id, "light": True})

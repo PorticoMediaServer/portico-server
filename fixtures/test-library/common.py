@@ -10,6 +10,9 @@ def run(args):
     args = [str(a) for a in args]
     if Path(args[0]).name == 'ffmpeg':
         args[1:1] = ['-hide_banner', '-loglevel', 'error', '-nostdin', '-threads', '2', '-filter_threads', '1']
+        # Container IDs (Matroska/Ogg) otherwise use random seeds. These are
+        # output options, immediately before the generator's output pathname.
+        args[-1:-1] = ['-fflags', '+bitexact', '-flags:v', '+bitexact', '-flags:a', '+bitexact']
     subprocess.run(args, check=True)
 
 

@@ -1181,7 +1181,7 @@ def generate(root: Path, ffmpeg: str, full: bool = True) -> list[dict]:
     """Write the music and audiobook sections under ``root``; return manifest.
 
     ``root`` is the test library root (the parent server uses
-    /home/runner/e2e-server/test-library-v3). ``ffmpeg`` is the bundled binary.
+    /home/runner/portico-test-library-v3). ``ffmpeg`` is the bundled binary.
     """
     root = Path(root)
     root.mkdir(parents=True, exist_ok=True)
